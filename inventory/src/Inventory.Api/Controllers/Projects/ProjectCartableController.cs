@@ -165,6 +165,46 @@ public class ProjectCartableController : RbacControllerBase
         return Ok(new { id = p.Id, flowStatus = p.FlowStatus });
     }
 
+    /// <summary>
+    /// ارسال مجدد پروژهٔ ردشده به کارتابل مدیر — بعد از اصلاح ایرادهایی که مدیر گرفته بود.
+    /// وضعیت از «۲=رد شده» به «۰=در انتظار تایید مدیر» برمی‌گردد و یادداشت رد مدیر پاک می‌شود.
+    /// مجوز لازم: Projects.Update (همان مجوز ویرایش پروژه — کارتابل لازم نیست).
+    /// </summary>
+    [HttpPost("{id:int}/resubmit")]
+    public async Task<IActionResult> Resubmit(int id, [FromBody] ProjectFlowActionDto dto)
+    {
+        if (!await HasAsync("Projects", "Update"))
+            return StatusCode(403, new { message = "شما مجوز ویرایش پروژه (Projects.Update) را ندارید." });
+
+        var p = await Db.ProjectEntryExits.FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
+        if (p is null) return NotFound(new { message = "پروژه پیدا نشد." });
+        if (p.FlowStatus != 2)
+            return BadRequest(new { message = $"فقط پروژهٔ «رد شده» را می‌توان دوباره ارسال کرد — وضعیت فعلی: «{FlowNameFa(p.FlowStatus)}»." });
+
+        var rejectNote = p.ManagerNote;
+        p.FlowStatus = 0;
+        p.ManagerActionById = null;
+        p.ManagerActionAt = null;
+        p.ManagerNote = null;
+        await Db.SaveChangesAsync();
+
+        var me = await MyDisplayAsync();
+        var fix = string.IsNullOrWhiteSpace(dto.Note) ? null : dto.Note.Trim();
+        try
+        {
+            var managers = await UsersWithPermissionAsync(CCModule, "Manager", excludeSelf: true);
+            await _notify.SendManyAsync(managers, "پروژهٔ اصلاح‌شده در کارتابل مدیر",
+                $"«{p.ProjectName}» (کد {p.CodeProject}) پس از اصلاح دوباره برای تایید ارسال شد." +
+                (rejectNote is null ? "" : $" دلیل رد قبلی: {rejectNote}") +
+                (fix is null ? "" : $" توضیح اصلاح: {fix}"),
+                me, "مدیریت پروژه‌ها", "/project-cartable?queue=manager");
+            await _notify.BroadcastChangedAsync("projects");
+        }
+        catch { }
+
+        return Ok(new { id = p.Id, flowStatus = p.FlowStatus });
+    }
+
     // ==================== اکشن کارشناس ====================
     /// <summary>اتمام کارشناسی — پروژه نهایی و از کارتابل خارج می‌شود</summary>
     [HttpPost("{id:int}/expert-done")]
