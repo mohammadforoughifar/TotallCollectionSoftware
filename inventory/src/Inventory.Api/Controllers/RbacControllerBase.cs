@@ -29,7 +29,7 @@ public abstract class RbacControllerBase : ApiControllerBase
         {
             var legacy = User.FindFirstValue(ClaimTypes.Role);
             if (legacy == "Admin") return true;
-            if (legacy == "Operator") return action is "Create" or "Read" or "Export";
+            if (legacy == "Operator") return action is "Create" or "Read" or "Export" or "Erja";
             return false;
         }
         return await Db.UserRoles.Where(ur => ur.UserId == MyUserId)

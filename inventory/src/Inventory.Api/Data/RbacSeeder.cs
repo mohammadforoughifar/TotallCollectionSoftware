@@ -56,7 +56,12 @@ public static class RbacSeeder
         ["Karfarmas"] = CrudActions,                           // کارفرماها
         ["TypeFactors"] = CrudActions,                         // انواع فاکتور
         ["ProjectAttach"] = new[] { "Create", "Read", "Delete" }, // پیوست‌های پروژه
-        ["ProjectCartable"] = new[] { "Read", "Manager", "Expert" } // کارتابل پروژه — Read=مشاهده، Manager=تایید/رد مدیر، Expert=اتمام کارشناسی
+        ["ProjectCartable"] = new[] { "Read", "Manager", "Expert" }, // کارتابل پروژه — Read=مشاهده، Manager=تایید/رد مدیر، Expert=اتمام کارشناسی
+        // ================== اتوماسیون اداری — نامه داخلی ==================
+        // Create: ثبت و ارسال نامه (و مدیریت پیش‌نویس‌ها/گروه‌های گیرندگان)
+        // Read: کارتابل، مشاهده نامه و پیوست‌ها | Erja: ارجاع نامه به دیگران
+        // Delete: حذف نامه/گروه (مدیرانه)
+        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" }
     };
 
     public static async Task SeedAsync(AppDbContext db)

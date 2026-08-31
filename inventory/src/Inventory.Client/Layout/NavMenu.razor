@@ -102,6 +102,29 @@
         </div>
     }
 
+    @* ============ اتوماسیون اداری ============ *@
+    @if (Auth.HasModule("InnerLetters"))
+    {
+        <div class="nav-group group-letters">
+            <button type="button" class="nav-section-title nav-toggle @(gLetters ? "open" : "")" @onclick="() => gLetters = !gLetters">
+                <span>اتوماسیون اداری</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gLetters)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="letters" @onclick="NotifyClose">
+                        <i class="bi bi-envelope-paper"></i><span>کارتابل نامه داخلی</span>
+                        @if (LettersUnreadCount > 0)
+                        {
+                            <span class="badge bg-danger ms-auto">@LettersUnreadCount</span>
+                        }
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     @* ============ عملیات ============ *@
     <div class="nav-group group-ops">
         <button type="button" class="nav-section-title nav-toggle @(gOps ? "open" : "")" @onclick="() => gOps = !gOps">
@@ -375,9 +398,10 @@
 @code {
     [Parameter] public int ReorderCount { get; set; }
     [Parameter] public int NewSystemsCount { get; set; }
+    [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gLetters;
 
     protected override void OnInitialized()
     {
@@ -387,6 +411,7 @@
         gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive");
         gWo = p.StartsWith("work-orders");
         gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance");
+        gLetters = p.StartsWith("letters");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOps = p.StartsWith("orders") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses");
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests");
