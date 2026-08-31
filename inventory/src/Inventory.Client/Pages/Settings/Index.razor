@@ -1,0 +1,193 @@
+@page "/settings"
+@inject ISettingsService SettingsSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+
+<PageTitle>تنظیمات</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>تنظیمات</h1>
+        <p class="lead">روش قیمت‌گذاری خروج انبار و کنترل موجودی</p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <i class="bi bi-calculator text-primary"></i>
+        <span class="card-title">روش قیمت‌گذاری خروج انبار (محاسبه سود فروش)</span>
+    </div>
+    <div class="card-body">
+        @if (loading)
+        {
+            <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+        }
+        else
+        {
+            <div class="row g-3">
+                <div class="col-12">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="costing" id="mAvg"
+                               checked="@(model.CostingMethod == "Average")"
+                               @onchange="@(() => model.CostingMethod = "Average")" />
+                        <label class="form-check-label" for="mAvg">
+                            <span class="fw-500">میانگین موزون (Average)</span>
+                            <div class="fs-8 text-muted">بهای تمام‌شده = میانگین قیمت خریدهای قبلی — روش پیش‌فرض و متداول</div>
+                        </label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="radio" name="costing" id="mFifo"
+                               checked="@(model.CostingMethod == "FIFO")"
+                               @onchange="@(() => model.CostingMethod = "FIFO")" />
+                        <label class="form-check-label" for="mFifo">
+                            <span class="fw-500">اولین صادره از اولین وارده (FIFO)</span>
+                            <div class="fs-8 text-muted">فروش از قدیمی‌ترین خریدها قیمت می‌گیرد</div>
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="costing" id="mLifo"
+                               checked="@(model.CostingMethod == "LIFO")"
+                               @onchange="@(() => model.CostingMethod = "LIFO")" />
+                        <label class="form-check-label" for="mLifo">
+                            <span class="fw-500">اولین صادره از آخرین وارده (LIFO)</span>
+                            <div class="fs-8 text-muted">فروش از جدیدترین خریدها قیمت می‌گیرد</div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <i class="bi bi-shield-exclamation text-primary"></i>
+        <span class="card-title">کنترل موجودی</span>
+    </div>
+    <div class="card-body">
+        @if (!loading)
+        {
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="radio" name="negStock" id="negNo"
+                       checked="@(!model.AllowNegativeStock)"
+                       @onchange="@(() => model.AllowNegativeStock = false)" />
+                <label class="form-check-label" for="negNo">
+                    <span class="fw-500">موجودی منفی غیرمجاز (پیشنهادی)</span>
+                    <div class="fs-8 text-muted">فروش بیش از موجودی و حذف/ویرایش سند خریدی که موجودی را منفی کند، رد می‌شود</div>
+                </label>
+            </div>
+            <div class="form-check">
+                <input class="form-check-input" type="radio" name="negStock" id="negYes"
+                       checked="@model.AllowNegativeStock"
+                       @onchange="@(() => model.AllowNegativeStock = true)" />
+                <label class="form-check-label" for="negYes">
+                    <span class="fw-500">موجودی منفی مجاز</span>
+                    <div class="fs-8 text-muted">هیچ محدودیتی روی منفی شدن موجودی اعمال نمی‌شود</div>
+                </label>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <i class="bi bi-hdd-network text-primary"></i>
+        <span class="card-title">سرور مرکزی درخواست‌های IT (کانفیگ IP)</span>
+    </div>
+    <div class="card-body">
+        @if (!loading)
+        {
+            <p class="fs-8 text-muted mb-3">
+                اگر این نصب، <b>شعبه/شرکت دیگری</b> است، آدرس سرور مرکزی را وارد کنید — از این پس درخواست‌های IT کاربران این نرم‌افزار
+                به‌صورت خودکار به سرور مرکزی ارسال می‌شود. <b>خالی بگذارید</b> یعنی همین سرور، مرکزی است.
+            </p>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">آدرس سرور مرکزی</label>
+                    <input class="form-control num" dir="ltr" placeholder="http://192.168.1.10:5100" @bind="model.ItServerUrl" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">نام این شرکت (همراه درخواست ارسال می‌شود)</label>
+                    <input class="form-control" placeholder="مثلاً: شرکت آریا تجارت" @bind="model.ItCompanyName" />
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <i class="bi bi-chat-dots text-primary"></i>
+        <span class="card-title">پیام‌رسان‌ها (بله و ایتا)</span>
+    </div>
+    <div class="card-body">
+        @if (!loading)
+        {
+            <p class="fs-8 text-muted mb-3">
+                با تنظیم توکن‌ها، هر نوتیفیکیشن سامانه برای کاربرانی که بله/ایتا دارند به پیام‌رسانشان هم ارسال می‌شود.
+                کاربران باید یک‌بار ربات بله را استارت و شماره خود را به اشتراک بگذارند؛ سپس در صفحه «کاربران» دکمه «همگام‌سازی بله» را بزنید.
+            </p>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">توکن ربات بله</label>
+                    <input class="form-control num" dir="ltr" placeholder="123456:abcdef..." @bind="model.BaleBotToken" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">توکن ایتایار (eitaayar.ir)</label>
+                    <input class="form-control num" dir="ltr" @bind="model.EitaaToken" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">شماره معرف سامانه (در امضای پیام‌ها)</label>
+                    <input class="form-control num" dir="ltr" @bind="model.MessengerSenderNumber" />
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <i class="bi bi-shield-lock text-primary"></i>
+        <span class="card-title">نقش‌ها و دسترسی‌ها</span>
+    </div>
+    <div class="card-body">
+        <p class="fs-8 text-muted mb-3">تعریف نقش‌ها و تعیین دسترسی‌ها (پرمیشن‌ها) — اختصاص نقش به هر کاربر از فرم «کاربران» (سیستم ← کاربران) انجام می‌شود.</p>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="/settings/roles" class="btn btn-outline-primary">
+                <i class="bi bi-shield-lock"></i> مدیریت نقش‌ها و دسترسی‌ها
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex justify-content-end mt-3">
+    <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+        @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+        <i class="bi bi-check2"></i> ذخیره تنظیمات
+    </button>
+</div>
+
+@code {
+    private AppSettings model = new();
+    private bool loading = true, saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("تنظیمات");
+        try { model = await SettingsSvc.GetAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        try
+        {
+            model = await SettingsSvc.SaveAsync(model);
+            Toast.Success("تنظیمات ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+}

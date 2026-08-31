@@ -1,0 +1,205 @@
+<div class="date-picker">
+    <div class="input-group input-group-sm">
+        <input type="text"
+               class="form-control @CssClass"
+               value="@Text"
+               placeholder="@(string.IsNullOrWhiteSpace(Placeholder) ? "۱۴۰۳/۰۵/۱۲" : Placeholder)"
+               @oninput="OnInput"
+               @onblur="OnBlur" />
+        @if (AllowClear && Value.HasValue)
+        {
+            <button class="btn btn-outline-secondary" type="button" title="پاک کردن" @onclick="Clear">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        }
+        <button class="btn btn-outline-secondary" type="button" title="انتخاب از تقویم" @onclick="Toggle">
+            <i class="bi bi-calendar3"></i>
+        </button>
+    </div>
+
+    @if (open)
+    {
+        <div class="dp-popover">
+            <div class="dp-head">
+                <button class="btn btn-sm btn-light" type="button" @onclick="() => MoveMonth(1)">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+                <div class="d-flex gap-1">
+                    <select class="form-select form-select-sm" style="width:auto" @bind="viewMonth">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            <option value="@m">@PersianDate.MonthName(m)</option>
+                        }
+                    </select>
+                    <select class="form-select form-select-sm" style="width:auto" @bind="viewYear">
+                        @for (int y = minYear; y <= maxYear; y++)
+                        {
+                            <option value="@y">@Fa.Digits(y)</option>
+                        }
+                    </select>
+                </div>
+                <button class="btn btn-sm btn-light" type="button" @onclick="() => MoveMonth(-1)">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+            </div>
+
+            <div class="dp-grid">
+                @foreach (var wd in weekDays)
+                {
+                    <div class="dp-weekday">@wd</div>
+                }
+
+                @for (int i = 0; i < firstCol; i++)
+                {
+                    <div></div>
+                }
+
+                @for (int d = 1; d <= daysInMonth; d++)
+                {
+                    var day = d;
+                    <button type="button"
+                            class="dp-day @(IsSelected(day) ? "selected" : "") @(IsToday(day) ? "today" : "")"
+                            @onclick="() => Pick(day)">
+                        @Fa.Digits(day)
+                    </button>
+                }
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <button class="btn btn-sm btn-outline-primary" type="button" @onclick="SetToday">
+                    <i class="bi bi-arrow-counterclockwise ms-1"></i>امروز
+                </button>
+                <span class="fs-7 text-muted">@PersianDate.MonthName(viewMonth) @Fa.Digits(viewYear)</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public DateTime? Value { get; set; }
+    [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+    [Parameter] public bool AllowClear { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+
+    /// <summary>متن راهنمای داخل ورودی (مثلاً «از تاریخ») — پیش‌فرض: قالب تاریخ با ارقام فارسی</summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    private static readonly string[] weekDays = { "ش", "ی", "د", "س", "چ", "پ", "ج" };
+
+    private string _text = "";
+    private DateTime? _last;
+    private bool open;
+    private int viewYear, viewMonth;
+
+    private int minYear = 1390;
+    private int maxYear = 1430;
+
+    private string Text
+    {
+        get => _text;
+        set
+        {
+            _text = value;
+            var dt = PersianDate.TryParse(value);
+            if (dt.HasValue)
+                _ = Notify(dt.Value);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Value != _last)
+        {
+            _last = Value;
+            _text = Value.HasValue ? PersianDate.ToShort(Value.Value) : "";
+            InitView();
+        }
+    }
+
+    private void InitView()
+    {
+        var (y, m, _) = PersianDate.FromGregorian(Value ?? DateTime.Now);
+        viewYear = y;
+        viewMonth = m;
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString() ?? "";
+        var dt = PersianDate.TryParse(_text);
+        if (dt.HasValue) _ = Notify(dt.Value);
+    }
+
+    private void OnBlur()
+    {
+        if (!open)
+        {
+            if (Value.HasValue)
+                _text = PersianDate.ToShort(Value.Value);
+            else
+                _text = "";
+        }
+    }
+
+    private async Task Notify(DateTime dt)
+    {
+        _text = PersianDate.ToShort(dt);
+        _last = dt;
+        if (Value != dt)
+        {
+            Value = dt;
+            await ValueChanged.InvokeAsync(dt);
+        }
+    }
+
+    private async Task Clear()
+    {
+        _text = "";
+        _last = null;
+        Value = null;
+        await ValueChanged.InvokeAsync(null);
+    }
+
+    private void Toggle()
+    {
+        open = !open;
+        if (open) InitView();
+    }
+
+    private async Task SetToday()
+    {
+        open = false;
+        await Notify(DateTime.Now);
+    }
+
+    private async Task Pick(int day)
+    {
+        open = false;
+        var dt = PersianDate.ToGregorian(viewYear, viewMonth, day);
+        if (dt != DateTime.MinValue)
+            await Notify(dt);
+    }
+
+    private void MoveMonth(int delta)
+    {
+        var (y, m) = PersianDate.AddMonths(viewYear, viewMonth, delta);
+        viewYear = y;
+        viewMonth = m;
+    }
+
+    private int firstCol => PersianDate.FirstDayColumn(viewYear, viewMonth);
+    private int daysInMonth => PersianDate.DaysInMonth(viewYear, viewMonth);
+
+    private bool IsSelected(int day)
+    {
+        if (!Value.HasValue) return false;
+        var (y, m, d) = PersianDate.FromGregorian(Value.Value);
+        return y == viewYear && m == viewMonth && d == day;
+    }
+
+    private bool IsToday(int day)
+    {
+        var (y, m, d) = PersianDate.FromGregorian(DateTime.Now);
+        return y == viewYear && m == viewMonth && d == day;
+    }
+}

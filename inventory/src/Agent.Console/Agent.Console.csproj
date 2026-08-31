@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Agent.Console</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- CA1416: هشدار «فقط ویندوز» — در زمان اجرا با OperatingSystem.IsWindows کنترل می‌شود -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- فایل‌های اجرایی دستی: دکمه‌ی دابل‌کلیک و پیکربندی سرور -->
+    <None Include="run-agent.bat" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="agent.config.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
