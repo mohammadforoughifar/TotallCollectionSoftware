@@ -40,6 +40,9 @@ public interface IProjectService
 
     /// <summary>ثبت/ویرایش اطلاعات فاکتور (فرم مجزا)</summary>
     Task UpdateFactorAsync(int id, ProjectFactorDto dto);
+
+    /// <summary>ثبت/ویرایش تاریخ‌های چرخهٔ پروژه (خروج، خروج موقت، نیاز مشتری، تحویل پروژه، تحویل پرونده)</summary>
+    Task UpdateDatesAsync(int id, ProjectDatesDto dto);
 }
 
 /// <summary>سرویس گزارش‌های کار.</summary>
@@ -145,6 +148,9 @@ public class ProjectService : IProjectService
     public Task UpdateFactorAsync(int id, ProjectFactorDto dto)
         => _api.PutAsync<object>($"api/projects/{id}/factor", dto);
 
+    public Task UpdateDatesAsync(int id, ProjectDatesDto dto)
+        => _api.PutAsync<object>($"api/projects/{id}/dates", dto);
+
     private class IdResponse { public int Id { get; set; } }
 }
 
@@ -203,6 +209,9 @@ public interface IProjectCartableService
     Task ApproveAsync(int id, string? note);
     Task RejectAsync(int id, string note);
     Task ExpertDoneAsync(int id, string? note);
+
+    /// <summary>ارسال مجدد پروژهٔ ردشده به کارتابل مدیر (بعد از اصلاح)</summary>
+    Task ResubmitAsync(int id, string? note);
 }
 
 public class ProjectCartableService : IProjectCartableService
@@ -224,4 +233,7 @@ public class ProjectCartableService : IProjectCartableService
 
     public Task ExpertDoneAsync(int id, string? note)
         => _api.PostAsync<object>($"api/projectcartable/{id}/expert-done", new ProjectFlowActionDto { Note = note });
+
+    public Task ResubmitAsync(int id, string? note)
+        => _api.PostAsync<object>($"api/projectcartable/{id}/resubmit", new ProjectFlowActionDto { Note = note });
 }
