@@ -85,6 +85,17 @@ public class AppDbContext : DbContext
     public DbSet<ReportWork> ReportWorks => Set<ReportWork>();
     public DbSet<ProjectAttach> ProjectAttaches => Set<ProjectAttach>();
 
+    // ==================== اتوماسیون اداری — نامه داخلی ====================
+    public DbSet<LetterSource> LetterSources => Set<LetterSource>();
+    public DbSet<InnerLetter> InnerLetters => Set<InnerLetter>();
+    public DbSet<Erja> Erjas => Set<Erja>();
+    public DbSet<Amalgar> Amalgars => Set<Amalgar>();
+    public DbSet<PishnevisLetter> PishnevisLetters => Set<PishnevisLetter>();
+    public DbSet<RelatedLetter> RelatedLetters => Set<RelatedLetter>();
+    public DbSet<LetterBayegani> LetterBayeganis => Set<LetterBayegani>();
+    public DbSet<LetterGroup> LetterGroups => Set<LetterGroup>();
+    public DbSet<LetterGroupMember> LetterGroupMembers => Set<LetterGroupMember>();
+
     // ==================== RBAC ====================
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
@@ -215,6 +226,86 @@ public class AppDbContext : DbContext
         mb.Entity<SystemHandover>().HasIndex(h => h.SystemInfoId);
         mb.Entity<SystemRemoteCommand>().HasIndex(c => c.SystemInfoId);
         mb.Entity<SystemRemoteCommand>().HasIndex(c => c.Status);
+
+        // ==================== اتوماسیون اداری — نامه داخلی ====================
+        // کلیدهای اصلی صریح (نام‌گذاری مطابق طرح کارفرما)
+        mb.Entity<Erja>().HasKey(e => e.ErjaId);
+        mb.Entity<Amalgar>().HasKey(a => a.AmalgarId);
+        mb.Entity<PishnevisLetter>().HasKey(p => p.PishnevisId);
+        mb.Entity<LetterBayegani>().HasKey(b => b.BayeganiId);
+
+        // InnerLetter با LetterSource کلید مشترک دارد (الگوی SourceKeyID طرح اصلی)
+        mb.Entity<InnerLetter>()
+            .HasOne(l => l.Source)
+            .WithOne(s => s.InnerLetter!)
+            .HasForeignKey<InnerLetter>(l => l.Id)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<InnerLetter>()
+            .HasOne(l => l.Creator)
+            .WithMany()
+            .HasForeignKey(l => l.CreatorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<InnerLetter>().HasIndex(l => l.Number);
+        mb.Entity<InnerLetter>().HasIndex(l => l.DateSabt);
+        mb.Entity<InnerLetter>().HasIndex(l => l.CreatorUserId);
+
+        mb.Entity<Erja>()
+            .HasOne(e => e.Source)
+            .WithMany(s => s.Erjas)
+            .HasForeignKey(e => e.SourceId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<Erja>()
+            .HasOne(e => e.UserSender)
+            .WithMany()
+            .HasForeignKey(e => e.SenderUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<Erja>()
+            .HasOne(e => e.UserReciver)
+            .WithMany()
+            .HasForeignKey(e => e.ReciverUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<Erja>()
+            .HasOne(e => e.Amalgar)
+            .WithMany(a => a.Erjas)
+            .HasForeignKey(e => e.AmalgarId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<Erja>().HasIndex(e => e.SourceId);
+        mb.Entity<Erja>().HasIndex(e => e.ReciverUserId);
+        mb.Entity<Erja>().HasIndex(e => e.SenderUserId);
+        mb.Entity<Erja>().HasIndex(e => new { e.ReciverUserId, e.IsRead });
+
+        mb.Entity<RelatedLetter>()
+            .HasOne(r => r.Letter)
+            .WithMany(s => s.RelatedLetters)
+            .HasForeignKey(r => r.LetterId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<RelatedLetter>()
+            .HasOne(r => r.RelateLetter)
+            .WithMany(s => s.RelatedToLetters)
+            .HasForeignKey(r => r.RelateLetterId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<PishnevisLetter>().HasIndex(p => p.UserId);
+        mb.Entity<LetterBayegani>().HasIndex(b => b.UserId);
+
+        // گروه‌های گیرندگان (پورت جدول Groups طرح کارفرما)
+        mb.Entity<LetterGroup>().HasKey(g => g.GroupId);
+        mb.Entity<LetterGroup>()
+            .HasOne(g => g.Creator)
+            .WithMany()
+            .HasForeignKey(g => g.CreatorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<LetterGroupMember>()
+            .HasOne(m => m.Group)
+            .WithMany(g => g.Members)
+            .HasForeignKey(m => m.GroupId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<LetterGroupMember>()
+            .HasOne(m => m.User)
+            .WithMany()
+            .HasForeignKey(m => m.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<LetterGroupMember>().HasIndex(m => new { m.GroupId, m.UserId }).IsUnique();
 
         // ==================== RBAC Configuration ====================
         mb.Entity<Role>().HasIndex(r => r.Name).IsUnique();

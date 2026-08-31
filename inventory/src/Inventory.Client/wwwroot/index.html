@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="css/bootstrap.min.css" />
     <link rel="stylesheet" href="icons/bootstrap-icons.css" />
     <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/letters.css" />
     <link href="manifest.webmanifest" rel="manifest" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -23,6 +24,8 @@
         // ================== ادیتور متن ساده ==================
         window.rteExec = function (cmd) { document.execCommand(cmd, false, null); };
         window.rteGetHtml = function (id) { var el = document.getElementById(id); return el ? el.innerHTML : ""; };
+        // چاپ نامه (اتوماسیون اداری)
+        window.ltxPrint = function () { window.print(); };
         window.rteSetHtml = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html || ""; };
 
         window.inventoryApiBase = function (fallback) {
