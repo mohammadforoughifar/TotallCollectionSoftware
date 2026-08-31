@@ -1,0 +1,35 @@
+@if (Visible)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(15,23,42,.5)" @onclick="Close">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable @SizeClass" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@Title</h5>
+                    <button type="button" class="btn-close" aria-label="بستن (Esc)" data-hotkey="esc" @onclick="Close"></button>
+                </div>
+                <div class="modal-body">
+                    @ChildContent
+                </div>
+                @if (Footer is not null)
+                {
+                    <div class="modal-footer">
+                        @Footer
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Size { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    private string SizeClass => string.IsNullOrWhiteSpace(Size) ? "" : Size;
+
+    private async Task Close() => await OnClose.InvokeAsync();
+}

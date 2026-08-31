@@ -1,0 +1,294 @@
+@namespace Inventory.Client.Pages
+@page "/parties"
+@inject IPartyService PartySvc
+@inject IReferrerService ReferrerSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject IJSRuntime JS
+
+<PageTitle>طرف حساب‌ها</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>طرف حساب‌ها</h1>
+        <p class="lead">مدیریت مشتریان و تأمین‌کنندگان</p>
+    </div>
+    <button class="btn btn-primary ms-auto" @onclick="OpenNew">
+        <i class="bi bi-plus-lg"></i> طرف حساب جدید
+    </button>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <div class="d-flex gap-2 mb-3">
+            <button class="btn @(type == PartyType.Customer ? "btn-primary" : "btn-light")" @onclick="() => SetType(PartyType.Customer)">
+                <i class="bi bi-people"></i> مشتریان
+            </button>
+            <button class="btn @(type == PartyType.Supplier ? "btn-primary" : "btn-light")" @onclick="() => SetType(PartyType.Supplier)">
+                <i class="bi bi-truck"></i> تأمین‌کنندگان
+            </button>
+        </div>
+
+        @if (loading)
+        {
+            <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+        }
+        else if (items.Count == 0)
+        {
+            <div class="empty-state"><i class="bi bi-people"></i><h5>طرف حسابی ثبت نشده است</h5></div>
+        }
+        else
+        {
+            <div class="table-responsive grid-desktop">
+                <table class="table table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>نام</th>
+                            <th>موبایل</th>
+                            <th>تلفن</th>
+                            <th>آدرس</th>
+                            @if (type == PartyType.Customer)
+                            {
+                                <th>معرف</th>
+                            }
+                            <th class="text-start">مانده حساب (ریال)</th>
+                            <th>وضعیت</th>
+                            <th class="text-end">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in Paged)
+                        {
+                            <tr>
+                                <td class="fw-500">@p.Name</td>
+                                <td>@(p.Mobile ?? "—")</td>
+                                <td>@(p.Phone ?? "—")</td>
+                                <td class="text-muted">@(p.Address ?? "—")</td>
+                                @if (type == PartyType.Customer)
+                                {
+                                    <td>
+                                        @if (string.IsNullOrWhiteSpace(p.ReferrerName))
+                                        {
+                                            <span class="text-muted">بدون معرف</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-soft-primary">@p.ReferrerName</span>
+                                        }
+                                    </td>
+                                }
+                                <td class="text-start num @(p.Balance > 0 ? "text-success fw-700" : "text-danger fw-700")">
+                                    @p.Balance.Money()
+                                </td>
+                                <td>
+                                    @if (p.IsActive)
+                                    {
+                                        <span class="badge badge-soft-success">فعال</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-soft-muted">غیرفعال</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil text-primary"></i></button>
+                                    <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(p)"><i class="bi bi-trash text-danger"></i></button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @* ---------- نمای کارتی (موبایل) ---------- *@
+            <div class="cards-mobile">
+                @foreach (var p in Paged)
+                {
+                    <div class="m-card @(p.Balance >= 0 ? "st-ready" : "st-cancelled")">
+                        <div class="m-card-head">
+                            <div class="m-card-icon"><i class="bi @(type == PartyType.Customer ? "bi-person" : "bi-truck")"></i></div>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="fw-700 text-truncate">@p.Name</div>
+                                <div class="fs-8 text-muted num">@(p.Mobile ?? p.Phone ?? "—")</div>
+                                @if (type == PartyType.Customer)
+                                {
+                                    <div class="fs-8">
+                                        @if (string.IsNullOrWhiteSpace(p.ReferrerName))
+                                        {
+                                            <span class="text-muted">بدون معرف</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge badge-soft-primary fs-8">معرف: @p.ReferrerName</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <div class="text-end">
+                                <div class="fs-8 text-muted">مانده حساب</div>
+                                <div class="num fw-800 @(p.Balance > 0 ? "text-success" : p.Balance < 0 ? "text-danger" : "")">@p.Balance.Money()</div>
+                            </div>
+                        </div>
+                        <div class="m-card-actions">
+                            <button class="btn btn-light text-primary" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil"></i> ویرایش</button>
+                            <button class="btn btn-light text-danger" @onclick="() => Delete(p)"><i class="bi bi-trash"></i></button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <Pager Page="page" PageCount="PageCount" OnPageChanged="pg => page = pg" />
+        }
+    </div>
+</div>
+
+<Modal Visible="showModal" Title="@(editing ? "ویرایش طرف حساب" : "طرف حساب جدید")" OnClose="CloseModal">
+    <ChildContent>
+    <div class="row g-3">
+        <div class="col-12">
+            <label class="form-label">نام <span class="text-danger">*</span></label>
+            <input class="form-control" @bind="form.Name" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">موبایل</label>
+            <input class="form-control" @bind="form.Mobile" inputmode="tel" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">تلفن ثابت</label>
+            <input class="form-control" @bind="form.Phone" inputmode="tel" />
+        </div>
+        <div class="col-12">
+            <label class="form-label">آدرس</label>
+            <input class="form-control" @bind="form.Address" />
+        </div>
+        @if (type == PartyType.Customer)
+        {
+            <div class="col-12">
+                <label class="form-label">معرف</label>
+                <select class="form-select" @bind="referrerIdStr">
+                    <option value="0">— بدون معرف —</option>
+                    @foreach (var r in referrerList)
+                    {
+                        <option value="@r.Id">@r.Name@(string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")</option>
+                    }
+                </select>
+                <div class="fs-8 text-muted mt-1">در فاکتور فروش این مشتری، معرف به‌صورت خودکار انتخاب می‌شود</div>
+            </div>
+        }
+        <div class="col-12">
+            <label class="form-label">یادداشت</label>
+            <textarea class="form-control" rows="2" @bind="form.Note"></textarea>
+        </div>
+        <div class="col-12">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="partyActive" @bind="form.IsActive" />
+                <label class="form-check-label" for="partyActive">فعال باشد</label>
+            </div>
+        </div>
+    </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="CloseModal">انصراف (Esc)</button>
+        <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            ذخیره
+        </button>
+    </Footer>
+</Modal>
+
+@code {
+    private PartyType type = PartyType.Customer;
+    private List<Party> items = new();
+
+    // ---------- صفحه‌بندی ----------
+    private int page = 1;
+    private const int PageSize = 12;
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(items.Count / (double)PageSize));
+    private List<Party> Paged
+    {
+        get
+        {
+            if (page > PageCount) page = PageCount;
+            return items.Skip((page - 1) * PageSize).Take(PageSize).ToList();
+        }
+    }
+    private bool loading = true;
+    private Party form = new();
+    private bool showModal, saving;
+    private bool editing => form.Id != 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("طرف حساب‌ها");
+        await Load();
+    }
+
+    private async Task SetType(PartyType t)
+    {
+        type = t;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        loading = true;
+        try { items = await PartySvc.GetAsync(type); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private List<Referrer> referrerList = new();
+    private string referrerIdStr = "0";
+
+    private async Task LoadReferrers()
+    {
+        try { referrerList = await ReferrerSvc.GetAllAsync(activeOnly: true); }
+        catch { /* اختیاری */ }
+    }
+
+    private async Task OpenNew()
+    {
+        if (type == PartyType.Customer) await LoadReferrers();
+        form = new Party { Type = type, IsActive = true };
+        referrerIdStr = "0";
+        showModal = true;
+    }
+
+    private async Task OpenEdit(Party p)
+    {
+        if (type == PartyType.Customer) await LoadReferrers();
+        form = new Party { Id = p.Id, Type = p.Type, Name = p.Name, Mobile = p.Mobile, Phone = p.Phone, Address = p.Address, Note = p.Note, IsActive = p.IsActive, ReferrerId = p.ReferrerId };
+        referrerIdStr = (p.ReferrerId ?? 0).ToString();
+        showModal = true;
+    }
+    private void CloseModal() => showModal = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام طرف حساب را وارد کنید."); return; }
+        form.ReferrerId = int.TryParse(referrerIdStr, out var rid) && rid > 0 ? rid : null;
+        saving = true;
+        try
+        {
+            await PartySvc.SaveAsync(form);
+            Toast.Success(editing ? "طرف حساب ویرایش شد." : "طرف حساب ثبت شد.");
+            showModal = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task Delete(Party p)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"آیا از حذف «{p.Name}» مطمئن هستید؟");
+        if (!ok) return;
+        try
+        {
+            await PartySvc.DeleteAsync(p.Id);
+            Toast.Success("طرف حساب حذف شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

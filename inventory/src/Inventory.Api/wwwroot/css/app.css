@@ -1,0 +1,1344 @@
+/* ============================================================
+   سامانه جامع انبار و فروش — استایل قالب مدیریتی (RTL)
+   ============================================================ */
+
+/* ---------- فونت وزیرمتن ---------- */
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Medium.woff2') format('woff2');
+    font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-SemiBold.woff2') format('woff2');
+    font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-ExtraBold.woff2') format('woff2');
+    font-weight: 800; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Black.woff2') format('woff2');
+    font-weight: 900; font-style: normal; font-display: swap;
+}
+
+/* ---------- متغیرهای رنگ ---------- */
+:root {
+    --primary: #4f46e5;
+    --primary-600: #4338ca;
+    --primary-100: #e0e7ff;
+    --primary-50: #eef2ff;
+    --sidebar: #0f172a;
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --text-muted: #64748b;
+    --text-soft: #94a3b8;
+    --success: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --info: #0ea5e9;
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, .05);
+    --shadow: 0 4px 18px rgba(15, 23, 42, .08);
+    --shadow-lg: 0 18px 50px rgba(15, 23, 42, .22);
+    --radius: 14px;
+}
+
+/* ---------- پایه ---------- */
+* { -webkit-tap-highlight-color: transparent; }
+html { font-size: 14px; }
+body {
+    font-family: 'Vazirmatn', system-ui, 'Segoe UI', Tahoma, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 1rem;
+    line-height: 1.8;
+    margin: 0;
+}
+h1, h2, h3, h4, h5, h6 { font-weight: 700; }
+a { text-decoration: none; }
+::selection { background: var(--primary-100); }
+
+.text-muted { color: var(--text-muted) !important; }
+.text-primary { color: var(--primary) !important; }
+.fs-7 { font-size: .8rem !important; }
+.fs-8 { font-size: .72rem !important; }
+.fw-500 { font-weight: 500 !important; }
+.fw-700 { font-weight: 700 !important; }
+.cursor-pointer { cursor: pointer; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ---------- اسکرول‌بار ---------- */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- چیدمان اصلی ---------- */
+.app-shell { display: flex; min-height: 100vh; }
+
+.app-sidebar {
+    position: fixed;
+    top: 0; bottom: 0; right: 0;
+    width: 262px;
+    background: linear-gradient(180deg, #0f172a 0%, #131d31 100%);
+    color: #cbd5e1;
+    z-index: 1035;
+    display: flex;
+    flex-direction: column;
+    transition: transform .25s ease;
+}
+
+.app-main {
+    flex: 1;
+    margin-right: 262px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    transition: margin .25s ease;
+}
+
+.app-shell.sidebar-collapsed .app-sidebar { transform: translateX(100%); }
+.app-shell.sidebar-collapsed .app-main { margin-right: 0; }
+
+.sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, .55);
+    z-index: 1030;
+}
+
+/* نمایشگرهای کوچک‌تر از ~۱۲ اینچ: قالب موبایل/تبلت — سایدبار مخفی و کشویی */
+@media (max-width: 1279.98px) {
+    .app-main { margin-right: 0 !important; }
+    .app-sidebar { transform: translateX(100%); box-shadow: none; }
+    .app-shell.sidebar-open .app-sidebar { transform: translateX(0); box-shadow: 0 0 60px rgba(0, 0, 0, .45); }
+    .app-shell.sidebar-open .sidebar-backdrop { display: block; }
+    /* در این حالت «جمع‌شدن» دسکتاپی بی‌معناست */
+    .app-shell.sidebar-collapsed.sidebar-open .app-sidebar { transform: translateX(0); }
+}
+
+/* ---------- سایدبار ---------- */
+.sidebar-brand {
+    height: 66px;
+    display: flex;
+    align-items: center;
+    gap: .7rem;
+    padding: 0 1.15rem;
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
+    flex-shrink: 0;
+}
+.sidebar-brand .logo {
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #6366f1, #4338ca);
+    display: grid; place-items: center;
+    color: #fff; font-size: 1.35rem;
+    flex-shrink: 0;
+}
+.brand-text { color: #fff; font-weight: 800; font-size: 1.02rem; line-height: 1.4; }
+.brand-sub { color: #64748b; font-size: .7rem; margin-top: -2px; }
+
+.sidebar-nav { padding: .8rem .75rem; overflow-y: auto; flex: 1; }
+.nav-section-title {
+    font-size: .68rem;
+    color: #64748b;
+    padding: .7rem .6rem .3rem;
+    letter-spacing: .03em;
+    font-weight: 600;
+}
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .55rem .75rem;
+    border-radius: 10px;
+    color: #a5b4c8;
+    font-weight: 500;
+    margin-bottom: 2px;
+    transition: all .15s ease;
+    font-size: .92rem;
+    cursor: pointer;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: right;
+}
+.nav-link i { font-size: 1.05rem; width: 22px; text-align: center; color: #7c8ba1; transition: color .15s; }
+.nav-link:hover { background: rgba(255, 255, 255, .06); color: #e2e8f0; }
+.nav-link:hover i { color: #c7d2fe; }
+.nav-link.active {
+    background: linear-gradient(135deg, #4f46e5, #4338ca);
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(79, 70, 229, .35);
+}
+.nav-link.active i { color: #fff; }
+.nav-badge {
+    margin-right: auto;
+    background: var(--danger);
+    color: #fff;
+    font-size: .68rem;
+    padding: .05rem .5rem;
+    border-radius: 20px;
+    font-weight: 700;
+}
+.sidebar-footer {
+    padding: .9rem 1rem;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+    font-size: .75rem;
+    color: #64748b;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+/* ---------- نوار بالا ---------- */
+.app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1025;
+    background: rgba(255, 255, 255, .88);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    height: 66px;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 1.25rem;
+}
+.btn-burger {
+    border: none;
+    background: transparent;
+    font-size: 1.35rem;
+    color: var(--text-muted);
+    padding: .25rem .5rem;
+    border-radius: 8px;
+}
+.btn-burger:hover { background: var(--bg); color: var(--text); }
+.topbar-title { font-weight: 700; font-size: 1.05rem; margin: 0; }
+.topbar-sub { color: var(--text-muted); font-size: .78rem; }
+.topbar-date {
+    margin-right: auto;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    border-radius: 20px;
+    padding: .3rem .9rem;
+    font-size: .8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+/* ---------- محتوا ---------- */
+.app-content { padding: 1.5rem; flex: 1; }
+.page-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.page-head h1 { font-size: 1.25rem; margin: 0; }
+.page-head .lead { color: var(--text-muted); font-size: .85rem; margin: 0; }
+
+/* ---------- کارت ---------- */
+.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+}
+.card-header {
+    background: transparent;
+    border-bottom: 1px solid var(--border);
+    padding: .9rem 1.15rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+}
+.card-header .card-title { margin: 0; font-size: .98rem; font-weight: 700; }
+.card-body { padding: 1.15rem; }
+
+/* ---------- دکمه‌ها و فرم‌ها ---------- */
+.btn { --bs-btn-border-radius: 10px; --bs-btn-font-weight: 500; }
+.btn-primary {
+    --bs-btn-bg: #4f46e5;
+    --bs-btn-border-color: #4f46e5;
+    --bs-btn-hover-bg: #4338ca;
+    --bs-btn-hover-border-color: #4338ca;
+    --bs-btn-active-bg: #4338ca;
+    --bs-btn-active-border-color: #4338ca;
+    --bs-btn-disabled-bg: #a5b4fc;
+    --bs-btn-disabled-border-color: #a5b4fc;
+}
+.btn-outline-primary {
+    --bs-btn-color: #4f46e5;
+    --bs-btn-border-color: #4f46e5;
+    --bs-btn-hover-bg: #4f46e5;
+    --bs-btn-hover-border-color: #4f46e5;
+    --bs-btn-active-bg: #4338ca;
+    --bs-btn-active-border-color: #4338ca;
+}
+.form-control, .form-select { border-radius: 10px; font-size: .92rem; }
+.form-control:focus, .form-select:focus {
+    border-color: #818cf8;
+    box-shadow: 0 0 0 .25rem rgba(79, 70, 229, .12);
+}
+.form-label { font-size: .82rem; font-weight: 600; color: var(--text-muted); margin-bottom: .3rem; }
+.input-group-text { border-radius: 10px; background: #f8fafc; }
+
+/* ---------- جدول ---------- */
+.table { --bs-table-bg: transparent; margin: 0; }
+.table thead th {
+    font-size: .76rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    padding: .65rem .9rem;
+    white-space: nowrap;
+    background: #f8fafc;
+}
+.table tbody td {
+    padding: .72rem .9rem;
+    vertical-align: middle;
+    border-color: #f1f5f9;
+    font-size: .9rem;
+}
+.table-hover tbody tr:hover { background: #f8fafc; }
+.table-responsive { border-radius: var(--radius); }
+
+/* ---------- نشان‌ها ---------- */
+.badge { font-weight: 600; border-radius: 7px; }
+.badge-in { background: #d1fae5; color: #065f46; }
+.badge-out { background: #fee2e2; color: #991b1b; }
+.badge-adjust { background: var(--primary-100); color: #3730a3; }
+.badge-soft-primary { background: var(--primary-50); color: var(--primary); }
+.badge-soft-success { background: #d1fae5; color: #065f46; }
+.badge-soft-warning { background: #fef3c7; color: #92400e; }
+.badge-soft-danger { background: #fee2e2; color: #991b1b; }
+.badge-soft-muted { background: #f1f5f9; color: #64748b; }
+
+/* ---------- کارت‌های آماری ---------- */
+.stat-card { padding: 1.1rem 1.2rem; }
+.stat-icon {
+    width: 52px; height: 52px;
+    border-radius: 13px;
+    display: grid; place-items: center;
+    font-size: 1.45rem;
+}
+.stat-value { font-size: 1.35rem; font-weight: 800; line-height: 1.3; }
+.stat-label { color: var(--text-muted); font-size: .8rem; }
+.bg-soft-primary { background: var(--primary-50); color: var(--primary); }
+.bg-soft-success { background: #d1fae5; color: #059669; }
+.bg-soft-warning { background: #fef3c7; color: #d97706; }
+.bg-soft-danger { background: #fee2e2; color: #dc2626; }
+.bg-soft-info { background: #e0f2fe; color: #0284c7; }
+
+/* ---------- صفحه‌بندی ---------- */
+.pagination { margin: 0; }
+.pagination .page-link {
+    color: var(--primary);
+    border-radius: 9px;
+    margin: 0 2px;
+    border: 1px solid var(--border);
+    font-size: .85rem;
+}
+.page-item.active .page-link {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+.page-link:focus { box-shadow: 0 0 0 .2rem rgba(79, 70, 229, .15); }
+
+/* ---------- اعلان (Toast) ---------- */
+.toast-container {
+    position: fixed;
+    bottom: 1.25rem;
+    left: 1.25rem;
+    z-index: 2100;
+    display: flex;
+    flex-direction: column;
+    gap: .6rem;
+    max-width: 360px;
+}
+.toast-item {
+    display: flex;
+    gap: .8rem;
+    align-items: flex-start;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    padding: .9rem 1.05rem;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .18);
+    animation: toastIn .25s ease;
+    font-size: .9rem;
+}
+.toast-item .toast-icon { font-size: 1.2rem; line-height: 1.4; }
+.toast-item.success { border-right: 4px solid var(--success); }
+.toast-item.success .toast-icon { color: var(--success); }
+.toast-item.error { border-right: 4px solid var(--danger); }
+.toast-item.error .toast-icon { color: var(--danger); }
+.toast-item.info { border-right: 4px solid var(--info); }
+.toast-item.info .toast-icon { color: var(--info); }
+.toast-item .toast-close { color: var(--text-soft); cursor: pointer; margin-right: auto; }
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* ---------- مودال ---------- */
+.modal-content { border: none; border-radius: 16px; box-shadow: var(--shadow-lg); }
+.modal-header { border-bottom: 1px solid var(--border); padding: 1rem 1.25rem; }
+.modal-title { font-weight: 700; font-size: 1.02rem; }
+.modal-body { padding: 1.25rem; }
+.modal-footer { border-top: 1px solid var(--border); padding: .85rem 1.25rem; }
+
+/* ---------- تقویم / انتخاب تاریخ شمسی ---------- */
+.date-picker { position: relative; }
+.dp-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 1080;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 15px;
+    box-shadow: var(--shadow-lg);
+    padding: 1rem;
+    width: 292px;
+}
+.dp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .6rem; }
+.dp-month-label { font-weight: 700; font-size: .95rem; }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.dp-weekday { font-size: .7rem; color: var(--text-muted); padding: .3rem 0; font-weight: 600; }
+.dp-day {
+    border: none;
+    background: none;
+    border-radius: 9px;
+    padding: .4rem 0;
+    cursor: pointer;
+    font-size: .85rem;
+    color: var(--text);
+    transition: background .12s;
+}
+.dp-day:hover { background: var(--primary-50); }
+.dp-day.selected { background: var(--primary); color: #fff; font-weight: 700; }
+.dp-day.today { box-shadow: inset 0 0 0 1px var(--primary); }
+
+/* ---------- جستجوی انتخاب (کمبوباکس) ---------- */
+.ss { position: relative; }
+.ss-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0; left: 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    max-height: 250px;
+    overflow: auto;
+    z-index: 1080;
+}
+.ss-item { padding: .5rem .85rem; cursor: pointer; font-size: .88rem; }
+.ss-item:hover { background: var(--primary-50); }
+.ss-item.selected { background: var(--primary); color: #fff; }
+.ss-empty { padding: .9rem; color: var(--text-muted); font-size: .85rem; text-align: center; }
+
+/* ---------- حالت خالی ---------- */
+.empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); }
+.empty-state i { font-size: 2.8rem; color: #cbd5e1; }
+.empty-state h5 { margin: .8rem 0 .2rem; color: var(--text); }
+
+/* ---------- بارگذاری اولیه ---------- */
+.app-loading {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background: linear-gradient(180deg, #0f172a, #131d31);
+}
+.app-loading-card {
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .1rem;
+}
+
+/* ---------- blazor-error-ui ---------- */
+#blazor-error-ui {
+    background: #fff1f2;
+    color: #be123c;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, .2);
+    display: none;
+    left: 0;
+    padding: .8rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 3000;
+    font-size: .9rem;
+}
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    left: 1rem;
+    top: .6rem;
+}
+
+/* ---------- جزئیات سند ---------- */
+.doc-line-total { font-weight: 700; color: var(--primary); }
+.doc-number { font-family: inherit; letter-spacing: .03em; }
+
+/* ---------- چاپ کاردکس ---------- */
+@media print {
+    .app-sidebar, .app-topbar, .sidebar-backdrop, .no-print { display: none !important; }
+    .app-main { margin: 0 !important; }
+    .app-content { padding: 0; }
+    .card { border: none; box-shadow: none; }
+}
+
+/* ---------- سربرگ مودال: عنوان سمت راست، ضربدر قرمز سمت چپ (RTL) ---------- */
+.modal-header { flex-direction: row; }
+.modal-header .modal-title { order: 1; }        /* عنوان: اولین آیتم → راست‌ترین نقطه در RTL */
+.modal-header .btn-close {
+    order: 2;              /* ضربدر: آخرین آیتم */
+    margin: 0;
+    margin-right: auto;    /* تمام فضای خالی سمت راستِ ضربدر → ضربدر به لبه چپ می‌چسبد */
+    margin-left: 0;
+    /* ضربدر قرمز: بازسازی آیکن پیش‌فرض بوت‌استرپ با رنگ قرمز */
+    background: transparent url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23dc3545'%3e%3cpath d='M.293.293a1 1 0 0 1 1.414 0L8 6.586 14.293.293a1 1 0 1 1 1.414 1.414L9.414 8l6.293 6.293a1 1 0 0 1-1.414 1.414L8 9.414l-6.293 6.293a1 1 0 0 1-1.414-1.414L6.586 8 .293 1.707a1 1 0 0 1 0-1.414z'/%3e%3c/svg%3e") center/1em auto no-repeat;
+    opacity: .85;
+}
+.modal-header .btn-close:hover { opacity: 1; background-color: rgba(220, 53, 69, .1); border-radius: 6px; }
+
+/* ---------- صفحه ورود ---------- */
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #0f766e 130%);
+    padding: 1rem;
+}
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    background: #fff;
+    border-radius: 18px;
+    padding: 2rem;
+    box-shadow: 0 25px 70px rgba(0, 0, 0, .35);
+}
+.login-logo {
+    width: 64px; height: 64px;
+    margin: 0 auto;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--primary), #0f766e);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.8rem;
+}
+
+/* ---------- رسپانسیو فرم‌ها و مودال‌ها ---------- */
+@media (max-width: 767.98px) {
+    .modal-dialog { margin: .5rem; max-width: calc(100vw - 1rem); }
+    .modal-body { padding: 1rem; }
+    .page-head { flex-wrap: wrap; gap: .75rem; }
+    .page-head .ms-auto, .page-head .me-auto { margin-right: auto !important; margin-left: 0 !important; }
+    .app-content { padding: 1rem; }
+    .table-responsive { font-size: .85rem; }
+    .app-topbar { padding: 0 .75rem; gap: .5rem; }
+    .topbar-date { display: none !important; }
+}
+
+/* ---------- قالب موبایل (اندروید / صفحات کوچک) ---------- */
+@media (max-width: 575.98px) {
+    /* مودال‌ها: تمام‌عرض و از پایین (سبک اپ اندروید) */
+    .modal.d-block { align-items: flex-end; }
+    .modal-dialog {
+        margin: 0;
+        max-width: 100vw;
+        width: 100vw;
+        min-height: auto;
+        display: flex;
+        align-items: flex-end;
+    }
+    .modal-dialog-centered { min-height: 100vh; }
+    .modal-content {
+        border-radius: 18px 18px 0 0;
+        max-height: 92vh;
+        border: none;
+    }
+    .modal-body { max-height: calc(92vh - 130px); overflow-y: auto; }
+    .modal-footer { position: sticky; bottom: 0; background: #fff; }
+    .modal-footer .btn { flex: 1; padding: .65rem; }
+
+    /* عناصر لمسی بزرگ‌تر */
+    .btn, .form-control, .form-select { min-height: 42px; }
+    .btn-sm { min-height: 36px; }
+    .table td, .table th { padding: .55rem .5rem; white-space: nowrap; }
+
+    /* سربرگ صفحه فشرده */
+    .page-head h1 { font-size: 1.15rem; }
+    .page-head .lead { font-size: .78rem; }
+    .app-content { padding: .75rem; }
+    .app-topbar { height: 56px; }
+    .topbar-sub { display: none; }
+
+    /* کارت‌های داشبورد معرف تمام‌عرض */
+    .ref-stat { padding: 1rem; }
+    .ref-stat .fs-4 { font-size: 1.1rem !important; }
+
+    /* فرم لاگین موبایل */
+    .login-card { padding: 1.5rem; border-radius: 14px; }
+
+    /* جدول‌ها: اسکرول افقی نرم */
+    .table-responsive { -webkit-overflow-scrolling: touch; }
+}
+
+/* ---------- کارت‌های داشبورد معرف ---------- */
+.ref-stat {
+    border-radius: 16px;
+    padding: 1.25rem;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+}
+.ref-stat i.bg-ico {
+    position: absolute;
+    left: -10px; bottom: -18px;
+    font-size: 5rem; opacity: .15;
+}
+.ref-grad-1 { background: linear-gradient(135deg, #2563eb, #1e40af); }
+.ref-grad-2 { background: linear-gradient(135deg, #059669, #065f46); }
+.ref-grad-3 { background: linear-gradient(135deg, #d97706, #92400e); }
+.ref-grad-4 { background: linear-gradient(135deg, #7c3aed, #4c1d95); }
+
+/* ---------- حالت اندروید (app-mobile): نوار پایین + فضای محتوا ---------- */
+.app-bottom-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    height: 62px;
+    background: #ffffff;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -6px 24px rgba(15, 23, 42, .08);
+    z-index: 1040;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.app-shell.app-mobile .app-bottom-nav {
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+}
+
+.app-shell.app-mobile .app-content {
+    padding-bottom: 78px; /* جا برای نوار پایین */
+}
+
+.bottom-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: #64748b;
+    text-decoration: none;
+    font-size: .68rem;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: color .15s ease;
+}
+
+.bottom-nav-item i { font-size: 1.25rem; line-height: 1; }
+.bottom-nav-item:hover { color: var(--primary); }
+.bottom-nav-item.active {
+    color: var(--primary);
+    font-weight: 700;
+}
+.bottom-nav-item.active i { transform: translateY(-1px); }
+
+/* در حالت اندروید topbar فشرده‌تر و چسبان */
+.app-shell.app-mobile .app-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background: rgba(255, 255, 255, .95);
+    backdrop-filter: blur(8px);
+}
+
+/* نوار پایین در چاپ مخفی */
+@media print {
+    .app-bottom-nav { display: none !important; }
+}
+
+/* ---------- دکمه تعریف سریع مشتری (فرم تعمیرات) ---------- */
+.btn-new-party {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: 0 .8rem;
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-size: .82rem;
+    font-weight: 700;
+    white-space: nowrap;
+    background: linear-gradient(135deg, #059669, #0f766e);
+    box-shadow: 0 4px 14px rgba(5, 150, 105, .35);
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.btn-new-party:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(5, 150, 105, .45);
+    color: #fff;
+}
+.btn-new-party:active { transform: translateY(0); }
+.btn-new-party i { font-size: 1.05rem; }
+
+/* ---------- سوییچ جدول⇆کارت: دسکتاپ جدول، موبایل کارت ---------- */
+.cards-mobile { display: none; }
+
+@media (max-width: 991.98px) {
+    .grid-desktop { display: none !important; }
+    .cards-mobile {
+        display: flex;
+        flex-direction: column;
+        gap: .8rem;
+        padding: .8rem;
+    }
+}
+
+/* ---------- کارت موبایل ---------- */
+.m-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, .06);
+    border-right: 4px solid #94a3b8; /* نوار وضعیت سمت راست (RTL) */
+}
+.m-card.st-received  { border-right-color: #2563eb; }
+.m-card.st-progress  { border-right-color: #d97706; }
+.m-card.st-ready     { border-right-color: #059669; }
+.m-card.st-delivered { border-right-color: #94a3b8; }
+.m-card.st-cancelled { border-right-color: #dc2626; }
+
+.m-card-head {
+    display: flex;
+    gap: .75rem;
+    align-items: center;
+    padding: .85rem .9rem .6rem;
+}
+.m-card-icon {
+    width: 46px; height: 46px;
+    flex-shrink: 0;
+    border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.35rem;
+    color: var(--primary);
+    background: linear-gradient(135deg, rgba(79, 70, 229, .12), rgba(15, 118, 110, .12));
+}
+.min-w-0 { min-width: 0; }
+
+.m-card-body { padding: 0 .9rem .6rem; }
+.m-card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: .3rem 0;
+    font-size: .82rem;
+    border-bottom: 1px dashed var(--border);
+}
+.m-card-row:last-of-type { border-bottom: none; }
+.m-card-row span { color: #64748b; }
+
+.m-card-money {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: .45rem;
+    padding: .55rem .75rem;
+    background: #f8fafc;
+    border-radius: 12px;
+}
+
+.m-card-actions {
+    display: flex;
+    gap: .4rem;
+    padding: .6rem .9rem .8rem;
+    border-top: 1px solid var(--border);
+}
+.m-card-actions .btn {
+    flex: 1;
+    font-size: .78rem;
+    padding: .45rem .3rem;
+    border-radius: 10px;
+}
+.m-card-actions .btn:last-child:not(:first-child) { flex: 0 0 auto; min-width: 44px; }
+
+/* ---------- باکس روش پرداخت (فرم فروش) ---------- */
+.pay-box {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1rem;
+    background: #f8fafc;
+}
+.pay-tabs {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+.pay-tab {
+    flex: 1;
+    min-width: 110px;
+    padding: .55rem .5rem;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    background: #fff;
+    color: #475569;
+    font-size: .85rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: .4rem;
+    transition: all .15s ease;
+}
+.pay-tab:hover { border-color: var(--primary); color: var(--primary); }
+.pay-tab.active {
+    border-color: var(--primary);
+    background: linear-gradient(135deg, rgba(79, 70, 229, .1), rgba(15, 118, 110, .08));
+    color: var(--primary);
+    box-shadow: 0 2px 10px rgba(79, 70, 229, .15);
+}
+.pay-tab i { font-size: 1.05rem; }
+
+.cheque-row {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: .5rem .6rem .7rem;
+    margin-bottom: .5rem;
+    background: #fff;
+}
+
+/* بج روش پرداخت در لیست اسناد */
+.badge-pay-cash { background: #dcfce7; color: #14532d; }
+.badge-pay-credit { background: #fef3c7; color: #92400e; }
+.badge-pay-cheque { background: #dbeafe; color: #1e3a8a; }
+.badge-pay-inst { background: #ede9fe; color: #5b21b6; }
+
+/* ---------- پیش‌دریافت نقدی (پرداخت ترکیبی) ---------- */
+.mixed-cash {
+    border: 1px dashed #059669;
+    border-radius: 12px;
+    padding: .7rem .8rem;
+    background: rgba(5, 150, 105, .05);
+}
+
+/* ---------- دکمه ماشین‌حساب اقساط/چک ---------- */
+.btn-calc {
+    background: linear-gradient(135deg, #7c3aed, #4c1d95);
+    color: #fff;
+    border: none;
+    font-weight: 700;
+    box-shadow: 0 3px 10px rgba(124, 58, 237, .3);
+    transition: transform .15s ease, filter .15s ease;
+}
+.btn-calc:hover { color: #fff; filter: brightness(1.1); transform: translateY(-1px); }
+
+.calc-preview {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: .8rem 1rem;
+    background: linear-gradient(135deg, rgba(124, 58, 237, .06), rgba(79, 70, 229, .04));
+}
+
+/* ==================== کارت ویزیت معرف ==================== */
+.bcard-wrap { display: flex; justify-content: center; padding: 1rem 0; }
+.bcard {
+    position: relative;
+    width: 336px;           /* نسبت استاندارد 85.6×54 میلی‌متر */
+    height: 212px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #134e4a 130%);
+    color: #f1f5f9;
+    overflow: hidden;
+    box-shadow: 0 18px 50px rgba(15, 23, 42, .35);
+    direction: rtl;
+}
+.bcard-deco-1 {
+    position: absolute; top: -55px; right: -55px;
+    width: 160px; height: 160px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(212, 175, 55, .35), transparent 70%);
+}
+.bcard-deco-2 {
+    position: absolute; bottom: -70px; left: 60px;
+    width: 190px; height: 190px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(79, 70, 229, .3), transparent 70%);
+}
+.bcard-body {
+    position: relative; z-index: 1;
+    display: flex; justify-content: space-between; align-items: center;
+    height: 100%; padding: 1.1rem 1.3rem 2.2rem;
+}
+.bcard-info { min-width: 0; }
+.bcard-name { font-size: 1.25rem; font-weight: 800; letter-spacing: .3px; }
+.bcard-shop { font-size: .85rem; color: #cbd5e1; margin-top: .35rem; }
+.bcard-phone { font-size: .85rem; color: #e2e8f0; margin-top: .8rem; }
+.bcard-phone i { color: #d4af37; margin-left: .3rem; }
+.bcard-qr {
+    background: #fff; border-radius: 12px; padding: 7px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .3);
+}
+.bcard-qr img, .bcard-qr canvas { border-radius: 4px; }
+.bcard-qr-hint { font-size: .58rem; color: #475569; font-weight: 700; }
+.bcard-brand {
+    position: absolute; z-index: 1;
+    bottom: .65rem; right: 1.3rem;   /* گوشه پایین — سبک امضای برند */
+    font-size: 1rem; font-weight: 800;
+    background: linear-gradient(90deg, #d4af37, #f5e08c, #d4af37);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 1px;
+    text-shadow: 0 0 18px rgba(212, 175, 55, .35);
+}
+
+/* چاپ: فقط کارت ویزیت */
+body.print-card-mode * { visibility: hidden !important; }
+body.print-card-mode .bcard, body.print-card-mode .bcard * { visibility: visible !important; }
+body.print-card-mode .bcard {
+    position: fixed !important;
+    top: 10mm; right: 10mm;
+    box-shadow: none;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+/* ==================== گجت‌های نموداری داشبورد ==================== */
+.chart-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 1.1rem 1.2rem;
+    box-shadow: 0 4px 18px rgba(15, 23, 42, .05);
+    height: 100%;
+}
+.chart-card .chart-title {
+    display: flex; align-items: center; gap: .5rem;
+    font-weight: 800; font-size: .92rem; margin-bottom: .75rem;
+}
+.chart-card .chart-title i {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 1.05rem; color: #fff;
+}
+.chart-box { position: relative; height: 250px; }
+.chart-box-sm { position: relative; height: 230px; }
+
+/* ============================================================
+   🎨 دیزاین سیستم تجاری (نسخه ۲۰) — پوسته حرفه‌ای Enterprise
+   لایه بازطراحی: پالت تیل/ایندیگو، عمق، شیشه، میکرو-انیمیشن
+   ============================================================ */
+
+:root {
+    /* پالت برند تجاری: ایندیگو عمیق + تیل + طلایی برای تاکید */
+    --brand-1: #4338ca;
+    --brand-2: #6d28d9;
+    --brand-grad: linear-gradient(135deg, #4338ca 0%, #6d28d9 100%);
+    --accent-gold: #d4af37;
+    --surface-glass: rgba(255, 255, 255, .82);
+    --ring: 0 0 0 3px rgba(79, 70, 229, .18);
+}
+
+/* ---------- پس‌زمینه محتوا: بافت نرم نقطه‌ای ---------- */
+body {
+    background:
+        radial-gradient(1100px 500px at 85% -10%, rgba(79, 70, 229, .07), transparent 60%),
+        radial-gradient(900px 420px at -10% 110%, rgba(13, 148, 136, .06), transparent 60%),
+        var(--bg);
+}
+
+/* ---------- سایدبار: گرادیان عمیق + خط نور ---------- */
+.app-sidebar {
+    background:
+        linear-gradient(160deg, #101935 0%, #0f172a 45%, #0d1f2d 100%);
+    box-shadow: inset -1px 0 0 rgba(255, 255, 255, .05);
+}
+.sidebar-brand {
+    position: relative;
+    background: rgba(255, 255, 255, .025);
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.sidebar-brand .logo {
+    background: var(--brand-grad);
+    box-shadow: 0 8px 22px rgba(79, 70, 229, .45), inset 0 1px 0 rgba(255,255,255,.25);
+    border-radius: 14px;
+}
+.sidebar-brand::after {
+    content: "";
+    position: absolute; bottom: -1px; right: 10%; left: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(129, 140, 248, .5), transparent);
+}
+
+.nav-link { position: relative; }
+.nav-link.active {
+    background: var(--brand-grad);
+    box-shadow: 0 8px 20px rgba(79, 70, 229, .4), inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+.nav-link.active::before {
+    content: "";
+    position: absolute;
+    right: -0.75rem;
+    top: 20%; bottom: 20%;
+    width: 3.5px;
+    border-radius: 4px 0 0 4px;
+    background: linear-gradient(180deg, #a5b4fc, #6d28d9);
+}
+.nav-section-title {
+    color: #7dd3fc99;
+    font-weight: 700;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    font-size: .62rem;
+}
+
+/* ---------- توپبار شیشه‌ای با خط برند ---------- */
+.app-topbar {
+    background: var(--surface-glass);
+    backdrop-filter: blur(14px) saturate(1.4);
+    border-bottom: 1px solid rgba(226, 232, 240, .9);
+    box-shadow: 0 1px 0 rgba(255,255,255,.6) inset, 0 6px 24px rgba(15, 23, 42, .04);
+}
+.app-topbar::after {
+    content: "";
+    position: absolute; top: 0; right: 0; left: 0; height: 2.5px;
+    background: linear-gradient(90deg, #4338ca, #6d28d9 35%, #0d9488 100%);
+    opacity: .9;
+}
+.app-topbar { position: sticky; }
+
+/* ---------- سربرگ صفحه: تیتر با نشان برند ---------- */
+.page-head h1 {
+    font-weight: 800;
+    letter-spacing: -.01em;
+    position: relative;
+    padding-right: .85rem;
+}
+.page-head h1::before {
+    content: "";
+    position: absolute;
+    right: 0; top: 12%; bottom: 12%;
+    width: 4px; border-radius: 4px;
+    background: var(--brand-grad);
+    box-shadow: 0 2px 8px rgba(79, 70, 229, .4);
+}
+
+/* ---------- کارت‌ها: عمق لطیف + هاور ---------- */
+.card, .chart-card {
+    border: 1px solid rgba(226, 232, 240, .9);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px rgba(15, 23, 42, .05);
+    transition: box-shadow .2s ease, transform .2s ease;
+}
+.card:hover, .chart-card:hover {
+    box-shadow: 0 2px 4px rgba(15, 23, 42, .05), 0 14px 34px rgba(15, 23, 42, .09);
+}
+.card-header {
+    background: linear-gradient(180deg, #fafbfe, #f6f8fc);
+    border-bottom: 1px solid var(--border);
+}
+.card-header .card-title { letter-spacing: -.01em; }
+
+/* ---------- دکمه اصلی: گرادیان برند + جلای بالا ---------- */
+.btn-primary {
+    background: var(--brand-grad);
+    border: none;
+    box-shadow: 0 6px 18px rgba(79, 70, 229, .35), inset 0 1px 0 rgba(255, 255, 255, .22);
+    transition: transform .16s ease, box-shadow .16s ease, filter .16s ease;
+}
+.btn-primary:hover {
+    filter: brightness(1.07);
+    transform: translateY(-1.5px);
+    box-shadow: 0 10px 26px rgba(79, 70, 229, .45), inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+.btn-primary:active { transform: translateY(0); }
+.btn-success {
+    box-shadow: 0 5px 16px rgba(16, 185, 129, .3);
+    border: none;
+    background: linear-gradient(135deg, #10b981, #0d9488);
+}
+.btn:focus-visible, .form-control:focus, .form-select:focus { box-shadow: var(--ring); border-color: #818cf8; }
+
+/* ---------- جدول‌ها: سربرگ برجسته + ردیف زنده ---------- */
+.table thead th {
+    background: linear-gradient(180deg, #f8fafc, #f1f5f9);
+    color: #475569;
+    font-weight: 700;
+    letter-spacing: .02em;
+    border-bottom: 2px solid #e2e8f0 !important;
+}
+.table tbody tr { transition: background .12s ease, box-shadow .12s ease; }
+.table-hover tbody tr:hover {
+    background: linear-gradient(90deg, rgba(79, 70, 229, .045), rgba(13, 148, 136, .03));
+    box-shadow: inset 3px 0 0 rgba(79, 70, 229, .5);
+}
+
+/* ---------- مودال: شیشه و عمق ---------- */
+.modal-content {
+    border: none;
+    border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(15, 23, 42, .35);
+    overflow: hidden;
+}
+.modal-header {
+    background: linear-gradient(180deg, #fafbfe, #f4f6fb);
+}
+.modal.d-block { backdrop-filter: blur(4px); }
+
+/* ---------- کارت آماری داشبورد: نوار برند بالا ---------- */
+.stat-card { position: relative; overflow: hidden; }
+.stat-card::before {
+    content: "";
+    position: absolute; top: 0; right: 0; left: 0; height: 3px;
+    background: var(--brand-grad);
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+.stat-card:hover::before { opacity: 1; }
+.stat-icon { border-radius: 13px; box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+
+/* ---------- کارت‌های گرادیانی (ref-stat): جلا و درخشش ---------- */
+.ref-stat {
+    box-shadow: 0 10px 28px rgba(15, 23, 42, .18), inset 0 1px 0 rgba(255, 255, 255, .18);
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+.ref-stat:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 16px 38px rgba(15, 23, 42, .25), inset 0 1px 0 rgba(255, 255, 255, .22);
+}
+
+/* ---------- کارت‌ویو موبایل: عمق بهتر ---------- */
+.m-card {
+    box-shadow: 0 2px 6px rgba(15, 23, 42, .05), 0 10px 24px rgba(15, 23, 42, .06);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.m-card:active { transform: scale(.995); }
+
+/* ---------- تب‌های پرداخت: برند ---------- */
+.pay-tab.active {
+    border-color: transparent;
+    background: var(--brand-grad);
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(79, 70, 229, .35);
+}
+.pay-tab.active:hover { color: #fff; }
+
+/* ---------- اسکرول‌بار برند ---------- */
+::-webkit-scrollbar-thumb { background: #c7d2fe; }
+::-webkit-scrollbar-thumb:hover { background: #818cf8; }
+
+/* ---------- ورود: پس‌زمینه برند ---------- */
+.login-page {
+    background:
+        radial-gradient(800px 400px at 80% 10%, rgba(109, 40, 217, .25), transparent 55%),
+        radial-gradient(700px 500px at 15% 90%, rgba(13, 148, 136, .22), transparent 55%),
+        linear-gradient(135deg, #0f172a 0%, #131c3a 55%, #0d1f2d 130%);
+}
+.login-card { box-shadow: 0 30px 90px rgba(0, 0, 0, .45), inset 0 1px 0 rgba(255,255,255,.8); }
+.login-logo { background: var(--brand-grad); box-shadow: 0 12px 30px rgba(79, 70, 229, .45); }
+
+/* ---------- نوار پایین موبایل: شیشه ---------- */
+.app-bottom-nav {
+    background: rgba(255, 255, 255, .92);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid rgba(226, 232, 240, .9);
+}
+.bottom-nav-item.active {
+    color: var(--brand-1);
+}
+.bottom-nav-item.active::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    width: 26px; height: 3px;
+    border-radius: 0 0 4px 4px;
+    background: var(--brand-grad);
+}
+.bottom-nav-item { position: relative; }
+
+/* ---------- انیمیشن ورود محتوا ---------- */
+@keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.app-content > * { animation: fadeSlideIn .28s ease both; }
+
+/* حرکت کمتر برای کاربران حساس به حرکت */
+@media (prefers-reduced-motion: reduce) {
+    .app-content > *, .btn-primary, .ref-stat, .m-card { animation: none !important; transition: none !important; }
+}
+
+
+/* ---------- کارت‌ویو موبایل صفحات مدیریت سیستم (هم‌قالب همه‌ی صفحات) ---------- */
+.m-card{background:#fff;border:1px solid #e2e6f1;border-right:4px solid #8e5cff;border-radius:14px;padding:.85rem .95rem;margin-bottom:.65rem;box-shadow:0 3px 12px rgba(45,55,110,.08);}
+.m-card .m-title{font-weight:800;font-size:.95rem;color:#1c2130;word-break:break-word;line-height:1.7;}
+.m-card .m-row{display:flex;justify-content:space-between;gap:.6rem;font-size:.82rem;color:#3c4358;padding:.16rem 0;}
+.m-card .m-label{color:#8a90a5;font-weight:700;flex-shrink:0;}
+.m-card .m-val{font-weight:600;text-align:left;word-break:break-word;}
+.m-card .m-actions{display:flex;gap:.4rem;margin-top:.55rem;}
+.m-card .m-actions .btn{flex:1;}
+.m-group{margin:.9rem 0 .5rem;display:flex;align-items:center;gap:.5rem;}
+.m-group .m-group-name{font-weight:800;font-size:.9rem;color:#4f5b8a;background:#eef1ff;border:1px solid #dfe5f8;border-radius:10px;padding:.3rem .8rem;}
+
+
+/* ---------- گروه‌های تاشوی منو (همان قالب و رنگ — با جلوه‌های نرم) ---------- */
+button.nav-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;background:transparent;border:0;text-align:right;font:inherit;cursor:pointer;border-radius:9px;padding-inline-end:.45rem;transition:background .15s ease,color .15s ease;}
+button.nav-toggle:hover{background:rgba(125,211,252,.07);}
+button.nav-toggle:focus-visible{outline:none;}
+.nav-chevron{font-size:.68rem;transition:transform .22s cubic-bezier(.4,0,.2,1);opacity:.7;}
+.nav-toggle:hover .nav-chevron{opacity:1;color:#7dd3fc;}
+.nav-toggle.open .nav-chevron{transform:rotate(180deg);color:#7dd3fc;}
+.nav-toggle.open > span:first-child{color:#7dd3fc;}
+.nav-group-items{overflow:hidden;border-inline-start:2px solid rgba(125,211,252,.18);margin-inline-start:.65rem;border-radius:2px;}
+.nav-group-items .nav-link{padding-inline-start:1.05rem;animation:navOpen .18s ease both;}
+@keyframes navOpen{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:none;}}
+.nav-group-items .nav-link.active{border-inline-start-color:#7dd3fc;}
+
+/* ============================================================
+   🎨 نسخه ۲۱ — سایدبار پریمیوم رنگین‌کمانی (Forough Aria)
+   آیکون‌های گرادیانی رنگی، نشانگر متحرک، درخشش و هاله‌های رنگی
+   ============================================================ */
+
+/* پس‌زمینه عمیق با هاله‌های رنگی */
+.app-sidebar {
+    background:
+        radial-gradient(360px 280px at 92% -6%, rgba(34,211,238,.15), transparent 62%),
+        radial-gradient(320px 320px at -12% 28%, rgba(139,92,246,.14), transparent 62%),
+        radial-gradient(400px 320px at 85% 108%, rgba(16,185,129,.13), transparent 62%),
+        linear-gradient(178deg, #0b1220 0%, #0d1526 52%, #0a1120 100%);
+}
+
+/* برند: لوگو گرادیان رنگین + درخشش ضربان‌دار */
+.sidebar-brand .logo {
+    background: linear-gradient(135deg, #22d3ee 0%, #8b5cf6 55%, #10b981 100%);
+    box-shadow: 0 10px 28px rgba(34,211,238,.35), 0 10px 28px rgba(139,92,246,.32), inset 0 1px 0 rgba(255,255,255,.32);
+    border-radius: 14px;
+    animation: brandGlow 4.5s ease-in-out infinite;
+}
+@keyframes brandGlow {
+    0%,100% { box-shadow: 0 10px 28px rgba(34,211,238,.35), 0 10px 28px rgba(139,92,246,.32), inset 0 1px 0 rgba(255,255,255,.32); }
+    50%      { box-shadow: 0 14px 36px rgba(16,185,129,.42), 0 14px 32px rgba(34,211,238,.38), inset 0 1px 0 rgba(255,255,255,.32); }
+}
+.brand-text {
+    background: linear-gradient(90deg, #e0f2fe, #ede9fe 55%, #d1fae5);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    font-weight: 800;
+}
+.brand-sub { color: #5b7a99; }
+
+/* عناوین گروه‌ها: نقطه رنگی درخشان */
+.nav-section-title { display: flex; align-items: center; gap: .55rem; }
+.nav-section-title::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    background: currentColor; box-shadow: 0 0 9px currentColor;
+}
+.group-dash .nav-section-title    { color: #22d3ee; }
+.group-ops .nav-section-title     { color: #34d399; }
+.group-admin .nav-section-title   { color: #a78bfa; }
+.group-reports .nav-section-title { color: #fbbf24; }
+.group-base .nav-section-title    { color: #60a5fa; }
+.group-sys .nav-section-title     { color: #fb923c; }
+
+/* لینک‌ها: کپسول + هاور نرم */
+.nav-link { border-radius: 12px; transition: all .2s cubic-bezier(.4,0,.2,1); }
+.nav-link:hover { background: rgba(255,255,255,.06); transform: translateX(-3px); }
+.nav-link:hover i { filter: brightness(1.18); }
+
+/* رنگ آیکون هر گروه */
+.group-dash .nav-link i    { color: #22d3ee; }
+.group-ops .nav-link i     { color: #34d399; }
+.group-admin .nav-link i   { color: #a78bfa; }
+.group-reports .nav-link i { color: #fbbf24; }
+.group-base .nav-link i    { color: #60a5fa; }
+.group-sys .nav-link i     { color: #fb923c; }
+
+/* خط کنار آیتم‌های بازشده */
+.group-dash .nav-group-items    { border-inline-start-color: rgba(34,211,238,.28); }
+.group-ops .nav-group-items     { border-inline-start-color: rgba(52,211,153,.28); }
+.group-admin .nav-group-items   { border-inline-start-color: rgba(167,139,250,.28); }
+.group-reports .nav-group-items { border-inline-start-color: rgba(251,191,36,.28); }
+.group-base .nav-group-items    { border-inline-start-color: rgba(96,165,250,.28); }
+.group-sys .nav-group-items     { border-inline-start-color: rgba(251,146,60,.28); }
+
+/* فلش باز/بسته رنگی */
+.group-dash .nav-toggle.open > span:first-child,    .group-dash .nav-toggle:hover .nav-chevron    { color: #22d3ee; }
+.group-ops .nav-toggle.open > span:first-child,     .group-ops .nav-toggle:hover .nav-chevron     { color: #34d399; }
+.group-admin .nav-toggle.open > span:first-child,   .group-admin .nav-toggle:hover .nav-chevron   { color: #a78bfa; }
+.group-reports .nav-toggle.open > span:first-child, .group-reports .nav-toggle:hover .nav-chevron { color: #fbbf24; }
+.group-base .nav-toggle.open > span:first-child,    .group-base .nav-toggle:hover .nav-chevron    { color: #60a5fa; }
+.group-sys .nav-toggle.open > span:first-child,     .group-sys .nav-toggle:hover .nav-chevron     { color: #fb923c; }
+.nav-toggle.open .nav-chevron { transform: rotate(180deg); }
+
+/* حالت فعال: گرادیان رنگی هر بخش + درخشش */
+.group-dash .nav-link.active    { background: linear-gradient(135deg, #22d3ee, #0891b2); box-shadow: 0 8px 22px rgba(34,211,238,.42); }
+.group-ops .nav-link.active     { background: linear-gradient(135deg, #34d399, #059669); box-shadow: 0 8px 22px rgba(16,185,129,.42); }
+.group-admin .nav-link.active   { background: linear-gradient(135deg, #a78bfa, #7c3aed); box-shadow: 0 8px 22px rgba(139,92,246,.42); }
+.group-reports .nav-link.active { background: linear-gradient(135deg, #fbbf24, #d97706); box-shadow: 0 8px 22px rgba(245,158,11,.42); }
+.group-base .nav-link.active    { background: linear-gradient(135deg, #60a5fa, #2563eb); box-shadow: 0 8px 22px rgba(59,130,246,.42); }
+.group-sys .nav-link.active     { background: linear-gradient(135deg, #fb923c, #ea580c); box-shadow: 0 8px 22px rgba(249,115,22,.42); }
+.nav-link.active i { color: #fff !important; }
+.nav-link.active::before { background: rgba(255,255,255,.95); box-shadow: 0 0 8px rgba(255,255,255,.6); }
+
+/* نشان (badge) درخشان */
+.nav-badge {
+    background: linear-gradient(135deg, #f43f5e, #e11d48);
+    box-shadow: 0 2px 8px rgba(244,63,94,.45);
+    padding: .1rem .55rem;
+}
+
+/* فوتر */
+.sidebar-footer {
+    background: rgba(255,255,255,.02);
+    color: #5b7a99;
+}
+
+/* ====== آواتار دایره‌ای کاربران (سراسری) ====== */
+.user-avatar {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1.5px #c9b8ff, 0 2px 6px rgba(76, 47, 184, .22);
+    background: #efeaff;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+.user-avatar-default { background: linear-gradient(135deg, #c9b8ff, #8e5cff); }
+.user-avatar-sm { width: 26px; height: 26px; border-width: 1.5px; box-shadow: 0 0 0 1px #d8ccf7, 0 1px 4px rgba(76,47,184,.18); }
+.user-avatar-lg { width: 52px; height: 52px; }
+.user-avatar-xl { width: 100px; height: 100px; border-width: 4px; }
+.uv-wrap { display: inline-flex; align-items: center; gap: .55rem; min-width: 0; }
+.uv-wrap .uv-name { font-weight: 700; color: #1c2130; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-preview {
+    width: 72px; height: 72px; border-radius: 50%;
+    background: #efeaff; border: 2px dashed #c9b8ff;
+    display: flex; align-items: center; justify-content: center;
+    color: #8e5cff; font-size: 2rem; overflow: hidden; flex-shrink: 0;
+}
+.pp-preview img { width: 100%; height: 100%; object-fit: cover; }
+.pp-preview-lg { width: 110px; height: 110px; font-size: 3rem; }

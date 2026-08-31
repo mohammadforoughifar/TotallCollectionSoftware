@@ -1,0 +1,64 @@
+@* ورودی ساعت ۲۴ساعته — بدون AM/PM — با ارقام فارسی.
+   جایگزین input[type=time] که بسته به مرورگر AM/PM نشان می‌دهد و 00:30 را با 12:30 اشتباه می‌گرفت. *@
+<div class="time-input @CssClass">
+    <select class="form-select form-select-sm" disabled="@Disabled"
+            value="@Value.Hour" @onchange="SetHour" aria-label="ساعت">
+        @for (var h = 0; h <= Math.Max(MaxHour, Value.Hour); h++)
+        {
+            <option value="@h">@Fa.Digits(h.ToString("00"))</option>
+        }
+    </select>
+    <span class="ti-sep">:</span>
+    <select class="form-select form-select-sm" disabled="@Disabled"
+            value="@Value.Minute" @onchange="SetMinute" aria-label="دقیقه">
+        @for (var m = 0; m < 60; m += MinuteStep)
+        {
+            <option value="@m">@Fa.Digits(m.ToString("00"))</option>
+        }
+    </select>
+    @if (!string.IsNullOrWhiteSpace(Suffix))
+    {
+        <span class="ti-suffix">@Suffix</span>
+    }
+</div>
+
+<style>
+    /* چیدمان چپ‌به‌راست مثل ساعت دیجیتال: ساعت : دقیقه (درخواست کاربر) */
+    .time-input { display: flex; align-items: center; gap: .35rem; direction: ltr; justify-content: flex-end; }
+    .time-input select {
+        width: auto; min-width: 66px; text-align: center; font-weight: 700;
+        border-radius: 9px; cursor: pointer;
+    }
+    .ti-sep { font-weight: 800; color: #64748b; }
+    .ti-suffix { font-size: .75rem; color: #64748b; direction: rtl; }
+</style>
+
+@code {
+    /// <summary>مقدار فعلی ساعت</summary>
+    [Parameter] public TimeOnly Value { get; set; }
+    [Parameter] public EventCallback<TimeOnly> ValueChanged { get; set; }
+
+    /// <summary>حداکثر ساعت قابل انتخاب — برای «مدت»ها (صبحانه/ناهار) کمتر از ۲۳ بگذارید</summary>
+    [Parameter] public int MaxHour { get; set; } = 23;
+
+    /// <summary>گام دقیقه‌ها (پیش‌فرض هر دقیقه)</summary>
+    [Parameter] public int MinuteStep { get; set; } = 1;
+
+    /// <summary>متن راهنمای اختیاری کنار ورودی</summary>
+    [Parameter] public string? Suffix { get; set; }
+
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public bool Disabled { get; set; }
+
+    private async Task SetHour(ChangeEventArgs e)
+    {
+        var h = int.TryParse(e.Value?.ToString(), out var x) ? x : 0;
+        await ValueChanged.InvokeAsync(new TimeOnly(Math.Clamp(h, 0, 23), Value.Minute));
+    }
+
+    private async Task SetMinute(ChangeEventArgs e)
+    {
+        var m = int.TryParse(e.Value?.ToString(), out var x) ? x : 0;
+        await ValueChanged.InvokeAsync(new TimeOnly(Value.Hour, Math.Clamp(m, 0, 59)));
+    }
+}
