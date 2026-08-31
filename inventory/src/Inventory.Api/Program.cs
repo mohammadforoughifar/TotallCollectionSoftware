@@ -41,6 +41,12 @@ builder.Services.AddScoped<AttendanceRecalcService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 
+// ---------- اتوماسیون اداری — نامه داخلی (کارتابل، ارجاع، پیش‌نویس، گروه‌های گیرندگان) ----------
+builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
+builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
+builder.Services.AddScoped<IErjaService, ErjaService>();
+builder.Services.AddScoped<IPishnevisService, PishnevisService>();
+
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
 builder.Services.AddSingleton<UserPhotoService>();
