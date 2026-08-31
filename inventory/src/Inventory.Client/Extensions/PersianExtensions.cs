@@ -32,4 +32,42 @@ public static class PersianExtensions
     public static string Num(this decimal v) => Fa.Number(v);
 
     public static string Num(this int v) => Fa.Number(v);
+
+    // ================= ماژول مدیریت پروژه‌ها (چاپ/گرید/ارقام فارسی) =================
+
+    /// <summary>ارقام لاتین متن به فارسی — بدون جداکننده هزارگان (برای کد پروژه، سریال و…)</summary>
+    public static string FaDigits(this string? s) => Fa.Digits(s);
+
+    /// <summary>عدد صحیح با ارقام فارسی — بدون جداکننده هزارگان (برای شمارنده‌ها و ردیف جدول)</summary>
+    public static string FaDigits(this int n) => Fa.Digits(n);
+
+    /// <summary>عدد بلند با ارقام فارسی — بدون جداکننده هزارگان</summary>
+    public static string FaDigits(this long n) => Fa.Digits(n);
+
+    /// <summary>تاریخ شمسی کوتاه با ارقام فارسی: ۱۴۰۳/۰۵/۱۲</summary>
+    public static string ToFaDate(this DateTime dt) => PersianDate.ToShortFa(dt);
+
+    /// <summary>تاریخ شمسی کوتاه با ارقام فارسی — «—» در صورت خالی بودن</summary>
+    public static string ToFaDate(this DateTime? dt) => dt.HasValue ? PersianDate.ToShortFa(dt.Value) : "—";
+
+    /// <summary>ساعت ۲۴ساعته با ارقام فارسی: ۰۸:۳۰</summary>
+    public static string TimeFa(this TimeOnly t) => Fa.Digits($"{t.Hour:D2}:{t.Minute:D2}");
+
+    /// <summary>ساعت ۲۴ساعته با ارقام فارسی — «—» در صورت خالی بودن</summary>
+    public static string TimeFa(this TimeOnly? t) => t.HasValue ? t.Value.TimeFa() : "—";
+
+    /// <summary>
+    /// مدت زمان به‌صورت «ساعت:دقیقه» با ارقام فارسی — برخلاف HHMM، ساعت‌های بیش از ۲۴
+    /// را هم درست نشان می‌دهد (مثلاً ۱۲۵:۳۰ برای جمع ساعات یک پروژه).
+    /// </summary>
+    public static string HoursFa(this TimeSpan t)
+    {
+        var neg = t < TimeSpan.Zero;
+        if (neg) t = t.Negate();
+        var hours = (int)t.TotalHours;
+        return (neg ? "-" : "") + Fa.Digits($"{hours:D2}:{t.Minutes:D2}");
+    }
+
+    /// <summary>مدت زمان با ارقام فارسی — «—» در صورت خالی بودن</summary>
+    public static string HoursFa(this TimeSpan? t) => t.HasValue ? t.Value.HoursFa() : "—";
 }
