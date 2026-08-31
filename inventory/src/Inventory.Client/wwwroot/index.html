@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>سامانه جامع انبار و فروش</title>
+    <base href="/" />
+    <meta name="theme-color" content="#0f172a" />
+    <meta name="description" content="سامانه مدیریت انبار، خرید و فروش با تاریخ شمسی" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <link rel="stylesheet" href="css/bootstrap.min.css" />
+    <link rel="stylesheet" href="icons/bootstrap-icons.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link href="manifest.webmanifest" rel="manifest" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="انبار و فروش" />
+    <script>
+        // تعیین آدرس سرور API در زمان اجرا
+        // ================== ادیتور متن ساده ==================
+        window.rteExec = function (cmd) { document.execCommand(cmd, false, null); };
+        window.rteGetHtml = function (id) { var el = document.getElementById(id); return el ? el.innerHTML : ""; };
+        window.rteSetHtml = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html || ""; };
+
+        window.inventoryApiBase = function (fallback) {
+            try {
+                var stored = localStorage.getItem('apiBaseUrl');
+                if (stored) return stored;
+            } catch (e) { }
+            try {
+                var h = window.location.host;
+                // محیط پیش‌نمایش ابری: تبدیل پورت جاری به پورت API (5100)
+                if (h.indexOf('.e2b.app') !== -1) {
+                    return window.location.protocol + '//' + h.replace(/^[0-9]+-/, '5100-');
+                }
+                // روی localhost:
+                //  - اگر صفحه روی همان پورت API (5100) است → حالت تک‌سروره، از همان مبدا استفاده کن
+                //  - در غیر این صورت (مثلاً کلاینت روی 5210 جدا اجرا شده) → به پورت پیش‌فرض API (5100) برو
+                if (h.indexOf('localhost') === 0 || h.indexOf('127.0.0.1') === 0) {
+                    var port = window.location.port;
+                    if (port === '5100' || port === '') return window.location.origin;
+                    return fallback || 'http://localhost:5100';
+                }
+            } catch (e) { }
+            return fallback || 'http://localhost:5100';
+        };
+
+        // تشخیص صفحه کوچک‌تر از ~۱۲ اینچ (حالت موبایل/اندروید)
+        window.appShell = {
+            isMobile: function () {
+                return window.matchMedia('(max-width: 1279.98px)').matches;
+            },
+            watch: function (ref) {
+                var mq = window.matchMedia('(max-width: 1279.98px)');
+                var handler = function () {
+                    try { ref.invokeMethodAsync('OnScreenChanged', mq.matches); } catch (e) { }
+                };
+                if (mq.addEventListener) mq.addEventListener('change', handler);
+                else mq.addListener(handler);
+            }
+        };
+    </script>
+</head>
+
+<body>
+    <div id="app">
+        <div class="app-loading">
+            <div class="app-loading-card">
+                <svg width="64" height="64" viewBox="0 0 512 512" fill="none">
+                    <rect width="512" height="512" rx="112" fill="#4f46e5" />
+                    <g stroke="#fff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M256 118 L416 200 V392 L256 474 L96 392 V200 Z" />
+                        <path d="M256 474 V296" />
+                        <path d="M416 200 L256 296 L96 200" />
+                    </g>
+                </svg>
+                <div class="mt-3 fw-semibold">در حال بارگذاری سامانه…</div>
+                <div class="spinner-border text-primary mt-2" style="width:1.6rem;height:1.6rem" role="status"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        خطایی رخ داده است.
+        <a href="" class="reload">بارگذاری مجدد</a>
+        <a class="dismiss">بستن</a>
+    </div>
+
+    <script>
+        // ---------- کلیدهای میانبر سراسری ----------
+        // F1 = ذخیره / ثبت | F2 = افزودن سطر | Esc = خروج / بستن
+        document.addEventListener('keydown', function (e) {
+            var key = null;
+            if (e.key === 'F1') key = 'f1';
+            else if (e.key === 'F2') key = 'f2';
+            else if (e.key === 'Escape') key = 'esc';
+            if (!key) return;
+            var els = document.querySelectorAll('[data-hotkey="' + key + '"]');
+            if (els.length) {
+                e.preventDefault();
+                // آخرین المنت = بالاترین مودال باز
+                els[els.length - 1].click();
+            }
+        }, true);
+    </script>
+    <script src="lib/chart.umd.min.js"></script>
+    <script src="lib/qrcode.min.js"></script>
+    <script>
+        // ---------- نمودارهای داشبورد (Chart.js) ----------
+        window.appCharts = {
+            _charts: {},
+            destroy: function (id) {
+                if (this._charts[id]) { this._charts[id].destroy(); delete this._charts[id]; }
+            },
+            bar: function (id, labels, salesData, profitData) {
+                var el = document.getElementById(id);
+                if (!el || !window.Chart) return;
+                this.destroy(id);
+                this._charts[id] = new Chart(el, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            { label: 'فروش', data: salesData, backgroundColor: 'rgba(79,70,229,.75)', borderRadius: 8, barPercentage: .55 },
+                            { label: 'سود', data: profitData, backgroundColor: 'rgba(5,150,105,.75)', borderRadius: 8, barPercentage: .55 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'top', labels: { font: { family: 'Vazirmatn, Tahoma' }, usePointStyle: true, pointStyle: 'circle' } },
+                            tooltip: { rtl: true, bodyFont: { family: 'Vazirmatn, Tahoma' }, titleFont: { family: 'Vazirmatn, Tahoma' },
+                                callbacks: { label: function (c) { return c.dataset.label + ': ' + c.parsed.y.toLocaleString('fa-IR') + ' ریال'; } } }
+                        },
+                        scales: {
+                            y: { ticks: { font: { family: 'Vazirmatn, Tahoma' }, callback: function (v) { return (v / 1000000).toLocaleString('fa-IR') + 'م'; } }, grid: { color: 'rgba(148,163,184,.15)' } },
+                            x: { ticks: { font: { family: 'Vazirmatn, Tahoma' } }, grid: { display: false } }
+                        }
+                    }
+                });
+            },
+            line: function (id, labels, data, label, color) {
+                var el = document.getElementById(id);
+                if (!el || !window.Chart) return;
+                this.destroy(id);
+                var ctx = el.getContext('2d');
+                var grad = ctx.createLinearGradient(0, 0, 0, el.height || 220);
+                grad.addColorStop(0, color + '55'); grad.addColorStop(1, color + '05');
+                this._charts[id] = new Chart(el, {
+                    type: 'line',
+                    data: { labels: labels, datasets: [{ label: label, data: data, borderColor: color, backgroundColor: grad, fill: true, tension: .4, pointRadius: 3, pointBackgroundColor: color, borderWidth: 2.5 }] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { rtl: true, bodyFont: { family: 'Vazirmatn, Tahoma' },
+                                callbacks: { label: function (c) { return c.parsed.y.toLocaleString('fa-IR') + ' ریال'; } } }
+                        },
+                        scales: {
+                            y: { ticks: { font: { family: 'Vazirmatn, Tahoma' }, callback: function (v) { return (v / 1000000).toLocaleString('fa-IR') + 'م'; } }, grid: { color: 'rgba(148,163,184,.15)' } },
+                            x: { ticks: { font: { family: 'Vazirmatn, Tahoma' } }, grid: { display: false } }
+                        }
+                    }
+                });
+            },
+            doughnut: function (id, labels, data, colors) {
+                var el = document.getElementById(id);
+                if (!el || !window.Chart) return;
+                this.destroy(id);
+                this._charts[id] = new Chart(el, {
+                    type: 'doughnut',
+                    data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 8 }] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '68%',
+                        plugins: {
+                            legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn, Tahoma' }, usePointStyle: true, pointStyle: 'circle', padding: 14 } },
+                            tooltip: { rtl: true, bodyFont: { family: 'Vazirmatn, Tahoma' },
+                                callbacks: { label: function (c) { return c.label + ': ' + c.parsed.toLocaleString('fa-IR') + ' ریال'; } } }
+                        }
+                    }
+                });
+            }
+        };
+
+        // ---------- QR کارت ویزیت معرف (با retry تا آماده شدن DOM/کتابخانه) ----------
+        window.makeQr = function (elementId, text, size) {
+            var attempts = 0;
+            function tryMake() {
+                attempts++;
+                var el = document.getElementById(elementId);
+                if (!el || !window.QRCode) {
+                    if (attempts < 20) setTimeout(tryMake, 150);
+                    return;
+                }
+                try {
+                    el.innerHTML = '';
+                    new QRCode(el, {
+                        text: text,
+                        width: size || 110,
+                        height: size || 110,
+                        colorDark: '#0f172a',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.M
+                    });
+                } catch (e) {
+                    console.error('makeQr error:', e);
+                    if (attempts < 20) setTimeout(tryMake, 150);
+                }
+            }
+            tryMake();
+        };
+
+        // ---------- چاپ کارت ویزیت ----------
+        window.printBusinessCard = function () {
+            document.body.classList.add('print-card-mode');
+            window.print();
+            setTimeout(function () { document.body.classList.remove('print-card-mode'); }, 500);
+        };
+
+        // ---------- دانلود فایل (خروجی CSV/Excel) ----------
+        window.saveAsFile = function (fileName, base64Content) {
+            try {
+                var bytes = atob(base64Content);
+                var arr = new Uint8Array(bytes.length);
+                for (var i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+                var blob = new Blob([arr], { type: 'text/csv;charset=utf-8;' });
+                var link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setTimeout(function () { URL.revokeObjectURL(link.href); }, 1000);
+            } catch (e) {
+                console.error('saveAsFile error:', e);
+            }
+        };
+    </script>
+    <script>
+        // چاپ گزارش به‌صورت جدول (خروجی اکسل/چاپ ماژول پروژه)
+        window.printTableReport = function (opt) {
+            var esc = function (s) {
+                return String(s == null ? '' : s)
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
+            };
+            var w = window.open('', '_blank', 'width=1020,height=760');
+            if (!w) { alert('پنجره چاپ باز نشد — لطفاً مسدودکننده پاپ‌آپ مرورگر را غیرفعال کنید.'); return; }
+
+            var meta = (opt.meta || []).map(function (m) { return '<span class="chip">' + esc(m) + '</span>'; }).join('');
+            var head = (opt.headers || []).map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('');
+            var body = (opt.rows || []).map(function (r) {
+                var tds = r.map(function (c, i) {
+                    return '<td class="' + (i === r.length - 1 ? 'desc' : 'num') + '">' + esc(c) + '</td>';
+                }).join('');
+                return '<tr>' + tds + '</tr>';
+            }).join('');
+            var foot = opt.footerTotal
+                ? '<tfoot><tr><td colspan="' + ((opt.headers || []).length) + '">' + esc(opt.footerTotal) + '</td></tr></tfoot>'
+                : '';
+
+            var html =
+                '<!DOCTYPE html><html lang="fa" dir="rtl"><head><meta charset="utf-8" />' +
+                '<title>' + esc(opt.title) + '</title>' +
+                '<style>' +
+                '  * { box-sizing: border-box; }' +
+                '  body { font-family: Tahoma, "Segoe UI", sans-serif; color: #1e293b; margin: 0; padding: 18px 22px; font-size: 11.5px; }' +
+                '  .brand { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2.5px solid #4f46e5; padding-bottom: 8px; margin-bottom: 12px; }' +
+                '  .brand .sys { font-size: 10px; color: #64748b; }' +
+                '  h1 { font-size: 19px; margin: 0; color: #312e81; }' +
+                '  .sub { font-size: 13px; color: #475569; margin: 2px 0 10px; font-weight: 700; }' +
+                '  .chips { margin-bottom: 12px; line-height: 2.1; }' +
+                '  .chip { display: inline-block; background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; border-radius: 999px; padding: 1px 12px; margin-left: 6px; font-size: 10.5px; font-weight: 700; }' +
+                '  table { width: 100%; border-collapse: collapse; }' +
+                '  th { background: #312e81; color: #fff; font-weight: 700; padding: 6px 7px; border: 1px solid #312e81; font-size: 11px; white-space: nowrap; }' +
+                '  td { border: 1px solid #cbd5e1; padding: 5px 7px; vertical-align: top; }' +
+                '  td.num { text-align: center; white-space: nowrap; }' +
+                '  td.desc { text-align: right; }' +
+                '  tbody tr:nth-child(even) td { background: #f8fafc; }' +
+                '  tfoot td { background: #fef3c7; border: 1px solid #d4a106; font-weight: 800; padding: 7px; font-size: 12px; color: #78350f; }' +
+                '  .sign { margin-top: 34px; display: flex; justify-content: space-between; color: #475569; }' +
+                '  .sign .line { display: inline-block; width: 170px; border-top: 1px dashed #94a3b8; padding-top: 4px; text-align: center; }' +
+                '  .footer-meta { margin-top: 12px; font-size: 9.5px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 6px; display: flex; justify-content: space-between; }' +
+                '  @page { size: A4 portrait; margin: 10mm; }' +
+                '  @media print { body { padding: 0; } }' +
+                '</style></head><body>' +
+                '<div class="brand"><h1>' + esc(opt.title) + '</h1><span class="sys">سامانه انبار و فروش — فروغ آریا</span></div>' +
+                (opt.subTitle ? '<div class="sub">' + esc(opt.subTitle) + '</div>' : '') +
+                (meta ? '<div class="chips">' + meta + '</div>' : '') +
+                '<table><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody>' + foot + '</table>' +
+                '<div class="sign"><span>تحویل‌دهنده: <span class="line"></span></span><span>تأییدکننده: <span class="line"></span></span></div>' +
+                '<div class="footer-meta"><span>تاریخ چاپ: ' + esc(opt.printedAt || '') + '</span><span>چاپ‌کننده: ' + esc(opt.printedBy || '') + '</span></div>' +
+                '</body></html>';
+
+            w.document.open();
+            w.document.write(html);
+            w.document.close();
+            w.focus();
+            setTimeout(function () { w.print(); }, 350);
+            w.onafterprint = function () { w.close(); };
+        };
+        // دانلود فایل از داده Base64 — برای پیوست‌های رمزنگاری‌شده ماژول پروژه
+        window.downloadBlob = function (fileName, contentType, base64) {
+            const bin = atob(base64);
+            const len = bin.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: contentType || 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName || 'file';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+        };
+        // باز کردن فایل (تصاویر و…) در تب جدید — از داده Base64
+        window.openBlob = function (contentType, base64) {
+            const bin = atob(base64);
+            const len = bin.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+            const blob = new Blob([bytes], { type: contentType || 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+        };
+    </script>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script>navigator.serviceWorker.register('service-worker.js');</script>
+</body>
+
+</html>

@@ -1,0 +1,651 @@
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.SignalR.Client
+@inject LayoutState Layout
+@inject IReportService ReportSvc
+@inject IAuthState Auth
+@inject IAuthApi AuthApi
+@inject IToastService Toast
+@inject NavigationManager Nav
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject RealtimeService Rt
+@implements IDisposable
+
+@if (!Auth.IsLoggedIn)
+{
+    <LoginView />
+}
+else
+{
+    <div class="app-shell @(collapsed ? "sidebar-collapsed" : "") @(mobileOpen ? "sidebar-open" : "") @(isMobile ? "app-mobile" : "")">
+        <div class="sidebar-backdrop" @onclick="CloseMobile"></div>
+
+        <aside class="app-sidebar">
+            <div class="sidebar-brand">
+                <div class="logo"><i class="bi bi-box2-fill"></i></div>
+                <div>
+                    <div class="brand-text">انبار و فروش</div>
+                    <div class="brand-sub">سامانه جامع مدیریت</div>
+                </div>
+            </div>
+
+            @if (Auth.IsReferrer)
+            {
+                <div class="sidebar-nav">
+                    <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="OnNavigate">
+                        <i class="bi bi-speedometer2"></i><span>داشبورد من</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="my-wallet" @onclick="OnNavigate">
+                        <i class="bi bi-wallet2"></i><span>کیف پول من</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="my-products" @onclick="OnNavigate">
+                        <i class="bi bi-box-seam"></i><span>کالاهای موجود</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="my-card" @onclick="OnNavigate">
+                        <i class="bi bi-person-vcard"></i><span>کارت ویزیت من</span>
+                    </NavLink>
+                    <a class="nav-link" style="cursor:pointer" @onclick="OpenPwFromMenu">
+                        <i class="bi bi-key"></i><span>تغییر رمز عبور</span>
+                    </a>
+                </div>
+            }
+            else
+            {
+                <NavMenu ReorderCount="reorderCount" NewSystemsCount="newSystemsCount" OnNavigate="OnNavigate" />
+            }
+
+            <div class="sidebar-footer">
+                نسخه ۱.۰ — دات‌نت ۸ و Blazor WebAssembly
+            </div>
+        </aside>
+
+        <div class="app-main">
+            <header class="app-topbar">
+                <button class="btn-burger" title="باز/بسته کردن منو" @onclick="Toggle">
+                    <i class="bi bi-list"></i>
+                </button>
+                <div>
+                    <div class="topbar-title">@Layout.Title</div>
+                    <div class="topbar-sub">مدیریت انبار، خرید و فروش</div>
+                </div>
+                <div class="topbar-date d-none d-md-flex">
+                    <i class="bi bi-calendar3"></i>
+                    <span>@PersianDate.ToLong(DateTime.Now)</span>
+                </div>
+                <div class="d-flex align-items-center gap-2 me-2">
+                    @* ================== زنگ اعلان‌ها ================== *@
+                    <div class="ntf-bell-wrap">
+                        <button class="btn btn-sm btn-light ntf-bell" title="اعلان‌ها" @onclick="ToggleNtfPanel">
+                            <i class="bi bi-bell-fill text-warning"></i>
+                            @if (unreadCount > 0)
+                            {
+                                <span class="ntf-badge">@(unreadCount > 99 ? "99+" : unreadCount.ToString())</span>
+                            }
+                        </button>
+                        @if (showNtfPanel)
+                        {
+                            <div class="ntf-panel shadow-lg">
+                                <div class="ntf-panel-head">
+                                    <span class="fw-700">اعلان‌ها</span>
+                                    <div class="d-flex gap-2 align-items-center">
+                                        @if (unreadCount > 0)
+                                        {
+                                            <button class="btn btn-link btn-sm p-0 fs-8" @onclick="MarkAllRead">همه خوانده شد</button>
+                                        }
+                                        @if (ntfList.Count > 0)
+                                        {
+                                            <button class="btn btn-link btn-sm p-0 fs-8 text-danger" title="حذف همه اعلان‌ها" @onclick="ClearAllNtf">
+                                                <i class="bi bi-trash"></i> پاک کردن همه
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="ntf-panel-body">
+                                    @if (ntfList.Count == 0)
+                                    {
+                                        <div class="text-center text-muted py-4 fs-8"><i class="bi bi-bell-slash d-block fs-3 mb-1"></i>اعلانی ندارید</div>
+                                    }
+                                    @foreach (var n in ntfList)
+                                    {
+                                        <div class="ntf-item @(n.IsRead ? "" : "unread")" @onclick="() => OpenNtf(n)">
+                                            <div class="d-flex justify-content-between gap-2">
+                                                <span class="fw-600 fs-8">@n.Title</span>
+                                                <span class="fs-9 text-muted text-nowrap">@n.CreatedAt.ToFa()</span>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(n.Body))
+                                            {
+                                                <div class="fs-8 text-muted mt-1">@n.Body</div>
+                                            }
+                                            <div class="fs-9 mt-1"><span class="badge bg-light text-secondary">@n.FormName</span> <span class="text-muted">از: @n.FromName</span></div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <span class="badge badge-soft-primary d-none d-sm-inline d-inline-flex align-items-center gap-1" style="border-radius:999px;padding:.3rem .7rem .3rem .35rem;">
+                        <UserAvatar LoginUserId="Auth.UserId" Size="26" CssClass="user-avatar-sm" />
+                        @Auth.DisplayName
+                    </span>
+                    <button class="btn btn-sm btn-light" title="تغییر رمز عبور" @onclick="OpenChangePassword">
+                        <i class="bi bi-key text-primary"></i>
+                    </button>
+                    <button class="btn btn-sm btn-light" title="خروج" @onclick="Logout">
+                        <i class="bi bi-box-arrow-left text-danger"></i>
+                    </button>
+                </div>
+            </header>
+
+            @* ================== توست اعلان بلادرنگ — پایین چپ ================== *@
+            <div class="ntf-toasts">
+                @foreach (var t in liveToasts)
+                {
+                    <div class="ntf-toast" @onclick="() => OpenToast(t)">
+                        <div class="ntf-toast-icon"><i class="bi bi-bell-fill"></i></div>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="fw-700 fs-8">@t.Title</div>
+                            @if (!string.IsNullOrWhiteSpace(t.Body))
+                            {
+                                <div class="fs-8 text-muted ntf-toast-body">@t.Body</div>
+                            }
+                            <div class="fs-9 mt-1"><span class="badge bg-primary-subtle text-primary">@t.FormName</span> <span class="text-muted">از: @t.FromName</span></div>
+                        </div>
+                        <button class="btn-close btn-close-sm" @onclick:stopPropagation="true" @onclick="() => liveToasts.Remove(t)"></button>
+                    </div>
+                }
+            </div>
+
+            <main class="app-content">
+                @if (RouteAllowed(out var deniedTitle))
+                {
+                    @Body
+                }
+                else
+                {
+                    <div class="alert alert-warning mt-4 d-flex align-items-center gap-2">
+                        <i class="bi bi-shield-exclamation fs-3"></i>
+                        <div>
+                            <strong>دسترسی غیرمجاز</strong>
+                            <div class="fs-8">شما به بخش «@deniedTitle» دسترسی ندارید. برای دریافت دسترسی با مدیر سیستم تماس بگیرید.</div>
+                        </div>
+                    </div>
+                }
+            </main>
+        </div>
+
+        @* نوار پایین اندرویدی — فقط در حالت موبایل (صفحه کوچک‌تر از ~۱۲ اینچ) *@
+        @if (isMobile)
+        {
+            <nav class="app-bottom-nav">
+                @if (Auth.IsReferrer)
+                {
+                    <NavLink class="bottom-nav-item" href="" Match="NavLinkMatch.All">
+                        <i class="bi bi-speedometer2"></i><span>داشبورد</span>
+                    </NavLink>
+                    <NavLink class="bottom-nav-item" href="my-wallet">
+                        <i class="bi bi-wallet2"></i><span>کیف پول</span>
+                    </NavLink>
+                    <NavLink class="bottom-nav-item" href="my-products">
+                        <i class="bi bi-box-seam"></i><span>کالاها</span>
+                    </NavLink>
+                    <NavLink class="bottom-nav-item" href="my-card">
+                        <i class="bi bi-person-vcard"></i><span>کارت من</span>
+                    </NavLink>
+                    <a class="bottom-nav-item" @onclick="Logout">
+                        <i class="bi bi-box-arrow-left"></i><span>خروج</span>
+                    </a>
+                }
+                else
+                {
+                    <NavLink class="bottom-nav-item" href="" Match="NavLinkMatch.All">
+                        <i class="bi bi-speedometer2"></i><span>داشبورد</span>
+                    </NavLink>
+                    <NavLink class="bottom-nav-item" href="orders/purchase">
+                        <i class="bi bi-bag-plus"></i><span>خرید</span>
+                    </NavLink>
+                    <NavLink class="bottom-nav-item" href="orders/sale">
+                        <i class="bi bi-cart3"></i><span>فروش</span>
+                    </NavLink>
+                    <NavLink class="bottom-nav-item" href="repairs">
+                        <i class="bi bi-tools"></i><span>تعمیرات</span>
+                    </NavLink>
+                    <a class="bottom-nav-item" @onclick="OpenMobileMenu">
+                        <i class="bi bi-grid-3x3-gap"></i><span>منو</span>
+                    </a>
+                }
+            </nav>
+        }
+
+        <ToastHost />
+
+        <Modal Visible="showPwModal" Title="تغییر رمز عبور" OnClose="ClosePwModal">
+            <ChildContent>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">رمز عبور فعلی <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" @bind="pwCurrent" dir="ltr" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">رمز عبور جدید <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" @bind="pwNew" dir="ltr" />
+                        <div class="fs-8 text-muted mt-1">حداقل ۴ کاراکتر</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">تکرار رمز عبور جدید <span class="text-danger">*</span></label>
+                        <input type="password" class="form-control" @bind="pwConfirm" dir="ltr" />
+                    </div>
+                </div>
+            </ChildContent>
+            <Footer>
+                <button class="btn btn-light" @onclick="ClosePwModal">انصراف (Esc)</button>
+                <button class="btn btn-primary" data-hotkey="f1" @onclick="SavePassword" disabled="@pwSaving">
+                    @if (pwSaving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                    ذخیره (F1)
+                </button>
+            </Footer>
+        </Modal>
+    </div>
+}
+
+@code {
+    private bool collapsed;
+    private bool mobileOpen;
+    private int reorderCount;
+    private int newSystemsCount;
+
+    // حالت موبایل/اندروید: صفحه کوچک‌تر از ~۱۲ اینچ
+    private bool isMobile;
+    private DotNetObjectReference<MainLayout>? selfRef;
+
+    protected override void OnInitialized()
+    {
+        Layout.Changed += OnLayoutChanged;
+        Auth.Changed += OnLayoutChanged;
+    }
+
+    // ================== اعلان‌ها (نوتیفیکیشن سراسری) ==================
+    private int unreadCount;
+    private bool showNtfPanel;
+    private List<NtfItem> ntfList = new();
+    private List<NtfItem> liveToasts = new();
+
+    public class NtfItem
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+        public string? Body { get; set; }
+        public string FromName { get; set; } = "";
+        public string FormName { get; set; } = "";
+        public string? Link { get; set; }
+        public bool IsRead { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    private void SetAuthHeader()
+    {
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+    }
+
+    private async Task InitNotificationsAsync()
+    {
+        if (!Auth.IsLoggedIn) return;
+        SetAuthHeader();
+        await RefreshNtf();
+
+        // اتصال بلادرنگ سراسری — از طریق سرویس مشترک RealtimeService
+        var uid = GetUserIdFromToken(Auth.Token);
+        Rt.NotifyReceived += OnRtNotify;
+        await Rt.EnsureStartedAsync(Http.BaseAddress?.ToString() ?? "", uid);
+    }
+
+    private async void OnRtNotify(RtNotification rn)
+    {
+        var n = new NtfItem { Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName, Link = rn.Link, CreatedAt = rn.CreatedAt };
+        unreadCount++;
+        ntfList.Insert(0, n);
+        liveToasts.Insert(0, n);
+        if (liveToasts.Count > 4) liveToasts.RemoveAt(liveToasts.Count - 1);
+        await InvokeAsync(StateHasChanged);
+        _ = Task.Delay(8000).ContinueWith(async _ =>
+        {
+            liveToasts.Remove(n);
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private static int GetUserIdFromToken(string? token)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(token)) return 0;
+            var payload = token.Split('.')[1].Replace('-', '+').Replace('_', '/');
+            switch (payload.Length % 4) { case 2: payload += "=="; break; case 3: payload += "="; break; }
+            var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload));
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            foreach (var prop in doc.RootElement.EnumerateObject())
+                if (prop.Name.EndsWith("nameidentifier") || prop.Name == "nameid" || prop.Name == "sub")
+                    return int.TryParse(prop.Value.GetString(), out var v) ? v : 0;
+        }
+        catch { }
+        return 0;
+    }
+
+    private async Task RefreshNtf()
+    {
+        try
+        {
+            var res = await Http.GetFromJsonAsync<UnreadRes>("/api/notifications/unread-count");
+            unreadCount = res?.Count ?? 0;
+            ntfList = await Http.GetFromJsonAsync<List<NtfItem>>("/api/notifications") ?? new();
+        }
+        catch { }
+    }
+    private class UnreadRes { public int Count { get; set; } }
+
+    private async Task ToggleNtfPanel()
+    {
+        showNtfPanel = !showNtfPanel;
+        if (showNtfPanel) await RefreshNtf();
+    }
+
+    private async Task ClearAllNtf()
+    {
+        try { await Http.DeleteAsync("/api/notifications/clear-all"); } catch { }
+        ntfList.Clear();
+        unreadCount = 0;
+        liveToasts.Clear();
+    }
+
+    private async Task MarkAllRead()
+    {
+        try { await Http.PostAsync("/api/notifications/read-all", null); } catch { }
+        unreadCount = 0;
+        foreach (var n in ntfList) n.IsRead = true;
+    }
+
+    private async Task OpenNtf(NtfItem n)
+    {
+        if (!n.IsRead)
+        {
+            n.IsRead = true;
+            if (unreadCount > 0) unreadCount--;
+            try { await Http.PostAsync($"/api/notifications/{n.Id}/read", null); } catch { }
+        }
+        showNtfPanel = false;
+        if (!string.IsNullOrWhiteSpace(n.Link)) Nav.NavigateTo(n.Link);
+    }
+
+    private async Task OpenToast(NtfItem t)
+    {
+        liveToasts.Remove(t);
+        await OpenNtf(t);
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+
+        // توست خوش‌آمد بعد از ورود موفق
+        if (Auth.IsLoggedIn)
+        {
+            try
+            {
+                var justIn = await JS.InvokeAsync<string?>("sessionStorage.getItem", "justLoggedIn");
+                if (!string.IsNullOrWhiteSpace(justIn))
+                {
+                    await JS.InvokeVoidAsync("sessionStorage.removeItem", "justLoggedIn");
+                    Toast.Success($"خوش آمدید، {justIn} 👋 — ورود با موفقیت انجام شد.");
+                }
+            }
+            catch { }
+        }
+
+        await InitNotificationsAsync();
+        if (Auth.IsLoggedIn && !Auth.IsReferrer)
+        {
+            try
+            {
+                var list = await ReportSvc.GetReorderAsync();
+                reorderCount = list.Count;
+            }
+            catch { /* نادیده گرفته می‌شود */ }
+
+            await RefreshNewSystemsCount();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // تشخیص اندازه صفحه هنگام ورود + رصد تغییر اندازه/چرخش صفحه
+            isMobile = await JS.InvokeAsync<bool>("appShell.isMobile");
+            selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("appShell.watch", selfRef);
+            if (isMobile) StateHasChanged();
+        }
+        catch { /* JS در دسترس نیست */ }
+    }
+
+    [JSInvokable]
+    public void OnScreenChanged(bool mobile)
+    {
+        if (isMobile == mobile) return;
+        isMobile = mobile;
+        if (!mobile) mobileOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OnLayoutChanged() => InvokeAsync(StateHasChanged);
+
+    /// <summary>همبرگری: در موبایل باز/بسته و در دسکتاپ جمع/باز می‌کند.</summary>
+    private void Toggle()
+    {
+        if (isMobile)
+        {
+            mobileOpen = !mobileOpen;
+        }
+        else
+        {
+            mobileOpen = !mobileOpen;
+            collapsed = !collapsed;
+        }
+    }
+
+    private void OpenMobileMenu() => mobileOpen = true;
+
+    private void OnNavigate()
+    {
+        mobileOpen = false;
+        _ = RefreshNewSystemsCount();
+    }
+
+    private async Task RefreshNewSystemsCount()
+    {
+        try
+        {
+            var systems = await Http.GetFromJsonAsync<List<NewSystemCountItem>>("/api/SystemInfo");
+            // آلارم منو: سیستم جدیدِ تاییدنشده + سیستم موجود با تغییرات در انتظار
+            var n = systems?.Count(s => !s.IsApproved || !string.IsNullOrEmpty(s.PendingPayloadJson)) ?? 0;
+            if (n != newSystemsCount)
+            {
+                newSystemsCount = n;
+                StateHasChanged();
+            }
+        }
+        catch { /* در دسترس نیست */ }
+    }
+
+    private class NewSystemCountItem
+    {
+        public bool IsApproved { get; set; }
+        public string? PendingPayloadJson { get; set; }
+    }
+
+    private void CloseMobile() => mobileOpen = false;
+
+    private async Task Logout()
+    {
+        await Auth.SignOutAsync();
+        Nav.NavigateTo("/", forceLoad: true);
+    }
+
+    // ---------------- تغییر رمز عبور توسط خود کاربر ----------------
+    private bool showPwModal, pwSaving;
+    private string pwCurrent = "", pwNew = "", pwConfirm = "";
+
+    private void OpenChangePassword()
+    {
+        pwCurrent = pwNew = pwConfirm = "";
+        showPwModal = true;
+    }
+
+    private void OpenPwFromMenu()
+    {
+        mobileOpen = false;
+        OpenChangePassword();
+    }
+
+    private void ClosePwModal() => showPwModal = false;
+
+    private async Task SavePassword()
+    {
+        if (string.IsNullOrWhiteSpace(pwCurrent) || string.IsNullOrWhiteSpace(pwNew))
+        {
+            Toast.Error("رمز فعلی و رمز جدید را وارد کنید.");
+            return;
+        }
+        if (pwNew != pwConfirm)
+        {
+            Toast.Error("رمز جدید و تکرار آن یکسان نیستند.");
+            return;
+        }
+        pwSaving = true;
+        try
+        {
+            await AuthApi.ChangePasswordAsync(new ChangePasswordRequest { CurrentPassword = pwCurrent, NewPassword = pwNew });
+            Toast.Success("رمز عبور با موفقیت تغییر کرد.");
+            showPwModal = false;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { pwSaving = false; }
+    }
+
+    public void Dispose()
+    {
+        Layout.Changed -= OnLayoutChanged;
+        Auth.Changed -= OnLayoutChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+        Rt.NotifyReceived -= OnRtNotify;
+        selfRef?.Dispose();
+    }
+
+    // ================== گارد مرکزی مسیرها بر اساس دسترسی‌های RBAC ==================
+    // هر مسیر به پرمیشن لازم نگاشت می‌شود؛ "Module." یعنی داشتن حداقل یک دسترسی از آن ماژول کافی است.
+    private static readonly (string Prefix, string Perm, string Title)[] RouteGuards =
+    {
+        ("dashboard-cctv",      "Dashboards.Management",   "داشبورد مدیریت"),
+        ("dashboard-hardware",  "Dashboards.Hardware",     "داشبورد سخت‌افزار"),
+        ("orders",              "Orders.",                 "خرید و فروش"),
+        ("stock",               "Stock.",                  "موجودی انبار"),
+        ("repairs",             "Repairs.",                "تعمیرات"),
+        ("expenses",            "Expenses.",               "هزینه‌ها"),
+        ("reports/kardex",      "ReportPages.Kardex",      "کاردکس کالا"),
+        ("reports/reorder",     "ReportPages.Reorder",     "نقطه سفارش"),
+        ("products",            "Products.",               "کالاها"),
+        ("categories",          "Products.",               "گروه‌های کالا"),
+        ("units",               "Products.",               "واحدهای شمارش"),
+        ("warehouses",          "Warehouses.",             "انبارها"),
+        ("parties",             "Parties.",                "طرف حساب‌ها"),
+        ("referrer-wallets",    "ReferrerWallets.",        "کیف پول معرف‌ها"),
+        ("referrers",           "Referrers.",              "معرف‌ها"),
+        ("system-company",      "SystemCompanies.",        "کمپانی‌ها"),
+        ("system-department",   "SystemDepartments.",      "واحدها"),
+        ("users",               "SystemUsers.",            "کاربران"),
+        ("settings",            "Settings.",               "تنظیمات"),
+        ("my-wallet",           "ReferrerPanel.MyWallet",  "کیف پول من"),
+        ("my-products",         "ReferrerPanel.MyProducts","کالاهای موجود"),
+        ("my-card",             "ReferrerPanel.MyCard",    "کارت ویزیت من"),
+        ("it-requests",         "ItRequests.",             "درخواست خدمت IT"),
+        ("work-orders",         "WorkOrders.View",         "دستور کار"),
+        ("cctv-nvrs",           "CctvNvrs.",               "دستگاه‌های NVR"),
+        ("cctv",                "CctvCameras.",            "دوربین‌ها"),
+        ("office-machines",     "SystemUsers.",            "ماشین‌های اداری"),
+        ("network-scan",        "SystemUsers.",            "اسکن شبکه"),
+        ("system-",             "SystemUsers.",            "مدیریت سیستم")
+    };
+
+    private bool RouteAllowed(out string deniedTitle)
+    {
+        deniedTitle = "";
+        if (!Auth.IsLoggedIn) return true;
+
+        var p = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+        var q = p.IndexOf('?');
+        if (q >= 0) p = p[..q];
+        if (p == "") return true; // صفحه‌ی اصلی خودش دسترسی داشبورد مالی را کنترل می‌کند
+
+        foreach (var (prefix, perm, title) in RouteGuards)
+        {
+            if (!p.StartsWith(prefix)) continue;
+            var allowed = perm.EndsWith(".")
+                ? Auth.HasModule(perm.TrimEnd('.'))
+                : Auth.Has(perm);
+            if (!allowed) { deniedTitle = title; return false; }
+            return true;
+        }
+        return true; // مسیرهای بدون نگاشت (مثل تغییر رمز) آزادند
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => StateHasChanged();
+}
+
+
+<style>
+    /* ================== زنگ اعلان ================== */
+    .ntf-bell-wrap { position: relative; }
+    .ntf-bell { position: relative; }
+    .ntf-badge {
+        position: absolute; top: -6px; left: -6px;
+        background: #dc3545; color: #fff; border-radius: 999px;
+        font-size: .62rem; font-weight: 700; min-width: 17px; height: 17px;
+        display: flex; align-items: center; justify-content: center; padding: 0 4px;
+        box-shadow: 0 0 0 2px #fff; animation: ntfPulse 2s infinite;
+    }
+    @@keyframes ntfPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+    .ntf-panel {
+        position: absolute; top: calc(100% + 8px); left: 0; z-index: 1080;
+        width: 340px; max-width: 92vw; background: #fff;
+        border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden;
+    }
+    .ntf-panel-head { display: flex; justify-content: space-between; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #eef2f7; background: #f8fafc; }
+    .ntf-panel-body { max-height: 380px; overflow-y: auto; }
+    .ntf-item { padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background .12s; }
+    .ntf-item:hover { background: #f8fafc; }
+    .ntf-item.unread { background: #eff6ff; border-right: 3px solid #2563eb; }
+    .fs-9 { font-size: .7rem; }
+
+    /* ================== توست پایین چپ ================== */
+    .ntf-toasts {
+        position: fixed; bottom: 1rem; left: 1rem; z-index: 1090;
+        display: flex; flex-direction: column-reverse; gap: .5rem; max-width: 340px; width: calc(100vw - 2rem);
+    }
+    .ntf-toast {
+        display: flex; gap: .6rem; align-items: flex-start;
+        background: #fff; border: 1px solid #dbe7ff; border-radius: 14px;
+        padding: .7rem .85rem; box-shadow: 0 10px 30px rgba(15,23,42,.18);
+        cursor: pointer; animation: ntfIn .3s ease;
+    }
+    @@keyframes ntfIn { from { transform: translateY(15px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    .ntf-toast-icon {
+        width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+        background: linear-gradient(135deg, #2563eb, #38bdf8); color: #fff;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .ntf-toast-body { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    @@media (max-width: 575.98px) { .ntf-toasts { bottom: 4.5rem; } .ntf-panel { position: fixed; top: 60px; left: .5rem; right: .5rem; width: auto; } }
+</style>

@@ -1,0 +1,109 @@
+@* ================== کامپوننت پیوست جامع ==================
+   استفاده در هر فرم: <AttachmentBox Module="WorkOrders" RefId="123" CanUpload="true" />
+   بک‌اند مشترک: /api/attachments/{module}/{refId} — بدون کد جدید برای فرم‌های بعدی *@
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject IAuthState Auth
+@inject IToastService Toast
+
+<div class="attx-box">
+    <div class="attx-title">
+        <i class="bi bi-paperclip"></i> پیوست‌ها (@items.Count)
+    </div>
+    <div class="attx-body">
+        @if (items.Count == 0)
+        {
+            <span class="fs-8 text-muted">پیوستی ثبت نشده است.</span>
+        }
+        @foreach (var a in items)
+        {
+            <span class="attx-chip">
+                <a href="@($"{apiBase}/api/attachments/download/{a.Id}")" target="_blank">
+                    <i class="bi bi-file-earmark-arrow-down"></i> @a.FileName
+                </a>
+                <span class="fs-9 text-muted">(@a.UploaderName — @FormatSize(a.Size))</span>
+                @if (CanUpload && (a.UploaderUserId == MyUserId || Auth.IsAdmin))
+                {
+                    <i class="bi bi-x-circle-fill attx-del" title="حذف" @onclick="() => Delete(a.Id)"></i>
+                }
+            </span>
+        }
+        @if (CanUpload)
+        {
+            <div class="mt-2">
+                <InputFile class="form-control form-control-sm" OnChange="OnFiles" multiple />
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .attx-box { border: 1px solid #e8edf3; border-radius: 14px; overflow: hidden; }
+    .attx-title { background: #f8fafc; padding: .5rem .85rem; font-size: .82rem; font-weight: 700; color: #334155; border-bottom: 1px solid #eef2f7; }
+    .attx-title i { color: #2563eb; margin-left: .3rem; }
+    .attx-body { padding: .75rem .85rem; }
+    .attx-chip { display: inline-flex; align-items: center; gap: .35rem; background: #eef4ff; border: 1px solid #dbe7ff; border-radius: 999px; padding: .2rem .7rem; font-size: .78rem; margin: 0 0 .3rem .3rem; }
+    .attx-chip a { color: #2563eb; text-decoration: none; }
+    .attx-del { color: #dc3545; cursor: pointer; opacity: .6; }
+    .attx-del:hover { opacity: 1; }
+    .fs-9 { font-size: .68rem; }
+</style>
+
+@code {
+    /// <summary>نام ماژول — مثل WorkOrders، ItRequests، Orders</summary>
+    [Parameter] public string Module { get; set; } = "";
+
+    /// <summary>شناسه رکورد در ماژول</summary>
+    [Parameter] public int RefId { get; set; }
+
+    /// <summary>اجازه آپلود/حذف</summary>
+    [Parameter] public bool CanUpload { get; set; } = true;
+
+    private List<AttItem> items = new();
+    private string apiBase = "";
+    private int MyUserId => Auth.UserId;
+
+    public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string UploaderName { get; set; } = ""; public int UploaderUserId { get; set; } public DateTime UploadedAt { get; set; } public long Size { get; set; } }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        if (RefId <= 0 || string.IsNullOrWhiteSpace(Module)) { items = new(); return; }
+        try { items = await Http.GetFromJsonAsync<List<AttItem>>($"/api/attachments/{Module}/{RefId}") ?? new(); }
+        catch { items = new(); }
+    }
+
+    private async Task OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        foreach (var f in e.GetMultipleFiles(5))
+        {
+            try
+            {
+                using var content = new MultipartFormDataContent();
+                var sc = new StreamContent(f.OpenReadStream(10 * 1024 * 1024));
+                sc.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
+                content.Add(sc, "file", f.Name);
+                var resp = await Http.PostAsync($"/api/attachments/{Module}/{RefId}", content);
+                if (!resp.IsSuccessStatusCode) Toast.Error($"بارگذاری {f.Name} ناموفق بود.");
+            }
+            catch (Exception ex) { Toast.Error($"بارگذاری {f.Name}: {ex.Message}"); }
+        }
+        await Reload();
+        Toast.Success("پیوست بارگذاری شد.");
+    }
+
+    private async Task Delete(int id)
+    {
+        try { await Http.DeleteAsync($"/api/attachments/{id}"); await Reload(); } catch { }
+    }
+
+    private static string FormatSize(long b) =>
+        b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024 / 1024:0.#}MB";
+}
