@@ -261,6 +261,10 @@
       "url": "css\/app.css"
     },
     {
+      "hash": "sha256-09ttXF4Qv\/6aSdfjnJN9qAqkYPX3b0IgO7guy8I2wK8=",
+      "url": "css\/letters.css"
+    },
+    {
       "hash": "sha256-PI8n5gCcz9cQqQXm3PEtDuPG8qx9oFsFctPg0S5zb8g=",
       "url": "css\/bootstrap.min.css"
     },

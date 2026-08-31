@@ -40,6 +40,8 @@ builder.Services.AddScoped<ITypeFactorService, TypeFactorService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IProjectCartableService, ProjectCartableService>();
 builder.Services.AddScoped<IReportWorkService, ReportWorkService>();
+// ---------- ماژول اتوماسیون اداری (نامه داخلی) ----------
+builder.Services.AddScoped<ILetterService, LetterService>();
 builder.Services.AddSingleton<IToastService, ToastService>();
 builder.Services.AddSingleton<LayoutState>();
 builder.Services.AddSingleton<RealtimeService>(); // هسته‌ی بلادرنگ سراسری (SignalR)

@@ -70,4 +70,8 @@ public static class PersianExtensions
 
     /// <summary>مدت زمان با ارقام فارسی — «—» در صورت خالی بودن</summary>
     public static string HoursFa(this TimeSpan? t) => t.HasValue ? t.Value.HoursFa() : "—";
+
+    /// <summary>ارقام فارسی برای اعداد صحیح اختیاری — رشته‌ی خالی در صورت نبود مقدار
+    /// (افزوده‌شده برای ماژول اتوماسیون اداری)</summary>
+    public static string FaDigits(this int? n) => n.HasValue ? Fa.Digits(n.Value) : "";
 }

@@ -94,6 +94,50 @@ public static class DbInitializer
                     Console.WriteLine("[DB] کاربر پیش‌فرض ساخته شد: admin / admin — حتماً رمز را تغییر دهید.");
                 }
 
+                // ============ اتوماسیون اداری: عملگرهای پیش‌فرض ارجاع ============
+                // عملگر (Amalgar) تعیین می‌کند ارجاع «جهت اطلاع» است یا «جهت اقدام/تایید و امضا».
+                if (!db.Amalgars.Any())
+                {
+                    db.Amalgars.AddRange(
+                        new Amalgar { Title = "جهت اطلاع", TaeedEmza = "" },
+                        new Amalgar { Title = "جهت اقدام", TaeedEmza = "" },
+                        new Amalgar { Title = "جهت بررسی و اعلام نظر", TaeedEmza = "" },
+                        new Amalgar { Title = "جهت تایید و امضا", TaeedEmza = "تایید" },
+                        new Amalgar { Title = "جهت پاسخگویی", TaeedEmza = "" },
+                        new Amalgar { Title = "جهت بایگانی", TaeedEmza = "" });
+                    db.SaveChanges();
+                    Console.WriteLine("[DB] عملگرهای پیش‌فرض ارجاع نامه ساخته شدند.");
+                }
+
+                // کاربران نمونه برای دموی کارتابل نامه (فقط در حالت دمو)
+                if (seedDemo && db.Users.Count() <= 1)
+                {
+                    db.Users.AddRange(
+                        new User { Username = "ali", PasswordHash = Services.AuthService.HashPassword("ali123"), Role = "Operator", FirstName = "علی", LastName = "رضایی", CreatedAt = DateTime.Now },
+                        new User { Username = "sahar", PasswordHash = Services.AuthService.HashPassword("sahar123"), Role = "Operator", FirstName = "سحر", LastName = "محمدی", CreatedAt = DateTime.Now },
+                        new User { Username = "fatemeh", PasswordHash = Services.AuthService.HashPassword("fatemeh123"), Role = "Operator", FirstName = "فاطمه", LastName = "کریمی", CreatedAt = DateTime.Now });
+                    db.SaveChanges();
+                    Console.WriteLine("[DB] کاربران دمو ساخته شدند: ali/ali123 — sahar/sahar123 — fatemeh/fatemeh123");
+                }
+
+                // گروه‌های نمونه گیرندگان نامه (فقط در حالت دمو)
+                if (seedDemo && !db.LetterGroups.Any())
+                {
+                    var demoAdmin = db.Users.FirstOrDefault(u => u.Username == "admin");
+                    var demoUsers = db.Users.Where(u => u.Username != "admin").Take(3).ToList();
+                    if (demoAdmin != null && demoUsers.Count > 0)
+                    {
+                        var g1 = new LetterGroup { NameGroup = "کارشناسان اداری", CreatorUserId = demoAdmin.Id };
+                        foreach (var u in demoUsers) g1.Members.Add(new LetterGroupMember { UserId = u.Id });
+                        var g2 = new LetterGroup { NameGroup = "مدیران", CreatorUserId = demoAdmin.Id };
+                        g2.Members.Add(new LetterGroupMember { UserId = demoAdmin.Id });
+                        g2.Members.Add(new LetterGroupMember { UserId = demoUsers[0].Id });
+                        db.LetterGroups.AddRange(g1, g2);
+                        db.SaveChanges();
+                        Console.WriteLine("[DB] گروه‌های دمو گیرندگان نامه ساخته شدند.");
+                    }
+                }
+
                 // دسته‌های هزینه پیش‌فرض (در اولین اجرا — کاربر می‌تواند مدیریتشان کند)
                 if (!db.ExpenseCategories.Any())
                 {
