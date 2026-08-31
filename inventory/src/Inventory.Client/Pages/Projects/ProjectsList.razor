@@ -1,5 +1,6 @@
 @page "/projects"
 @inject IProjectService ProjectSvc
+@inject IProjectCartableService CartableSvc
 @inject IReportWorkService ReportSvc
 @inject IToastService Toast
 @inject IAuthState Auth
@@ -115,6 +116,28 @@
         display: inline-block; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe;
         border-radius: 6px; padding: 0 .4rem; font-size: .7rem; font-weight: 800;
     }
+
+    /* ---------- مودال تاریخ‌های پروژه ---------- */
+    .date-count-chip {
+        margin-right: auto; background: #eef2ff; color: #4338ca; border-radius: 999px;
+        font-size: .68rem; font-weight: 800; padding: 0 .45rem;
+    }
+    .dates-head {
+        display: flex; align-items: center; gap: .8rem; padding: .8rem 1rem; margin-bottom: 1rem;
+        background: linear-gradient(135deg, #eff6ff, #eef2ff); border: 1px solid #bfdbfe; border-radius: 12px;
+    }
+    .dates-head .di {
+        width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: #dbeafe; color: #2563eb; font-size: 1.3rem;
+    }
+    .date-field { border: 1px solid #eef2f7; border-radius: 12px; padding: .6rem .75rem; background: #fff; height: 100%; }
+    .date-field.filled { border-color: #a7f3d0; background: #fbfefc; }
+    .date-field .df-title { display: flex; align-items: center; gap: .4rem; font-size: .82rem; font-weight: 700; color: #334155; margin-bottom: .4rem; }
+    .date-field .df-hint { font-size: .7rem; color: #94a3b8; margin-top: .3rem; }
+    .date-field .df-clear { border: 0; background: #fff1f2; color: #e11d48; border-radius: 6px; font-size: .68rem; padding: 0 .45rem; }
+    .date-field .df-clear:hover { background: #ffe4e6; }
+    .entry-ref { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 9px; padding: .4rem .7rem; font-size: .78rem; color: #475569; }
 
     /* ---------- باکس آپلود تصاویر/مستندات در فرم جدید ---------- */
     .upload-box { border: 1.5px dashed #c7d2fe; border-radius: 12px; padding: .7rem .9rem; background: #fbfcff; height: 100%; }
@@ -454,11 +477,30 @@
             <button class="row-menu-item" @onclick="() => OpenFactor(menuProject)">
                 <i class="bi bi-receipt text-success"></i> ثبت/ویرایش فاکتور
             </button>
+            <button class="row-menu-item" @onclick="() => OpenDates(menuProject)">
+                <i class="bi bi-calendar2-check text-primary"></i> ثبت/ویرایش تاریخ‌ها
+                @if (DateFilledCount(menuProject) > 0)
+                {
+                    <span class="date-count-chip">@DateFilledCount(menuProject).FaDigits()/۵</span>
+                }
+            </button>
+            @if (menuProject.FlowStatus == 2)
+            {
+                <button class="row-menu-item" @onclick="() => OpenResubmit(menuProject)">
+                    <i class="bi bi-arrow-repeat text-warning"></i> ارسال مجدد به مدیر
+                </button>
+            }
         }
         @if (Auth.Has("ReportWorks.Create"))
         {
-            <button class="row-menu-item" @onclick="() => OpenReport(menuProject)">
-                <i class="bi bi-clock-history text-warning"></i> افزودن گزارش کار
+            @* گزارش کار فقط روی پروژهٔ تاییدشده — در انتظار تایید (۰) و ردشده (۲) غیرفعال *@
+            <button class="row-menu-item" disabled="@(!CanReport(menuProject))"
+                    title="@ReportBlockReason(menuProject)" @onclick="() => OpenReport(menuProject)">
+                <i class="bi bi-clock-history @(CanReport(menuProject) ? "text-warning" : "text-muted")"></i> افزودن گزارش کار
+                @if (!CanReport(menuProject))
+                {
+                    <i class="bi bi-lock-fill text-muted ms-auto fs-8"></i>
+                }
             </button>
         }
         @if (Auth.Has("ReportWorks.Read"))
@@ -799,6 +841,158 @@
     </Footer>
 </Modal>
 
+@* ======================= ثبت/ویرایش تاریخ‌های پروژه (فرم مجزا — مثل فاکتور) ======================= *@
+<Modal Visible="showDates" Size="modal-lg" Title="@("تاریخ‌های پروژه «" + (datesProject?.ProjectName ?? "") + "»")" OnClose="() => showDates = false">
+    <ChildContent>
+        @if (datesProject is not null)
+        {
+            <div class="dates-head">
+                <div class="di"><i class="bi bi-calendar2-check"></i></div>
+                <div class="flex-grow-1">
+                    <div class="fw-800">@datesProject.ProjectName</div>
+                    <div class="fs-8 text-muted">
+                        کد پروژه: <b dir="@(datesProject.ReturnProjectId > 0 ? "ltr" : "rtl")">@ShowDetailCode(datesProject)</b>
+                        — سریال: @datesProject.SerialNumber.FaDigits()
+                        — کارفرما: @datesProject.KarFarmaName
+                    </div>
+                </div>
+                <span class="entry-ref">
+                    <i class="bi bi-box-arrow-in-right ms-1"></i>
+                    تاریخ ورود: <b>@datesProject.EntryDate.ToFaDate()</b>
+                </span>
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="date-field @(datesForm.CustomerRequiredDate is not null ? "filled" : "")">
+                        <div class="df-title">
+                            <i class="bi bi-person-check text-info"></i> تاریخ نیاز مشتری
+                            @if (datesForm.CustomerRequiredDate is not null)
+                            {
+                                <button class="df-clear ms-auto" title="پاک کردن" @onclick="() => datesForm.CustomerRequiredDate = null">
+                                    <i class="bi bi-x-lg"></i> پاک
+                                </button>
+                            }
+                        </div>
+                        <DatePicker @bind-Value="datesForm.CustomerRequiredDate" AllowClear Placeholder="انتخاب تاریخ…" />
+                        <div class="df-hint">تاریخی که مشتری پروژه را برای آن می‌خواهد (موعد تعهد).</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="date-field @(datesForm.DeliveryDate is not null ? "filled" : "")">
+                        <div class="df-title">
+                            <i class="bi bi-truck text-success"></i> تاریخ تحویل پروژه
+                            @if (datesForm.DeliveryDate is not null)
+                            {
+                                <button class="df-clear ms-auto" title="پاک کردن" @onclick="() => datesForm.DeliveryDate = null">
+                                    <i class="bi bi-x-lg"></i> پاک
+                                </button>
+                            }
+                        </div>
+                        <DatePicker @bind-Value="datesForm.DeliveryDate" AllowClear Placeholder="انتخاب تاریخ…" />
+                        <div class="df-hint">تاریخی که پروژه عملاً به مشتری تحویل داده شد.</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="date-field @(datesForm.TemporaryExitDate is not null ? "filled" : "")">
+                        <div class="df-title">
+                            <i class="bi bi-box-arrow-up-right text-warning"></i> تاریخ خروج موقت
+                            @if (datesForm.TemporaryExitDate is not null)
+                            {
+                                <button class="df-clear ms-auto" title="پاک کردن" @onclick="() => datesForm.TemporaryExitDate = null">
+                                    <i class="bi bi-x-lg"></i> پاک
+                                </button>
+                            }
+                        </div>
+                        <DatePicker @bind-Value="datesForm.TemporaryExitDate" AllowClear Placeholder="انتخاب تاریخ…" />
+                        <div class="df-hint">خروج موقت پروژه از مجموعه (قرار است برگردد).</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="date-field @(datesForm.ExitDate is not null ? "filled" : "")">
+                        <div class="df-title">
+                            <i class="bi bi-box-arrow-right text-danger"></i> تاریخ خروج
+                            @if (datesForm.ExitDate is not null)
+                            {
+                                <button class="df-clear ms-auto" title="پاک کردن" @onclick="() => datesForm.ExitDate = null">
+                                    <i class="bi bi-x-lg"></i> پاک
+                                </button>
+                            }
+                        </div>
+                        <DatePicker @bind-Value="datesForm.ExitDate" AllowClear Placeholder="انتخاب تاریخ…" />
+                        <div class="df-hint">خروج نهایی پروژه از مجموعه.</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6">
+                    <div class="date-field @(datesForm.FileDate is not null ? "filled" : "")">
+                        <div class="df-title">
+                            <i class="bi bi-folder-check text-secondary"></i> تاریخ تحویل پرونده
+                            @if (datesForm.FileDate is not null)
+                            {
+                                <button class="df-clear ms-auto" title="پاک کردن" @onclick="() => datesForm.FileDate = null">
+                                    <i class="bi bi-x-lg"></i> پاک
+                                </button>
+                            }
+                        </div>
+                        <DatePicker @bind-Value="datesForm.FileDate" AllowClear Placeholder="انتخاب تاریخ…" />
+                        <div class="df-hint">تاریخ تحویل پروندهٔ مستندات پروژه.</div>
+                    </div>
+                </div>
+
+                <div class="col-md-6 d-flex align-items-center">
+                    <div class="alert alert-light border py-2 mb-0 fs-8 w-100">
+                        <i class="bi bi-info-circle text-primary ms-1"></i>
+                        هر فیلد <b>اختیاری</b> است — می‌توانید حالا خالی بگذارید و بعداً از همین فرم تکمیل یا ویرایش کنید.
+                        تاریخ‌های خالی در لیست و جزئیات با «—» نمایش داده می‌شوند.
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showDates = false">انصراف (Esc)</button>
+        <button class="btn btn-primary px-4" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveDates" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-check-lg ms-1"></i> ثبت تاریخ‌ها (F1)
+        </button>
+    </Footer>
+</Modal>
+
+@* ======================= ارسال مجدد پروژهٔ ردشده به مدیر ======================= *@
+<Modal Visible="showResubmit" Title="@("ارسال مجدد پروژه «" + (resubmitProject?.ProjectName ?? "") + "» به مدیر")" OnClose="() => showResubmit = false">
+    <ChildContent>
+        @if (resubmitProject is not null)
+        {
+            @if (!string.IsNullOrWhiteSpace(resubmitProject.ManagerNote))
+            {
+                <div class="alert py-2 fs-8 border-0" style="background:#fef2f2;color:#991b1b;">
+                    <i class="bi bi-x-circle ms-1"></i>
+                    <b>دلیل رد مدیر:</b> @resubmitProject.ManagerNote
+                </div>
+            }
+            <label class="form-label">توضیح اصلاحات انجام‌شده <span class="fs-8 text-muted">(اختیاری — برای مدیر ارسال می‌شود)</span></label>
+            <textarea class="form-control" rows="3" @bind="resubmitNote"
+                      placeholder="مثلاً: مدارک فنی ناقص تکمیل و پیوست شد."></textarea>
+            <div class="alert alert-light border py-2 mt-3 mb-0 fs-8">
+                <i class="bi bi-arrow-repeat text-warning ms-1"></i>
+                با ارسال مجدد، وضعیت پروژه به <b>«در انتظار تایید مدیر»</b> برمی‌گردد و تا زمان تایید،
+                امکان ثبت گزارش کار برای آن وجود نخواهد داشت.
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showResubmit = false">انصراف (Esc)</button>
+        <button class="btn btn-warning px-4 fw-700" data-hotkey="f1" @onclick="SaveResubmit" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-send ms-1"></i> ارسال به کارتابل مدیر (F1)
+        </button>
+    </Footer>
+</Modal>
+
 @* ======================= جزئیات پروژه ======================= *@
 <Modal Visible="showDetails" Title="@("جزئیات پروژه «" + (detail?.ProjectName ?? "") + "»")" OnClose="() => showDetails = false">
     <ChildContent>
@@ -806,6 +1000,42 @@
         {
             <table class="table table-sm mb-0">
                 <tbody>
+                    <tr class="detail-row">
+                        <td>وضعیت گردش‌کار</td>
+                        <td>
+                            <FlowChip Status="detail.FlowStatus" />
+                            @if (detail.FlowStatus is 0 or 2)
+                            {
+                                <span class="fs-8 text-muted ms-2">(ثبت گزارش کار غیرفعال است)</span>
+                            }
+                        </td>
+                    </tr>
+                    @if (!string.IsNullOrWhiteSpace(detail.ManagerNote))
+                    {
+                        <tr class="detail-row">
+                            <td>@(detail.FlowStatus == 2 ? "دلیل رد مدیر" : "یادداشت مدیر")</td>
+                            <td class="@(detail.FlowStatus == 2 ? "text-danger" : "")">
+                                @detail.ManagerNote
+                                @if (detail.ManagerActionAt is not null)
+                                {
+                                    <span class="fs-8 text-muted ms-2">(@detail.ManagerActionAt.ToFaDate())</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(detail.ExpertNote))
+                    {
+                        <tr class="detail-row">
+                            <td>یادداشت کارشناسی</td>
+                            <td>
+                                @detail.ExpertNote
+                                @if (detail.ExpertActionAt is not null)
+                                {
+                                    <span class="fs-8 text-muted ms-2">(@detail.ExpertActionAt.ToFaDate())</span>
+                                }
+                            </td>
+                        </tr>
+                    }
                     <tr class="detail-row"><td>کد پروژه</td><td class="num fw-700 text-primary" dir="@(detail.ReturnProjectId > 0 ? "ltr" : "rtl")">@ShowDetailCode(detail)</td></tr>
                     <tr class="detail-row"><td>شماره سریال</td><td class="num">@detail.SerialNumber.FaDigits()</td></tr>
                     <tr class="detail-row"><td>کارفرما</td><td>@detail.KarFarmaName</td></tr>
@@ -1078,6 +1308,16 @@
     private int factorTypeId;
     private string? factorNumber;
 
+    // ---------- تاریخ‌های پروژه (فرم مجزا — خروج/خروج موقت/نیاز مشتری/تحویل/تحویل پرونده) ----------
+    private bool showDates;
+    private ProjectEntryExitDto? datesProject;
+    private ProjectDatesDto datesForm = new();
+
+    // ---------- ارسال مجدد پروژهٔ ردشده ----------
+    private bool showResubmit;
+    private ProjectEntryExitDto? resubmitProject;
+    private string? resubmitNote;
+
     // ---------- آپلود هنگام ثبت (تصاویر/مستندات) ----------
     private List<IBrowserFile> pendingImages = new(), pendingDocs = new();
     private int pendingDocType = 4; // ۱=قرارداد، ۲=مدارک فنی، ۳=تاییدیه تحویل، ۴=سایر
@@ -1144,7 +1384,8 @@
         }
     }
 
-    private bool AnyModalOpen => showModal || showFactor || showDetails || showReport || showAttach || showImages;
+    private bool AnyModalOpen => showModal || showFactor || showDates || showResubmit
+                                 || showDetails || showReport || showAttach || showImages;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1422,6 +1663,86 @@
         finally { saving = false; }
     }
 
+    // ==================== تاریخ‌های پروژه (فرم مجزا) ====================
+
+    /// <summary>تعداد تاریخ‌های تکمیل‌شده از ۵ تاریخ چرخهٔ پروژه (برای نشانگر منوی سطر)</summary>
+    private static int DateFilledCount(ProjectEntryExitDto p)
+        => (p.ExitDate is not null ? 1 : 0)
+         + (p.TemporaryExitDate is not null ? 1 : 0)
+         + (p.CustomerRequiredDate is not null ? 1 : 0)
+         + (p.DeliveryDate is not null ? 1 : 0)
+         + (p.FileDate is not null ? 1 : 0);
+
+    private void OpenDates(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        datesProject = p;
+        datesForm = new ProjectDatesDto
+        {
+            ExitDate = p.ExitDate,
+            TemporaryExitDate = p.TemporaryExitDate,
+            CustomerRequiredDate = p.CustomerRequiredDate,
+            DeliveryDate = p.DeliveryDate,
+            FileDate = p.FileDate
+        };
+        showDates = true;
+    }
+
+    private async Task SaveDates()
+    {
+        if (datesProject is null) return;
+
+        // ---------- اعتبارسنجی سمت کلاینت (سرور هم دوباره چک می‌کند) ----------
+        var entry = datesProject.EntryDate;
+        if (entry is not null)
+        {
+            if (datesForm.ExitDate is not null && datesForm.ExitDate < entry)
+            { Toast.Error($"تاریخ خروج نمی‌تواند قبل از تاریخ ورود ({entry.ToFaDate()}) باشد."); return; }
+            if (datesForm.TemporaryExitDate is not null && datesForm.TemporaryExitDate < entry)
+            { Toast.Error($"تاریخ خروج موقت نمی‌تواند قبل از تاریخ ورود ({entry.ToFaDate()}) باشد."); return; }
+            if (datesForm.DeliveryDate is not null && datesForm.DeliveryDate < entry)
+            { Toast.Error($"تاریخ تحویل پروژه نمی‌تواند قبل از تاریخ ورود ({entry.ToFaDate()}) باشد."); return; }
+            if (datesForm.FileDate is not null && datesForm.FileDate < entry)
+            { Toast.Error($"تاریخ تحویل پرونده نمی‌تواند قبل از تاریخ ورود ({entry.ToFaDate()}) باشد."); return; }
+        }
+
+        saving = true;
+        try
+        {
+            await ProjectSvc.UpdateDatesAsync(datesProject.Id, datesForm);
+            Toast.Success("تاریخ‌های پروژه ثبت شد.");
+            showDates = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ==================== ارسال مجدد پروژهٔ ردشده به مدیر ====================
+
+    private void OpenResubmit(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        resubmitProject = p;
+        resubmitNote = null;
+        showResubmit = true;
+    }
+
+    private async Task SaveResubmit()
+    {
+        if (resubmitProject is null) return;
+        saving = true;
+        try
+        {
+            await CartableSvc.ResubmitAsync(resubmitProject.Id, resubmitNote);
+            Toast.Success("پروژه دوباره به کارتابل مدیر ارسال شد.");
+            showResubmit = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
     // ==================== جزئیات ====================
 
     private void OpenDetails(ProjectEntryExitDto p)
@@ -1433,9 +1754,25 @@
 
     // ==================== گزارش کار سریع ====================
 
+    /// <summary>
+    /// آیا ثبت گزارش کار برای این پروژه مجاز است؟
+    /// فقط وضعیت ۱ (در انتظار کارشناسی) و ۳ (نهایی) مجازند — یعنی مدیر تایید کرده باشد.
+    /// همین قانون سمت سرور هم اعمال می‌شود (ReportWorksController.ValidateAsync).
+    /// </summary>
+    private static bool CanReport(ProjectEntryExitDto p) => p.FlowStatus is 1 or 3;
+
+    /// <summary>دلیل غیرفعال بودن ثبت گزارش کار (تولتیپ منو)</summary>
+    private static string ReportBlockReason(ProjectEntryExitDto p) => p.FlowStatus switch
+    {
+        0 => "این پروژه در کارتابل مدیر و «در انتظار تایید» است — تا تایید مدیر، ثبت گزارش کار ممکن نیست.",
+        2 => "این پروژه توسط مدیر «رد» شده است — ابتدا آن را اصلاح و دوباره به مدیر ارسال کنید.",
+        _ => "ثبت گزارش کار برای این پروژه"
+    };
+
     private void OpenReport(ProjectEntryExitDto p)
     {
         CloseMenu();
+        if (!CanReport(p)) { Toast.Error(ReportBlockReason(p)); return; }
         reportProject = p;
         reportForm = new ReportWorkDto
         {

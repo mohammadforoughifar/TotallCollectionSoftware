@@ -50,6 +50,14 @@ public class ProjectsController : RbacControllerBase
             .Select(p => new LookupItem { Id = p.Id, Name = p.ProjectName + " (کد " + p.CodeProject + ")" })
             .ToListAsync();
 
+        // کمبوی «پروژه» در فرم گزارش کار: فقط پروژه‌های تاییدشدهٔ مدیر
+        // (۱=در انتظار کارشناسی، ۳=نهایی). پروژه‌های در انتظار تایید (۰) و ردشده (۲) قابل گزارش‌دهی نیستند.
+        var reportableProjects = await Db.ProjectEntryExits.AsNoTracking()
+            .Where(p => !p.IsDelete && (p.FlowStatus == 1 || p.FlowStatus == 3))
+            .OrderByDescending(p => p.Id)
+            .Select(p => new LookupItem { Id = p.Id, Name = p.ProjectName + " (کد " + p.CodeProject + ")" })
+            .ToListAsync();
+
         // کمبوی «پروژه برگشتی» در فرم: فقط پروژه‌هایی که RE نیستند (برگشتی نمی‌تواند برگشتیِ برگشتی باشد)
         var baseProjects = await Db.ProjectEntryExits.AsNoTracking()
             .Where(p => !p.IsDelete && p.ReturnProjectId <= 0)
@@ -57,7 +65,15 @@ public class ProjectsController : RbacControllerBase
             .Select(p => new LookupItem { Id = p.Id, Name = p.ProjectName + " (کد " + p.CodeProject + ")" })
             .ToListAsync();
 
-        return Ok(new ProjectLookups { Users = users, KarFarmas = karfarmas, TypeFactors = typeFactors, Projects = projects, BaseProjects = baseProjects });
+        return Ok(new ProjectLookups
+        {
+            Users = users,
+            KarFarmas = karfarmas,
+            TypeFactors = typeFactors,
+            Projects = projects,
+            BaseProjects = baseProjects,
+            ReportableProjects = reportableProjects
+        });
     }
 
     /// <summary>کد پروژه پیشنهادی بعدی = بزرگ‌ترین کد عددی + ۱ (خودکار — فقط نمایشی)</summary>
@@ -450,6 +466,44 @@ public class ProjectsController : RbacControllerBase
         var fn = dto.FactorNumber?.Trim();
         entity.FactorNumber = string.IsNullOrWhiteSpace(fn) ? null : fn;
         await Db.SaveChangesAsync();
+        return Ok(new { id = entity.Id });
+    }
+
+    /// <summary>
+    /// ثبت/ویرایش تاریخ‌های چرخهٔ پروژه (خروج، خروج موقت، نیاز مشتری، تحویل پروژه، تحویل پرونده)
+    /// — فرم مجزا از منوی سطر، دقیقاً مثل فرم فاکتور. هر فیلد خالی یعنی «ثبت نشده» و پاک می‌شود.
+    /// </summary>
+    [HttpPut("{id:int}/dates")]
+    public async Task<IActionResult> UpdateDates(int id, [FromBody] ProjectDatesDto dto, [FromServices] Hubs.INotifyService notify)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Update") is { } forbid) return forbid;
+
+        var entity = await Db.ProjectEntryExits.FirstOrDefaultAsync(p => p.Id == id && !p.IsDelete);
+        if (entity is null) return NotFound(new { message = "پروژه پیدا نشد." });
+
+        // ---------- اعتبارسنجی منطقی ترتیب تاریخ‌ها (پیام‌های فارسی) ----------
+        var entry = entity.EntryDate;
+        if (entry is not null)
+        {
+            var entryFa = Inventory.Shared.PersianDate.ToShortFa(entry.Value);
+            if (dto.ExitDate is not null && dto.ExitDate < entry)
+                return BadRequest(new { message = $"تاریخ خروج نمی‌تواند قبل از تاریخ ورود ({entryFa}) باشد." });
+            if (dto.TemporaryExitDate is not null && dto.TemporaryExitDate < entry)
+                return BadRequest(new { message = $"تاریخ خروج موقت نمی‌تواند قبل از تاریخ ورود ({entryFa}) باشد." });
+            if (dto.DeliveryDate is not null && dto.DeliveryDate < entry)
+                return BadRequest(new { message = $"تاریخ تحویل پروژه نمی‌تواند قبل از تاریخ ورود ({entryFa}) باشد." });
+            if (dto.FileDate is not null && dto.FileDate < entry)
+                return BadRequest(new { message = $"تاریخ تحویل پرونده نمی‌تواند قبل از تاریخ ورود ({entryFa}) باشد." });
+        }
+
+        entity.ExitDate = dto.ExitDate?.Date;
+        entity.TemporaryExitDate = dto.TemporaryExitDate?.Date;
+        entity.CustomerRequiredDate = dto.CustomerRequiredDate?.Date;
+        entity.DeliveryDate = dto.DeliveryDate?.Date;
+        entity.FileDate = dto.FileDate?.Date;
+
+        await Db.SaveChangesAsync();
+        try { await notify.BroadcastChangedAsync("projects"); } catch { }
         return Ok(new { id = entity.Id });
     }
 

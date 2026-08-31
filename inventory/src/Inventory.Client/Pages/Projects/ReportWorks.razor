@@ -222,7 +222,12 @@
     <div class="row g-3">
         <div class="col-md-6">
             <label class="form-label">پروژه <span class="text-danger">*</span></label>
-            <SearchSelect Items="lookups.Projects" @bind-Value="form.ProjectId" Placeholder="جستجو و انتخاب پروژه…" />
+            @* فقط پروژه‌های تاییدشدهٔ مدیر — پروژه‌های در انتظار تایید یا ردشده گزارش‌پذیر نیستند *@
+            <SearchSelect Items="FormProjects" @bind-Value="form.ProjectId" Placeholder="جستجو و انتخاب پروژه…" />
+            <div class="fs-8 text-muted mt-1">
+                <i class="bi bi-info-circle ms-1"></i>
+                فقط پروژه‌های <b>تاییدشدهٔ مدیر</b> در این فهرست هستند؛ پروژه‌های «در انتظار تایید» و «رد شده» گزارش‌پذیر نیستند.
+            </div>
         </div>
         <div class="col-md-6">
             <label class="form-label">ثبت‌کننده</label>
@@ -278,6 +283,25 @@
     private bool showModal, saving;
     private bool editing => form.Id != 0;
     private bool printing;
+
+    /// <summary>
+    /// کمبوی پروژه در فرم ثبت/ویرایش: فقط پروژه‌های تاییدشده (ReportableProjects).
+    /// در حالت ویرایش، اگر پروژهٔ فعلیِ گزارش دیگر در آن فهرست نباشد (مثلاً وضعیتش عوض شده)
+    /// همان یک مورد اضافه می‌شود تا کمبو خالی/گمراه‌کننده نشود.
+    /// </summary>
+    private List<LookupItem> FormProjects
+    {
+        get
+        {
+            var list = lookups.ReportableProjects.Count > 0 ? lookups.ReportableProjects : lookups.Projects;
+            if (editing && form.ProjectId > 0 && list.All(x => x.Id != form.ProjectId))
+            {
+                var current = lookups.Projects.FirstOrDefault(x => x.Id == form.ProjectId);
+                if (current is not null) return list.Prepend(current).ToList();
+            }
+            return list;
+        }
+    }
 
     private DateTime reportDate = DateTime.Today;
 

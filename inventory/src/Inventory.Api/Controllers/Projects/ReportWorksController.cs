@@ -140,8 +140,31 @@ public class ReportWorksController : RbacControllerBase
     {
         if (string.IsNullOrWhiteSpace(dto.WorkDescription))
             return BadRequest(new { message = "شرح کار الزامی است." });
-        if (!await Db.ProjectEntryExits.AnyAsync(p => p.Id == dto.ProjectId && !p.IsDelete))
+
+        var project = await Db.ProjectEntryExits.AsNoTracking()
+            .Where(p => p.Id == dto.ProjectId && !p.IsDelete)
+            .Select(p => new { p.FlowStatus, p.ProjectName, p.CodeProject })
+            .FirstOrDefaultAsync();
+        if (project is null)
             return BadRequest(new { message = "پروژه انتخاب نشده یا معتبر نیست." });
+
+        // ---------- قانون گردش‌کار: فقط روی پروژهٔ تاییدشده می‌توان گزارش کار ثبت کرد ----------
+        // ۰ = در انتظار تایید مدیر → هنوز کار شروع نشده، ثبت گزارش مجاز نیست
+        // ۲ = رد شده توسط مدیر    → پروژه متوقف است، ثبت گزارش مجاز نیست
+        // ۱ (در انتظار کارشناسی) و ۳ (نهایی) → مجاز
+        if (project.FlowStatus == 0)
+            return BadRequest(new
+            {
+                message = $"پروژهٔ «{project.ProjectName}» (کد {project.CodeProject}) هنوز در کارتابل مدیر و «در انتظار تایید» است — " +
+                          "تا زمانی که مدیر آن را تایید نکند امکان ثبت گزارش کار وجود ندارد."
+            });
+        if (project.FlowStatus == 2)
+            return BadRequest(new
+            {
+                message = $"پروژهٔ «{project.ProjectName}» (کد {project.CodeProject}) توسط مدیر «رد» شده است — " +
+                          "برای ثبت گزارش کار ابتدا باید پروژه اصلاح و دوباره برای تایید مدیر ارسال شود."
+            });
+
         if (dto.EndTime == dto.StartTime)
             return BadRequest(new { message = "ساعت شروع و پایان نمی‌توانند یکسان باشند." });
         return null;

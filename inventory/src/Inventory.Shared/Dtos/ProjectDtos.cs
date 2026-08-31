@@ -127,6 +127,28 @@ public class ProjectCartableCountsDto
     public int Expert { get; set; }
 }
 
+/// <summary>
+/// ثبت/ویرایش تاریخ‌های چرخهٔ پروژه — فرم مجزا از منوی سطر (مثل فرم فاکتور).
+/// هر فیلد اختیاری است؛ <c>null</c> یعنی «ثبت نشده / پاک شود».
+/// </summary>
+public class ProjectDatesDto
+{
+    /// <summary>تاریخ خروج (خروج نهایی پروژه از مجموعه)</summary>
+    public DateTime? ExitDate { get; set; }
+
+    /// <summary>تاریخ خروج موقت</summary>
+    public DateTime? TemporaryExitDate { get; set; }
+
+    /// <summary>تاریخ مورد نیاز مشتری</summary>
+    public DateTime? CustomerRequiredDate { get; set; }
+
+    /// <summary>تاریخ تحویل پروژه</summary>
+    public DateTime? DeliveryDate { get; set; }
+
+    /// <summary>تاریخ تحویل پرونده</summary>
+    public DateTime? FileDate { get; set; }
+}
+
 /// <summary>ثبت/ویرایش اطلاعات فاکتور پروژه — فرم مجزا از منوی سطر (بعداً تکمیل می‌شود)</summary>
 public class ProjectFactorDto
 {
@@ -194,4 +216,10 @@ public class ProjectLookups
 
     /// <summary>فقط پروژه‌های اصلی (بدون RE) — برای کمبوی «پروژه برگشتی»</summary>
     public List<LookupItem> BaseProjects { get; set; } = new();
+
+    /// <summary>
+    /// فقط پروژه‌های تاییدشدهٔ مدیر (FlowStatus ۱ یا ۳) — برای کمبوی «پروژه» در فرم ثبت گزارش کار.
+    /// پروژه‌های «در انتظار تایید مدیر» و «رد شده» قابل گزارش‌دهی نیستند.
+    /// </summary>
+    public List<LookupItem> ReportableProjects { get; set; } = new();
 }
