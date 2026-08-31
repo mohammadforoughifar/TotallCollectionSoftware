@@ -1,0 +1,1184 @@
+@namespace Inventory.Client.Pages
+@page "/work-orders"
+@using System.Net.Http.Headers
+@using System.Globalization
+@inject HttpClient Http
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+@inject LayoutState Layout
+@inject NavigationManager Nav
+@inject RealtimeService Rt
+@implements IDisposable
+
+<PageTitle>دستور کار</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>دستور کار</h1>
+        <p class="lead">محول‌کردن کار به خود یا دیگران — با مهلت، پاسخ، تایید و بایگانی</p>
+    </div>
+    @if (access.CanCreate)
+    {
+        <button class="btn btn-primary me-auto" @onclick="OpenNew">
+            <i class="bi bi-plus-lg"></i> دستور کار جدید
+        </button>
+    }
+</div>
+
+@* ================== تب‌ها ================== *@
+<div class="wo-tabs mb-3">
+    <button class="wo-tab @(tab == "mine" ? "active" : "")" @onclick='() => SwitchTab("mine")'>
+        <i class="bi bi-send"></i> دستورهای من <span class="wo-tab-badge">@mineItems.Count</span>
+    </button>
+    <button class="wo-tab @(tab == "assigned" ? "active" : "")" @onclick='() => SwitchTab("assigned")'>
+        <i class="bi bi-inbox"></i> محول به من <span class="wo-tab-badge">@assignedItems.Count</span>
+    </button>
+    <button class="wo-tab @(tab == "archive" ? "active" : "")" @onclick='() => SwitchTab("archive")'>
+        <i class="bi bi-archive"></i> بایگانی <span class="wo-tab-badge">@archiveItems.Count</span>
+    </button>
+    <button class="wo-tab @(tab == "calendar" ? "active" : "")" @onclick='() => SwitchTab("calendar")'>
+        <i class="bi bi-calendar3"></i> تقویم
+    </button>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (tab == "calendar")
+{
+    @* ================== تقویم شمسی (بند ۱۳) — بازطراحی ================== *@
+    <div class="wo-cal-card">
+        <div class="wo-cal-head2">
+            <div class="wo-cal-nav">
+                <button class="wo-nav-btn" @onclick="() => MoveMonth(-1)"><i class="bi bi-chevron-right"></i></button>
+                <div class="wo-cal-title2">
+                    <div class="wo-cal-month">@MonthName(calMonth)</div>
+                    <div class="wo-cal-year num">@calYear.ToString()</div>
+                </div>
+                <button class="wo-nav-btn" @onclick="() => MoveMonth(1)"><i class="bi bi-chevron-left"></i></button>
+                <button class="wo-today-btn" @onclick="GoToday"><i class="bi bi-calendar-check"></i> امروز</button>
+            </div>
+            <div class="wo-cal-legend2">
+                <span><i class="wo-dot wo-k-self"></i> برای خودم</span>
+                <span><i class="wo-dot wo-k-others"></i> برای دیگران</span>
+                <span><i class="wo-dot wo-k-mixed"></i> مشترک</span>
+                <span><i class="wo-dot wo-k-assigned"></i> محول به من</span>
+                <span class="wo-leg-sep"></span>
+                <span><i class="bi bi-check-circle-fill" style="color:#22c55e"></i> انجام به‌موقع</span>
+                <span><i class="bi bi-check-circle-fill" style="color:#a855f7"></i> با تاخیر</span>
+                <span><i class="bi bi-x-circle-fill" style="color:#ef4444"></i> انجام نشده</span>
+            </div>
+        </div>
+        <div class="wo-cal2">
+            @foreach (var d in new[] { "شنبه", "یکشنبه", "دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه" })
+            {
+                <div class="wo-dow2 @(d == "جمعه" ? "friday" : "")">@d</div>
+            }
+            @for (var i = 0; i < calOffset; i++)
+            {
+                <div class="wo-cell2 empty"></div>
+            }
+            @for (var day = 1; day <= calDays; day++)
+            {
+                var d2 = day;
+                var g = pc.ToDateTime(calYear, calMonth, d2, 0, 0, 0, 0);
+                var isToday = g.Date == DateTime.Today;
+                var isFriday = g.DayOfWeek == DayOfWeek.Friday;
+                var dayOrders = calItems.Where(c => c.DueAt.Date == g.Date).ToList();
+                <div class="wo-cell2 @(isToday ? "today" : "") @(isFriday ? "friday" : "") @(dayOrders.Any() ? "has-items" : "")">
+                    <div class="wo-day2">
+                        <span class="num">@d2</span>
+                        @if (isToday)
+                        {
+                            <span class="wo-today-tag">امروز</span>
+                        }
+                    </div>
+                    @foreach (var o in dayOrders.Take(3))
+                    {
+                        <div class="wo-chip2 wo-k-@o.Kind.ToLower() @(o.Status == "Closed" && o.Tone is not ("ontime" or "latedone") ? "closed" : "")"
+                             title="@o.Number — @o.Title" @onclick="() => OpenById(o.Id)">
+                            @* تیک / ضربدر وضعیت — تشخیص در یک نگاه *@
+                            @if (o.Tone == "ontime")
+                            {
+                                <i class="bi bi-check-circle-fill wo-st-ic" style="color:#22c55e"></i>
+                            }
+                            else if (o.Tone == "latedone")
+                            {
+                                <i class="bi bi-check-circle-fill wo-st-ic" style="color:#a855f7"></i>
+                            }
+                            else if (o.Tone == "late" || (o.Status == "Closed" && o.Tone == "closed"))
+                            {
+                                <i class="bi bi-x-circle-fill wo-st-ic" style="color:#ef4444"></i>
+                            }
+                            else if (o.Tone == "today")
+                            {
+                                <i class="bi bi-alarm-fill wo-st-ic" style="color:#fbbf24"></i>
+                            }
+                            <span class="wo-chip-txt">@o.Title</span>
+                        </div>
+                    }
+                    @if (dayOrders.Count > 3)
+                    {
+                        <div class="wo-more" @onclick="() => OpenDayModal(g)">+@(dayOrders.Count - 3) مورد دیگر</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (!PagedItems.Any())
+{
+    <div class="wo-empty"><i class="bi bi-clipboard-x"></i><h5>دستور کاری وجود ندارد</h5></div>
+}
+else
+{
+    @* ================== دیتاگرید با سطرهای بازشو (بند ۸) — دسکتاپ ================== *@
+    <div class="card grid-desktop">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:44px"></th>
+                            <th>شماره</th><th>عنوان</th><th>دستوردهنده</th>
+                            <th>مهلت</th><th>گیرندگان</th><th>وضعیت</th><th class="text-end">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var w in PagedItems)
+                        {
+                            var tone = Tone(w);
+                            <tr class="wo-row wo-tone-@tone">
+                                <td>
+                                    <button class="wo-expander" @onclick="() => ToggleExpand(w.Id)">
+                                        <i class="bi @(expanded.Contains(w.Id) ? "bi-dash-lg" : "bi-plus-lg")"></i>
+                                    </button>
+                                </td>
+                                <td class="num fw-700 text-primary">@w.Number</td>
+                                <td class="fw-600">@w.Title</td>
+                                <td>@w.OwnerName</td>
+                                <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
+                                <td>
+                                    <span class="badge bg-light text-dark border">@w.Assignees.Count نفر</span>
+                                    <span class="fs-8 text-muted">(@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</span>
+                                </td>
+                                <td>@ToneBadge(w, tone)</td>
+                                <td class="text-end">
+                                    <div class="d-flex gap-1 justify-content-end align-items-center">
+                                        <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenDetail(w)"><i class="bi bi-eye text-primary"></i></button>
+                                        <ArchiveButton Module="WorkOrders" RefId="@w.Id"
+                                                       Title="@($"{w.Number} — {w.Title}")"
+                                                       Link="@($"/work-orders?open={w.Id}")"
+                                                       Compact="true" />
+                                    </div>
+                                </td>
+                            </tr>
+                            @if (expanded.Contains(w.Id))
+                            {
+                                <tr class="wo-subrow">
+                                    <td></td>
+                                    <td colspan="7">
+                                        <table class="table table-sm mb-0 wo-subtable">
+                                            <thead>
+                                                <tr>
+                                                    <th>گیرنده</th><th>رویت</th><th>پاسخ</th>
+                                                    <th>نتیجه</th><th>شرح پاسخ</th><th>تصمیم دستوردهنده</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var a in w.Assignees)
+                                                {
+                                                    <tr>
+                                                        <td class="fw-600"><span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="a.UserId" Size="22" CssClass="user-avatar-sm" /> @a.Name</span></td>
+                                                        <td class="num fs-8">@(a.SeenAt == null ? "—" : $"{a.SeenAt.Value.ToFa()} {a.SeenAt:HH:mm}")</td>
+                                                        <td class="num fs-8">@(a.RepliedAt == null ? "—" : $"{a.RepliedAt.Value.ToFa()} {a.RepliedAt:HH:mm}")</td>
+                                                        <td>
+                                                            @if (a.Done == true)
+                                                            {
+                                                                <span class="badge bg-success-subtle text-success border">✅ انجام شد</span>
+                                                            }
+                                                            else if (a.Done == false)
+                                                            {
+                                                                <span class="badge bg-danger-subtle text-danger border">❌ انجام نشد</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="badge bg-warning-subtle text-warning border">در انتظار</span>
+                                                            }
+                                                        </td>
+                                                        <td class="fs-8">@(a.ReplyText ?? "—")</td>
+                                                        <td>
+                                                            @if (a.OwnerDecision == "Approved")
+                                                            {
+                                                                <span class="badge bg-primary-subtle text-primary border">تایید ✔</span>
+                                                            }
+                                                            else if (a.OwnerDecision == "Rejected")
+                                                            {
+                                                                <span class="badge bg-danger-subtle text-danger border">رد شده</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="text-muted fs-8">—</span>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* ================== کارت‌ویو موبایل (بند ۱۴) ================== *@
+    <div class="cards-mobile">
+        @foreach (var w in PagedItems)
+        {
+            var tone = Tone(w);
+            <div class="wo-mcard wo-tone-@tone" @onclick="() => OpenDetail(w)">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="fw-700">@w.Title</div>
+                    @ToneBadge(w, tone)
+                </div>
+                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
+                    <div @onclick:stopPropagation="true">
+                        <ArchiveButton Module="WorkOrders" RefId="@w.Id"
+                                       Title="@($"{w.Number} — {w.Title}")"
+                                       Link="@($"/work-orders?open={w.Id}")"
+                                       Compact="true" />
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    @* ================== صفحه‌بندی ================== *@
+    @if (TotalPages > 1)
+    {
+        <div class="wo-pager mt-3">
+            <button class="wo-page-btn" disabled="@(page <= 1)" @onclick="() => page--"><i class="bi bi-chevron-right"></i></button>
+            @for (var pn = 1; pn <= TotalPages; pn++)
+            {
+                var p2 = pn;
+                <button class="wo-page-btn num @(page == p2 ? "active" : "")" @onclick="() => page = p2">@p2</button>
+            }
+            <button class="wo-page-btn" disabled="@(page >= TotalPages)" @onclick="() => page++"><i class="bi bi-chevron-left"></i></button>
+        </div>
+    }
+}
+
+@* ================== مودال همه دستورهای یک روز ================== *@
+@if (dayModalDate != null)
+{
+    var dayList = calItems.Where(c => c.DueAt.Date == dayModalDate.Value.Date).OrderBy(c => c.DueAt).ToList();
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.55)">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content wo-modal">
+                <div class="modal-header" style="background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;border:0">
+                    <h6 class="modal-title">
+                        <i class="bi bi-calendar-day"></i>
+                        دستورهای کار @(pc.GetYear(dayModalDate.Value))/@(pc.GetMonth(dayModalDate.Value).ToString("00"))/@(pc.GetDayOfMonth(dayModalDate.Value).ToString("00"))
+                        <span class="badge bg-light text-primary me-2">@dayList.Count مورد</span>
+                    </h6>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => dayModalDate = null"></button>
+                </div>
+                <div class="modal-body p-2">
+                    @foreach (var o in dayList)
+                    {
+                        <div class="wo-day-item" @onclick="async () => { dayModalDate = null; await OpenById(o.Id); }">
+                            <span class="wo-day-kind wo-k-@o.Kind.ToLower()"></span>
+                            @if (o.Tone == "ontime")
+                            {
+                                <i class="bi bi-check-circle-fill" style="color:#22c55e"></i>
+                            }
+                            else if (o.Tone == "latedone")
+                            {
+                                <i class="bi bi-check-circle-fill" style="color:#a855f7"></i>
+                            }
+                            else if (o.Tone == "late" || (o.Status == "Closed" && o.Tone == "closed"))
+                            {
+                                <i class="bi bi-x-circle-fill" style="color:#ef4444"></i>
+                            }
+                            else if (o.Tone == "today")
+                            {
+                                <i class="bi bi-alarm-fill" style="color:#f59e0b"></i>
+                            }
+                            else
+                            {
+                                <i class="bi bi-circle" style="color:#cbd5e1"></i>
+                            }
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="fw-700 fs-8 text-truncate">@o.Title</div>
+                                <div class="fs-9 text-muted num">@o.Number — ساعت @o.DueAt.ToString("HH:mm")</div>
+                            </div>
+                            <span class="fs-9 text-muted">@KindFa(o.Kind)</span>
+                            <i class="bi bi-chevron-left text-muted"></i>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ================== مودال دستور کار جدید ================== *@
+@if (showNew)
+{
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.55)">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content wo-modal">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-list-task text-primary"></i> دستور کار جدید</h5>
+                    <button type="button" class="btn-close" @onclick="() => showNew = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrWhiteSpace(formError))
+                    {
+                        <div class="alert alert-danger py-2">@formError</div>
+                    }
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">عنوان <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="newTitle" placeholder="مثلاً: تهیه گزارش فروش ماهانه" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">گیرندگان <span class="text-danger">*</span></label>
+                            @* کمبوی چندانتخابی با جستجو (بند ۷) *@
+                            <div class="ms-combo">
+                                <div class="ms-combo-control form-control @(tDropOpen ? "focus" : "")" @onclick="() => tDropOpen = !tDropOpen">
+                                    @if (selTargets.Count == 0)
+                                    {
+                                        <span class="text-muted">— انتخاب افراد —</span>
+                                    }
+                                    @foreach (var t in targets.Where(t => selTargets.Contains(t.Id)))
+                                    {
+                                        <span class="ms-chip">@t.Username <i class="bi bi-x-circle-fill" @onclick:stopPropagation="true" @onclick="() => selTargets.Remove(t.Id)"></i></span>
+                                    }
+                                    <i class="bi bi-chevron-@(tDropOpen ? "up" : "down") ms-caret"></i>
+                                </div>
+                                @if (tDropOpen)
+                                {
+                                    <div class="ms-combo-menu shadow">
+                                        <div class="p-2 border-bottom">
+                                            <input class="form-control form-control-sm" placeholder="جستجو..." @bind="tSearch" @bind:event="oninput" @onclick:stopPropagation="true" />
+                                        </div>
+                                        <div class="ms-combo-items">
+                                            @foreach (var t in targets.Where(t => string.IsNullOrWhiteSpace(tSearch) || t.Username.Contains(tSearch.Trim(), StringComparison.OrdinalIgnoreCase)))
+                                            {
+                                                var isSel = selTargets.Contains(t.Id);
+                                                <div class="ms-combo-item @(isSel ? "sel" : "")" @onclick="() => { if (isSel) selTargets.Remove(t.Id); else selTargets.Add(t.Id); }">
+                                                    <i class="bi @(isSel ? "bi-check-square-fill" : "bi-square")"></i> @t.Username
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                            @if (!access.CanAssignOthers)
+                            {
+                                <div class="fs-8 text-muted mt-1">شما فقط مجاز به ثبت دستور کار برای خودتان هستید.</div>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">تاریخ مقرر (شمسی) <span class="text-danger">*</span></label>
+                            <DatePicker @bind-Value="newDueDate" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">ساعت مقرر</label>
+                            <input type="time" class="form-control num" dir="ltr" @bind="newDueTime" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">شرح (بند ۳ — ادیتور)</label>
+                            <div class="rte-toolbar">
+                                <button type="button" @onclick='() => RteCmd("bold")'><i class="bi bi-type-bold"></i></button>
+                                <button type="button" @onclick='() => RteCmd("italic")'><i class="bi bi-type-italic"></i></button>
+                                <button type="button" @onclick='() => RteCmd("underline")'><i class="bi bi-type-underline"></i></button>
+                                <button type="button" @onclick='() => RteCmd("insertUnorderedList")'><i class="bi bi-list-ul"></i></button>
+                                <button type="button" @onclick='() => RteCmd("insertOrderedList")'><i class="bi bi-list-ol"></i></button>
+                                <button type="button" @onclick='() => RteCmd("removeFormat")'><i class="bi bi-eraser"></i></button>
+                            </div>
+                            <div id="rte-wo" class="rte-editor" contenteditable="true"></div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label"><i class="bi bi-paperclip"></i> پیوست (اختیاری)</label>
+                            <InputFile class="form-control" OnChange="OnFilesSelected" multiple />
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="() => showNew = false">انصراف</button>
+                    <button class="btn btn-primary px-4" disabled="@busy" @onclick="SubmitNew">
+                        @if (busy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                        <i class="bi bi-send"></i> ثبت دستور کار
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ================== مودال جزئیات ================== *@
+@if (detail != null)
+{
+    var isOwner = detail.OwnerUserId == access.UserId;
+    var myAsg = detail.Assignees.FirstOrDefault(a => a.UserId == access.UserId);
+    var tone = Tone(detail);
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.55)">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content wo-modal">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-1">@detail.Title</h5>
+                        <span class="badge bg-dark-subtle text-dark border num me-1">@detail.Number</span>
+                        @ToneBadge(detail, tone)
+                        @if (detail.ExtensionCount > 0)
+                        {
+                            <span class="badge bg-warning-subtle text-warning border">تمدید @detail.ExtensionCount از ۵</span>
+                        }
+                    </div>
+                    <button type="button" class="btn-close" @onclick="() => detail = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="wo-info mb-3">
+                        <div><span class="wo-lbl">دستوردهنده</span><span>@detail.OwnerName</span></div>
+                        <div><span class="wo-lbl">مهلت</span><span class="num">@detail.DueAt.ToFa() @detail.DueAt.ToString("HH:mm")</span></div>
+                        <div><span class="wo-lbl">تاریخ ثبت</span><span class="num">@detail.CreatedAt.ToFa()</span></div>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(detail.Description))
+                    {
+                        <div class="wo-block mb-3">
+                            <div class="wo-block-title"><i class="bi bi-card-text"></i> شرح</div>
+                            <div class="wo-block-body">@((MarkupString)detail.Description)</div>
+                        </div>
+                    }
+
+                    @* ---------- پیوست‌ها — کامپوننت جامع (یک کد برای همه فرم‌ها) ---------- *@
+                    <div class="mb-3 d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                        <div class="flex-grow-1">
+                            <AttachmentBox Module="WorkOrders" RefId="@detail.Id" CanUpload="@(detail.Status == "Open")" />
+                        </div>
+                        <ArchiveButton Module="WorkOrders" RefId="@detail.Id"
+                                       Title="@($"{detail.Number} — {detail.Title}")"
+                                       Link="@($"/work-orders?open={detail.Id}")" />
+                    </div>
+
+                    @* ---------- گیرندگان + عملیات ---------- *@
+                    <div class="wo-block mb-3">
+                        <div class="wo-block-title"><i class="bi bi-people"></i> گیرندگان (@detail.Assignees.Count(a => a.RepliedAt != null)/@detail.Assignees.Count پاسخ)</div>
+                        <div class="wo-block-body">
+                            @foreach (var a in detail.Assignees)
+                            {
+                                <div class="wo-asg">
+                                    <div class="d-flex justify-content-between flex-wrap gap-1 align-items-center">
+                                        <span class="fw-700 d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="a.UserId" Size="24" CssClass="user-avatar-sm" /> @a.Name</span>
+                                        <div class="d-flex gap-1 flex-wrap">
+                                            <span class="badge bg-light text-dark border fs-9">رویت: @(a.SeenAt == null ? "—" : a.SeenAt.Value.ToFa())</span>
+                                            @if (a.Done == true)
+                                            {
+                                                <span class="badge bg-success-subtle text-success border">✅ انجام شد</span>
+                                            }
+                                            else if (a.Done == false)
+                                            {
+                                                <span class="badge bg-danger-subtle text-danger border">❌ انجام نشد</span>
+                                            }
+                                            @if (a.OwnerDecision == "Approved")
+                                            {
+                                                <span class="badge bg-primary-subtle text-primary border">تایید ✔</span>
+                                            }
+                                            else if (a.OwnerDecision == "Rejected")
+                                            {
+                                                <span class="badge bg-danger-subtle text-danger border">رد شده</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(a.ReplyText))
+                                    {
+                                        <div class="wo-reply mt-1">@a.ReplyText</div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(a.OwnerDecisionNote))
+                                    {
+                                        <div class="fs-8 text-muted mt-1">یادداشت دستوردهنده: @a.OwnerDecisionNote</div>
+                                    }
+
+                                    @* پاسخ گیرنده *@
+                                    @if (detail.Status == "Open" && a.UserId == access.UserId && a.RepliedAt == null)
+                                    {
+                                        <div class="mt-2 p-2 rounded-3" style="background:#f0fdf4;border:1px dashed #86efac">
+                                            <div class="d-flex gap-3 mb-2">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="wodone" id="wod-y" checked="@(myDone == true)" @onchange="() => myDone = true" />
+                                                    <label class="form-check-label text-success fw-600" for="wod-y">✅ انجام شد</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="wodone" id="wod-n" checked="@(myDone == false)" @onchange="() => myDone = false" />
+                                                    <label class="form-check-label text-danger fw-600" for="wod-n">❌ انجام نشد</label>
+                                                </div>
+                                            </div>
+                                            <textarea class="form-control form-control-sm" rows="2" placeholder="شرح پاسخ..." @bind="myReply"></textarea>
+                                            <button class="btn btn-success btn-sm mt-2" disabled="@busy" @onclick="SubmitReply"><i class="bi bi-check2"></i> ثبت پاسخ</button>
+                                        </div>
+                                    }
+
+                                    @* تصمیم دستوردهنده *@
+                                    @if (detail.Status == "Open" && isOwner && a.RepliedAt != null && a.OwnerDecision == null)
+                                    {
+                                        <div class="mt-2 p-2 rounded-3" style="background:#fffbeb;border:1px dashed #fcd34d">
+                                            <input class="form-control form-control-sm mb-2" placeholder="یادداشت (اختیاری)" @bind="decideNotes[a.Id]" />
+                                            <div class="d-flex gap-2">
+                                                <button class="btn btn-success btn-sm" disabled="@busy" @onclick="() => Decide(a.Id, true)"><i class="bi bi-check2"></i> تایید</button>
+                                                <button class="btn btn-outline-danger btn-sm" disabled="@busy" @onclick="() => Decide(a.Id, false)"><i class="bi bi-x-lg"></i> رد (برگشت)</button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @* ---------- تمدید و بستن (فقط دستوردهنده) ---------- *@
+                    @if (detail.Status == "Open" && isOwner)
+                    {
+                        <div class="wo-block mb-3" style="border-color:#e9d5ff">
+                            <div class="wo-block-title" style="background:#faf5ff"><i class="bi bi-sliders" style="color:#7c3aed"></i> عملیات دستوردهنده</div>
+                            <div class="wo-block-body">
+                                <div class="row g-2 align-items-end mb-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label fs-8">تمدید مهلت (@detail.ExtensionCount از ۵)</label>
+                                        <DatePicker @bind-Value="extDate" />
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="time" class="form-control num" dir="ltr" @bind="extTime" />
+                                    </div>
+                                    <div class="col-md-5">
+                                        <button class="btn btn-warning btn-sm w-100" disabled="@(busy || detail.ExtensionCount >= 5)" @onclick="SubmitExtend">
+                                            <i class="bi bi-clock-history"></i> تمدید مهلت
+                                        </button>
+                                    </div>
+                                </div>
+                                <hr />
+                                <textarea class="form-control form-control-sm mb-2" rows="2" placeholder="یادداشت بستن (اختیاری)..." @bind="closeNote"></textarea>
+                                <button class="btn btn-danger" disabled="@busy" @onclick="SubmitClose">
+                                    <i class="bi bi-lock"></i> تایید نهایی و بستن دستور کار
+                                </button>
+                                <div class="fs-8 text-muted mt-1">حتی اگر کار انجام نشده باشد، می‌توانید ببندید — بعد از بستن هیچ‌کس نمی‌تواند تغییری بدهد.</div>
+                            </div>
+                        </div>
+                    }
+                    @if (detail.Status == "Closed")
+                    {
+                        <div class="alert alert-secondary py-2 fs-8">
+                            <i class="bi bi-lock-fill"></i> این دستور کار در @(detail.ClosedAt?.ToFa()) نهایی و بسته شده است.
+                            @if (!string.IsNullOrWhiteSpace(detail.CloseNote))
+                            {
+                                <div class="mt-1">یادداشت: @detail.CloseNote</div>
+                            }
+                        </div>
+                    }
+
+                    @* ---------- تاریخچه (بند ۱۷ و ۱۸) ---------- *@
+                    @if (logs.Any())
+                    {
+                        <div class="wo-block mb-2">
+                            <div class="wo-block-title"><i class="bi bi-clock-history"></i> تاریخچه رفت‌وبرگشت‌ها</div>
+                            <div class="wo-block-body p-0">
+                                <div class="wo-timeline">
+                                    @foreach (var l in logs)
+                                    {
+                                        <div class="wo-tl-item">
+                                            <div class="wo-tl-dot wo-tl-@l.Action.ToLower()"></div>
+                                            <div>
+                                                <div class="fs-8"><span class="fw-700">@l.ActorName</span> — @ActionFa(l.Action)</div>
+                                                @if (!string.IsNullOrWhiteSpace(l.Text))
+                                                {
+                                                    <div class="fs-8 text-muted">@l.Text</div>
+                                                }
+                                                <div class="fs-9 text-muted num">@l.CreatedAt.ToFa() @l.CreatedAt.ToString("HH:mm")</div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .wo-tabs { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .wo-tab { border: 1px solid #e2e8f0; background: #fff; border-radius: 12px; padding: .5rem 1rem; font-size: .88rem; font-weight: 600; color: #475569; display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; transition: all .15s; }
+    .wo-tab:hover { border-color: #93c5fd; color: #2563eb; }
+    .wo-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,.3); }
+    .wo-tab-badge { background: rgba(0,0,0,.08); border-radius: 999px; padding: 0 .5rem; font-size: .75rem; }
+    .wo-tab.active .wo-tab-badge { background: rgba(255,255,255,.25); }
+    .wo-empty { text-align: center; padding: 3.5rem 1rem; color: #94a3b8; }
+    .wo-empty i { font-size: 3rem; display: block; margin-bottom: .5rem; }
+
+    /* ===== رنگ‌بندی مهلت (بند ۱۱ و ۱۲) ===== */
+    .wo-row td:nth-child(2) { border-right: 4px solid transparent; }
+    .wo-tone-late td:nth-child(2) { border-right-color: #ef4444; }      /* گذشته و انجام نشده — قرمز */
+    .wo-tone-today td:nth-child(2) { border-right-color: #f59e0b; }     /* مهلت امروز — زرد */
+    .wo-tone-ontime td:nth-child(2) { border-right-color: #22c55e; }    /* انجام به‌موقع — سبز */
+    .wo-tone-latedone td:nth-child(2) { border-right-color: #a855f7; }  /* انجام با تاخیر — بنفش */
+    .wo-tone-late { background: #fef2f2 !important; }
+    .wo-tone-today { background: #fffbeb !important; }
+    .wo-tone-ontime { background: #f0fdf4 !important; }
+    .wo-tone-latedone { background: #faf5ff !important; }
+
+    .wo-expander { width: 30px; height: 30px; border-radius: 8px; border: 1px solid #dbe3ee; background: #fff; color: #2563eb; cursor: pointer; font-size: .75rem; }
+    .wo-expander:hover { background: #2563eb; color: #fff; }
+    .wo-subrow > td { background: #f8fafc; }
+    .wo-subtable { background: #fff; border-radius: 10px; overflow: hidden; }
+    .wo-subtable th { font-size: .72rem; color: #64748b; }
+
+    /* ===== کارت موبایل ===== */
+    .wo-mcard { background: #fff; border: 1px solid #e8edf3; border-right-width: 5px; border-radius: 14px; padding: .8rem 1rem; display: flex; flex-direction: column; gap: .35rem; cursor: pointer; }
+    .wo-mcard.wo-tone-late { border-right-color: #ef4444; }
+    .wo-mcard.wo-tone-today { border-right-color: #f59e0b; }
+    .wo-mcard.wo-tone-ontime { border-right-color: #22c55e; }
+    .wo-mcard.wo-tone-latedone { border-right-color: #a855f7; }
+
+    /* ===== مودال و بلاک‌ها ===== */
+    .wo-modal { border: 0; border-radius: 18px; }
+    .wo-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem; }
+    .wo-info > div { background: #f8fafc; border-radius: 10px; padding: .5rem .75rem; display: flex; flex-direction: column; }
+    .wo-lbl { font-size: .72rem; color: #94a3b8; }
+    .wo-block { border: 1px solid #e8edf3; border-radius: 14px; overflow: hidden; }
+    .wo-block-title { background: #f8fafc; padding: .5rem .85rem; font-size: .82rem; font-weight: 700; color: #334155; border-bottom: 1px solid #eef2f7; }
+    .wo-block-title i { color: #2563eb; margin-left: .3rem; }
+    .wo-block-body { padding: .75rem .85rem; font-size: .87rem; }
+    .wo-att { display: inline-flex; align-items: center; gap: .35rem; background: #eef4ff; color: #2563eb; border-radius: 999px; padding: .2rem .7rem; font-size: .78rem; margin: 0 0 .3rem .3rem; text-decoration: none; }
+    .wo-att:hover { background: #2563eb; color: #fff; }
+    .wo-asg { border: 1px solid #eef2f7; border-radius: 12px; padding: .6rem .8rem; margin-bottom: .6rem; background: #fcfdfe; }
+    .wo-reply { background: #f0fdf4; border: 1px solid #dcfce7; border-radius: 10px; padding: .45rem .7rem; font-size: .83rem; white-space: pre-line; }
+
+    /* ===== تایم‌لاین ===== */
+    .wo-timeline { padding: .75rem 1rem; }
+    .wo-tl-item { display: flex; gap: .7rem; padding-bottom: .8rem; position: relative; }
+    .wo-tl-item:not(:last-child)::before { content: ""; position: absolute; right: 5px; top: 16px; bottom: 0; width: 2px; background: #e2e8f0; }
+    .wo-tl-dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 4px; flex-shrink: 0; background: #94a3b8; }
+    .wo-tl-created { background: #64748b; } .wo-tl-seen { background: #38bdf8; }
+    .wo-tl-reply { background: #0ea5e9; } .wo-tl-approved { background: #22c55e; }
+    .wo-tl-rejected { background: #ef4444; } .wo-tl-extended { background: #f59e0b; }
+    .wo-tl-closed { background: #1e293b; }
+
+    /* ================== تقویم شمسی — طراحی جدید ================== */
+    .wo-cal-card {
+        background: #fff; border: 1px solid #e8edf3; border-radius: 20px;
+        overflow: hidden; box-shadow: 0 4px 20px rgba(15,23,42,.07);
+    }
+    .wo-cal-head2 {
+        background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 55%, #38bdf8 130%);
+        padding: 1rem 1.2rem; display: flex; justify-content: space-between;
+        align-items: center; flex-wrap: wrap; gap: .8rem;
+    }
+    .wo-cal-nav { display: flex; align-items: center; gap: .6rem; }
+    .wo-nav-btn {
+        width: 38px; height: 38px; border-radius: 12px; border: 1px solid rgba(255,255,255,.25);
+        background: rgba(255,255,255,.12); color: #fff; cursor: pointer; transition: all .15s;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .wo-nav-btn:hover { background: rgba(255,255,255,.28); transform: scale(1.06); }
+    .wo-cal-title2 { text-align: center; color: #fff; min-width: 110px; }
+    .wo-cal-month { font-size: 1.25rem; font-weight: 800; line-height: 1.1; }
+    .wo-cal-year { font-size: .78rem; opacity: .8; }
+    .wo-today-btn {
+        border: 0; background: #fff; color: #2563eb; font-weight: 700; font-size: .8rem;
+        border-radius: 999px; padding: .4rem 1rem; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        transition: transform .15s;
+    }
+    .wo-today-btn:hover { transform: translateY(-2px); }
+    .wo-cal-legend2 { display: flex; gap: .9rem; font-size: .72rem; color: rgba(255,255,255,.9); flex-wrap: wrap; align-items: center; }
+    .wo-leg-sep { width: 1px; height: 16px; background: rgba(255,255,255,.3); }
+    .wo-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-left: .25rem; }
+
+    .wo-cal2 { display: grid; grid-template-columns: repeat(7, 1fr); gap: .45rem; padding: 1rem; background: #f8fafc; }
+    .wo-dow2 {
+        text-align: center; font-size: .74rem; font-weight: 800; color: #475569;
+        background: #fff; border-radius: 10px; padding: .45rem 0; border: 1px solid #eef2f7;
+    }
+    .wo-dow2.friday { color: #dc2626; background: #fef2f2; border-color: #fecaca; }
+    .wo-cell2 {
+        background: #fff; border: 1px solid #e8edf3; border-radius: 14px; min-height: 104px;
+        padding: .4rem; display: flex; flex-direction: column; gap: .25rem; overflow: hidden;
+        transition: all .15s ease;
+    }
+    .wo-cell2:not(.empty):hover { border-color: #93c5fd; box-shadow: 0 6px 16px rgba(37,99,235,.12); transform: translateY(-2px); }
+    .wo-cell2.empty { background: transparent; border-color: transparent; }
+    .wo-cell2.friday { background: #fffafa; }
+    .wo-cell2.today {
+        border: 2px solid #2563eb;
+        background: linear-gradient(180deg, #eff6ff 0%, #fff 55%);
+        box-shadow: 0 0 0 4px rgba(37,99,235,.12);
+    }
+    .wo-cell2.has-items { border-bottom-width: 3px; }
+    .wo-day2 { display: flex; align-items: center; justify-content: space-between; font-size: .78rem; font-weight: 800; color: #475569; }
+    .wo-cell2.friday .wo-day2 { color: #dc2626; }
+    .wo-cell2.today .wo-day2 { color: #2563eb; }
+    .wo-today-tag { background: #2563eb; color: #fff; font-size: .56rem; border-radius: 999px; padding: .05rem .45rem; }
+
+    .wo-chip2 {
+        display: flex; align-items: center; gap: .3rem;
+        font-size: .66rem; font-weight: 700; border-radius: 8px; padding: .18rem .4rem;
+        color: #fff; cursor: pointer; transition: all .12s;
+        box-shadow: 0 1px 3px rgba(15,23,42,.15);
+    }
+    .wo-chip2:hover { filter: brightness(1.1); transform: translateX(-2px); }
+    .wo-chip2.closed { opacity: .55; }
+    .wo-chip-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .wo-st-ic {
+        font-size: .8rem; flex-shrink: 0;
+        background: #fff; border-radius: 50%; line-height: 1;
+    }
+    .wo-more { font-size: .62rem; color: #2563eb; font-weight: 800; cursor: pointer; background: #eff6ff; border-radius: 6px; padding: .1rem .35rem; text-align: center; transition: all .12s; }
+    .wo-more:hover { background: #2563eb; color: #fff; }
+    .wo-day-item { display: flex; align-items: center; gap: .6rem; padding: .6rem .8rem; border-radius: 12px; cursor: pointer; transition: background .12s; }
+    .wo-day-item:hover { background: #f1f5f9; }
+    .wo-day-item + .wo-day-item { border-top: 1px solid #f1f5f9; }
+    .wo-day-kind { width: 6px; height: 30px; border-radius: 4px; flex-shrink: 0; }
+    .wo-k-self { background: linear-gradient(135deg, #2563eb, #3b82f6); } i.wo-k-self { background: #2563eb; }
+    .wo-k-others { background: linear-gradient(135deg, #f59e0b, #fbbf24); } i.wo-k-others { background: #f59e0b; }
+    .wo-k-mixed { background: linear-gradient(135deg, #9333ea, #a855f7); } i.wo-k-mixed { background: #a855f7; }
+    .wo-k-assigned { background: linear-gradient(135deg, #0d9488, #14b8a6); } i.wo-k-assigned { background: #0d9488; }
+
+    /* ===== صفحه‌بندی ===== */
+    .wo-pager { display: flex; gap: .4rem; justify-content: center; flex-wrap: wrap; }
+    .wo-page-btn { border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; min-width: 36px; height: 34px; padding: 0 .6rem; font-size: .82rem; font-weight: 600; color: #475569; cursor: pointer; }
+    .wo-page-btn.active { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .wo-page-btn:disabled { opacity: .45; }
+
+    /* ===== ادیتور و کمبو (مشترک) ===== */
+    .rte-toolbar { display: flex; gap: .25rem; border: 1px solid #e2e8f0; border-bottom: 0; border-radius: 10px 10px 0 0; padding: .35rem .5rem; background: #f8fafc; }
+    .rte-toolbar button { border: 0; background: transparent; border-radius: 8px; width: 32px; height: 30px; color: #475569; cursor: pointer; }
+    .rte-toolbar button:hover { background: #e2e8f0; color: #2563eb; }
+    .rte-editor { border: 1px solid #e2e8f0; border-radius: 0 0 10px 10px; min-height: 110px; padding: .6rem .8rem; font-size: .9rem; background: #fff; }
+    .ms-combo { position: relative; }
+    .ms-combo-control { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; min-height: 42px; cursor: pointer; padding-left: 2rem; }
+    .ms-combo-control.focus { border-color: #2563eb; }
+    .ms-caret { position: absolute; left: .75rem; top: 50%; transform: translateY(-50%); color: #94a3b8; }
+    .ms-chip { display: inline-flex; align-items: center; gap: .35rem; background: #eef4ff; color: #2563eb; border: 1px solid #dbe7ff; border-radius: 999px; padding: .15rem .6rem; font-size: .8rem; font-weight: 600; }
+    .ms-chip i { cursor: pointer; opacity: .7; }
+    .ms-combo-menu { position: absolute; top: calc(100% + 4px); right: 0; left: 0; z-index: 1060; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .ms-combo-items { max-height: 220px; overflow-y: auto; }
+    .ms-combo-item { display: flex; align-items: center; gap: .5rem; padding: .5rem .85rem; cursor: pointer; font-size: .85rem; }
+    .ms-combo-item:hover { background: #f1f5f9; }
+    .ms-combo-item.sel { background: #eef4ff; }
+    .fs-9 { font-size: .7rem; }
+
+    /* ===== موبایل (بند ۱۴) ===== */
+    @@media (max-width: 991.98px) {
+        .wo-cell2 { min-height: 74px; border-radius: 10px; }
+        .wo-chip2 { font-size: .58rem; padding: .12rem .3rem; }
+        .wo-cal-legend2 { display: none; }
+    }
+    @@media (max-width: 575.98px) {
+        .wo-tabs { position: sticky; top: 0; z-index: 5; background: var(--bs-body-bg, #f1f5f9); padding: .4rem 0; }
+        .wo-tab { flex: 1; justify-content: center; padding: .5rem .4rem; font-size: .76rem; }
+        .modal-dialog { margin: .5rem; }
+        .wo-cal2 { gap: .25rem; padding: .5rem; }
+        .wo-cell2 { min-height: 56px; }
+        .wo-chip-txt { display: none; }
+        .wo-chip2 { justify-content: center; padding: .15rem; }
+        .wo-day2 { font-size: .68rem; }
+        .wo-today-tag { display: none; }
+    }
+</style>
+
+@code {
+    private bool loading = true, busy;
+    private string tab = "mine", formError = "", apiBase = "";
+    private readonly PersianCalendar pc = new();
+
+    private AccessInfo access = new();
+    private List<WoItem> mineItems = new(), assignedItems = new(), archiveItems = new();
+    private List<CalItem> calItems = new();
+    private List<TargetOpt> targets = new();
+    private HashSet<int> expanded = new();
+
+    // صفحه‌بندی
+    private const int PageSize = 10;
+    private int page = 1;
+    private List<WoItem> TabItems => tab switch { "assigned" => assignedItems, "archive" => archiveItems, _ => mineItems };
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(TabItems.Count / (double)PageSize));
+    private IEnumerable<WoItem> PagedItems => TabItems.Skip((page - 1) * PageSize).Take(PageSize);
+
+    // فرم جدید
+    private bool showNew, tDropOpen;
+    private string newTitle = "", tSearch = "";
+    private DateTime? newDueDate;
+    private TimeOnly newDueTime = new(14, 0);
+    private HashSet<int> selTargets = new();
+    private List<Microsoft.AspNetCore.Components.Forms.IBrowserFile> newFiles = new();
+
+    // جزئیات
+    private WoItem? detail;
+    private List<AttItem> attachments = new();
+    private List<LogItem> logs = new();
+    private bool? myDone = true;
+    private string myReply = "", closeNote = "";
+    private Dictionary<int, string> decideNotes = new();
+    private DateTime? extDate;
+    private TimeOnly extTime = new(14, 0);
+
+    // تقویم
+    private int calYear, calMonth, calDays, calOffset;
+    private DateTime? dayModalDate;
+
+    private void OpenDayModal(DateTime day) => dayModalDate = day;
+
+    private static string KindFa(string k) => k switch
+    {
+        "Self" => "برای خودم", "Others" => "برای دیگران",
+        "Mixed" => "مشترک", _ => "محول به من"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("دستور کار");
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
+        apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
+
+        try { access = await Http.GetFromJsonAsync<AccessInfo>("/api/workorders/my-access") ?? new(); } catch { }
+        await LoadAll();
+
+        var now = DateTime.Now;
+        calYear = pc.GetYear(now); calMonth = pc.GetMonth(now);
+        RecalcCal();
+        loading = false;
+
+        Rt.DataChanged += OnRtChanged;
+        await Rt.EnsureStartedAsync(apiBase, access.UserId);
+        await TryOpenFromQuery();
+        Nav.LocationChanged += OnLocChanged;
+    }
+
+    private async void OnRtChanged(string scope)
+    {
+        if (scope != "workorders") return;
+        await LoadAll();
+        if (tab == "calendar") await LoadCal();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void OnLocChanged(object? s, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        await TryOpenFromQuery();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Rt.DataChanged -= OnRtChanged;
+        Nav.LocationChanged -= OnLocChanged;
+    }
+
+    private async Task TryOpenFromQuery()
+    {
+        var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
+        if (qs["tab"] == "calendar" && tab != "calendar") { tab = "calendar"; await LoadCal(); }
+        if (!int.TryParse(qs["open"], out var id) || id <= 0) return;
+        await OpenById(id);
+    }
+
+    private async Task OpenById(int id)
+    {
+        var w = mineItems.FirstOrDefault(x => x.Id == id)
+             ?? assignedItems.FirstOrDefault(x => x.Id == id)
+             ?? archiveItems.FirstOrDefault(x => x.Id == id);
+        if (w != null)
+        {
+            tab = w.Status == "Closed" ? "archive" : (w.OwnerUserId == access.UserId ? "mine" : "assigned");
+            await OpenDetail(w);
+        }
+    }
+
+    private async Task LoadAll()
+    {
+        try { mineItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/mine") ?? new(); } catch { }
+        try { assignedItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/assigned") ?? new(); } catch { }
+        try { archiveItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/archive") ?? new(); } catch { }
+    }
+
+    private void SwitchTab(string t)
+    {
+        tab = t; page = 1;
+        if (t == "calendar") _ = LoadCal();
+    }
+
+    private void ToggleExpand(int id)
+    {
+        if (!expanded.Add(id)) expanded.Remove(id);
+    }
+
+    // ================== رنگ‌بندی مهلت (بند ۱۱ و ۱۲) ==================
+    private string Tone(WoItem w)
+    {
+        var allDone = w.Assignees.Count > 0 && w.Assignees.All(a => a.Done == true);
+        if (allDone)
+        {
+            // بند ۱۲: ملاک، زمان «پاسخ» است نه زمان تایید دستوردهنده
+            var lastReply = w.Assignees.Max(a => a.RepliedAt) ?? DateTime.MaxValue;
+            return lastReply <= w.DueAt ? "ontime" : "latedone";
+        }
+        if (w.Status == "Closed") return "none";
+        if (w.DueAt < DateTime.Now && w.DueAt.Date != DateTime.Today) return "late";
+        if (w.DueAt.Date == DateTime.Today) return DateTime.Now > w.DueAt ? "late" : "today";
+        return "none";
+    }
+
+    private RenderFragment ToneBadge(WoItem w, string tone) => tone switch
+    {
+        "late" => @<span class="badge bg-danger-subtle text-danger border">⏰ گذشته از مهلت</span>,
+        "today" => @<span class="badge bg-warning-subtle text-warning border">📅 مهلت امروز</span>,
+        "ontime" => @<span class="badge bg-success-subtle text-success border">✅ انجام به‌موقع</span>,
+        "latedone" => @<span class="badge" style="background:#faf5ff;color:#a855f7;border:1px solid #e9d5ff">🕓 انجام با تاخیر</span>,
+        _ => w.Status == "Closed"
+            ? @<span class="badge bg-secondary-subtle text-secondary border">بسته شده 🔒</span>
+            : @<span class="badge bg-light text-dark border">در جریان</span>
+    };
+
+    // ================== دستور کار جدید ==================
+    private async Task OpenNew()
+    {
+        formError = ""; newTitle = ""; selTargets = new(); tDropOpen = false; tSearch = "";
+        newDueDate = DateTime.Today.AddDays(1); newDueTime = new(14, 0);
+        newFiles.Clear();
+        try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); } catch { }
+        showNew = true;
+        StateHasChanged();
+        await Task.Delay(80);
+        try { await JS.InvokeVoidAsync("rteSetHtml", "rte-wo", ""); } catch { }
+    }
+
+    private void OnFilesSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+        => newFiles = e.GetMultipleFiles(5).ToList();
+
+    private async Task RteCmd(string cmd) { try { await JS.InvokeVoidAsync("rteExec", cmd); } catch { } }
+
+    private async Task SubmitNew()
+    {
+        formError = "";
+        if (string.IsNullOrWhiteSpace(newTitle)) { formError = "عنوان را وارد کنید."; return; }
+        if (selTargets.Count == 0) { formError = "حداقل یک نفر را انتخاب کنید."; return; }
+        if (newDueDate == null) { formError = "تاریخ مقرر را انتخاب کنید."; return; }
+        // بند ۱: تاریخ/ساعت مقرر نباید قبل از الان باشد
+        var dueCheck = newDueDate.Value.Date.Add(newDueTime.ToTimeSpan());
+        if (dueCheck <= DateTime.Now)
+        { formError = "تاریخ و ساعت مقرر نمی‌تواند قبل از زمان ثبت باشد."; return; }
+
+        busy = true;
+        try
+        {
+            string desc = "";
+            try { desc = await JS.InvokeAsync<string>("rteGetHtml", "rte-wo") ?? ""; } catch { }
+            var due = newDueDate.Value.Date.Add(newDueTime.ToTimeSpan());
+
+            var resp = await Http.PostAsJsonAsync("/api/workorders", new
+            {
+                title = newTitle, description = desc, dueAt = due,
+                assigneeUserIds = selTargets.ToList()
+            });
+            if (!resp.IsSuccessStatusCode)
+            {
+                formError = await resp.Content.ReadAsStringAsync();
+                return;
+            }
+            var created = await resp.Content.ReadFromJsonAsync<CreatedRes>();
+            foreach (var f in newFiles)
+                await UploadFile(created!.Id, f);
+
+            Toast.Success($"دستور کار ثبت شد — {created!.Number}");
+            showNew = false;
+            await LoadAll();
+        }
+        catch (Exception ex) { formError = ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task UploadFile(int id, Microsoft.AspNetCore.Components.Forms.IBrowserFile f)
+    {
+        // پیوست از طریق API جامع — /api/attachments/{module}/{refId}
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var sc = new StreamContent(f.OpenReadStream(10 * 1024 * 1024));
+            sc.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
+            content.Add(sc, "file", f.Name);
+            await Http.PostAsync($"/api/attachments/WorkOrders/{id}", content);
+        }
+        catch (Exception ex) { Toast.Error($"بارگذاری {f.Name} ناموفق: {ex.Message}"); }
+    }
+
+    // ================== جزئیات ==================
+    private async Task OpenDetail(WoItem w)
+    {
+        detail = w;
+        myDone = true; myReply = ""; closeNote = "";
+        decideNotes = w.Assignees.ToDictionary(a => a.Id, a => "");
+        extDate = w.DueAt.Date; extTime = TimeOnly.FromDateTime(w.DueAt);
+        attachments = new(); logs = new();
+
+        // ثبت رویت (بند ۸)
+        if (w.Assignees.Any(a => a.UserId == access.UserId && a.SeenAt == null))
+        {
+            try { await Http.PostAsync($"/api/workorders/{w.Id}/seen", null); } catch { }
+            var mine = w.Assignees.First(a => a.UserId == access.UserId);
+            mine.SeenAt = DateTime.Now;
+        }
+
+        try { logs = await Http.GetFromJsonAsync<List<LogItem>>($"/api/workorders/{w.Id}/logs") ?? new(); } catch { }
+    }
+
+
+
+    private async Task SubmitReply()
+    {
+        if (detail == null) return;
+        busy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/reply", new { done = myDone ?? true, text = myReply });
+            if (resp.IsSuccessStatusCode) { Toast.Success("پاسخ شما ثبت شد."); detail = null; await LoadAll(); }
+            else Toast.Error(await resp.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task Decide(int asgId, bool approved)
+    {
+        if (detail == null) return;
+        busy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/assignees/{asgId}/decide",
+                new { approved, note = decideNotes.GetValueOrDefault(asgId, "") });
+            if (resp.IsSuccessStatusCode)
+            {
+                Toast.Success(approved ? "پاسخ تایید شد." : "پاسخ رد شد و به گیرنده برگشت.");
+                var id = detail.Id;
+                detail = null;
+                await LoadAll();
+                await OpenById(id);
+            }
+            else Toast.Error(await resp.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task SubmitExtend()
+    {
+        if (detail == null || extDate == null) return;
+        busy = true;
+        try
+        {
+            var due = extDate.Value.Date.Add(extTime.ToTimeSpan());
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/extend", new { newDueAt = due, note = "" });
+            if (resp.IsSuccessStatusCode) { Toast.Success("مهلت تمدید شد."); var id = detail.Id; detail = null; await LoadAll(); await OpenById(id); }
+            else Toast.Error(await resp.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task SubmitClose()
+    {
+        if (detail == null) return;
+        busy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/close", new { note = closeNote });
+            if (resp.IsSuccessStatusCode) { Toast.Success("دستور کار نهایی و بسته شد. 🔒"); detail = null; await LoadAll(); }
+            else Toast.Error(await resp.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    // ================== تقویم شمسی ==================
+    private void RecalcCal()
+    {
+        calDays = pc.GetDaysInMonth(calYear, calMonth);
+        var first = pc.ToDateTime(calYear, calMonth, 1, 0, 0, 0, 0);
+        calOffset = ((int)first.DayOfWeek + 1) % 7; // شنبه = ستون اول
+    }
+
+    private async Task LoadCal()
+    {
+        RecalcCal();
+        var from = pc.ToDateTime(calYear, calMonth, 1, 0, 0, 0, 0);
+        var to = from.AddDays(calDays);
+        try
+        {
+            calItems = await Http.GetFromJsonAsync<List<CalItem>>(
+                $"/api/workorders/calendar?from={from:yyyy-MM-ddTHH:mm:ss}&to={to:yyyy-MM-ddTHH:mm:ss}") ?? new();
+        }
+        catch { calItems = new(); }
+        StateHasChanged();
+    }
+
+    private async Task MoveMonth(int delta)
+    {
+        calMonth += delta;
+        if (calMonth > 12) { calMonth = 1; calYear++; }
+        if (calMonth < 1) { calMonth = 12; calYear--; }
+        await LoadCal();
+    }
+
+    private async Task GoToday()
+    {
+        var now = DateTime.Now;
+        calYear = pc.GetYear(now); calMonth = pc.GetMonth(now);
+        await LoadCal();
+    }
+
+    private static string MonthName(int m) => m switch
+    {
+        1 => "فروردین", 2 => "اردیبهشت", 3 => "خرداد", 4 => "تیر", 5 => "مرداد", 6 => "شهریور",
+        7 => "مهر", 8 => "آبان", 9 => "آذر", 10 => "دی", 11 => "بهمن", _ => "اسفند"
+    };
+
+    private static string ActionFa(string a) => a switch
+    {
+        "Created" => "ثبت دستور کار", "Seen" => "رویت", "Reply" => "ثبت پاسخ",
+        "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
+        "Extended" => "تمدید مهلت", "Closed" => "بستن نهایی", _ => a
+    };
+
+    // ================== مدل‌ها ==================
+    public class AccessInfo { public int UserId { get; set; } public bool CanView { get; set; } public bool CanCreate { get; set; } public bool CanAssignOthers { get; set; } }
+    public class TargetOpt { public int Id { get; set; } public string Username { get; set; } = ""; }
+    public class CreatedRes { public int Id { get; set; } public string Number { get; set; } = ""; }
+    public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string UploaderName { get; set; } = ""; public DateTime UploadedAt { get; set; } public long Size { get; set; } }
+    public class LogItem { public int Id { get; set; } public string ActorName { get; set; } = ""; public string Action { get; set; } = ""; public string? Text { get; set; } public DateTime CreatedAt { get; set; } }
+    public class CalItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public DateTime DueAt { get; set; } public string Status { get; set; } = ""; public string Kind { get; set; } = "Self"; public string Tone { get; set; } = "none"; }
+    public class AsgItem
+    {
+        public int Id { get; set; } public int UserId { get; set; } public string Name { get; set; } = "";
+        public DateTime? SeenAt { get; set; } public DateTime? RepliedAt { get; set; }
+        public bool? Done { get; set; } public string? ReplyText { get; set; }
+        public string? OwnerDecision { get; set; } public string? OwnerDecisionNote { get; set; }
+    }
+    public class WoItem
+    {
+        public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = "";
+        public string Description { get; set; } = ""; public int OwnerUserId { get; set; } public string OwnerName { get; set; } = "";
+        public DateTime DueAt { get; set; } public string Status { get; set; } = "Open";
+        public string? CloseNote { get; set; } public DateTime? ClosedAt { get; set; }
+        public int ExtensionCount { get; set; } public DateTime CreatedAt { get; set; }
+        public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
+    }
+}

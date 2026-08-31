@@ -1,0 +1,1729 @@
+@page "/projects"
+@inject IProjectService ProjectSvc
+@inject IReportWorkService ReportSvc
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject LayoutState Layout
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject RealtimeService Rt
+@implements IDisposable
+
+<PageTitle>ورود و خروج پروژه‌ها</PageTitle>
+
+<style>
+    /* ---------- منوی عملیات هر سطر ---------- */
+    .row-actions { position: relative; display: inline-block; }
+    .row-menu {
+        position: absolute; top: 100%; left: 0; z-index: 1050;
+        min-width: 200px; padding: 4px; text-align: right;
+        background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+        box-shadow: 0 12px 32px rgba(15,23,42,.18);
+    }
+    .row-menu-item {
+        display: flex; align-items: center; gap: .5rem; width: 100%;
+        padding: .45rem .7rem; border: 0; background: none;
+        border-radius: 8px; font-size: .85rem; text-align: right; color: #1f2937;
+    }
+    .row-menu-item:hover { background: #f1f5f9; }
+    .row-menu-item.danger { color: #dc2626; }
+    .row-menu-divider { border-top: 1px solid #e5e7eb; margin: 4px 6px; }
+    .menu-overlay { position: fixed; inset: 0; z-index: 3990; background: transparent; }
+    /* منوی شناور — در نقطه کلیک روی صفحه قرار می‌گیرد تا داخل جدول (overflow) بریده نشود */
+    .row-menu.floating { position: fixed; top: 0; left: 0; z-index: 4000; }
+    .proj-grid td { white-space: nowrap; }
+    .detail-row td { padding: .35rem .5rem; border-bottom: 1px dashed #e5e7eb; }
+    .detail-row td:first-child { color: #64748b; width: 42%; }
+    .re-badge { background: #fef3c7; color: #92400e; border-radius: 6px; padding: 0 .35rem; font-size: .75rem; }
+
+    /* ---------- جستجوی سرستون ---------- */
+    .col-filter-row th { padding: 4px 6px !important; background: #f8fafc; vertical-align: middle; }
+    .col-filter-row th:first-child { border-top-right-radius: 8px; }
+    .col-filter-input {
+        width: 100%; min-width: 72px; border: 1px solid #e2e8f0; border-radius: 7px;
+        padding: 2px 8px; font-size: .75rem; text-align: center; color: #334155; background: #fff;
+    }
+    .col-filter-input:focus { outline: 0; border-color: #818cf8; box-shadow: 0 0 0 2px rgba(99,102,241,.15); }
+    .col-filter-input::placeholder { color: #cbd5e1; }
+    .col-filter-clear {
+        border: 0; background: #fff1f2; color: #e11d48; border-radius: 7px;
+        font-size: .75rem; padding: 3px 10px; white-space: nowrap;
+    }
+    .col-filter-clear:hover { background: #ffe4e6; }
+
+    /* شماره پروژه برگشتی RE */
+    .re-pnum {
+        display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;
+        border-radius: 7px; padding: 1px 8px; font-weight: 800; letter-spacing: .02em;
+    }
+
+    /* ---------- فرم زیبای ثبت پروژه ---------- */
+    .section-pill {
+        display: flex; align-items: center; gap: .5rem; font-size: .8rem; font-weight: 800;
+        color: #4338ca; padding: .4rem .8rem; margin: .6rem 0 0 0;
+        background: linear-gradient(90deg, #eef2ff, transparent); border-radius: 10px;
+        border-right: 3px solid #6366f1;
+    }
+    .section-pill i { font-size: 1rem; }
+    .section-pill.gold { color: #92400e; background: linear-gradient(90deg, #fef3c7, transparent); border-right-color: #f59e0b; }
+    .section-pill.green { color: #065f46; background: linear-gradient(90deg, #d1fae5, transparent); border-right-color: #10b981; }
+
+    .reg-card {
+        flex: 1; display: flex; align-items: center; gap: .7rem; cursor: pointer;
+        border: 2px solid #e5e7eb; border-radius: 14px; padding: .8rem 1rem;
+        background: #fff; transition: all .15s ease;
+    }
+    .reg-card:hover { border-color: #c7d2fe; background: #f8faff; }
+    .reg-card.active { border-color: #6366f1; background: #eef2ff; box-shadow: 0 4px 14px rgba(99,102,241,.16); }
+    .reg-card.active.re { border-color: #f59e0b; background: #fffbeb; box-shadow: 0 4px 14px rgba(245,158,11,.18); }
+    .reg-card .ic {
+        width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+        font-size: 1.25rem; background: #eef2ff; color: #6366f1; flex-shrink: 0;
+    }
+    .reg-card.active.re .ic { background: #fef3c7; color: #d97706; }
+    .reg-card b { display: block; font-size: .9rem; }
+    .reg-card small { color: #64748b; font-size: .72rem; }
+
+    .locked-field {
+        display: flex; align-items: center; gap: .5rem; min-height: 38px;
+        background: linear-gradient(135deg, #f1f5f9, #e2e8f0); border: 1px dashed #94a3b8;
+        border-radius: .375rem; padding: .375rem .75rem; font-weight: 800; font-size: 1.05rem; color: #1e293b;
+    }
+    .locked-field i { color: #64748b; font-size: .9rem; }
+    .locked-field.gold {
+        background: linear-gradient(135deg, #fffbeb, #fef3c7); border-color: #f59e0b; color: #92400e;
+        font-size: 1.15rem; letter-spacing: .03em;
+    }
+
+    .serial-final { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: .3rem .6rem; margin-top: .4rem; font-size: .8rem; }
+    .by-user-chip {
+        display: inline-flex; align-items: center; gap: .45rem; background: #ecfdf5; color: #065f46;
+        border: 1px solid #a7f3d0; border-radius: 999px; padding: .3rem .9rem; font-size: .85rem; font-weight: 700;
+    }
+
+    /* ---------- مودال فاکتور ---------- */
+    .factor-head {
+        display: flex; align-items: center; gap: .8rem; padding: .8rem 1rem; margin-bottom: 1rem;
+        background: linear-gradient(135deg, #ecfdf5, #f0fdf4); border: 1px solid #bbf7d0; border-radius: 12px;
+    }
+    .factor-head .fi {
+        width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: #d1fae5; color: #059669; font-size: 1.3rem;
+    }
+    .kbd-hint {
+        display: inline-block; background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe;
+        border-radius: 6px; padding: 0 .4rem; font-size: .7rem; font-weight: 800;
+    }
+
+    /* ---------- باکس آپلود تصاویر/مستندات در فرم جدید ---------- */
+    .upload-box { border: 1.5px dashed #c7d2fe; border-radius: 12px; padding: .7rem .9rem; background: #fbfcff; height: 100%; }
+    .upload-box.green { border-color: #a7f3d0; background: #fbfefc; }
+    .upload-btn {
+        display: inline-flex; align-items: center; gap: .4rem; background: #eef2ff; color: #4338ca;
+        border-radius: 8px; padding: .35rem .8rem; font-size: .8rem; font-weight: 700; cursor: pointer; margin: 0;
+    }
+    .upload-box.green .upload-btn { background: #ecfdf5; color: #047857; }
+    .upload-btn:hover { filter: brightness(.97); }
+    .pending-list {
+        list-style: none; margin: .6rem 0 0 0; padding: 0; display: flex; flex-direction: column;
+        gap: .3rem; max-height: 108px; overflow: auto;
+    }
+    .pending-list li {
+        display: flex; align-items: center; gap: .4rem; font-size: .78rem;
+        background: #fff; border: 1px solid #eef2f7; border-radius: 8px; padding: .25rem .5rem;
+    }
+    .pending-list li > span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pending-x { border: 0; background: #fff1f2; color: #e11d48; border-radius: 6px; padding: 0 .4rem; flex-shrink: 0; }
+    .pending-x:hover { background: #ffe4e6; }
+    .doc-type-select { max-width: 132px; }
+
+    /* ---------- مرتب‌سازی سرستون‌ها ---------- */
+    th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+    th.sortable:hover { background: #f8fafc; }
+    .sort-ic { font-size: .68rem; margin-right: .15rem; vertical-align: middle; }
+    .sort-ic.muted { color: #cbd5e1; }
+    .sort-ic.active { color: #6366f1; }
+
+    /* ---------- سوییچ نمایش جدول/کارت ---------- */
+    .view-toggle { display: inline-flex; background: rgba(255,255,255,.22); border-radius: 9px; padding: 2px; }
+    .view-toggle button {
+        border: 0; background: transparent; color: #fff; opacity: .75;
+        border-radius: 7px; padding: .2rem .6rem; font-size: .82rem;
+    }
+    .view-toggle button.on { background: #fff; color: #4338ca; opacity: 1; font-weight: 800; }
+
+    /* ---------- نمای کارت پروژه ---------- */
+    .proj-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: .85rem; padding: 1rem; }
+    .proj-card {
+        border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; padding: .9rem 1rem;
+        box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 6px 18px rgba(15,23,42,.05);
+        display: flex; flex-direction: column; gap: .5rem; transition: box-shadow .15s ease, transform .15s ease;
+    }
+    .proj-card:hover { box-shadow: 0 3px 6px rgba(15,23,42,.06), 0 14px 30px rgba(15,23,42,.1); transform: translateY(-2px); }
+    .pc-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .pc-code { font-weight: 800; color: #4f46e5; font-size: 1.02rem; }
+    .pc-name { font-weight: 800; font-size: .95rem; color: #0f172a; }
+    .pc-rows { display: flex; flex-direction: column; gap: .28rem; font-size: .8rem; color: #334155; }
+    .pc-rows .lbl { color: #94a3b8; font-size: .72rem; margin-left: .35rem; }
+    .pc-foot { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; border-top: 1px dashed #e5e7eb; padding-top: .5rem; }
+    .pc-chip { background: #eef2ff; color: #3730a3; border-radius: 999px; font-size: .72rem; font-weight: 700; padding: .15rem .6rem; }
+    .pc-chip.green { background: #d1fae5; color: #065f46; }
+</style>
+
+<div class="card shadow-sm mb-4">
+    <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2"
+         style="background:linear-gradient(135deg,#8e5cff,#06b6d4);color:#fff;border-radius:14px 14px 0 0;">
+        <span><i class="bi bi-arrow-left-right me-2"></i>ورود و خروج پروژه‌ها
+            <span class="badge bg-light text-dark ms-1">
+                @(HasColFilter ? $"{Filtered.Count.FaDigits()} از {items.Count.FaDigits()}" : items.Count.FaDigits())
+            </span>
+        </span>
+        <div class="d-flex gap-2 align-items-center">
+            <div class="view-toggle" title="تغییر حالت نمایش لیست">
+                <button class="@(!viewCards ? "on" : "")" title="نمای جدولی" @onclick="() => SetView(false)"><i class="bi bi-table"></i></button>
+                <button class="@(viewCards ? "on" : "")" title="نمای کارت" @onclick="() => SetView(true)"><i class="bi bi-grid-3x2-gap"></i></button>
+            </div>
+            @if (Auth.Has("Projects.Export"))
+            {
+                <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#047857;"
+                        title="خروجی اکسل از کل پروژه‌ها (همه سطرها، بدون توجه به فیلتر)" @onclick="ExportAll" disabled="@exportingAll">
+                    @if (exportingAll)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                        <text> در حال آماده‌سازی…</text>
+                    }
+                    else
+                    {
+                        <i class="bi bi-file-earmark-excel"></i>
+                    }
+                    خروجی اکسل کل پروژه‌ها
+                </button>
+            }
+            @if (Auth.Has("Projects.Create"))
+            {
+                <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#4f5b8a;"
+                        data-hotkey="f2" title="کلید میانبر: F2" @onclick="OpenNew">
+                    <i class="bi bi-plus-lg"></i> پروژه جدید (F2)
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="row g-2 align-items-center">
+                <div class="col-md-3">
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input class="form-control" placeholder="نام، سریال، گیرنده، شماره فاکتور…" @bind="search" @bind:event="oninput" />
+                    </div>
+                </div>
+                <div class="col-md-2"><SearchSelect Items="lookups.KarFarmas" @bind-Value="filterKarfarma" Placeholder="همه کارفرماها" /></div>
+                @if (canViewFactor)
+                {
+                    <div class="col-md-2"><SearchSelect Items="lookups.TypeFactors" @bind-Value="filterTypeFactor" Placeholder="همه انواع فاکتور" /></div>
+                }
+                <div class="col-md-2"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" Placeholder="همه کاربران" /></div>
+                <div class="col-md-2">
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="retChk" @bind="filterReturned" />
+                        <label class="form-check-label" for="retChk">فقط برگشتی‌ها</label>
+                    </div>
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-body p-0">
+        @if (loading)
+        {
+            <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+        }
+        else if (items.Count == 0)
+        {
+            <div class="empty-state"><i class="bi bi-folder2-open"></i><h5>پروژه‌ای یافت نشد</h5></div>
+        }
+        else
+        {
+        @if (!viewCards)
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle proj-grid">
+                    <thead>
+                        <tr>
+                            <th class="sortable" @onclick='() => SortBy("code")'>شماره پروژه @((MarkupString)SortIcon("code"))</th>
+                            <th class="sortable" @onclick='() => SortBy("name")'>نام پروژه @((MarkupString)SortIcon("name"))</th>
+                            <th class="sortable" @onclick='() => SortBy("serial")'>شماره سریال @((MarkupString)SortIcon("serial"))</th>
+                            <th class="sortable" @onclick='() => SortBy("karfarma")'>کارفرما @((MarkupString)SortIcon("karfarma"))</th>
+                            <th class="sortable" @onclick='() => SortBy("entry")'>تاریخ ورود @((MarkupString)SortIcon("entry"))</th>
+                            <th class="sortable" @onclick='() => SortBy("exit")'>تاریخ خروج @((MarkupString)SortIcon("exit"))</th>
+                            @if (canViewFactor)
+                            {
+                                <th class="sortable" @onclick='() => SortBy("factor")'>شماره فاکتور @((MarkupString)SortIcon("factor"))</th>
+                                <th class="sortable" @onclick='() => SortBy("factortype")'>نوع فاکتور @((MarkupString)SortIcon("factortype"))</th>
+                            }
+                            <th class="sortable" @onclick='() => SortBy("karshenasi")'>کارشناسی اولیه @((MarkupString)SortIcon("karshenasi"))</th>
+                            <th class="sortable" @onclick='() => SortBy("sabt")'>تاریخ ثبت پروژه @((MarkupString)SortIcon("sabt"))</th>
+                            <th class="sortable" @onclick='() => SortBy("need")'>تاریخ نیاز مشتری @((MarkupString)SortIcon("need"))</th>
+                            <th class="sortable" @onclick='() => SortBy("spent")'>کل زمان مصرفی @((MarkupString)SortIcon("spent"))</th>
+                            <th class="sortable" @onclick='() => SortBy("folder")'>پوشه @((MarkupString)SortIcon("folder"))</th>
+                            <th class="sortable" @onclick='() => SortBy("status")'>وضعیت @((MarkupString)SortIcon("status"))</th>
+                            <th class="text-end">عملیات</th>
+                        </tr>
+                        <tr class="col-filter-row">
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fNum" @bind:event="oninput" /></th>
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fName" @bind:event="oninput" /></th>
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fSerial" @bind:event="oninput" /></th>
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fKarfarma" @bind:event="oninput" /></th>
+                            <th><DateFilterInput @bind-Text="fEntry" /></th>
+                            <th><DateFilterInput @bind-Text="fExit" /></th>
+                            @if (canViewFactor)
+                            {
+                                <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fFactor" @bind:event="oninput" /></th>
+                                <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fFactorType" @bind:event="oninput" /></th>
+                            }
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fKarshenasi" @bind:event="oninput" /></th>
+                            <th><DateFilterInput @bind-Text="fSabt" /></th>
+                            <th><DateFilterInput @bind-Text="fNeed" /></th>
+                            <th>
+                                <input class="col-filter-input" placeholder="ساعت — مثلا 2:" @bind="fSpent" @bind:event="oninput" dir="ltr" />
+                            </th>
+                            <th>
+                                <select class="col-filter-input" @bind="fFolder">
+                                    <option value="">همه</option>
+                                    <option value="y">دارد</option>
+                                    <option value="n">ندارد</option>
+                                </select>
+                            </th>
+                            <th>
+                                <select class="col-filter-input" @bind="fStatus">
+                                    <option value="">همه</option>
+                                    <option value="0">در انتظار تایید مدیر</option>
+                                    <option value="1">در انتظار کارشناسی</option>
+                                    <option value="2">رد شده</option>
+                                    <option value="3">نهایی</option>
+                                </select>
+                            </th>
+                            <th class="text-end">
+                                @if (HasColFilter)
+                                {
+                                    <button class="col-filter-clear" title="پاک کردن جستجوی ستون‌ها" @onclick="ClearColFilters">
+                                        <i class="bi bi-x-lg"></i> پاک کردن
+                                    </button>
+                                }
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var p in Paged)
+                        {
+                            <tr>
+                                <td class="num fw-700">
+                                    @if (p.ReturnProjectId > 0)
+                                    {
+                                        <span class="re-pnum" dir="ltr">@p.CodeProject</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-primary">@ShowCode(p.CodeProject)</span>
+                                    }
+                                </td>
+                                <td class="fw-500">
+                                    @p.ProjectName
+                                    @if (p.ReturnProjectId > 0) { <span class="re-badge ms-1">برگشتی</span> }
+                                </td>
+                                <td class="num">@p.SerialNumber.FaDigits()</td>
+                                <td>@p.KarFarmaName</td>
+                                <td class="num">@(p.EntryDate?.ToFaDate() ?? "—")</td>
+                                <td class="num">@(p.ExitDate?.ToFaDate() ?? "—")</td>
+                                @if (canViewFactor)
+                                {
+                                    <td class="num">@Dash(p.FactorNumber)</td>
+                                    <td>@p.FactorTypeName</td>
+                                }
+                                <td class="num">@Dash(p.KarshenasiAvalie)</td>
+                                <td class="num">@(p.ProjectRegistrationDate?.ToFaDate() ?? "—")</td>
+                                <td class="num">@(p.CustomerRequiredDate?.ToFaDate() ?? "—")</td>
+                                <td class="num" title="جمع گزارش‌های کار">@Fmt(p.TotalSpentTime)</td>
+                                <td>
+                                    @if (p.IsFolder == true)
+                                    {
+                                        <span class="badge badge-soft-success"><i class="bi bi-folder-fill"></i> دارد</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-soft-muted">ندارد</span>
+                                    }
+                                </td>
+                                <td><FlowChip Status="p.FlowStatus" /></td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-light" title="عملیات" @onclick="e => ToggleMenu(p, e)" @onclick:stopPropagation>
+                                        <i class="bi bi-three-dots-vertical"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (Filtered.Count == 0)
+                {
+                    <div class="text-center text-muted fs-8 py-4">
+                        <i class="bi bi-search"></i> با این جستجوی ستون‌ها موردی پیدا نشد.
+                        <button class="btn btn-link btn-sm" @onclick="ClearColFilters">پاک کردن جستجوها</button>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            @* ---------- نمای کارت ---------- *@
+            @if (Paged.Count == 0)
+            {
+                <div class="text-center text-muted fs-8 py-4">
+                    <i class="bi bi-search"></i> با این جستجوی ستون‌ها موردی پیدا نشد.
+                    <button class="btn btn-link btn-sm" @onclick="ClearColFilters">پاک کردن جستجوها</button>
+                </div>
+            }
+            else
+            {
+                <div class="proj-cards">
+                    @foreach (var p in Paged)
+                    {
+                        <div class="proj-card">
+                            <div class="pc-top">
+                                @if (p.ReturnProjectId > 0)
+                                {
+                                    <span class="re-pnum" dir="ltr">@p.CodeProject</span>
+                                    <span class="re-badge">برگشتی</span>
+                                }
+                                else
+                                {
+                                    <span class="pc-code">@ShowCode(p.CodeProject)</span>
+                                }
+                                <span class="flex-grow-1"></span>
+                                <button class="btn btn-sm btn-light" title="عملیات" @onclick="e => ToggleMenu(p, e)" @onclick:stopPropagation>
+                                    <i class="bi bi-three-dots-vertical"></i>
+                                </button>
+                            </div>
+                            <div class="pc-name" title="@p.ProjectName">@p.ProjectName</div>
+                            <div class="pc-rows">
+                                <div><span class="lbl">سریال:</span><b>@p.SerialNumber.FaDigits()</b><span class="lbl me-3">کارفرما:</span>@p.KarFarmaName</div>
+                                <div><span class="lbl">ورود:</span>@(p.EntryDate?.ToFaDate() ?? "—")<span class="lbl me-3">خروج:</span>@(p.ExitDate?.ToFaDate() ?? "—")</div>
+                                @if (canViewFactor)
+                                {
+                                    <div><span class="lbl">فاکتور:</span>@(p.FactorTypeName ?? "—") @Dash(p.FactorNumber)</div>
+                                }
+                                <div><span class="lbl">کارشناسی:</span>@Dash(p.KarshenasiAvalie)</div>
+                                <div><span class="lbl">تاریخ ثبت:</span>@(p.ProjectRegistrationDate?.ToFaDate() ?? "—")<span class="lbl me-3">نیاز مشتری:</span>@(p.CustomerRequiredDate?.ToFaDate() ?? "—")</div>
+                            </div>
+                            <div class="pc-foot">
+                                <span class="pc-chip" title="جمع گزارش‌های کار"><i class="bi bi-clock-history ms-1"></i>@Fmt(p.TotalSpentTime)</span>
+                                @if (p.IsFolder == true)
+                                {
+                                    <span class="pc-chip green"><i class="bi bi-folder-fill ms-1"></i>پوشه دارد</span>
+                                }
+                                <FlowChip Status="p.FlowStatus" />
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+
+        <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+        }
+    </div>
+</div>
+
+@* ======================= منوی شناور عملیات سطر — در نقطه کلیک باز می‌شود (داخل جدول بریده نمی‌شود) ======================= *@
+@if (menuProject is not null)
+{
+    <div class="menu-overlay" @onclick="CloseMenu"></div>
+    <div class="row-menu floating" style="@MenuStyle" @onclick:stopPropagation>
+        @if (Auth.Has("Projects.Update"))
+        {
+            <button class="row-menu-item" @onclick="() => OpenEdit(menuProject)">
+                <i class="bi bi-pencil text-primary"></i> ویرایش اطلاعات
+            </button>
+            <button class="row-menu-item" @onclick="() => OpenFactor(menuProject)">
+                <i class="bi bi-receipt text-success"></i> ثبت/ویرایش فاکتور
+            </button>
+        }
+        @if (Auth.Has("ReportWorks.Create"))
+        {
+            <button class="row-menu-item" @onclick="() => OpenReport(menuProject)">
+                <i class="bi bi-clock-history text-warning"></i> افزودن گزارش کار
+            </button>
+        }
+        @if (Auth.Has("ReportWorks.Read"))
+        {
+            <button class="row-menu-item" disabled="@(printingId == menuProject.Id)" @onclick="() => PrintReports(menuProject)">
+                @if (printingId == menuProject.Id)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                else
+                {
+                    <i class="bi bi-printer text-primary"></i>
+                }
+                چاپ گزارش‌های پروژه
+            </button>
+        }
+        @if (Auth.Has("Projects.Read"))
+        {
+            <button class="row-menu-item" @onclick="() => OpenDetails(menuProject)">
+                <i class="bi bi-info-circle text-info"></i> نمایش جزئیات پروژه
+            </button>
+        }
+        @if (Auth.HasModule("ProjectAttach"))
+        {
+            <button class="row-menu-item" @onclick="() => OpenAttach(menuProject)">
+                <i class="bi bi-paperclip text-secondary"></i> مستندات (@menuProject.AttachCount.Num())
+            </button>
+            <button class="row-menu-item" @onclick="() => OpenImages(menuProject)">
+                <i class="bi bi-images text-success"></i> تصاویر پروژه
+            </button>
+        }
+        @if (Auth.Has("Projects.Export"))
+        {
+            <div class="row-menu-divider"></div>
+            <button class="row-menu-item" disabled="@(exportingId == menuProject.Id)" @onclick="() => Export(menuProject)">
+                @if (exportingId == menuProject.Id)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                else
+                {
+                    <i class="bi bi-file-earmark-excel text-success"></i>
+                }
+                خروجی اکسل
+            </button>
+        }
+        @if (Auth.Has("Projects.Delete"))
+        {
+            <div class="row-menu-divider"></div>
+            <button class="row-menu-item danger" @onclick="() => Delete(menuProject)">
+                <i class="bi bi-trash"></i> حذف اطلاعات
+            </button>
+        }
+    </div>
+}
+
+@* ======================= فرم ثبت/ویرایش پروژه (بزرگ و زیبا) ======================= *@
+<Modal Visible="showModal" Size="modal-xl" Title="@(editing ? $"ویرایش پروژه «{form.ProjectName}»" : "ثبت پروژه جدید")" OnClose="CloseModal">
+    <ChildContent>
+    <div class="row g-3">
+        @if (!editing)
+        {
+            <div class="col-12 section-pill"><i class="bi bi-tag-fill"></i> نوع ثبت</div>
+            <div class="col-12 d-flex gap-3 flex-wrap">
+                <div class="reg-card @(!isReturnMode ? "active" : "")" @onclick="() => isReturnMode = false">
+                    <div class="ic"><i class="bi bi-box-arrow-in-right"></i></div>
+                    <div class="flex-grow-1">
+                        <b>ورود جدید</b>
+                        <small>پروژه برای اولین بار وارد مجموعه می‌شود — شماره پروژه خودکار صادر می‌شود</small>
+                    </div>
+                    @if (!isReturnMode) { <i class="bi bi-check-circle-fill" style="color:#6366f1;"></i> }
+                </div>
+                <div class="reg-card re @(isReturnMode ? "active" : "")" @onclick="() => isReturnMode = true">
+                    <div class="ic"><i class="bi bi-arrow-counterclockwise"></i></div>
+                    <div class="flex-grow-1">
+                        <b>پروژه برگشتی</b>
+                        <small>پروژه‌ای که قبلاً خارج شده دوباره برمی‌گردد — شماره‌اش «REn-کد پروژه مبدأ» می‌شود</small>
+                    </div>
+                    @if (isReturnMode) { <i class="bi bi-check-circle-fill" style="color:#d97706;"></i> }
+                </div>
+            </div>
+
+            @if (isReturnMode)
+            {
+                <div class="col-12 section-pill gold"><i class="bi bi-arrow-counterclockwise"></i> انتخاب پروژه برگشتی</div>
+                <div class="col-md-5">
+                    <label class="form-label">پروژه برگشتی <span class="text-danger">*</span></label>
+                    <SearchSelect Items="lookups.BaseProjects" Value="selectedReturnId"
+                                  ValueChanged="OnReturnProjectChanged" Placeholder="جستجو بر اساس نام یا کد پروژه…" />
+                    <div class="fs-8 text-muted mt-1"><i class="bi bi-info-circle ms-1"></i>فقط پروژه‌های اصلی (RE‌ندارن) نمایش داده می‌شوند.</div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label"><i class="bi bi-123 text-muted ms-1"></i>عدد برگشتی <span class="text-danger">*</span></label>
+                    <input class="form-control" type="number" min="1" max="9999" @bind="reNum" @bind:event="oninput" />
+                    <div class="fs-8 text-muted mt-1">دستی وارد کنید (مثلاً 1 ← RE1)</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label"><i class="bi bi-lock-fill text-muted ms-1"></i>کد پروژه (خودکار)</label>
+                    <div class="locked-field gold" dir="ltr">
+                        <i class="bi bi-arrow-counterclockwise"></i>
+                        <span>@(selectedReturnId > 0 && reNum >= 1 ? $"RE{reNum}-{parentCode}" : "RE…-…")</span>
+                    </div>
+                    <div class="fs-8 text-muted mt-1">از «عدد برگشتی» + «کد پروژه مبدأ» ساخته می‌شود.</div>
+                </div>
+                @if (selectedReturnId > 0)
+                {
+                    <div class="col-12">
+                        <div class="alert border-0 py-2 mb-0 fs-8 d-flex align-items-center flex-wrap gap-2" style="background:#fffbeb;">
+                            <i class="bi bi-arrow-counterclockwise" style="color:#d97706;"></i>
+                            @if (existingReturns.Count == 0)
+                            {
+                                <span>برای پروژه «@parentCode» هنوز برگشتی ثبت نشده — این <b>اولین برگشتی (RE1)</b> است.</span>
+                            }
+                            else
+                            {
+                                <span>برگشتی‌های ثبت‌شده برای این پروژه (<b>@existingReturns.Count.FaDigits()</b> مورد):</span>
+                                @foreach (var c in existingReturns)
+                                {
+                                    <span class="re-pnum" dir="ltr">@c</span>
+                                }
+                                <span class="text-muted">← عدد بعدی پیشنهادی: <b>@Fa.Digits(reNum)</b></span>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        }
+
+        <div class="col-12 section-pill"><i class="bi bi-info-circle-fill"></i> اطلاعات اصلی</div>
+
+        @if (!editing && !isReturnMode)
+        {
+            <div class="col-md-4">
+                <label class="form-label"><i class="bi bi-lock-fill text-muted ms-1"></i>کد پروژه</label>
+                <div class="locked-field">
+                    <span>@(string.IsNullOrWhiteSpace(nextSerialSuggestion) ? "…" : Fa.Digits(nextSerialSuggestion))</span>
+                    <span class="fs-8 text-muted fw-normal">(خودکار — آخرین کد + ۱)</span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label"><i class="bi bi-hash text-muted ms-1"></i>شماره سریال <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="form.SerialNumber" placeholder="دستی وارد کنید — مثلاً 234589" />
+                <div class="fs-8 text-muted mt-1">مستقل از شماره پروژه است.</div>
+            </div>
+        }
+        @if (editing)
+        {
+            <div class="col-md-4">
+                <label class="form-label"><i class="bi bi-lock-fill text-muted ms-1"></i>کد پروژه</label>
+                <div class="locked-field @(form.ReturnProjectId > 0 ? "gold" : "")" dir="@(form.ReturnProjectId > 0 ? "ltr" : "rtl")">
+                    <span>@ShowDetailCode(form)</span>
+                    <span class="fs-8 text-muted fw-normal">(غیرقابل تغییر)</span>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label"><i class="bi bi-hash text-muted ms-1"></i>شماره سریال <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="form.SerialNumber" />
+            </div>
+        }
+        @if (!editing && isReturnMode)
+        {
+            <div class="col-md-4">
+                <label class="form-label"><i class="bi bi-hash text-muted ms-1"></i>شماره سریال <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="form.SerialNumber" placeholder="دستی وارد کنید — مثلاً 234589" />
+                <div class="fs-8 text-muted mt-1">سریال کاملاً مستقل از شماره پروژه (RE) است.</div>
+            </div>
+        }
+
+        <div class="col-md-4">
+            <label class="form-label"><i class="bi bi-folder-fill text-warning ms-1"></i>نام پروژه <span class="text-danger">*</span></label>
+            <input class="form-control" @bind="form.ProjectName" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label"><i class="bi bi-briefcase-fill text-muted ms-1"></i>کارفرما <span class="text-danger">*</span></label>
+            <SearchSelect Items="lookups.KarFarmas" @bind-Value="form.KarFarmaId" Placeholder="جستجوی کارفرما…" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label"><i class="bi bi-person-lines-fill text-muted ms-1"></i>تحویل گیرنده <span class="text-danger">*</span></label>
+            <input class="form-control" @bind="form.ProjectReceiver" />
+        </div>
+        <div class="col-md-4 d-flex align-items-end gap-2">
+            <span class="by-user-chip" title="ثبت با کاربر جاری شما انجام می‌شود">
+                <i class="bi bi-person-check-fill"></i>
+                ثبت‌کننده: @(editing ? (editUserName ?? Auth.DisplayName) : Auth.DisplayName)
+            </span>
+        </div>
+        <div class="col-md-4 d-flex align-items-end">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="folderChk" @bind="isFolder" />
+                <label class="form-check-label" for="folderChk">دارای پوشه</label>
+            </div>
+        </div>
+
+        @* تاریخ ورود و تاریخ ثبت — فقط در فرم «ثبت» پروژه (ورود جدید) *@
+        @if (!editing && !isReturnMode)
+        {
+            <div class="col-12 section-pill green"><i class="bi bi-calendar3"></i> تاریخ‌های ثبت</div>
+            <div class="col-md-3"><label class="form-label">تاریخ ورود پروژه</label><DatePicker @bind-Value="form.EntryDate" AllowClear /></div>
+            <div class="col-md-3"><label class="form-label">تاریخ ثبت پروژه</label><DatePicker @bind-Value="form.ProjectRegistrationDate" AllowClear /></div>
+        }
+
+        <div class="col-12 section-pill"><i class="bi bi-file-text-fill"></i> جزئیات فنی</div>
+        <div class="col-md-4">
+            <label class="form-label">قبض خروج</label>
+            <input class="form-control" @bind="form.GhabzExit" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">کارشناسی اولیه</label>
+            <input class="form-control" @bind="form.KarshenasiAvalie" />
+        </div>
+        <div class="col-12">
+            <label class="form-label">شرح</label>
+            <textarea class="form-control" rows="2" @bind="form.Description"></textarea>
+        </div>
+
+        @if (!editing)
+        {
+            <div class="col-12">
+                <div class="alert alert-light border py-2 mb-0 fs-8 d-flex align-items-center gap-2">
+                    <i class="bi bi-receipt text-success"></i>
+                    شماره فاکتور و نوع فاکتور را می‌توانید <b>بعداً</b> از منوی سطر (⋮) با گزینه «ثبت/ویرایش فاکتور» تکمیل کنید.
+                </div>
+            </div>
+        }
+
+        @* ---------- آپلود تصاویر و مستندات (هنگام ثبت — خودکار بعد از ایجاد پروژه) ---------- *@
+        @if (!editing && Auth.Has("ProjectAttach.Create"))
+        {
+            <div class="col-12 section-pill green"><i class="bi bi-cloud-upload-fill"></i> تصاویر و مستندات (اختیاری)</div>
+            <div class="col-md-6">
+                <div class="upload-box green">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="upload-btn">
+                            <i class="bi bi-images"></i> افزودن تصویر…
+                            <InputFile OnChange="AddPendingImages" multiple accept="image/*" style="display:none" />
+                        </label>
+                        <span class="fs-8 text-muted">فقط فایل تصویری — حداکثر ۶ فایل</span>
+                    </div>
+                    @if (pendingImages.Count > 0)
+                    {
+                        <ul class="pending-list">
+                            @foreach (var f in pendingImages)
+                            {
+                                <li>
+                                    <i class="bi bi-file-image text-success"></i>
+                                    <span title="@f.Name">@f.Name</span>
+                                    <small class="text-muted" style="flex-shrink:0">@FormatSize(f.Size)</small>
+                                    <button type="button" class="pending-x" title="حذف از لیست" @onclick="() => pendingImages.Remove(f)"><i class="bi bi-x-lg"></i></button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="upload-box">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <label class="upload-btn">
+                            <i class="bi bi-paperclip"></i> افزودن سند…
+                            <InputFile OnChange="AddPendingDocs" multiple style="display:none" />
+                        </label>
+                        <select class="form-select form-select-sm doc-type-select" @bind="pendingDocType" title="نوع سند">
+                            <option value="1">قرارداد</option>
+                            <option value="2">مدارک فنی</option>
+                            <option value="3">تاییدیه تحویل</option>
+                            <option value="4">سایر</option>
+                        </select>
+                        <span class="fs-8 text-muted">حداکثر ۶ فایل</span>
+                    </div>
+                    @if (pendingDocs.Count > 0)
+                    {
+                        <ul class="pending-list">
+                            @foreach (var f in pendingDocs)
+                            {
+                                <li>
+                                    <i class="bi bi-file-earmark-text text-primary"></i>
+                                    <span title="@f.Name">@f.Name</span>
+                                    <small class="text-muted" style="flex-shrink:0">@FormatSize(f.Size)</small>
+                                    <button type="button" class="pending-x" title="حذف از لیست" @onclick="() => pendingDocs.Remove(f)"><i class="bi bi-x-lg"></i></button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="CloseModal">انصراف (Esc)</button>
+        <button class="btn btn-primary px-4" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-check-lg ms-1"></i> ذخیره پروژه (F1)
+        </button>
+    </Footer>
+</Modal>
+
+@* ======================= ثبت/ویرایش فاکتور (فرم مجزا) ======================= *@
+<Modal Visible="showFactor" Title="@("فاکتور پروژه «" + (factorProject?.ProjectName ?? "") + "»")" OnClose="() => showFactor = false">
+    <ChildContent>
+        @if (factorProject is not null)
+        {
+            <div class="factor-head">
+                <div class="fi"><i class="bi bi-receipt"></i></div>
+                <div class="flex-grow-1">
+                    <div class="fw-800">@factorProject.ProjectName</div>
+                    <div class="fs-8 text-muted">
+                        کد پروژه: <b dir="@(factorProject.ReturnProjectId > 0 ? "ltr" : "rtl")">@ShowDetailCode(factorProject)</b>
+                        — سریال: @factorProject.SerialNumber.FaDigits()
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label"><i class="bi bi-card-list text-muted ms-1"></i>نوع فاکتور <span class="text-danger">*</span></label>
+                    <SearchSelect Items="lookups.TypeFactors" @bind-Value="factorTypeId" Placeholder="جستجوی نوع فاکتور…" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label"><i class="bi bi-123 text-muted ms-1"></i>شماره فاکتور</label>
+                    <input class="form-control" @bind="factorNumber" placeholder="مثلاً F-1024" />
+                </div>
+                <div class="col-12">
+                    <div class="alert alert-light border py-2 mb-0 fs-8">
+                        <i class="bi bi-shield-lock ms-1"></i>
+                        این اطلاعات را می‌توانید هر زمان از منوی سطر بازگردید و ویرایش کنید.
+                        رویت ستون‌های فاکتور در لیست، نیازمند مجوز «رویت ستون‌های فاکتور» است.
+                    </div>
+                </div>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showFactor = false">انصراف (Esc)</button>
+        <button class="btn btn-success px-4" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveFactor" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-check-lg ms-1"></i> ثبت فاکتور (F1)
+        </button>
+    </Footer>
+</Modal>
+
+@* ======================= جزئیات پروژه ======================= *@
+<Modal Visible="showDetails" Title="@("جزئیات پروژه «" + (detail?.ProjectName ?? "") + "»")" OnClose="() => showDetails = false">
+    <ChildContent>
+        @if (detail is not null)
+        {
+            <table class="table table-sm mb-0">
+                <tbody>
+                    <tr class="detail-row"><td>کد پروژه</td><td class="num fw-700 text-primary" dir="@(detail.ReturnProjectId > 0 ? "ltr" : "rtl")">@ShowDetailCode(detail)</td></tr>
+                    <tr class="detail-row"><td>شماره سریال</td><td class="num">@detail.SerialNumber.FaDigits()</td></tr>
+                    <tr class="detail-row"><td>کارفرما</td><td>@detail.KarFarmaName</td></tr>
+                    @if (canViewFactor)
+                    {
+                        <tr class="detail-row"><td>نوع فاکتور / شماره فاکتور</td><td class="num">@(detail.FactorTypeName ?? "—") / @Dash(detail.FactorNumber)</td></tr>
+                    }
+                    <tr class="detail-row"><td>ثبت‌کننده</td><td>@detail.UserName</td></tr>
+                    <tr class="detail-row"><td>تحویل گیرنده</td><td>@detail.ProjectReceiver</td></tr>
+                    <tr class="detail-row"><td>کارشناسی اولیه</td><td class="num">@Dash(detail.KarshenasiAvalie)</td></tr>
+                    <tr class="detail-row"><td>تاریخ ورود</td><td class="num">@(detail.EntryDate?.ToFaDate() ?? "—")</td></tr>
+                    <tr class="detail-row"><td>تاریخ ثبت پروژه</td><td class="num">@(detail.ProjectRegistrationDate?.ToFaDate() ?? "—")</td></tr>
+                    <tr class="detail-row"><td>تاریخ نیاز مشتری</td><td class="num">@(detail.CustomerRequiredDate?.ToFaDate() ?? "—")</td></tr>
+                    <tr class="detail-row"><td>تاریخ تحویل</td><td class="num">@(detail.DeliveryDate?.ToFaDate() ?? "—")</td></tr>
+                    <tr class="detail-row"><td>تاریخ تحویل پرونده</td><td class="num">@(detail.FileDate?.ToFaDate() ?? "—")</td></tr>
+                    <tr class="detail-row"><td>تاریخ خروج</td><td class="num">@(detail.ExitDate?.ToFaDate() ?? "—")</td></tr>
+                    <tr class="detail-row"><td>تاریخ خروج موقت</td><td class="num">@(detail.TemporaryExitDate?.ToFaDate() ?? "—")</td></tr>
+                    <tr class="detail-row"><td>قبض خروج</td><td class="num">@Dash(detail.GhabzExit)</td></tr>
+                    <tr class="detail-row"><td>پوشه</td><td>@(detail.IsFolder == true ? "دارد" : "ندارد")</td></tr>
+                    <tr class="detail-row"><td>کل زمان مصرفی</td><td class="num">@Fmt(detail.TotalSpentTime)</td></tr>
+                    <tr class="detail-row"><td>گزارش‌های کار / مستندات</td><td class="num">@detail.ReportWorkCount.Num() گزارش — @detail.AttachCount.Num() پیوست</td></tr>
+                    @if (!string.IsNullOrWhiteSpace(detail.Description))
+                    {
+                        <tr class="detail-row"><td>شرح</td><td>@detail.Description</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </ChildContent>
+</Modal>
+
+@* ======================= افزودن سریع گزارش کار ======================= *@
+<Modal Visible="showReport" Title="@("گزارش کار برای «" + (reportProject?.ProjectName ?? "") + "»")" OnClose="() => showReport = false">
+    <ChildContent>
+    <div class="row g-3">
+        <div class="col-12 d-flex align-items-center gap-2 flex-wrap">
+            <span class="by-user-chip"><i class="bi bi-person-check-fill"></i> ثبت‌کننده: @Auth.DisplayName</span>
+            @if (!string.IsNullOrWhiteSpace(reportProject?.CodeProject))
+            {
+                <span class="fs-8 text-muted">کد پروژه:</span>
+                <span class="@(reportProject.CodeProject.StartsWith("RE", StringComparison.OrdinalIgnoreCase) ? "re-pnum" : "fw-800 text-primary")"
+                      dir="@(reportProject.CodeProject.StartsWith("RE", StringComparison.OrdinalIgnoreCase) ? "ltr" : "rtl")">@ShowDetailCode(reportProject)</span>
+            }
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">تاریخ گزارش <span class="text-danger">*</span></label>
+            <DatePicker Value="reportDate" ValueChanged="d => reportDate = d ?? DateTime.Today" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">ساعت شروع</label>
+            <TimeInput @bind-Value="reportForm.StartTime" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">ساعت پایان</label>
+            <TimeInput @bind-Value="reportForm.EndTime" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">مدت صبحانه <span class="fs-8 text-muted">(ساعت : دقیقه)</span></label>
+            <TimeInput @bind-Value="reportForm.BreakfastTime" MaxHour="8" Suffix="مدت استراحت — نه ساعت روز" />
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">مدت ناهار <span class="fs-8 text-muted">(ساعت : دقیقه)</span></label>
+            <TimeInput @bind-Value="reportForm.LunchTime" MaxHour="8" Suffix="مدت استراحت — نه ساعت روز" />
+        </div>
+        <div class="col-12">
+            <label class="form-label">شرح کار <span class="text-danger">*</span></label>
+            <textarea class="form-control" rows="3" @bind="reportForm.WorkDescription" placeholder="شرح فعالیت انجام‌شده…"></textarea>
+        </div>
+    </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showReport = false">انصراف (Esc)</button>
+        <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="SaveReport" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-check-lg ms-1"></i> ثبت گزارش (F1)
+        </button>
+    </Footer>
+</Modal>
+
+@* ======================= مستندات (پیوست‌ها) ======================= *@
+<Modal Visible="showAttach" Title="@("مستندات پروژه «" + (attachProject?.ProjectName ?? "") + "»")" OnClose="() => showAttach = false">
+    <ChildContent>
+        @if (attachProject is not null)
+        {
+            <ProjectAttachPanel ProjectId="attachProject.Id" />
+        }
+    </ChildContent>
+</Modal>
+
+@* ======================= تصاویر پروژه ======================= *@
+<Modal Visible="showImages" Title="@("تصاویر پروژه «" + (imageProject?.ProjectName ?? "") + "»")" OnClose="() => showImages = false">
+    <ChildContent>
+        @if (Auth.Has("ProjectAttach.Create"))
+        {
+            <div class="border rounded-3 p-2 mb-2" style="background:#f8fafc;">
+                <label class="btn btn-sm btn-outline-success mb-0 @(imageUploading ? "disabled" : "")">
+                    <i class="bi bi-image-add"></i> افزودن تصویر…
+                    <InputFile OnChange="UploadImages" multiple accept="image/*" style="display:none" />
+                </label>
+                @if (imageUploading)
+                {
+                    <span class="spinner-border spinner-border-sm text-success ms-2"></span>
+                    <span class="fs-8 text-muted">در حال رمزنگاری و بارگذاری…</span>
+                }
+            </div>
+        }
+        @if (imagesLoading)
+        {
+            <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+        }
+        else if (imageItems.Count == 0)
+        {
+            <div class="text-muted fs-8 text-center py-3"><i class="bi bi-images"></i> تصویری برای این پروژه ثبت نشده است.</div>
+        }
+        else
+        {
+            <div class="list-group list-group-flush">
+                @foreach (var a in imageItems)
+                {
+                    <div class="list-group-item px-1 d-flex align-items-center gap-2">
+                        <i class="bi bi-file-image text-success"></i>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="fw-500 text-truncate">@a.FileName</div>
+                            <div class="fs-8 text-muted">@FormatSize(a.FileSize) — @a.DateSabt.ToFaDateTime().FaDigits()</div>
+                        </div>
+                        <button class="btn btn-sm btn-light" title="نمایش در تب جدید" @onclick="() => ViewImage(a)"><i class="bi bi-eye text-primary"></i></button>
+                        <button class="btn btn-sm btn-light" title="دانلود" @onclick="() => DownloadAttach(a)"><i class="bi bi-download text-success"></i></button>
+                        @if (Auth.Has("ProjectAttach.Delete"))
+                        {
+                            <button class="btn btn-sm btn-light" title="حذف" @onclick="() => DeleteImage(a)"><i class="bi bi-trash text-danger"></i></button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </ChildContent>
+</Modal>
+
+@code {
+    private List<ProjectEntryExitDto> items = new();
+    private ProjectLookups lookups = new();
+    private bool loading = true;
+    private string search = "";
+    private int filterKarfarma, filterTypeFactor, filterUser;
+    private bool filterReturned;
+
+    /// <summary>رویت ستون‌های شماره/نوع فاکتور — مجوز جدا (Projects.ViewFactor)</summary>
+    private bool canViewFactor => Auth.Has("Projects.ViewFactor");
+
+    // ---------- جستجوی سرستون‌ها ----------
+    private string fNum = "", fName = "", fSerial = "", fKarfarma = "";
+    private string fEntry = "", fExit = "", fFactor = "", fFactorType = "";
+    private string fKarshenasi = "", fSabt = "", fNeed = "", fSpent = "", fFolder = "", fStatus = "";
+
+    private bool HasColFilter =>
+        !string.IsNullOrWhiteSpace(fNum) || !string.IsNullOrWhiteSpace(fName) ||
+        !string.IsNullOrWhiteSpace(fSerial) || !string.IsNullOrWhiteSpace(fKarfarma) ||
+        !string.IsNullOrWhiteSpace(fEntry) || !string.IsNullOrWhiteSpace(fExit) ||
+        !string.IsNullOrWhiteSpace(fFactor) || !string.IsNullOrWhiteSpace(fFactorType) ||
+        !string.IsNullOrWhiteSpace(fKarshenasi) || !string.IsNullOrWhiteSpace(fSabt) ||
+        !string.IsNullOrWhiteSpace(fNeed) || !string.IsNullOrWhiteSpace(fSpent) ||
+        !string.IsNullOrWhiteSpace(fFolder) || !string.IsNullOrWhiteSpace(fStatus);
+
+    private void ClearColFilters()
+    {
+        fNum = fName = fSerial = fKarfarma = fEntry = fExit = fFactor = fFactorType = "";
+        fKarshenasi = fSabt = fNeed = fSpent = fFolder = fStatus = "";
+        page = 1;
+    }
+
+    // ---------- مرتب‌سازی (صعودی/نزولی) ----------
+    private string sortKey = "id";
+    private bool sortAsc; // پیش‌فرض: جدیدترین‌ها اول (نزولی بر اساس Id)
+
+    private void SortBy(string key)
+    {
+        if (sortKey == key) sortAsc = !sortAsc;
+        else { sortKey = key; sortAsc = true; }
+        page = 1;
+    }
+
+    private string SortIcon(string key)
+        => key != sortKey
+            ? "<i class=\"bi bi-arrow-down-up sort-ic muted\"></i>"
+            : sortAsc
+                ? "<i class=\"bi bi-caret-up-fill sort-ic active\"></i>"
+                : "<i class=\"bi bi-caret-down-fill sort-ic active\"></i>";
+
+    private IEnumerable<T> ApplyDir<T, K>(IEnumerable<T> src, Func<T, K> key)
+        => sortAsc ? src.OrderBy(key) : src.OrderByDescending(key);
+
+    /// <summary>کلید مرتب‌سازی متن عددی: عددها عددی مرتب شوند و قبل از متن‌ها بیایند</summary>
+    private static string NumStrKey(string? s)
+    {
+        var t = (s ?? "").Trim();
+        return long.TryParse(Fa.ToEn(t), out var n) ? "0" + n.ToString("D20") : "1" + t.ToLowerInvariant();
+    }
+
+    /// <summary>کلید مرتب‌سازی کد پروژه: کدهای عددی اول و عددی؛ کدهای RE بعد و بر اساس عددشان</summary>
+    private static string CodeKey(string? code) => NumStrKey(code);
+
+    /// <summary>کلید تاریخ: خالی‌ها به انتها (در حالت نزولی که رایج‌تر است)</summary>
+    private static long DateKey(DateTime? dt) => dt?.Ticks ?? long.MinValue;
+
+    private List<ProjectEntryExitDto> SortedFiltered()
+    {
+        var src = Filtered;
+        IEnumerable<ProjectEntryExitDto> q = sortKey switch
+        {
+            "code" => ApplyDir(src, p => CodeKey(p.CodeProject)),
+            "name" => ApplyDir(src, p => p.ProjectName ?? ""),
+            "serial" => ApplyDir(src, p => NumStrKey(p.SerialNumber)),
+            "karfarma" => ApplyDir(src, p => p.KarFarmaName ?? ""),
+            "entry" => ApplyDir(src, p => DateKey(p.EntryDate)),
+            "exit" => ApplyDir(src, p => DateKey(p.ExitDate)),
+            "factor" => ApplyDir(src, p => NumStrKey(p.FactorNumber)),
+            "factortype" => ApplyDir(src, p => p.FactorTypeName ?? ""),
+            "karshenasi" => ApplyDir(src, p => NumStrKey(p.KarshenasiAvalie)),
+            "sabt" => ApplyDir(src, p => DateKey(p.ProjectRegistrationDate)),
+            "need" => ApplyDir(src, p => DateKey(p.CustomerRequiredDate)),
+            "spent" => ApplyDir(src, p => p.TotalSpentTime.Ticks),
+            "folder" => ApplyDir(src, p => p.IsFolder == true),
+            "status" => ApplyDir(src, p => p.FlowStatus),
+            _ => ApplyDir(src, p => p.Id),
+        };
+        return q.ToList();
+    }
+
+    // ---------- نمای جدول/کارت (با حفظ انتخاب کاربر) ----------
+    private bool viewCards;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                viewCards = (await JS.InvokeAsync<string?>("localStorage.getItem", "projectsViewMode")) == "cards";
+                StateHasChanged();
+            }
+            catch { /* در دسترس نیست */ }
+        }
+    }
+
+    private async Task SetView(bool cards)
+    {
+        viewCards = cards;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "projectsViewMode", cards ? "cards" : "table"); }
+        catch { /* حافظه در دسترس نیست */ }
+    }
+
+    // ---------- فرم ----------
+    private ProjectEntryExitDto form = new();
+    private bool showModal, saving;
+    private bool editing => form.Id != 0;
+    private bool isFolder { get => form.IsFolder == true; set => form.IsFolder = value; }
+    private string? editUserName;
+
+    // ---------- حالت برگشتی ----------
+    private bool isReturnMode;
+    private int selectedReturnId, reNum = 1;
+    private string parentCode = "";
+    private string nextSerialSuggestion = "";
+    /// <summary>کدهای برگشتی ثبت‌شده برای پروژه مبدأ انتخابی (نمایش به کاربر)</summary>
+    private List<string> existingReturns = new();
+
+    // ---------- فاکتور (فرم مجزا) ----------
+    private bool showFactor;
+    private ProjectEntryExitDto? factorProject;
+    private int factorTypeId;
+    private string? factorNumber;
+
+    // ---------- آپلود هنگام ثبت (تصاویر/مستندات) ----------
+    private List<IBrowserFile> pendingImages = new(), pendingDocs = new();
+    private int pendingDocType = 4; // ۱=قرارداد، ۲=مدارک فنی، ۳=تاییدیه تحویل، ۴=سایر
+
+    // ---------- منوی شناور سطر / جزئیات ----------
+    private ProjectEntryExitDto? menuProject;
+    private double menuX, menuY;
+    private int exportingId;
+    private int printingId;
+    private bool exportingAll;
+    private bool showDetails;
+    private ProjectEntryExitDto? detail;
+
+    // ---------- گزارش کار سریع ----------
+    private bool showReport;
+    private ProjectEntryExitDto? reportProject;
+    private ReportWorkDto reportForm = new();
+    private DateTime reportDate = DateTime.Today;
+
+    // ---------- مستندات/تصاویر ----------
+    private bool showAttach, showImages, imagesLoading, imageUploading;
+    private ProjectEntryExitDto? attachProject, imageProject;
+    private List<AttachItem> imageItems = new();
+
+    private sealed class AttachItem
+    {
+        public int Id { get; set; }
+        public string FileName { get; set; } = "";
+        public long FileSize { get; set; }
+        public DateTime DateSabt { get; set; }
+    }
+
+    private static readonly string[] ImageExts = { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp" };
+
+    // زمان‌های فرم گزارش با کامپوننت TimeInput (24ساعته، ارقام فارسی) مستقیماً روی reportForm ست می‌شوند
+
+    // ---------- فیلتر/صفحه‌بندی ----------
+    private int page = 1;
+    private const int PageSize = 12;
+
+    private List<ProjectEntryExitDto> Filtered => items.Where(p =>
+        Match(p.CodeProject, fNum)
+        && Match(p.ProjectName, fName)
+        && Match(p.SerialNumber, fSerial)
+        && Match(p.KarFarmaName, fKarfarma)
+        && Match(p.EntryDate?.ToFa(), fEntry)
+        && Match(p.ExitDate?.ToFa(), fExit)
+        && (!canViewFactor || (Match(p.FactorNumber, fFactor) && Match(p.FactorTypeName, fFactorType)))
+        && Match(p.KarshenasiAvalie, fKarshenasi)
+        && Match(p.ProjectRegistrationDate?.ToFa(), fSabt)
+        && Match(p.CustomerRequiredDate?.ToFa(), fNeed)
+        && Match(Fmt(p.TotalSpentTime), fSpent)
+        && (string.IsNullOrEmpty(fFolder) || (fFolder == "y") == (p.IsFolder == true))
+        && (string.IsNullOrEmpty(fStatus) || p.FlowStatus.ToString() == fStatus)
+    ).ToList();
+
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)PageSize));
+    private List<ProjectEntryExitDto> Paged
+    {
+        get
+        {
+            if (page > PageCount) page = PageCount;
+            return SortedFiltered().Skip((page - 1) * PageSize).Take(PageSize).ToList();
+        }
+    }
+
+    private bool AnyModalOpen => showModal || showFactor || showDetails || showReport || showAttach || showImages;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("ورود و خروج پروژه‌ها");
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+        try { lookups = await ProjectSvc.GetLookupsAsync(); } catch { /* دسترسی نداشت */ }
+        await Load();
+
+        // رفرش خودکار زنده با SignalR — ثبت/ویرایش/حذف پروژه یا اقدام کارتابل، لیست را تازه می‌کند
+        Rt.DataChanged += OnRtDataChanged;
+    }
+
+    private async void OnRtDataChanged(string scope)
+    {
+        if (scope != "projects") return;
+        await Load();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Rt.DataChanged -= OnRtDataChanged;
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            items = await ProjectSvc.GetAllAsync(search,
+                filterKarfarma > 0 ? filterKarfarma : null,
+                filterTypeFactor > 0 ? filterTypeFactor : null,
+                filterUser > 0 ? filterUser : null,
+                filterReturned ? true : null);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    /// <summary>استایل موقعیت منوی شناور در نقطه کلیک (مقادیر عددی با فرهنگ خنثی)</summary>
+    private string MenuStyle => System.FormattableString.Invariant(
+        $"top:{menuY + 6:0}px;left:{Math.Max(8, menuX - 190):0}px;");
+
+    private void ToggleMenu(ProjectEntryExitDto p, Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        if (menuProject?.Id == p.Id) { CloseMenu(); return; }
+        menuProject = p;
+        menuX = e.ClientX;
+        menuY = e.ClientY;
+    }
+
+    private void CloseMenu() => menuProject = null;
+
+    // ==================== ثبت / ویرایش ====================
+
+    private async Task OpenNew()
+    {
+        if (AnyModalOpen) return; // وقتی مودالی باز است F2 کاری نکند
+        form = new ProjectEntryExitDto { EntryDate = DateTime.Today, ProjectRegistrationDate = DateTime.Today };
+        isReturnMode = false;
+        selectedReturnId = 0; reNum = 1; parentCode = ""; existingReturns = new();
+        editUserName = null;
+        pendingImages = new(); pendingDocs = new(); pendingDocType = 4;
+        // پیش‌بینی کد پروژه بعدی (مقدار واقعی در سرور صادر می‌شود)
+        try { nextSerialSuggestion = await ProjectSvc.GetNextSerialAsync(); }
+        catch { nextSerialSuggestion = ""; }
+        showModal = true;
+    }
+
+    private void OpenEdit(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        form = new ProjectEntryExitDto
+        {
+            Id = p.Id,
+            CodeProject = p.CodeProject,
+            SerialNumber = p.SerialNumber,
+            ProjectName = p.ProjectName,
+            ReturnProjectId = p.ReturnProjectId,
+            GhabzExit = p.GhabzExit,
+            KarshenasiAvalie = p.KarshenasiAvalie,
+            ProjectReceiver = p.ProjectReceiver,
+            Description = p.Description,
+            KarFarmaId = p.KarFarmaId,
+            UserId = p.UserId,
+            ExitDate = p.ExitDate,
+            EntryDate = p.EntryDate,
+            FileDate = p.FileDate,
+            DeliveryDate = p.DeliveryDate,
+            TemporaryExitDate = p.TemporaryExitDate,
+            ProjectRegistrationDate = p.ProjectRegistrationDate,
+            CustomerRequiredDate = p.CustomerRequiredDate,
+            IsFolder = p.IsFolder
+        };
+        editUserName = p.UserName;
+        showModal = true;
+    }
+
+    /// <summary>انتخاب پروژه برگشتی: پیش‌پر کردن اطلاعات + گرفتن «کد مبدأ» + نمایش برگشتی‌های موجود + پیشنهاد عدد بعدی</summary>
+    private async Task OnReturnProjectChanged(int id)
+    {
+        selectedReturnId = id;
+        existingReturns = new();
+        if (id <= 0) { reNum = 1; parentCode = ""; return; }
+
+        var src = items.FirstOrDefault(x => x.Id == id);
+        // اگر توی لیست فیلترشده نبود، از سرور می‌گیریم (کد پروژه مبدأ لازم است)
+        if (src is null)
+        {
+            try { src = await ProjectSvc.GetAsync(id); } catch { /* دسترسی نداشت */ }
+        }
+        if (src is not null)
+        {
+            parentCode = src.CodeProject;
+            if (string.IsNullOrWhiteSpace(form.ProjectName)) form.ProjectName = src.ProjectName;
+            if (string.IsNullOrWhiteSpace(form.ProjectReceiver)) form.ProjectReceiver = src.ProjectReceiver;
+            form.KarFarmaId = src.KarFarmaId;
+        }
+        else parentCode = id.ToString();
+
+        // برگشتی‌های موجود این پروژه (برای نمایش به کاربر تا RE چندم را بداند) + پیشنهاد عدد بعدی
+        try
+        {
+            var returns = await ProjectSvc.GetAllAsync(returned: true);
+            existingReturns = returns
+                .Where(x => x.CodeProject.EndsWith($"-{parentCode}"))
+                .OrderBy(x => ReNumOf(x.CodeProject))
+                .Select(x => x.CodeProject)
+                .ToList();
+        }
+        catch
+        {
+            existingReturns = items
+                .Where(x => x.ReturnProjectId > 0 && x.CodeProject.EndsWith($"-{parentCode}"))
+                .OrderBy(x => ReNumOf(x.CodeProject))
+                .Select(x => x.CodeProject)
+                .ToList();
+        }
+        reNum = existingReturns.Count + 1;
+    }
+
+    /// <summary>استخراج عدد برگشتی از کد «REn-کد»</summary>
+    private static int ReNumOf(string? code)
+    {
+        if (string.IsNullOrEmpty(code) || !code.StartsWith("RE")) return 0;
+        var dash = code.IndexOf('-');
+        return dash > 2 && int.TryParse(code.Substring(2, dash - 2), out var n) ? n : 0;
+    }
+
+    private void CloseModal() => showModal = false;
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(form.ProjectName)) { Toast.Error("نام پروژه را وارد کنید."); return; }
+        if (string.IsNullOrWhiteSpace(form.SerialNumber)) { Toast.Error("شماره سریال را دستی وارد کنید (مستقل از کد پروژه)."); return; }
+        if (string.IsNullOrWhiteSpace(form.ProjectReceiver)) { Toast.Error("تحویل گیرنده را وارد کنید."); return; }
+        if (form.KarFarmaId <= 0) { Toast.Error("کارفرما را انتخاب کنید."); return; }
+
+        if (!editing && isReturnMode)
+        {
+            if (selectedReturnId <= 0) { Toast.Error("پروژه برگشتی را انتخاب کنید."); return; }
+            if (reNum < 1) { Toast.Error("عدد برگشتی باید حداقل ۱ باشد."); return; }
+            form.ReturnOfProjectId = selectedReturnId; // مبدأ — سرور از روی آن کد می‌سازد
+            form.ReturnProjectId = reNum;              // عدد برگشتی — دستی
+            form.EntryDate = null;
+            form.ProjectRegistrationDate = null;
+        }
+        else if (!editing)
+        {
+            form.ReturnProjectId = 0;
+            form.ReturnOfProjectId = 0;
+        }
+
+        saving = true;
+        try
+        {
+            if (editing)
+            {
+                await ProjectSvc.UpdateAsync(form.Id, form);
+                Toast.Success("پروژه ویرایش شد.");
+            }
+            else
+            {
+                var (newId, code) = await ProjectSvc.CreateAsync(form);
+                // آپلود خودکار تصاویر/مستندات انتخاب‌شده روی پروژه‌ی تازه‌ساخته‌شده
+                var (okFiles, failFiles) = await UploadPendingAsync(newId);
+                var msg = isReturnMode ? $"پروژه برگشتی با کد «{code}» ثبت شد." : $"پروژه با کد «{code}» ثبت شد.";
+                if (okFiles > 0) msg += $" {okFiles.Num()} فایل هم پیوست شد.";
+                if (failFiles > 0)
+                    Toast.Error(msg + $" اما {failFiles.Num()} فایل بارگذاری نشد — از منوی سطر (⋮ ← مستندات/تصاویر) دوباره اضافه کنید.");
+                else
+                    Toast.Success(msg);
+            }
+            showModal = false;
+            try { lookups = await ProjectSvc.GetLookupsAsync(); } catch { }
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ==================== آپلود هنگام ثبت ====================
+
+    private void AddPendingImages(InputFileChangeEventArgs e)
+    {
+        foreach (var f in e.GetMultipleFiles(6))
+        {
+            if (!ImageExts.Contains(Path.GetExtension(f.Name)?.ToLowerInvariant())) { Toast.Error($"«{f.Name}» فایل تصویری نیست."); continue; }
+            if (pendingImages.Any(x => x.Name == f.Name && x.Size == f.Size)) continue; // تکراری نباشد
+            if (pendingImages.Count >= 6) { Toast.Error("حداکثر ۶ تصویر در هر ثبت."); break; }
+            pendingImages.Add(f);
+        }
+    }
+
+    private void AddPendingDocs(InputFileChangeEventArgs e)
+    {
+        foreach (var f in e.GetMultipleFiles(6))
+        {
+            if (pendingDocs.Any(x => x.Name == f.Name && x.Size == f.Size)) continue;
+            if (pendingDocs.Count >= 6) { Toast.Error("حداکثر ۶ سند در هر ثبت."); break; }
+            pendingDocs.Add(f);
+        }
+    }
+
+    /// <summary>بارگذاری فایل‌های انتخاب‌شده روی پروژه‌ای که تازه ساخته شده (تصاویر با نوع «سایر»، اسناد با نوع انتخابی)</summary>
+    private async Task<(int Ok, int Fail)> UploadPendingAsync(int projectId)
+    {
+        if (pendingImages.Count == 0 && pendingDocs.Count == 0) return (0, 0);
+        var ok = 0; var fail = 0;
+        foreach (var (file, type) in pendingImages.Select(f => (f, 4)).Concat(pendingDocs.Select(f => (f, pendingDocType))))
+        {
+            try
+            {
+                using var content = new MultipartFormDataContent();
+                content.Add(new StringContent(projectId.ToString()), "projectId");
+                content.Add(new StringContent(type.ToString()), "type");
+                var sc = new StreamContent(file.OpenReadStream(250L * 1024 * 1024));
+                sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+                content.Add(sc, "files", file.Name);
+                var resp = await Http.PostAsync("/api/projectattach", content);
+                if (resp.IsSuccessStatusCode) ok++; else fail++;
+            }
+            catch { fail++; }
+        }
+        pendingImages = new();
+        pendingDocs = new();
+        return (ok, fail);
+    }
+
+    // ==================== فاکتور (فرم مجزا) ====================
+
+    private void OpenFactor(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        factorProject = p;
+        factorTypeId = p.FactorTypeId ?? 0;
+        factorNumber = p.FactorNumber;
+        showFactor = true;
+    }
+
+    private async Task SaveFactor()
+    {
+        if (factorProject is null) return;
+        if (factorTypeId <= 0) { Toast.Error("نوع فاکتور را انتخاب کنید."); return; }
+
+        saving = true;
+        try
+        {
+            await ProjectSvc.UpdateFactorAsync(factorProject.Id,
+                new ProjectFactorDto { FactorTypeId = factorTypeId, FactorNumber = factorNumber });
+            Toast.Success("اطلاعات فاکتور ثبت شد.");
+            showFactor = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ==================== جزئیات ====================
+
+    private void OpenDetails(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        detail = p;
+        showDetails = true;
+    }
+
+    // ==================== گزارش کار سریع ====================
+
+    private void OpenReport(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        reportProject = p;
+        reportForm = new ReportWorkDto
+        {
+            ProjectId = p.Id,
+            StartTime = new TimeOnly(8, 0),
+            EndTime = new TimeOnly(17, 0)
+        };
+        reportDate = DateTime.Today;
+        showReport = true;
+    }
+
+    // نمایش زنده «ساعت خالص» از فرم حذف شد (درخواست کاربر) — محاسبه نهایی در سرور انجام می‌شود
+
+    private async Task SaveReport()
+    {
+        if (string.IsNullOrWhiteSpace(reportForm.WorkDescription)) { Toast.Error("شرح کار را وارد کنید."); return; }
+        if (reportForm.EndTime == reportForm.StartTime) { Toast.Error("ساعت شروع و پایان نمی‌توانند یکسان باشند."); return; }
+        reportForm.ReportDate = reportDate;
+        saving = true;
+        try
+        {
+            await ReportSvc.CreateAsync(reportForm);
+            Toast.Success("گزارش کار ثبت شد.");
+            showReport = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ==================== مستندات / تصاویر ====================
+
+    private void OpenAttach(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        attachProject = p;
+        showAttach = true;
+    }
+
+    private async Task OpenImages(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        imageProject = p;
+        showImages = true;
+        await LoadImages();
+    }
+
+    private async Task LoadImages()
+    {
+        if (imageProject is null) return;
+        imagesLoading = true;
+        try
+        {
+            var all = await Http.GetFromJsonAsync<List<AttachItem>>($"/api/projectattach/project/{imageProject.Id}") ?? new();
+            imageItems = all.Where(a => ImageExts.Contains(Path.GetExtension(a.FileName)?.ToLowerInvariant())).ToList();
+        }
+        catch { imageItems = new(); }
+        finally { imagesLoading = false; }
+    }
+
+    private async Task UploadImages(InputFileChangeEventArgs e)
+    {
+        if (imageProject is null) return;
+        imageUploading = true;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StringContent(imageProject.Id.ToString()), "projectId");
+            content.Add(new StringContent("4"), "type");
+            var count = 0;
+            foreach (var f in e.GetMultipleFiles(10))
+            {
+                if (!ImageExts.Contains(Path.GetExtension(f.Name)?.ToLowerInvariant())) { Toast.Error($"«{f.Name}» فایل تصویری نیست."); return; }
+                var sc = new StreamContent(f.OpenReadStream(250L * 1024 * 1024));
+                sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
+                content.Add(sc, "files", f.Name);
+                count++;
+            }
+            if (count > 0)
+            {
+                var resp = await Http.PostAsync("/api/projectattach", content);
+                if (resp.IsSuccessStatusCode) Toast.Success("تصویر ذخیره شد.");
+                else Toast.Error($"بارگذاری ناموفق بود. (HTTP {(int)resp.StatusCode})");
+            }
+        }
+        catch (Exception ex) { Toast.Error($"بارگذاری تصویر: {ex.Message}"); }
+        finally { imageUploading = false; }
+        await LoadImages();
+        await Load();
+    }
+
+    private async Task ViewImage(AttachItem a)
+    {
+        try
+        {
+            var resp = await Http.GetAsync($"/api/projectattach/{a.Id}/download");
+            if (!resp.IsSuccessStatusCode) { Toast.Error("نمایش تصویر ناموفق بود."); return; }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var ct = resp.Content.Headers.ContentType?.MediaType ?? "image/jpeg";
+            await JS.InvokeVoidAsync("openBlob", ct, Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DownloadAttach(AttachItem a)
+    {
+        try
+        {
+            var resp = await Http.GetAsync($"/api/projectattach/{a.Id}/download");
+            if (!resp.IsSuccessStatusCode) { Toast.Error("دانلود ناموفق بود."); return; }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var ct = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+            await JS.InvokeVoidAsync("downloadBlob", a.FileName, ct, Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeleteImage(AttachItem a)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"آیا از حذف تصویر «{a.FileName}» مطمئن هستید؟");
+        if (!ok) return;
+        try
+        {
+            await Http.DeleteAsync($"/api/projectattach/{a.Id}");
+            Toast.Success("تصویر حذف شد.");
+            await LoadImages();
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== اکسل / چاپ / حذف ====================
+
+    /// <summary>خروجی اکسل از کل پروژه‌ها — مستقل از فیلترهای جاری لیست</summary>
+    private async Task ExportAll()
+    {
+        exportingAll = true;
+        try
+        {
+            var resp = await Http.GetAsync("/api/projects/export");
+            if (!resp.IsSuccessStatusCode)
+            {
+                var msg = "خروجی اکسل ناموفق بود.";
+                try
+                {
+                    var body = await resp.Content.ReadAsStringAsync();
+                    using var doc = System.Text.Json.JsonDocument.Parse(body);
+                    if (doc.RootElement.TryGetProperty("message", out var m)) msg = m.GetString() ?? msg;
+                }
+                catch { msg += $" (HTTP {(int)resp.StatusCode})"; }
+                Toast.Error(msg);
+                return;
+            }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            await JS.InvokeVoidAsync("downloadBlob", $"projects_all_{DateTime.Now:yyyyMMdd_HHmm}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Convert.ToBase64String(bytes));
+            Toast.Success("خروجی اکسل کل پروژه‌ها آماده شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { exportingAll = false; }
+    }
+
+    /// <summary>چاپ گزارش‌های کار یک پروژه در سند A4 (از منوی سطر)</summary>
+    private async Task PrintReports(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        printingId = p.Id;
+        try
+        {
+            var reports = await ReportSvc.GetAllAsync(projectId: p.Id);
+            if (reports.Count == 0)
+            {
+                Toast.Error("برای این پروژه هنوز گزارش کاری ثبت نشده است.");
+                return;
+            }
+            var totalTicks = reports.Sum(r => r.SpentTime.Ticks);
+            var opt = new PrintTableOptions
+            {
+                Title = "گزارش‌های کار پروژه",
+                SubTitle = $"{p.ProjectName} — کد پروژه: {(p.ReturnProjectId > 0 ? p.CodeProject : Fa.Digits(p.CodeProject))}",
+                Meta = new List<string>
+                {
+                    $"کارفرما: {p.KarFarmaName}",
+                    $"شماره سریال: {p.SerialNumber.FaDigits()}",
+                    $"تحویل گیرنده: {p.ProjectReceiver}",
+                    $"تاریخ ورود: {(p.EntryDate?.ToFaDate() ?? "—")}",
+                    $"تاریخ خروج: {(p.ExitDate?.ToFaDate() ?? "—")}",
+                    $"تعداد گزارش‌ها: {reports.Count.FaDigits()}"
+                },
+                Headers = new List<string> { "ردیف", "تاریخ", "کاربر", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
+                Rows = reports.OrderBy(r => r.ReportDate).Select((r, i) => new List<string>
+                {
+                    (i + 1).FaDigits(),
+                    r.ReportDate.ToFaDate(),
+                    r.UserName ?? "",
+                    r.StartTime.TimeFa(),
+                    r.EndTime.TimeFa(),
+                    (r.BreakfastTime.ToTimeSpan() + r.LunchTime.ToTimeSpan()).HoursFa(),
+                    r.SpentTime.HoursFa(),
+                    r.WorkDescription ?? ""
+                }).ToList(),
+                FooterTotal = $"جمع ساعت کار خالص: {TimeSpan.FromTicks(totalTicks).HoursFa()} ساعت — تعداد گزارش‌ها: {reports.Count.FaDigits()}",
+                PrintedAt = DateTime.Now.ToFaDateTime().FaDigits(),
+                PrintedBy = Auth.DisplayName
+            };
+            await JS.InvokeVoidAsync("printTableReport", opt);
+        }
+        catch (Exception ex) { Toast.Error($"چاپ ناموفق بود: {ex.Message}"); }
+        finally { printingId = 0; }
+    }
+
+    private async Task Export(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        exportingId = p.Id;
+        try
+        {
+            var resp = await Http.GetAsync($"/api/projects/{p.Id}/export");
+            if (!resp.IsSuccessStatusCode) { Toast.Error($"خروجی اکسل ناموفق بود. (HTTP {(int)resp.StatusCode})"); return; }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            await JS.InvokeVoidAsync("downloadBlob", $"project_{p.Id}_{p.SerialNumber}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { exportingId = 0; }
+    }
+
+    private async Task Delete(ProjectEntryExitDto p)
+    {
+        CloseMenu();
+        var ok = await JS.InvokeAsync<bool>("confirm", $"آیا از حذف پروژه «{p.ProjectName}» مطمئن هستید؟ گزارش‌های کار و پیوست‌های آن هم حذف می‌شوند.");
+        if (!ok) return;
+        try
+        {
+            await ProjectSvc.DeleteAsync(p.Id);
+            Toast.Success("پروژه حذف شد.");
+            try { lookups = await ProjectSvc.GetLookupsAsync(); } catch { }
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== کمکی ====================
+
+    /// <summary>نمایش بازه زمانی با ارقام فارسی — مثلاً «۱۲:۳۰ ساعت»</summary>
+    private static string Fmt(TimeSpan t) =>
+        $"{t.HoursFa()} ساعت";
+
+    /// <summary>نمایش کد پروژه با ارقام فارسی — همان‌طور که ثبت شده (بدون جداکننده هزارگان)</summary>
+    private static string ShowCode(string? code)
+        => string.IsNullOrEmpty(code) ? "—" : Fa.Digits(code);
+
+    /// <summary>کد پروژه در جزئیات/مودال‌ها: کدهای ساده با ارقام فارسی؛ کدهای RE همان لاتین (dir=ltr)</summary>
+    private static string ShowDetailCode(ProjectEntryExitDto p)
+        => string.IsNullOrWhiteSpace(p.CodeProject)
+            ? Fa.Digits(p.Id)
+            : (p.ReturnProjectId > 0 || p.CodeProject.StartsWith("RE", StringComparison.OrdinalIgnoreCase))
+                ? p.CodeProject
+                : Fa.Digits(p.CodeProject);
+
+    /// <summary>نمایش متن با ارقام فارسی یا خط تیره در صورت خالی بودن</summary>
+    private static string Dash(string? s)
+        => string.IsNullOrWhiteSpace(s) ? "—" : Fa.Digits(s);
+
+    /// <summary>حجم فایل خوانا با ارقام فارسی</summary>
+    private static string FormatSize(long b) =>
+        Fa.Digits(b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024.0 / 1024:0.#}MB");
+
+    /// <summary>نرمال‌سازی متن برای جستجو: ارقام فارسی/عربی→لاتین، ی/ک عربی→فارسی، حذف فاصله و نیم‌فاصله</summary>
+    private static string Norm(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var t = s.Trim();
+        var sb = new System.Text.StringBuilder(t.Length);
+        foreach (var c in t)
+        {
+            if (c is ' ' or '_' or '\u200c') continue;
+            sb.Append(
+                c >= '۰' && c <= '۹' ? (char)('0' + (c - '۰')) :
+                c >= '٠' && c <= '٩' ? (char)('0' + (c - '٠')) :
+                c == 'ي' ? 'ی' : c == 'ك' ? 'ک' :
+                char.ToLowerInvariant(c));
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>تطابق جستجوی ستون (با نرمال‌سازی)</summary>
+    private static bool Match(string? value, string filter) =>
+        string.IsNullOrWhiteSpace(filter) || Norm(value).Contains(Norm(filter));
+}
