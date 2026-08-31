@@ -32,4 +32,31 @@ public static class PersianExtensions
     public static string Num(this decimal v) => Fa.Number(v);
 
     public static string Num(this int v) => Fa.Number(v);
+
+    /// <summary>تاریخ شمسی کوتاه با ارقام فارسی: ۱۴۰۳/۰۵/۱۲</summary>
+    public static string ToFaDate(this DateTime dt) => PersianDate.ToShortFa(dt);
+
+    /// <summary>تاریخ شمسی کوتاه با ارقام فارسی برای تاریخ‌های اختیاری (رشته‌ی خالی در صورت نبود مقدار)</summary>
+    public static string ToFaDate(this DateTime? dt) => dt.HasValue ? PersianDate.ToShortFa(dt.Value) : "";
+
+    /// <summary>ارقام فارسی برای هر متن (مثلاً ساعت ۰۸:۳۰، شماره سریال یا تاریخ)</summary>
+    public static string FaDigits(this string? s) => Fa.Digits(s);
+
+    /// <summary>ارقام فارسی برای اعداد صحیح (بدون جداکننده هزارگان)</summary>
+    public static string FaDigits(this int n) => Fa.Digits(n);
+
+    /// <summary>ارقام فارسی برای اعداد صحیح بزرگ</summary>
+    public static string FaDigits(this long n) => Fa.Digits(n);
+
+    /// <summary>ارقام فارسی برای اعداد صحیح اختیاری</summary>
+    public static string FaDigits(this int? n) => n.HasValue ? Fa.Digits(n.Value) : "";
+
+    /// <summary>بازه زمانی به‌صورت «H:MM» با ارقام فارسی (مثلاً ۸:۳۰)</summary>
+    public static string HoursFa(this TimeSpan t) => Fa.Digits($"{(int)t.TotalHours}:{t.Minutes:00}");
+
+    /// <summary>ساعت روز به‌صورت «HH:mm» با ارقام فارسی (مثلاً ۰۸:۰۰)</summary>
+    public static string TimeFa(this TimeOnly t) => Fa.Digits($"{t.Hour:D2}:{t.Minute:D2}");
+
+    /// <summary>ساعت روز اختیاری به‌صورت «HH:mm» با ارقام فارسی</summary>
+    public static string TimeFa(this TimeOnly? t) => t.HasValue ? Fa.Digits($"{t.Value.Hour:D2}:{t.Value.Minute:D2}") : "";
 }
