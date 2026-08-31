@@ -21,7 +21,7 @@
 | **Hr** (منابع انسانی) | Attendance, LeaveRequests | AttendanceRecord, AttendanceSegment, ShiftGroup, LeaveRequest, CompanyHoliday | AttendanceRecalcService | Attendance, AttendanceAdmin, Leave, HrPanel |
 | **ItAssets** (دارایی‌های IT) | ItRequests, WorkOrders, SystemInfo | SystemInfo, SystemInfoChangeLog, SystemComponents, SystemIdModule, ItRequest, WorkOrder | SystemHealth, SystemInfoPdf | ItRequests, WorkOrders, SystemId, SystemInfoList, NetworkScan, PublicRequest |
 | **Cctv** (دوربین) | CctvCameras, CctvNvrs, CctvScan, NetworkScan | CctvCamera, CctvNvr | — | CctvCameras, CctvNvrs |
-| **Office** (لوازم اداری) | OfficeMachines | OfficeMachine | — | OfficeMachines |
+| **Office** (لوازم اداری + اتوماسیون) | OfficeMachines, InnerLetters | OfficeMachine, LetterSource, InnerLetter, Erja, Amalgar, PishnevisLetter, RelatedLetter, LetterBayegani, LetterGroup, LetterGroupMember | InnerLetterService, ErjaService, PishnevisService, LetterGroupService | OfficeMachines, Office/Letters/ (LetterCartable, ComposeLetterModal, ErjaSheet, GardeshModal, LetterPickCombo, LetterView) |
 | **Reports** (گزارشات) | Reports | — | — | Reports/ |
 | **System** (سیستم/سازمان) | SystemCompanies, SystemDepartments, SystemUsers, Roles, Permissions, Settings, Notifications, Dashboard, Archive | SystemCompany, SystemDepartment, SystemUser, ArchiveAndAttachments | FileStore, UserPhotoService, MessengerService | SystemUsers, SystemCompany, SystemDepartment, MyArchive, Users, Settings/ |
 | **Dashboards** (لندینگ) | — (در System) | — | — | DashboardLive, DashboardHardware (در روت Pages) |
