@@ -203,6 +203,7 @@
                 <span class="mv-pill mv-pill-leave"><b>@Fa.Digits(MvCount("Leave"))</b> مرخصی/ماموریت</span>
                 <span class="mv-pill mv-pill-holiday"><b>@Fa.Digits(MvCount("Holiday"))</b> تعطیل</span>
                 <span class="mv-pill mv-pill-red"><b>@Fa.Digits(MvCount("Red"))</b> دارای کسری</span>
+                <span class="mv-pill mv-pill-unauthorized"><b>@Fa.Digits(MvCount("Unauthorized"))</b> تردد غیرمجاز</span>
                 <span class="mv-pill mv-pill-yellow"><b>@Fa.Digits(MvCount("Yellow"))</b> در حال انجام</span>
             </div>
             <div class="d-flex flex-wrap gap-2 mb-3">
@@ -211,6 +212,7 @@
                 <button class="btn btn-sm mv-filter @(mvFilter == "Leave" ? "active" : "")" @onclick='() => mvFilter = "Leave"'>مرخصی/ماموریت</button>
                 <button class="btn btn-sm mv-filter @(mvFilter == "Holiday" ? "active" : "")" @onclick='() => mvFilter = "Holiday"'>تعطیل</button>
                 <button class="btn btn-sm mv-filter @(mvFilter == "Red" ? "active" : "")" @onclick='() => mvFilter = "Red"'>دارای کسری</button>
+                <button class="btn btn-sm mv-filter @(mvFilter == "Unauthorized" ? "active" : "")" @onclick='() => mvFilter = "Unauthorized"'>تردد غیرمجاز</button>
                 <button class="btn btn-sm mv-filter @(mvFilter == "Yellow" ? "active" : "")" @onclick='() => mvFilter = "Yellow"'>امروز/در حال انجام</button>
             </div>
             @if (FilteredDays.Count == 0)
@@ -279,7 +281,11 @@
                                                                 {
                                                                     <span class="att-now">● بدون خروج ثبت‌شده</span>
                                                                 }
-                                                                @if (s.ExitAt.HasValue)
+                                                                @if (s.IsUnauthorized)
+                                                                {
+                                                                    <span class="badge bg-purple" dir="rtl"><i class="bi bi-shield-x"></i> تردد غیرمجاز</span>
+                                                                }
+                                                                else if (s.ExitAt.HasValue)
                                                                 {
                                                                     @if (s.ExitCovered)
                                                                     {
@@ -291,6 +297,10 @@
                                                                     {
                                                                         <span class="badge bg-warning text-dark" dir="rtl"><i class="bi bi-exclamation-triangle"></i> بدون پوشش (کسری)</span>
                                                                     }
+                                                                }
+                                                                @if (s.OvertimeMinutes > 0)
+                                                                {
+                                                                    <span class="badge bg-info text-dark" dir="rtl"><i class="bi bi-plus-circle"></i> اضافه‌کاری @WorkText(s.OvertimeMinutes)</span>
                                                                 }
                                                             </div>
                                                         }
@@ -432,6 +442,7 @@
     .mv-pill-leave { background:#eff6ff; border-color:#bfdbfe; } .mv-pill-leave b { color:#1d4ed8; }
     .mv-pill-holiday { background:#f5f3ff; border-color:#ddd6fe; } .mv-pill-holiday b { color:#6d28d9; }
     .mv-pill-red { background:#fef2f2; border-color:#fecaca; } .mv-pill-red b { color:#b91c1c; }
+    .mv-pill-unauthorized { background:#f5f3ff; border-color:#ddd6fe; } .mv-pill-unauthorized b { color:#6d28d9; }
     .mv-pill-yellow { background:#fffbeb; border-color:#fde68a; } .mv-pill-yellow b { color:#b45309; }
     .mv-filter { border-radius:999px; font-size:.8rem; font-weight:700; color:#5f688a; border-color:#ddd6fe; }
     .mv-filter.active { background:linear-gradient(135deg,#8e5cff,#4f8cff) !important; color:#fff !important; border-color:transparent !important; }
@@ -441,6 +452,7 @@
     .mv-row { cursor:pointer; transition:filter .12s ease; }
     .mv-row:hover { filter:brightness(.985); }
     .mv-row-red { background:#fef2f2 !important; box-shadow:inset 3px 0 0 #ef4444; }
+    .mv-row-unauthorized { background:#f5f3ff !important; box-shadow:inset 3px 0 0 #8b5cf6; }
     .mv-row-green { background:#f7fef9 !important; box-shadow:inset 3px 0 0 #22c55e; }
     .mv-row-yellow { background:#fffdf3 !important; box-shadow:inset 3px 0 0 #f59e0b; }
     .mv-row-white { opacity:.55; }
@@ -453,6 +465,8 @@
     .chip-white { background:#f1f5f9; color:#94a3b8; }
     .chip-yellow { background:#fef3c7; color:#92400e; }
     .chip-red { background:#fee2e2; color:#b91c1c; }
+    .chip-unauthorized { background:#ede9fe; color:#6d28d9; }
+    .bg-purple { background:#7c3aed !important; color:#fff !important; }
     .chip-green { background:#dcfce7; color:#15803d; }
     .chip-leave { background:#dbeafe; color:#1d4ed8; }
     .chip-mission { background:#ccfbf1; color:#0f766e; }
@@ -531,6 +545,7 @@
                 "Leave" => d.Status == "Green" && d.LeaveType is "Daily" or "Hourly" or "HourlyMission" or "Mission",
                 "Holiday" => d.Status == "Green" && d.LeaveType == "Holiday",
                 "Red" => d.Status == "Red",
+                "Unauthorized" => d.Status == "Unauthorized",
                 "Yellow" => d.Status == "Yellow",
                 _ => true
             }).ToList();
@@ -546,6 +561,7 @@
             "Leave" => d.Status == "Green" && d.LeaveType is "Daily" or "Hourly" or "HourlyMission" or "Mission",
             "Holiday" => d.Status == "Green" && d.LeaveType == "Holiday",
             "Red" => d.Status == "Red",
+            "Unauthorized" => d.Status == "Unauthorized",
             "Yellow" => d.Status == "Yellow",
             _ => false
         });
@@ -559,6 +575,8 @@
             return new("<span class=\"chip chip-yellow\"><i class=\"bi bi-hourglass-split\"></i> در حال انجام</span>");
         if (d.Status == "Red")
             return new("<span class=\"chip chip-red\"><i class=\"bi bi-exclamation-triangle\"></i> کسری</span>");
+        if (d.Status == "Unauthorized")
+            return new("<span class=\"chip chip-unauthorized\"><i class=\"bi bi-shield-x\"></i> تردد غیرمجاز</span>");
         // Green
         switch (d.LeaveType)
         {
@@ -779,7 +797,7 @@
 
     // =========== Models ===========
     public class MyShift { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public int GraceMinutes { get; set; } public bool IncludeFriday { get; set; } }
-    public class SegmentItem { public int Id { get; set; } public int Seq { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public bool ExitCovered { get; set; } public string? LinkedLeaveNumber { get; set; } public string? Note { get; set; } }
+    public class SegmentItem { public int Id { get; set; } public int Seq { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public bool ExitCovered { get; set; } public bool IsUnauthorized { get; set; } public int OvertimeMinutes { get; set; } public string? LinkedLeaveNumber { get; set; } public string? Note { get; set; } }
     public class MyToday { public int Id { get; set; } public DateTime WorkDate { get; set; } public int? ShiftGroupId { get; set; } public string? ShiftName { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int EarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int CoveredGapMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public List<SegmentItem> Segments { get; set; } = new(); }
     public class MonthSummary { public int Year { get; set; } public int Month { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Leave { get; set; } public int Late { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int TotalLateMinutes { get; set; } public int Workdays { get; set; } }
     public class DeficitRange { public TimeSpan? Start { get; set; } public TimeSpan? End { get; set; } public int Minutes { get; set; } public string Kind { get; set; } = ""; public string? PendingNumber { get; set; } }
@@ -792,6 +810,10 @@
         public string LeaveType { get; set; } = "";
         public string? HolidayName { get; set; }
         public int DeficitMinutes { get; set; }
+        public int OvertimeMinutes { get; set; }
+        public int UnauthorizedMinutes { get; set; }
+        public bool IsWorkday { get; set; } = true;
+        public string RuleSource { get; set; } = "";
         public List<string> EnterTimes { get; set; } = new();
         public List<string> ExitTimes { get; set; } = new();
         public List<SegmentItem> Segments { get; set; } = new();

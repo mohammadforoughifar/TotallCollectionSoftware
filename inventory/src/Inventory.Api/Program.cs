@@ -79,6 +79,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
+        // لاگ عملیات: ثبت خودکار هر POST/PUT/PATCH/DELETE در همه‌ی بخش‌ها
+        options.Filters.Add<AuditLogFilter>();
     })
     .AddJsonOptions(o =>
     {

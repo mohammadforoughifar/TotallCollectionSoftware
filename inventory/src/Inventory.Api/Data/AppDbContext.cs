@@ -52,6 +52,9 @@ public class AppDbContext : DbContext
     public DbSet<SystemInfoChangeLog> SystemInfoChangeLogs => Set<SystemInfoChangeLog>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
+    public DbSet<WorkCalendarDay> WorkCalendarDays => Set<WorkCalendarDay>();
+    public DbSet<WorkCalendarSettings> WorkCalendarSettings => Set<WorkCalendarSettings>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CctvCamera> CctvCameras => Set<CctvCamera>();
     public DbSet<CctvNvr> CctvNvrs => Set<CctvNvr>();
     public DbSet<OfficeMachine> OfficeMachines => Set<OfficeMachine>();
@@ -329,6 +332,10 @@ public class AppDbContext : DbContext
 
         // ---------- تعطیلات شرکتی ----------
         mb.Entity<CompanyHoliday>().HasIndex(h => h.HolidayDate);
+        mb.Entity<WorkCalendarDay>().HasIndex(d => d.Date).IsUnique();
+        mb.Entity<WorkCalendarSettings>().HasIndex(s => s.Id).IsUnique();
+        mb.Entity<AuditLog>().HasIndex(a => a.At);
+        mb.Entity<AuditLog>().HasIndex(a => a.UserId);
 
         // ---------- بازه‌های ورود/خروج روزانه (حداکثر ۵ بازه در روز) ----------
         mb.Entity<AttendanceSegment>()
