@@ -135,10 +135,14 @@ public class ErjaService : IErjaService
         }
         await _db.SaveChangesAsync();
 
+        // عنوان و شماره نامه از منبع بارگذاری‌شده استخراج می‌شود
+        var letterTitle = isInner ? source.InnerLetter!.Title : source.OutgoingLetter!.Title;
+        var letterNumber = isInner ? source.InnerLetter!.LetterNumber : source.OutgoingLetter!.LetterNumber;
+
         var link = $"letters/view/{dto.LetterId}";
         await _notify.SendManyAsync(seen,
-            $"ارجاع نامه: {letter.Title}",
-            string.IsNullOrWhiteSpace(dto.TextErja) ? $"شماره {letter.LetterNumber}" : dto.TextErja,
+            $"ارجاع نامه: {letterTitle}",
+            string.IsNullOrWhiteSpace(dto.TextErja) ? $"شماره {letterNumber}" : dto.TextErja,
             senderName, "ارجاع نامه داخلی", link);
         await _notify.BroadcastChangedAsync("letters");
     }
