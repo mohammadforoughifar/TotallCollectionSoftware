@@ -27,7 +27,9 @@ public class LetterSource
 
     public InnerLetter? InnerLetter { get; set; }
     public Letter_Sadere? Letter_Sadere { get; set; }
+    public OutgoingLetter? OutgoingLetter { get; set; }
     public ICollection<Erja> Erjas { get; set; } = new List<Erja>();
+    public ICollection<OutgoingLetterSigner> OutgoingSigners { get; set; } = new List<OutgoingLetterSigner>();
 
     /// <summary>روابطی که این نامه به‌عنوان نامه اصلی دارد (عطف/پیرو)</summary>
     public ICollection<RelatedLetter> RelatedLetters { get; set; } = new List<RelatedLetter>();
