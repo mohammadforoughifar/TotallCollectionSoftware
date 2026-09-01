@@ -150,10 +150,10 @@ public class LetterSadereService : ILetterSadereService
             await _db.SaveChangesAsync();
 
             // ۳. نوتیفیکیشن
-            await _notify.NotifyAsync(new[] { creatorUserId },
+            await _notify.SendManyAsync(new[] { creatorUserId },
                 "نامه صادره",
                 $"نامه صادره «{letter.Title}» با شماره {letterNumber} ثبت شد.",
-                "",
+                creatorName, "نامه صادره",
                 "");
 
             result.Success = true;
