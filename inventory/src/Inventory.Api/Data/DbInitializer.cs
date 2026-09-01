@@ -1,5 +1,4 @@
 using Inventory.Api.Services;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Data;
@@ -185,7 +184,8 @@ public static class DbInitializer
                 Console.WriteLine("[DB] اتصال و آماده‌سازی دیتابیس با موفقیت انجام شد ✔");
                 return;
             }
-            catch (Exception ex) when (ex is SqlException or InvalidOperationException)
+            catch (Exception ex) when (!provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase)
+                                        && (ex.GetType().Name == "SqlException" || ex is InvalidOperationException))
             {
                 Console.WriteLine($"[DB] تلاش {attempt} از {maxAttempts} برای اتصال به دیتابیس ناموفق بود: {ex.Message}");
 
