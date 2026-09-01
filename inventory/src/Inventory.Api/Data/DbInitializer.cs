@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
@@ -24,6 +25,8 @@ public static class DbInitializer
                 {
                     // حالت توسعه/تست: بدون مایگریشن
                     db.Database.EnsureCreated();
+                    // EnsureCreated ستون‌های جدید را به دیتابیسِ موجود اضافه نمی‌کند؛ اینجا خودتعمیر می‌کنیم
+                    EnsureSqliteWorkCalendarSchema(db);
                 }
                 else
                 {
@@ -138,6 +141,24 @@ public static class DbInitializer
                     }
                 }
 
+                // ==================== تقویم کاری: تنظیمات پیش‌فرض ====================
+                if (!db.WorkCalendarSettings.Any())
+                {
+                    db.WorkCalendarSettings.Add(new WorkCalendarSettings());
+                    db.SaveChanges();
+                    Console.WriteLine("[DB] تنظیمات پیش‌فرض تقویم کاری ساخته شد (۰۸:۰۰–۱۶:۳۰، جمعه تعطیل).");
+                }
+
+                // ==================== تقویم کاری: تعطیلات رسمی سال جاری ====================
+                if (!db.CompanyHolidays.Any())
+                {
+                    var (jy, _, _) = Shared.PersianDate.FromGregorian(DateTime.Now);
+                    var added = SeedOfficialHolidays(db, jy);
+                    Console.WriteLine(added > 0
+                        ? $"[DB] {added} تعطیل رسمی سال {jy} از کاتالوگ وارد شد."
+                        : "[DB] تعطیل رسمی برای سال جاری یافت نشد.");
+                }
+
                 // دسته‌های هزینه پیش‌فرض (در اولین اجرا — کاربر می‌تواند مدیریتشان کند)
                 if (!db.ExpenseCategories.Any())
                 {
@@ -190,5 +211,213 @@ public static class DbInitializer
                 Thread.Sleep(TimeSpan.FromSeconds(3));
             }
         }
+    }
+
+    /// <summary>
+    /// خودتعمیرِ دیتابیس‌های SQLite که با نسخه‌های قدیمی ساخته شده‌اند:
+    /// EnsureCreated() جدول/ستونِ جدید اضافه نمی‌کند؛ پس بخش تقویم کاری را به‌صورت دستی تکمیل می‌کنیم.
+    /// </summary>
+    private static void EnsureSqliteWorkCalendarSchema(AppDbContext db)
+    {
+        try
+        {
+            if (db.Database.GetDbConnection() is not Microsoft.Data.Sqlite.SqliteConnection sqlConn)
+                return;
+
+            using var raw = new Microsoft.Data.Sqlite.SqliteConnection(sqlConn.ConnectionString);
+            raw.Open();
+
+            int TableCount(string sql)
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = sql;
+                return Convert.ToInt32(c.ExecuteScalar());
+            }
+
+            var tableExists = TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='WorkCalendarDays'") > 0;
+            if (!tableExists)
+            {
+                using (var c = raw.CreateCommand())
+                {
+                    c.CommandText = @"
+                        CREATE TABLE WorkCalendarDays (
+                            Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                            Date TEXT NOT NULL,
+                            IsWorkday INTEGER NOT NULL,
+                            StartTime TEXT,
+                            EndTime TEXT,
+                            GraceMinutes INTEGER NOT NULL DEFAULT 0,
+                            OvertimeHours REAL NOT NULL DEFAULT 0,
+                            OvertimeMode INTEGER NOT NULL DEFAULT 0,
+                            OvertimeStart TEXT,
+                            OvertimeEnd TEXT,
+                            Note TEXT,
+                            CreatedAt TEXT NOT NULL,
+                            UpdatedAt TEXT
+                        );
+                        CREATE UNIQUE INDEX IF NOT EXISTS IX_WorkCalendarDays_Date ON WorkCalendarDays (Date);";
+                    c.ExecuteNonQuery();
+                }
+                Console.WriteLine("[DB] SQLite: جدول WorkCalendarDays ساخته شد.");
+                return;
+            }
+
+            var cols = new List<string>();
+            using (var c = raw.CreateCommand())
+            {
+                c.CommandText = "SELECT name FROM pragma_table_info('WorkCalendarDays')";
+                using var rd = c.ExecuteReader();
+                while (rd.Read()) cols.Add(rd.GetString(0));
+            }
+
+            void AddIfMissing(string name, string type, string? def = null)
+            {
+                if (!cols.Contains(name))
+                {
+                    using var c = raw.CreateCommand();
+                    c.CommandText = $"ALTER TABLE WorkCalendarDays ADD COLUMN {name} {type}{(def == null ? "" : $" DEFAULT {def}")}";
+                    c.ExecuteNonQuery();
+                    Console.WriteLine($"[DB] SQLite: ستون {name} به WorkCalendarDays اضافه شد.");
+                }
+            }
+            AddIfMissing("GraceMinutes", "INTEGER", "0");
+            AddIfMissing("OvertimeHours", "REAL", "0");
+            AddIfMissing("OvertimeMode", "INTEGER", "0");
+            AddIfMissing("OvertimeStart", "TEXT");
+            AddIfMissing("OvertimeEnd", "TEXT");
+
+            // ---- ShiftGroups: ستون‌های شیفت دوپاره ----
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='ShiftGroups'") > 0)
+            {
+                var shCols = new List<string>();
+                using (var c = raw.CreateCommand())
+                {
+                    c.CommandText = "SELECT name FROM pragma_table_info('ShiftGroups')";
+                    using var rd = c.ExecuteReader();
+                    while (rd.Read()) shCols.Add(rd.GetString(0));
+                }
+                foreach (var colName in new[] { "StartTime2", "EndTime2" })
+                {
+                    if (!shCols.Contains(colName))
+                    {
+                        using var c = raw.CreateCommand();
+                        c.CommandText = $"ALTER TABLE ShiftGroups ADD COLUMN {colName} TEXT";
+                        c.ExecuteNonQuery();
+                        Console.WriteLine($"[DB] SQLite: ستون {colName} به ShiftGroups اضافه شد.");
+                    }
+                }
+            }
+
+            // ---- AttendanceSegments: ستون دستگاه ورود ----
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AttendanceSegments'") > 0)
+            {
+                var segCols = new List<string>();
+                using (var c = raw.CreateCommand())
+                {
+                    c.CommandText = "SELECT name FROM pragma_table_info('AttendanceSegments')";
+                    using var rd = c.ExecuteReader();
+                    while (rd.Read()) segCols.Add(rd.GetString(0));
+                }
+                if (!segCols.Contains("EnterDevice"))
+                {
+                    using var c = raw.CreateCommand();
+                    c.CommandText = "ALTER TABLE AttendanceSegments ADD COLUMN EnterDevice TEXT";
+                    c.ExecuteNonQuery();
+                    Console.WriteLine("[DB] SQLite: ستون EnterDevice به AttendanceSegments اضافه شد.");
+                }
+            }
+
+            // ---- AuditLogs: جدول لاگ عملیات ----
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='AuditLogs'") == 0)
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = @"
+                    CREATE TABLE AuditLogs (
+                        Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        At TEXT NOT NULL,
+                        UserId INTEGER NULL,
+                        Username TEXT NULL,
+                        Module TEXT NOT NULL,
+                        Action TEXT NOT NULL,
+                        HttpMethod TEXT NOT NULL,
+                        Path TEXT NULL,
+                        Summary TEXT NULL,
+                        Payload TEXT NULL,
+                        Ip TEXT NULL,
+                        Device TEXT NULL,
+                        StatusCode INTEGER NOT NULL DEFAULT 0,
+                        DurationMs INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE INDEX IF NOT EXISTS IX_AuditLogs_At ON AuditLogs (At);
+                    CREATE INDEX IF NOT EXISTS IX_AuditLogs_UserId ON AuditLogs (UserId);";
+                c.ExecuteNonQuery();
+                Console.WriteLine("[DB] SQLite: جدول AuditLogs ساخته شد.");
+            }
+
+            // ---- CompanyHolidays: ستون IsOfficial ----
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='CompanyHolidays'") > 0)
+            {
+                var holCols = new List<string>();
+                using (var c = raw.CreateCommand())
+                {
+                    c.CommandText = "SELECT name FROM pragma_table_info('CompanyHolidays')";
+                    using var rd = c.ExecuteReader();
+                    while (rd.Read()) holCols.Add(rd.GetString(0));
+                }
+                if (!holCols.Contains("IsOfficial"))
+                {
+                    using var c = raw.CreateCommand();
+                    c.CommandText = "ALTER TABLE CompanyHolidays ADD COLUMN IsOfficial INTEGER NOT NULL DEFAULT 0";
+                    c.ExecuteNonQuery();
+                    Console.WriteLine("[DB] SQLite: ستون IsOfficial به CompanyHolidays اضافه شد.");
+                }
+            }
+
+            // ---- WorkCalendarSettings: جدول تنظیمات تقویم کاری ----
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='WorkCalendarSettings'") == 0)
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = @"
+                    CREATE TABLE WorkCalendarSettings (
+                        Id INTEGER NOT NULL PRIMARY KEY,
+                        DefaultStart TEXT NOT NULL,
+                        DefaultEnd TEXT NOT NULL,
+                        GraceMinutes INTEGER NOT NULL DEFAULT 10,
+                        RestDayFlags INTEGER NOT NULL DEFAULT 32,
+                        ApplyOfficialHolidays INTEGER NOT NULL DEFAULT 1,
+                        UpdatedAt TEXT NOT NULL
+                    );";
+                c.ExecuteNonQuery();
+                Console.WriteLine("[DB] SQLite: جدول WorkCalendarSettings ساخته شد.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB] هشدار: خودتعمیرِ شمای SQLite انجام نشد: {ex.Message}");
+        }
+    }
+
+    /// <summary>ذخیره‌ی اولیه‌ی تعطیلات رسمی یک سال شمسی از کاتالوگ — تعداد واردشده برمی‌گردد.</summary>
+    public static int SeedOfficialHolidays(AppDbContext db, int jy)
+    {
+        var items = OfficialHolidayCatalog.GetForYear(jy);
+        var added = 0;
+        foreach (var (m, d, name) in items)
+        {
+            var g = Shared.PersianDate.ToGregorian(jy, m, d);
+            if (g == DateTime.MinValue) continue;
+            if (db.CompanyHolidays.Any(h => h.HolidayDate.Date == g.Date)) continue;
+            db.CompanyHolidays.Add(new CompanyHoliday
+            {
+                HolidayDate = g,
+                Name = name,
+                IsOfficial = true,
+                CreatedByName = "سیستم (کاتالوگ تعطیلات)",
+                CreatedAt = DateTime.Now,
+            });
+            added++;
+        }
+        if (added > 0) db.SaveChanges();
+        return added;
     }
 }

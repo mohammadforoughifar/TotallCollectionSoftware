@@ -97,6 +97,12 @@
                             <i class="bi bi-people-fill"></i><span>پنل مدیریت مرخصی</span>
                         </NavLink>
                     }
+                    @if (Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="work-calendar" @onclick="NotifyClose">
+                            <i class="bi bi-calendar2-week"></i><span>تقویم کاری</span>
+                        </NavLink>
+                    }
                 </div>
             }
         </div>
@@ -383,6 +389,9 @@
                     <NavLink class="nav-link" href="settings" @onclick="NotifyClose">
                         <i class="bi bi-gear"></i><span>تنظیمات</span>
                     </NavLink>
+                    <NavLink class="nav-link" href="settings/audit-log" @onclick="NotifyClose">
+                        <i class="bi bi-clipboard-data"></i><span>لاگ عملیات</span>
+                    </NavLink>
                 }
                 @if (Auth.HasModule("SystemUsers"))
                 {
@@ -410,7 +419,7 @@
 
         gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive");
         gWo = p.StartsWith("work-orders");
-        gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance");
+        gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance") || p.StartsWith("work-calendar");
         gLetters = p.StartsWith("letters");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOps = p.StartsWith("orders") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses");
