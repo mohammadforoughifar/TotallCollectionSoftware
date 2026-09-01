@@ -26,7 +26,9 @@ public class LetterSource
     public bool IsDelete { get; set; }
 
     public InnerLetter? InnerLetter { get; set; }
+    public OutgoingLetter? OutgoingLetter { get; set; }
     public ICollection<Erja> Erjas { get; set; } = new List<Erja>();
+    public ICollection<OutgoingLetterSigner> OutgoingSigners { get; set; } = new List<OutgoingLetterSigner>();
 
     /// <summary>روابطی که این نامه به‌عنوان نامه اصلی دارد (عطف/پیرو)</summary>
     public ICollection<RelatedLetter> RelatedLetters { get; set; } = new List<RelatedLetter>();
