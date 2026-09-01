@@ -1,5 +1,6 @@
 using System.Globalization;
 using Inventory.Api.Data;
+using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
