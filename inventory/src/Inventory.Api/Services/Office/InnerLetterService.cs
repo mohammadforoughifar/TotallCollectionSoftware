@@ -41,22 +41,31 @@ public class InnerLetterService : IInnerLetterService
         _groups = groups;
     }
 
-    // ---------- شماره‌گذاری بر اساس سال شمسی (منطق LetterNumber کارفرما) ----------
+    // ---------- شماره‌گذاری بر اساس سال شمسی — نسخه اصلاح‌شده ----------
+    // باگ قبلی: فقط آخرین نامه (بر اساس Id) بررسی می‌شد و فیلتر IsDelete نداشت.
+    // نسخه جدید: بیشترین شماره در سال شمسی جاری بین نامه‌های غیرحذفی محاسبه می‌شود.
     private async Task<int> NextNumberAsync()
     {
         var pc = new PersianCalendar();
         int currentYear = pc.GetYear(DateTime.Now);
 
-        var last = await _db.InnerLetters
-            .OrderByDescending(l => l.Id)
+        // تقریب شروع سال شمسی به میلادی — برای فیلتر اولیه در SQL
+        DateTime startOfYear;
+        try { startOfYear = new DateTime(currentYear, 1, 1, pc); }
+        catch { startOfYear = DateTime.Now.AddDays(-400); } // fallback
+
+        var candidates = await _db.InnerLetters
+            .Where(l => !l.IsDelete && !l.Source.IsDelete && l.DateSabt >= startOfYear)
             .Select(l => new { l.Number, l.DateSabt })
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        if (last == null) return 1;
+        var maxInYear = candidates
+            .Where(x => pc.GetYear(x.DateSabt) == currentYear)
+            .Select(x => (int?)x.Number)
+            .Max() ?? 0;
 
-        // اگر سال آخرین نامه‌ی ثبت‌شده کوچکتر از سال جاری است، شماره از ۱ شروع می‌شود
-        int lastYear = pc.GetYear(last.DateSabt);
-        return lastYear < currentYear ? 1 : last.Number + 1;
+        // اگر هیچ نامه‌ای در سال جاری نبود، از ۱ شروع می‌شود
+        return maxInYear + 1;
     }
 
     /// <summary>ساخت شماره اندیکاتور: «سال شمسی/شماره» — مثل 1404/12</summary>
@@ -525,9 +534,11 @@ public class InnerLetterService : IInnerLetterService
         if (letter.CreatorUserId != userId && !isAdmin)
             throw new Exception("فقط فرستنده یا مدیر می‌تواند نامه را ویرایش کند.");
 
-        // قانون سختگیرانه: به محض این‌که حتی یک گیرنده نامه را بخواند، ویرایش برای همه (حتی ادمین) بسته می‌شود
+        // قانون: به محض این‌که حتی یک گیرنده نامه را بخواند، ویرایش برای کاربران عادی بسته می‌شود
+        // باگ قبلی: حتی ادمین هم نمی‌توانست ویرایش کند در حالی که کامنت کنترلر می‌گوید «مدیر: همیشه»
+        // رفع شد: ادمین می‌تواند حتی بعد از خوانده‌شدن ویرایش کند (همانند حذف)
         var anyRead = await _db.Erjas.AnyAsync(e => e.SourceId == letterId && !e.IsDelete && e.IsRead);
-        if (anyRead)
+        if (anyRead && !isAdmin)
             throw new Exception("این نامه توسط گیرنده(ها) خوانده شده و دیگر قابل ویرایش نیست.");
 
         // ---------- گیرندگان جدید (همان منطق فرم ایجاد: گروه‌ها باز و فرستنده حذف می‌شود) ----------
@@ -575,6 +586,10 @@ public class InnerLetterService : IInnerLetterService
         foreach (var uid in hamesh) wanted.TryAdd(uid, "هامش");
 
         var newlyAdded = new List<int>();
+        // باگ قبلی: برای هر گیرنده حذف‌شده، تمام زیردرخت‌ها دوباره از دیتابیس لود می‌شد
+        // رفع شد: یک بار همه زیردرخت‌ها لود می‌شوند
+        var allSubErjas = await _db.Erjas.Where(x => x.SourceId == letterId && !x.IsDelete && x.ParentErjaId != null).ToListAsync();
+
         foreach (var e in rootErjas)
         {
             if (wanted.TryGetValue(e.ReciverUserId, out var type))
@@ -587,12 +602,11 @@ public class InnerLetterService : IInnerLetterService
                 // گیرنده حذف‌شده — ارجاع او و گردش‌های زیرشاخه‌اش حذف نرم می‌شود
                 e.IsDelete = true;
                 var subIds = new List<int> { e.ErjaId };
-                var all = await _db.Erjas.Where(x => x.SourceId == letterId && !x.IsDelete && x.ParentErjaId != null).ToListAsync();
                 bool changed = true;
                 while (changed)
                 {
                     changed = false;
-                    foreach (var s in all.Where(s => s.ParentErjaId is { } pid && subIds.Contains(pid) && !subIds.Contains(s.ErjaId)))
+                    foreach (var s in allSubErjas.Where(s => s.ParentErjaId is { } pid && subIds.Contains(pid) && !subIds.Contains(s.ErjaId)))
                     { subIds.Add(s.ErjaId); s.IsDelete = true; changed = true; }
                 }
             }

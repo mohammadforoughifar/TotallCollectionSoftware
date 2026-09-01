@@ -3394,6 +3394,193 @@ namespace Inventory.Api.Migrations
                     b.ToTable("InnerLetters");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.OutgoingLetter", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CopyTo")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("CreatorSematId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CreatorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DateSadere")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("DateSabt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalRefNumber")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Foriat")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("IsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LetterNumber")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("Mahramanegi")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReceiverAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ReceiverName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("ReceiverOrganization")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("ReceiverTitle")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("SadereNumber")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatorUserId");
+
+                    b.HasIndex("DateSabt");
+
+                    b.HasIndex("Number");
+
+                    b.HasIndex("ReceiverOrganization");
+
+                    b.HasIndex("SadereNumber");
+
+                    b.ToTable("OutgoingLetters");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OutgoingLetterSigner", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime?>("DateSigned")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSigned")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SematId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SignNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("SourceId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "IsSigned");
+
+                    b.ToTable("OutgoingLetterSigners");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OutgoingPishnevisLetter", b =>
+                {
+                    b.Property<int>("PishnevisId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("PishnevisId"));
+
+                    b.Property<bool>("IsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsNeshan")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ReceiverName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("ReceiverOrganization")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("ReceiverTitle")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<int?>("SematId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("PishnevisId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("OutgoingPishnevisLetters");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.LetterBayegani", b =>
                 {
                     b.Property<int>("BayeganiId")
@@ -3641,6 +3828,36 @@ namespace Inventory.Api.Migrations
                     b.Navigation("Source");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.OutgoingLetter", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.User", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Inventory.Api.Data.LetterSource", "Source")
+                        .WithOne("OutgoingLetter")
+                        .HasForeignKey("Inventory.Api.Data.OutgoingLetter", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Creator");
+
+                    b.Navigation("Source");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OutgoingPishnevisLetter", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.LetterGroup", b =>
                 {
                     b.HasOne("Inventory.Api.Data.User", "Creator")
@@ -3717,9 +3934,32 @@ namespace Inventory.Api.Migrations
 
                     b.Navigation("InnerLetter");
 
+                    b.Navigation("OutgoingLetter");
+
+                    b.Navigation("OutgoingSigners");
+
                     b.Navigation("RelatedLetters");
 
                     b.Navigation("RelatedToLetters");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OutgoingLetterSigner", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.LetterSource", "Source")
+                        .WithMany("OutgoingSigners")
+                        .HasForeignKey("SourceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Inventory.Api.Data.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Source");
+
+                    b.Navigation("User");
                 });
 
 #pragma warning restore 612, 618

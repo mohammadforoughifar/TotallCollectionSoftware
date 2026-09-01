@@ -103,7 +103,7 @@
     }
 
     @* ============ اتوماسیون اداری ============ *@
-    @if (Auth.HasModule("InnerLetters"))
+    @if (Auth.HasModule("InnerLetters") || Auth.HasModule("OutgoingLetters"))
     {
         <div class="nav-group group-letters">
             <button type="button" class="nav-section-title nav-toggle @(gLetters ? "open" : "")" @onclick="() => gLetters = !gLetters">
@@ -113,13 +113,22 @@
             @if (gLetters)
             {
                 <div class="nav-group-items">
-                    <NavLink class="nav-link" href="letters" @onclick="NotifyClose">
-                        <i class="bi bi-envelope-paper"></i><span>کارتابل نامه داخلی</span>
-                        @if (LettersUnreadCount > 0)
-                        {
-                            <span class="badge bg-danger ms-auto">@LettersUnreadCount</span>
-                        }
-                    </NavLink>
+                    @if (Auth.HasModule("InnerLetters"))
+                    {
+                        <NavLink class="nav-link" href="letters" @onclick="NotifyClose">
+                            <i class="bi bi-envelope-paper"></i><span>کارتابل نامه داخلی</span>
+                            @if (LettersUnreadCount > 0)
+                            {
+                                <span class="badge bg-danger ms-auto">@LettersUnreadCount</span>
+                            }
+                        </NavLink>
+                    }
+                    @if (Auth.HasModule("OutgoingLetters"))
+                    {
+                        <NavLink class="nav-link" href="outgoing-letters" @onclick="NotifyClose">
+                            <i class="bi bi-send"></i><span>کارتابل نامه صادره</span>
+                        </NavLink>
+                    }
                 </div>
             }
         </div>

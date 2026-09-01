@@ -96,6 +96,11 @@ public class AppDbContext : DbContext
     public DbSet<LetterGroup> LetterGroups => Set<LetterGroup>();
     public DbSet<LetterGroupMember> LetterGroupMembers => Set<LetterGroupMember>();
 
+    // ==================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا کنندگان) ====================
+    public DbSet<OutgoingLetter> OutgoingLetters => Set<OutgoingLetter>();
+    public DbSet<OutgoingPishnevisLetter> OutgoingPishnevisLetters => Set<OutgoingPishnevisLetter>();
+    public DbSet<OutgoingLetterSigner> OutgoingLetterSigners => Set<OutgoingLetterSigner>();
+
     // ==================== RBAC ====================
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
@@ -227,11 +232,12 @@ public class AppDbContext : DbContext
         mb.Entity<SystemRemoteCommand>().HasIndex(c => c.SystemInfoId);
         mb.Entity<SystemRemoteCommand>().HasIndex(c => c.Status);
 
-        // ==================== اتوماسیون اداری — نامه داخلی ====================
+        // ==================== اتوماسیون اداری — نامه داخلی و صادره ====================
         // کلیدهای اصلی صریح (نام‌گذاری مطابق طرح کارفرما)
         mb.Entity<Erja>().HasKey(e => e.ErjaId);
         mb.Entity<Amalgar>().HasKey(a => a.AmalgarId);
         mb.Entity<PishnevisLetter>().HasKey(p => p.PishnevisId);
+        mb.Entity<OutgoingPishnevisLetter>().HasKey(p => p.PishnevisId);
         mb.Entity<LetterBayegani>().HasKey(b => b.BayeganiId);
 
         // InnerLetter با LetterSource کلید مشترک دارد (الگوی SourceKeyID طرح اصلی)
@@ -248,6 +254,40 @@ public class AppDbContext : DbContext
         mb.Entity<InnerLetter>().HasIndex(l => l.Number);
         mb.Entity<InnerLetter>().HasIndex(l => l.DateSabt);
         mb.Entity<InnerLetter>().HasIndex(l => l.CreatorUserId);
+
+        // OutgoingLetter — همان الگوی کلید مشترک با SourceType=2
+        mb.Entity<OutgoingLetter>()
+            .HasOne(l => l.Source)
+            .WithOne(s => s.OutgoingLetter!)
+            .HasForeignKey<OutgoingLetter>(l => l.Id)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<OutgoingLetter>()
+            .HasOne(l => l.Creator)
+            .WithMany()
+            .HasForeignKey(l => l.CreatorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.Number);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.DateSabt);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.CreatorUserId);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.ReceiverOrganization);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.SadereNumber);
+        mb.Entity<OutgoingPishnevisLetter>().HasIndex(p => p.UserId);
+
+        // امضا کنندگان نامه صادره
+        mb.Entity<OutgoingLetterSigner>()
+            .HasOne(s => s.Source)
+            .WithMany(src => src.OutgoingSigners)
+            .HasForeignKey(s => s.SourceId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<OutgoingLetterSigner>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => s.SourceId);
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => s.UserId);
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => new { s.SourceId, s.UserId }).IsUnique();
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => new { s.UserId, s.IsSigned });
 
         mb.Entity<Erja>()
             .HasOne(e => e.Source)
