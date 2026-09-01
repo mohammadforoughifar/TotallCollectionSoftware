@@ -1,55 +1,23 @@
-# ===================== .NET / Visual Studio =====================
+## DotNet
 bin/
 obj/
-[Bb]in/
-[Oo]bj/
 *.user
 *.suo
-*.userprefs
-*.vspscc
-*.vssscc
+*.vsidx
+*.cache
 .vs/
-.idea/
 
-# ===================== Build output =====================
-publish/
-dist/
-out/
-build/
-*.nupkg
-*.snupkg
+## Build
+**/wwwroot/_framework/
 
-# ===================== دیتابیس‌های محلی =====================
-*.db
-*.db-shm
-*.db-wal
-*.mdf
-*.ldf
-*.bak
-
-# ===================== محیط / اسکریپت‌ها =====================
-*.log
-.env
-.env.*
-!.env.example
-
-# ===================== سیستم‌عامل =====================
+## OS
 .DS_Store
 Thumbs.db
-desktop.ini
 
-# ===================== پیوست‌های رمزنگاری‌شده پروژه =====================
-# کلید رمزنگاری و فایل‌های پیوست (SecureFiles) هرگز نباید وارد گیت شوند
-**/wwwroot/SecureFiles/
-**/SecureFiles/
-**/.key
+## IDE
+.idea/
+*.slnLaunch.user
 
-# ===================== NuGet =====================
-*.nuget.props
-*.nuget.targets
-project.lock.json
-project.fragment.lock.json
-
-# ===================== Node (اگر بعداً اضافه شد) =====================
-node_modules/
-npm-debug.log*
+## Runtime
+logs/
+uploads/
