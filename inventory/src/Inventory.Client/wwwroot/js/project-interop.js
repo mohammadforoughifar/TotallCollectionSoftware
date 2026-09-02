@@ -263,4 +263,60 @@
             return false;
         }
     };
+
+    // ============================================================
+    //  امنیت حضور و غیاب:
+    //  ۱) شناسه‌ی یکتای دستگاه (Device ID) — ذخیره در localStorage
+    //     (مرورگر MAC واقعی نمی‌دهد؛ این شناسه + IP + User-Agent همان نقش را دارد)
+    //  ۲) موقعیت جغرافیایی (Geolocation API) برای محدوده‌ی مکانی مجاز
+    // ============================================================
+
+    var ATT_DEVICE_KEY = 'att_device_id_v1';
+
+    /** خواندن یا ساخت شناسه‌ی یکتای دستگاه برای این مرورگر. */
+    window.attGetDeviceId = function () {
+        try {
+            var id = localStorage.getItem(ATT_DEVICE_KEY);
+            if (id && id.length >= 8) return id;
+            id = 'dev-' + Date.now().toString(36) + '-' +
+                Math.random().toString(36).slice(2, 10) + '-' +
+                Math.random().toString(36).slice(2, 10);
+            localStorage.setItem(ATT_DEVICE_KEY, id);
+            return id;
+        } catch (e) {
+            // اگر localStorage در دسترس نبود (مثلاً حالت خصوصی)، یک شناسه موقت
+            return 'dev-tmp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
+    };
+
+    /** حذف شناسه دستگاه (در صورت نیاز کاربر/مدیر به ریست). */
+    window.attResetDeviceId = function () {
+        try { localStorage.removeItem(ATT_DEVICE_KEY); } catch (e) { }
+    };
+
+    /**
+     * موقعیت جغرافیایی فعلی (طول/عرض).
+     * اگر کاربر اجازه ندهد یا در دسترس نباشد null برمی‌گرداند (هشدار مکانی ثبت نمی‌شود).
+     * @returns {Promise<{lat:number, lng:number}|null>}
+     */
+    window.attGetPosition = function (timeoutMs) {
+        return new Promise(function (resolve) {
+            try {
+                if (!navigator.geolocation) { resolve(null); return; }
+                var to = (typeof timeoutMs === 'number' && timeoutMs > 0) ? timeoutMs : 8000;
+                navigator.geolocation.getCurrentPosition(
+                    function (pos) {
+                        resolve({
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude
+                        });
+                    },
+                    function () { resolve(null); },
+                    { enableHighAccuracy: true, timeout: to, maximumAge: 30000 }
+                );
+            } catch (e) {
+                resolve(null);
+            }
+        });
+    };
 })();

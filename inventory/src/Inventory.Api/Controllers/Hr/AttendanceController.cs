@@ -28,13 +28,13 @@ public class AttendanceController : ControllerBase
 
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
-
-    public AttendanceController(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc)
-    {
-        _db = db; _notify = notify; _recalc = recalc;
-    }
-
     private readonly AttendanceRecalcService _recalc;
+    private readonly AttendanceSecurityService _security;
+
+    public AttendanceController(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, AttendanceSecurityService security)
+    {
+        _db = db; _notify = notify; _recalc = recalc; _security = security;
+    }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyName => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -973,9 +973,31 @@ public class AttendanceController : ControllerBase
         catch { }
 
         await _notify.BroadcastChangedAsync("attendance");
+
+        // ---------- امنیت: دستگاه جدید / دستگاه مشترک / خارج از محدوده ----------
+        try
+        {
+            var adminIds = await GetAttendanceManagerIds();
+            await _security.ValidateAsync(
+                MyUserId, rec.UserName,
+                input?.DeviceId, MyIp, Request.Headers.UserAgent.ToString(),
+                input?.Lat, input?.Lng, adminIds);
+        }
+        catch { /* امنیت ثانویه است؛ خطا در آن مانع ثبت حضور نمی‌شود */ }
+
         return Ok(new { ok = true, record = Map(rec, segs) });
     }
-    public class CheckInInput { public int? ShiftGroupId { get; set; } public string? Note { get; set; } }
+    public class CheckInInput
+    {
+        public int? ShiftGroupId { get; set; }
+        public string? Note { get; set; }
+        /// <summary>شناسه یکتای دستگاه (از localStorage مرورگر)</summary>
+        public string? DeviceId { get; set; }
+        /// <summary>عرض جغرافیایی (اختیاری — از Geolocation API)</summary>
+        public double? Lat { get; set; }
+        /// <summary>طول جغرافیایی (اختیاری — از Geolocation API)</summary>
+        public double? Lng { get; set; }
+    }
 
     // ================== خروج ==================
     [HttpPost("check-out")]
@@ -1043,6 +1065,18 @@ public class AttendanceController : ControllerBase
         rec.UpdatedAt = now;
         await AggregateAsync(rec, segs, ruleOut, now);
         await _db.SaveChangesAsync();
+
+        // ---------- امنیت: دستگاه جدید / دستگاه مشترک / خارج از محدوده (در خروج) ----------
+        try
+        {
+            var adminIds = await GetAttendanceManagerIds();
+            await _security.ValidateAsync(
+                MyUserId, rec.UserName,
+                input?.DeviceId, MyIp, Request.Headers.UserAgent.ToString(),
+                input?.Lat, input?.Lng, adminIds);
+        }
+        catch { /* امنیت ثانویه است؛ خطا در آن مانع ثبت خروج نمی‌شود */ }
+
         await _notify.BroadcastChangedAsync("attendance");
 
         var covered = last.ExitCovered;
@@ -1063,7 +1097,16 @@ public class AttendanceController : ControllerBase
             message = msg,
         });
     }
-    public class CheckOutInput { public string? Note { get; set; } }
+    public class CheckOutInput
+    {
+        public string? Note { get; set; }
+        /// <summary>شناسه یکتای دستگاه (از localStorage مرورگر)</summary>
+        public string? DeviceId { get; set; }
+        /// <summary>عرض جغرافیایی (اختیاری)</summary>
+        public double? Lat { get; set; }
+        /// <summary>طول جغرافیایی (اختیاری)</summary>
+        public double? Lng { get; set; }
+    }
 
     // ================== وضعیت امروز من ==================
     [HttpGet("my-today")]
@@ -2000,4 +2043,117 @@ public class AttendanceController : ControllerBase
         s.LinkedLeaveNumber,
         s.Note
     };
+
+    // ================== امنیت حضور و غیاب (مدیر) ==================
+
+    /// <summary>لیست هشدارهای امنیتی (دستگاه جدید / دستگاه مشترک / خارج از محدوده).</summary>
+    [HttpGet("security/alerts")]
+    public async Task<IActionResult> GetSecurityAlerts([FromQuery] bool pendingOnly = false)
+    {
+        if (!await IsAdminAsync()) return Forbid();
+        var q = _db.AttendanceAlerts.AsNoTracking();
+        if (pendingOnly) q = q.Where(a => a.Status == AttendanceSecurityService.StatusPending);
+        var list = await q.OrderByDescending(a => a.CreatedAt).Take(100).ToListAsync();
+        return Ok(list.Select(a => new
+        {
+            a.Id,
+            a.UserId,
+            a.UserName,
+            a.AlertType,
+            a.Message,
+            a.DeviceId,
+            a.Ip,
+            a.Lat,
+            a.Lng,
+            a.DistanceMeters,
+            a.Status,
+            a.CreatedAt,
+            a.HandledAt,
+            PersianDate = Shared.PersianDate.ToShortWithTime(a.CreatedAt),
+            TypeFa = a.AlertType switch
+            {
+                AttendanceSecurityService.AlertNewDevice => "دستگاه جدید",
+                AttendanceSecurityService.AlertSharedDevice => "دستگاه مشترک",
+                AttendanceSecurityService.AlertOutOfRange => "خارج از محدوده",
+                _ => a.AlertType
+            },
+            StatusFa = a.Status switch
+            {
+                AttendanceSecurityService.StatusPending => "در انتظار بررسی",
+                AttendanceSecurityService.StatusApproved => "تأیید شده",
+                _ => "رد شده"
+            }
+        }));
+    }
+
+    /// <summary>تأیید دستگاه جدید توسط مدیر — دستگاهِ جدید، اصلی می‌شود.</summary>
+    [HttpPost("security/alerts/{id:int}/approve")]
+    public async Task<IActionResult> ApproveSecurityAlert(int id)
+    {
+        if (!await IsAdminAsync()) return Forbid();
+        var ok = await _security.ApproveDeviceAsync(id, MyUserId);
+        if (!ok) return NotFound(new { message = "هشدار یافت نشد یا دیگر در انتظار بررسی نیست." });
+        await _notify.BroadcastChangedAsync("attendance");
+        return Ok(new { ok = true, message = "دستگاه جدید به‌عنوان دستگاه اصلی تأیید شد." });
+    }
+
+    /// <summary>رد دستگاه جدید توسط مدیر.</summary>
+    [HttpPost("security/alerts/{id:int}/reject")]
+    public async Task<IActionResult> RejectSecurityAlert(int id)
+    {
+        if (!await IsAdminAsync()) return Forbid();
+        var ok = await _security.RejectDeviceAsync(id, MyUserId);
+        if (!ok) return NotFound(new { message = "هشدار یافت نشد یا دیگر در انتظار بررسی نیست." });
+        await _notify.BroadcastChangedAsync("attendance");
+        return Ok(new { ok = true, message = "درخواست دستگاه جدید رد شد." });
+    }
+
+    /// <summary>بستن هشدار بدون تغییر دستگاه (فقط رسیدگی‌شده).</summary>
+    [HttpPost("security/alerts/{id:int}/dismiss")]
+    public async Task<IActionResult> DismissSecurityAlert(int id)
+    {
+        if (!await IsAdminAsync()) return Forbid();
+        var ok = await _security.DismissAlertAsync(id, MyUserId);
+        if (!ok) return NotFound(new { message = "هشدار یافت نشد." });
+        await _notify.BroadcastChangedAsync("attendance");
+        return Ok(new { ok = true, message = "هشدار بسته شد." });
+    }
+
+    /// <summary>محدوده‌ی مکانی مجاز برای ثبت حضور و غیاب.</summary>
+    [HttpGet("security/area")]
+    public async Task<IActionResult> GetSecurityArea()
+    {
+        if (!await IsAdminAsync()) return Forbid();
+        var area = await _security.GetAreaAsync();
+        return Ok(area == null
+            ? new { configured = false, Latitude = (double?)null, Longitude = (double?)null, RadiusMeters = 1000, LocationName = "" }
+            : new { configured = true, area.Latitude, area.Longitude, area.RadiusMeters, area.LocationName, area.UpdatedAt });
+    }
+
+    /// <summary>تنظیم محدوده‌ی مکانی مجاز (مرکز + شعاع به متر).</summary>
+    [HttpPost("security/area")]
+    public async Task<IActionResult> SaveSecurityArea([FromBody] AreaInput input)
+    {
+        if (!await IsAdminAsync()) return Forbid();
+        if (input == null || !input.Latitude.HasValue || !input.Longitude.HasValue)
+            return BadRequest(new { message = "مختصات مرکز (طول و عرض جغرافیایی) الزامی است." });
+        var radius = input.RadiusMeters ?? 1000;
+        if (radius < 50) radius = 50;
+        var area = await _security.SaveAreaAsync(input.Latitude.Value, input.Longitude.Value, radius, input.LocationName, MyUserId);
+        await _notify.BroadcastChangedAsync("attendance");
+        return Ok(new
+        {
+            ok = true,
+            message = "محدوده‌ی مکانی مجاز ذخیره شد.",
+            area.Latitude, area.Longitude, area.RadiusMeters, area.LocationName
+        });
+    }
+
+    public class AreaInput
+    {
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public double? RadiusMeters { get; set; }
+        public string? LocationName { get; set; }
+    }
 }

@@ -64,6 +64,9 @@ public class AppDbContext : DbContext
     public DbSet<ShiftGroup> ShiftGroups => Set<ShiftGroup>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AttendanceSegment> AttendanceSegments => Set<AttendanceSegment>();
+    public DbSet<UserDevice> UserDevices => Set<UserDevice>();
+    public DbSet<AttendanceAlert> AttendanceAlerts => Set<AttendanceAlert>();
+    public DbSet<AttendanceAreaSetting> AttendanceAreaSettings => Set<AttendanceAreaSetting>();
     public DbSet<OfficeMachineCost> OfficeMachineCosts => Set<OfficeMachineCost>();
     // ---- جدول‌های قطعات کامپیوتر ----
     public DbSet<SystemCpu> SystemCpus => Set<SystemCpu>();
@@ -122,6 +125,13 @@ public class AppDbContext : DbContext
         mb.Entity<Transaction>().HasIndex(t => t.Type);
         mb.Entity<Transaction>().HasIndex(t => t.Date);
         mb.Entity<TransactionLine>().HasIndex(l => l.ProductId);
+
+        // ---------- امنیت حضور و غیاب: ایندکس‌های دستگاه‌ها و هشدارها ----------
+        // هر کاربر برای هر Device ID فقط یک رکورد دستگاه دارد (دستگاه یکتا)
+        mb.Entity<UserDevice>().HasIndex(d => new { d.UserId, d.DeviceId }).IsUnique();
+        mb.Entity<UserDevice>().HasIndex(d => d.DeviceId);
+        mb.Entity<AttendanceAlert>().HasIndex(a => new { a.UserId, a.Status });
+        mb.Entity<AttendanceAlert>().HasIndex(a => new { a.Status, a.CreatedAt });
 
         // ---------- دقت صریح اعداد اعشاری برای SQL Server ----------
         // قیمت‌ها و مبالغ: 2 رقم اعشار

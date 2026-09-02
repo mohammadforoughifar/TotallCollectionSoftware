@@ -38,6 +38,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AttendanceRecalcService>();
+builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 

@@ -5,6 +5,7 @@
 @inject IToastService Toast
 @inject RealtimeService Rt
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @implements IDisposable
 
 <PageTitle>مدیریت حضور و غیاب</PageTitle>
@@ -56,6 +57,10 @@
     }
     <button class="lv-tab @(tab == "report" ? "active" : "")" @onclick='() => { tab = "report"; _ = LoadReport(); }'><i class="bi bi-journal-text"></i> گزارش روزانه</button>
     <button class="lv-tab @(tab == "monthly" ? "active" : "")" @onclick='() => { tab = "monthly"; _ = LoadMonthly(); }'><i class="bi bi-bar-chart-fill"></i> گزارش خلاصه ماه</button>
+    @if (Auth.IsAdmin || Auth.Has("Attendance.ManageShifts"))
+    {
+        <button class="lv-tab @(tab == "security" ? "active" : "")" @onclick='() => { tab = "security"; _ = LoadSecurity(); }'><i class="bi bi-shield-check"></i> امنیت حضور و غیاب</button>
+    }
 </div>
 
 <!-- ==================== وضعیت امروز ==================== -->
@@ -323,6 +328,124 @@
     </div>
 }
 
+<!-- ==================== امنیت حضور و غیاب (دستگاه‌ها + محدوده مکانی) ==================== -->
+@if (tab == "security")
+{
+    <div class="row g-3 mb-3">
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white"><b><i class="bi bi-geo-alt text-danger"></i> محدوده‌ی مکانی مجاز</b></div>
+                <div class="card-body">
+                    @if (areaLoading) { <div class="spinner-border spinner-border-sm text-primary"></div> }
+                    else
+                    {
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">نام مکان (اختیاری)</label>
+                            <input class="form-control" @bind="areaName" placeholder="مثلاً: دفتر مرکزی — تهران" />
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label small text-muted">عرض جغرافیایی (Latitude)</label>
+                                <input class="form-control" dir="ltr" @bind="areaLat" placeholder="35.6892" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted">طول جغرافیایی (Longitude)</label>
+                                <input class="form-control" dir="ltr" @bind="areaLng" placeholder="51.3890" />
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small text-muted">شعاع مجاز (متر) — پیش‌فرض ۱۰۰۰ (یک کیلومتر)</label>
+                            <input class="form-control" dir="ltr" @bind="areaRadius" placeholder="1000" />
+                        </div>
+                        @if (areaConfigured)
+                        {
+                            <div class="alert alert-info py-2 small mb-3">
+                                <i class="bi bi-check-circle me-1"></i>
+                                مکان مجاز: <b>@(string.IsNullOrWhiteSpace(areaName) ? "بدون نام" : areaName)</b> —
+                                شعاع @Fa.Digits((long)Math.Round(areaRadiusMeters)) متر —
+                                آخرین به‌روزرسانی: @PersianDate.ToShortWithTime(areaUpdatedAt ?? DateTime.MinValue)
+                            </div>
+                        }
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary btn-sm" @onclick="SaveArea" disabled="@areaBusy">
+                                <i class="bi bi-save me-1"></i> ذخیره محدوده
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="UseMyLocation" disabled="@areaBusy">
+                                <i class="bi bi-crosshair me-1"></i> استفاده از موقعیت فعلی من
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(areaError)) { <div class="text-danger small mt-2">@areaError</div> }
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <b><i class="bi bi-shield-exclamation text-warning"></i> هشدارهای امنیتی</b>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-primary" @onclick='() => pendingOnly = !pendingOnly' title="فقط در انتظار بررسی">
+                            @(pendingOnly ? "همه هشدارها" : "فقط در انتظار بررسی")
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="LoadSecurity"><i class="bi bi-arrow-clockwise"></i></button>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 att-table">
+                            <thead>
+                                <tr>
+                                    <th>نوع</th><th>پرسنل</th><th>پیام</th><th>زمان</th><th>وضعیت</th><th>عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (alertsLoading) { <tr><td colspan="6" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
+                                else if (!alerts.Any()) { <tr><td colspan="6" class="text-center text-muted py-4">هشداری یافت نشد.</td></tr> }
+                                else
+                                {
+                                    @foreach (var a in alerts)
+                                    {
+                                        <tr class="@(a.Status == "Pending" ? "table-warning" : "")">
+                                            <td><span class="badge @AlertBadge(a.AlertType)">@a.TypeFa</span></td>
+                                            <td class="fw-700">@a.UserName</td>
+                                            <td class="small">@a.Message</td>
+                                            <td class="small text-nowrap">@a.PersianDate</td>
+                                            <td><span class="badge @StatusBadge(a.Status)">@a.StatusFa</span></td>
+                                            <td>
+                                                @if (a.Status == "Pending")
+                                                {
+                                                    <div class="d-flex gap-1">
+                                                        @if (a.AlertType == "NewDevice")
+                                                        {
+                                                            <button class="btn btn-sm btn-success" @onclick='() => ApproveAlert(a.Id)' title="تأیید به‌عنوان دستگاه اصلی">
+                                                                <i class="bi bi-check-lg"></i> تأیید
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger" @onclick='() => RejectAlert(a.Id)' title="رد">
+                                                                <i class="bi bi-x-lg"></i>
+                                                            </button>
+                                                        }
+                                                        else
+                                                        {
+                                                            <button class="btn btn-sm btn-outline-secondary" @onclick='() => DismissAlert(a.Id)' title="بستن (رسیدگی شد)">
+                                                                <i class="bi bi-check2-square"></i> بستن
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                }
+                                                else { <span class="text-muted small">—</span> }
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <!-- ==================== مودال شیفت ==================== -->
 @if (ShowShiftModal)
 {
@@ -435,6 +558,14 @@
         await LoadToday();
         await LoadReport();
 
+        // اگر از لینک اعلان (؟tab=security) آمده‌ایم، تب امنیت باز شود
+        try
+        {
+            var q = new Uri(Nav.Uri).Query;
+            if (q.Contains("tab=security")) { tab = "security"; await LoadSecurity(); }
+        }
+        catch { }
+
         Rt.DataChanged += OnRtChanged;
         await Rt.EnsureStartedAsync(apiBase, Auth.UserId);
     }
@@ -447,6 +578,7 @@
             await LoadToday();
             if (tab == "report") await LoadReport();
             if (tab == "monthly") await LoadMonthly();
+            if (tab == "security") await LoadSecurity();
             await LoadShifts();
             await LoadPersonnel();
             StateHasChanged();
@@ -494,6 +626,179 @@
         }
         catch { monthlyItems = new(); }
         monthlyLoading = false;
+    }
+
+    // ==================== امنیت حضور و غیاب ====================
+    private bool alertsLoading, areaLoading, areaBusy, areaConfigured, pendingOnly;
+    private List<SecurityAlertDto> alerts = new();
+    private double areaLat, areaLng, areaRadiusMeters = 1000;
+    private DateTime? areaUpdatedAt;
+    private string areaName = "";
+    private string areaError = "";
+
+    private async Task LoadSecurity()
+    {
+        await LoadSecurityAlerts();
+        await LoadArea();
+    }
+
+    private async Task LoadSecurityAlerts()
+    {
+        alertsLoading = true;
+        try
+        {
+            var url = pendingOnly ? "/api/Attendance/security/alerts?pendingOnly=true" : "/api/Attendance/security/alerts";
+            alerts = await Http.GetFromJsonAsync<List<SecurityAlertDto>>(url) ?? new();
+        }
+        catch { alerts = new(); }
+        alertsLoading = false;
+    }
+
+    private async Task LoadArea()
+    {
+        areaLoading = true;
+        try
+        {
+            var a = await Http.GetFromJsonAsync<AreaDto>("/api/Attendance/security/area");
+            if (a != null)
+            {
+                areaConfigured = a.configured;
+                areaLat = a.Latitude ?? 0;
+                areaLng = a.Longitude ?? 0;
+                areaRadiusMeters = a.RadiusMeters > 0 ? a.RadiusMeters : 1000;
+                areaName = a.LocationName ?? "";
+                areaUpdatedAt = a.UpdatedAt;
+            }
+        }
+        catch { }
+        areaLoading = false;
+    }
+
+    private async Task ApproveAlert(int id)
+    {
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/Attendance/security/alerts/{id}/approve", new { });
+            if (resp.IsSuccessStatusCode) { Toast.Success("دستگاه جدید تأیید و به‌عنوان اصلی ثبت شد."); await LoadSecurity(); }
+            else Toast.Error(await ExtractError(resp));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RejectAlert(int id)
+    {
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/Attendance/security/alerts/{id}/reject", new { });
+            if (resp.IsSuccessStatusCode) { Toast.Success("درخواست دستگاه جدید رد شد."); await LoadSecurity(); }
+            else Toast.Error(await ExtractError(resp));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DismissAlert(int id)
+    {
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/Attendance/security/alerts/{id}/dismiss", new { });
+            if (resp.IsSuccessStatusCode) { Toast.Success("هشدار بسته شد."); await LoadSecurity(); }
+            else Toast.Error(await ExtractError(resp));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SaveArea()
+    {
+        areaError = "";
+        if (double.IsNaN(areaLat) || areaLat < -90 || areaLat > 90)
+        { areaError = "عرض جغرافیایی نامعتبر است."; return; }
+        if (double.IsNaN(areaLng) || areaLng < -180 || areaLng > 180)
+        { areaError = "طول جغرافیایی نامعتبر است."; return; }
+        if (!double.TryParse(areaRadius, out var radius) || radius < 50)
+        { areaError = "شعاع باید حداقل ۵۰ متر باشد."; return; }
+
+        areaBusy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("/api/Attendance/security/area", new { Latitude = areaLat, Longitude = areaLng, RadiusMeters = radius, LocationName = areaName });
+            if (resp.IsSuccessStatusCode)
+            {
+                Toast.Success("محدوده‌ی مکانی مجاز ذخیره شد.");
+                areaRadiusMeters = radius;
+                await LoadArea();
+            }
+            else areaError = await ExtractError(resp);
+        }
+        catch (Exception ex) { areaError = ex.Message; }
+        areaBusy = false;
+    }
+
+    private string areaRadiusText = "1000";
+    private string areaRadius
+    {
+        get => areaRadiusText;
+        set { areaRadiusText = value; }
+    }
+
+    private async Task UseMyLocation()
+    {
+        try
+        {
+            var pos = await JS.InvokeAsync<GeoPos?>("attGetPosition", 10000);
+            if (pos == null) { areaError = "موقعیت شما در دسترس نیست. اجازه‌ی دسترسی به موقعیت را در مرورگر بدهید."; return; }
+            areaLat = pos.lat;
+            areaLng = pos.lng;
+            areaError = "";
+            areaRadiusText = areaRadiusMeters.ToString("0");
+            StateHasChanged();
+        }
+        catch (Exception ex) { areaError = ex.Message; }
+    }
+
+    private class GeoPos { public double lat { get; set; } public double lng { get; set; } }
+
+    private static string AlertBadge(string t) => t switch
+    {
+        "NewDevice" => "bg-primary",
+        "SharedDevice" => "bg-danger",
+        "OutOfRange" => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
+
+    private static string StatusBadge(string s) => s switch
+    {
+        "Pending" => "bg-warning text-dark",
+        "Approved" => "bg-success",
+        _ => "bg-secondary"
+    };
+
+    public class SecurityAlertDto
+    {
+        public int Id { get; set; }
+        public int UserId { get; set; }
+        public string UserName { get; set; } = "";
+        public string AlertType { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string? DeviceId { get; set; }
+        public string? Ip { get; set; }
+        public double? Lat { get; set; }
+        public double? Lng { get; set; }
+        public double? DistanceMeters { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime? HandledAt { get; set; }
+        public string TypeFa { get; set; } = "";
+        public string StatusFa { get; set; } = "";
+        public string PersianDate { get; set; } = "";
+    }
+
+    public class AreaDto
+    {
+        public bool configured { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public double RadiusMeters { get; set; }
+        public string? LocationName { get; set; }
+        public DateTime? UpdatedAt { get; set; }
     }
 
     private void NewShift()
