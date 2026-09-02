@@ -737,12 +737,34 @@
         catch { summary = null; }
     }
 
+    private class GeoPos { public double lat { get; set; } public double lng { get; set; } }
+
+    private async Task<string?> GetDeviceIdAsync()
+    {
+        try { return await JS.InvokeAsync<string>("attGetDeviceId"); } catch { return null; }
+    }
+
+    private async Task<GeoPos?> GetPositionAsync()
+    {
+        try { return await JS.InvokeAsync<GeoPos?>("attGetPosition", 8000); } catch { return null; }
+    }
+
+    private async Task<(string DeviceId, double? Lat, double? Lng)> AttMetaAsync()
+    {
+        var deviceId = await GetDeviceIdAsync() ?? "";
+        double? lat = null, lng = null;
+        var pos = await GetPositionAsync();
+        if (pos != null) { lat = pos.lat; lng = pos.lng; }
+        return (deviceId, lat, lng);
+    }
+
     private async Task CheckIn()
     {
         busy = true;
         try
         {
-            var resp = await Http.PostAsJsonAsync("/api/Attendance/check-in", new { ShiftGroupId = myShift?.Id });
+            var (deviceId, lat, lng) = await AttMetaAsync();
+            var resp = await Http.PostAsJsonAsync("/api/Attendance/check-in", new { ShiftGroupId = myShift?.Id, DeviceId = deviceId, Lat = lat, Lng = lng });
             if (resp.IsSuccessStatusCode) { Toast.Success("ورود با موفقیت ثبت شد."); await LoadToday(); await LoadSummary(); await LoadMonthView(); }
             else Toast.Error(await ExtractError(resp));
         }
@@ -755,7 +777,8 @@
         busy = true;
         try
         {
-            var resp = await Http.PostAsJsonAsync("/api/Attendance/check-out", new { });
+            var (deviceId, lat, lng) = await AttMetaAsync();
+            var resp = await Http.PostAsJsonAsync("/api/Attendance/check-out", new { DeviceId = deviceId, Lat = lat, Lng = lng });
             if (resp.IsSuccessStatusCode)
             {
                 string msg = "خروج با موفقیت ثبت شد.";
