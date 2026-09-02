@@ -331,3 +331,56 @@ public class LetterAttachmentDto
     public int UploaderUserId { get; set; }
     public DateTime UploadedAt { get; set; }
 }
+
+// ==================== بایگانی درختی ====================
+
+/// <summary>گره درخت بایگانی — پوشه یا نامه بایگانی‌شده (معادل TreeNodeBayegani طرح کارفرما)</summary>
+public class BayeganiNodeDto
+{
+    public int BayeganiId { get; set; }
+    public string Title { get; set; } = "";
+    public int ParentId { get; set; }
+
+    /// <summary>نوع بایگانی — ۱ = بایگانی شخصی</summary>
+    public int TypeBayegani { get; set; } = 1;
+    public bool IsFolder { get; set; }
+
+    /// <summary>شناسه ارجاع (فقط برای برگ‌های نامه)</summary>
+    public int? ErjaId { get; set; }
+
+    // اطلاعات نامه (فقط برای برگ‌ها)
+    public int? LetterId { get; set; }
+    public string? LetterNumber { get; set; }
+    public string? Sender { get; set; }
+    public DateTime? Date { get; set; }
+    public string? Foriat { get; set; }
+    public string? Mahramanegi { get; set; }
+    public bool HasAttachment { get; set; }
+
+    public List<BayeganiNodeDto> Children { get; set; } = new();
+}
+
+/// <summary>ایجاد/ویرایش پوشه بایگانی</summary>
+public class SaveBayeganiFolderDto
+{
+    public string Title { get; set; } = "";
+
+    /// <summary>0 = ریشه (دسته اصلی)</summary>
+    public int ParentId { get; set; }
+
+    /// <summary>۱ = بایگانی شخصی (پیش‌فرض)</summary>
+    public int TypeBayegani { get; set; } = 1;
+}
+
+/// <summary>بایگانی یک یا چند نامه در پوشه انتخابی (معادل BayeganiRequest.ErjaIds)</summary>
+public class ArchiveLettersDto
+{
+    public int FolderId { get; set; }
+    public List<int> ErjaIds { get; set; } = new();
+
+    /// <summary>شناسه نامه‌های ارسالی (فرستنده — بدون ارجاع)</summary>
+    public List<int> LetterIds { get; set; } = new();
+
+    /// <summary>عنوان اختیاری — خالی باشد عنوان نامه استفاده می‌شود</summary>
+    public string? Title { get; set; }
+}
