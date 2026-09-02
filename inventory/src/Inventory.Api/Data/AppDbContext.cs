@@ -98,6 +98,7 @@ public class AppDbContext : DbContext
     public DbSet<LetterBayegani> LetterBayeganis => Set<LetterBayegani>();
     public DbSet<LetterGroup> LetterGroups => Set<LetterGroup>();
     public DbSet<LetterGroupMember> LetterGroupMembers => Set<LetterGroupMember>();
+    public DbSet<LetterStrature> LetterStratures => Set<LetterStrature>();
 
     // ==================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا کنندگان) ====================
     public DbSet<OutgoingLetter> OutgoingLetters => Set<OutgoingLetter>();
@@ -351,6 +352,10 @@ public class AppDbContext : DbContext
             .HasForeignKey(m => m.UserId)
             .OnDelete(DeleteBehavior.Cascade);
         mb.Entity<LetterGroupMember>().HasIndex(m => new { m.GroupId, m.UserId }).IsUnique();
+
+        // ساختار شماره اندیکاتور (LetterStrature طرح کارفرما)
+        mb.Entity<LetterStrature>().HasKey(s => s.StratureId);
+        mb.Entity<LetterStrature>().HasIndex(s => s.TypeForm);
 
         // ==================== RBAC Configuration ====================
         mb.Entity<Role>().HasIndex(r => r.Name).IsUnique();
