@@ -3987,21 +3987,6 @@ namespace Inventory.Api.Migrations
                     b.Navigation("Members");
                 });
 
-            modelBuilder.Entity("Inventory.Api.Data.LetterSource", b =>
-                {
-                    b.Navigation("Erjas");
-
-                    b.Navigation("InnerLetter");
-
-                    b.Navigation("OutgoingLetter");
-
-                    b.Navigation("OutgoingSigners");
-
-                    b.Navigation("RelatedLetters");
-
-                    b.Navigation("RelatedToLetters");
-                });
-
             modelBuilder.Entity("Inventory.Api.Data.OutgoingLetterSigner", b =>
                 {
                     b.HasOne("Inventory.Api.Data.LetterSource", "Source")
@@ -4019,6 +4004,21 @@ namespace Inventory.Api.Migrations
                     b.Navigation("Source");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.LetterSource", b =>
+                {
+                    b.Navigation("Erjas");
+
+                    b.Navigation("InnerLetter");
+
+                    b.Navigation("OutgoingLetter");
+
+                    b.Navigation("OutgoingSigners");
+
+                    b.Navigation("RelatedLetters");
+
+                    b.Navigation("RelatedToLetters");
                 });
 
 #pragma warning restore 612, 618
