@@ -47,6 +47,7 @@ builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
 
+
 // ---------- اتوماسیون اداری — نامه صادره (فاز دوم) — پوشه‌بندی تمیز ----------
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
