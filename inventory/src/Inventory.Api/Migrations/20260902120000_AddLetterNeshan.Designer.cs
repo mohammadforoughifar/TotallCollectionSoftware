@@ -4,6 +4,7 @@ using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,10 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Inventory.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260902120000_AddLetterNeshan")]
+    partial class AddLetterNeshan
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -3628,9 +3630,6 @@ namespace Inventory.Api.Migrations
 
                     b.Property<bool>("IsFolder")
                         .HasColumnType("bit");
-
-                    b.Property<int?>("LetterId")
-                        .HasColumnType("int");
 
                     b.Property<int>("ParentId")
                         .HasColumnType("int");

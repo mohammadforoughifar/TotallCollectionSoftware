@@ -111,6 +111,50 @@ public static class DbInitializer
                     Console.WriteLine("[DB] عملگرهای پیش‌فرض ارجاع نامه ساخته شدند.");
                 }
 
+                // ============ اتوماسیون اداری: ساختار پیش‌فرض شماره اندیکاتور ============
+                // ترتیب پیش‌فرض: واحد/شماره/سال → مثل MQ/1/1405 (ساختار مرجع کارفرما)
+                if (!db.LetterStratures.Any(s => s.TypeForm == 1))
+                {
+                    db.LetterStratures.AddRange(
+                        new LetterStrature { TypeForm = 1, TypeStrature = "واحد" },
+                        new LetterStrature { TypeForm = 1, TypeStrature = "شماره" },
+                        new LetterStrature { TypeForm = 1, TypeStrature = "سال" });
+                    db.SaveChanges();
+                    Console.WriteLine("[DB] ساختار پیش‌فرض شماره اندیکاتور (واحد/شماره/سال) ساخته شد.");
+                }
+
+                // بازسازی شماره اندیکاتور نامه‌های قدیمی با ساختار جدید
+                // (شماره ترتیبی Number ثابت می‌ماند؛ فقط رشته نمایشی بازتولید می‌شود)
+                {
+                    var structure = db.LetterStratures.Where(s => s.TypeForm == 1)
+                        .OrderBy(s => s.StratureId).Select(s => s.TypeStrature).ToList();
+                    if (structure.Count > 0)
+                    {
+                        var unit = config?["Letters:UnitCode"] ?? "MQ";
+                        var pc = new System.Globalization.PersianCalendar();
+                        var toFix = db.InnerLetters.Where(l => !l.IsDelete).ToList();
+                        int fixedCount = 0;
+                        foreach (var l in toFix)
+                        {
+                            var parts = new List<string>();
+                            foreach (var p in structure)
+                                switch (p)
+                                {
+                                    case "سال": parts.Add(pc.GetYear(l.DateSabt).ToString()); break;
+                                    case "واحد": if (!string.IsNullOrEmpty(unit)) parts.Add(unit); break;
+                                    case "شماره": parts.Add(l.Number.ToString()); break;
+                                }
+                            var newNum = string.Join("/", parts);
+                            if (l.LetterNumber != newNum) { l.LetterNumber = newNum; fixedCount++; }
+                        }
+                        if (fixedCount > 0)
+                        {
+                            db.SaveChanges();
+                            Console.WriteLine($"[DB] شماره اندیکاتور {fixedCount} نامه قدیمی با ساختار جدید بازسازی شد.");
+                        }
+                    }
+                }
+
                 // کاربران نمونه برای دموی کارتابل نامه (فقط در حالت دمو)
                 if (seedDemo && db.Users.Count() <= 1)
                 {

@@ -26,6 +26,9 @@ public interface IInnerLetterService
     Task<List<LetterPickDto>> PickListAsync(int userId, string? search);
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditInnerLetterDto dto, int userId, bool isAdmin);
+
+    /// <summary>نشان‌کردن نامه توسط فرستنده (برای نامه‌های ارسالی — نشان گیرنده روی ارجاع است)</summary>
+    Task<bool> ToggleLetterNeshanAsync(int letterId, int userId);
 }
 
 public class InnerLetterService : IInnerLetterService
@@ -33,12 +36,14 @@ public class InnerLetterService : IInnerLetterService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
+    private readonly ILetterStratureService _strature;
 
-    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups)
+    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
+        _strature = strature;
     }
 
     // ---------- شماره‌گذاری بر اساس سال شمسی — نسخه اصلاح‌شده ----------
@@ -68,11 +73,17 @@ public class InnerLetterService : IInnerLetterService
         return maxInYear + 1;
     }
 
-    /// <summary>ساخت شماره اندیکاتور: «سال شمسی/شماره» — مثل 1404/12</summary>
-    private static string BuildLetterNumber(int number)
+    /// <summary>
+    /// ساخت شماره اندیکاتور از سرویس ساختار (LetterStrature کارفرما) — مثل MQ/1/1405.
+    /// اگر ساختاری تعریف نشده باشد، به فرمت قبلی این پروژه «سال/شماره» (مثل 1404/12) برمی‌گردد
+    /// تا شماره‌ی نامه‌های موجود بدون پیکربندی ساختار تغییر نکند.
+    /// </summary>
+    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null)
     {
+        var s = await _strature.TotalNumberAsync(number, typeForm: 1, date: date);
+        if (!string.IsNullOrEmpty(s)) return s;
         var pc = new PersianCalendar();
-        return $"{pc.GetYear(DateTime.Now)}/{number}";
+        return $"{pc.GetYear(date ?? DateTime.Now)}/{number}";
     }
 
     private static Erja NewErja(int sourceId, int senderUserId, int reciverUserId, DateTime date, string type, string matn = "", int amalgarId = 1, DateTime? mohlat = null, int? parentErjaId = null) => new()
@@ -150,7 +161,7 @@ public class InnerLetterService : IInnerLetterService
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = BuildLetterNumber(number),
+            LetterNumber = await BuildLetterNumberAsync(number),
             CreatorUserId = creatorUserId,
             Title = dto.Title.Trim(),
             Text = dto.Text,
@@ -316,7 +327,9 @@ public class InnerLetterService : IInnerLetterService
     public async Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search)
     {
         var q = _db.InnerLetters.AsNoTracking()
-            .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete);
+            .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete
+                        // نامه‌های ارسالیِ بایگانی‌شده توسط فرستنده در پوشه بایگانی نمایش داده می‌شوند
+                        && !_db.LetterBayeganis.Any(b => b.LetterId == l.Id && b.UserId == userId && !b.IsDelete));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -347,6 +360,8 @@ public class InnerLetterService : IInnerLetterService
                 Foriat = l.Foriat,
                 // خوانده‌شدن توسط همه گیرندگان اولیه
                 IsRead = l.Source.Erjas.Where(e => !e.IsDelete && e.ParentErjaId == null).All(e => e.IsRead),
+                // نشانِ فرستنده روی خود نامه (ستاره پوشه ارسالی)
+                IsNeshan = l.IsNeshan,
                 // آیا پاسخی از طرف گیرندگان ثبت شده؟ (برای فیلتر پاسخ داده شده/بدون پاسخ)
                 HasAnswer = l.Source.Erjas.Any(e => !e.IsDelete && e.Answer != ""),
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == l.Id)
@@ -493,6 +508,20 @@ public class InnerLetterService : IInnerLetterService
                 IsSent = l.CreatorUserId == userId
             })
             .ToListAsync();
+    }
+
+    public async Task<bool> ToggleLetterNeshanAsync(int letterId, int userId)
+    {
+        var letter = await _db.InnerLetters
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
+            ?? throw new Exception("نامه پیدا نشد.");
+
+        if (letter.CreatorUserId != userId)
+            throw new Exception("فقط فرستنده می‌تواند نامه ارسالی خود را نشان کند.");
+
+        letter.IsNeshan = !letter.IsNeshan;
+        await _db.SaveChangesAsync();
+        return letter.IsNeshan;
     }
 
     public async Task DeleteAsync(int letterId, int userId, bool isAdmin)
