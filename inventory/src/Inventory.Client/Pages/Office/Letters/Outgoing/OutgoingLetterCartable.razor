@@ -225,7 +225,9 @@
                             <i class="bi @(myStar.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
                         </button>
                     }
-                    <button class="icb" title="چاپ" @onclick="Print"><i class="bi bi-printer"></i></button>
+                    <button class="icb" title="نمایش نامه (صفحه کامل)" @onclick="() => ViewLetter(selected.LetterId)"><i class="bi bi-eye"></i></button>
+                    <button class="icb" title="چاپ A4 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A4")'><i class="bi bi-printer"></i></button>
+                    <button class="icb" title="چاپ A5 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A5")'><i class="bi bi-printer-fill"></i></button>
                     @if (selected.CanSign)
                     {
                         <button class="lbtn grn" @onclick="OpenSignModal"><i class="bi bi-pen"></i> امضای نامه</button>
@@ -763,6 +765,25 @@
     private void MenuGardeshCur() { if (selected == null) return; _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt); }
     private async Task MenuPrint(OutgoingLetterListItemDto l) { openMenuId = 0; await OpenLetter(l); await Print(); }
     private async Task Print() { try { await JS.InvokeVoidAsync("ltxPrint"); } catch { } }
+
+    private bool printingPdf;
+
+    private void ViewLetter(int letterId) => Nav.NavigateTo($"outgoing-letters/view/{letterId}");
+
+    /// <summary>چاپ نامه روی سربرگ شرکت (A4/A5) — PDF از سرور</summary>
+    private async Task PrintPdf(string size)
+    {
+        if (selected == null) return;
+        printingPdf = true;
+        try
+        {
+            var bytes = await OutgoingSvc.GetPrintPdfAsync(selected.LetterId, size);
+            var name = $"letter-{(selected.SadereNumber ?? selected.LetterNumber).Replace('/', '-')}-{size}.pdf";
+            await JS.InvokeVoidAsync("ltxOpenPdf", Convert.ToBase64String(bytes), name);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printingPdf = false; }
+    }
 
     private async Task QuickSign(OutgoingLetterListItemDto l)
     {

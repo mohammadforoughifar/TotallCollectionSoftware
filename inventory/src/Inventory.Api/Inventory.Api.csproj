@@ -17,6 +17,8 @@
     <PackageReference Include="ClosedXML" Version="0.102.2" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" Version="8.0.0" />
     <PackageReference Include="QuestPDF" Version="2024.12.3" />
+    <!-- PDFsharp برای قرار دادن متن نامه صادره روی سربرگ PDF شرکت (چاپ A4/A5) -->
+    <PackageReference Include="PDFsharp" Version="6.1.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.1" />
