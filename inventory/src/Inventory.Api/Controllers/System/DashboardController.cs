@@ -18,12 +18,20 @@ public class DashboardController : ControllerBase
         _hw = hw;
     }
 
-    [HttpGet("stats")]
-    public async Task<IActionResult> Stats() => Ok(await DashboardBroadcaster.BuildAsync(_db));
+[HttpGet("stats")]
+public async Task<IActionResult> Stats()
+{
+    var data = await DashboardBroadcaster.BuildAsync(_db);
+    return Ok(data);
+}
 
-    /// <summary>آمار سخت‌افزار (آنلاین/آفلاین از آخرین پویش).</summary>
-    [HttpGet("hardware-stats")]
-    public async Task<IActionResult> HardwareStats() => Ok(await _hw.BuildStatsAsync());
+/// <summary>آمار سخت‌افزار (آنلاین/آفلاین از آخرین پویش).</summary>
+[HttpGet("hardware-stats")]
+public async Task<IActionResult> HardwareStats()
+{
+    var data = await _hw.BuildStatsAsync();
+    return Ok(data);
+}
 
     /// <summary>اجرای فوری یک دور پینگ همه‌ی دستگاه‌ها.</summary>
     [HttpPost("hardware-check")]

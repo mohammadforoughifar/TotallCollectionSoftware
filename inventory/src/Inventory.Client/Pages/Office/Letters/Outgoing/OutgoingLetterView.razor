@@ -1,0 +1,13 @@
+@page "/outgoing-letters/view/{LetterId:int}"
+@inject NavigationManager Nav
+
+@* ============================================================
+   مسیر مشاهده نامه صادره (لینک نوتیفیکیشن) — هدایت به کارتابل صادره
+   ============================================================ *@
+
+@code {
+    [Parameter] public int LetterId { get; set; }
+
+    protected override void OnInitialized() =>
+        Nav.NavigateTo($"outgoing-letters?open={LetterId}", replace: true);
+}

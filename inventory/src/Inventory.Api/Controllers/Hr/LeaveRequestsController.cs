@@ -666,7 +666,7 @@ public class LeaveRequestsController : ControllerBase
     public async Task<IActionResult> GetHolidays()
     {
         var list = await _db.CompanyHolidays.AsNoTracking().OrderByDescending(h => h.HolidayDate).ToListAsync();
-        return Ok(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt }));
+        return Ok(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt, h.IsOfficial }));
     }
 
     [HttpPost("holidays")]

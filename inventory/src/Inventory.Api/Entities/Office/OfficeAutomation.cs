@@ -26,7 +26,10 @@ public class LetterSource
     public bool IsDelete { get; set; }
 
     public InnerLetter? InnerLetter { get; set; }
+    public Letter_Sadere? Letter_Sadere { get; set; }
+    public OutgoingLetter? OutgoingLetter { get; set; }
     public ICollection<Erja> Erjas { get; set; } = new List<Erja>();
+    public ICollection<OutgoingLetterSigner> OutgoingSigners { get; set; } = new List<OutgoingLetterSigner>();
 
     /// <summary>روابطی که این نامه به‌عنوان نامه اصلی دارد (عطف/پیرو)</summary>
     public ICollection<RelatedLetter> RelatedLetters { get; set; } = new List<RelatedLetter>();
@@ -240,4 +243,80 @@ public class LetterGroupMember
 
     public LetterGroup? Group { get; set; }
     public User? User { get; set; }
+}
+
+// ============================================================
+//  نامه صادره (نامه به خارج از سازمان) — فاز دوم اتوماسیون اداری
+//  مستقل از InnerLetter اما از همان کلید مرجع LetterSource استفاده می‌کند
+//  SourceType = 2 در جدول LetterSource
+// ============================================================
+
+/// <summary>نامه صادره — ارسال نامه به خارج از سازمان</summary>
+public class Letter_Sadere
+{
+    /// <summary>کلید اصلی = همان Id از LetterSource (کلید مشترک)</summary>
+    [DatabaseGenerated(DatabaseGeneratedOption.None)]
+    public int SadereLetterId { get; set; }
+
+    /// <summary>فوریت: 1=عادی، 2=فوری، 3=آنی</summary>
+    public int Foriat { get; set; } = 1;
+
+    /// <summary>محرمانگی: 1=عادی، 2=محرمانه، 3=سری</summary>
+    public int Mahramangi { get; set; } = 1;
+
+    /// <summary>کاربر ایجادکننده</summary>
+    public int CreatorUserId { get; set; }
+
+    /// <summary>سمت ایجادکننده — فاز چارت سازمانی</summary>
+    public int? CreatorSematId { get; set; }
+
+    /// <summary>شماره نامه (اتوماتیک: سال شمسی/شماره)</summary>
+    [MaxLength(60)]
+    public string LetterNumber { get; set; } = "";
+
+    /// <summary>شماره ترتیبی داخل سال (هر سال از ۱ شروع می‌شود)</summary>
+    public int Number { get; set; }
+
+    /// <summary>عنوان نامه</summary>
+    [MaxLength(300)]
+    public string Title { get; set; } = "";
+
+    /// <summary>متن نامه</summary>
+    public string? Text { get; set; }
+
+    /// <summary>تاریخ و زمان ارسال</summary>
+    public DateTime? DateErsal { get; set; }
+
+    /// <summary>آیا نامه ارسال شده است؟</summary>
+    public bool IsSent { get; set; }
+
+    /// <summary>مرجع ارسال‌کننده (دپارتمان/واحد)</summary>
+    public int MarjeErsalId { get; set; }
+
+    /// <summary>شماره ثبت در مقصد/خارج از سازمان</summary>
+    public int? NumberSabtMaghsad { get; set; }
+
+    /// <summary>گیرنده اصلی در خارج از سازمان</summary>
+    [MaxLength(200)]
+    public string? GirandeAsli { get; set; }
+
+    /// <summary>نام شخص ارسال‌کننده/حامل نامه</summary>
+    [MaxLength(200)]
+    public string? TransferName { get; set; }
+
+    /// <summary>بایگانی شده؟</summary>
+    public bool IsArchived { get; set; }
+
+    /// <summary>حذف منطقی</summary>
+    public bool IsDeleted { get; set; }
+
+    public DateTime DateSabt { get; set; } = DateTime.Now;
+    public DateTime? UpdatedAt { get; set; }
+
+    // ==================== Relations ====================
+
+    [ForeignKey(nameof(SadereLetterId))]
+    public LetterSource Source { get; set; } = null!;
+
+    public User? CreatorUser { get; set; }
 }

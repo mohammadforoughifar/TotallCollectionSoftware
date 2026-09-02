@@ -46,6 +46,11 @@ builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
 builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
+builder.Services.AddScoped<ILetterSadereService, LetterSadereService>();
+
+// ---------- اتوماسیون اداری — نامه صادره (فاز دوم) — پوشه‌بندی تمیز ----------
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
@@ -79,6 +84,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
+        // لاگ عملیات: ثبت خودکار هر POST/PUT/PATCH/DELETE در همه‌ی بخش‌ها
+        options.Filters.Add<AuditLogFilter>();
     })
     .AddJsonOptions(o =>
     {

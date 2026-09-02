@@ -263,7 +263,7 @@
                                 <tr>
                                     <td class="fw-bold" dir="ltr">@PersianDate.ToShort(h.HolidayDate)</td>
                                     <td>@PersianDate.WeekdayName(h.HolidayDate)</td>
-                                    <td>@h.Name</td>
+                                    <td>@h.Name @if (h.IsOfficial) { <span class="badge rounded-pill text-bg-danger" style="font-size:.62rem">تعطیل رسمی</span> }</td>
                                     <td class="small text-muted">@h.CreatedByName</td>
                                     <td>
                                         @if (canApprove)
@@ -746,6 +746,7 @@
         public string Name { get; set; } = "";
         public string? CreatedByName { get; set; }
         public DateTime CreatedAt { get; set; }
+        public bool IsOfficial { get; set; }
     }
 
     public class ReportRow

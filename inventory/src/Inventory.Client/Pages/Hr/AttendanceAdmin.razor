@@ -140,8 +140,8 @@
                             <tr>
                                 <td class="fw-700">@s.Name</td>
                                 <td class="small text-muted">@(s.Description ?? "—")</td>
-                                <td dir="ltr"><span class="fw-bold text-success">@s.StartTime.HHMM()</span></td>
-                                <td dir="ltr"><span class="fw-bold text-danger">@s.EndTime.HHMM()</span></td>
+                                <td dir="ltr"><span class="fw-bold text-success">@s.StartTime.HHMM()</span>@if (s.StartTime2 != null) { <span class="small text-success">+ @s.StartTime2?.HHMM()</span> }</td>
+                                <td dir="ltr"><span class="fw-bold text-danger">@s.EndTime.HHMM()</span>@if (s.EndTime2 != null) { <span class="small text-danger">+ @s.EndTime2?.HHMM()</span> }</td>
                                 <td>@Fa.Digits(s.GraceMinutes) دقیقه</td>
                                 <td>@if (s.IncludeFriday) { <span class="badge bg-info">بله</span> } else { <span class="text-muted">خیر</span> }</td>
                                 <td>@if (s.IsActive) { <span class="badge bg-success">فعال</span> } else { <span class="badge bg-secondary">غیرفعال</span> }</td>
@@ -283,12 +283,12 @@
                         <tr>
                             <th>پرسنل</th><th>شیفت</th><th>روزکاری</th><th>حاضر</th><th>مرخصی</th>
                             <th>غایب</th><th>با تاخیر</th><th>تاخیر(دقیقه)</th><th>تعجیل(دقیقه)</th>
-                            <th>کارکرد(ساعت)</th><th>کسری(ساعت)</th><th>وضعیت</th>
+                            <th>کارکرد(ساعت)</th><th>اضافه‌کاری</th><th>غیرمجاز</th><th>کسری(ساعت)</th><th>وضعیت</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @if (monthlyLoading) { <tr><td colspan="12" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
-                        else if (!monthlyItems.Any()) { <tr><td colspan="12" class="text-center text-muted py-4">پرسنلی یافت نشد.</td></tr> }
+                        @if (monthlyLoading) { <tr><td colspan="14" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
+                        else if (!monthlyItems.Any()) { <tr><td colspan="14" class="text-center text-muted py-4">پرسنلی یافت نشد.</td></tr> }
                         else
                         {
                             @foreach (var r in monthlyItems.OrderByDescending(x => x.DeficitMinutes))
@@ -309,6 +309,8 @@
                                     <td>@Fa.Digits(r.TotalLateMinutes)</td>
                                     <td>@Fa.Digits(r.TotalEarlyLeaveMinutes)</td>
                                     <td class="text-info">@D2(r.WorkMinutes / 60.0)</td>
+                                    <td class="@(r.OvertimeMinutes>0?"text-info fw-700":"")">@(r.OvertimeMinutes>0?WorkMin(r.OvertimeMinutes):"—")</td>
+                                    <td class="@(r.UnauthorizedMinutes>0?"text-danger fw-700":"")">@(r.UnauthorizedMinutes>0?WorkMin(r.UnauthorizedMinutes):"—")</td>
                                     <td class="@(r.DeficitMinutes>0?"text-danger fw-700":"")">@D2(r.DeficitHours)</td>
                                     <td>@MonthlyStatusBadge(r)</td>
                                 </tr>
@@ -349,6 +351,17 @@
                         <div class="col-6">
                             <label class="form-label small fw-800">ساعت پایان</label>
                             <input type="time" class="form-control form-control-sm" value="@shiftForm.EndTime" @onchange='e => shiftForm.EndTime = e.Value?.ToString() ?? ""' />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-800 text-primary">شروع پنجره دوم <small class="text-muted fw-normal">(اختیاری)</small></label>
+                            <input type="time" class="form-control form-control-sm" value="@shiftForm.StartTime2" @onchange='e => shiftForm.StartTime2 = e.Value?.ToString() ?? ""' />
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-800 text-primary">پایان پنجره دوم <small class="text-muted fw-normal">(اختیاری)</small></label>
+                            <input type="time" class="form-control form-control-sm" value="@shiftForm.EndTime2" @onchange='e => shiftForm.EndTime2 = e.Value?.ToString() ?? ""' />
+                        </div>
+                        <div class="col-12">
+                            <div class="small text-muted"><i class="bi bi-info-circle"></i> <b>شیفت دوپاره:</b> اگر تیم شما دو بازه در روز کار می‌کند (مثلاً ۸ تا ۱۳ و ۱۷ تا ۲۱:۳۰)، پنجره‌ی دوم را هم پر کنید. حضور در فاصله‌ی بین دو پنجره نه کار حساب می‌شود نه تردد غیرمجاز.</div>
                         </div>
                         <div class="col-6">
                             <label class="form-label small fw-800">تاخیر مجاز (دقیقه)</label>
@@ -492,7 +505,7 @@
     private void EditShift(ShiftDto s)
     {
         editingShift = s; shiftError = "";
-        shiftForm = new ShiftForm { Id = s.Id, Name = s.Name, Description = s.Description ?? "", StartTime = s.StartTime.HHMM(), EndTime = s.EndTime.HHMM(), GraceMinutes = s.GraceMinutes, IncludeFriday = s.IncludeFriday, IsActive = s.IsActive };
+        shiftForm = new ShiftForm { Id = s.Id, Name = s.Name, Description = s.Description ?? "", StartTime = s.StartTime.HHMM(), EndTime = s.EndTime.HHMM(), StartTime2 = s.StartTime2?.HHMM() ?? "", EndTime2 = s.EndTime2?.HHMM() ?? "", GraceMinutes = s.GraceMinutes, IncludeFriday = s.IncludeFriday, IsActive = s.IsActive };
         ShowShiftModal = true;
     }
 
@@ -577,6 +590,14 @@
         return $"{Fa.Digits(h)}:{mm.ToString().PadLeft(2, '0')} ساعت";
     }
     private static string D2(double v) => v == (long)v ? Fa.Digits((long)v) : Fa.Digits((decimal)Math.Round(v, 1));
+    private static string WorkMin(int m)
+    {
+        if (m <= 0) return "—";
+        int h = m / 60, mm = m % 60;
+        if (h == 0) return Fa.Digits(mm) + " دقیقه";
+        if (mm == 0) return Fa.Digits(h) + " ساعت";
+        return Fa.Digits(h) + ":" + mm.ToString().PadLeft(2, '0') + " ساعت";
+    }
 
     private static Microsoft.AspNetCore.Components.MarkupString TodayStatusBadge(string? final, string? enter, bool onLeave)
     {
@@ -606,14 +627,14 @@
     public class TodayItem { public int UserId { get; set; } public string FullName { get; set; } = ""; public string? ShiftName { get; set; } public TimeSpan? ShiftStart { get; set; } public TimeSpan? ShiftEnd { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int EarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int CoveredGapMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public bool IsInNow { get; set; } public int UncoveredGaps { get; set; } public List<object> Segments { get; set; } = new(); }
     public class TodayResponse { public TodayStats stats { get; set; } = new(); public List<TodayItem> items { get; set; } = new(); }
 
-    public class ShiftDto { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public int GraceMinutes { get; set; } public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
-    public class ShiftForm { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public string StartTime { get; set; } = "08:00"; public string EndTime { get; set; } = "16:30"; public int GraceMinutes { get; set; } = 10; public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
+    public class ShiftDto { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public TimeSpan? StartTime2 { get; set; } public TimeSpan? EndTime2 { get; set; } public int GraceMinutes { get; set; } public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
+    public class ShiftForm { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public string StartTime { get; set; } = "08:00"; public string EndTime { get; set; } = "16:30"; public string? StartTime2 { get; set; } = ""; public string? EndTime2 { get; set; } = ""; public int GraceMinutes { get; set; } = 10; public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
 
     public class PersonnelItem { public int Id { get; set; } public string Username { get; set; } = ""; public string FullName { get; set; } = ""; public int? ShiftGroupId { get; set; } public string? ShiftName { get; set; } public bool Saved { get; set; } }
 
     public class ReportItem { public int Id { get; set; } public DateTime WorkDate { get; set; } public int UserId { get; set; } public string UserName { get; set; } = ""; public int? ShiftGroupId { get; set; } public string? ShiftName { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public List<object> Segments { get; set; } = new(); }
     public class ReportResponse { public List<ReportItem> items { get; set; } = new(); }
 
-    public class MonthlyRow { public int UserId { get; set; } public string UserName { get; set; } = ""; public string ShiftName { get; set; } = ""; public int Workdays { get; set; } public int Present { get; set; } public int Absent { get; set; } public double LeaveDays { get; set; } public int LateDays { get; set; } public int TotalLateMinutes { get; set; } public int TotalEarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public double DeficitHours { get; set; } }
+    public class MonthlyRow { public int UserId { get; set; } public string UserName { get; set; } = ""; public string ShiftName { get; set; } = ""; public int Workdays { get; set; } public int Present { get; set; } public int Absent { get; set; } public double LeaveDays { get; set; } public int LateDays { get; set; } public int TotalLateMinutes { get; set; } public int TotalEarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public double DeficitHours { get; set; } public int OvertimeMinutes { get; set; } public int UnauthorizedMinutes { get; set; } }
     public class MonthlyResponse { public int year { get; set; } public int month { get; set; } public string monthName { get; set; } = ""; public int days { get; set; } public List<MonthlyRow> items { get; set; } = new(); }
 }
