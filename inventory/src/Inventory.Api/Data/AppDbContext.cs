@@ -37,6 +37,7 @@ public class AppDbContext : DbContext
 
     // ================== اعلان‌ها (نوتیفیکیشن) ==================
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     // ================== دستور کار ==================
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();

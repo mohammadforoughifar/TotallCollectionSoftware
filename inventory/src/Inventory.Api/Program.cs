@@ -118,6 +118,7 @@ builder.Services.AddSignalR().AddJsonProtocol(o =>
 });
 builder.Services.AddSingleton<DashboardBroadcaster>();
 builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs.NotifyService>();
+builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<HardwareMonitor>();
