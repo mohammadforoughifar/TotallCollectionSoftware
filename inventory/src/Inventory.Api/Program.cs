@@ -47,7 +47,9 @@ builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
 builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
-
+// ساختار شماره اندیکاتور (LetterStrature) و بایگانی درختی نامه‌ها
+builder.Services.AddScoped<ILetterStratureService, LetterStratureService>();
+builder.Services.AddScoped<IArchiveService, ArchiveService>();
 
 // ---------- اتوماسیون اداری — نامه صادره (فاز دوم) — پوشه‌بندی تمیز ----------
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();
@@ -74,6 +76,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidIssuer = AuthService.JwtIssuer,
             ValidAudience = AuthService.JwtIssuer,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AuthService.JwtKey))
+        };
+        // دانلود پیوست با لینک مستقیم (تگ <a>) هدر Authorization ندارد؛
+        // برای مسیرهای دانلود، توکن از query string خوانده می‌شود (الگوی استاندارد SignalR).
+        o.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                var token = ctx.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token) &&
+                    ctx.Request.Path.Value?.Contains("/download", StringComparison.OrdinalIgnoreCase) == true)
+                    ctx.Token = token;
+                return Task.CompletedTask;
+            }
         };
     });
 builder.Services.AddAuthorization();

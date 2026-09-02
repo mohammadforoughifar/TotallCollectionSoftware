@@ -67,6 +67,10 @@ public class InnerLetter
     /// <summary>فوریت: عادی / فوری / آنی</summary>
     [MaxLength(20)] public string Foriat { get; set; } = "عادی";
 
+    /// <summary>نشان‌کردن نامه توسط فرستنده (ستاره سمت ارسالی) —
+    /// نشان گیرندگان روی Erja.IsNeshan است</summary>
+    public bool IsNeshan { get; set; }
+
     public bool IsDelete { get; set; }
 
     [ForeignKey(nameof(Id))] public LetterSource Source { get; set; } = null!;
@@ -200,6 +204,9 @@ public class LetterBayegani
     public int BayeganiId { get; set; }
     [MaxLength(200)] public string Title { get; set; } = "";
     public int? ErjaId { get; set; }
+
+    /// <summary>شناسه نامه — برای بایگانی نامه ارسالی توسط فرستنده (که ارجاعی ندارد)</summary>
+    public int? LetterId { get; set; }
     public int ParentId { get; set; }
     public int UserId { get; set; }
     public int? SematId { get; set; }
@@ -242,5 +249,19 @@ public class LetterGroupMember
 
     public LetterGroup? Group { get; set; }
     public User? User { get; set; }
+}
+
+/// <summary>
+/// ساختار شماره اندیکاتور نامه — پورت از LetterStrature طرح کارفرما.
+/// هر ردیف یک جزء ساختار است و ترتیب ردیف‌ها، ترتیب اجزا را تعیین می‌کند.
+/// TypeForm: 1=نامه داخلی، 2=صادره، 3=وارده
+/// TypeStrature: «واحد» | «شماره» | «سال»
+/// مثال خروجی با ترتیب واحد/شماره/سال: MQ/1/1405
+/// </summary>
+public class LetterStrature
+{
+    public int StratureId { get; set; }
+    public int TypeForm { get; set; }
+    [MaxLength(50)] public string TypeStrature { get; set; } = "";
 }
 
