@@ -893,7 +893,7 @@
       "url": "icons\/fonts\/bootstrap-icons.woff2"
     },
     {
-      "hash": "sha256-IZUOyL4hF3GCXQzDD3dOBqujuwDFfhN9VYODKEzky04=",
+      "hash": "sha256-z0z+Wkysx915FGt74jn8Hiq+A9/S9KXanXV22PpRVYk=",
       "url": "index.html"
     },
     {

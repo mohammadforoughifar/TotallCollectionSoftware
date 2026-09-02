@@ -37,6 +37,15 @@ public interface IOutgoingLetterService
     Task UploadPishnevisAttachmentAsync(int pishnevisId, Stream stream, string fileName, string contentType);
     Task DeleteAttachmentAsync(int attachmentId);
     string AttachmentDownloadUrl(int attachmentId);
+
+    // ==================== دبیرخانه نامه صادره ====================
+    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search = null, bool? registeredOnly = null);
+    Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
+    Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto);
+    Task<List<LetterCompanyDto>> GetCompaniesAsync();
+
+    /// <summary>دریافت PDF چاپ نامه روی سربرگ — size: A4 یا A5</summary>
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size);
 }
 
 public class OutgoingLetterService : IOutgoingLetterService
@@ -196,4 +205,48 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public string AttachmentDownloadUrl(int attachmentId) =>
         _api.BuildUrl($"api/outgoing-letters/attachments/{attachmentId}/download");
+
+    // ==================== دبیرخانه نامه صادره ====================
+
+    public Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search = null, bool? registeredOnly = null)
+    {
+        var qs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        if (registeredOnly != null) qs.Add($"registeredOnly={(registeredOnly == true ? "true" : "false")}");
+        var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
+        return _api.GetAsync<List<DabirkhaneListItemDto>>($"api/outgoing-letters/dabirkhane{q}");
+    }
+
+    public Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync() =>
+        _api.GetAsync<DabirkhaneStatsDto>("api/outgoing-letters/dabirkhane/stats");
+
+    public Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto) =>
+        _api.PostAsync<object>($"api/outgoing-letters/{letterId}/dabirkhane", dto);
+
+    public Task<List<LetterCompanyDto>> GetCompaniesAsync() =>
+        _api.GetAsync<List<LetterCompanyDto>>("api/outgoing-letters/companies");
+
+    /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود</summary>
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get,
+            _api.BuildUrl($"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}"));
+        if (!string.IsNullOrWhiteSpace(_auth.Token))
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
+
+        var resp = await _http.SendAsync(req);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var text = await resp.Content.ReadAsStringAsync();
+            string msg = "دریافت فایل چاپ ناموفق بود.";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(text);
+                if (doc.RootElement.TryGetProperty("message", out var m)) msg = m.GetString() ?? msg;
+            }
+            catch { }
+            throw new ApiException(msg);
+        }
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
 }

@@ -22,18 +22,21 @@ public class OutgoingLettersController : RbacControllerBase
     private readonly IOutgoingPishnevisService _pishnevis;
     private readonly IErjaService _erja;
     private readonly ILetterGroupService _groups;
+    private readonly IOutgoingLetterPrintService _print;
 
     public OutgoingLettersController(
         AppDbContext db,
         IOutgoingLetterService letters,
         IOutgoingPishnevisService pishnevis,
         IErjaService erja,
-        ILetterGroupService groups) : base(db)
+        ILetterGroupService groups,
+        IOutgoingLetterPrintService print) : base(db)
     {
         _letters = letters;
         _pishnevis = pishnevis;
         _erja = erja;
         _groups = groups;
+        _print = print;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
@@ -174,6 +177,68 @@ public class OutgoingLettersController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.GetAvailableSignersAsync(search));
+    }
+
+    // ==================== دبیرخانه نامه صادره ====================
+    // فقط نامه‌های امضا شده (SadereNumber دار) وارد دبیرخانه می‌شوند.
+
+    private async Task<bool> HasDabirkhaneAsync() =>
+        await HasAsync(Module, "Dabirkhane") || await IsAdminAsync();
+
+    [HttpGet("dabirkhane")]
+    public async Task<IActionResult> Dabirkhane([FromQuery] string? search, [FromQuery] bool? registeredOnly)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _letters.GetDabirkhaneAsync(search, registeredOnly));
+    }
+
+    [HttpGet("dabirkhane/stats")]
+    public async Task<IActionResult> DabirkhaneStats()
+    {
+        if (!await HasDabirkhaneAsync()) return Ok(new DabirkhaneStatsDto());
+        return Ok(await _letters.GetDabirkhaneStatsAsync());
+    }
+
+    /// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال + توضیح</summary>
+    [HttpPost("{id:int}/dabirkhane")]
+    public async Task<IActionResult> DabirkhaneRegister(int id, [FromBody] DabirkhaneRegisterDto dto)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        await _letters.DabirkhaneRegisterAsync(id, dto, MyUserId, await MyDisplayNameAsync());
+        return Ok(new { message = "نامه در دبیرخانه ثبت شد." });
+    }
+
+    /// <summary>شرکت‌های فعال — برای انتخاب سربرگ نامه صادره</summary>
+    [HttpGet("companies")]
+    public async Task<IActionResult> Companies()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _letters.GetCompaniesAsync());
+    }
+
+    // ==================== چاپ نامه روی سربرگ شرکت (A4 / A5) ====================
+
+    /// <summary>چاپ نامه صادره — خروجی PDF روی سربرگ شرکت (فایل سربرگ از مسیر روت API)</summary>
+    [HttpGet("{id:int}/print")]
+    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4")
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (!await InFlowAsync(id) && !await IsAdminAsync() && !await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+
+        if (!string.Equals(size, "A4", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
+
+        var pdf = await _print.GeneratePdfAsync(id, size);
+        if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
+
+        var letter = await Db.OutgoingLetters.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
+        var number = letter?.SadereNumber ?? letter?.LetterNumber ?? id.ToString();
+        var fileName = $"letter-{number.Replace('/', '-')}-{size.ToUpper()}.pdf";
+        return File(pdf, "application/pdf", fileName);
     }
 
     // ==================== گردش / ارجاع ====================

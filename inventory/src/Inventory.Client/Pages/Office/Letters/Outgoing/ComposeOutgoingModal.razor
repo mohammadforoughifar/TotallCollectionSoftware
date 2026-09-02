@@ -73,14 +73,32 @@
             </div>
 
             <div class="row2">
-                <LetterPickCombo @ref="cbSigners" Label="امضا کنندگان (بر اساس دسترسی Sign)" Icon="bi-pen"
-                                 Users="signerUsers" Groups="allGroups"
-                                 SelectedUsers="signerSelUsers" SelectedGroups="signerSelGroups"
-                                 Changed="OnSignerChanged" />
+                <div>
+                    <LetterPickCombo @ref="cbSigners" Label="امضا کنندگان" Icon="bi-pen" Required="true" HasError="errSigners"
+                                     Users="signerUsers" Groups="allGroups"
+                                     SelectedUsers="signerSelUsers" SelectedGroups="signerSelGroups"
+                                     Changed="OnSignerChanged" />
+                    @if (errSigners)
+                    {
+                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> نامه صادره باید حداقل یک امضا کننده داشته باشد</div>
+                    }
+                </div>
                 <div class="fcard" style="display:flex;align-items:center;gap:8px;padding:10px">
                     <i class="bi bi-info-circle" style="color:var(--p2)"></i>
-                    <small>امضا کنندگان فقط از بین کاربران دارای دسترسی <code>OutgoingLetters.Sign</code> قابل انتخاب هستند. وقتی امضا شد شماره صادره (SadereNumber) مقدار می‌گیرد.</small>
+                    <small>انتخاب <b>حداقل یک امضا کننده الزامی است</b>. امضا کنندگان از بین کاربران دارای دسترسی <code>OutgoingLetters.Sign</code> انتخاب می‌شوند و وقتی همه امضا کردند، شماره صادره (SadereNumber) مقدار می‌گیرد و نامه وارد دبیرخانه می‌شود.</small>
                 </div>
+            </div>
+
+            @* ---------- شرکت صادرکننده (سربرگ چاپ) ---------- *@
+            <div class="fcard">
+                <label>شرکت صادرکننده (سربرگ چاپ) <span class="opt">چاپ نامه روی سربرگ همین شرکت انجام می‌شود</span></label>
+                <select class="tin" @bind="companyId">
+                    <option value="0">— بدون انتخاب شرکت —</option>
+                    @foreach (var c in companies)
+                    {
+                        <option value="@c.Id">@c.Name @(c.HasLetterhead ? "📄" : "(بدون سربرگ)")</option>
+                    }
+                </select>
             </div>
 
             <div class="row2">
@@ -257,9 +275,11 @@
     private string mahram = "عادی";
     private string pendingBody = "";
 
-    private bool errTitle, errReceiverOrg;
+    private bool errTitle, errReceiverOrg, errSigners;
     private List<LetterReciverDto> allUsers = new();
     private List<LetterGroupDto> allGroups = new();
+    private List<LetterCompanyDto> companies = new();
+    private int companyId;
 
     private LetterPickCombo? cbRcv, cbErja, cbHamesh, cbSigners;
     private HashSet<int> rcvUsers = new(), rcvGroups = new();
@@ -310,6 +330,7 @@
         receiverAddress = letter.ReceiverAddress;
         copyTo = letter.CopyTo;
         externalRef = letter.ExternalRefNumber;
+        companyId = letter.CompanyId ?? 0;
 
         foreach (var r in letter.ReciversGirande) rcvUsers.Add(r.UserId);
         foreach (var r in letter.ReciversErja) erjaUsers.Add(r.UserId);
@@ -341,8 +362,8 @@
     {
         isEditLetter = false; editLetterId = 0; draftId = null;
         title = ""; receiverOrg = ""; receiverName = null; receiverTitle = null; receiverAddress = null; copyTo = null; externalRef = null;
-        foriat = "عادی"; mahram = "عادی"; pendingBody = "";
-        errTitle = errReceiverOrg = false; fileErr = "";
+        foriat = "عادی"; mahram = "عادی"; pendingBody = ""; companyId = 0;
+        errTitle = errReceiverOrg = errSigners = false; fileErr = "";
         rcvUsers.Clear(); rcvGroups.Clear();
         erjaUsers.Clear(); erjaGroups.Clear();
         hameshUsers.Clear(); hameshGroups.Clear();
@@ -364,6 +385,7 @@
             if (allUsers.Count == 0) allUsers = await OutgoingSvc.GetReciversAsync();
             allGroups = await OutgoingSvc.GetGroupsAsync();
             try { signerUsers = await OutgoingSvc.GetAvailableSignersAsync(); } catch { signerUsers = allUsers; }
+            try { companies = await OutgoingSvc.GetCompaniesAsync(); } catch { companies = new(); }
             StateHasChanged();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -471,7 +493,15 @@
     {
         errTitle = string.IsNullOrWhiteSpace(title);
         errReceiverOrg = string.IsNullOrWhiteSpace(receiverOrg);
-        if (errTitle || errReceiverOrg) { Toast.Error("موارد الزامی را تکمیل کنید."); return false; }
+        // 🔒 حداقل یک امضا کننده الزامی است
+        errSigners = signerSelUsers.Count == 0 && signerSelGroups.Count == 0;
+        if (errTitle || errReceiverOrg || errSigners)
+        {
+            Toast.Error(errSigners && !errTitle && !errReceiverOrg
+                ? "نامه صادره باید حداقل یک امضا کننده داشته باشد."
+                : "موارد الزامی را تکمیل کنید.");
+            return false;
+        }
         return true;
     }
 
@@ -493,6 +523,7 @@
                 ReceiverAddress = receiverAddress?.Trim(),
                 CopyTo = copyTo?.Trim(),
                 ExternalRefNumber = externalRef?.Trim(),
+                CompanyId = companyId > 0 ? companyId : null,
                 ReciversGirande = rcvUsers.ToList(),
                 GroupsGirande = rcvGroups.ToList(),
                 ReciversErja = erjaUsers.ToList(),
@@ -556,6 +587,7 @@
                 ReceiverAddress = receiverAddress?.Trim(),
                 CopyTo = copyTo?.Trim(),
                 ExternalRefNumber = externalRef?.Trim(),
+                CompanyId = companyId > 0 ? companyId : null,
                 ReciversGirande = rcvUsers.ToList(),
                 GroupsGirande = rcvGroups.ToList(),
                 ReciversErja = erjaUsers.ToList(),
