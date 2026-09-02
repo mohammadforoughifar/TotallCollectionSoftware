@@ -100,6 +100,30 @@ else
                                         }
                                     </div>
                                 </div>
+                                @* ================== نوتیفیکیشن گوشی/تبلت (Web Push) ================== *@
+                                <div class="ntf-push-row">
+                                    <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                        <div class="ntf-push-icon"><i class="bi bi-phone-vibrate"></i></div>
+                                        <div class="min-w-0">
+                                            <div class="fs-8 fw-700">نوتیفیکیشن گوشی/تبلت</div>
+                                            <div class="fs-9 text-muted ntf-push-msg">@pushStatusText</div>
+                                        </div>
+                                    </div>
+                                    <button class="btn btn-sm @(pushEnabled ? "btn-outline-danger" : "btn-primary")" @onclick="TogglePush" disabled="@pushBusy" title="اعلان‌ها مثل نوتیف گوشی از بالای صفحه می‌آیند و بالای گوشی می‌مانند">
+                                        @if (pushBusy)
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else if (pushEnabled)
+                                        {
+                                            <i class="bi bi-bell-slash"></i><span>غیرفعال‌سازی</span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-bell"></i><span>فعال‌سازی</span>
+                                        }
+                                    </button>
+                                </div>
                                 <div class="ntf-panel-body">
                                     @if (ntfList.Count == 0)
                                     {
@@ -269,6 +293,103 @@ else
     private List<NtfItem> ntfList = new();
     private List<NtfItem> liveToasts = new();
 
+    // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
+    private bool pushEnabled;
+    private bool pushBusy;
+    private bool pushSupportChecked;
+    private bool pushSupported;
+    private string pushStatusText = "بررسی وضعیت…";
+
+    private void OnRtNotifySetPushStatus(string s) => pushStatusText = s;
+
+    private async Task InitPushStateAsync()
+    {
+        try
+        {
+            pushSupported = await JS.InvokeAsync<bool>("attPushSupported");
+            pushSupportChecked = true;
+            if (!pushSupported)
+            {
+                pushStatusText = "این مرورگر از نوتیفیکیشن پشتیبانی نمی‌کند.";
+                return;
+            }
+            pushEnabled = await JS.InvokeAsync<bool>("attPushIsSubscribed");
+            pushStatusText = pushEnabled
+                ? "فعال — اعلان‌ها مثل نوتیف گوشی از بالای صفحه می‌آیند و می‌مانند."
+                : "غیرفعال — اعلان‌ها فقط داخل برنامه نمایش داده می‌شوند.";
+        }
+        catch { pushSupportChecked = false; pushStatusText = "نوتیفیکیشن در دسترس نیست."; }
+    }
+
+    private async Task TogglePush()
+    {
+        if (pushBusy) return;
+        pushBusy = true;
+        try
+        {
+            if (pushEnabled)
+            {
+                // غیرفعال‌سازی
+                var r = await JS.InvokeAsync<PushDisableResult>("attPushDisable");
+                if (!string.IsNullOrWhiteSpace(r?.endpoint))
+                {
+                    try { await Http.PostAsJsonAsync("api/notifications/push-unsubscribe", new { endpoint = r.endpoint }); } catch { }
+                }
+                pushEnabled = false;
+                pushStatusText = "غیرفعال — اعلان‌ها فقط داخل برنامه نمایش داده می‌شوند.";
+                Toast.Success(r?.message ?? "نوتیفیکیشن غیرفعال شد.");
+            }
+            else
+            {
+                // فعال‌سازی — ابتدا کلید عمومی VAPID از سرور
+                var keyResp = await Http.GetFromJsonAsync<VapidKeyRes>("api/notifications/push-vapid-key");
+                if (string.IsNullOrWhiteSpace(keyResp?.publicKey))
+                {
+                    pushStatusText = "کلید نوتیفیکیشن (VAPID) روی سرور تنظیم نشده است — با مدیر سیستم تماس بگیرید.";
+                    Toast.Error("نوتیفیکیشن سرور پیکربندی نشده است.");
+                    return;
+                }
+
+                var res = await JS.InvokeAsync<PushEnableResult>("attPushEnable", keyResp.publicKey);
+                if (res?.ok == true && !string.IsNullOrWhiteSpace(res.endpoint))
+                {
+                    var save = await Http.PostAsJsonAsync("api/notifications/push-subscribe", new
+                    {
+                        endpoint = res.endpoint,
+                        p256dh = res.p256dh,
+                        auth = res.auth
+                    });
+                    if (save.IsSuccessStatusCode)
+                    {
+                        pushEnabled = true;
+                        pushStatusText = "فعال — اعلان‌ها مثل نوتیف گوشی از بالای صفحه می‌آیند و می‌مانند.";
+                        Toast.Success("✅ نوتیفیکیشن گوشی/تبلت فعال شد.");
+                    }
+                    else
+                    {
+                        pushStatusText = "ثبت اشتراک در سرور ناموفق بود.";
+                        Toast.Error("ثبت اشتراک در سرور ناموفق بود.");
+                    }
+                }
+                else
+                {
+                    pushStatusText = res?.message ?? "فعال‌سازی نوتیفیکیشن ناموفق بود.";
+                    Toast.Error(res?.message ?? "خطا در فعال‌سازی.");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            pushStatusText = "خطا در عملیات نوتیفیکیشن.";
+            Toast.Error(ex.Message);
+        }
+        finally { pushBusy = false; }
+    }
+
+    private class VapidKeyRes { public string? publicKey { get; set; } }
+    private class PushEnableResult { public bool ok { get; set; } public string? message { get; set; } public string? endpoint { get; set; } public string? p256dh { get; set; } public string? auth { get; set; } }
+    private class PushDisableResult { public bool ok { get; set; } public string? message { get; set; } public string? endpoint { get; set; } }
+
     public class NtfItem
     {
         public int Id { get; set; }
@@ -302,6 +423,9 @@ else
 
         // شمارنده‌ی نامه‌های نخوانده (اتوماسیون اداری)
         await RefreshLettersUnreadAsync();
+
+        // وضعیت نوتیفیکیشن گوشی/تبلت (Web Push)
+        await InitPushStateAsync();
     }
 
     // ==================== اتوماسیون اداری: شمارنده نامه‌های نخوانده ====================
@@ -334,7 +458,8 @@ else
         liveToasts.Insert(0, n);
         if (liveToasts.Count > 4) liveToasts.RemoveAt(liveToasts.Count - 1);
         await InvokeAsync(StateHasChanged);
-        _ = Task.Delay(8000).ContinueWith(async _ =>
+        // اعلان ۱۵ ثانیه بالای صفحه می‌ماند (مثل نوتیف گوشی) — کاربر می‌تواند ببندد یا کلیک کند
+        _ = Task.Delay(15000).ContinueWith(async _ =>
         {
             liveToasts.Remove(n);
             await InvokeAsync(StateHasChanged);
@@ -660,23 +785,46 @@ else
     .ntf-item.unread { background: #eff6ff; border-right: 3px solid #2563eb; }
     .fs-9 { font-size: .7rem; }
 
-    /* ================== توست پایین چپ ================== */
+    /* ================== توست اعلان — بالای صفحه (شبیه نوتیف گوشی) ================== */
+    /* اعلان‌ها مثل نوتیف گوشی از بالای صفحه می‌آیند و بالای گوشی می‌مانند */
     .ntf-toasts {
-        position: fixed; bottom: 1rem; left: 1rem; z-index: 1090;
-        display: flex; flex-direction: column-reverse; gap: .5rem; max-width: 340px; width: calc(100vw - 2rem);
+        position: fixed; top: 1rem; right: 1rem; z-index: 1090;
+        display: flex; flex-direction: column; gap: .55rem; max-width: 360px; width: calc(100vw - 2rem);
+        pointer-events: none;
     }
     .ntf-toast {
-        display: flex; gap: .6rem; align-items: flex-start;
+        pointer-events: auto;
+        display: flex; gap: .65rem; align-items: flex-start;
         background: #fff; border: 1px solid #dbe7ff; border-radius: 14px;
-        padding: .7rem .85rem; box-shadow: 0 10px 30px rgba(15,23,42,.18);
-        cursor: pointer; animation: ntfIn .3s ease;
+        padding: .75rem .9rem; box-shadow: 0 12px 32px rgba(15,23,42,.22);
+        cursor: pointer; animation: ntfIn .32s cubic-bezier(.21,1.02,.73,1);
+        border-right: 4px solid #2563eb;
     }
-    @@keyframes ntfIn { from { transform: translateY(15px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    @@keyframes ntfIn { from { transform: translateY(-16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     .ntf-toast-icon {
-        width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+        width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0;
         background: linear-gradient(135deg, #2563eb, #38bdf8); color: #fff;
-        display: flex; align-items: center; justify-content: center;
+        display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+        box-shadow: 0 4px 12px rgba(37,99,235,.35);
     }
     .ntf-toast-body { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-    @@media (max-width: 575.98px) { .ntf-toasts { bottom: 4.5rem; } .ntf-panel { position: fixed; top: 60px; left: .5rem; right: .5rem; width: auto; } }
+
+    /* ردیف فعال‌سازی نوتیفیکیشن گوشی/تبلت در پنل زنگ */
+    .ntf-push-row {
+        display: flex; align-items: center; gap: .6rem;
+        padding: .6rem .9rem; border-bottom: 1px solid #eef2f7;
+        background: linear-gradient(180deg, #f0f7ff, #f8fbff);
+    }
+    .ntf-push-icon {
+        width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+        background: #e8f1ff; color: #2563eb; display: flex; align-items: center; justify-content: center;
+    }
+    .ntf-push-msg { line-height: 1.5; }
+
+    /* در موبایل: تمام‌عرض بالا، دقیقاً مثل نوتیف گوشی */
+    @@media (max-width: 575.98px) {
+        .ntf-toasts { top: .6rem; right: .5rem; left: .5rem; width: auto; max-width: none; }
+        .ntf-toast { border-radius: 12px; }
+        .ntf-panel { position: fixed; top: 60px; left: .5rem; right: .5rem; width: auto; }
+    }
 </style>

@@ -263,4 +263,179 @@
             return false;
         }
     };
+
+    // ============================================================
+    //  امنیت حضور و غیاب:
+    //  ۱) شناسه‌ی یکتای دستگاه (Device ID) — ذخیره در localStorage
+    //     (مرورگر MAC واقعی نمی‌دهد؛ این شناسه + IP + User-Agent همان نقش را دارد)
+    //  ۲) موقعیت جغرافیایی (Geolocation API) برای محدوده‌ی مکانی مجاز
+    // ============================================================
+
+    var ATT_DEVICE_KEY = 'att_device_id_v1';
+
+    /** خواندن یا ساخت شناسه‌ی یکتای دستگاه برای این مرورگر. */
+    window.attGetDeviceId = function () {
+        try {
+            var id = localStorage.getItem(ATT_DEVICE_KEY);
+            if (id && id.length >= 8) return id;
+            id = 'dev-' + Date.now().toString(36) + '-' +
+                Math.random().toString(36).slice(2, 10) + '-' +
+                Math.random().toString(36).slice(2, 10);
+            localStorage.setItem(ATT_DEVICE_KEY, id);
+            return id;
+        } catch (e) {
+            // اگر localStorage در دسترس نبود (مثلاً حالت خصوصی)، یک شناسه موقت
+            return 'dev-tmp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
+    };
+
+    /** حذف شناسه دستگاه (در صورت نیاز کاربر/مدیر به ریست). */
+    window.attResetDeviceId = function () {
+        try { localStorage.removeItem(ATT_DEVICE_KEY); } catch (e) { }
+    };
+
+    /**
+     * موقعیت جغرافیایی فعلی (طول/عرض).
+     * اگر کاربر اجازه ندهد یا در دسترس نباشد null برمی‌گرداند (هشدار مکانی ثبت نمی‌شود).
+     * @returns {Promise<{lat:number, lng:number}|null>}
+     */
+    window.attGetPosition = function (timeoutMs) {
+        return new Promise(function (resolve) {
+            try {
+                if (!navigator.geolocation) { resolve(null); return; }
+                var to = (typeof timeoutMs === 'number' && timeoutMs > 0) ? timeoutMs : 8000;
+                navigator.geolocation.getCurrentPosition(
+                    function (pos) {
+                        resolve({
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude
+                        });
+                    },
+                    function () { resolve(null); },
+                    { enableHighAccuracy: true, timeout: to, maximumAge: 30000 }
+                );
+            } catch (e) {
+                resolve(null);
+            }
+        });
+    };
+
+    // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
+
+    /**
+     * آیا مرورگر از Web Push پشتیبانی می‌کند؟
+     * @returns {boolean}
+     */
+    window.attPushSupported = function () {
+        try {
+            return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+        } catch (e) { return false; }
+    };
+
+    /**
+     * وضعیت فعلی اجازه نوتیفیکیشن.
+     * @returns {string} 'granted' | 'denied' | 'default' | 'unsupported'
+     */
+    window.attPushPermission = function () {
+        try {
+            if (!('Notification' in window)) return 'unsupported';
+            return Notification.permission || 'default';
+        } catch (e) { return 'unsupported'; }
+    };
+
+    /**
+     * فعال‌سازی نوتیفیکیشن گوشی/تبلت:
+     *  ۱) درخواست اجازه از کاربر
+     *  ۲) ثبت سرویس‌ورکر
+     *  ۳) ساخت اشتراک push با کلید عمومی VAPID سرور
+     * اشتراک ساخته شده برمی‌گردد تا Blazor با توکن احراز هویت آن را در سرور ذخیره کند.
+     * @param {string} vapidPublicKey کلید عمومی VAPID (از سرور)
+     * @returns {Promise<{ok:boolean, message?:string, endpoint?:string, p256dh?:string, auth?:string}>}
+     */
+    window.attPushEnable = async function (vapidPublicKey) {
+        try {
+            if (!window.attPushSupported())
+                return { ok: false, message: 'این مرورگر از نوتیفیکیشن پشتیبانی نمی‌کند.' };
+
+            var permission = Notification.requestPermission
+                ? await Notification.requestPermission()
+                : 'default';
+
+            if (permission !== 'granted')
+                return { ok: false, message: 'دسترسی نوتیفیکیشن داده نشد.' };
+
+            var reg = await navigator.serviceWorker.register('service-worker.js');
+            await navigator.serviceWorker.ready;
+
+            var sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlB64ToUint8Array(vapidPublicKey)
+            });
+
+            return {
+                ok: true,
+                endpoint: sub.endpoint,
+                p256dh: b64url(sub.getKey('p256dh')),
+                auth: b64url(sub.getKey('auth'))
+            };
+        } catch (e) {
+            return { ok: false, message: e && e.message ? e.message : 'خطا در فعال‌سازی نوتیفیکیشن.' };
+        }
+    };
+
+    /**
+     * غیرفعال‌سازی نوتیفیکیشن: لغو اشتراک محلی.
+     * (حذف از سرور توسط Blazor با توکن انجام می‌شود)
+     * @returns {Promise<{ok:boolean, endpoint?:string, message?:string}>}
+     */
+    window.attPushDisable = async function () {
+        try {
+            var reg = await navigator.serviceWorker.getRegistration();
+            var endpoint = '';
+            if (reg && reg.pushManager) {
+                var sub = await reg.pushManager.getSubscription();
+                if (sub) {
+                    endpoint = sub.endpoint;
+                    await sub.unsubscribe();
+                }
+            }
+            return { ok: true, endpoint: endpoint, message: 'نوتیفیکیشن غیرفعال شد.' };
+        } catch (e) {
+            return { ok: false, message: e && e.message ? e.message : 'خطا در غیرفعال‌سازی.' };
+        }
+    };
+
+    /**
+     * آیا این دستگاه در حال حاضر اشتراک push دارد؟
+     * @returns {Promise<boolean>}
+     */
+    window.attPushIsSubscribed = async function () {
+        try {
+            var reg = await navigator.serviceWorker.getRegistration();
+            if (reg && reg.pushManager) {
+                var sub = await reg.pushManager.getSubscription();
+                return !!sub;
+            }
+            return false;
+        } catch (e) { return false; }
+    };
+
+    /** تبدیل آرایه‌بایت به Base64URL */
+    function b64url(buffer) {
+        if (!buffer) return '';
+        var bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        var bin = '';
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    /** تبدیل کلید عمومی VAPID (base64url) به Uint8Array برای subscribe */
+    function urlB64ToUint8Array(base64String) {
+        var padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var raw = atob(base64);
+        var output = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+        return output;
+    }
 })();
