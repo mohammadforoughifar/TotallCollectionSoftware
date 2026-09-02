@@ -70,6 +70,30 @@ public class OutgoingLetter
     /// <summary>تاریخ صدور رسمی — زمان امضای نهایی</summary>
     public DateTime? DateSadere { get; set; }
 
+    /// <summary>شرکت صادرکننده نامه — سربرگ چاپ از همین شرکت خوانده می‌شود (جدول SystemCompanies)</summary>
+    public int? CompanyId { get; set; }
+
+    // ==================== دبیرخانه نامه صادره ====================
+    // نامه فقط بعد از امضا (SadereNumber مقدار گرفته) وارد دبیرخانه می‌شود.
+
+    /// <summary>آیا در دبیرخانه ثبت (ارسال) شده است؟</summary>
+    public bool DabirkhaneSabt { get; set; }
+
+    /// <summary>کاربر دبیرخانه که ثبت را انجام داده</summary>
+    public int? DabirkhaneUserId { get; set; }
+
+    /// <summary>تاریخ ثبت در دبیرخانه</summary>
+    public DateTime? DateDabirkhane { get; set; }
+
+    /// <summary>شماره ثبت مقصد — شماره‌ای که دبیرخانه سازمان مقصد به نامه می‌دهد</summary>
+    [MaxLength(100)] public string? DestRegNumber { get; set; }
+
+    /// <summary>روش ارسال نامه از دبیرخانه: پست / پیک / ایمیل / فکس / تحویل حضوری / اتوماسیون</summary>
+    [MaxLength(50)] public string? SendMethod { get; set; }
+
+    /// <summary>توضیحات دبیرخانه (اختیاری)</summary>
+    [MaxLength(1000)] public string? DabirkhaneNote { get; set; }
+
     /// <summary>وضعیت صدور: 0=پیش‌نویس داخلی، 1=در گردش تایید، 2=تایید شده، 3=صادر شده</summary>
     public int Status { get; set; } = 0;
 

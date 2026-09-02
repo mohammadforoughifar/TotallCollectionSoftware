@@ -32,6 +32,12 @@ public interface IOutgoingLetterService
     Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId);
     Task SignAsync(int letterId, int userId, string? signNote);
     Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search);
+
+    // ==================== دبیرخانه نامه صادره ====================
+    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search, bool? registeredOnly);
+    Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
+    Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName);
+    Task<List<LetterCompanyDto>> GetCompaniesAsync();
 }
 
 public class OutgoingLetterService : IOutgoingLetterService
@@ -143,6 +149,17 @@ public class OutgoingLetterService : IOutgoingLetterService
         var hamesh = dto.ReciversHamesh.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsHamesh)).Distinct().ToList();
         var signerIds = await ResolveSignersAsync(dto.SignerUserIds, dto.SignerGroupIds);
 
+        // 🔒 الزام کارفرما: نامه صادره باید حداقل یک امضا کننده داشته باشد
+        if (signerIds.Count == 0)
+            throw new Exception("نامه صادره باید حداقل یک امضا کننده داشته باشد.");
+
+        // شرکت صادرکننده (سربرگ چاپ) — در صورت انتخاب باید معتبر باشد
+        if (dto.CompanyId is > 0)
+        {
+            var companyOk = await _db.SystemCompanies.AnyAsync(c => c.Id == dto.CompanyId && c.IsActive);
+            if (!companyOk) throw new Exception("شرکت انتخاب‌شده برای سربرگ معتبر یا فعال نیست.");
+        }
+
         girande.Remove(creatorUserId);
         erjaIds.Remove(creatorUserId);
         hamesh.Remove(creatorUserId);
@@ -198,6 +215,7 @@ public class OutgoingLetterService : IOutgoingLetterService
             ReceiverAddress = dto.ReceiverAddress?.Trim(),
             CopyTo = dto.CopyTo?.Trim(),
             ExternalRefNumber = dto.ExternalRefNumber?.Trim(),
+            CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null,
             Status = signerIds.Count > 0 ? 1 : (allReciverIds.Count > 0 ? 1 : 2),
             IsDelete = false
         };
@@ -606,10 +624,32 @@ public class OutgoingLetterService : IOutgoingLetterService
             Status = letter.Status,
             SadereNumber = letter.SadereNumber,
             DateSadere = letter.DateSadere,
+            CompanyId = letter.CompanyId,
+            DabirkhaneSabt = letter.DabirkhaneSabt,
+            DateDabirkhane = letter.DateDabirkhane,
+            DestRegNumber = letter.DestRegNumber,
+            SendMethod = letter.SendMethod,
+            DabirkhaneNote = letter.DabirkhaneNote,
             CanEdit = isAdmin || (isMine && !erjas.Any(e => e.IsRead) && signers.All(s => !s.IsSigned)),
             IsSigner = mySigner != null,
             CanSign = mySigner != null && !mySigner.IsSigned
         };
+
+        if (letter.CompanyId is > 0)
+        {
+            dto.CompanyName = await _db.SystemCompanies.AsNoTracking()
+                .Where(c => c.Id == letter.CompanyId)
+                .Select(c => c.Name)
+                .FirstOrDefaultAsync();
+        }
+
+        if (letter.DabirkhaneUserId is > 0)
+        {
+            dto.DabirkhaneUserName = await _db.Users.AsNoTracking()
+                .Where(u => u.Id == letter.DabirkhaneUserId)
+                .Select(u => ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim() == "" ? u.Username : ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim())
+                .FirstOrDefaultAsync();
+        }
 
         foreach (var e in erjas.Where(e => e.ParentErjaId == null))
         {
@@ -800,6 +840,16 @@ public class OutgoingLetterService : IOutgoingLetterService
         var hamesh = dto.ReciversHamesh.Concat(await _groups.ExpandToUserIdsAsync(dto.GroupsHamesh)).Distinct().ToList();
         var signerIds = await ResolveSignersAsync(dto.SignerUserIds, dto.SignerGroupIds);
 
+        // 🔒 الزام کارفرما: نامه صادره باید حداقل یک امضا کننده داشته باشد
+        if (signerIds.Count == 0)
+            throw new Exception("نامه صادره باید حداقل یک امضا کننده داشته باشد.");
+
+        if (dto.CompanyId is > 0)
+        {
+            var companyOk = await _db.SystemCompanies.AnyAsync(c => c.Id == dto.CompanyId && c.IsActive);
+            if (!companyOk) throw new Exception("شرکت انتخاب‌شده برای سربرگ معتبر یا فعال نیست.");
+        }
+
         girande.Remove(letter.CreatorUserId);
         erjaIds.Remove(letter.CreatorUserId);
         hamesh.Remove(letter.CreatorUserId);
@@ -825,6 +875,7 @@ public class OutgoingLetterService : IOutgoingLetterService
         letter.ReceiverAddress = dto.ReceiverAddress?.Trim();
         letter.CopyTo = dto.CopyTo?.Trim();
         letter.ExternalRefNumber = dto.ExternalRefNumber?.Trim();
+        letter.CompanyId = dto.CompanyId is > 0 ? dto.CompanyId : null;
 
         var now = DateTime.Now;
         var rootErjas = await _db.Erjas.Where(e => e.SourceId == letterId && !e.IsDelete && e.ParentErjaId == null).ToListAsync();
@@ -1029,6 +1080,158 @@ public class OutgoingLetterService : IOutgoingLetterService
             {
                 UserId = u.Id,
                 FullName = string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? "")) ? u.Username : $"{u.FirstName} {u.LastName}".Trim()
+            }).ToListAsync();
+    }
+
+    // ============================================================
+    //  دبیرخانه نامه صادره
+    //  • فقط نامه‌هایی وارد دبیرخانه می‌شوند که امضا شده باشند
+    //    (یعنی SadereNumber مقدار گرفته باشد)
+    //  • دبیرخانه: ثبت «شماره ثبت مقصد» + «روش ارسال» + توضیح
+    // ============================================================
+
+    /// <summary>لیست دبیرخانه — نامه‌های امضا شده (SadereNumber دار)</summary>
+    public async Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search, bool? registeredOnly)
+    {
+        // شرط ورود به دبیرخانه: SadereNumber مقدار گرفته باشد (نامه امضا شده)
+        var q = _db.OutgoingLetters.AsNoTracking()
+            .Where(l => !l.IsDelete && !l.Source.IsDelete && l.SadereNumber != null && l.SadereNumber != "");
+
+        if (registeredOnly == true) q = q.Where(l => l.DabirkhaneSabt);
+        else if (registeredOnly == false) q = q.Where(l => !l.DabirkhaneSabt);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            q = q.Where(l => l.Title.Contains(s)
+                          || (l.LetterNumber ?? "").Contains(s)
+                          || (l.SadereNumber ?? "").Contains(s)
+                          || l.ReceiverOrganization.Contains(s)
+                          || (l.DestRegNumber ?? "").Contains(s)
+                          || (l.SendMethod ?? "").Contains(s));
+        }
+
+        var list = await q
+            .OrderBy(l => l.DabirkhaneSabt)           // اول منتظرها
+            .ThenByDescending(l => l.DateSadere)
+            .ThenByDescending(l => l.Id)
+            .Select(l => new DabirkhaneListItemDto
+            {
+                LetterId = l.Id,
+                LetterNumber = l.LetterNumber ?? "",
+                SadereNumber = l.SadereNumber,
+                Title = l.Title,
+                CreatorName = l.Creator != null
+                    ? (string.IsNullOrEmpty(l.Creator.FirstName + l.Creator.LastName)
+                        ? l.Creator.Username
+                        : (l.Creator.FirstName + " " + l.Creator.LastName).Trim())
+                    : "",
+                ReceiverOrganization = l.ReceiverOrganization,
+                ReceiverName = l.ReceiverName,
+                DateSabt = l.DateSabt,
+                DateSadere = l.DateSadere,
+                Mahramanegi = l.Mahramanegi,
+                Foriat = l.Foriat,
+                HasAttachment = _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id),
+                SignersTotal = l.Source.OutgoingSigners.Count(s => !s.IsDelete),
+                SignersSigned = l.Source.OutgoingSigners.Count(s => !s.IsDelete && s.IsSigned),
+                CompanyId = l.CompanyId,
+                DabirkhaneSabt = l.DabirkhaneSabt,
+                DateDabirkhane = l.DateDabirkhane,
+                DestRegNumber = l.DestRegNumber,
+                SendMethod = l.SendMethod,
+                DabirkhaneNote = l.DabirkhaneNote
+            })
+            .ToListAsync();
+
+        // نام شرکت و نام کاربر دبیرخانه (جدا برای سادگی کوئری)
+        var companyIds = list.Where(x => x.CompanyId is > 0).Select(x => x.CompanyId!.Value).Distinct().ToList();
+        if (companyIds.Count > 0)
+        {
+            var companies = await _db.SystemCompanies.AsNoTracking()
+                .Where(c => companyIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Name);
+            foreach (var item in list)
+                if (item.CompanyId is > 0 && companies.TryGetValue(item.CompanyId.Value, out var name))
+                    item.CompanyName = name;
+        }
+
+        var dabLetterIds = list.Select(x => x.LetterId).ToList();
+        var dabUserIds = await _db.OutgoingLetters.AsNoTracking()
+            .Where(l => dabLetterIds.Contains(l.Id) && l.DabirkhaneUserId != null)
+            .Select(l => new { l.Id, l.DabirkhaneUserId })
+            .ToListAsync();
+        if (dabUserIds.Count > 0)
+        {
+            var uids = dabUserIds.Select(x => x.DabirkhaneUserId!.Value).Distinct().ToList();
+            var users = await _db.Users.AsNoTracking()
+                .Where(u => uids.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id,
+                    u => string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? "")) ? u.Username : $"{u.FirstName} {u.LastName}".Trim());
+            var byLetter = dabUserIds.ToDictionary(x => x.Id, x => x.DabirkhaneUserId!.Value);
+            foreach (var item in list)
+                if (byLetter.TryGetValue(item.LetterId, out var uid) && users.TryGetValue(uid, out var uname))
+                    item.DabirkhaneUserName = uname;
+        }
+
+        return list;
+    }
+
+    public async Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync()
+    {
+        var q = _db.OutgoingLetters.AsNoTracking()
+            .Where(l => !l.IsDelete && !l.Source.IsDelete && l.SadereNumber != null && l.SadereNumber != "");
+        return new DabirkhaneStatsDto
+        {
+            Pending = await q.CountAsync(l => !l.DabirkhaneSabt),
+            Registered = await q.CountAsync(l => l.DabirkhaneSabt)
+        };
+    }
+
+    /// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال — فقط برای نامه‌های امضا شده</summary>
+    public async Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName)
+    {
+        var letter = await _db.OutgoingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
+            ?? throw new Exception("نامه پیدا نشد.");
+
+        // 🔒 شرط کارفرما: نامه فقط وقتی در دبیرخانه ثبت می‌شود که امضا شده باشد (SadereNumber مقدار گرفته)
+        if (string.IsNullOrWhiteSpace(letter.SadereNumber))
+            throw new Exception("این نامه هنوز امضا نشده است — فقط نامه‌های امضا شده (دارای شماره صادره) در دبیرخانه ثبت می‌شوند.");
+
+        if (string.IsNullOrWhiteSpace(dto.SendMethod))
+            throw new Exception("روش ارسال نامه الزامی است.");
+
+        letter.DabirkhaneSabt = true;
+        letter.DabirkhaneUserId = userId;
+        letter.DateDabirkhane ??= DateTime.Now;
+        letter.DestRegNumber = dto.DestRegNumber?.Trim();
+        letter.SendMethod = dto.SendMethod.Trim();
+        letter.DabirkhaneNote = dto.Note?.Trim();
+
+        await _db.SaveChangesAsync();
+
+        // اطلاع به ایجادکننده نامه
+        await _notify.SendAsync(letter.CreatorUserId,
+            $"نامه صادره در دبیرخانه ثبت شد: {letter.Title}",
+            $"شماره صادره: {letter.SadereNumber} — روش ارسال: {letter.SendMethod}" +
+            (string.IsNullOrWhiteSpace(letter.DestRegNumber) ? "" : $" — شماره ثبت مقصد: {letter.DestRegNumber}"),
+            userName, "دبیرخانه صادره", $"outgoing-letters/view/{letterId}");
+
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+    }
+
+    /// <summary>شرکت‌های فعال برای انتخاب سربرگ نامه صادره</summary>
+    public async Task<List<LetterCompanyDto>> GetCompaniesAsync()
+    {
+        return await _db.SystemCompanies.AsNoTracking()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .Select(c => new LetterCompanyDto
+            {
+                Id = c.Id,
+                Name = c.Name,
+                LetterheadFileName = c.LetterheadFileName,
+                HasLetterhead = c.LetterheadFileName != null && c.LetterheadFileName != ""
             }).ToListAsync();
     }
 }
