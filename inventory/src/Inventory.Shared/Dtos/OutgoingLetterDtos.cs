@@ -37,6 +37,9 @@ public class AddOutgoingLetterDto
 
     public string? ExternalRefNumber { get; set; }
 
+    /// <summary>شرکت صادرکننده (سربرگ چاپ) — از جدول کمپانی‌ها</summary>
+    public int? CompanyId { get; set; }
+
     // ==================== گردش داخلی جهت تایید قبل از صدور ====================
 
     /// <summary>گیرندگان اصلی داخلی (جهت تایید/اطلاع قبل از صدور)</summary>
@@ -83,6 +86,9 @@ public class EditOutgoingLetterDto
     public string? ReceiverAddress { get; set; }
     public string? CopyTo { get; set; }
     public string? ExternalRefNumber { get; set; }
+
+    /// <summary>شرکت صادرکننده (سربرگ چاپ)</summary>
+    public int? CompanyId { get; set; }
 
     // گیرندگان داخلی — قابل ویرایش تا قبل از خوانده‌شدن
     public List<int> ReciversGirande { get; set; } = new();
@@ -164,6 +170,18 @@ public class OutgoingLetterListItemDto
     public bool CanSign { get; set; }
     public int SignersTotal { get; set; }
     public int SignersSigned { get; set; }
+
+    // دبیرخانه
+    public bool DabirkhaneSabt { get; set; }
+    public DateTime? DateDabirkhane { get; set; }
+    public string? DestRegNumber { get; set; }
+    public string? SendMethod { get; set; }
+    public string? DabirkhaneNote { get; set; }
+    public string? DabirkhaneUserName { get; set; }
+
+    // شرکت صادرکننده (سربرگ)
+    public int? CompanyId { get; set; }
+    public string? CompanyName { get; set; }
 }
 
 /// <summary>جزئیات کامل نامه صادره</summary>
@@ -192,6 +210,18 @@ public class OutgoingLetterDetailDto
     // شماره صادره رسمی — بعد از امضا
     public string? SadereNumber { get; set; }
     public DateTime? DateSadere { get; set; }
+
+    // شرکت صادرکننده (سربرگ چاپ)
+    public int? CompanyId { get; set; }
+    public string? CompanyName { get; set; }
+
+    // دبیرخانه
+    public bool DabirkhaneSabt { get; set; }
+    public DateTime? DateDabirkhane { get; set; }
+    public string? DestRegNumber { get; set; }
+    public string? SendMethod { get; set; }
+    public string? DabirkhaneNote { get; set; }
+    public string? DabirkhaneUserName { get; set; }
 
     public List<LetterReciverDto> ReciversGirande { get; set; } = new();
     public List<LetterReciverDto> ReciversErja { get; set; } = new();
@@ -242,4 +272,88 @@ public class OutgoingLetterPickDto
     public bool IsSent { get; set; }
     public int SourceType { get; set; }
     public string SourceTypeTitle => SourceType == 2 ? "صادره" : "داخلی";
+}
+
+// ============================================================
+//  دبیرخانه نامه صادره — نامه‌های امضا شده (SadereNumber دار)
+// ============================================================
+
+/// <summary>روش‌های ارسال نامه از دبیرخانه</summary>
+public static class LetterSendMethods
+{
+    public static readonly string[] All =
+    {
+        "پست",
+        "پست پیشتاز",
+        "پیک",
+        "ایمیل",
+        "فکس",
+        "تحویل حضوری",
+        "اتوماسیون (ECE)"
+    };
+}
+
+/// <summary>سطر لیست دبیرخانه نامه صادره</summary>
+public class DabirkhaneListItemDto
+{
+    public int LetterId { get; set; }
+    public string LetterNumber { get; set; } = "";
+    public string? SadereNumber { get; set; }
+    public string Title { get; set; } = "";
+    public string CreatorName { get; set; } = "";
+    public string ReceiverOrganization { get; set; } = "";
+    public string? ReceiverName { get; set; }
+    public DateTime DateSabt { get; set; }
+    public DateTime? DateSadere { get; set; }
+    public string Mahramanegi { get; set; } = "عادی";
+    public string Foriat { get; set; } = "عادی";
+    public bool HasAttachment { get; set; }
+    public int SignersTotal { get; set; }
+    public int SignersSigned { get; set; }
+
+    // شرکت صادرکننده (سربرگ)
+    public int? CompanyId { get; set; }
+    public string? CompanyName { get; set; }
+
+    // وضعیت دبیرخانه
+    public bool DabirkhaneSabt { get; set; }
+    public DateTime? DateDabirkhane { get; set; }
+    public string? DestRegNumber { get; set; }
+    public string? SendMethod { get; set; }
+    public string? DabirkhaneNote { get; set; }
+    public string? DabirkhaneUserName { get; set; }
+}
+
+/// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال + توضیح</summary>
+public class DabirkhaneRegisterDto
+{
+    /// <summary>شماره ثبت مقصد — شماره‌ای که دبیرخانه سازمان مقصد به نامه داده است</summary>
+    public string? DestRegNumber { get; set; }
+
+    /// <summary>روش ارسال — پست / پیک / ایمیل / فکس / تحویل حضوری / اتوماسیون</summary>
+    [Required(ErrorMessage = "روش ارسال الزامی است")]
+    public string SendMethod { get; set; } = "";
+
+    public string? Note { get; set; }
+}
+
+/// <summary>آمار دبیرخانه صادره</summary>
+public class DabirkhaneStatsDto
+{
+    /// <summary>امضا شده و منتظر ثبت دبیرخانه</summary>
+    public int Pending { get; set; }
+
+    /// <summary>ثبت و ارسال شده</summary>
+    public int Registered { get; set; }
+
+    public int Total => Pending + Registered;
+}
+
+/// <summary>شرکت (برای انتخاب سربرگ نامه صادره)</summary>
+public class LetterCompanyDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string? LetterheadFileName { get; set; }
+    public bool HasLetterhead { get; set; }
 }

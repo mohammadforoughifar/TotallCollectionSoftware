@@ -91,7 +91,6 @@ public class AppDbContext : DbContext
     // ==================== اتوماسیون اداری — نامه داخلی ====================
     public DbSet<LetterSource> LetterSources => Set<LetterSource>();
     public DbSet<InnerLetter> InnerLetters => Set<InnerLetter>();
-    public DbSet<Letter_Sadere> Letter_Saderes => Set<Letter_Sadere>();
     public DbSet<Erja> Erjas => Set<Erja>();
     public DbSet<Amalgar> Amalgars => Set<Amalgar>();
     public DbSet<PishnevisLetter> PishnevisLetters => Set<PishnevisLetter>();
@@ -241,22 +240,6 @@ public class AppDbContext : DbContext
         mb.Entity<Erja>().HasKey(e => e.ErjaId);
         mb.Entity<Amalgar>().HasKey(a => a.AmalgarId);
 
-        // ==================== نامه صادره ====================
-        mb.Entity<Letter_Sadere>().HasKey(s => s.SadereLetterId);
-        mb.Entity<Letter_Sadere>()
-            .HasOne(s => s.Source)
-            .WithOne(s => s.Letter_Sadere!)
-            .HasForeignKey<Letter_Sadere>(s => s.SadereLetterId)
-            .OnDelete(DeleteBehavior.Cascade);
-        mb.Entity<Letter_Sadere>()
-            .HasOne(s => s.CreatorUser)
-            .WithMany()
-            .HasForeignKey(s => s.CreatorUserId)
-            .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<Letter_Sadere>().HasIndex(s => s.LetterNumber).IsUnique();
-        mb.Entity<Letter_Sadere>().HasIndex(s => s.DateErsal);
-        mb.Entity<Letter_Sadere>().HasIndex(s => s.CreatorUserId);
-        mb.Entity<Letter_Sadere>().HasQueryFilter(s => !s.IsDeleted);
         mb.Entity<Amalgar>().HasKey(a => a.AmalgarId);
         mb.Entity<PishnevisLetter>().HasKey(p => p.PishnevisId);
         mb.Entity<OutgoingPishnevisLetter>().HasKey(p => p.PishnevisId);

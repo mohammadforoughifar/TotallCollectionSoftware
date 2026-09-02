@@ -478,7 +478,7 @@
         new() { Title = "مدیریت سیستم", Icon = "bi-gear", Modules = new[] { "SystemUsers", "Settings", "ItRequests" } },
         new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
-        new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters" } }
+        new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters" } }
     };
 
     // ==================== ترجمه فارسی ====================
@@ -513,7 +513,8 @@
         ["TypeFactors"] = "انواع فاکتور",
         ["ProjectAttach"] = "پیوست‌های پروژه",
         ["ProjectCartable"] = "کارتابل پروژه",
-        ["InnerLetters"] = "نامه داخلی (اتوماسیون اداری)"
+        ["InnerLetters"] = "نامه داخلی (اتوماسیون اداری)",
+        ["OutgoingLetters"] = "نامه صادره (اتوماسیون اداری)"
     };
 
     private static readonly Dictionary<string, string> ActionNames = new()
@@ -545,6 +546,8 @@
         ["Manager"] = "تایید / رد توسط مدیر",
         // اتوماسیون اداری
         ["Erja"] = "ارجاع نامه به دیگران",
+        ["Sign"] = "امضا کننده نامه صادره ✍",
+        ["Dabirkhane"] = "دبیرخانه نامه صادره 📮",
         // پنل معرف
         ["MyDashboard"] = "داشبورد من",
         ["MyProducts"] = "محصولات من",
