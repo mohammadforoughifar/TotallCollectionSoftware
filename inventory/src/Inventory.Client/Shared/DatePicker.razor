@@ -104,6 +104,10 @@
     /// <summary>توضیحِ وضعیتِ روزها (کلید: yyyy-MM-dd میلادی) — به‌صورت tooltip روی روز نمایش داده می‌شود.</summary>
     [Parameter] public Dictionary<string, string>? DayTitles { get; set; }
 
+    /// <summary>پشتیبانی از هر ویژگی نامشخص اضافی بدون خطای رندر بلیزور</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
     private static readonly string[] weekDays = { "ش", "ی", "د", "س", "چ", "پ", "ج" };
 
     private string _text = "";
