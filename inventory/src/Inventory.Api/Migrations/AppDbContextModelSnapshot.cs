@@ -2464,6 +2464,13 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("OwnerUserId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("SourceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceModule")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -2475,6 +2482,8 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SourceModule", "SourceId");
 
                     b.ToTable("WorkOrders");
                 });

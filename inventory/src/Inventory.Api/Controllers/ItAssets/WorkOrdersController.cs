@@ -111,6 +111,10 @@ public class WorkOrdersController : ControllerBase
         public string Description { get; set; } = "";
         public DateTime DueAt { get; set; }
         public List<int> AssigneeUserIds { get; set; } = new();
+
+        /// <summary>ماژول مبدأ — مثلاً "InnerLetter" برای نامه داخلی (اختیاری).</summary>
+        public string? SourceModule { get; set; }
+        public int? SourceId { get; set; }
     }
 
     [HttpPost]
@@ -141,6 +145,20 @@ public class WorkOrdersController : ControllerBase
             }
         }
 
+        // اتصال به مبدأ (سورس) — اختیاری. اگر عنوان سورس داده شده باشد، همزمان نباید خالی/بی‌اعتبار باشد.
+        if (!string.IsNullOrWhiteSpace(dto.SourceModule) && dto.SourceId is not null and > 0)
+        {
+            dto.SourceModule = dto.SourceModule.Trim();
+            // اعتبارسنجی: ماژول سورس شناخته‌شده باشد (برای حفظ عمومی‌بودن، فقط طول/الگو بررسی می‌شود)
+            if (dto.SourceModule.Length > 50)
+                return BadRequest(new { message = "نام ماژول سورس نامعتبر است." });
+        }
+        else
+        {
+            dto.SourceModule = null;
+            dto.SourceId = null;
+        }
+
         var wo = new WorkOrder
         {
             Title = dto.Title.Trim(),
@@ -148,7 +166,9 @@ public class WorkOrdersController : ControllerBase
             OwnerUserId = MyUserId,
             OwnerName = MyUsername,
             DueAt = dto.DueAt,
-            Status = "Open"
+            Status = "Open",
+            SourceModule = dto.SourceModule,
+            SourceId = dto.SourceId
         };
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
@@ -208,6 +228,7 @@ public class WorkOrdersController : ControllerBase
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
+            w.SourceModule, w.SourceId,
             AttachmentCount = attCounts.FirstOrDefault(c => c.Key == w.Id)?.C ?? 0,
             Assignees = asgs.Where(a => a.OrderId == w.Id).Select(a => new
             {
@@ -237,6 +258,30 @@ public class WorkOrdersController : ControllerBase
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
         return Ok(await BuildList(_db.WorkOrders.Where(w =>
             w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id)))));
+    }
+
+    /// <summary>دستورهای کارِ ساخته‌شده از یک مبدأ (سورس) — مثلاً نامه داخلی. برای لینک/نشان «دستورکار شده».</summary>
+    /// <remarks>فقط متادیتای سبک برمی‌گرداند (بدون شرح/گیرندگان) تا به‌عنوان نشان در کارتابل نامه استفاده شود.</remarks>
+    [HttpGet("for-source")]
+    public async Task<IActionResult> ForSource([FromQuery] string? module, [FromQuery] int? sourceId)
+    {
+        if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0)
+            return Ok(new List<object>());
+        var list = await _db.WorkOrders
+            .Where(w => w.SourceModule == module && w.SourceId == sourceId)
+            .OrderByDescending(w => w.Id)
+            .Select(w => new { w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId })
+            .ToListAsync();
+        return Ok(list);
+    }
+
+    /// <summary>جزئیات یک دستور کار به‌صورت مستقیم — برای لینک عمیق (مثلاً از نشان «دستورکار شده» نامه).</summary>
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> Detail(int id)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        var list = await BuildList(_db.WorkOrders.Where(w => w.Id == id));
+        return list.Count == 0 ? NotFound() : Ok(list[0]);
     }
 
     /// <summary>تقویم شمسی — دستورهای بازه زمانی (بند ۱۳).</summary>

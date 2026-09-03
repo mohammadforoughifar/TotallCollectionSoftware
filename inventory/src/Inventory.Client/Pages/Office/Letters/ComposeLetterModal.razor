@@ -1,6 +1,5 @@
 @inject ILetterService LetterSvc
 @inject IToastService Toast
-@inject IJSRuntime JS
 
 @* ============================================================
    فرم ایجاد نامه — شیت کناری مطابق طرح مصوب (پروتوتایپ نسخه ۶):
@@ -72,27 +71,8 @@
 
             <div class="fcard">
                 <label>متن نامه</label>
-                <div class="edt">
-                    <div class="edt-bar">
-                        <button type="button" title="واگرد" @onclick='() => Ed("undo")'><i class="bi bi-arrow-clockwise"></i></button>
-                        <button type="button" title="ازنو" @onclick='() => Ed("redo")'><i class="bi bi-arrow-counterclockwise"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="پررنگ" @onclick='() => Ed("bold")'><i class="bi bi-type-bold"></i></button>
-                        <button type="button" title="مورب" @onclick='() => Ed("italic")'><i class="bi bi-type-italic"></i></button>
-                        <button type="button" title="زیرخط" @onclick='() => Ed("underline")'><i class="bi bi-type-underline"></i></button>
-                        <button type="button" title="خط‌خورده" @onclick='() => Ed("strikeThrough")'><i class="bi bi-type-strikethrough"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="راست‌چین" @onclick='() => Ed("justifyRight")'><i class="bi bi-text-right"></i></button>
-                        <button type="button" title="وسط‌چین" @onclick='() => Ed("justifyCenter")'><i class="bi bi-text-center"></i></button>
-                        <button type="button" title="چپ‌چین" @onclick='() => Ed("justifyLeft")'><i class="bi bi-text-left"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="لیست نقطه‌ای" @onclick='() => Ed("insertUnorderedList")'><i class="bi bi-list-ul"></i></button>
-                        <button type="button" title="لیست شماره‌ای" @onclick='() => Ed("insertOrderedList")'><i class="bi bi-list-ol"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="حذف قالب" @onclick='() => Ed("removeFormat")'><i class="bi bi-eraser"></i></button>
-                    </div>
-                    <div class="edt-body" id="ltxEditor" contenteditable="true" data-ph="متن نامه را بنویسید…"></div>
-                </div>
+                <RichTextEditor @ref="_rich" Id="ltxEditor" Placeholder="متن نامه را بنویسید…"
+                                @bind-Value="pendingBody" Height="260" />
             </div>
 
                 <div class="fcard">
@@ -219,6 +199,7 @@
     private List<LetterGroupDto> allGroups = new();
 
     private LetterPickCombo? cbRcv, cbErja, cbHamesh;
+    private RichTextEditor? _rich;
     private HashSet<int> rcvUsers = new(), rcvGroups = new();
     private HashSet<int> erjaUsers = new(), erjaGroups = new();
     private HashSet<int> hameshUsers = new(), hameshGroups = new();
@@ -251,7 +232,7 @@
         _ = LoadListsAsync();
         if (pishnevisId is > 0) _ = LoadDraftAttsAsync(pishnevisId.Value);
         StateHasChanged();
-        _ = SetEditorSoonAsync();
+        _ = InitEditorAsync();
     }
 
     /// <summary>ویرایش نامه ارسال‌شده (فقط قبل از خوانده‌شدن) — همه اطلاعات فرم ایجاد قابل ویرایش است</summary>
@@ -283,7 +264,7 @@
         _ = LoadListsAsync();
         _ = LoadLetterAttsAsync(letter.LetterId);
         StateHasChanged();
-        _ = SetEditorSoonAsync();
+        _ = InitEditorAsync();
     }
 
     private async Task LoadLetterAttsAsync(int letterId)
@@ -304,10 +285,10 @@
         related.Clear(); relOpen = false; relSel.Clear();
     }
 
-    private async Task SetEditorSoonAsync()
+    private async Task InitEditorAsync()
     {
         await Task.Delay(60); // صبر برای رندر contenteditable
-        try { await JS.InvokeVoidAsync("rteSetHtml", "ltxEditor", pendingBody); } catch { }
+        if (_rich != null) await _rich.SetContentAsync(pendingBody);
     }
 
     private async Task LoadListsAsync()
@@ -337,11 +318,6 @@
     private void OnRcvChanged()
     {
         if (rcvUsers.Count + rcvGroups.Count > 0) errRcv = false;
-    }
-
-    private async Task Ed(string cmd)
-    {
-        try { await JS.InvokeVoidAsync("rteExec", cmd); } catch { }
     }
 
     // ==================== پیوست‌ها ====================
@@ -436,8 +412,8 @@
 
     private async Task<string> EditorHtmlAsync()
     {
-        try { return await JS.InvokeAsync<string>("rteGetHtml", "ltxEditor") ?? ""; }
-        catch { return pendingBody; }
+        if (_rich != null) return await _rich.GetContentAsync();
+        return pendingBody;
     }
 
     private bool Validate()

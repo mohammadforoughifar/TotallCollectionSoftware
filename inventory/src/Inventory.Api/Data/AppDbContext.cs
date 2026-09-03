@@ -339,5 +339,8 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(s => s.LinkedLeaveRequestId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
+        mb.Entity<WorkOrder>().HasIndex(w => new { w.SourceModule, w.SourceId });
     }
 }

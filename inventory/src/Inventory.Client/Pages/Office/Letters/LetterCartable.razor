@@ -1,5 +1,6 @@
 @page "/letters"
 @page "/letters/{Tab}"
+@using System.Net.Http.Headers
 @inject ILetterService LetterSvc
 @inject IToastService Toast
 @inject IAuthState Auth
@@ -7,6 +8,7 @@
 @inject LayoutState Layout
 @inject RealtimeService Rt
 @inject IJSRuntime JS
+@inject HttpClient Http
 @implements IDisposable
 
 <PageTitle>کارتابل نامه داخلی</PageTitle>
@@ -223,6 +225,19 @@
                     {
                         <button class="lbtn pri" @onclick="OpenErjaSheet"><i class="bi bi-arrow-left-circle"></i> ارجاع / هامش</button>
                     }
+                    @* ---------- اتصال به دستور کار ---------- *@
+                    @if (IsConverted)
+                    {
+                        <button class="lbtn grn" title="@($"دستور کار: {letterWorkOrders[0].Number}")" @onclick="() => GoToWorkOrder(letterWorkOrders[0].Id)">
+                            <i class="bi bi-list-task"></i> دستورکار شده
+                        </button>
+                    }
+                    else if (woLoaded && CanConvertToWorkOrder)
+                    {
+                        <button class="lbtn pri" title="تبدیل این نامه به دستور کار" @onclick="ConvertToWorkOrder">
+                            <i class="bi bi-arrow-right-circle"></i> تبدیل به دستور کار
+                        </button>
+                    }
                 }
             </div>
             <div class="rd-scroll">
@@ -404,8 +419,20 @@
     private ErjaSheet? erjaSheet;
     private GardeshModal? gardesh;
 
+    // دستور کارِ ساخته‌شده از نامه (برای نشان «دستورکار شده» و لینک)
+    private List<WoSourceItem> letterWorkOrders = new();
+    private bool woLoaded;
+
     private bool CanErja => Auth.Has("InnerLetters.Erja");
     private bool FolderIsSent => folder == "sent";
+
+    // تبدیل نامه به دستور کار: فقط فرستنده یا مدیر، و داشتن مجوز ایجاد دستور کار
+    private bool CanConvertToWorkOrder =>
+        (selected?.IsMine == true || Auth.IsAdmin) && Auth.Has("WorkOrders.Create");
+    private bool IsConverted => letterWorkOrders.Count > 0;
+
+    /// <summary>لینک منبع نامه در صفحه دستور کار — برای نمایش در لیست دستور کارها</summary>
+    public const string SourceModule = "InnerLetter";
 
     private string FolderTitle => folder switch
     {
@@ -469,6 +496,9 @@
     {
         Layout.SetTitle("کارتابل نامه داخلی");
         Rt.DataChanged += OnDataChanged;
+
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
 
         var uri = new Uri(Nav.Uri);
         var qs = System.Web.HttpUtility.ParseQueryString(uri.Query);
@@ -587,11 +617,13 @@
 
     private async Task LoadDetailAsync(int letterId)
     {
+        letterWorkOrders = new();
         try
         {
             selected = await LetterSvc.GetDetailAsync(letterId);
             attachments = new();
             try { attachments = await LetterSvc.GetAttachmentsAsync(letterId); } catch { }
+            await LoadLetterWorkOrdersAsync(letterId);
 
             // ثبت خودکار خوانده‌شدن
             if (selected?.MyErja is { IsRead: false } my)
@@ -607,6 +639,30 @@
             selected = null;
             Toast.Error(ex.Message);
         }
+    }
+
+    // ==================== اتصال به دستور کار ====================
+
+    /// <summary>دستورهای کارِ ساخته‌شده از این نامه (برای نشان «دستورکار شده» و لینک).</summary>
+    private async Task LoadLetterWorkOrdersAsync(int letterId)
+    {
+        letterWorkOrders = new();
+        woLoaded = false;
+        try
+        {
+            letterWorkOrders = await Http.GetFromJsonAsync<List<WoSourceItem>>(
+                $"/api/workorders/for-source?module={SourceModule}&sourceId={letterId}") ?? new();
+        }
+        catch { letterWorkOrders = new(); }
+        finally { woLoaded = true; }
+    }
+
+    private void GoToWorkOrder(int workOrderId) => Nav.NavigateTo($"/work-orders?open={workOrderId}");
+
+    private void ConvertToWorkOrder()
+    {
+        if (selected == null) return;
+        Nav.NavigateTo($"/work-orders?sourceModule={SourceModule}&sourceId={selected.LetterId}");
     }
 
     // ==================== اکشن‌ها ====================
@@ -800,4 +856,14 @@
     }
 
     public void Dispose() => Rt.DataChanged -= OnDataChanged;
+
+    // ==================== مدل‌ها ====================
+    public class WoSourceItem
+    {
+        public int Id { get; set; }
+        public string Number { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string OwnerName { get; set; } = "";
+        public string Status { get; set; } = "Open";
+    }
 }
