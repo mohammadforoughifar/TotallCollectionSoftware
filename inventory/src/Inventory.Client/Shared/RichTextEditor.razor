@@ -15,7 +15,7 @@
         <span class="richt-sep"></span>
 
         @* فونت *@
-        <select class="richt-sel" title="فونت" @onmousedown="SaveSelection" @onchange="OnFont">
+        <select class="richt-sel" title="فونت" @onchange="OnFont">
             @foreach (var f in Fonts)
             {
                 <option value="@f.Value" selected="@(f.Value == _fontSel)">@f.Label</option>
@@ -23,7 +23,7 @@
         </select>
 
         @* اندازه قلم *@
-        <select class="richt-sel richt-size" title="اندازه قلم" @onmousedown="SaveSelection" @onchange="OnSize">
+        <select class="richt-sel richt-size" title="اندازه قلم" @onchange="OnSize">
             @foreach (var s in Sizes)
             {
                 <option value="@s.Value" selected="@(s.Value == _sizeSel)">@s.Label</option>
@@ -39,10 +39,10 @@
 
         <span class="richt-sep"></span>
 
-        <label class="richt-color" title="رنگ متن" @onmousedown="SaveSelection"><i class="bi bi-palette"></i><span class="richt-swatch" style="background:@_colorSel"></span>
+        <label class="richt-color" title="رنگ متن"><i class="bi bi-palette"></i><span class="richt-swatch" style="background:@_colorSel"></span>
             <input type="color" value="@_colorSel" @onchange="OnColor" />
         </label>
-        <label class="richt-color" title="هایلایت (پس‌زمینه)" @onmousedown="SaveSelection"><i class="bi bi-highlighter"></i><span class="richt-swatch" style="background:@_hlSel"></span>
+        <label class="richt-color" title="هایلایت (پس‌زمینه)"><i class="bi bi-highlighter"></i><span class="richt-swatch" style="background:@_hlSel"></span>
             <input type="color" value="@_hlSel" @onchange="OnHilite" />
         </label>
 
