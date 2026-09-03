@@ -15,9 +15,21 @@
             .replace(/'/g, '&#39;');
     }
 
+    // ---------- ابزار: خواندن موقعیت و ابعاد عنصر در صفحه ----------
+    window.getElementRect = function (el) {
+        if (!el) return null;
+        var rect = el.getBoundingClientRect();
+        return {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height
+        };
+    };
+
     // ---------- ابزار: خواندن مقدار با هر دو حالت camelCase و PascalCase ----------
-    // JSInterop بلیزور بسته به تنظیمات سریالایزر ممکن است Title یا title بفرستد؛
-    // این تابع هر دو را می‌پذیرد تا چاپ در هیچ حالتی خالی نشود.
     function pick(obj, name) {
         if (!obj) return undefined;
         if (obj[name] !== undefined) return obj[name];
@@ -59,8 +71,6 @@
             ? '<tfoot><tr><td colspan="' + headers.length + '">' + esc(footerTotal) + '</td></tr></tfoot>'
             : '';
 
-        // استایل‌ها به‌صورت رشته‌های جدا نگه داشته می‌شوند؛ تگ‌های بسته با اتصال ساخته می‌شوند
-        // تا حتی اگر این فایل روزی inline شد، پارسر HTML را نشکنند.
         var css = [
             '* { box-sizing: border-box; }',
             'body { font-family: Vazirmatn, Tahoma, "Segoe UI", sans-serif; color: #1e293b; margin: 0; padding: 18px 22px; font-size: 11.5px; }',
@@ -107,11 +117,7 @@
         return parts.join('\n');
     }
 
-    // ---------- چاپ با iframe پنهان (روش اصلی) ----------
-    // چرا iframe و نه window.open؟
-    // این تابع از یک ادامهٔ async در C# صدا زده می‌شود (بعد از await روی فراخوانی API)،
-    // بنابراین مرورگر آن را «خارج از تعامل کاربر» می‌بیند و پاپ‌آپ را بلاک می‌کند —
-    // نتیجه: هیچ اتفاقی نمی‌افتاد و چاپ انجام نمی‌شد. iframe هم‌مبدأ بلاک نمی‌شود.
+    // ---------- چاپ با iframe پنهان ----------
     function printViaIframe(html) {
         var old = document.getElementById('app-print-frame');
         if (old && old.parentNode) old.parentNode.removeChild(old);
@@ -157,7 +163,6 @@
                 }
                 win.onafterprint = cleanup;
                 win.print();
-                // شبکهٔ ایمنی: اگر onafterprint هرگز شلیک نشد (بعضی مرورگرها)
                 setTimeout(cleanup, 60000);
             } catch (e) {
                 console.error('printTableReport (iframe print):', e);
@@ -166,16 +171,15 @@
             }
         }
 
-        // کمی صبر تا محتوا و فونت‌ها آماده شوند
         if (frame.contentWindow && frame.contentWindow.document.readyState === 'complete') {
             setTimeout(doPrint, 150);
         } else {
             frame.onload = function () { setTimeout(doPrint, 150); };
-            setTimeout(doPrint, 700); // فال‌بک اگر onload شلیک نشد
+            setTimeout(doPrint, 700);
         }
     }
 
-    // ---------- چاپ با پنجرهٔ جدا (فال‌بک) ----------
+    // ---------- چاپ با پنجرهٔ جدا ----------
     function printViaWindow(html) {
         var w = window.open('', '_blank', 'width=1020,height=760');
         if (!w) return false;
@@ -192,7 +196,6 @@
 
     /**
      * چاپ گزارش جدولی (ماژول پروژه‌ها).
-     * @param {object} opt گزینه‌ها: title, subTitle, meta[], headers[], rows[][], footerTotal, printedAt, printedBy
      */
     window.printTableReport = function (opt) {
         try {
@@ -202,7 +205,6 @@
                 printViaIframe(html);
                 return true;
             } catch (inner) {
-                // اگر iframe به هر دلیلی کار نکرد، پنجرهٔ جدا را امتحان کن
                 if (printViaWindow(html)) return true;
                 alert('پنجره چاپ باز نشد — لطفاً مسدودکنندهٔ پاپ‌آپ مرورگر را برای این سایت غیرفعال کنید.');
                 return false;
@@ -223,17 +225,35 @@
         return new Blob([bytes], { type: contentType || 'application/octet-stream' });
     }
 
-    /** دانلود فایل از داده Base64 — برای پیوست‌های رمزنگاری‌شده و خروجی اکسل */
+    /** دانلود فایل امن از داده Base64 — تعیین MIME تایپ دقیق اکسل و شلیک رویداد استاندارد کاربر */
     window.downloadBlob = function (fileName, contentType, base64) {
         try {
-            var url = URL.createObjectURL(base64ToBlob(base64, contentType));
+            var mime = contentType || 'application/octet-stream';
+            // تنظیم تایپ رسمی اکسل برای جلوگیری از هشدار ناامنی مرورگر
+            if (fileName && fileName.toLowerCase().endsWith('.xlsx')) {
+                mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            }
+            var blob = base64ToBlob(base64, mime);
+            var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
-            a.download = fileName || 'file';
+            a.download = fileName || 'download.xlsx';
+            a.rel = 'noopener';
+            a.style.display = 'none';
             document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+
+            // شلیک رویداد ساختگی کلیک کاربر جهت جلب اعتماد مرورگر
+            var evt = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            a.dispatchEvent(evt);
+
+            setTimeout(function () {
+                if (a.parentNode) a.parentNode.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 10000);
             return true;
         } catch (e) {
             console.error('downloadBlob error:', e);
@@ -247,7 +267,6 @@
             var url = URL.createObjectURL(base64ToBlob(base64, contentType));
             var win = window.open(url, '_blank');
             if (!win) {
-                // پاپ‌آپ بلاک شد → به‌جای هیچ‌کاری، فایل را دانلود کن
                 var a = document.createElement('a');
                 a.href = url;
                 a.target = '_blank';

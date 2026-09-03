@@ -84,6 +84,10 @@
     /// <summary>متن راهنمای داخل ورودی (مثلاً «از تاریخ») — پیش‌فرض: قالب تاریخ با ارقام فارسی</summary>
     [Parameter] public string? Placeholder { get; set; }
 
+    /// <summary>پشتیبانی از هر ویژگی نامشخص اضافی بدون خطای رندر بلیزور</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
     private static readonly string[] weekDays = { "ش", "ی", "د", "س", "چ", "پ", "ج" };
 
     private string _text = "";
