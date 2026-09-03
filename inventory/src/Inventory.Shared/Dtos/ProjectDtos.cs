@@ -167,8 +167,11 @@ public class ReportWorkDto
     /// <summary>تاریخ گزارش</summary>
     public DateTime ReportDate { get; set; } = DateTime.Today;
 
-    /// <summary>شناسه کاربر لاگین (اپراتور)</summary>
+    /// <summary>شناسه کاربر لاگین — ثبت‌کنندهٔ گزارش</summary>
     public int UserId { get; set; }
+
+    /// <summary>اپراتور — کسی که روی پروژه کار انجام داده (از لیست کاربران؛ اختیاری). با ثبت‌کننده فرق دارد.</summary>
+    public int? OperatorId { get; set; }
     public string WorkDescription { get; set; } = "";
     public int ProjectId { get; set; }
 
@@ -190,6 +193,7 @@ public class ReportWorkDto
     // ---------- نمایشی ----------
     public string? ProjectName { get; set; }
     public string? UserName { get; set; }
+    public string? OperatorName { get; set; }
 }
 
 /// <summary>پیوست پروژه (فایل رمزنگاری‌شده روی سرور)</summary>
@@ -210,6 +214,9 @@ public class ProjectAttachDto
 public class ProjectLookups
 {
     public List<LookupItem> Users { get; set; } = new();
+
+    /// <summary>اپراتورها (انجام‌دهندگان کار) — همهٔ کاربران شامل غیرفعال‌ها/کاربران قدیمیِ مهاجرت‌شده، تا گزارش‌های قدیمی قابل فیلتر بمانند</summary>
+    public List<LookupItem> Operators { get; set; } = new();
     public List<LookupItem> KarFarmas { get; set; } = new();
     public List<LookupItem> TypeFactors { get; set; } = new();
     public List<LookupItem> Projects { get; set; } = new();

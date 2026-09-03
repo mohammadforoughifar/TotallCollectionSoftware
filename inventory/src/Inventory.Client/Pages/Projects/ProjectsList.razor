@@ -1084,6 +1084,10 @@
             <label class="form-label">تاریخ گزارش <span class="text-danger">*</span></label>
             <DatePicker Value="reportDate" ValueChanged="d => reportDate = d ?? DateTime.Today" />
         </div>
+        <div class="col-md-6">
+            <label class="form-label"><i class="bi bi-person-gear text-muted ms-1"></i>اپراتور <span class="fs-8 text-muted">(انجام‌دهندهٔ کار — اختیاری)</span></label>
+            <SearchSelect Items="lookups.Operators" Value="reportForm.OperatorId ?? 0" ValueChanged="v => reportForm.OperatorId = v > 0 ? v : null" Placeholder="انتخاب اپراتور…" />
+        </div>
         <div class="col-md-3">
             <label class="form-label">ساعت شروع</label>
             <TimeInput @bind-Value="reportForm.StartTime" />
@@ -1963,11 +1967,12 @@
                     $"تاریخ خروج: {(p.ExitDate?.ToFaDate() ?? "—")}",
                     $"تعداد گزارش‌ها: {reports.Count.FaDigits()}"
                 },
-                Headers = new List<string> { "ردیف", "تاریخ", "کاربر", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
+                Headers = new List<string> { "ردیف", "تاریخ", "اپراتور", "ثبت‌کننده", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
                 Rows = reports.OrderBy(r => r.ReportDate).Select((r, i) => new List<string>
                 {
                     (i + 1).FaDigits(),
                     r.ReportDate.ToFaDate(),
+                    r.OperatorName ?? "—",
                     r.UserName ?? "",
                     r.StartTime.TimeFa(),
                     r.EndTime.TimeFa(),
