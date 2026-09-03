@@ -62,8 +62,8 @@ public class ProjectEntryExit
     /// <summary>شماره فاکتور</summary>
     [MaxLength(50)] public string? FactorNumber { get; set; }
 
-    /// <summary>شماره کارشناسی اولیه</summary>
-    [MaxLength(50)] public string? KarshenasiAvalie { get; set; }
+    /// <summary>شماره/شرح کارشناسی اولیه (۱۰۰ کاراکتر — داده‌های قدیمی تا ۸۱ کاراکتر داشتند)</summary>
+    [MaxLength(100)] public string? KarshenasiAvalie { get; set; }
 
     /// <summary>تحویل گیرنده پروژه</summary>
     [MaxLength(200)] public string ProjectReceiver { get; set; } = "";
@@ -122,7 +122,9 @@ public class ProjectEntryExit
     /// <summary>یادداشت/خلاصهٔ کارشناسی</summary>
     [MaxLength(500)] public string? ExpertNote { get; set; }
 
-    /// <summary>جمع ساعات کار صرف‌شده (از گزارش‌های کار — به‌روزرسانی خودکار)</summary>
+    /// <summary>جمع ساعات کار صرف‌شده (از گزارش‌های کار — به‌روزرسانی خودکار).
+    /// در دیتابیس به‌صورت bigint (تیک) ذخیره می‌شود چون نوع <c>time</c> بیش از ۲۴ ساعت را نمی‌پذیرد
+    /// (پروژه‌های واقعی صدها ساعت گزارش دارند).</summary>
     public TimeSpan TotalSpentTime { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
@@ -146,8 +148,12 @@ public class ReportWork
     /// <summary>تاریخ گزارش</summary>
     public DateTime ReportDate { get; set; } = DateTime.Today;
 
-    /// <summary>شناسه کاربر لاگین (اپراتور)</summary>
+    /// <summary>شناسه کاربر لاگین — ثبت‌کنندهٔ گزارش</summary>
     public int UserId { get; set; }
+
+    /// <summary>اپراتور — کسی که عملاً روی پروژه کار انجام داده (از جدول کاربران؛ اختیاری).
+    /// در سیستم قدیمی ستون <c>Operator</c> جدول ReportWork بود و با ثبت‌کننده (<c>UserId</c>) فرق دارد.</summary>
+    public int? OperatorId { get; set; }
 
     [MaxLength(1000)] public string WorkDescription { get; set; } = "";
 
@@ -170,6 +176,7 @@ public class ReportWork
 
     // ---------- Navigation ----------
     public User? User { get; set; }
+    public User? Operator { get; set; }
     public ProjectEntryExit? Project { get; set; }
 }
 

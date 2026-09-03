@@ -81,13 +81,14 @@
         <div class="card-body">
             <div class="row g-2 align-items-center">
                 <div class="col-md-3"><SearchSelect Items="lookups.Projects" @bind-Value="filterProject" Placeholder="همه پروژه‌ها" /></div>
-                <div class="col-md-2"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" Placeholder="همه کاربران" /></div>
+                <div class="col-md-2"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" Placeholder="همه ثبت‌کننده‌ها" /></div>
+                <div class="col-md-2"><SearchSelect Items="lookups.Operators" @bind-Value="filterOperator" Placeholder="همه اپراتورها" /></div>
                 <div class="col-md-2"><DatePicker @bind-Value="filterFrom" Placeholder="از تاریخ" /></div>
                 <div class="col-md-2"><DatePicker @bind-Value="filterTo" Placeholder="تا تاریخ" /></div>
                 <div class="col-md-1">
                     <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
                 </div>
-                <div class="col-md-2 text-end fs-8 text-muted">جمع: @Fmt(SumSpent())</div>
+                <div class="col-12 text-end fs-8 text-muted">جمع: @Fmt(SumSpent())</div>
             </div>
         </div>
     </div>
@@ -114,7 +115,8 @@
                             <th class="sortable" @onclick='() => SortBy("date")'>تاریخ @((MarkupString)SortIcon("date"))</th>
                             <th class="sortable" @onclick='() => SortBy("code")'>کد پروژه @((MarkupString)SortIcon("code"))</th>
                             <th class="sortable" @onclick='() => SortBy("project")'>پروژه @((MarkupString)SortIcon("project"))</th>
-                            <th class="sortable" @onclick='() => SortBy("user")'>کاربر @((MarkupString)SortIcon("user"))</th>
+                            <th class="sortable" @onclick='() => SortBy("operator")'>اپراتور @((MarkupString)SortIcon("operator"))</th>
+                            <th class="sortable" @onclick='() => SortBy("user")'>ثبت‌کننده @((MarkupString)SortIcon("user"))</th>
                             <th class="sortable" @onclick='() => SortBy("start")'>شروع @((MarkupString)SortIcon("start"))</th>
                             <th class="sortable" @onclick='() => SortBy("end")'>پایان @((MarkupString)SortIcon("end"))</th>
                             <th class="sortable" @onclick='() => SortBy("rest")'>استراحت @((MarkupString)SortIcon("rest"))</th>
@@ -143,6 +145,10 @@
                                     }
                                 </td>
                                 <td class="fw-500">@r.ProjectName</td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(r.OperatorName)) { <span class="text-muted">—</span> }
+                                    else { <i class="bi bi-person-gear text-muted ms-1"></i>@r.OperatorName }
+                                </td>
                                 <td><i class="bi bi-person text-muted ms-1"></i>@r.UserName</td>
                                 <td class="num">@r.StartTime.TimeFa()</td>
                                 <td class="num">@r.EndTime.TimeFa()</td>
@@ -189,7 +195,10 @@
                             <span class="rw-spent">@Fmt(r.SpentTime)</span>
                         </div>
                         <div class="rw-project" title="@r.ProjectName"><i class="bi bi-folder2-open ms-1 text-muted"></i>@r.ProjectName</div>
-                        <div class="rw-user"><i class="bi bi-person ms-1"></i>@r.UserName</div>
+                        <div class="rw-user">
+                            @if (!string.IsNullOrWhiteSpace(r.OperatorName)) { <span class="ms-2"><i class="bi bi-person-gear ms-1"></i>اپراتور: <b>@r.OperatorName</b></span> }
+                            <span><i class="bi bi-person ms-1"></i>ثبت: @r.UserName</span>
+                        </div>
                         <div class="rw-times">
                             <span>شروع: <b>@r.StartTime.TimeFa()</b></span>
                             <span>پایان: <b>@r.EndTime.TimeFa()</b></span>
@@ -237,6 +246,10 @@
                 <span class="fs-8 text-muted">(ثبت خودکار با کاربر جاری)</span>
             </div>
         </div>
+        <div class="col-md-12">
+            <label class="form-label"><i class="bi bi-person-gear text-muted ms-1"></i>اپراتور <span class="fs-8 text-muted">(کسی که کار را انجام داده — از لیست کاربران)</span></label>
+            <SearchSelect Items="lookups.Operators" Value="form.OperatorId ?? 0" ValueChanged="v => form.OperatorId = v > 0 ? v : null" Placeholder="انتخاب اپراتور… (اختیاری)" />
+        </div>
         <div class="col-md-4">
             <label class="form-label">تاریخ گزارش <span class="text-danger">*</span></label>
             <DatePicker Value="reportDate" ValueChanged="d => reportDate = d ?? DateTime.Today" />
@@ -276,7 +289,7 @@
     private List<ReportWorkDto> items = new();
     private ProjectLookups lookups = new();
     private bool loading = true;
-    private int filterProject, filterUser;
+    private int filterProject, filterUser, filterOperator;
     private DateTime? filterFrom, filterTo;
 
     private ReportWorkDto form = new();
@@ -353,6 +366,7 @@
             "code" => ApplyDir(src, r => CodeKey(r.CodeProject)),
             "project" => ApplyDir(src, r => r.ProjectName ?? ""),
             "user" => ApplyDir(src, r => r.UserName ?? ""),
+            "operator" => ApplyDir(src, r => r.OperatorName ?? ""),
             "start" => ApplyDir(src, r => r.StartTime.Ticks),
             "end" => ApplyDir(src, r => r.EndTime.Ticks),
             "rest" => ApplyDir(src, r => (r.BreakfastTime.ToTimeSpan() + r.LunchTime.ToTimeSpan()).Ticks),
@@ -400,7 +414,8 @@
             items = await ReportSvc.GetAllAsync(
                 filterProject > 0 ? filterProject : null,
                 filterUser > 0 ? filterUser : null,
-                filterFrom, filterTo);
+                filterFrom, filterTo,
+                filterOperator > 0 ? filterOperator : null);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -430,6 +445,7 @@
             ReportDate = r.ReportDate,
             ProjectId = r.ProjectId,
             UserId = r.UserId,
+            OperatorId = r.OperatorId,
             WorkDescription = r.WorkDescription,
             StartTime = r.StartTime,
             EndTime = r.EndTime,
@@ -493,18 +509,20 @@
                 Meta = new List<string>
                 {
                     $"پروژه: {(filterProject > 0 ? lookups.Projects.FirstOrDefault(x => x.Id == filterProject)?.Name ?? "—" : "همه پروژه‌ها")}",
-                    $"کاربر: {(filterUser > 0 ? lookups.Users.FirstOrDefault(x => x.Id == filterUser)?.Name ?? "—" : "همه کاربران")}",
+                    $"ثبت‌کننده: {(filterUser > 0 ? lookups.Users.FirstOrDefault(x => x.Id == filterUser)?.Name ?? "—" : "همه")}",
+                    $"اپراتور: {(filterOperator > 0 ? lookups.Operators.FirstOrDefault(x => x.Id == filterOperator)?.Name ?? "—" : "همه")}",
                     $"از تاریخ: {(filterFrom?.ToFaDate() ?? "—")}",
                     $"تا تاریخ: {(filterTo?.ToFaDate() ?? "—")}",
                     $"تعداد گزارش‌ها: {items.Count.FaDigits()}"
                 },
-                Headers = new List<string> { "ردیف", "تاریخ", "کد پروژه", "پروژه", "کاربر", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
+                Headers = new List<string> { "ردیف", "تاریخ", "کد پروژه", "پروژه", "اپراتور", "ثبت‌کننده", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
                 Rows = items.Select((r, i) => new List<string>
                 {
                     (i + 1).FaDigits(),
                     r.ReportDate.ToFaDate(),
                     r.CodeProject ?? "—",
                     r.ProjectName ?? "",
+                    r.OperatorName ?? "—",
                     r.UserName ?? "",
                     r.StartTime.TimeFa(),
                     r.EndTime.TimeFa(),
