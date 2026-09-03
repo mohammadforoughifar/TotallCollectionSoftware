@@ -1,0 +1,78 @@
+<div class="ss">
+    <input type="text"
+           class="form-control @CssClass"
+           value="@query"
+           placeholder="@Placeholder"
+           @onfocus="OnFocus"
+           @oninput="OnInput"
+           @onfocusout="OnBlur" />
+    @if (open)
+    {
+        <div class="ss-menu">
+            @if (filtered.Count == 0)
+            {
+                <div class="ss-empty">موردی یافت نشد</div>
+            }
+            else
+            {
+                @foreach (var it in filtered)
+                {
+                    <div class="ss-item @(it == Value ? "selected" : "")" @onmousedown='@(() => Select(it))' @onmousedown:preventDefault="true">
+                        <span class="ss-item-name">@it</span>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>کمبوی سرچ‌دار با مقادیر رشته‌ای — همه‌ی گزینه‌ها با تایپ فیلتر می‌شوند.</summary>
+    [Parameter] public List<string> Items { get; set; } = new();
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "انتخاب کنید…";
+    [Parameter] public string CssClass { get; set; } = "";
+
+    private string query = "";
+    private bool open;
+
+    private List<string> filtered
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(query)) return Items;
+            return Items.Where(i => i.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+
+    private void OnFocus()
+    {
+        open = true;
+        if (!string.IsNullOrEmpty(Value)) query = Value;
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        open = true;
+    }
+
+    private async Task OnBlur()
+    {
+        await Task.Delay(160);
+        open = false;
+        query = Value ?? "";
+    }
+
+    private async Task Select(string item)
+    {
+        query = item;
+        open = false;
+        if (Value != item)
+        {
+            Value = item;
+            await ValueChanged.InvokeAsync(item);
+        }
+    }
+}

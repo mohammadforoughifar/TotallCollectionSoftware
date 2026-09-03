@@ -52,8 +52,10 @@
                 </div>
                 <div class="search">
                     <i class="bi bi-search"></i>
-                    <input placeholder="جستجو در عنوان، شماره، فرستنده…" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
+                    <input placeholder="@(folder == "archive" ? "جستجو بر اساس موضوع و شماره نامه…" : "جستجو در عنوان، شماره، فرستنده…")" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
                 </div>
+                @if (folder != "archive")
+                {
                 <div class="chips">
                     <button class="chip @(filter == "all" ? "on" : "")" @onclick='() => SetFilter("all")'>همه <span class="n">@BaseItems.Count.FaDigits()</span></button>
                     @if (folder != "draft")
@@ -67,14 +69,22 @@
                         <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
                     }
                 </div>
+                }
             </div>
             <div class="list">
-                @if (loading)
+                @if (folder == "archive")
+                {
+                    <BayeganiTree @ref="bayeganiTree" Filter="@search" OnOpenLetter="OpenArchivedLetter" OnChanged="OnArchiveChanged" OnLetterUnarchived="OnLetterUnarchived" />
+                }
+                else if (loading)
                 {
                     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
                 }
                 else if (folder == "draft")
                 {
+                    <button class="draft-add" @onclick="() => pishModal?.Open()">
+                        <i class="bi bi-plus-lg"></i> افزودن پیش‌نویس
+                    </button>
                     @if (drafts.Count == 0)
                     {
                         <div class="empty"><i class="bi bi-pencil-square"></i>پیش‌نویسی ندارید</div>
@@ -94,7 +104,8 @@
                                 @if (openMenuId == -dd.PishnevisId)
                                 {
                                     <div class="ltmenu" @onclick:stopPropagation="true">
-                                        <button @onclick="() => OpenDraft(dd)"><i class="bi bi-pencil-square"></i> ادامه پیش‌نویس</button>
+                                        <button @onclick="() => OpenDraft(dd)"><i class="bi bi-send"></i> ادامه و ارسال</button>
+                                        <button @onclick="() => EditDraft(dd)"><i class="bi bi-pencil-square"></i> ویرایش عنوان و متن</button>
                                         <div class="mdiv"></div>
                                         <button class="danger" @onclick="() => DeleteDraft(dd)"><i class="bi bi-trash"></i> حذف پیش‌نویس</button>
                                     </div>
@@ -120,12 +131,14 @@
                             <div class="day">@day</div>
                         }
                         <div class="mail @(folder == "inbox" && !ll.IsRead ? "unread" : "") @(ll.IsNeshan ? "starred" : "") @(selected?.LetterId == ll.LetterId ? "sel" : "")"
-                             @onclick="() => OpenLetter(ll)">
-                            <div class="avt">@AvatarText(FolderIsSent ? ll.Reciver : ll.Sender)</div>
+                             @onclick="() => OpenLetter(ll)"
+                             @oncontextmenu="() => ToggleMenu(ll.LetterId)" @oncontextmenu:preventDefault="true">
+                            @{ var rowIsSent = FolderIsSent || string.IsNullOrEmpty(ll.Sender); }
+                            <div class="avt">@AvatarText(rowIsSent ? ll.Reciver : ll.Sender)</div>
                             <div class="mail-b">
                                 <div class="mail-r1">
                                     <span class="who">
-                                        @(FolderIsSent ? "به: " + ll.Reciver + (ll.ReciverCount > 1 ? " +" + (ll.ReciverCount - 1).FaDigits() : "") : ll.Sender)
+                                        @(rowIsSent ? "به: " + ll.Reciver + (ll.ReciverCount > 1 ? " +" + (ll.ReciverCount - 1).FaDigits() : "") : ll.Sender)
                                         <i class="bi bi-star-fill star-ico"></i>
                                     </span>
                                     <span class="tm num">@ll.Date.ToFaDateTime()</span>
@@ -160,22 +173,16 @@
                                         {
                                             <button @onclick="() => MenuErja(ll)"><i class="bi bi-arrow-left-circle"></i> ارجاع / هامش</button>
                                         }
-                                        @if (ll.ErjaId is { } eid1)
-                                        {
-                                            <button @onclick="() => ToggleStar(ll)">
-                                                <i class="bi @(ll.IsNeshan ? "bi-star-fill" : "bi-star")" style="@(ll.IsNeshan ? "color:#eab308" : "")"></i>
-                                                @(ll.IsNeshan ? "حذف نشان" : "نشان‌کردن")
-                                            </button>
-                                        }
+                                        <button @onclick="() => ToggleStar(ll)">
+                                            <i class="bi @(ll.IsNeshan ? "bi-star-fill" : "bi-star")" style="@(ll.IsNeshan ? "color:#eab308" : "")"></i>
+                                            @(ll.IsNeshan ? "حذف نشان" : "نشان‌کردن")
+                                        </button>
                                         <div class="mdiv"></div>
                                         <button @onclick="() => MenuGardesh(ll)"><i class="bi bi-diagram-3"></i> گردش نامه</button>
                                         <button @onclick="() => MenuPrint(ll)"><i class="bi bi-printer"></i> چاپ</button>
-                                        @if (ll.ErjaId is { } eid2)
-                                        {
-                                            <button class="warn" @onclick="() => ToggleArchive(ll)">
-                                                <i class="bi bi-archive"></i> @(folder == "archive" ? "خروج از بایگانی" : "بایگانی")
-                                            </button>
-                                        }
+                                        <button class="warn" @onclick="() => ToggleArchive(ll)">
+                                            <i class="bi bi-archive"></i> بایگانی <small style="opacity:.55;margin-inline-start:auto">Ctrl+Shift+B</small>
+                                        </button>
                                     </div>
                                 }
                             </div>
@@ -185,7 +192,7 @@
             </div>
 
             @* ---------- صفحه‌بندی ---------- *@
-            @if (PageCount > 1)
+            @if (folder != "archive" && PageCount > 1)
             {
                 <div class="lt-pager">
                     <button class="pgbtn" disabled="@(page <= 1)" @onclick="() => GoPage(page - 1)"><i class="bi bi-chevron-right"></i></button>
@@ -203,15 +210,17 @@
         @* ---------- ریدر ---------- *@
         <main class="reader">
             <div class="rd-top">
+                <button class="icb rd-back" title="بازگشت به لیست" @onclick="CloseReader"><i class="bi bi-arrow-right"></i></button>
                 <span class="t">@(selected?.Title ?? "—")</span>
                 @if (selected != null)
                 {
-                    @if (selected.MyErja is { } myStar)
+                    @if (selected.MyErja != null || selected.IsMine)
                     {
-                        <button class="icb @(myStar.IsNeshan ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStarReader">
-                            <i class="bi @(myStar.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
+                        <button class="icb @(ReaderStarOn ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStarReader">
+                            <i class="bi @(ReaderStarOn ? "bi-star-fill" : "bi-star")"></i>
                         </button>
                     }
+                    <button class="icb" title="@(folder == "archive" ? "خروج از بایگانی (Ctrl+Shift+B)" : "بایگانی (Ctrl+Shift+B)")" data-hotkey="ctrl+shift+b" @onclick="ArchiveCurrent"><i class="bi bi-archive"></i></button>
                     <button class="icb" title="چاپ" @onclick="Print"><i class="bi bi-printer"></i></button>
                     @if (selected.CanEdit)
                     {
@@ -261,7 +270,7 @@
                                 </div>
                             </div>
                             <div class="paper-body">@((MarkupString)(selected.Text ?? "—"))</div>
-                            @if (attachments.Count > 0)
+                            @if (attachments.Count > 0 || selected.IsMine)
                             {
                                 <div class="paper-foot">
                                     @foreach (var a in attachments)
@@ -270,7 +279,20 @@
                                         <a class="att" href="@LetterSvc.AttachmentDownloadUrl(aa.Id)" target="_blank">
                                             <div class="ic"><i class="bi @FileIcon(aa.FileName)"></i></div>
                                             <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
+                                            @if (selected.IsMine || Auth.IsAdmin)
+                                            {
+                                                <i class="bi bi-x-circle-fill arm" title="حذف پیوست"
+                                                   @onclick="() => DeleteAttachment(aa)" @onclick:preventDefault="true" @onclick:stopPropagation="true"></i>
+                                            }
                                         </a>
+                                    }
+                                    @if (selected.IsMine)
+                                    {
+                                        <label class="att att-add" title="افزودن پیوست جدید">
+                                            <div class="ic"><i class="bi @(attUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
+                                            <div>@(attUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>حداکثر ۲۰ مگابایت</small></div>
+                                            <InputFile OnChange="OnReaderFiles" multiple disabled="@attUploading" style="display:none" />
+                                        </label>
                                     }
                                 </div>
                             }
@@ -313,7 +335,7 @@
                                     <button class="lbtn ghost" @onclick="() => EditLetter(selected.LetterId)"><i class="bi bi-pencil-square"></i> ویرایش</button>
                                 }
                             }
-                            @if (selectedItem?.ErjaId != null)
+                            @if (selectedItem != null)
                             {
                                 <button class="lbtn ghost" @onclick="() => ToggleArchive(selectedItem!)">
                                     <i class="bi bi-archive"></i> @(folder == "archive" ? "خروج از بایگانی" : "بایگانی")
@@ -391,6 +413,9 @@
 <ComposeLetterModal @ref="compose" OnSent="OnComposed" />
 <ErjaSheet @ref="erjaSheet" OnSubmitted="OnErjaSubmitted" />
 <GardeshModal @ref="gardesh" />
+<BayeganiFolderPickerModal @ref="folderPicker" />
+<PishnevisModal @ref="pishModal" OnSaved="OnDraftSaved" />
+<LetterConfirmModal @ref="confirmModal" />
 
 @code {
     [Parameter] public string? Tab { get; set; }
@@ -418,6 +443,10 @@
     private ComposeLetterModal? compose;
     private ErjaSheet? erjaSheet;
     private GardeshModal? gardesh;
+    private BayeganiFolderPickerModal? folderPicker;
+    private PishnevisModal? pishModal;
+    private LetterConfirmModal? confirmModal;
+    private BayeganiTree? bayeganiTree;
 
     // دستور کارِ ساخته‌شده از نامه (برای نشان «دستورکار شده» و لینک)
     private List<WoSourceItem> letterWorkOrders = new();
@@ -540,7 +569,14 @@
                 case "sent": items = await LetterSvc.GetSentAsync(s); break;
                 case "draft": drafts = await LetterSvc.GetPishnevisListAsync(s); break;
                 case "archive": items = await LetterSvc.GetArchiveAsync(s); break;
-                default: items = await LetterSvc.GetInboxAsync(s); break; // inbox + starred
+                case "starred":
+                    // نشان‌شده‌ها = دریافتی‌های نشان‌شده + ارسالی‌های نشان‌شده
+                    var inboxStar = await LetterSvc.GetInboxAsync(s);
+                    var sentStar = await LetterSvc.GetSentAsync(s);
+                    items = inboxStar.Concat(sentStar.Where(x => inboxStar.All(i => i.LetterId != x.LetterId)))
+                                     .OrderByDescending(x => x.Date).ToList();
+                    break;
+                default: items = await LetterSvc.GetInboxAsync(s); break;
             }
             stats = await LetterSvc.GetStatsAsync();
             if (keepSelection && selected != null)
@@ -550,6 +586,12 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+    }
+
+    /// <summary>بازگشت از ریدر به لیست (قالب موبایل)</summary>
+    private void CloseReader()
+    {
+        readerOpen = false;
     }
 
     private async Task SetFolder(string f)
@@ -622,6 +664,10 @@
         {
             selected = await LetterSvc.GetDetailAsync(letterId);
             attachments = new();
+            // مقدار اولیه ستاره ریدر (برای نامه ارسالی از ردیف لیست)
+            readerStar = selected?.MyErja?.IsNeshan
+                ?? items.FirstOrDefault(x => x.LetterId == letterId)?.IsNeshan
+                ?? false;
             try { attachments = await LetterSvc.GetAttachmentsAsync(letterId); } catch { }
             await LoadLetterWorkOrdersAsync(letterId);
 
@@ -673,6 +719,20 @@
     {
         openMenuId = 0;
         compose?.Open(d.Title, d.Text, d.PishnevisId);
+    }
+
+    /// <summary>ویرایش سریع عنوان و متن پیش‌نویس (بدون رفتن به فرم ارسال)</summary>
+    private void EditDraft(PishnevisDto d)
+    {
+        openMenuId = 0;
+        pishModal?.Open(d);
+    }
+
+    /// <summary>بعد از ذخیره پیش‌نویس، لیست پوشه پیش‌نویس تازه شود</summary>
+    private async Task OnDraftSaved()
+    {
+        if (folder == "draft") await ReloadAsync();
+        stats = await LetterSvc.GetStatsAsync();
     }
 
     private async Task DeleteDraft(PishnevisDto d)
@@ -749,46 +809,190 @@
         try { await JS.InvokeVoidAsync("ltxPrint"); } catch { }
     }
 
+    /// <summary>
+    /// نشان‌کردن — برای همه پوشه‌ها:
+    /// • نامه دریافتی (ErjaId دارد) → نشان روی ارجاع کاربر
+    /// • نامه ارسالی (ErjaId ندارد) → نشان روی خود نامه (فرستنده)
+    /// </summary>
     private async Task ToggleStar(InnerLetterListItemDto l)
     {
         openMenuId = 0;
-        if (l.ErjaId is not { } eid) return;
         try
         {
-            l.IsNeshan = await LetterSvc.ToggleNeshanAsync(eid);
-            if (selected?.MyErja is { } my && my.ErjaId == eid) my.IsNeshan = l.IsNeshan;
+            l.IsNeshan = l.ErjaId is { } eid
+                ? await LetterSvc.ToggleNeshanAsync(eid)
+                : await LetterSvc.ToggleLetterNeshanAsync(l.LetterId);
+
+            if (selected?.MyErja is { } my && l.ErjaId == my.ErjaId) my.IsNeshan = l.IsNeshan;
             Toast.Success(l.IsNeshan ? "نامه نشان شد ⭐" : "نشان نامه برداشته شد");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    /// <summary>نشان‌کردن از داخل ریدر — مبتنی بر MyErja (حتی وقتی آیتم لیست در دسترس نیست)</summary>
+    /// <summary>نشان‌کردن از داخل ریدر — دریافتی از MyErja، ارسالی از خود نامه</summary>
     private async Task ToggleStarReader()
     {
-        if (selected?.MyErja is not { } my) return;
+        if (selected == null) return;
         try
         {
-            my.IsNeshan = await LetterSvc.ToggleNeshanAsync(my.ErjaId);
-            var l = items.FirstOrDefault(x => x.ErjaId == my.ErjaId);
-            if (l != null) l.IsNeshan = my.IsNeshan;
-            if (selectedItem?.ErjaId == my.ErjaId) selectedItem!.IsNeshan = my.IsNeshan;
-            Toast.Success(my.IsNeshan ? "نامه نشان شد ⭐" : "نشان نامه برداشته شد");
+            bool val;
+            if (selected.MyErja is { } my)
+            {
+                val = await LetterSvc.ToggleNeshanAsync(my.ErjaId);
+                my.IsNeshan = val;
+                var row = items.FirstOrDefault(x => x.ErjaId == my.ErjaId);
+                if (row != null) row.IsNeshan = val;
+            }
+            else if (selected.IsMine)
+            {
+                val = await LetterSvc.ToggleLetterNeshanAsync(selected.LetterId);
+                var row = items.FirstOrDefault(x => x.LetterId == selected.LetterId);
+                if (row != null) row.IsNeshan = val;
+            }
+            else return;
+
+            if (selectedItem?.LetterId == selected.LetterId) selectedItem!.IsNeshan = val;
+            readerStar = val;
+            Toast.Success(val ? "نامه نشان شد ⭐" : "نشان نامه برداشته شد");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    /// <summary>وضعیت فعلی ستاره برای نامه باز در ریدر</summary>
+    private bool ReaderStarOn =>
+        selected?.MyErja?.IsNeshan
+        ?? (selectedItem?.LetterId == selected?.LetterId ? selectedItem?.IsNeshan : null)
+        ?? readerStar;
+
+    private bool readerStar;
+
     private async Task ToggleArchive(InnerLetterListItemDto l)
     {
         openMenuId = 0;
-        if (l.ErjaId is not { } eid) return;
         try
         {
-            var isArch = await LetterSvc.ToggleBayeganiAsync(eid);
-            Toast.Success(isArch ? "نامه بایگانی شد" : "نامه از بایگانی خارج شد");
-            if (selected?.LetterId == l.LetterId) { selected = null; selectedItem = null; }
+            if (folder == "archive")
+            {
+                // تأیید کاربر قبل از خروج از بایگانی
+                if (confirmModal != null &&
+                    !await confirmModal.AskAsync("خروج از بایگانی",
+                        $"آیا مطمئن هستید که می‌خواهید نامه «{l.Title}» را از بایگانی خارج کنید؟",
+                        "بله، خارج کن", "bi-box-arrow-up", "warn"))
+                    return;
+
+                // خروج از بایگانی — مسیر گیرنده (ارجاع) یا فرستنده (نامه)
+                if (l.ErjaId is { } eid0) await LetterSvc.UnarchiveByErjaAsync(eid0);
+                else await LetterSvc.UnarchiveByLetterAsync(l.LetterId);
+                Toast.Success("نامه از بایگانی خارج شد");
+                if (selected?.LetterId == l.LetterId || selectedItem?.LetterId == l.LetterId)
+                { selected = null; selectedItem = null; readerOpen = false; }
+                if (bayeganiTree != null) await bayeganiTree.ReloadAsync();
+                stats = await LetterSvc.GetStatsAsync();
+                return;
+            }
+
+            // بایگانی: انتخاب پوشه مقصد از درخت بایگانی
+            if (folderPicker == null) return;
+            var dest = await folderPicker.PickAsync($"بایگانی نامه «{l.Title}»");
+            if (dest is not { } folderId || folderId <= 0) return;
+
+            var dto = new ArchiveLettersDto { FolderId = folderId };
+            if (l.ErjaId is { } eid) dto.ErjaIds.Add(eid);
+            else dto.LetterIds.Add(l.LetterId); // نامه ارسالی — مسیر فرستنده
+
+            await LetterSvc.ArchiveLettersAsync(dto);
+            Toast.Success("نامه بایگانی شد");
+            if (selected?.LetterId == l.LetterId) { selected = null; selectedItem = null; readerOpen = false; }
             await ReloadAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>بایگانی نامه باز در ریدر — دکمه نوار بالا و کلید میانبر Ctrl+Shift+B</summary>
+    private async Task ArchiveCurrent()
+    {
+        if (selected == null) return;
+        var item = selectedItem ?? new InnerLetterListItemDto
+        {
+            LetterId = selected.LetterId,
+            ErjaId = selected.MyErja?.ErjaId,
+            Title = selected.Title
+        };
+        // اگر ردیف لیست ErjaId ندارد ولی جزئیات دارد (مثلاً پوشه نشان‌شده‌ها)
+        if (item.ErjaId == null && selected.MyErja != null && !selected.IsMine)
+            item.ErjaId = selected.MyErja.ErjaId;
+        await ToggleArchive(item);
+    }
+
+    /// <summary>باز کردن نامه از درخت بایگانی</summary>
+    private async Task OpenArchivedLetter(BayeganiNodeDto n)
+    {
+        if (n.LetterId is not { } lid) return;
+        selectedItem = new InnerLetterListItemDto
+        {
+            LetterId = lid,
+            ErjaId = n.ErjaId,
+            LetterNumber = n.LetterNumber ?? "",
+            Title = n.Title,
+            Sender = n.Sender ?? "",
+            Date = n.Date ?? DateTime.Now
+        };
+        await LoadDetailAsync(lid);
+        readerOpen = true;
+    }
+
+    private async Task OnArchiveChanged() => stats = await LetterSvc.GetStatsAsync();
+
+    // ==================== پیوست‌ها در ریدر ====================
+
+    private bool attUploading;
+
+    /// <summary>افزودن پیوست جدید به نامه باز در ریدر (فقط فرستنده)</summary>
+    private async Task OnReaderFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        if (selected == null || attUploading) return;
+        attUploading = true;
+        try
+        {
+            foreach (var f in e.GetMultipleFiles(50))
+            {
+                if (f.Size <= 0) { Toast.Error($"فایل «{f.Name}» خالی است."); continue; }
+                if (f.Size > 20 * 1024 * 1024) { Toast.Error($"فایل «{f.Name}» بزرگ‌تر از ۲۰ مگابایت است."); continue; }
+                try
+                {
+                    await using var stream = f.OpenReadStream(20 * 1024 * 1024);
+                    await LetterSvc.UploadAttachmentAsync(selected.LetterId, stream, f.Name, f.ContentType);
+                }
+                catch (Exception ex) { Toast.Error($"«{f.Name}»: {ex.Message}"); }
+            }
+            attachments = await LetterSvc.GetAttachmentsAsync(selected.LetterId);
+            Toast.Success("پیوست‌ها بروزرسانی شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { attUploading = false; }
+    }
+
+    /// <summary>حذف پیوست از نامه باز در ریدر</summary>
+    private async Task DeleteAttachment(LetterAttachmentDto a)
+    {
+        if (selected == null) return;
+        try
+        {
+            await LetterSvc.DeleteAttachmentAsync(a.Id);
+            attachments = await LetterSvc.GetAttachmentsAsync(selected.LetterId);
+            Toast.Success("پیوست حذف شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>وقتی نامه‌ای از داخل درخت از بایگانی خارج شد، اگر همان نامه در ریدر باز است ببند</summary>
+    private void OnLetterUnarchived(BayeganiNodeDto n)
+    {
+        if (n.LetterId is { } lid && (selected?.LetterId == lid || selectedItem?.LetterId == lid))
+        {
+            selected = null; selectedItem = null; readerOpen = false;
+            StateHasChanged();
+        }
     }
 
     // ==================== پاسخ ====================

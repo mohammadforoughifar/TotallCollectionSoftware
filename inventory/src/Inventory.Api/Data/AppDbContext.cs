@@ -37,6 +37,7 @@ public class AppDbContext : DbContext
 
     // ================== اعلان‌ها (نوتیفیکیشن) ==================
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     // ================== دستور کار ==================
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
@@ -52,6 +53,9 @@ public class AppDbContext : DbContext
     public DbSet<SystemInfoChangeLog> SystemInfoChangeLogs => Set<SystemInfoChangeLog>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
+    public DbSet<WorkCalendarDay> WorkCalendarDays => Set<WorkCalendarDay>();
+    public DbSet<WorkCalendarSettings> WorkCalendarSettings => Set<WorkCalendarSettings>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CctvCamera> CctvCameras => Set<CctvCamera>();
     public DbSet<CctvNvr> CctvNvrs => Set<CctvNvr>();
     public DbSet<OfficeMachine> OfficeMachines => Set<OfficeMachine>();
@@ -61,6 +65,9 @@ public class AppDbContext : DbContext
     public DbSet<ShiftGroup> ShiftGroups => Set<ShiftGroup>();
     public DbSet<AttendanceRecord> AttendanceRecords => Set<AttendanceRecord>();
     public DbSet<AttendanceSegment> AttendanceSegments => Set<AttendanceSegment>();
+    public DbSet<UserDevice> UserDevices => Set<UserDevice>();
+    public DbSet<AttendanceAlert> AttendanceAlerts => Set<AttendanceAlert>();
+    public DbSet<AttendanceAreaSetting> AttendanceAreaSettings => Set<AttendanceAreaSetting>();
     public DbSet<OfficeMachineCost> OfficeMachineCosts => Set<OfficeMachineCost>();
     // ---- جدول‌های قطعات کامپیوتر ----
     public DbSet<SystemCpu> SystemCpus => Set<SystemCpu>();
@@ -95,6 +102,12 @@ public class AppDbContext : DbContext
     public DbSet<LetterBayegani> LetterBayeganis => Set<LetterBayegani>();
     public DbSet<LetterGroup> LetterGroups => Set<LetterGroup>();
     public DbSet<LetterGroupMember> LetterGroupMembers => Set<LetterGroupMember>();
+    public DbSet<LetterStrature> LetterStratures => Set<LetterStrature>();
+
+    // ==================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا کنندگان) ====================
+    public DbSet<OutgoingLetter> OutgoingLetters => Set<OutgoingLetter>();
+    public DbSet<OutgoingPishnevisLetter> OutgoingPishnevisLetters => Set<OutgoingPishnevisLetter>();
+    public DbSet<OutgoingLetterSigner> OutgoingLetterSigners => Set<OutgoingLetterSigner>();
 
     // ==================== RBAC ====================
     public DbSet<Role> Roles => Set<Role>();
@@ -114,6 +127,13 @@ public class AppDbContext : DbContext
         mb.Entity<Transaction>().HasIndex(t => t.Type);
         mb.Entity<Transaction>().HasIndex(t => t.Date);
         mb.Entity<TransactionLine>().HasIndex(l => l.ProductId);
+
+        // ---------- امنیت حضور و غیاب: ایندکس‌های دستگاه‌ها و هشدارها ----------
+        // هر کاربر برای هر Device ID فقط یک رکورد دستگاه دارد (دستگاه یکتا)
+        mb.Entity<UserDevice>().HasIndex(d => new { d.UserId, d.DeviceId }).IsUnique();
+        mb.Entity<UserDevice>().HasIndex(d => d.DeviceId);
+        mb.Entity<AttendanceAlert>().HasIndex(a => new { a.UserId, a.Status });
+        mb.Entity<AttendanceAlert>().HasIndex(a => new { a.Status, a.CreatedAt });
 
         // ---------- دقت صریح اعداد اعشاری برای SQL Server ----------
         // قیمت‌ها و مبالغ: 2 رقم اعشار
@@ -180,7 +200,11 @@ public class AppDbContext : DbContext
         mb.Entity<ProjectEntryExit>().HasIndex(p => p.UserId);
         mb.Entity<ReportWork>().HasIndex(r => r.ProjectId);
         mb.Entity<ReportWork>().HasIndex(r => r.UserId);
+        mb.Entity<ReportWork>().HasIndex(r => r.OperatorId);
         mb.Entity<ProjectAttach>().HasIndex(a => a.ProjectId);
+
+        // جمع ساعات پروژه به‌صورت تیک (bigint) — نوع time فقط تا ۲۴ ساعت را می‌پذیرد
+        mb.Entity<ProjectEntryExit>().Property(p => p.TotalSpentTime).HasConversion<long>();
 
         // رکوردهای ورود/خروج → مراجع (حذف نرم — جلوگیری از حذف فیزیکی مرجع‌های درحال‌استفاده)
         mb.Entity<ProjectEntryExit>()
@@ -210,6 +234,12 @@ public class AppDbContext : DbContext
             .WithMany()
             .HasForeignKey(r => r.UserId)
             .OnDelete(DeleteBehavior.Restrict);
+        // اپراتور (انجام‌دهندهٔ کار) — جدا از ثبت‌کننده؛ اختیاری
+        mb.Entity<ReportWork>()
+            .HasOne(r => r.Operator)
+            .WithMany()
+            .HasForeignKey(r => r.OperatorId)
+            .OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ProjectAttach>()
             .HasOne(a => a.Project)
             .WithMany(p => p.Attaches)
@@ -227,11 +257,14 @@ public class AppDbContext : DbContext
         mb.Entity<SystemRemoteCommand>().HasIndex(c => c.SystemInfoId);
         mb.Entity<SystemRemoteCommand>().HasIndex(c => c.Status);
 
-        // ==================== اتوماسیون اداری — نامه داخلی ====================
+        // ==================== اتوماسیون اداری — نامه داخلی و صادره ====================
         // کلیدهای اصلی صریح (نام‌گذاری مطابق طرح کارفرما)
         mb.Entity<Erja>().HasKey(e => e.ErjaId);
         mb.Entity<Amalgar>().HasKey(a => a.AmalgarId);
+
+        mb.Entity<Amalgar>().HasKey(a => a.AmalgarId);
         mb.Entity<PishnevisLetter>().HasKey(p => p.PishnevisId);
+        mb.Entity<OutgoingPishnevisLetter>().HasKey(p => p.PishnevisId);
         mb.Entity<LetterBayegani>().HasKey(b => b.BayeganiId);
 
         // InnerLetter با LetterSource کلید مشترک دارد (الگوی SourceKeyID طرح اصلی)
@@ -248,6 +281,40 @@ public class AppDbContext : DbContext
         mb.Entity<InnerLetter>().HasIndex(l => l.Number);
         mb.Entity<InnerLetter>().HasIndex(l => l.DateSabt);
         mb.Entity<InnerLetter>().HasIndex(l => l.CreatorUserId);
+
+        // OutgoingLetter — همان الگوی کلید مشترک با SourceType=2
+        mb.Entity<OutgoingLetter>()
+            .HasOne(l => l.Source)
+            .WithOne(s => s.OutgoingLetter!)
+            .HasForeignKey<OutgoingLetter>(l => l.Id)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<OutgoingLetter>()
+            .HasOne(l => l.Creator)
+            .WithMany()
+            .HasForeignKey(l => l.CreatorUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.Number);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.DateSabt);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.CreatorUserId);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.ReceiverOrganization);
+        mb.Entity<OutgoingLetter>().HasIndex(l => l.SadereNumber);
+        mb.Entity<OutgoingPishnevisLetter>().HasIndex(p => p.UserId);
+
+        // امضا کنندگان نامه صادره
+        mb.Entity<OutgoingLetterSigner>()
+            .HasOne(s => s.Source)
+            .WithMany(src => src.OutgoingSigners)
+            .HasForeignKey(s => s.SourceId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<OutgoingLetterSigner>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => s.SourceId);
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => s.UserId);
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => new { s.SourceId, s.UserId }).IsUnique();
+        mb.Entity<OutgoingLetterSigner>().HasIndex(s => new { s.UserId, s.IsSigned });
 
         mb.Entity<Erja>()
             .HasOne(e => e.Source)
@@ -307,6 +374,10 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
         mb.Entity<LetterGroupMember>().HasIndex(m => new { m.GroupId, m.UserId }).IsUnique();
 
+        // ساختار شماره اندیکاتور (LetterStrature طرح کارفرما)
+        mb.Entity<LetterStrature>().HasKey(s => s.StratureId);
+        mb.Entity<LetterStrature>().HasIndex(s => s.TypeForm);
+
         // ==================== RBAC Configuration ====================
         mb.Entity<Role>().HasIndex(r => r.Name).IsUnique();
         mb.Entity<Permission>().HasIndex(p => new { p.Module, p.Action }).IsUnique();
@@ -329,6 +400,10 @@ public class AppDbContext : DbContext
 
         // ---------- تعطیلات شرکتی ----------
         mb.Entity<CompanyHoliday>().HasIndex(h => h.HolidayDate);
+        mb.Entity<WorkCalendarDay>().HasIndex(d => d.Date).IsUnique();
+        mb.Entity<WorkCalendarSettings>().HasIndex(s => s.Id).IsUnique();
+        mb.Entity<AuditLog>().HasIndex(a => a.At);
+        mb.Entity<AuditLog>().HasIndex(a => a.UserId);
 
         // ---------- بازه‌های ورود/خروج روزانه (حداکثر ۵ بازه در روز) ----------
         mb.Entity<AttendanceSegment>()

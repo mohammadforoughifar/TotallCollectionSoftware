@@ -21,6 +21,12 @@ public class ShiftGroup
     /// <summary>ساعت خروج قانونی</summary>
     public TimeSpan EndTime { get; set; } = new TimeSpan(16, 30, 0);
 
+    /// <summary>شروعِ پنجره‌ی دومِ شیفت دوپاره (مثلاً 17:00 برای «۸–۱۳ + ۱۷–۲۱:۳۰») — null = شیفت تک‌بازه‌ای</summary>
+    public TimeSpan? StartTime2 { get; set; }
+
+    /// <summary>پایانِ پنجره‌ی دومِ شیفت دوپاره (مثلاً 21:30) — باید بعد از StartTime2 باشد</summary>
+    public TimeSpan? EndTime2 { get; set; }
+
     /// <summary>دقیقه تاخیر مجاز بدون جریمه</summary>
     public int GraceMinutes { get; set; } = 10;
 

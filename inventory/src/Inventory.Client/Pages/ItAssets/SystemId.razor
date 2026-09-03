@@ -1524,8 +1524,8 @@ window.sigClear = function (canvasId) {
     private string selectedUserId = "";
     private string companySearchText = "";
     private string userSearchText = "";
-    private bool ShowCompanyDropdown = false;
-    private bool ShowUserDropdown = false;
+    private bool ShowCompanyDropdown { get; set; } = false;
+    private bool ShowUserDropdown { get; set; } = false;
 
     protected override async Task OnInitializedAsync()
     {
