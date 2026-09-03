@@ -104,6 +104,23 @@
         };
         // چاپ نامه (اتوماسیون اداری)
         window.ltxPrint = function () { window.print(); };
+        // باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی base64
+        window.ltxOpenPdf = function (base64, fileName) {
+            try {
+                var bin = atob(base64);
+                var arr = new Uint8Array(bin.length);
+                for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                var blob = new Blob([arr], { type: 'application/pdf' });
+                var url = URL.createObjectURL(blob);
+                var w = window.open(url, '_blank');
+                if (!w) { // popup blocked → download
+                    var a = document.createElement('a');
+                    a.href = url; a.download = fileName || 'letter.pdf';
+                    document.body.appendChild(a); a.click(); a.remove();
+                }
+                setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+            } catch (e) { console.error(e); }
+        };
 
         window.inventoryApiBase = function (fallback) {
             try {

@@ -97,13 +97,19 @@
                             <i class="bi bi-people-fill"></i><span>پنل مدیریت مرخصی</span>
                         </NavLink>
                     }
+                    @if (Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="work-calendar" @onclick="NotifyClose">
+                            <i class="bi bi-calendar2-week"></i><span>تقویم کاری</span>
+                        </NavLink>
+                    }
                 </div>
             }
         </div>
     }
 
     @* ============ اتوماسیون اداری ============ *@
-    @if (Auth.HasModule("InnerLetters"))
+    @if (Auth.HasModule("InnerLetters") || Auth.HasModule("OutgoingLetters"))
     {
         <div class="nav-group group-letters">
             <button type="button" class="nav-section-title nav-toggle @(gLetters ? "open" : "")" @onclick="() => gLetters = !gLetters">
@@ -113,13 +119,28 @@
             @if (gLetters)
             {
                 <div class="nav-group-items">
-                    <NavLink class="nav-link" href="letters" @onclick="NotifyClose">
-                        <i class="bi bi-envelope-paper"></i><span>کارتابل نامه داخلی</span>
-                        @if (LettersUnreadCount > 0)
+                    @if (Auth.HasModule("InnerLetters"))
+                    {
+                        <NavLink class="nav-link" href="letters" @onclick="NotifyClose">
+                            <i class="bi bi-envelope-paper"></i><span>کارتابل نامه داخلی</span>
+                            @if (LettersUnreadCount > 0)
+                            {
+                                <span class="badge bg-danger ms-auto">@LettersUnreadCount</span>
+                            }
+                        </NavLink>
+                    }
+                    @if (Auth.HasModule("OutgoingLetters"))
+                    {
+                        <NavLink class="nav-link" href="outgoing-letters" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-send"></i><span>کارتابل نامه صادره</span>
+                        </NavLink>
+                        @if (Auth.Has("OutgoingLetters.Dabirkhane"))
                         {
-                            <span class="badge bg-danger ms-auto">@LettersUnreadCount</span>
+                            <NavLink class="nav-link" href="outgoing-letters/dabirkhane" @onclick="NotifyClose">
+                                <i class="bi bi-mailbox"></i><span>دبیرخانه نامه صادره</span>
+                            </NavLink>
                         }
-                    </NavLink>
+                    }
                 </div>
             }
         </div>
@@ -383,6 +404,9 @@
                     <NavLink class="nav-link" href="settings" @onclick="NotifyClose">
                         <i class="bi bi-gear"></i><span>تنظیمات</span>
                     </NavLink>
+                    <NavLink class="nav-link" href="settings/audit-log" @onclick="NotifyClose">
+                        <i class="bi bi-clipboard-data"></i><span>لاگ عملیات</span>
+                    </NavLink>
                 }
                 @if (Auth.HasModule("SystemUsers"))
                 {
@@ -410,7 +434,7 @@
 
         gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive");
         gWo = p.StartsWith("work-orders");
-        gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance");
+        gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance") || p.StartsWith("work-calendar");
         gLetters = p.StartsWith("letters");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOps = p.StartsWith("orders") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses");

@@ -61,7 +61,11 @@ public static class RbacSeeder
         // Create: ثبت و ارسال نامه (و مدیریت پیش‌نویس‌ها/گروه‌های گیرندگان)
         // Read: کارتابل، مشاهده نامه و پیوست‌ها | Erja: ارجاع نامه به دیگران
         // Delete: حذف نامه/گروه (مدیرانه)
-        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" }
+        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
+        // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
+        // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
+        // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده
+        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" }
     };
 
     public static async Task SeedAsync(AppDbContext db)

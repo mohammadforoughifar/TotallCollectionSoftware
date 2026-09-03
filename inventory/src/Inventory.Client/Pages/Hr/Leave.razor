@@ -144,13 +144,13 @@
                 <div class="row g-2">
                     <div class="col-6">
                         <label class="form-label small fw-800">شروع</label>
-                        <DatePicker Value="formStart" ValueChanged="v => formStart = v" CssClass="form-control-sm" />
+                        <DatePicker Value="formStart" ValueChanged="v => formStart = v" CssClass="form-control-sm" DayClasses="calDayClasses" DayTitles="calDayTitles" />
                     </div>
                     @if (formType != "Hourly" && formType != "HourlyMission")
                     {
                         <div class="col-6">
                             <label class="form-label small fw-800">پایان</label>
-                            <DatePicker Value="formEnd" ValueChanged="v => formEnd = v" CssClass="form-control-sm" />
+                            <DatePicker Value="formEnd" ValueChanged="v => formEnd = v" CssClass="form-control-sm" DayClasses="calDayClasses" DayTitles="calDayTitles" />
                         </div>
                     }
                     @if (formType == "Hourly" || formType == "HourlyMission")
@@ -441,6 +441,7 @@
         formStart = DateTime.Today; formEnd = DateTime.Today;
         await LoadBalance();
         await LoadMine();
+        await BuildCalendarStatusAsync();
         if (IsManager) await LoadPendingAll();
         loading = false;
 
@@ -454,9 +455,57 @@
         await InvokeAsync(async () =>
         {
             await LoadBalance(); await LoadMine();
+            await BuildCalendarStatusAsync();
             if (IsManager) await LoadPendingAll();
             StateHasChanged();
         });
+    }
+
+    // ---------- وضعیت ماه روی تقویم (تعطیلات رسمی + مرخصی‌های خود کاربر) ----------
+    private Dictionary<string, string> calDayClasses = new();
+    private Dictionary<string, string> calDayTitles = new();
+
+    public class HolPubItem { public int Id { get; set; } public DateTime HolidayDate { get; set; } public string Name { get; set; } = ""; public bool IsOfficial { get; set; } }
+
+    private async Task BuildCalendarStatusAsync()
+    {
+        var classes = new Dictionary<string, string>();
+        var titles = new Dictionary<string, string>();
+        try
+        {
+            // تعطیلات رسمی سال (سبز/قرمز روی تقویم)
+            var hols = await Http.GetFromJsonAsync<List<HolPubItem>>($"/api/Attendance/official-holidays?jy={_now.jy}") ?? new();
+            foreach (var h in hols)
+            {
+                var k = h.HolidayDate.ToString("yyyy-MM-dd");
+                classes[k] = "dp-hol";
+                titles[k] = "تعطیل رسمی: " + h.Name;
+            }
+        }
+        catch { }
+
+        // مرخصی‌های خود کاربر (حلقه‌ی نارنجی)
+        foreach (var r in mine.Where(x => x.Status is "Approved" or "Pending"))
+        {
+            var label = r.Status == "Approved" ? "مرخصی شما (تاییدشده)" : "مرخصی شما (در انتظار تایید)";
+            if (r.Type is "Daily" or "Mission")
+            {
+                for (var d = r.StartDate.Date; d <= r.EndDate.Date; d = d.AddDays(1))
+                {
+                    var k = d.ToString("yyyy-MM-dd");
+                    if (classes.ContainsKey(k)) { titles[k] = titles.TryGetValue(k, out var t) ? t + " — " + label : label; continue; }
+                    classes[k] = "dp-leave";
+                    titles[k] = label;
+                }
+            }
+            else
+            {
+                var k = r.StartDate.Date.ToString("yyyy-MM-dd");
+                if (!classes.ContainsKey(k)) { classes[k] = "dp-leave"; titles[k] = label + $" ({r.StartTime?.HHMM()}-{r.EndTime?.HHMM()})"; }
+            }
+        }
+        calDayClasses = classes;
+        calDayTitles = titles;
     }
 
     public void Dispose() { Rt.DataChanged -= OnRtDataChanged; }

@@ -31,12 +31,14 @@ public class NotifyService : INotifyService
     private readonly AppDbContext _db;
     private readonly IHubContext<NotifyHub> _hub;
     private readonly Inventory.Api.Services.IMessengerService _messenger;
+    private readonly Inventory.Api.Services.IPushService _push;
 
-    public NotifyService(AppDbContext db, IHubContext<NotifyHub> hub, Inventory.Api.Services.IMessengerService messenger)
+    public NotifyService(AppDbContext db, IHubContext<NotifyHub> hub, Inventory.Api.Services.IMessengerService messenger, Inventory.Api.Services.IPushService push)
     {
         _db = db;
         _hub = hub;
         _messenger = messenger;
+        _push = push;
     }
 
     public async Task SendAsync(int userId, string title, string? body, string fromName, string formName, string? link)
@@ -65,6 +67,10 @@ public class NotifyService : INotifyService
 
         // ================== ارسال موازی به بله و ایتا (در صورت داشتن) ==================
         try { await _messenger.SendToUserAsync(userId, title, body); } catch { }
+
+        // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
+        // اعلان مثل نوتیف گوشی از بالای صفحه می‌آید و در نوار اعلان می‌ماند.
+        try { await _push.SendToUserAsync(userId, title, body, link); } catch { }
     }
 
     public async Task SendManyAsync(IEnumerable<int> userIds, string title, string? body, string fromName, string formName, string? link)
