@@ -30,25 +30,43 @@
         window.rteGetHtml = function (id) { var el = document.getElementById(id); return el ? el.innerHTML : ""; };
         window.rteSetHtml = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html || ""; };
 
+        // نگهداری آخرین انتخاب متن (برای اعمال فونت/رنگ/اندازه وقتی فوکوس به نوار ابزار می‌رود)
+        window.__rteSavedRange = null;
+        window.rteSaveSelection = function (id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var sel = window.getSelection();
+            if (sel.rangeCount > 0 && el.contains(sel.anchorNode))
+                window.__rteSavedRange = sel.getRangeAt(0).cloneRange();
+        };
+        window.rteRestoreSelection = function (id) {
+            var el = document.getElementById(id);
+            if (!el || !window.__rteSavedRange) return;
+            el.focus();
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(window.__rteSavedRange);
+        };
+
         // اجرای دستور روی ادیتور مشخص — فوکوس و dispatch
         window.rteExecId = function (id, cmd, value) {
             var el = document.getElementById(id);
             if (!el) return;
-            el.focus();
+            window.rteRestoreSelection(id); el.focus();
             document.execCommand("styleWithCSS", false, true);
             document.execCommand(cmd, false, value === undefined ? null : value);
         };
         // تنظیم قلم
         window.rteFont = function (id, family) {
             var el = document.getElementById(id); if (!el) return;
-            el.focus();
+            window.rteRestoreSelection(id); el.focus();
             document.execCommand("styleWithCSS", false, true);
             document.execCommand("fontName", false, family);
         };
         // تنظیم اندازه قلم (به پیکسل) — با ترفند font[size=7]
         window.rteSize = function (id, px) {
             var el = document.getElementById(id); if (!el) return;
-            el.focus();
+            window.rteRestoreSelection(id); el.focus();
             // برای ساخت تگ فونت خام، styleWithCSS را موقتاً خاموش می‌کنیم
             document.execCommand("styleWithCSS", false, false);
             document.execCommand("fontSize", false, "7");
@@ -64,14 +82,14 @@
         // رنگ متن
         window.rteColor = function (id, color) {
             var el = document.getElementById(id); if (!el) return;
-            el.focus();
+            window.rteRestoreSelection(id); el.focus();
             document.execCommand("styleWithCSS", false, true);
             document.execCommand("foreColor", false, color);
         };
         // رنگ پس‌زمینه (هایلایت)
         window.rteHilite = function (id, color) {
             var el = document.getElementById(id); if (!el) return;
-            el.focus();
+            window.rteRestoreSelection(id); el.focus();
             document.execCommand("styleWithCSS", false, true);
             document.execCommand("hiliteColor", false, color);
         };
@@ -80,7 +98,7 @@
             var url = window.prompt("آدرس لینک را وارد کنید:", "https://");
             if (!url) return;
             var el = document.getElementById(id); if (!el) return;
-            el.focus();
+            window.rteRestoreSelection(id); el.focus();
             document.execCommand("styleWithCSS", false, true);
             document.execCommand("createLink", false, url);
         };
