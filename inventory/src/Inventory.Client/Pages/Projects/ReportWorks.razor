@@ -44,10 +44,10 @@
     .rw-times { display: flex; gap: .9rem; font-size: .78rem; color: #475569; flex-wrap: wrap; }
     .rw-times b { color: #334155; }
     .rw-spent { background: #eef2ff; color: #3730a3; border-radius: 999px; font-size: .74rem; font-weight: 800; padding: .2rem .7rem; }
-    .rw-desc { font-size: .8rem; color: #334155; background: #f8fafc; border-radius: 9px; padding: .45rem .6rem; }
+    .rw-desc { font-size: .8rem; color: #334155; background: #f8fafc; border-radius: 999px; padding: .45rem .6rem; }
 </style>
 
-<div class="card shadow-sm mb-4">
+<div class="card shadow-sm mb-4" style="position: relative; z-index: 30;">
     <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2"
          style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:14px 14px 0 0;">
         <span><i class="bi bi-clock-history me-2"></i>گزارش‌های کار
@@ -93,7 +93,7 @@
     </div>
 </div>
 
-<div class="card mt-3">
+<div class="card mt-3" style="position: relative; z-index: 1;">
     <div class="card-body p-0">
         @if (loading)
         {
@@ -150,9 +150,13 @@
                                 <td class="num fw-700 text-primary">@Fmt(r.SpentTime)</td>
                                 <td class="text-truncate" style="max-width:220px" title="@r.WorkDescription">@r.WorkDescription</td>
                                 <td class="text-end">
+                                    @if (Auth.Has("ReportWorks.Read"))
+                                    {
+                                        <button class="btn btn-sm btn-light me-1" title="چاپ جزئیات گزارش کار" @onclick="() => PrintDetail(r)"><i class="bi bi-printer text-success"></i></button>
+                                    }
                                     @if (Auth.Has("ReportWorks.Update"))
                                     {
-                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
+                                        <button class="btn btn-sm btn-light me-1" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
                                     }
                                     @if (Auth.Has("ReportWorks.Delete"))
                                     {
@@ -197,6 +201,10 @@
                         </div>
                         <div class="rw-desc">@r.WorkDescription</div>
                         <div class="d-flex gap-1 justify-content-end">
+                            @if (Auth.Has("ReportWorks.Read"))
+                            {
+                                <button class="btn btn-sm btn-light" title="چاپ جزئیات گزارش کار" @onclick="() => PrintDetail(r)"><i class="bi bi-printer text-success"></i> چاپ جزئیات</button>
+                            }
                             @if (Auth.Has("ReportWorks.Update"))
                             {
                                 <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
@@ -476,6 +484,47 @@
             await Load();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== چاپ تک گزارش (جزئیات) ====================
+
+    private async Task PrintDetail(ReportWorkDto r)
+    {
+        try
+        {
+            var opt = new PrintTableOptions
+            {
+                Title = "برگه جزئیات گزارش کار",
+                SubTitle = $"پروژه: {r.ProjectName} — کد پروژه: {(r.CodeProject ?? "").FaDigits()}",
+                Meta = new List<string>
+                {
+                    $"تاریخ گزارش: {r.ReportDate.ToFaDate()}",
+                    $"ثبت‌کننده: {r.UserName}",
+                    $"ساعت شروع: {r.StartTime.TimeFa()}",
+                    $"ساعت پایان: {r.EndTime.TimeFa()}",
+                    $"استراحت: {FmtRest(r)}",
+                    $"ساعت خالص: {Fmt(r.SpentTime)}"
+                },
+                Headers = new List<string> { "عنوان مشخصه", "مقدار ثبت‌شده" },
+                Rows = new List<List<string>>
+                {
+                    new() { "تاریخ گزارش کار", r.ReportDate.ToFaDate() },
+                    new() { "کد پروژه", r.CodeProject ?? "—" },
+                    new() { "نام پروژه", r.ProjectName ?? "—" },
+                    new() { "ثبت‌کننده / کاربر", r.UserName ?? "—" },
+                    new() { "ساعت شروع", r.StartTime.TimeFa() },
+                    new() { "ساعت پایان", r.EndTime.TimeFa() },
+                    new() { "مدت استراحت (صبحانه/ناهار)", FmtRest(r) },
+                    new() { "ساعت کار خالص", Fmt(r.SpentTime) },
+                    new() { "شرح فعالیت انجام‌شده", r.WorkDescription ?? "—" }
+                },
+                FooterTotal = $"ساعت کار خالص: {Fmt(r.SpentTime)}",
+                PrintedAt = DateTime.Now.ToFaDateTime().FaDigits(),
+                PrintedBy = Auth.DisplayName
+            };
+            await JS.InvokeVoidAsync("printTableReport", opt);
+        }
+        catch (Exception ex) { Toast.Error($"چاپ ناموفق بود: {ex.Message}"); }
     }
 
     // ==================== چاپ لیست (طبق فیلتر جاری) ====================

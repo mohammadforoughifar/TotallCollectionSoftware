@@ -30,8 +30,8 @@
     .row-menu-item.danger { color: #dc2626; }
     .row-menu-divider { border-top: 1px solid #e5e7eb; margin: 4px 6px; }
     .menu-overlay { position: fixed; inset: 0; z-index: 3990; background: transparent; }
-    /* منوی شناور — در نقطه کلیک روی صفحه قرار می‌گیرد تا داخل جدول (overflow) بریده نشود */
-    .row-menu.floating { position: fixed; top: 0; left: 0; z-index: 4000; }
+    /* منوی شناور — در نقطه کلیک روی صفحه قرار می‌گیرد و ارتفاعش محدود است تا بریده نشود */
+    .row-menu.floating { position: fixed; top: 0; left: 0; z-index: 4000; max-height: calc(100vh - 24px); overflow-y: auto; }
     .proj-grid td { white-space: nowrap; }
     .detail-row td { padding: .35rem .5rem; border-bottom: 1px dashed #e5e7eb; }
     .detail-row td:first-child { color: #64748b; width: 42%; }
@@ -194,7 +194,7 @@
     .pc-chip.green { background: #d1fae5; color: #065f46; }
 </style>
 
-<div class="card shadow-sm mb-4">
+<div class="card shadow-sm mb-4" style="position: relative; z-index: 30;">
     <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2"
          style="background:linear-gradient(135deg,#8e5cff,#06b6d4);color:#fff;border-radius:14px 14px 0 0;">
         <span><i class="bi bi-arrow-left-right me-2"></i>ورود و خروج پروژه‌ها
@@ -262,7 +262,7 @@
     </div>
 </div>
 
-<div class="card mt-3">
+<div class="card mt-3" style="position: relative; z-index: 1;">
     <div class="card-body p-0">
         @if (loading)
         {
@@ -491,12 +491,12 @@
                 </button>
             }
         }
-        @if (Auth.Has("ReportWorks.Create"))
+        @if (Auth.Has("ReportWorks.Create") || Auth.Has("ReportWorks.Read"))
         {
-            @* گزارش کار فقط روی پروژهٔ تاییدشده — در انتظار تایید (۰) و ردشده (۲) غیرفعال *@
+            @* لیست گزارش‌های کار پروژه (و امکان افزودن گزارش کار از همان‌جا) *@
             <button class="row-menu-item" disabled="@(!CanReport(menuProject))"
-                    title="@ReportBlockReason(menuProject)" @onclick="() => OpenReport(menuProject)">
-                <i class="bi bi-clock-history @(CanReport(menuProject) ? "text-warning" : "text-muted")"></i> افزودن گزارش کار
+                    title="@ReportBlockReason(menuProject)" @onclick="() => OpenProjectReportsList(menuProject)">
+                <i class="bi bi-clock-history @(CanReport(menuProject) ? "text-warning" : "text-muted")"></i> گزارش‌های کار / ثبت جدید
                 @if (!CanReport(menuProject))
                 {
                     <i class="bi bi-lock-fill text-muted ms-auto fs-8"></i>
@@ -1067,8 +1067,90 @@
     </ChildContent>
 </Modal>
 
-@* ======================= افزودن سریع گزارش کار ======================= *@
-<Modal Visible="showReport" Title="@("گزارش کار برای «" + (reportProject?.ProjectName ?? "") + "»")" OnClose="() => showReport = false">
+@* ======================= لیست گزارش‌های کار پروژه (بازشدن اول با کلیک روی «گزارش‌های کار / ثبت جدید») ======================= *@
+<Modal Visible="showProjectReportsList" Size="modal-xl" Title="@("گزارش‌های کار پروژه «" + (reportsProject?.ProjectName ?? "") + "»")" OnClose="() => showProjectReportsList = false">
+    <ChildContent>
+        @if (reportsProject is not null)
+        {
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 p-3 rounded-3" style="background:#f8fafc;border:1px solid #e2e8f0;">
+                <div>
+                    <span class="fw-800 fs-6 text-dark">@reportsProject.ProjectName</span>
+                    <span class="ms-2 fs-8 text-muted">کد پروژه: <b dir="ltr">@ShowDetailCode(reportsProject)</b> — سریال: @reportsProject.SerialNumber.FaDigits()</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge bg-primary fs-7 p-2"><i class="bi bi-clock-history ms-1"></i>جمع زمان مصرفی: @Fmt(reportsProject.TotalSpentTime)</span>
+                    @if (Auth.Has("ReportWorks.Create"))
+                    {
+                        <button class="btn btn-warning btn-sm fw-700 shadow-sm px-3" disabled="@(!CanReport(reportsProject))"
+                                title="@ReportBlockReason(reportsProject)" @onclick="() => OpenReportFromList(reportsProject)">
+                            <i class="bi bi-plus-lg ms-1"></i> ثبت گزارش کار جدید
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @if (projectReportsLoading)
+            {
+                <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+            }
+            else if (projectReportItems.Count == 0)
+            {
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-clock fs-2 d-block mb-2 text-primary opacity-50"></i>
+                    <span>هنوز هیچ گزارش کاری برای این پروژه ثبت نشده است.</span>
+                    @if (Auth.Has("ReportWorks.Create") && CanReport(reportsProject))
+                    {
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-outline-primary fw-700" @onclick="() => OpenReportFromList(reportsProject)">
+                                <i class="bi bi-plus-lg ms-1"></i> اولین گزارش کار را ثبت کنید
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr class="table-light">
+                                <th>ردیف</th>
+                                <th>تاریخ</th>
+                                <th>ثبت‌کننده</th>
+                                <th>شروع</th>
+                                <th>پایان</th>
+                                <th>استراحت</th>
+                                <th>ساعت خالص</th>
+                                <th>شرح فعالیت</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var (r, idx) in projectReportItems.Select((r, i) => (r, i + 1)))
+                            {
+                                <tr>
+                                    <td class="num">@idx.FaDigits()</td>
+                                    <td class="num fw-700">@r.ReportDate.ToFaDate()</td>
+                                    <td><i class="bi bi-person text-muted ms-1"></i>@r.UserName</td>
+                                    <td class="num">@r.StartTime.TimeFa()</td>
+                                    <td class="num">@r.EndTime.TimeFa()</td>
+                                    <td class="num fs-8 text-muted">@((r.BreakfastTime.ToTimeSpan() + r.LunchTime.ToTimeSpan()).HoursFa())</td>
+                                    <td class="num fw-700 text-primary">@Fmt(r.SpentTime)</td>
+                                    <td>@r.WorkDescription</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showProjectReportsList = false">بستن</button>
+    </Footer>
+</Modal>
+
+@* ======================= افزودن گزارش کار (فرم ثبت) ======================= *@
+<Modal Visible="showReport" Title="@("ثبت گزارش کار برای «" + (reportProject?.ProjectName ?? "") + "»")" OnClose="() => showReport = false">
     <ChildContent>
     <div class="row g-3">
         <div class="col-12 d-flex align-items-center gap-2 flex-wrap">
@@ -1120,7 +1202,7 @@
     <ChildContent>
         @if (attachProject is not null)
         {
-            <ProjectAttachPanel ProjectId="attachProject.Id" />
+            <ProjectAttachPanel ProjectId="attachProject.Id" OnChanged="Load" />
         }
     </ChildContent>
 </Modal>
@@ -1331,7 +1413,12 @@
     private bool showDetails;
     private ProjectEntryExitDto? detail;
 
-    // ---------- گزارش کار سریع ----------
+    // ---------- لیست گزارش‌های کار پروژه و فرم ثبت جدید ----------
+    private bool showProjectReportsList;
+    private ProjectEntryExitDto? reportsProject;
+    private List<ReportWorkDto> projectReportItems = new();
+    private bool projectReportsLoading;
+
     private bool showReport;
     private ProjectEntryExitDto? reportProject;
     private ReportWorkDto reportForm = new();
@@ -1351,8 +1438,6 @@
     }
 
     private static readonly string[] ImageExts = { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp" };
-
-    // زمان‌های فرم گزارش با کامپوننت TimeInput (24ساعته، ارقام فارسی) مستقیماً روی reportForm ست می‌شوند
 
     // ---------- فیلتر/صفحه‌بندی ----------
     private int page = 1;
@@ -1385,7 +1470,7 @@
     }
 
     private bool AnyModalOpen => showModal || showFactor || showDates || showResubmit
-                                 || showDetails || showReport || showAttach || showImages;
+                                 || showDetails || showProjectReportsList || showReport || showAttach || showImages;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1403,6 +1488,10 @@
     {
         if (scope != "projects") return;
         await Load();
+        if (showProjectReportsList && reportsProject is not null)
+        {
+            await LoadProjectReports();
+        }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1423,9 +1512,9 @@
         finally { loading = false; }
     }
 
-    /// <summary>استایل موقعیت منوی شناور در نقطه کلیک (مقادیر عددی با فرهنگ خنثی)</summary>
+    /// <summary>استایل موقعیت منوی شناور در نقطه کلیک با کنترل لبه پایین تا منو بریده نشود</summary>
     private string MenuStyle => System.FormattableString.Invariant(
-        $"top:{menuY + 6:0}px;left:{Math.Max(8, menuX - 190):0}px;");
+        $"top:{(menuY > 380 ? Math.Max(12, menuY - 360) : menuY + 6):0}px;left:{Math.Max(8, menuX - 190):0}px;");
 
     private void ToggleMenu(ProjectEntryExitDto p, Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
     {
@@ -1447,7 +1536,6 @@
         selectedReturnId = 0; reNum = 1; parentCode = ""; existingReturns = new();
         editUserName = null;
         pendingImages = new(); pendingDocs = new(); pendingDocType = 4;
-        // پیش‌بینی کد پروژه بعدی (مقدار واقعی در سرور صادر می‌شود)
         try { nextSerialSuggestion = await ProjectSvc.GetNextSerialAsync(); }
         catch { nextSerialSuggestion = ""; }
         showModal = true;
@@ -1482,7 +1570,6 @@
         showModal = true;
     }
 
-    /// <summary>انتخاب پروژه برگشتی: پیش‌پر کردن اطلاعات + گرفتن «کد مبدأ» + نمایش برگشتی‌های موجود + پیشنهاد عدد بعدی</summary>
     private async Task OnReturnProjectChanged(int id)
     {
         selectedReturnId = id;
@@ -1490,10 +1577,9 @@
         if (id <= 0) { reNum = 1; parentCode = ""; return; }
 
         var src = items.FirstOrDefault(x => x.Id == id);
-        // اگر توی لیست فیلترشده نبود، از سرور می‌گیریم (کد پروژه مبدأ لازم است)
         if (src is null)
         {
-            try { src = await ProjectSvc.GetAsync(id); } catch { /* دسترسی نداشت */ }
+            try { src = await ProjectSvc.GetAsync(id); } catch { }
         }
         if (src is not null)
         {
@@ -1504,7 +1590,6 @@
         }
         else parentCode = id.ToString();
 
-        // برگشتی‌های موجود این پروژه (برای نمایش به کاربر تا RE چندم را بداند) + پیشنهاد عدد بعدی
         try
         {
             var returns = await ProjectSvc.GetAllAsync(returned: true);
@@ -1525,7 +1610,6 @@
         reNum = existingReturns.Count + 1;
     }
 
-    /// <summary>استخراج عدد برگشتی از کد «REn-کد»</summary>
     private static int ReNumOf(string? code)
     {
         if (string.IsNullOrEmpty(code) || !code.StartsWith("RE")) return 0;
@@ -1546,8 +1630,8 @@
         {
             if (selectedReturnId <= 0) { Toast.Error("پروژه برگشتی را انتخاب کنید."); return; }
             if (reNum < 1) { Toast.Error("عدد برگشتی باید حداقل ۱ باشد."); return; }
-            form.ReturnOfProjectId = selectedReturnId; // مبدأ — سرور از روی آن کد می‌سازد
-            form.ReturnProjectId = reNum;              // عدد برگشتی — دستی
+            form.ReturnOfProjectId = selectedReturnId;
+            form.ReturnProjectId = reNum;
             form.EntryDate = null;
             form.ProjectRegistrationDate = null;
         }
@@ -1568,7 +1652,6 @@
             else
             {
                 var (newId, code) = await ProjectSvc.CreateAsync(form);
-                // آپلود خودکار تصاویر/مستندات انتخاب‌شده روی پروژه‌ی تازه‌ساخته‌شده
                 var (okFiles, failFiles) = await UploadPendingAsync(newId);
                 var msg = isReturnMode ? $"پروژه برگشتی با کد «{code}» ثبت شد." : $"پروژه با کد «{code}» ثبت شد.";
                 if (okFiles > 0) msg += $" {okFiles.Num()} فایل هم پیوست شد.";
@@ -1592,7 +1675,7 @@
         foreach (var f in e.GetMultipleFiles(6))
         {
             if (!ImageExts.Contains(Path.GetExtension(f.Name)?.ToLowerInvariant())) { Toast.Error($"«{f.Name}» فایل تصویری نیست."); continue; }
-            if (pendingImages.Any(x => x.Name == f.Name && x.Size == f.Size)) continue; // تکراری نباشد
+            if (pendingImages.Any(x => x.Name == f.Name && x.Size == f.Size)) continue;
             if (pendingImages.Count >= 6) { Toast.Error("حداکثر ۶ تصویر در هر ثبت."); break; }
             pendingImages.Add(f);
         }
@@ -1608,7 +1691,6 @@
         }
     }
 
-    /// <summary>بارگذاری فایل‌های انتخاب‌شده روی پروژه‌ای که تازه ساخته شده (تصاویر با نوع «سایر»، اسناد با نوع انتخابی)</summary>
     private async Task<(int Ok, int Fail)> UploadPendingAsync(int projectId)
     {
         if (pendingImages.Count == 0 && pendingDocs.Count == 0) return (0, 0);
@@ -1665,7 +1747,6 @@
 
     // ==================== تاریخ‌های پروژه (فرم مجزا) ====================
 
-    /// <summary>تعداد تاریخ‌های تکمیل‌شده از ۵ تاریخ چرخهٔ پروژه (برای نشانگر منوی سطر)</summary>
     private static int DateFilledCount(ProjectEntryExitDto p)
         => (p.ExitDate is not null ? 1 : 0)
          + (p.TemporaryExitDate is not null ? 1 : 0)
@@ -1692,7 +1773,6 @@
     {
         if (datesProject is null) return;
 
-        // ---------- اعتبارسنجی سمت کلاینت (سرور هم دوباره چک می‌کند) ----------
         var entry = datesProject.EntryDate;
         if (entry is not null)
         {
@@ -1752,26 +1832,47 @@
         showDetails = true;
     }
 
-    // ==================== گزارش کار سریع ====================
+    // ==================== لیست گزارش‌های کار پروژه و افزودن جدید ====================
 
-    /// <summary>
-    /// آیا ثبت گزارش کار برای این پروژه مجاز است؟
-    /// فقط وضعیت ۱ (در انتظار کارشناسی) و ۳ (نهایی) مجازند — یعنی مدیر تایید کرده باشد.
-    /// همین قانون سمت سرور هم اعمال می‌شود (ReportWorksController.ValidateAsync).
-    /// </summary>
     private static bool CanReport(ProjectEntryExitDto p) => p.FlowStatus is 1 or 3;
 
-    /// <summary>دلیل غیرفعال بودن ثبت گزارش کار (تولتیپ منو)</summary>
     private static string ReportBlockReason(ProjectEntryExitDto p) => p.FlowStatus switch
     {
         0 => "این پروژه در کارتابل مدیر و «در انتظار تایید» است — تا تایید مدیر، ثبت گزارش کار ممکن نیست.",
         2 => "این پروژه توسط مدیر «رد» شده است — ابتدا آن را اصلاح و دوباره به مدیر ارسال کنید.",
-        _ => "ثبت گزارش کار برای این پروژه"
+        _ => "ثبت/نمایش گزارش کار برای این پروژه"
     };
 
-    private void OpenReport(ProjectEntryExitDto p)
+    private async Task OpenProjectReportsList(ProjectEntryExitDto p)
     {
         CloseMenu();
+        if (!CanReport(p)) { Toast.Error(ReportBlockReason(p)); return; }
+        reportsProject = p;
+        showProjectReportsList = true;
+        await LoadProjectReports();
+    }
+
+    private async Task LoadProjectReports()
+    {
+        if (reportsProject is null) return;
+        projectReportsLoading = true;
+        try
+        {
+            projectReportItems = await ReportSvc.GetAllAsync(projectId: reportsProject.Id);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+            projectReportItems = new();
+        }
+        finally
+        {
+            projectReportsLoading = false;
+        }
+    }
+
+    private void OpenReportFromList(ProjectEntryExitDto p)
+    {
         if (!CanReport(p)) { Toast.Error(ReportBlockReason(p)); return; }
         reportProject = p;
         reportForm = new ReportWorkDto
@@ -1784,8 +1885,6 @@
         showReport = true;
     }
 
-    // نمایش زنده «ساعت خالص» از فرم حذف شد (درخواست کاربر) — محاسبه نهایی در سرور انجام می‌شود
-
     private async Task SaveReport()
     {
         if (string.IsNullOrWhiteSpace(reportForm.WorkDescription)) { Toast.Error("شرح کار را وارد کنید."); return; }
@@ -1797,6 +1896,10 @@
             await ReportSvc.CreateAsync(reportForm);
             Toast.Success("گزارش کار ثبت شد.");
             showReport = false;
+            if (showProjectReportsList && reportsProject?.Id == reportForm.ProjectId)
+            {
+                await LoadProjectReports();
+            }
             await Load();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1907,7 +2010,6 @@
 
     // ==================== اکسل / چاپ / حذف ====================
 
-    /// <summary>خروجی اکسل از کل پروژه‌ها — مستقل از فیلترهای جاری لیست</summary>
     private async Task ExportAll()
     {
         exportingAll = true;
@@ -1936,7 +2038,6 @@
         finally { exportingAll = false; }
     }
 
-    /// <summary>چاپ گزارش‌های کار یک پروژه در سند A4 (از منوی سطر)</summary>
     private async Task PrintReports(ProjectEntryExitDto p)
     {
         CloseMenu();
@@ -2018,15 +2119,10 @@
 
     // ==================== کمکی ====================
 
-    /// <summary>نمایش بازه زمانی با ارقام فارسی — مثلاً «۱۲:۳۰ ساعت»</summary>
-    private static string Fmt(TimeSpan t) =>
-        $"{t.HoursFa()} ساعت";
+    private static string Fmt(TimeSpan t) => $"{t.HoursFa()} ساعت";
 
-    /// <summary>نمایش کد پروژه با ارقام فارسی — همان‌طور که ثبت شده (بدون جداکننده هزارگان)</summary>
-    private static string ShowCode(string? code)
-        => string.IsNullOrEmpty(code) ? "—" : Fa.Digits(code);
+    private static string ShowCode(string? code) => string.IsNullOrEmpty(code) ? "—" : Fa.Digits(code);
 
-    /// <summary>کد پروژه در جزئیات/مودال‌ها: کدهای ساده با ارقام فارسی؛ کدهای RE همان لاتین (dir=ltr)</summary>
     private static string ShowDetailCode(ProjectEntryExitDto p)
         => string.IsNullOrWhiteSpace(p.CodeProject)
             ? Fa.Digits(p.Id)
@@ -2034,15 +2130,11 @@
                 ? p.CodeProject
                 : Fa.Digits(p.CodeProject);
 
-    /// <summary>نمایش متن با ارقام فارسی یا خط تیره در صورت خالی بودن</summary>
-    private static string Dash(string? s)
-        => string.IsNullOrWhiteSpace(s) ? "—" : Fa.Digits(s);
+    private static string Dash(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : Fa.Digits(s);
 
-    /// <summary>حجم فایل خوانا با ارقام فارسی</summary>
     private static string FormatSize(long b) =>
         Fa.Digits(b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024.0 / 1024:0.#}MB");
 
-    /// <summary>نرمال‌سازی متن برای جستجو: ارقام فارسی/عربی→لاتین، ی/ک عربی→فارسی، حذف فاصله و نیم‌فاصله</summary>
     private static string Norm(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return "";
@@ -2060,7 +2152,6 @@
         return sb.ToString();
     }
 
-    /// <summary>تطابق جستجوی ستون (با نرمال‌سازی)</summary>
     private static bool Match(string? value, string filter) =>
         string.IsNullOrWhiteSpace(filter) || Norm(value).Contains(Norm(filter));
 }
