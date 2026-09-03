@@ -33,6 +33,7 @@ public class ReportWorksController : RbacControllerBase
     public async Task<IActionResult> GetAll(
         [FromQuery] int? projectId,
         [FromQuery] int? userId,
+        [FromQuery] int? operatorId,
         [FromQuery] DateTime? from,
         [FromQuery] DateTime? to)
     {
@@ -41,10 +42,12 @@ public class ReportWorksController : RbacControllerBase
         var query = Db.ReportWorks.AsNoTracking()
             .Include(r => r.Project)
             .Include(r => r.User)
+            .Include(r => r.Operator)
             .Where(r => !r.IsDelete);
 
         if (projectId is > 0) query = query.Where(r => r.ProjectId == projectId);
         if (userId is > 0) query = query.Where(r => r.UserId == userId);
+        if (operatorId is > 0) query = query.Where(r => r.OperatorId == operatorId);
         if (from is not null) query = query.Where(r => r.ReportDate >= from.Value.Date);
         if (to is not null) query = query.Where(r => r.ReportDate <= to.Value.Date.AddDays(1).AddTicks(-1));
 
@@ -59,6 +62,7 @@ public class ReportWorksController : RbacControllerBase
         var r = await Db.ReportWorks.AsNoTracking()
             .Include(x => x.Project)
             .Include(x => x.User)
+            .Include(x => x.Operator)
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
         return r is null ? NotFound(new { message = "گزارش کار پیدا نشد." }) : Ok(ToDto(r));
     }
@@ -167,6 +171,10 @@ public class ReportWorksController : RbacControllerBase
 
         if (dto.EndTime == dto.StartTime)
             return BadRequest(new { message = "ساعت شروع و پایان نمی‌توانند یکسان باشند." });
+
+        // اپراتور (انجام‌دهندهٔ کار) اختیاری است ولی اگر داده شد باید کاربر معتبر باشد
+        if (dto.OperatorId is > 0 && !await Db.Users.AnyAsync(u => u.Id == dto.OperatorId))
+            return BadRequest(new { message = "اپراتور انتخاب‌شده در لیست کاربران وجود ندارد." });
         return null;
     }
 
@@ -174,6 +182,7 @@ public class ReportWorksController : RbacControllerBase
     {
         e.ReportDate = dto.ReportDate.Date;
         e.UserId = dto.UserId;
+        e.OperatorId = dto.OperatorId is > 0 ? dto.OperatorId : null;
         e.WorkDescription = dto.WorkDescription.Trim();
         e.ProjectId = dto.ProjectId;
         e.StartTime = dto.StartTime;
@@ -202,6 +211,7 @@ public class ReportWorksController : RbacControllerBase
         Id = r.Id,
         ReportDate = r.ReportDate,
         UserId = r.UserId,
+        OperatorId = r.OperatorId,
         WorkDescription = r.WorkDescription,
         ProjectId = r.ProjectId,
         // اولویت با کد ذخیره‌شده روی گزارش (اسنادی)؛ برای داده‌های خیلی قدیمی از خود پروژه
@@ -212,6 +222,7 @@ public class ReportWorksController : RbacControllerBase
         LunchTime = r.LunchTime,
         SpentTime = r.SpentTime,
         ProjectName = r.Project is null ? null : r.Project.ProjectName,
-        UserName = r.User is null ? null : DisplayOf(r.User)
+        UserName = r.User is null ? null : DisplayOf(r.User),
+        OperatorName = r.Operator is null ? null : DisplayOf(r.Operator)
     };
 }
