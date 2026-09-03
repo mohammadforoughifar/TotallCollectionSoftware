@@ -34,6 +34,12 @@ public class ProjectsController : RbacControllerBase
             .ToListAsync();
         var users = rawUsers.Select(u => new LookupItem { Id = u.Id, Name = DisplayOf(u) }).ToList();
 
+        // اپراتورها: همهٔ کاربران (فعال + غیرفعال) — کاربران قدیمیِ مهاجرت‌شده غیرفعال‌اند ولی گزارش‌های زیادی دارند
+        var rawOperators = await Db.Users.AsNoTracking()
+            .OrderByDescending(u => u.IsActive).ThenBy(u => u.FirstName).ThenBy(u => u.LastName)
+            .ToListAsync();
+        var operators = rawOperators.Select(u => new LookupItem { Id = u.Id, Name = DisplayOf(u) + (u.IsActive ? "" : " (غیرفعال)") }).ToList();
+
         var karfarmas = await Db.KarFarmas.AsNoTracking().Where(k => !k.IsDelete)
             .OrderBy(k => k.Name)
             .Select(k => new LookupItem { Id = k.Id, Name = k.Name })
@@ -68,6 +74,7 @@ public class ProjectsController : RbacControllerBase
         return Ok(new ProjectLookups
         {
             Users = users,
+            Operators = operators,
             KarFarmas = karfarmas,
             TypeFactors = typeFactors,
             Projects = projects,
@@ -111,6 +118,7 @@ public class ProjectsController : RbacControllerBase
 
         var reports = await Db.ReportWorks.AsNoTracking()
             .Include(r => r.User)
+            .Include(r => r.Operator)
             .Where(r => r.ProjectId == id && !r.IsDelete)
             .OrderBy(r => r.ReportDate)
             .ToListAsync();
@@ -153,32 +161,34 @@ public class ProjectsController : RbacControllerBase
         var wr = wb.Worksheets.Add("گزارش‌های کار");
         wr.RightToLeft = true;
         wr.Cell(1, 1).Value = "تاریخ";
-        wr.Cell(1, 2).Value = "کاربر";
-        wr.Cell(1, 3).Value = "شروع";
-        wr.Cell(1, 4).Value = "پایان";
-        wr.Cell(1, 5).Value = "صبحانه";
-        wr.Cell(1, 6).Value = "ناهار";
-        wr.Cell(1, 7).Value = "ساعت خالص";
-        wr.Cell(1, 8).Value = "شرح کار";
-        wr.Range(1, 1, 1, 8).Style.Font.Bold = true;
+        wr.Cell(1, 2).Value = "ثبت‌کننده";
+        wr.Cell(1, 3).Value = "اپراتور";
+        wr.Cell(1, 4).Value = "شروع";
+        wr.Cell(1, 5).Value = "پایان";
+        wr.Cell(1, 6).Value = "صبحانه";
+        wr.Cell(1, 7).Value = "ناهار";
+        wr.Cell(1, 8).Value = "ساعت خالص";
+        wr.Cell(1, 9).Value = "شرح کار";
+        wr.Range(1, 1, 1, 9).Style.Font.Bold = true;
         var r = 2;
         foreach (var x in reports)
         {
             wr.Cell(r, 1).Value = Inventory.Shared.PersianDate.ToShort(x.ReportDate);
             wr.Cell(r, 2).Value = x.User is null ? "" : DisplayOf(x.User);
-            wr.Cell(r, 3).Value = x.StartTime.ToString("HH:mm");
-            wr.Cell(r, 4).Value = x.EndTime.ToString("HH:mm");
-            wr.Cell(r, 5).Value = x.BreakfastTime.ToString("HH:mm");
-            wr.Cell(r, 6).Value = x.LunchTime.ToString("HH:mm");
-            wr.Cell(r, 7).Value = x.SpentTime.ToString(@"hh\:mm");
-            wr.Cell(r, 8).Value = x.WorkDescription;
+            wr.Cell(r, 3).Value = x.Operator is null ? "" : DisplayOf(x.Operator);
+            wr.Cell(r, 4).Value = x.StartTime.ToString("HH:mm");
+            wr.Cell(r, 5).Value = x.EndTime.ToString("HH:mm");
+            wr.Cell(r, 6).Value = x.BreakfastTime.ToString("HH:mm");
+            wr.Cell(r, 7).Value = x.LunchTime.ToString("HH:mm");
+            wr.Cell(r, 8).Value = $"{(int)x.SpentTime.TotalHours}:{x.SpentTime.Minutes:00}";
+            wr.Cell(r, 9).Value = x.WorkDescription;
             r++;
         }
-        wr.Cell(r, 6).Value = "جمع:";
-        wr.Cell(r, 6).Style.Font.Bold = true;
-        wr.Cell(r, 7).Value = $"{(int)p.TotalSpentTime.TotalHours}:{p.TotalSpentTime.Minutes:00}";
+        wr.Cell(r, 7).Value = "جمع:";
         wr.Cell(r, 7).Style.Font.Bold = true;
-        wr.Columns(1, 8).AdjustToContents();
+        wr.Cell(r, 8).Value = $"{(int)p.TotalSpentTime.TotalHours}:{p.TotalSpentTime.Minutes:00}";
+        wr.Cell(r, 8).Style.Font.Bold = true;
+        wr.Columns(1, 9).AdjustToContents();
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
