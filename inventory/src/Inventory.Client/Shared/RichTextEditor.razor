@@ -1,0 +1,210 @@
+@inject IJSRuntime JS
+
+@* ============================================================
+   RichTextEditor — ادیتور متن غنی قابل‌استفاده در همه‌جای سامانه.
+   • فونت فارسی/لاتین (Shabnam, Sahel, Yekan, Vazirmatn + فونت‌های لاتین سیستم)
+   • اندازه قلم، رنگ متن، هایلایت پس‌زمینه
+   • پررنگ/مورب/زیرخط/خط‌خورده، تراز، لیست، تورفتگی، لینک، حذف قالب، واگرد/ازنو
+   جفت‌شدن با Value/ValueChanged — ارتفاع پیش‌فرض و placeholder قابل تنظیم.
+   ============================================================ *@
+
+<div class="richt @CssClass">
+    <div class="richt-toolbar">
+        <button type="button" title="واگرد" @onclick='() => Cmd("undo")'><i class="bi bi-arrow-counterclockwise"></i></button>
+        <button type="button" title="ازنو" @onclick='() => Cmd("redo")'><i class="bi bi-arrow-clockwise"></i></button>
+        <span class="richt-sep"></span>
+
+        @* فونت *@
+        <select class="richt-sel" title="فونت" @onchange="OnFont">
+            @foreach (var f in Fonts)
+            {
+                <option value="@f.Value" selected="@(f.Value == _fontSel)">@f.Label</option>
+            }
+        </select>
+
+        @* اندازه قلم *@
+        <select class="richt-sel richt-size" title="اندازه قلم" @onchange="OnSize">
+            @foreach (var s in Sizes)
+            {
+                <option value="@s.Value" selected="@(s.Value == _sizeSel)">@s.Label</option>
+            }
+        </select>
+
+        <span class="richt-sep"></span>
+
+        <button type="button" title="پررنگ" @onclick='() => Cmd("bold")'><i class="bi bi-type-bold"></i></button>
+        <button type="button" title="مورب" @onclick='() => Cmd("italic")'><i class="bi bi-type-italic"></i></button>
+        <button type="button" title="زیرخط" @onclick='() => Cmd("underline")'><i class="bi bi-type-underline"></i></button>
+        <button type="button" title="خط‌خورده" @onclick='() => Cmd("strikeThrough")'><i class="bi bi-type-strikethrough"></i></button>
+
+        <span class="richt-sep"></span>
+
+        <label class="richt-color" title="رنگ متن"><i class="bi bi-palette"></i><span class="richt-swatch" style="background:@_colorSel"></span>
+            <input type="color" value="@_colorSel" @onchange="OnColor" />
+        </label>
+        <label class="richt-color" title="هایلایت (پس‌زمینه)"><i class="bi bi-highlighter"></i><span class="richt-swatch" style="background:@_hlSel"></span>
+            <input type="color" value="@_hlSel" @onchange="OnHilite" />
+        </label>
+
+        <span class="richt-sep"></span>
+
+        <button type="button" title="راست‌چین" @onclick='() => Cmd("justifyRight")'><i class="bi bi-text-right"></i></button>
+        <button type="button" title="وسط‌چین" @onclick='() => Cmd("justifyCenter")'><i class="bi bi-text-center"></i></button>
+        <button type="button" title="چپ‌چین" @onclick='() => Cmd("justifyLeft")'><i class="bi bi-text-left"></i></button>
+        <button type="button" title="هم‌تراز" @onclick='() => Cmd("justifyFull")'><i class="bi bi-text-paragraph"></i></button>
+
+        <span class="richt-sep"></span>
+
+        <button type="button" title="لیست نقطه‌ای" @onclick='() => Cmd("insertUnorderedList")'><i class="bi bi-list-ul"></i></button>
+        <button type="button" title="لیست شماره‌ای" @onclick='() => Cmd("insertOrderedList")'><i class="bi bi-list-ol"></i></button>
+        <button type="button" title="کاهش تورفتگی" @onclick='() => Cmd("outdent")'><i class="bi bi-outdent"></i></button>
+        <button type="button" title="افزایش تورفتگی" @onclick='() => Cmd("indent")'><i class="bi bi-indent"></i></button>
+
+        <span class="richt-sep"></span>
+
+        <button type="button" title="درج لینک" @onclick="InsertLink"><i class="bi bi-link-45deg"></i></button>
+        <button type="button" title="حذف قالب" @onclick='() => Cmd("removeFormat")'><i class="bi bi-eraser"></i></button>
+    </div>
+    <div class="richt-body" id="@Id" contenteditable="true" dir="rtl" data-ph="@Placeholder"
+         style="@(string.IsNullOrWhiteSpace(Height) ? "" : $"min-height:{Height}px;max-height:{Height}px;")"
+         @oninput="OnInput"></div>
+</div>
+
+<style>
+    .richt { border: 1.5px solid #e2e8f0; border-radius: 12px; overflow: hidden; background: #fff; }
+    .richt-toolbar { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; padding: 6px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+    .richt-toolbar button { width: 29px; height: 29px; border: 0; background: transparent; border-radius: 8px; color: #64748b; cursor: pointer; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
+    .richt-toolbar button:hover { background: #e2e8f0; color: #0f172a; }
+    .richt-sep { width: 1px; align-self: stretch; background: #e2e8f0; margin: 3px 3px; }
+    .richt-sel { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #334155; font-size: 11.5px; height: 29px; padding: 0 6px; max-width: 130px; }
+    .richt-sel:focus { outline: none; border-color: #818cf8; }
+    .richt-sel.richt-size { max-width: 74px; }
+    .richt-color { position: relative; min-width: 30px; width: auto; height: 29px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 4px; border-radius: 8px; cursor: pointer; color: #64748b; }
+    .richt-color:hover { background: #e2e8f0; color: #0f172a; }
+    .richt-color input[type=color] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
+    .richt-swatch { width: 9px; height: 9px; border-radius: 3px; border: 1px solid rgba(0,0,0,.15); flex-shrink: 0; }
+    .richt-body { min-height: 150px; max-height: 320px; overflow: auto; padding: 12px 14px; font-size: 13px; line-height: 2; outline: 0; color: #0f172a; }
+    .richt-body:empty::before { content: attr(data-ph); color: #94a3b8; }
+    .richt-body a { color: #2563eb; text-decoration: underline; }
+</style>
+
+@code {
+    [Parameter] public string Id { get; set; } = "";
+    [Parameter] public string Placeholder { get; set; } = "متن را بنویسید…";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Height { get; set; }
+
+    private bool _initialized;
+    private string _fontSel = "Vazirmatn";
+    private string _sizeSel = "14";
+    private string _colorSel = "#0f172a";
+    private string _hlSel = "#fef08a";
+
+    private static readonly List<(string Value, string Label)> Fonts = new()
+    {
+        ("Vazirmatn", "وزیرمتن"),
+        ("Shabnam", "شبنم"),
+        ("Sahel", "ساحل"),
+        ("Yekan", "یکان (بخ)"),
+        ("Tahoma", "Tahoma"),
+        ("Arial", "Arial"),
+        ("Georgia", "Georgia"),
+        ("Times New Roman", "Times New Roman"),
+        ("Courier New", "Courier New"),
+        ("Calibri", "Calibri"),
+        ("Verdana", "Verdana"),
+    };
+
+    private static readonly List<(string Value, string Label)> Sizes = new()
+    {
+        ("11", "۱۱"), ("12", "۱۲"), ("13", "۱۳"), ("14", "۱۴"), ("15", "۱۵"),
+        ("16", "۱۶"), ("18", "۱۸"), ("20", "۲۰"), ("24", "۲۴"), ("28", "۲۸"), ("32", "۳۲"),
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialized)
+        {
+            _initialized = true;
+            try { await JS.InvokeVoidAsync("rteSetHtml", Id, Value ?? ""); } catch { }
+        }
+    }
+
+    /// <summary>تنظیم محتوای HTML ادیتور (مثلاً هنگام باز کردن فرم).</summary>
+    public async Task SetContentAsync(string html)
+    {
+        try { await JS.InvokeVoidAsync("rteSetHtml", Id, html ?? ""); } catch { }
+    }
+
+    /// <summary>خواندن محتوای HTML ادیتور.</summary>
+    public async Task<string> GetContentAsync()
+    {
+        try { return await JS.InvokeAsync<string>("rteGetHtml", Id) ?? ""; }
+        catch { return Value; }
+    }
+
+    /// <summary>پاک کردن ادیتور.</summary>
+    public async Task ClearAsync()
+    {
+        try { await JS.InvokeVoidAsync("rteSetHtml", Id, ""); } catch { }
+        await ValueChanged.InvokeAsync("");
+    }
+
+    private async Task OnInput(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        var html = await GetContentAsync();
+        await ValueChanged.InvokeAsync(html);
+    }
+
+    private async Task Cmd(string cmd, string? value = null)
+    {
+        try { await JS.InvokeVoidAsync("rteExecId", Id, cmd, value); } catch { }
+        await PushChange();
+    }
+
+    private async Task OnFont(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        _fontSel = e.Value?.ToString() ?? "Vazirmatn";
+        try { await JS.InvokeVoidAsync("rteFont", Id, _fontSel); } catch { }
+        StateHasChanged();
+        await PushChange();
+    }
+
+    private async Task OnSize(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        _sizeSel = e.Value?.ToString() ?? "14";
+        try { await JS.InvokeVoidAsync("rteSize", Id, _sizeSel + "px"); } catch { }
+        StateHasChanged();
+        await PushChange();
+    }
+
+    private async Task OnColor(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        _colorSel = e.Value?.ToString() ?? "#0f172a";
+        try { await JS.InvokeVoidAsync("rteColor", Id, _colorSel); } catch { }
+        StateHasChanged();
+        await PushChange();
+    }
+
+    private async Task OnHilite(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        _hlSel = e.Value?.ToString() ?? "#fef08a";
+        try { await JS.InvokeVoidAsync("rteHilite", Id, _hlSel); } catch { }
+        StateHasChanged();
+        await PushChange();
+    }
+
+    private async Task InsertLink()
+    {
+        try { await JS.InvokeVoidAsync("rteLink", Id); } catch { }
+        await PushChange();
+    }
+
+    private async Task PushChange()
+    {
+        var html = await GetContentAsync();
+        await ValueChanged.InvokeAsync(html);
+    }
+}

@@ -34,6 +34,36 @@
     font-weight: 900; font-style: normal; font-display: swap;
 }
 
+/* ---------- فونت‌های فارسی اضافه برای ادیتور متن غنی (حروف‌بوکی) ---------- */
+/* شبنم (OFL) */
+@font-face {
+    font-family: 'Shabnam';
+    src: url('../fonts/Shabnam-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Shabnam';
+    src: url('../fonts/Shabnam-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+/* ساحل (OFL) */
+@font-face {
+    font-family: 'Sahel';
+    src: url('../fonts/Sahel-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Sahel';
+    src: url('../fonts/Sahel-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+/* یکان (خانواده یکان‌بخ — رایگان) */
+@font-face {
+    font-family: 'Yekan';
+    src: url('../fonts/Yekan.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+
 /* ---------- متغیرهای رنگ ---------- */
 :root {
     --primary: #4f46e5;
@@ -1182,11 +1212,18 @@ body {
 .bottom-nav-item { position: relative; }
 
 /* ---------- انیمیشن ورود محتوا ---------- */
+/* نکته مهم: در حالت پایانی transform به «none» می‌رسد (نه translateY(0)) تا هیچ ancestor و
+   عنصر شناوری (position:fixed مثل تقویم فیلتر و منوی ⋮) به اشتباه داخل یک stacking context با
+   transform محبوس نشود. همین موضوع باعث می‌شد تقویم/دراپ‌داون فیلتر وسط صفحه یا زیر کارت‌ها باز شود. */
 @keyframes fadeSlideIn {
     from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    to { opacity: 1; transform: none; }
 }
 .app-content > * { animation: fadeSlideIn .28s ease both; }
+
+/* کارت حاوی فیلترهای بالای لیست — بالاتر از کارت گرید قرار می‌گیرد تا دراپ‌داون‌های فیلتر
+   (SearchSelect و …) زیر کارت‌ها باز نشوند. */
+.filter-card { position: relative; z-index: 30; }
 
 /* حرکت کمتر برای کاربران حساس به حرکت */
 @media (prefers-reduced-motion: reduce) {
