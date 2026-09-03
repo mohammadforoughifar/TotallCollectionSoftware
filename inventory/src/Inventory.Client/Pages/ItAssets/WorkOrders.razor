@@ -157,7 +157,7 @@ else
                                     </button>
                                 </td>
                                 <td class="num fw-700 text-primary">@w.Number</td>
-                                <td class="fw-600">@w.Title</td>
+                                <td class="fw-600">@w.Title @SourceLink(w.SourceModule, w.SourceId)</td>
                                 <td>@w.OwnerName</td>
                                 <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
                                 <td>
@@ -247,7 +247,7 @@ else
                     <div class="fw-700">@w.Title</div>
                     @ToneBadge(w, tone)
                 </div>
-                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</div>
+                <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId)</div>
                 <div class="d-flex justify-content-between align-items-center">
                     <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
                     <div @onclick:stopPropagation="true">
@@ -337,7 +337,13 @@ else
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content wo-modal">
                 <div class="modal-header">
-                    <h5 class="modal-title"><i class="bi bi-list-task text-primary"></i> دستور کار جدید</h5>
+                    <h5 class="modal-title">
+                        <i class="bi bi-list-task text-primary"></i> دستور کار جدید
+                        @if (!string.IsNullOrWhiteSpace(_sourceLabel))
+                        {
+                            <span class="badge bg-primary-subtle text-primary border ms-2">از @_sourceLabel</span>
+                        }
+                    </h5>
                     <button type="button" class="btn-close" @onclick="() => showNew = false"></button>
                 </div>
                 <div class="modal-body">
@@ -448,11 +454,15 @@ else
                     <button type="button" class="btn-close" @onclick="() => detail = null"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="wo-info mb-3">
-                        <div><span class="wo-lbl">دستوردهنده</span><span>@detail.OwnerName</span></div>
-                        <div><span class="wo-lbl">مهلت</span><span class="num">@detail.DueAt.ToFa() @detail.DueAt.ToString("HH:mm")</span></div>
-                        <div><span class="wo-lbl">تاریخ ثبت</span><span class="num">@detail.CreatedAt.ToFa()</span></div>
-                    </div>
+                        <div class="wo-info mb-3">
+                            <div><span class="wo-lbl">دستوردهنده</span><span>@detail.OwnerName</span></div>
+                            <div><span class="wo-lbl">مهلت</span><span class="num">@detail.DueAt.ToFa() @detail.DueAt.ToString("HH:mm")</span></div>
+                            <div><span class="wo-lbl">تاریخ ثبت</span><span class="num">@detail.CreatedAt.ToFa()</span></div>
+                            @if (!string.IsNullOrWhiteSpace(detail.SourceModule) && detail.SourceId is > 0)
+                            {
+                                <div><span class="wo-lbl">منبع</span><span>@SourceLink(detail.SourceModule, detail.SourceId)</span></div>
+                            }
+                        </div>
                     @if (!string.IsNullOrWhiteSpace(detail.Description))
                     {
                         <div class="wo-block mb-3">
@@ -821,6 +831,12 @@ else
     private HashSet<int> selTargets = new();
     private List<Microsoft.AspNetCore.Components.Forms.IBrowserFile> newFiles = new();
 
+    // اتصال به مبدأ (سورس) — مثلاً نامه داخلی
+    private string? _sourceModule;
+    private int? _sourceId;
+    private string _sourceLabel = "";
+    private bool _sourceHandled;
+
     // جزئیات
     private WoItem? detail;
     private List<AttItem> attachments = new();
@@ -888,6 +904,16 @@ else
     {
         var qs = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
         if (qs["tab"] == "calendar" && tab != "calendar") { tab = "calendar"; await LoadCal(); }
+
+        // باز کردن فرم «دستور کار جدید» از یک مبدأ (سورس) — مثلاً تبدیل نامه به دستور کار
+        var srcModule = qs["sourceModule"];
+        if (!string.IsNullOrWhiteSpace(srcModule) && int.TryParse(qs["sourceId"], out var srcId) && srcId > 0 && !_sourceHandled)
+        {
+            _sourceHandled = true;
+            await OpenFromSourceAsync(srcModule, srcId);
+            return;
+        }
+
         if (!int.TryParse(qs["open"], out var id) || id <= 0) return;
         await OpenById(id);
     }
@@ -897,6 +923,11 @@ else
         var w = mineItems.FirstOrDefault(x => x.Id == id)
              ?? assignedItems.FirstOrDefault(x => x.Id == id)
              ?? archiveItems.FirstOrDefault(x => x.Id == id);
+        // اگر در لیست‌های من نبود (مثلاً لینک «دستورکار شده» یک نامه)، مستقیم واکشی می‌کنیم
+        if (w == null)
+        {
+            try { w = await Http.GetFromJsonAsync<WoItem>($"/api/workorders/{id}"); } catch { }
+        }
         if (w != null)
         {
             tab = w.Status == "Closed" ? "archive" : (w.OwnerUserId == access.UserId ? "mine" : "assigned");
@@ -938,6 +969,14 @@ else
         return "none";
     }
 
+    /// <summary>لینک به نامهٔ مبدأ (سورس) در کارتابل نامه داخلی — برای اتصال برگشتی.</summary>
+    private RenderFragment? SourceLink(string? module, int? sourceId)
+        => !string.IsNullOrWhiteSpace(module) && sourceId is > 0
+            ? @<a class="wo-att" href="@($"/letters?open={sourceId}")" target="_blank" title="رفتن به نامه مبدأ">
+                <i class="bi bi-envelope"></i> نامه
+              </a>
+            : null;
+
     private RenderFragment ToneBadge(WoItem w, string tone) => tone switch
     {
         "late" => @<span class="badge bg-danger-subtle text-danger border">⏰ گذشته از مهلت</span>,
@@ -952,14 +991,73 @@ else
     // ================== دستور کار جدید ==================
     private async Task OpenNew()
     {
-        formError = ""; newTitle = ""; selTargets = new(); tDropOpen = false; tSearch = "";
+        _sourceModule = null; _sourceId = null; _sourceLabel = "";
+        await ShowNewFormAsync("", "");
+    }
+
+    /// <summary>باز کردن فرم ایجاد از یک مبدأ (سورس) — پیش‌پُرش عنوان/شرح/گیرندگان از نامه.</summary>
+    private async Task OpenFromSourceAsync(string module, int sourceId)
+    {
+        if (!access.CanCreate)
+        {
+            Toast.Error("شما مجوز ایجاد دستور کار را ندارید.");
+            return;
+        }
+        _sourceModule = module; _sourceId = sourceId; _sourceLabel = module;
+        // فقط برای نامه داخلی، جزئیات نامه را می‌گیریم تا فرم پیش‌پُر شود
+        if (module == "InnerLetter")
+        {
+            try
+            {
+                var letter = await Http.GetFromJsonAsync<Inventory.Shared.Dtos.InnerLetterDetailDto>($"/api/letters/{sourceId}");
+                if (letter != null)
+                {
+                    _sourceLabel = $"نامه # {letter.LetterNumber}";
+                    await ShowNewFormAsync(letter.Title, letter.Text ?? "");
+
+                    // پیش‌انتخاب گیرندگانِ گردش نامه (گیرنده/ارجاع/هامش) — قابل ویرایش/حذف
+                    foreach (var u in letter.ReciversGirande) selTargets.Add(u.UserId);
+                    foreach (var u in letter.ReciversErja) selTargets.Add(u.UserId);
+                    foreach (var u in letter.ReciversHamesh) selTargets.Add(u.UserId);
+                    AugmentTargets(letter);
+                }
+                else await ShowNewFormAsync("", "");
+            }
+            catch (Exception ex)
+            {
+                Toast.Error($"بارگذاری نامه ناموفق بود: {ex.Message}");
+                await ShowNewFormAsync("", "");
+            }
+        }
+        else
+        {
+            await ShowNewFormAsync("", "");
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>باز کردن فرم (ریست + لود لیست افراد مجاز + تنظیم ادیتور).</summary>
+    private async Task ShowNewFormAsync(string title, string desc)
+    {
+        formError = ""; newTitle = title; selTargets = new(); tDropOpen = false; tSearch = "";
         newDueDate = DateTime.Today.AddDays(1); newDueTime = new(14, 0);
         newFiles.Clear();
         try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); } catch { }
         showNew = true;
         StateHasChanged();
         await Task.Delay(80);
-        try { await JS.InvokeVoidAsync("rteSetHtml", "rte-wo", ""); } catch { }
+        try { await JS.InvokeVoidAsync("rteSetHtml", "rte-wo", desc ?? ""); } catch { }
+    }
+
+    /// <summary>گیرندگان گردش نامه که در لیست مجاز نیستند را به‌عنوان گزینه اضافه می‌کند تا چیپ قابل نمایش باشند.</summary>
+    private void AugmentTargets(Inventory.Shared.Dtos.InnerLetterDetailDto letter)
+    {
+        var known = targets.Select(t => t.Id).ToHashSet();
+        foreach (var u in letter.ReciversGirande.Concat(letter.ReciversErja).Concat(letter.ReciversHamesh))
+        {
+            if (u.UserId > 0 && !known.Contains(u.UserId))
+                targets.Add(new TargetOpt { Id = u.UserId, Username = string.IsNullOrWhiteSpace(u.FullName) ? $"کاربر {u.UserId}" : u.FullName });
+        }
     }
 
     private void OnFilesSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
@@ -988,7 +1086,8 @@ else
             var resp = await Http.PostAsJsonAsync("/api/workorders", new
             {
                 title = newTitle, description = desc, dueAt = due,
-                assigneeUserIds = selTargets.ToList()
+                assigneeUserIds = selTargets.ToList(),
+                sourceModule = _sourceModule, sourceId = _sourceId
             });
             if (!resp.IsSuccessStatusCode)
             {
@@ -1002,6 +1101,12 @@ else
             Toast.Success($"دستور کار ثبت شد — {created!.Number}");
             showNew = false;
             await LoadAll();
+            // پاک‌سازی پارامترهای مبدأ (سورس) بعد از ثبت
+            if (!string.IsNullOrWhiteSpace(_sourceModule))
+            {
+                _sourceModule = null; _sourceId = null; _sourceLabel = "";
+                Nav.NavigateTo("/work-orders");
+            }
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { busy = false; }
@@ -1179,6 +1284,7 @@ else
         public DateTime DueAt { get; set; } public string Status { get; set; } = "Open";
         public string? CloseNote { get; set; } public DateTime? ClosedAt { get; set; }
         public int ExtensionCount { get; set; } public DateTime CreatedAt { get; set; }
+        public string? SourceModule { get; set; } public int? SourceId { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
     }
 }
