@@ -94,6 +94,11 @@
                     <textarea class="form-control" rows="2" @bind="newCompany.Address" placeholder="آدرس"></textarea>
                 </div>
                 <div class="col-12">
+                    <label class="form-label">فایل سربرگ (PDF) — برای چاپ نامه صادره</label>
+                    <input class="form-control" @bind="newCompany.LetterheadFileName" placeholder="مثلاً: letterhead-forough.pdf" />
+                    <small class="text-muted">نام فایل PDF سربرگ که در <b>مسیر روت API</b> (کنار فایل اجرایی برنامه سرور) قرار داده‌اید. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
+                </div>
+                <div class="col-12">
                     <div class="form-check form-switch mt-1">
                         <input class="form-check-input" type="checkbox" id="companyActive" @bind="newCompany.IsActive" />
                         <label class="form-check-label" for="companyActive">فعال باشد</label>
@@ -125,7 +130,7 @@
 
     private void EditCompany(SystemCompanyItem c)
     {
-        newCompany = new() { Id = c.Id, Name = c.Name, Code = c.Code, Phone = c.Phone, Address = c.Address, IsActive = c.IsActive, CreatedAt = c.CreatedAt };
+        newCompany = new() { Id = c.Id, Name = c.Name, Code = c.Code, Phone = c.Phone, Address = c.Address, IsActive = c.IsActive, CreatedAt = c.CreatedAt, LetterheadFileName = c.LetterheadFileName };
         editingCompany = true; ShowForm = true; StateHasChanged();
     }
 
@@ -186,6 +191,9 @@
         public bool IsActive { get; set; } = true;
         public int SystemCount { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+        /// <summary>نام فایل PDF سربرگ شرکت در مسیر روت API — برای چاپ نامه صادره</summary>
+        public string? LetterheadFileName { get; set; }
     }
 
     public class SystemInfoItem

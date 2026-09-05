@@ -15,9 +15,21 @@
             .replace(/'/g, '&#39;');
     }
 
+    // ---------- ابزار: خواندن موقعیت و ابعاد عنصر در صفحه ----------
+    window.getElementRect = function (el) {
+        if (!el) return null;
+        var rect = el.getBoundingClientRect();
+        return {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+            width: rect.width,
+            height: rect.height
+        };
+    };
+
     // ---------- ابزار: خواندن مقدار با هر دو حالت camelCase و PascalCase ----------
-    // JSInterop بلیزور بسته به تنظیمات سریالایزر ممکن است Title یا title بفرستد؛
-    // این تابع هر دو را می‌پذیرد تا چاپ در هیچ حالتی خالی نشود.
     function pick(obj, name) {
         if (!obj) return undefined;
         if (obj[name] !== undefined) return obj[name];
@@ -59,8 +71,6 @@
             ? '<tfoot><tr><td colspan="' + headers.length + '">' + esc(footerTotal) + '</td></tr></tfoot>'
             : '';
 
-        // استایل‌ها به‌صورت رشته‌های جدا نگه داشته می‌شوند؛ تگ‌های بسته با اتصال ساخته می‌شوند
-        // تا حتی اگر این فایل روزی inline شد، پارسر HTML را نشکنند.
         var css = [
             '* { box-sizing: border-box; }',
             'body { font-family: Vazirmatn, Tahoma, "Segoe UI", sans-serif; color: #1e293b; margin: 0; padding: 18px 22px; font-size: 11.5px; }',
@@ -107,11 +117,7 @@
         return parts.join('\n');
     }
 
-    // ---------- چاپ با iframe پنهان (روش اصلی) ----------
-    // چرا iframe و نه window.open؟
-    // این تابع از یک ادامهٔ async در C# صدا زده می‌شود (بعد از await روی فراخوانی API)،
-    // بنابراین مرورگر آن را «خارج از تعامل کاربر» می‌بیند و پاپ‌آپ را بلاک می‌کند —
-    // نتیجه: هیچ اتفاقی نمی‌افتاد و چاپ انجام نمی‌شد. iframe هم‌مبدأ بلاک نمی‌شود.
+    // ---------- چاپ با iframe پنهان ----------
     function printViaIframe(html) {
         var old = document.getElementById('app-print-frame');
         if (old && old.parentNode) old.parentNode.removeChild(old);
@@ -157,7 +163,6 @@
                 }
                 win.onafterprint = cleanup;
                 win.print();
-                // شبکهٔ ایمنی: اگر onafterprint هرگز شلیک نشد (بعضی مرورگرها)
                 setTimeout(cleanup, 60000);
             } catch (e) {
                 console.error('printTableReport (iframe print):', e);
@@ -166,16 +171,15 @@
             }
         }
 
-        // کمی صبر تا محتوا و فونت‌ها آماده شوند
         if (frame.contentWindow && frame.contentWindow.document.readyState === 'complete') {
             setTimeout(doPrint, 150);
         } else {
             frame.onload = function () { setTimeout(doPrint, 150); };
-            setTimeout(doPrint, 700); // فال‌بک اگر onload شلیک نشد
+            setTimeout(doPrint, 700);
         }
     }
 
-    // ---------- چاپ با پنجرهٔ جدا (فال‌بک) ----------
+    // ---------- چاپ با پنجرهٔ جدا ----------
     function printViaWindow(html) {
         var w = window.open('', '_blank', 'width=1020,height=760');
         if (!w) return false;
@@ -192,7 +196,6 @@
 
     /**
      * چاپ گزارش جدولی (ماژول پروژه‌ها).
-     * @param {object} opt گزینه‌ها: title, subTitle, meta[], headers[], rows[][], footerTotal, printedAt, printedBy
      */
     window.printTableReport = function (opt) {
         try {
@@ -202,7 +205,6 @@
                 printViaIframe(html);
                 return true;
             } catch (inner) {
-                // اگر iframe به هر دلیلی کار نکرد، پنجرهٔ جدا را امتحان کن
                 if (printViaWindow(html)) return true;
                 alert('پنجره چاپ باز نشد — لطفاً مسدودکنندهٔ پاپ‌آپ مرورگر را برای این سایت غیرفعال کنید.');
                 return false;
@@ -223,17 +225,35 @@
         return new Blob([bytes], { type: contentType || 'application/octet-stream' });
     }
 
-    /** دانلود فایل از داده Base64 — برای پیوست‌های رمزنگاری‌شده و خروجی اکسل */
+    /** دانلود فایل امن از داده Base64 — تعیین MIME تایپ دقیق اکسل و شلیک رویداد استاندارد کاربر */
     window.downloadBlob = function (fileName, contentType, base64) {
         try {
-            var url = URL.createObjectURL(base64ToBlob(base64, contentType));
+            var mime = contentType || 'application/octet-stream';
+            // تنظیم تایپ رسمی اکسل برای جلوگیری از هشدار ناامنی مرورگر
+            if (fileName && fileName.toLowerCase().endsWith('.xlsx')) {
+                mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            }
+            var blob = base64ToBlob(base64, mime);
+            var url = URL.createObjectURL(blob);
             var a = document.createElement('a');
             a.href = url;
-            a.download = fileName || 'file';
+            a.download = fileName || 'download.xlsx';
+            a.rel = 'noopener';
+            a.style.display = 'none';
             document.body.appendChild(a);
-            a.click();
-            a.remove();
-            setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+
+            // شلیک رویداد ساختگی کلیک کاربر جهت جلب اعتماد مرورگر
+            var evt = new MouseEvent('click', {
+                bubbles: true,
+                cancelable: true,
+                view: window
+            });
+            a.dispatchEvent(evt);
+
+            setTimeout(function () {
+                if (a.parentNode) a.parentNode.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 10000);
             return true;
         } catch (e) {
             console.error('downloadBlob error:', e);
@@ -247,7 +267,6 @@
             var url = URL.createObjectURL(base64ToBlob(base64, contentType));
             var win = window.open(url, '_blank');
             if (!win) {
-                // پاپ‌آپ بلاک شد → به‌جای هیچ‌کاری، فایل را دانلود کن
                 var a = document.createElement('a');
                 a.href = url;
                 a.target = '_blank';
@@ -263,4 +282,179 @@
             return false;
         }
     };
+
+    // ============================================================
+    //  امنیت حضور و غیاب:
+    //  ۱) شناسه‌ی یکتای دستگاه (Device ID) — ذخیره در localStorage
+    //     (مرورگر MAC واقعی نمی‌دهد؛ این شناسه + IP + User-Agent همان نقش را دارد)
+    //  ۲) موقعیت جغرافیایی (Geolocation API) برای محدوده‌ی مکانی مجاز
+    // ============================================================
+
+    var ATT_DEVICE_KEY = 'att_device_id_v1';
+
+    /** خواندن یا ساخت شناسه‌ی یکتای دستگاه برای این مرورگر. */
+    window.attGetDeviceId = function () {
+        try {
+            var id = localStorage.getItem(ATT_DEVICE_KEY);
+            if (id && id.length >= 8) return id;
+            id = 'dev-' + Date.now().toString(36) + '-' +
+                Math.random().toString(36).slice(2, 10) + '-' +
+                Math.random().toString(36).slice(2, 10);
+            localStorage.setItem(ATT_DEVICE_KEY, id);
+            return id;
+        } catch (e) {
+            // اگر localStorage در دسترس نبود (مثلاً حالت خصوصی)، یک شناسه موقت
+            return 'dev-tmp-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
+    };
+
+    /** حذف شناسه دستگاه (در صورت نیاز کاربر/مدیر به ریست). */
+    window.attResetDeviceId = function () {
+        try { localStorage.removeItem(ATT_DEVICE_KEY); } catch (e) { }
+    };
+
+    /**
+     * موقعیت جغرافیایی فعلی (طول/عرض).
+     * اگر کاربر اجازه ندهد یا در دسترس نباشد null برمی‌گرداند (هشدار مکانی ثبت نمی‌شود).
+     * @returns {Promise<{lat:number, lng:number}|null>}
+     */
+    window.attGetPosition = function (timeoutMs) {
+        return new Promise(function (resolve) {
+            try {
+                if (!navigator.geolocation) { resolve(null); return; }
+                var to = (typeof timeoutMs === 'number' && timeoutMs > 0) ? timeoutMs : 8000;
+                navigator.geolocation.getCurrentPosition(
+                    function (pos) {
+                        resolve({
+                            lat: pos.coords.latitude,
+                            lng: pos.coords.longitude
+                        });
+                    },
+                    function () { resolve(null); },
+                    { enableHighAccuracy: true, timeout: to, maximumAge: 30000 }
+                );
+            } catch (e) {
+                resolve(null);
+            }
+        });
+    };
+
+    // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
+
+    /**
+     * آیا مرورگر از Web Push پشتیبانی می‌کند؟
+     * @returns {boolean}
+     */
+    window.attPushSupported = function () {
+        try {
+            return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+        } catch (e) { return false; }
+    };
+
+    /**
+     * وضعیت فعلی اجازه نوتیفیکیشن.
+     * @returns {string} 'granted' | 'denied' | 'default' | 'unsupported'
+     */
+    window.attPushPermission = function () {
+        try {
+            if (!('Notification' in window)) return 'unsupported';
+            return Notification.permission || 'default';
+        } catch (e) { return 'unsupported'; }
+    };
+
+    /**
+     * فعال‌سازی نوتیفیکیشن گوشی/تبلت:
+     *  ۱) درخواست اجازه از کاربر
+     *  ۲) ثبت سرویس‌ورکر
+     *  ۳) ساخت اشتراک push با کلید عمومی VAPID سرور
+     * اشتراک ساخته شده برمی‌گردد تا Blazor با توکن احراز هویت آن را در سرور ذخیره کند.
+     * @param {string} vapidPublicKey کلید عمومی VAPID (از سرور)
+     * @returns {Promise<{ok:boolean, message?:string, endpoint?:string, p256dh?:string, auth?:string}>}
+     */
+    window.attPushEnable = async function (vapidPublicKey) {
+        try {
+            if (!window.attPushSupported())
+                return { ok: false, message: 'این مرورگر از نوتیفیکیشن پشتیبانی نمی‌کند.' };
+
+            var permission = Notification.requestPermission
+                ? await Notification.requestPermission()
+                : 'default';
+
+            if (permission !== 'granted')
+                return { ok: false, message: 'دسترسی نوتیفیکیشن داده نشد.' };
+
+            var reg = await navigator.serviceWorker.register('service-worker.js');
+            await navigator.serviceWorker.ready;
+
+            var sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlB64ToUint8Array(vapidPublicKey)
+            });
+
+            return {
+                ok: true,
+                endpoint: sub.endpoint,
+                p256dh: b64url(sub.getKey('p256dh')),
+                auth: b64url(sub.getKey('auth'))
+            };
+        } catch (e) {
+            return { ok: false, message: e && e.message ? e.message : 'خطا در فعال‌سازی نوتیفیکیشن.' };
+        }
+    };
+
+    /**
+     * غیرفعال‌سازی نوتیفیکیشن: لغو اشتراک محلی.
+     * (حذف از سرور توسط Blazor با توکن انجام می‌شود)
+     * @returns {Promise<{ok:boolean, endpoint?:string, message?:string}>}
+     */
+    window.attPushDisable = async function () {
+        try {
+            var reg = await navigator.serviceWorker.getRegistration();
+            var endpoint = '';
+            if (reg && reg.pushManager) {
+                var sub = await reg.pushManager.getSubscription();
+                if (sub) {
+                    endpoint = sub.endpoint;
+                    await sub.unsubscribe();
+                }
+            }
+            return { ok: true, endpoint: endpoint, message: 'نوتیفیکیشن غیرفعال شد.' };
+        } catch (e) {
+            return { ok: false, message: e && e.message ? e.message : 'خطا در غیرفعال‌سازی.' };
+        }
+    };
+
+    /**
+     * آیا این دستگاه در حال حاضر اشتراک push دارد؟
+     * @returns {Promise<boolean>}
+     */
+    window.attPushIsSubscribed = async function () {
+        try {
+            var reg = await navigator.serviceWorker.getRegistration();
+            if (reg && reg.pushManager) {
+                var sub = await reg.pushManager.getSubscription();
+                return !!sub;
+            }
+            return false;
+        } catch (e) { return false; }
+    };
+
+    /** تبدیل آرایه‌بایت به Base64URL */
+    function b64url(buffer) {
+        if (!buffer) return '';
+        var bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+        var bin = '';
+        for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    /** تبدیل کلید عمومی VAPID (base64url) به Uint8Array برای subscribe */
+    function urlB64ToUint8Array(base64String) {
+        var padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var raw = atob(base64);
+        var output = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+        return output;
+    }
 })();

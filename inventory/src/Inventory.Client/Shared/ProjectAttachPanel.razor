@@ -89,6 +89,9 @@
     /// <summary>شناسه پروژه</summary>
     [Parameter] public int ProjectId { get; set; }
 
+    /// <summary>اعلام تغییر در پیوست‌ها (افزودن/حذف) به صفحه والد برای بروزرسانی فوری شمارنده</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
     private List<AttachItem> items = new();
     private bool loading = true, uploading;
     private int downloadingId;
@@ -150,7 +153,10 @@
 
             var resp = await Http.PostAsync("/api/projectattach", content);
             if (resp.IsSuccessStatusCode)
+            {
                 Toast.Success("پیوست با موفقیت رمزنگاری و ذخیره شد.");
+                await OnChanged.InvokeAsync();
+            }
             else
                 Toast.Error($"بارگذاری پیوست ناموفق بود. (HTTP {(int)resp.StatusCode})");
         }
@@ -189,6 +195,7 @@
         {
             await Http.DeleteAsync($"/api/projectattach/{a.Id}");
             Toast.Success("پیوست حذف شد.");
+            await OnChanged.InvokeAsync();
             await Reload();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

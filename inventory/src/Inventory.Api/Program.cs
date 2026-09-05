@@ -38,6 +38,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AttendanceRecalcService>();
+builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 
@@ -46,6 +47,14 @@ builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
 builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
+// ساختار شماره اندیکاتور (LetterStrature) و بایگانی درختی نامه‌ها
+builder.Services.AddScoped<ILetterStratureService, LetterStratureService>();
+builder.Services.AddScoped<IArchiveService, ArchiveService>();
+
+// ---------- اتوماسیون اداری — نامه صادره (فاز دوم) — پوشه‌بندی تمیز ----------
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
@@ -68,6 +77,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = AuthService.JwtIssuer,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AuthService.JwtKey))
         };
+        // دانلود پیوست با لینک مستقیم (تگ <a>) هدر Authorization ندارد؛
+        // برای مسیرهای دانلود، توکن از query string خوانده می‌شود (الگوی استاندارد SignalR).
+        o.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                var token = ctx.Request.Query["access_token"];
+                if (!string.IsNullOrEmpty(token) &&
+                    ctx.Request.Path.Value?.Contains("/download", StringComparison.OrdinalIgnoreCase) == true)
+                    ctx.Token = token;
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization();
 
@@ -79,6 +101,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
+        // لاگ عملیات: ثبت خودکار هر POST/PUT/PATCH/DELETE در همه‌ی بخش‌ها
+        options.Filters.Add<AuditLogFilter>();
     })
     .AddJsonOptions(o =>
     {
@@ -94,6 +118,7 @@ builder.Services.AddSignalR().AddJsonProtocol(o =>
 });
 builder.Services.AddSingleton<DashboardBroadcaster>();
 builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs.NotifyService>();
+builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddSingleton<HardwareMonitor>();

@@ -10,9 +10,8 @@
 /* ---------- شل سه‌ستونه ---------- */
 .ltx .shell { display:grid; grid-template-columns:72px minmax(300px,380px) 1fr; gap:0;
               background:var(--card); border:1px solid var(--line); border-radius:18px; overflow:hidden;
-              height:calc(100vh - 130px); min-height:540px; }
-@media(max-width:1100px){ .ltx .shell { grid-template-columns:64px 1fr; } .ltx .reader { display:none; }
-                          .ltx.rd-open .shell { grid-template-columns:64px 1fr; } .ltx.rd-open .pane { display:none; } .ltx.rd-open .reader { display:flex; } }
+              height:calc(100vh - 130px); height:calc(100dvh - 130px); min-height:540px; max-height:calc(100dvh - 110px); }
+/* قالب دوم (موبایل/تبلت) در انتهای فایل تعریف شده تا قواعد پایه آن را باطل نکنند */
 
 /* ---------- ریل پوشه‌ها ---------- */
 .ltx .rail { background:linear-gradient(180deg,#1e1b4b,#312e81); display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 0; }
@@ -29,7 +28,7 @@
 .ltx .rail .rlbl { font-size:9px; color:#a5b4fc; margin-top:-4px; margin-bottom:2px; }
 
 /* ---------- ستون لیست ---------- */
-.ltx .pane { border-inline-start:1px solid var(--line); display:flex; flex-direction:column; min-width:0; background:#fafaff; }
+.ltx .pane { border-inline-start:1px solid var(--line); display:flex; flex-direction:column; min-width:0; min-height:0; background:#fafaff; }
 .ltx .pane-head { padding:14px 14px 8px; border-bottom:1px solid var(--line); background:var(--card); }
 .ltx .pane-title { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
 .ltx .pane-title h1 { font-size:14.5px; font-weight:800; margin:0; }
@@ -91,7 +90,8 @@
 .ltx .ltmenu .mdiv { height:1px; background:var(--line); margin:4px 6px; }
 
 /* ---------- ریدر ---------- */
-.ltx .reader { display:flex; flex-direction:column; min-width:0; background:var(--bg); }
+.ltx .reader { display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--bg); }
+.ltx .rd-back { display:none; }
 .ltx .rd-top { display:flex; align-items:center; gap:7px; padding:11px 16px; background:var(--card); border-bottom:1px solid var(--line); }
 .ltx .rd-top .t { flex:1; font-size:14px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ltx .icb { width:34px; height:34px; border:1px solid var(--line); background:#fff; border-radius:10px; color:var(--sub);
@@ -107,7 +107,12 @@
 .ltx .lbtn.ghost { background:#fff; border:1px solid var(--line); color:var(--tx); }
 .ltx .lbtn.ghost:hover { border-color:var(--p); color:var(--p); }
 .ltx .lbtn:disabled { opacity:.55; cursor:default; }
-.ltx .rd-scroll { flex:1; overflow:auto; padding:16px; display:grid; grid-template-columns:1fr 250px; gap:14px; align-items:start; }
+.ltx .rd-scroll { flex:1 1 0; min-height:0; height:0; overflow-y:scroll; overscroll-behavior:contain;
+                  padding:16px; display:grid; grid-template-columns:1fr 250px; gap:14px; align-items:start; }
+.ltx .rd-scroll::-webkit-scrollbar { width:10px; }
+.ltx .rd-scroll::-webkit-scrollbar-thumb { background:#c3c9da; border-radius:8px; border:2px solid var(--bg); }
+.ltx .rd-scroll::-webkit-scrollbar-thumb:hover { background:#9aa3bd; }
+.ltx .rd-scroll::-webkit-scrollbar-track { background:transparent; }
 @media(max-width:1350px){ .ltx .rd-scroll { grid-template-columns:1fr; } }
 
 .ltx .paper { background:#fff; border:1px solid var(--line); border-radius:16px; overflow:hidden; }
@@ -124,7 +129,11 @@
 .ltx .att:hover { border-color:var(--p); }
 .ltx .att .ic { width:28px; height:28px; border-radius:8px; background:#ede9fe; color:var(--p2); display:flex; align-items:center; justify-content:center; }
 .ltx .att small { display:block; color:var(--sub); font-size:9.5px; }
-.ltx .att .arm { color:var(--bad); margin-inline-start:4px; }
+.ltx .att .arm { color:var(--bad); margin-inline-start:4px; cursor:pointer; opacity:.55; transition:.12s; }
+.ltx .att .arm:hover { opacity:1; }
+.ltx .att-add { cursor:pointer; border-style:dashed; border-color:#c7d2fe; color:var(--p); background:#f8faff; }
+.ltx .att-add:hover { background:#eef2ff; border-color:var(--p); }
+.ltx .att-add .ic { background:#e0e7ff; color:var(--p); }
 .ltx .act-strip { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
 
 .ltx .side { display:flex; flex-direction:column; gap:12px; }
@@ -380,4 +389,170 @@
 .app-content > .ltx, .app-content .ltx {
     animation: none !important;
     transform: none !important;
+}
+
+/* ==================== بایگانی درختی — طراحی مینیمال ==================== */
+.ltx .arv { position:relative; padding:6px 4px; }
+.ltx .arv .grow { flex:1; }
+.ltx .arv-bar { display:flex; align-items:center; gap:6px; padding:2px 4px 12px; }
+.ltx .arv-add { display:inline-flex; align-items:center; gap:7px; border:0; cursor:pointer; font-size:12px; font-weight:700;
+                color:#fff; background:linear-gradient(135deg,#7c3aed,#4f46e5); border-radius:11px; padding:8px 14px;
+                box-shadow:0 4px 12px rgba(79,70,229,.25); transition:.15s; }
+.ltx .arv-add:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(79,70,229,.35); }
+.ltx .arv-ico { width:32px; height:32px; border:1px solid var(--line); background:#fff; border-radius:9px; color:var(--sub);
+                cursor:pointer; font-size:13px; transition:.15s; }
+.ltx .arv-ico:hover { background:#eef2ff; color:var(--p); border-color:#c7d2fe; }
+
+.ltx .arv-tree { display:flex; flex-direction:column; gap:1px; }
+
+/* فرزندان تودرتو: تورفتگی + خط راهنمای ظریف + انیمیشن باز شدن */
+.ltx .tn-kids { position:relative; margin-inline-start:17px; padding-inline-start:10px;
+     border-inline-start:1.5px solid #e8eaf2; display:flex; flex-direction:column; gap:1px;
+     animation:arvOpen .18s ease; overflow:hidden; }
+@keyframes arvOpen { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+
+/* سطرها */
+.ltx .tn-fold, .ltx .tn-leaf { display:flex; align-items:center; gap:7px; padding:7px 9px; border-radius:10px;
+     cursor:pointer; border:1.5px solid transparent; transition:background .12s, border-color .12s; user-select:none; min-height:36px; }
+.ltx .tn-fold:hover, .ltx .tn-leaf:hover { background:#fff; }
+.ltx .tn-fold.sel, .ltx .tn-leaf.sel { background:#eef2ff; border-color:#c7d2fe; }
+.ltx .tn-fold.dropping { border-style:dashed; border-color:var(--p); background:#eef2ff; }
+
+.ltx .tn-fold .chev { width:14px; text-align:center; color:#b6bdcf; font-size:10px; transition:transform .18s ease; display:inline-block; flex:none; }
+.ltx .tn-fold .chev.open { transform:rotate(-90deg); }
+.ltx .tn-fold .fico { color:#f59e0b; font-size:15px; flex:none; }
+.ltx .tn-fold .tn-title { font-size:12.5px; font-weight:800; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ltx .tn-cnt { min-width:19px; padding:1px 6px; border-radius:99px; background:#eef2ff; color:var(--p);
+               font-size:10px; font-weight:700; text-align:center; flex:none; }
+
+/* برگ نامه: تک‌خطی و آرام */
+.ltx .tn-leaf .lico { width:26px; height:26px; border-radius:8px; background:#eef2ff; color:var(--p);
+     display:inline-flex; align-items:center; justify-content:center; font-size:12px; flex:none; }
+.ltx .tn-leaf .tn-title { font-size:12px; font-weight:600; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ltx .tn-leaf .tg { flex:none; }
+.ltx .tn-meta { font-size:10.5px; color:var(--sub); flex:none; }
+
+/* دکمه سه‌نقطه */
+.ltx .tn-dd { border:0; background:transparent; color:var(--sub); font-size:13px; cursor:pointer; padding:3px 6px;
+     border-radius:8px; opacity:0; transition:.12s; flex:none; }
+.ltx .tn-fold:hover .tn-dd, .ltx .tn-leaf:hover .tn-dd, .ltx .tn-fold.sel .tn-dd, .ltx .tn-leaf.sel .tn-dd { opacity:1; }
+.ltx .tn-dd:hover { background:#e2e8f0; color:var(--tx); }
+
+/* ویرایش نام / ساخت پوشه */
+.ltx .tn-edit { flex:1; min-width:0; border:1.5px solid var(--p); border-radius:8px; padding:4px 8px; font-size:12px; font-family:inherit; }
+.ltx .tn-ok, .ltx .tn-no { border:0; width:26px; height:26px; border-radius:8px; cursor:pointer; font-size:12px; flex:none; }
+.ltx .tn-ok { background:#dcfce7; color:#059669; }
+.ltx .tn-no { background:#fee2e2; color:#dc2626; }
+
+.ltx .arv-new { display:flex; align-items:center; gap:7px; padding:6px 9px; }
+.ltx .arv-new > i { color:#f59e0b; font-size:15px; flex:none; }
+.ltx .arv-new input { flex:1; min-width:0; border:1.5px solid var(--p); border-radius:9px; padding:6px 10px; font-size:12px; font-family:inherit; }
+.ltx .arv-new .ok, .ltx .arv-new .no { border:0; width:28px; height:28px; border-radius:9px; cursor:pointer; font-size:12px; flex:none; }
+.ltx .arv-new .ok { background:#dcfce7; color:#059669; }
+.ltx .arv-new .no { background:#fee2e2; color:#dc2626; }
+
+.ltx .arv-rootdrop { margin:0 4px 8px; padding:10px; border:2px dashed #c7d2fe; border-radius:12px; text-align:center;
+     font-size:12px; color:var(--p); background:#f8faff; transition:.15s; }
+.ltx .arv-rootdrop.dropping { border-color:var(--p); background:#eef2ff; font-weight:700; }
+
+/* منوی زمینه ثابت */
+.ltx .arv-menu { position:fixed; z-index:1060; background:#fff; border:1px solid var(--line); border-radius:13px;
+     box-shadow:0 18px 45px rgba(2,6,23,.16); padding:5px; min-width:185px; animation:arvOpen .12s ease; }
+.ltx .arv-menu button { display:flex; align-items:center; gap:8px; width:100%; border:0; background:transparent; text-align:right;
+     padding:8px 11px; border-radius:9px; font:inherit; font-size:12px; cursor:pointer; color:var(--tx); }
+.ltx .arv-menu button:hover { background:#f1f5f9; }
+.ltx .arv-menu button.warn { color:var(--amb); }
+.ltx .arv-menu button.danger { color:var(--bad); }
+.ltx .arv-menu .mdiv { height:1px; background:var(--line); margin:4px 6px; }
+
+/* انتخاب پوشه مقصد — حالت انتخاب‌شده کاملاً مشخص */
+.ltx .pk-row { display:flex; align-items:center; gap:7px; padding:9px 11px;
+     padding-inline-start:calc(11px + var(--dep,0) * 18px); border-radius:10px; cursor:pointer;
+     font-size:12.5px; font-weight:600; color:var(--tx); border:1.5px solid transparent; transition:.12s; position:relative; }
+.ltx .pk-row:hover { background:#f1f5f9; }
+.ltx .pk-row.sel { background:linear-gradient(135deg,#eef2ff,#f5f3ff); border-color:var(--p); color:var(--p2); font-weight:800;
+     box-shadow:0 2px 8px rgba(79,70,229,.12); }
+.ltx .pk-row.sel::after { content:'\2713'; margin-inline-start:auto; width:20px; height:20px; border-radius:99px;
+     background:var(--p); color:#fff; font-size:11px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.ltx .pk-row .fld { color:#f59e0b; }
+.ltx .pk-row.sel .fld { color:var(--p); }
+.ltx .pk-row .chev { width:14px; font-size:10px; color:var(--sub); transition:transform .15s; display:inline-block; }
+.ltx .pk-row .chev.open { transform:rotate(-90deg); }
+.ltx .pk-row .chev-ph { width:14px; display:inline-block; }
+.ltx .pk-in { flex:1; min-width:120px; border:1.5px solid var(--p); border-radius:9px; padding:7px 10px; font-size:12px; font-family:inherit; }
+
+/* ==================== مودال تأیید (آیا مطمئن هستید؟) ==================== */
+.ltx .gmodal.cfm { width:min(400px,94vw); padding:26px 22px 18px; text-align:center; gap:0; }
+.ltx .cfm-ic { width:58px; height:58px; border-radius:18px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; font-size:26px; }
+.ltx .cfm-ic.warn { background:#fef3c7; color:#b45309; }
+.ltx .cfm-ic.danger { background:#fee2e2; color:#dc2626; }
+.ltx .cfm-t { font-size:14.5px; font-weight:800; margin-bottom:8px; }
+.ltx .cfm-m { font-size:12.5px; color:var(--sub); line-height:2; margin-bottom:18px; }
+.ltx .cfm-btns { display:flex; gap:8px; justify-content:center; }
+.ltx .cfm-btns .lbtn { min-width:110px; justify-content:center; }
+
+/* ==================== مودال افزودن/ویرایش پیش‌نویس ==================== */
+.ltx .gmodal.pnv { width:min(560px,96vw); }
+.ltx .pnv-txt { min-height:180px; }
+
+/* دکمه افزودن پیش‌نویس بالای لیست */
+.ltx .draft-add { display:flex; align-items:center; justify-content:center; gap:8px; width:100%;
+     border:2px dashed #c7d2fe; background:#f8faff; color:var(--p); border-radius:13px;
+     padding:11px; font:inherit; font-size:12.5px; font-weight:800; cursor:pointer; margin-bottom:8px; transition:.15s; }
+.ltx .draft-add:hover { border-color:var(--p); background:#eef2ff; }
+
+/* ==================== ریسپانسیو دو قالبه — موبایل/تبلت ==================== */
+/* قالب دوم: زیر 1100px ریل + لیست؛ ریدر تمام‌صفحه با دکمه بازگشت (بالاتر تعریف شده).
+   اینجا ریزه‌کاری‌های فرم‌ها و مودال‌ها برای صفحه لمسی تکمیل می‌شود. */
+@media (max-width: 1100px) {
+    /* ---- سوییچ دو قالبه: لیست یا ریدر (تمام‌صفحه) ---- */
+    .ltx .shell { grid-template-columns:64px 1fr; }
+    .ltx .reader { display:none; }
+    .ltx.rd-open .pane { display:none; }
+    .ltx.rd-open .reader { display:flex; }
+    .ltx .rd-back { display:inline-flex; align-items:center; justify-content:center; }
+
+    /* شیت ایجاد نامه/ارجاع: تمام‌صفحه */
+    .ltx .sheet { width:100vw; }
+    .ltx .row3, .ltx .row2 { grid-template-columns:1fr; }
+    /* دکمه‌ها و سطرهای لمسی بزرگ‌تر */
+    .ltx .lbtn { padding:10px 16px; font-size:12.5px; }
+    .ltx .icb { width:38px; height:38px; }
+    .ltx .tn-fold, .ltx .tn-leaf { min-height:42px; padding:9px 10px; }
+    .ltx .tn-dd { opacity:1; } /* در لمسی hover نداریم — سه‌نقطه همیشه پیدا */
+    .ltx .rd-scroll { grid-template-columns:1fr; }
+}
+
+@media (max-width: 640px) {
+    /* مودال‌ها: کشویی از پایین (قالب موبایل) */
+    .ltx .gov { align-items:flex-end; padding:0; }
+    .ltx .gmodal { width:100vw !important; max-width:100vw; max-height:92dvh;
+        border-radius:22px 22px 0 0; animation:sheetUp .22s ease; }
+    @keyframes sheetUp { from { transform:translateY(40px); opacity:0; } to { transform:none; opacity:1; } }
+    .ltx .gmodal.cfm { border-radius:22px 22px 0 0; padding-bottom:max(18px, env(safe-area-inset-bottom)); }
+    .ltx .gm-f { flex-wrap:wrap; }
+    .ltx .gm-f .lbtn { flex:1; justify-content:center; }
+    .ltx .cfm-btns { flex-direction:row; }
+    .ltx .cfm-btns .lbtn { flex:1; }
+
+    /* هدر لیست و چیپ‌ها فشرده */
+    .ltx .pane-head { padding:10px 10px 6px; }
+    .ltx .chips { overflow-x:auto; flex-wrap:nowrap; padding-bottom:4px; scrollbar-width:none; }
+    .ltx .chips::-webkit-scrollbar { display:none; }
+    .ltx .chip { white-space:nowrap; }
+
+    /* ریدر: نوار اکشن سرریز نشود */
+    .ltx .rd-top { flex-wrap:wrap; row-gap:6px; padding:9px 10px; }
+    .ltx .rd-top .t { flex-basis:100%; order:-1; }
+    .ltx .act-strip .lbtn { flex:1 1 auto; justify-content:center; }
+    .ltx .paper-body { padding:14px; font-size:13px; }
+    .ltx .paper-foot { padding:10px 12px; }
+    .ltx .att { flex:1 1 100%; }
+
+    /* شل: ارتفاع کامل موبایل */
+    .ltx .shell { height:calc(100dvh - 120px); min-height:420px; border-radius:14px; }
+
+    /* درخت بایگانی */
+    .ltx .arv-bar { flex-wrap:wrap; }
+    .ltx .arv-menu { min-width:200px; }
 }

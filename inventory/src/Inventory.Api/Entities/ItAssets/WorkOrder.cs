@@ -39,6 +39,16 @@ public class WorkOrder
     public int ExtensionCount { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// ماژول مبدأ (سورس) که دستور کار از آن ساخته شده — برای اتصالِ عمومی بخش‌ها به دستور کار.
+    /// مثال: "InnerLetter" (نامه داخلی). برای سایر ماژول‌ها در آینده بدون تغییر ساختار قابل استفاده است.
+    /// </summary>
+    [MaxLength(50)]
+    public string? SourceModule { get; set; }
+
+    /// <summary>شناسه رکورد مبدأ در ماژول سورس (مثلاً شناسه نامه داخلی).</summary>
+    public int? SourceId { get; set; }
 }
 
 /// <summary>گیرنده دستور کار — پاسخ، رویت و تصمیم دستوردهنده.</summary>
