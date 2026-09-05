@@ -55,6 +55,7 @@ public class ProjectAttachController : RbacControllerBase
         [FromForm] int projectId,
         [FromForm] int type,
         [FromForm] List<IFormFile> files,
+        [FromServices] Hubs.INotifyService notify,
         CancellationToken ct)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
@@ -102,6 +103,7 @@ public class ProjectAttachController : RbacControllerBase
             return BadRequest(new { message = "فایل‌های ارسالی خالی هستند." });
 
         await Db.SaveChangesAsync(ct);
+        try { await notify.BroadcastChangedAsync("projects"); } catch { }
         return Ok(new { uploaded });
     }
 
@@ -136,7 +138,7 @@ public class ProjectAttachController : RbacControllerBase
 
     /// <summary>حذف — رکورد نرم + حذف فیزیکی فایل رمزنگاری‌شده</summary>
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> Delete(int id, [FromServices] Hubs.INotifyService notify)
     {
         if (await ForbiddenUnlessAsync(Module, "Delete") is { } forbid) return forbid;
 
@@ -146,6 +148,7 @@ public class ProjectAttachController : RbacControllerBase
         a.IsDelete = true;
         try { _protect.Delete(a.StoredFileName); } catch { /* ممکن است از قبل حذف شده باشد */ }
         await Db.SaveChangesAsync();
+        try { await notify.BroadcastChangedAsync("projects"); } catch { }
         return Ok(new { ok = true });
     }
 
@@ -153,8 +156,16 @@ public class ProjectAttachController : RbacControllerBase
 
     private string SafeDecrypt(string encrypted)
     {
-        try { return _protect.DecryptString(encrypted); }
-        catch { return "[نام فایل قابل رمزگشایی نیست]"; }
+        if (string.IsNullOrWhiteSpace(encrypted)) return "بدون‌نام";
+        try
+        {
+            var res = _protect.DecryptString(encrypted);
+            return string.IsNullOrWhiteSpace(res) ? encrypted : res;
+        }
+        catch
+        {
+            return encrypted;
+        }
     }
 
     private static string ContentTypeOf(string? ext) => (ext ?? "").ToLowerInvariant() switch

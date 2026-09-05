@@ -15,7 +15,8 @@ public class NotificationsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IMessengerService _messenger;
-    public NotificationsController(AppDbContext db, IMessengerService messenger) { _db = db; _messenger = messenger; }
+    private readonly IPushService _push;
+    public NotificationsController(AppDbContext db, IMessengerService messenger, IPushService push) { _db = db; _messenger = messenger; _push = push; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
 
@@ -74,4 +75,49 @@ public class NotificationsController : ControllerBase
         await _db.SaveChangesAsync();
         return Ok();
     }
+
+    // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
+
+    /// <summary>کلید عمومی VAPID — برای ثبت اشتراک push در مرورگر/دستگاه.</summary>
+    [HttpGet("push-vapid-key")]
+    public IActionResult VapidKey() => Ok(new { publicKey = _push.VapidPublicKey });
+
+    /// <summary>ثبت اشتراک push این دستگاه برای کاربر جاری.</summary>
+    [HttpPost("push-subscribe")]
+    public async Task<IActionResult> PushSubscribe([FromBody] PushSubscribeInput? input)
+    {
+        if (input == null || string.IsNullOrWhiteSpace(input.Endpoint))
+            return BadRequest(new { message = "اندپوینت اشتراک ارسال نشده است." });
+
+        var ua = Request.Headers.UserAgent.ToString();
+        await _push.SaveSubscriptionAsync(MyUserId, input.Endpoint, input.P256DH ?? "", input.Auth ?? "", ua);
+        return Ok(new { ok = true, message = "اشتراک نوتیفیکیشن دستگاه ثبت شد." });
+    }
+
+    /// <summary>لغو اشتراک push یک دستگاه (کلیر از سمت کاربر).</summary>
+    [HttpPost("push-unsubscribe")]
+    public async Task<IActionResult> PushUnsubscribe([FromBody] PushUnsubscribeInput? input)
+    {
+        if (input != null && !string.IsNullOrWhiteSpace(input.Endpoint))
+            await _push.RemoveSubscriptionAsync(MyUserId, input.Endpoint);
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>ارسال پیام آزمایشی push به کاربر جاری (برای تست تنظیمات).</summary>
+    [HttpPost("test-push")]
+    public async Task<IActionResult> TestPush()
+    {
+        await _push.SendToUserAsync(MyUserId, "✅ آزمون نوتیفیکیشن",
+            "اگر این پیام بالای صفحه‌ی گوشی/تبلت شما آمد، Web Push فعال است.",
+            null);
+        return Ok(new { message = "نوتیفیکیشن آزمایشی ارسال شد." });
+    }
+
+    public class PushSubscribeInput
+    {
+        public string? Endpoint { get; set; }
+        public string? P256DH { get; set; }
+        public string? Auth { get; set; }
+    }
+    public class PushUnsubscribeInput { public string? Endpoint { get; set; } }
 }
