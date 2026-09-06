@@ -60,3 +60,63 @@ public interface IAccInvRuleService
     Task<AccInvRule> SaveAsync(AccInvRule rule);
     Task<AccVoucher> PostDocAsync(int invDocId);
 }
+
+// ============================ ابعاد تحلیلی ============================
+
+/// <summary>ابعاد تحلیلی (مراکز هزینه / شعبه) و مقادیر آن‌ها.</summary>
+public interface IAccDimensionService
+{
+    Task<List<AccDimension>> GetDimensionsAsync();
+    Task<AccDimension> SaveDimensionAsync(AccDimension dim);
+    Task DeleteDimensionAsync(int id);
+
+    Task<List<AccDimensionValue>> GetValuesAsync(int dimensionId, bool activeOnly = false);
+    Task<AccDimensionValue> SaveValueAsync(AccDimensionValue value);
+    Task DeleteValueAsync(int id);
+    Task<List<LookupItem>> GetValueLookupsAsync(int dimensionId, string? search = null);
+}
+
+// ============================ دارایی ثابت ============================
+
+/// <summary>گروه‌های دارایی ثابت.</summary>
+public interface IFixedAssetCategoryService
+{
+    Task<List<FixedAssetCategory>> GetAllAsync();
+    Task<FixedAssetCategory> SaveAsync(FixedAssetCategory dto);
+    Task DeleteAsync(int id);
+}
+
+/// <summary>دارایی‌های ثابت.</summary>
+public interface IFixedAssetService
+{
+    Task<List<FixedAsset>> GetAllAsync(FixedAssetStatus? status = null, int? categoryId = null, string? search = null);
+    Task<FixedAsset> GetAsync(int id);
+    Task<FixedAsset> SaveAsync(FixedAsset dto);
+    Task DeleteAsync(int id);
+}
+
+/// <summary>اجرای استهلاک دارایی‌ها.</summary>
+public interface IFixedAssetRunService
+{
+    Task<List<FixedAssetDepreciationRun>> GetAllAsync();
+    Task<FixedAssetDepreciationRun> RunAsync(FixedAssetDepreciationRequest req);
+    Task<FixedAssetDepreciationRun?> PostToAccountingAsync(int id);
+    Task DeleteAsync(int id);
+}
+
+// ============================ بودجه ============================
+
+/// <summary>بودجه و کنترل بودجه.</summary>
+public interface IBudgetService
+{
+    Task<List<Budget>> GetAllAsync(bool activeOnly = false);
+    Task<Budget> GetAsync(int id);
+    Task<Budget> SaveAsync(Budget dto);
+    Task DeleteAsync(int id);
+
+    Task<List<BudgetTransaction>> GetTransactionsAsync(int budgetId, int? budgetItemId = null);
+    Task<BudgetTransaction> AddTransactionAsync(BudgetTransaction dto);
+    Task DeleteTransactionAsync(int id);
+
+    Task<BudgetDashboard> GetDashboardAsync();
+}

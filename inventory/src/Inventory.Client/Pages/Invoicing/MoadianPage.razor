@@ -1,0 +1,177 @@
+@page "/moadian"
+@using Microsoft.AspNetCore.Components
+@inject IMoadianClientService MoadianSvc
+@inject IToastService Toast
+@inject NavigationManager Nav
+
+<PageTitle>سامانه مودیان</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>سامانه مودیان <span class='badge @(dash.IsSimulation ? "bg-warning text-dark" : "bg-success")'>@(dash.IsSimulation ? "حالت شبیه‌سازی" : "اتصال عملیاتی")</span></h1>
+        <p class="lead">فاکتور الکترونیکی، ارسال به سامانه و چاپگر مالی</p>
+    </div>
+    <div class="ms-auto">
+        <button class="btn btn-success me-2" @onclick="SendQueue" disabled="@sending">
+            <i class="bi bi-cloud-arrow-up"></i> ارسال صف @(sending ? "..." : "")
+        </button>
+        <button class="btn btn-primary" @onclick='() => Nav.NavigateTo("/moadian/invoices")'>
+            <i class="bi bi-plus-lg"></i> فاکتور جدید
+        </button>
+    </div>
+</div>
+
+<!-- کارت‌های آماری -->
+<div class="row g-3 mb-3">
+    <div class="col-6 col-lg-2">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">کل فاکتورها</div>
+            <div class="stat-value num">@dash.TotalCount.Num()</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">پیش‌نویس</div>
+            <div class="stat-value num text-secondary">@dash.DraftCount.Num()</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">در صف</div>
+            <div class="stat-value num text-warning">@dash.QueuedCount.Num()</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">ارسال‌شده</div>
+            <div class="stat-value num text-success">@dash.SentCount.Num()</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">ناموفق/برگشتی</div>
+            <div class="stat-value num text-danger">@(dash.FailedCount + dash.ReturnedCount).Num()</div>
+        </div></div>
+    </div>
+    <div class="col-6 col-lg-2">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">فروشنده</div>
+            <div class="stat-value fs-6 pt-1">@(dash.SellerName ?? "—")</div>
+            <div class="fs-8 text-muted" dir="ltr">@(dash.TaxId ?? "")</div>
+        </div></div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-4">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">جمع خالص فاکتورها</div>
+            <div class="stat-value num text-primary">@dash.NetTotal.Money()</div>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">مالیات بر ارزش افزوده</div>
+            <div class="stat-value num text-warning">@dash.VatTotal.Money()</div>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card"><div class="card-body">
+            <div class="stat-label">ارسال خودکار (هر)</div>
+            <div class="stat-value num">@dash.AutoSendMinutes @(dash.AutoSendMinutes == 1 ? "دقیقه" : "دقیقه")</div>
+        </div></div>
+    </div>
+</div>
+
+<!-- آخرین مشکلات -->
+<div class="card mb-3">
+    <div class="card-header fw-bold">آخرین خطاها و برگشت‌ها</div>
+    <div class="card-body p-0">
+        @if (dash.RecentIssues.Count == 0)
+        {
+            <div class="p-3 text-muted">موردی وجود ندارد — همه‌چیز عالی است. ✅</div>
+        }
+        else
+        {
+            <table class="table table-sm mb-0">
+                <thead><tr><th>شماره</th><th>نوع</th><th>وضعیت</th><th>پیام خطا</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var inv in dash.RecentIssues)
+                    {
+                        <tr>
+                            <td class="num">@inv.Number</td>
+                            <td>@KindFa(inv.Kind)</td>
+                            <td>@StatusBadge(inv.Status)</td>
+                            <td class="text-danger small">@(inv.ErrorMessage ?? "")</td>
+                            <td><button class="btn btn-sm btn-outline-primary" @onclick='() => Nav.NavigateTo($"/moadian/invoices?f={inv.Id}")'>مشاهده</button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header fw-bold">راهنمای سریع</div>
+    <div class="card-body">
+        <ol class="mb-0 fs-14">
+            <li>از «تنظیمات مودیان» شماره مالیاتی، فروشنده و (برای اتصال واقعی) توکن و آدرس سرویس را ثبت کنید.</li>
+            <li>فاکتور را به‌صورت دستی یا از روی فاکتور فروش/خرید قطعی سیستم بسازید؛ سپس «ارسال به صف» بزنید.</li>
+            <li>سرویس پس‌زمینه با فاصله‌ی تنظیم‌شده، صف را به سامانه می‌فرستد (یا در حالت شبیه‌سازی محلی).</li>
+            <li>رسید چاپی از دکمه «چاپ» روی هر فاکتور (چاپگر مالی حرارتی).</li>
+            <li>کدهای CPC از بخش «شناسه کالا/خدمت» قابل ویرایش است.</li>
+        </ol>
+    </div>
+</div>
+
+@code {
+    private MoadianDashboard dash = new();
+    private bool sending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { dash = await MoadianSvc.GetDashboardAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SendQueue()
+    {
+        sending = true;
+        try
+        {
+            var sent = await MoadianSvc.SendPendingAsync();
+            Toast.Success(sent > 0 ? $"{sent.Num()} فاکتور ارسال شد." : "صف خالی است.");
+            dash = await MoadianSvc.GetDashboardAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { sending = false; }
+    }
+
+    private static string KindFa(MoadianInvoiceKind k) => k switch
+    {
+        MoadianInvoiceKind.Sale => "فروش",
+        MoadianInvoiceKind.SaleReturn => "فروش برگشتی",
+        MoadianInvoiceKind.Purchase => "خرید",
+        MoadianInvoiceKind.PurchaseReturn => "خرید برگشتی",
+        _ => "پیش‌فاکتور"
+    };
+
+    private static RenderFragment? StatusBadge(MoadianInvoiceStatus s) => builder =>
+    {
+        var (cls, text) = s switch
+        {
+            MoadianInvoiceStatus.Draft => ("bg-secondary", "پیش‌نویس"),
+            MoadianInvoiceStatus.Queued => ("bg-warning text-dark", "در صف"),
+            MoadianInvoiceStatus.Sending => ("bg-info text-dark", "در حال ارسال"),
+            MoadianInvoiceStatus.Sent => ("bg-success", "ارسال‌شده"),
+            MoadianInvoiceStatus.Failed => ("bg-danger", "ناموفق"),
+            MoadianInvoiceStatus.Returned => ("bg-danger", "برگشتی"),
+            _ => ("bg-dark", "ابطال‌شده")
+        };
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", $"badge {cls}");
+        builder.AddContent(2, text);
+        builder.CloseElement();
+    };
+}

@@ -38,7 +38,14 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IWarehousingService, WarehousingService>(); // ماژول انبارداری
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAccountingService, Inventory.Api.Services.Accounting.AccountingService>(); // ماژول حسابداری
+builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAnalyticalDimensionService, Inventory.Api.Services.Accounting.AnalyticalDimensionService>(); // ابعاد تحلیلی (مرکز هزینه/شعبه)
+builder.Services.AddScoped<Inventory.Api.Services.Accounting.IFixedAssetService, Inventory.Api.Services.Accounting.FixedAssetService>(); // دارایی ثابت و استهلاک
+builder.Services.AddScoped<Inventory.Api.Services.Accounting.IBudgetService, Inventory.Api.Services.Accounting.BudgetService>(); // بودجه و کنترل بودجه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IInvoicingService, Inventory.Api.Services.Invoicing.InvoicingService>(); // ماژول فاکتور
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianService, Inventory.Api.Services.Invoicing.MoadianService>(); // سامانه مودیان (فاکتور الکترونیکی)
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IFiscalPrinterService, Inventory.Api.Services.Invoicing.FiscalPrinterService>(); // چاپگر مالی
+builder.Services.AddSingleton<Inventory.Api.Services.Invoicing.MoadianAutoSender>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.Invoicing.MoadianAutoSender>()); // ارسال خودکار صف مودیان
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
@@ -141,6 +148,7 @@ builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs
 builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddHttpClient("moadian", c => c.Timeout = TimeSpan.FromSeconds(30)); // سرویس مودیان (فاکتور الکترونیکی)
 builder.Services.AddSingleton<HardwareMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HardwareMonitor>());
 

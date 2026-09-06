@@ -149,6 +149,10 @@ public class AccVoucherLine
     public int? ProjectId { get; set; }
     public string? ProjectName { get; set; }
 
+    /// <summary>بُعد تحلیلی (مرکز هزینه/شعبه) — اختیاری</summary>
+    public int? DimensionValueId { get; set; }
+    public string? DimensionValueName { get; set; }
+
     public string? Description { get; set; }
 
     public decimal Debit { get; set; }
@@ -230,6 +234,7 @@ public class AccLedgerRow
     public string AccountCode { get; set; } = "";
     public string AccountName { get; set; } = "";
     public string? PartyName { get; set; }
+    public string? DimensionValueName { get; set; }
     public string? Description { get; set; }
 
     public decimal Debit { get; set; }
@@ -359,4 +364,189 @@ public class AccDashboard
     public decimal Profit => IncomeTotal - ExpenseTotal;
 
     public bool IsBalanced => TotalDebit == TotalCredit;
+}
+
+// ============================ ۶) ابعاد تحلیلی ============================
+
+/// <summary>بُعد تحلیلی — مرکز هزینه / شعبه</summary>
+public class AccDimension
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public bool IsSystem { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+    public string? Description { get; set; }
+    public int ValueCount { get; set; }
+}
+
+/// <summary>مقدار یک بُعد (نشان می‌دهد در کدام مرکز/شعبه)</summary>
+public class AccDimensionValue
+{
+    public int Id { get; set; }
+    public int DimensionId { get; set; }
+    public string? DimensionName { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int? ParentId { get; set; }
+    public string? ParentName { get; set; }
+    public string CodeTree { get; set; } = "";
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+    public string? Description { get; set; }
+}
+
+// ============================ ۷) دارایی ثابت ============================
+
+/// <summary>گروه دارایی ثابت</summary>
+public class FixedAssetCategory
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public int DefaultUsefulLifeMonths { get; set; } = 60;
+    public DepreciationMethod DefaultMethod { get; set; } = DepreciationMethod.StraightLine;
+    public decimal DefaultResidualPercent { get; set; } = 0;
+    public int? DepreciationAccAccountId { get; set; }
+    public int? ExpenseAccAccountId { get; set; }
+    public int? AccumulatedAccAccountId { get; set; }
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+    public string? Description { get; set; }
+    public int AssetCount { get; set; }
+}
+
+/// <summary>دارایی ثابت</summary>
+public class FixedAsset
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? EnName { get; set; }
+    public int CategoryId { get; set; }
+    public string? CategoryName { get; set; }
+    public string? Location { get; set; }
+    public string? Vendor { get; set; }
+    public string? SerialNo { get; set; }
+    public DateTime PurchaseDate { get; set; }
+    public decimal PurchasePrice { get; set; }
+    public decimal SalvageValue { get; set; }
+    public int UsefulLifeMonths { get; set; } = 60;
+    public DepreciationMethod DepreciationMethod { get; set; } = DepreciationMethod.StraightLine;
+    public FixedAssetStatus Status { get; set; } = FixedAssetStatus.Active;
+    public int? DimensionValueId { get; set; }
+    public string? DimensionValueName { get; set; }
+    public int? AssetAccAccountId { get; set; }
+    public int? ExpenseAccAccountId { get; set; }
+    public int? AccumulatedAccAccountId { get; set; }
+    public decimal AccumulatedDepreciation { get; set; }
+    public decimal MonthlyDepreciation => UsefulLifeMonths <= 0 ? 0 : Math.Round((PurchasePrice - SalvageValue) / UsefulLifeMonths, 2);
+    public decimal BookValue => PurchasePrice - AccumulatedDepreciation;
+    public bool IsActive { get; set; } = true;
+    public string? Notes { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>اجرای استهلاک ماهانه</summary>
+public class FixedAssetDepreciationRun
+{
+    public int Id { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public DateTime RunDate { get; set; }
+    public decimal TotalAmount { get; set; }
+    public int? VoucherId { get; set; }
+    public bool IsPosted { get; set; }
+    public string? CreatedBy { get; set; }
+    public string? Notes { get; set; }
+    public List<FixedAssetDepreciationLine> Lines { get; set; } = new();
+}
+
+/// <summary>سطر استهلاک</summary>
+public class FixedAssetDepreciationLine
+{
+    public int Id { get; set; }
+    public int RunId { get; set; }
+    public int AssetId { get; set; }
+    public string? AssetCode { get; set; }
+    public string? AssetName { get; set; }
+    public decimal Amount { get; set; }
+    public decimal AccumulatedAfter { get; set; }
+    public decimal BookValueAfter { get; set; }
+}
+
+/// <summary>درخواست اجرای استهلاک</summary>
+public class FixedAssetDepreciationRequest
+{
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public string? Notes { get; set; }
+}
+
+// ============================ ۸) بودجه و کنترل بودجه ============================
+
+/// <summary>بودجه</summary>
+public class Budget
+{
+    public int Id { get; set; }
+    public int FiscalYearId { get; set; }
+    public string? FiscalYearTitle { get; set; }
+    public int? DimensionValueId { get; set; }
+    public string? DimensionValueName { get; set; }
+    public string Name { get; set; } = "";
+    public decimal TotalAmount { get; set; }
+    public decimal CommittedAmount { get; set; }
+    public decimal ActualAmount { get; set; }
+    public decimal Available => TotalAmount - CommittedAmount - ActualAmount;
+    public decimal UsedPercent => TotalAmount <= 0 ? 0 : Math.Round((CommittedAmount + ActualAmount) * 100m / TotalAmount, 1);
+    public bool IsMaster { get; set; }
+    public bool IsActive { get; set; } = true;
+    public string? Description { get; set; }
+    public List<BudgetItem> Items { get; set; } = new();
+}
+
+/// <summary>قلم بودجه</summary>
+public class BudgetItem
+{
+    public int Id { get; set; }
+    public int BudgetId { get; set; }
+    public int AccAccountId { get; set; }
+    public string? AccAccountCode { get; set; }
+    public string? AccAccountName { get; set; }
+    public decimal PlannedAmount { get; set; }
+    public decimal CommittedAmount { get; set; }
+    public decimal ActualAmount { get; set; }
+    public decimal Available => PlannedAmount - CommittedAmount - ActualAmount;
+}
+
+/// <summary>رویداد بودجه (تعهد/مصرف)</summary>
+public class BudgetTransaction
+{
+    public int Id { get; set; }
+    public int BudgetId { get; set; }
+    public string? BudgetName { get; set; }
+    public int BudgetItemId { get; set; }
+    public BudgetTransactionType Type { get; set; }
+    public int? VoucherId { get; set; }
+    public int? SourceId { get; set; }
+    public string? SourceTitle { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime Date { get; set; }
+    public string? Description { get; set; }
+}
+
+/// <summary>داشبورد بودجه</summary>
+public class BudgetDashboard
+{
+    public int BudgetCount { get; set; }
+    public decimal TotalPlanned { get; set; }
+    public decimal TotalCommitted { get; set; }
+    public decimal TotalActual { get; set; }
+
+    /// <summary>بودجه‌های در آستانه‌ی اتمام (بالای ۸۰٪ مصرف)</summary>
+    public List<Budget> NearLimit { get; set; } = new();
+
+    /// <summary>بودجه‌های تجاوز کرده</summary>
+    public List<Budget> OverLimit { get; set; } = new();
 }
