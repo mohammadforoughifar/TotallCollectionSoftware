@@ -12,8 +12,8 @@
     <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2"
          style="background:linear-gradient(135deg,#6366f1,#0ea5e9);color:#fff;border-radius:14px 14px 0 0;">
         <span>
-            <i class="bi @(statusFilter == "inactive" ? "bi-archive-fill" : "bi-folder2-open") me-2"></i>
-            @(statusFilter == "inactive" ? "مدارک غیرفعال" : "آرشیو اسناد و مدارک")
+            <i class="bi @(statusFilter switch { "inactive" => "bi-archive-fill", "deleted" => "bi-trash3", _ => "bi-folder2-open" }) me-2"></i>
+            @(statusFilter switch { "inactive" => "مدارک غیرفعال", "deleted" => "سطل بازیافت", _ => "آرشیو اسناد و مدارک" })
             <span class="badge bg-light text-dark ms-1">@documents.Count.Num()</span>
         </span>
         <div class="d-flex gap-2">
@@ -27,7 +27,7 @@
                     <i class="bi bi-folder-plus"></i> پوشه جدید
                 </button>
                 <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#065f46;"
-                        data-hotkey="f2" title="کلید میانبر: F2" @onclick="OpenNewDoc" disabled="@(!CanWriteHere || statusFilter == "inactive")">
+                        data-hotkey="f2" title="کلید میانبر: F2" @onclick="OpenNewDoc" disabled="@(!CanWriteHere || statusFilter != "active")">
                     <i class="bi bi-file-earmark-plus"></i> مدرک جدید (F2)
                 </button>
             }
@@ -77,6 +77,14 @@
                         <span class="badge bg-secondary ms-auto">@inactiveCount.Num()</span>
                     }
                 </div>
+                <div class="ftree-item @(statusFilter == "deleted" ? "active" : "")" @onclick="ShowTrash">
+                    <i class="bi bi-trash3 text-danger"></i>
+                    <span class="fw-500 text-secondary">سطل بازیافت</span>
+                    @if (trashCount > 0)
+                    {
+                        <span class="badge bg-danger-subtle text-danger ms-auto">@trashCount.Num()</span>
+                    }
+                </div>
                 <hr class="my-1" />
                 @if (loadingFolders)
                 {
@@ -115,7 +123,16 @@
                             </button>
                         </div>
                     }
-                    @if (IsManager)
+                    @if (statusFilter == "deleted" && IsManager && documents.Count > 0)
+                    {
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-danger" @onclick="OpenPurgeAll">
+                                <i class="bi bi-x-octagon"></i>
+                                <span class="ms-1">خالی کردن سطل</span>
+                            </button>
+                        </div>
+                    }
+                    @if (IsManager && statusFilter != "deleted")
                     {
                         <div class="col-auto">
                             <button class="btn btn-sm btn-outline-secondary" @onclick="RunExpiryCheck"
@@ -171,7 +188,7 @@
                                     <th class="text-center">ورژن فعال</th>
                                     <th class="text-center">وضعیت ورژن</th>
                                     <th class="text-center">وضعیت مدرک</th>
-                                    <th>انقضا</th>
+                                    <th>@(statusFilter == "deleted" ? "حذف شده در" : "انقضا")</th>
                                     <th class="text-end">عملیات</th>
                                 </tr>
                             </thead>
@@ -209,29 +226,62 @@
                                                 <span class="badge bg-secondary" title="@d.DeactivateReason">غیرفعال</span>
                                             }
                                         </td>
-                                        <td class="num @(d.IsExpired ? "text-danger fw-700" : "")">
-                                            @(d.ExpireDate?.ToFa() ?? "—")
-                                            @if (d.ExpireDate.HasValue)
-                                            {
-                                                <span class="badge @ExpiryClass(d) ms-1" title="@ExpiryTitle(d)">@ExpiryText(d)</span>
-                                            }
-                                        </td>
+                                        @if (statusFilter == "deleted")
+                                        {
+                                            <td class="num fs-8 text-muted">
+                                                @(d.DeletedAt?.ToFa() ?? "—")
+                                                @if (!string.IsNullOrEmpty(d.DeletedByName))
+                                                {
+                                                    <div class="fs-9">توسط @d.DeletedByName</div>
+                                                }
+                                            </td>
+                                        }
+                                        else
+                                        {
+                                            <td class="num @(d.IsExpired ? "text-danger fw-700" : "")">
+                                                @(d.ExpireDate?.ToFa() ?? "—")
+                                                @if (d.ExpireDate.HasValue)
+                                                {
+                                                    <span class="badge @ExpiryClass(d) ms-1" title="@ExpiryTitle(d)">@ExpiryText(d)</span>
+                                                }
+                                            </td>
+                                        }
                                         <td class="text-end">
-                                            <button class="btn btn-sm btn-light" title="مشاهده"
-                                                    @onclick="() => GoDoc(d.Id)"
-                                                    disabled="@(d.MyLevel < DocAccessLevelDto.Read)">
-                                                <i class="bi bi-eye text-primary"></i>
-                                            </button>
-                                            @if (d.MyLevel >= DocAccessLevelDto.Full)
+                                            @if (statusFilter == "deleted")
                                             {
-                                                <button class="btn btn-sm btn-light"
-                                                        title="@(d.IsActive ? "غیرفعال کردن مدرک" : "فعال کردن مدرک")"
-                                                        @onclick="() => OpenToggleActive(d)">
-                                                    <i class="bi @(d.IsActive ? "bi-toggle-on text-success" : "bi-toggle-off text-secondary")"></i>
+                                                @if (d.MyLevel >= DocAccessLevelDto.Full)
+                                                {
+                                                    <button class="btn btn-sm btn-light" title="بازگرداندن مدرک"
+                                                            @onclick="() => OpenRestore(d)">
+                                                        <i class="bi bi-arrow-counterclockwise text-success"></i>
+                                                    </button>
+                                                }
+                                                @if (IsManager)
+                                                {
+                                                    <button class="btn btn-sm btn-light" title="حذف قطعی و برگشت‌ناپذیر"
+                                                            @onclick="() => OpenPurge(d)">
+                                                        <i class="bi bi-x-octagon-fill text-danger"></i>
+                                                    </button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-light" title="مشاهده"
+                                                        @onclick="() => GoDoc(d.Id)"
+                                                        disabled="@(d.MyLevel < DocAccessLevelDto.Read)">
+                                                    <i class="bi bi-eye text-primary"></i>
                                                 </button>
-                                                <button class="btn btn-sm btn-light" title="حذف" @onclick="() => DeleteDoc(d)">
-                                                    <i class="bi bi-trash text-danger"></i>
-                                                </button>
+                                                @if (d.MyLevel >= DocAccessLevelDto.Full)
+                                                {
+                                                    <button class="btn btn-sm btn-light"
+                                                            title="@(d.IsActive ? "غیرفعال کردن مدرک" : "فعال کردن مدرک")"
+                                                            @onclick="() => OpenToggleActive(d)">
+                                                        <i class="bi @(d.IsActive ? "bi-toggle-on text-success" : "bi-toggle-off text-secondary")"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-light" title="انتقال به سطل بازیافت" @onclick="() => DeleteDoc(d)">
+                                                        <i class="bi bi-trash text-danger"></i>
+                                                    </button>
+                                                }
                                             }
                                         </td>
                                     </tr>
@@ -341,6 +391,67 @@
     </Footer>
 </Modal>
 
+@* ==================== مودال بازگرداندن از سطل بازیافت ==================== *@
+<Modal Visible="showRestore" Title="بازگرداندن مدرک" OnClose="() => showRestore = false">
+    <ChildContent>
+        @if (trashTarget is not null)
+        {
+            <p class="mb-2">مدرک <b class="num">@trashTarget.Code</b> — @trashTarget.Title</p>
+            <div class="alert alert-success fs-8 mb-0">
+                این مدرک از سطل بازیافت خارج و دوباره در آرشیو قابل دسترس می‌شود.
+                @if (trashTarget.IsActive == false)
+                {
+                    <div class="mt-1">توجه: مدرک در وضعیت <b>غیرفعال</b> بازمی‌گردد.</div>
+                }
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showRestore = false">انصراف (Esc)</button>
+        <button class="btn btn-success" @onclick="DoRestore" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-arrow-counterclockwise ms-1"></i> بازگردان
+        </button>
+    </Footer>
+</Modal>
+
+@* ==================== مودال حذف قطعی ==================== *@
+<Modal Visible="showPurge" Title="@(purgeAll ? "خالی کردن سطل بازیافت" : "حذف قطعی مدرک")"
+       OnClose="() => showPurge = false">
+    <ChildContent>
+        <div class="alert alert-danger fs-8">
+            <i class="bi bi-exclamation-octagon-fill ms-1"></i>
+            <b>این عملیات برگشت‌ناپذیر است.</b>
+        </div>
+        @if (purgeAll)
+        {
+            <p class="mb-2">
+                همه <b class="num">@trashCount.Num()</b> مدرک داخل سطل بازیافت،
+                به‌همراه ورژن‌ها، پیوست‌ها، لینک‌ها و تاریخچه‌شان برای همیشه حذف می‌شوند.
+            </p>
+        }
+        else if (trashTarget is not null)
+        {
+            <p class="mb-2">
+                مدرک <b class="num">@trashTarget.Code</b> — @trashTarget.Title
+                به‌همراه <b class="num">@trashTarget.VersionCount.Num()</b> ورژن،
+                پیوست‌ها، لینک‌ها و تاریخچه‌اش برای همیشه حذف می‌شود.
+            </p>
+        }
+        <label class="form-label fs-8 mb-1">برای تایید عبارت <b>حذف قطعی</b> را بنویسید:</label>
+        <input class="form-control form-control-sm" @bind="purgeConfirm" @bind:event="oninput"
+               placeholder="حذف قطعی" />
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showPurge = false">انصراف (Esc)</button>
+        <button class="btn btn-danger" @onclick="DoPurge"
+                disabled="@(saving || purgeConfirm.Trim() != "حذف قطعی")">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-x-octagon ms-1"></i> حذف قطعی
+        </button>
+    </Footer>
+</Modal>
+
 <style>
     .ftree-item { display:flex; align-items:center; gap:.4rem; padding:.35rem .5rem; border-radius:8px; cursor:pointer; font-size:.85rem; }
     .ftree-item:hover { background:#f1f5f9; }
@@ -362,6 +473,12 @@
     private string? expiryFilter;                 // null | "expiring" | "expired"
     private DocExpirySummaryDto expirySummary = new() { ExpiringDays = 60 };
     private bool checkingExpiry;
+
+    // ---------- سطل بازیافت ----------
+    private int trashCount;
+    private bool showRestore, showPurge, purgeAll;
+    private DocumentListDto? trashTarget;
+    private string purgeConfirm = "";
 
     // مودال تغییر وضعیت
     private bool showToggle;
@@ -413,6 +530,7 @@
             documents = await Svc.GetDocumentsAsync(selectedFolderId, search, false, statusFilter, expiryFilter);
             // شمارنده مدارک غیرفعال برای زیرمنو
             inactiveCount = (await Svc.GetDocumentsAsync(null, null, false, "inactive")).Count;
+            trashCount = (await Svc.GetDocumentsAsync(null, null, false, "deleted")).Count;
             // بج‌های منقضی / رو به انقضا
             expirySummary = await Svc.GetExpirySummaryAsync() ?? expirySummary;
         }
@@ -442,6 +560,68 @@
         statusFilter = "inactive";
         expiryFilter = null;
         await LoadDocs();
+    }
+
+    private async Task ShowTrash()
+    {
+        selectedFolderId = null;
+        statusFilter = "deleted";
+        expiryFilter = null;
+        await LoadDocs();
+    }
+
+    // ---------- بازگرداندن / حذف قطعی ----------
+    private void OpenRestore(DocumentListDto d)
+    {
+        trashTarget = d;
+        showRestore = true;
+    }
+
+    private async Task DoRestore()
+    {
+        if (trashTarget is null) return;
+        saving = true;
+        try
+        {
+            var msg = await Svc.RestoreDocumentAsync(trashTarget.Id);
+            Toast.Success(msg);
+            showRestore = false;
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private void OpenPurge(DocumentListDto d)
+    {
+        trashTarget = d;
+        purgeAll = false;
+        purgeConfirm = "";
+        showPurge = true;
+    }
+
+    private void OpenPurgeAll()
+    {
+        trashTarget = null;
+        purgeAll = true;
+        purgeConfirm = "";
+        showPurge = true;
+    }
+
+    private async Task DoPurge()
+    {
+        saving = true;
+        try
+        {
+            var msg = purgeAll
+                ? await Svc.EmptyTrashAsync()
+                : await Svc.PurgeDocumentAsync(trashTarget!.Id);
+            Toast.Success(msg);
+            showPurge = false;
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
     }
 
     private async Task ShowExpiring()
@@ -656,9 +836,10 @@
 
     private async Task DeleteDoc(DocumentListDto d)
     {
-        var ok = await JS.InvokeAsync<bool>("confirm", $"آیا از حذف مدرک «{d.Code} — {d.Title}» مطمئن هستید؟");
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"مدرک «{d.Code} — {d.Title}» به سطل بازیافت منتقل شود؟ بعداً می‌توانید آن را بازگردانید.");
         if (!ok) return;
-        try { await Svc.DeleteDocumentAsync(d.Id); Toast.Success("مدرک حذف شد."); await LoadDocs(); }
+        try { await Svc.DeleteDocumentAsync(d.Id); Toast.Success("مدرک به سطل بازیافت منتقل شد."); await LoadDocs(); }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 

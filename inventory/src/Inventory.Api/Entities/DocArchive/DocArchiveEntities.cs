@@ -143,6 +143,13 @@ public class ArchiveDocument
 
     /// <summary>حذف نرم (soft delete) — از همه لیست‌ها حذف می‌شود</summary>
     public bool IsDeleted { get; set; }
+
+    /// <summary>زمان انتقال به سطل بازیافت</summary>
+    public DateTime? DeletedAt { get; set; }
+
+    /// <summary>کاربری که مدرک را حذف کرد</summary>
+    [MaxLength(150)]
+    public string? DeletedByName { get; set; }
 }
 
 /// <summary>دسترسی مستقیم یک کاربر روی یک مدرک (مکمل دسترسی پوشه — بیشترین سطح برنده است).</summary>

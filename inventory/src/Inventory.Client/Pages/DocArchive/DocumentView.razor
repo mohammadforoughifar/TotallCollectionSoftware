@@ -188,20 +188,52 @@ else
 
         @* ------------------- تاریخچه ------------------- *@
         <div class="card mt-3">
-            <div class="card-header fw-700 fs-8"><i class="bi bi-clock-history ms-1"></i> تاریخچه رویدادها</div>
-            <div class="card-body p-0" style="max-height:320px;overflow:auto;">
-                <table class="table table-sm mb-0 fs-8">
-                    <tbody>
-                        @foreach (var l in doc.Logs)
+            <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span><i class="bi bi-clock-history ms-1"></i> تاریخچه رویدادها</span>
+                <div class="d-flex align-items-center gap-1">
+                    <select class="form-select form-select-sm fs-8" style="width:auto" @bind="logFilter">
+                        <option value="">همه رویدادها (@doc.Logs.Count.Num())</option>
+                        @foreach (var g in doc.Logs.GroupBy(x => x.Action).OrderByDescending(x => x.Count()))
                         {
-                            <tr>
-                                <td style="width:130px" class="num text-muted">@l.CreatedAt.ToFa()</td>
-                                <td style="width:130px">@l.UserName</td>
-                                <td>@l.Detail</td>
-                            </tr>
+                            <option value="@g.Key">@ActionName(g.Key) (@g.Count().Num())</option>
                         }
-                    </tbody>
-                </table>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body p-0" style="max-height:340px;overflow:auto;">
+                @if (FilteredLogs.Count == 0)
+                {
+                    <div class="text-center text-muted py-3 fs-8">رویدادی ثبت نشده است.</div>
+                }
+                else
+                {
+                    <table class="table table-sm table-hover mb-0 fs-8 align-middle">
+                        <tbody>
+                            @foreach (var l in FilteredLogs)
+                            {
+                                <tr>
+                                    <td style="width:118px" class="num text-muted" title="@l.CreatedAt.ToString("yyyy/MM/dd HH:mm:ss")">
+                                        @l.CreatedAt.ToFa()
+                                        <div class="fs-9">@l.CreatedAt.ToString("HH:mm")</div>
+                                    </td>
+                                    <td style="width:108px">
+                                        <span class="badge @ActionClass(l.Action)">@ActionName(l.Action)</span>
+                                    </td>
+                                    <td style="width:112px" class="text-truncate" title="@l.UserName">
+                                        <i class="bi bi-person-circle text-muted ms-1"></i>@l.UserName
+                                    </td>
+                                    <td>
+                                        @l.Detail
+                                        @if (l.VersionId is int vid && VersionNoOf(vid) is int vno)
+                                        {
+                                            <span class="badge bg-light text-secondary ms-1">v@(vno.Num())</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
             </div>
         </div>
     </div>
@@ -417,6 +449,49 @@ else
 
     private bool IsExpired => doc.ExpireDate.HasValue && doc.ExpireDate.Value.Date < DateTime.Today;
     private int? DaysToExpire => doc.ExpireDate.HasValue ? (doc.ExpireDate.Value.Date - DateTime.Today).Days : null;
+
+    // ---------- تاریخچه ----------
+    private string logFilter = "";
+
+    private List<DocLogDto> FilteredLogs =>
+        string.IsNullOrEmpty(logFilter)
+            ? doc.Logs
+            : doc.Logs.Where(l => l.Action == logFilter).ToList();
+
+    private int? VersionNoOf(int versionId) =>
+        doc.Versions.FirstOrDefault(v => v.Id == versionId)?.VersionNo;
+
+    private static string ActionName(string a) => a switch
+    {
+        "Create" => "ایجاد",
+        "Update" => "ویرایش",
+        "NewVersion" => "ورژن جدید",
+        "Approve" => "تایید",
+        "Approved" => "تایید نهایی",
+        "Reject" => "رد",
+        "Activate" => "فعال‌سازی ورژن",
+        "Link" => "لینک",
+        "Unlink" => "حذف لینک",
+        "RelatedUpdate" => "مدرک مرتبط",
+        "Deactivate" => "غیرفعال‌سازی",
+        "Permissions" => "دسترسی‌ها",
+        "ExpiryAlert" => "هشدار انقضا",
+        "Delete" => "حذف",
+        "Restore" => "بازگردانی",
+        _ => a
+    };
+
+    private static string ActionClass(string a) => a switch
+    {
+        "Create" => "bg-primary",
+        "NewVersion" => "bg-info text-dark",
+        "Approved" or "Approve" or "Activate" or "Restore" => "bg-success",
+        "Reject" or "Delete" => "bg-danger",
+        "Deactivate" or "ExpiryAlert" => "bg-warning text-dark",
+        "Permissions" => "bg-dark",
+        "Link" or "Unlink" or "RelatedUpdate" => "bg-secondary",
+        _ => "bg-light text-secondary"
+    };
 
     private List<LookupItem> FolderLookup =>
         folders.Select(f => new LookupItem { Id = f.Id, Name = f.Name }).ToList();
