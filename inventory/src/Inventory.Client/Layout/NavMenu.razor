@@ -215,7 +215,9 @@
     @if (Auth.HasModule("Products") || Auth.HasModule("Warehouses") || Auth.HasModule("InvDocs") || Auth.HasModule("InvDocTypes")
          || Auth.HasModule("AccAccounts") || Auth.HasModule("AccVouchers") || Auth.HasModule("FacInvoices")
          || Auth.HasModule("TrsVouchers") || Auth.HasModule("TrsAccounts") || Auth.HasModule("TrsCheques")
-         || Auth.HasModule("StkSessions") || Auth.HasModule("StkBarcodes"))
+         || Auth.HasModule("StkSessions") || Auth.HasModule("StkBarcodes")
+         || Auth.HasModule("AccDimensions") || Auth.HasModule("FixedAssets") || Auth.HasModule("Budgets")
+         || Auth.HasModule("Moadian") || Auth.HasModule("FiscalPrinter"))
     {
         <div class="nav-group group-erp">
             <button type="button" class="nav-section-title nav-toggle @(gErp ? "open" : "")" @onclick="() => gErp = !gErp">
