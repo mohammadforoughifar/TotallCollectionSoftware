@@ -109,6 +109,17 @@ public class AppDbContext : DbContext
     public DbSet<OutgoingPishnevisLetter> OutgoingPishnevisLetters => Set<OutgoingPishnevisLetter>();
     public DbSet<OutgoingLetterSigner> OutgoingLetterSigners => Set<OutgoingLetterSigner>();
 
+    // ==================== آرشیو اسناد و مدارک (DocArchive) ====================
+    public DbSet<DocFolder> DocFolders => Set<DocFolder>();
+    public DbSet<DocFolderPermission> DocFolderPermissions => Set<DocFolderPermission>();
+    public DbSet<ArchiveDocument> Documents => Set<ArchiveDocument>();
+    public DbSet<DocumentPermission> DocumentPermissions => Set<DocumentPermission>();
+    public DbSet<DocumentApprover> DocumentApprovers => Set<DocumentApprover>();
+    public DbSet<DocumentVersion> DocumentVersions => Set<DocumentVersion>();
+    public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
+    public DbSet<DocCartableTask> DocCartableTasks => Set<DocCartableTask>();
+    public DbSet<DocumentLog> DocumentLogs => Set<DocumentLog>();
+
     // ==================== RBAC ====================
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
@@ -127,6 +138,20 @@ public class AppDbContext : DbContext
         mb.Entity<Transaction>().HasIndex(t => t.Type);
         mb.Entity<Transaction>().HasIndex(t => t.Date);
         mb.Entity<TransactionLine>().HasIndex(l => l.ProductId);
+
+        // ==================== آرشیو اسناد و مدارک ====================
+        // کد مدرک در کل سیستم یکتاست
+        mb.Entity<ArchiveDocument>().HasIndex(d => d.Code).IsUnique();
+        mb.Entity<ArchiveDocument>().HasIndex(d => d.FolderId);
+        mb.Entity<ArchiveDocument>().HasIndex(d => d.ExpireDate);
+        mb.Entity<DocFolder>().HasIndex(f => f.ParentId);
+        mb.Entity<DocFolderPermission>().HasIndex(p => new { p.FolderId, p.UserId }).IsUnique();
+        mb.Entity<DocumentPermission>().HasIndex(p => new { p.DocumentId, p.UserId }).IsUnique();
+        mb.Entity<DocumentVersion>().HasIndex(v => new { v.DocumentId, v.VersionNo }).IsUnique();
+        mb.Entity<DocumentApprover>().HasIndex(a => new { a.DocumentId, a.VersionId });
+        mb.Entity<DocumentLink>().HasIndex(l => new { l.DocumentId, l.LinkedDocumentId }).IsUnique();
+        mb.Entity<DocCartableTask>().HasIndex(t => new { t.UserId, t.Status });
+        mb.Entity<DocumentLog>().HasIndex(l => l.DocumentId);
 
         // ---------- امنیت حضور و غیاب: ایندکس‌های دستگاه‌ها و هشدارها ----------
         // هر کاربر برای هر Device ID فقط یک رکورد دستگاه دارد (دستگاه یکتا)
