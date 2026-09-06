@@ -13,4 +13,7 @@ public interface IApiClient
 
     /// <summary>ساخت آدرس کامل از مسیر نسبی API (برای لینک دانلود).</summary>
     string BuildUrl(string path);
+
+    /// <summary>دریافت فایل باینری (PDF/Excel) به‌همراه نام پیشنهادی سرور.</summary>
+    Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path);
 }

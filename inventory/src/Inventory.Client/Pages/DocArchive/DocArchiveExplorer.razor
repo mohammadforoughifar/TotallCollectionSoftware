@@ -123,6 +123,12 @@
                             </button>
                         </div>
                     }
+                    <div class="col-auto">
+                        <ExportButtons ReportKey="@(expiryFilter is null ? "doc-list" : "doc-expiring")"
+                                       ShowText="false"
+                                       Query="@(new { status = statusFilter, search = search,
+                                                      id = selectedFolderId })" />
+                    </div>
                     @if (statusFilter == "deleted" && IsManager && documents.Count > 0)
                     {
                         <div class="col-auto">

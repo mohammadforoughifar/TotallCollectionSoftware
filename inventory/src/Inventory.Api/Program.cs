@@ -73,6 +73,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Serv
 builder.Services.AddSingleton<FileStore>();
 // نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
 builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
+// گزارش‌های خروجی آرشیو اسناد (نیازمند فیلتر دسترسی کاربر)
+builder.Services.AddScoped<Inventory.Api.Services.Export.IDocArchiveExportService,
+                           Inventory.Api.Services.Export.DocArchiveExportService>();
 builder.Services.AddSingleton<UserPhotoService>();
 
 // ================== پیوست‌های پروژه — رمزنگاری AES روی دیسک ==================
