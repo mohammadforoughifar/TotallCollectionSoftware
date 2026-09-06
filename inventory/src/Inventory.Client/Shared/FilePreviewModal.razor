@@ -1,0 +1,182 @@
+@* ================== مودال پیش‌نمایش فایل ==================
+   نمایش PDF / عکس / متن داخل برنامه بدون دانلود.
+   استفاده: <FilePreviewModal @ref="preview" /> سپس preview.ShowAsync(id, fileName, contentType, canDownload)
+*@
+@inject IAuthState Auth
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@if (visible)
+{
+    <div class="fpv-backdrop" @onclick="Close">
+        <div class="fpv-dialog" @onclick:stopPropagation="true">
+            <div class="fpv-head">
+                <div class="text-truncate">
+                    <i class="bi @FileIcon ms-1"></i>
+                    <b class="fs-8">@fileName</b>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    @if (canDownload)
+                    {
+                        <a class="btn btn-sm btn-light" href="@DownloadUrl" target="_blank" title="دانلود فایل">
+                            <i class="bi bi-download text-primary"></i>
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="badge bg-warning text-dark fs-9" title="سطح دسترسی شما فقط مشاهده است">
+                            <i class="bi bi-eye ms-1"></i> فقط مشاهده
+                        </span>
+                    }
+                    <button class="btn btn-sm btn-light" @onclick="Close" title="بستن (Esc)">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="fpv-body">
+                @if (loading)
+                {
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary"></div>
+                        <div class="fs-8 text-muted mt-2">در حال بارگذاری…</div>
+                    </div>
+                }
+                else if (error is not null)
+                {
+                    <div class="alert alert-danger m-3 fs-8">
+                        <i class="bi bi-exclamation-triangle-fill ms-1"></i> @error
+                    </div>
+                }
+                else if (objectUrl is not null)
+                {
+                    @if (kind == "pdf")
+                    {
+                        <iframe src="@objectUrl" class="fpv-frame"></iframe>
+                    }
+                    else if (kind == "image")
+                    {
+                        <div class="fpv-imgwrap">
+                            <img src="@objectUrl" alt="@fileName" class="fpv-img" />
+                        </div>
+                    }
+                    else
+                    {
+                        <iframe src="@objectUrl" class="fpv-frame"></iframe>
+                    }
+                }
+            </div>
+
+            @if (!canDownload)
+            {
+                <div class="fpv-foot">
+                    <i class="bi bi-shield-lock ms-1"></i>
+                    شما اجازه دانلود این فایل را ندارید — نمایش فقط داخل برنامه است.
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .fpv-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.72); z-index: 1080;
+                    display: flex; align-items: center; justify-content: center; padding: 1.2rem; }
+    .fpv-dialog { background: #fff; border-radius: 16px; width: min(1100px, 96vw); height: min(88vh, 900px);
+                  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 18px 50px rgba(0,0,0,.35); }
+    .fpv-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+                padding: .6rem .9rem; border-bottom: 1px solid #eef2f7; background: #f8fafc; }
+    .fpv-head i { color: #2563eb; }
+    .fpv-body { flex: 1; overflow: auto; background: #f1f5f9; }
+    .fpv-frame { width: 100%; height: 100%; border: 0; background: #fff; }
+    .fpv-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 1rem; }
+    .fpv-img { max-width: 100%; max-height: 100%; object-fit: contain; background: #fff;
+               border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+    .fpv-foot { padding: .45rem .9rem; border-top: 1px solid #eef2f7; background: #fffbeb;
+                color: #92400e; font-size: .72rem; }
+    .fs-9 { font-size: .68rem; }
+</style>
+
+@code {
+    private bool visible, loading;
+    private int attachmentId;
+    private string fileName = "", kind = "other";
+    private string? objectUrl, error;
+    private bool canDownload;
+
+    private string FileIcon => kind switch
+    {
+        "pdf" => "bi-file-earmark-pdf",
+        "image" => "bi-file-earmark-image",
+        _ => "bi-file-earmark-text"
+    };
+
+    private string DownloadUrl =>
+        $"{Http.BaseAddress?.ToString().TrimEnd('/')}/api/attachments/download/{attachmentId}?access_token={Auth.Token}";
+
+    /// <summary>نمایش پیش‌نمایش یک پیوست.</summary>
+    public async Task ShowAsync(int id, string name, string? contentType, bool allowDownload)
+    {
+        attachmentId = id;
+        fileName = name;
+        canDownload = allowDownload;
+        kind = Classify(contentType, name);
+        error = null;
+        visible = true;
+        loading = true;
+        await ReleaseAsync();
+        StateHasChanged();
+
+        try
+        {
+            // فایل را با هدر احراز هویت می‌گیریم و به blob تبدیل می‌کنیم
+            // تا توکن در URL افشا نشود و مرورگر پنجره دانلود باز نکند.
+            var bytes = await Http.GetByteArrayAsync($"/api/attachments/preview/{id}");
+            var b64 = Convert.ToBase64String(bytes);
+            var mime = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
+            objectUrl = await JS.InvokeAsync<string>("filePreview.toBlobUrl", b64, mime);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            error = "شما به این فایل دسترسی ندارید.";
+        }
+        catch (Exception ex)
+        {
+            error = "نمایش فایل ممکن نشد: " + ex.Message;
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string Classify(string? contentType, string name)
+    {
+        var ct = (contentType ?? "").ToLowerInvariant();
+        if (ct.Contains("pdf")) return "pdf";
+        if (ct.StartsWith("image/")) return "image";
+
+        return Path.GetExtension(name).ToLowerInvariant() switch
+        {
+            ".pdf" => "pdf",
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "image",
+            _ => "other"
+        };
+    }
+
+    private async Task Close()
+    {
+        visible = false;
+        await ReleaseAsync();
+        StateHasChanged();
+    }
+
+    private async Task ReleaseAsync()
+    {
+        if (objectUrl is not null)
+        {
+            try { await JS.InvokeVoidAsync("filePreview.revoke", objectUrl); } catch { }
+            objectUrl = null;
+        }
+    }
+}
