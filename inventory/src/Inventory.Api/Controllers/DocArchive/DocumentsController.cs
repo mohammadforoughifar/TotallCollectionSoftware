@@ -457,6 +457,172 @@ public class DocumentsController : RbacControllerBase
         return Ok();
     }
 
+    // ---------------------------- مقایسه دو ورژن ----------------------------
+
+    /// <summary>مقایسه دو ورژن یک مدرک — تفاوت فیلدها، نفرات گردش، پیوست‌ها و رویدادهای بین آن دو.</summary>
+    [HttpGet("{id:int}/compare")]
+    public async Task<IActionResult> Compare(int id, [FromQuery] int from, [FromQuery] int to)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        var manager = await IsManagerAsync();
+        var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
+        if (lvl < DocAccessLevel.Read)
+            return StatusCode(403, new { message = "مشاهده مقایسه نیازمند دسترسی خواندن است." });
+
+        var doc = await Db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted);
+        if (doc == null) return NotFound(new { message = "مدرک یافت نشد." });
+
+        if (from == to)
+            return BadRequest(new { message = "دو ورژن متفاوت انتخاب کنید." });
+
+        var vs = await Db.DocumentVersions.AsNoTracking()
+            .Where(v => v.DocumentId == id && (v.Id == from || v.Id == to)).ToListAsync();
+        var vL = vs.FirstOrDefault(v => v.Id == from);
+        var vR = vs.FirstOrDefault(v => v.Id == to);
+        if (vL == null || vR == null)
+            return NotFound(new { message = "یکی از ورژن‌های انتخاب‌شده متعلق به این مدرک نیست." });
+
+        // همیشه قدیمی‌تر سمت راست (مبدأ) و جدیدتر سمت چپ نمایش داده می‌شود
+        if (vL.VersionNo > vR.VersionNo) (vL, vR) = (vR, vL);
+
+        var apprs = await Db.DocumentApprovers.AsNoTracking()
+            .Where(a => a.DocumentId == id && (a.VersionId == vL.Id || a.VersionId == vR.Id)).ToListAsync();
+        var atts = await Db.AppAttachments.AsNoTracking()
+            .Where(a => a.Module == "DocVersion" && (a.RefId == vL.Id || a.RefId == vR.Id))
+            .Select(a => new { a.RefId, a.FileName }).ToListAsync();
+
+        var res = new DocVersionCompareDto
+        {
+            DocumentId = id,
+            DocumentCode = doc.Code,
+            DocumentTitle = doc.Title,
+            Left = MapVersion(vL, apprs, atts.Count(a => a.RefId == vL.Id)),
+            Right = MapVersion(vR, apprs, atts.Count(a => a.RefId == vR.Id))
+        };
+
+        // ---------- فیلدهای اصلی ----------
+        void Row(List<DocVersionDiffRow> list, string field, string? l, string? r)
+        {
+            var kind = (string.IsNullOrWhiteSpace(l), string.IsNullOrWhiteSpace(r)) switch
+            {
+                (true, true) => "same",
+                (true, false) => "added",
+                (false, true) => "removed",
+                _ => l == r ? "same" : "changed"
+            };
+            list.Add(new DocVersionDiffRow { Field = field, Left = l, Right = r, Kind = kind });
+        }
+
+        Row(res.Fields, "عنوان", vL.Title, vR.Title);
+        Row(res.Fields, "شرح تغییر", vL.ChangeNote, vR.ChangeNote);
+        Row(res.Fields, "تاریخ انقضا",
+            vL.ExpireDate?.ToString("yyyy/MM/dd"), vR.ExpireDate?.ToString("yyyy/MM/dd"));
+        Row(res.Fields, "وضعیت", StatusName(vL.Status), StatusName(vR.Status));
+        Row(res.Fields, "ورژن فعال", vL.IsActive ? "بله" : "خیر", vR.IsActive ? "بله" : "خیر");
+        Row(res.Fields, "فریز شده", vL.IsFrozen ? "بله" : "خیر", vR.IsFrozen ? "بله" : "خیر");
+        Row(res.Fields, "فعال‌سازی خودکار پس از تایید",
+            vL.ActivateOnApprove ? "بله" : "خیر", vR.ActivateOnApprove ? "بله" : "خیر");
+        Row(res.Fields, "ثبت‌کننده", vL.CreatedByName, vR.CreatedByName);
+        Row(res.Fields, "تاریخ ثبت",
+            vL.CreatedAt.ToString("yyyy/MM/dd HH:mm"), vR.CreatedAt.ToString("yyyy/MM/dd HH:mm"));
+        Row(res.Fields, "تاریخ تایید",
+            vL.ApprovedAt?.ToString("yyyy/MM/dd HH:mm"), vR.ApprovedAt?.ToString("yyyy/MM/dd HH:mm"));
+
+        // ---------- نفرات گردش ----------
+        var apL = apprs.Where(a => a.VersionId == vL.Id).ToList();
+        var apR = apprs.Where(a => a.VersionId == vR.Id).ToList();
+        foreach (var uid in apL.Select(a => a.UserId).Union(apR.Select(a => a.UserId)).Distinct())
+        {
+            var a1 = apL.FirstOrDefault(a => a.UserId == uid);
+            var a2 = apR.FirstOrDefault(a => a.UserId == uid);
+            var name = a1?.UserName ?? a2?.UserName ?? uid.ToString();
+            res.Approvers.Add(new DocVersionDiffRow
+            {
+                Field = name,
+                Left = a1 == null ? null : ApproverState(a1.Status),
+                Right = a2 == null ? null : ApproverState(a2.Status),
+                Kind = a1 == null ? "added" : a2 == null ? "removed"
+                       : a1.Status == a2.Status ? "same" : "changed"
+            });
+        }
+
+        // ---------- پیوست‌ها ----------
+        var atL = atts.Where(a => a.RefId == vL.Id).Select(a => a.FileName).ToList();
+        var atR = atts.Where(a => a.RefId == vR.Id).Select(a => a.FileName).ToList();
+        foreach (var name in atL.Union(atR).Distinct())
+        {
+            var inL = atL.Contains(name);
+            var inR = atR.Contains(name);
+            res.Attachments.Add(new DocVersionDiffRow
+            {
+                Field = name,
+                Left = inL ? "دارد" : null,
+                Right = inR ? "دارد" : null,
+                Kind = inL && inR ? "same" : inL ? "added" : "removed"
+            });
+        }
+
+        // ---------- رویدادهای بین دو ورژن ----------
+        var t1 = vL.CreatedAt < vR.CreatedAt ? vL.CreatedAt : vR.CreatedAt;
+        var t2 = vL.CreatedAt < vR.CreatedAt ? vR.CreatedAt : vL.CreatedAt;
+        res.Between = await Db.DocumentLogs.AsNoTracking()
+            .Where(l => l.DocumentId == id && l.CreatedAt >= t1 && l.CreatedAt <= t2)
+            .OrderBy(l => l.Id)
+            .Select(l => new DocLogDto
+            {
+                Id = l.Id, Action = l.Action, Detail = l.Detail,
+                UserName = l.UserName, CreatedAt = l.CreatedAt, VersionId = l.VersionId
+            }).ToListAsync();
+
+        res.ChangeCount = res.Fields.Count(x => x.Kind != "same")
+                        + res.Approvers.Count(x => x.Kind != "same")
+                        + res.Attachments.Count(x => x.Kind != "same");
+        return Ok(res);
+    }
+
+    private static string StatusName(DocVersionStatus s) => s switch
+    {
+        DocVersionStatus.Draft => "پیش‌نویس",
+        DocVersionStatus.InReview => "در گردش تایید",
+        DocVersionStatus.Approved => "تایید شده",
+        DocVersionStatus.Rejected => "رد شده",
+        DocVersionStatus.Archived => "بایگانی",
+        _ => s.ToString()
+    };
+
+    private static string ApproverState(int st) => st switch
+    {
+        1 => "تایید کرد",
+        2 => "رد کرد",
+        _ => "در انتظار"
+    };
+
+    private DocVersionDto MapVersion(DocumentVersion v,
+        List<DocumentApprover> apprs, int attachCount) => new()
+    {
+        Id = v.Id,
+        DocumentId = v.DocumentId,
+        VersionNo = v.VersionNo,
+        Title = v.Title,
+        ChangeNote = v.ChangeNote,
+        ExpireDate = v.ExpireDate,
+        Status = (DocVersionStatusDto)(int)v.Status,
+        IsActive = v.IsActive,
+        IsFrozen = v.IsFrozen,
+        ActivateOnApprove = v.ActivateOnApprove,
+        CreatedByName = v.CreatedByName,
+        CreatedAt = v.CreatedAt,
+        ApprovedAt = v.ApprovedAt,
+        AttachmentCount = attachCount,
+        Approvers = apprs.Where(a => a.VersionId == v.Id).OrderBy(a => a.Order)
+            .Select(a => new DocApproverDto
+            {
+                Id = a.Id, UserId = a.UserId, UserName = a.UserName,
+                Order = a.Order, Status = a.Status, Comment = a.Comment, ActedAt = a.ActedAt
+            }).ToList()
+    };
+
     // ---------------------------- سطل بازیافت ----------------------------
 
     /// <summary>بازگرداندن مدرک حذف‌شده — نیازمند دسترسی کامل.</summary>

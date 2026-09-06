@@ -26,6 +26,9 @@ public interface IDocArchiveService
     /// <summary>اجرای دستی بررسی انقضا (نیازمند دسترسی مدیریت).</summary>
     Task<string> RunExpiryCheckAsync();
 
+    /// <summary>مقایسه دو ورژن یک مدرک.</summary>
+    Task<DocVersionCompareDto> CompareVersionsAsync(int documentId, int from, int to);
+
     /// <summary>بازگرداندن مدرک از سطل بازیافت.</summary>
     Task<string> RestoreDocumentAsync(int id);
 
@@ -105,6 +108,9 @@ public class DocArchiveService : IDocArchiveService
         var r = await _api.PostAsync<DocExpiryRunResultDto>("api/doc-archive/expiry-check", new { });
         return r?.Message ?? "انجام شد.";
     }
+
+    public Task<DocVersionCompareDto> CompareVersionsAsync(int documentId, int from, int to) =>
+        _api.GetAsync<DocVersionCompareDto>($"{Root}/documents/{documentId}/compare?from={from}&to={to}");
 
     public async Task<string> RestoreDocumentAsync(int id)
     {

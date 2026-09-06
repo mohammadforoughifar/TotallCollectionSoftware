@@ -309,3 +309,47 @@ public class DocMessageDto
 {
     public string Message { get; set; } = "";
 }
+
+// ==================== مقایسه دو ورژن ====================
+
+/// <summary>یک تفاوت بین دو ورژن</summary>
+public class DocVersionDiffRow
+{
+    /// <summary>نام فیلد برای نمایش — مثل «عنوان» یا «تاریخ انقضا»</summary>
+    public string Field { get; set; } = "";
+
+    /// <summary>مقدار در ورژن مبدأ</summary>
+    public string? Left { get; set; }
+
+    /// <summary>مقدار در ورژن مقصد</summary>
+    public string? Right { get; set; }
+
+    /// <summary>added | removed | changed | same</summary>
+    public string Kind { get; set; } = "same";
+}
+
+/// <summary>نتیجه مقایسه دو ورژن یک مدرک</summary>
+public class DocVersionCompareDto
+{
+    public int DocumentId { get; set; }
+    public string DocumentCode { get; set; } = "";
+    public string DocumentTitle { get; set; } = "";
+
+    public DocVersionDto? Left { get; set; }
+    public DocVersionDto? Right { get; set; }
+
+    /// <summary>تفاوت فیلدهای اصلی</summary>
+    public List<DocVersionDiffRow> Fields { get; set; } = new();
+
+    /// <summary>تفاوت نفرات گردش</summary>
+    public List<DocVersionDiffRow> Approvers { get; set; } = new();
+
+    /// <summary>تفاوت پیوست‌ها</summary>
+    public List<DocVersionDiffRow> Attachments { get; set; } = new();
+
+    /// <summary>رویدادهای تاریخچه بین این دو ورژن</summary>
+    public List<DocLogDto> Between { get; set; } = new();
+
+    /// <summary>تعداد کل تفاوت‌ها (بدون موارد یکسان)</summary>
+    public int ChangeCount { get; set; }
+}

@@ -7,6 +7,9 @@
 | `lib.py` | توابع کمکی (فراخوانی HTTP، لاگین، گزارش نتیجه) |
 | `run.py` | جریان کاری اصلی — ۷۲ تست |
 | `edge.py` | سناریوهای مرزی و تداخل فازها — ۳۲ تست |
+| `compare.py` | مقایسه دو ورژن — ۲۸ تست |
+
+**جمع: ۱۳۲ تست**
 
 ## اجرا
 
@@ -18,12 +21,17 @@ Database__Provider=Sqlite ConnectionStrings__Default="Data Source=/tmp/e2e.db" \
 
 # ۲) در ترمینال دیگر
 cd tests/doc-archive
-python3 run.py && python3 edge.py
+python3 run.py && python3 edge.py && python3 compare.py
 ```
 
 خروجی: `0` یعنی همه موفق، `1` یعنی حداقل یک تست ناموفق.
 
-> ⚠️ این اسکریپت‌ها کاربر و نقش تست می‌سازند (`qa_manager`, `qa_author`, `qa_review`,
-> `qa_guest`). **روی دیتابیس عملیاتی اجرا نکنید.**
+آدرس API از متغیر محیطی `API_BASE` خوانده می‌شود (پیش‌فرض `http://localhost:5100`).
+
+> ⚠️ این اسکریپت‌ها کاربر و نقش تست می‌سازند (`qa_*`, `cmp_*`).
+> **روی دیتابیس عملیاتی اجرا نکنید.**
+>
+> هر اسکریپت روی دیتابیس **تازه** اجرا شود؛ `run.py` و `edge.py` به‌ترتیب
+> وابسته‌اند و `compare.py` مستقل است.
 
 گزارش کامل آخرین اجرا: [`TEST-DOC-ARCHIVE.md`](../../TEST-DOC-ARCHIVE.md)
