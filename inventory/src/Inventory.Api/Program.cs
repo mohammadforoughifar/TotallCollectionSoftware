@@ -70,6 +70,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Serv
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
+// نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
+builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
 builder.Services.AddSingleton<UserPhotoService>();
 
 // ================== پیوست‌های پروژه — رمزنگاری AES روی دیسک ==================
@@ -96,8 +98,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             OnMessageReceived = ctx =>
             {
                 var token = ctx.Request.Query["access_token"];
+                var path = ctx.Request.Path.Value ?? "";
                 if (!string.IsNullOrEmpty(token) &&
-                    ctx.Request.Path.Value?.Contains("/download", StringComparison.OrdinalIgnoreCase) == true)
+                    (path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
+                     path.Contains("/preview", StringComparison.OrdinalIgnoreCase)))
                     ctx.Token = token;
                 return Task.CompletedTask;
             }
