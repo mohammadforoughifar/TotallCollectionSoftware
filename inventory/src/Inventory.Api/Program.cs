@@ -59,6 +59,9 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLette
 // ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
+// سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
+builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
