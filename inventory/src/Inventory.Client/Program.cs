@@ -46,11 +46,20 @@ builder.Services.AddScoped<IAccAccountService, AccAccountService>();
 builder.Services.AddScoped<IAccVoucherService, AccVoucherService>();
 builder.Services.AddScoped<IAccReportService, AccReportService>();
 builder.Services.AddScoped<IAccInvRuleService, AccInvRuleService>();
+builder.Services.AddScoped<IAccDimensionService, AccDimensionService>();
+builder.Services.AddScoped<IFixedAssetCategoryService, FixedAssetCategoryService>();
+builder.Services.AddScoped<IFixedAssetService, FixedAssetService>();
+builder.Services.AddScoped<IFixedAssetRunService, FixedAssetRunService>();
+builder.Services.AddScoped<IBudgetService, BudgetService>();
 
 // ---------- ماژول فاکتور ----------
 builder.Services.AddScoped<IFacInvoiceService, FacInvoiceService>();
 builder.Services.AddScoped<IFacRuleService, FacRuleService>();
 builder.Services.AddScoped<IFacReportService, FacReportService>();
+
+// ---------- سامانه مودیان + چاپگر مالی ----------
+builder.Services.AddScoped<IMoadianClientService, MoadianClientService>();
+builder.Services.AddScoped<IFiscalPrinterClientService, FiscalPrinterClientService>();
 
 // ماژول خزانه‌داری
 builder.Services.AddScoped<ITrsAccountService, TrsAccountService>();

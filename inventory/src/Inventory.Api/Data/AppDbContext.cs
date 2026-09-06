@@ -125,6 +125,26 @@ public class AppDbContext : DbContext
     public DbSet<AccVoucher> AccVouchers => Set<AccVoucher>();
     public DbSet<AccVoucherLine> AccVoucherLines => Set<AccVoucherLine>();
     public DbSet<AccInvRule> AccInvRules => Set<AccInvRule>();
+    // ==================== ابعاد تحلیلی (مراکز هزینه / شعبه) ====================
+    public DbSet<AccDimension> AccDimensions => Set<AccDimension>();
+    public DbSet<AccDimensionValue> AccDimensionValues => Set<AccDimensionValue>();
+    // ==================== دارایی ثابت و استهلاک ====================
+    public DbSet<FixedAssetCategory> FixedAssetCategories => Set<FixedAssetCategory>();
+    public DbSet<FixedAsset> FixedAssets => Set<FixedAsset>();
+    public DbSet<FixedAssetDepreciationRun> FixedAssetDepreciationRuns => Set<FixedAssetDepreciationRun>();
+    public DbSet<FixedAssetDepreciationLine> FixedAssetDepreciationLines => Set<FixedAssetDepreciationLine>();
+    // ==================== بودجه و کنترل بودجه ====================
+    public DbSet<Budget> Budgets => Set<Budget>();
+    public DbSet<BudgetItem> BudgetItems => Set<BudgetItem>();
+    public DbSet<BudgetTransaction> BudgetTransactions => Set<BudgetTransaction>();
+    // ==================== سامانه مودیان (فاکتور الکترونیکی) ====================
+    public DbSet<MoadianSetting> MoadianSettings => Set<MoadianSetting>();
+    public DbSet<MoadianFiscalPeriod> MoadianFiscalPeriods => Set<MoadianFiscalPeriod>();
+    public DbSet<MoadianInvoice> MoadianInvoices => Set<MoadianInvoice>();
+    public DbSet<MoadianInvoiceLine> MoadianInvoiceLines => Set<MoadianInvoiceLine>();
+    public DbSet<MoadianLog> MoadianLogs => Set<MoadianLog>();
+    public DbSet<MoadianCpc> MoadianCpcList => Set<MoadianCpc>();
+    public DbSet<FiscalPrinterSetting> FiscalPrinterSettings => Set<FiscalPrinterSetting>();
 
     // ---------- ماژول فاکتور ----------
     public DbSet<FacInvoice> FacInvoices => Set<FacInvoice>();
@@ -536,6 +556,145 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Restrict);
 
         mb.Entity<AccVoucher>().HasIndex(v => new { v.FiscalYearId, v.Number }).IsUnique();
+        // ---------- ابعاد تحلیلی ----------
+        mb.Entity<AccDimension>().HasIndex(d => d.Code).IsUnique();
+        mb.Entity<AccDimensionValue>().HasIndex(v => new { v.DimensionId, v.Code }).IsUnique();
+        mb.Entity<AccDimensionValue>().HasIndex(v => v.ParentId);
+        mb.Entity<AccDimensionValue>().HasIndex(v => v.CodeTree);
+        // ---------- دارایی ثابت ----------
+        mb.Entity<FixedAssetCategory>().HasIndex(c => c.Code).IsUnique();
+        mb.Entity<FixedAsset>().HasIndex(a => a.Code).IsUnique();
+        mb.Entity<FixedAsset>().HasIndex(a => a.CategoryId);
+        mb.Entity<FixedAsset>().HasIndex(a => a.DimensionValueId);
+        mb.Entity<FixedAssetDepreciationRun>().HasIndex(r => new { r.Year, r.Month }).IsUnique();
+        mb.Entity<FixedAssetDepreciationLine>().HasIndex(l => new { l.RunId, l.AssetId }).IsUnique();
+        mb.Entity<FixedAsset>().Property(a => a.PurchasePrice).HasPrecision(18, 2);
+        mb.Entity<FixedAsset>().Property(a => a.SalvageValue).HasPrecision(18, 2);
+        mb.Entity<FixedAsset>().Property(a => a.AccumulatedDepreciation).HasPrecision(18, 2);
+        mb.Entity<FixedAssetDepreciationRun>().Property(r => r.TotalAmount).HasPrecision(18, 2);
+        mb.Entity<FixedAssetDepreciationLine>().Property(l => l.Amount).HasPrecision(18, 2);
+        mb.Entity<FixedAssetDepreciationLine>().Property(l => l.AccumulatedAfter).HasPrecision(18, 2);
+        mb.Entity<FixedAssetDepreciationLine>().Property(l => l.BookValueAfter).HasPrecision(18, 2);
+        // ---------- بودجه ----------
+        mb.Entity<Budget>().HasIndex(b => new { b.FiscalYearId, b.DimensionValueId, b.Name }).IsUnique();
+        mb.Entity<BudgetItem>().HasIndex(i => new { i.BudgetId, i.AccAccountId }).IsUnique();
+        mb.Entity<BudgetTransaction>().HasIndex(t => t.BudgetId);
+        mb.Entity<BudgetTransaction>().HasIndex(t => t.VoucherId);
+        mb.Entity<Budget>().Property(b => b.TotalAmount).HasPrecision(18, 2);
+        mb.Entity<BudgetItem>().Property(i => i.PlannedAmount).HasPrecision(18, 2);
+        mb.Entity<BudgetItem>().Property(i => i.CommittedAmount).HasPrecision(18, 2);
+        mb.Entity<BudgetItem>().Property(i => i.ActualAmount).HasPrecision(18, 2);
+        mb.Entity<BudgetTransaction>().Property(t => t.Amount).HasPrecision(18, 2);
+
+        // ---------- رفتار حذف ماژول‌های جدید (سازگار با SQL Server) ----------
+        // SQL Server با «مسیرهای آبشاری چندگانه» (multiple cascade paths) سازگار نیست؛
+        // برای همین FKهای الزامی به Restrict و FKهای اختیاری به SetNull تنظیم شده‌اند.
+        // نمونه: BudgetTransaction هم مستقیم و هم از مسیر BudgetItem به Budget می‌رسد.
+        mb.Entity<AccVoucher>()
+          .HasOne(v => v.FiscalYear).WithMany()
+          .HasForeignKey(v => v.FiscalYearId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<AccVoucherLine>()
+          .HasOne(l => l.Voucher).WithMany(v => v.Lines)
+          .HasForeignKey(l => l.VoucherId)
+          .OnDelete(DeleteBehavior.Cascade); // حذف سند = حذف اقلام (ترکیب)
+
+        mb.Entity<AccVoucherLine>()
+          .HasOne(l => l.Account).WithMany()
+          .HasForeignKey(l => l.AccountId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<AccVoucherLine>()
+          .HasOne(l => l.DimensionValue).WithMany()
+          .HasForeignKey(l => l.DimensionValueId)
+          .OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<AccDimensionValue>()
+          .HasOne(v => v.Dimension).WithMany()
+          .HasForeignKey(v => v.DimensionId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<AccDimensionValue>()
+          .HasOne(v => v.Parent).WithMany()
+          .HasForeignKey(v => v.ParentId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<FixedAsset>()
+          .HasOne(a => a.Category).WithMany()
+          .HasForeignKey(a => a.CategoryId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<FixedAsset>()
+          .HasOne(a => a.DimensionValue).WithMany()
+          .HasForeignKey(a => a.DimensionValueId)
+          .OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<FixedAssetDepreciationLine>()
+          .HasOne(l => l.Run).WithMany(r => r.Lines)
+          .HasForeignKey(l => l.RunId)
+          .OnDelete(DeleteBehavior.Cascade); // حذف اجرا = حذف اقلام (ترکیب)
+
+        mb.Entity<FixedAssetDepreciationLine>()
+          .HasOne(l => l.Asset).WithMany()
+          .HasForeignKey(l => l.AssetId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<Budget>()
+          .HasOne(b => b.FiscalYear).WithMany()
+          .HasForeignKey(b => b.FiscalYearId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<Budget>()
+          .HasOne(b => b.DimensionValue).WithMany()
+          .HasForeignKey(b => b.DimensionValueId)
+          .OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<BudgetItem>()
+          .HasOne(i => i.Budget).WithMany(b => b.Items)
+          .HasForeignKey(i => i.BudgetId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<BudgetItem>()
+          .HasOne(i => i.AccAccount).WithMany()
+          .HasForeignKey(i => i.AccAccountId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<BudgetTransaction>()
+          .HasOne(t => t.Budget).WithMany()
+          .HasForeignKey(t => t.BudgetId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<BudgetTransaction>()
+          .HasOne(t => t.BudgetItem).WithMany()
+          .HasForeignKey(t => t.BudgetItemId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        // ---------- سامانه مودیان ----------
+        mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalPeriodId, i.Number }).IsUnique();
+        // حذف دوره نباید فاکتورهای آن را آبشار بزند
+        mb.Entity<MoadianInvoice>()
+          .HasOne(i => i.FiscalPeriod).WithMany()
+          .HasForeignKey(i => i.FiscalPeriodId)
+          .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<MoadianInvoice>().HasIndex(i => i.Status);
+        mb.Entity<MoadianInvoice>().HasIndex(i => i.ReferenceId);
+        mb.Entity<MoadianInvoice>().HasIndex(i => i.FacInvoiceId);
+        mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.Year, p.Month }).IsUnique();
+        mb.Entity<MoadianCpc>().HasIndex(c => c.Code).IsUnique();
+        mb.Entity<MoadianLog>().HasIndex(l => l.InvoiceId);
+        mb.Entity<MoadianInvoice>().Property(i => i.TotalGross).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoice>().Property(i => i.TotalDiscount).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoice>().Property(i => i.TotalTaxable).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoice>().Property(i => i.TotalVat).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoice>().Property(i => i.TotalNet).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoiceLine>().Property(l => l.Quantity).HasPrecision(18, 3);
+        mb.Entity<MoadianInvoiceLine>().Property(l => l.UnitPrice).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoiceLine>().Property(l => l.Discount).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoiceLine>().Property(l => l.VatRate).HasPrecision(5, 2);
+        mb.Entity<MoadianInvoiceLine>().Property(l => l.VatAmount).HasPrecision(18, 2);
+        mb.Entity<MoadianInvoiceLine>().Property(l => l.Total).HasPrecision(18, 2);
+        mb.Entity<MoadianSetting>().Property(s => s.DefaultVatRate).HasPrecision(5, 2);
         mb.Entity<AccVoucher>().HasIndex(v => v.Date);
         mb.Entity<AccVoucher>().HasIndex(v => v.Status);
         mb.Entity<AccVoucher>().HasIndex(v => new { v.Source, v.SourceId });

@@ -1,0 +1,22 @@
+# Build results
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+
+# NuGet / tooling
+.nuget/
+packages/
+*.nupkg
+
+# IDE
+.vs/
+.vscode/
+.idea/
+
+# Runtime artifacts
+*.db
+*.db-shm
+*.db-wal
+appsettings.Local.json

@@ -44,6 +44,16 @@ public static class RbacSeeder
         ["AccAccounts"] = CrudActions,
         // AccVouchers: اسناد حسابداری — Confirm: قطعی‌سازی | Cancel: ابطال
         ["AccVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // AccDimensions: ابعاد تحلیلی (مراکز هزینه / شعبه) و مقادیر آن‌ها
+        ["AccDimensions"] = CrudActions,
+        // FixedAssets: دارایی ثابت — Confirm: ارسال استهلاک به حسابداری
+        ["FixedAssets"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // Budgets: بودجه و کنترل بودجه
+        ["Budgets"] = CrudActions,
+        // Moadian: سامانه مودیان — Send: ارسال/ابطال/برگشت فاکتورها
+        ["Moadian"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Send" },
+        // FiscalPrinter: چاپگر مالی — Print: چاپ رسید
+        ["FiscalPrinter"] = new[] { "Create", "Read", "Update", "Delete", "Print" },
         // ================== ماژول فاکتور ==================
         // FacInvoices: فاکتور خرید/فروش — Confirm: قطعی‌سازی | Cancel: ابطال
         ["FacInvoices"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },

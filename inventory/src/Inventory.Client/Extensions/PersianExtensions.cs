@@ -32,6 +32,9 @@ public static class PersianExtensions
     public static string Num(this decimal v) => Fa.Number(v);
 
     public static string Num(this int v) => Fa.Number(v);
+    /// <summary>درصد با ارقام فارسی — مثلاً ۸۵٫۵٪</summary>
+    public static string Percent(this decimal v) => $"{Fa.Number(Math.Round(v, 1))}٪";
+
 
     // ================= ماژول مدیریت پروژه‌ها (چاپ/گرید/ارقام فارسی) =================
 
