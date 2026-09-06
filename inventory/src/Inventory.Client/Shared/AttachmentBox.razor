@@ -18,11 +18,40 @@
         @foreach (var a in items)
         {
             <span class="attx-chip">
-                <a href="@($"{apiBase}/api/attachments/download/{a.Id}")" target="_blank">
-                    <i class="bi bi-file-earmark-arrow-down"></i> @a.FileName
-                </a>
+                @if (a.CanPreview)
+                {
+                    <a href="javascript:void(0)" @onclick="() => Preview(a)" title="مشاهده در برنامه">
+                        <i class="bi @IconOf(a)"></i> @a.FileName
+                    </a>
+                }
+                else if (a.CanDownload)
+                {
+                    <a href="@($"{apiBase}/api/attachments/download/{a.Id}?access_token={Auth.Token}")" target="_blank"
+                       title="دانلود">
+                        <i class="bi bi-file-earmark-arrow-down"></i> @a.FileName
+                    </a>
+                }
+                else
+                {
+                    <span title="این فایل قابل پیش‌نمایش نیست و شما اجازه دانلود ندارید">
+                        <i class="bi bi-file-earmark-lock"></i> @a.FileName
+                    </span>
+                }
+
+                @if (a.CanPreview && a.CanDownload)
+                {
+                    <a href="@($"{apiBase}/api/attachments/download/{a.Id}?access_token={Auth.Token}")" target="_blank"
+                       class="attx-dl" title="دانلود">
+                        <i class="bi bi-download"></i>
+                    </a>
+                }
+                @if (!a.CanDownload)
+                {
+                    <i class="bi bi-eye text-warning" title="فقط مشاهده — بدون حق دانلود"></i>
+                }
+
                 <span class="fs-9 text-muted">(@a.UploaderName — @FormatSize(a.Size))</span>
-                @if (CanUpload && (a.UploaderUserId == MyUserId || Auth.IsAdmin))
+                @if (CanUpload && a.CanDownload && (a.UploaderUserId == MyUserId || Auth.IsAdmin))
                 {
                     <i class="bi bi-x-circle-fill attx-del" title="حذف" @onclick="() => Delete(a.Id)"></i>
                 }
@@ -37,7 +66,10 @@
     </div>
 </div>
 
+<FilePreviewModal @ref="previewModal" />
+
 <style>
+    .attx-dl { color:#16a34a; margin-inline-start:.15rem; }
     .attx-box { border: 1px solid #e8edf3; border-radius: 14px; overflow: hidden; }
     .attx-title { background: #f8fafc; padding: .5rem .85rem; font-size: .82rem; font-weight: 700; color: #334155; border-bottom: 1px solid #eef2f7; }
     .attx-title i { color: #2563eb; margin-left: .3rem; }
@@ -60,10 +92,38 @@
     [Parameter] public bool CanUpload { get; set; } = true;
 
     private List<AttItem> items = new();
+    private FilePreviewModal? previewModal;
     private string apiBase = "";
     private int MyUserId => Auth.UserId;
 
-    public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string UploaderName { get; set; } = ""; public int UploaderUserId { get; set; } public DateTime UploadedAt { get; set; } public long Size { get; set; } }
+    public class AttItem
+    {
+        public int Id { get; set; }
+        public string FileName { get; set; } = "";
+        public string UploaderName { get; set; } = "";
+        public int UploaderUserId { get; set; }
+        public DateTime UploadedAt { get; set; }
+        public long Size { get; set; }
+        public string? ContentType { get; set; }
+        /// <summary>قابل نمایش داخل برنامه (PDF/عکس/متن)</summary>
+        public bool CanPreview { get; set; }
+        /// <summary>کاربر جاری حق دانلود دارد</summary>
+        public bool CanDownload { get; set; } = true;
+    }
+
+    private static string IconOf(AttItem a)
+    {
+        var ct = (a.ContentType ?? "").ToLowerInvariant();
+        if (ct.Contains("pdf")) return "bi-file-earmark-pdf";
+        if (ct.StartsWith("image/")) return "bi-file-earmark-image";
+        return "bi-file-earmark-text";
+    }
+
+    private async Task Preview(AttItem a)
+    {
+        if (previewModal is not null)
+            await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload);
+    }
 
     protected override async Task OnParametersSetAsync()
     {

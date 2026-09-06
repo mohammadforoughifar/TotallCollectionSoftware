@@ -69,8 +69,20 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishn
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
 
+// ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
+// سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
+builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
+
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
+// نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
+builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
+// گزارش‌های خروجی آرشیو اسناد (نیازمند فیلتر دسترسی کاربر)
+builder.Services.AddScoped<Inventory.Api.Services.Export.IDocArchiveExportService,
+                           Inventory.Api.Services.Export.DocArchiveExportService>();
 builder.Services.AddSingleton<UserPhotoService>();
 
 // ================== پیوست‌های پروژه — رمزنگاری AES روی دیسک ==================
@@ -97,8 +109,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             OnMessageReceived = ctx =>
             {
                 var token = ctx.Request.Query["access_token"];
+                var path = ctx.Request.Path.Value ?? "";
                 if (!string.IsNullOrEmpty(token) &&
-                    ctx.Request.Path.Value?.Contains("/download", StringComparison.OrdinalIgnoreCase) == true)
+                    (path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
+                     path.Contains("/preview", StringComparison.OrdinalIgnoreCase)))
                     ctx.Token = token;
                 return Task.CompletedTask;
             }

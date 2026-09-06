@@ -90,7 +90,13 @@ public class ExportService : IExportService
         new("trs-cheques",  "دفتر چک",                  "خزانه‌داری",   "TrsCheques"),
         new("trs-flow",     "گردش خزانه",               "خزانه‌داری",   "TrsAccounts"),
 
-        new("stk-diff",     "مغایرت انبارگردانی",       "انبارگردانی",  "StkSessions")
+        new("stk-diff",     "مغایرت انبارگردانی",       "انبارگردانی",  "StkSessions"),
+
+        new("doc-list",        "فهرست مدارک",              "آرشیو اسناد",  "DocArchive"),
+        new("doc-expiring",    "مدارک رو به انقضا",        "آرشیو اسناد",  "DocArchive"),
+        new("doc-history",     "تاریخچه مدرک",             "آرشیو اسناد",  "DocArchive"),
+        new("doc-permissions", "ماتریس دسترسی پوشه‌ها",    "آرشیو اسناد",  "DocArchive"),
+        new("doc-pending",     "ورژن‌های در انتظار تایید", "آرشیو اسناد",  "DocArchive")
     };
 
     public IReadOnlyList<ExportReport> GetCatalog() => Catalog;
@@ -128,6 +134,8 @@ public class ExportService : IExportService
 
             "stk-diff" => await DiffAsync(q),
 
+            // گزارش‌های آرشیو اسناد نیاز به هویت کاربر دارند و در کنترلر
+            // از طریق IDocArchiveExportService ساخته می‌شوند.
             _ => throw new InvalidOperationException($"گزارش «{key}» پیاده‌سازی نشده است.")
         };
 
