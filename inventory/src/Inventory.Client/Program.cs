@@ -39,6 +39,7 @@ builder.Services.AddScoped<IInvWarehouseService, InvWarehouseService>();
 builder.Services.AddScoped<IInvDocTypeService, InvDocTypeService>();
 builder.Services.AddScoped<IInvDocService, InvDocService>();
 builder.Services.AddScoped<IInvReportService, InvReportService>();
+builder.Services.AddScoped<IDocArchiveService, DocArchiveService>(); // ماژول آرشیو اسناد و مدارک
 
 // ---------- ماژول حسابداری ----------
 builder.Services.AddScoped<IAccFiscalYearService, AccFiscalYearService>();

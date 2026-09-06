@@ -19,8 +19,14 @@ public class ExportController : RbacControllerBase
     private const string PdfMime = "application/pdf";
 
     private readonly IExportService _svc;
+    private readonly IDocArchiveExportService _docSvc;
 
-    public ExportController(Db.AppDbContext db, IExportService svc) : base(db) => _svc = svc;
+    public ExportController(Db.AppDbContext db, IExportService svc, IDocArchiveExportService docSvc)
+        : base(db)
+    {
+        _svc = svc;
+        _docSvc = docSvc;
+    }
 
     /// <summary>فهرست گزارش‌هایی که کاربر می‌تواند از آن‌ها خروجی بگیرد — «مرکز خروجی».</summary>
     [HttpGet("reports")]
@@ -55,7 +61,19 @@ public class ExportController : RbacControllerBase
         ExportSpec spec;
         try
         {
-            spec = await _svc.BuildAsync(key, query);
+            // گزارش‌های آرشیو اسناد بر اساس دسترسی کاربرِ درخواست‌کننده فیلتر
+            // می‌شوند؛ هویت از توکن گرفته می‌شود نه از query string.
+            if (report.RbacModule == "DocArchive")
+            {
+                var isManager = await HasAsync("DocArchive", "Manage");
+                spec = await _docSvc.BuildAsync(key, query, MyUserId, isManager);
+                spec.Module = report.Module;
+                spec.FileBaseName ??= report.Key;
+            }
+            else
+            {
+                spec = await _svc.BuildAsync(key, query);
+            }
         }
         catch (InvalidOperationException ex)
         {
