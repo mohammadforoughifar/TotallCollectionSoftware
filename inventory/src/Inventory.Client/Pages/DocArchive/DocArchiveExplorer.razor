@@ -50,6 +50,24 @@
                     <span class="fw-500">همه مدارک</span>
                 </div>
 
+                @* ---- زیرمنوهای انقضا ---- *@
+                <div class="ftree-item @(expiryFilter == "expired" ? "active" : "")" @onclick="ShowExpired">
+                    <i class="bi bi-calendar-x-fill text-danger"></i>
+                    <span class="fw-500 text-danger">منقضی شده</span>
+                    @if (expirySummary.Expired > 0)
+                    {
+                        <span class="badge bg-danger ms-auto">@expirySummary.Expired.Num()</span>
+                    }
+                </div>
+                <div class="ftree-item @(expiryFilter == "expiring" ? "active" : "")" @onclick="ShowExpiring">
+                    <i class="bi bi-clock-history text-warning"></i>
+                    <span class="fw-500 text-warning-emphasis">رو به انقضا</span>
+                    @if (expirySummary.ExpiringSoon > 0)
+                    {
+                        <span class="badge bg-warning text-dark ms-auto">@expirySummary.ExpiringSoon.Num()</span>
+                    }
+                </div>
+
                 @* ---- زیرمنوی مدارک غیرفعال ---- *@
                 <div class="ftree-item @(statusFilter == "inactive" ? "active" : "")" @onclick="ShowInactive">
                     <i class="bi bi-archive-fill text-secondary"></i>
@@ -84,13 +102,37 @@
                                    @bind="search" @bind:event="oninput" @bind:after="LoadDocs" />
                         </div>
                     </div>
-                    <div class="col-auto">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" id="expSw"
-                                   @bind="onlyExpiring" @bind:after="LoadDocs" />
-                            <label class="form-check-label fs-8" for="expSw">نزدیک انقضا</label>
+                    @if (expiryFilter != null)
+                    {
+                        <div class="col-auto">
+                            <span class="badge @(expiryFilter == "expired" ? "bg-danger" : "bg-warning text-dark")">
+                                <i class="bi @(expiryFilter == "expired" ? "bi-calendar-x" : "bi-clock-history") me-1"></i>
+                                @(expiryFilter == "expired" ? "منقضی شده" : $"رو به انقضا (تا {expirySummary.ExpiringDays.Num()} روز)")
+                            </span>
+                            <button class="btn btn-sm btn-link text-decoration-none p-0 ms-1"
+                                    title="حذف فیلتر" @onclick="ClearExpiryFilter">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
                         </div>
-                    </div>
+                    }
+                    @if (IsManager)
+                    {
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="RunExpiryCheck"
+                                    disabled="@checkingExpiry"
+                                    title="بررسی فوری مدارک در آستانه انقضا و ارسال هشدار به کارتابل">
+                                @if (checkingExpiry)
+                                {
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-bell"></i>
+                                }
+                                <span class="ms-1">بررسی انقضا</span>
+                            </button>
+                        </div>
+                    }
                     <div class="col-auto ms-auto fs-8 text-muted">
                         @if (selectedFolderId is int fid)
                         {
@@ -169,7 +211,10 @@
                                         </td>
                                         <td class="num @(d.IsExpired ? "text-danger fw-700" : "")">
                                             @(d.ExpireDate?.ToFa() ?? "—")
-                                            @if (d.IsExpired) { <i class="bi bi-exclamation-triangle-fill text-danger ms-1" title="منقضی شده"></i> }
+                                            @if (d.ExpireDate.HasValue)
+                                            {
+                                                <span class="badge @ExpiryClass(d) ms-1" title="@ExpiryTitle(d)">@ExpiryText(d)</span>
+                                            }
                                         </td>
                                         <td class="text-end">
                                             <button class="btn btn-sm btn-light" title="مشاهده"
@@ -313,11 +358,16 @@
     private string statusFilter = "active";
     private int inactiveCount;
 
+    // ---------- انقضا ----------
+    private string? expiryFilter;                 // null | "expiring" | "expired"
+    private DocExpirySummaryDto expirySummary = new() { ExpiringDays = 60 };
+    private bool checkingExpiry;
+
     // مودال تغییر وضعیت
     private bool showToggle;
     private DocumentListDto? toggleTarget;
     private string toggleReason = "";
-    private bool onlyExpiring;
+    private bool IsManager => Auth.Has("DocArchive.Manage");
     private bool loadingFolders = true, loadingDocs = true, saving;
 
     // مودال پوشه
@@ -360,9 +410,11 @@
         loadingDocs = true;
         try
         {
-            documents = await Svc.GetDocumentsAsync(selectedFolderId, search, onlyExpiring, statusFilter);
+            documents = await Svc.GetDocumentsAsync(selectedFolderId, search, false, statusFilter, expiryFilter);
             // شمارنده مدارک غیرفعال برای زیرمنو
             inactiveCount = (await Svc.GetDocumentsAsync(null, null, false, "inactive")).Count;
+            // بج‌های منقضی / رو به انقضا
+            expirySummary = await Svc.GetExpirySummaryAsync() ?? expirySummary;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loadingDocs = false; }
@@ -372,6 +424,7 @@
     {
         selectedFolderId = id;
         if (statusFilter == "inactive") statusFilter = "active";
+        expiryFilter = null;
         await LoadDocs();
     }
 
@@ -379,6 +432,7 @@
     {
         selectedFolderId = null;
         statusFilter = "active";
+        expiryFilter = null;
         await LoadDocs();
     }
 
@@ -386,7 +440,72 @@
     {
         selectedFolderId = null;
         statusFilter = "inactive";
+        expiryFilter = null;
         await LoadDocs();
+    }
+
+    private async Task ShowExpiring()
+    {
+        selectedFolderId = null;
+        statusFilter = "active";
+        expiryFilter = "expiring";
+        await LoadDocs();
+    }
+
+    private async Task ShowExpired()
+    {
+        selectedFolderId = null;
+        statusFilter = "active";
+        expiryFilter = "expired";
+        await LoadDocs();
+    }
+
+    private async Task ClearExpiryFilter()
+    {
+        expiryFilter = null;
+        await LoadDocs();
+    }
+
+    private async Task RunExpiryCheck()
+    {
+        checkingExpiry = true;
+        try
+        {
+            var msg = await Svc.RunExpiryCheckAsync();
+            Toast.Success(msg);
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { checkingExpiry = false; }
+    }
+
+    // ---------- نمایش وضعیت انقضا ----------
+    private static string ExpiryClass(DocumentListDto d)
+    {
+        if (d.IsExpired) return "bg-danger";
+        return d.DaysToExpire switch
+        {
+            <= 7 => "bg-danger",
+            <= 30 => "bg-warning text-dark",
+            <= 60 => "bg-info text-dark",
+            _ => "bg-light text-secondary"
+        };
+    }
+
+    private static string ExpiryText(DocumentListDto d)
+    {
+        if (d.DaysToExpire is not int n) return "";
+        if (n < 0) return $"{(-n).Num()} روز گذشته";
+        if (n == 0) return "امروز";
+        return $"{n.Num()} روز";
+    }
+
+    private static string ExpiryTitle(DocumentListDto d)
+    {
+        if (d.DaysToExpire is not int n) return "";
+        if (n < 0) return $"این مدرک {(-n).Num()} روز است منقضی شده";
+        if (n == 0) return "امروز منقضی می‌شود";
+        return $"{n.Num()} روز تا انقضا";
     }
 
     // ---------- فعال / غیرفعال ----------

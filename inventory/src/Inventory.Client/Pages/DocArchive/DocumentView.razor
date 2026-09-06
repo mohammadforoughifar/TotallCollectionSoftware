@@ -58,7 +58,16 @@ else
             <div class="col-md-3">
                 <span class="text-muted">تاریخ انقضا:</span>
                 <b class="@(IsExpired ? "text-danger" : "")">@(doc.ExpireDate?.ToFa() ?? "—")</b>
-                @if (IsExpired) { <span class="badge bg-danger ms-1">منقضی</span> }
+                @if (IsExpired)
+                {
+                    <span class="badge bg-danger ms-1">@((-DaysToExpire!.Value).Num()) روز است منقضی شده</span>
+                }
+                else if (DaysToExpire is int dte)
+                {
+                    <span class="badge ms-1 @(dte <= 7 ? "bg-danger" : dte <= 30 ? "bg-warning text-dark" : dte <= 60 ? "bg-info text-dark" : "bg-light text-secondary")">
+                        @(dte == 0 ? "امروز منقضی می‌شود" : $"{dte.Num()} روز تا انقضا")
+                    </span>
+                }
             </div>
             <div class="col-md-3">
                 <span class="text-muted">سیاست ورژن:</span>
@@ -407,6 +416,7 @@ else
     private string toggleReason = "";
 
     private bool IsExpired => doc.ExpireDate.HasValue && doc.ExpireDate.Value.Date < DateTime.Today;
+    private int? DaysToExpire => doc.ExpireDate.HasValue ? (doc.ExpireDate.Value.Date - DateTime.Today).Days : null;
 
     private List<LookupItem> FolderLookup =>
         folders.Select(f => new LookupItem { Id = f.Id, Name = f.Name }).ToList();
