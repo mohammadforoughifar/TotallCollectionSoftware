@@ -239,6 +239,125 @@ public enum VoucherSource
     Closing = 4
 }
 
+// ===================== ابعاد تحلیلی، دارایی ثابت، بودجه =====================
+
+/// <summary>نوع بُعد تحلیلی (مرکز هزینه / شعبه — پروژه از ماژول پروژه‌ها است)</summary>
+public enum AccDimensionType
+{
+    /// <summary>مرکز هزینه</summary>
+    CostCenter = 0,
+
+    /// <summary>شعبه / واحد سازمانی</summary>
+    Branch = 1
+}
+
+/// <summary>وضعیت دارایی ثابت</summary>
+public enum FixedAssetStatus
+{
+    /// <summary>در حال بهره‌برداری</summary>
+    Active = 0,
+
+    /// <summary>متوقف / انبارش</summary>
+    Idle = 1,
+
+    /// <summary>فروخته شده</summary>
+    Sold = 2,
+
+    /// <summary>امحاء / اسقاط شده</summary>
+    Disposed = 3
+}
+
+/// <summary>روش استهلاک دارایی ثابت</summary>
+public enum DepreciationMethod
+{
+    /// <summary>مستقیم (خط مستقیم)</summary>
+    StraightLine = 0,
+
+    /// <summary>نزولی (مانده نزولی)</summary>
+    DecliningBalance = 1
+}
+
+/// <summary>نوع رویداد بودجه</summary>
+public enum BudgetTransactionType
+{
+    /// <summary>مصرف (از سند قطعی حسابداری)</summary>
+    Actual = 0,
+
+    /// <summary>تعهد (سفارش/قرارداد)</summary>
+    Commitment = 1,
+
+    /// <summary>آزادسازی تعهد</summary>
+    Release = 2
+}
+
+// ===================== سامانه مودیان (فاکتور الکترونیکی) =====================
+
+/// <summary>نوع فاکتور الکترونیکی (InvoicePattern سامانه مودیان)</summary>
+public enum MoadianInvoiceKind
+{
+    /// <summary>فروش</summary>
+    Sale = 1,
+
+    /// <summary>فروش برگشتی</summary>
+    SaleReturn = 2,
+
+    /// <summary>خرید</summary>
+    Purchase = 3,
+
+    /// <summary>خرید برگشتی</summary>
+    PurchaseReturn = 4,
+
+    /// <summary>پیش‌فاکتور</summary>
+    Proforma = 5
+}
+
+/// <summary>وضعیت فاکتور الکترونیکی در چرخه‌ی مودیان</summary>
+public enum MoadianInvoiceStatus
+{
+    /// <summary>پیش‌نویس — هنوز در صف ارسال نیست</summary>
+    Draft = 0,
+
+    /// <summary>در صف ارسال به سامانه</summary>
+    Queued = 1,
+
+    /// <summary>در حال ارسال</summary>
+    Sending = 2,
+
+    /// <summary>به سامانه ارسال شد (در انتظار استعلام/تایید)</summary>
+    Sent = 3,
+
+    /// <summary>ارسال ناموفق — با پیام خطای سامانه</summary>
+    Failed = 4,
+
+    /// <summary>برگشت از سامانه (مرجع/خطای فنی) — نیاز به اصلاح و ارسال مجدد</summary>
+    Returned = 5,
+
+    /// <summary>ابطال شده</summary>
+    Voided = 6
+}
+
+/// <summary>نوع رویداد/لاگ مودیان</summary>
+public enum MoadianLogAction
+{
+    /// <summary>ساخته شدن فاکتور</summary>
+    Created = 0,
+
+    /// <summary>قرار گرفتن در صف ارسال</summary>
+    Enqueued = 1,
+
+    /// <summary>ارسال به سامانه</summary>
+    Sent = 2,
+
+    /// <summary>خطا در ارسال</summary>
+    Failed = 3,
+
+    /// <summary>برگشت از سامانه (مرجع)</summary>
+    Returned = 4,
+
+    /// <summary>ابطال / اصلاح</summary>
+    Voided = 5
+}
+
 // ===================== ماژول فاکتور =====================
 
 /// <summary>نوع فاکتور</summary>

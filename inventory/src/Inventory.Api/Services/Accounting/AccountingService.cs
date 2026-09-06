@@ -30,11 +30,13 @@ public class AccountingService : IAccountingService
         var years = await _db.AccFiscalYears.AsNoTracking()
             .OrderByDescending(f => f.StartDate).ToListAsync();
 
-        var stats = await _db.AccVouchers.AsNoTracking()
-            .Where(v => v.Status == VoucherStatus.Confirmed)
+        var stats = (await _db.AccVouchers.AsNoTracking()
+                .Where(v => v.Status == VoucherStatus.Confirmed)
+                .Select(v => new { v.FiscalYearId, v.TotalDebit, v.TotalCredit })
+                .ToListAsync())
             .GroupBy(v => v.FiscalYearId)
             .Select(g => new { Id = g.Key, Count = g.Count(), D = g.Sum(x => x.TotalDebit), C = g.Sum(x => x.TotalCredit) })
-            .ToListAsync();
+            .ToList();
 
         return years.Select(f =>
         {
@@ -138,10 +140,10 @@ public class AccountingService : IAccountingService
         {
             turnover = (await _db.AccVoucherLines.AsNoTracking()
                     .Where(l => l.Voucher!.Status == VoucherStatus.Confirmed)
-                    .GroupBy(l => l.AccountId)
-                    .Select(g => new { Id = g.Key, D = g.Sum(x => x.Debit), C = g.Sum(x => x.Credit) })
+                    .Select(l => new { l.AccountId, l.Debit, l.Credit })
                     .ToListAsync())
-                .ToDictionary(x => x.Id, x => (x.D, x.C));
+                .GroupBy(x => x.AccountId)
+                .ToDictionary(g => g.Key, g => (D: g.Sum(x => x.Debit), C: g.Sum(x => x.Credit)));
         }
 
         string PathOf(Db.AccAccount a)
@@ -428,6 +430,11 @@ public class AccountingService : IAccountingService
         var parties = await _db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Name);
 
+        var dimIds = v.Lines.Where(l => l.DimensionValueId is not null).Select(l => l.DimensionValueId!.Value).Distinct().ToList();
+        var dims = dimIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.AccDimensionValues.AsNoTracking().Where(d => dimIds.Contains(d.Id))
+                .ToDictionaryAsync(d => d.Id, d => $"{d.Code} — {d.Name}");
+
         return new AccVoucher
         {
             Id = v.Id,
@@ -458,6 +465,8 @@ public class AccountingService : IAccountingService
                 PartyId = l.PartyId,
                 PartyName = l.PartyId is not null && parties.TryGetValue(l.PartyId.Value, out var pn) ? pn : null,
                 ProjectId = l.ProjectId,
+                DimensionValueId = l.DimensionValueId,
+                DimensionValueName = l.DimensionValueId is not null && dims.TryGetValue(l.DimensionValueId.Value, out var dn) ? dn : null,
                 Description = l.Description,
                 RefNumber = l.RefNumber,
                 Debit = l.Debit,
@@ -527,6 +536,12 @@ public class AccountingService : IAccountingService
                 throw new InvalidOperationException($"حساب «{acc.Code} — {acc.Name}» غیرفعال است.");
             if (acc.RequiresParty && (l.PartyId is null or 0))
                 throw new InvalidOperationException($"برای حساب «{acc.Name}» ثبت طرف حساب الزامی است.");
+            if (l.DimensionValueId is > 0)
+            {
+                var dimOk = await _db.AccDimensionValues.AnyAsync(v => v.Id == l.DimensionValueId && v.IsActive);
+                if (!dimOk)
+                    throw new InvalidOperationException("بُعد تحلیلی انتخاب‌شده نامعتبر یا غیرفعال است.");
+            }
         }
 
         Db.AccVoucher entity;
@@ -574,6 +589,7 @@ public class AccountingService : IAccountingService
                 AccountId = l.AccountId,
                 PartyId = l.PartyId is > 0 ? l.PartyId : null,
                 ProjectId = l.ProjectId is > 0 ? l.ProjectId : null,
+                DimensionValueId = l.DimensionValueId is > 0 ? l.DimensionValueId : null,
                 Description = string.IsNullOrWhiteSpace(l.Description) ? dto.Description : l.Description,
                 RefNumber = l.RefNumber,
                 Debit = l.Debit,
@@ -677,10 +693,9 @@ public class AccountingService : IAccountingService
         if (from is not null)
         {
             var before = await baseQ.Where(l => l.Voucher!.Date < from.Value.Date)
-                .GroupBy(l => 1)
-                .Select(g => new { D = g.Sum(x => x.Debit), C = g.Sum(x => x.Credit) })
-                .FirstOrDefaultAsync();
-            opening = (before?.D ?? 0) - (before?.C ?? 0);
+                .Select(l => new { l.Debit, l.Credit })
+                .ToListAsync();
+            opening = before.Sum(x => x.Debit) - before.Sum(x => x.Credit);
         }
 
         var q = baseQ.AsQueryable();
@@ -698,6 +713,7 @@ public class AccountingService : IAccountingService
                 Code = l.Account!.Code,
                 AccName = l.Account.Name,
                 l.PartyId,
+                l.DimensionValueId,
                 l.Description,
                 l.Debit,
                 l.Credit
@@ -706,6 +722,11 @@ public class AccountingService : IAccountingService
         var partyIds = raw.Where(r => r.PartyId is not null).Select(r => r.PartyId!.Value).Distinct().ToList();
         var parties = await _db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Name);
+
+        var dimIds = raw.Where(r => r.DimensionValueId is not null).Select(r => r.DimensionValueId!.Value).Distinct().ToList();
+        var dims = dimIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.AccDimensionValues.AsNoTracking().Where(d => dimIds.Contains(d.Id))
+                .ToDictionaryAsync(d => d.Id, d => $"{d.Code} — {d.Name}");
 
         var rows = new List<AccLedgerRow>();
         var balance = opening;
@@ -721,6 +742,7 @@ public class AccountingService : IAccountingService
                 AccountCode = r.Code,
                 AccountName = r.AccName,
                 PartyName = r.PartyId is not null && parties.TryGetValue(r.PartyId.Value, out var pn) ? pn : null,
+                DimensionValueName = r.DimensionValueId is not null && dims.TryGetValue(r.DimensionValueId.Value, out var dn) ? dn : null,
                 Description = r.Description,
                 Debit = r.Debit,
                 Credit = r.Credit,
@@ -769,7 +791,7 @@ public class AccountingService : IAccountingService
     public async Task<PagedResult<AccLedgerRow>> GetJournalAsync(DateTime? from, DateTime? to, int page, int pageSize)
     {
         var q = _db.AccVoucherLines.AsNoTracking()
-            .Include(l => l.Voucher).Include(l => l.Account)
+            .Include(l => l.Voucher).Include(l => l.Account).Include(l => l.DimensionValue)
             .Where(l => l.Voucher!.Status == VoucherStatus.Confirmed);
 
         if (from is not null) q = q.Where(l => l.Voucher!.Date >= from.Value.Date);
@@ -787,6 +809,8 @@ public class AccountingService : IAccountingService
                 RowNo = l.RowNo,
                 AccountCode = l.Account!.Code,
                 AccountName = l.Account.Name,
+                DimensionValueName = l.DimensionValue != null
+                    ? $"{l.DimensionValue.Code} — {l.DimensionValue.Name}" : null,
                 Description = l.Description,
                 Debit = l.Debit,
                 Credit = l.Credit
@@ -896,8 +920,10 @@ public class AccountingService : IAccountingService
 
         dash.VoucherCount = await q.CountAsync(v => v.Status == VoucherStatus.Confirmed);
         dash.DraftCount = await q.CountAsync(v => v.Status == VoucherStatus.Draft);
-        dash.TotalDebit = await q.Where(v => v.Status == VoucherStatus.Confirmed).SumAsync(v => (decimal?)v.TotalDebit) ?? 0;
-        dash.TotalCredit = await q.Where(v => v.Status == VoucherStatus.Confirmed).SumAsync(v => (decimal?)v.TotalCredit) ?? 0;
+        var confirmedTotals = await q.Where(v => v.Status == VoucherStatus.Confirmed)
+            .Select(v => new { v.TotalDebit, v.TotalCredit }).ToListAsync();
+        dash.TotalDebit = confirmedTotals.Sum(v => v.TotalDebit);
+        dash.TotalCredit = confirmedTotals.Sum(v => v.TotalCredit);
 
         var accounts = await _db.AccAccounts.AsNoTracking().Select(a => new { a.Id, a.Type }).ToListAsync();
         var typeOf = accounts.ToDictionary(a => a.Id, a => a.Type);

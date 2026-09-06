@@ -265,6 +265,15 @@
                         <NavLink class="nav-link" href="acc/inv-rules" @onclick="NotifyClose">
                             <i class="bi bi-gear-wide-connected"></i><span>سند خودکار انبار</span>
                         </NavLink>
+                        <NavLink class="nav-link" href="acc/dimensions" @onclick="NotifyClose">
+                            <i class="bi bi-grid-3x3-gap-fill"></i><span>ابعاد تحلیلی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/fixed-assets" @onclick="NotifyClose">
+                            <i class="bi bi-boxes"></i><span>دارایی ثابت</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/budgets" @onclick="NotifyClose">
+                            <i class="bi bi-pie-chart-fill"></i><span>بودجه و کنترل</span>
+                        </NavLink>
                     }
 
                     @* ---------- حسابداری: عملیات ---------- *@
@@ -308,6 +317,21 @@
                         </NavLink>
                         <NavLink class="nav-link" href="fac/rules" @onclick="NotifyClose">
                             <i class="bi bi-gear-wide-connected"></i><span>تنظیمات فاکتور</span>
+                        </NavLink>
+                    }
+
+                    @* ---------- سامانه مودیان و چاپگر مالی ---------- *@
+                    @if (Auth.HasModule("Moadian"))
+                    {
+                        <div class="nav-subhead">سامانه مودیان</div>
+                        <NavLink class="nav-link" href="moadian" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-cloud-arrow-up"></i><span>داشبورد مودیان</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="moadian/invoices" @onclick="NotifyClose">
+                            <i class="bi bi-receipt"></i><span>فاکتورهای الکترونیکی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="moadian/settings" @onclick="NotifyClose">
+                            <i class="bi bi-sliders"></i><span>تنظیمات مودیان و چاپگر</span>
                         </NavLink>
                     }
 

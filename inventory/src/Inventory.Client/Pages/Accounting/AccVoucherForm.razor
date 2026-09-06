@@ -3,6 +3,7 @@
 @inject IAccVoucherService VoucherSvc
 @inject IAccAccountService AccountSvc
 @inject IPartyService PartySvc
+@inject IAccDimensionService DimSvc
 @inject NavigationManager Nav
 @inject IToastService Toast
 @inject LayoutState Layout
@@ -94,11 +95,12 @@ else
                     <thead>
                         <tr>
                             <th style="width:44px">ردیف</th>
-                            <th style="width:26%">حساب <span class="text-danger">*</span></th>
-                            <th style="width:16%">طرف حساب</th>
+                            <th style="width:23%">حساب <span class="text-danger">*</span></th>
+                            <th style="width:13%">طرف حساب</th>
+                            <th style="width:13%">بُعد تحلیلی</th>
                             <th>شرح آرتیکل</th>
-                            <th style="width:12%" class="text-center">بدهکار</th>
-                            <th style="width:12%" class="text-center">بستانکار</th>
+                            <th style="width:11%" class="text-center">بدهکار</th>
+                            <th style="width:11%" class="text-center">بستانکار</th>
                             <th style="width:56px"></th>
                         </tr>
                     </thead>
@@ -117,6 +119,11 @@ else
                                 <td>
                                     <SearchSelect Items="partyLookups" Value="@(line.PartyId ?? 0)"
                                                   ValueChanged="v => OnParty(idx, v)"
+                                                  Placeholder="اختیاری…" />
+                                </td>
+                                <td>
+                                    <SearchSelect Items="dimLookups" Value="@(line.DimensionValueId ?? 0)"
+                                                  ValueChanged="v => OnDimValue(idx, v)"
                                                   Placeholder="اختیاری…" />
                                 </td>
                                 <td>
@@ -144,7 +151,7 @@ else
                     </tbody>
                     <tfoot class="table-light">
                         <tr>
-                            <th colspan="4" class="text-end">جمع کل</th>
+                            <th colspan="5" class="text-end">جمع کل</th>
                             <th class="text-center num text-success">@TotalDebit.Money()</th>
                             <th class="text-center num text-danger">@TotalCredit.Money()</th>
                             <th></th>
@@ -231,6 +238,7 @@ else
     private AccVoucher doc = new();
     private List<LookupItem> accountLookups = new();
     private List<LookupItem> partyLookups = new();
+    private List<LookupItem> dimLookups = new();
 
     private bool loading = true, saving;
 
@@ -262,6 +270,14 @@ else
                     .OrderBy(p => p.Name).ToList();
             }
             catch { partyLookups = new(); }
+
+            try
+            {
+                var dims = await DimSvc.GetDimensionsAsync();
+                if (dims.Count > 0)
+                    dimLookups = await DimSvc.GetValueLookupsAsync(dims[0].Id);
+            }
+            catch { dimLookups = new(); }
 
             doc = Id is null ? await VoucherSvc.NewAsync() : await VoucherSvc.GetAsync(Id.Value);
 
@@ -300,6 +316,13 @@ else
         var line = doc.Lines[idx];
         line.PartyId = partyId > 0 ? partyId : null;
         line.PartyName = partyLookups.FirstOrDefault(p => p.Id == partyId)?.Name;
+    }
+
+    private void OnDimValue(int idx, int dimValueId)
+    {
+        var line = doc.Lines[idx];
+        line.DimensionValueId = dimValueId > 0 ? dimValueId : null;
+        line.DimensionValueName = dimLookups.FirstOrDefault(d => d.Id == dimValueId)?.Name;
     }
 
     private void OnDebit(int idx, ChangeEventArgs e)

@@ -206,6 +206,18 @@
     <script src="lib/chart.umd.min.js"></script>
     <script src="lib/qrcode.min.js"></script>
     <script>
+        // ---------- QR فاکتور الکترونیکی (سامانه مودیان) ----------
+        window.appQr = {
+            render: function (id, text) {
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.innerHTML = '';
+                new QRCode(el, { text: text || '', width: 160, height: 160, correctLevel: QRCode.CorrectLevel.M });
+            },
+            clear: function (id) { var el = document.getElementById(id); if (el) el.innerHTML = ''; }
+        };
+    </script>
+    <script>
         // ---------- نمودارهای داشبورد (Chart.js) ----------
         window.appCharts = {
             _charts: {},
