@@ -56,6 +56,10 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishn
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
 
+// ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
+
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
 builder.Services.AddSingleton<UserPhotoService>();

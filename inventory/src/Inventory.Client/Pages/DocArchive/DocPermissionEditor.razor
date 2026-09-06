@@ -1,0 +1,111 @@
+@* ================== ویرایشگر دسترسی نفرات (پوشه یا مدرک) ==================
+   نفر را با کمبوی سرچ‌دار اضافه کنید و سطح دسترسی و اجازه دانلود را تعیین کنید. *@
+
+<div class="border rounded-3 p-2">
+    <div class="row g-2 align-items-end mb-2">
+        <div class="col-md-6">
+            <label class="form-label fs-8">افزودن نفر</label>
+            <SearchSelect Items="AvailableUsers" @bind-Value="pickUserId" Placeholder="جستجوی نام کاربر…" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label fs-8">سطح دسترسی</label>
+            <select class="form-select form-select-sm" @bind="pickLevel">
+                <option value="1">مشاهده</option>
+                <option value="2">خواندن</option>
+                <option value="3">نوشتن</option>
+                <option value="4">دسترسی کامل</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <div class="form-check form-switch mb-1">
+                <input class="form-check-input" type="checkbox" id="pickDl" @bind="pickDownload" />
+                <label class="form-check-label fs-8" for="pickDl">دانلود</label>
+            </div>
+        </div>
+        <div class="col-md-1">
+            <button class="btn btn-sm btn-primary w-100" type="button" @onclick="Add" title="افزودن">
+                <i class="bi bi-plus-lg"></i>
+            </button>
+        </div>
+    </div>
+
+    @if (Items.Count == 0)
+    {
+        <div class="fs-8 text-muted py-2">هنوز نفری اضافه نشده است.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>نفر</th>
+                        <th style="width:170px">سطح دسترسی</th>
+                        <th style="width:90px" class="text-center">دانلود</th>
+                        <th style="width:50px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in Items)
+                    {
+                        <tr>
+                            <td class="fs-8">@NameOf(p.UserId)</td>
+                            <td>
+                                <select class="form-select form-select-sm"
+                                        value="@((int)p.Level)"
+                                        @onchange="e => SetLevel(p, e)">
+                                    <option value="1">مشاهده</option>
+                                    <option value="2">خواندن</option>
+                                    <option value="3">نوشتن</option>
+                                    <option value="4">دسترسی کامل</option>
+                                </select>
+                            </td>
+                            <td class="text-center">
+                                <input class="form-check-input" type="checkbox" @bind="p.CanDownload" />
+                            </td>
+                            <td>
+                                <button class="btn btn-sm btn-light" type="button" @onclick="() => Items.Remove(p)">
+                                    <i class="bi bi-x-lg text-danger"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<LookupItem> Users { get; set; } = new();
+    [Parameter] public List<DocPermissionDto> Items { get; set; } = new();
+
+    private int pickUserId;
+    private int pickLevel = 2;
+    private bool pickDownload = true;
+
+    private List<LookupItem> AvailableUsers =>
+        Users.Where(u => !Items.Any(i => i.UserId == u.Id)).ToList();
+
+    private string NameOf(int id) =>
+        Users.FirstOrDefault(u => u.Id == id)?.Name ?? $"#{id}";
+
+    private static void SetLevel(DocPermissionDto p, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v)) p.Level = (DocAccessLevelDto)v;
+    }
+
+    private void Add()
+    {
+        if (pickUserId <= 0) return;
+        if (Items.Any(i => i.UserId == pickUserId)) return;
+        Items.Add(new DocPermissionDto
+        {
+            UserId = pickUserId,
+            UserName = NameOf(pickUserId),
+            Level = (DocAccessLevelDto)pickLevel,
+            CanDownload = pickDownload
+        });
+        pickUserId = 0;
+    }
+}

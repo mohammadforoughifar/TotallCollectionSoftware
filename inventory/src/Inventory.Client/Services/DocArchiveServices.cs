@@ -1,0 +1,134 @@
+using Inventory.Shared.Dtos;
+
+namespace Inventory.Client.Services;
+
+// =====================================================================
+//  سرویس‌های ماژول آرشیو اسناد و مدارک (سمت کلاینت)
+// =====================================================================
+
+public interface IDocArchiveService
+{
+    // پوشه‌ها
+    Task<List<DocFolderDto>> GetFoldersAsync();
+    Task<DocFolderDto> GetFolderAsync(int id);
+    Task<int> CreateFolderAsync(DocFolderDto dto);
+    Task UpdateFolderAsync(int id, DocFolderDto dto);
+    Task SaveFolderPermissionsAsync(int id, DocPermissionsSaveDto dto);
+    Task DeleteFolderAsync(int id);
+
+    // مدارک
+    Task<List<DocumentListDto>> GetDocumentsAsync(int? folderId = null, string? search = null,
+        bool onlyExpiring = false, string status = "active");
+    Task<DocumentDto> GetDocumentAsync(int id);
+    Task<int> CreateDocumentAsync(DocumentDto dto);
+    Task UpdateDocumentAsync(int id, DocumentDto dto);
+    Task SaveDocumentPermissionsAsync(int id, DocPermissionsSaveDto dto);
+    Task DeleteDocumentAsync(int id);
+
+    // ورژن و گردش
+    Task<int> CreateVersionAsync(DocVersionCreateDto dto);
+    Task SetVersionActiveAsync(int versionId, bool active);
+    Task ApprovalAsync(DocApprovalActionDto dto);
+
+    // لینک
+    Task LinkAsync(int documentId, int linkedDocumentId, string? note);
+    /// <summary>لینک چندتایی مدارک مرتبط</summary>
+    Task LinkManyAsync(DocLinkSaveDto dto);
+    Task UnlinkAsync(int documentId, int linkedDocumentId);
+
+    /// <summary>فعال/غیرفعال کردن مدرک</summary>
+    Task SetDocumentActiveAsync(int id, DocSetActiveDto dto);
+
+    // کارتابل و داده کمکی
+    Task<List<DocCartableItemDto>> GetCartableAsync(bool includeDone = false);
+    Task CloseTaskAsync(int id);
+    Task<DocArchiveLookups> GetLookupsAsync();
+}
+
+public class DocArchiveService : IDocArchiveService
+{
+    private readonly IApiClient _api;
+    public DocArchiveService(IApiClient api) => _api = api;
+
+    private const string Root = "api/doc-archive";
+
+    // ---------- پوشه‌ها ----------
+    public Task<List<DocFolderDto>> GetFoldersAsync()
+        => _api.GetAsync<List<DocFolderDto>>($"{Root}/folders");
+
+    public Task<DocFolderDto> GetFolderAsync(int id)
+        => _api.GetAsync<DocFolderDto>($"{Root}/folders/{id}");
+
+    public async Task<int> CreateFolderAsync(DocFolderDto dto)
+        => (await _api.PostAsync<IdResponse>($"{Root}/folders", dto)).Id;
+
+    public Task UpdateFolderAsync(int id, DocFolderDto dto)
+        => _api.PutAsync<object>($"{Root}/folders/{id}", dto);
+
+    public Task SaveFolderPermissionsAsync(int id, DocPermissionsSaveDto dto)
+        => _api.PutAsync<object>($"{Root}/folders/{id}/permissions", dto);
+
+    public Task DeleteFolderAsync(int id)
+        => _api.DeleteAsync($"{Root}/folders/{id}");
+
+    // ---------- مدارک ----------
+    public Task<List<DocumentListDto>> GetDocumentsAsync(int? folderId = null, string? search = null,
+        bool onlyExpiring = false, string status = "active")
+    {
+        var url = $"{Root}/documents?search={Uri.EscapeDataString(search ?? "")}&status={status}";
+        if (folderId is > 0) url += $"&folderId={folderId}";
+        if (onlyExpiring) url += "&onlyExpiring=true";
+        return _api.GetAsync<List<DocumentListDto>>(url);
+    }
+
+    public Task<DocumentDto> GetDocumentAsync(int id)
+        => _api.GetAsync<DocumentDto>($"{Root}/documents/{id}");
+
+    public async Task<int> CreateDocumentAsync(DocumentDto dto)
+        => (await _api.PostAsync<IdResponse>($"{Root}/documents", dto)).Id;
+
+    public Task UpdateDocumentAsync(int id, DocumentDto dto)
+        => _api.PutAsync<object>($"{Root}/documents/{id}", dto);
+
+    public Task SaveDocumentPermissionsAsync(int id, DocPermissionsSaveDto dto)
+        => _api.PutAsync<object>($"{Root}/documents/{id}/permissions", dto);
+
+    public Task DeleteDocumentAsync(int id)
+        => _api.DeleteAsync($"{Root}/documents/{id}");
+
+    // ---------- ورژن و گردش ----------
+    public async Task<int> CreateVersionAsync(DocVersionCreateDto dto)
+        => (await _api.PostAsync<IdResponse>($"{Root}/documents/versions", dto)).Id;
+
+    public Task SetVersionActiveAsync(int versionId, bool active)
+        => _api.PutAsync<object>($"{Root}/documents/versions/{versionId}/active?active={active.ToString().ToLower()}");
+
+    public Task ApprovalAsync(DocApprovalActionDto dto)
+        => _api.PostAsync<object>($"{Root}/documents/approval", dto);
+
+    // ---------- لینک ----------
+    public Task LinkAsync(int documentId, int linkedDocumentId, string? note)
+        => _api.PostAsync<object>($"{Root}/documents/links",
+            new { documentId, linkedDocumentId, note });
+
+    public Task LinkManyAsync(DocLinkSaveDto dto)
+        => _api.PostAsync<object>($"{Root}/documents/links/many", dto);
+
+    public Task SetDocumentActiveAsync(int id, DocSetActiveDto dto)
+        => _api.PutAsync<object>($"{Root}/documents/{id}/active", dto);
+
+    public Task UnlinkAsync(int documentId, int linkedDocumentId)
+        => _api.DeleteAsync($"{Root}/documents/links?documentId={documentId}&linkedDocumentId={linkedDocumentId}");
+
+    // ---------- کارتابل ----------
+    public Task<List<DocCartableItemDto>> GetCartableAsync(bool includeDone = false)
+        => _api.GetAsync<List<DocCartableItemDto>>($"{Root}/cartable?includeDone={includeDone.ToString().ToLower()}");
+
+    public Task CloseTaskAsync(int id)
+        => _api.PutAsync<object>($"{Root}/cartable/{id}/done");
+
+    public Task<DocArchiveLookups> GetLookupsAsync()
+        => _api.GetAsync<DocArchiveLookups>($"{Root}/lookups");
+
+    private class IdResponse { public int Id { get; set; } }
+}

@@ -40,6 +40,8 @@ builder.Services.AddScoped<ITypeFactorService, TypeFactorService>();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IProjectCartableService, ProjectCartableService>();
 builder.Services.AddScoped<IReportWorkService, ReportWorkService>();
+// ---------- ماژول آرشیو اسناد و مدارک ----------
+builder.Services.AddScoped<IDocArchiveService, DocArchiveService>();
 // ---------- ماژول اتوماسیون اداری (نامه داخلی + صادره) ----------
 builder.Services.AddScoped<ILetterService, LetterService>();
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();

@@ -65,7 +65,11 @@ public static class RbacSeeder
         // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
         // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
         // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده
-        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" }
+        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" },
+        // ================== آرشیو اسناد و مدارک ==================
+        // Read: ورود به ماژول و دیدن پوشه/مدارکِ مجاز | Create: ساخت پوشه و ثبت مدرک
+        // Delete: حذف پوشه/مدرک | Manage: مدیر آرشیو (دسترسی کامل به همه پوشه‌ها و مدارک)
+        ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage" }
     };
 
     public static async Task SeedAsync(AppDbContext db)
