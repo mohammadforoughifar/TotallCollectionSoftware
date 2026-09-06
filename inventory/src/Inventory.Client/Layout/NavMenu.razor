@@ -208,6 +208,225 @@
         }
     </div>
 
+    @* ============ ERP — انبارداری و حسابداری ============ *@
+    @if (Auth.HasModule("Products") || Auth.HasModule("Warehouses") || Auth.HasModule("InvDocs") || Auth.HasModule("InvDocTypes")
+         || Auth.HasModule("AccAccounts") || Auth.HasModule("AccVouchers") || Auth.HasModule("FacInvoices")
+         || Auth.HasModule("TrsVouchers") || Auth.HasModule("TrsAccounts") || Auth.HasModule("TrsCheques")
+         || Auth.HasModule("StkSessions") || Auth.HasModule("StkBarcodes"))
+    {
+        <div class="nav-group group-erp">
+            <button type="button" class="nav-section-title nav-toggle @(gErp ? "open" : "")" @onclick="() => gErp = !gErp">
+                <span>ERP</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gErp)
+            {
+                <div class="nav-group-items">
+
+                    @* ---------- تعاریف پایه ---------- *@
+                    <div class="nav-subhead">تعاریف پایه</div>
+                    @if (Auth.HasModule("Products"))
+                    {
+                        <NavLink class="nav-link" href="inv/products" @onclick="NotifyClose">
+                            <i class="bi bi-boxes"></i><span>تعریف کالا</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="inv/categories" @onclick="NotifyClose">
+                            <i class="bi bi-diagram-3"></i><span>گروه‌بندی کالا</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="inv/attributes" @onclick="NotifyClose">
+                            <i class="bi bi-sliders"></i><span>ویژگی‌های کالا</span>
+                        </NavLink>
+                    }
+                    @if (Auth.HasModule("Warehouses"))
+                    {
+                        <NavLink class="nav-link" href="inv/warehouses" @onclick="NotifyClose">
+                            <i class="bi bi-building-gear"></i><span>مدیریت انبارها</span>
+                        </NavLink>
+                    }
+                    @if (Auth.HasModule("InvDocTypes"))
+                    {
+                        <NavLink class="nav-link" href="inv/doc-types" @onclick="NotifyClose">
+                            <i class="bi bi-journals"></i><span>نوع رسید و حواله</span>
+                        </NavLink>
+                    }
+
+                    @* ---------- عملیات انبار ---------- *@
+                    @if (Auth.HasModule("InvDocs"))
+                    {
+                        <div class="nav-subhead">عملیات انبار</div>
+                        <NavLink class="nav-link" href="inv/docs" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-journal-text"></i><span>رسید و حواله</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="inv/docs/new" @onclick="NotifyClose">
+                            <i class="bi bi-file-earmark-plus"></i><span>ثبت سند جدید</span>
+                        </NavLink>
+                    }
+
+                    @* ---------- گزارش‌ها ---------- *@
+                    @if (Auth.HasModule("InvDocs"))
+                    {
+                        <div class="nav-subhead">گزارش‌ها</div>
+                        <NavLink class="nav-link" href="inv/stock" @onclick="NotifyClose">
+                            <i class="bi bi-clipboard-check"></i><span>موجودی انبار</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="inv/kardex" @onclick="NotifyClose">
+                            <i class="bi bi-clipboard-data"></i><span>کاردکس کالا</span>
+                        </NavLink>
+                    }
+
+                    @* ---------- حسابداری: تعاریف ---------- *@
+                    @if (Auth.HasModule("AccAccounts"))
+                    {
+                        <div class="nav-subhead">حسابداری — تعاریف</div>
+                        <NavLink class="nav-link" href="acc/accounts" @onclick="NotifyClose">
+                            <i class="bi bi-diagram-3-fill"></i><span>کدینگ حساب‌ها</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/fiscal-years" @onclick="NotifyClose">
+                            <i class="bi bi-calendar-range"></i><span>سال‌های مالی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/inv-rules" @onclick="NotifyClose">
+                            <i class="bi bi-gear-wide-connected"></i><span>سند خودکار انبار</span>
+                        </NavLink>
+                    }
+
+                    @* ---------- حسابداری: عملیات ---------- *@
+                    @if (Auth.HasModule("AccVouchers"))
+                    {
+                        <div class="nav-subhead">حسابداری — عملیات</div>
+                        <NavLink class="nav-link" href="acc/vouchers" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-journal-text"></i><span>اسناد حسابداری</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/vouchers/new" @onclick="NotifyClose">
+                            <i class="bi bi-file-earmark-plus"></i><span>صدور سند جدید</span>
+                        </NavLink>
+                    }
+
+                    @* ---------- فاکتور: عملیات ---------- *@
+                    @if (Auth.HasModule("FacInvoices"))
+                    {
+                        <div class="nav-subhead">فاکتور — عملیات</div>
+                        <NavLink class="nav-link" href="fac/invoices" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-receipt"></i><span>فهرست فاکتورها</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fac/invoices/new/Sale" @onclick="NotifyClose">
+                            <i class="bi bi-cart-check"></i><span>فاکتور فروش</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fac/invoices/new/Purchase" @onclick="NotifyClose">
+                            <i class="bi bi-bag-plus"></i><span>فاکتور خرید</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fac/invoices/new/SaleReturn" @onclick="NotifyClose">
+                            <i class="bi bi-arrow-return-left"></i><span>برگشت از فروش</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fac/invoices/new/PurchaseReturn" @onclick="NotifyClose">
+                            <i class="bi bi-arrow-return-right"></i><span>برگشت از خرید</span>
+                        </NavLink>
+
+                        <div class="nav-subhead">فاکتور — گزارش و تنظیمات</div>
+                        <NavLink class="nav-link" href="fac/dashboard" @onclick="NotifyClose">
+                            <i class="bi bi-speedometer2"></i><span>داشبورد فروش و خرید</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fac/reports/summary" @onclick="NotifyClose">
+                            <i class="bi bi-bar-chart-line"></i><span>گزارش فروش و خرید</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fac/rules" @onclick="NotifyClose">
+                            <i class="bi bi-gear-wide-connected"></i><span>تنظیمات فاکتور</span>
+                        </NavLink>
+                    }
+
+                    @* ---------- خزانه‌داری ---------- *@
+                    @if (Auth.HasModule("TrsVouchers") || Auth.HasModule("TrsAccounts") || Auth.HasModule("TrsCheques"))
+                    {
+                        <div class="nav-subhead">خزانه‌داری</div>
+
+                        @if (Auth.HasModule("TrsVouchers"))
+                        {
+                            <NavLink class="nav-link" href="trs/vouchers" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                                <i class="bi bi-cash-coin"></i><span>دریافت و پرداخت</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="trs/vouchers/new/Receipt" @onclick="NotifyClose">
+                                <i class="bi bi-box-arrow-in-down"></i><span>ثبت دریافت</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="trs/vouchers/new/Payment" @onclick="NotifyClose">
+                                <i class="bi bi-box-arrow-up"></i><span>ثبت پرداخت</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="trs/vouchers/new/Transfer" @onclick="NotifyClose">
+                                <i class="bi bi-arrow-left-right"></i><span>انتقال بین حساب‌ها</span>
+                            </NavLink>
+                        }
+                        @if (Auth.HasModule("TrsCheques"))
+                        {
+                            <NavLink class="nav-link" href="trs/cheques" @onclick="NotifyClose">
+                                <i class="bi bi-card-checklist"></i><span>دفتر چک</span>
+                            </NavLink>
+                        }
+                        @if (Auth.HasModule("TrsAccounts"))
+                        {
+                            <NavLink class="nav-link" href="trs/accounts" @onclick="NotifyClose">
+                                <i class="bi bi-wallet2"></i><span>صندوق و بانک</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="trs/reports/flow" @onclick="NotifyClose">
+                                <i class="bi bi-list-columns"></i><span>گردش صندوق و بانک</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="trs/dashboard" @onclick="NotifyClose">
+                                <i class="bi bi-speedometer2"></i><span>داشبورد خزانه</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="trs/rules" @onclick="NotifyClose">
+                                <i class="bi bi-gear-wide-connected"></i><span>تنظیمات خزانه</span>
+                            </NavLink>
+                        }
+                    }
+
+                    @* ---------- انبارگردانی و بارکد ---------- *@
+                    @if (Auth.HasModule("StkSessions") || Auth.HasModule("StkBarcodes"))
+                    {
+                        <div class="nav-subhead">انبارگردانی و بارکد</div>
+
+                        @if (Auth.HasModule("StkSessions"))
+                        {
+                            <NavLink class="nav-link" href="stk/sessions" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                                <i class="bi bi-clipboard-data"></i><span>دوره‌های انبارگردانی</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="stk/sessions/new" @onclick="NotifyClose">
+                                <i class="bi bi-clipboard-plus"></i><span>دوره جدید</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="stk/reports/diff" @onclick="NotifyClose">
+                                <i class="bi bi-file-earmark-bar-graph"></i><span>گزارش مغایرت</span>
+                            </NavLink>
+                        }
+
+                        @if (Auth.HasModule("StkBarcodes"))
+                        {
+                            <NavLink class="nav-link" href="stk/barcodes" @onclick="NotifyClose">
+                                <i class="bi bi-upc"></i><span>بارکد کالا</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="stk/labels" @onclick="NotifyClose">
+                                <i class="bi bi-tags"></i><span>چاپ برچسب</span>
+                            </NavLink>
+                        }
+                    }
+
+                    @* ---------- حسابداری: گزارش‌ها ---------- *@
+                    @if (Auth.HasModule("AccVouchers"))
+                    {
+                        <div class="nav-subhead">حسابداری — گزارش‌ها</div>
+                        <NavLink class="nav-link" href="acc/dashboard" @onclick="NotifyClose">
+                            <i class="bi bi-speedometer2"></i><span>داشبورد مالی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/reports/journal" @onclick="NotifyClose">
+                            <i class="bi bi-journals"></i><span>دفتر روزنامه</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/reports/ledger" @onclick="NotifyClose">
+                            <i class="bi bi-journal-bookmark"></i><span>دفتر حساب</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="acc/reports/trial-balance" @onclick="NotifyClose">
+                            <i class="bi bi-table"></i><span>تراز آزمایشی</span>
+                        </NavLink>
+                    }
+                </div>
+            }
+        </div>
+    }
+
     @* ============ مدیریت پروژه‌ها ============ *@
     @if (Auth.HasModule("Projects") || Auth.HasModule("ReportWorks") || Auth.HasModule("Karfarmas") || Auth.HasModule("TypeFactors"))
     {
@@ -447,7 +666,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gLetters, gDocs;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gLetters, gErp, gDocs;
 
     protected override void OnInitialized()
     {
@@ -461,6 +680,9 @@
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOps = p.StartsWith("orders") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses");
+        gErp = p.StartsWith("inv/") || p == "inv" || p.StartsWith("acc/") || p == "acc"
+               || p.StartsWith("fac/") || p == "fac" || p.StartsWith("trs/") || p == "trs"
+               || p.StartsWith("stk/") || p == "stk";
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
