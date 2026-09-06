@@ -111,6 +111,13 @@ public class DocumentListDto
 
     public DateTime? ExpireDate { get; set; }
     public bool IsExpired { get; set; }
+
+    /// <summary>روز مانده تا انقضا؛ منفی یعنی منقضی شده، null یعنی تاریخ انقضا ندارد.</summary>
+    public int? DaysToExpire { get; set; }
+
+    /// <summary>در آستانه انقضاست (هنوز منقضی نشده ولی کمتر از حد هشدار مانده).</summary>
+    public bool IsExpiringSoon { get; set; }
+
     public bool AllowMultipleActiveVersions { get; set; }
     public bool IsPublic { get; set; }
     public string CreatedByName { get; set; } = "";
@@ -270,4 +277,24 @@ public class DocArchiveLookups
 {
     public List<LookupItem> Users { get; set; } = new();
     public List<LookupItem> Documents { get; set; } = new();
+}
+
+/// <summary>خلاصه وضعیت انقضای مدارک برای بج‌های درخت پوشه‌ها</summary>
+public class DocExpirySummaryDto
+{
+    /// <summary>تعداد مدارکی که تاریخ انقضایشان گذشته است</summary>
+    public int Expired { get; set; }
+
+    /// <summary>تعداد مدارکی که تا آستانه تعیین‌شده منقضی می‌شوند</summary>
+    public int ExpiringSoon { get; set; }
+
+    /// <summary>آستانه «رو به انقضا» بر حسب روز</summary>
+    public int ExpiringDays { get; set; }
+}
+
+/// <summary>نتیجه اجرای دستی بررسی انقضا</summary>
+public class DocExpiryRunResultDto
+{
+    public int Created { get; set; }
+    public string Message { get; set; } = "";
 }

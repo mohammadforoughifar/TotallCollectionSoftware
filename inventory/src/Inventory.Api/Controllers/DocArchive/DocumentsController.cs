@@ -14,9 +14,11 @@ public class DocumentsController : RbacControllerBase
 {
     private readonly IDocAccessService _access;
     private readonly IDocumentService _svc;
+    private readonly DocExpiryWatcher _expiry;
 
-    public DocumentsController(AppDbContext db, IDocAccessService access, IDocumentService svc) : base(db)
-    { _access = access; _svc = svc; }
+    public DocumentsController(AppDbContext db, IDocAccessService access, IDocumentService svc,
+        DocExpiryWatcher expiry) : base(db)
+    { _access = access; _svc = svc; _expiry = expiry; }
 
     private const string Mod = "DocArchive";
     private Task<bool> IsManagerAsync() => HasAsync(Mod, "Manage");
@@ -26,7 +28,8 @@ public class DocumentsController : RbacControllerBase
     [HttpGet]
     /// <param name="status">وضعیت مدرک: active (پیش‌فرض) | inactive | all</param>
     public async Task<IActionResult> List(int? folderId = null, string? search = null,
-        bool onlyExpiring = false, string status = "active")
+        bool onlyExpiring = false, string status = "active",
+        string? expiry = null, int expiringDays = 60)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
 
@@ -82,9 +85,15 @@ public class DocumentsController : RbacControllerBase
             var last = vs.OrderByDescending(v => v.VersionNo).FirstOrDefault();
             var activeV = vs.Where(v => v.IsActive).OrderByDescending(v => v.VersionNo).FirstOrDefault();
             var expired = d.ExpireDate.HasValue && d.ExpireDate.Value.Date < DateTime.Today;
+            int? daysLeft = d.ExpireDate.HasValue ? (d.ExpireDate.Value.Date - DateTime.Today).Days : null;
+            var expiringSoon = daysLeft is >= 0 && daysLeft <= expiringDays;
 
-            if (onlyExpiring && !(d.ExpireDate.HasValue && d.ExpireDate.Value.Date <= DateTime.Today.AddDays(30)))
-                continue;
+            // فیلتر انقضا: expiring = رو به انقضا | expired = منقضی‌شده | all = هر دو
+            var expiryFilter = expiry?.ToLowerInvariant();
+            if (onlyExpiring && expiryFilter is null) expiryFilter = "expiring"; // سازگاری با پارامتر قدیمی
+            if (expiryFilter is "expiring" && !expiringSoon) continue;
+            if (expiryFilter is "expired" && !expired) continue;
+            if (expiryFilter is "all" && !(expired || expiringSoon)) continue;
 
             result.Add(new DocumentListDto
             {
@@ -96,6 +105,8 @@ public class DocumentsController : RbacControllerBase
                 CustomerCode = d.CustomerCode,
                 ExpireDate = d.ExpireDate,
                 IsExpired = expired,
+                DaysToExpire = daysLeft,
+                IsExpiringSoon = expiringSoon,
                 AllowMultipleActiveVersions = d.AllowMultipleActiveVersions,
                 IsPublic = d.IsPublic,
                 CreatedByName = d.CreatedByName,
@@ -422,6 +433,51 @@ public class DocumentsController : RbacControllerBase
 
         await _svc.UnlinkAsync(documentId, linkedDocumentId, MyUserId);
         return Ok();
+    }
+
+    // ---------------------------- انقضا ----------------------------
+
+    /// <summary>شمارش مدارک منقضی‌شده و رو به انقضا (برای بج‌های کنار درخت).</summary>
+    [HttpGet("/api/doc-archive/expiry-summary")]
+    public async Task<IActionResult> ExpirySummary(int expiringDays = 60)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        var manager = await IsManagerAsync();
+        var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
+        var today = DateTime.Today;
+        var horizon = today.AddDays(expiringDays);
+
+        var docs = await Db.Documents.AsNoTracking()
+            .Where(d => d.IsActive && !d.IsDeleted && d.ExpireDate != null && d.ExpireDate.Value.Date <= horizon)
+            .Select(d => new { d.Id, d.FolderId, d.CreatedByUserId, d.IsPublic, d.ExpireDate })
+            .ToListAsync();
+
+        var ids = docs.Select(d => d.Id).ToList();
+        var perms = await Db.DocumentPermissions.AsNoTracking()
+            .Where(p => ids.Contains(p.DocumentId) && p.UserId == MyUserId).ToListAsync();
+
+        int expired = 0, soon = 0;
+        foreach (var d in docs)
+        {
+            var visible = manager || d.CreatedByUserId == MyUserId || d.IsPublic
+                || perms.Any(p => p.DocumentId == d.Id && p.Level > DocAccessLevel.None)
+                || (folderMap.TryGetValue(d.FolderId, out var fa) && fa.Item1 > DocAccessLevel.None);
+            if (!visible) continue;
+
+            if (d.ExpireDate!.Value.Date < today) expired++; else soon++;
+        }
+
+        return Ok(new { expired, expiringSoon = soon, expiringDays });
+    }
+
+    /// <summary>اجرای دستی بررسی انقضا (فقط مدیر ماژول) — برای تست و اجرای فوری.</summary>
+    [HttpPost("/api/doc-archive/expiry-check")]
+    public async Task<IActionResult> RunExpiryCheck()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        var n = await _expiry.RunOnceAsync(HttpContext.RequestAborted);
+        return Ok(new { created = n, message = n == 0 ? "مدرکی در آستانه انقضا نبود یا قبلاً هشدار داده شده." : $"{n} کار کارتابل ساخته شد." });
     }
 
     // ---------------------------- کارتابل آرشیو ----------------------------

@@ -18,7 +18,13 @@ public interface IDocArchiveService
 
     // مدارک
     Task<List<DocumentListDto>> GetDocumentsAsync(int? folderId = null, string? search = null,
-        bool onlyExpiring = false, string status = "active");
+        bool onlyExpiring = false, string status = "active", string? expiry = null);
+
+    /// <summary>شمارش مدارک منقضی‌شده و رو به انقضا برای بج‌های درخت.</summary>
+    Task<DocExpirySummaryDto> GetExpirySummaryAsync();
+
+    /// <summary>اجرای دستی بررسی انقضا (نیازمند دسترسی مدیریت).</summary>
+    Task<string> RunExpiryCheckAsync();
     Task<DocumentDto> GetDocumentAsync(int id);
     Task<int> CreateDocumentAsync(DocumentDto dto);
     Task UpdateDocumentAsync(int id, DocumentDto dto);
@@ -73,12 +79,22 @@ public class DocArchiveService : IDocArchiveService
 
     // ---------- مدارک ----------
     public Task<List<DocumentListDto>> GetDocumentsAsync(int? folderId = null, string? search = null,
-        bool onlyExpiring = false, string status = "active")
+        bool onlyExpiring = false, string status = "active", string? expiry = null)
     {
         var url = $"{Root}/documents?search={Uri.EscapeDataString(search ?? "")}&status={status}";
         if (folderId is > 0) url += $"&folderId={folderId}";
         if (onlyExpiring) url += "&onlyExpiring=true";
+        if (!string.IsNullOrEmpty(expiry)) url += $"&expiry={expiry}";
         return _api.GetAsync<List<DocumentListDto>>(url);
+    }
+
+    public Task<DocExpirySummaryDto> GetExpirySummaryAsync()
+        => _api.GetAsync<DocExpirySummaryDto>("api/doc-archive/expiry-summary");
+
+    public async Task<string> RunExpiryCheckAsync()
+    {
+        var r = await _api.PostAsync<DocExpiryRunResultDto>("api/doc-archive/expiry-check", new { });
+        return r?.Message ?? "انجام شد.";
     }
 
     public Task<DocumentDto> GetDocumentAsync(int id)
