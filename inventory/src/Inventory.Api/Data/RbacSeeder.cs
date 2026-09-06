@@ -34,6 +34,31 @@ public static class RbacSeeder
         ["WorkOrders"] = new[] { "View", "Create", "AssignOthers" },
         ["Settings"] = CrudActions,
         ["Warehouses"] = CrudActions,
+        // ================== ماژول انبارداری ==================
+        // InvDocs: اسناد رسید و حواله — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["InvDocs"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // InvDocTypes: مدیریت انواع رسید/حواله و ماهیت آن‌ها
+        ["InvDocTypes"] = CrudActions,
+        // ================== ماژول حسابداری ==================
+        // AccAccounts: کدینگ حساب‌ها، سال مالی و قواعد سند خودکار
+        ["AccAccounts"] = CrudActions,
+        // AccVouchers: اسناد حسابداری — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["AccVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // ================== ماژول فاکتور ==================
+        // FacInvoices: فاکتور خرید/فروش — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["FacInvoices"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // ================== ماژول خزانه‌داری ==================
+        // TrsAccounts: صندوق، بانک، کارتخوان، تنخواه و تنظیمات خزانه
+        ["TrsAccounts"] = CrudActions,
+        // TrsVouchers: اسناد دریافت/پرداخت/انتقال — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["TrsVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // TrsCheques: چک‌ها — Confirm: اجرای عملیات چک (واگذاری، وصول، برگشت)
+        ["TrsCheques"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // ================== ماژول انبارگردانی و بارکد ==================
+        // StkSessions: دوره‌های انبارگردانی — Apply: صدور اسناد اصلاح | Cancel: لغو دوره
+        ["StkSessions"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Apply", "Cancel" },
+        // StkBarcodes: بارکدهای کالا، تولید گروهی و چاپ برچسب
+        ["StkBarcodes"] = CrudActions,
         // ================== بخش معرف ==================
         ["Referrers"] = CrudActions,                                     // مدیریت معرف‌ها
         ["ReferrerWallets"] = new[] { "Read", "Update", "Export" },      // کیف پول معرف‌ها
