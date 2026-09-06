@@ -129,6 +129,11 @@ public class DocumentListDto
     public string? DeactivatedByName { get; set; }
     public string? DeactivateReason { get; set; }
 
+    /// <summary>در سطل بازیافت است</summary>
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public string? DeletedByName { get; set; }
+
     public int VersionCount { get; set; }
     public int ActiveVersionNo { get; set; }
     public DocVersionStatusDto LastVersionStatus { get; set; }
@@ -296,5 +301,11 @@ public class DocExpirySummaryDto
 public class DocExpiryRunResultDto
 {
     public int Created { get; set; }
+    public string Message { get; set; } = "";
+}
+
+/// <summary>پاسخ ساده حاوی پیام</summary>
+public class DocMessageDto
+{
     public string Message { get; set; } = "";
 }

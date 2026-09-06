@@ -36,14 +36,15 @@ public class DocumentsController : RbacControllerBase
         var manager = await IsManagerAsync();
         var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
 
-        var q = Db.Documents.AsNoTracking().Where(d => !d.IsDeleted);
+        var q = Db.Documents.AsNoTracking();
 
-        // فیلتر وضعیت — «مدارک غیرفعال» زیرمنوی جداگانه دارد
+        // فیلتر وضعیت — «مدارک غیرفعال» و «سطل بازیافت» زیرمنوی جداگانه دارند
         q = status?.ToLowerInvariant() switch
         {
-            "inactive" => q.Where(d => !d.IsActive),
-            "all" => q,
-            _ => q.Where(d => d.IsActive)
+            "deleted" => q.Where(d => d.IsDeleted),
+            "inactive" => q.Where(d => !d.IsDeleted && !d.IsActive),
+            "all" => q.Where(d => !d.IsDeleted),
+            _ => q.Where(d => !d.IsDeleted && d.IsActive)
         };
 
         if (folderId is > 0) q = q.Where(d => d.FolderId == folderId);
@@ -115,6 +116,9 @@ public class DocumentsController : RbacControllerBase
                 DeactivatedAt = d.DeactivatedAt,
                 DeactivatedByName = d.DeactivatedByName,
                 DeactivateReason = d.DeactivateReason,
+                IsDeleted = d.IsDeleted,
+                DeletedAt = d.DeletedAt,
+                DeletedByName = d.DeletedByName,
                 VersionCount = vs.Count,
                 ActiveVersionNo = activeV?.VersionNo ?? 0,
                 LastVersionStatus = (DocVersionStatusDto)(int)(last?.Status ?? DocVersionStatus.Draft),
@@ -301,12 +305,23 @@ public class DocumentsController : RbacControllerBase
 
         var old = await Db.DocumentPermissions.Where(p => p.DocumentId == id).ToListAsync();
         Db.DocumentPermissions.RemoveRange(old);
-        foreach (var p in dto.Items.Where(x => x.UserId > 0).DistinctBy(x => x.UserId))
+        var newItems = dto.Items.Where(x => x.UserId > 0).DistinctBy(x => x.UserId).ToList();
+        foreach (var p in newItems)
             Db.DocumentPermissions.Add(new DocumentPermission
             {
                 DocumentId = id, UserId = p.UserId,
                 Level = (DocAccessLevel)(int)p.Level, CanDownload = p.CanDownload
             });
+
+        Db.DocumentLogs.Add(new DocumentLog
+        {
+            DocumentId = id,
+            Action = "Permissions",
+            Detail = $"دسترسی‌ها به‌روزرسانی شد: {newItems.Count} کاربر" +
+                     (dto.IsPublic ? " — نمایش برای همه: فعال" : "") +
+                     (old.Count != newItems.Count ? $" (قبلاً {old.Count} کاربر)" : ""),
+            UserId = MyUserId, UserName = MyUsername
+        });
 
         await Db.SaveChangesAsync();
         return Ok();
@@ -327,7 +342,14 @@ public class DocumentsController : RbacControllerBase
             return BadRequest(new { message = "ورژنی از این مدرک در گردش تایید است؛ حذف ممکن نیست." });
 
         doc.IsDeleted = true;
-        Db.DocumentLogs.Add(new DocumentLog { DocumentId = id, Action = "Delete", Detail = "مدرک حذف شد.", UserId = MyUserId, UserName = MyUsername });
+        doc.DeletedAt = DateTime.Now;
+        doc.DeletedByName = MyUsername;
+
+        // کارهای باز کارتابل این مدرک بسته می‌شوند
+        var openTasks = await Db.DocCartableTasks.Where(t => t.DocumentId == id && t.Status == 0).ToListAsync();
+        foreach (var t in openTasks) { t.Status = 1; t.DoneAt = DateTime.Now; }
+
+        Db.DocumentLogs.Add(new DocumentLog { DocumentId = id, Action = "Delete", Detail = "مدرک به سطل بازیافت منتقل شد.", UserId = MyUserId, UserName = MyUsername });
         await Db.SaveChangesAsync();
         return Ok();
     }
@@ -433,6 +455,96 @@ public class DocumentsController : RbacControllerBase
 
         await _svc.UnlinkAsync(documentId, linkedDocumentId, MyUserId);
         return Ok();
+    }
+
+    // ---------------------------- سطل بازیافت ----------------------------
+
+    /// <summary>بازگرداندن مدرک حذف‌شده — نیازمند دسترسی کامل.</summary>
+    [HttpPut("{id:int}/restore")]
+    public async Task<IActionResult> Restore(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+
+        var manager = await IsManagerAsync();
+        var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
+        if (lvl < DocAccessLevel.Full)
+            return StatusCode(403, new { message = "بازگرداندن مدرک نیازمند دسترسی کامل است." });
+
+        var doc = await Db.Documents.FirstOrDefaultAsync(d => d.Id == id);
+        if (doc == null) return NotFound(new { message = "مدرک یافت نشد." });
+        if (!doc.IsDeleted) return BadRequest(new { message = "این مدرک حذف نشده است." });
+
+        // پوشه مقصد هنوز هست؟ اگر نه، به ریشه برگردان
+        var folderExists = await Db.DocFolders.AnyAsync(x => x.Id == doc.FolderId);
+        var note = "";
+        if (!folderExists)
+        {
+            var root = await Db.DocFolders.OrderBy(x => x.Id).FirstOrDefaultAsync();
+            if (root == null) return BadRequest(new { message = "پوشه‌ای برای بازگرداندن مدرک وجود ندارد." });
+            doc.FolderId = root.Id;
+            note = $" (پوشه اصلی حذف شده بود؛ به «{root.Name}» منتقل شد)";
+        }
+
+        // کد مدرک نباید با مدرک فعال دیگری تداخل داشته باشد
+        if (await Db.Documents.AnyAsync(d => d.Id != id && !d.IsDeleted && d.Code == doc.Code))
+            return BadRequest(new { message = $"کد «{doc.Code}» اکنون توسط مدرک دیگری استفاده می‌شود؛ ابتدا آن را تغییر دهید." });
+
+        doc.IsDeleted = false;
+        doc.DeletedAt = null;
+        doc.DeletedByName = null;
+
+        Db.DocumentLogs.Add(new DocumentLog
+        {
+            DocumentId = id, Action = "Restore",
+            Detail = "مدرک از سطل بازیافت بازگردانده شد." + note,
+            UserId = MyUserId, UserName = MyUsername
+        });
+        await Db.SaveChangesAsync();
+        return Ok(new { message = "مدرک بازگردانده شد." + note });
+    }
+
+    /// <summary>حذف قطعی مدرک و همه وابسته‌هایش — فقط مدیر ماژول.</summary>
+    [HttpDelete("{id:int}/purge")]
+    public async Task<IActionResult> Purge(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+
+        var doc = await Db.Documents.FirstOrDefaultAsync(d => d.Id == id);
+        if (doc == null) return NotFound(new { message = "مدرک یافت نشد." });
+        if (!doc.IsDeleted)
+            return BadRequest(new { message = "فقط مدارک داخل سطل بازیافت قابل حذف قطعی هستند." });
+
+        var versionIds = await Db.DocumentVersions.Where(v => v.DocumentId == id).Select(v => v.Id).ToListAsync();
+
+        // پیوست‌های ورژن‌ها
+        var attaches = await Db.AppAttachments
+            .Where(a => a.Module == "DocVersion" && versionIds.Contains(a.RefId)).ToListAsync();
+        Db.AppAttachments.RemoveRange(attaches);
+
+        Db.DocumentApprovers.RemoveRange(await Db.DocumentApprovers.Where(a => a.DocumentId == id).ToListAsync());
+        Db.DocumentVersions.RemoveRange(await Db.DocumentVersions.Where(v => v.DocumentId == id).ToListAsync());
+        Db.DocumentPermissions.RemoveRange(await Db.DocumentPermissions.Where(p => p.DocumentId == id).ToListAsync());
+        Db.DocumentLinks.RemoveRange(await Db.DocumentLinks
+            .Where(l => l.DocumentId == id || l.LinkedDocumentId == id).ToListAsync());
+        Db.DocCartableTasks.RemoveRange(await Db.DocCartableTasks
+            .Where(t => t.DocumentId == id || t.SourceDocumentId == id).ToListAsync());
+        Db.DocExpiryAlerts.RemoveRange(await Db.DocExpiryAlerts.Where(a => a.DocumentId == id).ToListAsync());
+        Db.DocumentLogs.RemoveRange(await Db.DocumentLogs.Where(l => l.DocumentId == id).ToListAsync());
+        Db.Documents.Remove(doc);
+
+        await Db.SaveChangesAsync();
+        return Ok(new { message = $"مدرک {doc.Code} برای همیشه حذف شد." });
+    }
+
+    /// <summary>خالی کردن کامل سطل بازیافت — فقط مدیر ماژول.</summary>
+    [HttpDelete("/api/doc-archive/trash")]
+    public async Task<IActionResult> EmptyTrash()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+
+        var ids = await Db.Documents.Where(d => d.IsDeleted).Select(d => d.Id).ToListAsync();
+        foreach (var id in ids) await Purge(id);
+        return Ok(new { message = $"{ids.Count} مدرک برای همیشه حذف شد.", count = ids.Count });
     }
 
     // ---------------------------- انقضا ----------------------------

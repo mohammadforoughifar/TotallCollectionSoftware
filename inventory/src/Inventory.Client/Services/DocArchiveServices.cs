@@ -25,6 +25,15 @@ public interface IDocArchiveService
 
     /// <summary>اجرای دستی بررسی انقضا (نیازمند دسترسی مدیریت).</summary>
     Task<string> RunExpiryCheckAsync();
+
+    /// <summary>بازگرداندن مدرک از سطل بازیافت.</summary>
+    Task<string> RestoreDocumentAsync(int id);
+
+    /// <summary>حذف قطعی یک مدرک از سطل بازیافت.</summary>
+    Task<string> PurgeDocumentAsync(int id);
+
+    /// <summary>خالی کردن کل سطل بازیافت.</summary>
+    Task<string> EmptyTrashAsync();
     Task<DocumentDto> GetDocumentAsync(int id);
     Task<int> CreateDocumentAsync(DocumentDto dto);
     Task UpdateDocumentAsync(int id, DocumentDto dto);
@@ -95,6 +104,24 @@ public class DocArchiveService : IDocArchiveService
     {
         var r = await _api.PostAsync<DocExpiryRunResultDto>("api/doc-archive/expiry-check", new { });
         return r?.Message ?? "انجام شد.";
+    }
+
+    public async Task<string> RestoreDocumentAsync(int id)
+    {
+        var r = await _api.PutAsync<DocMessageDto>($"{Root}/documents/{id}/restore", new { });
+        return r?.Message ?? "مدرک بازگردانده شد.";
+    }
+
+    public async Task<string> PurgeDocumentAsync(int id)
+    {
+        await _api.DeleteAsync($"{Root}/documents/{id}/purge");
+        return "مدرک برای همیشه حذف شد.";
+    }
+
+    public async Task<string> EmptyTrashAsync()
+    {
+        await _api.DeleteAsync("api/doc-archive/trash");
+        return "سطل بازیافت خالی شد.";
     }
 
     public Task<DocumentDto> GetDocumentAsync(int id)
