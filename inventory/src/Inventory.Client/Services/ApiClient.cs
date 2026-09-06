@@ -44,6 +44,54 @@ public class ApiClient : IApiClient
 
     public string BuildUrl(string path) => Url(path);
 
+    /// <summary>
+    /// دریافت فایل باینری از API. نام فایل از هدر Content-Disposition خوانده می‌شود
+    /// و اگر نبود از انتهای مسیر ساخته می‌شود.
+    /// </summary>
+    public async Task<(byte[] Data, string FileName, string ContentType)> GetFileAsync(string path)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, Url(path));
+        AddAuth(req);
+
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await _http.SendAsync(req);
+        }
+        catch (Exception ex)
+        {
+            throw new Exception("ارتباط با سرور برقرار نشد: " + ex.Message);
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var text = await resp.Content.ReadAsStringAsync();
+            var msg = $"خطای سرور ({(int)resp.StatusCode})";
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(text);
+                    if (doc.RootElement.TryGetProperty("message", out var m))
+                        msg = m.GetString() ?? msg;
+                }
+                catch { /* پاسخ JSON نبود */ }
+            }
+            throw new Exception(msg);
+        }
+
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        var ctype = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+
+        var name = resp.Content.Headers.ContentDisposition?.FileNameStar
+                   ?? resp.Content.Headers.ContentDisposition?.FileName;
+        name = name?.Trim('"');
+        if (string.IsNullOrWhiteSpace(name))
+            name = path.Split('/').LastOrDefault()?.Split('?').FirstOrDefault() ?? "download";
+
+        return (bytes, name, ctype);
+    }
+
     public async Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file")
     {
         using var content = new MultipartFormDataContent();

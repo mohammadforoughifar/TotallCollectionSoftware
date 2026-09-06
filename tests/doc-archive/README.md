@@ -8,8 +8,9 @@
 | `run.py` | جریان کاری اصلی — ۷۲ تست |
 | `edge.py` | سناریوهای مرزی و تداخل فازها — ۳۲ تست |
 | `compare.py` | مقایسه دو ورژن — ۲۸ تست |
+| `export.py` | گزارش‌های خروجی PDF/Excel — ۳۶ تست |
 
-**جمع: ۱۳۲ تست**
+**جمع: ۱۶۸ تست**
 
 ## اجرا
 
@@ -21,7 +22,7 @@ Database__Provider=Sqlite ConnectionStrings__Default="Data Source=/tmp/e2e.db" \
 
 # ۲) در ترمینال دیگر
 cd tests/doc-archive
-python3 run.py && python3 edge.py && python3 compare.py
+python3 run.py && python3 edge.py && python3 compare.py && python3 export.py
 ```
 
 خروجی: `0` یعنی همه موفق، `1` یعنی حداقل یک تست ناموفق.
@@ -32,6 +33,6 @@ python3 run.py && python3 edge.py && python3 compare.py
 > **روی دیتابیس عملیاتی اجرا نکنید.**
 >
 > هر اسکریپت روی دیتابیس **تازه** اجرا شود؛ `run.py` و `edge.py` به‌ترتیب
-> وابسته‌اند و `compare.py` مستقل است.
+> وابسته‌اند. `compare.py` و `export.py` مستقل و idempotent هستند.
 
 گزارش کامل آخرین اجرا: [`TEST-DOC-ARCHIVE.md`](../../TEST-DOC-ARCHIVE.md)

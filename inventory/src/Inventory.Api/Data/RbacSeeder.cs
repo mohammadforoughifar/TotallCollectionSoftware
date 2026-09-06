@@ -88,7 +88,7 @@ public static class RbacSeeder
         // Delete: حذف نامه/گروه (مدیرانه)
         ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
         // ================== آرشیو اسناد و مدارک ==================
-        ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage" },
+        ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage", "Export" },
         // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
         // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
         // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده

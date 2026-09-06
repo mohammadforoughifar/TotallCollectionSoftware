@@ -182,6 +182,35 @@
 **دسترسی:** حداقل سطح **خواندن** لازم است — سطح «مشاهده» کافی نیست.
 مدرکِ داخل سطل بازیافت قابل مقایسه نیست.
 
+## ۱۵) گزارش‌های خروجی PDF و Excel
+
+آرشیو اسناد به موتور خروجی مشترک برنامه وصل شد. **۵ گزارش** به کاتالوگ اضافه شده:
+
+| کلید | گزارش | نکته |
+|---|---|---|
+| `doc-list` | فهرست مدارک | با فیلتر پوشه، وضعیت و جستجو |
+| `doc-expiring` | مدارک رو به انقضا | با شمارش روز باقی‌مانده و مسئولان |
+| `doc-history` | تاریخچه یک مدرک | برای ممیزی ISO — نیازمند `id` |
+| `doc-permissions` | ماتریس دسترسی پوشه‌ها | فقط مدیر ماژول |
+| `doc-pending` | ورژن‌های در انتظار تایید | با «معطل چه کسی» و روز انتظار |
+
+### 🔒 فیلتر دسترسی — نکته کلیدی
+برخلاف گزارش‌های سایر ماژول‌ها، خروجی آرشیو **بر اساس دسترسی کاربرِ درخواست‌کننده
+فیلتر می‌شود**؛ وگرنه Export به راه فرار از سیستم دسترسی چندسطحی تبدیل می‌شد.
+
+- هویت کاربر از **توکن** خوانده می‌شود، نه از query string — جعل `userId` بی‌اثر است.
+- مدرکی که کاربر به آن دسترسی ندارد در هیچ گزارشی ظاهر نمی‌شود.
+- `doc-history` سطح خواندن روی همان مدرک لازم دارد.
+- `doc-permissions` فقط با `DocArchive.Manage`.
+- پرمیشن جدید **`DocArchive.Export`** به RbacSeeder اضافه شد.
+
+### دسترسی در رابط کاربری
+- **مرکز خروجی** — مسیر `/export-center`، فهرست همه گزارش‌های همه ماژول‌ها با جستجو
+- **دکمه خروجی داخل آرشیو** — بالای فهرست مدارک، فیلترهای فعال را هم اعمال می‌کند
+- **دکمه خروجی تاریخچه** — در کارت تاریخچه صفحه جزئیات مدرک
+- کامپوننت `ExportButtons` در هر صفحه‌ای قابل استفاده است:
+  `<ExportButtons ReportKey="doc-list" Query="@(new { status = "active" })" />`
+
 ## دسترسی‌های RBAC (خودکار به دیتابیس اضافه می‌شوند)
 
 | مجوز | توضیح |
@@ -215,6 +244,9 @@
 - `Inventory.Api/Services/AttachmentGuard.cs` — کنترل دسترسی پیوست‌ها
 - `Inventory.Client/Shared/FilePreviewModal.razor` + `wwwroot/js/file-preview.js` — پیش‌نمایش فایل
 - `Inventory.Client/Pages/DocArchive/VersionCompareModal.razor` + `DiffTable.razor` — مقایسه دو ورژن
+- `Inventory.Api/Services/Export/DocArchiveExportService.cs` — گزارش‌های خروجی آرشیو
+- `Inventory.Client/Shared/ExportButtons.razor` — دکمه PDF/Excel قابل استفاده در هر صفحه
+- `Inventory.Client/Pages/Export/ExportCenter.razor` — صفحه مرکز خروجی
 
 **مشترک**
 - `Inventory.Shared/Dtos/DocArchiveDtos.cs`
@@ -246,6 +278,8 @@
 | DELETE | `/api/doc-archive/trash` | خالی کردن سطل بازیافت (Manage) |
 | GET | `/api/attachments/preview/{id}` | پیش‌نمایش inline پیوست (بدون نیاز به حق دانلود) |
 | GET | `/api/doc-archive/documents/{id}/compare?from=&to=` | مقایسه دو ورژن (نیازمند سطح خواندن) |
+| GET | `/api/exp/reports` | فهرست گزارش‌های قابل خروجی |
+| GET | `/api/exp/report/doc-*?format=pdf\|xlsx` | خروجی گزارش‌های آرشیو (نیازمند `DocArchive.Export`) |
 
 ## اجرا
 
