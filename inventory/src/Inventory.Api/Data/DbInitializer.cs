@@ -1,4 +1,5 @@
 using Inventory.Api.Services;
+using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Data;
@@ -94,6 +95,51 @@ public static class DbInitializer
                     });
                     db.SaveChanges();
                     Console.WriteLine("[DB] کاربر پیش‌فرض ساخته شد: admin / admin — حتماً رمز را تغییر دهید.");
+                }
+
+                // ============ انبارداری: انواع پیش‌فرض رسید و حواله ============
+                // ماهیت هر نوع، اثر سند روی موجودی را مشخص می‌کند:
+                // افزایشی = رسید | کاهشی = حواله | خنثی = انتقال بین انبار یا سند یادداشتی
+                if (!db.InvDocTypes.Any())
+                {
+                    db.InvDocTypes.AddRange(
+                        // ---------- رسیدها (افزایشی) ----------
+                        new InvDocType { Code = "RC-OPEN", Name = "رسید موجودی اول دوره", Nature = StockNature.Increase, RequiresPrice = true, NumberPrefix = "RCO", Color = "success", Icon = "bi-box-arrow-in-down", IsSystem = true, SortOrder = 1 },
+                        new InvDocType { Code = "RC-BUY", Name = "رسید خرید", Nature = StockNature.Increase, RequiresParty = true, RequiresPrice = true, NumberPrefix = "RCB", Color = "success", Icon = "bi-bag-plus", IsSystem = true, SortOrder = 2 },
+                        new InvDocType { Code = "RC-RET", Name = "رسید برگشت از فروش", Nature = StockNature.Increase, RequiresParty = true, RequiresPrice = true, NumberPrefix = "RCR", Color = "success", Icon = "bi-arrow-return-left", SortOrder = 3 },
+                        new InvDocType { Code = "RC-PRD", Name = "رسید تولید", Nature = StockNature.Increase, NumberPrefix = "RCP", Color = "success", Icon = "bi-gear-wide-connected", SortOrder = 4 },
+                        new InvDocType { Code = "RC-ADJ", Name = "رسید اضافی انبارگردانی", Nature = StockNature.Increase, NumberPrefix = "RCA", Color = "success", Icon = "bi-clipboard-plus", SortOrder = 5 },
+
+                        // ---------- حواله‌ها (کاهشی) ----------
+                        new InvDocType { Code = "IS-SELL", Name = "حواله فروش", Nature = StockNature.Decrease, RequiresParty = true, RequiresPrice = true, NumberPrefix = "ISS", Color = "danger", Icon = "bi-cart-dash", IsSystem = true, SortOrder = 6 },
+                        new InvDocType { Code = "IS-USE", Name = "حواله مصرف", Nature = StockNature.Decrease, NumberPrefix = "ISU", Color = "danger", Icon = "bi-box-arrow-up", SortOrder = 7 },
+                        new InvDocType { Code = "IS-RET", Name = "حواله برگشت از خرید", Nature = StockNature.Decrease, RequiresParty = true, RequiresPrice = true, NumberPrefix = "ISR", Color = "danger", Icon = "bi-arrow-return-right", SortOrder = 8 },
+                        new InvDocType { Code = "IS-SCRP", Name = "حواله ضایعات", Nature = StockNature.Decrease, NumberPrefix = "ISC", Color = "danger", Icon = "bi-trash3", SortOrder = 9 },
+                        new InvDocType { Code = "IS-ADJ", Name = "حواله کسری انبارگردانی", Nature = StockNature.Decrease, NumberPrefix = "ISA", Color = "danger", Icon = "bi-clipboard-minus", SortOrder = 10 },
+
+                        // ---------- خنثی ----------
+                        new InvDocType { Code = "TRN", Name = "انتقال بین انبار", Nature = StockNature.Neutral, IsTransfer = true, NumberPrefix = "TRN", Color = "primary", Icon = "bi-arrow-left-right", IsSystem = true, SortOrder = 11 },
+                        new InvDocType { Code = "NOTE", Name = "سند یادداشتی (بدون اثر بر موجودی)", Nature = StockNature.Neutral, NumberPrefix = "NOT", Color = "muted", Icon = "bi-sticky", SortOrder = 12 });
+
+                    db.SaveChanges();
+                    Console.WriteLine("[DB] انواع پیش‌فرض رسید و حواله انبار ساخته شدند.");
+                }
+
+                // ============ حسابداری: سال مالی و کدینگ پیش‌فرض حساب‌ها ============
+                SeedAccounting(db);
+
+                // ============ فاکتور: پیکربندی پیش‌فرض انواع فاکتور ============
+                SeedInvoicing(db);
+
+                // ============ خزانه‌داری: صندوق/بانک و قواعد سند خودکار ============
+                SeedTreasury(db);
+
+                // انبار پیش‌فرض ماژول انبارداری
+                var defaultWh = db.Warehouses.FirstOrDefault(w => w.IsDefault);
+                if (defaultWh is null)
+                {
+                    var first = db.Warehouses.OrderBy(w => w.Id).FirstOrDefault();
+                    if (first is not null) { first.IsDefault = true; db.SaveChanges(); }
                 }
 
                 // ============ اتوماسیون اداری: عملگرهای پیش‌فرض ارجاع ============
@@ -261,6 +307,380 @@ public static class DbInitializer
     /// خودتعمیرِ دیتابیس‌های SQLite که با نسخه‌های قدیمی ساخته شده‌اند:
     /// EnsureCreated() جدول/ستونِ جدید اضافه نمی‌کند؛ پس بخش تقویم کاری را به‌صورت دستی تکمیل می‌کنیم.
     /// </summary>
+    /// <summary>
+    /// ایجاد سال مالی جاری و کدینگ استاندارد حساب‌ها (گروه ← کل ← معین) در اولین اجرا،
+    /// به‌همراه قواعد پیش‌فرض صدور خودکار سند از روی اسناد انبار.
+    /// </summary>
+    private static void SeedAccounting(AppDbContext db)
+    {
+        // ---------- سال مالی جاری ----------
+        if (!db.AccFiscalYears.Any())
+        {
+            var todayFa = PersianDate.FromGregorian(DateTime.Now);
+            var start = PersianDate.ToGregorian(todayFa.Year, 1, 1);
+            var end = PersianDate.ToGregorian(todayFa.Year, 12, PersianDate.DaysInMonth(todayFa.Year, 12));
+
+            db.AccFiscalYears.Add(new AccFiscalYear
+            {
+                Title = $"سال مالی {todayFa.Year}",
+                Code = todayFa.Year.ToString(),
+                StartDate = start,
+                EndDate = end,
+                IsCurrent = true
+            });
+            db.SaveChanges();
+            Console.WriteLine("[DB] سال مالی جاری ساخته شد.");
+        }
+
+        // ---------- کدینگ حساب‌ها ----------
+        if (!db.AccAccounts.Any())
+        {
+            // (کد، نام، کد والد، نوع، ماهیت، قابل ثبت، سیستمی)
+            var rows = new (string Code, string Name, string? Parent, AccountType Type, AccountNature Nature, bool Postable, bool System)[]
+            {
+                // ============ ۱) دارایی‌های جاری ============
+                ("1",      "دارایی‌های جاری",            null,   AccountType.Asset,     AccountNature.Debit,  false, true),
+                ("11",     "موجودی نقد و بانک",          "1",    AccountType.Asset,     AccountNature.Debit,  false, true),
+                ("1101",   "صندوق",                      "11",   AccountType.Asset,     AccountNature.Debit,  true,  true),
+                ("1102",   "بانک",                       "11",   AccountType.Asset,     AccountNature.Debit,  true,  true),
+                ("1103",   "تنخواه‌گردان",                "11",   AccountType.Asset,     AccountNature.Debit,  true,  false),
+                ("12",     "حساب‌های دریافتنی",           "1",    AccountType.Asset,     AccountNature.Debit,  false, true),
+                ("1201",   "حساب‌های دریافتنی تجاری",     "12",   AccountType.Asset,     AccountNature.Debit,  true,  true),
+                ("1202",   "اسناد دریافتنی (چک)",        "12",   AccountType.Asset,     AccountNature.Debit,  true,  false),
+                ("13",     "موجودی کالا",                "1",    AccountType.Asset,     AccountNature.Debit,  false, true),
+                ("1301",   "موجودی کالا — انبار",        "13",   AccountType.Asset,     AccountNature.Debit,  true,  true),
+                ("1302",   "کالای در راه",               "13",   AccountType.Asset,     AccountNature.Debit,  true,  false),
+                ("14",     "پیش‌پرداخت‌ها",               "1",    AccountType.Asset,     AccountNature.Debit,  false, false),
+                ("1401",   "پیش‌پرداخت خرید",            "14",   AccountType.Asset,     AccountNature.Debit,  true,  false),
+
+                // ============ ۲) دارایی‌های ثابت ============
+                ("2",      "دارایی‌های ثابت",             null,   AccountType.Asset,     AccountNature.Debit,  false, false),
+                ("21",     "اموال، ماشین‌آلات و تجهیزات",  "2",    AccountType.Asset,     AccountNature.Debit,  false, false),
+                ("2101",   "اثاثیه و منصوبات",           "21",   AccountType.Asset,     AccountNature.Debit,  true,  false),
+                ("2102",   "ماشین‌آلات",                  "21",   AccountType.Asset,     AccountNature.Debit,  true,  false),
+                ("2103",   "استهلاک انباشته",            "21",   AccountType.Asset,     AccountNature.Credit, true,  false),
+
+                // ============ ۳) بدهی‌ها ============
+                ("3",      "بدهی‌های جاری",               null,   AccountType.Liability, AccountNature.Credit, false, true),
+                ("31",     "حساب‌های پرداختنی",           "3",    AccountType.Liability, AccountNature.Credit, false, true),
+                ("3101",   "حساب‌های پرداختنی تجاری",     "31",   AccountType.Liability, AccountNature.Credit, true,  true),
+                ("3102",   "اسناد پرداختنی (چک)",        "31",   AccountType.Liability, AccountNature.Credit, true,  false),
+                ("32",     "مالیات و عوارض",             "3",    AccountType.Liability, AccountNature.Credit, false, true),
+                ("3201",   "مالیات بر ارزش افزوده",      "32",   AccountType.Liability, AccountNature.Both,   true,  true),
+                ("3202",   "عوارض",                      "32",   AccountType.Liability, AccountNature.Both,   true,  false),
+                ("33",     "پیش‌دریافت‌ها",               "3",    AccountType.Liability, AccountNature.Credit, false, false),
+                ("3301",   "پیش‌دریافت فروش",            "33",   AccountType.Liability, AccountNature.Credit, true,  false),
+
+                // ============ ۴) سرمایه ============
+                ("4",      "حقوق صاحبان سهام",           null,   AccountType.Equity,    AccountNature.Credit, false, true),
+                ("41",     "سرمایه",                     "4",    AccountType.Equity,    AccountNature.Credit, false, true),
+                ("4101",   "سرمایه اولیه",               "41",   AccountType.Equity,    AccountNature.Credit, true,  true),
+                ("4102",   "سود و زیان انباشته",         "41",   AccountType.Equity,    AccountNature.Both,   true,  true),
+
+                // ============ ۵) درآمد ============
+                ("5",      "درآمدها",                    null,   AccountType.Income,    AccountNature.Credit, false, true),
+                ("51",     "درآمد عملیاتی",              "5",    AccountType.Income,    AccountNature.Credit, false, true),
+                ("5101",   "فروش کالا",                  "51",   AccountType.Income,    AccountNature.Credit, true,  true),
+                ("5102",   "برگشت از فروش و تخفیفات",    "51",   AccountType.Income,    AccountNature.Debit,  true,  true),
+                ("52",     "درآمد غیرعملیاتی",           "5",    AccountType.Income,    AccountNature.Credit, false, false),
+                ("5201",   "سایر درآمدها",               "52",   AccountType.Income,    AccountNature.Credit, true,  false),
+
+                // ============ ۶) بهای تمام‌شده و هزینه‌ها ============
+                ("6",      "بهای تمام‌شده و هزینه‌ها",     null,   AccountType.Expense,   AccountNature.Debit,  false, true),
+                ("61",     "بهای تمام‌شده کالای فروش‌رفته", "6",   AccountType.Expense,   AccountNature.Debit,  false, true),
+                ("6101",   "بهای تمام‌شده کالای فروش‌رفته", "61",  AccountType.Expense,   AccountNature.Debit,  true,  true),
+                ("6102",   "کسری و ضایعات انبار",        "61",   AccountType.Expense,   AccountNature.Debit,  true,  true),
+                ("62",     "خرید",                       "6",    AccountType.Expense,   AccountNature.Debit,  false, true),
+                ("6201",   "خرید کالا",                  "62",   AccountType.Expense,   AccountNature.Debit,  true,  true),
+                ("6202",   "برگشت از خرید",              "62",   AccountType.Expense,   AccountNature.Credit, true,  true),
+                ("63",     "هزینه‌های عمومی و اداری",     "6",    AccountType.Expense,   AccountNature.Debit,  false, false),
+                ("6301",   "حقوق و دستمزد",              "63",   AccountType.Expense,   AccountNature.Debit,  true,  false),
+                ("6302",   "اجاره",                      "63",   AccountType.Expense,   AccountNature.Debit,  true,  false),
+                ("6303",   "آب، برق، گاز و تلفن",        "63",   AccountType.Expense,   AccountNature.Debit,  true,  false),
+                ("6304",   "حمل و نقل",                  "63",   AccountType.Expense,   AccountNature.Debit,  true,  false),
+                ("6305",   "سایر هزینه‌ها",               "63",   AccountType.Expense,   AccountNature.Debit,  true,  false)
+            };
+
+            var map = new Dictionary<string, AccAccount>();
+            var order = 1;
+            foreach (var r in rows)
+            {
+                var level = r.Parent is null
+                    ? AccountLevel.Group
+                    : map[r.Parent].Level switch
+                    {
+                        AccountLevel.Group => AccountLevel.General,
+                        AccountLevel.General => AccountLevel.Subsidiary,
+                        _ => AccountLevel.Detail
+                    };
+
+                var acc = new AccAccount
+                {
+                    Code = r.Code,
+                    Name = r.Name,
+                    ParentId = r.Parent is null ? null : map[r.Parent].Id,
+                    Level = level,
+                    Type = r.Type,
+                    Nature = r.Nature,
+                    IsPermanent = r.Type is AccountType.Asset or AccountType.Liability or AccountType.Equity,
+                    IsPostable = r.Postable,
+                    IsSystem = r.System,
+                    RequiresParty = r.Code is "1201" or "3101",
+                    SortOrder = order++
+                };
+                db.AccAccounts.Add(acc);
+                db.SaveChanges();   // برای گرفتن Id جهت گره‌های فرزند
+                map[r.Code] = acc;
+            }
+            Console.WriteLine($"[DB] کدینگ پیش‌فرض حساب‌ها ({rows.Length} حساب) ساخته شد.");
+        }
+
+        // ---------- قواعد صدور خودکار سند از روی اسناد انبار ----------
+        if (!db.AccInvRules.Any() && db.InvDocTypes.Any() && db.AccAccounts.Any())
+        {
+            int? Acc(string code) => db.AccAccounts.FirstOrDefault(a => a.Code == code)?.Id;
+
+            var inventory = Acc("1301");     // موجودی کالا — انبار
+            var purchase = Acc("6201");      // خرید کالا
+            var cogs = Acc("6101");          // بهای تمام‌شده کالای فروش‌رفته
+            var scrap = Acc("6102");         // کسری و ضایعات
+            var salesReturn = Acc("5102");   // برگشت از فروش
+            var purchaseReturn = Acc("6202");// برگشت از خرید
+            var capital = Acc("4101");       // سرمایه اولیه (افتتاحیه انبار)
+
+            // (کد نوع سند، حساب طرف مقابل)
+            var pairs = new (string DocCode, int? Counter)[]
+            {
+                ("RC-OPEN", capital),
+                ("RC-BUY",  purchase),
+                ("RC-RET",  salesReturn),
+                ("RC-ADJ",  scrap),
+                ("IS-SELL", cogs),
+                ("IS-USE",  cogs),
+                ("IS-RET",  purchaseReturn),
+                ("IS-SCRP", scrap),
+                ("IS-ADJ",  scrap)
+            };
+
+            foreach (var (docCode, counter) in pairs)
+            {
+                var type = db.InvDocTypes.FirstOrDefault(t => t.Code == docCode);
+                if (type is null || inventory is null || counter is null) continue;
+
+                db.AccInvRules.Add(new AccInvRule
+                {
+                    DocTypeId = type.Id,
+                    InventoryAccountId = inventory,
+                    CounterAccountId = counter,
+                    UseCostValue = true,
+                    // پیش‌فرض غیرفعال: تا وقتی کاربر کدینگ را بررسی و تایید نکرده، سند خودکار صادر نمی‌شود
+                    IsActive = false,
+                    Description = "قاعده‌ی پیش‌فرض — پس از بررسی کدینگ، آن را فعال کنید."
+                });
+            }
+            db.SaveChanges();
+            Console.WriteLine("[DB] قواعد پیش‌فرض سند خودکار انبار ساخته شدند (غیرفعال).");
+        }
+    }
+
+    /// <summary>
+    /// پیکربندی پیش‌فرض انواع فاکتور: نوع سند انبار و حساب‌های سند خودکار.
+    /// </summary>
+    private static void SeedInvoicing(AppDbContext db)
+    {
+        if (db.FacRules.Any() || !db.AccAccounts.Any() || !db.InvDocTypes.Any()) return;
+
+        int? Acc(string code) => db.AccAccounts.FirstOrDefault(a => a.Code == code)?.Id;
+        int? Doc(string code) => db.InvDocTypes.FirstOrDefault(t => t.Code == code)?.Id;
+
+        var receivable = Acc("1201");    // حساب‌های دریافتنی تجاری
+        var payable = Acc("3101");       // حساب‌های پرداختنی تجاری
+        var vat = Acc("3201");           // مالیات بر ارزش افزوده
+        var cash = Acc("1101");          // صندوق
+        var sales = Acc("5101");         // فروش کالا
+        var salesReturn = Acc("5102");   // برگشت از فروش و تخفیفات
+        var purchase = Acc("6201");      // خرید کالا
+        var purchaseReturn = Acc("6202");// برگشت از خرید
+        var freightIn = Acc("6304");     // حمل و نقل (هزینه)
+        var otherIncome = Acc("5201");   // سایر درآمدها (حمل دریافتی از مشتری)
+
+        db.FacRules.AddRange(
+            // فاکتور خرید → رسید خرید | خرید بدهکار، پرداختنی بستانکار
+            new FacRule
+            {
+                Kind = InvoiceKind.Purchase,
+                DocTypeId = Doc("RC-BUY"),
+                PartyAccountId = payable,
+                MainAccountId = purchase,
+                VatAccountId = vat,
+                CashAccountId = cash,
+                ShippingAccountId = freightIn,
+                AutoInvDoc = true,
+                AutoVoucher = true,
+                IsActive = true,
+                Description = "خرید کالا بدهکار / حساب‌های پرداختنی (یا صندوق) بستانکار"
+            },
+            // فاکتور فروش → حواله فروش | دریافتنی بدهکار، فروش بستانکار
+            new FacRule
+            {
+                Kind = InvoiceKind.Sale,
+                DocTypeId = Doc("IS-SELL"),
+                PartyAccountId = receivable,
+                MainAccountId = sales,
+                VatAccountId = vat,
+                CashAccountId = cash,
+                ShippingAccountId = otherIncome,
+                AutoInvDoc = true,
+                AutoVoucher = true,
+                IsActive = true,
+                Description = "حساب‌های دریافتنی (یا صندوق) بدهکار / فروش کالا بستانکار"
+            },
+            // برگشت از خرید → حواله برگشت از خرید
+            new FacRule
+            {
+                Kind = InvoiceKind.PurchaseReturn,
+                DocTypeId = Doc("IS-RET"),
+                PartyAccountId = payable,
+                MainAccountId = purchaseReturn,
+                VatAccountId = vat,
+                CashAccountId = cash,
+                ShippingAccountId = freightIn,
+                AutoInvDoc = true,
+                AutoVoucher = true,
+                IsActive = true,
+                Description = "حساب‌های پرداختنی بدهکار / برگشت از خرید بستانکار"
+            },
+            // برگشت از فروش → رسید برگشت از فروش
+            new FacRule
+            {
+                Kind = InvoiceKind.SaleReturn,
+                DocTypeId = Doc("RC-RET"),
+                PartyAccountId = receivable,
+                MainAccountId = salesReturn,
+                VatAccountId = vat,
+                CashAccountId = cash,
+                ShippingAccountId = otherIncome,
+                AutoInvDoc = true,
+                AutoVoucher = true,
+                IsActive = true,
+                Description = "برگشت از فروش بدهکار / حساب‌های دریافتنی بستانکار"
+            });
+
+        db.SaveChanges();
+        Console.WriteLine("[DB] پیکربندی پیش‌فرض انواع فاکتور ساخته شد.");
+    }
+
+    /// <summary>
+    /// خزانه‌داری: حساب «اسناد در جریان وصول»، صندوق و بانک پیش‌فرض
+    /// و قواعد سند خودکار دریافت/پرداخت.
+    /// </summary>
+    private static void SeedTreasury(AppDbContext db)
+    {
+        if (!db.AccAccounts.Any()) return;
+
+        AccAccount? Acc(string code) => db.AccAccounts.FirstOrDefault(a => a.Code == code);
+
+        // ---------- حساب «اسناد در جریان وصول» ----------
+        // در کدینگ پیش‌فرض وجود ندارد چون فقط ماژول خزانه به آن نیاز دارد.
+        var collection = Acc("1203");
+        if (collection is null)
+        {
+            var parent = Acc("12");   // حساب‌های دریافتنی
+            if (parent is not null)
+            {
+                collection = new AccAccount
+                {
+                    Code = "1203",
+                    Name = "اسناد در جریان وصول",
+                    ParentId = parent.Id,
+                    Level = AccountLevel.Subsidiary,
+                    Type = AccountType.Asset,
+                    Nature = AccountNature.Debit,
+                    IsPermanent = true,
+                    IsPostable = true,
+                    IsSystem = false,
+                    SortOrder = (db.AccAccounts.Max(a => (int?)a.SortOrder) ?? 0) + 1
+                };
+                db.AccAccounts.Add(collection);
+                db.SaveChanges();
+                Console.WriteLine("[DB] حساب «اسناد در جریان وصول» (۱۲۰۳) ساخته شد.");
+            }
+        }
+
+        // ---------- صندوق و بانک پیش‌فرض ----------
+        if (!db.TrsAccounts.Any())
+        {
+            db.TrsAccounts.Add(new TrsAccount
+            {
+                Code = "CSH-01",
+                Name = "صندوق مرکزی",
+                Kind = TreasuryAccountKind.Cash,
+                AccountId = Acc("1101")?.Id,
+                IsDefault = true,
+                IsActive = true,
+                SortOrder = 1,
+                Description = "صندوق نقدی پیش‌فرض سیستم"
+            });
+
+            db.TrsAccounts.Add(new TrsAccount
+            {
+                Code = "BNK-01",
+                Name = "حساب جاری",
+                Kind = TreasuryAccountKind.Bank,
+                AccountId = Acc("1102")?.Id,
+                BankName = "بانک ملت",
+                IsActive = true,
+                SortOrder = 2,
+                Description = "حساب بانکی پیش‌فرض سیستم"
+            });
+
+            db.SaveChanges();
+            Console.WriteLine("[DB] صندوق و حساب بانکی پیش‌فرض ساخته شدند.");
+        }
+
+        // ---------- قواعد سند خودکار خزانه ----------
+        if (!db.TrsRules.Any())
+        {
+            var receivable = Acc("1201")?.Id;      // حساب‌های دریافتنی تجاری
+            var payable = Acc("3101")?.Id;         // حساب‌های پرداختنی تجاری
+            var chequeIn = Acc("1202")?.Id;        // اسناد دریافتنی (چک)
+            var chequeOut = Acc("3102")?.Id;       // اسناد پرداختنی (چک)
+            var inCollection = collection?.Id;     // اسناد در جریان وصول
+            var salesDiscount = Acc("5102")?.Id;   // برگشت از فروش و تخفیفات
+            var purchaseDiscount = Acc("6202")?.Id;// برگشت از خرید (تخفیف دریافتی)
+            var bankFee = Acc("6305")?.Id;         // سایر هزینه‌ها (کارمزد بانکی)
+
+            db.TrsRules.AddRange(
+                new TrsRule
+                {
+                    Kind = TreasuryKind.Receipt,
+                    PartyAccountId = receivable,
+                    ChequeAccountId = chequeIn,
+                    CollectionAccountId = inCollection,
+                    DiscountAccountId = salesDiscount,
+                    FeeAccountId = bankFee,
+                    AutoVoucher = true,
+                    IsActive = receivable is not null,
+                    Description = "صندوق/بانک و اسناد دریافتنی بدهکار / حساب‌های دریافتنی بستانکار"
+                },
+                new TrsRule
+                {
+                    Kind = TreasuryKind.Payment,
+                    PartyAccountId = payable,
+                    ChequeAccountId = chequeOut,
+                    CollectionAccountId = null,
+                    DiscountAccountId = purchaseDiscount,
+                    FeeAccountId = bankFee,
+                    AutoVoucher = true,
+                    IsActive = payable is not null,
+                    Description = "حساب‌های پرداختنی بدهکار / صندوق‌ بانک و اسناد پرداختنی بستانکار"
+                });
+
+            db.SaveChanges();
+            Console.WriteLine("[DB] قواعد پیش‌فرض سند خودکار خزانه ساخته شد.");
+        }
+    }
+
     private static void EnsureSqliteWorkCalendarSchema(AppDbContext db)
     {
         try

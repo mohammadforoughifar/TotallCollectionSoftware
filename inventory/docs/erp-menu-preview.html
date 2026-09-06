@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<title>پیش‌نمایش منوی ERP</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px;
+    background: #eef1f7;
+    font-family: "Vazirmatn", "Segoe UI", Tahoma, sans-serif;
+    display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap;
+  }
+  .sidebar {
+    width: 262px; border-radius: 16px; overflow: hidden;
+    background: linear-gradient(180deg, #0f172a 0%, #131d31 100%);
+    color: #cbd5e1; padding-bottom: 12px;
+    box-shadow: 0 18px 50px rgba(15,23,42,.28);
+  }
+  .brand { height: 66px; display: flex; align-items: center; gap: .7rem; padding: 0 1.15rem;
+           border-bottom: 1px solid rgba(255,255,255,.06); }
+  .logo { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center;
+          background: linear-gradient(135deg,#6366f1,#4338ca); color:#fff; font-size:1.2rem; font-weight:800; }
+  .brand-text { color:#fff; font-weight:800; font-size:1rem; }
+  .nav { padding: 10px 12px; }
+
+  .nav-section-title {
+    display:flex; align-items:center; gap:.55rem; width:100%;
+    background:none; border:none; cursor:pointer; text-align:right;
+    font-size:.62rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+    color:#7dd3fc99; padding:.7rem .6rem .3rem;
+  }
+  .nav-section-title::before { content:""; width:7px; height:7px; border-radius:50%;
+    background: currentColor; box-shadow: 0 0 9px currentColor; flex-shrink:0; }
+  .nav-section-title .chev { margin-inline-start:auto; font-size:.7rem; opacity:.7; }
+
+  .group-ops   .nav-section-title { color:#34d399; }
+  .group-erp   .nav-section-title { color:#f472b6; }
+  .group-erp   .nav-section-title .label { font-family:"Segoe UI",sans-serif; letter-spacing:.12em; font-weight:800; font-size:.74rem; }
+  .group-base  .nav-section-title { color:#60a5fa; }
+  .group-reports .nav-section-title { color:#fbbf24; }
+
+  .items { overflow:hidden; border-inline-start:2px solid rgba(125,211,252,.18);
+           margin-inline-start:.65rem; border-radius:2px; }
+  .group-ops .items { border-inline-start-color: rgba(52,211,153,.28); }
+  .group-erp .items { border-inline-start-color: rgba(244,114,182,.28); }
+
+  .link { display:flex; align-items:center; gap:.75rem; padding:.5rem .75rem;
+          padding-inline-start:1.05rem; border-radius:12px; color:#a5b4c8; font-size:.9rem;
+          font-weight:500; margin-bottom:2px; text-decoration:none; }
+  .link:hover { background: rgba(255,255,255,.06); }
+  .link i { font-style:normal; width:18px; text-align:center; }
+  .group-ops .link i { color:#34d399; }
+  .group-erp .link i { color:#f472b6; }
+  .group-erp .link.active { background: linear-gradient(135deg,#f472b6,#db2777); color:#fff;
+                            box-shadow: 0 8px 22px rgba(236,72,153,.42); }
+  .group-erp .link.active i { color:#fff; }
+
+  .subhead { font-size:.68rem; font-weight:700; color: rgba(226,232,240,.42);
+             padding:.55rem 1.05rem .2rem; display:flex; align-items:center; gap:.45rem; white-space:nowrap; }
+  .subhead::after { content:""; flex:1; height:1px; opacity:.45;
+                    background: linear-gradient(to left, currentColor, transparent); }
+
+  .note { max-width: 460px; background:#fff; border-radius:16px; padding:20px 22px;
+          box-shadow: 0 10px 30px rgba(45,55,110,.08); color:#334155; line-height:1.9; font-size:.92rem; }
+  .note h2 { margin:0 0 12px; font-size:1.05rem; color:#0f172a; }
+  .note code { background:#f1f5f9; padding:.08rem .35rem; border-radius:6px; font-size:.82rem; direction:ltr; display:inline-block; }
+  .note ul { margin:.4rem 0 0; padding-inline-start:1.1rem; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; background:#f472b6;
+            box-shadow:0 0 8px #f472b6; vertical-align:middle; margin-inline-end:6px; }
+</style>
+</head>
+<body>
+
+  <div class="sidebar">
+    <div class="brand">
+      <div class="logo">T</div>
+      <div class="brand-text">سامانه جامع<br><span style="font-size:.7rem;font-weight:500;color:#94a3b8">توتال کالکشن</span></div>
+    </div>
+
+    <div class="nav">
+
+      <!-- عملیات (بدون آیتم‌های انبارداری) -->
+      <div class="group-ops">
+        <button class="nav-section-title"><span>عملیات</span><span class="chev">▾</span></button>
+        <div class="items">
+          <a class="link"><i>🛍</i><span>خرید</span></a>
+          <a class="link"><i>🛒</i><span>فروش</span></a>
+          <a class="link"><i>📦</i><span>موجودی انبار</span></a>
+          <a class="link"><i>🔧</i><span>تعمیرات</span></a>
+          <a class="link"><i>💰</i><span>هزینه‌ها</span></a>
+        </div>
+      </div>
+
+      <!-- ERP -->
+      <div class="group-erp">
+        <button class="nav-section-title"><span class="label">ERP</span><span class="chev">▴</span></button>
+        <div class="items">
+
+          <div class="subhead">تعاریف پایه</div>
+          <a class="link active"><i>▦</i><span>تعریف کالا</span></a>
+          <a class="link"><i>⌗</i><span>گروه‌بندی کالا</span></a>
+          <a class="link"><i>⚙</i><span>ویژگی‌های کالا</span></a>
+          <a class="link"><i>🏢</i><span>مدیریت انبارها</span></a>
+          <a class="link"><i>📚</i><span>نوع رسید و حواله</span></a>
+
+          <div class="subhead">عملیات انبار</div>
+          <a class="link"><i>📄</i><span>رسید و حواله</span></a>
+          <a class="link"><i>➕</i><span>ثبت سند جدید</span></a>
+
+          <div class="subhead">گزارش‌ها</div>
+          <a class="link"><i>✅</i><span>موجودی انبار</span></a>
+          <a class="link"><i>📊</i><span>کاردکس کالا</span></a>
+        </div>
+      </div>
+
+      <!-- اطلاعات پایه (بدون آیتم‌های انبارداری) -->
+      <div class="group-base">
+        <button class="nav-section-title"><span>اطلاعات پایه</span><span class="chev">▾</span></button>
+      </div>
+
+      <div class="group-reports">
+        <button class="nav-section-title"><span>گزارش‌ها</span><span class="chev">▾</span></button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="note">
+    <h2><span class="swatch"></span>گروه جدید منو: ERP</h2>
+    <p>همه‌ی صفحات ماژول انبارداری از گروه‌های «عملیات»، «گزارش‌ها» و «اطلاعات پایه» برداشته شد و
+       زیر یک گروه واحد به نام <b>ERP</b> جمع شد؛ با سه زیرعنوان: تعاریف پایه، عملیات انبار و گزارش‌ها.</p>
+    <ul>
+      <li>رنگ اختصاصی گروه: صورتی <code>#f472b6</code> (سایر گروه‌ها دست‌نخورده).</li>
+      <li>هنگام باز کردن هر صفحه‌ای با آدرس <code>/inv/…</code> این گروه به‌صورت خودکار باز می‌شود.</li>
+      <li>دسترسی‌ها حفظ شد: <code>Products</code>، <code>Warehouses</code>، <code>InvDocs</code>، <code>InvDocTypes</code>.</li>
+      <li>این فایل فقط یک پیش‌نمایش ساده است؛ ظاهر نهایی از <code>app.css</code> خودِ پروژه می‌آید.</li>
+    </ul>
+  </div>
+
+</body>
+</html>

@@ -10,7 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Unsafe 6.0 برای سازگاری ImageSharp (اجباری در آوت‌پوت) -->
-    <None Include="Resources\System.Runtime.CompilerServices.Unsafe.dll" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

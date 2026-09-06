@@ -34,6 +34,31 @@ public static class RbacSeeder
         ["WorkOrders"] = new[] { "View", "Create", "AssignOthers" },
         ["Settings"] = CrudActions,
         ["Warehouses"] = CrudActions,
+        // ================== ماژول انبارداری ==================
+        // InvDocs: اسناد رسید و حواله — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["InvDocs"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // InvDocTypes: مدیریت انواع رسید/حواله و ماهیت آن‌ها
+        ["InvDocTypes"] = CrudActions,
+        // ================== ماژول حسابداری ==================
+        // AccAccounts: کدینگ حساب‌ها، سال مالی و قواعد سند خودکار
+        ["AccAccounts"] = CrudActions,
+        // AccVouchers: اسناد حسابداری — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["AccVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // ================== ماژول فاکتور ==================
+        // FacInvoices: فاکتور خرید/فروش — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["FacInvoices"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // ================== ماژول خزانه‌داری ==================
+        // TrsAccounts: صندوق، بانک، کارتخوان، تنخواه و تنظیمات خزانه
+        ["TrsAccounts"] = CrudActions,
+        // TrsVouchers: اسناد دریافت/پرداخت/انتقال — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["TrsVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // TrsCheques: چک‌ها — Confirm: اجرای عملیات چک (واگذاری، وصول، برگشت)
+        ["TrsCheques"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // ================== ماژول انبارگردانی و بارکد ==================
+        // StkSessions: دوره‌های انبارگردانی — Apply: صدور اسناد اصلاح | Cancel: لغو دوره
+        ["StkSessions"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Apply", "Cancel" },
+        // StkBarcodes: بارکدهای کالا، تولید گروهی و چاپ برچسب
+        ["StkBarcodes"] = CrudActions,
         // ================== بخش معرف ==================
         ["Referrers"] = CrudActions,                                     // مدیریت معرف‌ها
         ["ReferrerWallets"] = new[] { "Read", "Update", "Export" },      // کیف پول معرف‌ها
@@ -62,14 +87,12 @@ public static class RbacSeeder
         // Read: کارتابل، مشاهده نامه و پیوست‌ها | Erja: ارجاع نامه به دیگران
         // Delete: حذف نامه/گروه (مدیرانه)
         ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
+        // ================== آرشیو اسناد و مدارک ==================
+        ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage" },
         // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
         // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
         // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده
-        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" },
-        // ================== آرشیو اسناد و مدارک ==================
-        // Read: ورود به ماژول و دیدن پوشه/مدارکِ مجاز | Create: ساخت پوشه و ثبت مدرک
-        // Delete: حذف پوشه/مدرک | Manage: مدیر آرشیو (دسترسی کامل به همه پوشه‌ها و مدارک)
-        ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage" }
+        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" }
     };
 
     public static async Task SeedAsync(AppDbContext db)

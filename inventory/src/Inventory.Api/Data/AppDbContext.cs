@@ -120,6 +120,42 @@ public class AppDbContext : DbContext
     public DbSet<DocCartableTask> DocCartableTasks => Set<DocCartableTask>();
     public DbSet<DocumentLog> DocumentLogs => Set<DocumentLog>();
 
+    // ==================== ماژول انبارداری ====================
+    public DbSet<ProductAttributeDef> ProductAttributeDefs => Set<ProductAttributeDef>();
+    public DbSet<ProductAttributeOption> ProductAttributeOptions => Set<ProductAttributeOption>();
+    public DbSet<ProductAttributeValue> ProductAttributeValues => Set<ProductAttributeValue>();
+    public DbSet<InvDocType> InvDocTypes => Set<InvDocType>();
+    public DbSet<InvDoc> InvDocs => Set<InvDoc>();
+    public DbSet<InvDocLine> InvDocLines => Set<InvDocLine>();
+    public DbSet<InvLedgerEntry> InvLedger => Set<InvLedgerEntry>();
+    public DbSet<InvStock> InvStocks => Set<InvStock>();
+
+    // ==================== ماژول حسابداری ====================
+    public DbSet<AccFiscalYear> AccFiscalYears => Set<AccFiscalYear>();
+    public DbSet<AccAccount> AccAccounts => Set<AccAccount>();
+    public DbSet<AccVoucher> AccVouchers => Set<AccVoucher>();
+    public DbSet<AccVoucherLine> AccVoucherLines => Set<AccVoucherLine>();
+    public DbSet<AccInvRule> AccInvRules => Set<AccInvRule>();
+
+    // ---------- ماژول فاکتور ----------
+    public DbSet<FacInvoice> FacInvoices => Set<FacInvoice>();
+    public DbSet<FacInvoiceLine> FacInvoiceLines => Set<FacInvoiceLine>();
+    public DbSet<FacRule> FacRules => Set<FacRule>();
+
+    // ---------- ماژول خزانه‌داری ----------
+    public DbSet<TrsAccount> TrsAccounts => Set<TrsAccount>();
+    public DbSet<TrsVoucher> TrsVouchers => Set<TrsVoucher>();
+    public DbSet<TrsVoucherLine> TrsVoucherLines => Set<TrsVoucherLine>();
+    public DbSet<TrsCheque> TrsCheques => Set<TrsCheque>();
+    public DbSet<TrsChequeAction> TrsChequeActions => Set<TrsChequeAction>();
+    public DbSet<TrsRule> TrsRules => Set<TrsRule>();
+
+    // ---------- ماژول انبارگردانی و بارکد ----------
+    public DbSet<BcdBarcode> BcdBarcodes => Set<BcdBarcode>();
+    public DbSet<StkSession> StkSessions => Set<StkSession>();
+    public DbSet<StkLine> StkLines => Set<StkLine>();
+    public DbSet<StkScan> StkScans => Set<StkScan>();
+
     // ==================== RBAC ====================
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
@@ -442,5 +478,278 @@ public class AppDbContext : DbContext
 
         // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
         mb.Entity<WorkOrder>().HasIndex(w => new { w.SourceModule, w.SourceId });
+
+        // ==================== ماژول انبارداری ====================
+
+        // ---------- کالا: فیلدهای تکمیلی ----------
+        mb.Entity<Product>().HasIndex(p => p.CategoryId);
+        mb.Entity<Product>().HasIndex(p => p.TaxCode);
+        mb.Entity<Product>().Property(p => p.SalePrice2).HasPrecision(18, 2);
+        mb.Entity<Product>().Property(p => p.VatRate).HasPrecision(6, 2);
+        mb.Entity<Product>().Property(p => p.DutyRate).HasPrecision(6, 2);
+        mb.Entity<Product>().Property(p => p.OtherTaxRate).HasPrecision(6, 2);
+        mb.Entity<Product>().Property(p => p.MinOrderQty).HasPrecision(18, 3);
+        mb.Entity<Product>().Property(p => p.UnitFactor).HasPrecision(18, 4);
+        mb.Entity<Product>().Property(p => p.Weight).HasPrecision(18, 3);
+        mb.Entity<Product>().Property(p => p.Length).HasPrecision(18, 3);
+        mb.Entity<Product>().Property(p => p.Width).HasPrecision(18, 3);
+        mb.Entity<Product>().Property(p => p.Height).HasPrecision(18, 3);
+
+        // ---------- انبار و گروه کالا ----------
+        mb.Entity<Warehouse>().HasIndex(w => w.Code);
+        mb.Entity<ProductCategory>().HasIndex(c => c.ParentId);
+
+        // ---------- ویژگی‌های کالا ----------
+        mb.Entity<ProductAttributeDef>().HasIndex(a => a.Name);
+        mb.Entity<ProductAttributeDef>().HasIndex(a => a.CategoryId);
+        mb.Entity<ProductAttributeOption>().HasIndex(o => o.AttributeId);
+        mb.Entity<ProductAttributeValue>().HasIndex(v => new { v.ProductId, v.AttributeId }).IsUnique();
+        mb.Entity<ProductAttributeValue>().Property(v => v.NumberValue).HasPrecision(18, 4);
+
+        // ---------- نوع رسید و حواله ----------
+        mb.Entity<InvDocType>().HasIndex(t => t.Code).IsUnique();
+        mb.Entity<InvDocType>().HasIndex(t => t.Nature);
+
+        // ---------- سند انبار ----------
+        mb.Entity<InvDoc>().HasIndex(d => d.Number).IsUnique();
+        mb.Entity<InvDoc>().HasIndex(d => d.Date);
+        mb.Entity<InvDoc>().HasIndex(d => d.DocTypeId);
+        mb.Entity<InvDoc>().HasIndex(d => d.WarehouseId);
+        mb.Entity<InvDoc>().HasIndex(d => d.Status);
+        mb.Entity<InvDoc>().Property(d => d.TotalQuantity).HasPrecision(18, 3);
+        mb.Entity<InvDoc>().Property(d => d.TotalValue).HasPrecision(18, 2);
+        mb.Entity<InvDoc>()
+            .HasMany(d => d.Lines)
+            .WithOne(l => l.Doc!)
+            .HasForeignKey(l => l.DocId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        mb.Entity<InvDocLine>().HasIndex(l => l.ProductId);
+        mb.Entity<InvDocLine>().Property(l => l.Quantity).HasPrecision(18, 3);
+        mb.Entity<InvDocLine>().Property(l => l.UnitPrice).HasPrecision(18, 2);
+        mb.Entity<InvDocLine>().Property(l => l.Discount).HasPrecision(18, 2);
+        mb.Entity<InvDocLine>().Property(l => l.OutCost).HasPrecision(18, 4);
+
+        // ---------- دفتر کاردکس ----------
+        mb.Entity<InvLedgerEntry>().HasIndex(e => new { e.ProductId, e.WarehouseId, e.Date });
+        mb.Entity<InvLedgerEntry>().HasIndex(e => e.DocId);
+        mb.Entity<InvLedgerEntry>().Property(e => e.QtyIn).HasPrecision(18, 3);
+        mb.Entity<InvLedgerEntry>().Property(e => e.QtyOut).HasPrecision(18, 3);
+        mb.Entity<InvLedgerEntry>().Property(e => e.RemainingQty).HasPrecision(18, 3);
+        mb.Entity<InvLedgerEntry>().Property(e => e.BalanceQty).HasPrecision(18, 3);
+        mb.Entity<InvLedgerEntry>().Property(e => e.UnitCost).HasPrecision(18, 4);
+        mb.Entity<InvLedgerEntry>().Property(e => e.ValueIn).HasPrecision(18, 2);
+        mb.Entity<InvLedgerEntry>().Property(e => e.ValueOut).HasPrecision(18, 2);
+        mb.Entity<InvLedgerEntry>().Property(e => e.BalanceValue).HasPrecision(18, 2);
+
+        // ---------- مانده انبارداری ----------
+        mb.Entity<InvStock>().HasIndex(s => new { s.ProductId, s.WarehouseId }).IsUnique();
+        mb.Entity<InvStock>().Property(s => s.Quantity).HasPrecision(18, 3);
+        mb.Entity<InvStock>().Property(s => s.Value).HasPrecision(18, 2);
+        mb.Entity<InvStock>().Property(s => s.AvgCost).HasPrecision(18, 4);
+
+        // ==================== ماژول حسابداری ====================
+        mb.Entity<AccFiscalYear>().HasIndex(f => f.Title).IsUnique();
+        mb.Entity<AccFiscalYear>().HasIndex(f => f.IsCurrent);
+
+        mb.Entity<AccAccount>().HasIndex(a => a.Code).IsUnique();
+        mb.Entity<AccAccount>().HasIndex(a => a.ParentId);
+        mb.Entity<AccAccount>().HasIndex(a => a.Level);
+        mb.Entity<AccAccount>()
+          .HasOne(a => a.Parent).WithMany()
+          .HasForeignKey(a => a.ParentId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<AccVoucher>().HasIndex(v => new { v.FiscalYearId, v.Number }).IsUnique();
+        mb.Entity<AccVoucher>().HasIndex(v => v.Date);
+        mb.Entity<AccVoucher>().HasIndex(v => v.Status);
+        mb.Entity<AccVoucher>().HasIndex(v => new { v.Source, v.SourceId });
+        mb.Entity<AccVoucher>().Property(v => v.TotalDebit).HasPrecision(18, 2);
+        mb.Entity<AccVoucher>().Property(v => v.TotalCredit).HasPrecision(18, 2);
+        mb.Entity<AccVoucher>()
+          .HasOne(v => v.FiscalYear).WithMany()
+          .HasForeignKey(v => v.FiscalYearId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<AccVoucherLine>().HasIndex(l => l.AccountId);
+        mb.Entity<AccVoucherLine>().HasIndex(l => l.PartyId);
+        mb.Entity<AccVoucherLine>().Property(l => l.Debit).HasPrecision(18, 2);
+        mb.Entity<AccVoucherLine>().Property(l => l.Credit).HasPrecision(18, 2);
+        mb.Entity<AccVoucherLine>()
+          .HasOne(l => l.Voucher).WithMany(v => v.Lines)
+          .HasForeignKey(l => l.VoucherId)
+          .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<AccVoucherLine>()
+          .HasOne(l => l.Account).WithMany()
+          .HasForeignKey(l => l.AccountId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<AccInvRule>().HasIndex(r => r.DocTypeId).IsUnique();
+        mb.Entity<AccInvRule>()
+          .HasOne(r => r.DocType).WithMany()
+          .HasForeignKey(r => r.DocTypeId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        // ============ ماژول فاکتور ============
+        mb.Entity<FacInvoice>().HasIndex(i => new { i.Kind, i.Number }).IsUnique();
+        mb.Entity<FacInvoice>().HasIndex(i => i.Date);
+        mb.Entity<FacInvoice>().HasIndex(i => i.Status);
+        mb.Entity<FacInvoice>().HasIndex(i => i.PartyId);
+        mb.Entity<FacInvoice>().HasIndex(i => i.InvDocId);
+        mb.Entity<FacInvoice>().HasIndex(i => i.VoucherId);
+        foreach (var prop in new[] { "TotalGross", "TotalLineDiscount", "InvoiceDiscount",
+                                     "TotalTaxable", "TotalVat", "ShippingCost", "TotalNet" })
+            mb.Entity<FacInvoice>().Property(prop).HasPrecision(18, 2);
+        mb.Entity<FacInvoice>()
+          .HasOne(i => i.Party).WithMany()
+          .HasForeignKey(i => i.PartyId)
+          .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<FacInvoice>()
+          .HasOne(i => i.Warehouse).WithMany()
+          .HasForeignKey(i => i.WarehouseId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<FacInvoiceLine>().HasIndex(l => l.InvoiceId);
+        mb.Entity<FacInvoiceLine>().HasIndex(l => l.ProductId);
+        foreach (var prop in new[] { "Quantity", "UnitPrice", "DiscountPercent", "Discount",
+                                     "VatRate", "VatAmount", "Taxable", "Total" })
+            mb.Entity<FacInvoiceLine>().Property(prop).HasPrecision(18, 2);
+        mb.Entity<FacInvoiceLine>()
+          .HasOne(l => l.Invoice).WithMany(i => i.Lines)
+          .HasForeignKey(l => l.InvoiceId)
+          .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<FacInvoiceLine>()
+          .HasOne(l => l.Product).WithMany()
+          .HasForeignKey(l => l.ProductId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<FacRule>().HasIndex(r => r.Kind).IsUnique();
+        mb.Entity<FacRule>()
+          .HasOne(r => r.DocType).WithMany()
+          .HasForeignKey(r => r.DocTypeId)
+          .OnDelete(DeleteBehavior.SetNull);
+
+        // ============ ماژول خزانه‌داری ============
+
+        // ---------- صندوق / بانک ----------
+        mb.Entity<TrsAccount>().HasIndex(a => a.Code).IsUnique();
+        mb.Entity<TrsAccount>().HasIndex(a => a.Kind);
+        mb.Entity<TrsAccount>().Property(a => a.OpeningBalance).HasPrecision(18, 2);
+        mb.Entity<TrsAccount>()
+          .HasOne(a => a.Account).WithMany()
+          .HasForeignKey(a => a.AccountId)
+          .OnDelete(DeleteBehavior.SetNull);
+
+        // ---------- سند خزانه ----------
+        mb.Entity<TrsVoucher>().HasIndex(v => new { v.Kind, v.Number }).IsUnique();
+        mb.Entity<TrsVoucher>().HasIndex(v => v.Date);
+        mb.Entity<TrsVoucher>().HasIndex(v => v.Status);
+        mb.Entity<TrsVoucher>().HasIndex(v => v.PartyId);
+        mb.Entity<TrsVoucher>().HasIndex(v => v.VoucherId);
+        mb.Entity<TrsVoucher>().HasIndex(v => v.InvoiceId);
+        foreach (var prop in new[] { "TotalAmount", "CashAmount", "ChequeAmount",
+                                     "DiscountAmount", "FeeAmount" })
+            mb.Entity<TrsVoucher>().Property(prop).HasPrecision(18, 2);
+        mb.Entity<TrsVoucher>()
+          .HasOne(v => v.Party).WithMany()
+          .HasForeignKey(v => v.PartyId)
+          .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<TrsVoucher>()
+          .HasOne(v => v.FromAccount).WithMany()
+          .HasForeignKey(v => v.FromAccountId)
+          .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<TrsVoucher>()
+          .HasOne(v => v.ToAccount).WithMany()
+          .HasForeignKey(v => v.ToAccountId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        // ---------- سطر سند خزانه ----------
+        mb.Entity<TrsVoucherLine>().HasIndex(l => l.TrsVoucherId);
+        mb.Entity<TrsVoucherLine>().HasIndex(l => l.TrsAccountId);
+        mb.Entity<TrsVoucherLine>().HasIndex(l => l.ChequeId);
+        mb.Entity<TrsVoucherLine>().Property(l => l.Amount).HasPrecision(18, 2);
+        mb.Entity<TrsVoucherLine>()
+          .HasOne(l => l.TrsVoucher).WithMany(v => v.Lines)
+          .HasForeignKey(l => l.TrsVoucherId)
+          .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<TrsVoucherLine>()
+          .HasOne(l => l.TrsAccount).WithMany()
+          .HasForeignKey(l => l.TrsAccountId)
+          .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<TrsVoucherLine>()
+          .HasOne(l => l.Cheque).WithMany()
+          .HasForeignKey(l => l.ChequeId)
+          .OnDelete(DeleteBehavior.SetNull);
+
+        // ---------- چک ----------
+        mb.Entity<TrsCheque>().HasIndex(c => new { c.Kind, c.Number });
+        mb.Entity<TrsCheque>().HasIndex(c => c.DueDate);
+        mb.Entity<TrsCheque>().HasIndex(c => c.Status);
+        mb.Entity<TrsCheque>().HasIndex(c => c.PartyId);
+        mb.Entity<TrsCheque>().HasIndex(c => c.TrsVoucherId);
+        mb.Entity<TrsCheque>().Property(c => c.Amount).HasPrecision(18, 2);
+        mb.Entity<TrsCheque>()
+          .HasOne(c => c.Party).WithMany()
+          .HasForeignKey(c => c.PartyId)
+          .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<TrsCheque>()
+          .HasOne(c => c.TrsAccount).WithMany()
+          .HasForeignKey(c => c.TrsAccountId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        // ---------- عملیات چک ----------
+        mb.Entity<TrsChequeAction>().HasIndex(a => a.ChequeId);
+        mb.Entity<TrsChequeAction>()
+          .HasOne(a => a.Cheque).WithMany(c => c.Actions)
+          .HasForeignKey(a => a.ChequeId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        // ---------- قواعد خزانه ----------
+        mb.Entity<TrsRule>().HasIndex(r => r.Kind).IsUnique();
+
+        // ============ ماژول انبارگردانی و بارکد ============
+
+        // ---------- بارکد ----------
+        mb.Entity<BcdBarcode>().HasIndex(b => b.Code).IsUnique();
+        mb.Entity<BcdBarcode>().HasIndex(b => b.ProductId);
+        mb.Entity<BcdBarcode>().Property(b => b.PackQty).HasPrecision(18, 3);
+        mb.Entity<BcdBarcode>()
+          .HasOne(b => b.Product).WithMany()
+          .HasForeignKey(b => b.ProductId)
+          .OnDelete(DeleteBehavior.Cascade);
+
+        // ---------- دوره انبارگردانی ----------
+        mb.Entity<StkSession>().HasIndex(s => s.Number).IsUnique();
+        mb.Entity<StkSession>().HasIndex(s => s.WarehouseId);
+        mb.Entity<StkSession>().HasIndex(s => s.Status);
+        mb.Entity<StkSession>().HasIndex(s => s.Date);
+        mb.Entity<StkSession>()
+          .HasOne(s => s.Warehouse).WithMany()
+          .HasForeignKey(s => s.WarehouseId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        // ---------- اقلام شمارش ----------
+        mb.Entity<StkLine>().HasIndex(l => l.SessionId);
+        mb.Entity<StkLine>().HasIndex(l => new { l.SessionId, l.ProductId }).IsUnique();
+        mb.Entity<StkLine>().Property(l => l.SystemQty).HasPrecision(18, 3);
+        mb.Entity<StkLine>().Property(l => l.CountedQty).HasPrecision(18, 3);
+        mb.Entity<StkLine>().Property(l => l.UnitCost).HasPrecision(18, 2);
+        mb.Entity<StkLine>()
+          .HasOne(l => l.Session).WithMany(s => s.Lines)
+          .HasForeignKey(l => l.SessionId)
+          .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<StkLine>()
+          .HasOne(l => l.Product).WithMany()
+          .HasForeignKey(l => l.ProductId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        // ---------- تاریخچه اسکن ----------
+        mb.Entity<StkScan>().HasIndex(s => s.SessionId);
+        mb.Entity<StkScan>().HasIndex(s => s.LineId);
+        mb.Entity<StkScan>().Property(s => s.Quantity).HasPrecision(18, 3);
+        mb.Entity<StkScan>()
+          .HasOne(s => s.Session).WithMany()
+          .HasForeignKey(s => s.SessionId)
+          .OnDelete(DeleteBehavior.Cascade);
     }
 }
