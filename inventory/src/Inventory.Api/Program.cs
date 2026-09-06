@@ -41,6 +41,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAccountingService,
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IInvoicingService, Inventory.Api.Services.Invoicing.InvoicingService>(); // ماژول فاکتور
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
+builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AttendanceRecalcService>();
 builder.Services.AddScoped<AttendanceSecurityService>();
