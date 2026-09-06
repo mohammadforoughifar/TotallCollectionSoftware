@@ -284,3 +284,25 @@ public class DocumentLog
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
+
+/// <summary>
+/// ثبت اینکه برای یک مدرک، هشدار انقضای کدام آستانه قبلاً ارسال شده است.
+/// جلوی ارسال تکراری در اجرای روزانه سرویس را می‌گیرد.
+/// </summary>
+public class DocExpiryAlert
+{
+    public int Id { get; set; }
+
+    public int DocumentId { get; set; }
+
+    /// <summary>آستانه هشدار بر حسب روز مانده (۶۰ / ۳۰ / ۷ / ۰=منقضی شد)</summary>
+    public int ThresholdDays { get; set; }
+
+    /// <summary>تاریخ انقضایی که این هشدار برایش صادر شد — اگر تاریخ عوض شود دوباره هشدار می‌رود.</summary>
+    public DateTime ExpireDate { get; set; }
+
+    public DateTime SentAt { get; set; } = DateTime.Now;
+
+    /// <summary>تعداد کاربرانی که کار کارتابل گرفتند</summary>
+    public int NotifiedCount { get; set; }
+}

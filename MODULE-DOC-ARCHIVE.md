@@ -89,6 +89,30 @@
 - فعال‌سازی مجدد همه عملیات را برمی‌گرداند. تغییر وضعیت نیازمند **دسترسی کامل** است و به دارندگان دسترسی کامل اعلان می‌رود.
 - **حذف** مدرک حالا soft-delete جداگانه‌ای است (`IsDeleted`) و با غیرفعال‌سازی اشتباه نمی‌شود.
 
+## ۱۰) هشدار انقضای مدارک
+
+سرویس پس‌زمینه `DocExpiryWatcher` روزی یک‌بار (پیش‌فرض ساعت ۷ صبح) مدارک را بررسی می‌کند و
+برای دارندگان **دسترسی کامل** هر مدرک، **کار کارتابل** (`Kind = "ExpiryAlert"`) و اعلان می‌سازد.
+
+- **آستانه‌های پیش‌فرض:** ۶۰، ۳۰، ۷ و ۰ روز مانده (۰ = امروز منقضی می‌شود / منقضی شده).
+- **بدون تکرار:** جدول `DocExpiryAlerts` با ایندکس یکتای `(DocumentId, ThresholdDays, ExpireDate)`
+  تضمین می‌کند هر مدرک برای هر آستانه فقط یک‌بار هشدار بگیرد.
+- **تشدید سطح:** با نزدیک‌تر شدن تاریخ، آستانه بعدی جداگانه هشدار می‌دهد (۶۰ ⇒ ۳۰ ⇒ ۷ ⇒ ۰).
+- **تغییر تاریخ انقضا:** چون `ExpireDate` بخشی از کلید یکتاست، اگر تاریخ عوض شود چرخه هشدار از نو شروع می‌شود.
+- **مدارک غیرفعال یا حذف‌شده هشدار نمی‌گیرند.**
+- در لیست مدارک: بج شمارش معکوس با رنگ‌بندی (قرمز ≤۷ روز، نارنجی ≤۳۰، آبی ≤۶۰) و در صفحه جزئیات هم نمایش داده می‌شود.
+- در درخت کنار لیست: دو زیرمنوی **«منقضی شده»** و **«رو به انقضا»** همراه با شمارنده — شمارنده فقط مدارکی را می‌شمارد که کاربر به آن‌ها دسترسی دارد.
+- دکمه **«بررسی انقضا»** برای اجرای فوری (فقط با دسترسی `DocArchive.Manage`).
+
+### تنظیمات (اختیاری، در `appsettings.json`)
+
+```json
+"DocArchive": {
+  "ExpiryThresholds": [90, 60, 30, 7, 0],
+  "ExpiryCheckHour": 7
+}
+```
+
 ## دسترسی‌های RBAC (خودکار به دیتابیس اضافه می‌شوند)
 
 | مجوز | توضیح |
@@ -116,6 +140,8 @@
 - `Inventory.Api/Controllers/DocArchive/DocumentsController.cs`
 - `Inventory.Api/Migrations/*_AddDocArchiveModule.cs` — ۹ جدول + ایندکس‌ها
 - `Inventory.Api/Migrations/*_AddDocCustomerCodeAndStatus.cs` — ستون‌های `CustomerCode`، `IsDeleted`، `DeactivatedAt`، `DeactivatedByName`، `DeactivateReason`
+- `Inventory.Api/Migrations/*_AddDocExpiryAlerts.cs` — جدول `DocExpiryAlerts`
+- `Inventory.Api/Services/DocArchive/DocExpiryWatcher.cs` — سرویس پس‌زمینه هشدار انقضا
 
 **مشترک**
 - `Inventory.Shared/Dtos/DocArchiveDtos.cs`
@@ -138,6 +164,9 @@
 | GET | `/api/doc-archive/documents?status=active\|inactive\|all` | فیلتر وضعیت مدرک |
 | POST | `/api/doc-archive/documents/links/many` | لینک چندتایی مدارک مرتبط |
 | PUT | `/api/doc-archive/documents/{id}/active` | فعال/غیرفعال کردن مدرک (با دلیل) |
+| GET | `/api/doc-archive/documents?expiry=expiring\|expired\|all` | فیلتر انقضا |
+| GET | `/api/doc-archive/expiry-summary` | شمارش منقضی‌شده و رو به انقضا (بج‌ها) |
+| POST | `/api/doc-archive/expiry-check` | اجرای فوری بررسی انقضا (نیازمند Manage) |
 
 ## اجرا
 

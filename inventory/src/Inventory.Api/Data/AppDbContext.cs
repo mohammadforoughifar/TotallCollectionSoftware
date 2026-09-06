@@ -119,6 +119,7 @@ public class AppDbContext : DbContext
     public DbSet<DocumentLink> DocumentLinks => Set<DocumentLink>();
     public DbSet<DocCartableTask> DocCartableTasks => Set<DocCartableTask>();
     public DbSet<DocumentLog> DocumentLogs => Set<DocumentLog>();
+    public DbSet<DocExpiryAlert> DocExpiryAlerts => Set<DocExpiryAlert>();
 
     // ==================== RBAC ====================
     public DbSet<Role> Roles => Set<Role>();
@@ -148,6 +149,8 @@ public class AppDbContext : DbContext
         mb.Entity<DocFolderPermission>().HasIndex(p => new { p.FolderId, p.UserId }).IsUnique();
         mb.Entity<DocumentPermission>().HasIndex(p => new { p.DocumentId, p.UserId }).IsUnique();
         mb.Entity<DocumentVersion>().HasIndex(v => new { v.DocumentId, v.VersionNo }).IsUnique();
+        // هر مدرک برای هر آستانه و هر تاریخ انقضا فقط یک‌بار هشدار می‌گیرد
+        mb.Entity<DocExpiryAlert>().HasIndex(a => new { a.DocumentId, a.ThresholdDays, a.ExpireDate }).IsUnique();
         mb.Entity<DocumentApprover>().HasIndex(a => new { a.DocumentId, a.VersionId });
         mb.Entity<DocumentLink>().HasIndex(l => new { l.DocumentId, l.LinkedDocumentId }).IsUnique();
         mb.Entity<DocCartableTask>().HasIndex(t => new { t.UserId, t.Status });
