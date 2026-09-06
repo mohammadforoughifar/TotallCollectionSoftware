@@ -16,4 +16,14 @@ public class ProductCategory
     public string? Description { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    // ---------- ماژول انبارداری ----------
+    /// <summary>کد گروه (اختیاری)</summary>
+    [MaxLength(30)] public string? Code { get; set; }
+
+    /// <summary>ترتیب نمایش بین گروه‌های هم‌سطح</summary>
+    public int SortOrder { get; set; }
+
+    /// <summary>روش قیمت‌گذاری گروه (null = ارث‌بری از والد یا تنظیمات کلی)</summary>
+    public ValuationMethod? Valuation { get; set; }
 }

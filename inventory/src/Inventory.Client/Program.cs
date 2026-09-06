@@ -31,6 +31,37 @@ builder.Services.AddScoped<IPartyService, PartyService>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+// ---------- ماژول انبارداری ----------
+builder.Services.AddScoped<IInvCategoryService, InvCategoryService>();
+builder.Services.AddScoped<IInvAttributeService, InvAttributeService>();
+builder.Services.AddScoped<IInvProductService, InvProductService>();
+builder.Services.AddScoped<IInvWarehouseService, InvWarehouseService>();
+builder.Services.AddScoped<IInvDocTypeService, InvDocTypeService>();
+builder.Services.AddScoped<IInvDocService, InvDocService>();
+builder.Services.AddScoped<IInvReportService, InvReportService>();
+
+// ---------- ماژول حسابداری ----------
+builder.Services.AddScoped<IAccFiscalYearService, AccFiscalYearService>();
+builder.Services.AddScoped<IAccAccountService, AccAccountService>();
+builder.Services.AddScoped<IAccVoucherService, AccVoucherService>();
+builder.Services.AddScoped<IAccReportService, AccReportService>();
+builder.Services.AddScoped<IAccInvRuleService, AccInvRuleService>();
+
+// ---------- ماژول فاکتور ----------
+builder.Services.AddScoped<IFacInvoiceService, FacInvoiceService>();
+builder.Services.AddScoped<IFacRuleService, FacRuleService>();
+builder.Services.AddScoped<IFacReportService, FacReportService>();
+
+// ماژول خزانه‌داری
+builder.Services.AddScoped<ITrsAccountService, TrsAccountService>();
+builder.Services.AddScoped<ITrsVoucherService, TrsVoucherService>();
+builder.Services.AddScoped<ITrsChequeService, TrsChequeService>();
+builder.Services.AddScoped<ITrsRuleService, TrsRuleService>();
+builder.Services.AddScoped<ITrsReportService, TrsReportService>();
+
+// ماژول انبارگردانی و بارکد
+builder.Services.AddScoped<IBcdBarcodeService, BcdBarcodeService>();
+builder.Services.AddScoped<IStkSessionService, StkSessionService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
