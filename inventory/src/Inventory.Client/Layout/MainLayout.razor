@@ -327,6 +327,10 @@ else
         pushBusy = true;
         try
         {
+            // بدون این هدر، درخواست‌های زیر 401 می‌گیرند و فعال‌سازی
+            // با پیام «ثبت اشتراک در سرور ناموفق بود» شکست می‌خورد.
+            SetAuthHeader();
+
             if (pushEnabled)
             {
                 // غیرفعال‌سازی
@@ -367,8 +371,14 @@ else
                     }
                     else
                     {
-                        pushStatusText = "ثبت اشتراک در سرور ناموفق بود.";
-                        Toast.Error("ثبت اشتراک در سرور ناموفق بود.");
+                        var reason = save.StatusCode switch
+                        {
+                            System.Net.HttpStatusCode.Unauthorized => "نشست شما منقضی شده — دوباره وارد شوید.",
+                            System.Net.HttpStatusCode.Forbidden => "شما اجازه ثبت اشتراک ندارید.",
+                            _ => $"خطای سرور ({(int)save.StatusCode})"
+                        };
+                        pushStatusText = "ثبت اشتراک در سرور ناموفق بود — " + reason;
+                        Toast.Error(pushStatusText);
                     }
                 }
                 else
@@ -439,6 +449,7 @@ else
 
     private async Task RefreshLettersUnreadAsync()
     {
+        SetAuthHeader();
         if (!Auth.IsLoggedIn || Auth.IsReferrer) return;
         try
         {
@@ -485,6 +496,7 @@ else
 
     private async Task RefreshNtf()
     {
+        SetAuthHeader();
         try
         {
             var res = await Http.GetFromJsonAsync<UnreadRes>("/api/notifications/unread-count");
@@ -503,6 +515,7 @@ else
 
     private async Task ClearAllNtf()
     {
+        SetAuthHeader();
         try { await Http.DeleteAsync("/api/notifications/clear-all"); } catch { }
         ntfList.Clear();
         unreadCount = 0;
@@ -511,6 +524,7 @@ else
 
     private async Task MarkAllRead()
     {
+        SetAuthHeader();
         try { await Http.PostAsync("/api/notifications/read-all", null); } catch { }
         unreadCount = 0;
         foreach (var n in ntfList) n.IsRead = true;
