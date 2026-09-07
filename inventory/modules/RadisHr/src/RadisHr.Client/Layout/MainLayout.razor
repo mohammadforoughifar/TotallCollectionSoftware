@@ -1,0 +1,112 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthState Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@if (!Auth.IsAuthenticated)
+{
+    <LoginView />
+}
+else
+{
+    <div class="app">
+        <aside>
+            <div class="side-brand"><div class="logo small">R</div><strong>RADIS-HR</strong></div>
+            <nav>
+                @foreach (var item in AppNav.Items.Where(i => Auth.Can(i.Page)))
+                {
+                    <button type="button"
+                            class="nav-item @(item.Page == "notices" ? "notice-nav" : "") @(IsActive(item) ? "active" : "")"
+                            @onclick="() => Go(item)">
+                        @item.Label
+                        @if (item.Page == "notices")
+                        {
+                            <span class="notification-badge @(_noticeCount > 0 ? "" : "hidden")">@Fa.N(_noticeCount)</span>
+                        }
+                    </button>
+                }
+            </nav>
+            <button class="logout change-password-menu" type="button" @onclick="() => _showPasswordDialog = true">تغییر رمز عبور</button>
+            <button class="logout" type="button" @onclick="LogoutAsync">خروج از سامانه</button>
+        </aside>
+
+        <section class="content">
+            <header>
+                <div>
+                    <small class="muted">شرکت آورین بن سازه راد</small>
+                    <h2>@PageTitle</h2>
+                </div>
+                <div class="user-chip">
+                    <span>@(string.IsNullOrEmpty(Auth.DisplayName) ? "م" : Auth.DisplayName.Substring(0, 1))</span>
+                    <div><strong>@Auth.DisplayName</strong><small>@Auth.RoleTitle</small></div>
+                </div>
+            </header>
+
+            <PageBoundary>@Body</PageBoundary>
+        </section>
+    </div>
+
+    @if (_showPasswordDialog)
+    {
+        <ChangePasswordDialog UserKey="@Auth.UserKey" OnClose="() => _showPasswordDialog = false" />
+    }
+}
+
+@code {
+    private int _noticeCount;
+    private bool _showPasswordDialog;
+
+    private string PageTitle =>
+        AppNav.ByRoute(new Uri(Nav.Uri).AbsolutePath)?.Title ?? "داشبورد";
+
+    protected override void OnInitialized()
+    {
+        Auth.Changed += OnAuthChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Auth.IsAuthenticated) await LoadNoticesAsync();
+    }
+
+    private bool IsActive(NavEntry item)
+    {
+        var path = "/" + new Uri(Nav.Uri).AbsolutePath.Trim('/');
+        return string.Equals(path, item.Route, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void Go(NavEntry item) => Nav.NavigateTo(item.Route);
+
+    private async Task LoadNoticesAsync()
+    {
+        var notices = await Api.GetListAsync<AuditNotice>("api/workflows/notices");
+        var announcements = await Api.GetListAsync<Announcement>("api/workflows/announcements");
+        var role = Auth.Session?.UserKey ?? "";
+        _noticeCount = notices.Count(n => !n.Seen)
+            + announcements.Count(a => a.Recipients.Any(r => r.RoleKey == role && r.FirstSeenAt == null));
+        StateHasChanged();
+    }
+
+    private async Task LogoutAsync()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/", false);
+    }
+
+    private void OnAuthChanged() => InvokeAsync(StateHasChanged);
+
+    private async void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (Auth.IsAuthenticated) await LoadNoticesAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Auth.Changed -= OnAuthChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}
