@@ -80,6 +80,9 @@ public static class RbacSeeder
         // SelfCheckin: زدن ورود/خروج برای خود
         // ViewAll: مشاهده لاگ همه پرسنل | ManageShifts: مدیریت شیفت‌ها و اصلاح رکوردها | Report: گزارش ماهانه
         ["Attendance"] = new[] { "SelfCheckin", "ViewAll", "ManageShifts", "Report" },
+        // ================== سامانه کامل RADIS-HR V019 ==================
+        // Access: ورود به کل ماژول؛ مجوز روی تمام کنترلرهای واردشده نیز در Host اعمال می‌شود.
+        ["RadisHr"] = new[] { "Access" },
         // ================== دسترسی به ازای هر داشبورد ==================
         ["Dashboards"] = new[] { "Financial", "Management", "Hardware" },
         // ================== دسترسی به ازای هر گزارش ==================

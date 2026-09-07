@@ -1,0 +1,35 @@
+@* ورودی ریالی با گروه‌بندی سه‌رقمی — معادل rial-inputs.js *@
+<input type="text" inputmode="numeric" data-rial
+       value="@_text"
+       readonly="@ReadOnly"
+       placeholder="@Placeholder"
+       @oninput="OnInput" />
+
+@code {
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<decimal> ValueChanged { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "";
+
+    private string _text = "";
+    private decimal _last;
+
+    protected override void OnParametersSet()
+    {
+        if (_text.Length == 0 || Value != _last)
+        {
+            _text = Value == 0 ? "" : Fa.Rial(Value);
+            _last = Value;
+        }
+    }
+
+    private async Task OnInput(ChangeEventArgs args)
+    {
+        var typed = args.Value?.ToString() ?? "";
+        var parsed = Fa.ParseRial(typed);
+        _text = parsed == 0 ? "" : Fa.Rial(parsed);
+        _last = parsed;
+        Value = parsed;
+        await ValueChanged.InvokeAsync(parsed);
+    }
+}
