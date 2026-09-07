@@ -7,6 +7,7 @@
 @inject IPartyService PartySvc
 @inject NavigationManager Nav
 @inject IToastService Toast
+@inject IAuthState Auth
 @inject LayoutState Layout
 @inject IJSRuntime JS
 
@@ -307,6 +308,15 @@ else
                     <span><i class="bi bi-check2-circle text-success"></i> قطعی توسط: @(doc.ConfirmedBy ?? "—") — @doc.ConfirmedAt.Value.ToFaDateTime()</span>
                 }
             </div>
+        </div>
+    }
+
+    @if (doc.Id > 0 && Auth.HasModule("DocArchive"))
+    {
+        <div class="mt-3">
+            <DocArchiveEntityPanel @key="doc.Id" Module="Warehousing" EntityId="@doc.Id"
+                                    EntityTitle="@($"سند انبار {doc.Number}")"
+                                    EntityCode="@doc.Number" />
         </div>
     }
 }

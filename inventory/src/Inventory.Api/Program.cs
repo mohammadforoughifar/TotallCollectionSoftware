@@ -115,7 +115,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var path = ctx.Request.Path.Value ?? "";
                 if (!string.IsNullOrEmpty(token) &&
                     (path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
-                     path.Contains("/preview", StringComparison.OrdinalIgnoreCase)))
+                     path.Contains("/preview", StringComparison.OrdinalIgnoreCase) ||
+                     path.Contains("/export-zip", StringComparison.OrdinalIgnoreCase) ||
+                     path.Contains("/export", StringComparison.OrdinalIgnoreCase)))
                     ctx.Token = token;
                 return Task.CompletedTask;
             }

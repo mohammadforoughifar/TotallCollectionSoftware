@@ -75,6 +75,8 @@ public interface IDocArchiveService
 
     // یکپارچه‌سازی با ماژول‌های سامانه ERP و دانلود درختی ZIP
     string GetFolderZipExportUrl(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true);
+    /// <summary>دانلود باینری بسته ZIP (با هدر احراز هویت) به‌همراه نام پیشنهادی سرور.</summary>
+    Task<(byte[] Data, string FileName, string ContentType)> DownloadFolderZipAsync(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true);
     Task<List<DocEntityLinkDto>> GetLinkedDocumentsAsync(string module, int entityId);
     Task<int> AddEntityLinkAsync(DocEntityLinkSaveDto dto);
     Task RemoveEntityLinkAsync(int linkId);
@@ -235,6 +237,9 @@ public class DocArchiveService : IDocArchiveService
         }
         return $"api/doc-archive/export-zip?includeSubfolders={includeSubfolders.ToString().ToLower()}&onlyActiveVersions={onlyActiveVersions.ToString().ToLower()}&includeManifest={includeManifest.ToString().ToLower()}";
     }
+
+    public Task<(byte[] Data, string FileName, string ContentType)> DownloadFolderZipAsync(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true)
+        => _api.GetFileAsync(GetFolderZipExportUrl(folderId, includeSubfolders, onlyActiveVersions, includeManifest));
 
     public Task<List<DocEntityLinkDto>> GetLinkedDocumentsAsync(string module, int entityId)
         => _api.GetAsync<List<DocEntityLinkDto>>($"{Root}/entity-links/{module}/{entityId}");

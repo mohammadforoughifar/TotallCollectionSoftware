@@ -1,10 +1,12 @@
 @page "/doc-archive/documents/{Id:int}"
+@using System.Net.Http.Headers
 @inject IDocArchiveService Svc
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject LayoutState Layout
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject HttpClient Http
 
 <PageTitle>مدرک @doc.Code</PageTitle>
 
@@ -22,7 +24,7 @@ else
             @if (doc.IsPublic) { <span class="badge bg-light text-dark ms-2">نمایش برای همه</span> }
             @if (!doc.IsActive) { <span class="badge bg-dark ms-2"><i class="bi bi-lock-fill"></i> غیرفعال</span> }
         </span>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
             <button class="btn btn-light btn-sm" @onclick="GoBack">
                 <i class="bi bi-arrow-right"></i> بازگشت
             </button>
@@ -30,6 +32,17 @@ else
             {
                 <button class="btn btn-light btn-sm fw-700" style="color:#065f46" @onclick="() => showVersion = true">
                     <i class="bi bi-plus-circle"></i> ورژن جدید
+                </button>
+            }
+            @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive && Auth.Has("WorkOrders.Create"))
+            {
+                <button class="btn btn-light btn-sm fw-700" style="color:#9a3412" @onclick="GoWorkOrder"
+                        title="صدور دستور کار جدید برای این مدرک">
+                    <i class="bi bi-list-task"></i> صدور دستور کار
+                    @if (docWorkOrders.Count > 0)
+                    {
+                        <span class="badge bg-warning text-dark ms-1">@docWorkOrders.Count.Num()</span>
+                    }
                 </button>
             }
             @if (doc.MyLevel >= DocAccessLevelDto.Full)
@@ -433,6 +446,48 @@ else
             </div>
         </div>
 
+        @* ------------------- دستورهای کار این مدرک ------------------- *@
+        @if (Auth.HasModule("WorkOrders"))
+        {
+            <div class="card mb-3">
+                <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-list-task ms-1 text-warning-emphasis"></i> دستورهای کار</span>
+                    <span class="badge bg-secondary">@docWorkOrders.Count.Num()</span>
+                </div>
+                <div class="card-body p-2">
+                    @if (woLoading)
+                    {
+                        <div class="text-center py-2"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+                    }
+                    else if (docWorkOrders.Count == 0)
+                    {
+                        <div class="fs-8 text-muted py-2">برای این مدرک دستور کاری صادر نشده است.</div>
+                    }
+                    else
+                    {
+                        @foreach (var w in docWorkOrders)
+                        {
+                            <div class="d-flex justify-content-between align-items-center border-bottom py-1 fs-8">
+                                <div>
+                                    <a href="@($"work-orders?open={w.Id}")" class="text-decoration-none fw-700">
+                                        <span class="num">@w.Number</span> — @w.Title
+                                    </a>
+                                    <div class="fs-9 text-muted">توسط @w.OwnerName</div>
+                                </div>
+                                <span class="badge @(w.Status == "Closed" ? "bg-secondary" : "bg-success")">@(w.Status == "Closed" ? "بسته" : "باز")</span>
+                            </div>
+                        }
+                    }
+                    @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive && Auth.Has("WorkOrders.Create"))
+                    {
+                        <button class="btn btn-sm btn-outline-warning text-dark w-100 mt-2" @onclick="GoWorkOrder">
+                            <i class="bi bi-plus-lg"></i> صدور دستور کار جدید برای این مدرک
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
         @if (doc.MyLevel >= DocAccessLevelDto.Full && doc.IsActive)
         {
             <div class="card">
@@ -480,6 +535,35 @@ else
                 <MultiSearchSelect Items="lookups.Users" Values="verApprovers" ValuesChanged="v => verApprovers = v"
                                    Placeholder="نام نفر را تایپ کنید…"
                                    EmptyText="خالی = استفاده از نفرات پیش‌فرض مدرک" />
+            </div>
+            <div class="col-12">
+                <label class="form-label fw-700"><i class="bi bi-paperclip ms-1"></i> پیوست‌های این ورژن</label>
+                <div class="ver-drop @(verDragOver ? "drag" : "")"
+                     @ondragenter="VerDragEnter" @ondragenter:preventDefault
+                     @ondragover:preventDefault
+                     @ondragleave="VerDragLeave"
+                     @ondrop="VerDropReset" @ondrop:preventDefault>
+                    <div class="ver-drop-inner">
+                        <i class="bi bi-cloud-arrow-up ver-drop-icon"></i>
+                        <div class="fw-700 fs-8">فایل‌ها را اینجا رها کنید یا کلیک کنید</div>
+                        <div class="fs-9 text-muted">حداکثر ۵ فایل، هر فایل تا ۲۰ مگابایت — پس از ثبت ورژن، خودکار آپلود می‌شوند</div>
+                    </div>
+                    <InputFile class="ver-file-overlay" OnChange="OnVersionFiles" multiple />
+                </div>
+                @if (verFiles.Count > 0)
+                {
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        @foreach (var f in verFiles)
+                        {
+                            <span class="badge bg-light text-dark border d-inline-flex align-items-center gap-1 fs-8 py-1 px-2">
+                                <i class="bi bi-file-earmark text-primary"></i>
+                                <span class="text-truncate" style="max-width:180px">@f.Name</span>
+                                <span class="text-muted num">(@FormatSize(f.Size))</span>
+                                <i class="bi bi-x-circle-fill text-danger" style="cursor:pointer" @onclick="() => verFiles.Remove(f)"></i>
+                            </span>
+                        }
+                    </div>
+                }
             </div>
             <div class="col-md-6">
                 <div class="form-check form-switch">
@@ -658,6 +742,11 @@ else
     .ver-card.active { border-color:#22c55e; background:#f0fdf4; }
     .ver-card.frozen { border-color:#f59e0b; background:#fffbeb; }
     .fs-9 { font-size:.68rem; }
+    .ver-drop { position:relative; border:2px dashed #c7d7f5; border-radius:12px; background:#f8fbff; overflow:hidden; transition:all .15s ease; }
+    .ver-drop-inner { padding:.9rem .75rem; text-align:center; color:#475569; pointer-events:none; }
+    .ver-drop-icon { font-size:1.6rem; color:#2563eb; display:block; margin-bottom:.2rem; }
+    .ver-file-overlay { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+    .ver-drop.drag { border-color:#2563eb; background:#eff6ff; box-shadow:0 0 0 4px rgba(37,99,235,.12); }
 </style>
 
 @code {
@@ -682,6 +771,23 @@ else
     private DocVersionCreateDto verForm = new();
     private List<int> verApprovers = new();
 
+    // پیوست‌های فرم ورژن جدید (درگ اند دراپ + انتخاب)
+    private List<IBrowserFile> verFiles = new();
+    private bool verDragOver;
+    private int verDragDepth;
+
+    private void OnVersionFiles(InputFileChangeEventArgs e)
+    {
+        verDragDepth = 0; verDragOver = false;
+        verFiles = e.GetMultipleFiles(5).ToList();
+    }
+    private void VerDragEnter() { verDragDepth++; verDragOver = true; }
+    private void VerDragLeave() { if (--verDragDepth <= 0) { verDragDepth = 0; verDragOver = false; } }
+    private void VerDropReset() { verDragDepth = 0; verDragOver = false; }
+
+    private static string FormatSize(long b) =>
+        b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024 / 1024:0.#}MB";
+
     private DocVersionDto? approvalTarget;
     private bool approveMode = true;
     private string approvalComment = "";
@@ -696,6 +802,35 @@ else
     private int? DaysToExpire => doc.ExpireDate.HasValue ? (doc.ExpireDate.Value.Date - DateTime.Today).Days : null;
 
     private VersionCompareModal? compareModal;
+
+    // ---------- دستورهای کار صادرشده برای این مدرک ----------
+    public const string WoSourceModule = "Document";
+    private List<WoSourceItem> docWorkOrders = new();
+    private bool woLoading;
+
+    private void GoWorkOrder() => Nav.NavigateTo($"/work-orders?sourceModule={WoSourceModule}&sourceId={Id}");
+
+    private async Task LoadDocWorkOrdersAsync()
+    {
+        docWorkOrders = new();
+        woLoading = true;
+        try
+        {
+            docWorkOrders = await Http.GetFromJsonAsync<List<WoSourceItem>>(
+                $"/api/workorders/for-source?module={WoSourceModule}&sourceId={Id}") ?? new();
+        }
+        catch { docWorkOrders = new(); }
+        finally { woLoading = false; }
+    }
+
+    public class WoSourceItem
+    {
+        public int Id { get; set; }
+        public string Number { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string OwnerName { get; set; } = "";
+        public string Status { get; set; } = "Open";
+    }
 
     private async Task OpenCompare()
     {
@@ -765,11 +900,14 @@ else
         loading = true;
         try
         {
+            if (!string.IsNullOrWhiteSpace(Auth.Token))
+                Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
             doc = await Svc.GetDocumentAsync(Id);
             lookups = await Svc.GetLookupsAsync();
             folders = await Svc.GetFoldersAsync();
             Layout.SetTitle($"{doc.Code} — {doc.Title}");
             await LoadExtractedTexts();
+            await LoadDocWorkOrdersAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -857,11 +995,37 @@ else
         {
             verForm.DocumentId = Id;
             verForm.ApproverUserIds = verApprovers;
-            await Svc.CreateVersionAsync(verForm);
+            var versionId = await Svc.CreateVersionAsync(verForm);
+
+            // آپلود پیوست‌های انتخاب‌شده روی ورژن تازه‌ساخته‌شده
+            if (verFiles.Count > 0 && versionId > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(Auth.Token))
+                    Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
+                var ok = 0;
+                foreach (var f in verFiles)
+                {
+                    try
+                    {
+                        using var content = new MultipartFormDataContent();
+                        var sc = new StreamContent(f.OpenReadStream(20L * 1024 * 1024));
+                        sc.Headers.ContentType = new MediaTypeHeaderValue(
+                            string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
+                        content.Add(sc, "file", f.Name);
+                        var resp = await Http.PostAsync($"/api/attachments/DocVersion/{versionId}", content);
+                        if (resp.IsSuccessStatusCode) ok++;
+                        else Toast.Error($"بارگذاری {f.Name} ناموفق بود.");
+                    }
+                    catch (Exception ex) { Toast.Error($"بارگذاری {f.Name}: {ex.Message}"); }
+                }
+                if (ok > 0) Toast.Success($"{ok.Num()} پیوست روی ورژن جدید بارگذاری شد.");
+            }
+
             Toast.Success("ورژن جدید ثبت شد.");
             showVersion = false;
             verForm = new DocVersionCreateDto();
             verApprovers = new();
+            verFiles = new();
             await Load();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
