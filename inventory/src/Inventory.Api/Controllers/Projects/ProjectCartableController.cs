@@ -48,7 +48,8 @@ public class ProjectCartableController : RbacControllerBase
         return Ok(new ProjectCartableCountsDto
         {
             Manager = await Db.ProjectEntryExits.CountAsync(p => !p.IsDelete && p.FlowStatus == 0),
-            Expert = await Db.ProjectEntryExits.CountAsync(p => !p.IsDelete && p.FlowStatus == 1)
+            Expert = await Db.ProjectEntryExits.CountAsync(p => !p.IsDelete && p.FlowStatus == 1),
+            Changes = await Db.ProjectChangeRequests.CountAsync(c => c.Status == 0)
         });
     }
 
@@ -243,6 +244,134 @@ public class ProjectCartableController : RbacControllerBase
         catch { }
 
         return Ok(new { id = p.Id, flowStatus = p.FlowStatus });
+    }
+
+    // ====================================================================
+    //  صف سوم: درخواست‌های «ویرایش/حذف» پروژه که منتظر تایید مدیر هستند
+    //  (بند درخواست کاربر: حذف یا ویرایش پروژه فقط با تایید مدیر انجام شود)
+    // ====================================================================
+
+    /// <summary>لیست درخواست‌های ویرایش/حذف در انتظار تایید مدیر</summary>
+    [HttpGet("changes")]
+    public async Task<IActionResult> Changes()
+    {
+        if (await ForbiddenUnlessAsync(CCModule, "Read") is { } forbid) return forbid;
+
+        var list = await Db.ProjectChangeRequests.AsNoTracking()
+            .Include(c => c.Project).ThenInclude(p => p!.KarFarma)
+            .Include(c => c.RequestedBy)
+            .Where(c => c.Status == 0)
+            .OrderBy(c => c.RequestedAt).ThenBy(c => c.Id)
+            .ToListAsync();
+
+        var today = DateTime.Today;
+        return Ok(list.Select(c => new ProjectChangeRequestDto
+        {
+            Id = c.Id,
+            ProjectId = c.ProjectId,
+            Kind = c.Kind,
+            Status = c.Status,
+            CodeProject = c.Project?.CodeProject ?? "",
+            ProjectName = c.Project?.ProjectName ?? "",
+            KarFarmaName = c.Project?.KarFarma?.Name,
+            Summary = c.Summary,
+            RequestNote = c.RequestNote,
+            ManagerNote = c.ManagerNote,
+            RequestedByName = c.RequestedBy is null ? null : DisplayOf(c.RequestedBy),
+            RequestedAt = c.RequestedAt,
+            ManagerActionAt = c.ManagerActionAt,
+            DaysWaiting = Math.Max(0, (today - c.RequestedAt.Date).Days)
+        }).ToList());
+    }
+
+    /// <summary>تایید مدیر → تغییر واقعاً اعمال می‌شود (ویرایش ذخیره یا پروژه حذف نرم می‌شود)</summary>
+    [HttpPost("changes/{id:int}/approve")]
+    public async Task<IActionResult> ApproveChange(int id, [FromBody] ProjectFlowActionDto dto,
+        [FromServices] Services.IProjectFileProtection protect)
+    {
+        if (!await CanManagerAsync())
+            return StatusCode(403, new { message = "شما مجوز تایید مدیر (ProjectCartable.Manager) را ندارید." });
+
+        var req = await Db.ProjectChangeRequests.FirstOrDefaultAsync(c => c.Id == id);
+        if (req is null) return NotFound(new { message = "درخواست پیدا نشد." });
+        if (req.Status != 0) return BadRequest(new { message = "این درخواست قبلاً تعیین تکلیف شده است." });
+
+        var project = await Db.ProjectEntryExits.FirstOrDefaultAsync(p => p.Id == req.ProjectId && !p.IsDelete);
+        if (project is null) return NotFound(new { message = "پروژه پیدا نشد (شاید قبلاً حذف شده باشد)." });
+
+        var isDelete = req.Kind == 2;
+        if (isDelete)
+        {
+            await ProjectsController.ApplyDeleteAsync(Db, project, protect);
+        }
+        else
+        {
+            var payload = string.IsNullOrWhiteSpace(req.PayloadJson)
+                ? null
+                : System.Text.Json.JsonSerializer.Deserialize<ProjectEntryExitDto>(req.PayloadJson,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (payload is null) return BadRequest(new { message = "اطلاعات درخواست ویرایش خوانا نیست." });
+
+            var originUserId = project.UserId; // ثبت‌کننده اصلی حفظ می‌شود
+            ProjectsController.Map(payload, project);
+            project.UserId = originUserId;
+        }
+
+        req.Status = 1;
+        req.ManagerActionById = MyUserId;
+        req.ManagerActionAt = DateTime.Now;
+        req.ManagerNote = string.IsNullOrWhiteSpace(dto?.Note) ? null : dto!.Note!.Trim();
+        await Db.SaveChangesAsync();
+
+        var me = await MyDisplayAsync();
+        try
+        {
+            if (req.RequestedById != MyUserId)
+                await _notify.SendAsync(req.RequestedById,
+                    isDelete ? "تایید حذف پروژه" : "تایید ویرایش پروژه",
+                    $"درخواست شما برای {(isDelete ? "حذف" : "ویرایش")} پروژهٔ «{project.ProjectName}» (کد {project.CodeProject}) توسط مدیر تایید و اعمال شد.",
+                    me, "مدیریت پروژه‌ها", "/projects");
+            await _notify.BroadcastChangedAsync("projects");
+        }
+        catch { }
+
+        return Ok(new { id = req.Id, status = req.Status });
+    }
+
+    /// <summary>رد مدیر → هیچ تغییری اعمال نمی‌شود (دلیل الزامی است)</summary>
+    [HttpPost("changes/{id:int}/reject")]
+    public async Task<IActionResult> RejectChange(int id, [FromBody] ProjectFlowActionDto dto)
+    {
+        if (!await CanManagerAsync())
+            return StatusCode(403, new { message = "شما مجوز تایید/رد مدیر (ProjectCartable.Manager) را ندارید." });
+
+        var note = dto?.Note?.Trim();
+        if (string.IsNullOrWhiteSpace(note))
+            return BadRequest(new { message = "دلیل رد درخواست را بنویسید — بدون دلیل، رد ممکن نیست." });
+
+        var req = await Db.ProjectChangeRequests.Include(c => c.Project).FirstOrDefaultAsync(c => c.Id == id);
+        if (req is null) return NotFound(new { message = "درخواست پیدا نشد." });
+        if (req.Status != 0) return BadRequest(new { message = "این درخواست قبلاً تعیین تکلیف شده است." });
+
+        req.Status = 2;
+        req.ManagerActionById = MyUserId;
+        req.ManagerActionAt = DateTime.Now;
+        req.ManagerNote = note;
+        await Db.SaveChangesAsync();
+
+        var me = await MyDisplayAsync();
+        try
+        {
+            if (req.RequestedById != MyUserId)
+                await _notify.SendAsync(req.RequestedById,
+                    req.Kind == 2 ? "رد درخواست حذف پروژه" : "رد درخواست ویرایش پروژه",
+                    $"درخواست شما برای {(req.Kind == 2 ? "حذف" : "ویرایش")} پروژهٔ «{req.Project?.ProjectName}» (کد {req.Project?.CodeProject}) رد شد. دلیل: {note}",
+                    me, "مدیریت پروژه‌ها", "/projects");
+            await _notify.BroadcastChangedAsync("projects");
+        }
+        catch { }
+
+        return Ok(new { id = req.Id, status = req.Status });
     }
 
     private async Task<string> MyDisplayAsync()

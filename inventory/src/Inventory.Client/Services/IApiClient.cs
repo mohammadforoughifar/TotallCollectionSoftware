@@ -8,6 +8,9 @@ public interface IApiClient
     Task<T> PutAsync<T>(string path, object? body = null);
     Task DeleteAsync(string path);
 
+    /// <summary>حذف با خواندن بدنهٔ پاسخ (مثلاً برای دانستن اینکه حذف در انتظار تایید مدیر مانده یا نه).</summary>
+    Task<T> DeleteAsync<T>(string path);
+
     /// <summary>ارسال فایل (multipart/form-data).</summary>
     Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file");
 
