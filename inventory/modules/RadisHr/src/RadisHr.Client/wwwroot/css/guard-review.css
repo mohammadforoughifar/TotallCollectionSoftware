@@ -1,0 +1,11 @@
+.review-panel{margin:18px 0}
+.review-panel .compact{gap:16px}
+.review-panel .table-wrap{margin-top:14px}
+.review-panel .empty{margin:0}
+.leave-mission-form .form-actions{align-self:end}
+.leave-mission-form .form-actions .button{width:auto}
+.row-actions .edit-record{color:var(--navy)!important}
+.row-actions .delete-record{color:var(--danger)!important}
+#ceoPersonnelPayroll{margin-top:22px}
+#ceoPersonnelPayroll .table-wrap{margin-top:14px}
+@media(max-width:850px){.review-panel .section-head{display:grid}.leave-mission-form .form-actions{width:100%}}

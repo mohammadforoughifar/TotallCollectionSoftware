@@ -1,0 +1,269 @@
+@page "/notices"
+@using RadisHr.Shared.Models
+@inject ApiClient Api
+@inject AuthState Auth
+@inject ToastService Toasts
+
+<section class="page">
+    @* ───────── کارتابل ممیزی مدیرعامل ───────── *@
+    @if (Auth.UserKey == "ceo")
+    {
+        <section>
+            <div class="section-head">
+                <div><p class="eyebrow">کارتابل مدیرعامل</p><h2>گزارش تغییرات مهم و قابل جست‌وجو</h2></div>
+                <input placeholder="جست‌وجوی تغییرات..." value="@_auditSearch" @oninput="e => _auditSearch = Text(e)" />
+            </div>
+
+            <div class="notification-list">
+                @foreach (var notice in FilteredNotices("statutory"))
+                {
+                    var item = notice;
+                    <div class="notification-row @(item.Seen ? "" : "unseen")">
+                        <div>
+                            <strong>@item.Title</strong>
+                            <small>@item.Message</small>
+                            <small class="muted">@item.Actor — @item.CreatedAt.ToString("yyyy-MM-dd HH:mm")</small>
+                        </div>
+                        @if (!item.Seen)
+                        {
+                            <button class="button secondary" type="button" @onclick="() => MarkNoticeSeenAsync(item)">خوانده شد</button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="notification-list">
+                @foreach (var notice in FilteredNotices("operational"))
+                {
+                    var item = notice;
+                    <div class="notification-row @(item.Seen ? "" : "unseen")">
+                        <div>
+                            <strong>@item.Title</strong>
+                            <small>@item.Message</small>
+                            <small class="muted">@item.Actor — @item.CreatedAt.ToString("yyyy-MM-dd HH:mm")</small>
+                        </div>
+                        @if (!item.Seen)
+                        {
+                            <button class="button secondary" type="button" @onclick="() => MarkNoticeSeenAsync(item)">خوانده شد</button>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (_notices.Count == 0)
+            {
+                <p class="empty">گزارش تغییری ثبت نشده است.</p>
+            }
+        </section>
+    }
+
+    @* ───────── ایجاد اطلاعیه ───────── *@
+    @if (Auth.UserKey is "hr" or "ceo")
+    {
+        <form class="panel v016-form" @onsubmit="PublishAsync" @onsubmit:preventDefault="true">
+            <div class="wide-field">
+                <p class="eyebrow">ایجاد اطلاعیه</p>
+                <h2>ارسال اطلاعیه به کارتابل‌های منتخب</h2>
+            </div>
+
+            <label>عنوان <input required @bind="_announcement.Title" /></label>
+            <label>مدت فعال‌بودن از اولین مشاهده (روز) <input type="number" min="1" max="365" required @bind="_announcement.DurationDays" /></label>
+            <label class="wide-field">متن اطلاعیه <textarea rows="4" required @bind="_announcement.Body"></textarea></label>
+
+            <fieldset class="wide-field recipient-fieldset">
+                <legend>گیرندگان</legend>
+                <div>
+                    @foreach (var role in Roles)
+                    {
+                        var key = role.Key;
+                        <label class="checkbox-chip">
+                            <input type="checkbox" checked="@_recipients.Contains(key)" @onchange="e => ToggleRecipient(key, e)" />
+                            @role.Value
+                        </label>
+                    }
+                </div>
+            </fieldset>
+
+            <label class="wide-field">
+                پیوست‌ها (امکان انتخاب حداقل سه فایل)
+                <InputFile multiple OnChange="OnAttachmentsChanged" />
+                <small>فایل‌ها روی سرور بایگانی می‌شوند و از طریق REST API قابل دریافت‌اند.</small>
+            </label>
+
+            @if (_attachments.Count > 0)
+            {
+                <ul class="document-list wide-field">
+                    @foreach (var attachment in _attachments)
+                    {
+                        <li>@attachment.Name <small class="muted">@Fa.N((decimal)attachment.Size) بایت</small></li>
+                    }
+                </ul>
+            }
+
+            <button class="button primary" type="submit">ایجاد و ارسال اطلاعیه</button>
+            <p class="form-message wide-field">@_message</p>
+        </form>
+    }
+
+    @* ───────── مرکز اطلاع‌رسانی ───────── *@
+    <div class="panel">
+        <div class="section-head compact">
+            <div><p class="eyebrow">مرکز اطلاع‌رسانی</p><h2>اطلاعیه‌های فعال</h2></div>
+            <input placeholder="جست‌وجوی اطلاعیه..." value="@_noticeSearch" @oninput="e => _noticeSearch = Text(e)" />
+        </div>
+
+        <div class="notice-list">
+            @foreach (var announcement in FilteredAnnouncements)
+            {
+                var item = announcement;
+                <article class="notice-card">
+                    <header>
+                        <h3>@item.Title</h3>
+                        <span class="badge">@Fa.N(item.DurationDays) روز</span>
+                    </header>
+                    <p>@item.Body</p>
+
+                    @if (item.Attachments.Count > 0)
+                    {
+                        <ul class="document-list">
+                            @foreach (var attachment in item.Attachments)
+                            {
+                                <li><a href="api/files/@attachment.StoredFileId" target="_blank">@attachment.Name</a></li>
+                            }
+                        </ul>
+                    }
+
+                    <footer>
+                        <small class="muted">
+                            @item.CreatedBy — @item.CreatedAt.ToString("yyyy-MM-dd") —
+                            گیرندگان: @string.Join("، ", item.Recipients.Select(r => Roles.TryGetValue(r.RoleKey, out var t) ? t : r.RoleKey))
+                        </small>
+                        <div class="row-actions">
+                            <button class="button secondary" type="button" @onclick="() => MarkAnnouncementSeenAsync(item)">خوانده شد</button>
+                            @if (Auth.UserKey is "hr" or "ceo")
+                            {
+                                <button class="button danger-outline" type="button" @onclick="() => DeleteAnnouncementAsync(item)">حذف</button>
+                            }
+                        </div>
+                    </footer>
+                </article>
+            }
+        </div>
+
+        @if (_announcements.Count == 0)
+        {
+            <p class="empty">اطلاعیه فعالی وجود ندارد.</p>
+        }
+    </div>
+</section>
+
+@code {
+    private static readonly Dictionary<string, string> Roles = new()
+    {
+        ["hr"] = "مالک فرآیند اداری",
+        ["ceo"] = "مدیرعامل",
+        ["guard"] = "مالک فرآیند نگهبانی",
+        ["hse"] = "مسئول HSE",
+        ["warehouse"] = "انباردار",
+        ["production"] = "مدیر تولید",
+        ["finance"] = "مالی",
+        ["accounting"] = "مدیر مالی حسابداری"
+    };
+
+    private List<AuditNotice> _notices = new();
+    private List<Announcement> _announcements = new();
+
+    private Announcement _announcement = new() { DurationDays = 7 };
+    private HashSet<string> _recipients = new();
+    private List<AnnouncementAttachment> _attachments = new();
+
+    private static string Text(ChangeEventArgs args) => args.Value?.ToString() ?? "";
+
+    private string _auditSearch = "";
+    private string _noticeSearch = "";
+    private string _message = "";
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _announcements = await Api.GetListAsync<Announcement>("api/workflows/announcements");
+        if (Auth.UserKey == "ceo")
+            _notices = await Api.GetListAsync<AuditNotice>("api/workflows/notices");
+    }
+
+    private IEnumerable<AuditNotice> FilteredNotices(string channel) =>
+        _notices.Where(n => n.Channel == channel &&
+            (string.IsNullOrWhiteSpace(_auditSearch)
+             || n.Title.Contains(_auditSearch, StringComparison.OrdinalIgnoreCase)
+             || n.Message.Contains(_auditSearch, StringComparison.OrdinalIgnoreCase)
+             || n.Actor.Contains(_auditSearch, StringComparison.OrdinalIgnoreCase)));
+
+    private IEnumerable<Announcement> FilteredAnnouncements =>
+        _announcements.Where(a => string.IsNullOrWhiteSpace(_noticeSearch)
+            || a.Title.Contains(_noticeSearch, StringComparison.OrdinalIgnoreCase)
+            || a.Body.Contains(_noticeSearch, StringComparison.OrdinalIgnoreCase));
+
+    private void ToggleRecipient(string role, ChangeEventArgs args)
+    {
+        if (args.Value is bool value && value) _recipients.Add(role);
+        else _recipients.Remove(role);
+    }
+
+    private async Task OnAttachmentsChanged(InputFileChangeEventArgs args)
+    {
+        _attachments.Clear();
+
+        foreach (var file in args.GetMultipleFiles(10))
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(file.OpenReadStream(20 * 1024 * 1024)), "file", file.Name);
+
+            var stored = await Api.PostFormAsync<StoredFile>("api/files", content);
+            if (stored == null) continue;
+
+            _attachments.Add(new AnnouncementAttachment
+            {
+                Name = file.Name,
+                ContentType = file.ContentType,
+                Size = file.Size,
+                StoredFileId = stored.Uid
+            });
+        }
+    }
+
+    private async Task PublishAsync()
+    {
+        if (_recipients.Count == 0) { _message = "حداقل یک گیرنده انتخاب کنید."; return; }
+
+        _announcement.Recipients = _recipients.Select(r => new AnnouncementRecipient { RoleKey = r }).ToList();
+        _announcement.Attachments = _attachments.ToList();
+
+        var ok = await Api.SendAsync(HttpMethod.Post, "api/workflows/announcements", _announcement);
+        if (!ok) return;
+
+        _message = "اطلاعیه منتشر شد.";
+        _announcement = new Announcement { DurationDays = 7 };
+        _recipients = new HashSet<string>();
+        _attachments = new List<AnnouncementAttachment>();
+        await ReloadAsync();
+    }
+
+    private async Task MarkAnnouncementSeenAsync(Announcement announcement)
+    {
+        var ok = await Api.SendAsync(HttpMethod.Post, $"api/workflows/announcements/{announcement.Id}/seen");
+        if (ok) await ReloadAsync();
+    }
+
+    private async Task DeleteAnnouncementAsync(Announcement announcement)
+    {
+        var ok = await Api.SendAsync(HttpMethod.Delete, $"api/workflows/announcements/{announcement.Id}");
+        if (ok) await ReloadAsync();
+    }
+
+    private async Task MarkNoticeSeenAsync(AuditNotice notice)
+    {
+        var ok = await Api.SendAsync(HttpMethod.Post, $"api/workflows/notices/{notice.Id}/seen");
+        if (ok) _notices = await Api.GetListAsync<AuditNotice>("api/workflows/notices");
+    }
+}
