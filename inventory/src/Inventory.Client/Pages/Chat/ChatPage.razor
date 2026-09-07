@@ -694,6 +694,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // کنترل دسترسی: فقط کاربرانی که مجوز پیام‌رسان دارند وارد می‌شوند
+        if (!Auth.HasModule("Chat"))
+        {
+            Nav.NavigateTo("");
+            return;
+        }
+
         Chat.OnMessageReceived += HandleMessageReceived;
         Chat.OnMessageUpdated += HandleMessageUpdated;
         Chat.OnMessageDeleted += HandleMessageDeleted;
@@ -986,10 +993,12 @@
             return;
         }
         var q = userSearchQuery.ToLowerInvariant();
-        filteredUsers = allSoftwareUsers.Where(u =>
+        var result = allSoftwareUsers.Where(u =>
             u.DisplayName.ToLower().Contains(q) ||
             u.Username.ToLower().Contains(q) ||
             (u.Department != null && u.Department.ToLower().Contains(q))).ToList();
+        // اگر نتیجه‌ای نبود، کل لیست پرسنل نمایش داده شود
+        filteredUsers = result.Count > 0 ? result : allSoftwareUsers;
     }
 
     private async Task StartDirectWith(int targetUserId)

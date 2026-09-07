@@ -210,7 +210,7 @@
                                                                 <input class="form-check-input" type="checkbox"
                                                                        checked="@selectedPermissionIds.Contains(perm.Id)"
                                                                        @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" />
-                                                                <label class="form-check-label">@(ActionNames.GetValueOrDefault(perm.Action, perm.Action))</label>
+                                                                <label class="form-check-label">@GetActionLabel(perm.Module, perm.Action)</label>
                                                             </div>
                                                         }
                                                     </div>
@@ -253,7 +253,7 @@
                                                                 <input class="form-check-input" type="checkbox"
                                                                        checked="@selectedPermissionIds.Contains(perm.Id)"
                                                                        @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" />
-                                                                <label class="form-check-label">@(ActionNames.GetValueOrDefault(perm.Action, perm.Action))</label>
+                                                                <label class="form-check-label">@GetActionLabel(perm.Module, perm.Action)</label>
                                                             </div>
                                                         }
                                                     </div>
@@ -471,13 +471,16 @@
         new() { Title = "فروش و مالی", Icon = "bi-cash-coin", Modules = new[] { "Orders", "Expenses", "Parties" } },
         new() { Title = "معرف‌ها و پنل معرف", Icon = "bi-person-badge", Modules = new[] { "Referrers", "ReferrerWallets", "ReferrerPanel" } },
         new() { Title = "اطلاعات پایه و انبار", Icon = "bi-box-seam", Modules = new[] { "Products", "Stock", "Warehouses", "SystemCompanies", "SystemDepartments" } },
+        new() { Title = "ERP — انبارداری و حسابداری", Icon = "bi-diagram-3", Modules = new[] { "InvDocs", "InvDocTypes", "AccAccounts", "AccVouchers", "AccDimensions", "FixedAssets", "Budgets", "FacInvoices", "Moadian", "FiscalPrinter", "TrsAccounts", "TrsVouchers", "TrsCheques", "StkSessions", "StkBarcodes" } },
+        new() { Title = "آرشیو اسناد و مدارک", Icon = "bi-folder2-open", Modules = new[] { "DocArchive" } },
+        new() { Title = "پیام‌رسان سازمانی", Icon = "bi-chat-dots", Modules = new[] { "Chat" } },
         new() { Title = "داشبوردها", Icon = "bi-speedometer2", Modules = new[] { "Dashboards" } },
         new() { Title = "گزارش‌ها", Icon = "bi-journal-text", Modules = new[] { "ReportPages", "Reports" } },
         new() { Title = "تجهیزات و تعمیرات", Icon = "bi-tools", Modules = new[] { "Repairs", "CctvCameras", "CctvNvrs" } },
         new() { Title = "منابع انسانی", Icon = "bi-people-fill", Modules = new[] { "LeaveRequests", "Attendance" } },
         new() { Title = "مدیریت سیستم", Icon = "bi-gear", Modules = new[] { "SystemUsers", "Settings", "ItRequests" } },
         new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders" } },
-        new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
+        new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
         new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters" } }
     };
 
@@ -514,7 +517,26 @@
         ["ProjectAttach"] = "پیوست‌های پروژه",
         ["ProjectCartable"] = "کارتابل پروژه",
         ["InnerLetters"] = "نامه داخلی (اتوماسیون اداری)",
-        ["OutgoingLetters"] = "نامه صادره (اتوماسیون اداری)"
+        ["OutgoingLetters"] = "نامه صادره (اتوماسیون اداری)",
+        // ==================== ماژول‌های ERP ====================
+        ["InvDocs"] = "اسناد انبار (رسید و حواله)",
+        ["InvDocTypes"] = "انواع سند انبار",
+        ["AccAccounts"] = "کدینگ حساب‌ها و سال مالی",
+        ["AccVouchers"] = "اسناد حسابداری",
+        ["AccDimensions"] = "ابعاد تحلیلی (مرکز هزینه / شعبه)",
+        ["FixedAssets"] = "دارایی ثابت",
+        ["Budgets"] = "بودجه و کنترل بودجه",
+        ["FacInvoices"] = "فاکتور خرید و فروش",
+        ["Moadian"] = "سامانه مودیان",
+        ["FiscalPrinter"] = "چاپگر مالی",
+        ["TrsAccounts"] = "صندوق، بانک و تنخواه",
+        ["TrsVouchers"] = "اسناد خزانه (دریافت / پرداخت / انتقال)",
+        ["TrsCheques"] = "دفتر چک",
+        ["StkSessions"] = "دوره‌های انبارگردانی",
+        ["StkBarcodes"] = "بارکد و برچسب کالا",
+        // ==================== آرشیو اسناد و پیام‌رسان ====================
+        ["DocArchive"] = "آرشیو اسناد و مدارک",
+        ["Chat"] = "پیام‌رسان سازمانی"
     };
 
     private static readonly Dictionary<string, string> ActionNames = new()
@@ -529,10 +551,14 @@
         // درخواست خدمت IT
         ["ViewCompany"] = "مشاهده سیستم‌های کل شرکت",
         ["ViewDepartment"] = "مشاهده سیستم‌های واحد خود",
-        ["Expert"] = "کارشناس IT (دریافت ارجاع)",
         ["AssignOthers"] = "دستور کار به دیگران",
         ["View"] = "مشاهده ماژول",
-        ["Manage"] = "مدیر IT (ارجاع و تایید)",
+        // ERP — اکشن‌های مشترک
+        ["Confirm"] = "قطعی‌سازی / تایید نهایی",
+        ["Cancel"] = "ابطال / لغو",
+        ["Apply"] = "اعمال شمارش (صدور اسناد اصلاح)",
+        ["Send"] = "ارسال / ابطال فاکتور (سامانه مودیان)",
+        ["Print"] = "چاپ رسید",
         // منابع انسانی
         ["Request"] = "ثبت درخواست شخصی",
         ["Approve"] = "تایید / رد درخواست دیگران",
@@ -561,4 +587,25 @@
         ["Kardex"] = "کاردکس کالا",
         ["Reorder"] = "نقطه سفارش"
     };
+
+    // ==================== برچسب‌های اکشنِ خاص هر ماژول ====================
+    // وقتی یک اکشن در چند ماژول معنای متفاوتی دارد (مثل Manage / Expert)،
+    // با کلید «ماژول.اکشن» برچسب دقیق همان ماژول برگردانده می‌شود.
+    private static readonly Dictionary<string, string> ModuleActionNames = new()
+    {
+        ["ItRequests.Expert"] = "کارشناس IT (دریافت ارجاع)",
+        ["ItRequests.Manage"] = "مدیر IT (ارجاع و تایید)",
+        ["ProjectCartable.Expert"] = "اتمام کارشناسی (تکمیل پروژه)",
+        ["DocArchive.Manage"] = "مدیریت آرشیو (حذف و تغییر دسترسی‌ها)",
+        ["Chat.View"] = "مشاهده گفتگوها و پیام‌ها",
+        ["Chat.Send"] = "ارسال پیام",
+        ["Chat.Manage"] = "مدیریت گفتگوها (حذف پیام / گروه)"
+    };
+
+    private static string GetActionLabel(string module, string action)
+    {
+        if (ModuleActionNames.TryGetValue($"{module}.{action}", out var specific)) return specific;
+        if (ActionNames.TryGetValue(action, out var generic)) return generic;
+        return action;
+    }
 }

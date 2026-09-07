@@ -2,6 +2,25 @@
 @inject NavigationManager NavManager
 
 <div class="sidebar-nav">
+    @* ============ پیام‌رسان سازمانی (ماژول مستقل) ============ *@
+    @if (Auth.HasModule("Chat"))
+    {
+        <div class="nav-group group-chat">
+            <button type="button" class="nav-section-title nav-toggle @(gChat ? "open" : "")" @onclick="() => gChat = !gChat">
+                <span>پیام‌رسان سازمانی</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gChat)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="chat" @onclick="NotifyClose">
+                        <i class="bi bi-chat-dots-fill text-primary"></i><span>پیام‌رسان</span>
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     @* ============ داشبوردها ============ *@
     <div class="nav-group group-dash">
         <button type="button" class="nav-section-title nav-toggle @(gDash ? "open" : "")" @onclick="() => gDash = !gDash">
@@ -11,9 +30,6 @@
         @if (gDash)
         {
             <div class="nav-group-items">
-                <NavLink class="nav-link" href="chat" @onclick="NotifyClose">
-                    <i class="bi bi-chat-dots-fill text-primary"></i><span>پیام‌رسان سازمانی</span>
-                </NavLink>
                 <NavLink class="nav-link" href="cartable" @onclick="NotifyClose">
                     <i class="bi bi-inbox-fill"></i><span>کارتابل من</span>
                 </NavLink>
@@ -263,9 +279,6 @@
                         <NavLink class="nav-link" href="inv/docs" Match="NavLinkMatch.All" @onclick="NotifyClose">
                             <i class="bi bi-journal-text"></i><span>رسید و حواله</span>
                         </NavLink>
-                        <NavLink class="nav-link" href="inv/docs/new" @onclick="NotifyClose">
-                            <i class="bi bi-file-earmark-plus"></i><span>ثبت سند جدید</span>
-                        </NavLink>
                     }
 
                     @* ---------- گزارش‌ها ---------- *@
@@ -373,15 +386,6 @@
                             <NavLink class="nav-link" href="trs/vouchers" Match="NavLinkMatch.All" @onclick="NotifyClose">
                                 <i class="bi bi-cash-coin"></i><span>دریافت و پرداخت</span>
                             </NavLink>
-                            <NavLink class="nav-link" href="trs/vouchers/new/Receipt" @onclick="NotifyClose">
-                                <i class="bi bi-box-arrow-in-down"></i><span>ثبت دریافت</span>
-                            </NavLink>
-                            <NavLink class="nav-link" href="trs/vouchers/new/Payment" @onclick="NotifyClose">
-                                <i class="bi bi-box-arrow-up"></i><span>ثبت پرداخت</span>
-                            </NavLink>
-                            <NavLink class="nav-link" href="trs/vouchers/new/Transfer" @onclick="NotifyClose">
-                                <i class="bi bi-arrow-left-right"></i><span>انتقال بین حساب‌ها</span>
-                            </NavLink>
                         }
                         @if (Auth.HasModule("TrsCheques"))
                         {
@@ -415,9 +419,6 @@
                         {
                             <NavLink class="nav-link" href="stk/sessions" Match="NavLinkMatch.All" @onclick="NotifyClose">
                                 <i class="bi bi-clipboard-data"></i><span>دوره‌های انبارگردانی</span>
-                            </NavLink>
-                            <NavLink class="nav-link" href="stk/sessions/new" @onclick="NotifyClose">
-                                <i class="bi bi-clipboard-plus"></i><span>دوره جدید</span>
                             </NavLink>
                             <NavLink class="nav-link" href="stk/reports/diff" @onclick="NotifyClose">
                                 <i class="bi bi-file-earmark-bar-graph"></i><span>گزارش مغایرت</span>
@@ -696,13 +697,14 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gLetters, gErp, gDocs;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gLetters, gErp, gDocs, gChat;
 
     protected override void OnInitialized()
     {
         // پیش‌فرض: همه‌ی گروه‌ها بسته — فقط گروهی که صفحه‌ی فعلی داخل آن است باز می‌شود
         var p = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
 
+        gChat = p.StartsWith("chat");
         gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive");
         gWo = p.StartsWith("work-orders");
         gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance") || p.StartsWith("work-calendar");

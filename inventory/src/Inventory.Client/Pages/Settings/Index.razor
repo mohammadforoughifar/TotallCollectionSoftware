@@ -91,6 +91,51 @@
 
 <div class="card mt-3">
     <div class="card-header">
+        <i class="bi bi-box-seam text-primary"></i>
+        <span class="card-title">مدیریت حجم و ابعاد کالا</span>
+    </div>
+    <div class="card-body">
+        @if (!loading)
+        {
+            <p class="fs-8 text-muted mb-3">
+                واحدهای پیش‌فرض برای وزن و ابعاد کالاها — در فرم تعریف کالا و اسناد انبار استفاده می‌شود.
+            </p>
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">واحد وزن</label>
+                    <select class="form-select" @bind="model.WeightUnit">
+                        <option value="kg">کیلوگرم (kg)</option>
+                        <option value="g">گرم (g)</option>
+                        <option value="ton">تن (ton)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">واحد طول/عرض/ارتفاع</label>
+                    <select class="form-select" @bind="model.DimensionUnit">
+                        <option value="cm">سانتی‌متر (cm)</option>
+                        <option value="mm">میلی‌متر (mm)</option>
+                        <option value="m">متر (m)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">واحد حجم</label>
+                    <select class="form-select" @bind="model.VolumeUnit">
+                        <option value="ltr">لیتر (ltr)</option>
+                        <option value="ml">میلی‌لیتر (ml)</option>
+                        <option value="m3">متر مکعب (m³)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">وزن پیش‌فرض محموله (kg)</label>
+                    <input type="number" step="any" class="form-control num" @bind="model.DefaultShipmentWeight" dir="ltr" />
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
         <i class="bi bi-hdd-network text-primary"></i>
         <span class="card-title">سرور مرکزی درخواست‌های IT (کانفیگ IP)</span>
     </div>

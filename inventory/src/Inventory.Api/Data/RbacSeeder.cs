@@ -99,6 +99,9 @@ public static class RbacSeeder
         ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
         // ================== آرشیو اسناد و مدارک ==================
         ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage", "Export" },
+        // ================== پیام‌رسان سازمانی ==================
+        // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
+        ["Chat"] = new[] { "View", "Send", "Manage" },
         // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
         // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
         // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده
@@ -246,6 +249,26 @@ public static class RbacSeeder
                 db.RolePermissions.Add(new RolePermission { RoleId = r.Id, PermissionId = perm.Id });
         }
         await db.SaveChangesAsync();
+
+        // ================== پیام‌رسان سازمانی — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ==================
+        // پرمیشن‌های جدید چت فقط به Admin داده می‌شوند؛ برای حفظ رفتار فعلی (همه بتوانند چت کنند)
+        // به سایر نقش‌های فعال هم View و Send داده می‌شود. مدیر می‌تواند بعداً از صفحهٔ نقش‌ها محدود کند.
+        var chatDefaultPerms = await db.Permissions
+            .Where(p => p.Module == "Chat" && p.Action != "Manage")
+            .ToListAsync();
+        if (chatDefaultPerms.Count > 0)
+        {
+            var activeRoles = await db.Roles.Where(r => r.IsActive).ToListAsync();
+            foreach (var role in activeRoles)
+            {
+                var roleHas = await db.RolePermissions.Where(rp => rp.RoleId == role.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var perm in chatDefaultPerms.Where(p => !roleHas.Contains(p.Id)))
+                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
+            }
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] دسترسی پیش‌فرض پیام‌رسان (View/Send) به نقش‌های فعال داده شد.");
+        }
 
         if (firstSeed)
         {
