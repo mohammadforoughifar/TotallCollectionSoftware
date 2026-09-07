@@ -1,139 +1,90 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using System.Security.Claims;
-using System.Threading.Tasks;
+using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Hubs;
 
-/// <summary>
-/// هاب بلادرنگ پیام‌رسان سازمانی مشابه تلگرام
-/// </summary>
+/// <summary>اتصال چت فقط با JWT معتبر؛ هویت از userId ارسالی مرورگر پذیرفته نمی‌شود.</summary>
+[Authorize]
 public class ChatHub : Hub
 {
-    // ذخیره وضعیت آنلاین کاربران (UserId -> Set of ConnectionIds)
-    private static readonly ConcurrentDictionary<int, HashSet<string>> _onlineUsers = new();
-    private static readonly ConcurrentDictionary<int, DateTime> _lastSeenTimes = new();
+    private readonly AppDbContext _db;
+    private static readonly ConcurrentDictionary<int, ConcurrentDictionary<string, byte>> Online = new();
+    private static readonly ConcurrentDictionary<int, DateTime> LastSeen = new();
 
-    public static bool IsUserOnline(int userId)
-    {
-        return _onlineUsers.TryGetValue(userId, out var conns) && conns.Count > 0;
-    }
-
-    public static DateTime? GetLastSeen(int userId)
-    {
-        return _lastSeenTimes.TryGetValue(userId, out var dt) ? dt : null;
-    }
-
-    public static List<int> GetOnlineUserIds()
-    {
-        return _onlineUsers.Where(kvp => kvp.Value.Count > 0).Select(kvp => kvp.Key).ToList();
-    }
+    public ChatHub(AppDbContext db) => _db = db;
+    public static bool IsUserOnline(int userId) => Online.TryGetValue(userId, out var sessions) && !sessions.IsEmpty;
+    public static DateTime? GetLastSeen(int userId) => LastSeen.TryGetValue(userId, out var seen) ? seen : null;
+    public static List<int> GetOnlineUserIds() => Online.Where(p => !p.Value.IsEmpty).Select(p => p.Key).ToList();
+    private int UserId => int.TryParse(Context.User?.FindFirstValue(ClaimTypes.NameIdentifier), out var id) && id > 0
+        ? id : throw new HubException("نشست ورود معتبر نیست.");
 
     public override async Task OnConnectedAsync()
     {
-        var uid = GetUserId();
-        if (uid > 0)
-        {
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"Chat_User_{uid}");
-
-            bool becameOnline = false;
-            _onlineUsers.AddOrUpdate(uid,
-                _ => { becameOnline = true; return new HashSet<string> { Context.ConnectionId }; },
-                (_, set) => {
-                    lock (set) {
-                        if (set.Count == 0) becameOnline = true;
-                        set.Add(Context.ConnectionId);
-                    }
-                    return set;
-                });
-
-            _lastSeenTimes[uid] = DateTime.UtcNow;
-
-            if (becameOnline)
-            {
-                await Clients.Others.SendAsync("UserStatusChanged", uid, true, DateTime.UtcNow);
-            }
-        }
-
+        var uid = UserId;
+        if (!await _db.Users.AsNoTracking().AnyAsync(u => u.Id == uid && u.IsActive))
+            throw new HubException("حساب کاربری فعال نیست.");
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"Chat_User_{uid}");
+        var sessions = Online.GetOrAdd(uid, _ => new());
+        sessions.TryAdd(Context.ConnectionId, 0);
+        LastSeen[uid] = DateTime.UtcNow;
+        if (sessions.Count == 1)
+            await Clients.Others.SendAsync("UserStatusChanged", uid, true, DateTime.UtcNow);
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var uid = GetUserId();
-        if (uid > 0)
+        if (int.TryParse(Context.User?.FindFirstValue(ClaimTypes.NameIdentifier), out var uid) && Online.TryGetValue(uid, out var sessions))
         {
-            bool becameOffline = false;
-            if (_onlineUsers.TryGetValue(uid, out var set))
+            sessions.TryRemove(Context.ConnectionId, out _);
+            if (sessions.IsEmpty)
             {
-                lock (set)
-                {
-                    set.Remove(Context.ConnectionId);
-                    if (set.Count == 0)
-                    {
-                        becameOffline = true;
-                    }
-                }
-            }
-
-            _lastSeenTimes[uid] = DateTime.UtcNow;
-
-            if (becameOffline)
-            {
-                await Clients.Others.SendAsync("UserStatusChanged", uid, false, DateTime.UtcNow);
+                LastSeen[uid] = DateTime.UtcNow;
+                await Clients.Others.SendAsync("UserStatusChanged", uid, false, LastSeen[uid]);
             }
         }
-
         await base.OnDisconnectedAsync(exception);
     }
 
-    /// <summary>پیوستن به اتاق گفتگوی فعال</summary>
+    private async Task<Inventory.Api.Entities.Chat.ChatMember> RequireMembershipAsync(int conversationId)
+    {
+        var uid = UserId;
+        var member = await _db.ChatMembers.AsNoTracking().FirstOrDefaultAsync(m => m.ConversationId == conversationId && m.UserId == uid);
+        if (member == null || !await _db.Users.AsNoTracking().AnyAsync(u => u.Id == uid && u.IsActive))
+            throw new HubException("دسترسی به این گفتگو مجاز نیست.");
+        return member;
+    }
+
     public async Task JoinConversation(int conversationId)
     {
-        if (conversationId > 0)
-        {
-            await Groups.AddToGroupAsync(Context.ConnectionId, $"Chat_Room_{conversationId}");
-        }
+        await RequireMembershipAsync(conversationId);
+        await Groups.AddToGroupAsync(Context.ConnectionId, $"Chat_Room_{conversationId}");
     }
 
-    /// <summary>خروج از اتاق گفتگوی فعال</summary>
-    public async Task LeaveConversation(int conversationId)
+    public Task LeaveConversation(int conversationId) => Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Chat_Room_{conversationId}");
+    public Task SendTyping(int conversationId) => BroadcastTypingAsync(conversationId, true);
+    public Task StopTyping(int conversationId) => BroadcastTypingAsync(conversationId, false);
+
+    private async Task BroadcastTypingAsync(int conversationId, bool isTyping)
     {
-        if (conversationId > 0)
-        {
-            await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"Chat_Room_{conversationId}");
-        }
-    }
-
-    /// <summary>ارسال وضعیت در حال تایپ (Typing...)</summary>
-    public async Task SendTyping(int conversationId)
-    {
-        var uid = GetUserId();
-        var userName = Context.User?.Identity?.Name ?? "کاربر";
-        if (uid > 0 && conversationId > 0)
-        {
-            await Clients.Group($"Chat_Room_{conversationId}").SendAsync("UserTyping", conversationId, uid, userName);
-        }
-    }
-
-    private int GetUserId()
-    {
-        if (int.TryParse(Context.User?.FindFirstValue(ClaimTypes.NameIdentifier), out var id1) && id1 > 0)
-            return id1;
-
-        var q = Context.GetHttpContext()?.Request.Query["userId"].ToString();
-        if (int.TryParse(q, out var id2) && id2 > 0)
-            return id2;
-
-        return 0;
+        var member = await RequireMembershipAsync(conversationId);
+        var key = $"typing:{conversationId}";
+        if (isTyping && Context.Items.TryGetValue(key, out var value) && value is DateTime previous && DateTime.UtcNow - previous < TimeSpan.FromMilliseconds(700))
+            return;
+        Context.Items[key] = isTyping ? DateTime.UtcNow : DateTime.MinValue;
+        var recipients = await _db.ChatMembers.AsNoTracking()
+            .Where(m => m.ConversationId == conversationId && m.UserId != member.UserId).Select(m => m.UserId).ToListAsync();
+        var name = isTyping ? (string.IsNullOrWhiteSpace(member.UserDisplayName) ? member.UserName : member.UserDisplayName) : "";
+        await Clients.Groups(recipients.Select(id => $"Chat_User_{id}").ToList())
+            .SendAsync("UserTyping", conversationId, member.UserId, name);
     }
 }
 
-/// <summary>رابط ارسال پیام‌های بلادرنگ چت به کلاینت‌ها</summary>
 public interface IChatRealtimeNotifier
 {
     Task NotifyMessageReceivedAsync(int conversationId, IEnumerable<int> recipientUserIds, ChatMessageDto message);
@@ -147,61 +98,34 @@ public interface IChatRealtimeNotifier
 public class ChatRealtimeNotifier : IChatRealtimeNotifier
 {
     private readonly IHubContext<ChatHub> _hub;
-
-    public ChatRealtimeNotifier(IHubContext<ChatHub> hub)
+    private readonly ILogger<ChatRealtimeNotifier> _logger;
+    public ChatRealtimeNotifier(IHubContext<ChatHub> hub, ILogger<ChatRealtimeNotifier> logger)
     {
         _hub = hub;
+        _logger = logger;
     }
 
-    public async Task NotifyMessageReceivedAsync(int conversationId, IEnumerable<int> recipientUserIds, ChatMessageDto message)
+    // فقط کانال خصوصی هر کاربر، نه هم‌زمان اتاق گفتگو + کانال خصوصی (عامل رویداد تکراری).
+    private async Task SendAsync(IEnumerable<int> users, string method, Func<int, object?[]> arguments)
     {
-        // ارسال به اتاق فعال
-        await _hub.Clients.Group($"Chat_Room_{conversationId}").SendAsync("ReceiveMessage", message);
-
-        // ارسال به چنل خصوصی هر کاربر برای بروزرسانی badge و لیست دیالوگ‌ها
-        foreach (var uid in recipientUserIds.Distinct())
+        foreach (var uid in users.Distinct())
         {
-            await _hub.Clients.Group($"Chat_User_{uid}").SendAsync("NewMessageNotification", conversationId, message);
+            try { await _hub.Clients.Group($"Chat_User_{uid}").SendCoreAsync(method, arguments(uid)); }
+            catch (Exception ex) { _logger.LogWarning(ex, "Chat notification {Event} failed for user {UserId}; data is already saved.", method, uid); }
         }
     }
 
-    public async Task NotifyMessageUpdatedAsync(int conversationId, IEnumerable<int> recipientUserIds, ChatMessageDto message)
-    {
-        await _hub.Clients.Group($"Chat_Room_{conversationId}").SendAsync("MessageUpdated", message);
-        foreach (var uid in recipientUserIds.Distinct())
-        {
-            await _hub.Clients.Group($"Chat_User_{uid}").SendAsync("MessageUpdated", message);
-        }
-    }
-
-    public async Task NotifyMessageDeletedAsync(int conversationId, IEnumerable<int> recipientUserIds, int messageId)
-    {
-        await _hub.Clients.Group($"Chat_Room_{conversationId}").SendAsync("MessageDeleted", conversationId, messageId);
-        foreach (var uid in recipientUserIds.Distinct())
-        {
-            await _hub.Clients.Group($"Chat_User_{uid}").SendAsync("MessageDeleted", conversationId, messageId);
-        }
-    }
-
-    public async Task NotifyReactionAsync(int conversationId, IEnumerable<int> recipientUserIds, int messageId, Dictionary<string, List<ChatReactionUserDto>> reactions)
-    {
-        await _hub.Clients.Group($"Chat_Room_{conversationId}").SendAsync("MessageReactionUpdated", conversationId, messageId, reactions);
-    }
-
-    public async Task NotifyMessagesReadAsync(int conversationId, int readerUserId, int lastReadMessageId, IEnumerable<int> peerUserIds)
-    {
-        await _hub.Clients.Group($"Chat_Room_{conversationId}").SendAsync("MessagesRead", conversationId, readerUserId, lastReadMessageId);
-        foreach (var uid in peerUserIds.Distinct())
-        {
-            await _hub.Clients.Group($"Chat_User_{uid}").SendAsync("MessagesRead", conversationId, readerUserId, lastReadMessageId);
-        }
-    }
-
-    public async Task NotifyConversationUpdatedAsync(IEnumerable<int> recipientUserIds, ChatConversationDto conversation)
-    {
-        foreach (var uid in recipientUserIds.Distinct())
-        {
-            await _hub.Clients.Group($"Chat_User_{uid}").SendAsync("ConversationUpdated", conversation);
-        }
-    }
+    public Task NotifyMessageReceivedAsync(int id, IEnumerable<int> users, ChatMessageDto message) =>
+        SendAsync(users, "ReceiveMessage", uid => new object?[] { message.ForUser(uid) });
+    public Task NotifyMessageUpdatedAsync(int id, IEnumerable<int> users, ChatMessageDto message) =>
+        SendAsync(users, "MessageUpdated", uid => new object?[] { message.ForUser(uid) });
+    public Task NotifyMessageDeletedAsync(int id, IEnumerable<int> users, int messageId) =>
+        SendAsync(users, "MessageDeleted", _ => new object?[] { id, messageId });
+    public Task NotifyReactionAsync(int id, IEnumerable<int> users, int messageId, Dictionary<string, List<ChatReactionUserDto>> reactions) =>
+        SendAsync(users, "MessageReactionUpdated", _ => new object?[] { id, messageId, reactions });
+    public Task NotifyMessagesReadAsync(int id, int reader, int messageId, IEnumerable<int> users) =>
+        SendAsync(users.Append(reader), "MessagesRead", _ => new object?[] { id, reader, messageId });
+    // DTO گفتگو شامل وضعیت شخصی درخواست‌کننده است؛ فقط شناسه را برای بازخوانی اختصاصی ارسال می‌کنیم.
+    public Task NotifyConversationUpdatedAsync(IEnumerable<int> users, ChatConversationDto conversation) =>
+        SendAsync(users, "ConversationChanged", _ => new object?[] { conversation.Id });
 }

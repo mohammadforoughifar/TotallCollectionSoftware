@@ -237,29 +237,6 @@ public class ProjectLookups
 // ============================================================
 //  صفحه‌بندی سمت سرور (بک‌اند) — لیست پروژه‌ها و گزارش‌های کار
 //  داده‌ها ۲۰تا۲۰تا (قابل تنظیم) از دیتابیس واکشی می‌شوند تا لود صفحه سبک بماند.
-// ============================================================
-
-/// <summary>نتیجهٔ صفحه‌بندی‌شده: فقط ردیف‌های همان صفحه + تعداد کل ردیف‌های منطبق با فیلتر</summary>
-public class PagedResult<T>
-{
-    public List<T> Items { get; set; } = new();
-
-    /// <summary>تعداد کل ردیف‌های منطبق با فیلترها (نه فقط این صفحه)</summary>
-    public int Total { get; set; }
-
-    public int Page { get; set; } = 1;
-    public int PageSize { get; set; } = 20;
-
-    /// <summary>تعداد صفحه‌ها (محاسبه‌شده)</summary>
-    public int PageCount => PageSize <= 0 ? 1 : Math.Max(1, (int)Math.Ceiling(Total / (double)PageSize));
-
-    /// <summary>
-    /// جمع کل (تیک) روی «همهٔ» ردیف‌های منطبق با فیلتر — نه فقط صفحهٔ جاری.
-    /// در لیست گزارش‌های کار برای نمایش «جمع ساعت» استفاده می‌شود.
-    /// </summary>
-    public long? SumTicks { get; set; }
-}
-
 /// <summary>پارامترهای فیلتر/مرتب‌سازی/صفحه‌بندی لیست پروژه‌ها — یکسان بین کلاینت و سرور</summary>
 public class ProjectListQuery
 {

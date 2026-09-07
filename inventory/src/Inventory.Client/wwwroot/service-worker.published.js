@@ -38,12 +38,26 @@ async function onActivate(event) {
 }
 
 async function onFetch(event) {
+    const requestUrl = new URL(event.request.url);
+
+    // ⚠️ مسیرهای داده/فایل (API، SignalR و هر URL دارای access_token) هرگز نباید
+    // از کش سرو یا با index.html پاسخ داده شوند: درخواست دانلود/پیش‌نمایش پیوست چت
+    // وقتی در تب جدید (یا نوار آدرس) باز می‌شود باید مستقیم به سرور برسد؛ وگرنه
+    // PWA صفحهٔ برنامه را نشان می‌دهد و دانلود فقط بعد از Ctrl+Shift+R انجام می‌شود.
+    const isDataUrl = requestUrl.pathname.startsWith('/api/')
+        || requestUrl.pathname.startsWith('/hubs/')
+        || requestUrl.pathname.startsWith('/signalr/')
+        || requestUrl.searchParams.has('access_token');
+    if (isDataUrl) {
+        return fetch(event.request);
+    }
+
     let cachedResponse = null;
     if (event.request.method === 'GET') {
         // For all navigation requests, try to serve index.html from cache,
         // unless that request is for an offline resource.
         // If you need some URLs to be server-rendered, edit the following check to exclude those URLs
-const shouldServeIndexHtml = event.request.mode === 'navigate'
+        const shouldServeIndexHtml = event.request.mode === 'navigate'
             // RADIS-HR یک SPA مستقل زیر همین Origin است؛ index اصلی نباید جای آن برگردد.
             && !new URL(event.request.url).pathname.startsWith('/radis-hr/')
             && !manifestUrlList.some(url => url === event.request.url);

@@ -25,6 +25,9 @@ public static class DbInitializer
                 {
                     // حالت توسعه/تست: بدون مایگریشن
                     db.Database.EnsureCreated();
+                    // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
+                    await ChatSchemaV1.EnsureSqliteAsync(db);
+                    await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
                     // EnsureCreated ستون‌های جدید را به دیتابیسِ موجود اضافه نمی‌کند؛ اینجا خودتعمیر می‌کنیم
                     EnsureSqliteWorkCalendarSchema(db);
                 }

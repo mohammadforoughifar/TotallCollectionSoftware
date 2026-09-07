@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Inventory.Api.Data;
 using Inventory.Api.Entities.Chat;
 using Inventory.Api.Hubs;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -23,7 +24,7 @@ public interface IChatService
     Task<ChatMessageDto> EditMessageAsync(int currentUserId, int messageId, string newText);
     Task DeleteMessageAsync(int currentUserId, int messageId);
     Task<Dictionary<string, List<ChatReactionUserDto>>> ToggleReactionAsync(int currentUserId, string currentUserName, int messageId, string emoji);
-    Task MarkConversationAsReadAsync(int currentUserId, int conversationId);
+    Task MarkConversationAsReadAsync(int currentUserId, int conversationId, int? lastReadMessageId = null);
     Task<ChatMessageDto> TogglePinMessageAsync(int currentUserId, int messageId);
     Task<List<ChatUserDto>> GetSoftwareUsersForChatAsync(int currentUserId, string? search = null);
     Task<ChatSummaryDto> GetChatSummaryAsync(int currentUserId);
@@ -39,12 +40,14 @@ public class ChatService : IChatService
     private readonly AppDbContext _db;
     private readonly IChatRealtimeNotifier _notifier;
     private readonly ILogger<ChatService> _logger;
+    private readonly ChatAttachmentService _files;
 
-    public ChatService(AppDbContext db, IChatRealtimeNotifier notifier, ILogger<ChatService> logger)
+    public ChatService(AppDbContext db, IChatRealtimeNotifier notifier, ILogger<ChatService> logger, ChatAttachmentService files)
     {
         _db = db;
         _notifier = notifier;
         _logger = logger;
+        _files = files;
     }
 
     public async Task<List<ChatConversationDto>> GetConversationsAsync(int currentUserId, string? search = null, ChatTypeDto? typeFilter = null, bool onlyUnread = false)
@@ -77,17 +80,24 @@ public class ChatService : IChatService
             .Where(m => conversationIds.Contains(m.ConversationId))
             .ToListAsync();
 
+        var unreadCounts = await UnreadMessagesFor(currentUserId)
+            .Where(m => conversationIds.Contains(m.ConversationId))
+            .GroupBy(m => m.ConversationId)
+            .Select(g => new { ConversationId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.ConversationId, g => g.Count);
+
         var membershipMap = myMemberships.ToDictionary(m => m.ConversationId);
         var membersGrouped = allMembers.GroupBy(m => m.ConversationId).ToDictionary(g => g.Key, g => g.ToList());
 
         var result = new List<ChatConversationDto>();
+        var normalizedSearch = ChatSearchText.Normalize(search);
 
         foreach (var conv in list)
         {
             membershipMap.TryGetValue(conv.Id, out var myMem);
             if (myMem == null) continue;
 
-            if (onlyUnread && myMem.UnreadCount == 0) continue;
+            if (onlyUnread && unreadCounts.GetValueOrDefault(conv.Id) == 0) continue;
 
             membersGrouped.TryGetValue(conv.Id, out var members);
             members ??= new List<ChatMember>();
@@ -106,7 +116,7 @@ public class ChatService : IChatService
                 LastMessageSenderId = conv.LastMessageSenderId,
                 LastMessageSenderName = conv.LastMessageSenderName,
                 PinnedMessageId = conv.PinnedMessageId,
-                UnreadCount = myMem.UnreadCount,
+                UnreadCount = unreadCounts.GetValueOrDefault(conv.Id),
                 IsPinned = myMem.IsPinned,
                 IsMuted = myMem.IsMuted,
                 IsArchived = myMem.IsArchived,
@@ -128,11 +138,10 @@ public class ChatService : IChatService
                 dto.DirectPeerLastSeen = ChatHub.GetLastSeen(peer.UserId);
             }
 
-            if (!string.IsNullOrWhiteSpace(search))
+            if (normalizedSearch.Length > 0)
             {
-                var s = search.Trim().ToLowerInvariant();
-                bool matches = dto.Title.ToLowerInvariant().Contains(s) ||
-                               (dto.LastMessageSnippet != null && dto.LastMessageSnippet.ToLowerInvariant().Contains(s));
+                bool matches = ChatSearchText.Normalize(dto.Title).Contains(normalizedSearch) ||
+                               ChatSearchText.Normalize(dto.LastMessageSnippet).Contains(normalizedSearch);
                 if (!matches) continue;
             }
 
@@ -179,7 +188,7 @@ public class ChatService : IChatService
             LastMessageSenderId = conv.LastMessageSenderId,
             LastMessageSenderName = conv.LastMessageSenderName,
             PinnedMessageId = conv.PinnedMessageId,
-            UnreadCount = myMem.UnreadCount,
+            UnreadCount = await UnreadMessagesFor(currentUserId).CountAsync(m => m.ConversationId == conversationId),
             IsPinned = myMem.IsPinned,
             IsMuted = myMem.IsMuted,
             IsArchived = myMem.IsArchived,
@@ -407,87 +416,66 @@ public class ChatService : IChatService
     public async Task<ChatMessageDto> SendMessageAsync(int currentUserId, string currentUserName, string? currentUserAvatar, SendChatMessageRequest request)
     {
         if (request.ConversationId <= 0) throw new ArgumentException("شناسه گفتگو نامعتبر است.");
-
-        var conv = await _db.ChatConversations.FirstOrDefaultAsync(c => c.Id == request.ConversationId);
-        if (conv == null) throw new KeyNotFoundException("گفتگو یافت نشد.");
-
-        var myMem = await _db.ChatMembers.FirstOrDefaultAsync(m => m.ConversationId == request.ConversationId && m.UserId == currentUserId);
+        if (!await _db.Users.AsNoTracking().AnyAsync(u => u.Id == currentUserId && u.IsActive))
+            throw new UnauthorizedAccessException("حساب کاربری فعال نیست.");
+        var myMem = await _db.ChatMembers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.ConversationId == request.ConversationId && m.UserId == currentUserId);
         if (myMem == null) throw new UnauthorizedAccessException("شما عضو این گفتگو نیستید.");
+
+        await _files.ApplyToMessageAsync(currentUserId, request);
+        if (string.IsNullOrWhiteSpace(request.Text) && request.FileUrl == null && string.IsNullOrWhiteSpace(request.ErpModule))
+            throw new ArgumentException("متن یا فایل پیام را وارد کنید.");
 
         var now = DateTime.UtcNow;
         var msg = new ChatMessage
         {
-            ConversationId = request.ConversationId,
-            SenderUserId = currentUserId,
+            ConversationId = request.ConversationId, SenderUserId = currentUserId,
             SenderName = string.IsNullOrWhiteSpace(myMem.UserDisplayName) ? currentUserName : myMem.UserDisplayName,
-            SenderAvatarUrl = currentUserAvatar ?? myMem.UserAvatarUrl,
-            Text = request.Text?.Trim(),
-            MessageType = request.MessageType,
-            FileUrl = request.FileUrl,
-            FileName = request.FileName,
-            FileSizeBytes = request.FileSizeBytes,
-            FileContentType = request.FileContentType,
-            ReplyToMessageId = request.ReplyToMessageId,
-            ForwardFromMessageId = request.ForwardFromMessageId,
-            ErpModule = request.ErpModule,
-            ErpEntityId = request.ErpEntityId,
-            ErpEntityTitle = request.ErpEntityTitle,
-            ErpEntitySummary = request.ErpEntitySummary,
-            CreatedAt = now
+            SenderAvatarUrl = currentUserAvatar ?? myMem.UserAvatarUrl, Text = request.Text?.Trim(),
+            MessageType = request.MessageType, FileUrl = request.FileUrl, FileName = request.FileName,
+            FileSizeBytes = request.FileSizeBytes, FileContentType = request.FileContentType,
+            ReplyToMessageId = request.ReplyToMessageId, ForwardFromMessageId = request.ForwardFromMessageId,
+            ErpModule = request.ErpModule, ErpEntityId = request.ErpEntityId,
+            ErpEntityTitle = request.ErpEntityTitle, ErpEntitySummary = request.ErpEntitySummary, CreatedAt = now
         };
-
-        // اطلاعات پیام ریپلای‌شده
-        if (request.ReplyToMessageId.HasValue && request.ReplyToMessageId.Value > 0)
+        if (request.ReplyToMessageId is > 0)
         {
-            var repMsg = await _db.ChatMessages
-                .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.Id == request.ReplyToMessageId.Value);
-
-            if (repMsg != null)
-            {
-                msg.ReplyToSenderName = repMsg.SenderName;
-                msg.ReplyToSnippet = !string.IsNullOrWhiteSpace(repMsg.Text)
-                    ? (repMsg.Text.Length > 50 ? repMsg.Text.Substring(0, 50) + "..." : repMsg.Text)
-                    : (repMsg.FileName ?? "پیوست");
-            }
+            var reply = await _db.ChatMessages.AsNoTracking().FirstOrDefaultAsync(m =>
+                m.Id == request.ReplyToMessageId && m.ConversationId == request.ConversationId && !m.IsDeleted)
+                ?? throw new ArgumentException("پیام مورد پاسخ در این گفتگو یافت نشد.");
+            msg.ReplyToSenderName = reply.SenderName;
+            msg.ReplyToSnippet = string.IsNullOrWhiteSpace(reply.Text) ? reply.FileName ?? "پیوست"
+                : reply.Text.Length > 50 ? reply.Text[..50] + "..." : reply.Text;
         }
 
-        _db.ChatMessages.Add(msg);
-        await _db.SaveChangesAsync();
+        var snippet = !string.IsNullOrWhiteSpace(msg.Text)
+            ? (msg.Text.Length > 60 ? msg.Text[..60] + "..." : msg.Text)
+            : msg.FileName ?? msg.ErpEntityTitle ?? "پیام رسانه‌ای";
 
-        // به‌روزرسانی متاداده‌های مکالمه
-        string snippet = !string.IsNullOrWhiteSpace(msg.Text)
-            ? (msg.Text.Length > 60 ? msg.Text.Substring(0, 60) + "..." : msg.Text)
-            : (msg.FileName ?? (msg.ErpEntityTitle ?? "پیام رسانه‌ای"));
-
-        conv.LastMessageAt = now;
-        conv.LastMessageSnippet = snippet;
-        conv.LastMessageSenderId = currentUserId;
-        conv.LastMessageSenderName = msg.SenderName;
-
-        // افزایش شمارنده خوانده‌نشده برای سایر اعضا
-        var otherMembers = await _db.ChatMembers
-            .Where(m => m.ConversationId == request.ConversationId && m.UserId != currentUserId)
-            .ToListAsync();
-
-        foreach (var m in otherMembers)
+        // پیام، اتصال فایل، نشانگر خواندن و متاداده همگی در یک تراکنش ثبت می‌شوند.
+        await using (var transaction = await _db.Database.BeginTransactionAsync())
         {
-            m.UnreadCount++;
+            _db.ChatMessages.Add(msg);
+            await _db.SaveChangesAsync();
+            await _db.ChatConversations.Where(c => c.Id == request.ConversationId && c.LastMessageAt <= now)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(c => c.LastMessageAt, now).SetProperty(c => c.LastMessageSnippet, snippet)
+                    .SetProperty(c => c.LastMessageSenderId, currentUserId).SetProperty(c => c.LastMessageSenderName, msg.SenderName));
+            await _db.ChatMembers.Where(m => m.ConversationId == request.ConversationId && m.UserId != currentUserId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.UnreadCount, m => m.UnreadCount + 1));
+            await _db.ChatMembers.Where(m => m.Id == myMem.Id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(m => m.LastReadMessageId, m => m.LastReadMessageId < msg.Id ? msg.Id : m.LastReadMessageId)
+                    .SetProperty(m => m.UnreadCount, 0));
+            await transaction.CommitAsync();
         }
 
-        // برای خود فرستنده، آخرین پیام خوانده شده برابر این پیام است
-        myMem.LastReadMessageId = msg.Id;
-        myMem.UnreadCount = 0;
-
-        await _db.SaveChangesAsync();
-
-        var allMemberUserIds = otherMembers.Select(m => m.UserId).Concat(new[] { currentUserId }).ToList();
-        var msgDto = MapToMessageDto(msg, currentUserId, 0);
-
-        // اعلان بلادرنگ پیام جدید
-        await _notifier.NotifyMessageReceivedAsync(request.ConversationId, allMemberUserIds, msgDto);
-
-        return msgDto;
+        var recipients = await _db.ChatMembers.AsNoTracking().Where(m => m.ConversationId == request.ConversationId)
+            .Select(m => m.UserId).ToListAsync();
+        var dto = MapToMessageDto(msg, currentUserId, 0);
+        try { await _notifier.NotifyMessageReceivedAsync(request.ConversationId, recipients, dto); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Message {MessageId} saved, but realtime delivery failed.", msg.Id); }
+        return dto;
     }
 
     public async Task<ChatMessageDto> EditMessageAsync(int currentUserId, int messageId, string newText)
@@ -564,6 +552,9 @@ public class ChatService : IChatService
         var msg = await _db.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId);
         if (msg == null || msg.IsDeleted) throw new KeyNotFoundException("پیام یافت نشد.");
 
+        if (!await _db.ChatMembers.AnyAsync(m => m.ConversationId == msg.ConversationId && m.UserId == currentUserId))
+            throw new UnauthorizedAccessException("شما عضو این گفتگو نیستید.");
+
         var reactions = DeserializeReactions(msg.ReactionsJson);
 
         if (!reactions.TryGetValue(emoji, out var usersList))
@@ -596,29 +587,32 @@ public class ChatService : IChatService
         return reactions;
     }
 
-    public async Task MarkConversationAsReadAsync(int currentUserId, int conversationId)
+    public async Task MarkConversationAsReadAsync(int currentUserId, int conversationId, int? lastReadMessageId = null)
     {
-        var myMem = await _db.ChatMembers
-            .FirstOrDefaultAsync(m => m.ConversationId == conversationId && m.UserId == currentUserId);
-
-        if (myMem == null) return;
-
-        var maxMessageId = await _db.ChatMessages
-            .Where(m => m.ConversationId == conversationId)
-            .Select(m => (int?)m.Id)
-            .MaxAsync() ?? 0;
-
-        myMem.LastReadMessageId = maxMessageId;
-        myMem.UnreadCount = 0;
-        await _db.SaveChangesAsync();
-
-        var peerUserIds = await _db.ChatMembers
-            .Where(m => m.ConversationId == conversationId && m.UserId != currentUserId)
-            .Select(m => m.UserId)
-            .ToListAsync();
-
-        await _notifier.NotifyMessagesReadAsync(conversationId, currentUserId, maxMessageId, peerUserIds);
+        var member = await _db.ChatMembers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.ConversationId == conversationId && m.UserId == currentUserId)
+            ?? throw new UnauthorizedAccessException("شما عضو این گفتگو نیستید.");
+        var lastId = await _db.ChatMessages.Where(m => m.ConversationId == conversationId)
+            .Select(m => (int?)m.Id).MaxAsync() ?? 0;
+        var readThrough = Math.Clamp(lastReadMessageId ?? lastId, 0, lastId);
+        var changed = await _db.ChatMembers.Where(m => m.Id == member.Id && m.LastReadMessageId < readThrough)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.LastReadMessageId, readThrough));
+        if (changed == 0) return; // نشانگر هیچ‌وقت عقب نمی‌رود؛ از حلقهٔ اعلانِ خواندن هم جلوگیری می‌شود.
+        var actualRead = await _db.ChatMembers.Where(m => m.Id == member.Id).Select(m => m.LastReadMessageId).SingleAsync();
+        var remaining = await UnreadMessagesFor(currentUserId).CountAsync(m => m.ConversationId == conversationId);
+        await _db.ChatMembers.Where(m => m.Id == member.Id && m.LastReadMessageId == actualRead)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(m => m.UnreadCount, remaining));
+        var peers = await _db.ChatMembers.AsNoTracking().Where(m => m.ConversationId == conversationId && m.UserId != currentUserId)
+            .Select(m => m.UserId).ToListAsync();
+        await _notifier.NotifyMessagesReadAsync(conversationId, currentUserId, actualRead, peers);
     }
+
+    private IQueryable<ChatMessage> UnreadMessagesFor(int userId) =>
+        from message in _db.ChatMessages.AsNoTracking()
+        join member in _db.ChatMembers.AsNoTracking() on message.ConversationId equals member.ConversationId
+        where member.UserId == userId && !member.IsArchived && !message.IsDeleted &&
+              message.SenderUserId != userId && message.Id > member.LastReadMessageId
+        select message;
 
     public async Task<ChatMessageDto> TogglePinMessageAsync(int currentUserId, int messageId)
     {
@@ -658,67 +652,84 @@ public class ChatService : IChatService
 
     public async Task<List<ChatUserDto>> GetSoftwareUsersForChatAsync(int currentUserId, string? search = null)
     {
-        // فهرست تمامی کاربران فعال درون نرم‌افزار جهت چت
-        var q = _db.Users
+        // شناسهٔ چت همیشه از حساب ورود (Users) است، نه شناسهٔ مستقل SystemUsers.
+        // کاربر فعال حتی بدون گفتگوی قبلی و در حالت آفلاین باید قابل پیدا شدن باشد.
+        var users = await _db.Users
             .AsNoTracking()
-            .Where(u => u.IsActive && u.Id != currentUserId);
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var s = search.Trim().ToLowerInvariant();
-            q = q.Where(u => u.Username.ToLower().Contains(s) ||
-                             (u.FirstName != null && u.FirstName.ToLower().Contains(s)) ||
-                             (u.LastName != null && u.LastName.ToLower().Contains(s)));
-        }
-
-        var users = await q
+            .Where(u => u.IsActive && u.Id != currentUserId)
             .OrderBy(u => u.LastName)
             .ThenBy(u => u.FirstName)
+            .ThenBy(u => u.Username)
+            .Select(u => new { u.Id, u.Username, u.FirstName, u.LastName, u.PhotoPath, u.Role })
             .ToListAsync();
 
-        // بررسی مکالمات خصوصی موجود با هر کاربر
-        var existingDirects = await (from m1 in _db.ChatMembers.AsNoTracking()
-                                     join m2 in _db.ChatMembers.AsNoTracking() on m1.ConversationId equals m2.ConversationId
-                                     join c in _db.ChatConversations.AsNoTracking() on m1.ConversationId equals c.Id
-                                     where c.Type == ChatTypeDto.Direct && m1.UserId == currentUserId
-                                     select new { TargetUserId = m2.UserId, c.Id }).ToListAsync();
+        if (users.Count == 0) return new();
 
-        var directMap = existingDirects.GroupBy(x => x.TargetUserId).ToDictionary(g => g.Key, g => g.First().Id);
+        // واحد سازمانی در پروفایل پرسنلی نگهداری می‌شود؛ اتصال فقط با نام کاربری،
+        // نه با Id (دو جدول شناسه‌های متفاوت دارند). این اتصال اختیاری است.
+        var departments = await (from profile in _db.SystemUsers.AsNoTracking()
+                                 join department in _db.SystemDepartments.AsNoTracking()
+                                     on profile.DepartmentId equals (int?)department.Id
+                                 where profile.IsActive && department.IsActive && profile.Username != ""
+                                 orderby profile.Id
+                                 select new { profile.Username, department.Name }).ToListAsync();
+        var departmentMap = departments
+            .GroupBy(p => p.Username.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
 
-        return users.Select(u =>
+        // نرمال‌سازی بعد از واکشی ستون‌های عمومی انجام می‌شود تا رفتار جست‌وجوی
+        // نام کامل و حروف فارسی/عربی در SQL Server و SQLite یکسان باشد.
+        var normalizedSearch = ChatSearchText.Normalize(search);
+        var result = users.Select(u =>
         {
-            var disp = $"{u.FirstName} {u.LastName}".Trim();
-            if (string.IsNullOrWhiteSpace(disp)) disp = u.Username;
-
-            directMap.TryGetValue(u.Id, out var existingConvId);
+            var displayName = $"{u.FirstName} {u.LastName}".Trim();
+            if (string.IsNullOrWhiteSpace(displayName)) displayName = u.Username;
+            departmentMap.TryGetValue(u.Username.Trim(), out var department);
 
             return new ChatUserDto
             {
                 Id = u.Id,
                 Username = u.Username,
-                DisplayName = disp,
+                DisplayName = displayName,
                 AvatarUrl = u.PhotoPath != null ? $"/uploads/{u.PhotoPath}" : null,
-                Department = null,
+                Department = department,
                 Role = u.Role,
                 IsOnline = ChatHub.IsUserOnline(u.Id),
-                LastSeen = ChatHub.GetLastSeen(u.Id),
-                ExistingConversationId = existingConvId > 0 ? existingConvId : null
+                LastSeen = ChatHub.GetLastSeen(u.Id)
             };
-        }).ToList();
+        }).Where(u => normalizedSearch.Length == 0 ||
+                      ChatSearchText.Normalize(u.DisplayName).Contains(normalizedSearch) ||
+                      ChatSearchText.Normalize(u.Username).Contains(normalizedSearch) ||
+                      ChatSearchText.Normalize(u.Department).Contains(normalizedSearch)).ToList();
+
+        // نتیجهٔ خالی واقعاً خالی است؛ هرگز به کل فهرست کاربران fallback نمی‌کنیم.
+        if (result.Count == 0) return result;
+
+        var userIds = result.Select(u => u.Id).ToList();
+        var existingDirects = await (from me in _db.ChatMembers.AsNoTracking()
+                                     join peer in _db.ChatMembers.AsNoTracking()
+                                         on me.ConversationId equals peer.ConversationId
+                                     join conversation in _db.ChatConversations.AsNoTracking()
+                                         on me.ConversationId equals conversation.Id
+                                     where conversation.Type == ChatTypeDto.Direct && me.UserId == currentUserId
+                                           && peer.UserId != currentUserId && userIds.Contains(peer.UserId)
+                                     select new { peer.UserId, conversation.Id }).ToListAsync();
+        var directMap = existingDirects.GroupBy(x => x.UserId)
+            .ToDictionary(g => g.Key, g => g.Min(x => x.Id));
+        foreach (var user in result)
+        {
+            if (directMap.TryGetValue(user.Id, out var conversationId))
+                user.ExistingConversationId = conversationId;
+        }
+        return result;
     }
 
     public async Task<ChatSummaryDto> GetChatSummaryAsync(int currentUserId)
     {
-        var myMemberships = await _db.ChatMembers
-            .AsNoTracking()
-            .Where(m => m.UserId == currentUserId && !m.IsArchived)
-            .ToListAsync();
-
-        return new ChatSummaryDto
-        {
-            TotalUnreadMessages = myMemberships.Sum(m => m.UnreadCount),
-            UnreadConversationsCount = myMemberships.Count(m => m.UnreadCount > 0)
-        };
+        // شمارش از پیام‌ها + نشانگر خواندن؛ از افزایش دوباره یا stale شدن کش شمارنده مستقل است.
+        var counts = await UnreadMessagesFor(currentUserId).GroupBy(m => m.ConversationId)
+            .Select(g => g.Count()).ToListAsync();
+        return new ChatSummaryDto { TotalUnreadMessages = counts.Sum(), UnreadConversationsCount = counts.Count };
     }
 
     public async Task<List<ChatMemberDto>> GetGroupMembersAsync(int currentUserId, int conversationId)

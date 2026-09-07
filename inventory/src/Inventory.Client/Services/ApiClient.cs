@@ -92,15 +92,15 @@ public class ApiClient : IApiClient
         return (bytes, name, ctype);
     }
 
-    public async Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file")
+    public async Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file", string? contentType = null)
     {
         using var content = new MultipartFormDataContent();
         var sc = new StreamContent(fileStream);
-        sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        sc.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(contentType, out var mime)
+            ? mime : new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
         content.Add(sc, formFieldName, fileName);
 
-        var fileReq = new HttpRequestMessage(HttpMethod.Post, Url(path)) { Content = content };
+        using var fileReq = new HttpRequestMessage(HttpMethod.Post, Url(path)) { Content = content };
         AddAuth(fileReq);
 
         HttpResponseMessage resp;
@@ -113,6 +113,7 @@ public class ApiClient : IApiClient
             throw new ApiException($"ارتباط با سرور برقرار نشد. ({ex.Message})");
         }
 
+        using var response = resp;
         var text = await resp.Content.ReadAsStringAsync();
         if (!resp.IsSuccessStatusCode)
         {

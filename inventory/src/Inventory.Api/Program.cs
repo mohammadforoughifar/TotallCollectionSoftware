@@ -119,7 +119,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var token = ctx.Request.Query["access_token"];
                 var path = ctx.Request.Path.Value ?? "";
                 if (!string.IsNullOrEmpty(token) &&
-                    (path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
+                    (ctx.Request.Path.StartsWithSegments("/hubs/chat") ||
+                     path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
                      path.Contains("/preview", StringComparison.OrdinalIgnoreCase) ||
                      path.Contains("/export-zip", StringComparison.OrdinalIgnoreCase) ||
                      path.Contains("/export", StringComparison.OrdinalIgnoreCase)))
@@ -138,7 +139,8 @@ builder.Services.AddAuthorization(options =>
 
 // CORS برای کلاینت Blazor WASM (در محیط توسعه)
 builder.Services.AddCors(options =>
-    options.AddPolicy("wasm", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+    options.AddPolicy("wasm", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()
+        .WithExposedHeaders("Content-Disposition", "Content-Length", "Accept-Ranges", "Content-Range")));
 
 // کنترلرها + فیلتر سراسری خطا + JSON با نام‌گذاری camelCase
 builder.Services.AddControllers(options =>
@@ -168,6 +170,7 @@ builder.Services.AddSingleton<DashboardBroadcaster>();
 builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs.NotifyService>();
 builder.Services.AddScoped<Inventory.Api.Hubs.IChatRealtimeNotifier, Inventory.Api.Hubs.ChatRealtimeNotifier>();
 builder.Services.AddScoped<Inventory.Api.Services.Chat.IChatService, Inventory.Api.Services.Chat.ChatService>();
+builder.Services.AddScoped<Inventory.Api.Services.Chat.ChatAttachmentService>();
 builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
@@ -217,6 +220,19 @@ app.UseCors("wasm");
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// فایل‌های قدیمی چت هم فقط از endpoint دارای کنترل عضویت دانلود می‌شوند.
+// این گارد مستقل از وجود index.html و از استقرار تک/دو سروره است.
+app.Use(async (ctx, next) =>
+{
+    if (Inventory.Api.Services.Chat.ChatAttachmentService.IsLegacyPublicPath(ctx.Request.Path.Value))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
+
 
 // جلوگیری از کش‌شدن نسخه‌ی قدیمی کلاینت: همه‌ی پاسخ‌های HTML بدون کش (به‌علاوه‌ی StaticFiles)
 app.Use(async (ctx, next) =>
