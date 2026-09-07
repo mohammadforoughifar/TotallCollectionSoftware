@@ -1,0 +1,79 @@
+/* ──────────────────────────────────────────────────────────────
+   فونت فارسی سامانه — Vazirmatn (مجوز SIL OFL 1.1)
+   به‌صورت محلی سرو می‌شود (بدون CDN) تا در شبکهٔ داخلی و آفلاین هم کار کند.
+   نسخهٔ استاندارد انتخاب شده است (نه Farsi-Digits) تا ارقام لاتین در
+   فیلدهای ریالی دست‌نخورده بماند؛ ارقام فارسی از سمت C# با Fa.N تولید می‌شود.
+   ────────────────────────────────────────────────────────────── */
+
+@font-face {
+    font-family: "Vazirmatn";
+    src: url("../fonts/Vazirmatn-Regular.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Vazirmatn";
+    src: url("../fonts/Vazirmatn-Medium.woff2") format("woff2");
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Vazirmatn";
+    src: url("../fonts/Vazirmatn-SemiBold.woff2") format("woff2");
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: "Vazirmatn";
+    src: url("../fonts/Vazirmatn-Bold.woff2") format("woff2");
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
+:root {
+    /* تغییر فونت کل نرم‌افزار فقط از همین یک متغیر انجام می‌شود */
+    --font-fa: "Vazirmatn", Tahoma, "Segoe UI", Arial, sans-serif;
+}
+
+/* اعمال سراسری روی همهٔ عناصر، شامل کنترل‌های فرم که font را از body ارث نمی‌برند */
+html,
+body,
+button,
+input,
+select,
+textarea,
+table,
+th,
+td {
+    font-family: var(--font-fa);
+}
+
+/* ارقام فارسی در وزیرمتن کمی بلندتر از لاتین‌اند؛ این تنظیم ارتفاع سطر را متعادل می‌کند */
+body {
+    line-height: 1.75;
+}
+
+/* اعداد جدول‌ها و مبالغ ریالی: هم‌عرض شدن ارقام تا ستون‌ها هنگام تغییر عدد نلرزند */
+td,
+th,
+.stats strong,
+.rial-input,
+input[type="number"],
+.amount,
+.money {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+}
+
+/* متن‌های داخل نمودارهای SVG هم باید همان فونت را بگیرند */
+svg text,
+.executive-chart text {
+    font-family: var(--font-fa);
+}

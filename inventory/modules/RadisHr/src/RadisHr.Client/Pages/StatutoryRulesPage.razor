@@ -1,0 +1,240 @@
+@page "/statutory-rules"
+@using RadisHr.Shared.Models
+@inject ApiClient Api
+@inject ToastService Toasts
+
+<section class="page">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">کارتابل امن مدیر اداری</p>
+            <h2>الزامات سالانه حقوق، بیمه و مالیات</h2>
+            <p class="muted">پاسخ‌ها باید عیناً از مصوبه‌ها و بخشنامه‌های رسمی همان سال استخراج شوند. هر تغییر ثبت و برای مدیرعامل ارسال می‌شود.</p>
+        </div>
+    </div>
+
+    <div class="rules-current-status">
+        <span>سال فعال: <b>@Fa.N(_rules.Year)</b></span>
+        <span>اجرا از: <b>@Fa.N(_rules.EffectiveFrom)</b></span>
+        <span>حداقل مزد روزانه: <b>@Fa.N(_rules.MinimumDailyWage) ریال</b></span>
+        <span>آخرین ویرایش: <b>@(_rules.UpdatedAt?.ToString("yyyy-MM-dd") ?? "—") — @_rules.UpdatedBy</b></span>
+    </div>
+
+    <form class="rules-questionnaire" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+        <article class="panel">
+            <div class="section-head compact">
+                <div><p class="eyebrow">مرحله ۱</p><h3>سال و مستندات رسمی</h3></div>
+                <button class="button secondary" type="button" @onclick="LoadYearAsync">بارگذاری / ایجاد سال</button>
+            </div>
+            <div class="rules-grid">
+                <label>این الزامات برای کدام سال شمسی است؟ <input type="number" min="1300" max="1600" required @bind="_year" /></label>
+                <label>از چه تاریخی اجرا می‌شود؟ <input placeholder="1405/01/01" required @bind="_rules.EffectiveFrom" /></label>
+                <label class="wide-field">
+                    شماره، تاریخ و عنوان مصوبه‌ها و بخشنامه‌های رسمی چیست؟
+                    <textarea rows="3" required @bind="_rules.SourceReference"></textarea>
+                </label>
+                <label class="wide-field">
+                    پیوند منابع رسمی دولتی چیست؟
+                    <textarea rows="4" dir="ltr" required @bind="_sourceUrls"></textarea>
+                </label>
+                <label class="wide-field">
+                    چه توضیح حقوقی یا محدودیتی باید همراه این نسخه ثبت شود؟
+                    <textarea rows="3" @bind="_rules.SourceNote"></textarea>
+                </label>
+            </div>
+        </article>
+
+        <article class="panel">
+            <p class="eyebrow">مرحله ۲</p>
+            <h3>مزد و مزایای ثابت قانونی</h3>
+            <div class="rules-grid">
+                <label>حداقل مزد روزانه چند ریال اعلام شده است؟ <RialInput @bind-Value="_rules.MinimumDailyWage" /></label>
+                <label>پایه سنوات روزانه واجدان شرایط چند ریال است؟ <RialInput @bind-Value="_rules.SeniorityDaily" /></label>
+                <label>حق مسکن ماهانه چند ریال است؟ <RialInput @bind-Value="_rules.HousingMonthly" /></label>
+                <label>بن خواربار / اقلام مصرفی ماهانه چند ریال است؟ <RialInput @bind-Value="_rules.FoodMonthly" /></label>
+                <label>حق تأهل ماهانه کارگر متأهل چند ریال است؟ <RialInput @bind-Value="_rules.MarriageMonthly" /></label>
+                <label>حق اولاد هر فرزند چند برابر حداقل مزد روزانه است؟ <input type="number" min="0" step="0.01" required @bind="_rules.ChildMultiplier" /></label>
+                <label class="statutory-field">
+                    مبلغ محاسبه‌شده حق اولاد هر فرزند
+                    <input readonly value="@Fa.Rial(_rules.MinimumDailyWage * _rules.ChildMultiplier)" />
+                </label>
+            </div>
+        </article>
+
+        <article class="panel">
+            <p class="eyebrow">مرحله ۳</p>
+            <h3>نرخ‌های قانون کار و تأمین اجتماعی</h3>
+            <div class="rules-grid">
+                <label>سهم بیمه کارگر چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.WorkerInsuranceRate" /></label>
+                <label>سهم کارفرما با بیمه بیکاری چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.EmployerInsuranceRate" /></label>
+                <label>حداکثر دستمزد روزانه مشمول بیمه چند برابر حداقل مزد است؟ <input type="number" min="1" max="20" step="0.01" required @bind="_rules.MaximumInsurableDailyMultiplier" /></label>
+                <label>فوق‌العاده اضافه‌کاری چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.OvertimePremiumRate" /></label>
+                <label>فوق‌العاده شب‌کاری چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.NightWorkPremiumRate" /></label>
+                <label>فوق‌العاده جمعه‌کاری چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.FridayWorkPremiumRate" /></label>
+                <label>نوبت‌کاری صبح و عصر چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.ShiftMorningEveningRate" /></label>
+                <label>نوبت‌کاری صبح، عصر و شب چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.ShiftThreeShiftRate" /></label>
+                <label>نوبت‌کاری دارای گردش شب چند درصد است؟ <input type="number" min="0" max="100" step="0.01" required @bind="_rules.ShiftNightRotationRate" /></label>
+                <label>حداقل فوق‌العاده هر روز مأموریت چند برابر مزد روزانه است؟ <input type="number" min="0" max="20" step="0.01" required @bind="_rules.MissionMinimumDailyMultiplier" /></label>
+            </div>
+
+            <fieldset class="insurance-checklist">
+                <legend>طبق بخشنامه، کدام اقلام مشمول کسر حق‌بیمه‌اند؟</legend>
+                <label><input type="checkbox" @bind="_rules.Insurable.Base" /> مزد و حقوق پایه</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Seniority" /> پایه سنوات</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Housing" /> حق مسکن</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Food" /> بن خواربار</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Marriage" /> حق تأهل</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Child" /> حق اولاد</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Overtime" /> اضافه‌کاری</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Shift" /> نوبت‌کاری</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Night" /> شب‌کاری</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Friday" /> جمعه‌کاری</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Mission" /> فوق‌العاده مأموریت</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Attraction" /> حق جذب</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Supervisor" /> حق سرپرستی</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Performance" /> کارانه</label>
+                <label><input type="checkbox" @bind="_rules.Insurable.Agreed" /> مزایای توافقی مستمر</label>
+            </fieldset>
+        </article>
+
+        <article class="panel">
+            <p class="eyebrow">مرحله ۴</p>
+            <h3>معافیت و پلکان مالیات حقوق</h3>
+            <label class="tax-exemption-question">
+                معافیت ماهانه مالیات حقوق چند ریال است؟
+                <RialInput @bind-Value="_rules.TaxMonthlyExemption" />
+            </label>
+            <div class="table-wrap tax-bracket-table">
+                <table>
+                    <thead><tr><th>پله</th><th>سقف درآمد مشمول مالیات ماهانه (ریال)</th><th>نرخ همان پله</th></tr></thead>
+                    <tbody>
+                        @for (var i = 0; i < 4; i++)
+                        {
+                            var index = i;
+                            <tr>
+                                <td>@BracketNames[index]</td>
+                                <td><RialInput Value="_brackets[index].Ceiling ?? 0" ValueChanged="v => _brackets[index].Ceiling = v" /></td>
+                                <td><input type="number" min="0" max="100" required @bind="_brackets[index].Rate" />٪</td>
+                            </tr>
+                        }
+                        <tr>
+                            <td>مازاد نهایی</td>
+                            <td>بدون سقف</td>
+                            <td><input type="number" min="0" max="100" required @bind="_brackets[4].Rate" />٪</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </article>
+
+        <article class="panel rules-save-panel">
+            <label class="activate-rule">
+                <input type="checkbox" @bind="_activate" /> این سال بلافاصله مبنای محاسبات حقوق و دستمزد شود.
+            </label>
+            <p class="muted">ثبت تغییر، گزارش قبل/بعد را غیرقابل حذف در سوابق این نسخه نگه می‌دارد و یک اعلان خوانده‌نشده برای مدیرعامل ایجاد می‌کند.</p>
+            <p class="form-message" role="status">@_message</p>
+            <button class="button primary" type="submit">ثبت الزامات و ارسال گزارش به مدیرعامل</button>
+        </article>
+    </form>
+
+    <article class="panel rules-audit-panel">
+        <div class="section-head compact">
+            <div><p class="eyebrow">سوابق کنترل تغییر</p><h3>گزارش‌های ارسال‌شده</h3></div>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>سال</th><th>زمان</th><th>ثبت‌کننده</th><th>عنوان قلم</th><th>مقدار قبل</th><th>مقدار بعد</th></tr></thead>
+                <tbody>
+                    @foreach (var audit in _audits)
+                    {
+                        <tr>
+                            <td>@Fa.N(audit.Year)</td>
+                            <td>@audit.ChangedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                            <td>@audit.ChangedBy</td>
+                            <td>@audit.FieldLabel</td>
+                            <td>@Fa.N(audit.OldValue)</td>
+                            <td>@Fa.N(audit.NewValue)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (_audits.Count == 0)
+        {
+            <p class="empty">هنوز تغییری در الزامات ثبت نشده است.</p>
+        }
+    </article>
+</section>
+
+@code {
+    private static readonly string[] BracketNames = { "اول", "دوم", "سوم", "چهارم", "مازاد نهایی" };
+
+    private RadisHr.Shared.Models.StatutoryRules _rules = new();
+    private List<StatutoryRuleAudit> _audits = new();
+
+    /// <summary>
+    /// همیشه دقیقاً ۵ پله دارد. Blazor یک‌بار پیش از تکمیل OnInitializedAsync رندر می‌کند،
+    /// پس این لیست هرگز نباید خالی باشد وگرنه دسترسی _brackets[index] خطا می‌دهد.
+    /// </summary>
+    private List<TaxBracket> _brackets = NewBrackets();
+
+    private static List<TaxBracket> NewBrackets() =>
+        Enumerable.Range(0, 5).Select(i => new TaxBracket { Ordinal = i }).ToList();
+    private string _sourceUrls = "";
+    private string _message = "";
+    private bool _activate = true;
+    private int _year = PersianCalendarUtil.Today().Jy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadYearAsync();
+        _audits = await Api.GetListAsync<StatutoryRuleAudit>("api/statutory-rules/audits");
+    }
+
+    private async Task LoadYearAsync()
+    {
+        var rules = await Api.GetAsync<StatutoryRules>($"api/statutory-rules/{_year}");
+        if (rules == null) return;
+
+        _rules = rules;
+        _rules.Insurable ??= new InsurableItems();
+        _rules.SourceUrls ??= new List<string>();
+        _sourceUrls = string.Join('\n', _rules.SourceUrls);
+
+        // پله‌های مالیاتی همیشه باید دقیقاً ۵ ردیف باشد؛ کمبود پر و مازاد حذف می‌شود.
+        var loaded = (rules.TaxBrackets ?? new List<TaxBracket>())
+            .OrderBy(b => b.Ordinal)
+            .Select(b => new TaxBracket { Ceiling = b.Ceiling, Rate = b.Rate, Ordinal = b.Ordinal })
+            .ToList();
+        while (loaded.Count < 5) loaded.Add(new TaxBracket { Ordinal = loaded.Count });
+        if (loaded.Count > 5) loaded = loaded.Take(5).ToList();
+        for (var i = 0; i < 5; i++) loaded[i].Ordinal = i;
+        loaded[4].Ceiling = null; // پلهٔ مازاد نهایی سقف ندارد
+        _brackets = loaded;
+    }
+
+    private async Task SaveAsync()
+    {
+        _rules.Year = _year;
+        _rules.SourceUrls = _sourceUrls
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(u => u.Trim()).Where(u => u.Length > 0).ToList();
+
+        _rules.TaxBrackets = _brackets.Select((b, i) => new TaxBracket
+        {
+            Ordinal = i,
+            Ceiling = i == 4 ? null : (b.Ceiling == 0 ? null : b.Ceiling),
+            Rate = b.Rate
+        }).ToList();
+
+        var ok = await Api.SendAsync(HttpMethod.Put, $"api/statutory-rules/{_year}", _rules);
+        _message = ok
+            ? "الزامات ثبت شد و گزارش تغییر برای مدیرعامل ارسال گردید."
+            : "ثبت الزامات انجام نشد.";
+
+        if (ok)
+        {
+            _audits = await Api.GetListAsync<StatutoryRuleAudit>("api/statutory-rules/audits");
+            await LoadYearAsync();
+        }
+    }
+}

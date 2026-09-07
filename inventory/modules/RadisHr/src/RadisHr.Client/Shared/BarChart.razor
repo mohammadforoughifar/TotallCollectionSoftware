@@ -1,0 +1,33 @@
+@* نمودار میله‌ای افقی — همان ساختار .bar-chart نسخهٔ اصلی *@
+<div class="bar-chart">
+    @foreach (var item in Items)
+    {
+        var max = Items.Count == 0 ? 1m : Math.Max(1m, Items.Max(i => Math.Abs(i.Value)));
+        var width = (double)(Math.Abs(item.Value) / max * 100m);
+        <div>
+            <span>@item.Label</span>
+            <i><b style="width:@width.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)%"></b></i>
+            <strong>@Format(item.Value)</strong>
+        </div>
+    }
+    @if (Items.Count == 0)
+    {
+        <p class="empty">داده‌ای برای نمایش وجود ندارد.</p>
+    }
+</div>
+
+@code {
+    public record Item(string Label, decimal Value);
+
+    [Parameter] public List<Item> Items { get; set; } = new();
+    [Parameter] public string Suffix { get; set; } = "";
+    [Parameter] public int Decimals { get; set; } = 0;
+
+    private string Format(decimal value)
+    {
+        var text = Decimals == 0
+            ? Fa.N(Math.Round(value))
+            : Fa.N((double)value);
+        return string.IsNullOrEmpty(Suffix) ? text : $"{text} {Suffix}";
+    }
+}

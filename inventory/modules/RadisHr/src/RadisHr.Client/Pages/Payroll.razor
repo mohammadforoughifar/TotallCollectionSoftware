@@ -1,0 +1,235 @@
+@page "/payroll"
+@inject ApiClient Api
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+<section class="page">
+    <div class="section-head">
+        <div><p class="eyebrow">حقوق و دستمزد</p><h2>فیش حقوقی @Fa.MonthLabel(_month)</h2></div>
+        <div class="head-actions">
+            <select @bind="_month" @bind:after="LoadMonthAsync">
+                @foreach (var month in _months)
+                {
+                    <option value="@month">@Fa.MonthLabel(month)</option>
+                }
+            </select>
+            <select @bind="_code" @bind:after="RenderAsync">
+                @foreach (var employee in _employees)
+                {
+                    <option value="@employee.Code">@employee.FullName — @Fa.N(employee.Code)</option>
+                }
+            </select>
+            <button class="button primary" type="button" @onclick="PrintAsync">چاپ A5 فیش</button>
+            <button class="button secondary" type="button" @onclick="ExportAsync">خروجی Excel</button>
+        </div>
+    </div>
+
+    <article id="payslip" class="panel payslip">
+        @if (_row == null || _employee == null)
+        {
+            <p class="empty">برای این ماه ردیف حقوقی محاسبه نشده است. ابتدا در صفحهٔ حضور و غیاب «صحه‌گذاری داده‌ها» را اجرا کنید.</p>
+        }
+        else
+        {
+            <div class="payslip-head">
+                <div>
+                    <b>شرکت آورین بن سازه راد</b>
+                    <span>فیش حقوق و دستمزد — @Fa.MonthLabel(_month)</span>
+                </div>
+                <strong>RADIS-HR</strong>
+            </div>
+
+            <div class="payslip-person">
+                <span>نام: <b>@_row.Name</b></span>
+                <span>کد پرسنلی: <b>@Fa.N(_row.Code)</b></span>
+                <span>کد دستگاه: <b>@Fa.N(_row.DeviceCode)</b></span>
+                <span>واحد: <b>@_employee.Unit</b></span>
+            </div>
+
+            @if (Blocked)
+            {
+                <div class="payroll-warning">
+                    این فرد در فایل دستگاه تطبیق نشده است؛ فیش تا زمان تأیید کد دستگاه، غیرقابل پرداخت است.
+                </div>
+            }
+
+            <div class="work-summary">
+                <span>حضور <b>@Fa.N(_row.Presence)</b></span>
+                <span>مرخصی ساعتی <b>@Fa.N(_row.Leave)</b></span>
+                <span>ماموریت <b>@Fa.N(_row.Mission)</b></span>
+                <span>کسرکار <b>@Fa.N(_row.Shortfall)</b></span>
+                <span>اضافه‌کار مجاز <b>@Fa.N(_row.Ot)</b></span>
+            </div>
+
+            <div class="payslip-columns">
+                <table>
+                    <thead><tr><th>شرح پرداخت</th><th>مبلغ (ریال)</th></tr></thead>
+                    <tbody>
+                        <tr><td>حقوق پایه پرداختی</td><td>@Fa.N(_row.Base)</td></tr>
+                        <tr><td>پایه سنوات</td><td>@Fa.N(_row.Seniority)</td></tr>
+                        <tr><td>حق مسکن</td><td>@Fa.N(_row.Housing)</td></tr>
+                        <tr><td>بن خواربار / اقلام مصرفی</td><td>@Fa.N(_row.Food)</td></tr>
+                        <tr><td>حق تأهل</td><td>@Fa.N(_row.Marriage)</td></tr>
+                        <tr><td>حق اولاد (@Fa.N(_employee.Children) فرزند)</td><td>@Fa.N(_row.Children)</td></tr>
+                        <tr><td>حق جذب</td><td>@Fa.N(_row.Attraction)</td></tr>
+                        <tr><td>حق سرپرستی</td><td>@Fa.N(_row.Supervisor)</td></tr>
+                        <tr><td>کارانه</td><td>@Fa.N(Performance)</td></tr>
+                        <tr><td>بهره‌وری</td><td>@Fa.N(Productivity)</td></tr>
+                        <tr><td>سایر پرداختی‌ها</td><td>@Fa.N(OtherPayments)</td></tr>
+                        <tr><td>مزایای توافقی</td><td>@Fa.N(_row.Agreed)</td></tr>
+                        <tr><td>نوبت‌کاری / شب‌کاری</td><td>@Fa.N(_row.ShiftPay + _row.NightPay)</td></tr>
+                        <tr><td>جمعه‌کاری / مأموریت</td><td>@Fa.N(_row.FridayPay + _row.MissionPay)</td></tr>
+                        <tr><td>اضافه‌کار مجاز</td><td>@Fa.N(Overtime)</td></tr>
+                        <tr><td>سهم کارخانه از بیمه تکمیلی (غیرنقدی)</td><td>@Fa.N(_employee.SupplementaryEmployerShare)</td></tr>
+                    </tbody>
+                </table>
+
+                <table>
+                    <thead><tr><th>شرح کسورات</th><th>مبلغ (ریال)</th></tr></thead>
+                    <tbody>
+                        <tr><td>کسرکار</td><td>@Fa.N(ShortfallPay)</td></tr>
+                        <tr><td>بیمه سهم کارگر (@Fa.Percent(_rules?.WorkerInsuranceRate ?? 7m))</td><td>@Fa.N(Insurance)</td></tr>
+                        <tr><td>مالیات حقوق</td><td>@Fa.N(Tax)</td></tr>
+                        <tr><td>سهم پرسنل از بیمه تکمیلی</td><td>@Fa.N(_employee.SupplementaryEmployeeShare)</td></tr>
+                        <tr><td>قسط مساعده این ماه</td><td>@Fa.N(AdvanceInstallmentAmount)</td></tr>
+                        <tr><td>سایر کسورات</td><td>۰</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="payslip-advance-summary">
+                <span>اصل مساعده ثبت‌شده: <b>@Fa.N(AdvanceTotal)</b> ریال</span>
+                <span>قسط کسرشده این ماه: <b>@Fa.N(AdvanceInstallmentAmount)</b> ریال</span>
+                <span>مانده مساعده: <b>@Fa.N(AdvanceBalance)</b> ریال</span>
+            </div>
+
+            <div class="payslip-total">
+                <span>جمع ناخالص: <b>@Fa.N(AdjustedGross)</b></span>
+                <span>جمع کسورات: <b>@Fa.N(TotalDeductions)</b></span>
+                <span>خالص پرداختی: <strong>@Fa.N(AdjustedNet) ریال</strong></span>
+            </div>
+
+            <div class="payslip-signatures">
+                <span>امضای مدیر اداری</span>
+                <span>امضای مدیر مالی</span>
+            </div>
+        }
+    </article>
+</section>
+
+@code {
+    private List<Employee> _employees = new();
+    private List<string> _months = new();
+    private List<PayrollRow> _rows = new();
+    private List<Advance> _advances = new();
+    private AccountingMonthDto? _accounting;
+    private StatutoryRules? _rules;
+
+    private Employee? _employee;
+    private PayrollRow? _row;
+    private AccountingAdjustment? _adjustment;
+
+    private string _month = "";
+    private string _code = "";
+
+    private bool Blocked => _row != null && !_row.Status.Contains("قطعی") && !string.IsNullOrEmpty(_row.Status);
+
+    private decimal Overtime => _adjustment?.Overtime ?? _row?.OtPay ?? 0m;
+    private decimal ShortfallPay => _adjustment?.Shortfall ?? _row?.ShortfallPay ?? 0m;
+    private decimal Insurance => _adjustment?.Insurance ?? _row?.Insurance ?? 0m;
+    private decimal Tax => _adjustment?.Tax ?? _row?.Tax ?? 0m;
+    private decimal Performance => _adjustment?.Performance ?? _row?.Performance ?? 0m;
+    private decimal Productivity => _adjustment?.Productivity ?? 0m;
+    private decimal OtherPayments => _adjustment?.OtherPayments ?? 0m;
+
+    private IEnumerable<Advance> EmployeeAdvances => _advances.Where(a => a.EmployeeCode == _code);
+    private decimal AdvanceTotal => EmployeeAdvances.Sum(a => a.Amount);
+    private decimal AdvanceBalance => EmployeeAdvances.Sum(a => a.Amount - a.Deducted);
+    private decimal AdvanceInstallmentAmount => EmployeeAdvances
+        .SelectMany(a => a.Installments)
+        .Where(i => i.Month == _month)
+        .Sum(i => i.Amount);
+
+    private decimal Supplementary => _employee?.SupplementaryEmployeeShare ?? 0m;
+
+    private decimal AdjustedNet => _adjustment?.FinalNet
+        ?? Math.Max(0m, (_row?.Net ?? 0m) - AdvanceInstallmentAmount - Supplementary);
+
+    private decimal TotalDeductions => ShortfallPay + Insurance + Tax + Supplementary + AdvanceInstallmentAmount;
+    private decimal AdjustedGross => AdjustedNet + TotalDeductions;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = await Api.GetListAsync<Employee>("api/employees");
+        _months = await Api.GetListAsync<string>("api/payroll/months");
+        if (_months.Count == 0)
+        {
+            var today = PersianCalendarUtil.Today();
+            _months.Add($"{today.Jy}/{today.Jm:00}");
+        }
+        _month = _months.Count > 0 ? _months[^1] : "";
+        _code = _employees.FirstOrDefault()?.Code ?? "";
+        _advances = await Api.GetListAsync<Advance>("api/workflows/advances");
+        await LoadMonthAsync();
+    }
+
+    private async Task LoadMonthAsync()
+    {
+        _rows = await Api.GetListAsync<PayrollRow>($"api/payroll/month/{_month}");
+        _accounting = await Api.GetAsync<AccountingMonthDto>($"api/workflows/accounting/{_month}");
+
+        var year = int.TryParse(_month.Split('/').FirstOrDefault(), out var y) ? y : PersianCalendarUtil.Today().Jy;
+        _rules = await Api.GetAsync<StatutoryRules>($"api/statutory-rules/{year}");
+        await RenderAsync();
+    }
+
+    private Task RenderAsync()
+    {
+        _row = _rows.FirstOrDefault(r => r.Code == _code);
+        _employee = _employees.FirstOrDefault(e => e.Code == _code);
+        _adjustment = _accounting?.Rows.FirstOrDefault(r => r.Row.Code == _code)?.Adjustment;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task PrintAsync() => await JS.InvokeVoidAsync("radisInterop.printPayslip", "payslip");
+
+    private async Task ExportAsync()
+    {
+        var headers = new[]
+        {
+            "کد","نام","حقوق پایه","پایه سنوات","حق مسکن","بن خواربار","حق تأهل","حق اولاد","حق جذب","حق سرپرستی",
+            "کارانه نهایی","بهره‌وری","سایر پرداختی‌ها","مزایای توافقی","نوبت‌کاری","شب‌کاری","جمعه‌کاری","مأموریت",
+            "اضافه‌کار نهایی","جمع ناخالص","کسرکار نهایی","بیمه سهم کارگر نهایی","بیمه سهم کارفرما",
+            "درآمد مشمول مالیات","مالیات نهایی","اعضای بیمه تکمیلی","سهم پرسنل بیمه تکمیلی","سهم کارخانه بیمه تکمیلی",
+            "کسر مساعده","خالص پرداختی نهایی"
+        };
+
+        var lines = new List<string> { string.Join(',', headers) };
+        foreach (var row in _rows)
+        {
+            var employee = _employees.FirstOrDefault(e => e.Code == row.Code);
+            var adjustment = _accounting?.Rows.FirstOrDefault(r => r.Row.Code == row.Code)?.Adjustment;
+            var advance = _advances.Where(a => a.EmployeeCode == row.Code)
+                .SelectMany(a => a.Installments).Where(i => i.Month == _month).Sum(i => i.Amount);
+            var supplementary = employee?.SupplementaryEmployeeShare ?? 0m;
+            var finalNet = adjustment?.FinalNet ?? Math.Max(0m, row.Net - supplementary - advance);
+
+            lines.Add(string.Join(',',
+                row.Code, row.Name, row.Base, row.Seniority, row.Housing, row.Food, row.Marriage, row.Children,
+                row.Attraction, row.Supervisor,
+                adjustment?.Performance ?? row.Performance, adjustment?.Productivity ?? 0m, adjustment?.OtherPayments ?? 0m,
+                row.Agreed, row.ShiftPay, row.NightPay, row.FridayPay, row.MissionPay,
+                adjustment?.Overtime ?? row.OtPay, row.Gross,
+                adjustment?.Shortfall ?? row.ShortfallPay, adjustment?.Insurance ?? row.Insurance,
+                row.EmployerInsurance, row.TaxableIncome, adjustment?.Tax ?? row.Tax,
+                employee?.SupplementaryFamilyCount ?? 0, supplementary,
+                employee?.SupplementaryEmployerShare ?? 0m, advance, finalNet));
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes(string.Join('\n', lines))).ToArray();
+        await JS.InvokeVoidAsync("radisInterop.downloadFile",
+            $"RADIS-HR-Payroll-{_month.Replace('/', '-')}.csv", "text/csv", Convert.ToBase64String(bytes));
+    }
+}
