@@ -69,23 +69,6 @@ public class AuthService : IAuthService
             Console.WriteLine($"[Auth] معرف «{user.Username}» به‌صورت خودکار ساخته و به کاربر متصل شد.");
         }
 
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.Username),
-            new(ClaimTypes.Role, user.Role)
-        };
-        if (user.ReferrerId is > 0)
-            claims.Add(new Claim("referrerId", user.ReferrerId.Value.ToString()));
-
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey));
-        var token = new JwtSecurityToken(
-            issuer: JwtIssuer,
-            audience: JwtIssuer,
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(12),
-            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
-
         var display = user.Username;
         if (user.ReferrerId is > 0)
         {
@@ -129,6 +112,36 @@ public class AuthService : IAuthService
                     .Select(p => p.Module + "." + p.Action).ToListAsync()
             };
         }
+
+        // توکن واحد برنامه شامل دسترسی‌های مؤثر است؛ Host ماژول RADIS-HR نیز همین
+        // توکن را اعتبارسنجی می‌کند و بنابراین ورود مجدد یا حساب کاربری جدا لازم نیست.
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.Username),
+            new(ClaimTypes.Role, user.Role)
+        };
+        if (user.ReferrerId is > 0)
+            claims.Add(new Claim("referrerId", user.ReferrerId.Value.ToString()));
+        claims.AddRange(permissions.Select(permission => new Claim("permission", permission)));
+
+        // کنترلرهای اصلی RADIS-HR در دو عملیات مدیریتی نقش‌های legacy خود ماژول را
+        // بررسی می‌کنند. مدیر هسته هر دو نقش مدیریتی را در توکن واحد دریافت می‌کند.
+        if (user.Role == "Admin" || permissions.Contains("RadisHr.Access", StringComparer.OrdinalIgnoreCase))
+        {
+            // RadisHr.Access در نسخه V019 مجوز کل ماژول است؛ نقش‌های زیر فقط برای حفظ
+            // قواعد Authorize اصلی کنترلرها به توکن SSO افزوده می‌شوند.
+            foreach (var radisRole in new[] { "hr", "ceo", "guard", "hse", "warehouse", "production", "finance", "accounting" })
+                claims.Add(new Claim(ClaimTypes.Role, radisRole));
+        }
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey));
+        var token = new JwtSecurityToken(
+            issuer: JwtIssuer,
+            audience: JwtIssuer,
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(12),
+            signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
 
         return new LoginResponse
         {
