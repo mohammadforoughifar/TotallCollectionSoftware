@@ -1,0 +1,256 @@
+@page "/hr/organization-structure"
+@page "/radis-hr/organization-structure"
+@using System.Text
+@using global::RadisHr.Shared.Models
+@inject RadisHrApiClient Api
+@inject IToastService Toasts
+@inject IJSRuntime JS
+
+<section class="page">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">مدیریت واحدها و جایگاه‌ها</p>
+            <h2>واحدهای سازمانی و ماتریس پرسنل</h2>
+            <p class="muted">واحدها، ایستگاه‌های کاری و جایگاه پرسنل در ماتریس قابل تعریف و مشاهده هستند.</p>
+        </div>
+        <button class="button secondary" type="button" @onclick="ExportMatrixAsync">خروجی ماتریس</button>
+    </div>
+
+    <div class="organization-layout">
+        <article class="panel">
+            <div class="section-head compact">
+                <div><p class="eyebrow">مدیریت ساختار</p><h3>تعریف واحد و زیرمجموعه</h3></div>
+                <span class="badge">ویژه واحد اداری</span>
+            </div>
+
+            <form class="organization-inline-form" @onsubmit="AddDepartmentAsync" @onsubmit:preventDefault="true">
+                <label>واحد جدید <input maxlength="80" required placeholder="مثلاً تعمیرات" @bind="_newDepartment" /></label>
+                <button class="button secondary add-button" type="submit"><span>+</span> افزودن واحد</button>
+            </form>
+
+            <form class="organization-inline-form" @onsubmit="AddStationAsync" @onsubmit:preventDefault="true">
+                <label>واحد سازمانی
+                    <select required @bind="_stationDepartmentId">
+                        <option value="0">— انتخاب واحد —</option>
+                        @foreach (var department in _departments)
+                        {
+                            <option value="@department.Id">@department.Name</option>
+                        }
+                    </select>
+                </label>
+                <label>ایستگاه کاری جدید <input maxlength="100" required placeholder="مثلاً اپراتور میکسر" @bind="_newStation" /></label>
+                <button class="button primary add-button" type="submit"><span>+</span> افزودن زیرمجموعه</button>
+            </form>
+
+            <p class="form-message" role="status">@_message</p>
+
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>واحد</th><th>ایستگاه‌های کاری</th><th>پرسنل</th><th>عملیات</th></tr></thead>
+                    <tbody>
+                        @foreach (var department in _departments)
+                        {
+                            var unit = department;
+                            <tr>
+                                <td>@unit.Name</td>
+                                <td>
+                                    @if (unit.Stations.Count == 0)
+                                    {
+                                        <span class="muted">—</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var station in unit.Stations)
+                                        {
+                                            var s = station;
+                                            <span class="chip">
+                                                @s.Name
+                                                <button class="chip-remove" type="button" title="حذف ایستگاه"
+                                                        @onclick="() => RemoveStationAsync(unit, s)">×</button>
+                                            </span>
+                                        }
+                                    }
+                                </td>
+                                <td>@Fa.N(CountOf(unit.Name))</td>
+                                <td class="row-actions">
+                                    <button class="button danger-outline" type="button" @onclick="() => DeleteDepartmentAsync(unit)">حذف واحد</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (_departments.Count == 0)
+            {
+                <p class="empty">هنوز واحدی تعریف نشده است.</p>
+            }
+        </article>
+    </div>
+
+    <article class="panel personnel-matrix-panel">
+        <div class="section-head compact">
+            <div><p class="eyebrow">نمودار ماتریسی</p><h3>جایگاه پرسنل بر اساس واحد، ایستگاه و سطح سازمانی</h3></div>
+            <label>واحد
+                <select @bind="_matrixUnitFilter">
+                    <option value="">همه واحدها</option>
+                    @foreach (var unit in _matrix)
+                    {
+                        <option value="@unit.Unit">@unit.Unit</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        <div class="personnel-matrix">
+            <div class="table-wrap">
+                <table class="matrix-table">
+                    <thead>
+                        <tr>
+                            <th>واحد / ایستگاه</th>
+                            @foreach (var level in _levels) { <th>@level</th> }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (VisibleStations.Count == 0)
+                        {
+                            <tr><td colspan="@(_levels.Count + 1)">ایستگاه کاری ثبت نشده است.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var slot in VisibleStations)
+                            {
+                                var cell = slot;
+                                <tr>
+                                    <th><strong>@cell.Unit</strong><span>@cell.Station</span></th>
+                                    @foreach (var level in _levels)
+                                    {
+                                        var people = cell.Employees.Where(p => p.ResponsibilityLevel == level).ToList();
+                                        <td>
+                                            @if (people.Count == 0)
+                                            {
+                                                <span class="matrix-empty">—</span>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var person in people)
+                                                {
+                                                    <span class="person-chip">
+                                                        <b>@person.Name</b>
+                                                        <small>@(string.IsNullOrWhiteSpace(person.PositionTitle) ? Fa.N(person.Code) : person.PositionTitle)</small>
+                                                    </span>
+                                                }
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </article>
+</section>
+
+@code {
+    private List<Department> _departments = new();
+    private List<MatrixUnitDto> _matrix = new();
+    private List<string> _levels = new();
+    private List<Employee> _employees = new();
+
+    private string _newDepartment = "";
+    private string _newStation = "";
+    private int _stationDepartmentId;
+    private string _matrixUnitFilter = "";
+    private string _message = "";
+
+    private IEnumerable<MatrixUnitDto> FilteredMatrix =>
+        string.IsNullOrEmpty(_matrixUnitFilter) ? _matrix : _matrix.Where(u => u.Unit == _matrixUnitFilter);
+
+    private record MatrixSlot(string Unit, string Station, List<MatrixPersonDto> Employees);
+
+    /// <summary>ردیف‌های ماتریس: هر ایستگاه کاری یک سطر، ستون‌ها سطوح مسئولیت</summary>
+    private List<MatrixSlot> VisibleStations =>
+        FilteredMatrix.SelectMany(u => u.Stations
+            .Select(s => new MatrixSlot(u.Unit, s.Station, s.Employees))).ToList();
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _departments = await Api.GetListAsync<Department>("api/organization/departments");
+        _matrix = await Api.GetListAsync<MatrixUnitDto>("api/organization/matrix");
+        _levels = await Api.GetListAsync<string>("api/organization/levels");
+        _employees = await Api.GetListAsync<Employee>("api/employees");
+    }
+
+    private int CountOf(string unit) => _employees.Count(e => e.Unit == unit);
+
+    private async Task AddDepartmentAsync()
+    {
+        var name = _newDepartment.Trim();
+        if (name.Length == 0) { _message = "نام واحد را وارد کنید."; return; }
+
+        var ok = await Api.SendAsync(HttpMethod.Post, "api/organization/departments", new Department { Name = name });
+        if (!ok) return;
+
+        _newDepartment = "";
+        _message = "واحد جدید ثبت شد.";
+        await ReloadAsync();
+    }
+
+    private async Task AddStationAsync()
+    {
+        var name = _newStation.Trim();
+        var department = _departments.FirstOrDefault(d => d.Id == _stationDepartmentId);
+        if (department == null || name.Length == 0) { _message = "واحد و نام ایستگاه کاری الزامی است."; return; }
+        if (department.Stations.Any(s => s.Name == name)) { _message = "این ایستگاه کاری قبلاً ثبت شده است."; return; }
+
+        var stations = department.Stations.Select(s => new WorkStation { Name = s.Name }).ToList();
+        stations.Add(new WorkStation { Name = name });
+
+        var ok = await Api.SendAsync(HttpMethod.Put, $"api/organization/departments/{department.Id}",
+            new Department { Id = department.Id, Name = department.Name, Stations = stations });
+        if (!ok) return;
+
+        _newStation = "";
+        _message = "ایستگاه کاری افزوده شد.";
+        await ReloadAsync();
+    }
+
+    private async Task RemoveStationAsync(Department department, WorkStation station)
+    {
+        var stations = department.Stations.Where(s => s.Id != station.Id)
+            .Select(s => new WorkStation { Name = s.Name }).ToList();
+
+        var ok = await Api.SendAsync(HttpMethod.Put, $"api/organization/departments/{department.Id}",
+            new Department { Id = department.Id, Name = department.Name, Stations = stations });
+        if (ok) await ReloadAsync();
+    }
+
+    private async Task DeleteDepartmentAsync(Department department)
+    {
+        var ok = await Api.SendAsync(HttpMethod.Delete, $"api/organization/departments/{department.Id}");
+        if (ok) await ReloadAsync();
+    }
+
+    private async Task ExportMatrixAsync()
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("واحد,ایستگاه کاری,کد پرسنلی,نام,سطح مسئولیت,عنوان شغلی");
+
+        foreach (var unit in _matrix)
+        {
+            foreach (var station in unit.Stations)
+                foreach (var person in station.Employees)
+                    csv.AppendLine($"{unit.Unit},{station.Station},{person.Code},{person.Name},{person.ResponsibilityLevel},{person.PositionTitle}");
+
+            foreach (var person in unit.Unassigned)
+                csv.AppendLine($"{unit.Unit},—,{person.Code},{person.Name},{person.ResponsibilityLevel},");
+        }
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        await JS.InvokeVoidAsync("radisInterop.downloadFile", "personnel-matrix.csv", "text/csv", Convert.ToBase64String(bytes));
+        Toasts.Success("خروجی ماتریس پرسنل آماده شد.");
+    }
+}

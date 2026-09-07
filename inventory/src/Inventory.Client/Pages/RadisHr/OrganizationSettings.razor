@@ -1,0 +1,331 @@
+@page "/hr/organization-settings"
+@page "/radis-hr/organization-settings"
+@using System.Text
+@using global::RadisHr.Shared.Models
+@inject RadisHrApiClient Api
+@inject IToastService Toasts
+@inject IJSRuntime JS
+
+<section class="page">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">تنظیمات الزامات حضور و غیاب</p>
+            <h2>تقویم سازمان و ساعات کاری واحدها</h2>
+            <p class="muted">این بخش فقط برای مالک فرآیند اداری قابل ویرایش است.</p>
+        </div>
+        <button class="button secondary" type="button" @onclick="ExportSettingsAsync">خروجی تنظیمات</button>
+    </div>
+
+    <div class="settings-grid">
+        <article class="panel calendar-card">
+            <div class="calendar-toolbar">
+                <button class="year-button" type="button" @onclick="() => ShiftYear(-1)">سال قبل</button>
+                <button class="icon-button" type="button" aria-label="ماه قبل" @onclick="() => ShiftMonth(-1)">‹</button>
+                <div>
+                    <strong>@_calendar.MonthName @Fa.N(_year)</strong>
+                    <small>سالنامه شمسی سازمان</small>
+                </div>
+                <button class="icon-button" type="button" aria-label="ماه بعد" @onclick="() => ShiftMonth(1)">›</button>
+                <button class="year-button" type="button" @onclick="() => ShiftYear(1)">سال بعد</button>
+            </div>
+
+            <div class="calendar-weekdays"><span>ش</span><span>ی</span><span>د</span><span>س</span><span>چ</span><span>پ</span><span>ج</span></div>
+
+            <div class="calendar-grid">
+                @for (var blank = 0; blank < _calendar.LeadingBlanks; blank++)
+                {
+                    <span class="calendar-day empty"></span>
+                }
+                @foreach (var cell in _calendar.Cells)
+                {
+                    var day = cell;
+                    var css = "calendar-day"
+                        + (day.IsFriday ? " friday" : "")
+                        + (day.IsHoliday && day.Type == "friday" ? " friday-like" : "")
+                        + (day.IsHoliday && day.Type != "friday" ? " other-holiday" : "")
+                        + (day.Date == PersianCalendarUtil.TodayKey() ? " today" : "")
+                        + (day.Date == _selectedDate ? " selected" : "");
+                    <button type="button" class="@css" title="@day.Title" @onclick="() => SelectDay(day)">
+                        <b>@Fa.N(day.Day)</b>
+                        @if (day.IsHoliday)
+                        {
+                            <small>@day.Title</small>
+                        }
+                    </button>
+                }
+            </div>
+
+            <div class="calendar-legend">
+                <span><i class="friday-like"></i>تعطیل مشابه جمعه — ضریب اضافه‌کاری ۱٫۸</span>
+                <span><i class="other-holiday"></i>سایر تعطیلات</span>
+            </div>
+
+            <div class="form-actions">
+                <button class="button secondary" type="button" @onclick="GenerateFridaysAsync">افزودن خودکار جمعه‌های سال @Fa.N(_year)</button>
+            </div>
+        </article>
+
+        <article class="panel holiday-editor">
+            <p class="eyebrow">تعریف روز تعطیل</p>
+            <h3>@(string.IsNullOrEmpty(_selectedDate) ? "ابتدا یک روز را انتخاب کنید" : Fa.N(_selectedDate))</h3>
+            <label>عنوان تعطیلی <input placeholder="مثلاً تعطیلی رسمی یا تعطیلی شرکت" @bind="_holidayTitle" /></label>
+            <label>نوع روز
+                <select @bind="_holidayType">
+                    <option value="friday">مشابه جمعه — ضریب اضافه‌کاری ۱٫۸</option>
+                    <option value="other">سایر روزهای تعطیل</option>
+                </select>
+            </label>
+            <div class="form-actions">
+                <button class="button primary" type="button" @onclick="SaveHolidayAsync">ثبت روز تعطیل</button>
+                <button class="button danger-outline" type="button" @onclick="RemoveHolidayAsync">حذف تعطیلی</button>
+            </div>
+            <p class="form-message">@_holidayMessage</p>
+        </article>
+    </div>
+
+    <article class="panel schedule-card">
+        <div class="section-head compact">
+            <div><p class="eyebrow">الزام حضور واحدها</p><h3>ساعت کاری و سیاست تأخیر/تعجیل</h3></div>
+            <label>واحد سازمانی
+                <select value="@_selectedUnit" @onchange="OnUnitChanged">
+                    @foreach (var unit in _units)
+                    {
+                        <option value="@unit">@unit</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        <form class="schedule-form" @onsubmit="SaveScheduleAsync" @onsubmit:preventDefault="true">
+            <fieldset>
+                <legend>ساعت موظفی</legend>
+                <label>شروع کار <input type="time" required value="@_schedule.WorkStart" @onchange="e => _schedule.WorkStart = Text(e)" /></label>
+                <label>پایان کار <input type="time" required value="@_schedule.WorkEnd" @onchange="e => _schedule.WorkEnd = Text(e)" /></label>
+            </fieldset>
+
+            <fieldset>
+                <legend>بازه ارفاقی بدون کسر یا اضافه‌کار</legend>
+                <label>ارفاق ورود دیرتر <input type="number" min="0" max="180" required @bind="_schedule.EntryGrace" /><small>دقیقه</small></label>
+                <label>ارفاق ورود زودتر <input type="number" min="0" max="180" required @bind="_schedule.EarlyEntryGrace" /><small>دقیقه؛ اضافه‌کار محسوب نمی‌شود</small></label>
+                <label>ارفاق خروج زودتر <input type="number" min="0" max="180" required @bind="_schedule.ExitGrace" /><small>دقیقه</small></label>
+                <label>ارفاق خروج دیرتر <input type="number" min="0" max="180" required @bind="_schedule.LateExitGrace" /><small>دقیقه؛ اضافه‌کار محسوب نمی‌شود</small></label>
+            </fieldset>
+
+            <fieldset>
+                <legend>حد مجاز بدون برگه مرخصی</legend>
+                <label>حداکثر تأخیر ورود <input type="number" min="0" max="480" required @bind="_schedule.MaxLateWithoutLeave" /><small>دقیقه</small></label>
+                <label>حداکثر تعجیل خروج <input type="number" min="0" max="480" required @bind="_schedule.MaxEarlyWithoutLeave" /><small>دقیقه</small></label>
+            </fieldset>
+
+            <fieldset>
+                <legend>اقدام سیستم برای زمان غیرارفاقیِ بدون برگه</legend>
+                <label class="wide-field">استراتژی
+                    <select @bind="_schedule.AbsenceStrategy">
+                        <option value="leaveThenDeduction">ابتدا کسر از مانده مرخصی؛ در صورت ناکافی بودن، کسرکار</option>
+                        <option value="deductionOnly">مستقیماً کسرکار</option>
+                        <option value="leaveOnly">فقط کسر از مانده مرخصی</option>
+                        <option value="review">ارسال برای بررسی مدیر اداری</option>
+                    </select>
+                </label>
+            </fieldset>
+
+            <div class="rule-preview">
+                <p>
+                    ساعت موظفی واحد «@_selectedUnit» از <b>@Fa.N(_schedule.WorkStart)</b> تا <b>@Fa.N(_schedule.WorkEnd)</b> است؛
+                    ورود تا <b>@Fa.N(_schedule.EntryGrace)</b> دقیقه دیرتر و خروج تا <b>@Fa.N(_schedule.ExitGrace)</b> دقیقه زودتر بدون کسرکار پذیرفته می‌شود.
+                </p>
+                <p>
+                    ورود زودتر تا <b>@Fa.N(_schedule.EarlyEntryGrace)</b> دقیقه و خروج دیرتر تا <b>@Fa.N(_schedule.LateExitGrace)</b> دقیقه
+                    اضافه‌کاری محاسبه نمی‌شود. تأخیر بیش از <b>@Fa.N(_schedule.MaxLateWithoutLeave)</b> دقیقه یا تعجیل بیش از
+                    <b>@Fa.N(_schedule.MaxEarlyWithoutLeave)</b> دقیقه بدون برگه مرخصی، مطابق سیاست «@StrategyLabel(_schedule.AbsenceStrategy)» اعمال می‌شود.
+                </p>
+            </div>
+
+            <div class="form-actions">
+                <button class="button primary" type="submit">ذخیره تنظیمات واحد</button>
+                <button class="button secondary" type="button" @onclick="CopyToAllAsync">اعمال همین تنظیمات برای همه واحدها</button>
+            </div>
+            <p class="form-message">@_scheduleMessage</p>
+        </form>
+    </article>
+</section>
+
+@code {
+    private CalendarMonthDto _calendar = new();
+    private List<Holiday> _holidays = new();
+    private List<UnitSchedule> _schedules = new();
+    private List<string> _units = new();
+
+    private UnitSchedule _schedule = new();
+    private int _year = PersianCalendarUtil.Today().Jy;
+    private int _month = PersianCalendarUtil.Today().Jm;
+
+    private string _selectedDate = "";
+    private string _holidayTitle = "";
+    private string _holidayType = "friday";
+    private string _holidayMessage = "";
+    private string _selectedUnit = "";
+    private string _scheduleMessage = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var departments = await Api.GetListAsync<Department>("api/organization/departments");
+        _units = departments.Select(d => d.Name).ToList();
+        _schedules = await Api.GetListAsync<UnitSchedule>("api/organization/schedules");
+
+        _selectedUnit = _units.FirstOrDefault() ?? "";
+        LoadSchedule();
+        await LoadCalendarAsync();
+    }
+
+    private static string Text(ChangeEventArgs args) => args.Value?.ToString() ?? "";
+
+    private static string StrategyLabel(string strategy) => strategy switch
+    {
+        "deductionOnly" => "مستقیماً کسرکار",
+        "leaveOnly" => "فقط کسر از مانده مرخصی",
+        "review" => "ارسال برای بررسی مدیر اداری",
+        _ => "ابتدا کسر از مانده مرخصی، سپس کسرکار"
+    };
+
+    private async Task LoadCalendarAsync()
+    {
+        _calendar = await Api.GetAsync<CalendarMonthDto>($"api/organization/calendar?year={_year}&month={_month}") ?? new CalendarMonthDto();
+        _holidays = await Api.GetListAsync<Holiday>($"api/organization/holidays?year={_year}");
+    }
+
+    private async void ShiftMonth(int delta)
+    {
+        _month += delta;
+        if (_month > 12) { _month = 1; _year++; }
+        if (_month < 1) { _month = 12; _year--; }
+        await LoadCalendarAsync();
+        StateHasChanged();
+    }
+
+    private async void ShiftYear(int delta)
+    {
+        _year += delta;
+        await LoadCalendarAsync();
+        StateHasChanged();
+    }
+
+    private void SelectDay(CalendarCellDto cell)
+    {
+        _selectedDate = cell.Date;
+        _holidayTitle = cell.IsHoliday ? cell.Title : "";
+        _holidayType = cell.IsHoliday && !string.IsNullOrEmpty(cell.Type) ? cell.Type : "friday";
+        _holidayMessage = "";
+    }
+
+    private async Task SaveHolidayAsync()
+    {
+        if (string.IsNullOrEmpty(_selectedDate)) { _holidayMessage = "ابتدا یک روز را از تقویم انتخاب کنید."; return; }
+
+        var existing = _holidays.FirstOrDefault(h => h.Date == _selectedDate);
+        if (existing != null) await Api.DeleteAsync($"api/organization/holidays/{existing.Id}");
+
+        var ok = await Api.SendAsync(HttpMethod.Post, "api/organization/holidays", new Holiday
+        {
+            Date = _selectedDate,
+            Title = string.IsNullOrWhiteSpace(_holidayTitle) ? "تعطیل" : _holidayTitle.Trim(),
+            Type = _holidayType
+        });
+
+        _holidayMessage = ok ? "روز تعطیل ثبت شد." : "ثبت انجام نشد.";
+        if (ok) await LoadCalendarAsync();
+    }
+
+    private async Task RemoveHolidayAsync()
+    {
+        var existing = _holidays.FirstOrDefault(h => h.Date == _selectedDate);
+        if (existing == null) { _holidayMessage = "برای این روز تعطیلی ثبت نشده است."; return; }
+
+        var ok = await Api.SendAsync(HttpMethod.Delete, $"api/organization/holidays/{existing.Id}");
+        _holidayMessage = ok ? "تعطیلی حذف شد." : "حذف انجام نشد.";
+        if (ok)
+        {
+            _holidayTitle = "";
+            await LoadCalendarAsync();
+        }
+    }
+
+    private async Task GenerateFridaysAsync()
+    {
+        var ok = await Api.SendAsync(HttpMethod.Post, $"api/organization/holidays/generate-fridays?year={_year}");
+        if (ok) await LoadCalendarAsync();
+    }
+
+    private void LoadSchedule()
+    {
+        var found = _schedules.FirstOrDefault(s => s.Unit == _selectedUnit);
+        _schedule = found == null
+            ? new UnitSchedule { Unit = _selectedUnit }
+            : new UnitSchedule
+            {
+                Id = found.Id, Unit = found.Unit,
+                WorkStart = found.WorkStart, WorkEnd = found.WorkEnd,
+                EntryGrace = found.EntryGrace, EarlyEntryGrace = found.EarlyEntryGrace,
+                ExitGrace = found.ExitGrace, LateExitGrace = found.LateExitGrace,
+                MaxLateWithoutLeave = found.MaxLateWithoutLeave,
+                MaxEarlyWithoutLeave = found.MaxEarlyWithoutLeave,
+                AbsenceStrategy = found.AbsenceStrategy
+            };
+    }
+
+    private void OnUnitChanged(ChangeEventArgs args)
+    {
+        _selectedUnit = Text(args);
+        _scheduleMessage = "";
+        LoadSchedule();
+    }
+
+    private async Task SaveScheduleAsync()
+    {
+        _schedule.Unit = _selectedUnit;
+        var ok = await Api.SendAsync(HttpMethod.Put, "api/organization/schedules", _schedule);
+        _scheduleMessage = ok ? "ساعات کاری واحد ذخیره شد." : "ذخیره انجام نشد.";
+        if (ok) _schedules = await Api.GetListAsync<UnitSchedule>("api/organization/schedules");
+    }
+
+    private async Task CopyToAllAsync()
+    {
+        var applied = 0;
+        foreach (var unit in _units)
+        {
+            var copy = new UnitSchedule
+            {
+                Unit = unit,
+                WorkStart = _schedule.WorkStart, WorkEnd = _schedule.WorkEnd,
+                EntryGrace = _schedule.EntryGrace, EarlyEntryGrace = _schedule.EarlyEntryGrace,
+                ExitGrace = _schedule.ExitGrace, LateExitGrace = _schedule.LateExitGrace,
+                MaxLateWithoutLeave = _schedule.MaxLateWithoutLeave,
+                MaxEarlyWithoutLeave = _schedule.MaxEarlyWithoutLeave,
+                AbsenceStrategy = _schedule.AbsenceStrategy
+            };
+            if (await Api.PutAsync<ApiMessage>("api/organization/schedules", copy) != null) applied++;
+        }
+
+        _schedules = await Api.GetListAsync<UnitSchedule>("api/organization/schedules");
+        _scheduleMessage = $"تنظیمات برای {applied} واحد اعمال شد.";
+        Toasts.Success(_scheduleMessage);
+    }
+
+    private async Task ExportSettingsAsync()
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("واحد,شروع کار,پایان کار,ارفاق ورود,ارفاق ورود زودتر,ارفاق خروج,ارفاق خروج دیرتر,حداکثر تأخیر,حداکثر تعجیل,استراتژی");
+        foreach (var s in _schedules)
+            csv.AppendLine($"{s.Unit},{s.WorkStart},{s.WorkEnd},{s.EntryGrace},{s.EarlyEntryGrace},{s.ExitGrace},{s.LateExitGrace},{s.MaxLateWithoutLeave},{s.MaxEarlyWithoutLeave},{StrategyLabel(s.AbsenceStrategy)}");
+
+        csv.AppendLine();
+        csv.AppendLine($"تعطیلات سال {_year}");
+        csv.AppendLine("تاریخ,عنوان,نوع");
+        foreach (var h in _holidays)
+            csv.AppendLine($"{h.Date},{h.Title},{(h.Type == "friday" ? "مشابه جمعه" : "سایر")}");
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        await JS.InvokeVoidAsync("radisInterop.downloadFile", $"organization-settings-{_year}.csv", "text/csv", Convert.ToBase64String(bytes));
+        Toasts.Success("خروجی تنظیمات آماده شد.");
+    }
+}

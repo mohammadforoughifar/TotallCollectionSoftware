@@ -1,0 +1,98 @@
+@page "/hr/production-daily"
+@page "/radis-hr/production-daily"
+@using System.Text
+@using global::RadisHr.Shared.Contracts
+@inject RadisHrApiClient Api
+@inject IToastService Toasts
+@inject IJSRuntime JS
+
+<section class="page">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">کارتابل مدیر تولید</p>
+            <h2>گزارش روزانه حضور پرسنل</h2>
+            <p class="muted">کارکرد روز انتخابی و تجمیع مرخصی، کسرکار و اضافه‌کار از ابتدای ماه تا همان تاریخ.</p>
+        </div>
+        <div class="head-actions">
+            <label>تاریخ گزارش
+                <input pattern="\d{4}/\d{2}/\d{2}" placeholder="1405/04/10" value="@_date" @onchange="OnDateChanged" />
+            </label>
+            <button class="button secondary" type="button" @onclick="ExportAsync">خروجی گزارش</button>
+        </div>
+    </div>
+
+    <div class="mini-kpis">
+        <div><span>پرسنل گزارش‌شده</span><strong>@Fa.N(_rows.Count)</strong></div>
+        <div><span>حاضر</span><strong>@Fa.N(_rows.Count(r => r.Status.Contains("حاضر")))</strong></div>
+        <div><span>در مرخصی/مأموریت</span><strong>@Fa.N(_rows.Count(r => r.Status.Contains("مرخصی") || r.Status.Contains("مأموریت")))</strong></div>
+        <div><span>غایب</span><strong>@Fa.N(_rows.Count(r => r.Status.Contains("غایب")))</strong></div>
+    </div>
+
+    <article class="panel">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>پرسنل</th><th>حضور روز</th><th>وضعیت</th><th>مرخصی روز</th>
+                        <th>کسرکار روز</th><th>اضافه‌کار روز</th><th>تجمیع ماه تا تاریخ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td>@row.Name<br /><small class="muted">@Fa.N(row.Code)</small></td>
+                            <td>@Fa.N(row.Presence)</td>
+                            <td><span class="badge">@row.Status</span></td>
+                            <td>@Fa.N(row.Leave)</td>
+                            <td>@Fa.N(row.Shortfall)</td>
+                            <td>@Fa.N(row.Ot)</td>
+                            <td>
+                                <small>
+                                    حضور @Fa.N(row.MonthPresence) — مرخصی @Fa.N(row.MonthLeave)<br />
+                                    کسرکار @Fa.N(row.MonthShortfall) — اضافه‌کار @Fa.N(row.MonthOt)
+                                </small>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (_rows.Count == 0)
+        {
+            <p class="empty">برای این تاریخ رکوردی وجود ندارد.</p>
+        }
+    </article>
+</section>
+
+@code {
+    private List<DailyReportRow> _rows = new();
+    private string _date = PersianCalendarUtil.TodayKey();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(_date)) return;
+        _rows = await Api.GetListAsync<DailyReportRow>($"api/attendance/daily-report?date={_date}");
+    }
+
+    private async Task OnDateChanged(ChangeEventArgs args)
+    {
+        _date = Fa.ToLatin(args.Value?.ToString() ?? "");
+        await LoadAsync();
+    }
+
+    private async Task ExportAsync()
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine($"گزارش روزانه حضور — {_date}");
+        csv.AppendLine("کد,نام,حضور روز,وضعیت,مرخصی روز,کسرکار روز,اضافه‌کار روز,حضور ماه,مرخصی ماه,کسرکار ماه,اضافه‌کار ماه");
+        foreach (var r in _rows)
+            csv.AppendLine($"{r.Code},{r.Name},{r.Presence},{r.Status},{r.Leave},{r.Shortfall},{r.Ot},{r.MonthPresence},{r.MonthLeave},{r.MonthShortfall},{r.MonthOt}");
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        await JS.InvokeVoidAsync("radisInterop.downloadFile", $"daily-{_date.Replace("/", "-")}.csv", "text/csv", Convert.ToBase64String(bytes));
+        Toasts.Success("خروجی گزارش روزانه آماده شد.");
+    }
+}

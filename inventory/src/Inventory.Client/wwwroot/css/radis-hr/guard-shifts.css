@@ -1,0 +1,8 @@
+/* Scoped to the native HR module; must not affect the Inventory shell. */
+.radis-hr .guard-shift-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:16px 0}
+.radis-hr .guard-shift-grid .panel,.radis-hr .manual-punch-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
+.radis-hr .guard-shift-grid h3,.radis-hr .guard-shift-grid p,.radis-hr .manual-punch-form h3,.radis-hr .manual-punch-form p,.radis-hr .manual-punch-form .wide,.radis-hr .manual-punch-form button,.radis-hr .manual-punch-form .form-message{grid-column:1/-1}
+.radis-hr .manual-punch-form{margin:16px 0}
+.radis-hr .manual-punch-form textarea{width:100%;resize:vertical}
+.radis-hr .status-pending{color:#9a6700}.radis-hr .status-approved{color:#18794e}.radis-hr .status-rejected{color:#b42318}
+@media(max-width:900px){.radis-hr .guard-shift-grid{grid-template-columns:1fr}.radis-hr .guard-shift-grid .panel,.radis-hr .manual-punch-form{grid-template-columns:1fr}}

@@ -1,0 +1,12 @@
+/* Scoped to the native HR module; must not affect the Inventory shell. */
+.radis-hr .review-panel{margin:18px 0}
+.radis-hr .review-panel .compact{gap:16px}
+.radis-hr .review-panel .table-wrap{margin-top:14px}
+.radis-hr .review-panel .empty{margin:0}
+.radis-hr .leave-mission-form .form-actions{align-self:end}
+.radis-hr .leave-mission-form .form-actions .button{width:auto}
+.radis-hr .row-actions .edit-record{color:var(--navy)!important}
+.radis-hr .row-actions .delete-record{color:var(--danger)!important}
+.radis-hr #ceoPersonnelPayroll{margin-top:22px}
+.radis-hr #ceoPersonnelPayroll .table-wrap{margin-top:14px}
+@media(max-width:850px){.radis-hr .review-panel .section-head{display:grid}.radis-hr .leave-mission-form .form-actions{width:100%}}

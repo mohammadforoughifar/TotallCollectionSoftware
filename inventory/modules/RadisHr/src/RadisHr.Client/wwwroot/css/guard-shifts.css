@@ -1,7 +1,0 @@
-.guard-shift-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin:16px 0}
-.guard-shift-grid .panel,.manual-punch-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
-.guard-shift-grid h3,.guard-shift-grid p,.manual-punch-form h3,.manual-punch-form p,.manual-punch-form .wide,.manual-punch-form button,.manual-punch-form .form-message{grid-column:1/-1}
-.manual-punch-form{margin:16px 0}
-.manual-punch-form textarea{width:100%;resize:vertical}
-.status-pending{color:#9a6700}.status-approved{color:#18794e}.status-rejected{color:#b42318}
-@media(max-width:900px){.guard-shift-grid{grid-template-columns:1fr}.guard-shift-grid .panel,.manual-punch-form{grid-template-columns:1fr}}

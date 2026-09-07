@@ -14,7 +14,7 @@
 | 📊 موجودی انبار | موجودی لحظه‌ای به تفکیک انبار + اصلاح/شمارش موجودی |
 | 📒 کاردکس کالا | ریز گردش ورود/خروج با مانده، فیلتر تاریخ و انبار + چاپ |
 | ⚠️ گزارش نقطه سفارش | اقلام زیر حداقل موجودی با مقدار پیشنهادی خرید |
-| 🏢 منابع انسانی | بخش فعلی مرخصی/ماموریت و حضور و غیاب + **RADIS-HR V019 کامل** (پرسنل، حقوق، حسابداری، HSE، ساختار سازمانی، قوانین، گردش‌کار و تحلیل مدیریتی) با ورود و دیتابیس یکپارچه |
+| 🏢 منابع انسانی | بخش فعلی مرخصی/ماموریت و حضور و غیاب + **RADIS-HR V019 کامل** (پرسنل، حقوق، حسابداری، HSE، ساختار سازمانی، قوانین، گردش‌کار و تحلیل مدیریتی) داخل خود Inventory با منو، ورود، قالب و دیتابیس مشترک |
 | 📅 تاریخ شمسی | تقویم جلالی قابل انتخاب + امکان **تایپ دستی تاریخ** (مثل 1403/05/12) |
 | 📱 PWA | قابل نصب روی موبایل و دسکتاپ، کارکرد آفلاین نسبی (کش) |
 | 🎨 ظاهر حرفه‌ای | قالب ادمین RTL با فونت **وزیرمتن** و آیکون‌های Bootstrap |
@@ -23,15 +23,23 @@
 
 ```
 Inventory.sln
-├── src/Inventory.Shared    → مدل‌های مشترک (DTO) + ابزار تاریخ شمسی (الگوریتم جلالی)
+├── src/Inventory.Shared    → مدل‌های مشترک + تاریخ شمسی + RadisHr (مدل/موتور محاسباتی)
 ├── src/Inventory.Api       → Web API (.NET 8) + EF Core + SQL Server
-│   ├── Data/               → موجودیت‌ها، DbContext، مایگریشن و داده اولیه
+│   ├── Data/               → DbContext، مایگریشن و داده اولیه (شامل RadisHr)
 │   ├── Services/           → منطق انبار، کاردکس، نقطه سفارش و داشبورد
 │   └── Endpoints/          → Minimal API
-├── src/Inventory.Client    → Blazor WebAssembly (PWA) — رابط کاربری
+├── src/Inventory.Client    → Blazor WebAssembly (PWA) — همهٔ ماژول‌ها، از جمله Pages/RadisHr
 ├── sql/                    → اسکریپت آماده ساخت دیتابیس (InventoryDb-Schema.sql)
-└── tests/                  → اسکریپت تست کامل API (api_test.py)
+└── tests/                  → Regression، HrIntegration و Parity محاسبات HR
 ```
+
+## منابع انسانی داخل Inventory
+
+HR مثل مدیریت پروژه یک ماژول داخلی است: در منوی **منابع انسانی**، ۱۳ صفحهٔ پرسنل، قرارداد،
+کارکرد، حقوق، حسابداری حقوق، HSE، تقویم، ساختار سازمانی و اطلاعیه‌ها مستقیماً نمایش داده می‌شوند.
+مسیر اصلی `/hr` و API آن `/api/hr` است. کلاینت/ورود/پابلیش جداگانه ندارد و بخش قبلی مرخصی و حضور و غیاب هسته حفظ شده است.
+مجوز کامل `RadisHr.Access` از تنظیمات نقش‌ها قابل واگذاری است؛ Admin دسترسی دارد.
+جزئیات انتقال، سازگاری مسیرهای قدیمی و حفظ داده در [راهنمای ماژول HR](../MODULE-RADIS-HR.md) آمده است.
 
 ## پایگاه داده
 
@@ -117,15 +125,18 @@ dotnet publish src/Inventory.Api -c Release -o publish/api
 
 ## تست خودکار
 
-اسکریپت تست کامل (۴۰ مورد) شامل CRUD کالا/انبار/طرف حساب، خرید و فروش، کنترل موجودی منفی، کاردکس، نقطه سفارش و داشبورد:
+از پوشهٔ `inventory`:
 
 ```bash
-# ابتدا API را با SQLite اجرا کنید (برای محیط تست)
-Database__Provider=Sqlite ConnectionStrings__Default="Data Source=inventory.db" dotnet run
-
-# سپس تست را اجرا کنید
-python3 tests/api_test.py
+dotnet run --project tests/Inventory.RegressionTests
+dotnet run --project tests/RadisHr.ParityTests
+dotnet run --project tests/Inventory.HrIntegrationTests
+python ../tests/hr/test_structure.py
+node ../tests/hr/interop_test.cjs
 ```
+
+تست‌های ماژول‌های قبلی همچنان در `../tests/chat` و `../tests/doc-archive` هستند.
+راهنمای تست‌های جدید: [tests/hr](../tests/hr/README.md).
 
 ## فناوری‌ها
 
@@ -140,7 +151,10 @@ python3 tests/api_test.py
 
 ### خطای `Metadata file '...Inventory.Shared.dll' could not be found`
 
-پوشه‌های `bin` و `obj` را حذف کنید و Solution را Rebuild کنید. جزئیات در بخش همین خطا در `RUN-GUIDE.md` است.
+علت اصلی در این نسخه تعریف تکراری `PagedResult<T>` و خطای `CS0101` در Shared بود؛
+تعریف‌ها در `Dtos/PagedResult.cs` یکپارچه شده‌اند و تولید DLL مرجع استاندارد SDK فعال است.
+Visual Studio را ببندید و از پوشهٔ `inventory`، اسکریپت `.\rebuild.ps1` را اجرا کنید.
+شرح کامل و مراحل رفع اشکال: [راهنمای ساخت](docs/BUILD-TROUBLESHOOTING.md).
 
 ### خطای `icudt_EFIGS.dat` هنگام بوت (صفحه سفید)
 

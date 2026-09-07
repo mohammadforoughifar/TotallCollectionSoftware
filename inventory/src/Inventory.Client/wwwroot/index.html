@@ -13,6 +13,19 @@
     <link rel="stylesheet" href="icons/bootstrap-icons.css" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="stylesheet" href="css/letters.css" />
+    <link rel="stylesheet" href="css/radis-hr/app.css" />
+    <link rel="stylesheet" href="css/radis-hr/enhancements.css" />
+    <link rel="stylesheet" href="css/radis-hr/calendar-settings.css" />
+    <link rel="stylesheet" href="css/radis-hr/year-navigation.css" />
+    <link rel="stylesheet" href="css/radis-hr/statutory-rules.css" />
+    <link rel="stylesheet" href="css/radis-hr/guard-review.css" />
+    <link rel="stylesheet" href="css/radis-hr/guard-shifts.css" />
+    <link rel="stylesheet" href="css/radis-hr/executive-analytics.css" />
+    <link rel="stylesheet" href="css/radis-hr/hse.css" />
+    <link rel="stylesheet" href="css/radis-hr/organization.css" />
+    <link rel="stylesheet" href="css/radis-hr/v016-workflows.css" />
+    <link rel="stylesheet" href="css/radis-hr/radis-blazor.css" />
+    <link rel="stylesheet" href="css/radis-hr/inventory-integration.css" />
     <link href="manifest.webmanifest" rel="manifest" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -122,27 +135,18 @@
             } catch (e) { console.error(e); }
         };
 
-        window.inventoryApiBase = function (fallback) {
-            try {
-                var stored = localStorage.getItem('apiBaseUrl');
-                if (stored) return stored;
-            } catch (e) { }
-            try {
-                var h = window.location.host;
-                // محیط پیش‌نمایش ابری: تبدیل پورت جاری به پورت API (5100)
-                if (h.indexOf('.e2b.app') !== -1) {
-                    return window.location.protocol + '//' + h.replace(/^[0-9]+-/, '5100-');
-                }
-                // روی localhost:
-                //  - اگر صفحه روی همان پورت API (5100) است → حالت تک‌سروره، از همان مبدا استفاده کن
-                //  - در غیر این صورت (مثلاً کلاینت روی 5210 جدا اجرا شده) → به پورت پیش‌فرض API (5100) برو
-                if (h.indexOf('localhost') === 0 || h.indexOf('127.0.0.1') === 0) {
-                    var port = window.location.port;
-                    if (port === '5100' || port === '') return window.location.origin;
-                    return fallback || 'http://localhost:5100';
-                }
-            } catch (e) { }
-            return fallback || 'http://localhost:5100';
+        window.inventoryApiBase = function () {
+            // One host in production and previews. Never send a remote browser to localhost.
+            // For separate local development an explicit API URL may be configured locally.
+            var isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+            if (isLocal) {
+                try {
+                    var stored = localStorage.getItem('apiBaseUrl');
+                    if (stored) return new URL(stored, window.location.origin).href;
+                } catch (e) { }
+                if (window.location.port === '5210') return window.location.protocol + '//' + window.location.hostname + ':5100';
+            }
+            return window.location.origin;
         };
 
         // تشخیص صفحه کوچک‌تر از ~۱۲ اینچ (حالت موبایل/اندروید)
@@ -349,6 +353,7 @@
         };
     </script>
     <script src="js/project-interop.js"></script>
+    <script src="js/radis-interop.js"></script>
     <script src="js/stocktaking.js"></script>
     <script src="js/file-preview.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>

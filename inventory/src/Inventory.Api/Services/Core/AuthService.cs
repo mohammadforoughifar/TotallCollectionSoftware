@@ -100,7 +100,7 @@ public class AuthService : IAuthService
             {
                 "Admin" => await _db.Permissions.Select(p => p.Module + "." + p.Action).ToListAsync(),
                 "Operator" or "Accountant" => await _db.Permissions
-                    .Where(p => (p.Module != "SystemUsers" && p.Module != "Settings" && p.Module != "ItRequests")
+                    .Where(p => (p.Module != "SystemUsers" && p.Module != "Settings" && p.Module != "ItRequests" && p.Module != "RadisHr")
                                 || p.Module == "Dashboards" || p.Module == "ReportPages"
                                 || (p.Module == "ItRequests" && (p.Action == "Create" || p.Action == "ViewDepartment"))
                                 || (p.Module == "LeaveRequests" && p.Action == "Request")
@@ -125,15 +125,8 @@ public class AuthService : IAuthService
             claims.Add(new Claim("referrerId", user.ReferrerId.Value.ToString()));
         claims.AddRange(permissions.Select(permission => new Claim("permission", permission)));
 
-        // کنترلرهای اصلی RADIS-HR در دو عملیات مدیریتی نقش‌های legacy خود ماژول را
-        // بررسی می‌کنند. مدیر هسته هر دو نقش مدیریتی را در توکن واحد دریافت می‌کند.
-        if (user.Role == "Admin" || permissions.Contains("RadisHr.Access", StringComparer.OrdinalIgnoreCase))
-        {
-            // RadisHr.Access در نسخه V019 مجوز کل ماژول است؛ نقش‌های زیر فقط برای حفظ
-            // قواعد Authorize اصلی کنترلرها به توکن SSO افزوده می‌شوند.
-            foreach (var radisRole in new[] { "hr", "ceo", "guard", "hse", "warehouse", "production", "finance", "accounting" })
-                claims.Add(new Claim(ClaimTypes.Role, radisRole));
-        }
+        // HR authorization uses the same permission claims; no synthetic legacy roles
+        // are added to the Inventory user's identity.
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey));
         var token = new JwtSecurityToken(

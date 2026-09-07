@@ -1,0 +1,14 @@
+/* Scoped to the native HR module; must not affect the Inventory shell. */
+.radis-hr .year-button {
+  border: 0;
+  background: #eef5ef;
+  color: #31566a;
+  border-radius: 9px;
+  padding: 8px 10px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.radis-hr .date-picker-dialog {
+  width: min(540px, 94vw);
+}

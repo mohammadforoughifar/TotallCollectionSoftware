@@ -12,7 +12,7 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped(sp =>
 {
     var opts = sp.GetRequiredService<ApiOptions>();
-    var baseUrl = string.IsNullOrWhiteSpace(opts.BaseUrl) ? "http://localhost:5100" : opts.BaseUrl;
+    var baseUrl = string.IsNullOrWhiteSpace(opts.BaseUrl) ? builder.HostEnvironment.BaseAddress : opts.BaseUrl;
     return new HttpClient { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
 });
 builder.Services.AddSingleton<ApiOptions>();
@@ -76,6 +76,9 @@ builder.Services.AddScoped<IStkSessionService, StkSessionService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
+// ---------- منابع انسانی — صفحات و API داخل همین برنامه ----------
+builder.Services.AddScoped<Inventory.Client.Services.RadisHr.RadisHrAuthState>();
+builder.Services.AddScoped<Inventory.Client.Services.RadisHr.RadisHrApiClient>();
 // ---------- ماژول مدیریت پروژه‌ها ----------
 builder.Services.AddScoped<IKarfarmaService, KarfarmaService>();
 builder.Services.AddScoped<ITypeFactorService, TypeFactorService>();
@@ -94,7 +97,7 @@ var host = builder.Build();
 // تعیین آدرس API در زمان اجرا (پشتیبانی از پیش‌نمایش ابری و localhost)
 var js = host.Services.GetRequiredService<Microsoft.JSInterop.IJSRuntime>();
 var options = host.Services.GetRequiredService<ApiOptions>();
-options.BaseUrl = await js.InvokeAsync<string>("inventoryApiBase", new object[] { "http://localhost:5100" });
+options.BaseUrl = await js.InvokeAsync<string>("inventoryApiBase", Array.Empty<object>());
 
 // بازیابی نشست ورود از localStorage
 await host.Services.GetRequiredService<IAuthState>().InitializeAsync();
