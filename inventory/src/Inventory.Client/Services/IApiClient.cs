@@ -12,7 +12,7 @@ public interface IApiClient
     Task<T> DeleteAsync<T>(string path);
 
     /// <summary>ارسال فایل (multipart/form-data).</summary>
-    Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file");
+    Task<T> PostFileAsync<T>(string path, Stream fileStream, string fileName, string formFieldName = "file", string? contentType = null);
 
     /// <summary>ساخت آدرس کامل از مسیر نسبی API (برای لینک دانلود).</summary>
     string BuildUrl(string path);

@@ -108,6 +108,15 @@ public class ChatMessageDto
     public DateTime CreatedAt { get; set; }
     public bool IsOutgoing { get; set; } // آیا فرستنده کاربر جاری است؟
     public bool IsReadByPeer { get; set; } // آیا توسط مخاطب خوانده شده است؟
+
+    // یک رویداد مشترک نباید پرچم فرستنده را به همهٔ گیرندگان تحمیل کند.
+    public ChatMessageDto ForUser(int userId)
+    {
+        var copy = (ChatMessageDto)MemberwiseClone();
+        copy.IsOutgoing = SenderUserId == userId;
+        copy.IsReadByPeer = copy.IsOutgoing && IsReadByPeer;
+        return copy;
+    }
 }
 
 /// <summary>اطلاعات کاربری که به پیام واکنش داده</summary>
@@ -199,4 +208,27 @@ public class ChatSummaryDto
 {
     public int TotalUnreadMessages { get; set; }
     public int UnreadConversationsCount { get; set; }
+}
+
+/// <summary>آخرین پیامی که واقعاً در کلاینت نمایش داده شده؛ پیام جدیدتر نخوانده می‌ماند.</summary>
+public class MarkChatReadRequest
+{
+    public int? LastReadMessageId { get; set; }
+}
+
+public class ChatUploadResultDto
+{
+    public Guid Id { get; set; }
+    public string FileUrl { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public long FileSizeBytes { get; set; }
+    public string FileContentType { get; set; } = "";
+    public ChatMessageTypeDto MessageType { get; set; } = ChatMessageTypeDto.File;
+}
+
+public static class ChatFileLimits
+{
+    public const long MaxFileBytes = 50L * 1024 * 1024;
+    // فضای اضافه برای سربرگ multipart؛ محدودیت خود فایل همچنان ۵۰ MiB است.
+    public const long MaxRequestBytes = MaxFileBytes + 1024 * 1024;
 }

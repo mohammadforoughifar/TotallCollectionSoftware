@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace Inventory.Client.Services;
@@ -22,7 +24,7 @@ public interface IChatClientService
     Task DeleteMessageAsync(int messageId);
     Task<Dictionary<string, List<ChatReactionUserDto>>> ReactAsync(int messageId, string emoji);
     Task<ChatMessageDto> TogglePinMessageAsync(int messageId);
-    Task MarkReadAsync(int conversationId);
+    Task MarkReadAsync(int conversationId, int? lastReadMessageId = null);
     Task TogglePinConversationAsync(int conversationId);
     Task ToggleMuteConversationAsync(int conversationId);
     Task<List<ChatMemberDto>> GetMembersAsync(int conversationId);
@@ -30,13 +32,16 @@ public interface IChatClientService
     Task RemoveMemberAsync(int conversationId, int userId);
     Task<List<ChatUserDto>> GetSoftwareUsersAsync(string? search = null);
     Task<ChatSummaryDto> GetSummaryAsync();
-    Task<ChatUploadResultDto> UploadAttachmentAsync(IBrowserFile file);
+    Task<ChatUploadResultDto> UploadAttachmentAsync(int conversationId, IBrowserFile file);
+    string GetFileUrl(int messageId, bool preview = false);
+    bool IsConnected { get; }
+    Task StopAsync();
 
     // اتصال SignalR بلادرنگ
     Task EnsureHubConnectedAsync();
     Task JoinConversationHubAsync(int conversationId);
     Task LeaveConversationHubAsync(int conversationId);
-    Task SendTypingHubAsync(int conversationId);
+    Task SendTypingHubAsync(int conversationId, bool isTyping = true);
 
     // رویدادهای زنده
     event Action<ChatMessageDto>? OnMessageReceived;
@@ -46,16 +51,9 @@ public interface IChatClientService
     event Action<int, int, int>? OnMessagesRead;
     event Action<int, int, string>? OnUserTyping;
     event Action<int, bool, DateTime>? OnUserStatusChanged;
-    event Action<ChatConversationDto>? OnConversationUpdated;
-}
-
-public class ChatUploadResultDto
-{
-    public string FileUrl { get; set; } = "";
-    public string FileName { get; set; } = "";
-    public long FileSizeBytes { get; set; }
-    public string FileContentType { get; set; } = "";
-    public ChatMessageTypeDto MessageType { get; set; } = ChatMessageTypeDto.File;
+    event Action<int>? OnConversationChanged;
+    event Action? OnConnectionChanged;
+    event Action? OnSyncRequested;
 }
 
 public class ChatClientService : IChatClientService, IAsyncDisposable
@@ -65,6 +63,19 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
     private readonly ApiOptions _opts;
     private readonly HttpClient _http;
     private HubConnection? _hub;
+    private readonly SemaphoreSlim _connectionGate = new(1, 1);
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly HashSet<int> _rooms = new();
+    private readonly HashSet<int> _receivedIds = new();
+    private readonly Queue<int> _receivedOrder = new();
+    private Task? _maintenance;
+    private int _hubUserId;
+    private string? _hubToken;
+    private bool _connected;
+    private bool _disposed;
+    private DateTime _lastSync;
+    public bool IsConnected => _connected && _hub?.State == HubConnectionState.Connected && _auth.IsLoggedIn && _hubUserId == _auth.UserId;
+
 
     public event Action<ChatMessageDto>? OnMessageReceived;
     public event Action<ChatMessageDto>? OnMessageUpdated;
@@ -73,7 +84,9 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
     public event Action<int, int, int>? OnMessagesRead;
     public event Action<int, int, string>? OnUserTyping;
     public event Action<int, bool, DateTime>? OnUserStatusChanged;
-    public event Action<ChatConversationDto>? OnConversationUpdated;
+    public event Action<int>? OnConversationChanged;
+    public event Action? OnConnectionChanged;
+    public event Action? OnSyncRequested;
 
     public ChatClientService(IApiClient api, IAuthState auth, ApiOptions opts, HttpClient http)
     {
@@ -81,6 +94,7 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
         _auth = auth;
         _opts = opts;
         _http = http;
+        _auth.Changed += AuthChanged;
     }
 
     public async Task<List<ChatConversationDto>> GetConversationsAsync(string? search = null, ChatTypeDto? type = null, bool onlyUnread = false)
@@ -139,9 +153,10 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
         return await _api.PostAsync<ChatMessageDto>($"api/chat/messages/{messageId}/pin", new { });
     }
 
-    public async Task MarkReadAsync(int conversationId)
+    public async Task MarkReadAsync(int conversationId, int? lastReadMessageId = null)
     {
-        await _api.PostAsync<object>($"api/chat/conversations/{conversationId}/read", new { });
+        await _api.PostAsync<object>($"api/chat/conversations/{conversationId}/read",
+            new MarkChatReadRequest { LastReadMessageId = lastReadMessageId });
     }
 
     public async Task TogglePinConversationAsync(int conversationId)
@@ -181,75 +196,191 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
         return await _api.GetAsync<ChatSummaryDto>("api/chat/summary") ?? new();
     }
 
-    public async Task<ChatUploadResultDto> UploadAttachmentAsync(IBrowserFile file)
+    public async Task<ChatUploadResultDto> UploadAttachmentAsync(int conversationId, IBrowserFile file)
     {
-        using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
-        return await _api.PostFileAsync<ChatUploadResultDto>("api/chat/upload", stream, file.Name);
+        if (file.Size <= 0) throw new ApiException("فایل خالی قابل ارسال نیست.");
+        if (file.Size > ChatFileLimits.MaxFileBytes) throw new ApiException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
+        using var stream = file.OpenReadStream(ChatFileLimits.MaxFileBytes);
+        return await _api.PostFileAsync<ChatUploadResultDto>($"api/chat/conversations/{conversationId}/attachments",
+            stream, file.Name, "file", file.ContentType);
     }
+
+    // همیشه مبدأ API؛ در استقرار دو سروره هم فایل از سرور Client درخواست نمی‌شود.
+    // تگ‌های img/audio/video نمی‌توانند هدر Bearer بفرستند؛ endpoint فقط برای دانلود/preview JWT را از query می‌خواند.
+    public string GetFileUrl(int messageId, bool preview = false) =>
+        _api.BuildUrl($"api/chat/messages/{messageId}/{(preview ? "preview" : "download")}") +
+        $"?access_token={Uri.EscapeDataString(_auth.Token ?? "")}";
 
     public async Task EnsureHubConnectedAsync()
     {
-        if (string.IsNullOrEmpty(_auth.Token)) return;
-
-        if (_hub != null && _hub.State == HubConnectionState.Connected)
-            return;
-
-        var hubUrl = $"{_opts.BaseUrl.TrimEnd('/')}/hubs/chat?access_token={_auth.Token}&userId={_auth.UserId}";
-
-        _hub = new HubConnectionBuilder()
-            .WithUrl(hubUrl, o =>
-            {
-                o.AccessTokenProvider = () => Task.FromResult<string?>(_auth.Token);
-            })
-            .WithAutomaticReconnect()
-            .Build();
-
-        _hub.On<ChatMessageDto>("ReceiveMessage", msg => OnMessageReceived?.Invoke(msg));
-        _hub.On<int, ChatMessageDto>("NewMessageNotification", (cid, msg) => OnMessageReceived?.Invoke(msg));
-        _hub.On<ChatMessageDto>("MessageUpdated", msg => OnMessageUpdated?.Invoke(msg));
-        _hub.On<int, int>("MessageDeleted", (cid, mid) => OnMessageDeleted?.Invoke(cid, mid));
-        _hub.On<int, int, Dictionary<string, List<ChatReactionUserDto>>>("MessageReactionUpdated", (cid, mid, r) => OnReactionUpdated?.Invoke(cid, mid, r));
-        _hub.On<int, int, int>("MessagesRead", (cid, uid, lrid) => OnMessagesRead?.Invoke(cid, uid, lrid));
-        _hub.On<int, int, string>("UserTyping", (cid, uid, uname) => OnUserTyping?.Invoke(cid, uid, uname));
-        _hub.On<int, bool, DateTime>("UserStatusChanged", (uid, online, seen) => OnUserStatusChanged?.Invoke(uid, online, seen));
-        _hub.On<ChatConversationDto>("ConversationUpdated", c => OnConversationUpdated?.Invoke(c));
-
+        if (_disposed) return;
+        _maintenance ??= MaintainConnectionAsync();
+        await _connectionGate.WaitAsync(_lifetime.Token);
         try
         {
-            await _hub.StartAsync();
+            if (_disposed) return;
+            if (string.IsNullOrWhiteSpace(_auth.Token)) { await DisposeHubAsync(); return; }
+            if (_hub != null && (_hubUserId != _auth.UserId || _hubToken != _auth.Token))
+            {
+                if (_hubUserId != _auth.UserId) { lock (_rooms) _rooms.Clear(); }
+                await DisposeHubAsync();
+            }
+            if (_hub == null) CreateHub();
+            var hub = _hub!;
+            if (hub.State != HubConnectionState.Disconnected) return;
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            try
+            {
+                await hub.StartAsync(timeout.Token);
+                await RestoreRoomsAsync(hub);
+                SetConnected(true);
+                OnSyncRequested?.Invoke();
+            }
+            catch (Exception) when (!_disposed) { SetConnected(false); }
         }
-        catch { /* تلاش مجدد خودکار */ }
+        finally { _connectionGate.Release(); }
+    }
+
+    private void CreateHub()
+    {
+        _hubUserId = _auth.UserId;
+        _hubToken = _auth.Token;
+        var uid = _hubUserId;
+        var hub = new HubConnectionBuilder()
+            .WithUrl(_api.BuildUrl("hubs/chat"), options => options.AccessTokenProvider = () => Task.FromResult(_auth.Token))
+            .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) })
+            .Build();
+        _hub = hub;
+        bool Current() => !_disposed && ReferenceEquals(_hub, hub) && _auth.UserId == uid && _auth.IsLoggedIn;
+        void Receive(ChatMessageDto message)
+        {
+            if (!Current() || !_receivedIds.Add(message.Id)) return;
+            _receivedOrder.Enqueue(message.Id);
+            if (_receivedOrder.Count > 2048) _receivedIds.Remove(_receivedOrder.Dequeue());
+            OnMessageReceived?.Invoke(message.ForUser(uid));
+        }
+        hub.On<ChatMessageDto>("ReceiveMessage", Receive);
+        hub.On<int, ChatMessageDto>("NewMessageNotification", (_, message) => Receive(message)); // نسخهٔ قدیمی، بدون دوباره‌شماری
+        hub.On<ChatMessageDto>("MessageUpdated", message => { if (Current()) OnMessageUpdated?.Invoke(message.ForUser(uid)); });
+        hub.On<int, int>("MessageDeleted", (cid, mid) => { if (Current()) OnMessageDeleted?.Invoke(cid, mid); });
+        hub.On<int, int, Dictionary<string, List<ChatReactionUserDto>>>("MessageReactionUpdated", (cid, mid, reactions) => { if (Current()) OnReactionUpdated?.Invoke(cid, mid, reactions); });
+        hub.On<int, int, int>("MessagesRead", (cid, reader, last) => { if (Current()) OnMessagesRead?.Invoke(cid, reader, last); });
+        hub.On<int, int, string>("UserTyping", (cid, user, name) => { if (Current()) OnUserTyping?.Invoke(cid, user, name); });
+        hub.On<int, bool, DateTime>("UserStatusChanged", (user, online, seen) => { if (Current()) OnUserStatusChanged?.Invoke(user, online, seen); });
+        hub.On<int>("ConversationChanged", cid => { if (Current()) OnConversationChanged?.Invoke(cid); });
+        hub.On<ChatConversationDto>("ConversationUpdated", c => { if (Current()) OnConversationChanged?.Invoke(c.Id); });
+        hub.Reconnecting += _ => { if (Current()) SetConnected(false); return Task.CompletedTask; };
+        hub.Closed += _ => { if (Current()) SetConnected(false); return Task.CompletedTask; };
+        hub.Reconnected += async _ =>
+        {
+            if (!Current()) return;
+            await RestoreRoomsAsync(hub);
+            SetConnected(true);
+            OnSyncRequested?.Invoke(); // پیام‌های زمان قطع اتصال را از API بازخوانی کن.
+        };
+    }
+
+    private void SetConnected(bool value)
+    {
+        if (_connected == value) return;
+        _connected = value;
+        OnConnectionChanged?.Invoke();
+    }
+
+    private async Task MaintainConnectionAsync()
+    {
+        try
+        {
+            while (!_lifetime.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3), _lifetime.Token);
+                if (!_auth.IsLoggedIn) continue;
+                try { await EnsureHubConnectedAsync(); } catch (OperationCanceledException) { break; }
+                if (DateTime.UtcNow - _lastSync >= TimeSpan.FromSeconds(IsConnected ? 30 : 5))
+                {
+                    _lastSync = DateTime.UtcNow;
+                    OnSyncRequested?.Invoke();
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task RestoreRoomsAsync(HubConnection hub)
+    {
+        int[] rooms;
+        lock (_rooms) rooms = _rooms.ToArray();
+        foreach (var id in rooms)
+        {
+            try { await hub.InvokeAsync("JoinConversation", id); }
+            catch (HubException) { lock (_rooms) _rooms.Remove(id); }
+            catch (Exception) { break; }
+        }
     }
 
     public async Task JoinConversationHubAsync(int conversationId)
     {
-        if (_hub != null && _hub.State == HubConnectionState.Connected)
+        lock (_rooms) _rooms.Add(conversationId);
+        await EnsureHubConnectedAsync();
+        if (_hub?.State == HubConnectionState.Connected)
         {
-            try { await _hub.InvokeAsync("JoinConversation", conversationId); } catch { }
+            try { await _hub.InvokeAsync("JoinConversation", conversationId); } catch (Exception) { }
         }
     }
 
     public async Task LeaveConversationHubAsync(int conversationId)
     {
-        if (_hub != null && _hub.State == HubConnectionState.Connected)
+        lock (_rooms) _rooms.Remove(conversationId);
+        if (_hub?.State == HubConnectionState.Connected)
         {
-            try { await _hub.InvokeAsync("LeaveConversation", conversationId); } catch { }
+            try { await _hub.InvokeAsync("LeaveConversation", conversationId); } catch (Exception) { }
         }
     }
 
-    public async Task SendTypingHubAsync(int conversationId)
+    public async Task SendTypingHubAsync(int conversationId, bool isTyping = true)
     {
-        if (_hub != null && _hub.State == HubConnectionState.Connected)
+        if (_hub?.State == HubConnectionState.Connected)
         {
-            try { await _hub.InvokeAsync("SendTyping", conversationId); } catch { }
+            try { await _hub.InvokeAsync(isTyping ? "SendTyping" : "StopTyping", conversationId); } catch (Exception) { }
         }
+    }
+
+    private void AuthChanged() => _ = RefreshAuthAsync();
+    private async Task RefreshAuthAsync()
+    {
+        try
+        {
+            if (_auth.IsLoggedIn) await EnsureHubConnectedAsync();
+            else await StopAsync();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task DisposeHubAsync()
+    {
+        var hub = _hub;
+        _hub = null;
+        SetConnected(false);
+        _receivedIds.Clear();
+        _receivedOrder.Clear();
+        if (hub != null) await hub.DisposeAsync();
+    }
+
+    public async Task StopAsync()
+    {
+        await _connectionGate.WaitAsync();
+        try { lock (_rooms) _rooms.Clear(); await DisposeHubAsync(); }
+        finally { _connectionGate.Release(); }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_hub != null)
-        {
-            await _hub.DisposeAsync();
-        }
+        _disposed = true;
+        _auth.Changed -= AuthChanged;
+        _lifetime.Cancel();
+        await StopAsync();
+        if (_maintenance != null) await _maintenance;
+        _lifetime.Dispose();
     }
 }

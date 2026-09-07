@@ -2,7 +2,7 @@
 -- مایگریشن ساخت جداول ماژول پیام‌رسان سازمانی (Chat Module) مشابه تلگرام
 -- =========================================================================
 
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ChatConversations')
+IF OBJECT_ID(N'[dbo].[ChatConversations]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[ChatConversations] (
         [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -20,11 +20,9 @@ BEGIN
         [IsArchived] BIT NOT NULL DEFAULT 0
     );
 
-    CREATE INDEX [IX_ChatConversations_LastMessageAt] ON [dbo].[ChatConversations] ([LastMessageAt]);
 END;
-GO
 
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ChatMembers')
+IF OBJECT_ID(N'[dbo].[ChatMembers]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[ChatMembers] (
         [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -40,15 +38,13 @@ BEGIN
         [IsMuted] BIT NOT NULL DEFAULT 0,
         [IsPinned] BIT NOT NULL DEFAULT 0,
         [IsArchived] BIT NOT NULL DEFAULT 0,
-        CONSTRAINT [FK_ChatMembers_ChatConversations] FOREIGN KEY ([ConversationId]) REFERENCES [dbo].[ChatConversations] ([Id]) ON DELETE CASCADE
+        CONSTRAINT [FK_ChatMembers_ChatConversations_ConversationId] FOREIGN KEY ([ConversationId]) REFERENCES [dbo].[ChatConversations] ([Id]) ON DELETE CASCADE
     );
 
-    CREATE UNIQUE INDEX [IX_ChatMembers_ConversationId_UserId] ON [dbo].[ChatMembers] ([ConversationId], [UserId]);
-    CREATE INDEX [IX_ChatMembers_UserId] ON [dbo].[ChatMembers] ([UserId]);
-END;
-GO
 
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'ChatMessages')
+END;
+
+IF OBJECT_ID(N'[dbo].[ChatMessages]', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[ChatMessages] (
         [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
@@ -78,10 +74,20 @@ BEGIN
         [IsPinned] BIT NOT NULL DEFAULT 0,
         [ReactionsJson] NVARCHAR(MAX) NULL,
         [CreatedAt] DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-        CONSTRAINT [FK_ChatMessages_ChatConversations] FOREIGN KEY ([ConversationId]) REFERENCES [dbo].[ChatConversations] ([Id]) ON DELETE CASCADE
+        CONSTRAINT [FK_ChatMessages_ChatConversations_ConversationId] FOREIGN KEY ([ConversationId]) REFERENCES [dbo].[ChatConversations] ([Id]) ON DELETE CASCADE
     );
 
-    CREATE INDEX [IX_ChatMessages_ConversationId_CreatedAt] ON [dbo].[ChatMessages] ([ConversationId], [CreatedAt]);
-    CREATE INDEX [IX_ChatMessages_SenderUserId] ON [dbo].[ChatMessages] ([SenderUserId]);
+
 END;
-GO
+
+-- ایندکس‌ها حتی در نصب‌هایی که جدول‌ها را قبلاً دستی ساخته‌اند بررسی می‌شوند.
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[ChatConversations]') AND name = N'IX_ChatConversations_LastMessageAt')
+    CREATE INDEX [IX_ChatConversations_LastMessageAt] ON [dbo].[ChatConversations] ([LastMessageAt]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[ChatMembers]') AND name = N'IX_ChatMembers_ConversationId_UserId')
+    CREATE UNIQUE INDEX [IX_ChatMembers_ConversationId_UserId] ON [dbo].[ChatMembers] ([ConversationId], [UserId]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[ChatMembers]') AND name = N'IX_ChatMembers_UserId')
+    CREATE INDEX [IX_ChatMembers_UserId] ON [dbo].[ChatMembers] ([UserId]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[ChatMessages]') AND name = N'IX_ChatMessages_ConversationId_CreatedAt')
+    CREATE INDEX [IX_ChatMessages_ConversationId_CreatedAt] ON [dbo].[ChatMessages] ([ConversationId], [CreatedAt]);
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'[dbo].[ChatMessages]') AND name = N'IX_ChatMessages_SenderUserId')
+    CREATE INDEX [IX_ChatMessages_SenderUserId] ON [dbo].[ChatMessages] ([SenderUserId]);
