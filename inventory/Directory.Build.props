@@ -1,0 +1,13 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <!--
+      CS0006 Metadata file '...\\obj\\Debug\\net8.0\\ref\\*.dll' could not be found
+      اسمبلی مرجع (ref) اگر مسیر پروژه پرانتز/فاصله داشته باشد (مثل Downloads\\... (2)\\)
+      یا بیلد موازی قبل از اتمام Shared اجرا شود، ساخته نمی‌شود.
+      وابسته‌ها باید همان DLL اصلی را مرجع کنند.
+    -->
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <AppendTargetFrameworkToOutputPath>true</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+</Project>

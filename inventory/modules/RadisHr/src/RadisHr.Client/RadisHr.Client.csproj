@@ -13,7 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\RadisHr.Shared\RadisHr.Shared.csproj" />
+    <ProjectReference Include="../RadisHr.Shared/RadisHr.Shared.csproj">
+      <Name>RadisHr.Shared</Name>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>
