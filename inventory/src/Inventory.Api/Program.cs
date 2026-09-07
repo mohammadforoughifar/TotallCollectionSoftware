@@ -3,6 +3,7 @@ using System.Text.Json;
 using Inventory.Api.Controllers;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
+using Inventory.Api.Infrastructure;
 using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.StaticFiles;
@@ -33,6 +34,10 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     else
         options.UseSqlServer(connectionString);
 });
+
+// RADIS-HR از همان Connection String و همان دیتابیس استفاده می‌کند، ولی DbContext و
+// Migration History مستقلش را حفظ می‌کند تا موجودیت‌ها و منطق بک‌اند اصلی تغییر نکنند.
+builder.Services.AddRadisHrModule(builder.Configuration, provider, connectionString);
 
 // ثبت سرویس‌ها با اینترفیس (اصل وارونگی وابستگی — DIP)
 builder.Services.AddScoped<IInventoryService, InventoryService>();
@@ -69,7 +74,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AuthService.JwtKey))
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RadisHrAccess", policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireAssertion(ctx => ctx.User.IsInRole("Admin")
+                  || ctx.User.HasClaim("permission", "RadisHr.Access")));
+});
 
 // CORS برای کلاینت Blazor WASM (در محیط توسعه)
 builder.Services.AddCors(options =>
@@ -79,11 +90,15 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
+        options.Conventions.Add(new RadisHrControllerConvention());
     })
     .AddJsonOptions(o =>
     {
         o.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         o.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
+        // تنظیمات اصلی RADIS-HR برای پاسخ‌های دارای navigation property.
+        o.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.IgnoreCycles;
+        o.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 
 // ================== Swagger — مستندات و تست تعاملی API (/swagger) ==================
@@ -104,10 +119,12 @@ builder.Services.AddSwaggerGen(o =>
 {
     o.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
     {
-        Title = "API برنامه انبار — فروغ آریا",
+        Title = "API برنامه جامع — فروغ آریا + RADIS-HR V019",
         Version = "v1",
-        Description = "تست تعاملی همه‌ی سرویس‌ها — از جمله اسکن شبکه (/api/NetworkScan) و اسکن دوربین (/api/CctvScan)"
+        Description = "تست تعاملی همه‌ی سرویس‌ها؛ APIهای منابع انسانی جامع زیر /radis-hr/api قرار دارند."
     });
+    // DTOهایی مثل LoginRequest در هر دو سامانه وجود دارند؛ نام کامل از برخورد Schema جلوگیری می‌کند.
+    o.CustomSchemaIds(type => (type.FullName ?? type.Name).Replace("+", "."));
 });
 
 var app = builder.Build();
@@ -115,6 +132,9 @@ var app = builder.Build();
 // ساخت دیتابیس و داده اولیه (نه در زمان ابزارهای EF)
 if (!EF.IsDesignTime)
     await DbInitializer.InitializeAsync(app);
+
+// اجرای Migration و Seed اصلی RADIS-HR روی همان دیتابیس برنامه.
+await app.InitializeRadisHrAsync(EF.IsDesignTime);
 
 // سازماندهی پیوست‌ها در پوشه‌های اختصاصی هر پروژه (کد پروژه ← تصاویر/مستندات) — فقط فایل‌های قدیمیِ بدون‌پوشه
 if (!EF.IsDesignTime)
@@ -150,6 +170,7 @@ app.Use(async (ctx, next) =>
 });
 
 app.MapControllers();
+app.MapGet("/radis-hr", () => Results.Redirect("/radis-hr/"));
 
 // هاب بلادرنگ داشبورد
 app.MapHub<DashboardHub>("/hubs/dashboard");
@@ -186,6 +207,10 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
                 ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
         }
     });
+    // SPA مستقل RADIS-HR زیر همان Origin اجرا می‌شود تا نشست ورود هسته را به‌صورت امن استفاده کند.
+    if (File.Exists(Path.Combine(clientRoot, "radis-hr", "index.html")))
+        app.MapFallbackToFile("/radis-hr/{*path:nonfile}", "radis-hr/index.html");
+
     app.MapFallbackToFile("index.html");
 }
 

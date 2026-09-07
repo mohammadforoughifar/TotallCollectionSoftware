@@ -1,0 +1,256 @@
+@page "/employees"
+@inject ApiClient Api
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<section class="page">
+    <div class="section-head">
+        <div><p class="eyebrow">پرونده پرسنلی</p><h2>فهرست پرسنل</h2></div>
+        <div class="head-actions">
+            <button class="button secondary" type="button" @onclick="ExportAsync">خروجی Excel</button>
+            <span class="badge">@Fa.N(_filtered.Count) نفر</span>
+        </div>
+    </div>
+
+    @if (Auth.Session?.UserKey == "ceo")
+    {
+        <section class="panel">
+            <div class="section-head compact">
+                <div><p class="eyebrow">گزارش ماهانه مدیرعامل</p><h3>حقوق و کارکرد پرسنل</h3></div>
+                <label>
+                    ماه گزارش
+                    <select value="@_ceoMonth" @onchange="OnCeoMonthChanged">
+                        @foreach (var month in _months)
+                        {
+                            <option value="@month">@Fa.MonthLabel(month)</option>
+                        }
+                    </select>
+                </label>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>کد</th><th>نام و نام خانوادگی</th><th>واحد</th>
+                            <th>حقوق پایه (ریال)</th><th>کسرکار</th><th>اضافه‌کار</th><th>جمع دریافتی ماه (ریال)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _ceoRows)
+                        {
+                            var employee = _employees.FirstOrDefault(e => e.Code == row.Code);
+                            <tr>
+                                <td>@Fa.N(row.Code)</td>
+                                <td>@row.Name</td>
+                                <td>@(employee?.Unit ?? "—")</td>
+                                <td>@Fa.N(row.Base)</td>
+                                <td>@Fa.N(row.Shortfall)</td>
+                                <td>@Fa.N(row.Ot)</td>
+                                <td>@Fa.N(row.Net)</td>
+                            </tr>
+                        }
+                        @if (_ceoRows.Count == 0)
+                        {
+                            <tr><td colspan="7" class="empty">برای این ماه محاسبه‌ای ثبت نشده است.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+
+    <div class="toolbar">
+        <input placeholder="جست‌وجوی نام، کد، واحد، ایستگاه یا سطح سازمانی..." value="@_search" @oninput="OnSearch" />
+        <select value="@_unit" @onchange="OnUnitChanged">
+            <option value="">همه واحدها</option>
+            @foreach (var unit in _units)
+            {
+                <option value="@unit">@unit</option>
+            }
+        </select>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>کد</th><th>نام و نام خانوادگی</th><th>کد ملی</th><th>واحد</th>
+                    <th>ایستگاه کاری</th><th>سطح سازمانی</th><th>تأهل</th><th>اولاد</th>
+                    <th>حقوق پایه (ریال)</th><th>تاریخ جذب</th><th>عملیات</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var employee in _filtered)
+                {
+                    <tr>
+                        <td>@Fa.N(employee.Code)</td>
+                        <td>@employee.First @employee.Last</td>
+                        <td>@Fa.N(employee.Nid)</td>
+                        <td>@employee.Unit</td>
+                        <td>@employee.WorkStation</td>
+                        <td>@employee.ResponsibilityLevel</td>
+                        <td>@employee.Married</td>
+                        <td>@Fa.N(employee.Children)</td>
+                        <td>@Fa.N(employee.Salary)</td>
+                        <td>@Fa.N(employee.Hire)</td>
+                        <td>
+                            <div class="row-actions">
+                                <button type="button" @onclick="() => _selected = employee">پرونده</button>
+                                @if (CanEdit)
+                                {
+                                    <button type="button" @onclick="() => Edit(employee)">ویرایش</button>
+                                    <button type="button" @onclick="() => DeleteAsync(employee)">حذف</button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (_filtered.Count == 0)
+    {
+        <p class="empty">نتیجه‌ای پیدا نشد.</p>
+    }
+</section>
+
+@if (_selected != null)
+{
+    <div class="modal-backdrop" @onclick="() => _selected = null">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <div class="dialog-profile">
+                @if (!string.IsNullOrEmpty(_selected.Photo))
+                {
+                    <img src="@_selected.Photo" alt="عکس پرسنلی" />
+                }
+                else
+                {
+                    <span>@(_selected.First.Length > 0 ? _selected.First[..1] : "؟")</span>
+                }
+                <div>
+                    <h3>@_selected.First @_selected.Last</h3>
+                    <p class="muted">@_selected.PositionTitle — @_selected.Unit</p>
+                </div>
+            </div>
+            <div class="dialog-tabs">
+                <section>
+                    <h4>هویتی</h4>
+                    <dl>
+                        <dt>کد پرسنلی</dt><dd>@Fa.N(_selected.Code)</dd>
+                        <dt>کد ملی</dt><dd>@Fa.N(_selected.Nid)</dd>
+                        <dt>تأهل</dt><dd>@_selected.Married</dd>
+                        <dt>اولاد</dt><dd>@Fa.N(_selected.Children)</dd>
+                        <dt>تاریخ جذب</dt><dd>@Fa.N(_selected.Hire)</dd>
+                        <dt>نوع قرارداد</dt><dd>@_selected.ContractType</dd>
+                    </dl>
+                </section>
+                <section>
+                    <h4>حقوق و کارمزد</h4>
+                    <dl>
+                        <dt>حقوق پایه</dt><dd>@Fa.N(_selected.Salary)</dd>
+                        <dt>پایه سنوات</dt><dd>@Fa.N(_selected.SeniorityPay)</dd>
+                        <dt>حق جذب</dt><dd>@Fa.N(_selected.AttractionPay)</dd>
+                        <dt>حق سرپرستی</dt><dd>@Fa.N(_selected.SupervisorPay)</dd>
+                        <dt>کارانه</dt><dd>@Fa.N(_selected.PerformancePay)</dd>
+                        <dt>مزایای توافقی</dt><dd>@Fa.N(_selected.AgreedBenefits)</dd>
+                    </dl>
+                </section>
+                <section>
+                    <h4>بانکی</h4>
+                    <dl>
+                        <dt>بانک</dt><dd>@_selected.BankName</dd>
+                        <dt>شماره حساب</dt><dd>@Fa.N(_selected.AccountNumber)</dd>
+                        <dt>شبا</dt><dd dir="ltr">@_selected.Iban</dd>
+                        <dt>شماره کارت</dt><dd>@Fa.N(_selected.CardNumber)</dd>
+                        <dt>شعبه</dt><dd>@_selected.BankBranch</dd>
+                        <dt>کد شعبه</dt><dd>@Fa.N(_selected.BranchCode)</dd>
+                    </dl>
+                </section>
+            </div>
+            <div class="head-actions">
+                <button class="button secondary" type="button" @onclick="() => _selected = null">بستن</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Employee> _employees = new();
+    private List<Employee> _filtered = new();
+    private List<string> _units = new();
+    private List<string> _months = new();
+    private List<PayrollRow> _ceoRows = new();
+    private Employee? _selected;
+    private string _search = "", _unit = "", _ceoMonth = "";
+
+    private bool CanEdit => Auth.Session?.UserKey is "hr" or "ceo";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = await Api.GetListAsync<Employee>("api/employees");
+        _units = _employees.Select(e => e.Unit).Where(u => !string.IsNullOrEmpty(u)).Distinct().OrderBy(u => u).ToList();
+        Filter();
+
+        if (Auth.Session?.UserKey == "ceo")
+        {
+            _months = await Api.GetListAsync<string>("api/payroll/months");
+            _ceoMonth = _months.LastOrDefault() ?? "";
+            await LoadCeoRowsAsync();
+        }
+    }
+
+    private void Filter()
+    {
+        var term = Fa.ToLatin(_search).Trim();
+        _filtered = _employees.Where(e =>
+        {
+            if (!string.IsNullOrEmpty(_unit) && e.Unit != _unit) return false;
+            if (term.Length == 0) return true;
+            var haystack = $"{e.First} {e.Last} {Fa.ToLatin(e.Code)} {Fa.ToLatin(e.Nid)} {e.Unit} {e.WorkStation} {e.ResponsibilityLevel} {e.PositionTitle}";
+            return haystack.Contains(term, StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+    }
+
+    private void Edit(Employee employee) => Nav.NavigateTo($"/employee-entry?id={employee.Id}");
+
+    private void OnSearch(ChangeEventArgs args) { _search = args.Value?.ToString() ?? ""; Filter(); }
+    private void OnUnitChanged(ChangeEventArgs args) { _unit = args.Value?.ToString() ?? ""; Filter(); }
+
+    private async Task OnCeoMonthChanged(ChangeEventArgs args)
+    {
+        _ceoMonth = args.Value?.ToString() ?? "";
+        await LoadCeoRowsAsync();
+    }
+
+    private async Task LoadCeoRowsAsync()
+    {
+        if (string.IsNullOrEmpty(_ceoMonth)) return;
+        _ceoRows = await Api.GetListAsync<PayrollRow>($"api/payroll/month/{Uri.EscapeDataString(_ceoMonth)}");
+    }
+
+    private async Task DeleteAsync(Employee employee)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"حذف پرونده {employee.First} {employee.Last}؟");
+        if (!confirmed) return;
+        if (await Api.DeleteAsync($"api/employees/{employee.Id}"))
+        {
+            _employees.Remove(employee);
+            Filter();
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        var lines = new List<string> { "کد,نام,نام خانوادگی,کد ملی,واحد,ایستگاه,سطح,تأهل,اولاد,حقوق پایه,تاریخ جذب" };
+        foreach (var e in _filtered)
+            lines.Add($"{e.Code},{e.First},{e.Last},{e.Nid},{e.Unit},{e.WorkStation},{e.ResponsibilityLevel},{e.Married},{e.Children},{e.Salary},{e.Hire}");
+
+        var bytes = System.Text.Encoding.UTF8.GetPreamble()
+            .Concat(System.Text.Encoding.UTF8.GetBytes(string.Join("\n", lines))).ToArray();
+        await JS.InvokeVoidAsync("radisInterop.downloadFile", "employees.csv", "text/csv", Convert.ToBase64String(bytes));
+        Toasts.Success("خروجی آماده شد.");
+    }
+}

@@ -20,7 +20,9 @@ Write-Host "=====================================================" -ForegroundCo
 # 1) پابلیش کلاینت
 Write-Host "`n[1/4] پابلیش کلاینت Blazor WebAssembly..." -ForegroundColor Yellow
 dotnet publish src/Inventory.Client -c Release -o publish/client
-if ($LASTEXITCODE -ne 0) { throw "Publish failed" }
+if ($LASTEXITCODE -ne 0) { throw "Inventory publish failed" }
+dotnet publish modules/RadisHr/src/RadisHr.Client -c Release -o publish/radis-hr
+if ($LASTEXITCODE -ne 0) { throw "RADIS-HR publish failed" }
 
 # 2) کپی در wwwroot
 Write-Host "`n[2/4] کپی فایل‌های کلاینت در wwwroot مربوط به API..." -ForegroundColor Yellow
@@ -28,6 +30,9 @@ $dest = Join-Path $PSScriptRoot "src/Inventory.Api/wwwroot"
 if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
 New-Item -ItemType Directory -Path $dest | Out-Null
 Copy-Item -Path (Join-Path $PSScriptRoot "publish/client/wwwroot/*") -Destination $dest -Recurse -Force
+$radisDest = Join-Path $dest "radis-hr"
+New-Item -ItemType Directory -Path $radisDest | Out-Null
+Copy-Item -Path (Join-Path $PSScriptRoot "publish/radis-hr/wwwroot/*") -Destination $radisDest -Recurse -Force
 
 # 3) تنظیم SQLite
 Write-Host "`n[3/4] تنظیم SQLite به‌جای SQL Server..." -ForegroundColor Yellow

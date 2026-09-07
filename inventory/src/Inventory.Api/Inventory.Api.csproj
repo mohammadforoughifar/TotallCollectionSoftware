@@ -2,6 +2,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Inventory.Shared\Inventory.Shared.csproj" />
+    <ProjectReference Include="..\..\modules\RadisHr\src\RadisHr.Shared\RadisHr.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- بک‌اند RADIS-HR عیناً از ماژول اصلی در همین Host کامپایل می‌شود؛ Program مستقل عمداً وارد نمی‌شود. -->
+    <Compile Include="..\..\modules\RadisHr\src\RadisHr.Api\Controllers\**\*.cs" Link="Modules\RadisHr\Controllers\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\modules\RadisHr\src\RadisHr.Api\Data\**\*.cs" Link="Modules\RadisHr\Data\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\modules\RadisHr\src\RadisHr.Api\Services\**\*.cs" Link="Modules\RadisHr\Services\%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

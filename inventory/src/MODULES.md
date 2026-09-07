@@ -18,7 +18,8 @@
 | **Sales** (فروش) | Orders | Transaction, TransactionLine, Cheque, InstallmentLine | — | Orders/ |
 | **Finance** (مالی) | Expenses | Expense, ExpenseCategory | ExpenseService | Expenses |
 | **Repairs** (تعمیرات) | Repairs | RepairOrder, RepairItem, Technician | RepairService | Repairs |
-| **Hr** (منابع انسانی) | Attendance, LeaveRequests | AttendanceRecord, AttendanceSegment, ShiftGroup, LeaveRequest, CompanyHoliday | AttendanceRecalcService | Attendance, AttendanceAdmin, Leave, HrPanel |
+| **Hr** (منابع انسانی فعلی) | Attendance, LeaveRequests | AttendanceRecord, AttendanceSegment, ShiftGroup, LeaveRequest, CompanyHoliday | AttendanceRecalcService | Attendance, AttendanceAdmin, Leave, HrPanel |
+| **RadisHr V019** (منابع انسانی جامع) | `modules/RadisHr/.../Controllers` (با پیشوند `/radis-hr`) | موجودیت‌های اصلی در `RadisHr.Shared/Models` | سرویس‌های اصلی Payroll/Attendance | کلاینت مستقل زیر `/radis-hr/`؛ ورود و دیتابیس مشترک |
 | **ItAssets** (دارایی‌های IT) | ItRequests, WorkOrders, SystemInfo | SystemInfo, SystemInfoChangeLog, SystemComponents, SystemIdModule, ItRequest, WorkOrder | SystemHealth, SystemInfoPdf | ItRequests, WorkOrders, SystemId, SystemInfoList, NetworkScan, PublicRequest |
 | **Cctv** (دوربین) | CctvCameras, CctvNvrs, CctvScan, NetworkScan | CctvCamera, CctvNvr | — | CctvCameras, CctvNvrs |
 | **Office** (لوازم اداری + اتوماسیون) | OfficeMachines, InnerLetters | OfficeMachine, LetterSource, InnerLetter, Erja, Amalgar, PishnevisLetter, RelatedLetter, LetterBayegani, LetterGroup, LetterGroupMember | InnerLetterService, ErjaService, PishnevisService, LetterGroupService | OfficeMachines, Office/Letters/ (LetterCartable, ComposeLetterModal, ErjaSheet, GardeshModal, LetterPickCombo, LetterView) |

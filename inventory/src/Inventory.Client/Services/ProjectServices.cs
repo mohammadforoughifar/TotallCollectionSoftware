@@ -49,7 +49,7 @@ public interface IProjectService
 public interface IReportWorkService
 {
     Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
-        DateTime? from = null, DateTime? to = null);
+        DateTime? from = null, DateTime? to = null, int? operatorId = null);
     Task CreateAsync(ReportWorkDto dto);
     Task UpdateAsync(int id, ReportWorkDto dto);
     Task DeleteAsync(int id);
@@ -160,11 +160,12 @@ public class ReportWorkService : IReportWorkService
     public ReportWorkService(IApiClient api) => _api = api;
 
     public Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
-        DateTime? from = null, DateTime? to = null)
+        DateTime? from = null, DateTime? to = null, int? operatorId = null)
     {
         var url = "api/reportworks?";
         if (projectId is > 0) url += $"projectId={projectId}&";
         if (userId is > 0) url += $"userId={userId}&";
+        if (operatorId is > 0) url += $"operatorId={operatorId}&";
         if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
         if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
         return _api.GetAsync<List<ReportWorkDto>>(url);
