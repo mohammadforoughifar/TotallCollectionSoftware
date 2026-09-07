@@ -49,6 +49,7 @@ else
                         <thead>
                             <tr>
                                 <th>نام کاربری</th>
+                                <th>نام و نام خانوادگی</th>
                                 <th>نقش</th>
                                 <th>معرف مرتبط</th>
                                 <th>تاریخ ایجاد</th>
@@ -72,6 +73,20 @@ else
                                         @if (!string.IsNullOrWhiteSpace(u.EitaaChatId))
                                         {
                                             <span class="msgr-badge msgr-eitaa" title="کاربر ایتا دارد">ایتا</span>
+                                        }
+                                    </td>
+                                    <td class="fw-500">
+                                        @if (string.IsNullOrWhiteSpace(FullName(u)))
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
+                                        else
+                                        {
+                                            <span><i class="bi bi-person-vcard text-muted ms-1"></i>@FullName(u)</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(u.Mobile))
+                                        {
+                                            <div class="fs-8 text-muted num" dir="ltr">@u.Mobile</div>
                                         }
                                     </td>
                                     <td>
@@ -160,6 +175,10 @@ else
                                             <span class="badge badge-soft-muted fs-8">غیرفعال</span>
                                         }
                                     </div>
+                                    @if (!string.IsNullOrWhiteSpace(FullName(u)))
+                                    {
+                                        <div class="fs-8 fw-600"><i class="bi bi-person-vcard text-muted ms-1"></i>@FullName(u)</div>
+                                    }
                                     <div class="fs-8 text-muted">@(u.ReferrerName is null ? "" : $"معرف: {u.ReferrerName} — ")ایجاد: @u.CreatedAt.ToFa()</div>
                                 </div>
                             </div>
@@ -224,7 +243,7 @@ else
             </div>
             <div class="col-md-6">
                 <label class="form-label">شماره موبایل <span class="fs-8 text-muted">(برای پیام بله/ایتا)</span></label>
-                <input class="form-control num" dir="ltr" placeholder="09xxxxxxxxx" @bind="form.Mobile" />
+                <input class="form-control num" dir="ltr" placeholder="09xxxxxxxxx" @bind="form.Mobile" data-digits="" inputmode="numeric" />
                 <div class="fs-8 text-muted mt-1">
                     @if (!string.IsNullOrWhiteSpace(form.BaleChatId))
                     {
@@ -435,7 +454,12 @@ else
 
     private async Task SaveWoAllowed(int userId)
     {
-        try { await Http.PostAsJsonAsync($"/api/workorders/allowed/{userId}", woAllowed.ToList()); } catch { }
+        try
+        {
+            EnsureAuthHeader();
+            await Http.PostAsJsonAsync($"/api/workorders/allowed/{userId}", woAllowed.ToList());
+        }
+        catch { }
     }
     private bool editing => form.Id != 0;
 
@@ -487,18 +511,35 @@ else
     {
         Layout.SetTitle("کاربران");
         if (!Auth.IsAdmin && !Auth.IsOperator) { loading = false; return; }
+        EnsureAuthHeader(); // بدون این هدر، فراخوانی‌های مستقیم HttpClient (نقش‌ها، عکس، دستور کار) ۴۰۱ می‌گرفتند
         await Load();
     }
+
+    /// <summary>افزودن توکن به هدر HttpClient — این صفحه چند فراخوانی مستقیم (بدون ApiClient) دارد.</summary>
+    private void EnsureAuthHeader()
+    {
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+    }
+
+    /// <summary>نام و نام خانوادگی کاربر (اگر خالی بود، رشتهٔ خالی)</summary>
+    private static string FullName(UserDto u) => $"{u.FirstName} {u.LastName}".Trim();
 
     private async Task Load()
     {
         loading = true;
+        EnsureAuthHeader();
         try
         {
             items = await AuthApi.GetUsersAsync();
             referrers = await ReferrerSvc.GetAllAsync(activeOnly: true);
             try { allRoles = (await Http.GetFromJsonAsync<List<RoleOpt>>("/api/roles") ?? new()).Where(r => r.IsActive).ToList(); }
-            catch { allRoles = new(); }
+            catch (Exception rex)
+            {
+                allRoles = new();
+                Toast.Error($"فهرست نقش‌ها خوانده نشد: {rex.Message}");
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -519,8 +560,18 @@ else
     {
         form = new UserDto
         {
-            Id = u.Id, Username = u.Username, Role = u.Role,
-            ReferrerId = u.ReferrerId, IsActive = u.IsActive, CreatedAt = u.CreatedAt
+            Id = u.Id,
+            Username = u.Username,
+            Role = u.Role,
+            FirstName = u.FirstName,
+            LastName = u.LastName,
+            Mobile = u.Mobile,
+            BaleChatId = u.BaleChatId,
+            EitaaChatId = u.EitaaChatId,
+            RoleIds = u.RoleIds is null ? null : new List<int>(u.RoleIds),
+            ReferrerId = u.ReferrerId,
+            IsActive = u.IsActive,
+            CreatedAt = u.CreatedAt
         };
         referrerIdStr = (u.ReferrerId ?? 0).ToString();
         selectedRoleIds = new HashSet<int>(u.RoleIds ?? new List<int>());
@@ -546,12 +597,23 @@ else
         if (!editing && string.IsNullOrWhiteSpace(form.Password))
         { saveError = "رمز عبور را وارد کنید."; return; }
 
+        if (string.IsNullOrWhiteSpace(form.FirstName))
+        { saveError = "نام کاربر را وارد کنید."; return; }
+
+        if (string.IsNullOrWhiteSpace(form.LastName))
+        { saveError = "نام خانوادگی کاربر را وارد کنید."; return; }
+
         if (allRoles.Count > 0 && selectedRoleIds.Count == 0)
         { saveError = "حداقل یک نقش برای کاربر انتخاب کنید."; return; }
 
         form.RoleIds = selectedRoleIds.ToList();
         form.ReferrerId = int.TryParse(referrerIdStr, out var rid) && rid > 0 ? rid : null;
+        form.Username = form.Username.Trim();
+        form.FirstName = form.FirstName?.Trim();
+        form.LastName = form.LastName?.Trim();
+        form.Mobile = string.IsNullOrWhiteSpace(form.Mobile) ? null : Fa.ToEn(form.Mobile).Trim();
         saving = true;
+        EnsureAuthHeader();
         try
         {
             var saved = await AuthApi.SaveUserAsync(form);

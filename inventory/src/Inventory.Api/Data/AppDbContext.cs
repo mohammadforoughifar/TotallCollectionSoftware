@@ -92,6 +92,9 @@ public class AppDbContext : DbContext
     public DbSet<ReportWork> ReportWorks => Set<ReportWork>();
     public DbSet<ProjectAttach> ProjectAttaches => Set<ProjectAttach>();
 
+    /// <summary>درخواست‌های ویرایش/حذف پروژه که در انتظار تایید مدیر هستند</summary>
+    public DbSet<ProjectChangeRequest> ProjectChangeRequests => Set<ProjectChangeRequest>();
+
     // ==================== اتوماسیون اداری — نامه داخلی ====================
     public DbSet<LetterSource> LetterSources => Set<LetterSource>();
     public DbSet<InnerLetter> InnerLetters => Set<InnerLetter>();
@@ -308,6 +311,8 @@ public class AppDbContext : DbContext
         mb.Entity<ReportWork>().HasIndex(r => r.UserId);
         mb.Entity<ReportWork>().HasIndex(r => r.OperatorId);
         mb.Entity<ProjectAttach>().HasIndex(a => a.ProjectId);
+        mb.Entity<ProjectChangeRequest>().HasIndex(c => c.ProjectId);
+        mb.Entity<ProjectChangeRequest>().HasIndex(c => c.Status);
 
         // جمع ساعات پروژه به‌صورت تیک (bigint) — نوع time فقط تا ۲۴ ساعت را می‌پذیرد
         mb.Entity<ProjectEntryExit>().Property(p => p.TotalSpentTime).HasConversion<long>();
@@ -355,6 +360,18 @@ public class AppDbContext : DbContext
             .HasOne(a => a.User)
             .WithMany()
             .HasForeignKey(a => a.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // درخواست‌های تغییر پروژه (در انتظار تایید مدیر)
+        mb.Entity<ProjectChangeRequest>()
+            .HasOne(c => c.Project)
+            .WithMany()
+            .HasForeignKey(c => c.ProjectId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<ProjectChangeRequest>()
+            .HasOne(c => c.RequestedBy)
+            .WithMany()
+            .HasForeignKey(c => c.RequestedById)
             .OnDelete(DeleteBehavior.Restrict);
 
         // ---------- ماژول شناسنامه سیستم: تاریخچه کاربر، تحویل، دستور از راه دور ----------

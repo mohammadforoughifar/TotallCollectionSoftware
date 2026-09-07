@@ -458,3 +458,80 @@
         return output;
     }
 })();
+
+// =====================================================================
+//  فیلد «فقط عدد» — تلفن / فکس / موبایل
+//  هر <input data-digits> فقط رقم می‌پذیرد:
+//   • ارقام فارسی/عربی به لاتین تبدیل می‌شوند (۰۹۱۲… ← 0912…)
+//   • حروف و کاراکترهای دیگر (تایپ‌شده یا Paste‌شده) حذف می‌شوند
+//   • data-digits="tel" اجازهٔ کاراکترهای متداول شمارهٔ ثابت را هم می‌دهد: + - ( ) و فاصله
+//  چون شنونده در فاز capture ثبت می‌شود، قبل از هندلر Blazor اجرا می‌شود و
+//  بنابراین مقدار پاک‌شده به مدل C# می‌رسد (bind سالم می‌ماند).
+// =====================================================================
+(function () {
+    'use strict';
+
+    var FA = '۰۱۲۳۴۵۶۷۸۹';
+    var AR = '٠١٢٣٤٥٦٧٨٩';
+
+    function normalizeDigits(s) {
+        var out = '';
+        for (var i = 0; i < s.length; i++) {
+            var ch = s[i];
+            var fi = FA.indexOf(ch);
+            if (fi >= 0) { out += fi; continue; }
+            var ai = AR.indexOf(ch);
+            if (ai >= 0) { out += ai; continue; }
+            out += ch;
+        }
+        return out;
+    }
+
+    function sanitize(value, mode) {
+        var s = normalizeDigits(value || '');
+        var allowed = (mode === 'tel') ? /[0-9+\-() ]/ : /[0-9]/;
+        var out = '';
+        for (var i = 0; i < s.length; i++) {
+            if (allowed.test(s[i])) out += s[i];
+        }
+        return out;
+    }
+
+    function isDigitInput(el) {
+        return el && el.tagName === 'INPUT' && el.hasAttribute && el.hasAttribute('data-digits');
+    }
+
+    function apply(el) {
+        var mode = el.getAttribute('data-digits') || '';
+        var before = el.value;
+        var after = sanitize(before, mode);
+        if (before === after) return;
+
+        // حفظ محل مکان‌نما بعد از پاک‌سازی
+        var pos = el.selectionStart == null ? after.length : el.selectionStart;
+        var removedBefore = before.slice(0, pos).length - sanitize(before.slice(0, pos), mode).length;
+        el.value = after;
+        try {
+            var np = Math.max(0, pos - removedBefore);
+            el.setSelectionRange(np, np);
+        } catch (e) { /* برخی نوع‌های input از setSelectionRange پشتیبانی نمی‌کنند */ }
+    }
+
+    document.addEventListener('input', function (e) {
+        if (isDigitInput(e.target)) apply(e.target);
+    }, true);
+
+    document.addEventListener('change', function (e) {
+        if (isDigitInput(e.target)) apply(e.target);
+    }, true);
+
+    // جلوگیری از تایپ کاراکتر غیرمجاز (تجربهٔ بهتر — پاک‌سازی بالا هم پشتیبان است)
+    document.addEventListener('keypress', function (e) {
+        var el = e.target;
+        if (!isDigitInput(el) || e.ctrlKey || e.metaKey || e.altKey) return;
+        var ch = e.key;
+        if (!ch || ch.length !== 1) return;
+        var mode = el.getAttribute('data-digits') || '';
+        if (sanitize(ch, mode) === '') e.preventDefault();
+    }, true);
+})();
