@@ -24,7 +24,20 @@ public interface ILetterService
     Task AnswerAsync(int erjaId, AnswerErjaDto dto);
     Task MarkReadAsync(int erjaId);
     Task<bool> ToggleNeshanAsync(int erjaId);
+    Task<bool> ToggleLetterNeshanAsync(int letterId);
     Task<bool> ToggleBayeganiAsync(int erjaId);
+
+    // بایگانی درختی
+    Task<List<BayeganiNodeDto>> GetBayeganiTreeAsync();
+    Task<BayeganiNodeDto> AddBayeganiMainCategoryAsync(SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> AddBayeganiSubCategoryAsync(SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> EditBayeganiFolderAsync(int id, SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> MoveBayeganiFolderAsync(int id, int newParentId);
+    Task ArchiveLettersAsync(ArchiveLettersDto dto);
+    Task<BayeganiNodeDto> MoveBayeganiLetterAsync(int id, int newParentId);
+    Task DeleteBayeganiAsync(int id);
+    Task UnarchiveByErjaAsync(int erjaId);
+    Task UnarchiveByLetterAsync(int letterId);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
 
     // پیش‌نویس
@@ -115,10 +128,45 @@ public class LetterService : ILetterService
     public async Task<bool> ToggleNeshanAsync(int erjaId) =>
         (await _api.PostAsync<NeshanResponse>($"api/letters/erja/{erjaId}/neshan")).IsNeshan;
 
+    public async Task<bool> ToggleLetterNeshanAsync(int letterId) =>
+        (await _api.PostAsync<NeshanResponse>($"api/letters/{letterId}/neshan")).IsNeshan;
+
     private class BayeganiResponse { public bool IsBayegani { get; set; } }
 
     public async Task<bool> ToggleBayeganiAsync(int erjaId) =>
         (await _api.PostAsync<BayeganiResponse>($"api/letters/erja/{erjaId}/bayegani")).IsBayegani;
+
+    // ==================== بایگانی درختی ====================
+
+    public Task<List<BayeganiNodeDto>> GetBayeganiTreeAsync() =>
+        _api.GetAsync<List<BayeganiNodeDto>>("api/letters/bayegani/tree");
+
+    public Task<BayeganiNodeDto> AddBayeganiMainCategoryAsync(SaveBayeganiFolderDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/letters/bayegani/main-category", dto);
+
+    public Task<BayeganiNodeDto> AddBayeganiSubCategoryAsync(SaveBayeganiFolderDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/letters/bayegani/sub-category", dto);
+
+    public Task<BayeganiNodeDto> EditBayeganiFolderAsync(int id, SaveBayeganiFolderDto dto) =>
+        _api.PutAsync<BayeganiNodeDto>($"api/letters/bayegani/folder/{id}", dto);
+
+    public Task<BayeganiNodeDto> MoveBayeganiFolderAsync(int id, int newParentId) =>
+        _api.PostAsync<BayeganiNodeDto>($"api/letters/bayegani/move-folder/{id}?newParentId={newParentId}");
+
+    public async Task ArchiveLettersAsync(ArchiveLettersDto dto) =>
+        await _api.PostAsync<object>("api/letters/bayegani/letters", dto);
+
+    public Task<BayeganiNodeDto> MoveBayeganiLetterAsync(int id, int newParentId) =>
+        _api.PostAsync<BayeganiNodeDto>($"api/letters/bayegani/move-letter/{id}?newParentId={newParentId}");
+
+    public Task DeleteBayeganiAsync(int id) =>
+        _api.DeleteAsync($"api/letters/bayegani/{id}");
+
+    public async Task UnarchiveByErjaAsync(int erjaId) =>
+        await _api.PostAsync<object>($"api/letters/bayegani/unarchive/{erjaId}");
+
+    public async Task UnarchiveByLetterAsync(int letterId) =>
+        await _api.PostAsync<object>($"api/letters/bayegani/unarchive-letter/{letterId}");
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         _api.GetAsync<List<AmalgarDto>>("api/letters/amalgars");
@@ -198,6 +246,12 @@ public class LetterService : ILetterService
     public Task DeleteAttachmentAsync(int attachmentId) =>
         _api.DeleteAsync($"api/letters/attachments/{attachmentId}");
 
-    public string AttachmentDownloadUrl(int attachmentId) =>
-        _api.BuildUrl($"api/letters/attachments/{attachmentId}/download");
+    public string AttachmentDownloadUrl(int attachmentId)
+    {
+        // لینک مستقیم <a> هدر Authorization ندارد — توکن در query string ارسال می‌شود
+        var url = _api.BuildUrl($"api/letters/attachments/{attachmentId}/download");
+        return string.IsNullOrWhiteSpace(_auth.Token)
+            ? url
+            : $"{url}?access_token={Uri.EscapeDataString(_auth.Token)}";
+    }
 }

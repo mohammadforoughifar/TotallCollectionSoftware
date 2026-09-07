@@ -1,0 +1,462 @@
+@page "/moadian/settings"
+@using Microsoft.AspNetCore.Components
+@inject IMoadianClientService MoadianSvc
+@inject IFiscalPrinterClientService PrinterSvc
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>تنظیمات مودیان و چاپگر مالی</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>تنظیمات مودیان و چاپگر مالی</h1>
+        <p class="lead">پیکربندی کلیدهای امنیتی، دوره‌های مالیاتی، شناسه کالا/خدمات و چاپگر مالی</p>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item"><button class='nav-link @(tab == 1 ? "active" : "")' @onclick="() => tab = 1">اتصال سامانه</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 2 ? "active" : "")' @onclick="() => tab = 2">دوره‌های مالیاتی</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 3 ? "active" : "")' @onclick="() => tab = 3">شناسه کالا/خدمت</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 4 ? "active" : "")' @onclick="() => tab = 4">چاپگر مالی</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 5 ? "active" : "")' @onclick="() => tab = 5">لاگ ارسال</button></li>
+</ul>
+
+@if (tab == 1)
+{
+    <div class="card">
+        <div class="card-body">
+            <div class='alert @(setting.IsSimulation ? "alert-warning" : "alert-success") py-2 small'>
+                <i class='bi @(setting.IsSimulation ? "bi-flask" : "bi-plug")'></i>
+                @(setting.IsSimulation
+                    ? "حالت شبیه‌سازی: آدرس سرویس خالی است؛ ارسال‌ها محلی شبیه‌سازی و موفق ثبت می‌شوند (برای تست)."
+                    : "اتصال عملیاتی: فاکتورها با payload و امضای RSA به آدرس سرویس ارسال می‌شوند.")
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label small">شماره ملی/شناسه مالیاتی <span class="text-danger">*</span></label>
+                    <input class="form-control" dir="ltr" @bind="setting.TaxId" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">کد اقتصادی</label>
+                    <input class="form-control" dir="ltr" @bind="setting.EconomicCode" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">نام فروشنده</label>
+                    <input class="form-control" @bind="setting.SellerName" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">تلفن فروشنده</label>
+                    <input class="form-control" @bind="setting.SellerPhone" />
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label small">آدرس فروشنده</label>
+                    <input class="form-control" @bind="setting.SellerAddress" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label small">کد پستی</label>
+                    <input class="form-control" dir="ltr" @bind="setting.SellerPostalCode" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">شناسه کارتابل سامانه (توکن مالیاتی)</label>
+                    <input class="form-control" dir="ltr" type="password" @bind="setting.TaxCardToken" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">آدرس سرویس (آزمایشی/عملیاتی) — خالی = شبیه‌سازی</label>
+                    <input class="form-control" dir="ltr" placeholder="https://tp.tax.gov.ir/..." @bind="setting.BaseUrl" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">کلید خصوصی امضا (PEM) — از پرتال مودیان</label>
+                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" placeholder="-----BEGIN PRIVATE KEY-----..." @bind="setting.PrivateKeyPem"></textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label small">کلید عمومی/گواهی (اختیاری)</label>
+                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" @bind="setting.PublicKeyPem"></textarea>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">نرخ پیش‌فرض مالیات (٪)</label>
+                    <input class="form-control text-end num" @bind="setting.DefaultVatRate" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">بازه ارسال خودکار (دقیقه)</label>
+                    <input class="form-control text-end num" @bind="setting.SendIntervalMinutes" />
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="cb-auto" @bind="setting.AutoSend" />
+                        <label class="form-check-label small" for="cb-auto">ارسال خودکار صف (سرویس پس‌زمینه)</label>
+                    </div>
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="cb-log" @bind="setting.LoggingEnabled" />
+                        <label class="form-check-label small" for="cb-log">ثبت لاگ کامل ارسال</label>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <button class="btn btn-primary" @onclick="SaveSetting" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره تنظیمات")</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (tab == 2)
+{
+    <div class="card">
+        <div class="card-header fw-bold">دوره‌های مالیاتی (ماه‌های شمسی)</div>
+        <div class="card-body">
+            <div class="row g-2 mb-3">
+                <div class="col-auto"><input class="form-control form-control-sm" type="number" placeholder="سال (مثلاً 1405)" @bind="pYear" /></div>
+                <div class="col-auto">
+                    <select class="form-select form-select-sm" @bind="pMonth">
+                        @for (var i = 1; i <= 12; i++)
+                        {
+                            <option value="@i">@PersianDate.MonthName(i)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="checkbox" id="cb-close" @bind="pClosed" />
+                        <label class="form-check-label small" for="cb-close">بسته</label>
+                    </div>
+                </div>
+                <div class="col-auto"><button class="btn btn-sm btn-primary" @onclick="SavePeriod">افزودن دوره</button></div>
+            </div>
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>دوره</th><th>وضعیت</th><th class="text-end">تعداد فاکتور</th><th class="text-end">جمع خالص</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var p in periods)
+                    {
+                        <tr>
+                            <td class="num fw-bold">@p.Title</td>
+                            <td>@ClosedBadge(p.IsClosed)</td>
+                            <td class="text-end num">@p.InvoiceCount</td>
+                            <td class="text-end num">@p.NetTotal.Money()</td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePeriod(p)"><i class="bi bi-trash"></i></button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (tab == 3)
+{
+    <div class="card">
+        <div class="card-header fw-bold d-flex align-items-center">
+            <span>شناسه‌های کالا/خدمت (CPC)</span>
+            <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="OpenCpc"><i class="bi bi-plus-lg"></i> شناسه جدید</button>
+        </div>
+        <div class="card-body">
+            <div class="input-group mb-3">
+                <input class="form-control form-control-sm" placeholder="جستجوی کد یا شرح..." @bind="cpcSearch" @bind:event="oninput" @bind:after="LoadCpc" />
+            </div>
+            <table class="table table-sm table-hover align-middle">
+                <thead><tr><th>کد</th><th>شرح</th><th>نام لاتین</th><th>واحد</th><th>فعال</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var c in cpcList)
+                    {
+                        <tr>
+                            <td class="num" dir="ltr">@c.Code</td>
+                            <td>@c.Title</td>
+                            <td class="text-muted" dir="ltr">@c.EnTitle</td>
+                            <td>@c.Unit</td>
+                            <td><i class='bi @(c.IsActive ? "bi-check-circle text-success" : "bi-x-circle text-secondary")'></i></td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditCpc(c)"><i class="bi bi-pencil"></i></button>
+                                <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteCpc(c)"><i class="bi bi-trash"></i></button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@if (tab == 4)
+{
+    <div class="row g-3">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header fw-bold">تنظیمات چاپگر مالی</div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small">نام چاپگر</label>
+                            <input class="form-control" @bind="printer.PrinterName" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">عرض کاغذ</label>
+                            <select class="form-select" @bind="printer.PaperWidthMm">
+                                <option value="80">۸۰ میلی‌متر</option>
+                                <option value="58">۵۸ میلی‌متر</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">پورت دستگاه</label>
+                            <input class="form-control" dir="ltr" placeholder="FILE:/tmp/pos.txt یا 192.168.1.50:9100 یا /dev/usb/lp0" @bind="printer.PortName" />
+                            <div class="form-text">خالی = حالت شبیه‌سازی (فقط پیش‌نمایش/ذخیره). برای تست خروجی ESC/POS: <code dir="ltr">FILE:/tmp/pos.txt</code></div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">تعداد نسخه</label>
+                            <input class="form-control text-end num" @bind="printer.Copies" />
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="cb-cut" @bind="printer.CutPaper" />
+                                <label class="form-check-label small" for="cb-cut">بریدن کاغذ</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="cb-en" @bind="printer.Enabled" />
+                                <label class="form-check-label small" for="cb-en">فعال</label>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">سربرگ رسید (هر خط)</label>
+                            <textarea class="form-control small" rows="2" @bind="printer.HeaderLines"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small">پابرگ رسید</label>
+                            <textarea class="form-control small" rows="2" @bind="printer.FooterLines"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-primary" @onclick="SavePrinter" disabled="@saving">@(saving ? "..." : "ذخیره تنظیمات چاپگر")</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header fw-bold">راهنما</div>
+                <div class="card-body small">
+                    <ul class="mb-0">
+                        <li>چاپگری که از ESC/POS پشتیبانی می‌کند: پورت شبکه <code dir="ltr">IP:9100</code> یا مسیر دستگاه <code dir="ltr">/dev/usb/lp0</code>.</li>
+                        <li>برای تست بدون سخت‌افزار: <code dir="ltr">FILE:/tmp/pos.txt</code> — خروجی بایت‌های ESC/POS ذخیره می‌شود.</li>
+                        <li>رسید شامل سربرگ فروشنده، مشخصه‌های مالیاتی، اقلام، جمع‌ها، وضعیت و QR استاندارد است.</li>
+                        <li>چاپ از دکمه «چاپ رسید» روی هر فاکتور در صفحه فاکتورها.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (tab == 5)
+{
+    <div class="card">
+        <div class="card-header fw-bold">لاگ ارسال (آخرین ۳۰۰ رویداد)</div>
+        <div class="card-body p-0">
+            <table class="table table-sm table-hover mb-0">
+                <thead><tr><th>زمان</th><th>فاکتور</th><th>رویداد</th><th>پیام</th></tr></thead>
+                <tbody>
+                    @foreach (var lg in logs)
+                    {
+                        <tr>
+                            <td class="num text-nowrap">@lg.CreatedAt.ToString("MM/dd HH:mm")</td>
+                            <td class="num">@lg.InvoiceNumber</td>
+                            <td>@LogActionFa(lg.Action)</td>
+                            <td class="small">@lg.Message</td>
+                        </tr>
+                    }
+                    @if (logs.Count == 0)
+                    {
+                        <tr><td colspan="4" class="text-center text-muted py-3">لاگی ثبت نشده است.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<!-- ===================== مودال CPC ===================== -->
+<Modal Visible="showCpc" Title='@(cpcEdit.Id == 0 ? "شناسه کالا/خدمت جدید" : "ویرایش شناسه")' OnClose="() => showCpc = false">
+    <ChildContent>
+    <div class="row g-3">
+        <div class="col-6">
+            <label class="form-label small">کد CPC <span class="text-danger">*</span></label>
+            <input class="form-control" dir="ltr" @bind="cpcEdit.Code" />
+        </div>
+        <div class="col-6">
+            <label class="form-label small">واحد</label>
+            <input class="form-control" @bind="cpcEdit.Unit" placeholder="عدد / خدمت" />
+        </div>
+        <div class="col-12">
+            <label class="form-label small">شرح فارسی <span class="text-danger">*</span></label>
+            <input class="form-control" @bind="cpcEdit.Title" />
+        </div>
+        <div class="col-12">
+            <label class="form-label small">نام لاتین</label>
+            <input class="form-control" dir="ltr" @bind="cpcEdit.EnTitle" />
+        </div>
+        <div class="col-12">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="cb-cpc-active" @bind="cpcEdit.IsActive" />
+                <label class="form-check-label small" for="cb-cpc-active">فعال (قابل انتخاب در اقلام)</label>
+            </div>
+        </div>
+    </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="SaveCpc" disabled="@saving">@(saving ? "..." : "ذخیره")</button>
+        <button class="btn btn-light" @onclick="() => showCpc = false">انصراف</button>
+    </Footer>
+</Modal>
+
+@code {
+    private int tab = 1;
+    private bool saving;
+
+    private MoadianSetting setting = new();
+    private List<MoadianFiscalPeriod> periods = new();
+    private List<MoadianCpc> cpcList = new();
+    private List<MoadianLog> logs = new();
+
+    private int pYear = PersianDate.FromGregorian(DateTime.Now).Year;
+    private int pMonth = PersianDate.FromGregorian(DateTime.Now).Month;
+    private bool pClosed;
+
+    private string cpcSearch = "";
+    private bool showCpc;
+    private MoadianCpc cpcEdit = new();
+
+    private FiscalPrinterSetting printer = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            setting = await MoadianSvc.GetSettingAsync();
+            periods = await MoadianSvc.GetPeriodsAsync();
+            cpcList = await MoadianSvc.GetCpcAsync();
+            logs = await MoadianSvc.GetLogsAsync();
+            printer = await PrinterSvc.GetSettingAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SaveSetting()
+    {
+        if (string.IsNullOrWhiteSpace(setting.TaxId)) { Toast.Error("شماره مالیاتی را وارد کنید."); return; }
+        saving = true;
+        try
+        {
+            setting = await MoadianSvc.SaveSettingAsync(setting);
+            Toast.Success("تنظیمات مودیان ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task SavePeriod()
+    {
+        if (pYear < 1300 || pYear > 1500) { Toast.Error("سال معتبر وارد کنید."); return; }
+        saving = true;
+        try
+        {
+            await MoadianSvc.SavePeriodAsync(new MoadianFiscalPeriod { Year = pYear, Month = pMonth, IsClosed = pClosed });
+            Toast.Success("دوره اضافه شد.");
+            periods = await MoadianSvc.GetPeriodsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeletePeriod(MoadianFiscalPeriod p)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"دوره {p.Title} حذف شود؟")) return;
+        try
+        {
+            await MoadianSvc.DeletePeriodAsync(p.Id);
+            Toast.Success("حذف شد.");
+            periods = await MoadianSvc.GetPeriodsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task LoadCpc()
+    {
+        try { cpcList = await MoadianSvc.GetCpcAsync(cpcSearch); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OpenCpc()
+    {
+        cpcEdit = new MoadianCpc { IsActive = true, Unit = "عدد" };
+        showCpc = true;
+    }
+
+    private void EditCpc(MoadianCpc c)
+    {
+        cpcEdit = new MoadianCpc { Id = c.Id, Code = c.Code, Title = c.Title, EnTitle = c.EnTitle, IsActive = c.IsActive, Unit = c.Unit };
+        showCpc = true;
+    }
+
+    private async Task SaveCpc()
+    {
+        if (string.IsNullOrWhiteSpace(cpcEdit.Code) || string.IsNullOrWhiteSpace(cpcEdit.Title))
+        { Toast.Error("کد و شرح الزامی است."); return; }
+        saving = true;
+        try
+        {
+            await MoadianSvc.SaveCpcAsync(cpcEdit);
+            Toast.Success("ذخیره شد.");
+            showCpc = false;
+            await LoadCpc();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteCpc(MoadianCpc c)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"شناسه {c.Code} حذف شود؟")) return;
+        try
+        {
+            await MoadianSvc.DeleteCpcAsync(c.Id);
+            Toast.Success("حذف شد.");
+            await LoadCpc();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SavePrinter()
+    {
+        saving = true;
+        try
+        {
+            printer = await PrinterSvc.SaveSettingAsync(printer);
+            Toast.Success("تنظیمات چاپگر ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private static RenderFragment? ClosedBadge(bool closed) => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", closed ? "badge bg-danger" : "badge bg-success");
+        builder.AddContent(2, closed ? "بسته" : "باز");
+        builder.CloseElement();
+    };
+
+    private static string LogActionFa(Inventory.Shared.MoadianLogAction a) => a switch
+    {
+        Inventory.Shared.MoadianLogAction.Created => "ساخت",
+        Inventory.Shared.MoadianLogAction.Enqueued => "صف",
+        Inventory.Shared.MoadianLogAction.Sent => "ارسال موفق",
+        Inventory.Shared.MoadianLogAction.Failed => "خطا",
+        Inventory.Shared.MoadianLogAction.Returned => "برگشت",
+        Inventory.Shared.MoadianLogAction.Voided => "ابطال",
+        _ => a.ToString()
+    };
+}

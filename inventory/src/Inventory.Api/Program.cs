@@ -41,8 +41,22 @@ builder.Services.AddRadisHrModule(builder.Configuration, provider, connectionStr
 
 // ثبت سرویس‌ها با اینترفیس (اصل وارونگی وابستگی — DIP)
 builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<IWarehousingService, WarehousingService>(); // ماژول انبارداری
+builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAccountingService, Inventory.Api.Services.Accounting.AccountingService>(); // ماژول حسابداری
+builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAnalyticalDimensionService, Inventory.Api.Services.Accounting.AnalyticalDimensionService>(); // ابعاد تحلیلی (مرکز هزینه/شعبه)
+builder.Services.AddScoped<Inventory.Api.Services.Accounting.IFixedAssetService, Inventory.Api.Services.Accounting.FixedAssetService>(); // دارایی ثابت و استهلاک
+builder.Services.AddScoped<Inventory.Api.Services.Accounting.IBudgetService, Inventory.Api.Services.Accounting.BudgetService>(); // بودجه و کنترل بودجه
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IInvoicingService, Inventory.Api.Services.Invoicing.InvoicingService>(); // ماژول فاکتور
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianService, Inventory.Api.Services.Invoicing.MoadianService>(); // سامانه مودیان (فاکتور الکترونیکی)
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IFiscalPrinterService, Inventory.Api.Services.Invoicing.FiscalPrinterService>(); // چاپگر مالی
+builder.Services.AddSingleton<Inventory.Api.Services.Invoicing.MoadianAutoSender>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.Invoicing.MoadianAutoSender>()); // ارسال خودکار صف مودیان
+builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
+builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
+builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AttendanceRecalcService>();
+builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 
@@ -51,9 +65,32 @@ builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
 builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
+// ساختار شماره اندیکاتور (LetterStrature) و بایگانی درختی نامه‌ها
+builder.Services.AddScoped<ILetterStratureService, LetterStratureService>();
+builder.Services.AddScoped<IArchiveService, ArchiveService>();
+
+// ---------- اتوماسیون اداری — نامه صادره (فاز دوم) — پوشه‌بندی تمیز ----------
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
+
+// ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocFolderZipService, Inventory.Api.Services.DocArchive.DocFolderZipService>();
+builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocTextExtractorService, Inventory.Api.Services.DocArchive.DocTextExtractorService>();
+builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocIndexService, Inventory.Api.Services.DocArchive.DocIndexService>();
+// سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
+builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
+// نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
+builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
+// گزارش‌های خروجی آرشیو اسناد (نیازمند فیلتر دسترسی کاربر)
+builder.Services.AddScoped<Inventory.Api.Services.Export.IDocArchiveExportService,
+                           Inventory.Api.Services.Export.DocArchiveExportService>();
 builder.Services.AddSingleton<UserPhotoService>();
 
 // ================== پیوست‌های پروژه — رمزنگاری AES روی دیسک ==================
@@ -73,6 +110,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = AuthService.JwtIssuer,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(AuthService.JwtKey))
         };
+        // دانلود پیوست با لینک مستقیم (تگ <a>) هدر Authorization ندارد؛
+        // برای مسیرهای دانلود، توکن از query string خوانده می‌شود (الگوی استاندارد SignalR).
+        o.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                var token = ctx.Request.Query["access_token"];
+                var path = ctx.Request.Path.Value ?? "";
+                if (!string.IsNullOrEmpty(token) &&
+                    (path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
+                     path.Contains("/preview", StringComparison.OrdinalIgnoreCase) ||
+                     path.Contains("/export-zip", StringComparison.OrdinalIgnoreCase) ||
+                     path.Contains("/export", StringComparison.OrdinalIgnoreCase)))
+                    ctx.Token = token;
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization(options =>
 {
@@ -90,6 +144,9 @@ builder.Services.AddCors(options =>
 builder.Services.AddControllers(options =>
     {
         options.Filters.Add<ApiExceptionFilter>();
+        // لاگ عملیات: ثبت خودکار هر POST/PUT/PATCH/DELETE در همه‌ی بخش‌ها
+        options.Filters.Add<AuditLogFilter>();
+        // میزبانی ماژول RADIS-HR: پیشوند مسیر radis-hr و سیاست دسترسی RadisHrAccess
         options.Conventions.Add(new RadisHrControllerConvention());
     })
     .AddJsonOptions(o =>
@@ -109,8 +166,12 @@ builder.Services.AddSignalR().AddJsonProtocol(o =>
 });
 builder.Services.AddSingleton<DashboardBroadcaster>();
 builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs.NotifyService>();
+builder.Services.AddScoped<Inventory.Api.Hubs.IChatRealtimeNotifier, Inventory.Api.Hubs.ChatRealtimeNotifier>();
+builder.Services.AddScoped<Inventory.Api.Services.Chat.IChatService, Inventory.Api.Services.Chat.ChatService>();
+builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddHttpClient("moadian", c => c.Timeout = TimeSpan.FromSeconds(30)); // سرویس مودیان (فاکتور الکترونیکی)
 builder.Services.AddSingleton<HardwareMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HardwareMonitor>());
 
@@ -175,6 +236,7 @@ app.MapGet("/radis-hr", () => Results.Redirect("/radis-hr/"));
 // هاب بلادرنگ داشبورد
 app.MapHub<DashboardHub>("/hubs/dashboard");
 app.MapHub<Inventory.Api.Hubs.NotifyHub>("/hubs/notify");
+app.MapHub<Inventory.Api.Hubs.ChatHub>("/hubs/chat");
 
 // پوشه‌ی فایل‌های آپلودی داخل wwwroot (عکس‌های کاربران، پیوست‌ها) — با UseStaticFiles معمول سرو می‌شود
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "users"));

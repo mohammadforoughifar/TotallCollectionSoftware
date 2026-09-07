@@ -138,7 +138,7 @@ public class LetterGroupService : ILetterGroupService
 
     public async Task<bool> CheckGroupIdsAsync(List<int> groupIds)
     {
-        if (groupIds == null || groupIds.Count == 0) return false;
+        if (groupIds == null || groupIds.Count == 0) return true;
         var ids = groupIds.Distinct().ToList();
         var existing = await _db.LetterGroups
             .CountAsync(g => ids.Contains(g.GroupId) && g.Condition && !g.IsDelete);

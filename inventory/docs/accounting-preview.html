@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<title>پیش‌نمایش ماژول حسابداری</title>
+<style>
+  :root{
+    --bg:#f4f5fb; --card:#fff; --ink:#1f2440; --muted:#8a90a8; --line:#e8eaf3;
+    --primary:#6366f1; --pink:#f472b6; --green:#10b981; --red:#ef4444; --amber:#f59e0b; --info:#0ea5e9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font-family:Tahoma,"Segoe UI",sans-serif;font-size:13px;display:flex;min-height:100vh}
+  /* ---------- سایدبار ---------- */
+  .side{width:250px;flex:none;background:linear-gradient(180deg,#2b2a52,#232244);color:#cfd2e6;padding:14px 0}
+  .brand{display:flex;align-items:center;gap:8px;padding:0 16px 14px;border-bottom:1px solid #ffffff14;margin-bottom:10px}
+  .brand b{color:#fff;font-size:15px}
+  .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#818cf8,#f472b6);
+        display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700}
+  .grp{padding:9px 16px;font-size:12px;font-weight:700;color:#fff;display:flex;justify-content:space-between;
+       align-items:center;cursor:default}
+  .grp.erp{background:#ffffff10;border-right:3px solid var(--pink)}
+  .sub{padding:8px 16px 4px;font-size:10.5px;color:#8f93b5;letter-spacing:.3px}
+  .lnk{display:flex;align-items:center;gap:8px;padding:6px 16px 6px 10px;color:#c8cbe4;font-size:12.5px}
+  .lnk.on{background:#ffffff1a;color:#fff;border-right:3px solid var(--pink);font-weight:700}
+  .dot{width:6px;height:6px;border-radius:50%;background:#6f74a0;flex:none}
+  .lnk.on .dot{background:var(--pink)}
+  /* ---------- محتوا ---------- */
+  main{flex:1;padding:18px 22px;overflow:auto}
+  h1{font-size:19px;margin:0 0 2px}
+  .lead{color:var(--muted);margin:0 0 14px;font-size:12px}
+  h2{font-size:14px;margin:26px 0 10px;padding-right:9px;border-right:3px solid var(--primary)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:13px;margin-bottom:14px;
+        box-shadow:0 1px 3px #1f244010}
+  .chead{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid var(--line);font-weight:700}
+  .cbody{padding:12px 14px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700}
+  .b-pri{background:#eef0ff;color:#4f46e5}.b-ok{background:#e8f8f1;color:#0d9488}
+  .b-warn{background:#fff5e6;color:#b45309}.b-dan{background:#fdecec;color:#dc2626}
+  .b-mut{background:#f0f1f6;color:#6b7192}.b-info{background:#e6f6fe;color:#0369a1}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .col{flex:1;min-width:270px}
+  /* ---------- کارت آماری ---------- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:6px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px;display:flex;gap:10px;align-items:center}
+  .ico{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px}
+  .lbl2{font-size:11px;color:var(--muted)}
+  .val{font-size:15px;font-weight:700}
+  /* ---------- درخت ---------- */
+  .trow{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:9px;margin-bottom:2px}
+  .trow:hover{background:#f7f8fd}
+  .trow.sel{background:#eef0ff;box-shadow:inset 0 0 0 1px #c7cbfa}
+  .caret{color:#a9adc8;font-size:10px;width:12px;text-align:center}
+  .tname{font-weight:600}
+  .tcode{font-size:10.5px;color:var(--muted)}
+  /* ---------- جدول ---------- */
+  table{width:100%;border-collapse:collapse}
+  th,td{padding:7px 8px;border-bottom:1px solid var(--line);text-align:right;font-size:12px}
+  th{background:#fafbff;color:#5b6180;font-size:11px;font-weight:700}
+  tfoot th{background:#f4f5fb}
+  .c{text-align:center}.num{font-variant-numeric:tabular-nums}
+  .ok{color:var(--green)}.dan{color:var(--red)}.mut{color:var(--muted)}
+  .inp{border:1px solid var(--line);border-radius:8px;padding:5px 8px;background:#fff;font-size:12px;width:100%}
+  .btn{border:0;border-radius:9px;padding:6px 12px;font-size:12px;font-weight:700;cursor:default}
+  .btn-p{background:var(--primary);color:#fff}.btn-o{background:#fff;border:1px solid var(--line);color:#4b5170}
+  .bar{height:9px;border-radius:9px;background:#eef0f7;overflow:hidden;margin-top:4px}
+  .bar>i{display:block;height:100%}
+  .alert{border-radius:11px;padding:9px 12px;font-size:12px;margin-bottom:12px}
+  .a-ok{background:#e8f8f1;color:#0f766e;border:1px solid #b8ebdc}
+  .a-info{background:#eef6ff;color:#1e40af;border:1px solid #c7dbff}
+  .note{font-size:11px;color:var(--muted);margin-top:6px}
+</style>
+</head>
+<body>
+
+<aside class="side">
+  <div class="brand"><div class="logo">T</div><b>سامانه جامع</b></div>
+  <div class="grp">داشبوردها <span>˅</span></div>
+  <div class="grp">دستور کار <span>˅</span></div>
+  <div class="grp">منابع انسانی <span>˅</span></div>
+  <div class="grp">اتوماسیون اداری <span>˅</span></div>
+  <div class="grp erp">ERP <span>˄</span></div>
+    <div class="sub">تعاریف پایه</div>
+    <div class="lnk"><span class="dot"></span>تعریف کالا</div>
+    <div class="lnk"><span class="dot"></span>گروه‌بندی کالا</div>
+    <div class="lnk"><span class="dot"></span>ویژگی‌های کالا</div>
+    <div class="lnk"><span class="dot"></span>مدیریت انبارها</div>
+    <div class="lnk"><span class="dot"></span>نوع رسید و حواله</div>
+    <div class="sub">عملیات انبار</div>
+    <div class="lnk"><span class="dot"></span>رسید و حواله</div>
+    <div class="lnk"><span class="dot"></span>ثبت سند جدید</div>
+    <div class="sub">گزارش‌ها</div>
+    <div class="lnk"><span class="dot"></span>موجودی انبار</div>
+    <div class="lnk"><span class="dot"></span>کاردکس کالا</div>
+    <div class="sub">حسابداری — تعاریف</div>
+    <div class="lnk on"><span class="dot"></span>کدینگ حساب‌ها</div>
+    <div class="lnk"><span class="dot"></span>سال‌های مالی</div>
+    <div class="lnk"><span class="dot"></span>سند خودکار انبار</div>
+    <div class="sub">حسابداری — عملیات</div>
+    <div class="lnk"><span class="dot"></span>اسناد حسابداری</div>
+    <div class="lnk"><span class="dot"></span>صدور سند جدید</div>
+    <div class="sub">حسابداری — گزارش‌ها</div>
+    <div class="lnk"><span class="dot"></span>داشبورد مالی</div>
+    <div class="lnk"><span class="dot"></span>دفتر روزنامه</div>
+    <div class="lnk"><span class="dot"></span>دفتر حساب</div>
+    <div class="lnk"><span class="dot"></span>تراز آزمایشی</div>
+  <div class="grp">مدیریت پروژه‌ها <span>˅</span></div>
+  <div class="grp">مدیریت سیستم <span>˅</span></div>
+</aside>
+
+<main>
+  <h1>پیش‌نمایش ماژول حسابداری</h1>
+  <p class="lead">نمای ثابت از صفحات ساخته‌شده — ترتیب و ظاهر مطابق صفحات Blazor پروژه</p>
+
+  <!-- ============ ۱) کدینگ حساب‌ها ============ -->
+  <h2>۱) کدینگ حساب‌ها — <code>/acc/accounts</code></h2>
+  <div class="row">
+    <div class="col" style="flex:1.4">
+      <div class="card">
+        <div class="chead">🌳 درخت حساب‌ها <span class="badge b-pri" style="margin-right:auto">۴۹ حساب</span></div>
+        <div class="cbody">
+          <div class="trow"><span class="caret">˅</span>📁<span><span class="tname">دارایی‌های جاری</span>
+            <span class="tcode" style="display:block">کد: ۱ · گروه</span></span></div>
+          <div class="trow" style="margin-right:22px"><span class="caret">˅</span>📂<span><span class="tname">موجودی نقد و بانک</span>
+            <span class="tcode" style="display:block">کد: ۱۱ · کل</span></span></div>
+          <div class="trow" style="margin-right:44px"><span class="caret">·</span>🏷<span><span class="tname">صندوق</span>
+            <span class="tcode" style="display:block">کد: ۱۱۰۱ · معین</span></span>
+            <span class="badge b-ok" style="margin-right:auto">۱۲٬۵۰۰٬۰۰۰ بد</span><span class="badge b-pri">قابل ثبت</span></div>
+          <div class="trow" style="margin-right:44px"><span class="caret">·</span>🏷<span><span class="tname">بانک</span>
+            <span class="tcode" style="display:block">کد: ۱۱۰۲ · معین</span></span>
+            <span class="badge b-ok" style="margin-right:auto">۴۸٬۳۰۰٬۰۰۰ بد</span><span class="badge b-pri">قابل ثبت</span></div>
+          <div class="trow" style="margin-right:22px"><span class="caret">˅</span>📂<span><span class="tname">موجودی کالا</span>
+            <span class="tcode" style="display:block">کد: ۱۳ · کل</span></span></div>
+          <div class="trow sel" style="margin-right:44px"><span class="caret">·</span>🏷<span><span class="tname">موجودی کالا — انبار</span>
+            <span class="tcode" style="display:block">کد: ۱۳۰۱ · معین</span></span>
+            <span class="badge b-ok" style="margin-right:auto">۷۵٬۹۴۰٬۰۰۰ بد</span>
+            <span class="badge b-pri">قابل ثبت</span><span class="badge b-warn">سیستمی</span></div>
+          <div class="trow"><span class="caret">˅</span>📁<span><span class="tname">بدهی‌های جاری</span>
+            <span class="tcode" style="display:block">کد: ۳ · گروه</span></span></div>
+          <div class="trow" style="margin-right:22px"><span class="caret">˅</span>📂<span><span class="tname">حساب‌های پرداختنی</span>
+            <span class="tcode" style="display:block">کد: ۳۱ · کل</span></span></div>
+          <div class="trow" style="margin-right:44px"><span class="caret">·</span>🏷<span><span class="tname">حساب‌های پرداختنی تجاری</span>
+            <span class="tcode" style="display:block">کد: ۳۱۰۱ · معین</span></span>
+            <span class="badge b-dan" style="margin-right:auto">۶۲٬۱۰۰٬۰۰۰ بس</span><span class="badge b-pri">قابل ثبت</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <div class="chead">ℹ️ جزئیات حساب</div>
+        <div class="cbody">
+          <table>
+            <tr><td class="mut">کد حساب</td><td class="num"><b>۱۳۰۱</b></td></tr>
+            <tr><td class="mut">نام حساب</td><td>موجودی کالا — انبار</td></tr>
+            <tr><td class="mut">مسیر کامل</td><td class="tcode">دارایی‌های جاری ← موجودی کالا ← موجودی کالا — انبار</td></tr>
+            <tr><td class="mut">سطح</td><td><span class="badge b-pri">معین</span></td></tr>
+            <tr><td class="mut">نوع</td><td><span class="badge b-info">دارایی</span></td></tr>
+            <tr><td class="mut">ماهیت</td><td>بدهکار</td></tr>
+            <tr><td class="mut">قابل ثبت سند</td><td class="ok">✔ بله</td></tr>
+            <tr><td class="mut">گردش بدهکار</td><td class="num ok">۹۸٬۴۰۰٬۰۰۰</td></tr>
+            <tr><td class="mut">گردش بستانکار</td><td class="num dan">۲۲٬۴۶۰٬۰۰۰</td></tr>
+            <tr><td class="mut">مانده</td><td class="num"><b>۷۵٬۹۴۰٬۰۰۰ بد</b></td></tr>
+          </table>
+          <div style="display:flex;gap:6px;margin-top:10px">
+            <button class="btn btn-p" style="flex:1">✏️ ویرایش</button>
+            <button class="btn btn-o">➕ زیرحساب</button>
+            <button class="btn btn-o">📖</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ۲) فرم سند ============ -->
+  <h2>۲) فرم صدور سند — <code>/acc/vouchers/new</code></h2>
+  <div class="card">
+    <div class="chead">🧾 اطلاعات سند <span class="badge b-warn" style="margin-right:auto">پیش‌نویس</span></div>
+    <div class="cbody">
+      <div class="row">
+        <div style="width:110px"><div class="lbl2">شماره سند</div><input class="inp num" value="۱۴" readonly></div>
+        <div style="width:140px"><div class="lbl2">تاریخ سند</div><input class="inp num" value="۱۴۰۵/۰۶/۱۵" readonly></div>
+        <div style="width:140px"><div class="lbl2">شماره عطف</div><input class="inp" value="INV-۱۰۲۴" readonly></div>
+        <div style="flex:1"><div class="lbl2">شرح سند</div>
+          <input class="inp" value="بابت خرید نقدی کالا طی فاکتور شماره ۱۰۲۴" readonly></div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="chead">🔢 آرتیکل‌های سند <span class="badge b-pri" style="margin-right:auto">۳ سطر</span></div>
+    <table>
+      <thead><tr><th style="width:44px">ردیف</th><th style="width:26%">حساب</th><th>طرف حساب</th>
+        <th>شرح آرتیکل</th><th class="c">بدهکار</th><th class="c">بستانکار</th><th style="width:40px"></th></tr></thead>
+      <tbody>
+        <tr><td class="num mut">۱</td><td>۱۳۰۱ — موجودی کالا — انبار</td><td class="mut">—</td>
+            <td>ورود کالا به انبار مرکزی</td><td class="c num ok">۴۵٬۰۰۰٬۰۰۰</td><td class="c mut">—</td><td class="c">🗑</td></tr>
+        <tr><td class="num mut">۲</td><td>۳۲۰۱ — مالیات بر ارزش افزوده</td><td class="mut">—</td>
+            <td>مالیات فاکتور خرید</td><td class="c num ok">۴٬۵۰۰٬۰۰۰</td><td class="c mut">—</td><td class="c">🗑</td></tr>
+        <tr><td class="num mut">۳</td><td>۳۱۰۱ — حساب‌های پرداختنی تجاری</td><td>بازرگانی آریا</td>
+            <td>بدهی بابت فاکتور ۱۰۲۴</td><td class="c mut">—</td><td class="c num dan">۴۹٬۵۰۰٬۰۰۰</td><td class="c">🗑</td></tr>
+      </tbody>
+      <tfoot>
+        <tr><th colspan="4" style="text-align:left">جمع کل</th>
+            <th class="c num ok">۴۹٬۵۰۰٬۰۰۰</th><th class="c num dan">۴۹٬۵۰۰٬۰۰۰</th><th></th></tr>
+        <tr><th colspan="4" style="text-align:left">اختلاف (بدهکار − بستانکار)</th>
+            <th colspan="2" class="c ok">✔ سند تراز است</th><th></th></tr>
+      </tfoot>
+    </table>
+    <div class="cbody" style="border-top:1px solid var(--line);display:flex;gap:6px">
+      <button class="btn btn-o">➕ افزودن آرتیکل</button>
+      <button class="btn btn-o">✨ تراز کردن سطر آخر</button>
+      <span style="margin-right:auto"></span>
+      <button class="btn btn-o">💾 ذخیره پیش‌نویس</button>
+      <button class="btn btn-p">✔ ثبت قطعی</button>
+    </div>
+  </div>
+
+  <!-- ============ ۳) تراز آزمایشی ============ -->
+  <h2>۳) تراز آزمایشی ۸ ستونی — <code>/acc/reports/trial-balance</code></h2>
+  <div class="alert a-ok">✔ تراز است — جمع ستون‌های بدهکار و بستانکار برابر است.</div>
+  <div class="card">
+    <div class="chead">📊 تراز در سطح کل <span class="badge b-pri" style="margin-right:auto">۶ حساب</span></div>
+    <table>
+      <thead>
+        <tr><th rowspan="2">کد</th><th rowspan="2">نام حساب</th>
+            <th colspan="2" class="c">مانده ابتدای دوره</th><th colspan="2" class="c">گردش طی دوره</th>
+            <th colspan="2" class="c">گردش تجمعی</th><th colspan="2" class="c">مانده پایان دوره</th></tr>
+        <tr><th class="c">بدهکار</th><th class="c">بستانکار</th><th class="c">بدهکار</th><th class="c">بستانکار</th>
+            <th class="c">بدهکار</th><th class="c">بستانکار</th><th class="c">بدهکار</th><th class="c">بستانکار</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="num">۱۱</td><td>موجودی نقد و بانک</td><td class="c num">۲۵٬۰۰۰٬۰۰۰</td><td class="c mut">—</td>
+            <td class="c num ok">۹۰٬۸۰۰٬۰۰۰</td><td class="c num dan">۵۵٬۰۰۰٬۰۰۰</td>
+            <td class="c num">۱۱۵٬۸۰۰٬۰۰۰</td><td class="c num">۵۵٬۰۰۰٬۰۰۰</td>
+            <td class="c num"><b>۶۰٬۸۰۰٬۰۰۰</b></td><td class="c mut">—</td></tr>
+        <tr><td class="num">۱۳</td><td>موجودی کالا</td><td class="c mut">—</td><td class="c mut">—</td>
+            <td class="c num ok">۹۸٬۴۰۰٬۰۰۰</td><td class="c num dan">۲۲٬۴۶۰٬۰۰۰</td>
+            <td class="c num">۹۸٬۴۰۰٬۰۰۰</td><td class="c num">۲۲٬۴۶۰٬۰۰۰</td>
+            <td class="c num"><b>۷۵٬۹۴۰٬۰۰۰</b></td><td class="c mut">—</td></tr>
+        <tr><td class="num">۳۱</td><td>حساب‌های پرداختنی</td><td class="c mut">—</td><td class="c num">۱۲٬۰۰۰٬۰۰۰</td>
+            <td class="c num ok">۳۰٬۰۰۰٬۰۰۰</td><td class="c num dan">۸۰٬۱۰۰٬۰۰۰</td>
+            <td class="c num">۳۰٬۰۰۰٬۰۰۰</td><td class="c num">۹۲٬۱۰۰٬۰۰۰</td>
+            <td class="c mut">—</td><td class="c num"><b>۶۲٬۱۰۰٬۰۰۰</b></td></tr>
+        <tr><td class="num">۵۱</td><td>درآمد عملیاتی</td><td class="c mut">—</td><td class="c mut">—</td>
+            <td class="c mut">—</td><td class="c num dan">۵۴٬۰۰۰٬۰۰۰</td>
+            <td class="c mut">—</td><td class="c num">۵۴٬۰۰۰٬۰۰۰</td>
+            <td class="c mut">—</td><td class="c num"><b>۵۴٬۰۰۰٬۰۰۰</b></td></tr>
+        <tr><td class="num">۶۱</td><td>بهای تمام‌شده کالای فروش‌رفته</td><td class="c mut">—</td><td class="c mut">—</td>
+            <td class="c num ok">۲۲٬۴۶۰٬۰۰۰</td><td class="c mut">—</td>
+            <td class="c num">۲۲٬۴۶۰٬۰۰۰</td><td class="c mut">—</td>
+            <td class="c num"><b>۲۲٬۴۶۰٬۰۰۰</b></td><td class="c mut">—</td></tr>
+      </tbody>
+      <tfoot><tr><th colspan="2" style="text-align:left">جمع کل</th>
+        <th class="c num">۲۵٬۰۰۰٬۰۰۰</th><th class="c num">۱۲٬۰۰۰٬۰۰۰</th>
+        <th class="c num ok">۲۴۱٬۶۶۰٬۰۰۰</th><th class="c num dan">۲۱۱٬۵۶۰٬۰۰۰</th>
+        <th class="c num">۲۶۶٬۶۶۰٬۰۰۰</th><th class="c num">۲۲۳٬۵۶۰٬۰۰۰</th>
+        <th class="c num">۱۵۹٬۲۰۰٬۰۰۰</th><th class="c num">۱۱۶٬۱۰۰٬۰۰۰</th></tr></tfoot>
+    </table>
+  </div>
+
+  <!-- ============ ۴) داشبورد مالی ============ -->
+  <h2>۴) داشبورد مالی — <code>/acc/dashboard</code></h2>
+  <div class="stats">
+    <div class="stat"><div class="ico" style="background:#eef0ff;color:#4f46e5">🧾</div>
+      <div><div class="lbl2">تعداد اسناد</div><div class="val num">۱۴</div><div class="tcode">۲ پیش‌نویس</div></div></div>
+    <div class="stat"><div class="ico" style="background:#e8f8f1;color:#0d9488">↙</div>
+      <div><div class="lbl2">جمع بدهکار</div><div class="val num ok">۲۴۱٬۶۶۰٬۰۰۰</div></div></div>
+    <div class="stat"><div class="ico" style="background:#fdecec;color:#dc2626">↗</div>
+      <div><div class="lbl2">جمع بستانکار</div><div class="val num dan">۲۴۱٬۶۶۰٬۰۰۰</div></div></div>
+    <div class="stat"><div class="ico" style="background:#e8f8f1;color:#0d9488">📈</div>
+      <div><div class="lbl2">سود دوره</div><div class="val num ok">۳۱٬۵۴۰٬۰۰۰</div></div></div>
+  </div>
+  <div class="row">
+    <div class="col">
+      <div class="card"><div class="chead">🥧 ترازنامه (حساب‌های دائم)</div><div class="cbody">
+        <div style="display:flex;justify-content:space-between"><span>دارایی‌ها</span><b class="num">۱۳۶٬۷۴۰٬۰۰۰</b></div>
+        <div class="bar"><i style="width:100%;background:var(--primary)"></i></div>
+        <div style="display:flex;justify-content:space-between;margin-top:9px"><span>بدهی‌ها</span><b class="num">۶۲٬۱۰۰٬۰۰۰</b></div>
+        <div class="bar"><i style="width:45%;background:var(--red)"></i></div>
+        <div style="display:flex;justify-content:space-between;margin-top:9px"><span>سرمایه</span><b class="num">۴۳٬۱۰۰٬۰۰۰</b></div>
+        <div class="bar"><i style="width:31%;background:var(--green)"></i></div>
+        <div class="note">معادله حسابداری: دارایی = بدهی + سرمایه + سود دوره</div>
+      </div></div>
+    </div>
+    <div class="col">
+      <div class="card"><div class="chead">📊 سود و زیان (حساب‌های موقت)</div><div class="cbody">
+        <div style="display:flex;justify-content:space-between"><span>درآمدها</span><b class="num">۵۴٬۰۰۰٬۰۰۰</b></div>
+        <div class="bar"><i style="width:100%;background:var(--green)"></i></div>
+        <div style="display:flex;justify-content:space-between;margin-top:9px"><span>هزینه‌ها</span><b class="num">۲۲٬۴۶۰٬۰۰۰</b></div>
+        <div class="bar"><i style="width:42%;background:var(--amber)"></i></div>
+        <div style="display:flex;justify-content:space-between;border-top:1px solid var(--line);margin-top:12px;padding-top:8px">
+          <span class="mut">سود خالص</span><b class="num ok">۳۱٬۵۴۰٬۰۰۰ ریال</b></div>
+      </div></div>
+    </div>
+  </div>
+
+  <!-- ============ ۵) سند خودکار ============ -->
+  <h2>۵) قواعد سند خودکار انبار — <code>/acc/inv-rules</code></h2>
+  <div class="alert a-info">
+    در اسناد <b>افزایشی (رسید)</b> حساب موجودی کالا <b class="ok">بدهکار</b> و طرف مقابل <b class="dan">بستانکار</b> می‌شود؛
+    در اسناد <b>کاهشی (حواله)</b> عکس آن. اسناد <b>خنثی</b> سند حسابداری تولید نمی‌کنند.
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr><th>نوع سند انبار</th><th class="c">ماهیت</th><th>حساب موجودی کالا</th>
+        <th>حساب طرف مقابل</th><th class="c">مبنای مبلغ</th><th class="c">فعال</th></tr></thead>
+      <tbody>
+        <tr><td>رسید خرید</td><td class="c"><span class="badge b-ok">افزایشی</span></td>
+            <td>۱۳۰۱ — موجودی کالا</td><td>۶۲۰۱ — خرید کالا</td><td class="c">بهای تمام‌شده</td><td class="c">✔</td></tr>
+        <tr><td>رسید برگشت از فروش</td><td class="c"><span class="badge b-ok">افزایشی</span></td>
+            <td>۱۳۰۱ — موجودی کالا</td><td>۵۱۰۲ — برگشت از فروش</td><td class="c">بهای تمام‌شده</td><td class="c">✔</td></tr>
+        <tr><td>حواله فروش</td><td class="c"><span class="badge b-dan">کاهشی</span></td>
+            <td>۱۳۰۱ — موجودی کالا</td><td>۶۱۰۱ — بهای تمام‌شده کالای فروش‌رفته</td><td class="c">بهای تمام‌شده</td><td class="c">✔</td></tr>
+        <tr><td>حواله ضایعات</td><td class="c"><span class="badge b-dan">کاهشی</span></td>
+            <td>۱۳۰۱ — موجودی کالا</td><td>۶۱۰۲ — کسری و ضایعات انبار</td><td class="c">بهای تمام‌شده</td><td class="c">✔</td></tr>
+        <tr style="opacity:.6"><td>انتقال بین انبار</td><td class="c"><span class="badge b-mut">خنثی</span></td>
+            <td class="mut">—</td><td class="mut">—</td><td class="c mut">—</td><td class="c mut">✖</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+</body>
+</html>

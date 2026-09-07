@@ -1,0 +1,598 @@
+@page "/moadian/invoices"
+@using Microsoft.AspNetCore.Components
+@inject IMoadianClientService MoadianSvc
+@inject IFiscalPrinterClientService PrinterSvc
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>فاکتورهای الکترونیکی</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>فاکتورهای الکترونیکی مودیان</h1>
+        <p class="lead">مدیریت فاکتورهای مودیان، صف ارسال و استعلام وضعیت از سامانه امور مالیاتی</p>
+    </div>
+    <div class="ms-auto">
+        <button class="btn btn-outline-success me-2" @onclick="SendQueue" disabled="@sending">
+            <i class="bi bi-cloud-arrow-up"></i> ارسال صف @(sending ? "..." : "")
+        </button>
+        <button class="btn btn-outline-secondary me-2" @onclick="OpenFromFac">
+            <i class="bi bi-receipt-cutoff"></i> تبدیل از فاکتور داخلی
+        </button>
+        <button class="btn btn-primary" @onclick="OpenNew">
+            <i class="bi bi-plus-lg"></i> فاکتور جدید
+        </button>
+    </div>
+</div>
+
+<!-- فیلترها -->
+<div class="card mb-3">
+    <div class="card-body py-2">
+        <div class="row g-2 align-items-center">
+            <div class="col-auto">
+                <select class="form-select form-select-sm" @bind="filterPeriod">
+                    <option value="">همه دوره‌ها</option>
+                    @foreach (var p in periods)
+                    {
+                        <option value="@p.Id">@p.Title@(p.IsClosed ? " (بسته)" : "")</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <select class="form-select form-select-sm" @bind="filterStatus">
+                    <option value="">همه وضعیت‌ها</option>
+                    @foreach (var s in StatusOptions)
+                    {
+                        <option value="@s.Key">@s.Value</option>
+                    }
+                </select>
+            </div>
+            <div class="col-auto">
+                <input class="form-control form-control-sm" placeholder="جستجو (شماره/خریدار)..." @bind="filterSearch" @bind:event="oninput" />
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-sm btn-light" @onclick="Load">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- جدول فاکتورها -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>شماره</th><th>نوع</th><th>تاریخ</th><th>دوره</th>
+                        <th>خریدار</th><th class="text-end">خالص</th><th class="text-end">مالیات</th>
+                        <th>وضعیت</th><th>تلاش</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (invoices.Count == 0)
+                    {
+                        <tr><td colspan="10" class="text-center text-muted py-4">فاکتوری یافت نشد — برای شروع «فاکتور جدید» بزنید.</td></tr>
+                    }
+                    @foreach (var inv in invoices)
+                    {
+                        <tr class='@(inv.Status == MoadianInvoiceStatus.Failed || inv.Status == MoadianInvoiceStatus.Returned ? "table-danger" : "")'>
+                            <td class="num fw-bold">@inv.Number</td>
+                            <td>@KindFa(inv.Kind)</td>
+                            <td class="num">@FaDate(inv.Date)</td>
+                            <td>@inv.FiscalPeriodTitle</td>
+                            <td>@inv.BuyerName <span class="text-muted fs-8" dir="ltr">@(inv.FacInvoiceRef ?? "")</span></td>
+                            <td class="text-end num">@inv.TotalNet.Money()</td>
+                            <td class="text-end num">@inv.TotalVat.Money()</td>
+                            <td>@StatusBadge(inv.Status)</td>
+                            <td class="num">@inv.Attempts</td>
+                            <td class="text-nowrap">
+                                @if (inv.Status is MoadianInvoiceStatus.Draft or MoadianInvoiceStatus.Returned or MoadianInvoiceStatus.Failed)
+                                {
+                                    <button class="btn btn-sm btn-success" title="ارسال به سامانه" @onclick="() => SendOne(inv)">
+                                        <i class="bi bi-send-check"></i>
+                                    </button>
+                                }
+                                @if (inv.Status is MoadianInvoiceStatus.Failed or MoadianInvoiceStatus.Returned)
+                                {
+                                    <button class="btn btn-sm btn-outline-warning" title="ارسال مجدد" @onclick="() => Retry(inv)">
+                                        <i class="bi bi-arrow-repeat"></i>
+                                    </button>
+                                }
+                                @if (inv.Status is not MoadianInvoiceStatus.Sent and not MoadianInvoiceStatus.Sending and not MoadianInvoiceStatus.Voided)
+                                {
+                                    <button class="btn btn-sm btn-outline-dark" title="ابطال" @onclick="() => Cancel(inv)">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                }
+                                <button class="btn btn-sm btn-outline-secondary" title="payload استاندارد" @onclick="() => ShowPayload(inv)">
+                                    <i class="bi bi-braces"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-primary" title="چاپ رسید" @onclick="() => ShowPrint(inv)">
+                                    <i class="bi bi-printer"></i>
+                                </button>
+                                <button class="btn btn-sm btn-outline-danger" title="حذف" @onclick="() => Delete(inv)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        @if (!string.IsNullOrWhiteSpace(inv.ErrorMessage))
+                        {
+                            <tr class="table-danger">
+                                <td colspan="10" class="small text-danger py-1">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    کد @(inv.ErrorCode ?? "—"): @inv.ErrorMessage
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- ===================== مودال فاکتور جدید ===================== -->
+<Modal Visible="showForm" Title="فاکتور الکترونیکی جدید" Size="modal-xl" OnClose="CloseForm">
+    <ChildContent>
+    <div class="row g-2 mb-2">
+        <div class="col-md-3">
+            <label class="form-label small">نوع فاکتور</label>
+            <select class="form-select form-select-sm" @bind="New.Kind" @bind:after="RecalcAll">
+                @foreach (var k in KindOptions) { <option value="@k.Key">@k.Value</option> }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">تاریخ</label>
+            <InputDate class="form-control form-control-sm" @bind-Value="New.Date" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">دوره مالیاتی</label>
+            <select class="form-select form-select-sm" @bind="New.FiscalPeriodId">
+                @foreach (var p in periods)
+                {
+                    <option value="@p.Id">@p.Title@(p.IsClosed ? " (بسته!)" : "")</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">نوع تسویه</label>
+            <input class="form-control form-control-sm" @bind="New.Settlement" placeholder="نقدی/نسیه..." />
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">توضیح</label>
+            <input class="form-control form-control-sm" @bind="New.Description" />
+        </div>
+    </div>
+    <hr class="my-2" />
+    <div class="row g-2 mb-2">
+        <div class="col-md-3">
+            <label class="form-label small">شناسه/کد ملی خریدار</label>
+            <input class="form-control form-control-sm" @bind="New.BuyerTaxId" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">نام خریدار</label>
+            <input class="form-control form-control-sm" @bind="New.BuyerName" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">تلفن</label>
+            <input class="form-control form-control-sm" @bind="New.BuyerPhone" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">آدرس</label>
+            <input class="form-control form-control-sm" @bind="New.BuyerAddress" />
+        </div>
+    </div>
+
+    <div class="d-flex align-items-center mb-2">
+        <b class="small">اقلام فاکتور:</b>
+        <button class="btn btn-sm btn-outline-primary ms-2" @onclick="AddLine"><i class="bi bi-plus-lg"></i> قلم</button>
+        <button class="btn btn-sm btn-outline-danger ms-1" @onclick="RemoveLast"><i class="bi bi-dash-lg"></i> حذف آخر</button>
+    </div>
+    <table class="table table-sm table-bordered align-middle">
+        <thead>
+            <tr><th style="width:24%">شناسه کالا/خدمت (CPC)</th><th>شرح</th><th style="width:13%">شناسه/شرح از فهرست</th><th style="width:9%">تعداد</th><th style="width:11%">فی</th><th style="width:9%">تخفیف</th><th style="width:8%">٪مالیات</th><th class="text-end">جمع</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var l in New.Lines)
+            {
+                <tr>
+                    <td><input class="form-control form-control-sm" dir="ltr" @bind="l.SstId" @bind:event="oninput" /></td>
+                    <td><input class="form-control form-control-sm" @bind="l.SstTitle" /></td>
+                    <td>
+                        <select class="form-select form-select-sm" @onchange='@(e => ApplyCpc(l, e.Value?.ToString() ?? ""))'>
+                            <option value="">— انتخاب از فهرست —</option>
+                            @foreach (var c in cpcList)
+                            {
+                                <option value="@c.Code">@c.Code — @c.Title</option>
+                            }
+                        </select>
+                    </td>
+                    <td><input class="form-control form-control-sm text-end num" @bind="l.Quantity" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                    <td><input class="form-control form-control-sm text-end num" @bind="l.UnitPrice" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                    <td><input class="form-control form-control-sm text-end num" @bind="l.Discount" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                    <td><input class="form-control form-control-sm text-end num" @bind="l.VatRate" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                    <td class="text-end num">@l.Total.Money()</td>
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr class="fw-bold">
+                <td colspan="5">جمع</td>
+                <td class="text-end">@New.Lines.Sum(x => x.Discount).Money()</td>
+                <td class="text-end">@New.Lines.Sum(x => x.VatAmount).Money()</td>
+                <td class="text-end text-primary">@New.Lines.Sum(x => x.Taxable + x.VatAmount).Money()</td>
+            </tr>
+        </tfoot>
+    </table>
+    <div class="text-muted small">مأخذ = (تعداد × فی) − تخفیف | مالیات = مأخذ × نرخ | جمع = مأخذ + مالیات</div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="SaveNew" disabled="@saving">@(saving ? "در حال ذخیره..." : "ثبت فاکتور")</button>
+        <button class="btn btn-light" @onclick="CloseForm">انصراف</button>
+    </Footer>
+</Modal>
+
+<!-- ===================== مودال تبدیل از فاکتور داخلی ===================== -->
+<Modal Visible="showFromFac" Title="تبدیل فاکتور داخلی به فاکتور الکترونیکی" OnClose="CloseFromFac">
+    <p class="small text-muted">شماره (ID) فاکتور فروش/خرید «قطعی» را وارد کنید. از روی آن، فاکتور الکترونیکی با اقلام، مبالغ و کدهای مالیاتی ساخته می‌شود.</p>
+    <div class="input-group">
+        <input class="form-control" type="number" placeholder="مثلاً 12" @bind="facId" />
+        <button class="btn btn-primary" @onclick="ConvertFromFac" disabled="@saving">@(saving ? "..." : "تبدیل")</button>
+    </div>
+</Modal>
+
+<!-- ===================== مودال payload ===================== -->
+<Modal Visible="showPayload" Title="Payload استاندارد مودیان" Size="modal-xl" OnClose="ClosePayload">
+    @if (payload is not null)
+    {
+        @if (!string.IsNullOrWhiteSpace(payload.Warning))
+        {
+            <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle"></i> @payload.Warning</div>
+        }
+        <div class="d-flex align-items-center mb-2">
+            <b class="small">امضا:</b>
+            <code class="ms-2 small" dir="ltr">@(payload.Signature ?? "— (کلید خصوصی ثبت نشده)")</code>
+            <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="CopyPayload">کپی JSON</button>
+        </div>
+        <pre class="bg-dark text-light p-3 rounded small" style="max-height:420px;overflow:auto" dir="ltr">@payload.Json</pre>
+    }
+</Modal>
+
+<!-- ===================== مودال چاپ رسید ===================== -->
+<Modal Visible="showPrint" Title="رسید چاپی فاکتور" Size="modal-lg" OnClose="ClosePrint">
+    @if (printResult is not null)
+    {
+        <div class="row g-3">
+            <div class="col-md-7">
+                <iframe @ref="printFrame" class="w-100 border rounded" style="height:430px;background:#fff"></iframe>
+                <div class="small text-muted mt-1">@printResult.Message</div>
+            </div>
+            <div class="col-md-5">
+                <div class="d-flex justify-content-center bg-white border rounded p-2" id="qr-box"></div>
+                <div class="text-center small text-muted mt-1">کد QR (شناسه مالیاتی + شماره + UID)</div>
+                <div class="mt-3">
+                    <button class="btn btn-success w-100" @onclick="DoPrint" disabled="@printing">
+                        <i class="bi bi-printer"></i> @(printing ? "در حال چاپ..." : "چاپ روی چاپگر")
+                    </button>
+                    <button class="btn btn-outline-secondary w-100 mt-2" @onclick="BrowserPrint">چاپ در مرورگر</button>
+                    <button class="btn btn-outline-primary w-100 mt-2" @onclick="CopyTicket">کپی متن رسید</button>
+                </div>
+                <pre class="bg-light border rounded p-2 mt-3 small" style="max-height:220px;overflow:auto">@printResult.TicketText</pre>
+            </div>
+        </div>
+    }
+</Modal>
+
+@code {
+    private List<MoadianInvoice> invoices = new();
+    private List<MoadianFiscalPeriod> periods = new();
+    private List<MoadianCpc> cpcList = new();
+
+    private int? filterPeriod;
+    private string filterStatus = "";
+    private string filterSearch = "";
+
+    private bool showForm, showFromFac, showPayload, showPrint, saving, sending, printing;
+    private MoadianInvoiceRequest New = new();
+    private MoadianPayloadResult? payload;
+    private FiscalPrintResult? printResult;
+    private ElementReference printFrame;
+    private int facId;
+    private int printInvoiceId;
+
+    private readonly Dictionary<MoadianInvoiceKind, string> KindOptions = new()
+    {
+        [MoadianInvoiceKind.Sale] = "فروش",
+        [MoadianInvoiceKind.SaleReturn] = "فروش برگشتی",
+        [MoadianInvoiceKind.Purchase] = "خرید",
+        [MoadianInvoiceKind.PurchaseReturn] = "خرید برگشتی",
+        [MoadianInvoiceKind.Proforma] = "پیش‌فاکتور"
+    };
+
+    private readonly Dictionary<MoadianInvoiceStatus, string> StatusOptions = new()
+    {
+        [MoadianInvoiceStatus.Draft] = "پیش‌نویس",
+        [MoadianInvoiceStatus.Queued] = "در صف",
+        [MoadianInvoiceStatus.Sending] = "در حال ارسال",
+        [MoadianInvoiceStatus.Sent] = "ارسال‌شده",
+        [MoadianInvoiceStatus.Returned] = "برگشتی",
+        [MoadianInvoiceStatus.Failed] = "ناموفق",
+        [MoadianInvoiceStatus.Voided] = "ابطال‌شده"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRefs();
+        await Load();
+    }
+
+    private async Task LoadRefs()
+    {
+        try
+        {
+            periods = await MoadianSvc.GetPeriodsAsync();
+            cpcList = await MoadianSvc.GetCpcAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Load()
+    {
+        try
+        {
+            MoadianInvoiceStatus? st = null;
+            if (int.TryParse(filterStatus, out var sv)) st = (MoadianInvoiceStatus)sv;
+            invoices = await MoadianSvc.GetInvoicesAsync(filterPeriod, st, filterSearch);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SendQueue()
+    {
+        sending = true;
+        try
+        {
+            var sent = await MoadianSvc.SendPendingAsync();
+            Toast.Success(sent > 0 ? $"{sent.Num()} فاکتور از صف ارسال شد." : "صف خالی است.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { sending = false; }
+    }
+
+    private async Task SendOne(MoadianInvoice inv)
+    {
+        try
+        {
+            var (sent, invoice) = await MoadianSvc.SendNowAsync(inv.Id);
+            Toast.Success(invoice.Status == MoadianInvoiceStatus.Sent
+                ? $"فاکتور {invoice.Number} با موفقیت ارسال شد (پیگیری {invoice.TrackingId})."
+                : $"پاسخ سامانه: {invoice.ErrorMessage}");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Retry(MoadianInvoice inv)
+    {
+        try
+        {
+            await MoadianSvc.RetryAsync(inv.Id);
+            Toast.Success("به صف ارسال اضافه شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Cancel(MoadianInvoice inv)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"فاکتور {inv.Number} ابطال شود؟")) return;
+        try
+        {
+            await MoadianSvc.CancelAsync(inv.Id);
+            Toast.Success("ابطال شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task Delete(MoadianInvoice inv)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"فاکتور {inv.Number} حذف شود؟")) return;
+        try
+        {
+            await MoadianSvc.DeleteInvoiceAsync(inv.Id);
+            Toast.Success("حذف شد.");
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ---------- فرم ----------
+    private void OpenNew()
+    {
+        New = new MoadianInvoiceRequest
+        {
+            Kind = MoadianInvoiceKind.Sale,
+            Date = DateTime.Now,
+            FiscalPeriodId = periods.FirstOrDefault()?.Id ?? 0,
+            Lines = new List<MoadianInvoiceLine> { NewLine() }
+        };
+        showForm = true;
+    }
+
+    private void CloseForm() => showForm = false;
+
+    private static MoadianInvoiceLine NewLine() => new()
+    {
+        RowNo = 1, SstId = "GENERAL-000", SstTitle = "", Quantity = 1, VatRate = 9
+    };
+
+    private void AddLine()
+    {
+        var l = NewLine();
+        l.RowNo = New.Lines.Count + 1;
+        New.Lines.Add(l);
+    }
+
+    private void RemoveLast()
+    {
+        if (New.Lines.Count > 1) New.Lines.RemoveAt(New.Lines.Count - 1);
+    }
+
+    private void RecalcLine(MoadianInvoiceLine l)
+    {
+        l.VatAmount = Math.Round(l.Taxable * l.VatRate / 100m, 2);
+        l.Total = l.Taxable + l.VatAmount;
+    }
+
+    private void RecalcAll()
+    {
+        foreach (var l in New.Lines) RecalcLine(l);
+    }
+
+    private void ApplyCpc(MoadianInvoiceLine l, string code)
+    {
+        var cpc = cpcList.FirstOrDefault(c => c.Code == code);
+        if (cpc is null) return;
+        l.SstId = cpc.Code;
+        if (string.IsNullOrWhiteSpace(l.SstTitle)) l.SstTitle = cpc.Title;
+    }
+
+    private async Task SaveNew()
+    {
+        if (New.FiscalPeriodId == 0) { Toast.Error("دوره مالیاتی را انتخاب کنید."); return; }
+        if (New.Lines.Count == 0 || New.Lines.All(x => x.Quantity <= 0)) { Toast.Error("حداقل یک قلم معتبر لازم است."); return; }
+        saving = true;
+        try
+        {
+            RecalcAll();
+            var inv = await MoadianSvc.CreateManualAsync(New);
+            Toast.Success($"فاکتور {inv.Number} ثبت شد.");
+            showForm = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ---------- تبدیل از فاکتور داخلی ----------
+    private void OpenFromFac() { facId = 0; showFromFac = true; }
+    private void CloseFromFac() => showFromFac = false;
+
+    private async Task ConvertFromFac()
+    {
+        if (facId <= 0) { Toast.Error("شماره فاکتور داخلی را وارد کنید."); return; }
+        saving = true;
+        try
+        {
+            var inv = await MoadianSvc.CreateFromFacInvoiceAsync(facId);
+            Toast.Success($"فاکتور الکترونیکی {inv.Number} از فاکتور داخلی ساخته شد.");
+            showFromFac = false;
+            await Load();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ---------- payload ----------
+    private async Task ShowPayload(MoadianInvoice inv)
+    {
+        try
+        {
+            payload = await MoadianSvc.GetPayloadAsync(inv.Id);
+            showPayload = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void ClosePayload() => showPayload = false;
+
+    private async Task CopyPayload()
+    {
+        if (payload is null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", payload.Json);
+        Toast.Success("JSON کپی شد.");
+    }
+
+    // ---------- چاپ ----------
+    private async Task ShowPrint(MoadianInvoice inv)
+    {
+        try
+        {
+            printResult = await PrinterSvc.RenderAsync(inv.Id);
+            printInvoiceId = inv.Id;
+            showPrint = true;
+            await Task.Delay(100);
+            if (printFrame.Id is not null)
+                await JS.InvokeVoidAsync("eval", $"document.getElementById('{printFrame.Id}').srcdoc = {System.Text.Json.JsonSerializer.Serialize(printResult.PreviewHtml)};");
+            await JS.InvokeVoidAsync("appQr.render", "qr-box", printResult.QrContent ?? "");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void ClosePrint()
+    {
+        showPrint = false;
+        printResult = null;
+    }
+
+    private async Task DoPrint()
+    {
+        if (printInvoiceId == 0) return;
+        printing = true;
+        try
+        {
+            var res = await PrinterSvc.PrintAsync(printInvoiceId);
+            if (res.Success) Toast.Success(res.Message);
+            else Toast.Error(res.Message);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printing = false; }
+    }
+
+    private async Task BrowserPrint() => await JS.InvokeVoidAsync("eval", $"window.open('', '_blank').document.write({System.Text.Json.JsonSerializer.Serialize(printResult?.PreviewHtml ?? "")}); setTimeout(() => window.close(), 100);");
+
+    private async Task CopyTicket()
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", printResult?.TicketText ?? "");
+        Toast.Success("متن رسید کپی شد.");
+    }
+
+    // ---------- کمکی ----------
+    private static string KindFa(MoadianInvoiceKind k) => k switch
+    {
+        MoadianInvoiceKind.Sale => "فروش",
+        MoadianInvoiceKind.SaleReturn => "فروش برگشتی",
+        MoadianInvoiceKind.Purchase => "خرید",
+        MoadianInvoiceKind.PurchaseReturn => "خرید برگشتی",
+        _ => "پیش‌فاکتور"
+    };
+
+    private static string FaDate(DateTime dt)
+    {
+        var (y, m, d) = Inventory.Shared.PersianDate.FromGregorian(dt);
+        return $"{Fa.Digits(y)}/{Fa.Digits(m.ToString("00"))}/{Fa.Digits(d.ToString("00"))}";
+    }
+
+    private static RenderFragment? StatusBadge(MoadianInvoiceStatus s) => builder =>
+    {
+        var (cls, text) = s switch
+        {
+            MoadianInvoiceStatus.Draft => ("bg-secondary", "پیش‌نویس"),
+            MoadianInvoiceStatus.Queued => ("bg-warning text-dark", "در صف"),
+            MoadianInvoiceStatus.Sending => ("bg-info text-dark", "در حال ارسال"),
+            MoadianInvoiceStatus.Sent => ("bg-success", "ارسال‌شده"),
+            MoadianInvoiceStatus.Failed => ("bg-danger", "ناموفق"),
+            MoadianInvoiceStatus.Returned => ("bg-danger", "برگشتی"),
+            _ => ("bg-dark", "ابطال‌شده")
+        };
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", $"badge {cls}");
+        builder.AddContent(2, text);
+        builder.CloseElement();
+    };
+}

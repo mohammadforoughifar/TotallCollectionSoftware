@@ -5,6 +5,7 @@
 @inject IProductService ProductSvc
 @inject IWarehouseService WarehouseSvc
 @inject IToastService Toast
+@inject IAuthState Auth
 @inject LayoutState Layout
 @inject IJSRuntime JS
 
@@ -381,6 +382,14 @@
                 <div><span class="text-muted fs-8 ms-1">جمع دریافتی:</span><span class="fw-800 fs-5 text-primary num">@viewing.TotalPrice.Money()</span></div>
                 <div><span class="text-muted fs-8 ms-1">سود:</span><span class="fw-700 num @(viewing.Profit >= 0 ? "text-success" : "text-danger")">@viewing.Profit.Money()</span></div>
             </div>
+            @if (Auth.HasModule("DocArchive"))
+            {
+                <div class="mt-3">
+                    <DocArchiveEntityPanel Module="Repairs" EntityId="@viewing.Id"
+                                            EntityTitle="@($"پذیرش {viewing.Number} — {viewing.DeviceType} {viewing.DeviceModel}")"
+                                            EntityCode="@viewing.Number" />
+                </div>
+            }
         }
     </ChildContent>
 </Modal>
@@ -429,11 +438,11 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">موبایل</label>
-                <input class="form-control" @bind="newCustomer.Mobile" dir="ltr" placeholder="0912…" />
+                <input class="form-control" @bind="newCustomer.Mobile" dir="ltr" placeholder="0912…" data-digits="" inputmode="numeric" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">تلفن</label>
-                <input class="form-control" @bind="newCustomer.Phone" dir="ltr" />
+                <input class="form-control" @bind="newCustomer.Phone" dir="ltr" data-digits="tel" inputmode="tel" />
             </div>
             <div class="col-12">
                 <label class="form-label">آدرس</label>
@@ -455,7 +464,7 @@
     <ChildContent>
         <div class="row g-2 mb-3">
             <div class="col-md-4"><input class="form-control" placeholder="نام تعمیرکار *" @bind="techForm.Name" /></div>
-            <div class="col-md-3"><input class="form-control" placeholder="موبایل" @bind="techForm.Phone" dir="ltr" /></div>
+            <div class="col-md-3"><input class="form-control" placeholder="موبایل" @bind="techForm.Phone" dir="ltr" data-digits="tel" inputmode="tel" /></div>
             <div class="col-md-3"><input class="form-control" placeholder="تخصص (لپ‌تاپ، دوربین…)" @bind="techForm.Specialty" /></div>
             <div class="col-md-2">
                 <button class="btn btn-primary w-100" @onclick="SaveTech" disabled="@saving">

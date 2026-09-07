@@ -34,6 +34,41 @@ public static class RbacSeeder
         ["WorkOrders"] = new[] { "View", "Create", "AssignOthers" },
         ["Settings"] = CrudActions,
         ["Warehouses"] = CrudActions,
+        // ================== ماژول انبارداری ==================
+        // InvDocs: اسناد رسید و حواله — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["InvDocs"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // InvDocTypes: مدیریت انواع رسید/حواله و ماهیت آن‌ها
+        ["InvDocTypes"] = CrudActions,
+        // ================== ماژول حسابداری ==================
+        // AccAccounts: کدینگ حساب‌ها، سال مالی و قواعد سند خودکار
+        ["AccAccounts"] = CrudActions,
+        // AccVouchers: اسناد حسابداری — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["AccVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // AccDimensions: ابعاد تحلیلی (مراکز هزینه / شعبه) و مقادیر آن‌ها
+        ["AccDimensions"] = CrudActions,
+        // FixedAssets: دارایی ثابت — Confirm: ارسال استهلاک به حسابداری
+        ["FixedAssets"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // Budgets: بودجه و کنترل بودجه
+        ["Budgets"] = CrudActions,
+        // Moadian: سامانه مودیان — Send: ارسال/ابطال/برگشت فاکتورها
+        ["Moadian"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Send" },
+        // FiscalPrinter: چاپگر مالی — Print: چاپ رسید
+        ["FiscalPrinter"] = new[] { "Create", "Read", "Update", "Delete", "Print" },
+        // ================== ماژول فاکتور ==================
+        // FacInvoices: فاکتور خرید/فروش — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["FacInvoices"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // ================== ماژول خزانه‌داری ==================
+        // TrsAccounts: صندوق، بانک، کارتخوان، تنخواه و تنظیمات خزانه
+        ["TrsAccounts"] = CrudActions,
+        // TrsVouchers: اسناد دریافت/پرداخت/انتقال — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["TrsVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // TrsCheques: چک‌ها — Confirm: اجرای عملیات چک (واگذاری، وصول، برگشت)
+        ["TrsCheques"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // ================== ماژول انبارگردانی و بارکد ==================
+        // StkSessions: دوره‌های انبارگردانی — Apply: صدور اسناد اصلاح | Cancel: لغو دوره
+        ["StkSessions"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Apply", "Cancel" },
+        // StkBarcodes: بارکدهای کالا، تولید گروهی و چاپ برچسب
+        ["StkBarcodes"] = CrudActions,
         // ================== بخش معرف ==================
         ["Referrers"] = CrudActions,                                     // مدیریت معرف‌ها
         ["ReferrerWallets"] = new[] { "Read", "Update", "Export" },      // کیف پول معرف‌ها
@@ -64,7 +99,16 @@ public static class RbacSeeder
         // Create: ثبت و ارسال نامه (و مدیریت پیش‌نویس‌ها/گروه‌های گیرندگان)
         // Read: کارتابل، مشاهده نامه و پیوست‌ها | Erja: ارجاع نامه به دیگران
         // Delete: حذف نامه/گروه (مدیرانه)
-        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" }
+        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
+        // ================== آرشیو اسناد و مدارک ==================
+        ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage", "Export" },
+        // ================== پیام‌رسان سازمانی ==================
+        // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
+        ["Chat"] = new[] { "View", "Send", "Manage" },
+        // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
+        // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
+        // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده
+        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" }
     };
 
     public static async Task SeedAsync(AppDbContext db)
@@ -208,6 +252,26 @@ public static class RbacSeeder
                 db.RolePermissions.Add(new RolePermission { RoleId = r.Id, PermissionId = perm.Id });
         }
         await db.SaveChangesAsync();
+
+        // ================== پیام‌رسان سازمانی — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ==================
+        // پرمیشن‌های جدید چت فقط به Admin داده می‌شوند؛ برای حفظ رفتار فعلی (همه بتوانند چت کنند)
+        // به سایر نقش‌های فعال هم View و Send داده می‌شود. مدیر می‌تواند بعداً از صفحهٔ نقش‌ها محدود کند.
+        var chatDefaultPerms = await db.Permissions
+            .Where(p => p.Module == "Chat" && p.Action != "Manage")
+            .ToListAsync();
+        if (chatDefaultPerms.Count > 0)
+        {
+            var activeRoles = await db.Roles.Where(r => r.IsActive).ToListAsync();
+            foreach (var role in activeRoles)
+            {
+                var roleHas = await db.RolePermissions.Where(rp => rp.RoleId == role.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var perm in chatDefaultPerms.Where(p => !roleHas.Contains(p.Id)))
+                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
+            }
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] دسترسی پیش‌فرض پیام‌رسان (View/Send) به نقش‌های فعال داده شد.");
+        }
 
         if (firstSeed)
         {

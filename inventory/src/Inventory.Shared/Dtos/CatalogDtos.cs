@@ -23,6 +23,18 @@ public class AppSettings
 
     /// <summary>شماره معرف سامانه در پیام‌ها</summary>
     public string? MessengerSenderNumber { get; set; } = "09111189771";
+
+    /// <summary>واحد وزن پیش‌فرض (kg, g, ton)</summary>
+    public string WeightUnit { get; set; } = "kg";
+
+    /// <summary>واحد ابعاد پیش‌فرض (cm, mm, m)</summary>
+    public string DimensionUnit { get; set; } = "cm";
+
+    /// <summary>واحد حجم پیش‌فرض (ltr, ml, m3)</summary>
+    public string VolumeUnit { get; set; } = "ltr";
+
+    /// <summary>وزن پیش‌فرض محموله (kg)</summary>
+    public decimal DefaultShipmentWeight { get; set; } = 0;
 }
 
 /// <summary>معرف (بازاریاب).</summary>

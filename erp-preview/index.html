@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>پیش‌نمایش جایگذاری ماژول‌های ERP</title>
+<style>
+@font-face{font-family:'Vazirmatn';src:url('fonts/Vazirmatn-Regular.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'Vazirmatn';src:url('fonts/Vazirmatn-Medium.woff2') format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:'Vazirmatn';src:url('fonts/Vazirmatn-SemiBold.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:'Vazirmatn';src:url('fonts/Vazirmatn-Bold.woff2') format('woff2');font-weight:700;font-display:swap}
+@font-face{font-family:'Vazirmatn';src:url('fonts/Vazirmatn-ExtraBold.woff2') format('woff2');font-weight:800;font-display:swap}
+:root{
+  --sidebar:#0b1220; --bg:#f1f5f9; --card:#fff; --border:#e2e8f0; --text:#0f172a;
+  --muted:#64748b; --primary:#4f46e5; --erp:#f472b6; --ok:#059669; --warn:#d97706; --danger:#dc2626; --info:#0284c7;
+  --radius:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;font-family:Vazirmatn,Tahoma,system-ui,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.8}
+button,input,select,textarea{font-family:inherit}
+.shell{display:flex;min-height:100vh}
+.sidebar{width:272px;flex-shrink:0;background:
+  radial-gradient(360px 280px at 92% -6%, rgba(34,211,238,.15), transparent 62%),
+  radial-gradient(320px 320px at -12% 28%, rgba(139,92,246,.14), transparent 62%),
+  linear-gradient(178deg,#0b1220 0%,#0d1526 52%,#0a1120 100%);
+  color:#cbd5e1;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{height:66px;display:flex;align-items:center;gap:.7rem;padding:0 1.1rem;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+.logo{width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,#22d3ee,#8b5cf6 55%,#10b981);display:grid;place-items:center;color:#fff;font-weight:800}
+.brand-text{font-weight:800;font-size:1.02rem;background:linear-gradient(90deg,#e0f2fe,#ede9fe 55%,#d1fae5);-webkit-background-clip:text;background-clip:text;color:transparent}
+.brand-sub{color:#5b7a99;font-size:.7rem;margin-top:-2px}
+.nav{padding:.7rem .7rem 1.2rem;overflow:auto;flex:1}
+.nav-toggle{width:100%;display:flex;align-items:center;justify-content:space-between;background:0;border:0;color:#f472b6;font-weight:800;letter-spacing:.12em;font-size:.72rem;padding:.55rem .45rem;cursor:pointer}
+.nav-toggle .dot{width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 9px currentColor;margin-left:.45rem}
+.nav-items{border-inline-start:2px solid rgba(244,114,182,.28);margin-inline-start:.55rem;padding:.15rem 0 .4rem}
+.subhead{font-size:.68rem;font-weight:700;color:rgba(226,232,240,.42);padding:.55rem .7rem .15rem;display:flex;align-items:center;gap:.4rem;white-space:nowrap}
+.subhead:after{content:"";flex:1;height:1px;background:linear-gradient(to left,currentColor,transparent);opacity:.45}
+.subhead.new{color:#fbbf24}
+.nlink{display:flex;align-items:center;gap:.55rem;padding:.42rem .7rem;margin:2px 0;border-radius:12px;color:#a5b4c8;cursor:pointer;border:0;background:0;width:100%;text-align:right;font-size:.86rem;font-weight:500;position:relative}
+.nlink .ico{width:18px;text-align:center;color:#f472b6;flex-shrink:0}
+.nlink:hover{background:rgba(255,255,255,.06);color:#e2e8f0}
+.nlink.active{background:linear-gradient(135deg,#f472b6,#db2777);color:#fff;box-shadow:0 8px 22px rgba(236,72,153,.42)}
+.nlink.active .ico{color:#fff}
+.nlink .tag{margin-right:auto;font-size:.62rem;font-weight:800;background:linear-gradient(135deg,#fbbf24,#d97706);color:#fff;border-radius:999px;padding:.02rem .4rem;box-shadow:0 2px 8px rgba(245,158,11,.4)}
+.nlink.active .tag{background:#fff;color:#db2777}
+.nlink.dim{opacity:.55}
+.foot{padding:.7rem;border-top:1px solid rgba(255,255,255,.06);font-size:.72rem;color:#5b7a99;text-align:center}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{height:66px;position:sticky;top:0;z-index:20;background:rgba(255,255,255,.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:1rem;padding:0 1.25rem}
+.top:after{content:"";position:absolute;top:0;right:0;left:0;height:2.5px;background:linear-gradient(90deg,#4338ca,#6d28d9 35%,#0d9488)}
+.top h1{margin:0;font-size:1.05rem}
+.top p{margin:0;color:var(--muted);font-size:.78rem}
+.crumb{margin-right:auto;background:#f1f5f9;border:1px solid var(--border);border-radius:999px;padding:.25rem .8rem;font-size:.78rem;color:var(--muted)}
+.content{padding:1.35rem 1.5rem 2.5rem}
+.page-head{display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:1.15rem}
+.page-head h2{margin:0;font-size:1.22rem;position:relative;padding-right:.85rem}
+.page-head h2:before{content:"";position:absolute;right:0;top:12%;bottom:12%;width:4px;border-radius:4px;background:linear-gradient(135deg,#4338ca,#6d28d9)}
+.lead{margin:.15rem 0 0;color:var(--muted);font-size:.85rem}
+.actions{margin-right:auto;display:flex;gap:.45rem;flex-wrap:wrap}
+.btn{border:0;border-radius:10px;padding:.45rem .85rem;font-weight:600;cursor:pointer;font-size:.86rem;display:inline-flex;align-items:center;gap:.35rem}
+.btn-p{background:linear-gradient(135deg,#4338ca,#6d28d9);color:#fff;box-shadow:0 6px 18px rgba(79,70,229,.35)}
+.btn-g{background:linear-gradient(135deg,#10b981,#0d9488);color:#fff}
+.btn-l{background:#fff;border:1px solid var(--border);color:#334155}
+.btn-w{background:#fff7ed;border:1px solid #fdba74;color:#9a3412}
+.grid{display:grid;gap:.85rem}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.05)}
+.card-h{padding:.75rem 1.05rem;border-bottom:1px solid var(--border);font-weight:700;display:flex;align-items:center;gap:.5rem;background:linear-gradient(180deg,#fafbfe,#f6f8fc)}
+.card-b{padding:1rem 1.1rem}
+.kpi{padding:1rem 1.1rem;position:relative;overflow:hidden}
+.kpi:before{content:"";position:absolute;top:0;right:0;left:0;height:3px;background:linear-gradient(135deg,#4338ca,#6d28d9)}
+.kpi .lbl{color:var(--muted);font-size:.78rem}
+.kpi .val{font-weight:800;font-size:1.2rem;font-variant-numeric:tabular-nums}
+.ico-box{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;font-size:1.15rem}
+.table{width:100%;border-collapse:collapse}
+.table th{font-size:.74rem;color:var(--muted);background:linear-gradient(180deg,#f8fafc,#f1f5f9);padding:.55rem .75rem;text-align:right;font-weight:700;border-bottom:2px solid #e2e8f0;white-space:nowrap}
+.table td{padding:.62rem .75rem;border-bottom:1px solid #f1f5f9;font-size:.88rem;vertical-align:middle}
+.table tr:hover td{background:linear-gradient(90deg,rgba(79,70,229,.045),rgba(13,148,136,.03))}
+.badge{display:inline-flex;align-items:center;gap:.25rem;border-radius:7px;padding:.08rem .45rem;font-size:.72rem;font-weight:700}
+.b-ok{background:#d1fae5;color:#065f46}
+.b-w{background:#fef3c7;color:#92400e}
+.b-d{background:#fee2e2;color:#991b1b}
+.b-i{background:#e0f2fe;color:#075985}
+.b-p{background:#eef2ff;color:#3730a3}
+.b-m{background:#f1f5f9;color:#64748b}
+.b-n{background:#fce7f3;color:#9d174d}
+.note{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:.75rem .95rem;font-size:.82rem;color:#92400e;margin-bottom:1rem}
+.note.blue{background:#eff6ff;border-color:#bfdbfe;color:#1e40af}
+.note.green{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+.flow{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.4rem 0 1rem}
+.pill{background:#fff;border:1px dashed #c7d2fe;border-radius:999px;padding:.2rem .7rem;font-size:.78rem;font-weight:600;color:#4338ca}
+.arrow{color:#94a3b8}
+.kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:.7rem}
+.col{background:#f8fafc;border:1px solid var(--border);border-radius:14px;padding:.6rem}
+.col h4{margin:0 0 .5rem;font-size:.78rem;display:flex;justify-content:space-between}
+.chq{background:#fff;border:1px solid var(--border);border-radius:12px;padding:.55rem .65rem;margin-bottom:.45rem;box-shadow:0 2px 8px rgba(15,23,42,.04)}
+.chq b{display:block;font-size:.82rem}
+.chq span{font-size:.72rem;color:var(--muted)}
+.bar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:linear-gradient(90deg,#4338ca,#0d9488)}
+.muted{color:var(--muted);font-size:.8rem}
+.num{font-variant-numeric:tabular-nums}
+.place{display:inline-flex;align-items:center;gap:.3rem;background:#fdf2f8;color:#9d174d;border-radius:8px;padding:.1rem .5rem;font-size:.72rem;font-weight:700}
+.map{display:grid;grid-template-columns:1.15fr .85fr;gap:1rem}
+.mod{padding:1rem;border:1px solid var(--border);border-radius:16px;background:#fff;cursor:pointer;transition:.15s;text-align:right;width:100%}
+.mod:hover{transform:translateY(-2px);box-shadow:0 14px 34px rgba(15,23,42,.09)}
+.mod h3{margin:.2rem 0 .25rem;font-size:1rem}
+.mod .where{font-size:.78rem;color:#9d174d;font-weight:700}
+.path{font-family:ui-monospace,monospace;font-size:.72rem;background:#0f172a;color:#7dd3fc;padding:.08rem .4rem;border-radius:6px;direction:ltr;display:inline-block}
+.steps{display:flex;flex-wrap:wrap;gap:.35rem}
+.step{background:#eef2ff;color:#3730a3;border-radius:8px;padding:.12rem .5rem;font-size:.72rem;font-weight:700}
+.hide{display:none}
+@media(max-width:1100px){.g4,.kanban,.map,.g3{grid-template-columns:1fr 1fr}.sidebar{display:none}}
+@media(max-width:720px){.g4,.g3,.g2,.kanban,.map{grid-template-columns:1fr}.crumb{display:none}}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand">
+    <div class="logo">ف</div>
+    <div>
+      <div class="brand-text">انبار و فروش</div>
+      <div class="brand-sub">پیش‌نمایش ماژول‌های ERP</div>
+    </div>
+  </div>
+  <nav class="nav">
+    <button class="nav-toggle" type="button"><span style="display:flex;align-items:center"><span class="dot"></span>ERP</span><span>⌃</span></button>
+    <div class="nav-items">
+      <div class="subhead">تعاریف پایه</div>
+      <div class="nlink dim"><span class="ico">▣</span>تعریف کالا</div>
+      <div class="nlink dim"><span class="ico">▤</span>گروه‌بندی کالا</div>
+      <div class="nlink dim"><span class="ico">▦</span>مدیریت انبارها</div>
+
+      <div class="subhead">عملیات انبار</div>
+      <div class="nlink dim"><span class="ico">▤</span>رسید و حواله</div>
+
+      <div class="subhead">حسابداری — تعاریف</div>
+      <div class="nlink dim"><span class="ico">☰</span>کدینگ حساب‌ها</div>
+      <div class="nlink dim"><span class="ico">▦</span>ابعاد تحلیلی</div>
+      <div class="nlink dim"><span class="ico">▣</span>دارایی ثابت</div>
+      <div class="nlink dim"><span class="ico">◔</span>بودجه و کنترل</div>
+
+      <div class="subhead">حسابداری — عملیات</div>
+      <div class="nlink dim"><span class="ico">▤</span>اسناد حسابداری</div>
+      <button class="nlink" data-page="costing"><span class="ico">⊕</span>تخصیص هزینه<span class="tag">جدید</span></button>
+      <button class="nlink" data-page="cogs"><span class="ico">◎</span>بهای تمام‌شده<span class="tag">جدید</span></button>
+
+      <div class="subhead">فاکتور — عملیات</div>
+      <div class="nlink dim"><span class="ico">▤</span>فهرست فاکتورها</div>
+      <div class="nlink dim"><span class="ico">▣</span>فاکتور فروش</div>
+
+      <div class="subhead new">طرف حساب و تسویه</div>
+      <button class="nlink" data-page="statement"><span class="ico">☰</span>صورت‌حساب طرف حساب<span class="tag">جدید</span></button>
+      <button class="nlink" data-page="aging"><span class="ico">▤</span>گزارش سنی مطالبات<span class="tag">جدید</span></button>
+      <button class="nlink" data-page="settle"><span class="ico">⇄</span>تسویه و تهاتر<span class="tag">جدید</span></button>
+
+      <div class="subhead">خزانه‌داری</div>
+      <div class="nlink dim"><span class="ico">﷼</span>دریافت و پرداخت</div>
+      <button class="nlink" data-page="cheques"><span class="ico">▣</span>دفتر و گردش چک<span class="tag">کامل</span></button>
+      <button class="nlink" data-page="sayad"><span class="ico">◎</span>استعلام صیاد<span class="tag">جدید</span></button>
+      <button class="nlink" data-page="bankrec"><span class="ico">⇄</span>مغایرت‌گیری بانکی<span class="tag">جدید</span></button>
+      <div class="nlink dim"><span class="ico">▣</span>صندوق و بانک</div>
+      <button class="nlink" data-page="petty"><span class="ico">◉</span>تنخواه‌گردان<span class="tag">جدید</span></button>
+      <button class="nlink" data-page="travel"><span class="ico">✈</span>هزینه سفر<span class="tag">جدید</span></button>
+      <button class="nlink" data-page="pay"><span class="ico">⌂</span>پرداخت آنلاین<span class="tag">جدید</span></button>
+      <div class="nlink dim"><span class="ico">◔</span>داشبورد خزانه</div>
+      <button class="nlink" data-page="gateways"><span class="ico">⚙</span>تنظیمات درگاه<span class="tag">جدید</span></button>
+
+      <div class="subhead">حسابداری — گزارش‌ها</div>
+      <div class="nlink dim"><span class="ico">◔</span>داشبورد مالی</div>
+      <div class="nlink dim"><span class="ico">▤</span>تراز آزمایشی</div>
+      <button class="nlink" data-page="cogs-report"><span class="ico">◎</span>گزارش بهای تمام‌شده<span class="tag">جدید</span></button>
+    </div>
+  </nav>
+  <div class="foot">پیش‌نمایش طراحی — هنوز به دیتابیس وصل نیست</div>
+</aside>
+
+<div class="main">
+  <header class="top">
+    <div>
+      <h1 id="topTitle">نقشه جایگذاری ۵ ماژول</h1>
+      <p id="topSub">روی آیتم‌های صورتی «جدید» در منوی ERP کلیک کنید</p>
+    </div>
+    <div class="crumb" id="crumb">ERP  ←  پیش‌نمایش</div>
+  </header>
+  <main class="content" id="view"></main>
+</div>
+</div>
+
+<script>
+const PAGES = {};
+function money(n){return n.toLocaleString('fa-IR') + ' ریال'}
+function fa(n){return n.toLocaleString('fa-IR')}
+
+PAGES.home = () => `
+  <div class="page-head">
+    <div>
+      <h2>۵ ماژول مالی — کجا نشسته‌اند؟</h2>
+      <p class="lead">جایگذاری بر اساس جریان واقعی سند در سیستم فعلی: انبار → حسابداری → فاکتور → خزانه. آیتم‌های موجود کم‌رنگ‌اند؛ موارد جدید با برچسب طلایی مشخص شده‌اند.</p>
+    </div>
+  </div>
+  <div class="note blue">منطق جاگذاری: هر قابلیت کنار ماژولی می‌نشیند که <b>سند حسابداری یا گردش نقد</b> را صادر می‌کند — نه در «عملیات» عمومی و نه به‌صورت منوی جدا از ERP.</div>
+  <div class="map">
+    <div class="grid" style="gap:.75rem">
+      ${mod('۱','تخصیص هزینه و بهای تمام‌شده','حسابداری — عملیات + گزارش‌ها','acc/costing · acc/cogs','روی ابعاد تحلیلی و اسناد انبار سوار می‌شود؛ خروجی‌اش سند حسابداری و کاردکس بهای تمام‌شده است.','costing','#4f46e5')}
+      ${mod('۲','تنخواه و هزینه سفر','خزانه‌داری','trs/petty-cash · trs/travel','صندوق از نوع تنخواه از قبل در خزانه هست. گردش درخواست→تصویب→تسویه باید روی همان حساب تنخواه بنشیند، نه صفحهٔ سادهٔ هزینه‌ها.','petty','#0d9488')}
+      ${mod('۳','چک و بانک (سامانه کامل)','خزانه‌داری — گسترش دفتر چک','trs/cheques · trs/sayad · trs/bank-reconcile','دفتر چک فعلی چرخهٔ واگذاری/وصول/برگشت دارد. لایهٔ کامل: کانبان گردش، صیاد، تقویم سررسید، مغایرت بانکی.','cheques','#db2777')}
+      ${mod('۴','تسویه حساب طرف حساب','زیرگروه جدید بین فاکتور و خزانه','erp/parties/statement','هم فاکتور می‌سازد هم سند خزانه و ماندهٔ حساب. جای درست: پل بین Fac و Trs، نه داخل یکی از آن‌ها.','statement','#7c3aed')}
+      ${mod('۵','درگاه پرداخت آنلاین','خزانه‌داری','trs/payments · trs/gateways','هر پرداخت موفق = سند دریافت خزانه + تسویه فاکتور. تنظیمات درگاه کنار تنظیمات خزانه.','pay','#0284c7')}
+    </div>
+    <div class="card">
+      <div class="card-h">جریان یکپارچه</div>
+      <div class="card-b">
+        <div class="flow">
+          <span class="pill">فاکتور فروش</span><span class="arrow">←</span>
+          <span class="pill">درگاه / چک / تنخواه</span><span class="arrow">←</span>
+          <span class="pill">سند خزانه</span><span class="arrow">←</span>
+          <span class="pill">سند حسابداری</span>
+        </div>
+        <div class="flow">
+          <span class="pill">هزینه سربار</span><span class="arrow">←</span>
+          <span class="pill">تخصیص به مرکز/پروژه</span><span class="arrow">←</span>
+          <span class="pill">بهای تمام‌شده کالا/سفارش</span><span class="arrow">←</span>
+          <span class="pill">کاردکس + سود</span>
+        </div>
+        <p class="muted" style="margin-top:.8rem">صفحهٔ فعلی <b>هزینه‌ها</b> در گروه «عملیات» فقط ثبت ساده است و سند حسابداری نمی‌زند. تنخواه و سفر جایگزین آن نمی‌شوند؛ آن صفحه برای هزینه‌های متفرقه می‌ماند.</p>
+        <p class="muted">چک ساده همین حالا در خزانه هست — ما آن را کامل می‌کنیم، ماژول موازی نمی‌سازیم.</p>
+        <div class="note green" style="margin:0">روی هر کارت یا آیتم منو کلیک کنید تا پیش‌نمایش همان صفحه را ببینید.</div>
+      </div>
+    </div>
+  </div>
+`;
+
+function mod(n,title,where,path,why,page,color){
+  return `<button class="mod" onclick="go('${page}')">
+    <div style="display:flex;gap:.7rem;align-items:flex-start">
+      <div class="ico-box" style="background:${color}18;color:${color};font-weight:800">${n}</div>
+      <div>
+        <div class="where">${where}</div>
+        <h3>${title}</h3>
+        <div class="path">/${path}</div>
+        <p class="muted" style="margin:.4rem 0 0">${why}</p>
+      </div>
+    </div>
+  </button>`;
+}
+
+PAGES.costing = () => `
+  <div class="page-head">
+    <div>
+      <h2>تخصیص هزینه</h2>
+      <p class="lead">جمع‌آوری هزینه‌های سربار دوره و سرشکن روی مرکز هزینه / پروژه / کالا</p>
+    </div>
+    <div class="actions"><button class="btn btn-l">دوره: شهریور ۱۴۰۵</button><button class="btn btn-p">اجرای تخصیص</button></div>
+  </div>
+  <div class="note">جا: <span class="place">ERP ← حسابداری — عملیات ← تخصیص هزینه</span> — چون خروجی، آرتیکل روی مراکز (ابعاد تحلیلی موجود) و سند حسابداری قطعی است. تعاریف مراکز از قبل در «ابعاد تحلیلی» است.</div>
+  <div class="grid g4">
+    ${kpi('استخر سربار','۴٬۸۲۰٬۰۰۰٬۰۰۰','#4f46e5')}
+    ${kpi('تخصیص‌شده','۴٬۱۱۰٬۰۰۰٬۰۰۰','#0d9488')}
+    ${kpi('مانده تخصیص‌نیافته','۷۱۰٬۰۰۰٬۰۰۰','#d97706')}
+    ${kpi('مراکز فعال','۱۲ مرکز','#db2777')}
+  </div>
+  <div class="grid g2" style="margin-top:.9rem">
+    <div class="card">
+      <div class="card-h">استخرهای هزینه این دوره</div>
+      <div class="card-b" style="padding:0">
+        <table class="table">
+          <thead><tr><th>استخر</th><th>مبنای سرشکن</th><th>مبلغ</th><th>وضعیت</th></tr></thead>
+          <tbody>
+            <tr><td>سربار کارخانه</td><td>ساعت کارکرد ماشین</td><td class="num">${money(2100000000)}</td><td><span class="badge b-ok">تخصیص شد</span></td></tr>
+            <tr><td>هزینه اداری مشترک</td><td>نفر-ساعت</td><td class="num">${money(980000000)}</td><td><span class="badge b-ok">تخصیص شد</span></td></tr>
+            <tr><td>حمل و انبار</td><td>وزن خروج</td><td class="num">${money(740000000)}</td><td><span class="badge b-w">پیش‌نویس</span></td></tr>
+            <tr><td>استهلاک ماشین‌آلات</td><td>ساعت کارکرد</td><td class="num">${money(1000000000)}</td><td><span class="badge b-i">از دارایی ثابت</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h">نتیجه روی مراکز (نمونه)</div>
+      <div class="card-b">
+        ${bar('پروژه برج آریا','۳۸')}
+        ${bar('مرکز تولید خط ۱','۲۷')}
+        ${bar('مرکز تولید خط ۲','۱۹')}
+        ${bar('اداری ستاد','۱۶')}
+        <p class="muted" style="margin:.8rem 0 0">قواعد: فقط اسناد قطعی دوره باز · جمع تخصیص = استخر · سند Acc با منبع CostAlloc · برگشت تخصیص سند را حذف می‌کند.</p>
+      </div>
+    </div>
+  </div>
+`;
+
+PAGES.cogs = () => `
+  <div class="page-head">
+    <div>
+      <h2>بهای تمام‌شده کالا / سفارش</h2>
+      <p class="lead">مواد + دستمزد + سربار تخصیص‌یافته = بهای تمام‌شده واحد و سفارش</p>
+    </div>
+    <div class="actions"><button class="btn btn-l">روش: میانگین موزون</button><button class="btn btn-p">محاسبه دوره</button></div>
+  </div>
+  <div class="note">جا: کنار تخصیص هزینه در عملیات حسابداری. گزارش جدا در <span class="place">حسابداری — گزارش‌ها</span>. از کاردکس انبار (OutCost) و تخصیص سربار تغذیه می‌شود — ماژول موازی انبار ساخته نمی‌شود.</div>
+  <div class="grid g3">
+    ${kpi('بهای کالای فروش‌رفته','۱۲٬۴۵۰٬۰۰۰٬۰۰۰','#dc2626')}
+    ${kpi('موجودی پایان دوره','۸٬۲۱۰٬۰۰۰٬۰۰۰','#0d9488')}
+    ${kpi('حاشیه ناخالص','۳۱٪','#4f46e5')}
+  </div>
+  <div class="card" style="margin-top:.9rem">
+    <div class="card-h">برگه بهای تمام‌شده — کالای «تابلو برق فشار متوسط»</div>
+    <div class="card-b" style="padding:0">
+      <table class="table">
+        <thead><tr><th>جزء بها</th><th>منبع</th><th>مقدار</th><th>مبلغ</th></tr></thead>
+        <tbody>
+          <tr><td>مواد مستقیم</td><td>حواله انبار</td><td>۱۲ قلم</td><td class="num">${money(186000000)}</td></tr>
+          <tr><td>دستمزد مستقیم</td><td>گزارش کار پروژه</td><td>۴۸ نفر-ساعت</td><td class="num">${money(42000000)}</td></tr>
+          <tr><td>سربار جذب‌شده</td><td>تخصیص شهریور</td><td>نرخ جذب</td><td class="num">${money(27500000)}</td></tr>
+          <tr><td><b>بهای تمام‌شده یک واحد</b></td><td></td><td>۱ دستگاه</td><td class="num"><b>${money(255500000)}</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+`;
+
+PAGES['cogs-report'] = () => `
+  <div class="page-head"><div><h2>گزارش بهای تمام‌شده و سود مرکز</h2><p class="lead">خروجی تخصیص + COGS روی ابعاد تحلیلی</p></div></div>
+  <div class="note">جا: <span class="place">ERP ← حسابداری — گزارش‌ها</span> کنار دفتر حساب و تراز آزمایشی.</div>
+  <div class="card"><div class="card-b" style="padding:0">
+    <table class="table"><thead><tr><th>مرکز / پروژه</th><th>درآمد</th><th>بهای تمام‌شده</th><th>سود ناخالص</th><th>حاشیه</th></tr></thead>
+    <tbody>
+      <tr><td>پروژه برج آریا</td><td class="num">${money(4200000000)}</td><td class="num">${money(3180000000)}</td><td class="num">${money(1020000000)}</td><td><span class="badge b-ok">۲۴٪</span></td></tr>
+      <tr><td>خط تولید ۱</td><td class="num">${money(2800000000)}</td><td class="num">${money(2310000000)}</td><td class="num">${money(490000000)}</td><td><span class="badge b-w">۱۷٪</span></td></tr>
+      <tr><td>خدمات پس از فروش</td><td class="num">${money(640000000)}</td><td class="num">${money(710000000)}</td><td class="num" style="color:#dc2626">${money(-70000000)}</td><td><span class="badge b-d">−۱۱٪</span></td></tr>
+    </tbody></table>
+  </div></div>
+`;
+
+PAGES.petty = () => `
+  <div class="page-head">
+    <div><h2>تنخواه‌گردان</h2><p class="lead">صندوق تنخواه، سقف، درخواست، تصویب، شارژ مجدد و تسویه</p></div>
+    <div class="actions"><button class="btn btn-p">درخواست تنخواه</button></div>
+  </div>
+  <div class="note">جا: <span class="place">ERP ← خزانه‌داری ← تنخواه‌گردان</span> — نوع حساب PettyCash از قبل در TrsAccount هست. صفحهٔ «هزینه‌ها» در عملیات سند Acc نمی‌زند؛ اینجا هر تسویه = سند پرداخت خزانه + هزینه.</div>
+  <div class="grid g4">
+    ${kpi('سقف کل تنخواه','۵۰۰٬۰۰۰٬۰۰۰','#4f46e5')}
+    ${kpi('مانده نزد تنخواه‌داران','۱۸۶٬۴۰۰٬۰۰۰','#d97706')}
+    ${kpi('در انتظار تصویب','۳ درخواست','#db2777')}
+    ${kpi('تسویه‌نشده سررسید گذشته','۱ مورد','#dc2626')}
+  </div>
+  <div class="card" style="margin-top:.9rem">
+    <div class="card-h">صندوق‌های تنخواه</div>
+    <div class="card-b" style="padding:0">
+      <table class="table">
+        <thead><tr><th>تنخواه</th><th>مسئول</th><th>سقف</th><th>مانده</th><th>مصرف دوره</th><th>وضعیت</th></tr></thead>
+        <tbody>
+          <tr><td>تنخواه دفتر مرکزی</td><td>زهرا محمدی</td><td class="num">${money(200000000)}</td><td class="num">${money(84200000)}</td><td class="num">${money(115800000)}</td><td><span class="badge b-ok">فعال</span></td></tr>
+          <tr><td>تنخواه پروژه برج</td><td>علی رضایی</td><td class="num">${money(150000000)}</td><td class="num">${money(22100000)}</td><td class="num">${money(127900000)}</td><td><span class="badge b-w">نزدیک سقف</span></td></tr>
+          <tr><td>تنخواه خدمات</td><td>مریم کریمی</td><td class="num">${money(150000000)}</td><td class="num">${money(80100000)}</td><td class="num">${money(69900000)}</td><td><span class="badge b-ok">فعال</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card" style="margin-top:.9rem">
+    <div class="card-h">گردش کار</div>
+    <div class="card-b">
+      <div class="flow">
+        <span class="step">۱. درخواست</span><span class="arrow">←</span>
+        <span class="step">۲. تصویب مدیر</span><span class="arrow">←</span>
+        <span class="step">۳. پرداخت از خزانه</span><span class="arrow">←</span>
+        <span class="step">۴. ثبت فیش هزینه</span><span class="arrow">←</span>
+        <span class="step">۵. تسویه و شارژ مجدد</span>
+      </div>
+      <p class="muted" style="margin:0">سقف قابل تنظیم برای هر تنخواه · هزینه بالاتر از سقف مسدود · سند Acc فقط بعد از تسویه قطعی.</p>
+    </div>
+  </div>
+`;
+
+PAGES.travel = () => `
+  <div class="page-head">
+    <div><h2>هزینه سفر و مأموریت</h2><p class="lead">درخواست سفر، سقف روزانه، فیش، تصویب و تسویه با تنخواه یا خزانه</p></div>
+    <div class="actions"><button class="btn btn-p">درخواست سفر جدید</button></div>
+  </div>
+  <div class="note">جا: زیر تنخواه در خزانه — چون تسویه مالی است. مرخصی/مأموریت منابع انسانی فقط حضور را می‌گیرد؛ پول اینجا ثبت می‌شود و می‌تواند به حکم مأموریت HR لینک شود.</div>
+  <div class="card">
+    <div class="card-b" style="padding:0">
+      <table class="table">
+        <thead><tr><th>شماره</th><th>کارمند</th><th>مقصد</th><th>تاریخ</th><th>برآورد</th><th>واقعی</th><th>وضعیت</th></tr></thead>
+        <tbody>
+          <tr><td class="num">TR-۱۴۰۵-۰۱۸</td><td>سعید نوری</td><td>اصفهان — بازدید کارفرما</td><td>۱۲ تا ۱۴ شهریور</td><td class="num">${money(18500000)}</td><td class="num">${money(19200000)}</td><td><span class="badge b-w">در انتظار تسویه</span></td></tr>
+          <tr><td class="num">TR-۱۴۰۵-۰۱۷</td><td>نرگس امینی</td><td>مشهد — همایش</td><td>۵ تا ۷ شهریور</td><td class="num">${money(24000000)}</td><td class="num">${money(22100000)}</td><td><span class="badge b-ok">تسویه شد</span></td></tr>
+          <tr><td class="num">TR-۱۴۰۵-۰۱۶</td><td>حسین کاظمی</td><td>اهواز — پروژه</td><td>۲۰ شهریور</td><td class="num">${money(31000000)}</td><td>—</td><td><span class="badge b-i">تصویب مدیر</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+`;
+
+PAGES.cheques = () => `
+  <div class="page-head">
+    <div><h2>سامانه کامل چک</h2><p class="lead">کانبان گردش + سررسید + صیاد — گسترش دفتر چک موجود، نه ماژول جدا</p></div>
+    <div class="actions"><button class="btn btn-l">تقویم سررسید</button><button class="btn btn-p">ثبت چک</button></div>
+  </div>
+  <div class="note">جا: همان <span class="place">خزانه‌داری ← دفتر چک</span> که امروز دارید؛ این پیش‌نمایش لایهٔ کامل را نشان می‌دهد. وضعیت‌ها همان ChequeStatus فعلی است.</div>
+  <div class="grid g4" style="margin-bottom:.9rem">
+    ${kpi('نزد صندوق','۸ چک · ۲٫۱ میلیارد','#4f46e5')}
+    ${kpi('در جریان وصول','۵ چک','#0284c7')}
+    ${kpi('سررسید ۷ روز','۳ چک','#d97706')}
+    ${kpi('برگشتی باز','۱ چک','#dc2626')}
+  </div>
+  <div class="kanban">
+    ${col('نزد صندوق','#4f46e5',[['چک ۸۴۱۲ · ملت','شرکت پارس صنعت','۴۲۰٬۰۰۰٬۰۰۰'],['چک ۹۲۰۱ · صادرات','مجتمع آریا','۱۸۵٬۰۰۰٬۰۰۰']])}
+    ${col('واگذاری / صیاد','#0284c7',[['چک ۷۷۳۰ · ملی','گروه ساختمانی نور','۹۱۰٬۰۰۰٬۰۰۰']])}
+    ${col('وصول / پاس','#059669',[['چک ۶۱۰۴ · تجارت','فروشگاه آفتاب','۶۵٬۰۰۰٬۰۰۰']])}
+    ${col('خرج‌شده','#d97706',[['چک ۵۵۱۸ · سپه','تأمین‌کننده فولاد','۲۴۰٬۰۰۰٬۰۰۰']])}
+    ${col('برگشتی','#dc2626',[['چک ۴۴۰۲ · صادرات','پیمانکار جنوب','۱۵۰٬۰۰۰٬۰۰۰']])}
+  </div>
+`;
+
+function col(t,c,items){
+  return `<div class="col"><h4 style="color:${c}">${t}<span class="badge b-m">${fa(items.length)}</span></h4>${items.map(i=>`<div class="chq"><b>${i[0]}</b><span>${i[1]}</span><div class="num" style="font-weight:800;margin-top:.2rem">${i[2]} ریال</div></div>`).join('')}</div>`;
+}
+
+PAGES.sayad = () => `
+  <div class="page-head"><div><h2>استعلام و ثبت صیاد</h2><p class="lead">شناسه ۱۶ رقمی، وضعیت ثبت در سامانه صیاد، تطبیق با چک خزانه</p></div></div>
+  <div class="note">جا: زیر دفتر چک. فیلد SayadId همین حالا روی TrsCheque هست؛ این صفحه استعلام، ثبت زنجیره و هشدار عدم ثبت را اضافه می‌کند.</div>
+  <div class="card"><div class="card-b">
+    <div class="grid g2">
+      <div><label class="muted">شناسه صیاد</label><div class="path" style="display:block;padding:.5rem">1405123487654321</div></div>
+      <div><label class="muted">نتیجه استعلام (نمونه)</label><div style="margin-top:.3rem"><span class="badge b-ok">ثبت‌شده نزد گیرنده</span> <span class="badge b-i">سررسید ۱۴۰۵/۰۶/۲۰</span></div></div>
+    </div>
+    <p class="muted">در نسخهٔ واقعی به API صیاد/بانک متصل می‌شود؛ تا آن زمان وضعیت دستی + پیوست تصویر چک.</p>
+  </div></div>
+`;
+
+PAGES.bankrec = () => `
+  <div class="page-head">
+    <div><h2>مغایرت‌گیری بانکی</h2><p class="lead">صورت‌حساب بانک در برابر گردش حساب خزانه — تطبیق، اقلام باز، سند اصلاحی</p></div>
+    <div class="actions"><button class="btn btn-l">ورود صورت‌حساب</button><button class="btn btn-g">تطبیق خودکار</button></div>
+  </div>
+  <div class="note">جا: <span class="place">خزانه‌داری ← مغایرت‌گیری بانکی</span> کنار گردش صندوق و بانک. بدون این، «سامانه کامل بانک» ناقص است.</div>
+  <div class="grid g3">
+    ${kpi('مانده دفاتر','۱٬۲۴۰٬۵۰۰٬۰۰۰','#4f46e5')}
+    ${kpi('مانده صورت‌حساب','۱٬۱۸۸٬۲۰۰٬۰۰۰','#0284c7')}
+    ${kpi('مغایرت باز','۵۲٬۳۰۰٬۰۰۰','#d97706')}
+  </div>
+  <div class="card" style="margin-top:.9rem">
+    <div class="card-h">اقلام تطبیق‌نشده</div>
+    <div class="card-b" style="padding:0">
+      <table class="table">
+        <thead><tr><th>تاریخ</th><th>شرح</th><th>منبع</th><th>مبلغ</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>۱۴۰۵/۰۶/۱۲</td><td>کارمزد ساتنا</td><td><span class="badge b-i">بانک</span></td><td class="num">${money(850000)}</td><td><button class="btn btn-l">صدور سند کارمزد</button></td></tr>
+          <tr><td>۱۴۰۵/۰۶/۱۴</td><td>چک ۷۷۳۰ در جریان</td><td><span class="badge b-p">دفاتر</span></td><td class="num">${money(910000000)}</td><td><span class="badge b-w">منتظر وصول</span></td></tr>
+          <tr><td>۱۴۰۵/۰۶/۱۵</td><td>واریز درگاه زرین‌پال</td><td><span class="badge b-i">بانک</span></td><td class="num">${money(52450000)}</td><td><button class="btn btn-g">تطبیق با پرداخت آنلاین</button></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+`;
+
+PAGES.statement = () => `
+  <div class="page-head">
+    <div><h2>صورت‌حساب طرف حساب</h2><p class="lead">گردش فروش/خرید، دریافت/پرداخت، چک، مانده بدهکار/بستانکار</p></div>
+    <div class="actions"><button class="btn btn-l">انتخاب: شرکت پارس صنعت</button><button class="btn btn-p">ارسال برای مشتری</button></div>
+  </div>
+  <div class="note">جا: <span class="place">ERP ← طرف حساب و تسویه</span> — زیرگروه جدید بین فاکتور و خزانه. از Parties موجود در اطلاعات پایه تغذیه می‌شود.</div>
+  <div class="grid g4">
+    ${kpi('گردش بدهکار','۳٬۴۲۰٬۰۰۰٬۰۰۰','#dc2626')}
+    ${kpi('گردش بستانکار','۲٬۹۱۰٬۰۰۰٬۰۰۰','#0d9488')}
+    ${kpi('مانده فعلی','۵۱۰٬۰۰۰٬۰۰۰ بدهکار','#d97706')}
+    ${kpi('چک نزد ما','۴۲۰٬۰۰۰٬۰۰۰','#4f46e5')}
+  </div>
+  <div class="card" style="margin-top:.9rem"><div class="card-b" style="padding:0">
+    <table class="table">
+      <thead><tr><th>تاریخ</th><th>سند</th><th>شرح</th><th>بدهکار</th><th>بستانکار</th><th>مانده</th></tr></thead>
+      <tbody>
+        <tr><td>۰۱/۰۶</td><td><span class="badge b-p">فاکتور</span></td><td>فروش تابلو برق</td><td class="num">${money(255500000)}</td><td></td><td class="num">${money(255500000)}</td></tr>
+        <tr><td>۰۴/۰۶</td><td><span class="badge b-ok">دریافت</span></td><td>واریز درگاه</td><td></td><td class="num">${money(100000000)}</td><td class="num">${money(155500000)}</td></tr>
+        <tr><td>۰۸/۰۶</td><td><span class="badge b-i">چک</span></td><td>چک ملت ۸۴۱۲</td><td></td><td class="num">${money(420000000)}</td><td class="num">— *</td></tr>
+        <tr><td>۱۲/۰۶</td><td><span class="badge b-p">فاکتور</span></td><td>فروش قطعات</td><td class="num">${money(86000000)}</td><td></td><td class="num">${money(241500000)}</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+  <p class="muted">* چک تا وصول روی مانده نقدی اثر ندارد؛ در صورت‌حساب به‌صورت جداگانه «اسناد در جریان» دیده می‌شود — مطابق منطق فعلی خزانه.</p>
+`;
+
+PAGES.aging = () => `
+  <div class="page-head"><div><h2>گزارش سنی مطالبات / بدهی‌ها</h2><p class="lead">طبقه‌بندی مانده طرف‌حساب بر اساس سن فاکتور تسویه‌نشده</p></div></div>
+  <div class="note">جا: همان زیرگروه «طرف حساب و تسویه». ورودی: فاکتورهای Fac با مانده پس از اسناد Trs.</div>
+  <div class="card"><div class="card-b" style="padding:0">
+    <table class="table">
+      <thead><tr><th>طرف حساب</th><th>جاری</th><th>۱–۳۰</th><th>۳۱–۶۰</th><th>۶۱–۹۰</th><th>+۹۰</th><th>جمع</th></tr></thead>
+      <tbody>
+        <tr><td>پارس صنعت</td><td class="num">${money(86000000)}</td><td class="num">${money(155500000)}</td><td>۰</td><td>۰</td><td>۰</td><td class="num">${money(241500000)}</td></tr>
+        <tr><td>مجتمع آریا</td><td>۰</td><td>۰</td><td class="num">${money(310000000)}</td><td>۰</td><td>۰</td><td class="num">${money(310000000)}</td></tr>
+        <tr><td>پیمانکار جنوب</td><td>۰</td><td>۰</td><td>۰</td><td>۰</td><td class="num" style="color:#dc2626">${money(150000000)}</td><td class="num">${money(150000000)}</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+`;
+
+PAGES.settle = () => `
+  <div class="page-head">
+    <div><h2>تسویه و تهاتر طرف حساب</h2><p class="lead">انتخاب فاکتورهای باز، ابزار تسویه (نقد، چک، درگاه، تهاتر) و صدور سند خزانه</p></div>
+    <div class="actions"><button class="btn btn-p">صدور سند تسویه</button></div>
+  </div>
+  <div class="note">جا: تکمیل مسیر فعلی <span class="place">/trs/vouchers/settle/{invoiceId}</span> — امروز فقط یک فاکتور. اینجا چند فاکتور + تهاتر بدهکار/بستانکار همزمان.</div>
+  <div class="grid g2">
+    <div class="card"><div class="card-h">فاکتورهای باز مشتری</div>
+      <div class="card-b" style="padding:0">
+        <table class="table"><thead><tr><th></th><th>فاکتور</th><th>مانده</th></tr></thead>
+        <tbody>
+          <tr><td>☑</td><td>فروش ۱۴۰۵-۲۰۴۱</td><td class="num">${money(155500000)}</td></tr>
+          <tr><td>☑</td><td>فروش ۱۴۰۵-۲۰۷۸</td><td class="num">${money(86000000)}</td></tr>
+        </tbody></table>
+      </div>
+    </div>
+    <div class="card"><div class="card-h">روش تسویه</div>
+      <div class="card-b">
+        <div class="flow">
+          <span class="step">نقد ۴۰ میلیون</span>
+          <span class="step">درگاه ۱۰۰ میلیون</span>
+          <span class="step">تهاتر با بستانکاری ۱۰۱٫۵ میلیون</span>
+        </div>
+        <p style="margin:.6rem 0 0">جمع انتخاب‌شده: <b class="num">${money(241500000)}</b></p>
+        <p class="muted">خروجی: یک یا چند TrsVoucher + در صورت تهاتر دو آرتیکل Acc روی حساب‌های دریافتنی/پرداختنی.</p>
+      </div>
+    </div>
+  </div>
+`;
+
+PAGES.pay = () => `
+  <div class="page-head">
+    <div><h2>پرداخت‌های آنلاین</h2><p class="lead">لینک پرداخت فاکتور، درگاه، رسید، تطبیق خودکار با سند دریافت</p></div>
+    <div class="actions"><button class="btn btn-p">لینک پرداخت جدید</button></div>
+  </div>
+  <div class="note">جا: <span class="place">خزانه‌داری ← پرداخت آنلاین</span> — هر تراکنش موفق سند دریافت با PayMethod.Card می‌سازد و مانده فاکتور را کم می‌کند.</div>
+  <div class="grid g4">
+    ${kpi('موفق امروز','۱۲ تراکنش','#0d9488')}
+    ${kpi('مبلغ موفق','۵۲۴٬۵۰۰٬۰۰۰','#4f46e5')}
+    ${kpi('در انتظار','۳ لینک','#d97706')}
+    ${kpi('ناموفق','۱ مورد','#dc2626')}
+  </div>
+  <div class="card" style="margin-top:.9rem"><div class="card-b" style="padding:0">
+    <table class="table">
+      <thead><tr><th>کد پیگیری</th><th>فاکتور</th><th>درگاه</th><th>مبلغ</th><th>وضعیت</th><th>سند خزانه</th></tr></thead>
+      <tbody>
+        <tr><td class="num">ZP-۹۸۴۱۱</td><td>فروش ۲۰۷۸</td><td>زرین‌پال</td><td class="num">${money(86000000)}</td><td><span class="badge b-ok">موفق</span></td><td><span class="badge b-p">دریافت ۴۱۲</span></td></tr>
+        <tr><td class="num">ZP-۹۸۴۰۲</td><td>پیش‌دریافت پروژه</td><td>زرین‌پال</td><td class="num">${money(200000000)}</td><td><span class="badge b-w">در انتظار callback</span></td><td>—</td></tr>
+        <tr><td class="num">IDP-۱۱۰۷</td><td>فروش ۲۰۶۶</td><td>آیدی‌پی</td><td class="num">${money(45000000)}</td><td><span class="badge b-d">ناموفق</span></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+`;
+
+PAGES.gateways = () => `
+  <div class="page-head"><div><h2>تنظیمات درگاه پرداخت</h2><p class="lead">مرچنت، کلید، حساب بانکی مقصد، مالیات کارمزد</p></div></div>
+  <div class="note">جا: کنار تنظیمات خزانه. کارمزد درگاه روی همان حساب Fee در TrsRule می‌نشیند.</div>
+  <div class="grid g2">
+    <div class="card"><div class="card-h">زرین‌پال <span class="badge b-ok">فعال</span></div>
+      <div class="card-b">
+        <p class="muted">MerchantID · حساب مقصد: BNK-01 جاری ملت<br>کارمزد: ۲٪ + ۱٬۲۰۰ ریال → حساب ۶۳۰۵</p>
+        <button class="btn btn-l">تست اتصال</button>
+      </div>
+    </div>
+    <div class="card"><div class="card-h">آیدی‌پی <span class="badge b-m">غیرفعال</span></div>
+      <div class="card-b">
+        <p class="muted">آماده برای فعال‌سازی — به همان الگوی درگاه اول</p>
+        <button class="btn btn-p">فعال‌سازی</button>
+      </div>
+    </div>
+  </div>
+`;
+
+function kpi(lbl,val,c){
+  return `<div class="card kpi"><div class="lbl">${lbl}</div><div class="val" style="color:${c}">${val}</div></div>`;
+}
+function bar(name,pct){
+  return `<div style="margin-bottom:.7rem"><div style="display:flex;justify-content:space-between;font-size:.82rem"><b>${name}</b><span class="muted">${fa(pct)}٪</span></div><div class="bar"><i style="width:${pct}%"></i></div></div>`;
+}
+
+const META = {
+  home:{t:'نقشه جایگذاری ۵ ماژول',s:'روی آیتم‌های «جدید» در منوی ERP کلیک کنید',c:'ERP  ←  پیش‌نمایش'},
+  costing:{t:'تخصیص هزینه',s:'حسابداری — عملیات',c:'ERP ← حسابداری — عملیات ← تخصیص هزینه'},
+  cogs:{t:'بهای تمام‌شده',s:'حسابداری — عملیات',c:'ERP ← حسابداری — عملیات ← بهای تمام‌شده'},
+  'cogs-report':{t:'گزارش بهای تمام‌شده',s:'حسابداری — گزارش‌ها',c:'ERP ← حسابداری — گزارش‌ها'},
+  petty:{t:'تنخواه‌گردان',s:'خزانه‌داری',c:'ERP ← خزانه‌داری ← تنخواه‌گردان'},
+  travel:{t:'هزینه سفر',s:'خزانه‌داری',c:'ERP ← خزانه‌داری ← هزینه سفر'},
+  cheques:{t:'سامانه کامل چک',s:'خزانه‌داری',c:'ERP ← خزانه‌داری ← دفتر چک'},
+  sayad:{t:'استعلام صیاد',s:'خزانه‌داری',c:'ERP ← خزانه‌داری ← استعلام صیاد'},
+  bankrec:{t:'مغایرت‌گیری بانکی',s:'خزانه‌داری',c:'ERP ← خزانه‌داری ← مغایرت بانکی'},
+  statement:{t:'صورت‌حساب طرف حساب',s:'طرف حساب و تسویه',c:'ERP ← طرف حساب و تسویه ← صورت‌حساب'},
+  aging:{t:'گزارش سنی',s:'طرف حساب و تسویه',c:'ERP ← طرف حساب و تسویه ← Aging'},
+  settle:{t:'تسویه و تهاتر',s:'طرف حساب و تسویه',c:'ERP ← طرف حساب و تسویه ← تسویه'},
+  pay:{t:'پرداخت آنلاین',s:'خزانه‌داری',c:'ERP ← خزانه‌داری ← پرداخت آنلاین'},
+  gateways:{t:'تنظیمات درگاه',s:'خزانه‌داری',c:'ERP ← خزانه‌داری ← تنظیمات درگاه'}
+};
+
+function go(id){
+  const html = PAGES[id] ? PAGES[id]() : PAGES.home();
+  document.getElementById('view').innerHTML = html;
+  const m = META[id] || META.home;
+  document.getElementById('topTitle').textContent = m.t;
+  document.getElementById('topSub').textContent = m.s;
+  document.getElementById('crumb').textContent = m.c;
+  document.querySelectorAll('.nlink[data-page]').forEach(b => b.classList.toggle('active', b.dataset.page===id));
+  history.replaceState(null,'','#'+id);
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.querySelectorAll('.nlink[data-page]').forEach(b => b.addEventListener('click', () => go(b.dataset.page)));
+go((location.hash||'#home').slice(1) || 'home');
+</script>
+</body>
+</html>

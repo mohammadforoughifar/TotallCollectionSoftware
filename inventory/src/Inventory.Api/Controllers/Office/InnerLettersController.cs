@@ -18,14 +18,16 @@ public class InnerLettersController : RbacControllerBase
     private readonly IErjaService _erja;
     private readonly IPishnevisService _pishnevis;
     private readonly ILetterGroupService _groups;
+    private readonly IArchiveService _archive;
 
-    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups)
+    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups, IArchiveService archive)
         : base(db)
     {
         _letters = letters;
         _erja = erja;
         _pishnevis = pishnevis;
         _groups = groups;
+        _archive = archive;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
@@ -162,11 +164,19 @@ public class InnerLettersController : RbacControllerBase
         return Ok();
     }
 
-    /// <summary>نشان‌کردن/برداشتن نشان (ستاره)</summary>
+    /// <summary>نشان‌کردن/برداشتن نشان (ستاره) — نامه دریافتی (روی ارجاع کاربر)</summary>
     [HttpPost("erja/{erjaId:int}/neshan")]
     public async Task<IActionResult> ToggleNeshan(int erjaId)
     {
         var isNeshan = await _erja.ToggleNeshanAsync(erjaId, MyUserId);
+        return Ok(new { isNeshan });
+    }
+
+    /// <summary>نشان‌کردن/برداشتن نشان (ستاره) — نامه ارسالی (روی خود نامه، توسط فرستنده)</summary>
+    [HttpPost("{id:int}/neshan")]
+    public async Task<IActionResult> ToggleLetterNeshan(int id)
+    {
+        var isNeshan = await _letters.ToggleLetterNeshanAsync(id, MyUserId);
         return Ok(new { isNeshan });
     }
 
@@ -176,6 +186,69 @@ public class InnerLettersController : RbacControllerBase
     {
         var isBayegani = await _erja.ToggleBayeganiAsync(erjaId, MyUserId);
         return Ok(new { isBayegani });
+    }
+
+    // ==================== بایگانی درختی ====================
+
+    /// <summary>درخت کامل بایگانی کاربر جاری (پوشه‌ها + نامه‌ها)</summary>
+    [HttpGet("bayegani/tree")]
+    public async Task<IActionResult> BayeganiTree() => Ok(await _archive.GetTreeAsync(MyUserId));
+
+    /// <summary>ایجاد دسته اصلی بایگانی (ریشه)</summary>
+    [HttpPost("bayegani/main-category")]
+    public async Task<IActionResult> AddMainCategory([FromBody] SaveBayeganiFolderDto dto)
+        => Ok(await _archive.AddMainCategoryAsync(MyUserId, dto));
+
+    /// <summary>ایجاد زیرپوشه بایگانی</summary>
+    [HttpPost("bayegani/sub-category")]
+    public async Task<IActionResult> AddSubCategory([FromBody] SaveBayeganiFolderDto dto)
+        => Ok(await _archive.AddSubCategoryAsync(MyUserId, dto));
+
+    /// <summary>ویرایش عنوان پوشه بایگانی</summary>
+    [HttpPut("bayegani/folder/{id:int}")]
+    public async Task<IActionResult> EditBayeganiFolder(int id, [FromBody] SaveBayeganiFolderDto dto)
+        => Ok(await _archive.EditFolderAsync(id, MyUserId, dto));
+
+    /// <summary>جابجایی پوشه بایگانی به والد جدید (0 = ریشه)</summary>
+    [HttpPost("bayegani/move-folder/{id:int}")]
+    public async Task<IActionResult> MoveBayeganiFolder(int id, [FromQuery] int newParentId)
+        => Ok(await _archive.MoveFolderAsync(id, newParentId, MyUserId));
+
+    /// <summary>بایگانی یک یا چند نامه در پوشه انتخابی</summary>
+    [HttpPost("bayegani/letters")]
+    public async Task<IActionResult> ArchiveLetters([FromBody] ArchiveLettersDto dto)
+    {
+        await _archive.AddLettersToArchiveAsync(MyUserId, dto);
+        return Ok();
+    }
+
+    /// <summary>جابجایی نامه بایگانی‌شده به پوشه دیگر</summary>
+    [HttpPost("bayegani/move-letter/{id:int}")]
+    public async Task<IActionResult> MoveBayeganiLetter(int id, [FromQuery] int newParentId)
+        => Ok(await _archive.MoveLetterAsync(id, newParentId, MyUserId));
+
+    /// <summary>حذف پوشه خالی / خروج نامه از بایگانی</summary>
+    [HttpDelete("bayegani/{id:int}")]
+    public async Task<IActionResult> DeleteBayegani(int id)
+    {
+        await _archive.DeleteAsync(id, MyUserId);
+        return Ok();
+    }
+
+    /// <summary>خروج نامه از بایگانی بر اساس شناسه ارجاع</summary>
+    [HttpPost("bayegani/unarchive/{erjaId:int}")]
+    public async Task<IActionResult> UnarchiveByErja(int erjaId)
+    {
+        await _archive.UnarchiveByErjaAsync(erjaId, MyUserId);
+        return Ok();
+    }
+
+    /// <summary>خروج نامه ارسالی از بایگانی بر اساس شناسه نامه (مسیر فرستنده)</summary>
+    [HttpPost("bayegani/unarchive-letter/{letterId:int}")]
+    public async Task<IActionResult> UnarchiveByLetter(int letterId)
+    {
+        await _archive.UnarchiveByLetterAsync(letterId, MyUserId);
+        return Ok();
     }
 
     /// <summary>لیست عملگرهای ارجاع</summary>
@@ -308,15 +381,26 @@ public class InnerLettersController : RbacControllerBase
     }
 
     /// <summary>
+    /// آیا کاربر جاری اجازه افزودن پیوست به این نامه را دارد؟
+    /// قاعده مصوب: فقط «فرستنده نامه» (بعد از ارسال) می‌تواند پیوست اضافه کند.
+    /// </summary>
+    private async Task<bool> CanAttachAsync(int letterId)
+    {
+        return await Db.InnerLetters.AsNoTracking()
+            .AnyAsync(l => l.Id == letterId && !l.IsDelete && l.CreatorUserId == MyUserId);
+    }
+
+    /// <summary>
     /// آپلود پیوست — بدون محدودیت تعداد؛ هر فایل حداکثر ۲۰ مگابایت؛ فایل خالی رد می‌شود.
+    /// فقط فرستنده نامه می‌تواند پیوست اضافه کند (قاعده مصوب کارفرما).
     /// </summary>
     [HttpPost("{id:int}/attachments")]
     [RequestSizeLimit(25 * 1024 * 1024)]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
-        if (!await InFlowAsync(id) && !await IsAdminAsync())
-            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        if (!await CanAttachAsync(id))
+            return StatusCode(403, new { message = "فقط فرستنده نامه می‌تواند پیوست اضافه کند." });
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });

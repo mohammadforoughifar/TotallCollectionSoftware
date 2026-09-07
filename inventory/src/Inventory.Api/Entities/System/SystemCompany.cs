@@ -10,4 +10,11 @@ public class SystemCompany
     [MaxLength(250)] public string? Address { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// نام فایل PDF سربرگ شرکت — فایل باید در مسیر روت API قرار داشته باشد
+    /// (مثال: «letterhead-forough.pdf» در کنار فایل اجرایی/روت پروژه API).
+    /// هنگام چاپ نامه صادره، متن نامه روی همین سربرگ قرار می‌گیرد.
+    /// </summary>
+    [MaxLength(200)] public string? LetterheadFileName { get; set; }
 }

@@ -51,6 +51,12 @@ public class AttendanceRecord
     /// <summary>کسری کار (دقیقه) — تفاضل ساعت کاری موظفی و کارکرد واقعی، با احتساب مرخصی تاییدشده</summary>
     public int DeficitMinutes { get; set; }
 
+    /// <summary>دقیقه‌های اضافه‌کاری (کارکرد بعد از پایان شیفت روز یا کار در تعطیلات دارای اضافه‌کاری مجاز)</summary>
+    public int OvertimeMinutes { get; set; }
+
+    /// <summary>دقیقه‌های تردد غیرمجاز (حضور خارج از بازه‌ی مجاز تعریف‌شده در تقویم کاری)</summary>
+    public int UnauthorizedMinutes { get; set; }
+
     /// <summary>دقیقه‌های غیبتِ پوشش‌شده با مرخصی/ماموریت ساعتی تاییدشده (از مجموع کسری کم می‌شود)</summary>
     public int CoveredGapMinutes { get; set; }
 

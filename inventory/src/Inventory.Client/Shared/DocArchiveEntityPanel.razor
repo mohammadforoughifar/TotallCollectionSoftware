@@ -1,0 +1,565 @@
+@using System.Net.Http.Headers
+@inject IDocArchiveService DocSvc
+@inject HttpClient Http
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<div class="doc-panel border rounded-3 p-3 bg-white shadow-sm">
+    <div class="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom">
+        <div class="d-flex align-items-center gap-2">
+            <span class="panel-icon"><i class="bi bi-folder-check text-primary fs-5"></i></span>
+            <div>
+                <h6 class="mb-0 fw-bold">پرونده و اسناد آرشیو (@items.Count)</h6>
+                <small class="text-muted">مدارک، نقشه‌ها، قراردادها و مستندات متصل از بایگانی اسناد</small>
+            </div>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" @onclick="Reload" title="بروزرسانی">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+            @if (CanManage && Auth.Has("DocArchive.Create"))
+            {
+                <button class="btn btn-sm btn-outline-primary" @onclick="OpenLinkModal">
+                    <i class="bi bi-link-45deg"></i> اتصال مدرک از آرشیو
+                </button>
+                <button class="btn btn-sm btn-primary" @onclick="OpenQuickCreateModal">
+                    <i class="bi bi-plus-lg"></i> ثبت مدرک جدید
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+    }
+    else if (items.Count == 0)
+    {
+        <div class="text-center py-4 text-muted bg-light rounded-3">
+            <i class="bi bi-archive fs-3 d-block mb-2 text-secondary"></i>
+            <span>هیچ سندی از آرشیو به این مورد متصل نشده است.</span>
+            @if (CanManage && Auth.Has("DocArchive.Create"))
+            {
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" @onclick="OpenQuickCreateModal">
+                        <i class="bi bi-plus-circle"></i> اولین سند را ثبت یا متصل کنید
+                    </button>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="row g-2">
+            @foreach (var item in items)
+            {
+                <div class="col-12 col-md-6 col-xl-4">
+                    <div class="doc-card border rounded-3 p-2.5 h-100 position-relative">
+                        <div class="d-flex align-items-start justify-content-between mb-1">
+                            <div class="min-w-0 flex-grow-1">
+                                <div class="d-flex align-items-center gap-1.5 flex-wrap mb-1">
+                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle font-mono">@item.DocumentCode</span>
+                                    <span class="badge bg-light text-secondary border">@item.FolderName</span>
+                                    <span class="badge bg-secondary-subtle text-secondary">v@item.ActiveVersionNo</span>
+                                    @if (item.IsExpired)
+                                    {
+                                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle">منقضی شده</span>
+                                    }
+                                </div>
+                                <h6 class="mb-1 text-truncate fw-bold" title="@item.DocumentTitle">
+                                    <a href="@($"/doc-archive/documents/{item.DocumentId}")" target="_blank" class="text-decoration-none text-dark hover-primary">
+                                        @item.DocumentTitle
+                                    </a>
+                                </h6>
+                            </div>
+                            @if (CanManage && Auth.Has("DocArchive.Write"))
+                            {
+                                <button class="btn btn-sm btn-link text-danger p-0 ms-1" title="حذف اتصال" @onclick="() => RemoveLink(item)">
+                                    <i class="bi bi-x-circle fs-6"></i>
+                                </button>
+                            }
+                        </div>
+
+                        @if (item.Tags.Count > 0)
+                        {
+                            <div class="d-flex flex-wrap gap-1 mb-2">
+                                @foreach (var tag in item.Tags)
+                                {
+                                    <span class="badge-tag" style="background-color: @(tag.Color)18; color: @tag.Color; border-color: @(tag.Color)40;">
+                                        @tag.Name
+                                    </span>
+                                }
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(item.Note))
+                        {
+                            <div class="fs-8 text-muted mb-2 bg-light p-1.5 rounded">
+                                <i class="bi bi-chat-left-text me-1"></i> @item.Note
+                            </div>
+                        }
+
+                        @if (item.Attachments.Count > 0)
+                        {
+                            <div class="border-top pt-2 mt-2">
+                                <div class="fs-8 text-muted mb-1 d-flex align-items-center justify-content-between">
+                                    <span><i class="bi bi-paperclip"></i> پیوست‌ها (@item.Attachments.Count)</span>
+                                </div>
+                                <div class="d-flex flex-wrap gap-1.5">
+                                    @foreach (var att in item.Attachments)
+                                    {
+                                        <div class="att-pill d-inline-flex align-items-center gap-1 border rounded px-2 py-1 fs-8">
+                                            <i class="bi @GetFileIcon(att.FileName) text-primary"></i>
+                                            <span class="text-truncate" style="max-width: 140px;" title="@att.FileName">@att.FileName</span>
+                                            <span class="text-muted fs-9">(@FormatSize(att.Size))</span>
+
+                                            <button class="btn btn-link btn-xs p-0 text-primary ms-1" title="پیش‌نمایش" @onclick="() => PreviewAttachment(att)">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            @if (item.MyCanDownload)
+                                            {
+                                                <a href="@($"{apiBase}/api/attachments/download/{att.Id}?access_token={Auth.Token}")" target="_blank"
+                                                   class="btn btn-link btn-xs p-0 text-success" title="دانلود">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* ==================== مودال اتصال سند موجود از آرشیو ==================== *@
+@if (showLinkModal)
+{
+    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fs-6"><i class="bi bi-link-45deg text-primary"></i> اتصال سند از آرشیو به «@EntityTitle»</h5>
+                    <button type="button" class="btn-close" @onclick="() => showLinkModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fs-8 fw-bold">جستجو و انتخاب سند آرشیو:</label>
+                        <input type="text" class="form-control form-control-sm mb-2" placeholder="کد مدرک یا عنوان را جستجو کنید…"
+                               @bind="docSearchQuery" @bind:event="oninput" @onkeyup="SearchDocs" />
+
+                        @if (docLookupLoading)
+                        {
+                            <div class="text-center py-2"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+                        }
+                        else if (availableDocs.Count > 0)
+                        {
+                            <div class="list-group list-group-flush border rounded max-h-200 overflow-auto">
+                                @foreach (var doc in availableDocs)
+                                {
+                                    <button type="button" class="list-group-item list-group-item-action p-2 d-flex align-items-center justify-content-between @(selectedDocId == doc.Id ? "active" : "")"
+                                            @onclick="() => selectedDocId = doc.Id">
+                                        <div>
+                                            <div class="fw-bold fs-8">@doc.Name</div>
+                                        </div>
+                                        @if (selectedDocId == doc.Id)
+                                        {
+                                            <i class="bi bi-check-circle-fill text-primary"></i>
+                                        }
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-muted fs-8 p-2 border rounded text-center">سندی یافت نشد.</div>
+                        }
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fs-8">یادداشت اتصال (اختیاری):</label>
+                        <input type="text" class="form-control form-control-sm" placeholder="مثلاً: نسخه نهایی قرارداد سال ۱۴۰۵" @bind="linkNote" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="() => showLinkModal = false">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-primary" disabled="@(selectedDocId <= 0 || savingLink)" @onclick="SaveLink">
+                        @if (savingLink)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        ثبت اتصال
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ==================== مودال ثبت سریع مدرک در آرشیو ==================== *@
+@if (showQuickCreateModal)
+{
+    <div class="modal fade show d-block" style="background: rgba(0,0,0,0.5);" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fs-6"><i class="bi bi-file-earmark-plus text-primary"></i> ثبت سریع مدرک در آرشیو و سنجاق به «@EntityTitle»</h5>
+                    <button type="button" class="btn-close" @onclick="() => showQuickCreateModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 fw-bold">پوشه مقصد در آرشیو: <span class="text-danger">*</span></label>
+                            <select class="form-select form-select-sm" @bind="quickFolderId">
+                                <option value="0">-- انتخاب پوشه --</option>
+                                @foreach (var f in folders)
+                                {
+                                    <option value="@f.Id">@f.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8 fw-bold">کد یکتای مدرک: <span class="text-danger">*</span></label>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control font-mono" placeholder="مثلاً: DOC-PRJ-101" @bind="quickCode" />
+                                <button class="btn btn-outline-secondary" type="button" @onclick="AutoGenerateCode" title="پیشنهاد خودکار کد">
+                                    <i class="bi bi-magic"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fs-8 fw-bold">عنوان مدرک: <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control form-control-sm" placeholder="عنوان مدرک یا سند..." @bind="quickTitle" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8">شماره مدرک نزد کارفرما / مشتری (اختیاری):</label>
+                            <input type="text" class="form-control form-control-sm" placeholder="مثلاً: CTR-2026-A" @bind="quickCustomerCode" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fs-8">تاریخ انقضای مدرک (اختیاری):</label>
+                            <DatePicker @bind-Value="quickExpireDate" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fs-8 fw-bold">تگ‌های مدرک:</label>
+                            <div class="d-flex flex-wrap gap-1.5 p-2 border rounded bg-light">
+                                @foreach (var t in availableTags)
+                                {
+                                    var sel = quickTagIds.Contains(t.Id);
+                                    <button type="button" class="btn btn-xs rounded-pill @(sel ? "btn-primary" : "btn-outline-secondary")"
+                                            @onclick="() => ToggleTag(t.Id)">
+                                        <span class="tag-dot" style="background-color: @t.Color;"></span> @t.Name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fs-8">یادداشت یا شرح مدرک:</label>
+                            <textarea class="form-control form-control-sm" rows="2" placeholder="توضیحات تکمیلی..." @bind="quickDescription"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fs-8 fw-bold">انتخاب و بارگذاری فایل پیوست (PDF، Word، تصویر و ...):</label>
+                            <InputFile class="form-control form-control-sm" OnChange="OnQuickFileSelected" />
+                            @if (selectedUploadFile != null)
+                            {
+                                <small class="text-success mt-1 d-block"><i class="bi bi-check-circle"></i> آماده ارسال: @selectedUploadFile.Name (@FormatSize(selectedUploadFile.Size))</small>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="() => showQuickCreateModal = false">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-primary" disabled="@(quickFolderId <= 0 || string.IsNullOrWhiteSpace(quickTitle) || string.IsNullOrWhiteSpace(quickCode) || savingQuickCreate)"
+                            @onclick="SaveQuickCreate">
+                        @if (savingQuickCreate)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        ثبت سند و اتصال
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<FilePreviewModal @ref="previewModal" />
+
+<style>
+    .doc-card { background: #fff; transition: all .15s ease-in-out; }
+    .doc-card:hover { border-color: #cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,.05); }
+    .badge-tag { display: inline-block; font-size: .68rem; font-weight: 600; padding: .15rem .5rem; border-radius: 6px; border: 1px solid transparent; }
+    .tag-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-inline-end: 4px; }
+    .att-pill { background: #f8fafc; }
+    .att-pill:hover { background: #f1f5f9; }
+    .btn-xs { padding: .15rem .45rem; font-size: .72rem; }
+    .fs-9 { font-size: .68rem; }
+    .max-h-200 { max-height: 200px; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+</style>
+
+@code {
+    [Parameter] public string Module { get; set; } = "";
+    [Parameter] public int EntityId { get; set; }
+    [Parameter] public string EntityTitle { get; set; } = "";
+    [Parameter] public string? EntityCode { get; set; }
+    [Parameter] public bool CanManage { get; set; } = true;
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<DocEntityLinkDto> items = new();
+    private bool loading = true;
+    private FilePreviewModal? previewModal;
+    private string apiBase = "";
+
+    // مودال اتصال
+    private bool showLinkModal;
+    private string docSearchQuery = "";
+    private List<LookupItem> allDocs = new();
+    private List<LookupItem> availableDocs = new();
+    private int selectedDocId;
+    private string linkNote = "";
+    private bool docLookupLoading, savingLink;
+
+    // مودال ثبت سریع
+    private bool showQuickCreateModal;
+    private List<DocFolderDto> folders = new();
+    private List<DocTagDto> availableTags = new();
+    private int quickFolderId;
+    private string quickTitle = "";
+    private string quickCode = "";
+    private string? quickCustomerCode;
+    private DateTime? quickExpireDate;
+    private string? quickDescription;
+    private HashSet<int> quickTagIds = new();
+    private Microsoft.AspNetCore.Components.Forms.IBrowserFile? selectedUploadFile;
+    private bool savingQuickCreate;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
+        await Reload();
+    }
+
+    public async Task Reload()
+    {
+        if (EntityId <= 0 || string.IsNullOrWhiteSpace(Module)) { items = new(); return; }
+        loading = true;
+        try
+        {
+            items = await DocSvc.GetLinkedDocumentsAsync(Module, EntityId);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در دریافت مدارک آرشیو: {ex.Message}");
+            items = new();
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task OpenLinkModal()
+    {
+        showLinkModal = true;
+        selectedDocId = 0;
+        linkNote = "";
+        docLookupLoading = true;
+        try
+        {
+            var lookups = await DocSvc.GetLookupsAsync();
+            allDocs = lookups.Documents ?? new();
+            availableDocs = allDocs.Take(30).ToList();
+        }
+        catch { }
+        finally { docLookupLoading = false; }
+    }
+
+    private void SearchDocs()
+    {
+        if (string.IsNullOrWhiteSpace(docSearchQuery))
+        {
+            availableDocs = allDocs.Take(30).ToList();
+        }
+        else
+        {
+            var q = docSearchQuery.Trim();
+            availableDocs = allDocs.Where(d => d.Name.Contains(q, StringComparison.OrdinalIgnoreCase)).Take(30).ToList();
+        }
+    }
+
+    private async Task SaveLink()
+    {
+        if (selectedDocId <= 0) return;
+        savingLink = true;
+        try
+        {
+            await DocSvc.AddEntityLinkAsync(new DocEntityLinkSaveDto
+            {
+                DocumentId = selectedDocId,
+                Module = Module,
+                EntityId = EntityId,
+                EntityCode = EntityCode,
+                EntityTitle = EntityTitle,
+                Note = linkNote
+            });
+            Toast.Success("مدرک با موفقیت به این مورد متصل شد.");
+            showLinkModal = false;
+            await Reload();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در ایجاد اتصال: {ex.Message}");
+        }
+        finally { savingLink = false; }
+    }
+
+    private async Task RemoveLink(DocEntityLinkDto item)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"آیا از حذف اتصال مدرک «{item.DocumentTitle}» مطمئن هستید؟ (اصل سند در آرشیو باقی می‌ماند)");
+        if (!ok) return;
+
+        try
+        {
+            await DocSvc.RemoveEntityLinkAsync(item.Id);
+            Toast.Success("اتصال مدرک حذف شد.");
+            await Reload();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در حذف اتصال: {ex.Message}");
+        }
+    }
+
+    private async Task OpenQuickCreateModal()
+    {
+        showQuickCreateModal = true;
+        quickFolderId = 0;
+        quickTitle = !string.IsNullOrWhiteSpace(EntityTitle) ? $"مدارک {EntityTitle}" : "";
+        quickCustomerCode = null;
+        quickExpireDate = null;
+        quickDescription = "";
+        quickTagIds.Clear();
+        selectedUploadFile = null;
+        AutoGenerateCode();
+
+        try
+        {
+            folders = await DocSvc.GetFoldersAsync();
+            availableTags = await DocSvc.GetTagsAsync();
+            if (folders.Count > 0) quickFolderId = folders[0].Id;
+        }
+        catch { }
+    }
+
+    private void AutoGenerateCode()
+    {
+        var prefix = Module.ToUpper() switch
+        {
+            "PROJECTS" => "PRJ",
+            "HR" or "PERSONNEL" => "HR",
+            "ITASSETS" => "IT",
+            "INVOICING" => "INV",
+            "KARFARMA" or "PARTY" => "PRT",
+            _ => "DOC"
+        };
+        var codePart = !string.IsNullOrWhiteSpace(EntityCode) ? EntityCode.Replace(" ", "-") : EntityId.ToString();
+        var (_, _, _) = PersianDate.FromGregorian(DateTime.Now);
+        quickCode = $"{prefix}-{codePart}-{DateTime.Now:MMddHHmm}";
+    }
+
+    private void ToggleTag(int tagId)
+    {
+        if (quickTagIds.Contains(tagId)) quickTagIds.Remove(tagId);
+        else quickTagIds.Add(tagId);
+    }
+
+    private void OnQuickFileSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        selectedUploadFile = e.File;
+    }
+
+    private async Task SaveQuickCreate()
+    {
+        if (quickFolderId <= 0 || string.IsNullOrWhiteSpace(quickTitle) || string.IsNullOrWhiteSpace(quickCode)) return;
+
+        savingQuickCreate = true;
+        try
+        {
+            var (docId, linkId) = await DocSvc.QuickCreateLinkedDocAsync(new DocQuickCreateLinkedDto
+            {
+                FolderId = quickFolderId,
+                Title = quickTitle.Trim(),
+                Code = quickCode.Trim(),
+                CustomerCode = quickCustomerCode?.Trim(),
+                Description = quickDescription?.Trim(),
+                ExpireDate = quickExpireDate,
+                TagIds = quickTagIds.ToList(),
+                Module = Module,
+                EntityId = EntityId,
+                EntityCode = EntityCode,
+                EntityTitle = EntityTitle,
+                LinkNote = "ثبت مستقیم از ماژول " + Module
+            });
+
+            // اگر کاربر فایلی را برای بارگذاری انتخاب کرده بود، روی نسخه ۱ آپلود می‌کنیم
+            if (selectedUploadFile != null)
+            {
+                var doc = await DocSvc.GetDocumentAsync(docId);
+                var v1 = doc?.Versions?.FirstOrDefault();
+                if (v1 != null)
+                {
+                    using var content = new MultipartFormDataContent();
+                    var sc = new StreamContent(selectedUploadFile.OpenReadStream(20 * 1024 * 1024));
+                    sc.Headers.ContentType = new MediaTypeHeaderValue(
+                        string.IsNullOrWhiteSpace(selectedUploadFile.ContentType) ? "application/octet-stream" : selectedUploadFile.ContentType);
+                    content.Add(sc, "file", selectedUploadFile.Name);
+                    await Http.PostAsync($"/api/attachments/DocVersion/{v1.Id}", content);
+                }
+            }
+
+            Toast.Success("سند جدید در آرشیو ثبت و متصل شد.");
+            showQuickCreateModal = false;
+            await Reload();
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در ثبت سند: {ex.Message}");
+        }
+        finally
+        {
+            savingQuickCreate = false;
+        }
+    }
+
+    private async Task PreviewAttachment(DocAttachmentSummaryDto a)
+    {
+        if (previewModal != null)
+            await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload);
+    }
+
+    private static string GetFileIcon(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "bi-file-earmark-pdf",
+            ".docx" or ".doc" => "bi-file-earmark-word",
+            ".xlsx" or ".xls" or ".csv" => "bi-file-earmark-excel",
+            ".png" or ".jpg" or ".jpeg" or ".webp" or ".bmp" => "bi-file-earmark-image",
+            _ => "bi-file-earmark-text"
+        };
+    }
+
+    private static string FormatSize(long b) =>
+        b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024 / 1024:0.#}MB";
+}

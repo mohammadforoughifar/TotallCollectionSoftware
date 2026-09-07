@@ -2,11 +2,11 @@
 @page "/system-company"
 @inject HttpClient Http
 
-<PageTitle>کمپانی — شناسنامه سیستم</PageTitle>
+<PageTitle>مدیریت شرکت‌ها و شعب</PageTitle>
 
 <div class="page-head mb-4">
-    <h1><i class="bi bi-building-fill"></i> کمپانی / شرکت</h1>
-    <p class="lead">تعریف کمپانی جدا از برنامه انبار — ویرایش، حذف و وضعیت</p>
+    <h1><i class="bi bi-building-fill"></i> مدیریت شرکت‌ها و شعب</h1>
+    <p class="lead">اطلاعات، مشخصات ثبتی و وضعیت شرکت‌های تابعه و طرف قرارداد</p>
 </div>
 
 <div class="card shadow mb-4" style="background:#fff;border:1px solid #e0e0f0;border-radius:16px;overflow:hidden;">
@@ -87,11 +87,16 @@
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">تلفن</label>
-                    <input class="form-control" @bind="newCompany.Phone" placeholder="تلفن" />
+                    <input class="form-control" @bind="newCompany.Phone" placeholder="تلفن" data-digits="tel" dir="ltr" inputmode="tel" />
                 </div>
                 <div class="col-12">
                     <label class="form-label">آدرس</label>
                     <textarea class="form-control" rows="2" @bind="newCompany.Address" placeholder="آدرس"></textarea>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">فایل سربرگ (PDF) — برای چاپ نامه صادره</label>
+                    <input class="form-control" @bind="newCompany.LetterheadFileName" placeholder="مثلاً: letterhead-forough.pdf" />
+                    <small class="text-muted">نام فایل PDF سربرگ که در <b>مسیر روت API</b> (کنار فایل اجرایی برنامه سرور) قرار داده‌اید. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
                 </div>
                 <div class="col-12">
                     <div class="form-check form-switch mt-1">
@@ -125,7 +130,7 @@
 
     private void EditCompany(SystemCompanyItem c)
     {
-        newCompany = new() { Id = c.Id, Name = c.Name, Code = c.Code, Phone = c.Phone, Address = c.Address, IsActive = c.IsActive, CreatedAt = c.CreatedAt };
+        newCompany = new() { Id = c.Id, Name = c.Name, Code = c.Code, Phone = c.Phone, Address = c.Address, IsActive = c.IsActive, CreatedAt = c.CreatedAt, LetterheadFileName = c.LetterheadFileName };
         editingCompany = true; ShowForm = true; StateHasChanged();
     }
 
@@ -186,6 +191,9 @@
         public bool IsActive { get; set; } = true;
         public int SystemCount { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+        /// <summary>نام فایل PDF سربرگ شرکت در مسیر روت API — برای چاپ نامه صادره</summary>
+        public string? LetterheadFileName { get; set; }
     }
 
     public class SystemInfoItem

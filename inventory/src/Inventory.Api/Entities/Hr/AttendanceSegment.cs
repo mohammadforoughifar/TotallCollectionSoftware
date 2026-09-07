@@ -23,6 +23,11 @@ public class AttendanceSegment
     // ---------- زمان‌ها ----------
     public DateTime? EnterAt { get; set; }
     public string? EnterIp { get; set; }
+
+    /// <summary>دستگاه/مرورگر ورود (User-Agent کوتاه‌شده) — برای تشخیص ورود با دستگاه جدید</summary>
+    [MaxLength(250)]
+    public string? EnterDevice { get; set; }
+
     public DateTime? ExitAt { get; set; }
     public string? ExitIp { get; set; }
 
@@ -38,6 +43,12 @@ public class AttendanceSegment
     /// (موقتی هنگام خروج — قطعی هنگام ورود مجدد یا پایان شیفت)
     /// </summary>
     public bool ExitCovered { get; set; }
+
+    /// <summary>این بازه تردد غیرمجاز بوده (خارج از بازه‌ی مجاز تقویم کاری / حضور در تعطیل بدون اضافه‌کاری مجاز)</summary>
+    public bool IsUnauthorized { get; set; }
+
+    /// <summary>دقیقه‌های اضافه‌کاریِ این بازه (کارکرد بعد از پایان شیفت یا کار مجاز در تعطیلات)</summary>
+    public int OvertimeMinutes { get; set; }
 
     /// <summary>درخواست مرخصی/ماموریت ساعتی که بازه را پوشش می‌دهد (در صورت وجود)</summary>
     public int? LinkedLeaveRequestId { get; set; }
