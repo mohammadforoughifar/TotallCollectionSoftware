@@ -1867,6 +1867,16 @@ button.nav-toggle:focus-visible{outline:none;}
 .chat-modal-backdrop {
     background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px);
 }
+
+/* پیش‌نمایش تصویر در همان صفحه (لایت‌باکس) — بدون باز کردن تب جدید */
+.chat-img-zoom { cursor: zoom-in; }
+.chat-lightbox-backdrop { background: rgba(2, 6, 23, 0.88); }
+.chat-lightbox-dialog { max-width: min(1100px, 94vw); margin: 2vh auto; }
+.chat-lightbox-stage {
+    background: rgba(255, 255, 255, 0.04); border-radius: 1rem; overflow: auto;
+    max-height: 78vh; display: flex; align-items: center; justify-content: center;
+}
+.chat-lightbox-stage img { max-width: 100%; max-height: 78vh; object-fit: contain; border-radius: .5rem; }
 .users-picker-list {
     max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.3rem;
 }
@@ -1881,3 +1891,10 @@ button.nav-toggle:focus-visible{outline:none;}
     background: #e0f2fe; border-color: #7dd3fc;
 }
 
+
+/* Chat: badge belongs to the contact name, never the message preview line. */
+.dialog-heading { display: flex; align-items: center; gap: .45rem; min-width: 0; padding-inline-end: .4rem; }
+.dialog-heading .unread-badge { flex: 0 0 auto; }
+.bubble-video { display: block; max-width: 100%; width: 340px; max-height: 280px; border-radius: 10px; }
+.chat-connection-status { min-height: 1.1rem; }
+.chat-input-area .input-banner { gap: .35rem; }

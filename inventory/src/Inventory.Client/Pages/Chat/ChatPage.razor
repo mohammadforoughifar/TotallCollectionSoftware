@@ -31,11 +31,17 @@
                 </div>
             </div>
 
+            <div class="chat-connection-status fs-9 mt-2 @(Chat.IsConnected ? "text-success" : "text-warning")"
+                 role="status" data-testid="chat-connection" data-connected="@Chat.IsConnected.ToString().ToLowerInvariant()">
+                <i class="bi @(Chat.IsConnected ? "bi-wifi" : "bi-arrow-repeat") me-1"></i>
+                @(Chat.IsConnected ? "اتصال زنده برقرار است" : "در حال اتصال مجدد؛ همگام‌سازی خودکار ادامه دارد")
+            </div>
+
             @* جستجوی گفتگوها *@
             <div class="chat-search-wrap mt-2">
                 <i class="bi bi-search search-icon"></i>
                 <input type="text" class="form-control form-control-sm chat-search-input"
-                       placeholder="جستجو در گفتگوها و پیام‌ها..."
+                       placeholder="جستجوی کاربران و گفتگوها..." aria-label="جستجوی کاربران و گفتگوها"
                        @bind="searchQuery" @bind:event="oninput" @bind:after="OnSearchChanged" />
                 @if (!string.IsNullOrWhiteSpace(searchQuery))
                 {
@@ -60,6 +66,45 @@
 
         @* فهرست گفتگوها *@
         <div class="dialogs-list">
+            @if (!string.IsNullOrWhiteSpace(searchQuery))
+            {
+                <section class="border-bottom p-2" aria-label="کاربران سازمان" data-testid="chat-contact-results" aria-live="polite">
+                    <div class="fw-bold fs-8 text-primary px-2 mb-2">کاربران سازمان — شروع گفتگو</div>
+                    @if (loadingSidebarUsers)
+                    {
+                        <div class="text-center py-3 text-muted fs-8">
+                            <span class="spinner-border spinner-border-sm me-1"></span>در حال جستجوی کاربران...
+                        </div>
+                    }
+                    else if (sidebarUsersError != null)
+                    {
+                        <div class="alert alert-danger fs-9 mb-1" role="alert">
+                            @sidebarUsersError
+                            <button type="button" class="btn btn-sm btn-outline-danger d-block mt-2" @onclick="RetrySidebarUsers">تلاش مجدد</button>
+                        </div>
+                    }
+                    else if (sidebarUsers.Count == 0)
+                    {
+                        <div class="text-muted fs-8 p-2">کاربری با این مشخصات یافت نشد.</div>
+                    }
+                    else
+                    {
+                        @foreach (var u in sidebarUsers)
+                        {
+                            <button type="button" @key="u.Id" class="user-picker-item w-100 border-0 bg-transparent"
+                                    style="text-align: start;" @onclick="() => StartDirectWith(u.Id)" disabled="@startingDirectUserId.HasValue">
+                                <div class="dialog-avatar direct-avatar sm"><i class="bi bi-person"></i></div>
+                                <div class="flex-grow-1 min-w-0 ms-2">
+                                    <div class="fw-bold fs-8">@u.DisplayName</div>
+                                    <div class="fs-9 text-muted">@u.Username @(!string.IsNullOrWhiteSpace(u.Department) ? $"— {u.Department}" : "")</div>
+                                </div>
+                                <i class="bi bi-chat-dots text-primary" aria-hidden="true"></i>
+                            </button>
+                        }
+                    }
+                </section>
+                <div class="fw-bold fs-8 text-muted px-3 pt-3">گفتگوها</div>
+            }
             @if (loadingConversations)
             {
                 <div class="text-center py-5 text-muted">
@@ -82,8 +127,8 @@
             {
                 @foreach (var c in conversations)
                 {
-                    <div class="dialog-item @(activeConv?.Id == c.Id ? "active" : "") @(c.IsPinned ? "pinned" : "")"
-                         @onclick="() => SelectConversation(c)">
+                    <div @key="c.Id" class="dialog-item @(activeConv?.Id == c.Id ? "active" : "") @(c.IsPinned ? "pinned" : "")"
+                         data-conversation-id="@c.Id" @onclick="() => SelectConversation(c)">
                         <div class="dialog-avatar-wrap">
                             @if (c.Type == ChatTypeDto.Direct)
                             {
@@ -105,12 +150,18 @@
 
                         <div class="dialog-info">
                             <div class="dialog-top">
-                                <div class="dialog-title text-truncate">
-                                    @if (c.IsPinned)
+                                <div class="dialog-heading">
+                                    <div class="dialog-title text-truncate">
+                                        @if (c.IsPinned)
+                                        {
+                                            <i class="bi bi-pin-angle-fill text-warning me-1 fs-9"></i>
+                                        }
+                                        @c.Title
+                                    </div>
+                                    @if (c.UnreadCount > 0)
                                     {
-                                        <i class="bi bi-pin-angle-fill text-warning me-1 fs-9"></i>
+                                        <span class="unread-badge" data-testid="unread-count" aria-label="@($"{c.UnreadCount} پیام خوانده‌نشده")">@c.UnreadCount</span>
                                     }
-                                    @c.Title
                                 </div>
                                 <div class="dialog-time">@FormatTime(c.LastMessageAt)</div>
                             </div>
@@ -129,10 +180,7 @@
                                         @c.LastMessageSnippet
                                     }
                                 </div>
-                                @if (c.UnreadCount > 0)
-                                {
-                                    <span class="unread-badge">@c.UnreadCount</span>
-                                }
+
                             </div>
                         </div>
                     </div>
@@ -283,7 +331,7 @@
                         }
                         else
                         {
-                            <div class="message-row @(msg.IsOutgoing ? "outgoing" : "incoming")" id="msg-@msg.Id">
+                            <div @key="msg.Id" class="message-row @(msg.IsOutgoing ? "outgoing" : "incoming")" id="msg-@msg.Id">
                                 <div class="message-bubble @(msg.IsOutgoing ? "bubble-out" : "bubble-in")">
                                     @* نام فرستنده در گروه‌ها برای پیام‌های دریافتی *@
                                     @if (!msg.IsOutgoing && activeConv.Type == ChatTypeDto.Group)
@@ -303,38 +351,36 @@
                                         </div>
                                     }
 
-                                    @* محتوای رسانه / فایل پیوست *@
+                                    @* پیش‌نمایش و دانلود همیشه از endpoint دارای کنترل عضویت در API *@
                                     @if (!string.IsNullOrWhiteSpace(msg.FileUrl))
                                     {
                                         @if (msg.MessageType == ChatMessageTypeDto.Image)
                                         {
-                                            <div class="bubble-image-wrap">
-                                                <img src="@msg.FileUrl" class="bubble-img" alt="تصویر" @onclick="() => OpenImagePreview(msg.FileUrl)" />
-                                            </div>
+                                            @* کلیک روی تصویر: پیش‌نمایش بزرگ در همان صفحه (لایت‌باکس) — بدون باز کردن تب جدید *@
+                                            <img src="@Chat.GetFileUrl(msg.Id, true)" class="bubble-img chat-img-zoom" alt="@msg.FileName"
+                                                 title="@($"نمایش بزرگ‌تر — {msg.FileName}")" loading="lazy" referrerpolicy="no-referrer"
+                                                 @onclick="() => OpenImagePreview(msg)" />
                                         }
                                         else if (msg.MessageType == ChatMessageTypeDto.Audio)
                                         {
-                                            <div class="bubble-audio-wrap">
-                                                <audio controls class="w-100 mt-1">
-                                                    <source src="@msg.FileUrl" type="@msg.FileContentType" />
-                                                </audio>
-                                            </div>
+                                            <audio controls preload="none" class="w-100 mt-1" src="@Chat.GetFileUrl(msg.Id, true)"></audio>
                                         }
-                                        else
+                                        else if (msg.MessageType == ChatMessageTypeDto.Video)
                                         {
-                                            <div class="bubble-file-card">
-                                                <div class="file-icon">
-                                                    <i class="bi bi-file-earmark-arrow-down-fill fs-3 text-primary"></i>
-                                                </div>
-                                                <div class="file-info text-truncate">
-                                                    <div class="file-name text-truncate">@msg.FileName</div>
-                                                    <div class="file-size fs-9 text-muted">@FormatFileSize(msg.FileSizeBytes)</div>
-                                                </div>
-                                                <a href="@msg.FileUrl" download="@msg.FileName" class="btn btn-sm btn-light file-dl-btn" target="_blank">
-                                                    <i class="bi bi-download"></i>
-                                                </a>
-                                            </div>
+                                            <video controls preload="metadata" class="bubble-video" src="@Chat.GetFileUrl(msg.Id, true)"></video>
                                         }
+                                        <div class="bubble-file-card">
+                                            <div class="file-icon"><i class="bi bi-file-earmark-arrow-down-fill fs-3 text-primary"></i></div>
+                                            <div class="file-info text-truncate">
+                                                <div class="file-name text-truncate">@msg.FileName</div>
+                                                <div class="file-size fs-9 text-muted">@FormatFileSize(msg.FileSizeBytes)</div>
+                                            </div>
+                                            @* دانلود در همان صفحه/تب؛ بدون target=_blank تا تب جدید باز نشود و PWA آن را نرباید *@
+                                            <a href="@Chat.GetFileUrl(msg.Id)" download="@msg.FileName" class="btn btn-sm btn-light file-dl-btn"
+                                               referrerpolicy="no-referrer" aria-label="@($"دانلود {msg.FileName}")">
+                                                <i class="bi bi-download"></i>
+                                            </a>
+                                        </div>
                                     }
 
                                     @* کارت اشتراک سند/موجودیت سازمانی ERP *@
@@ -433,6 +479,20 @@
 
             @* بخش ورودی پیام (Input Toolbar) *@
             <div class="chat-input-area">
+                @if (isUploading)
+                {
+                    <div class="input-banner fs-8" role="status" data-testid="upload-progress">
+                        <span class="spinner-border spinner-border-sm me-2"></span>در حال بارگذاری @uploadingFileName ...
+                    </div>
+                }
+                else if (uploadingFile != null)
+                {
+                    <div class="input-banner fs-8" data-testid="attachment-ready">
+                        <i class="bi bi-paperclip me-2"></i>
+                        <span class="flex-grow-1 text-truncate">@uploadingFile.FileName — @FormatFileSize(uploadingFile.FileSizeBytes) (آمادهٔ ارسال)</span>
+                        <button type="button" class="btn-close" title="حذف پیوست انتخابی" aria-label="حذف پیوست انتخابی" disabled="@isSending" @onclick="RemovePendingAttachment"></button>
+                    </div>
+                }
                 @* بنر ریپلای یا ادیت *@
                 @if (replyingTo != null)
                 {
@@ -463,7 +523,7 @@
                     @* دکمه پیوست فایل *@
                     <label class="btn btn-icon btn-attach" title="پیوست فایل یا تصویر">
                         <i class="bi bi-paperclip fs-5"></i>
-                        <InputFile OnChange="OnFileSelected" class="d-none" />
+                        <InputFile @key="fileInputVersion" OnChange="OnFileSelected" class="d-none" disabled="@(isSending || isUploading || editingMsg != null)" />
                     </label>
 
                     @* منوی سریع ایموجی *@
@@ -479,12 +539,11 @@
                     <textarea class="form-control chat-textarea"
                               placeholder="پیام خود را بنویسید..."
                               rows="1"
-                              @bind="messageInput"
-                              @bind:event="oninput"
-                              @onkeydown="HandleKeyDown"></textarea>
+                              @ref="composerElement" disabled="@isSending"
+                              @bind="messageInput" @bind:event="oninput" @bind:after="OnMessageInputChanged"></textarea>
 
                     @* دکمه ارسال *@
-                    <button class="btn btn-primary btn-send" @onclick="SendCurrentMessage" disabled="@(string.IsNullOrWhiteSpace(messageInput) && uploadingFile == null)">
+                    <button class="btn btn-primary btn-send" @onclick="SendCurrentMessage" disabled="@(isSending || isUploading || (string.IsNullOrWhiteSpace(messageInput) && uploadingFile == null))">
                         @if (isSending)
                         {
                             <span class="spinner-border spinner-border-sm"></span>
@@ -508,29 +567,40 @@
             <div class="modal-content shadow-lg border-0 rounded-4">
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold fs-6">شروع گفتگوی جدید با همکاران</h5>
-                    <button type="button" class="btn-close" @onclick="() => showDirectModal = false"></button>
+                    <button type="button" class="btn-close" aria-label="بستن" @onclick="CloseUserPicker"></button>
                 </div>
                 <div class="modal-body">
                     <div class="input-group mb-3">
                         <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
-                        <input type="text" class="form-control form-control-sm" placeholder="جستجوی نام یا واحد سازمانی..."
-                               @bind="userSearchQuery" @bind:event="oninput" @bind:after="FilterUsers" />
+                        <input type="text" class="form-control form-control-sm" placeholder="نام، نام کاربری یا واحد سازمانی..." aria-label="جستجوی کاربران"
+                               @bind="userSearchQuery" @bind:event="oninput" @bind:after="OnUserSearchChanged" />
                     </div>
 
-                    <div class="users-picker-list">
+                    <div class="text-muted fs-9 mb-2">مخاطبان از حساب‌های ورود فعال انتخاب می‌شوند؛ آنلاین بودن لازم نیست.</div>
+                    <div class="users-picker-list" data-testid="chat-user-picker" aria-live="polite">
                         @if (loadingUsers)
                         {
                             <div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm"></span></div>
                         }
+                        else if (usersError != null)
+                        {
+                            <div class="alert alert-danger fs-8" role="alert">
+                                @usersError
+                                <button type="button" class="btn btn-sm btn-outline-danger d-block mt-2" @onclick="LoadPickerUsersAsync">تلاش مجدد</button>
+                            </div>
+                        }
                         else if (filteredUsers.Count == 0)
                         {
-                            <div class="text-center py-4 text-muted fs-8">کاربری با این مشخصات یافت نشد.</div>
+                            <div class="text-center py-4 text-muted fs-8">
+                                @(string.IsNullOrWhiteSpace(userSearchQuery) ? "کاربر فعال دیگری برای گفتگو وجود ندارد." : "کاربری با این مشخصات یافت نشد.")
+                            </div>
                         }
                         else
                         {
                             @foreach (var u in filteredUsers)
                             {
-                                <div class="user-picker-item" @onclick="() => StartDirectWith(u.Id)">
+                                <button type="button" @key="u.Id" class="user-picker-item w-100 border-0 bg-transparent" style="text-align: start;"
+                                        @onclick="() => StartDirectWith(u.Id)" disabled="@startingDirectUserId.HasValue">
                                     <div class="dialog-avatar direct-avatar sm">
                                         <i class="bi bi-person"></i>
                                     </div>
@@ -542,7 +612,7 @@
                                     {
                                         <span class="badge bg-success-subtle text-success fs-9">آنلاین</span>
                                     }
-                                </div>
+                                </button>
                             }
                         }
                     </div>
@@ -560,7 +630,7 @@
             <div class="modal-content shadow-lg border-0 rounded-4">
                 <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold fs-6">ایجاد گروه کاری جدید</h5>
-                    <button type="button" class="btn-close" @onclick="() => showGroupModal = false"></button>
+                    <button type="button" class="btn-close" aria-label="بستن" @onclick="CloseUserPicker"></button>
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
@@ -572,23 +642,43 @@
                         <input type="text" class="form-control form-control-sm" placeholder="هدف از تشکیل این گروه..." @bind="newGroupDesc" />
                     </div>
 
-                    <label class="form-label fs-8 fw-bold">انتخاب اعضای گروه</label>
-                    <div class="users-picker-list" style="max-height: 220px;">
-                        @foreach (var u in allSoftwareUsers)
+                    <label class="form-label fs-8 fw-bold">انتخاب اعضای گروه (@selectedGroupUserIds.Count نفر انتخاب شده)</label>
+                    <input type="text" class="form-control form-control-sm mb-2" placeholder="نام، نام کاربری یا واحد سازمانی..." aria-label="جستجوی کاربران"
+                           @bind="userSearchQuery" @bind:event="oninput" @bind:after="OnUserSearchChanged" />
+                    <div class="users-picker-list" style="max-height: 220px;" data-testid="chat-user-picker" aria-live="polite">
+                        @if (loadingUsers)
                         {
-                            bool isSelected = selectedGroupUserIds.Contains(u.Id);
-                            <div class="user-picker-item @(isSelected ? "selected" : "")" @onclick="() => ToggleUserSelectForGroup(u.Id)">
-                                <input type="checkbox" class="form-check-input me-2" checked="@isSelected" />
-                                <div class="flex-grow-1 min-w-0">
-                                    <div class="fw-bold fs-8">@u.DisplayName</div>
-                                    <div class="fs-9 text-muted">@u.Username</div>
-                                </div>
+                            <div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm"></span></div>
+                        }
+                        else if (usersError != null)
+                        {
+                            <div class="alert alert-danger fs-8" role="alert">
+                                @usersError
+                                <button type="button" class="btn btn-sm btn-outline-danger d-block mt-2" @onclick="LoadPickerUsersAsync">تلاش مجدد</button>
                             </div>
+                        }
+                        else if (filteredUsers.Count == 0)
+                        {
+                            <div class="text-center py-4 text-muted fs-8">کاربری با این مشخصات یافت نشد.</div>
+                        }
+                        else
+                        {
+                            @foreach (var u in filteredUsers)
+                            {
+                                bool isSelected = selectedGroupUserIds.Contains(u.Id);
+                                <div @key="u.Id" class="user-picker-item @(isSelected ? "selected" : "")" @onclick="() => ToggleUserSelectForGroup(u.Id)">
+                                    <input type="checkbox" class="form-check-input me-2" checked="@isSelected" aria-label="@u.DisplayName" />
+                                    <div class="flex-grow-1 min-w-0">
+                                        <div class="fw-bold fs-8">@u.DisplayName</div>
+                                        <div class="fs-9 text-muted">@u.Username @(!string.IsNullOrWhiteSpace(u.Department) ? $"— {u.Department}" : "")</div>
+                                    </div>
+                                </div>
+                            }
                         }
                     </div>
                 </div>
                 <div class="modal-footer border-0 pt-0">
-                    <button type="button" class="btn btn-sm btn-secondary" @onclick="() => showGroupModal = false">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="CloseUserPicker">انصراف</button>
                     <button type="button" class="btn btn-sm btn-success px-4" @onclick="CreateGroupSubmit" disabled="@string.IsNullOrWhiteSpace(newGroupTitle)">
                         ساخت گروه
                     </button>
@@ -653,6 +743,32 @@
         </div>
     </div>
 }
+@* ========================== لایت‌باکس پیش‌نمایش تصویر (در همان صفحه، بدون تب جدید) ========================== *@
+@if (previewMsg != null)
+{
+    <div class="modal fade show d-block chat-modal-backdrop chat-lightbox-backdrop" tabindex="-1" role="dialog" aria-modal="true"
+         data-testid="chat-image-lightbox" @onclick="CloseImagePreview">
+        <div class="modal-dialog modal-xl modal-dialog-centered chat-lightbox-dialog">
+            <div class="modal-content border-0 bg-transparent shadow-none chat-lightbox-content" @onclick:stopPropagation="true">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="text-truncate fs-7 fw-bold text-white ps-1">@previewMsg.FileName</div>
+                    <button type="button" class="btn-close btn-close-white" aria-label="بستن پیش‌نمایش" data-testid="close-lightbox" @onclick="CloseImagePreview"></button>
+                </div>
+                <div class="chat-lightbox-stage">
+                    <img src="@Chat.GetFileUrl(previewMsg.Id, true)" alt="@previewMsg.FileName" data-testid="lightbox-image"
+                         referrerpolicy="no-referrer" />
+                </div>
+                <div class="d-flex justify-content-center mt-3 pb-1">
+                    <a href="@Chat.GetFileUrl(previewMsg.Id)" download="@previewMsg.FileName" class="btn btn-light btn-sm chat-lightbox-dl"
+                       referrerpolicy="no-referrer" aria-label="@($"دانلود {previewMsg.FileName}")">
+                        <i class="bi bi-download me-1"></i>دانلود فایل
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 
 @code {
     [Parameter] public int? ConversationId { get; set; }
@@ -661,13 +777,39 @@
     private ChatConversationDto? activeConv;
     private List<ChatMessageDto> messages = new();
     private List<ChatMemberDto> groupMembers = new();
-    private List<ChatUserDto> allSoftwareUsers = new();
     private List<ChatUserDto> filteredUsers = new();
+    private List<ChatUserDto> sidebarUsers = new();
+    private string? usersError;
+    private string? sidebarUsersError;
+    private bool loadingSidebarUsers;
+    private int sidebarSearchVersion;
+    private int pickerSearchVersion;
+    private int conversationLoadVersion;
+    private bool disposed;
+    private int? startingDirectUserId;
 
     private bool loadingConversations = true;
     private bool loadingMessages = false;
     private bool loadingUsers = false;
     private bool isSending = false;
+    private bool isUploading;
+    private string uploadingFileName = "";
+    private int fileInputVersion;
+    private bool documentVisible = true;
+    private bool markReadAfterRender;
+    private bool scrollAfterRender;
+    private bool synchronizing;
+    private int messageLoadVersion;
+    private DateTime lastTypingSent;
+    private readonly Dictionary<int, int> acknowledgedReads = new();
+    private readonly HashSet<int> readsInFlight = new();
+    private readonly Dictionary<(int ConversationId, int UserId), (string Name, DateTime Expires)> typingStates = new();
+    private readonly System.Threading.CancellationTokenSource pageLifetime = new();
+    private ElementReference composerElement;
+    private bool initializingChatJs;
+    private IJSObjectReference? chatJs;
+    private DotNetObjectReference<ChatPage>? chatSelf;
+    private int interopId;
     private bool isMobileView = false;
 
     private string searchQuery = "";
@@ -678,6 +820,7 @@
     // ریپلای و ادیت
     private ChatMessageDto? replyingTo;
     private ChatMessageDto? editingMsg;
+    private ChatMessageDto? previewMsg;
     private ChatUploadResultDto? uploadingFile;
 
     // تایپینگ لایو
@@ -708,9 +851,11 @@
         Chat.OnMessagesRead += HandleMessagesRead;
         Chat.OnUserTyping += HandleUserTyping;
         Chat.OnUserStatusChanged += HandleUserStatusChanged;
-        Chat.OnConversationUpdated += HandleConversationUpdated;
+        Chat.OnConversationChanged += HandleConversationChanged;
+        Chat.OnSyncRequested += HandleSyncRequested;
+        Chat.OnConnectionChanged += HandleConnectionChanged;
 
-        await Chat.EnsureHubConnectedAsync();
+        _ = EnsureRealtimeSafelyAsync();
         await LoadConversations();
 
         if (ConversationId.HasValue && ConversationId.Value > 0)
@@ -734,120 +879,224 @@
 
     private async Task LoadConversations()
     {
+        var version = ++conversationLoadVersion;
+        var query = searchQuery;
+        var tab = currentTab;
         loadingConversations = true;
         try
         {
-            ChatTypeDto? filter = currentTab switch
+            ChatTypeDto? filter = tab switch
             {
                 "direct" => ChatTypeDto.Direct,
                 "group" => ChatTypeDto.Group,
                 _ => null
             };
-            bool onlyUnread = currentTab == "unread";
-            conversations = await Chat.GetConversationsAsync(searchQuery, filter, onlyUnread);
-            totalUnread = conversations.Sum(c => c.UnreadCount);
+            var result = await Chat.GetConversationsAsync(query, filter, tab == "unread");
+            if (disposed || version != conversationLoadVersion) return;
+            conversations = result;
+            var summary = await Chat.GetSummaryAsync();
+            if (disposed || version != conversationLoadVersion) return;
+            totalUnread = summary.TotalUnreadMessages;
+            if (activeConv != null)
+            {
+                var fresh = conversations.FirstOrDefault(c => c.Id == activeConv.Id);
+                if (fresh != null) activeConv = fresh;
+            }
         }
         catch (Exception ex)
         {
-            Toast.Error(ex.Message);
+            if (!disposed && version == conversationLoadVersion) Toast.Error(ex.Message);
         }
         finally
         {
-            loadingConversations = false;
+            if (!disposed && version == conversationLoadVersion)
+            {
+                loadingConversations = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task EnsureRealtimeSafelyAsync()
+    {
+        try { await Chat.EnsureHubConnectedAsync(); }
+        catch (OperationCanceledException) { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (disposed) return;
+        if (initializingChatJs) return;
+        if (chatJs == null)
+        {
+            initializingChatJs = true;
+            try
+            {
+                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js");
+                if (disposed) { await chatJs.DisposeAsync(); return; }
+                chatSelf = DotNetObjectReference.Create(this);
+                interopId = await chatJs.InvokeAsync<int>("initialize", chatSelf);
+            }
+            finally { initializingChatJs = false; }
+        }
+        if (activeConv != null) await chatJs.InvokeVoidAsync("attachComposer", interopId, composerElement);
+        if (scrollAfterRender)
+        {
+            scrollAfterRender = false;
+            await chatJs.InvokeVoidAsync("scrollToBottom");
+        }
+        if (markReadAfterRender)
+        {
+            markReadAfterRender = false;
+            await MarkVisibleMessagesReadAsync();
         }
     }
 
     private async Task SelectConversation(ChatConversationDto c)
     {
+        if (isUploading || isSending) { Toast.Info("لطفاً تا پایان بارگذاری یا ارسال صبر کنید."); return; }
         if (activeConv?.Id == c.Id) return;
-
-        if (activeConv != null)
+        var previous = activeConv?.Id;
+        if (previous.HasValue)
         {
-            await Chat.LeaveConversationHubAsync(activeConv.Id);
+            await Chat.SendTypingHubAsync(previous.Value, false);
+            await Chat.LeaveConversationHubAsync(previous.Value);
         }
-
+        var version = ++messageLoadVersion;
         activeConv = c;
+        lastTypingSent = DateTime.MinValue;
+        messages = new();
         replyingTo = null;
         editingMsg = null;
+        messageInput = "";
+        RemovePendingAttachment();
         loadingMessages = true;
-
+        _ = JoinConversationSafelyAsync(c.Id);
         try
         {
-            await Chat.JoinConversationHubAsync(c.Id);
-            messages = await Chat.GetMessagesAsync(c.Id, null, 80);
+            var result = await Chat.GetMessagesAsync(c.Id, null, 80);
+            if (disposed || version != messageLoadVersion || activeConv?.Id != c.Id) return;
+            // پیام‌های زنده‌ای که حین دریافت تاریخچه رسیده‌اند از دست نروند.
+            var arrived = messages.Where(m => !result.Any(r => r.Id == m.Id)).ToList();
+            messages = result.Select(m => m.ForUser(Auth.UserId)).Concat(arrived).OrderBy(m => m.Id).ToList();
+            markReadAfterRender = true;
+            scrollAfterRender = true;
+        }
+        catch (Exception ex) { if (!disposed && version == messageLoadVersion) Toast.Error(ex.Message); }
+        finally { if (!disposed && version == messageLoadVersion) loadingMessages = false; }
+    }
 
-            if (c.UnreadCount > 0)
-            {
-                await Chat.MarkReadAsync(c.Id);
-                c.UnreadCount = 0;
-                totalUnread = conversations.Sum(x => x.UnreadCount);
-            }
-        }
-        catch (Exception ex)
+    private async Task JoinConversationSafelyAsync(int id)
+    {
+        try { await Chat.JoinConversationHubAsync(id); }
+        catch (OperationCanceledException) { }
+    }
+
+    private void UpsertMessage(ChatMessageDto value)
+    {
+        var message = value.ForUser(Auth.UserId);
+        var index = messages.FindIndex(m => m.Id == message.Id);
+        if (index >= 0)
         {
-            Toast.Error(ex.Message);
+            message.IsReadByPeer |= messages[index].IsReadByPeer && message.IsOutgoing;
+            messages[index] = message;
         }
-        finally
-        {
-            loadingMessages = false;
-            await ScrollToBottom();
-        }
+        else messages.Add(message);
+        messages.Sort((a, b) => a.Id.CompareTo(b.Id));
     }
 
     private async Task SendCurrentMessage()
     {
-        if (activeConv == null || isSending) return;
-
+        if (activeConv == null || isSending || isUploading) return;
+        var conversationId = activeConv.Id;
         var text = messageInput.Trim();
         if (string.IsNullOrWhiteSpace(text) && uploadingFile == null) return;
-
         isSending = true;
         try
         {
+            ChatMessageDto saved;
             if (editingMsg != null)
-            {
-                await Chat.EditMessageAsync(editingMsg.Id, text);
-                editingMsg = null;
-            }
+                saved = await Chat.EditMessageAsync(editingMsg.Id, text);
             else
-            {
-                var req = new SendChatMessageRequest
+                saved = await Chat.SendMessageAsync(conversationId, new SendChatMessageRequest
                 {
-                    ConversationId = activeConv.Id,
-                    Text = text,
-                    ReplyToMessageId = replyingTo?.Id,
-                    FileUrl = uploadingFile?.FileUrl,
-                    FileName = uploadingFile?.FileName,
-                    FileSizeBytes = uploadingFile?.FileSizeBytes,
-                    FileContentType = uploadingFile?.FileContentType,
+                    ConversationId = conversationId, Text = text, ReplyToMessageId = replyingTo?.Id,
+                    FileUrl = uploadingFile?.FileUrl, FileName = uploadingFile?.FileName,
+                    FileSizeBytes = uploadingFile?.FileSizeBytes, FileContentType = uploadingFile?.FileContentType,
                     MessageType = uploadingFile?.MessageType ?? ChatMessageTypeDto.Text
-                };
-                await Chat.SendMessageAsync(activeConv.Id, req);
-                replyingTo = null;
-                uploadingFile = null;
-            }
+                });
+            if (disposed || activeConv?.Id != conversationId) return;
+            // پاسخ موفق HTTP هم بلافاصله نمایش داده می‌شود؛ حتی اگر SignalR قطع باشد.
+            UpsertMessage(saved);
+            editingMsg = null;
+            replyingTo = null;
+            RemovePendingAttachment();
             messageInput = "";
+            scrollAfterRender = true;
+            await Chat.SendTypingHubAsync(conversationId, false);
+            lastTypingSent = DateTime.MinValue;
+            await LoadConversations();
         }
-        catch (Exception ex)
-        {
-            Toast.Error(ex.Message);
-        }
+        catch (Exception ex) { if (!disposed) Toast.Error(ex.Message); } // متن/پیوست برای تلاش مجدد حفظ می‌شود.
         finally
         {
             isSending = false;
-            await ScrollToBottom();
+            if (!disposed) await InvokeAsync(StateHasChanged);
         }
     }
 
-    private async Task HandleKeyDown(KeyboardEventArgs e)
+    [JSInvokable]
+    public async Task SendFromComposer(string value)
     {
-        if (e.Key == "Enter" && !e.ShiftKey)
+        if (disposed || isSending) return;
+        messageInput = value;
+        await SendCurrentMessage();
+    }
+
+    private async Task OnMessageInputChanged()
+    {
+        if (activeConv == null || isSending) return;
+        if (string.IsNullOrWhiteSpace(messageInput))
         {
-            await SendCurrentMessage();
+            await Chat.SendTypingHubAsync(activeConv.Id, false);
+            lastTypingSent = DateTime.MinValue;
         }
-        else if (activeConv != null)
+        else if (DateTime.UtcNow - lastTypingSent >= TimeSpan.FromSeconds(1))
         {
+            lastTypingSent = DateTime.UtcNow;
             await Chat.SendTypingHubAsync(activeConv.Id);
+        }
+    }
+
+    [JSInvokable]
+    public Task ChatVisibilityChanged(bool visible) => InvokeAsync(() =>
+    {
+        documentVisible = visible;
+        if (visible) markReadAfterRender = true;
+        if (!disposed) StateHasChanged();
+    });
+
+    private async Task MarkVisibleMessagesReadAsync()
+    {
+        if (disposed || !documentVisible || activeConv == null || messages.Count == 0) return;
+        var id = activeConv.Id;
+        var last = messages.Max(m => m.Id);
+        if (acknowledgedReads.GetValueOrDefault(id) >= last || !readsInFlight.Add(id)) return;
+        try
+        {
+            await Chat.MarkReadAsync(id, last);
+            acknowledgedReads[id] = Math.Max(acknowledgedReads.GetValueOrDefault(id), last);
+            await LoadConversations();
+        }
+        catch (Exception ex) { if (!disposed) Toast.Error(ex.Message); }
+        finally
+        {
+            readsInFlight.Remove(id);
+            if (!disposed && activeConv?.Id == id && messages.Count > 0 && messages.Max(m => m.Id) > last)
+            {
+                markReadAfterRender = true;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -858,6 +1107,9 @@
     }
 
     private void CancelReply() => replyingTo = null;
+
+    private void OpenImagePreview(ChatMessageDto msg) => previewMsg = msg;
+    private void CloseImagePreview() => previewMsg = null;
 
     private void StartEdit(ChatMessageDto msg)
     {
@@ -877,6 +1129,8 @@
         try
         {
             await Chat.DeleteMessageAsync(id);
+            messages.RemoveAll(m => m.Id == id);
+            await LoadConversations();
         }
         catch (Exception ex)
         {
@@ -888,7 +1142,9 @@
     {
         try
         {
-            await Chat.ReactAsync(messageId, emoji);
+            var reactions = await Chat.ReactAsync(messageId, emoji);
+            var message = messages.FirstOrDefault(m => m.Id == messageId);
+            if (message != null) message.Reactions = reactions;
         }
         catch (Exception ex)
         {
@@ -930,23 +1186,32 @@
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
-        if (e.File == null) return;
+        if (activeConv == null || isUploading || isSending || e.FileCount == 0) return;
+        var conversationId = activeConv.Id;
+        isUploading = true;
+        uploadingFileName = e.File.Name;
         try
         {
-            Toast.Info("در حال بارگذاری فایل...");
-            uploadingFile = await Chat.UploadAttachmentAsync(e.File);
-            Toast.Success("فایل بارگذاری شد.");
-            await SendCurrentMessage();
+            var file = await Chat.UploadAttachmentAsync(conversationId, e.File);
+            if (!disposed && activeConv?.Id == conversationId)
+            {
+                uploadingFile = file;
+                Toast.Success("فایل آماده است؛ برای ارسال دکمهٔ ارسال را بزنید.");
+            }
         }
-        catch (Exception ex)
-        {
-            Toast.Error(ex.Message);
-        }
+        catch (Exception ex) { if (!disposed) Toast.Error(ex.Message); }
+        finally { isUploading = false; fileInputVersion++; }
+    }
+
+    private void RemovePendingAttachment()
+    {
+        uploadingFile = null;
+        fileInputVersion++;
     }
 
     private void AppendEmoji(string emoji)
     {
-        messageInput += emoji;
+        if (!isSending) messageInput += emoji;
     }
 
     private async Task ChangeTab(string tab)
@@ -957,72 +1222,167 @@
 
     private async Task OnSearchChanged()
     {
-        await LoadConversations();
+        // Debounce و شمارهٔ درخواست مانع جایگزینی نتیجهٔ تازه با پاسخ دیرهنگام می‌شوند.
+        var version = ++sidebarSearchVersion;
+        ++conversationLoadVersion;
+        sidebarUsers = new();
+        sidebarUsersError = null;
+        loadingSidebarUsers = !string.IsNullOrWhiteSpace(searchQuery);
+        loadingConversations = true;
+        conversations = new();
+        await Task.Delay(250);
+        if (disposed || version != sidebarSearchVersion) return;
+
+        await Task.WhenAll(LoadConversations(), LoadSidebarUsersAsync(searchQuery, version));
+    }
+
+    private async Task LoadSidebarUsersAsync(string query, int version)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return;
+        try
+        {
+            var result = await Chat.GetSoftwareUsersAsync(query);
+            if (!disposed && version == sidebarSearchVersion) sidebarUsers = result;
+        }
+        catch (Exception ex)
+        {
+            if (!disposed && version == sidebarSearchVersion)
+                sidebarUsersError = $"دریافت کاربران ناموفق بود: {ex.Message}";
+        }
+        finally
+        {
+            if (!disposed && version == sidebarSearchVersion)
+            {
+                loadingSidebarUsers = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task RetrySidebarUsers()
+    {
+        var version = ++sidebarSearchVersion;
+        sidebarUsersError = null;
+        loadingSidebarUsers = true;
+        await LoadSidebarUsersAsync(searchQuery, version);
     }
 
     private async Task ClearSearch()
     {
+        ++sidebarSearchVersion;
         searchQuery = "";
+        sidebarUsers = new();
+        sidebarUsersError = null;
+        loadingSidebarUsers = false;
         await LoadConversations();
     }
 
-    private void BackToSidebar() => activeConv = null;
+    private async Task BackToSidebar()
+    {
+        if (isSending || isUploading) return;
+        if (activeConv != null)
+        {
+            await Chat.SendTypingHubAsync(activeConv.Id, false);
+            await Chat.LeaveConversationHubAsync(activeConv.Id);
+        }
+        ++messageLoadVersion;
+        activeConv = null;
+    }
 
     // ============================ مدیریت اعضا و مدال‌ها ============================
 
     private async Task OpenNewDirectModal()
     {
+        showGroupModal = false;
         showDirectModal = true;
+        userSearchQuery = "";
+        await LoadPickerUsersAsync();
+    }
+
+    private bool IsCurrentPickerRequest(int version) =>
+        !disposed && version == pickerSearchVersion && (showDirectModal || showGroupModal);
+
+    private async Task OnUserSearchChanged()
+    {
+        var version = ++pickerSearchVersion;
+        var query = userSearchQuery;
         loadingUsers = true;
+        usersError = null;
+        filteredUsers = new();
+        await Task.Delay(250);
+        if (!IsCurrentPickerRequest(version)) return;
+        await FetchPickerUsersAsync(query, version);
+    }
+
+    private async Task LoadPickerUsersAsync()
+    {
+        var version = ++pickerSearchVersion;
+        loadingUsers = true;
+        usersError = null;
+        filteredUsers = new();
+        await FetchPickerUsersAsync(userSearchQuery, version);
+    }
+
+    private async Task FetchPickerUsersAsync(string query, int version)
+    {
         try
         {
-            allSoftwareUsers = await Chat.GetSoftwareUsersAsync();
-            filteredUsers = allSoftwareUsers;
+            var result = await Chat.GetSoftwareUsersAsync(query);
+            if (IsCurrentPickerRequest(version)) filteredUsers = result;
+        }
+        catch (Exception ex)
+        {
+            if (IsCurrentPickerRequest(version))
+                usersError = $"دریافت کاربران ناموفق بود: {ex.Message}";
         }
         finally
         {
-            loadingUsers = false;
+            if (IsCurrentPickerRequest(version))
+            {
+                loadingUsers = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
-    private void FilterUsers()
+    private void CloseUserPicker()
     {
-        if (string.IsNullOrWhiteSpace(userSearchQuery))
-        {
-            filteredUsers = allSoftwareUsers;
-            return;
-        }
-        var q = userSearchQuery.ToLowerInvariant();
-        var result = allSoftwareUsers.Where(u =>
-            u.DisplayName.ToLower().Contains(q) ||
-            u.Username.ToLower().Contains(q) ||
-            (u.Department != null && u.Department.ToLower().Contains(q))).ToList();
-        // اگر نتیجه‌ای نبود، کل لیست پرسنل نمایش داده شود
-        filteredUsers = result.Count > 0 ? result : allSoftwareUsers;
+        showDirectModal = false;
+        showGroupModal = false;
+        ++pickerSearchVersion;
+        loadingUsers = false;
     }
 
     private async Task StartDirectWith(int targetUserId)
     {
-        showDirectModal = false;
+        if (startingDirectUserId.HasValue || isSending || isUploading) return;
+        startingDirectUserId = targetUserId;
         try
         {
             var conv = await Chat.CreateDirectAsync(targetUserId);
-            await LoadConversations();
+            CloseUserPicker();
+            await ClearSearch();
             await SelectConversation(conv);
         }
         catch (Exception ex)
         {
             Toast.Error(ex.Message);
         }
+        finally
+        {
+            startingDirectUserId = null;
+        }
     }
 
     private async Task OpenNewGroupModal()
     {
+        showDirectModal = false;
         showGroupModal = true;
         newGroupTitle = "";
         newGroupDesc = "";
+        userSearchQuery = "";
         selectedGroupUserIds.Clear();
-        allSoftwareUsers = await Chat.GetSoftwareUsersAsync();
+        await LoadPickerUsersAsync();
     }
 
     private void ToggleUserSelectForGroup(int uid)
@@ -1036,7 +1396,7 @@
     private async Task CreateGroupSubmit()
     {
         if (string.IsNullOrWhiteSpace(newGroupTitle)) return;
-        showGroupModal = false;
+        CloseUserPicker();
         try
         {
             var req = new CreateGroupChatRequest
@@ -1107,136 +1467,142 @@
         }
     }
 
-    private void OpenImagePreview(string url)
+    // تمام رویدادهای SignalR داخل dispatcher بلزور اعمال می‌شوند.
+    private void QueueUi(Func<Task> action)
     {
-        // باز کردن پیش‌نمایش تمام‌صفحه تصویر
-        Nav.NavigateTo(url, forceLoad: true);
-    }
-
-    // ============================ رویدادهای بلادرنگ SignalR ============================
-
-    private async void HandleMessageReceived(ChatMessageDto msg)
-    {
-        if (activeConv?.Id == msg.ConversationId)
+        if (disposed) return;
+        _ = InvokeAsync(async () =>
         {
-            if (!messages.Any(m => m.Id == msg.Id))
-            {
-                messages.Add(msg);
-                await Chat.MarkReadAsync(activeConv.Id);
-            }
-            await InvokeAsync(StateHasChanged);
-            await ScrollToBottom();
-        }
-
-        var conv = conversations.FirstOrDefault(c => c.Id == msg.ConversationId);
-        if (conv != null)
-        {
-            conv.LastMessageSnippet = msg.Text ?? msg.FileName;
-            conv.LastMessageAt = msg.CreatedAt;
-            if (activeConv?.Id != msg.ConversationId && !msg.IsOutgoing)
-            {
-                conv.UnreadCount++;
-            }
-            totalUnread = conversations.Sum(c => c.UnreadCount);
-            await InvokeAsync(StateHasChanged);
-        }
-        else
-        {
-            await LoadConversations();
-        }
-    }
-
-    private async void HandleMessageUpdated(ChatMessageDto msg)
-    {
-        var existing = messages.FirstOrDefault(m => m.Id == msg.Id);
-        if (existing != null)
-        {
-            existing.Text = msg.Text;
-            existing.IsEdited = msg.IsEdited;
-            existing.IsPinned = msg.IsPinned;
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async void HandleMessageDeleted(int convId, int msgId)
-    {
-        if (activeConv?.Id == convId)
-        {
-            var existing = messages.FirstOrDefault(m => m.Id == msgId);
-            if (existing != null)
-            {
-                messages.Remove(existing);
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-    }
-
-    private async void HandleReactionUpdated(int convId, int msgId, Dictionary<string, List<ChatReactionUserDto>> reactions)
-    {
-        if (activeConv?.Id == convId)
-        {
-            var msg = messages.FirstOrDefault(m => m.Id == msgId);
-            if (msg != null)
-            {
-                msg.Reactions = reactions;
-                await InvokeAsync(StateHasChanged);
-            }
-        }
-    }
-
-    private async void HandleMessagesRead(int convId, int readerUid, int lastReadId)
-    {
-        if (activeConv?.Id == convId && readerUid != Auth.UserId)
-        {
-            foreach (var m in messages.Where(m => m.Id <= lastReadId && m.IsOutgoing))
-            {
-                m.IsReadByPeer = true;
-            }
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async void HandleUserTyping(int convId, int uid, string uname)
-    {
-        if (uid == Auth.UserId) return;
-        typingUsers[convId] = uname;
-        await InvokeAsync(StateHasChanged);
-        _ = Task.Delay(3000).ContinueWith(async _ =>
-        {
-            typingUsers.Remove(convId);
-            await InvokeAsync(StateHasChanged);
+            if (disposed) return;
+            try { await action(); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { if (!disposed) Toast.Error(ex.Message); }
+            if (!disposed) StateHasChanged();
         });
     }
 
-    private async void HandleUserStatusChanged(int uid, bool online, DateTime seen)
+    private void HandleMessageReceived(ChatMessageDto message) => QueueUi(async () =>
     {
-        foreach (var c in conversations.Where(c => c.DirectPeerUserId == uid))
+        typingStates.Remove((message.ConversationId, message.SenderUserId));
+        RefreshTypingLabel(message.ConversationId);
+        if (activeConv?.Id == message.ConversationId)
+        {
+            UpsertMessage(message);
+            scrollAfterRender = true;
+            markReadAfterRender |= !message.IsOutgoing;
+        }
+        // شمارنده را از سرور بخوان، نه با ++ روی هر رویداد (که ممکن است تکراری باشد).
+        await LoadConversations();
+    });
+
+    private void HandleMessageUpdated(ChatMessageDto message) => QueueUi(async () =>
+    {
+        if (activeConv?.Id == message.ConversationId) UpsertMessage(message);
+        await LoadConversations();
+    });
+
+    private void HandleMessageDeleted(int conversationId, int messageId) => QueueUi(async () =>
+    {
+        if (activeConv?.Id == conversationId) messages.RemoveAll(m => m.Id == messageId);
+        await LoadConversations();
+    });
+
+    private void HandleReactionUpdated(int conversationId, int messageId, Dictionary<string, List<ChatReactionUserDto>> reactions) => QueueUi(() =>
+    {
+        if (activeConv?.Id == conversationId)
+        {
+            var message = messages.FirstOrDefault(m => m.Id == messageId);
+            if (message != null) message.Reactions = reactions;
+        }
+        return Task.CompletedTask;
+    });
+
+    private void HandleMessagesRead(int conversationId, int reader, int lastId) => QueueUi(async () =>
+    {
+        if (reader == Auth.UserId)
+            acknowledgedReads[conversationId] = Math.Max(acknowledgedReads.GetValueOrDefault(conversationId), lastId);
+        else if (activeConv?.Id == conversationId)
+            foreach (var message in messages.Where(m => m.IsOutgoing && m.Id <= lastId)) message.IsReadByPeer = true;
+        await LoadConversations();
+    });
+
+    private void HandleUserTyping(int conversationId, int userId, string name) => QueueUi(() =>
+    {
+        if (userId == Auth.UserId) return Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(name)) typingStates.Remove((conversationId, userId));
+        else
+        {
+            typingStates[(conversationId, userId)] = (name, DateTime.UtcNow.AddSeconds(4));
+            _ = ExpireTypingAsync(conversationId, userId);
+        }
+        RefreshTypingLabel(conversationId);
+        return Task.CompletedTask;
+    });
+
+    private async Task ExpireTypingAsync(int conversationId, int userId)
+    {
+        try
+        {
+            await Task.Delay(4100, pageLifetime.Token);
+            QueueUi(() =>
+            {
+                if (typingStates.TryGetValue((conversationId, userId), out var state) && state.Expires <= DateTime.UtcNow)
+                    typingStates.Remove((conversationId, userId));
+                RefreshTypingLabel(conversationId);
+                return Task.CompletedTask;
+            });
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void RefreshTypingLabel(int conversationId)
+    {
+        var names = typingStates.Where(p => p.Key.ConversationId == conversationId).Select(p => p.Value.Name).Distinct().ToList();
+        if (names.Count == 0) typingUsers.Remove(conversationId);
+        else typingUsers[conversationId] = string.Join("، ", names);
+    }
+
+    private void HandleUserStatusChanged(int userId, bool online, DateTime seen) => QueueUi(() =>
+    {
+        foreach (var c in conversations.Where(c => c.DirectPeerUserId == userId))
         {
             c.DirectPeerIsOnline = online;
             c.DirectPeerLastSeen = seen;
         }
-        if (activeConv?.DirectPeerUserId == uid)
+        if (activeConv?.DirectPeerUserId == userId)
         {
             activeConv.DirectPeerIsOnline = online;
             activeConv.DirectPeerLastSeen = seen;
         }
-        await InvokeAsync(StateHasChanged);
+        return Task.CompletedTask;
+    });
+
+    private void HandleConnectionChanged() => QueueUi(() => Task.CompletedTask);
+    private void HandleConversationChanged(int id) => QueueUi(SynchronizeAsync);
+    private void HandleSyncRequested() => QueueUi(SynchronizeAsync);
+
+    private async Task SynchronizeAsync()
+    {
+        if (synchronizing || disposed) return;
+        synchronizing = true;
+        try
+        {
+            await LoadConversations();
+            if (activeConv == null || loadingMessages) return;
+            var id = activeConv.Id;
+            var version = messageLoadVersion;
+            var previousLast = messages.Count == 0 ? 0 : messages.Max(m => m.Id);
+            var result = await Chat.GetMessagesAsync(id, null, 80);
+            if (disposed || activeConv?.Id != id || messageLoadVersion != version) return;
+            var arrived = messages.Where(m => m.Id > previousLast && !result.Any(r => r.Id == m.Id)).ToList();
+            messages = result.Select(m => m.ForUser(Auth.UserId)).Concat(arrived).OrderBy(m => m.Id).ToList();
+            scrollAfterRender = messages.Any(m => m.Id > previousLast);
+            markReadAfterRender = true;
+        }
+        finally { synchronizing = false; }
     }
 
-    private async void HandleConversationUpdated(ChatConversationDto c)
-    {
-        await LoadConversations();
-    }
-
-    private async Task ScrollToBottom()
-    {
-        try { await JS.InvokeVoidAsync("eval", "var el = document.getElementById('chatMessagesScroll'); if (el) el.scrollTop = el.scrollHeight;"); } catch { }
-    }
-
-    private async Task ScrollToMessage(int msgId)
-    {
-        try { await JS.InvokeVoidAsync("eval", $"var el = document.getElementById('msg-{msgId}'); if (el) el.scrollIntoView({{ behavior: 'smooth' }});"); } catch { }
-    }
+    private Task ScrollToMessage(int messageId) => chatJs == null ? Task.CompletedTask : chatJs.InvokeVoidAsync("scrollToMessage", messageId).AsTask();
 
     private string FormatTime(DateTime dt)
     {
@@ -1256,6 +1622,13 @@
 
     public async ValueTask DisposeAsync()
     {
+        disposed = true;
+        pageLifetime.Cancel();
+        ++messageLoadVersion;
+        ++sidebarSearchVersion;
+        ++pickerSearchVersion;
+        ++conversationLoadVersion;
+
         Chat.OnMessageReceived -= HandleMessageReceived;
         Chat.OnMessageUpdated -= HandleMessageUpdated;
         Chat.OnMessageDeleted -= HandleMessageDeleted;
@@ -1263,11 +1636,20 @@
         Chat.OnMessagesRead -= HandleMessagesRead;
         Chat.OnUserTyping -= HandleUserTyping;
         Chat.OnUserStatusChanged -= HandleUserStatusChanged;
-        Chat.OnConversationUpdated -= HandleConversationUpdated;
+        Chat.OnConversationChanged -= HandleConversationChanged;
+        Chat.OnSyncRequested -= HandleSyncRequested;
+        Chat.OnConnectionChanged -= HandleConnectionChanged;
 
         if (activeConv != null)
         {
+            await Chat.SendTypingHubAsync(activeConv.Id, false);
             await Chat.LeaveConversationHubAsync(activeConv.Id);
         }
+        if (chatJs != null)
+        {
+            try { await chatJs.InvokeVoidAsync("dispose", interopId); await chatJs.DisposeAsync(); } catch (JSException) { }
+        }
+        chatSelf?.Dispose();
+        pageLifetime.Dispose();
     }
 }

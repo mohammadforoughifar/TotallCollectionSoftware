@@ -18,12 +18,12 @@ namespace Inventory.Api.Controllers;
 public class ChatController : ControllerBase
 {
     private readonly IChatService _chatService;
-    private readonly IWebHostEnvironment _env;
+    private readonly ChatAttachmentService _files;
 
-    public ChatController(IChatService chatService, IWebHostEnvironment env)
+    public ChatController(IChatService chatService, ChatAttachmentService files)
     {
         _chatService = chatService;
-        _env = env;
+        _files = files;
     }
 
     private int CurrentUserId =>
@@ -115,9 +115,9 @@ public class ChatController : ControllerBase
 
     /// <summary>علامت‌گذاری گفتگو به عنوان خوانده شده</summary>
     [HttpPost("conversations/{id}/read")]
-    public async Task<IActionResult> MarkRead(int id)
+    public async Task<IActionResult> MarkRead(int id, [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] MarkChatReadRequest? request = null)
     {
-        await _chatService.MarkConversationAsReadAsync(CurrentUserId, id);
+        await _chatService.MarkConversationAsReadAsync(CurrentUserId, id, request?.LastReadMessageId);
         return Ok(new { success = true });
     }
 
@@ -177,47 +177,57 @@ public class ChatController : ControllerBase
         return Ok(summary);
     }
 
-    /// <summary>آپلود فایل و رسانه برای ارسال در چت</summary>
-    [HttpPost("upload")]
-    public async Task<IActionResult> UploadAttachment(IFormFile file)
+    /// <summary>بارگذاری فایل برای گفتگوی مشخص (فقط اعضا)، حداکثر ۵۰ MiB.</summary>
+    [HttpPost("conversations/{id:int}/attachments")]
+    [RequestSizeLimit(ChatFileLimits.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ChatFileLimits.MaxRequestBytes)]
+    public async Task<IActionResult> UploadAttachment(int id, [FromForm] IFormFile? file)
     {
-        if (file == null || file.Length == 0)
-            return BadRequest(new { message = "فایلی ارسال نشده است." });
+        if (file == null) return BadRequest(new { message = "فایلی انتخاب نشده است." });
+        return Ok(await _files.UploadAsync(CurrentUserId, id, file, HttpContext.RequestAborted));
+    }
 
-        if (file.Length > 50 * 1024 * 1024) // حداکثر ۵۰ مگابایت
-            return BadRequest(new { message = "حجم فایل نباید بیش از ۵۰ مگابایت باشد." });
+    /// <summary>سازگاری با کلاینت قدیمی؛ فایل بدون گفتگو فقط در اختیار بارگذار می‌ماند.</summary>
+    [HttpPost("upload")]
+    [RequestSizeLimit(ChatFileLimits.MaxRequestBytes)]
+    [RequestFormLimits(MultipartBodyLengthLimit = ChatFileLimits.MaxRequestBytes)]
+    public async Task<IActionResult> UploadLegacy([FromForm] IFormFile? file, [FromQuery] int? conversationId)
+    {
+        if (file == null) return BadRequest(new { message = "فایلی انتخاب نشده است." });
+        return Ok(await _files.UploadAsync(CurrentUserId, conversationId, file, HttpContext.RequestAborted));
+    }
 
-        var uploadsFolder = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads", "chat");
-        if (!Directory.Exists(uploadsFolder))
-            Directory.CreateDirectory(uploadsFolder);
+    [HttpGet("messages/{id:int}/download")]
+    public Task<IActionResult> DownloadMessageFile(int id) =>
+        FileResponseAsync(() => _files.GetMessageFileAsync(CurrentUserId, id), false);
 
-        var ext = Path.GetExtension(file.FileName);
-        var uniqueName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{ext}";
-        var filePath = Path.Combine(uploadsFolder, uniqueName);
+    [HttpGet("messages/{id:int}/preview")]
+    public Task<IActionResult> PreviewMessageFile(int id) =>
+        FileResponseAsync(() => _files.GetMessageFileAsync(CurrentUserId, id), true);
 
-        using (var stream = new FileStream(filePath, FileMode.Create))
+    [HttpGet("attachments/{id:guid}/download")]
+    public Task<IActionResult> DownloadAttachment(Guid id) =>
+        FileResponseAsync(() => _files.GetAttachmentAsync(CurrentUserId, id), false);
+
+    private async Task<IActionResult> FileResponseAsync(Func<Task<ChatFileResult>> resolve, bool preview)
+    {
+        try
         {
-            await file.CopyToAsync(stream);
+            var file = await resolve();
+            Response.Headers.CacheControl = "private, no-store";
+            Response.Headers["X-Content-Type-Options"] = "nosniff";
+            Response.Headers["Referrer-Policy"] = "no-referrer";
+            Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'";
+            var inline = preview && ChatAttachmentService.MessageTypeFor(file.ContentType) != ChatMessageTypeDto.File;
+            return PhysicalFile(file.Path, file.ContentType, inline ? null : file.FileName, enableRangeProcessing: true);
         }
-
-        var fileUrl = $"/uploads/chat/{uniqueName}";
-        var messageType = ChatMessageTypeDto.File;
-
-        var lowerExt = ext.ToLowerInvariant();
-        if (lowerExt is ".png" or ".jpg" or ".jpeg" or ".webp" or ".gif")
-            messageType = ChatMessageTypeDto.Image;
-        else if (lowerExt is ".mp3" or ".wav" or ".ogg" or ".m4a" or ".aac")
-            messageType = ChatMessageTypeDto.Audio;
-        else if (lowerExt is ".mp4" or ".webm" or ".mov" or ".avi")
-            messageType = ChatMessageTypeDto.Video;
-
-        return Ok(new
+        catch (UnauthorizedAccessException)
         {
-            fileUrl,
-            fileName = file.FileName,
-            fileSizeBytes = file.Length,
-            fileContentType = file.ContentType,
-            messageType
-        });
+            return StatusCode(StatusCodes.Status403Forbidden, new { message = "دسترسی به فایل این گفتگو مجاز نیست." });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
     }
 }

@@ -298,6 +298,12 @@ else
     {
         Layout.Changed += OnLayoutChanged;
         Auth.Changed += OnAuthChanged;
+        Chat.OnMessageReceived += OnChatMessage;
+        Chat.OnMessageDeleted += OnChatDeleted;
+        Chat.OnMessagesRead += OnChatRead;
+        Chat.OnConversationChanged += OnChatConversation;
+        Chat.OnSyncRequested += OnChatSync;
+
     }
 
     private async void OnAuthChanged()
@@ -307,7 +313,9 @@ else
             ntfList.Clear();
             liveToasts.Clear();
             unreadCount = 0;
-            try { await Rt.StopAsync(); } catch { }
+            chatUnreadCount = 0;
+            ++chatSummaryVersion;
+            try { await Chat.StopAsync(); await Rt.StopAsync(); } catch { }
         }
         else
         {
@@ -322,6 +330,8 @@ else
     // ================== اعلان‌ها (نوتیفیکیشن سراسری) ==================
     private int unreadCount;
     private int chatUnreadCount;
+    private int chatSummaryVersion;
+    private bool layoutDisposed;
     private bool showNtfPanel;
     private List<NtfItem> ntfList = new();
     private List<NtfItem> liveToasts = new();
@@ -446,6 +456,9 @@ else
     {
         if (!Auth.IsLoggedIn) return;
         SetAuthHeader();
+        // اتصال چت در همهٔ صفحات فعال است، نه فقط پس از باز کردن صفحهٔ پیام‌رسان.
+        await Chat.EnsureHubConnectedAsync();
+        await RefreshChatSummaryAsync();
         await RefreshNtf();
 
         // اتصال بلادرنگ سراسری — از طریق سرویس مشترک RealtimeService
@@ -533,13 +546,30 @@ else
         catch { }
     }
 
+    private void OnChatMessage(ChatMessageDto message) => OnChatSync();
+    private void OnChatDeleted(int conversationId, int messageId) => OnChatSync();
+    private void OnChatRead(int conversationId, int readerId, int lastId) => OnChatSync();
+    private void OnChatConversation(int id) => OnChatSync();
+    private void OnChatSync()
+    {
+        if (layoutDisposed) return;
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshChatSummaryAsync();
+            if (!layoutDisposed) StateHasChanged();
+        });
+    }
+
     private async Task RefreshChatSummaryAsync()
     {
-        if (!Auth.IsLoggedIn) return;
+        if (!Auth.IsLoggedIn || layoutDisposed) return;
+        var version = ++chatSummaryVersion;
+        var userId = Auth.UserId;
         try
         {
             var summary = await Chat.GetSummaryAsync();
-            chatUnreadCount = summary?.TotalUnreadMessages ?? 0;
+            if (!layoutDisposed && version == chatSummaryVersion && userId == Auth.UserId)
+                chatUnreadCount = summary.TotalUnreadMessages;
         }
         catch { }
     }
@@ -741,8 +771,15 @@ else
 
     public void Dispose()
     {
+        layoutDisposed = true;
+        ++chatSummaryVersion;
         Layout.Changed -= OnLayoutChanged;
-        Auth.Changed -= OnLayoutChanged;
+        Auth.Changed -= OnAuthChanged;
+        Chat.OnMessageReceived -= OnChatMessage;
+        Chat.OnMessageDeleted -= OnChatDeleted;
+        Chat.OnMessagesRead -= OnChatRead;
+        Chat.OnConversationChanged -= OnChatConversation;
+        Chat.OnSyncRequested -= OnChatSync;
         Nav.LocationChanged -= OnLocationChanged;
         Rt.NotifyReceived -= OnRtNotify;
         Rt.DataChanged -= OnRtDataChanged;
