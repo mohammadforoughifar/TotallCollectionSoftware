@@ -252,6 +252,21 @@ dotnet run
 - با Windows Authentication: کاربر ویندوز شما دسترسی ندارد؛ در SSMS با Login ادمین وارد شوید و به کاربرتان دسترسی `dbcreator` بدهید، یا از یوزر `sa` استفاده کنید.
 - با sa: مطمئن شوید SQL Authentication فعال است (SSMS → راست‌کلیک روی سرور → Properties → Security → **SQL Server and Windows Authentication mode**) و بعد سرویس را Restart کنید.
 
+### خطا: `Metadata file '...Inventory.Shared\obj\Debug\net8.0\ref\Inventory.Shared.dll' could not be found`
+
+این خطای CS0006 است: پروژهٔ `Inventory.Api` یا `Inventory.Client` می‌خواهد DLL مشترک را بخواند ولی هنوز ساخته نشده (مسیر `Downloads\...\name (2)\` با پرانتز هم گاهی ساخت پوشهٔ `ref` را خراب می‌کند). در این نسخه اسمبلی مرجع (`ref`) غیرفعال شده و ترتیب بیلد در Solution درست شده است.
+
+یک‌بار پوشه‌های قدیمی را پاک کنید و از نو بسازید:
+
+```powershell
+cd مسیر\inventory
+Get-ChildItem -Recurse -Directory -Include bin,obj | Remove-Item -Recurse -Force
+dotnet restore Inventory.sln
+dotnet build Inventory.sln
+```
+
+اگر Visual Studio باز است: Solution را ببندید، پوشه‌های `bin` و `obj` را حذف کنید، دوباره باز کنید و **Rebuild Solution** بزنید.
+
 ### پورت 5100 اشغال است
 ```powershell
 set PORT=5200

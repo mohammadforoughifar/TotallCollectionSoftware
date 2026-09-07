@@ -21,8 +21,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\RadisHr.Shared\RadisHr.Shared.csproj" />
-    <ProjectReference Include="..\RadisHr.Client\RadisHr.Client.csproj" />
+    <ProjectReference Include="../RadisHr.Shared/RadisHr.Shared.csproj">
+      <Name>RadisHr.Shared</Name>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
+    <ProjectReference Include="../RadisHr.Client/RadisHr.Client.csproj" />
   </ItemGroup>
 
 </Project>
