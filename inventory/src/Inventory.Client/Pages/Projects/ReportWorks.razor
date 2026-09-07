@@ -106,13 +106,14 @@
         <div class="card-body">
             <div class="row g-2 align-items-center">
                 <div class="col-md-3"><SearchSelect Items="lookups.Projects" @bind-Value="filterProject" @bind-Value:after="OnFilterChanged" Placeholder="همه پروژه‌ها" /></div>
-                <div class="col-md-2"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" @bind-Value:after="OnFilterChanged" Placeholder="همه کاربران" /></div>
-                <div class="col-md-2"><DatePicker @bind-Value="filterFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                <div class="col-md-2"><DatePicker @bind-Value="filterTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                <div class="col-md-1"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" @bind-Value:after="OnFilterChanged" Placeholder="ثبت‌کننده" /></div>
+                <div class="col-md-2"><SearchSelect Items="lookups.Operators" @bind-Value="filterOperator" @bind-Value:after="OnFilterChanged" Placeholder="همه اپراتورها" /></div>
+                <div class="col-md-1"><DatePicker @bind-Value="filterFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                <div class="col-md-1"><DatePicker @bind-Value="filterTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
                 <div class="col-md-1">
                     <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
                 </div>
-                <div class="col-md-2 text-end fs-8 text-muted" title="جمع ساعت خالص همهٔ ردیف‌های فیلترشده">جمع: @Fmt(SumSpent())</div>
+                <div class="col-md-3 text-end fs-8 text-muted" title="جمع ساعت خالص همهٔ ردیف‌های فیلترشده">جمع: @Fmt(SumSpent())</div>
             </div>
         </div>
     </div>
@@ -139,7 +140,8 @@
                             <th class="sortable" @onclick='() => SortBy("date")'>تاریخ @((MarkupString)SortIcon("date"))</th>
                             <th class="sortable" @onclick='() => SortBy("code")'>کد پروژه @((MarkupString)SortIcon("code"))</th>
                             <th class="sortable" @onclick='() => SortBy("project")'>پروژه @((MarkupString)SortIcon("project"))</th>
-                            <th class="sortable" @onclick='() => SortBy("user")'>کاربر @((MarkupString)SortIcon("user"))</th>
+                            <th class="sortable" @onclick='() => SortBy("operator")'>اپراتور @((MarkupString)SortIcon("operator"))</th>
+                            <th class="sortable" @onclick='() => SortBy("user")'>ثبت‌کننده @((MarkupString)SortIcon("user"))</th>
                             <th class="sortable" @onclick='() => SortBy("start")'>شروع @((MarkupString)SortIcon("start"))</th>
                             <th class="sortable" @onclick='() => SortBy("end")'>پایان @((MarkupString)SortIcon("end"))</th>
                             <th class="sortable" @onclick='() => SortBy("rest")'>استراحت @((MarkupString)SortIcon("rest"))</th>
@@ -151,6 +153,7 @@
                             <th><DateFilterInput @bind-Text="fDate" @bind-Text:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fCode" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fProject" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                            <th></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fUser" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="ساعت — مثلا 8" @bind="fStart" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
                             <th><input class="col-filter-input" placeholder="ساعت — مثلا 17" @bind="fEnd" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
@@ -187,6 +190,10 @@
                                     }
                                 </td>
                                 <td class="fw-500">@r.ProjectName</td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(r.OperatorName)) { <span class="text-muted">—</span> }
+                                    else { <i class="bi bi-person-gear text-muted ms-1"></i>@r.OperatorName }
+                                </td>
                                 <td><i class="bi bi-person text-muted ms-1"></i>@r.UserName</td>
                                 <td class="num">@r.StartTime.TimeFa()</td>
                                 <td class="num">@r.EndTime.TimeFa()</td>
@@ -240,7 +247,10 @@
                             <span class="rw-spent">@Fmt(r.SpentTime)</span>
                         </div>
                         <div class="rw-project" title="@r.ProjectName"><i class="bi bi-folder2-open ms-1 text-muted"></i>@r.ProjectName</div>
-                        <div class="rw-user"><i class="bi bi-person ms-1"></i>@r.UserName</div>
+                        <div class="rw-user">
+                            @if (!string.IsNullOrWhiteSpace(r.OperatorName)) { <span class="ms-2"><i class="bi bi-person-gear ms-1"></i>اپراتور: <b>@r.OperatorName</b></span> }
+                            <span><i class="bi bi-person ms-1"></i>ثبت: @r.UserName</span>
+                        </div>
                         <div class="rw-times">
                             <span>شروع: <b>@r.StartTime.TimeFa()</b></span>
                             <span>پایان: <b>@r.EndTime.TimeFa()</b></span>
@@ -291,6 +301,10 @@
                 <span class="fs-8 text-muted">(ثبت خودکار با کاربر جاری)</span>
             </div>
         </div>
+        <div class="col-md-6">
+            <label class="form-label"><i class="bi bi-person-gear text-muted ms-1"></i>اپراتور <span class="fs-8 text-muted">(کسی که کار را انجام داده — اختیاری)</span></label>
+            <SearchSelect Items="lookups.Operators" Value="form.OperatorId ?? 0" ValueChanged="v => form.OperatorId = v > 0 ? v : null" Placeholder="انتخاب اپراتور…" />
+        </div>
         <div class="col-md-4">
             <label class="form-label">تاریخ گزارش <span class="text-danger">*</span></label>
             <DatePicker Value="reportDate" ValueChanged="d => reportDate = d ?? DateTime.Today" />
@@ -334,7 +348,7 @@
     private TimeSpan sumSpent;      // جمع ساعت خالص روی کل ردیف‌های فیلترشده
     private ProjectLookups lookups = new();
     private bool loading = true;
-    private int filterProject, filterUser;
+    private int filterProject, filterUser, filterOperator;
     private DateTime? filterFrom, filterTo;
 
     // ---------- جستجوی سرستون‌ها ----------
@@ -348,7 +362,7 @@
         !string.IsNullOrWhiteSpace(fRest) || !string.IsNullOrWhiteSpace(fSpent) ||
         !string.IsNullOrWhiteSpace(fDesc);
 
-    private bool HasAnyFilter => HasColFilter || filterProject > 0 || filterUser > 0
+    private bool HasAnyFilter => HasColFilter || filterProject > 0 || filterUser > 0 || filterOperator > 0
         || filterFrom.HasValue || filterTo.HasValue;
 
     private async Task ClearColFilters()
@@ -404,6 +418,7 @@
     {
         ProjectId = filterProject > 0 ? filterProject : null,
         UserId = filterUser > 0 ? filterUser : null,
+        OperatorId = filterOperator > 0 ? filterOperator : null,
         From = filterFrom,
         To = filterTo,
         FDate = fDate,
@@ -531,6 +546,7 @@
             ReportDate = r.ReportDate,
             ProjectId = r.ProjectId,
             UserId = r.UserId,
+            OperatorId = r.OperatorId,
             WorkDescription = r.WorkDescription,
             StartTime = r.StartTime,
             EndTime = r.EndTime,
@@ -601,19 +617,21 @@
                 Meta = new List<string>
                 {
                     $"پروژه: {(filterProject > 0 ? lookups.Projects.FirstOrDefault(x => x.Id == filterProject)?.Name ?? "—" : "همه پروژه‌ها")}",
-                    $"کاربر: {(filterUser > 0 ? lookups.Users.FirstOrDefault(x => x.Id == filterUser)?.Name ?? "—" : "همه کاربران")}",
+                    $"ثبت‌کننده: {(filterUser > 0 ? lookups.Users.FirstOrDefault(x => x.Id == filterUser)?.Name ?? "—" : "همه")}",
+                    $"اپراتور: {(filterOperator > 0 ? lookups.Operators.FirstOrDefault(x => x.Id == filterOperator)?.Name ?? "—" : "همه")}",
                     $"از تاریخ: {(filterFrom?.ToFaDate() ?? "—")}",
                     $"تا تاریخ: {(filterTo?.ToFaDate() ?? "—")}",
                     $"جستجوی سرستون‌ها: {(HasColFilter ? "اعمال شده" : "—")}",
                     $"تعداد گزارش‌ها: {rows.Count.FaDigits()}"
                 },
-                Headers = new List<string> { "ردیف", "تاریخ", "کد پروژه", "پروژه", "کاربر", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
+                Headers = new List<string> { "ردیف", "تاریخ", "کد پروژه", "پروژه", "اپراتور", "ثبت‌کننده", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
                 Rows = rows.Select((r, i) => new List<string>
                 {
                     (i + 1).FaDigits(),
                     r.ReportDate.ToFaDate(),
                     r.CodeProject ?? "—",
                     r.ProjectName ?? "",
+                    r.OperatorName ?? "—",
                     r.UserName ?? "",
                     r.StartTime.TimeFa(),
                     r.EndTime.TimeFa(),
