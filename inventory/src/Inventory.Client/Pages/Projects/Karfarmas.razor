@@ -142,15 +142,15 @@
         </div>
         <div class="col-md-4">
             <label class="form-label">موبایل مدیرعامل</label>
-            <input class="form-control" @bind="form.ModirAmelPhone" />
+            <input class="form-control" @bind="form.ModirAmelPhone" data-digits="tel" dir="ltr" inputmode="tel" placeholder="فقط عدد" />
         </div>
         <div class="col-md-4">
             <label class="form-label">تلفن</label>
-            <input class="form-control" @bind="form.Telephone" />
+            <input class="form-control" @bind="form.Telephone" data-digits="tel" dir="ltr" inputmode="tel" placeholder="فقط عدد" />
         </div>
         <div class="col-md-4">
             <label class="form-label">فکس</label>
-            <input class="form-control" @bind="form.Fax" />
+            <input class="form-control" @bind="form.Fax" data-digits="tel" dir="ltr" inputmode="tel" placeholder="فقط عدد" />
         </div>
     </div>
     </ChildContent>
