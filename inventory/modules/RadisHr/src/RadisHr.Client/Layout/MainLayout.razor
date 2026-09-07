@@ -7,7 +7,13 @@
 
 @if (!Auth.IsAuthenticated)
 {
-    <LoginView />
+    <div class="login-page">
+        <section class="login-card">
+            <h2>ورود یکپارچه RADIS-HR</h2>
+            <p class="muted">برای استفاده از منابع انسانی، ابتدا از سامانه جامع وارد شوید.</p>
+            <a class="primary-button" href="/">بازگشت به صفحه ورود سامانه جامع</a>
+        </section>
+    </div>
 }
 else
 {
@@ -28,8 +34,8 @@ else
                     </button>
                 }
             </nav>
-            <button class="logout change-password-menu" type="button" @onclick="() => _showPasswordDialog = true">تغییر رمز عبور</button>
-            <button class="logout" type="button" @onclick="LogoutAsync">خروج از سامانه</button>
+            <a class="logout change-password-menu" href="/">بازگشت به سامانه جامع</a>
+            <button class="logout" type="button" @onclick="LogoutAsync">خروج از همه سامانه‌ها</button>
         </aside>
 
         <section class="content">
@@ -48,15 +54,10 @@ else
         </section>
     </div>
 
-    @if (_showPasswordDialog)
-    {
-        <ChangePasswordDialog UserKey="@Auth.UserKey" OnClose="() => _showPasswordDialog = false" />
-    }
 }
 
 @code {
     private int _noticeCount;
-    private bool _showPasswordDialog;
 
     private string PageTitle =>
         AppNav.ByRoute(new Uri(Nav.Uri).AbsolutePath)?.Title ?? "داشبورد";
