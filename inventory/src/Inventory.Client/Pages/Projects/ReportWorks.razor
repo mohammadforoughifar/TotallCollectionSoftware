@@ -5,6 +5,7 @@
 @inject IAuthState Auth
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject HttpClient Http
 
 <PageTitle>گزارش‌های کار</PageTitle>
 
@@ -20,6 +21,16 @@
     .sort-ic { font-size: .68rem; margin-right: .15rem; vertical-align: middle; }
     .sort-ic.muted { color: #cbd5e1; }
     .sort-ic.active { color: #6366f1; }
+
+    /* ---------- سطر جستجوی سرستون‌ها ---------- */
+    .col-filter-row th { background: #fafafa; padding: .3rem .4rem; border-bottom: 2px solid #eef2f7; }
+    .col-filter-input {
+        width: 100%; border: 1px solid #e5e7eb; border-radius: 7px; padding: .18rem .45rem;
+        font-size: .78rem; background: #fff; outline: none;
+    }
+    .col-filter-input:focus { border-color: #a5b4fc; box-shadow: 0 0 0 2px rgba(99,102,241,.12); }
+    .col-filter-clear { border: 0; background: #fff1f2; color: #e11d48; border-radius: 7px; font-size: .72rem; padding: .18rem .5rem; }
+    .col-filter-clear:hover { background: #ffe4e6; }
 
     /* ---------- سوییچ نمای جدول/کارت ---------- */
     .view-toggle { display: inline-flex; background: rgba(255,255,255,.22); border-radius: 9px; padding: 2px; }
@@ -51,20 +62,34 @@
     <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2"
          style="background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:14px 14px 0 0;">
         <span><i class="bi bi-clock-history me-2"></i>گزارش‌های کار
-            <span class="badge bg-light text-dark ms-1">@items.Count.FaDigits()</span>
+            <span class="badge bg-light text-dark ms-1" title="تعداد کل گزارش‌های منطبق با فیلترها">@total.FaDigits() رکورد</span>
+            @if (HasAnyFilter)
+            {
+                <span class="badge bg-warning text-dark ms-1">فیلتر فعال</span>
+            }
         </span>
         <div class="d-flex gap-2 align-items-center">
             <div class="view-toggle" title="تغییر حالت نمایش لیست">
                 <button class="@(!viewCards ? "on" : "")" title="نمای جدولی" @onclick="() => SetView(false)"><i class="bi bi-table"></i></button>
                 <button class="@(viewCards ? "on" : "")" title="نمای کارت" @onclick="() => SetView(true)"><i class="bi bi-grid-3x2-gap"></i></button>
             </div>
-            @if (Auth.Has("ReportWorks.Read") && items.Count > 0)
+            @if (Auth.Has("ReportWorks.Read") && total > 0)
             {
                 <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#065f46;"
-                        title="چاپ گزارش‌های همین لیست (طبق فیلتر جاری)" @onclick="PrintList" disabled="@printing">
+                        title="چاپ همهٔ گزارش‌های منطبق با فیلترهای جاری (نه فقط این صفحه)" @onclick="PrintList" disabled="@printing">
                     @if (printing) { <span class="spinner-border spinner-border-sm"></span> }
                     else { <i class="bi bi-printer"></i> }
                     چاپ
+                </button>
+            }
+            @if (Auth.Has("ReportWorks.Export") && total > 0)
+            {
+                <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#047857;"
+                        title="خروجی اکسل بر اساس فیلترهای جاری (اگر فیلتری نباشد، همهٔ گزارش‌ها)"
+                        @onclick="ExportExcel" disabled="@exporting">
+                    @if (exporting) { <span class="spinner-border spinner-border-sm"></span> }
+                    else { <i class="bi bi-file-earmark-excel"></i> }
+                    خروجی اکسل
                 </button>
             }
             @if (Auth.Has("ReportWorks.Create"))
@@ -80,15 +105,15 @@
     <div class="card">
         <div class="card-body">
             <div class="row g-2 align-items-center">
-                <div class="col-md-3"><SearchSelect Items="lookups.Projects" @bind-Value="filterProject" Placeholder="همه پروژه‌ها" /></div>
-                <div class="col-md-2"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" Placeholder="همه ثبت‌کننده‌ها" /></div>
-                <div class="col-md-2"><SearchSelect Items="lookups.Operators" @bind-Value="filterOperator" Placeholder="همه اپراتورها" /></div>
-                <div class="col-md-2"><DatePicker @bind-Value="filterFrom" Placeholder="از تاریخ" /></div>
-                <div class="col-md-2"><DatePicker @bind-Value="filterTo" Placeholder="تا تاریخ" /></div>
+                <div class="col-md-3"><SearchSelect Items="lookups.Projects" @bind-Value="filterProject" @bind-Value:after="OnFilterChanged" Placeholder="همه پروژه‌ها" /></div>
+                <div class="col-md-1"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" @bind-Value:after="OnFilterChanged" Placeholder="ثبت‌کننده" /></div>
+                <div class="col-md-2"><SearchSelect Items="lookups.Operators" @bind-Value="filterOperator" @bind-Value:after="OnFilterChanged" Placeholder="همه اپراتورها" /></div>
+                <div class="col-md-1"><DatePicker @bind-Value="filterFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                <div class="col-md-1"><DatePicker @bind-Value="filterTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
                 <div class="col-md-1">
                     <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
                 </div>
-                <div class="col-12 text-end fs-8 text-muted">جمع: @Fmt(SumSpent())</div>
+                <div class="col-md-3 text-end fs-8 text-muted" title="جمع ساعت خالص همهٔ ردیف‌های فیلترشده">جمع: @Fmt(SumSpent())</div>
             </div>
         </div>
     </div>
@@ -100,7 +125,7 @@
         {
             <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
         }
-        else if (Paged.Count == 0)
+        else if (Paged.Count == 0 && !HasAnyFilter)
         {
             <div class="empty-state"><i class="bi bi-clock"></i><h5>گزارش کاری یافت نشد</h5></div>
         }
@@ -123,6 +148,26 @@
                             <th class="sortable" @onclick='() => SortBy("spent")'>ساعت خالص @((MarkupString)SortIcon("spent"))</th>
                             <th>شرح کار</th>
                             <th class="text-end">عملیات</th>
+                        </tr>
+                        <tr class="col-filter-row">
+                            <th><DateFilterInput @bind-Text="fDate" @bind-Text:after="OnFilterChanged" /></th>
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fCode" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fProject" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                            <th></th>
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fUser" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                            <th><input class="col-filter-input" placeholder="ساعت — مثلا 8" @bind="fStart" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
+                            <th><input class="col-filter-input" placeholder="ساعت — مثلا 17" @bind="fEnd" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
+                            <th><input class="col-filter-input" placeholder="مثلا 1:00" @bind="fRest" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
+                            <th><input class="col-filter-input" placeholder="مثلا 7" @bind="fSpent" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
+                            <th><input class="col-filter-input" placeholder="🔍 در شرح کار" @bind="fDesc" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                            <th class="text-end">
+                                @if (HasColFilter)
+                                {
+                                    <button class="col-filter-clear" title="پاک کردن جستجوی ستون‌ها" @onclick="ClearColFilters">
+                                        <i class="bi bi-x-lg"></i> پاک کردن
+                                    </button>
+                                }
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -169,6 +214,13 @@
                         }
                     </tbody>
                 </table>
+                @if (Paged.Count == 0)
+                {
+                    <div class="text-center text-muted fs-8 py-4">
+                        <i class="bi bi-search"></i> با این جستجوی ستون‌ها موردی پیدا نشد.
+                        <button class="btn btn-link btn-sm" @onclick="ClearColFilters">پاک کردن جستجوها</button>
+                    </div>
+                }
             </div>
         }
         else
@@ -220,7 +272,10 @@
             </div>
         }
 
-        <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+        <Pager Page="page" PageCount="PageCount" OnPageChanged="GoToPage" />
+        <div class="text-center text-muted fs-8 pb-3">
+            نمایش @Paged.Count.FaDigits() رکورد از @total.FaDigits() — صفحهٔ @page.FaDigits() از @PageCount.FaDigits()
+        </div>
         }
     </div>
 </div>
@@ -246,9 +301,9 @@
                 <span class="fs-8 text-muted">(ثبت خودکار با کاربر جاری)</span>
             </div>
         </div>
-        <div class="col-md-12">
-            <label class="form-label"><i class="bi bi-person-gear text-muted ms-1"></i>اپراتور <span class="fs-8 text-muted">(کسی که کار را انجام داده — از لیست کاربران)</span></label>
-            <SearchSelect Items="lookups.Operators" Value="form.OperatorId ?? 0" ValueChanged="v => form.OperatorId = v > 0 ? v : null" Placeholder="انتخاب اپراتور… (اختیاری)" />
+        <div class="col-md-6">
+            <label class="form-label"><i class="bi bi-person-gear text-muted ms-1"></i>اپراتور <span class="fs-8 text-muted">(کسی که کار را انجام داده — اختیاری)</span></label>
+            <SearchSelect Items="lookups.Operators" Value="form.OperatorId ?? 0" ValueChanged="v => form.OperatorId = v > 0 ? v : null" Placeholder="انتخاب اپراتور…" />
         </div>
         <div class="col-md-4">
             <label class="form-label">تاریخ گزارش <span class="text-danger">*</span></label>
@@ -286,16 +341,41 @@
 </Modal>
 
 @code {
+    // ردیف‌های «همین صفحه» (صفحه‌بندی، فیلتر و مرتب‌سازی همگی سمت سرور انجام می‌شوند)
     private List<ReportWorkDto> items = new();
+    private int total;              // تعداد کل ردیف‌های منطبق با فیلترها
+    private int pageCount = 1;
+    private TimeSpan sumSpent;      // جمع ساعت خالص روی کل ردیف‌های فیلترشده
     private ProjectLookups lookups = new();
     private bool loading = true;
     private int filterProject, filterUser, filterOperator;
     private DateTime? filterFrom, filterTo;
 
+    // ---------- جستجوی سرستون‌ها ----------
+    private string fDate = "", fCode = "", fProject = "", fUser = "";
+    private string fStart = "", fEnd = "", fRest = "", fSpent = "", fDesc = "";
+
+    private bool HasColFilter =>
+        !string.IsNullOrWhiteSpace(fDate) || !string.IsNullOrWhiteSpace(fCode) ||
+        !string.IsNullOrWhiteSpace(fProject) || !string.IsNullOrWhiteSpace(fUser) ||
+        !string.IsNullOrWhiteSpace(fStart) || !string.IsNullOrWhiteSpace(fEnd) ||
+        !string.IsNullOrWhiteSpace(fRest) || !string.IsNullOrWhiteSpace(fSpent) ||
+        !string.IsNullOrWhiteSpace(fDesc);
+
+    private bool HasAnyFilter => HasColFilter || filterProject > 0 || filterUser > 0 || filterOperator > 0
+        || filterFrom.HasValue || filterTo.HasValue;
+
+    private async Task ClearColFilters()
+    {
+        fDate = fCode = fProject = fUser = fStart = fEnd = fRest = fSpent = fDesc = "";
+        page = 1;
+        await Load();
+    }
+
     private ReportWorkDto form = new();
     private bool showModal, saving;
     private bool editing => form.Id != 0;
-    private bool printing;
+    private bool printing, exporting;
 
     /// <summary>
     /// کمبوی پروژه در فرم ثبت/ویرایش: فقط پروژه‌های تاییدشده (ReportableProjects).
@@ -319,26 +399,69 @@
     private DateTime reportDate = DateTime.Today;
 
     private int page = 1;
-    private const int PageSize = 12;
-    private int PageCount => Math.Max(1, (int)Math.Ceiling(items.Count / (double)PageSize));
-    private List<ReportWorkDto> Paged
+    private const int PageSize = 20; // هر بار فقط ۲۰ رکورد از دیتابیس خوانده می‌شود
+
+    private int PageCount => Math.Max(1, pageCount);
+
+    /// <summary>ردیف‌های صفحهٔ جاری — سرور همین‌ها را فرستاده است</summary>
+    private List<ReportWorkDto> Paged => items;
+
+    private async Task GoToPage(int p)
     {
-        get
-        {
-            if (page > PageCount) page = PageCount;
-            return SortedList().Skip((page - 1) * PageSize).Take(PageSize).ToList();
-        }
+        if (p == page) return;
+        page = p;
+        await Load();
+    }
+
+    /// <summary>ساخت پارامترهای کوئری از فیلترهای فعلی (مشترک بین لیست، چاپ و اکسل)</summary>
+    private ReportWorkListQuery BuildQuery(int pageSize) => new()
+    {
+        ProjectId = filterProject > 0 ? filterProject : null,
+        UserId = filterUser > 0 ? filterUser : null,
+        OperatorId = filterOperator > 0 ? filterOperator : null,
+        From = filterFrom,
+        To = filterTo,
+        FDate = fDate,
+        FCode = fCode,
+        FProject = fProject,
+        FUser = fUser,
+        FStart = fStart,
+        FEnd = fEnd,
+        FRest = fRest,
+        FSpent = fSpent,
+        FDesc = fDesc,
+        Sort = sortKey,
+        Desc = !sortAsc,
+        Page = page,
+        PageSize = pageSize
+    };
+
+    /// <summary>تغییر هر فیلتر: صفحهٔ ۱ + بارگذاری دوباره با تأخیر کوتاه (ضدلرزش)</summary>
+    private CancellationTokenSource? filterCts;
+
+    private async Task OnFilterChanged()
+    {
+        page = 1;
+        filterCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        filterCts = cts;
+        try { await Task.Delay(350, cts.Token); }
+        catch (TaskCanceledException) { return; }
+        if (cts.IsCancellationRequested) return;
+        await Load();
+        StateHasChanged();
     }
 
     // ---------- مرتب‌سازی (صعودی/نزولی) ----------
     private string sortKey = "date";
     private bool sortAsc; // پیش‌فرض: روی تاریخ، نزولی (جدیدترین‌ها اول)
 
-    private void SortBy(string key)
+    private async Task SortBy(string key)
     {
         if (sortKey == key) sortAsc = !sortAsc;
         else { sortKey = key; sortAsc = true; }
         page = 1;
+        await Load(); // مرتب‌سازی روی کل رکوردها در دیتابیس انجام می‌شود
     }
 
     private string SortIcon(string key)
@@ -347,34 +470,6 @@
             : sortAsc
                 ? "<i class=\"bi bi-caret-up-fill sort-ic active\"></i>"
                 : "<i class=\"bi bi-caret-down-fill sort-ic active\"></i>";
-
-    private IEnumerable<T> ApplyDir<T, K>(IEnumerable<T> src, Func<T, K> key)
-        => sortAsc ? src.OrderBy(key) : src.OrderByDescending(key);
-
-    /// <summary>کدهای عددی عددی و قبل از کدهای RE مرتب شوند</summary>
-    private static string CodeKey(string? s)
-    {
-        var t = (s ?? "").Trim();
-        return long.TryParse(Fa.ToEn(t), out var n) ? "0" + n.ToString("D20") : "1" + t.ToLowerInvariant();
-    }
-
-    private List<ReportWorkDto> SortedList()
-    {
-        var src = items.AsEnumerable();
-        IEnumerable<ReportWorkDto> q = sortKey switch
-        {
-            "code" => ApplyDir(src, r => CodeKey(r.CodeProject)),
-            "project" => ApplyDir(src, r => r.ProjectName ?? ""),
-            "user" => ApplyDir(src, r => r.UserName ?? ""),
-            "operator" => ApplyDir(src, r => r.OperatorName ?? ""),
-            "start" => ApplyDir(src, r => r.StartTime.Ticks),
-            "end" => ApplyDir(src, r => r.EndTime.Ticks),
-            "rest" => ApplyDir(src, r => (r.BreakfastTime.ToTimeSpan() + r.LunchTime.ToTimeSpan()).Ticks),
-            "spent" => ApplyDir(src, r => r.SpentTime.Ticks),
-            _ => ApplyDir(src, r => (r.ReportDate.Ticks / TimeSpan.TicksPerDay) * 100000L + r.Id),
-        };
-        return q.ToList();
-    }
 
     // ---------- نمای جدول/کارت (با حفظ انتخاب کاربر) ----------
     private bool viewCards;
@@ -402,20 +497,26 @@
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("گزارش‌های کار");
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
         try { lookups = await ProjectSvc.GetLookupsAsync(); } catch { /* دسترسی نداشت */ }
         await Load();
     }
 
+    /// <summary>
+    /// خواندن «فقط یک صفحه» از سرور — فیلترها، مرتب‌سازی، شمارش و جمع ساعت‌ها همه در دیتابیس.
+    /// </summary>
     private async Task Load()
     {
         loading = true;
         try
         {
-            items = await ReportSvc.GetAllAsync(
-                filterProject > 0 ? filterProject : null,
-                filterUser > 0 ? filterUser : null,
-                filterFrom, filterTo,
-                filterOperator > 0 ? filterOperator : null);
+            var res = await ReportSvc.GetPagedAsync(BuildQuery(PageSize));
+            items = res.Items;
+            total = res.Total;
+            pageCount = res.PageCount;
+            sumSpent = TimeSpan.FromTicks(res.SumTicks ?? 0);
+            if (page > pageCount) page = pageCount;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -496,12 +597,19 @@
 
     // ==================== چاپ لیست (طبق فیلتر جاری) ====================
 
+    /// <summary>چاپ «همهٔ» گزارش‌های منطبق با فیلترهای جاری (نه فقط صفحهٔ نمایش‌داده‌شده)</summary>
     private async Task PrintList()
     {
-        if (items.Count == 0) { Toast.Error("گزارشی برای چاپ وجود ندارد."); return; }
+        if (total == 0) { Toast.Error("گزارشی برای چاپ وجود ندارد."); return; }
         printing = true;
         try
         {
+            // PageSize=0 یعنی «همهٔ ردیف‌های منطبق با فیلتر» — چاپ دقیقاً همان چیزی است که فیلتر شده
+            var all = await ReportSvc.GetPagedAsync(BuildQuery(0));
+            var rows = all.Items;
+            if (rows.Count == 0) { Toast.Error("گزارشی برای چاپ وجود ندارد."); return; }
+            var printSum = TimeSpan.FromTicks(all.SumTicks ?? rows.Sum(r => r.SpentTime.Ticks));
+
             var opt = new PrintTableOptions
             {
                 Title = "گزارش‌های کار",
@@ -513,10 +621,11 @@
                     $"اپراتور: {(filterOperator > 0 ? lookups.Operators.FirstOrDefault(x => x.Id == filterOperator)?.Name ?? "—" : "همه")}",
                     $"از تاریخ: {(filterFrom?.ToFaDate() ?? "—")}",
                     $"تا تاریخ: {(filterTo?.ToFaDate() ?? "—")}",
-                    $"تعداد گزارش‌ها: {items.Count.FaDigits()}"
+                    $"جستجوی سرستون‌ها: {(HasColFilter ? "اعمال شده" : "—")}",
+                    $"تعداد گزارش‌ها: {rows.Count.FaDigits()}"
                 },
                 Headers = new List<string> { "ردیف", "تاریخ", "کد پروژه", "پروژه", "اپراتور", "ثبت‌کننده", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
-                Rows = items.Select((r, i) => new List<string>
+                Rows = rows.Select((r, i) => new List<string>
                 {
                     (i + 1).FaDigits(),
                     r.ReportDate.ToFaDate(),
@@ -530,7 +639,7 @@
                     r.SpentTime.HoursFa(),
                     r.WorkDescription ?? ""
                 }).ToList(),
-                FooterTotal = $"جمع ساعت کار خالص: {SumSpent().HoursFa()} ساعت — تعداد گزارش‌ها: {items.Count.FaDigits()}",
+                FooterTotal = $"جمع ساعت کار خالص: {printSum.HoursFa()} ساعت — تعداد گزارش‌ها: {rows.Count.FaDigits()}",
                 PrintedAt = DateTime.Now.ToFaDateTime().FaDigits(),
                 PrintedBy = Auth.DisplayName
             };
@@ -540,9 +649,42 @@
         finally { printing = false; }
     }
 
+    // ==================== خروجی اکسل (طبق فیلترهای جاری) ====================
+
+    /// <summary>خروجی اکسل گزارش‌های کار — دقیقاً با همان فیلترهای اعمال‌شده در لیست</summary>
+    private async Task ExportExcel()
+    {
+        exporting = true;
+        try
+        {
+            var qs = BuildQuery(0).ToQueryString(); // ۰ = همهٔ ردیف‌های منطبق با فیلتر
+            var resp = await Http.GetAsync($"/api/reportworks/export?{qs}");
+            if (!resp.IsSuccessStatusCode)
+            {
+                var msg = "خروجی اکسل ناموفق بود.";
+                try
+                {
+                    var body = await resp.Content.ReadAsStringAsync();
+                    using var doc = System.Text.Json.JsonDocument.Parse(body);
+                    if (doc.RootElement.TryGetProperty("message", out var m)) msg = m.GetString() ?? msg;
+                }
+                catch { msg += $" (HTTP {(int)resp.StatusCode})"; }
+                Toast.Error(msg);
+                return;
+            }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            await JS.InvokeVoidAsync("downloadBlob", $"report_works_{DateTime.Now:yyyyMMdd_HHmm}.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Convert.ToBase64String(bytes));
+            Toast.Success(HasAnyFilter ? "خروجی اکسل بر اساس فیلترهای جاری آماده شد." : "خروجی اکسل همهٔ گزارش‌ها آماده شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { exporting = false; }
+    }
+
     // ==================== محاسبات نمایشی ====================
 
-    private TimeSpan SumSpent() => TimeSpan.FromTicks(items.Sum(r => r.SpentTime.Ticks));
+    /// <summary>جمع ساعت خالص روی «همهٔ» ردیف‌های فیلترشده (از سرور می‌آید، نه فقط صفحهٔ جاری)</summary>
+    private TimeSpan SumSpent() => sumSpent;
 
     /// <summary>نمایش بازه زمانی با ارقام فارسی — مثلاً «۸:۳۰ ساعت»</summary>
     private static string Fmt(TimeSpan t) => $"{t.HoursFa()} ساعت";
