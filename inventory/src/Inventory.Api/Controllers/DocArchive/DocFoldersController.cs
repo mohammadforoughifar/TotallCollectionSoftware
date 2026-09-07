@@ -14,8 +14,13 @@ namespace Inventory.Api.Controllers.DocArchive;
 public class DocFoldersController : RbacControllerBase
 {
     private readonly IDocAccessService _access;
+    private readonly IDocFolderZipService _zipService;
 
-    public DocFoldersController(AppDbContext db, IDocAccessService access) : base(db) => _access = access;
+    public DocFoldersController(AppDbContext db, IDocAccessService access, IDocFolderZipService zipService) : base(db)
+    {
+        _access = access;
+        _zipService = zipService;
+    }
 
     private const string Mod = "DocArchive";
     private Task<bool> IsManagerAsync() => HasAsync(Mod, "Manage");
@@ -257,5 +262,73 @@ public class DocFoldersController : RbacControllerBase
             .ToListAsync();
 
         return Ok(new DocArchiveLookups { Users = users, Documents = docs });
+    }
+
+    /// <summary>
+    /// دانلود درختی یک پوشه و زیرپوشه‌ها به صورت یک فایل ZIP کامل به همراه پیوست‌ها و شناسنامه Excel.
+    /// </summary>
+    [HttpGet("{id:int}/export-zip")]
+    public async Task<IActionResult> ExportFolderZip(
+        int id,
+        [FromQuery] bool includeSubfolders = true,
+        [FromQuery] bool onlyActiveVersions = true,
+        [FromQuery] bool includeManifest = true)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        try
+        {
+            var manager = await IsManagerAsync();
+            var (zipBytes, fileName) = await _zipService.ExportZipAsync(
+                id, includeSubfolders, onlyActiveVersions, includeManifest, MyUserId, manager);
+
+            return File(zipBytes, "application/zip", fileName);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"خطا در ایجاد فایل ZIP: {ex.Message}" });
+        }
+    }
+
+    /// <summary>
+    /// دانلود درختی کل آرشیو مجاز یا پوشه فیلترشده در قالب فایل ZIP.
+    /// </summary>
+    [HttpGet("/api/doc-archive/export-zip")]
+    public async Task<IActionResult> ExportAllZip(
+        [FromQuery] int? folderId = null,
+        [FromQuery] bool includeSubfolders = true,
+        [FromQuery] bool onlyActiveVersions = true,
+        [FromQuery] bool includeManifest = true)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        try
+        {
+            var manager = await IsManagerAsync();
+            var (zipBytes, fileName) = await _zipService.ExportZipAsync(
+                folderId, includeSubfolders, onlyActiveVersions, includeManifest, MyUserId, manager);
+
+            return File(zipBytes, "application/zip", fileName);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = $"خطا در ایجاد فایل ZIP: {ex.Message}" });
+        }
     }
 }

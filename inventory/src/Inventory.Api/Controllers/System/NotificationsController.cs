@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Controllers;
 
-/// <summary>اعلان‌های کاربر جاری — لیست، شمارش نخوانده و علامت‌گذاری.</summary>
+/// <summary>اعلان‌های کاربر جاری — لیست، شمارش نخوانده و علامت‌گذاری با تفکیک و ایزولاسیون کامل کاربران.</summary>
 [ApiController]
 [Route("api/notifications")]
 [Authorize]
@@ -16,24 +16,46 @@ public class NotificationsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IMessengerService _messenger;
     private readonly IPushService _push;
-    public NotificationsController(AppDbContext db, IMessengerService messenger, IPushService push) { _db = db; _messenger = messenger; _push = push; }
+    public NotificationsController(AppDbContext db, IMessengerService messenger, IPushService push)
+    {
+        _db = db;
+        _messenger = messenger;
+        _push = push;
+    }
 
-    private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
+    private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) && v > 0 ? v : 0;
 
     [HttpGet]
-    public async Task<IActionResult> My([FromQuery] int take = 50) =>
-        Ok(await _db.AppNotifications.Where(n => n.UserId == MyUserId)
-            .OrderByDescending(n => n.Id).Take(take)
+    public async Task<IActionResult> My([FromQuery] int take = 50)
+    {
+        if (MyUserId <= 0) return Unauthorized();
+
+        var list = await _db.AppNotifications.AsNoTracking()
+            .Where(n => n.UserId == MyUserId)
+            .OrderByDescending(n => n.Id)
+            .Take(Math.Min(take, 100))
             .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt })
-            .ToListAsync());
+            .ToListAsync();
+
+        return Ok(list);
+    }
 
     [HttpGet("unread-count")]
-    public async Task<IActionResult> UnreadCount() =>
-        Ok(new { count = await _db.AppNotifications.CountAsync(n => n.UserId == MyUserId && !n.IsRead) });
+    public async Task<IActionResult> UnreadCount()
+    {
+        if (MyUserId <= 0) return Unauthorized();
+
+        var count = await _db.AppNotifications.AsNoTracking()
+            .CountAsync(n => n.UserId == MyUserId && !n.IsRead);
+
+        return Ok(new { count });
+    }
 
     [HttpPost("{id:int}/read")]
     public async Task<IActionResult> MarkRead(int id)
     {
+        if (MyUserId <= 0) return Unauthorized();
+
         var n = await _db.AppNotifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == MyUserId);
         if (n == null) return NotFound();
         n.IsRead = true;
@@ -53,14 +75,17 @@ public class NotificationsController : ControllerBase
     [HttpPost("test-messenger")]
     public async Task<IActionResult> TestMessenger()
     {
+        if (MyUserId <= 0) return Unauthorized();
         await _messenger.SendToUserAsync(MyUserId, "پیام آزمایشی", "اتصال بله/ایتا برقرار است ✅");
         return Ok(new { message = "در صورت تنظیم توکن و شناسه چت، پیام ارسال شد." });
     }
 
-    /// <summary>پاک کردن همه اعلان‌های کاربر (کلیر کامل زنگ).</summary>
+    /// <summary>پاک کردن همه اعلان‌های کاربر جاری.</summary>
     [HttpDelete("clear-all")]
     public async Task<IActionResult> ClearAll()
     {
+        if (MyUserId <= 0) return Unauthorized();
+
         var list = await _db.AppNotifications.Where(n => n.UserId == MyUserId).ToListAsync();
         _db.AppNotifications.RemoveRange(list);
         await _db.SaveChangesAsync();
@@ -70,6 +95,8 @@ public class NotificationsController : ControllerBase
     [HttpPost("read-all")]
     public async Task<IActionResult> MarkAllRead()
     {
+        if (MyUserId <= 0) return Unauthorized();
+
         var list = await _db.AppNotifications.Where(n => n.UserId == MyUserId && !n.IsRead).ToListAsync();
         foreach (var n in list) n.IsRead = true;
         await _db.SaveChangesAsync();
@@ -86,6 +113,7 @@ public class NotificationsController : ControllerBase
     [HttpPost("push-subscribe")]
     public async Task<IActionResult> PushSubscribe([FromBody] PushSubscribeInput? input)
     {
+        if (MyUserId <= 0) return Unauthorized();
         if (input == null || string.IsNullOrWhiteSpace(input.Endpoint))
             return BadRequest(new { message = "اندپوینت اشتراک ارسال نشده است." });
 
@@ -98,6 +126,7 @@ public class NotificationsController : ControllerBase
     [HttpPost("push-unsubscribe")]
     public async Task<IActionResult> PushUnsubscribe([FromBody] PushUnsubscribeInput? input)
     {
+        if (MyUserId <= 0) return Unauthorized();
         if (input != null && !string.IsNullOrWhiteSpace(input.Endpoint))
             await _push.RemoveSubscriptionAsync(MyUserId, input.Endpoint);
         return Ok(new { ok = true });
@@ -107,6 +136,7 @@ public class NotificationsController : ControllerBase
     [HttpPost("test-push")]
     public async Task<IActionResult> TestPush()
     {
+        if (MyUserId <= 0) return Unauthorized();
         await _push.SendToUserAsync(MyUserId, "✅ آزمون نوتیفیکیشن",
             "اگر این پیام بالای صفحه‌ی گوشی/تبلت شما آمد، Web Push فعال است.",
             null);

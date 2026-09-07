@@ -1543,3 +1543,305 @@ button.nav-toggle:focus-visible{outline:none;}
     border: 1px dashed var(--border); border-radius: 12px; padding: .8rem; background: #fbfdff;
 }
 .attr-empty { text-align: center; color: var(--text-soft); font-size: .84rem; padding: 1.2rem .5rem; }
+
+/* =========================================================================
+   ماژول پیام‌رسان سازمانی مشابه تلگرام (Enterprise Telegram-Style Chat)
+   ========================================================================= */
+.telegram-container {
+    display: flex; height: calc(100vh - 85px); background: #ffffff;
+    border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin: -0.5rem -0.5rem 0 -0.5rem;
+}
+
+/* ستون گفتگوها (Sidebar) */
+.telegram-sidebar {
+    width: 340px; min-width: 300px; max-width: 380px; display: flex; flex-direction: column;
+    border-left: 1px solid #e2e8f0; background: #f8fafc;
+}
+.sidebar-header {
+    padding: 0.9rem 1rem 0.6rem 1rem; background: #ffffff; border-bottom: 1px solid #e2e8f0;
+}
+.chat-avatar-self {
+    width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+}
+.chat-search-wrap {
+    position: relative; display: flex; align-items: center;
+}
+.chat-search-wrap .search-icon {
+    position: absolute; right: 10px; color: #94a3b8; font-size: 0.85rem; pointer-events: none;
+}
+.chat-search-input {
+    padding-right: 32px; padding-left: 28px; border-radius: 20px; background: #f1f5f9; border: 1px solid transparent;
+}
+.chat-search-input:focus {
+    background: #ffffff; border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+.btn-clear-search {
+    position: absolute; left: 8px; background: transparent; border: none; color: #94a3b8; cursor: pointer;
+}
+.chat-filter-tabs {
+    display: flex; gap: 0.3rem; overflow-x: auto; padding-bottom: 0.2rem;
+}
+.chat-filter-tabs .tab-btn {
+    background: transparent; border: none; font-size: 0.78rem; font-weight: 600; color: #64748b;
+    padding: 0.3rem 0.7rem; border-radius: 14px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.chat-filter-tabs .tab-btn.active {
+    background: #0284c7; color: #ffffff;
+}
+.tab-unread-pill {
+    background: #ef4444; color: #ffffff; font-size: 0.68rem; padding: 1px 5px; border-radius: 10px; margin-right: 3px;
+}
+
+/* لیست دیالوگ‌ها */
+.dialogs-list {
+    flex: 1; overflow-y: auto;
+}
+.dialog-item {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; cursor: pointer;
+    border-bottom: 1px solid #f1f5f9; transition: background 0.15s; position: relative;
+}
+.dialog-item:hover {
+    background: #f1f5f9;
+}
+.dialog-item.active {
+    background: #e0f2fe; border-right: 3px solid #0284c7;
+}
+.dialog-item.pinned {
+    background: #fdfbf7;
+}
+.dialog-avatar-wrap {
+    position: relative; flex-shrink: 0;
+}
+.dialog-avatar {
+    width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem; color: #ffffff;
+}
+.dialog-avatar.sm {
+    width: 36px; height: 36px; font-size: 1rem;
+}
+.direct-avatar {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+}
+.group-avatar {
+    background: linear-gradient(135deg, #10b981, #059669);
+}
+.online-indicator {
+    position: absolute; bottom: 1px; left: 1px; width: 11px; height: 11px; background: #22c55e;
+    border: 2px solid #ffffff; border-radius: 50%;
+}
+.online-indicator.sm {
+    width: 9px; height: 9px;
+}
+.dialog-info {
+    flex: 1; min-width: 0;
+}
+.dialog-top {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;
+}
+.dialog-title {
+    font-weight: 700; font-size: 0.85rem; color: #1e293b;
+}
+.dialog-time {
+    font-size: 0.7rem; color: #94a3b8; flex-shrink: 0;
+}
+.dialog-bottom {
+    display: flex; justify-content: space-between; align-items: center;
+}
+.dialog-snippet {
+    font-size: 0.78rem; color: #64748b;
+}
+.unread-badge {
+    background: #0284c7; color: #ffffff; font-size: 0.7rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 12px; min-width: 20px; text-align: center;
+}
+
+/* پنجره پیام‌ها (Main Chat) */
+.telegram-main {
+    flex: 1; display: flex; flex-direction: column; background: #f8fafc;
+    background-image: radial-gradient(#e2e8f0 1px, transparent 1px); background-size: 20px 20px;
+}
+.chat-placeholder {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+}
+.placeholder-card {
+    text-align: center; background: #ffffff; padding: 2.5rem 3rem; border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); border: 1px solid #e2e8f0; max-width: 440px;
+}
+.placeholder-icon {
+    width: 70px; height: 70px; border-radius: 50%; background: #e0f2fe; color: #0284c7;
+    display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 1.2rem auto;
+}
+.chat-header {
+    height: 60px; background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 0 1.2rem;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.pinned-bar {
+    background: #fffbeb; border-bottom: 1px solid #fef3c7; padding: 0.4rem 1rem;
+    display: flex; align-items: center; font-size: 0.8rem; color: #92400e;
+}
+.chat-messages-scroll {
+    flex: 1; overflow-y: auto; padding: 1.2rem 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;
+}
+
+/* حباب‌های پیام */
+.system-message-row {
+    display: flex; justify-content: center; margin: 0.4rem 0;
+}
+.system-bubble {
+    background: rgba(100, 116, 139, 0.2); color: #334155; font-size: 0.72rem; padding: 3px 12px;
+    border-radius: 12px; font-weight: 600;
+}
+.message-row {
+    display: flex; width: 100%; position: relative;
+}
+.message-row.outgoing {
+    justify-content: flex-start; /* در چت RTL پیام ارسالی سمت راست */
+}
+.message-row.incoming {
+    justify-content: flex-end;
+}
+.message-bubble {
+    max-width: 72%; padding: 0.6rem 0.85rem; border-radius: 14px; position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); font-size: 0.86rem; line-height: 1.45;
+}
+.bubble-out {
+    background: #dcf8c6; color: #1e293b; border-bottom-right-radius: 4px;
+}
+.bubble-in {
+    background: #ffffff; color: #1e293b; border-bottom-left-radius: 4px;
+}
+.bubble-sender {
+    font-size: 0.74rem; font-weight: 700; color: #0284c7; margin-bottom: 0.2rem;
+}
+.bubble-reply-preview {
+    display: flex; background: rgba(0, 0, 0, 0.04); border-radius: 6px; padding: 0.3rem 0.5rem;
+    margin-bottom: 0.4rem; cursor: pointer; gap: 0.4rem;
+}
+.reply-bar {
+    width: 3px; background: #0284c7; border-radius: 3px;
+}
+.reply-sender {
+    font-size: 0.7rem; font-weight: 700; color: #0284c7;
+}
+.reply-text {
+    font-size: 0.72rem; color: #64748b;
+}
+.bubble-text {
+    word-break: break-word; white-space: pre-wrap;
+}
+.bubble-footer {
+    display: flex; align-items: center; justify-content: flex-end; gap: 0.3rem; margin-top: 0.2rem;
+}
+.bubble-time {
+    font-size: 0.65rem; color: #64748b;
+}
+.edited-label {
+    font-size: 0.62rem; color: #94a3b8; font-style: italic;
+}
+.bubble-checks {
+    font-size: 0.85rem; line-height: 1;
+}
+
+/* پیوست‌ها و کارت‌های ERP */
+.bubble-image-wrap {
+    margin-bottom: 0.4rem; border-radius: 10px; overflow: hidden; max-height: 280px;
+}
+.bubble-img {
+    width: 100%; height: auto; object-fit: cover; cursor: pointer; border-radius: 10px;
+}
+.bubble-file-card {
+    display: flex; align-items: center; gap: 0.6rem; background: rgba(0, 0, 0, 0.04);
+    padding: 0.5rem 0.7rem; border-radius: 10px; margin-bottom: 0.4rem;
+}
+.file-dl-btn {
+    border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+}
+.bubble-erp-card {
+    background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+}
+
+/* واکنش‌ها */
+.bubble-reactions {
+    display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem;
+}
+.reaction-pill {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1px 7px;
+    font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: all 0.15s;
+}
+.reaction-pill.active {
+    background: #e0f2fe; border-color: #0284c7;
+}
+.reaction-pill .count {
+    font-size: 0.68rem; font-weight: 700; color: #475569;
+}
+
+/* منوی سریع روی پیام */
+.bubble-actions-overlay {
+    position: absolute; top: -14px; left: 10px; background: #ffffff; border: 1px solid #e2e8f0;
+    border-radius: 18px; padding: 2px 6px; display: none; align-items: center; gap: 4px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1); z-index: 10;
+}
+.message-bubble:hover .bubble-actions-overlay {
+    display: flex;
+}
+.bubble-actions-overlay .action-btn {
+    background: transparent; border: none; font-size: 0.75rem; padding: 2px 5px; border-radius: 6px;
+    cursor: pointer; color: #64748b;
+}
+.bubble-actions-overlay .action-btn:hover {
+    background: #f1f5f9; color: #0284c7;
+}
+
+/* ورودی پیام */
+.chat-input-area {
+    background: #ffffff; border-top: 1px solid #e2e8f0; padding: 0.6rem 1rem; position: relative;
+}
+.input-banner {
+    display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.8rem;
+    border-radius: 8px; margin-bottom: 0.5rem;
+}
+.reply-banner { background: #e0f2fe; border: 1px solid #bae6fd; }
+.edit-banner { background: #fef3c7; border: 1px solid #fde68a; }
+.input-row {
+    display: flex; align-items: center; gap: 0.5rem;
+}
+.btn-attach {
+    color: #64748b; cursor: pointer; padding: 0.35rem 0.6rem; border-radius: 50%;
+}
+.btn-attach:hover { background: #f1f5f9; color: #0284c7; }
+.emoji-quick-bar {
+    display: flex; gap: 2px;
+}
+.btn-emoji {
+    background: transparent; border: none; font-size: 1.1rem; cursor: pointer; padding: 2px 4px; border-radius: 6px;
+}
+.btn-emoji:hover { background: #f1f5f9; }
+.chat-textarea {
+    resize: none; border-radius: 20px; padding: 0.45rem 1rem; border: 1px solid #cbd5e1; max-height: 120px;
+}
+.btn-send {
+    border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; background: #0284c7; border-color: #0284c7;
+}
+
+/* مدال‌ها و انتخاب‌گر کاربر */
+.chat-modal-backdrop {
+    background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px);
+}
+.users-picker-list {
+    max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.3rem;
+}
+.user-picker-item {
+    display: flex; align-items: center; padding: 0.5rem 0.7rem; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: all 0.15s;
+}
+.user-picker-item:hover {
+    background: #f1f5f9;
+}
+.user-picker-item.selected {
+    background: #e0f2fe; border-color: #7dd3fc;
+}
+

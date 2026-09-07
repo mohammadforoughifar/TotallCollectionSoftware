@@ -313,3 +313,105 @@ public class DocExpiryAlert
     /// <summary>تعداد کاربرانی که کار کارتابل گرفتند</summary>
     public int NotifiedCount { get; set; }
 }
+
+/// <summary>تگ (برچسب رنگی) برای دسته‌بندی و فیلتر سریع مدارک.</summary>
+public class DocTag
+{
+    public int Id { get; set; }
+
+    [MaxLength(60)]
+    public string Name { get; set; } = "";
+
+    /// <summary>کد رنگ هگز یا کلاس رنگی بوت‌استرپ</summary>
+    [MaxLength(30)]
+    public string Color { get; set; } = "#4f46e5";
+
+    [MaxLength(250)]
+    public string? Description { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>انتساب تگ به مدرک (رابطه چند به چند).</summary>
+public class DocumentTag
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public int TagId { get; set; }
+}
+
+/// <summary>
+/// متن استخراج‌شده و نتایج OCR پیوست‌های مدرک جهت جستجوی تمام‌متن (Full-Text).
+/// </summary>
+public class DocExtractedText
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public int VersionId { get; set; }
+    public int AttachmentId { get; set; }
+
+    [MaxLength(255)]
+    public string FileName { get; set; } = "";
+
+    [MaxLength(100)]
+    public string ContentType { get; set; } = "";
+
+    /// <summary>نوع منبع استخراج: Pdf | PdfOcr | Word | Excel | Text | ImageOcr</summary>
+    [MaxLength(30)]
+    public string SourceType { get; set; } = "Text";
+
+    /// <summary>متن کامل استخراج‌شده</summary>
+    public string ExtractedText { get; set; } = "";
+
+    /// <summary>متن نرمال‌شده (حذف اعراب، یکدست‌سازی حروف فارسی و اعداد) جهت جستجوی فوق‌سریع</summary>
+    public string NormalizedText { get; set; } = "";
+
+    /// <summary>وضعیت: Indexed | Failed | Pending</summary>
+    [MaxLength(20)]
+    public string Status { get; set; } = "Indexed";
+
+    [MaxLength(500)]
+    public string? ErrorMessage { get; set; }
+
+    public int CharacterCount { get; set; }
+
+    public DateTime IndexedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>
+/// اتصال سند آرشیو به موجودیت‌های سایر ماژول‌های سامانه ERP (پروژه‌ها، پرسنل، اموال، فاکتورها، طرف‌حساب‌ها، تعمیرات و ...).
+/// </summary>
+public class DocEntityLink
+{
+    public int Id { get; set; }
+
+    public int DocumentId { get; set; }
+    public ArchiveDocument? Document { get; set; }
+
+    /// <summary>نام ماژول ERP: Projects | Hr | ItAssets | Invoicing | Catalog | Repairs | Office | Sales | Warehousing</summary>
+    [MaxLength(60)]
+    public string Module { get; set; } = "";
+
+    /// <summary>شناسه رکورد در ماژول مبدأ (مثلاً شناسه پروژه، شناسه کارمند، شناسه دارایی و ...)</summary>
+    public int EntityId { get; set; }
+
+    /// <summary>کد یا شماره مرجع رکورد (اختیاری، مثلاً کد پروژه RE1-2001 یا شماره فاکتور)</summary>
+    [MaxLength(100)]
+    public string? EntityCode { get; set; }
+
+    /// <summary>عنوان یا نام رکورد در ماژول مبدأ (مثلاً نام پروژه، نام کارمند، مدل دستگاه)</summary>
+    [MaxLength(250)]
+    public string EntityTitle { get; set; } = "";
+
+    /// <summary>توضیحات یا یادداشت نحوه ارتباط</summary>
+    [MaxLength(500)]
+    public string? Note { get; set; }
+
+    public int CreatedByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string CreatedByName { get; set; } = "";
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+

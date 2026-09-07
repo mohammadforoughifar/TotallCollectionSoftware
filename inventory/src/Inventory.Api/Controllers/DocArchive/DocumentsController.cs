@@ -66,6 +66,28 @@ public class DocumentsController : RbacControllerBase
             .GroupBy(l => l.DocumentId).Select(g => new { g.Key, C = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.C);
 
+        // تگ‌های مدارک
+        var allDocTags = await (from dt in Db.DocumentTags.AsNoTracking()
+                                where ids.Contains(dt.DocumentId)
+                                join t in Db.DocTags.AsNoTracking() on dt.TagId equals t.Id
+                                select new { dt.DocumentId, Tag = new DocTagDto
+                                {
+                                    Id = t.Id, Name = t.Name, Color = t.Color, Description = t.Description, CreatedAt = t.CreatedAt
+                                }}).ToListAsync();
+        var docTagMap = allDocTags.GroupBy(x => x.DocumentId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Tag).ToList());
+
+        var indexedDocIds = (await Db.DocExtractedTexts.AsNoTracking()
+            .Where(e => ids.Contains(e.DocumentId) && e.Status == "Indexed")
+            .Select(e => e.DocumentId)
+            .Distinct().ToListAsync()).ToHashSet();
+
+        var entityLinks = await Db.DocEntityLinks.AsNoTracking()
+            .Where(l => ids.Contains(l.DocumentId))
+            .ToListAsync();
+        var entityLinkMap = entityLinks.GroupBy(l => l.DocumentId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
         var result = new List<DocumentListDto>();
         foreach (var d in docs)
         {
@@ -124,7 +146,11 @@ public class DocumentsController : RbacControllerBase
                 LastVersionStatus = (DocVersionStatusDto)(int)(last?.Status ?? DocVersionStatus.Draft),
                 LinkCount = links.TryGetValue(d.Id, out var lc) ? lc : 0,
                 MyLevel = (DocAccessLevelDto)(int)level,
-                MyCanDownload = dl
+                MyCanDownload = dl,
+                Tags = docTagMap.TryGetValue(d.Id, out var tlist) ? tlist : new(),
+                HasIndexedContent = indexedDocIds.Contains(d.Id),
+                EntityLinkCount = entityLinkMap.TryGetValue(d.Id, out var elist) ? elist.Count : 0,
+                LinkedModules = entityLinkMap.TryGetValue(d.Id, out var elist2) ? elist2.Select(x => x.Module).Distinct().ToList() : new()
             });
         }
 
@@ -229,6 +255,42 @@ public class DocumentsController : RbacControllerBase
                 IsActive = x.IsActive,
                 ActiveVersionNo = Db.DocumentVersions.Where(v => v.DocumentId == x.Id && v.IsActive)
                                     .Select(v => v.VersionNo).OrderByDescending(n => n).FirstOrDefault()
+            }).ToListAsync();
+
+        // تگ‌های مدرک
+        dto.Tags = await (from dt in Db.DocumentTags.AsNoTracking()
+                          where dt.DocumentId == id
+                          join t in Db.DocTags.AsNoTracking() on dt.TagId equals t.Id
+                          select new DocTagDto
+                          {
+                              Id = t.Id, Name = t.Name, Color = t.Color, Description = t.Description, CreatedAt = t.CreatedAt
+                          }).ToListAsync();
+        dto.TagIds = dto.Tags.Select(t => t.Id).ToList();
+
+        dto.ExtractedTextCount = await Db.DocExtractedTexts.AsNoTracking()
+            .CountAsync(e => e.DocumentId == id && e.Status == "Indexed");
+
+        dto.EntityLinks = await Db.DocEntityLinks.AsNoTracking()
+            .Where(l => l.DocumentId == id)
+            .OrderByDescending(l => l.Id)
+            .Select(l => new DocEntityLinkDto
+            {
+                Id = l.Id,
+                DocumentId = l.DocumentId,
+                DocumentCode = d.Code,
+                DocumentTitle = d.Title,
+                FolderId = d.FolderId,
+                FolderName = dto.FolderName,
+                Module = l.Module,
+                ModuleTitle = l.Module,
+                EntityId = l.EntityId,
+                EntityCode = l.EntityCode,
+                EntityTitle = l.EntityTitle,
+                Note = l.Note,
+                CreatedByName = l.CreatedByName,
+                CreatedAt = l.CreatedAt,
+                MyLevel = (DocAccessLevelDto)(int)level,
+                MyCanDownload = dl
             }).ToListAsync();
 
         if (level >= DocAccessLevel.Full)

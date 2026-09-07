@@ -11,10 +11,10 @@
 <div class="page-head no-print">
     <div>
         <h1>چاپ برچسب بارکد</h1>
-        <p class="lead">کالاها را انتخاب کنید، تعداد برچسب هرکدام را تعیین کنید و برگه را چاپ بگیرید</p>
+        <p class="lead">انتخاب کالا، تعیین تعداد برچسب و چاپ مستقیم شیت‌های بارکد</p>
     </div>
     <div class="ms-auto d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="/stk/barcodes"><i class="bi bi-arrow-right"></i> بارکد کالا</a>
+        <a class="btn btn-outline-secondary" href="/stk/barcodes"><i class="bi bi-arrow-right"></i> بازگشت</a>
         <button class="btn btn-primary" @onclick="Print" disabled="@(labels.Count == 0)">
             <i class="bi bi-printer"></i> چاپ برگه
         </button>

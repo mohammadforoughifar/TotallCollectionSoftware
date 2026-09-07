@@ -148,6 +148,16 @@ public class DocumentService : IDocumentService
                     $"لینک به {targets.Count} مدرک: {string.Join("، ", targets.Select(t => t.Code))}", userId, userName);
         }
 
+        // تگ‌های مدرک
+        if (dto.TagIds is { Count: > 0 })
+        {
+            var validTagIds = await _db.DocTags.Where(t => dto.TagIds.Contains(t.Id)).Select(t => t.Id).ToListAsync();
+            foreach (var tid in validTagIds)
+            {
+                _db.DocumentTags.Add(new DocumentTag { DocumentId = doc.Id, TagId = tid });
+            }
+        }
+
         await LogAsync(doc.Id, v1.Id, "Create", $"مدرک «{title}» با کد {code} ثبت شد.", userId, userName);
         await _db.SaveChangesAsync();
         return doc.Id;
@@ -189,6 +199,18 @@ public class DocumentService : IDocumentService
 
         await SaveApproverTemplateAsync(id, dto.Approvers);
         await SaveDocPermissionsAsync(id, dto.Permissions);
+
+        // تگ‌های مدرک
+        if (dto.TagIds != null)
+        {
+            var oldTags = await _db.DocumentTags.Where(t => t.DocumentId == id).ToListAsync();
+            _db.DocumentTags.RemoveRange(oldTags);
+            var validTagIds = await _db.DocTags.Where(t => dto.TagIds.Contains(t.Id)).Select(t => t.Id).ToListAsync();
+            foreach (var tid in validTagIds)
+            {
+                _db.DocumentTags.Add(new DocumentTag { DocumentId = id, TagId = tid });
+            }
+        }
 
         await LogAsync(id, null, "Update", "اطلاعات مدرک ویرایش شد.", userId, userName);
         await _db.SaveChangesAsync();

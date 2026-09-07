@@ -11,11 +11,14 @@
         @if (gDash)
         {
             <div class="nav-group-items">
+                <NavLink class="nav-link" href="chat" @onclick="NotifyClose">
+                    <i class="bi bi-chat-dots-fill text-primary"></i><span>پیام‌رسان سازمانی</span>
+                </NavLink>
                 <NavLink class="nav-link" href="cartable" @onclick="NotifyClose">
                     <i class="bi bi-inbox-fill"></i><span>کارتابل من</span>
                 </NavLink>
                 <NavLink class="nav-link" href="my-archive" @onclick="NotifyClose">
-                    <i class="bi bi-archive-fill"></i><span>بایگانی من</span>
+                    <i class="bi bi-archive-fill"></i><span>بایگانی شخصی</span>
                 </NavLink>
                 @if (Auth.Has("Dashboards.Financial"))
                 {
@@ -647,13 +650,13 @@
                 @if (Auth.HasModule("SystemCompanies"))
                 {
                     <NavLink class="nav-link" href="system-company" @onclick="NotifyClose">
-                        <i class="bi bi-building-fill"></i><span>کمپانی‌ها</span>
+                        <i class="bi bi-building-fill"></i><span>شرکت‌ها و شعب</span>
                     </NavLink>
                 }
                 @if (Auth.HasModule("SystemDepartments"))
                 {
                     <NavLink class="nav-link" href="system-department" @onclick="NotifyClose">
-                        <i class="bi bi-diagram-3-fill"></i><span>واحدها</span>
+                        <i class="bi bi-diagram-3-fill"></i><span>واحدهای سازمانی</span>
                     </NavLink>
                 }
             </div>

@@ -92,6 +92,20 @@ public static class DbInitializer
                     Console.WriteLine("[DB] دوره مالیاتی جاری مودیان ساخته شد.");
                 }
 
+                // ==================== تگ‌های پیش‌فرض آرشیو اسناد ====================
+                if (!db.DocTags.Any())
+                {
+                    db.DocTags.AddRange(
+                        new DocTag { Name = "قرارداد", Color = "#4f46e5", Description = "قراردادها و پیمان‌ها" },
+                        new DocTag { Name = "محرمانه", Color = "#dc2626", Description = "اسناد محرمانه و دارای طبقه‌بندی" },
+                        new DocTag { Name = "مالی", Color = "#059669", Description = "اسناد مالی، فاکتورها و ضمانت‌نامه‌ها" },
+                        new DocTag { Name = "فنی", Color = "#0284c7", Description = "نقشه‌ها، مشخصات و مدارک فنی" },
+                        new DocTag { Name = "فوری", Color = "#d97706", Description = "مدارک نیازمند اقدام و بررسی فوری" },
+                        new DocTag { Name = "ایزو", Color = "#7c3aed", Description = "دستورالعمل‌ها و فرم‌های استاندارد ISO" });
+                    db.SaveChanges();
+                    Console.WriteLine("[DB] تگ‌های پیش‌فرض آرشیو اسناد بارگذاری شد.");
+                }
+
                 // بازسازی گروه‌های کالا برای دیتابیس‌های قدیمی:
                 // هر گروهی که روی کالاها ثبت شده ولی در جدول گروه‌ها نیست، اضافه می‌شود.
                 var existing = db.ProductCategories.Select(c => c.Name).ToHashSet();
@@ -893,6 +907,84 @@ public static class DbInitializer
                     );";
                 c.ExecuteNonQuery();
                 Console.WriteLine("[DB] SQLite: جدول WorkCalendarSettings ساخته شد.");
+            }
+
+            // ---- DocTags, DocumentTags, DocExtractedTexts: تگ‌ها و متن‌های استخراج‌شده آرشیو ----
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='DocTags'") == 0)
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = @"
+                    CREATE TABLE DocTags (
+                        Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        Name TEXT NOT NULL,
+                        Color TEXT NOT NULL,
+                        Description TEXT NULL,
+                        CreatedAt TEXT NOT NULL
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS IX_DocTags_Name ON DocTags (Name);";
+                c.ExecuteNonQuery();
+                Console.WriteLine("[DB] SQLite: جدول DocTags ساخته شد.");
+            }
+
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='DocumentTags'") == 0)
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = @"
+                    CREATE TABLE DocumentTags (
+                        Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        DocumentId INTEGER NOT NULL,
+                        TagId INTEGER NOT NULL
+                    );
+                    CREATE UNIQUE INDEX IF NOT EXISTS IX_DocumentTags_DocumentId_TagId ON DocumentTags (DocumentId, TagId);";
+                c.ExecuteNonQuery();
+                Console.WriteLine("[DB] SQLite: جدول DocumentTags ساخته شد.");
+            }
+
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='DocExtractedTexts'") == 0)
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = @"
+                    CREATE TABLE DocExtractedTexts (
+                        Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        DocumentId INTEGER NOT NULL,
+                        VersionId INTEGER NOT NULL,
+                        AttachmentId INTEGER NOT NULL,
+                        FileName TEXT NOT NULL,
+                        ContentType TEXT NOT NULL,
+                        SourceType TEXT NOT NULL,
+                        ExtractedText TEXT NOT NULL,
+                        NormalizedText TEXT NOT NULL,
+                        Status TEXT NOT NULL,
+                        ErrorMessage TEXT NULL,
+                        CharacterCount INTEGER NOT NULL,
+                        IndexedAt TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS IX_DocExtractedTexts_DocumentId_AttachmentId ON DocExtractedTexts (DocumentId, AttachmentId);
+                    CREATE INDEX IF NOT EXISTS IX_DocExtractedTexts_AttachmentId ON DocExtractedTexts (AttachmentId);";
+                c.ExecuteNonQuery();
+                Console.WriteLine("[DB] SQLite: جدول DocExtractedTexts ساخته شد.");
+            }
+
+            if (TableCount("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='DocEntityLinks'") == 0)
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = @"
+                    CREATE TABLE DocEntityLinks (
+                        Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        DocumentId INTEGER NOT NULL,
+                        Module TEXT NOT NULL,
+                        EntityId INTEGER NOT NULL,
+                        EntityCode TEXT NULL,
+                        EntityTitle TEXT NOT NULL,
+                        Note TEXT NULL,
+                        CreatedByUserId INTEGER NOT NULL,
+                        CreatedByName TEXT NOT NULL,
+                        CreatedAt TEXT NOT NULL
+                    );
+                    CREATE INDEX IF NOT EXISTS IX_DocEntityLinks_DocumentId_Module_EntityId ON DocEntityLinks (DocumentId, Module, EntityId);
+                    CREATE INDEX IF NOT EXISTS IX_DocEntityLinks_Module_EntityId ON DocEntityLinks (Module, EntityId);";
+                c.ExecuteNonQuery();
+                Console.WriteLine("[DB] SQLite: جدول DocEntityLinks ساخته شد.");
             }
         }
         catch (Exception ex)

@@ -40,6 +40,7 @@ builder.Services.AddScoped<IInvDocTypeService, InvDocTypeService>();
 builder.Services.AddScoped<IInvDocService, InvDocService>();
 builder.Services.AddScoped<IInvReportService, InvReportService>();
 builder.Services.AddScoped<IDocArchiveService, DocArchiveService>(); // ماژول آرشیو اسناد و مدارک
+builder.Services.AddScoped<IChatClientService, ChatClientService>(); // ماژول پیام‌رسان سازمانی (Chat)
 
 // ---------- ماژول حسابداری ----------
 builder.Services.AddScoped<IAccFiscalYearService, AccFiscalYearService>();

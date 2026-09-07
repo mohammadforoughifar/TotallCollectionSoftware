@@ -72,6 +72,9 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLette
 // ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocFolderZipService, Inventory.Api.Services.DocArchive.DocFolderZipService>();
+builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocTextExtractorService, Inventory.Api.Services.DocArchive.DocTextExtractorService>();
+builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocIndexService, Inventory.Api.Services.DocArchive.DocIndexService>();
 // سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
@@ -145,6 +148,8 @@ builder.Services.AddSignalR().AddJsonProtocol(o =>
 });
 builder.Services.AddSingleton<DashboardBroadcaster>();
 builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs.NotifyService>();
+builder.Services.AddScoped<Inventory.Api.Hubs.IChatRealtimeNotifier, Inventory.Api.Hubs.ChatRealtimeNotifier>();
+builder.Services.AddScoped<Inventory.Api.Services.Chat.IChatService, Inventory.Api.Services.Chat.ChatService>();
 builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
@@ -207,6 +212,7 @@ app.MapControllers();
 // هاب بلادرنگ داشبورد
 app.MapHub<DashboardHub>("/hubs/dashboard");
 app.MapHub<Inventory.Api.Hubs.NotifyHub>("/hubs/notify");
+app.MapHub<Inventory.Api.Hubs.ChatHub>("/hubs/chat");
 
 // پوشه‌ی فایل‌های آپلودی داخل wwwroot (عکس‌های کاربران، پیوست‌ها) — با UseStaticFiles معمول سرو می‌شود
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "users"));

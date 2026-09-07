@@ -142,8 +142,9 @@ public class AttachmentsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly FileStore _store;
     private readonly IAttachmentGuard _guard;
-    public AttachmentsController(AppDbContext db, FileStore store, IAttachmentGuard guard)
-    { _db = db; _store = store; _guard = guard; }
+    private readonly Inventory.Api.Services.DocArchive.IDocIndexService _docIndex;
+    public AttachmentsController(AppDbContext db, FileStore store, IAttachmentGuard guard, Inventory.Api.Services.DocArchive.IDocIndexService docIndex)
+    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -213,7 +214,7 @@ public class AttachmentsController : ControllerBase
         await file.CopyToAsync(ms);
         ms.Position = 0;
         var relPath = await _store.SaveAsync(module, refId, ms, file.FileName);
-        _db.AppAttachments.Add(new AppAttachment
+        var att = new AppAttachment
         {
             Module = module, RefId = refId,
             FileName = Path.GetFileName(file.FileName),
@@ -221,8 +222,15 @@ public class AttachmentsController : ControllerBase
             FilePath = relPath,
             Data = Array.Empty<byte>(),
             UploaderName = MyUsername, UploaderUserId = MyUserId
-        });
+        };
+        _db.AppAttachments.Add(att);
         await _db.SaveChangesAsync();
+
+        if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))
+        {
+            _docIndex.QueueAttachmentIndexing(att.Id);
+        }
+
         return Ok();
     }
 
@@ -284,6 +292,11 @@ public class AttachmentsController : ControllerBase
         if (a.UploaderUserId != MyUserId && !IsAdmin)
             return StatusCode(403, new { message = "فقط آپلودکننده یا مدیر می‌تواند این پیوست را حذف کند." });
         _store.Delete(a.FilePath);
+        if (string.Equals(a.Module, "DocVersion", StringComparison.OrdinalIgnoreCase))
+        {
+            var oldExtracted = await _db.DocExtractedTexts.Where(x => x.AttachmentId == a.Id).ToListAsync();
+            _db.DocExtractedTexts.RemoveRange(oldExtracted);
+        }
         _db.AppAttachments.Remove(a);
         await _db.SaveChangesAsync();
         return Ok();

@@ -120,6 +120,15 @@ public class AppDbContext : DbContext
     public DbSet<DocCartableTask> DocCartableTasks => Set<DocCartableTask>();
     public DbSet<DocumentLog> DocumentLogs => Set<DocumentLog>();
     public DbSet<DocExpiryAlert> DocExpiryAlerts => Set<DocExpiryAlert>();
+    public DbSet<DocTag> DocTags => Set<DocTag>();
+    public DbSet<DocumentTag> DocumentTags => Set<DocumentTag>();
+    public DbSet<DocExtractedText> DocExtractedTexts => Set<DocExtractedText>();
+    public DbSet<DocEntityLink> DocEntityLinks => Set<DocEntityLink>();
+
+    // ==================== ماژول پیام‌رسان سازمانی (Chat) ====================
+    public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();
+    public DbSet<Inventory.Api.Entities.Chat.ChatMember> ChatMembers => Set<Inventory.Api.Entities.Chat.ChatMember>();
+    public DbSet<Inventory.Api.Entities.Chat.ChatMessage> ChatMessages => Set<Inventory.Api.Entities.Chat.ChatMessage>();
 
     // ==================== ماژول انبارداری ====================
     public DbSet<ProductAttributeDef> ProductAttributeDefs => Set<ProductAttributeDef>();
@@ -211,6 +220,19 @@ public class AppDbContext : DbContext
         mb.Entity<DocumentLink>().HasIndex(l => new { l.DocumentId, l.LinkedDocumentId }).IsUnique();
         mb.Entity<DocCartableTask>().HasIndex(t => new { t.UserId, t.Status });
         mb.Entity<DocumentLog>().HasIndex(l => l.DocumentId);
+        mb.Entity<DocTag>().HasIndex(t => t.Name).IsUnique();
+        mb.Entity<DocumentTag>().HasIndex(t => new { t.DocumentId, t.TagId }).IsUnique();
+        mb.Entity<DocExtractedText>().HasIndex(e => new { e.DocumentId, e.AttachmentId });
+        mb.Entity<DocExtractedText>().HasIndex(e => e.AttachmentId);
+        mb.Entity<DocEntityLink>().HasIndex(l => new { l.DocumentId, l.Module, l.EntityId });
+        mb.Entity<DocEntityLink>().HasIndex(l => new { l.Module, l.EntityId });
+
+        // ---------- ماژول پیام‌رسان سازمانی (Chat) ----------
+        mb.Entity<Inventory.Api.Entities.Chat.ChatMember>().HasIndex(m => new { m.ConversationId, m.UserId }).IsUnique();
+        mb.Entity<Inventory.Api.Entities.Chat.ChatMember>().HasIndex(m => m.UserId);
+        mb.Entity<Inventory.Api.Entities.Chat.ChatMessage>().HasIndex(m => new { m.ConversationId, m.CreatedAt });
+        mb.Entity<Inventory.Api.Entities.Chat.ChatMessage>().HasIndex(m => m.SenderUserId);
+        mb.Entity<Inventory.Api.Entities.Chat.ChatConversation>().HasIndex(c => c.LastMessageAt);
 
         // ---------- امنیت حضور و غیاب: ایندکس‌های دستگاه‌ها و هشدارها ----------
         // هر کاربر برای هر Device ID فقط یک رکورد دستگاه دارد (دستگاه یکتا)
