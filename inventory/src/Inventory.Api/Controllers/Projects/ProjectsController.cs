@@ -188,22 +188,19 @@ public class ProjectsController : RbacControllerBase
             fileName);
     }
 
-    /// <summary>خروجی اکسل از کل پروژه‌ها — هر پروژه یک سطر + سطر جمع ساعات (ستون‌های فاکتور فقط با مجوز رویت)</summary>
+    /// <summary>
+    /// خروجی اکسل پروژه‌ها — <b>دقیقاً بر اساس فیلترهای جاری لیست</b> (اگر فیلتری اعمال نشده باشد، همهٔ پروژه‌ها).
+    /// هر پروژه یک سطر + سطر جمع ساعات (ستون‌های فاکتور فقط با مجوز رویت).
+    /// </summary>
     [HttpGet("export")]
-    public async Task<IActionResult> ExportAll()
+    public async Task<IActionResult> ExportAll([FromQuery] ProjectListQuery q)
     {
         if (await ForbiddenUnlessAsync(Module, "Export") is { } forbid) return forbid;
         var showFactor = await HasAsync(Module, "ViewFactor");
 
-        var projects = await Db.ProjectEntryExits.AsNoTracking()
-            .Include(p => p.KarFarma)
-            .Include(p => p.TypeFactor)
-            .Include(p => p.User)
-            .Include(p => p.ReportWorks.Where(r => !r.IsDelete))
-            .AsSplitQuery()
-            .Where(p => !p.IsDelete)
-            .OrderByDescending(p => p.Id)
-            .ToListAsync();
+        var filtered = ApplyFilters(Db.ProjectEntryExits.AsNoTracking().Where(p => !p.IsDelete), q, showFactor);
+        var ids = await ApplySort(filtered, q.Sort, q.Desc).Select(p => p.Id).ToListAsync();
+        var projects = await LoadRowsAsync(ids);
 
         using var wb = new ClosedXML.Excel.XLWorkbook();
         var ws = wb.Worksheets.Add("کل پروژه‌ها");
@@ -289,45 +286,257 @@ public class ProjectsController : RbacControllerBase
     private static string? Shamsi(DateTime? dt) =>
         dt is null ? null : Inventory.Shared.PersianDate.ToShort(dt.Value);
 
-    /// <summary>لیست ورود/خروج پروژه‌ها با فیلتر</summary>
-    [HttpGet]
-    public async Task<IActionResult> GetAll(
-        [FromQuery] string? search,
-        [FromQuery] int? karfarmaId,
-        [FromQuery] int? typeFactorId,
-        [FromQuery] int? userId,
-        [FromQuery] bool? returned)
+    // =====================================================================
+    //  فیلتر/مرتب‌سازی/صفحه‌بندی سمت سرور
+    //  (لیست ۱۰۰۰+ رکوردی دیگر یکجا به کلاینت فرستاده نمی‌شود — هر بار فقط یک صفحه)
+    // =====================================================================
+
+    /// <summary>نرمال‌سازی متن فیلتر: ارقام فارسی/عربی → لاتین، ي/ك عربی → ی/ک فارسی</summary>
+    private static string? NormFilter(string? s)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        var t = Inventory.Shared.Fa.ToEn(s).Trim().Replace('\u064A', '\u06CC').Replace('\u0643', '\u06A9');
+        return string.IsNullOrWhiteSpace(t) ? null : t;
+    }
 
-        // رویت ستون‌های فاکتور فقط با مجوز Projects.ViewFactor
-        var showFactor = await HasAsync(Module, "ViewFactor");
+    /// <summary>
+    /// تبدیل متن (بخشی از) تاریخ شمسی به بازهٔ میلادی — «۱۴۰۵» یک سال، «۱۴۰۵/۰۶» یک ماه و «۱۴۰۵/۰۶/۲۵» یک روز.
+    /// اگر متن قابل تفسیر نباشد null برمی‌گردد (فیلتر نادیده گرفته می‌شود).
+    /// </summary>
+    private static (DateTime From, DateTime To)? JalaliRange(string? text)
+    {
+        var t = NormFilter(text);
+        if (t is null) return null;
+        t = t.Replace('-', '/').Replace('.', '/');
+        var parts = t.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return null;
+        if (!int.TryParse(parts[0], out var y) || y < 1200 || y > 1700) return null;
 
-        var query = Db.ProjectEntryExits.AsNoTracking()
+        DateTime from, to;
+        if (parts.Length == 1)
+        {
+            from = Inventory.Shared.PersianDate.ToGregorian(y, 1, 1);
+            to = Inventory.Shared.PersianDate.ToGregorian(y + 1, 1, 1);
+        }
+        else
+        {
+            if (!int.TryParse(parts[1], out var m) || m < 1 || m > 12) return null;
+            if (parts.Length == 2)
+            {
+                from = Inventory.Shared.PersianDate.ToGregorian(y, m, 1);
+                var ny = m == 12 ? y + 1 : y;
+                var nm = m == 12 ? 1 : m + 1;
+                to = Inventory.Shared.PersianDate.ToGregorian(ny, nm, 1);
+            }
+            else
+            {
+                if (!int.TryParse(parts[2], out var d) || d < 1 || d > 31) return null;
+                from = Inventory.Shared.PersianDate.ToGregorian(y, m, d);
+                to = from == DateTime.MinValue ? DateTime.MinValue : from.AddDays(1);
+            }
+        }
+        if (from == DateTime.MinValue || to == DateTime.MinValue) return null;
+        return (from, to);
+    }
+
+    /// <summary>تبدیل متن ساعت («۲» یا «۲:۳۰») به بازهٔ زمانی برای فیلتر ستون‌های ساعتی</summary>
+    private static (TimeSpan From, TimeSpan To)? SpanRange(string? text)
+    {
+        var t = NormFilter(text);
+        if (t is null) return null;
+        var parts = t.Split(':');
+        if (!int.TryParse(parts[0].Trim(), out var h) || h < 0 || h > 999) return null;
+        if (parts.Length == 1 || string.IsNullOrWhiteSpace(parts[1]))
+            return (TimeSpan.FromHours(h), TimeSpan.FromHours(h + 1));
+        if (!int.TryParse(parts[1].Trim(), out var mi) || mi < 0 || mi > 59) return null;
+        var from = new TimeSpan(h, mi, 0);
+        return (from, from.Add(TimeSpan.FromMinutes(1)));
+    }
+
+    /// <summary>اعمال همهٔ فیلترها (بالای صفحه + جستجوی سرستون‌ها) روی کوئری</summary>
+    private static IQueryable<ProjectEntryExit> ApplyFilters(
+        IQueryable<ProjectEntryExit> query, ProjectListQuery q, bool showFactor)
+    {
+        var search = NormFilter(q.Search);
+        if (search is not null)
+            query = query.Where(p =>
+                p.ProjectName.Contains(search) ||
+                p.CodeProject.Contains(search) ||
+                p.SerialNumber.Contains(search) ||
+                p.ProjectReceiver.Contains(search) ||
+                (showFactor && p.FactorNumber != null && p.FactorNumber.Contains(search)) ||
+                (p.Description != null && p.Description.Contains(search)));
+
+        if (q.KarfarmaId is > 0) query = query.Where(p => p.KarFarmaId == q.KarfarmaId);
+        if (q.TypeFactorId is > 0) query = query.Where(p => p.FactorTypeId == q.TypeFactorId);
+        if (q.UserId is > 0) query = query.Where(p => p.UserId == q.UserId);
+        if (q.Returned == true) query = query.Where(p => p.ReturnProjectId > 0);
+
+        var fCode = NormFilter(q.FCode);
+        if (fCode is not null) query = query.Where(p => p.CodeProject.Contains(fCode));
+
+        var fName = NormFilter(q.FName);
+        if (fName is not null) query = query.Where(p => p.ProjectName.Contains(fName));
+
+        var fSerial = NormFilter(q.FSerial);
+        if (fSerial is not null) query = query.Where(p => p.SerialNumber.Contains(fSerial));
+
+        var fKarfarma = NormFilter(q.FKarfarma);
+        if (fKarfarma is not null) query = query.Where(p => p.KarFarma != null && p.KarFarma.Name.Contains(fKarfarma));
+
+        if (showFactor)
+        {
+            var fFactor = NormFilter(q.FFactor);
+            if (fFactor is not null) query = query.Where(p => p.FactorNumber != null && p.FactorNumber.Contains(fFactor));
+
+            var fFactorType = NormFilter(q.FFactorType);
+            if (fFactorType is not null) query = query.Where(p => p.TypeFactor != null && p.TypeFactor.Name.Contains(fFactorType));
+        }
+
+        var fKarshenasi = NormFilter(q.FKarshenasi);
+        if (fKarshenasi is not null) query = query.Where(p => p.KarshenasiAvalie != null && p.KarshenasiAvalie.Contains(fKarshenasi));
+
+        var rEntry = JalaliRange(q.FEntry);
+        if (rEntry is not null)
+        {
+            var f = rEntry.Value.From; var t = rEntry.Value.To;
+            query = query.Where(p => p.EntryDate >= f && p.EntryDate < t);
+        }
+        var rExit = JalaliRange(q.FExit);
+        if (rExit is not null)
+        {
+            var f = rExit.Value.From; var t = rExit.Value.To;
+            query = query.Where(p => p.ExitDate >= f && p.ExitDate < t);
+        }
+        var rSabt = JalaliRange(q.FSabt);
+        if (rSabt is not null)
+        {
+            var f = rSabt.Value.From; var t = rSabt.Value.To;
+            query = query.Where(p => p.ProjectRegistrationDate >= f && p.ProjectRegistrationDate < t);
+        }
+        var rNeed = JalaliRange(q.FNeed);
+        if (rNeed is not null)
+        {
+            var f = rNeed.Value.From; var t = rNeed.Value.To;
+            query = query.Where(p => p.CustomerRequiredDate >= f && p.CustomerRequiredDate < t);
+        }
+
+        var rSpent = SpanRange(q.FSpent);
+        if (rSpent is not null)
+        {
+            var f = rSpent.Value.From; var t = rSpent.Value.To;
+            query = query.Where(p => p.TotalSpentTime >= f && p.TotalSpentTime < t);
+        }
+
+        if (q.FFolder == "y") query = query.Where(p => p.IsFolder == true);
+        else if (q.FFolder == "n") query = query.Where(p => p.IsFolder != true);
+
+        if (int.TryParse(q.FStatus, out var status)) query = query.Where(p => p.FlowStatus == status);
+
+        return query;
+    }
+
+    /// <summary>مرتب‌سازی سمت سرور بر اساس کلید سرستون</summary>
+    private static IQueryable<ProjectEntryExit> ApplySort(IQueryable<ProjectEntryExit> query, string? sort, bool desc)
+        => (sort ?? "id") switch
+        {
+            // کدها و سریال‌های عددی: اول بر اساس طول تا ترتیب عددی حفظ شود
+            "code" => desc ? query.OrderByDescending(p => p.CodeProject.Length).ThenByDescending(p => p.CodeProject)
+                           : query.OrderBy(p => p.CodeProject.Length).ThenBy(p => p.CodeProject),
+            "serial" => desc ? query.OrderByDescending(p => p.SerialNumber.Length).ThenByDescending(p => p.SerialNumber)
+                             : query.OrderBy(p => p.SerialNumber.Length).ThenBy(p => p.SerialNumber),
+            "name" => desc ? query.OrderByDescending(p => p.ProjectName) : query.OrderBy(p => p.ProjectName),
+            "karfarma" => desc ? query.OrderByDescending(p => p.KarFarma!.Name) : query.OrderBy(p => p.KarFarma!.Name),
+            "entry" => desc ? query.OrderByDescending(p => p.EntryDate) : query.OrderBy(p => p.EntryDate),
+            "exit" => desc ? query.OrderByDescending(p => p.ExitDate) : query.OrderBy(p => p.ExitDate),
+            "factor" => desc ? query.OrderByDescending(p => p.FactorNumber) : query.OrderBy(p => p.FactorNumber),
+            "factortype" => desc ? query.OrderByDescending(p => p.TypeFactor!.Name) : query.OrderBy(p => p.TypeFactor!.Name),
+            "karshenasi" => desc ? query.OrderByDescending(p => p.KarshenasiAvalie) : query.OrderBy(p => p.KarshenasiAvalie),
+            "sabt" => desc ? query.OrderByDescending(p => p.ProjectRegistrationDate) : query.OrderBy(p => p.ProjectRegistrationDate),
+            "need" => desc ? query.OrderByDescending(p => p.CustomerRequiredDate) : query.OrderBy(p => p.CustomerRequiredDate),
+            "spent" => desc ? query.OrderByDescending(p => p.TotalSpentTime) : query.OrderBy(p => p.TotalSpentTime),
+            "folder" => desc ? query.OrderByDescending(p => p.IsFolder) : query.OrderBy(p => p.IsFolder),
+            "status" => desc ? query.OrderByDescending(p => p.FlowStatus) : query.OrderBy(p => p.FlowStatus),
+            _ => desc ? query.OrderByDescending(p => p.Id) : query.OrderBy(p => p.Id)
+        };
+
+    /// <summary>واکشی کامل ردیف‌های یک صفحه (با جوین‌ها) و حفظ ترتیب شناسه‌ها</summary>
+    private async Task<List<ProjectEntryExit>> LoadRowsAsync(List<int> ids)
+    {
+        if (ids.Count == 0) return new List<ProjectEntryExit>();
+        var rows = await Db.ProjectEntryExits.AsNoTracking()
             .Include(p => p.KarFarma)
             .Include(p => p.TypeFactor)
             .Include(p => p.User)
             .Include(p => p.Attaches.Where(a => !a.IsDelete))
             .Include(p => p.ReportWorks.Where(r => !r.IsDelete))
             .AsSplitQuery()
-            .Where(p => !p.IsDelete);
+            .Where(p => ids.Contains(p.Id))
+            .ToListAsync();
+        var map = rows.ToDictionary(p => p.Id);
+        return ids.Where(map.ContainsKey).Select(id => map[id]).ToList();
+    }
 
-        if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(p =>
-                p.ProjectName.Contains(search) ||
-                p.CodeProject.Contains(search) ||
-                p.SerialNumber.Contains(search) ||
-                p.ProjectReceiver.Contains(search) ||
-                // تطابق با شماره فاکتور فقط برای دارندگان مجوز رویت فاکتور
-                (showFactor && p.FactorNumber != null && p.FactorNumber.Contains(search)) ||
-                (p.Description != null && p.Description.Contains(search)));
-        if (karfarmaId is > 0) query = query.Where(p => p.KarFarmaId == karfarmaId);
-        if (typeFactorId is > 0) query = query.Where(p => p.FactorTypeId == typeFactorId);
-        if (userId is > 0) query = query.Where(p => p.UserId == userId);
-        if (returned == true) query = query.Where(p => p.ReturnProjectId > 0);
+    /// <summary>
+    /// لیست ورود/خروج پروژه‌ها — فیلتر، مرتب‌سازی و صفحه‌بندی کاملاً سمت سرور.
+    /// خروجی: فقط ردیف‌های همان صفحه + تعداد کل (PagedResult).
+    /// </summary>
+    [HttpGet]
+    public async Task<IActionResult> GetAll([FromQuery] ProjectListQuery q)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
-        var list = await query.OrderByDescending(p => p.Id).ToListAsync();
-        return Ok(list.Select(p => ToDto(p, showFactor)).ToList());
+        // رویت ستون‌های فاکتور فقط با مجوز Projects.ViewFactor
+        var showFactor = await HasAsync(Module, "ViewFactor");
+
+        var filtered = ApplyFilters(Db.ProjectEntryExits.AsNoTracking().Where(p => !p.IsDelete), q, showFactor);
+        var total = await filtered.CountAsync();
+
+        var page = q.Page < 1 ? 1 : q.Page;
+        var pageSize = q.PageSize;
+        var idQuery = ApplySort(filtered, q.Sort, q.Desc).Select(p => p.Id);
+        if (pageSize > 0)
+        {
+            var pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+            if (page > pageCount) page = pageCount;
+            idQuery = idQuery.Skip((page - 1) * pageSize).Take(pageSize);
+        }
+
+        var rows = await LoadRowsAsync(await idQuery.ToListAsync());
+        return Ok(new PagedResult<ProjectEntryExitDto>
+        {
+            Items = rows.Select(p => ToDto(p, showFactor)).ToList(),
+            Total = total,
+            Page = page,
+            PageSize = pageSize > 0 ? pageSize : Math.Max(total, 1)
+        });
+    }
+
+    /// <summary>کدهای برگشتی ثبت‌شدهٔ یک پروژه مبدأ + اطلاعات پایهٔ آن (برای فرم پروژه برگشتی)</summary>
+    [HttpGet("{id:int}/returns")]
+    public async Task<IActionResult> Returns(int id)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+
+        var parent = await Db.ProjectEntryExits.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id && !p.IsDelete);
+        if (parent is null) return NotFound(new { message = "پروژه پیدا نشد." });
+
+        var suffix = "-" + parent.CodeProject;
+        var codes = await Db.ProjectEntryExits.AsNoTracking()
+            .Where(p => !p.IsDelete && p.ReturnProjectId > 0 && p.CodeProject.EndsWith(suffix))
+            .OrderBy(p => p.ReturnProjectId)
+            .Select(p => p.CodeProject)
+            .ToListAsync();
+
+        return Ok(new
+        {
+            parentCode = parent.CodeProject,
+            parentName = parent.ProjectName,
+            parentReceiver = parent.ProjectReceiver,
+            karFarmaId = parent.KarFarmaId,
+            codes
+        });
     }
 
     [HttpGet("{id:int}")]
@@ -432,6 +641,11 @@ public class ProjectsController : RbacControllerBase
         return string.IsNullOrWhiteSpace(full) ? u.Username : full;
     }
 
+    /// <summary>
+    /// ویرایش پروژه.
+    /// اگر کاربر خودش «مدیر کارتابل پروژه» (ProjectCartable.Manager) باشد تغییر مستقیم اعمال می‌شود؛
+    /// در غیر این صورت یک «درخواست ویرایش» ساخته می‌شود و تا تایید مدیر هیچ تغییری روی پروژه اعمال نمی‌گردد.
+    /// </summary>
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] ProjectEntryExitDto dto, [FromServices] Hubs.INotifyService notify)
     {
@@ -442,12 +656,86 @@ public class ProjectsController : RbacControllerBase
         var entity = await Db.ProjectEntryExits.FirstOrDefaultAsync(p => p.Id == id && !p.IsDelete);
         if (entity is null) return NotFound(new { message = "پروژه پیدا نشد." });
 
+        // ==================== نیاز به تایید مدیر ====================
+        if (!await IsProjectManagerAsync())
+        {
+            var summary = BuildEditSummary(entity, dto);
+            if (string.IsNullOrWhiteSpace(summary))
+                return Ok(new { id = entity.Id, pending = false, message = "تغییری برای ثبت وجود نداشت." });
+
+            if (await Db.ProjectChangeRequests.AnyAsync(c => c.ProjectId == id && c.Kind == 1 && c.Status == 0))
+                return BadRequest(new { message = "برای این پروژه یک «درخواست ویرایش» در انتظار تایید مدیر وجود دارد؛ تا تعیین تکلیف آن، ویرایش جدید ممکن نیست." });
+
+            Db.ProjectChangeRequests.Add(new ProjectChangeRequest
+            {
+                ProjectId = id,
+                Kind = 1,
+                Status = 0,
+                PayloadJson = System.Text.Json.JsonSerializer.Serialize(dto),
+                Summary = summary,
+                RequestedById = MyUserId,
+                RequestedAt = DateTime.Now
+            });
+            await Db.SaveChangesAsync();
+
+            await NotifyProjectEventAsync(notify, "Manager",
+                "درخواست ویرایش پروژه",
+                $"«{entity.ProjectName}» (کد {entity.CodeProject}) — درخواست ویرایش در انتظار تایید شماست.",
+                "/project-cartable?queue=changes");
+
+            return Ok(new
+            {
+                id = entity.Id,
+                pending = true,
+                message = "درخواست ویرایش برای تایید مدیر ارسال شد — پس از تایید مدیر اعمال می‌شود."
+            });
+        }
+
         var originUserId = entity.UserId; // ثبت‌کننده اصلی حفظ می‌شود
         Map(dto, entity); // Map اطلاعات فاکتور و کد پروژه/عدد برگشتی را دست نمی‌زند
         entity.UserId = originUserId;
         await Db.SaveChangesAsync();
         try { await notify.BroadcastChangedAsync("projects"); } catch { }
-        return Ok(new { id = entity.Id });
+        return Ok(new { id = entity.Id, pending = false });
+    }
+
+    /// <summary>آیا کاربر جاری خودش مدیر کارتابل پروژه است؟ (تغییرات او بدون انتظار اعمال می‌شود)</summary>
+    private Task<bool> IsProjectManagerAsync() => HasAsync("ProjectCartable", "Manager");
+
+    /// <summary>خلاصهٔ خوانای تفاوت مقادیر فعلی پروژه با مقادیر درخواستی (برای نمایش به مدیر)</summary>
+    internal static string BuildEditSummary(ProjectEntryExit e, ProjectEntryExitDto d)
+    {
+        var lines = new List<string>();
+        void Cmp(string title, string? oldV, string? newV)
+        {
+            var o = (oldV ?? "").Trim();
+            var n = (newV ?? "").Trim();
+            if (o != n) lines.Add($"{title}: «{(o.Length == 0 ? "—" : o)}» ← «{(n.Length == 0 ? "—" : n)}»");
+        }
+        void CmpDate(string title, DateTime? oldV, DateTime? newV)
+            => Cmp(title,
+                oldV is null ? null : Inventory.Shared.PersianDate.ToShort(oldV.Value),
+                newV is null ? null : Inventory.Shared.PersianDate.ToShort(newV.Value));
+
+        Cmp("نام پروژه", e.ProjectName, d.ProjectName);
+        Cmp("شماره سریال", e.SerialNumber, d.SerialNumber);
+        Cmp("تحویل گیرنده", e.ProjectReceiver, d.ProjectReceiver);
+        Cmp("قبض خروج", e.GhabzExit, d.GhabzExit);
+        Cmp("کارشناسی اولیه", e.KarshenasiAvalie, d.KarshenasiAvalie);
+        Cmp("شرح", e.Description, d.Description);
+        if (e.KarFarmaId != d.KarFarmaId) lines.Add("کارفرما تغییر کرده است.");
+        if ((e.IsFolder == true) != (d.IsFolder == true))
+            lines.Add($"پوشه: «{(e.IsFolder == true ? "دارد" : "ندارد")}» ← «{(d.IsFolder == true ? "دارد" : "ندارد")}»");
+        CmpDate("تاریخ ورود", e.EntryDate, d.EntryDate);
+        CmpDate("تاریخ خروج", e.ExitDate, d.ExitDate);
+        CmpDate("تاریخ خروج موقت", e.TemporaryExitDate, d.TemporaryExitDate);
+        CmpDate("تاریخ ثبت پروژه", e.ProjectRegistrationDate, d.ProjectRegistrationDate);
+        CmpDate("تاریخ نیاز مشتری", e.CustomerRequiredDate, d.CustomerRequiredDate);
+        CmpDate("تاریخ تحویل", e.DeliveryDate, d.DeliveryDate);
+        CmpDate("تاریخ پرونده", e.FileDate, d.FileDate);
+
+        var text = string.Join(" | ", lines);
+        return text.Length > 1900 ? text.Substring(0, 1900) + "…" : text;
     }
 
     /// <summary>ثبت/ویرایش اطلاعات فاکتور پروژه (شماره + نوع فاکتور) — فرم مجزا از منوی سطر</summary>
@@ -507,7 +795,11 @@ public class ProjectsController : RbacControllerBase
         return Ok(new { id = entity.Id });
     }
 
-    /// <summary>حذف نرم پروژه + گزارش‌های کار و ثبت حذف پیوست‌هایش (فایل رمزنگاری‌شده هم حذف می‌شود)</summary>
+    /// <summary>
+    /// حذف پروژه.
+    /// مدیر کارتابل پروژه: حذف نرم فوری (به‌همراه گزارش‌های کار و پیوست‌ها).
+    /// سایر کاربران: «درخواست حذف» ساخته می‌شود و فقط با تایید مدیر انجام می‌گیرد.
+    /// </summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, [FromServices] Services.IProjectFileProtection protect, [FromServices] Hubs.INotifyService notify)
     {
@@ -518,52 +810,92 @@ public class ProjectsController : RbacControllerBase
             .FirstOrDefaultAsync(p => p.Id == id && !p.IsDelete);
         if (entity is null) return NotFound(new { message = "پروژه پیدا نشد." });
 
+        // ==================== نیاز به تایید مدیر ====================
+        if (!await IsProjectManagerAsync())
+        {
+            if (await Db.ProjectChangeRequests.AnyAsync(c => c.ProjectId == id && c.Kind == 2 && c.Status == 0))
+                return BadRequest(new { message = "برای این پروژه یک «درخواست حذف» در انتظار تایید مدیر وجود دارد." });
+
+            Db.ProjectChangeRequests.Add(new ProjectChangeRequest
+            {
+                ProjectId = id,
+                Kind = 2,
+                Status = 0,
+                Summary = $"حذف پروژهٔ «{entity.ProjectName}» (کد {entity.CodeProject}) به‌همراه گزارش‌های کار و پیوست‌های آن",
+                RequestedById = MyUserId,
+                RequestedAt = DateTime.Now
+            });
+            await Db.SaveChangesAsync();
+
+            await NotifyProjectEventAsync(notify, "Manager",
+                "درخواست حذف پروژه",
+                $"«{entity.ProjectName}» (کد {entity.CodeProject}) — درخواست حذف در انتظار تایید شماست.",
+                "/project-cartable?queue=changes");
+
+            return Ok(new
+            {
+                ok = true,
+                pending = true,
+                message = "درخواست حذف برای تایید مدیر ارسال شد — پروژه تا تایید مدیر حذف نمی‌شود."
+            });
+        }
+
+        await ApplyDeleteAsync(Db, entity, protect);
+        try { await notify.BroadcastChangedAsync("projects"); } catch { }
+        return Ok(new { ok = true, pending = false });
+    }
+
+    /// <summary>حذف نرم پروژه + گزارش‌های کار + پیوست‌ها (مشترک بین حذف مستقیم مدیر و تایید درخواست حذف)</summary>
+    internal static async Task ApplyDeleteAsync(AppDbContext db, ProjectEntryExit entity, Services.IProjectFileProtection protect)
+    {
         entity.IsDelete = true;
 
-        var reports = await Db.ReportWorks.Where(r => r.ProjectId == id && !r.IsDelete).ToListAsync();
+        var reports = await db.ReportWorks.Where(r => r.ProjectId == entity.Id && !r.IsDelete).ToListAsync();
         foreach (var r in reports) r.IsDelete = true;
 
-        foreach (var a in entity.Attaches)
+        var attaches = await db.ProjectAttaches.Where(a => a.ProjectId == entity.Id && !a.IsDelete).ToListAsync();
+        foreach (var a in attaches)
         {
             a.IsDelete = true;
             try { protect.Delete(a.StoredFileName); } catch { /* فایل شاید از قبل نباشد */ }
         }
 
-        await Db.SaveChangesAsync();
-        try { await notify.BroadcastChangedAsync("projects"); } catch { }
-        return Ok(new { ok = true });
+        await db.SaveChangesAsync();
     }
 
     // ==================== کمکی ====================
 
+    /// <summary>
+    /// اعتبارسنجی پروژه — «شماره سریال» و «تحویل گیرنده» اختیاری هستند (اجبار برداشته شد)؛
+    /// فقط اگر سریال وارد شده باشد، تکراری‌نبودن آن بررسی می‌شود.
+    /// </summary>
     private async Task<IActionResult?> ValidateAsync(ProjectEntryExitDto dto, int excludeId = 0)
     {
         if (string.IsNullOrWhiteSpace(dto.ProjectName))
             return BadRequest(new { message = "نام پروژه الزامی است." });
-        if (string.IsNullOrWhiteSpace(dto.SerialNumber))
-            return BadRequest(new { message = "شماره سریال پروژه الزامی است (دستی وارد شود — مستقل از کد پروژه)." });
-        var serial = dto.SerialNumber.Trim();
-        var dup = await Db.ProjectEntryExits.AnyAsync(p => p.Id != excludeId && !p.IsDelete && p.SerialNumber == serial);
-        if (dup)
-            return BadRequest(new { message = "این شماره سریال قبلاً برای پروژه دیگری ثبت شده است." });
-        if (string.IsNullOrWhiteSpace(dto.SerialNumber))
-            return BadRequest(new { message = "شماره سریال پروژه الزامی است (دستی وارد شود — مستقل از کد پروژه)." });
-        if (string.IsNullOrWhiteSpace(dto.ProjectReceiver))
-            return BadRequest(new { message = "تحویل گیرنده پروژه الزامی است." });
+
+        var serial = (dto.SerialNumber ?? "").Trim();
+        if (serial.Length > 0)
+        {
+            var dup = await Db.ProjectEntryExits.AnyAsync(p => p.Id != excludeId && !p.IsDelete && p.SerialNumber == serial);
+            if (dup)
+                return BadRequest(new { message = "این شماره سریال قبلاً برای پروژه دیگری ثبت شده است." });
+        }
+
         if (!await Db.KarFarmas.AnyAsync(k => k.Id == dto.KarFarmaId && !k.IsDelete))
             return BadRequest(new { message = "کارفرما انتخاب نشده یا معتبر نیست." });
         return null;
     }
 
-    private static void Map(ProjectEntryExitDto dto, ProjectEntryExit e)
+    internal static void Map(ProjectEntryExitDto dto, ProjectEntryExit e)
     {
-        e.SerialNumber = dto.SerialNumber.Trim();
-        e.ProjectName = dto.ProjectName.Trim();
+        e.SerialNumber = (dto.SerialNumber ?? "").Trim();
+        e.ProjectName = (dto.ProjectName ?? "").Trim();
         // نکته: CodeProject و ReturnProjectId اینجا نیستند — کد فقط موقع ایجاد صادر می‌شود و بعداً تغییر نمی‌کند
         e.GhabzExit = dto.GhabzExit?.Trim();
         // نکته: FactorNumber و FactorTypeId عمداً اینجا نیستند — فقط از UpdateFactor تغییر می‌کنند
         e.KarshenasiAvalie = dto.KarshenasiAvalie?.Trim();
-        e.ProjectReceiver = dto.ProjectReceiver.Trim();
+        e.ProjectReceiver = (dto.ProjectReceiver ?? "").Trim();
         e.Description = dto.Description?.Trim();
         e.KarFarmaId = dto.KarFarmaId;
         e.UserId = dto.UserId;
