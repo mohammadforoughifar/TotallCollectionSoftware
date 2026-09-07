@@ -141,6 +141,27 @@ public class DocumentListDto
 
     public DocAccessLevelDto MyLevel { get; set; }
     public bool MyCanDownload { get; set; }
+
+    /// <summary>تگ‌های اختصاص‌داده‌شده به مدرک</summary>
+    public List<DocTagDto> Tags { get; set; } = new();
+
+    /// <summary>آیا مدرک دارای محتوای ایندکس‌شده / OCR است؟</summary>
+    public bool HasIndexedContent { get; set; }
+
+    /// <summary>بخشی از متن استخراج‌شده در صورت جستجوی تمام‌متن (Snippet)</summary>
+    public string? ContentSnippet { get; set; }
+
+    /// <summary>نام فایلی که کلمه در آن پیدا شد</summary>
+    public string? MatchedAttachmentFileName { get; set; }
+
+    /// <summary>نوع فایل منطبق‌شده: Pdf | PdfOcr | Word | Excel | ImageOcr | Text</summary>
+    public string? MatchedSourceType { get; set; }
+
+    /// <summary>تعداد اتصالات به ماژول‌های ERP</summary>
+    public int EntityLinkCount { get; set; }
+
+    /// <summary>لیست نام ماژول‌های متصل‌شده</summary>
+    public List<string> LinkedModules { get; set; } = new();
 }
 
 /// <summary>مدرک — کامل (فرم ثبت/ویرایش و صفحه جزئیات)</summary>
@@ -167,6 +188,15 @@ public class DocumentDto
     public string? DeactivatedByName { get; set; }
     public string? DeactivateReason { get; set; }
 
+    /// <summary>تگ‌های مدرک</summary>
+    public List<DocTagDto> Tags { get; set; } = new();
+
+    /// <summary>شناسه‌های تگ‌های انتخاب‌شده در فرم</summary>
+    public List<int> TagIds { get; set; } = new();
+
+    /// <summary>تعداد پیوست‌های دارای متن استخراج‌شده / OCR</summary>
+    public int ExtractedTextCount { get; set; }
+
     /// <summary>شناسه مدارکی که باید به این مدرک لینک شوند (چندانتخابی در فرم)</summary>
     public List<int> LinkedDocumentIds { get; set; } = new();
 
@@ -178,6 +208,7 @@ public class DocumentDto
 
     public List<DocVersionDto> Versions { get; set; } = new();
     public List<DocLinkDto> Links { get; set; } = new();
+    public List<DocEntityLinkDto> EntityLinks { get; set; } = new();
     public List<DocLogDto> Logs { get; set; } = new();
 
     public DocAccessLevelDto MyLevel { get; set; }
@@ -353,3 +384,204 @@ public class DocVersionCompareDto
     /// <summary>تعداد کل تفاوت‌ها (بدون موارد یکسان)</summary>
     public int ChangeCount { get; set; }
 }
+
+// ==================== تگ‌ها، OCR و جستجوی تمام‌متن ====================
+
+/// <summary>تگ مدرک</summary>
+public class DocTagDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Color { get; set; } = "#4f46e5";
+    public string? Description { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public int DocumentCount { get; set; }
+}
+
+public class DocTagSaveDto
+{
+    public string Name { get; set; } = "";
+    public string Color { get; set; } = "#4f46e5";
+    public string? Description { get; set; }
+}
+
+public class DocSetTagsDto
+{
+    public int DocumentId { get; set; }
+    public List<int> TagIds { get; set; } = new();
+}
+
+/// <summary>اطلاعات متن استخراج‌شده یا OCR یک پیوست</summary>
+public class DocExtractedTextDto
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public int VersionId { get; set; }
+    public int AttachmentId { get; set; }
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public string SourceType { get; set; } = "Text";
+    public string ExtractedText { get; set; } = "";
+    public string Status { get; set; } = "Indexed";
+    public string? ErrorMessage { get; set; }
+    public int CharacterCount { get; set; }
+    public DateTime IndexedAt { get; set; }
+}
+
+/// <summary>فیلترهای ترکیبی و پیشرفته جستجوی مدارک</summary>
+public class DocSearchFilterDto
+{
+    /// <summary>جستجوی عمومی در عنوان، کد مدرک، کد مشتری و توضیحات</summary>
+    public string? Search { get; set; }
+
+    /// <summary>جستجوی تمام‌متن درون محتوای فایل‌ها و نتایج OCR</summary>
+    public string? ContentSearch { get; set; }
+
+    public int? FolderId { get; set; }
+
+    /// <summary>جستجو شامل تمام زیرپوشه‌های این پوشه هم باشد</summary>
+    public bool IncludeSubfolders { get; set; } = true;
+
+    /// <summary>active | inactive | deleted | all</summary>
+    public string Status { get; set; } = "active";
+
+    /// <summary>all | expiring | expired | valid</summary>
+    public string ExpiryStatus { get; set; } = "all";
+
+    public DateTime? CreatedFrom { get; set; }
+    public DateTime? CreatedTo { get; set; }
+
+    public DateTime? ExpiryFrom { get; set; }
+    public DateTime? ExpiryTo { get; set; }
+
+    /// <summary>انواع فایل: pdf, word, excel, image, text</summary>
+    public List<string> FileTypes { get; set; } = new();
+
+    public int? ApproverUserId { get; set; }
+    public int? CreatedByUserId { get; set; }
+
+    public List<int> TagIds { get; set; } = new();
+
+    public bool? HasAttachment { get; set; }
+
+    /// <summary>فیلتر بر اساس ارتباط با ماژول ERP</summary>
+    public string? LinkedModule { get; set; }
+    public int? LinkedEntityId { get; set; }
+}
+
+/// <summary>نتیجه اجرای دستی OCR</summary>
+public class DocOcrRunResultDto
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = "";
+    public int CharacterCount { get; set; }
+    public string SourceType { get; set; } = "";
+    public string? ExtractedSnippet { get; set; }
+}
+
+/// <summary>نتیجه بازایندکس دسته‌ای</summary>
+public class DocReindexResultDto
+{
+    public int ProcessedCount { get; set; }
+    public int SucceededCount { get; set; }
+    public int FailedCount { get; set; }
+    public string Message { get; set; } = "";
+}
+
+// ==================== یکپارچه‌سازی با ماژول‌های ERP و دانلود درختی ZIP ====================
+
+/// <summary>ارتباط سند آرشیو با موجودیت سایر ماژول‌های سامانه ERP</summary>
+public class DocEntityLinkDto
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public string DocumentCode { get; set; } = "";
+    public string DocumentTitle { get; set; } = "";
+    public int FolderId { get; set; }
+    public string FolderName { get; set; } = "";
+    public int ActiveVersionNo { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime? ExpireDate { get; set; }
+    public bool IsExpired { get; set; }
+
+    /// <summary>نام ماژول: Projects | Hr | ItAssets | Invoicing | Catalog | Repairs | Office | Sales | Warehousing</summary>
+    public string Module { get; set; } = "";
+    public string ModuleTitle { get; set; } = "";
+
+    /// <summary>شناسه رکورد ماژول</summary>
+    public int EntityId { get; set; }
+
+    /// <summary>کد موجودیت در ماژول مبدأ</summary>
+    public string? EntityCode { get; set; }
+
+    /// <summary>عنوان موجودیت</summary>
+    public string EntityTitle { get; set; } = "";
+
+    /// <summary>لینک مستقیم در سامانه به این موجودیت</summary>
+    public string? EntityUrl { get; set; }
+
+    public string? Note { get; set; }
+    public string CreatedByName { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+
+    public DocAccessLevelDto MyLevel { get; set; }
+    public bool MyCanDownload { get; set; }
+
+    public List<DocTagDto> Tags { get; set; } = new();
+    public List<DocAttachmentSummaryDto> Attachments { get; set; } = new();
+}
+
+public class DocAttachmentSummaryDto
+{
+    public int Id { get; set; }
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public long Size { get; set; }
+    public bool CanPreview { get; set; }
+    public bool CanDownload { get; set; }
+    public int VersionNo { get; set; }
+}
+
+public class DocEntityLinkSaveDto
+{
+    public int DocumentId { get; set; }
+    public string Module { get; set; } = "";
+    public int EntityId { get; set; }
+    public string? EntityCode { get; set; }
+    public string EntityTitle { get; set; } = "";
+    public string? Note { get; set; }
+}
+
+public class DocEntityLookupItemDto
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string? Subtitle { get; set; }
+    public string Module { get; set; } = "";
+}
+
+public class DocQuickCreateLinkedDto
+{
+    public int FolderId { get; set; }
+    public string Title { get; set; } = "";
+    public string Code { get; set; } = "";
+    public string? CustomerCode { get; set; }
+    public string? Description { get; set; }
+    public DateTime? ExpireDate { get; set; }
+    public List<int> TagIds { get; set; } = new();
+    public string Module { get; set; } = "";
+    public int EntityId { get; set; }
+    public string? EntityCode { get; set; }
+    public string EntityTitle { get; set; } = "";
+    public string? LinkNote { get; set; }
+}
+
+public class DocFolderZipExportOptionsDto
+{
+    public int? FolderId { get; set; }
+    public bool IncludeSubfolders { get; set; } = true;
+    public bool OnlyActiveVersions { get; set; } = true;
+    public bool IncludeManifest { get; set; } = true;
+}
+

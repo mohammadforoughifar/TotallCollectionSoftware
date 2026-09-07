@@ -61,6 +61,25 @@ public interface IDocArchiveService
     Task<List<DocCartableItemDto>> GetCartableAsync(bool includeDone = false);
     Task CloseTaskAsync(int id);
     Task<DocArchiveLookups> GetLookupsAsync();
+
+    // جستجوی پیشرفته، تمام‌متن (Full-Text) و تگ‌ها
+    Task<List<DocumentListDto>> SearchDocumentsAsync(DocSearchFilterDto filter);
+    Task<List<DocTagDto>> GetTagsAsync();
+    Task<DocTagDto> CreateTagAsync(DocTagSaveDto dto);
+    Task UpdateTagAsync(int id, DocTagSaveDto dto);
+    Task DeleteTagAsync(int id);
+    Task SetDocumentTagsAsync(int docId, List<int> tagIds);
+    Task<List<DocExtractedTextDto>> GetExtractedTextsAsync(int docId);
+    Task<DocOcrRunResultDto> RunOcrAsync(int attachmentId);
+    Task<DocReindexResultDto> ReindexAllAsync();
+
+    // یکپارچه‌سازی با ماژول‌های سامانه ERP و دانلود درختی ZIP
+    string GetFolderZipExportUrl(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true);
+    Task<List<DocEntityLinkDto>> GetLinkedDocumentsAsync(string module, int entityId);
+    Task<int> AddEntityLinkAsync(DocEntityLinkSaveDto dto);
+    Task RemoveEntityLinkAsync(int linkId);
+    Task<List<DocEntityLookupItemDto>> SearchModuleEntitiesAsync(string module, string? q = null);
+    Task<(int documentId, int linkId)> QuickCreateLinkedDocAsync(DocQuickCreateLinkedDto dto);
 }
 
 public class DocArchiveService : IDocArchiveService
@@ -179,5 +198,62 @@ public class DocArchiveService : IDocArchiveService
     public Task<DocArchiveLookups> GetLookupsAsync()
         => _api.GetAsync<DocArchiveLookups>($"{Root}/lookups");
 
+    // ---------- جستجوی پیشرفته، تمام‌متن و OCR ----------
+    public Task<List<DocumentListDto>> SearchDocumentsAsync(DocSearchFilterDto filter)
+        => _api.PostAsync<List<DocumentListDto>>($"{Root}/search", filter);
+
+    public Task<List<DocTagDto>> GetTagsAsync()
+        => _api.GetAsync<List<DocTagDto>>($"{Root}/tags");
+
+    public Task<DocTagDto> CreateTagAsync(DocTagSaveDto dto)
+        => _api.PostAsync<DocTagDto>($"{Root}/tags", dto);
+
+    public Task UpdateTagAsync(int id, DocTagSaveDto dto)
+        => _api.PutAsync<object>($"{Root}/tags/{id}", dto);
+
+    public Task DeleteTagAsync(int id)
+        => _api.DeleteAsync($"{Root}/tags/{id}");
+
+    public Task SetDocumentTagsAsync(int docId, List<int> tagIds)
+        => _api.PostAsync<object>($"{Root}/documents/{docId}/tags", tagIds);
+
+    public Task<List<DocExtractedTextDto>> GetExtractedTextsAsync(int docId)
+        => _api.GetAsync<List<DocExtractedTextDto>>($"{Root}/documents/{docId}/extracted-texts");
+
+    public Task<DocOcrRunResultDto> RunOcrAsync(int attachmentId)
+        => _api.PostAsync<DocOcrRunResultDto>($"{Root}/attachments/{attachmentId}/ocr", new { });
+
+    public Task<DocReindexResultDto> ReindexAllAsync()
+        => _api.PostAsync<DocReindexResultDto>($"{Root}/reindex", new { });
+
+    // ---------- یکپارچه‌سازی ERP و دانلود درختی ZIP ----------
+    public string GetFolderZipExportUrl(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true)
+    {
+        if (folderId.HasValue && folderId.Value > 0)
+        {
+            return $"api/doc-archive/folders/{folderId.Value}/export-zip?includeSubfolders={includeSubfolders.ToString().ToLower()}&onlyActiveVersions={onlyActiveVersions.ToString().ToLower()}&includeManifest={includeManifest.ToString().ToLower()}";
+        }
+        return $"api/doc-archive/export-zip?includeSubfolders={includeSubfolders.ToString().ToLower()}&onlyActiveVersions={onlyActiveVersions.ToString().ToLower()}&includeManifest={includeManifest.ToString().ToLower()}";
+    }
+
+    public Task<List<DocEntityLinkDto>> GetLinkedDocumentsAsync(string module, int entityId)
+        => _api.GetAsync<List<DocEntityLinkDto>>($"{Root}/entity-links/{module}/{entityId}");
+
+    public async Task<int> AddEntityLinkAsync(DocEntityLinkSaveDto dto)
+        => (await _api.PostAsync<IdResponse>($"{Root}/entity-links", dto)).Id;
+
+    public Task RemoveEntityLinkAsync(int linkId)
+        => _api.DeleteAsync($"{Root}/entity-links/{linkId}");
+
+    public Task<List<DocEntityLookupItemDto>> SearchModuleEntitiesAsync(string module, string? q = null)
+        => _api.GetAsync<List<DocEntityLookupItemDto>>($"{Root}/entity-lookups/{module}?q={Uri.EscapeDataString(q ?? "")}");
+
+    public async Task<(int documentId, int linkId)> QuickCreateLinkedDocAsync(DocQuickCreateLinkedDto dto)
+    {
+        var res = await _api.PostAsync<QuickCreateResponse>($"{Root}/entity-links/quick-create", dto);
+        return (res.DocumentId, res.LinkId);
+    }
+
     private class IdResponse { public int Id { get; set; } }
+    private class QuickCreateResponse { public int DocumentId { get; set; } public int LinkId { get; set; } }
 }

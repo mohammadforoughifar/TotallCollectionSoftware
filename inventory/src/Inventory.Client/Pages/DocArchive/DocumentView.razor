@@ -74,6 +74,22 @@ else
                 <b>@(doc.AllowMultipleActiveVersions ? "چند ورژن فعال هم‌زمان" : "فقط یک ورژن فعال")</b>
             </div>
             <div class="col-md-3"><span class="text-muted">دسترسی شما:</span> <b>@LevelName(doc.MyLevel)</b></div>
+            <div class="col-md-6 d-flex align-items-center gap-1 flex-wrap">
+                <span class="text-muted">تگ‌ها:</span>
+                @if (doc.Tags.Count == 0)
+                {
+                    <span class="text-muted">—</span>
+                }
+                else
+                {
+                    @foreach (var t in doc.Tags)
+                    {
+                        <span class="badge rounded-pill text-white shadow-sm" style="background-color:@t.Color;padding:4px 8px;">
+                            <i class="bi bi-tag-fill me-1"></i>@t.Name
+                        </span>
+                    }
+                }
+            </div>
             @if (!string.IsNullOrWhiteSpace(doc.Description))
             {
                 <div class="col-12"><span class="text-muted">توضیحات:</span> @doc.Description</div>
@@ -248,6 +264,74 @@ else
                 }
             </div>
         </div>
+
+        @* ------------------- متن استخراج‌شده و OCR ------------------- *@
+        <div class="card mt-3">
+            <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span>
+                    <i class="bi bi-file-earmark-font ms-1"></i> متن استخراج‌شده و نتایج OCR پیوست‌ها
+                    <span class="badge bg-secondary ms-1">@extractedTexts.Count.Num()</span>
+                </span>
+                <button class="btn btn-sm btn-outline-primary py-0 fs-8" @onclick="LoadExtractedTexts">
+                    <i class="bi bi-arrow-clockwise"></i> تازه‌سازی
+                </button>
+            </div>
+            <div class="card-body p-2">
+                @if (loadingExtracted)
+                {
+                    <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+                }
+                else if (extractedTexts.Count == 0)
+                {
+                    <div class="text-center text-muted py-3 fs-8">
+                        هنوز متنی استخراج نشده است. پس از آپلود پیوست‌های PDF، Word، Excel یا تصاویر اسکن‌شده، متن به‌طور خودکار استخراج می‌شود.
+                    </div>
+                }
+                else
+                {
+                    <div class="list-group list-group-flush fs-8">
+                        @foreach (var e in extractedTexts)
+                        {
+                            <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-1 flex-wrap gap-2">
+                                <div>
+                                    <div class="fw-700">
+                                        <i class="bi @SourceTypeIcon(e.SourceType) me-1"></i> @e.FileName
+                                        <span class="badge @SourceTypeClass(e.SourceType) ms-1">@SourceTypeName(e.SourceType)</span>
+                                        <span class="badge @(e.Status == "Indexed" ? "bg-success" : "bg-danger") ms-1">
+                                            @(e.Status == "Indexed" ? "ایندکس‌شده" : "خطا")
+                                        </span>
+                                    </div>
+                                    <div class="text-muted fs-9 mt-1">
+                                        <span>تعداد حروف: @e.CharacterCount.Num()</span>
+                                        <span class="ms-2">تاریخ: @e.IndexedAt.ToFa()</span>
+                                        @if (!string.IsNullOrWhiteSpace(e.ErrorMessage))
+                                        {
+                                            <span class="text-danger ms-2">خطا: @e.ErrorMessage</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-1">
+                                    @if (e.Status == "Indexed")
+                                    {
+                                        <button class="btn btn-sm btn-outline-secondary" title="مشاهده متن کامل"
+                                                @onclick="() => ViewExtractedText(e)">
+                                            <i class="bi bi-eye"></i> متن
+                                        </button>
+                                    }
+                                    @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive)
+                                    {
+                                        <button class="btn btn-sm btn-outline-primary" title="اجرای مجدد OCR / استخراج متن"
+                                                @onclick="() => RunOcr(e.AttachmentId)">
+                                            <i class="bi bi-cpu"></i> اجرای مجدد OCR
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
     </div>
 
     @* ------------------- کناری: لینک‌ها و دسترسی‌ها ------------------- *@
@@ -299,6 +383,52 @@ else
                             فقط مدارک فعال قابل لینک هستند.
                         </div>
                     </div>
+                }
+            </div>
+        </div>
+
+        @* ------------------- ارتباط با ماژول‌های سامانه (ERP) ------------------- *@
+        <div class="card mb-3">
+            <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-diagram-3-fill ms-1 text-primary"></i> اتصالات سامانه ERP</span>
+                <span class="badge bg-secondary">@doc.EntityLinks.Count.Num()</span>
+            </div>
+            <div class="card-body p-2">
+                @foreach (var el in doc.EntityLinks)
+                {
+                    <div class="d-flex justify-content-between align-items-center border-bottom py-1 fs-8">
+                        <div>
+                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle me-1">@GetErpModuleTitle(el.Module)</span>
+                            <b>@el.EntityTitle</b>
+                            @if (!string.IsNullOrWhiteSpace(el.EntityCode))
+                            {
+                                <span class="fs-9 text-muted font-mono ms-1">(@el.EntityCode)</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(el.Note))
+                            {
+                                <div class="fs-9 text-muted mt-0.5"><i class="bi bi-chat-left-text me-1"></i>@el.Note</div>
+                            }
+                        </div>
+                        <div class="d-flex align-items-center gap-1">
+                            @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive)
+                            {
+                                <button class="btn btn-sm btn-light p-1" title="حذف اتصال" @onclick="() => RemoveErpLink(el.Id)">
+                                    <i class="bi bi-x-lg text-danger"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (doc.EntityLinks.Count == 0)
+                {
+                    <div class="fs-8 text-muted py-2">هنوز به هیچ موجودیتی در ERP متصل نشده است.</div>
+                }
+
+                @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive)
+                {
+                    <button class="btn btn-sm btn-outline-primary w-100 mt-2" @onclick="OpenAddErpLinkModal">
+                        <i class="bi bi-plus-lg"></i> اتصال به رکورد ERP (پروژه، پرسنل، ...)
+                    </button>
                 }
             </div>
         </div>
@@ -426,7 +556,98 @@ else
     </Footer>
 </Modal>
 
+@* ==================== مودال نمایش متن استخراج‌شده / OCR ==================== *@
+<Modal Visible="showTextModal" Title="@($"متن استخراج‌شده — {selectedText?.FileName}")" Size="modal-lg" OnClose="() => showTextModal = false">
+    <ChildContent>
+        @if (selectedText != null)
+        {
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                <div>
+                    <span class="badge @SourceTypeClass(selectedText.SourceType) me-1">@SourceTypeName(selectedText.SourceType)</span>
+                    <span class="text-muted fs-8">تعداد حروف: @selectedText.CharacterCount.Num() | تاریخ استخراج: @selectedText.IndexedAt.ToFa()</span>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" @onclick="CopyExtractedText">
+                    <i class="bi bi-clipboard me-1"></i> کپی متن
+                </button>
+            </div>
+            <div class="p-3 bg-light rounded-3 border" style="max-height:450px;overflow:auto;white-space:pre-wrap;font-family:inherit;font-size:0.9rem;line-height:1.8;">
+                @(string.IsNullOrWhiteSpace(selectedText.ExtractedText) ? "متنی در این فایل یافت نشد." : selectedText.ExtractedText)
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showTextModal = false">بستن</button>
+    </Footer>
+</Modal>
+
 @* ==================== مودال ویرایش مدرک ==================== *@
+@* ==================== مودال اتصال به رکورد ERP ==================== *@
+<Modal Visible="showAddErpLink" Title="اتصال مدرک به ماژول‌های سامانه (ERP)" Size="modal-md" OnClose="() => showAddErpLink = false">
+    <ChildContent>
+        <div class="mb-3">
+            <label class="form-label fs-8 fw-bold">انتخاب ماژول سامانه:</label>
+            <select class="form-select form-select-sm" @bind="erpModule" @bind:after="OnErpModuleChanged">
+                <option value="Projects">پروژه‌ها و قراردادها</option>
+                <option value="Hr">پرسنلی و منابع انسانی</option>
+                <option value="ItAssets">اموال و تجهیزات IT</option>
+                <option value="Invoicing">فاکتورها و فروش</option>
+                <option value="KarFarma">کارفرمایان و طرف‌حساب‌ها</option>
+                <option value="Repairs">سفارشات تعمیرات</option>
+                <option value="Warehousing">اسناد انبارداری</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fs-8 fw-bold">جستجو و انتخاب رکورد:</label>
+            <input type="text" class="form-control form-control-sm mb-2" placeholder="برای جستجو تایپ کنید…"
+                   @bind="erpSearchQuery" @bind:event="oninput" @onkeyup="SearchErpEntities" />
+
+            @if (erpLookupLoading)
+            {
+                <div class="text-center py-2"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+            }
+            else if (erpLookupItems.Count > 0)
+            {
+                <div class="list-group list-group-flush border rounded" style="max-height: 180px; overflow-y: auto;">
+                    @foreach (var item in erpLookupItems)
+                    {
+                        <button type="button" class="list-group-item list-group-item-action p-2 d-flex justify-content-between align-items-center @(selectedErpItem?.Id == item.Id ? "active" : "")"
+                                @onclick="() => selectedErpItem = item">
+                            <div>
+                                <div class="fw-bold fs-8">@item.Title</div>
+                                @if (!string.IsNullOrWhiteSpace(item.Subtitle))
+                                {
+                                    <div class="fs-9 text-muted">@item.Subtitle</div>
+                                }
+                            </div>
+                            @if (selectedErpItem?.Id == item.Id)
+                            {
+                                <i class="bi bi-check-circle-fill text-primary"></i>
+                            }
+                        </button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="text-muted fs-8 p-2 border rounded text-center">موردی یافت نشد.</div>
+            }
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label fs-8">یادداشت اتصال (اختیاری):</label>
+            <input type="text" class="form-control form-control-sm" placeholder="مثلاً: مستند فنی تحویل پروژه" @bind="erpLinkNote" />
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showAddErpLink = false">انصراف</button>
+        <button class="btn btn-primary" disabled="@(selectedErpItem == null || savingErpLink)" @onclick="SaveErpLink">
+            @if (savingErpLink) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            ثبت اتصال
+        </button>
+    </Footer>
+</Modal>
+
 <VersionCompareModal @ref="compareModal" />
 
 <DocumentFormModal Visible="showEdit" EditId="Id" Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents"
@@ -445,7 +666,17 @@ else
     private DocumentDto doc = new();
     private DocArchiveLookups lookups = new();
     private List<DocFolderDto> folders = new();
-    private bool loading = true, saving;
+    private List<DocExtractedTextDto> extractedTexts = new();
+    private DocExtractedTextDto? selectedText;
+
+    // متغیرهای اتصال ERP
+    private bool showAddErpLink, savingErpLink, erpLookupLoading;
+    private string erpModule = "Projects";
+    private string erpSearchQuery = "";
+    private List<DocEntityLookupItemDto> erpLookupItems = new();
+    private DocEntityLookupItemDto? selectedErpItem;
+    private string erpLinkNote = "";
+    private bool loading = true, loadingExtracted, saving, showTextModal;
 
     private bool showVersion, showApproval, showEdit;
     private DocVersionCreateDto verForm = new();
@@ -538,10 +769,84 @@ else
             lookups = await Svc.GetLookupsAsync();
             folders = await Svc.GetFoldersAsync();
             Layout.SetTitle($"{doc.Code} — {doc.Title}");
+            await LoadExtractedTexts();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
     }
+
+    private async Task LoadExtractedTexts()
+    {
+        loadingExtracted = true;
+        try
+        {
+            extractedTexts = await Svc.GetExtractedTextsAsync(Id);
+        }
+        catch { extractedTexts = new(); }
+        finally { loadingExtracted = false; }
+    }
+
+    private void ViewExtractedText(DocExtractedTextDto item)
+    {
+        selectedText = item;
+        showTextModal = true;
+    }
+
+    private async Task CopyExtractedText()
+    {
+        if (selectedText != null && !string.IsNullOrEmpty(selectedText.ExtractedText))
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", selectedText.ExtractedText);
+            Toast.Success("متن در حافظه کپی شد.");
+        }
+    }
+
+    private async Task RunOcr(int attachmentId)
+    {
+        try
+        {
+            Toast.Info("در حال پردازش OCR و استخراج متن...");
+            var res = await Svc.RunOcrAsync(attachmentId);
+            if (res.Success)
+            {
+                Toast.Success(res.Message);
+                await LoadExtractedTexts();
+            }
+            else
+            {
+                Toast.Error(res.Message);
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private static string SourceTypeIcon(string st) => st switch
+    {
+        "Pdf" or "PdfOcr" => "bi-filetype-pdf text-danger",
+        "Word" => "bi-file-earmark-word text-primary",
+        "Excel" => "bi-file-earmark-excel text-success",
+        "ImageOcr" => "bi-file-earmark-image text-info",
+        _ => "bi-file-earmark-text text-secondary"
+    };
+
+    private static string SourceTypeClass(string st) => st switch
+    {
+        "Pdf" or "PdfOcr" => "bg-danger",
+        "Word" => "bg-primary",
+        "Excel" => "bg-success",
+        "ImageOcr" => "bg-info text-dark",
+        _ => "bg-secondary"
+    };
+
+    private static string SourceTypeName(string st) => st switch
+    {
+        "Pdf" => "PDF (متن دیجیتال)",
+        "PdfOcr" => "PDF (اسکن OCR)",
+        "Word" => "Word (docx)",
+        "Excel" => "Excel (xlsx)",
+        "ImageOcr" => "OCR تصویر (فارسی/انگلیسی)",
+        _ => "فایل متنی"
+    };
 
     // ---------- ورژن ----------
     private async Task SaveVersion()
@@ -662,6 +967,100 @@ else
         showEdit = false;
         await Load();
     }
+
+    // ---------- اتصالات ERP ----------
+    private async Task OpenAddErpLinkModal()
+    {
+        showAddErpLink = true;
+        selectedErpItem = null;
+        erpSearchQuery = "";
+        erpLinkNote = "";
+        await OnErpModuleChanged();
+    }
+
+    private async Task OnErpModuleChanged()
+    {
+        selectedErpItem = null;
+        await SearchErpEntities();
+    }
+
+    private async Task SearchErpEntities()
+    {
+        erpLookupLoading = true;
+        try
+        {
+            erpLookupItems = await Svc.SearchModuleEntitiesAsync(erpModule, erpSearchQuery);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در دریافت لیست {GetErpModuleTitle(erpModule)}: {ex.Message}");
+            erpLookupItems = new();
+        }
+        finally
+        {
+            erpLookupLoading = false;
+        }
+    }
+
+    private async Task SaveErpLink()
+    {
+        if (selectedErpItem == null) return;
+        savingErpLink = true;
+        try
+        {
+            await Svc.AddEntityLinkAsync(new DocEntityLinkSaveDto
+            {
+                DocumentId = Id,
+                Module = erpModule,
+                EntityId = selectedErpItem.Id,
+                EntityCode = selectedErpItem.Code,
+                EntityTitle = selectedErpItem.Title,
+                Note = erpLinkNote
+            });
+            Toast.Success("اتصال مدرک به ماژول با موفقیت ثبت شد.");
+            showAddErpLink = false;
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در ثبت اتصال: {ex.Message}");
+        }
+        finally
+        {
+            savingErpLink = false;
+        }
+    }
+
+    private async Task RemoveErpLink(int linkId)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", "آیا از حذف این اتصال اطمینان دارید؟");
+        if (!ok) return;
+
+        try
+        {
+            await Svc.RemoveEntityLinkAsync(linkId);
+            Toast.Success("اتصال حذف شد.");
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در حذف اتصال: {ex.Message}");
+        }
+    }
+
+    private static string GetErpModuleTitle(string module) => module.ToLowerInvariant() switch
+    {
+        "projects" => "پروژه",
+        "hr" or "personnel" => "پرسنلی",
+        "itassets" => "تجهیزات IT",
+        "invoicing" => "فاکتور",
+        "catalog" or "party" or "karfarma" => "کارفرما / طرف‌حساب",
+        "repairs" => "تعمیرات",
+        "office" => "دبیرخانه",
+        "sales" => "فروش",
+        "warehousing" => "انبار",
+        _ => module
+    };
 
     private static string LevelName(DocAccessLevelDto l) => l switch
     {
