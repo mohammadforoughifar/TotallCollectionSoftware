@@ -1,23 +1,35 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>CS1998</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
-    <ProjectReference Include="..\Inventory.Shared\Inventory.Shared.csproj" />
-    <ProjectReference Include="..\..\modules\RadisHr\src\RadisHr.Shared\RadisHr.Shared.csproj" />
+    <ProjectReference Include="../Inventory.Shared/Inventory.Shared.csproj">
+      <Name>Inventory.Shared</Name>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+      <SkipGetTargetFrameworkProperties>false</SkipGetTargetFrameworkProperties>
+    </ProjectReference>
+    <ProjectReference Include="../../modules/RadisHr/src/RadisHr.Shared/RadisHr.Shared.csproj">
+      <Name>RadisHr.Shared</Name>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
   </ItemGroup>
 
   <ItemGroup>
     <!-- بک‌اند RADIS-HR عیناً از ماژول اصلی در همین Host کامپایل می‌شود؛ Program مستقل عمداً وارد نمی‌شود. -->
-    <Compile Include="..\..\modules\RadisHr\src\RadisHr.Api\Controllers\**\*.cs" Link="Modules\RadisHr\Controllers\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\..\modules\RadisHr\src\RadisHr.Api\Data\**\*.cs" Link="Modules\RadisHr\Data\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\..\modules\RadisHr\src\RadisHr.Api\Services\**\*.cs" Link="Modules\RadisHr\Services\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../modules/RadisHr/src/RadisHr.Api/Controllers/**/*.cs" Link="Modules/RadisHr/Controllers/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../modules/RadisHr/src/RadisHr.Api/Data/**/*.cs" Link="Modules/RadisHr/Data/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../modules/RadisHr/src/RadisHr.Api/Services/**/*.cs" Link="Modules/RadisHr/Services/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- فونت‌های فارسی برای PDF شناسنامه سیستم -->
-    <Content Include="Resources\fonts\**\*" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- Unsafe 6.0 برای سازگاری ImageSharp (اجباری در آوت‌پوت) -->
+    <Content Include="Resources/fonts/**/*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,12 +51,5 @@
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
     <PackageReference Include="WebPush" Version="1.0.13" />
   </ItemGroup>
-
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <NoWarn>CS1998</NoWarn>
-  </PropertyGroup>
 
 </Project>

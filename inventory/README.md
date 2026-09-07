@@ -138,6 +138,10 @@ python3 tests/api_test.py
 
 ## رفع اشکال
 
+### خطای `Metadata file '...Inventory.Shared.dll' could not be found`
+
+پوشه‌های `bin` و `obj` را حذف کنید و Solution را Rebuild کنید. جزئیات در بخش همین خطا در `RUN-GUIDE.md` است.
+
 ### خطای `icudt_EFIGS.dat` هنگام بوت (صفحه سفید)
 
 این مشکل شناخته‌شده پابلیش Blazor است و در این پروژه با `InvariantGlobalization=true` کاملاً غیرفعال شده است (به ICU نیازی نداریم چون تاریخ شمسی و اعداد فارسی را خود برنامه پیاده‌سازی می‌کند).
