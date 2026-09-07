@@ -37,7 +37,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 // RADIS-HR از همان Connection String و همان دیتابیس استفاده می‌کند، ولی DbContext و
 // Migration History مستقلش را حفظ می‌کند تا موجودیت‌ها و منطق بک‌اند اصلی تغییر نکنند.
-builder.Services.AddRadisHrModule(builder.Configuration, provider, connectionString);
+builder.Services.AddRadisHrModule(provider, connectionString);
 
 // ثبت سرویس‌ها با اینترفیس (اصل وارونگی وابستگی — DIP)
 builder.Services.AddScoped<IInventoryService, InventoryService>();
@@ -128,14 +128,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             }
         };
     });
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("RadisHrAccess", policy =>
-        policy.RequireAuthenticatedUser()
-              .RequireAssertion(ctx => ctx.User.IsInRole("Admin")
-                  || ctx.User.HasClaim("permission", "RadisHr.Access")));
-});
-
 // CORS برای کلاینت Blazor WASM (در محیط توسعه)
 builder.Services.AddCors(options =>
     options.AddPolicy("wasm", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
@@ -146,7 +138,7 @@ builder.Services.AddControllers(options =>
         options.Filters.Add<ApiExceptionFilter>();
         // لاگ عملیات: ثبت خودکار هر POST/PUT/PATCH/DELETE در همه‌ی بخش‌ها
         options.Filters.Add<AuditLogFilter>();
-        // میزبانی ماژول RADIS-HR: پیشوند مسیر radis-hr و سیاست دسترسی RadisHrAccess
+        // ماژول منابع انسانی داخلی: مسیر api/hr و سیاست دسترسی RadisHrAccess
         options.Conventions.Add(new RadisHrControllerConvention());
     })
     .AddJsonOptions(o =>
@@ -182,7 +174,7 @@ builder.Services.AddSwaggerGen(o =>
     {
         Title = "API برنامه جامع — فروغ آریا + RADIS-HR V019",
         Version = "v1",
-        Description = "تست تعاملی همه‌ی سرویس‌ها؛ APIهای منابع انسانی جامع زیر /radis-hr/api قرار دارند."
+        Description = "تست تعاملی همه‌ی سرویس‌ها؛ APIهای منابع انسانی جامع زیر /api/hr قرار دارند."
     });
     // DTOهایی مثل LoginRequest در هر دو سامانه وجود دارند؛ نام کامل از برخورد Schema جلوگیری می‌کند.
     o.CustomSchemaIds(type => (type.FullName ?? type.Name).Replace("+", "."));
@@ -231,7 +223,8 @@ app.Use(async (ctx, next) =>
 });
 
 app.MapControllers();
-app.MapGet("/radis-hr", () => Results.Redirect("/radis-hr/"));
+app.MapFallback("/api/hr/{**path}", () => Results.NotFound());
+app.MapFallback("/radis-hr/api/{**path}", () => Results.NotFound());
 
 // هاب بلادرنگ داشبورد
 app.MapHub<DashboardHub>("/hubs/dashboard");
@@ -269,10 +262,7 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
                 ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
         }
     });
-    // SPA مستقل RADIS-HR زیر همان Origin اجرا می‌شود تا نشست ورود هسته را به‌صورت امن استفاده کند.
-    if (File.Exists(Path.Combine(clientRoot, "radis-hr", "index.html")))
-        app.MapFallbackToFile("/radis-hr/{*path:nonfile}", "radis-hr/index.html");
-
+    // HR is part of Inventory.Client; all UI deep links use the same index.html.
     app.MapFallbackToFile("index.html");
 }
 

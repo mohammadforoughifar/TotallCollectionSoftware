@@ -1,0 +1,122 @@
+/* Scoped to the native HR module; must not affect the Inventory shell. */
+.radis-hr .statutory-field input[readonly]{
+  background:#f2f6f3;
+  border-color:#d8e5da;
+  color:#24543b;
+  font-weight:700;
+  cursor:not-allowed
+}
+.radis-hr .statutory-field small,.radis-hr .rules-questionnaire label small{color:#71808b;font-weight:400;line-height:1.7}
+.radis-hr .rules-current-status{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 22px;
+  margin:18px 0;
+  padding:16px 20px;
+  border:1px solid #cfe3ba;
+  border-radius:14px;
+  background:#f5faf2;
+  color:#315e3b
+}
+.radis-hr .rules-current-status span{font-size:12px}
+.radis-hr .rules-questionnaire{display:grid;gap:18px;margin-top:0}
+.radis-hr .rules-questionnaire>.panel{margin:0}
+.radis-hr .rules-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 16px}
+.radis-hr .rules-grid label{align-content:start}
+.radis-hr .rules-grid textarea{
+  width:100%;
+  resize:vertical;
+  border:1px solid #e4eaed;
+  border-radius:12px;
+  padding:14px;
+  color:#20303d;
+  font:inherit;
+  line-height:1.8
+}
+.radis-hr .rules-grid textarea:focus{outline:0;border-color:#668a54;box-shadow:0 0 0 3px rgba(102,138,84,.12)}
+.radis-hr .insurance-checklist{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px 16px;
+  margin-top:20px;
+  padding:16px;
+  border:1px solid #dfe8e3;
+  border-radius:14px
+}
+.radis-hr .insurance-checklist legend{padding:0 10px;color:#315e3b;font-weight:700}
+.radis-hr .insurance-checklist label,.radis-hr .activate-rule{
+  display:flex;
+  grid-template-columns:none;
+  align-items:center;
+  gap:8px;
+  margin:5px 0;
+  font-size:12px
+}
+.radis-hr .insurance-checklist input,.radis-hr .activate-rule input{width:17px;height:17px;margin:0;accent-color:#668a54}
+.radis-hr .tax-exemption-question{max-width:420px}
+.radis-hr .tax-bracket-table input{min-width:130px;padding:9px}
+.radis-hr .rules-save-panel{border-right:5px solid #668a54!important}
+.radis-hr .rules-save-panel>.button{width:100%;margin-top:8px}
+.radis-hr .rules-audit-panel{margin-top:18px}
+.radis-hr .compact-button{padding:7px 10px!important;font-size:11px}
+.radis-hr .notice-nav{position:relative}
+.radis-hr .notification-badge{
+  display:inline-grid;
+  place-items:center;
+  min-width:22px;
+  height:22px;
+  margin-right:6px;
+  padding:0 6px;
+  border-radius:99px;
+  background:#d5a84b;
+  color:#10283f;
+  font-size:11px;
+  font-weight:800
+}
+.radis-hr .notification-list{display:grid;gap:14px;margin:18px 0}
+.radis-hr .notification-card{
+  display:flex;
+  justify-content:space-between;
+  gap:18px;
+  padding:18px 20px;
+  border:1px solid #dfe7e2;
+  border-radius:15px;
+  background:#fff
+}
+.radis-hr .notification-card.unread{border-right:5px solid #d5a84b;background:#fffdf7}
+.radis-hr .notification-card>div:first-child{display:grid;gap:8px}
+.radis-hr .notification-card span,.radis-hr .notification-card small{color:#71808b;font-size:12px;line-height:1.8}
+.radis-hr .notification-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.radis-hr .read-mark{color:#3d7a45!important}
+.radis-hr .rules-report-dialog{
+  width:min(900px,94vw);
+  max-height:90vh;
+  overflow:auto;
+  border:0;
+  border-radius:22px;
+  padding:28px;
+  direction:rtl
+}
+.radis-hr .rules-report-dialog::backdrop{background:rgba(7,31,43,.62)}
+.radis-hr .report-meta{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
+.radis-hr .report-meta span{padding:8px 12px;border-radius:9px;background:#f2f7f3;font-size:12px}
+.radis-hr #rulesNewPasswordFields{display:grid;gap:10px}
+.radis-hr .payslip-legal-note{
+  margin-top:14px;
+  padding:12px 14px;
+  border:1px solid #dce8df;
+  border-radius:10px;
+  background:#f8fbf9;
+  color:#536c5c;
+  font-size:11px;
+  line-height:1.9
+}
+
+@media(max-width:900px){
+  .radis-hr .rules-grid{grid-template-columns:1fr 1fr}
+  .radis-hr .insurance-checklist{grid-template-columns:1fr 1fr}
+  .radis-hr .notification-card{display:grid}
+}
+@media(max-width:600px){
+  .radis-hr .rules-grid,.radis-hr .insurance-checklist{grid-template-columns:1fr}
+}

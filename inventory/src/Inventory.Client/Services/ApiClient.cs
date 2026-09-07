@@ -5,7 +5,7 @@ namespace Inventory.Client.Services;
 
 public class ApiOptions
 {
-    public string BaseUrl { get; set; } = "http://localhost:5100";
+    public string BaseUrl { get; set; } = "";
 }
 
 public class ApiException : Exception

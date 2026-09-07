@@ -245,13 +245,6 @@ public class Party
     public decimal Balance { get; set; }
 }
 
-/// <summary>نتیجه فیلتر/صفحه‌بندی اقلام پایه</summary>
-public class PagedResult<T>
-{
-    public List<T> Items { get; set; } = new();
-    public int TotalCount { get; set; }
-}
-
 /// <summary>آیتم سبک برای انتخاب در فرم‌ها</summary>
 public class LookupItem
 {

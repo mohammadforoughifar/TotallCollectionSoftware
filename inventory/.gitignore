@@ -28,3 +28,6 @@ src/Inventory.Api/wwwroot/*
 
 ## Legacy Aria dumps are kept compressed (see sql/legacy-aria.README.md)
 sql/legacy-aria/
+
+# Publish outputs are regenerated, not source
+publish/

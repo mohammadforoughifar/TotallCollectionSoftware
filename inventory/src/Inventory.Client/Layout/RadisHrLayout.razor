@@ -1,0 +1,36 @@
+@inherits LayoutComponentBase
+@layout Inventory.Client.Layout.MainLayout
+@implements IDisposable
+@using Inventory.Client.Services.RadisHr
+@using Inventory.Client.Shared.RadisHr
+@inject RadisHrAuthState HrAuth
+@inject LayoutState Layout
+@inject NavigationManager Navigation
+
+<PageTitle>@Title — منابع انسانی</PageTitle>
+
+@if (HrAuth.HasAccess)
+{
+    <div class="radis-hr" dir="rtl">
+        <PageBoundary>@Body</PageBoundary>
+    </div>
+}
+else
+{
+    <div class="alert alert-warning" role="alert">شما به ماژول منابع انسانی دسترسی ندارید.</div>
+}
+
+@code {
+    private string Title => AppNav.ByRoute(Navigation.ToBaseRelativePath(Navigation.Uri))?.Title ?? "منابع انسانی";
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+    protected override void OnParametersSet() => Layout.SetTitle($"منابع انسانی / {Title}");
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        Layout.SetTitle($"منابع انسانی / {Title}");
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}

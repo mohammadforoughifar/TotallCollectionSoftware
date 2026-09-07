@@ -1,0 +1,400 @@
+@page "/hr/accounting"
+@page "/radis-hr/accounting"
+@using System.Text
+@using global::RadisHr.Shared.Models
+@inject RadisHrApiClient Api
+@inject IToastService Toasts
+@inject IJSRuntime JS
+
+<section class="page">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">کارتابل مدیر مالی حسابداری</p>
+            <h2>کنترل، تأیید و بایگانی حقوق</h2>
+            <p class="muted">پس از تأیید، نتیجه ماه قفل و برای صدور مجوز پرداخت آماده می‌شود.</p>
+        </div>
+        <button class="button secondary" type="button" @onclick="ExportArchiveAsync">خروجی بایگانی</button>
+    </div>
+
+    <form class="panel v016-form accounting-selector" @onsubmit:preventDefault="true">
+        <label>ماه حقوق
+            <select value="@_month" @onchange="OnMonthChanged">
+                @foreach (var month in _months)
+                {
+                    <option value="@month">@Fa.MonthLabel(month)</option>
+                }
+            </select>
+        </label>
+
+        <label>پرسنل
+            <select value="@_employeeCode" @onchange="OnEmployeeChanged">
+                <option value="">— انتخاب پرسنل —</option>
+                @foreach (var row in _data.Rows)
+                {
+                    <option value="@row.Row.Code">@row.Row.Name (@Fa.N(row.Row.Code))</option>
+                }
+            </select>
+        </label>
+
+        <button class="button primary" type="button" @onclick="ApproveMonthAsync">تأیید ماه و آماده‌سازی مجوز پرداخت</button>
+        <button class="button secondary" type="button" @onclick="SettleMonthAsync">تسویه شد</button>
+        <p class="form-message wide-field">@_message</p>
+    </form>
+
+    <article class="panel accounting-details">
+        <div class="section-head compact">
+            <div>
+                <p class="eyebrow">جزئیات محاسبات پرسنل منتخب</p>
+                <h3>@(Selected == null ? "ابتدا نام پرسنل را انتخاب کنید" : $"{Selected.Row.Name} — {Fa.MonthLabel(_month)}")</h3>
+            </div>
+            <span class="badge">خالص نهایی: @Fa.N(Selected?.FinalNet ?? 0) ریال</span>
+        </div>
+
+        @if (Selected != null)
+        {
+            <div class="accounting-summary">
+                <div><span>ناخالص</span><strong>@Fa.N(Selected.Row.Gross)</strong></div>
+                <div><span>حقوق پایه</span><strong>@Fa.N(Selected.Row.Base)</strong></div>
+                <div><span>اضافه‌کار</span><strong>@Fa.N(Selected.Row.OtPay)</strong></div>
+                <div><span>کسرکار</span><strong>@Fa.N(Selected.Row.ShortfallPay)</strong></div>
+                <div><span>بیمه</span><strong>@Fa.N(Selected.Row.Insurance)</strong></div>
+                <div><span>مالیات</span><strong>@Fa.N(Selected.Row.Tax)</strong></div>
+                <div><span>کارانه</span><strong>@Fa.N(Selected.Row.Performance)</strong></div>
+                <div><span>خالص اولیه</span><strong>@Fa.N(Selected.Row.Net)</strong></div>
+            </div>
+
+            <div class="accounting-edit-grid">
+                <label>مبلغ مالیات <RialInput @bind-Value="_tax" /></label>
+                <label>مبلغ بیمه <RialInput @bind-Value="_insurance" /></label>
+                <label>مبلغ اضافه‌کار <RialInput @bind-Value="_overtime" /></label>
+                <label>مبلغ کسرکار <RialInput @bind-Value="_shortfall" /></label>
+                <label>مبلغ کارانه <RialInput @bind-Value="_performance" /></label>
+                <label>مبلغ بهره‌وری <RialInput @bind-Value="_productivity" /></label>
+                <label>سایر پرداختی‌ها <RialInput @bind-Value="_otherPayments" /></label>
+            </div>
+
+            <label class="accounting-reason">
+                دلیل اصلاح
+                <textarea rows="2" placeholder="در صورت تغییر هر مبلغ، ثبت دلیل اجباری است." @bind="_reason"></textarea>
+            </label>
+
+            <button class="button secondary" type="button" @onclick="SaveAdjustmentAsync" disabled="@_data.Locked">
+                ثبت اصلاحات و ارسال گزارش برای مدیرعامل
+            </button>
+
+            @if (_data.Locked)
+            {
+                <p class="payroll-warning">این ماه تأیید و قفل شده است؛ امکان اصلاح وجود ندارد.</p>
+            }
+        }
+    </article>
+
+    <article class="panel advance-settlement">
+        <div class="section-head compact">
+            <div><p class="eyebrow">تعیین تکلیف مساعده</p><h3>تسویه کامل یا مرحله‌ای</h3></div>
+            <span class="badge">مانده: @Fa.N(SelectedAdvances.Sum(a => a.Balance)) ریال</span>
+        </div>
+
+        <form class="v016-form compact-form" @onsubmit="SaveSettlementAsync" @onsubmit:preventDefault="true">
+            <label>مساعده پرسنل منتخب
+                <select value="@_settlementAdvanceId" @onchange="OnAdvanceChanged">
+                    <option value="0">— انتخاب مساعده —</option>
+                    @foreach (var advance in SelectedAdvances)
+                    {
+                        <option value="@advance.Id">@Fa.N(advance.Date) — @Fa.N(advance.Amount) ریال (مانده @Fa.N(advance.Balance))</option>
+                    }
+                </select>
+            </label>
+
+            <label>روش تسویه
+                <select @bind="_settlementMethod">
+                    <option value="pending">فعلاً کسر نشود</option>
+                    <option value="full">تسویه کامل در ماه جاری</option>
+                    <option value="installment">تسویه مرحله‌ای</option>
+                </select>
+            </label>
+
+            @if (_settlementMethod is "full" or "installment")
+            {
+                <label class="installment-field">ماه شروع <input placeholder="1405/04" @bind="_settlementStartMonth" /></label>
+            }
+
+            @if (_settlementMethod == "installment")
+            {
+                <label class="installment-field">تعداد اقساط <input type="number" min="1" max="60" @bind="_settlementCount" /></label>
+                <label class="installment-field">مبلغ هر قسط (ریال) <RialInput @bind-Value="_settlementAmount" /></label>
+                <div class="installment-field settlement-plan-total" role="status">
+                    جمع اقساط: @Fa.N(_settlementAmount * _settlementCount) ریال
+                </div>
+            }
+
+            <button class="button secondary" type="submit">ثبت تصمیم تسویه</button>
+            <p class="form-message wide-field">@_settlementMessage</p>
+        </form>
+
+        @if (SelectedAdvance != null && SelectedAdvance.Installments.Count > 0)
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>ماه قسط</th><th>مبلغ</th><th>وضعیت</th><th>عملیات</th></tr></thead>
+                    <tbody>
+                        @foreach (var installment in SelectedAdvance.Installments.OrderBy(i => i.Month))
+                        {
+                            var item = installment;
+                            <tr>
+                                <td>@Fa.MonthLabel(item.Month)</td>
+                                <td>@Fa.N(item.Amount)</td>
+                                <td>@(item.Applied ? "اعمال‌شده" : "در انتظار")</td>
+                                <td class="row-actions">
+                                    @if (!item.Applied)
+                                    {
+                                        <button class="button secondary" type="button" @onclick="() => ApplyInstallmentAsync(item)">اعمال قسط</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </article>
+
+    <article class="panel">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>کد</th><th>نام</th><th>خالص اولیه</th><th>مساعده/بیمه تکمیلی</th><th>تغییرات حسابداری</th><th>مبلغ نهایی</th><th>وضعیت</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _data.Rows)
+                    {
+                        <tr>
+                            <td>@Fa.N(row.Row.Code)</td>
+                            <td>@row.Row.Name</td>
+                            <td>@Fa.N(row.Row.Net)</td>
+                            <td>@Fa.N(DeductionsOf(row.Row.Code))</td>
+                            <td>@(row.Adjustment == null ? "—" : row.Adjustment.Reason)</td>
+                            <td>@Fa.N(row.FinalNet)</td>
+                            <td><span class="badge">@(row.Paid ? "پرداخت‌شده" : _data.Status)</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="mini-kpis">
+            <div><span>تعداد پرسنل</span><strong>@Fa.N(_data.EmployeeCount)</strong></div>
+            <div><span>جمع خالص نهایی</span><strong>@Fa.N(_data.TotalNet)</strong></div>
+            <div><span>وضعیت ماه</span><strong>@_data.Status</strong></div>
+        </div>
+    </article>
+
+    <article class="panel">
+        <h3>بایگانی معتبر ماهانه</h3>
+        <div class="archive-cards">
+            @foreach (var archive in _archives)
+            {
+                <div class="archive-card">
+                    <strong>@Fa.MonthLabel(archive.Month)</strong>
+                    <span class="badge">@archive.Status</span>
+                    <p>جمع خالص: <b>@Fa.N(archive.TotalNet)</b> ریال</p>
+                    <p>تعداد پرسنل: <b>@Fa.N(archive.EmployeeCount)</b></p>
+                    <small>تأیید: @archive.ApprovedBy @(archive.ApprovedAt?.ToString("yyyy-MM-dd") ?? "")</small>
+                    @if (!string.IsNullOrEmpty(archive.SettledBy))
+                    {
+                        <small>تسویه: @archive.SettledBy @(archive.SettledAt?.ToString("yyyy-MM-dd") ?? "")</small>
+                    }
+                </div>
+            }
+        </div>
+        @if (_archives.Count == 0) { <p class="empty">بایگانی‌ای ثبت نشده است.</p> }
+    </article>
+</section>
+
+@code {
+    private List<string> _months = new();
+    private List<AccountingArchive> _archives = new();
+    private List<Advance> _advances = new();
+    private AccountingMonthDto _data = new();
+
+    private string _month = "";
+    private string _employeeCode = "";
+    private string _message = "";
+
+    private decimal _tax, _insurance, _overtime, _shortfall, _performance, _productivity, _otherPayments;
+    private string _reason = "";
+
+    private int _settlementAdvanceId;
+    private string _settlementMethod = "pending";
+    private string _settlementStartMonth = "";
+    private int _settlementCount = 1;
+    private decimal _settlementAmount;
+    private string _settlementMessage = "";
+
+    private AccountingRowDto? Selected =>
+        _data.Rows.FirstOrDefault(r => r.Row.Code == _employeeCode);
+
+    private List<Advance> SelectedAdvances =>
+        _advances.Where(a => a.EmployeeCode == _employeeCode).ToList();
+
+    private Advance? SelectedAdvance =>
+        _advances.FirstOrDefault(a => a.Id == _settlementAdvanceId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _months = await Api.GetListAsync<string>("api/payroll/months");
+        _month = _months.LastOrDefault() ?? "";
+        _advances = await Api.GetListAsync<Advance>("api/workflows/advances");
+        _archives = await Api.GetListAsync<AccountingArchive>("api/workflows/archives");
+        await LoadMonthAsync();
+    }
+
+    private async Task LoadMonthAsync()
+    {
+        if (string.IsNullOrEmpty(_month)) { _data = new AccountingMonthDto(); return; }
+        _data = await Api.GetAsync<AccountingMonthDto>($"api/workflows/accounting/{_month}") ?? new AccountingMonthDto();
+        LoadAdjustmentFields();
+    }
+
+    private void LoadAdjustmentFields()
+    {
+        var selected = Selected;
+        if (selected == null) return;
+
+        var adjustment = selected.Adjustment;
+        _tax = adjustment?.Tax ?? selected.Row.Tax;
+        _insurance = adjustment?.Insurance ?? selected.Row.Insurance;
+        _overtime = adjustment?.Overtime ?? selected.Row.OtPay;
+        _shortfall = adjustment?.Shortfall ?? selected.Row.ShortfallPay;
+        _performance = adjustment?.Performance ?? selected.Row.Performance;
+        _productivity = adjustment?.Productivity ?? 0m;
+        _otherPayments = adjustment?.OtherPayments ?? 0m;
+        _reason = adjustment?.Reason ?? "";
+    }
+
+    /// <summary>کسورات جانبی: اقساط مساعدهٔ همان ماه + سهم بیمه تکمیلی کارمند</summary>
+    private decimal DeductionsOf(string code)
+    {
+        var installment = _advances
+            .Where(a => a.EmployeeCode == code)
+            .SelectMany(a => a.Installments)
+            .Where(i => i.Month == _month)
+            .Sum(i => i.Amount);
+        return installment;
+    }
+
+    private async Task OnMonthChanged(ChangeEventArgs args)
+    {
+        _month = args.Value?.ToString() ?? "";
+        await LoadMonthAsync();
+    }
+
+    private void OnEmployeeChanged(ChangeEventArgs args)
+    {
+        _employeeCode = args.Value?.ToString() ?? "";
+        _settlementAdvanceId = 0;
+        LoadAdjustmentFields();
+    }
+
+    private void OnAdvanceChanged(ChangeEventArgs args)
+    {
+        _settlementAdvanceId = int.TryParse(args.Value?.ToString(), out var id) ? id : 0;
+        var advance = SelectedAdvance;
+        if (advance == null) return;
+
+        _settlementMethod = advance.SettlementMethod;
+        _settlementStartMonth = string.IsNullOrEmpty(advance.SettlementStartMonth) ? _month : advance.SettlementStartMonth;
+        _settlementCount = advance.SettlementCount > 0 ? advance.SettlementCount : 1;
+        _settlementAmount = advance.SettlementAmount;
+    }
+
+    private async Task SaveAdjustmentAsync()
+    {
+        if (Selected == null) return;
+        if (string.IsNullOrWhiteSpace(_reason)) { _message = "ثبت دلیل اصلاح الزامی است."; return; }
+
+        var ok = await Api.SendAsync(HttpMethod.Post, "api/workflows/accounting/adjust", new AccountingAdjustment
+        {
+            Month = _month,
+            EmployeeCode = _employeeCode,
+            Tax = _tax,
+            Insurance = _insurance,
+            Overtime = _overtime,
+            Shortfall = _shortfall,
+            Performance = _performance,
+            Productivity = _productivity,
+            OtherPayments = _otherPayments,
+            Reason = _reason.Trim()
+        });
+
+        if (!ok) return;
+        _message = "اصلاحات ثبت و گزارش برای مدیرعامل ارسال شد.";
+        await LoadMonthAsync();
+    }
+
+    private async Task ApproveMonthAsync()
+    {
+        var ok = await Api.SendAsync(HttpMethod.Post, $"api/workflows/accounting/{_month}/approve");
+        if (!ok) return;
+        _archives = await Api.GetListAsync<AccountingArchive>("api/workflows/archives");
+        await LoadMonthAsync();
+    }
+
+    private async Task SettleMonthAsync()
+    {
+        var paidDate = PersianCalendarUtil.TodayKey();
+        var reference = $"PAY-{_month.Replace("/", "")}";
+        var ok = await Api.SendAsync(HttpMethod.Post,
+            $"api/workflows/accounting/{_month}/settle?paidDate={paidDate}&reference={reference}");
+        if (!ok) return;
+        _archives = await Api.GetListAsync<AccountingArchive>("api/workflows/archives");
+        await LoadMonthAsync();
+    }
+
+    private async Task SaveSettlementAsync()
+    {
+        var advance = SelectedAdvance;
+        if (advance == null) { _settlementMessage = "ابتدا مساعده را انتخاب کنید."; return; }
+
+        if (_settlementMethod is "full" or "installment" && string.IsNullOrWhiteSpace(_settlementStartMonth))
+        {
+            _settlementMessage = "ماه شروع تسویه را وارد کنید (نمونه: 1405/04).";
+            return;
+        }
+
+        var ok = await Api.SendAsync(HttpMethod.Post, $"api/workflows/advances/{advance.Id}/settlement", new Advance
+        {
+            SettlementMethod = _settlementMethod,
+            SettlementStartMonth = _settlementStartMonth,
+            SettlementCount = _settlementCount,
+            SettlementAmount = _settlementAmount
+        });
+
+        if (!ok) return;
+        _settlementMessage = "تصمیم تسویه ثبت شد.";
+        _advances = await Api.GetListAsync<Advance>("api/workflows/advances");
+    }
+
+    private async Task ApplyInstallmentAsync(AdvanceInstallment installment)
+    {
+        var ok = await Api.SendAsync(HttpMethod.Post, $"api/workflows/advances/installments/{installment.Id}/apply");
+        if (ok) _advances = await Api.GetListAsync<Advance>("api/workflows/advances");
+    }
+
+    private async Task ExportArchiveAsync()
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("ماه,وضعیت,جمع خالص,تعداد پرسنل,تأییدکننده,تاریخ تأیید,تسویه‌کننده,تاریخ تسویه");
+        foreach (var a in _archives)
+            csv.AppendLine($"{a.Month},{a.Status},{a.TotalNet},{a.EmployeeCount},{a.ApprovedBy},{a.ApprovedAt:yyyy-MM-dd},{a.SettledBy},{a.SettledAt:yyyy-MM-dd}");
+
+        csv.AppendLine();
+        csv.AppendLine($"ریز ماه {_month}");
+        csv.AppendLine("کد,نام,خالص اولیه,کسورات جانبی,دلیل اصلاح,خالص نهایی,پرداخت‌شده");
+        foreach (var row in _data.Rows)
+            csv.AppendLine($"{row.Row.Code},{row.Row.Name},{row.Row.Net},{DeductionsOf(row.Row.Code)},{row.Adjustment?.Reason},{row.FinalNet},{(row.Paid ? "بله" : "خیر")}");
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        await JS.InvokeVoidAsync("radisInterop.downloadFile", "accounting-archive.csv", "text/csv", Convert.ToBase64String(bytes));
+        Toasts.Success("خروجی بایگانی حسابداری آماده شد.");
+    }
+}

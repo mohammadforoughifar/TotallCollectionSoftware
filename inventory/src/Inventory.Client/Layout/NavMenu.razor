@@ -95,9 +95,12 @@
                 <div class="nav-group-items">
                     @if (Auth.Has("RadisHr.Access") || Auth.IsAdmin)
                     {
-                        <button type="button" class="nav-link" @onclick="OpenRadisHr">
-                            <i class="bi bi-person-vcard-fill"></i><span>سامانه جامع RADIS-HR</span>
-                        </button>
+                        foreach (var item in Inventory.Client.Services.RadisHr.AppNav.Items)
+                        {
+                            <NavLink class="nav-link" href="@item.Route.TrimStart('/')" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                                <i class="bi bi-person-vcard-fill"></i><span>@item.Label</span>
+                            </NavLink>
+                        }
                     }
                     @if (Auth.Has("Attendance.SelfCheckin") || Auth.IsAdmin)
                     {
@@ -714,7 +717,7 @@
         gChat = p.StartsWith("chat");
         gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive");
         gWo = p.StartsWith("work-orders");
-        gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance") || p.StartsWith("work-calendar");
+        gHr = p == "hr" || p.StartsWith("hr/") || p.StartsWith("radis-hr") || p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("attendance") || p.StartsWith("work-calendar");
         gLetters = p.StartsWith("letters");
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
@@ -733,9 +736,4 @@
 
     private async Task NotifyClose() => await OnNavigate.InvokeAsync();
 
-    private async Task OpenRadisHr()
-    {
-        await NotifyClose();
-        NavManager.NavigateTo("/radis-hr/", forceLoad: true);
-    }
 }

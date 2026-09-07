@@ -22,11 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Inventory.Shared/Inventory.Shared.csproj">
-      <Name>Inventory.Shared</Name>
-      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
-      <SkipGetTargetFrameworkProperties>false</SkipGetTargetFrameworkProperties>
-    </ProjectReference>
+    <ProjectReference Include="../Inventory.Shared/Inventory.Shared.csproj" />
   </ItemGroup>
 
 </Project>

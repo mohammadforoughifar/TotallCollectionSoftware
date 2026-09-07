@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# استقرار تک‌سروره: پابلیش کلاینت Blazor و کپی آن در wwwroot مربوط به API
-set -e
+# A single Inventory client, including HR. Runtime uploads/keys are never deleted.
+set -euo pipefail
 cd "$(dirname "$0")"
 
-echo "► پابلیش کلاینت Blazor WebAssembly…"
+echo "► Publishing Inventory (including HR)…"
 dotnet publish src/Inventory.Client -c Release -o publish/client
 
-echo "► پابلیش کلاینت RADIS-HR V019…"
-dotnet publish modules/RadisHr/src/RadisHr.Client -c Release -o publish/radis-hr
+dest="src/Inventory.Api/wwwroot"
+mkdir -p "$dest"
+# Remove only regenerated Blazor assets and the retired standalone HR client.
+rm -rf "$dest/_framework" "$dest/radis-hr"
+cp -R publish/client/wwwroot/. "$dest/"
 
-echo "► کپی فایل‌های استاتیک در wwwroot مربوط به API…"
-rm -rf src/Inventory.Api/wwwroot
-mkdir -p src/Inventory.Api/wwwroot
-cp -r publish/client/wwwroot/. src/Inventory.Api/wwwroot/
-mkdir -p src/Inventory.Api/wwwroot/radis-hr
-cp -r publish/radis-hr/wwwroot/. src/Inventory.Api/wwwroot/radis-hr/
-
-echo "✔ تمام شد (برنامه اصلی + RADIS-HR با ورود و دیتابیس مشترک)."
-echo "حالا اجرا کنید:  cd src/Inventory.Api && dotnet run"
-echo "سپس در مرورگر باز کنید:  http://localhost:5100"
+echo "✔ Inventory + HR published together. Existing uploads and SecureFiles are preserved."
+echo "Run: cd src/Inventory.Api && dotnet run"
+echo "Open: http://localhost:5100 (HR: /hr)"

@@ -1,0 +1,28 @@
+/* Only page content is styled here. Header/sidebar/toasts belong to Inventory. */
+.radis-hr {
+    --font-fa: "Vazirmatn", Tahoma, Arial, sans-serif;
+    font-family: var(--font-fa);
+    min-width: 0;
+    max-width: 100%;
+    background: transparent;
+}
+.radis-hr .page { min-width: 0; }
+.radis-hr .panel { min-width: 0; }
+.radis-hr .section-head { gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.radis-hr .head-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.radis-hr .head-actions input[type="file"] { max-width: 260px; }
+.radis-hr .button:disabled { cursor: not-allowed; opacity: .55; }
+.radis-hr .button:focus-visible { outline: 3px solid var(--green); outline-offset: 2px; }
+.radis-hr .badge { line-height: 1.5; }
+.radis-hr .table-wrap { max-width: 100%; }
+.radis-hr input, .radis-hr select, .radis-hr textarea { max-width: 100%; min-width: 0; }
+.radis-hr .modal-backdrop { opacity: 1; }
+@media (max-width: 768px) {
+    .radis-hr .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .radis-hr .head-actions { width: 100%; }
+    .radis-hr .head-actions > * { max-width: 100%; }
+    .radis-hr .entry-layout, .radis-hr .grid2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+    .radis-hr .form-grid, .radis-hr .form-grid.two, .radis-hr .stats { grid-template-columns: minmax(0, 1fr); }
+}

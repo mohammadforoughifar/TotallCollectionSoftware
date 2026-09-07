@@ -1,70 +1,99 @@
-# ماژول جامع منابع انسانی RADIS-HR V019
+# منابع انسانی RADIS-HR — ماژول داخلی Inventory
 
-این ماژول از فایل `RadisHr-V019-dotnet8.rar` مخزن
-[`mohammadforoughifar/HR`](https://github.com/mohammadforoughifar/HR.git) به برنامه جامع منتقل شده است.
+منبع اولیه: `RadisHr-V019-dotnet8.rar` از مخزن `mohammadforoughifar/HR`.
 
-## مدل ادغام
+## ادغام بومی (۲۰۲۶-۰۹-۰۷)
 
-- **یک Host و یک آدرس:** ماژول زیر مسیر `/radis-hr/` توسط `Inventory.Api` سرو می‌شود.
-- **یک ورود:** کلاینت RADIS-HR نشست `authSession` برنامه اصلی و همان JWT را مصرف می‌کند؛ صفحه ورود دوم نمایش داده نمی‌شود.
-- **یک دیتابیس:** هر دو DbContext از `ConnectionStrings:Default` استفاده می‌کنند.
-- **عدم تداخل Migration:** تاریخچه Migration ماژول در جدول `__EFMigrationsHistory_RadisHr` نگهداری می‌شود.
-- **عدم تداخل کاربران:** تنها نگاشت فنی جدول `AppUser` ماژول به `RadisHrUsers` تغییر کرده است. خود کلاس موجودیت هیچ تغییری نکرده است.
-- **مسیر API:** مسیرهای اصلی کنترلرها بدون ویرایش فایل کنترلر، در Host با پیشوند `/radis-hr` منتشر می‌شوند؛ نمونه: `/radis-hr/api/employees`.
-- **RBAC:** مجوز `RadisHr.Access` به نقش Admin خودکار داده می‌شود و از صفحه نقش‌ها قابل واگذاری است.
-- بخش قبلی منابع انسانی (مرخصی/ماموریت و حضور و غیاب) طبق تصمیم پروژه حذف یا تغییر نکرده و کنار این ماژول باقی مانده است.
+HR دیگر یک برنامه/SPA مستقل نیست. مانند مدیریت پروژه، صفحات و سرویس‌هایش در سه پروژهٔ اصلی کامپایل می‌شوند:
 
-## تضمین حفظ سورس اصلی
+| لایه | مسیر سورس |
+|---|---|
+| مدل‌ها و موتور حقوق/کارکرد | `inventory/src/Inventory.Shared/RadisHr` |
+| کنترلرها | `inventory/src/Inventory.Api/Controllers/RadisHr` |
+| DbContext، Seed و Migration | `inventory/src/Inventory.Api/Data/RadisHr` |
+| سرویس‌های بک‌اند | `inventory/src/Inventory.Api/Services/RadisHr` |
+| صفحات | `inventory/src/Inventory.Client/Pages/RadisHr` |
+| آداپتورهای کلاینت | `inventory/src/Inventory.Client/Services/RadisHr` |
+| کنترل‌های مشترک | `inventory/src/Inventory.Client/Shared/RadisHr` |
 
-فایل‌های زیر عیناً از آرشیو منتقل شده‌اند و در آن‌ها تغییری داده نشده است:
+- **یک Client، یک Router و یک منوی اصلی:** همهٔ ۱۳ صفحه داخل قالب Inventory نمایش داده می‌شوند، نه iframe، تب/برنامهٔ دیگر یا بارگذاری مجدد.
+- **یک ورود و یک نشست:** HR مستقیماً `IAuthState` برنامه را مصرف می‌کند. هیچ `radisHrSession`، ورود، تغییر رمز یا JWT مستقل HR وجود ندارد. خطای 401 در درخواست عادی، آپلود یا دانلود، همان نشست اصلی را پایان می‌دهد.
+- **یک Publish:** فقط `Inventory.Client` پابلیش می‌شود؛ فایل‌های HR همراه آن هستند. پروژه‌ها و Solution مستقل HR حذف شده‌اند.
+- **مجوز مشترک:** `RadisHr.Access` مثل نسخهٔ قبلی مجوز **کامل** HR (از جمله حقوق، فایل‌ها و عملیات مدیریتی) است. سمت سرور و کلاینت کنترل می‌شود؛ Admin دسترسی دارد و برای دیگران باید صریحاً از تنظیمات نقش‌ها واگذار شود. داشتن نقش قدیمی Operator به‌تنهایی این مجوز را نمی‌دهد. نقش‌های ساختگی HR به JWT هسته اضافه نمی‌شوند.
+- **عدم تداخل ظاهر:** CSS فقط زیر `.radis-hr` اعمال می‌شود؛ سایدبار، مدیریت پروژه، فرم‌های سایر بخش‌ها و اندازهٔ کاغذ چاپ آن‌ها تغییر نمی‌کنند. فونت‌های موجود Inventory و JS چاپ/ورودی ریالی استفاده می‌شوند.
+- **بدون وابستگی ICU:** نمایش ارقام فارسی HR با تنظیم `InvariantGlobalization=true` کلاینت سازگار است.
 
-- تمام موجودیت‌ها، DTOها و موتورهای محاسباتی: `inventory/modules/RadisHr/src/RadisHr.Shared`
-- تمام کنترلرها: `inventory/modules/RadisHr/src/RadisHr.Api/Controllers`
-- تمام سرویس‌های بک‌اند: `inventory/modules/RadisHr/src/RadisHr.Api/Services`
-- تست parity و فایل expected اصلی: `inventory/modules/RadisHr/tests`
+## صفحه‌ها و مسیرها
 
-تغییرات سازگاری فقط در لایه Composition/Hosting، نگاشت نام جدول کاربران، تنظیمات بدون رمز و SSO کلاینت انجام شده‌اند. کد Host در
-`inventory/src/Inventory.Api/Infrastructure/RadisHrIntegration.cs` قرار دارد.
+تمام گزینه‌ها مستقیماً در منوی **منابع انسانی** هستند:
 
-## اجرا
+| بخش | مسیر |
+|---|---|
+| داشبورد | `/hr` |
+| پرسنل | `/hr/employees` |
+| ثبت/ویرایش اطلاعات و قرارداد | `/hr/employee-entry` |
+| حضور و غیاب و ورود فایل دستگاه | `/hr/attendance` |
+| حقوق و دستمزد و فیش | `/hr/payroll` |
+| الزامات سالانه حقوق | `/hr/statutory-rules` |
+| ساختار سازمانی و ماتریس پرسنل | `/hr/organization-structure` |
+| تقویم و ساعات کاری | `/hr/organization-settings` |
+| ایمنی، حوادث و PPE | `/hr/hse` |
+| مساعده و اقساط | `/hr/finance` |
+| حسابداری و بایگانی حقوق | `/hr/accounting` |
+| گزارش روزانه حضور پرسنل | `/hr/production-daily` |
+| اطلاعیه‌ها و ممیزی | `/hr/notices` |
+
+نشانی‌های قدیمی `/radis-hr/...` نیز همان کامپوننت‌های داخلی Inventory را باز می‌کنند. بخش قبلی مرخصی/ماموریت، ورود و خروج شخصی و تقویم کاری هسته حذف نشده است.
+
+API اصلی: **`/api/hr/...`**؛ مثال: `/api/hr/employees`.
+APIهای قبلی **`/radis-hr/api/...`** alias همان کنترلرها با همان مجوز هستند. ورود HR قدیمی در هیچ‌کدام منتشر نمی‌شود؛ ورود فقط `/api/auth/login` است.
+
+پاسخ آپلود فایل اکنون `uid` را صریحاً برمی‌گرداند تا پیوست قرارداد، HSE و اطلاعیه لینک صحیح داشته باشند. دانلود اطلاعیه با هدر Authorization انجام می‌شود، نه لینک بدون توکن یا JWT در query string.
+
+## دیتابیس و حفظ داده
+
+- هر دو DbContext از `ConnectionStrings:Default` استفاده می‌کنند.
+- نام کلاس‌های مدل، namespaceهای مدل/بک‌اند، نام جدول‌ها، شناسه و محتوای Migrationهای SQL Server حفظ شده‌اند؛ موتورهای محاسباتی بدون تغییر منتقل شده‌اند.
+- تاریخچهٔ SQL Server ماژول همچنان `__EFMigrationsHistory_RadisHr` است. جدول کاربران قدیمی `RadisHrUsers` حفظ می‌شود، اما ورود مستقلی روی آن فعال نیست و حساب/رمز پیش‌فرض جدیدی برای HR ساخته نمی‌شود.
+- SQLite از مدل همان provider برای ساخت جدول‌های HR کنار جدول‌های هسته استفاده می‌کند؛ Migration مخصوص SQL Server روی SQLite اجرا نمی‌شود. اجرای مجدد جدول‌ها و داده‌ها را پاک نمی‌کند. اگر ساختار HR در SQLite از اجرای قدیمی ناقص مانده باشد، خطای روشن همراه نام جدول‌های مفقود می‌دهد، نه حذف خودکار اطلاعات.
+- پرسنل نمونه فقط با `Database:SeedDemoData=true` ساخته می‌شوند؛ تنظیم پیش‌فرض false است.
+- اسکریپت‌های استقرار فقط فایل‌های تولیدشدهٔ Blazor و SPA قدیمی را پاک می‌کنند؛ `uploads` و `SecureFiles` و کلیدهای رمزنگاری حفظ می‌شوند.
+
+**پیش از ارتقای دیتابیس عملیاتی، از دیتابیس و فایل‌های رمزنگاری/کلیدها بکاپ بگیرید.**
+
+## ساخت و اجرا
+
+Solution فعال فقط `inventory/Inventory.sln` است. در Visual Studio پروژهٔ Startup را روی `Inventory.Api` قرار دهید.
 
 ```powershell
 cd inventory
+.\rebuild.ps1
 .\deploy-single.ps1
 cd src\Inventory.Api
 dotnet run
 ```
 
-یا روی لینوکس:
+برای اجرای محلی با SQLite: `inventory/RUN.ps1`.
+در لینوکس: `cd inventory && ./deploy-single.sh` و سپس اجرای `src/Inventory.Api`.
+
+پس از ورود به Inventory، گزینه‌های HR داخل همان منوی منابع انسانی هستند. کاربران دارای JWT قدیمی پس از تغییر مجوز باید یک بار خارج و دوباره وارد شوند.
+
+## تست‌ها
+
+از پوشهٔ `inventory` با **.NET 8 SDK**:
 
 ```bash
-cd inventory
-./deploy-single.sh
-cd src/Inventory.Api
-dotnet run
+dotnet build Inventory.sln
+dotnet run --project tests/Inventory.RegressionTests
+dotnet run --project tests/RadisHr.ParityTests
+dotnet run --project tests/Inventory.HrIntegrationTests
+python ../tests/hr/test_structure.py
+node ../tests/hr/interop_test.cjs
 ```
 
-سپس:
+- Regression: قرارداد صفحه‌بندی، فارسی بدون ICU، مسیرها، نشست مشترک، تعویض کاربر، 401/403، آپلود و دانلود.
+- Parity: اوراکل اصلی و ۲۳٬۰۸۸ مقایسهٔ حقوق و کارکرد.
+- Integration: مسیرهای MVC، RBAC، تولید SQL مایگریشن بدون نیاز به سرور SQL، جدول‌های مشترک SQLite و حفظ داده پس از اجرای مجدد.
+- CI ویندوز و لینوکس: Debug/Release، پوشهٔ دارای فاصله/پرانتز، وجود `ref/Inventory.Shared.dll` و Publish کلاینت یکپارچه.
 
-1. برنامه اصلی: `http://localhost:5100`
-2. ورود با حساب برنامه اصلی
-3. منوی **منابع انسانی ← سامانه جامع RADIS-HR**
-4. مسیر مستقیم: `http://localhost:5100/radis-hr/`
-
-> پس از نصب این نسخه، کاربران دارای نشست قدیمی باید یک بار خارج و دوباره وارد شوند تا claim مجوز `RadisHr.Access` داخل JWT جدید قرار گیرد.
-
-## اجزای منتقل‌شده
-
-- پرسنل و قراردادها
-- حضور و غیاب، ورود XLSX، مرخصی/ماموریت و تردد دستی
-- حقوق و دستمزد و فیش حقوقی
-- حسابداری حقوق، مساعده، اقساط، بایگانی و پرداخت
-- قوانین قانونی سالانه و Audit
-- HSE، حوادث، PPE و کپسول آتش‌نشانی
-- ساختار سازمانی، ایستگاه‌ها، تقویم و شیفت نگهبانی
-- داشبورد و تحلیل مدیریتی
-- اطلاعیه‌ها، اعلان‌ها و فایل‌ها
-
-## نکات دیتابیس
-
-هنگام شروع Host، Migration و Seed اصلی RADIS-HR به‌طور خودکار اجرا می‌شود. جدول‌های ماژول همان نام‌های اصلی را دارند؛ فقط جدول `Users` ماژول برای جلوگیری از برخورد با جدول کاربران هسته، `RadisHrUsers` نام‌گذاری شده است. حساب‌های seed قدیمی RADIS-HR برای سازگاری داده‌ای ایجاد می‌شوند، اما ورود UI فقط از حساب و JWT برنامه جامع انجام می‌شود.
+رفع خطای اصلی Metadata در [راهنمای ساخت](inventory/docs/BUILD-TROUBLESHOOTING.md) توضیح داده شده است.

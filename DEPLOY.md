@@ -48,13 +48,13 @@ cd TotallCollectionSoftware
 # 2. بیلد کلاینت (Blazor WASM)
 dotnet publish inventory/src/Inventory.Client/Inventory.Client.csproj -c Release -o publish/client
 
-# 2-الف. بیلد کلاینت ماژول RADIS-HR (SPA مستقل زیر /radis-hr)
-dotnet publish inventory/modules/RadisHr/src/RadisHr.Client/RadisHr.Client.csproj -c Release -o publish/radis-hr
+# HR داخل Inventory.Client است؛ پابلیش جداگانه ندارد.
 
-# 3. کپی به wwwroot API
+# 3. کپی به wwwroot API (آپلودها و کلیدهای قبلی را پاک نکنید)
+mkdir -p inventory/src/Inventory.Api/wwwroot
+# فقط SPA قدیمی HR و فایل‌های تولیدشده framework جایگزین می‌شوند.
+rm -rf inventory/src/Inventory.Api/wwwroot/radis-hr inventory/src/Inventory.Api/wwwroot/_framework
 cp -rf publish/client/wwwroot/* inventory/src/Inventory.Api/wwwroot/
-mkdir -p inventory/src/Inventory.Api/wwwroot/radis-hr
-cp -rf publish/radis-hr/wwwroot/* inventory/src/Inventory.Api/wwwroot/radis-hr/
 
 # 4. پابلیش API
 dotnet publish inventory/src/Inventory.Api/Inventory.Api.csproj -c Release -o publish/api
@@ -66,10 +66,12 @@ dotnet Inventory.Api.dll
 
 > **نکته:** به‌جای مراحل ۲ تا ۳ می‌توانید از اسکریپت‌های آمادهٔ `inventory/RUN.ps1` یا
 > `inventory/deploy-single.ps1` / `inventory/deploy-single.sh` استفاده کنید که پابلیش
-> کلاینت اصلی و RADIS-HR و کپی در `wwwroot` را خودکار انجام می‌دهند.
+> کلاینت یکپارچهٔ Inventory (شامل HR) و کپی در `wwwroot` را خودکار انجام می‌دهند؛
+> `uploads` و `SecureFiles` حذف نمی‌شوند.
 
 ## 🌐 دسترسی
 - **API + UI یکجا:** http://localhost:5100
+- **منابع انسانی داخل برنامه:** http://localhost:5100/hr
 - **مستندات Swagger:** http://localhost:5100/swagger
 - **ورود پیش‌فرض:** admin / admin
 
