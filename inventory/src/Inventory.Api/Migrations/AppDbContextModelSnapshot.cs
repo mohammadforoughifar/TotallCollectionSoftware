@@ -2785,8 +2785,8 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<string>("KarshenasiAvalie")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTime?>("ManagerActionAt")
                         .HasColumnType("datetime2");
@@ -2823,7 +2823,7 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<TimeSpan>("TotalSpentTime")
-                        .HasColumnType("time");
+                        .HasColumnType("bigint");
 
                     b.Property<int>("UserId")
                         .HasColumnType("int");
@@ -2871,6 +2871,9 @@ namespace Inventory.Api.Migrations
                     b.Property<TimeOnly>("LunchTime")
                         .HasColumnType("time");
 
+                    b.Property<int?>("OperatorId")
+                        .HasColumnType("int");
+
                     b.Property<int>("ProjectId")
                         .HasColumnType("int");
 
@@ -2892,6 +2895,8 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("nvarchar(1000)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OperatorId");
 
                     b.HasIndex("ProjectId");
 
@@ -3182,6 +3187,11 @@ namespace Inventory.Api.Migrations
 
             modelBuilder.Entity("Inventory.Api.Data.ReportWork", b =>
                 {
+                    b.HasOne("Inventory.Api.Data.User", "Operator")
+                        .WithMany()
+                        .HasForeignKey("OperatorId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("Inventory.Api.Data.ProjectEntryExit", "Project")
                         .WithMany("ReportWorks")
                         .HasForeignKey("ProjectId")
@@ -3193,6 +3203,8 @@ namespace Inventory.Api.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("Operator");
 
                     b.Navigation("Project");
 
