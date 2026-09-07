@@ -122,9 +122,7 @@
             @if (gDocs)
             {
                 <div class="nav-group-items">
-                    <NavLink class="nav-link" href="doc-archive" Match="NavLinkMatch.All" @onclick="NotifyClose">
-                        <i class="bi bi-folder2-open"></i><span>پوشه‌ها و مدارک</span>
-                    </NavLink>
+                    @* لینک مستقیم «پوشه‌ها و مدارک» حذف شده است — دسترسی به آرشیو فقط از داخل ماژول‌هاست. *@
                     <NavLink class="nav-link" href="doc-archive/cartable" @onclick="NotifyClose">
                         <i class="bi bi-inbox"></i><span>کارتابل آرشیو</span>
                     </NavLink>

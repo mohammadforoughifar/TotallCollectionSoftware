@@ -969,13 +969,18 @@ else
         return "none";
     }
 
-    /// <summary>لینک به نامهٔ مبدأ (سورس) در کارتابل نامه داخلی — برای اتصال برگشتی.</summary>
+    /// <summary>لینک به رکورد مبدأ (سورس) — نامه داخلی یا مدرک آرشیو — برای اتصال برگشتی.</summary>
     private RenderFragment? SourceLink(string? module, int? sourceId)
-        => !string.IsNullOrWhiteSpace(module) && sourceId is > 0
-            ? @<a class="wo-att" href="@($"/letters?open={sourceId}")" target="_blank" title="رفتن به نامه مبدأ">
-                <i class="bi bi-envelope"></i> نامه
-              </a>
-            : null;
+    {
+        if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0) return null;
+        if (module == "Document")
+            return @<a class="wo-att" href="@($"/doc-archive/documents/{sourceId}")" target="_blank" title="رفتن به مدرک مبدأ در آرشیو">
+                <i class="bi bi-file-earmark-text"></i> مدرک
+            </a>;
+        return @<a class="wo-att" href="@($"/letters?open={sourceId}")" target="_blank" title="رفتن به نامه مبدأ">
+            <i class="bi bi-envelope"></i> نامه
+        </a>;
+    }
 
     private RenderFragment ToneBadge(WoItem w, string tone) => tone switch
     {
@@ -1026,6 +1031,33 @@ else
             catch (Exception ex)
             {
                 Toast.Error($"بارگذاری نامه ناموفق بود: {ex.Message}");
+                await ShowNewFormAsync("", "");
+            }
+        }
+        else if (module == "Document")
+        {
+            // پیش‌پُرش فرم ایجاد از مدرک آرشیو اسناد
+            try
+            {
+                var doc = await Http.GetFromJsonAsync<Inventory.Shared.Dtos.DocumentDto>($"/api/doc-archive/documents/{sourceId}");
+                if (doc != null)
+                {
+                    _sourceLabel = $"مدرک {doc.Code}";
+                    var title = $"دستور کار مدرک {doc.Code} — {doc.Title}";
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append($"<p>مدرک مبدأ: <b>{System.Net.WebUtility.HtmlEncode(doc.Code)} — {System.Net.WebUtility.HtmlEncode(doc.Title)}</b>");
+                    if (!string.IsNullOrWhiteSpace(doc.CustomerCode))
+                        sb.Append($" (مشتری: {System.Net.WebUtility.HtmlEncode(doc.CustomerCode)})");
+                    sb.Append("</p>");
+                    if (!string.IsNullOrWhiteSpace(doc.Description))
+                        sb.Append($"<p>{System.Net.WebUtility.HtmlEncode(doc.Description)}</p>");
+                    await ShowNewFormAsync(title, sb.ToString());
+                }
+                else await ShowNewFormAsync("", "");
+            }
+            catch (Exception ex)
+            {
+                Toast.Error($"بارگذاری مدرک ناموفق بود: {ex.Message}");
                 await ShowNewFormAsync("", "");
             }
         }

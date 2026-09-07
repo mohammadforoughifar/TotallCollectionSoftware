@@ -81,6 +81,10 @@
                                     {
                                         <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(k)"><i class="bi bi-trash text-danger"></i></button>
                                     }
+                                    @if (Auth.HasModule("DocArchive"))
+                                    {
+                                        <button class="btn btn-sm btn-light" title="آرشیو اسناد و مدارک" @onclick="() => OpenDocs(k)"><i class="bi bi-folder2-open text-info"></i></button>
+                                    }
                                 </td>
                             </tr>
                         }
@@ -114,6 +118,10 @@
                             @if (Auth.Has("Karfarmas.Delete"))
                             {
                                 <button class="btn btn-light text-danger" @onclick="() => Delete(k)"><i class="bi bi-trash"></i></button>
+                            }
+                            @if (Auth.HasModule("DocArchive"))
+                            {
+                                <button class="btn btn-light text-info" @onclick="() => OpenDocs(k)"><i class="bi bi-folder2-open"></i> آرشیو</button>
                             }
                         </div>
                     </div>
@@ -163,6 +171,16 @@
     </Footer>
 </Modal>
 
+<Modal Visible="showDocs" Title="@("آرشیو اسناد و مدارک کارفرمای «" + (docsKarfarma?.Name ?? "") + "»")" Size="modal-xl" OnClose="() => showDocs = false">
+    <ChildContent>
+        @if (docsKarfarma is not null)
+        {
+            <DocArchiveEntityPanel Module="KarFarma" EntityId="@docsKarfarma.Id"
+                                    EntityTitle="@docsKarfarma.Name" EntityCode="@docsKarfarma.ShomareSabt" />
+        }
+    </ChildContent>
+</Modal>
+
 @code {
     private List<KarFarmaDto> items = new();
     private bool loading = true;
@@ -171,6 +189,15 @@
     private KarFarmaDto form = new();
     private bool showModal, saving;
     private bool editing => form.Id != 0;
+
+    private bool showDocs;
+    private KarFarmaDto? docsKarfarma;
+
+    private void OpenDocs(KarFarmaDto k)
+    {
+        docsKarfarma = k;
+        showDocs = true;
+    }
 
     private List<KarFarmaDto> Filtered =>
         items.Where(k => string.IsNullOrWhiteSpace(search)

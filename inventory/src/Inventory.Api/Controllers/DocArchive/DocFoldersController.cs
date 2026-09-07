@@ -140,12 +140,15 @@ public class DocFoldersController : RbacControllerBase
         Db.DocFolders.Add(entity);
         await Db.SaveChangesAsync();
 
-        // سازنده، دسترسی کامل می‌گیرد
-        Db.DocFolderPermissions.Add(new DocFolderPermission
-        {
-            FolderId = entity.Id, UserId = MyUserId, Level = DocAccessLevel.Full, CanDownload = true
-        });
-        await SavePermissionsAsync(entity.Id, dto.Permissions);
+        // سازنده همیشه دسترسی کامل می‌گیرد (حتی اگر در لیست نفرات فرم نباشد)؛
+        // چون SavePermissionsAsync جایگزین کامل دسترسی‌هاست، رکورد سازنده را هم داخل همان لیست می‌گذاریم
+        // تا با یک ذخیره‌سازی، هم پوشه و هم دسترسی‌ها ثبت شوند و خطای کاذب رخ ندهد.
+        var items = (dto.Permissions ?? new List<DocPermissionDto>())
+            .Where(x => x.UserId > 0 && x.UserId != MyUserId)
+            .DistinctBy(x => x.UserId)
+            .ToList();
+        items.Add(new DocPermissionDto { UserId = MyUserId, Level = DocAccessLevelDto.Full, CanDownload = true });
+        await SavePermissionsAsync(entity.Id, items);
 
         return Ok(new { id = entity.Id });
     }
@@ -195,8 +198,9 @@ public class DocFoldersController : RbacControllerBase
         return Ok();
     }
 
-    private async Task SavePermissionsAsync(int folderId, List<DocPermissionDto> items)
+    private async Task SavePermissionsAsync(int folderId, List<DocPermissionDto>? items)
     {
+        items ??= new();
         var old = await Db.DocFolderPermissions.Where(p => p.FolderId == folderId).ToListAsync();
         Db.DocFolderPermissions.RemoveRange(old);
         foreach (var p in items.Where(x => x.UserId > 0).DistinctBy(x => x.UserId))
