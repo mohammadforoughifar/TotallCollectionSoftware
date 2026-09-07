@@ -82,7 +82,8 @@
 
     @* ============ منابع انسانی ============ *@
     @if (Auth.Has("LeaveRequests.Request") || Auth.Has("LeaveRequests.Approve") || Auth.Has("LeaveRequests.Report")
-         || Auth.Has("Attendance.SelfCheckin") || Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+         || Auth.Has("Attendance.SelfCheckin") || Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts")
+         || Auth.Has("RadisHr.Access") || Auth.IsAdmin)
     {
         <div class="nav-group group-hr">
             <button type="button" class="nav-section-title nav-toggle @(gHr ? "open" : "")" @onclick="() => gHr = !gHr">
@@ -92,6 +93,12 @@
             @if (gHr)
             {
                 <div class="nav-group-items">
+                    @if (Auth.Has("RadisHr.Access") || Auth.IsAdmin)
+                    {
+                        <button type="button" class="nav-link" @onclick="OpenRadisHr">
+                            <i class="bi bi-person-vcard-fill"></i><span>سامانه جامع RADIS-HR</span>
+                        </button>
+                    }
                     @if (Auth.Has("Attendance.SelfCheckin") || Auth.IsAdmin)
                     {
                         <NavLink class="nav-link" href="attendance" @onclick="NotifyClose">
@@ -725,4 +732,10 @@
     }
 
     private async Task NotifyClose() => await OnNavigate.InvokeAsync();
+
+    private async Task OpenRadisHr()
+    {
+        await NotifyClose();
+        NavManager.NavigateTo("/radis-hr/", forceLoad: true);
+    }
 }

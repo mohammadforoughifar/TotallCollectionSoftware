@@ -1,0 +1,122 @@
+@inject AuthState Auth
+@inject ApiClient Api
+@inject ToastService Toasts
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<main class="login-shell">
+    <section class="brand-panel hr-hero">
+        <label class="company-logo-wrap" title="لوگوی شرکت">
+            <span class="logo">R</span>
+        </label>
+        <div class="hero-date"><span>امروز</span><strong>@_today</strong></div>
+        <p class="eyebrow">سامانه یکپارچه منابع انسانی</p>
+        <h1>RADIS-HR</h1>
+        <p>پرتال حضور و غیاب، پرونده پرسنلی و حقوق و دستمزد</p>
+   @*      <div class="notice">
+            <span>اطلاعیه مهم</span>
+            <strong>سامانه به بانک اطلاعاتی SQL Server متصل است.</strong>
+            <small>نسخهٔ .NET 8 — رابط کاربری Blazor WebAssembly و سرویس REST API</small>
+        </div> *@
+    </section>
+
+    <section class="login-card">
+        <p class="eyebrow">ورود به کارتابل</p>
+        <h2>خوش آمدید</h2>
+        <p class="muted">حساب خود را انتخاب کنید. در اولین ورود باید رمز شخصی بسازید.</p>
+
+        <EditForm Model="_model" OnValidSubmit="SubmitAsync">
+            <label>
+                کاربر
+                <InputSelect @bind-Value="_model.UserKey">
+                    @foreach (var role in _roles)
+                    {
+                        <option value="@role.UserKey">@role.DisplayName</option>
+                    }
+                </InputSelect>
+            </label>
+            <label>
+                رمز عبور
+                <InputText type="password" @bind-Value="_model.Password" autocomplete="current-password" placeholder="رمز عبور" />
+            </label>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <p class="error">@_error</p>
+            }
+            <button type="submit" disabled="@_busy">@(_busy ? "در حال ورود…" : "ورود به سامانه")</button>
+            <button class="button secondary password-entry-button" type="button" @onclick="() => _showChange = true">تغییر رمز عبور</button>
+        </EditForm>
+    </section>
+</main>
+
+@if (_showChange)
+{
+    <ChangePasswordDialog UserKey="@_model.UserKey" OnClose="() => _showChange = false" />
+}
+
+@code {
+    private sealed class LoginModel
+    {
+        public string UserKey { get; set; } = "hr";
+        public string Password { get; set; } = "";
+    }
+
+    // برچسب‌های همان نسخهٔ اصلی، در صورت در دسترس نبودن سرویس
+    private static readonly List<UserAccountInfo> Fallback = new()
+    {
+        new("hr", "مالک فرآیند اداری", "اداری", false, null, null),
+        new("ceo", "مدیرعامل", "مدیریت ارشد", false, null, null),
+        new("guard", "مالک فرآیند نگهبانی", "نگهبانی", false, null, null),
+        new("hse", "مسئول HSE", "ایمنی", false, null, null),
+        new("warehouse", "انباردار", "انبار", false, null, null),
+        new("production", "مدیر تولید", "تولید", false, null, null),
+        new("finance", "مالی", "مالی", false, null, null),
+        new("accounting", "مدیر مالی حسابداری", "حسابداری", false, null, null)
+    };
+
+    private readonly LoginModel _model = new();
+    private List<UserAccountInfo> _roles = Fallback;
+    private string _error = "";
+    private string _today = "";
+    private bool _busy;
+    private bool _showChange;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var roles = await Api.GetListAsync<UserAccountInfo>("api/auth/roles");
+        if (roles.Count > 0) _roles = roles;
+        // اگر سرویس در دسترس نباشد از فهرست پشتیبان استفاده می‌شود؛ First() روی لیست خالی خطا می‌دهد.
+        var first = _roles.FirstOrDefault();
+        if (first != null) _model.UserKey = first.UserKey;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _today = await JS.InvokeAsync<string>("radisInterop.todayLongFa");
+            StateHasChanged();
+        }
+        catch { /* بی‌اهمیت */ }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = "";
+        _busy = true;
+        var (ok, message) = await Auth.LoginAsync(_model.UserKey, _model.Password);
+        _busy = false;
+
+        if (!ok) { _error = message; return; }
+
+        if (Auth.Session?.MustChangePassword == true)
+        {
+            Toasts.Info("رمز عبور شما باید تغییر کند.");
+            _showChange = true;
+            return;
+        }
+
+        Nav.NavigateTo(AppNav.RouteOf(Auth.Home));
+    }
+}

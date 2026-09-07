@@ -1,0 +1,186 @@
+@page "/finance"
+@using System.Text
+@using RadisHr.Shared.Models
+@inject ApiClient Api
+@inject ToastService Toasts
+@inject IJSRuntime JS
+
+<section class="page">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">کارتابل مالی</p>
+            <h2>ثبت مساعده پرداخت‌شده</h2>
+            <p class="muted">کاربر مالی فقط نام پرسنل، تاریخ پرداخت از تقویم و مبلغ مساعده را ثبت می‌کند.</p>
+        </div>
+        <span class="badge">@Fa.N(_advances.Sum(a => a.Balance)) ریال مانده</span>
+    </div>
+
+    <form class="panel v016-form" @onsubmit="SaveAdvanceAsync" @onsubmit:preventDefault="true">
+        <label>پرسنل
+            <select required value="@_advance.EmployeeCode" @onchange="OnEmployeeChanged">
+                <option value="">— انتخاب پرسنل —</option>
+                @foreach (var employee in _employees)
+                {
+                    <option value="@employee.Code">@employee.First @employee.Last (@Fa.N(employee.Code))</option>
+                }
+            </select>
+        </label>
+
+        <label>تاریخ پرداخت
+            <input pattern="\d{4}/\d{2}/\d{2}" required placeholder="1405/04/10" @bind="_advance.Date" />
+        </label>
+
+        <label>مبلغ مساعده (ریال) <RialInput @bind-Value="_advance.Amount" /></label>
+
+        <div class="advance-debt-status wide-field" role="status">
+            @if (string.IsNullOrEmpty(_advance.EmployeeCode))
+            {
+                <span class="muted">با انتخاب پرسنل، مانده بدهی قبلی نمایش داده می‌شود.</span>
+            }
+            else if (SelectedOpenAdvances.Count == 0)
+            {
+                <span>این پرسنل مساعده تسویه‌نشده ندارد.</span>
+            }
+            else
+            {
+                <span>
+                    <b>@Fa.N(SelectedOpenAdvances.Count)</b> مساعده تسویه‌نشده با مانده کل
+                    <b>@Fa.N(SelectedOpenAdvances.Sum(a => a.Balance))</b> ریال دارد.
+                </span>
+            }
+        </div>
+
+        <button class="button primary" type="submit">ثبت مساعده</button>
+        <p class="form-message wide-field">@_message</p>
+    </form>
+
+    <article class="panel">
+        <div class="section-head compact">
+            <h3>سوابق مساعده‌های ثبت‌شده</h3>
+            <button class="button secondary" type="button" @onclick="ExportAsync">خروجی سوابق</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>پرسنل</th><th>تاریخ پرداخت</th><th>مبلغ</th><th>وضعیت تعیین تکلیف</th><th>کسرشده</th><th>مانده</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var advance in _advances)
+                    {
+                        <tr>
+                            <td>@NameOf(advance.EmployeeCode)<br /><small class="muted">@Fa.N(advance.EmployeeCode)</small></td>
+                            <td>@Fa.N(advance.Date)</td>
+                            <td>@Fa.N(advance.Amount)</td>
+                            <td><span class="badge">@advance.SettlementStatus</span></td>
+                            <td>@Fa.N(advance.Deducted)</td>
+                            <td>@Fa.N(advance.Balance)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (_advances.Count == 0) { <p class="empty">هنوز مساعده‌ای ثبت نشده است.</p> }
+    </article>
+
+    <article class="panel">
+        <div class="section-head compact">
+            <div><p class="eyebrow">پرداخت‌های حقوق</p><h3>فیش‌های تسویه‌شده</h3></div>
+            <label>ماه
+                <select value="@_paymentMonth" @onchange="OnPaymentMonthChanged">
+                    <option value="">همه ماه‌ها</option>
+                    @foreach (var month in _months)
+                    {
+                        <option value="@month">@Fa.MonthLabel(month)</option>
+                    }
+                </select>
+            </label>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>ماه</th><th>پرسنل</th><th>مبلغ</th><th>تاریخ پرداخت</th><th>مرجع</th><th>ثبت‌کننده</th></tr></thead>
+                <tbody>
+                    @foreach (var payment in _payments)
+                    {
+                        <tr>
+                            <td>@Fa.MonthLabel(payment.Month)</td>
+                            <td>@NameOf(payment.EmployeeCode)</td>
+                            <td>@Fa.N(payment.Amount)</td>
+                            <td>@Fa.N(payment.PaidDate)</td>
+                            <td>@Fa.N(payment.Reference)</td>
+                            <td>@payment.PaidBy</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        @if (_payments.Count == 0) { <p class="empty">پرداختی ثبت نشده است.</p> }
+    </article>
+</section>
+
+@code {
+    private List<Advance> _advances = new();
+    private List<Employee> _employees = new();
+    private List<PayrollPayment> _payments = new();
+    private List<string> _months = new();
+
+    private Advance _advance = new();
+    private string _message = "";
+    private string _paymentMonth = "";
+
+    private List<Advance> SelectedOpenAdvances =>
+        _advances.Where(a => a.EmployeeCode == _advance.EmployeeCode && a.Balance > 0).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _employees = await Api.GetListAsync<Employee>("api/employees");
+        _months = await Api.GetListAsync<string>("api/payroll/months");
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _advances = await Api.GetListAsync<Advance>("api/workflows/advances");
+        var url = string.IsNullOrEmpty(_paymentMonth) ? "api/workflows/payments" : $"api/workflows/payments?month={_paymentMonth}";
+        _payments = await Api.GetListAsync<PayrollPayment>(url);
+    }
+
+    private string NameOf(string code)
+    {
+        var employee = _employees.FirstOrDefault(e => e.Code == code);
+        return employee == null ? code : $"{employee.First} {employee.Last}";
+    }
+
+    private void OnEmployeeChanged(ChangeEventArgs args) =>
+        _advance.EmployeeCode = args.Value?.ToString() ?? "";
+
+    private async Task OnPaymentMonthChanged(ChangeEventArgs args)
+    {
+        _paymentMonth = args.Value?.ToString() ?? "";
+        await ReloadAsync();
+    }
+
+    private async Task SaveAdvanceAsync()
+    {
+        if (string.IsNullOrEmpty(_advance.EmployeeCode)) { _message = "انتخاب پرسنل الزامی است."; return; }
+        if (_advance.Amount <= 0) { _message = "مبلغ مساعده باید بزرگ‌تر از صفر باشد."; return; }
+
+        var ok = await Api.SendAsync(HttpMethod.Post, "api/workflows/advances", _advance);
+        if (!ok) return;
+
+        _message = "مساعده ثبت شد و برای تعیین تکلیف به حسابداری ارسال گردید.";
+        _advance = new Advance();
+        await ReloadAsync();
+    }
+
+    private async Task ExportAsync()
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine("کد پرسنلی,نام,تاریخ پرداخت,مبلغ,وضعیت,کسرشده,مانده,روش تسویه,ماه شروع,تعداد اقساط");
+        foreach (var a in _advances)
+            csv.AppendLine($"{a.EmployeeCode},{NameOf(a.EmployeeCode)},{a.Date},{a.Amount},{a.SettlementStatus},{a.Deducted},{a.Balance},{a.SettlementMethod},{a.SettlementStartMonth},{a.SettlementCount}");
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray();
+        await JS.InvokeVoidAsync("radisInterop.downloadFile", "advances.csv", "text/csv", Convert.ToBase64String(bytes));
+        Toasts.Success("خروجی سوابق مساعده آماده شد.");
+    }
+}

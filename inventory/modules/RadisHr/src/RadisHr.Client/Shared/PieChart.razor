@@ -1,0 +1,47 @@
+@* نمودار دایره‌ای conic-gradient — همان روش نسخهٔ اصلی *@
+<div class="pie-layout">
+    <div class="pie-chart" style="background:@Gradient"></div>
+    <div class="pie-legend">
+        @for (var i = 0; i < Items.Count; i++)
+        {
+            var item = Items[i];
+            var share = Total == 0 ? 0 : Math.Round(item.Value / Total * 100m);
+            <span>
+                <i style="background:@Colors[i % Colors.Length]"></i>
+                @item.Label <b>@Fa.N(share)٪</b>
+            </span>
+        }
+    </div>
+</div>
+
+@code {
+    public record Slice(string Label, decimal Value);
+
+    [Parameter] public List<Slice> Items { get; set; } = new();
+
+    private static readonly string[] Colors =
+    {
+        "#123c4b", "#8fbd75", "#4d7c8a", "#cfe3ba", "#668a54",
+        "#2f6b7d", "#a7c99a", "#1c4f63", "#dcd0a8", "#7fa98c"
+    };
+
+    private decimal Total => Items.Sum(i => i.Value);
+
+    private string Gradient
+    {
+        get
+        {
+            if (Items.Count == 0 || Total <= 0) return "#dde6e1";
+            var sum = Total;
+            var at = 0m;
+            var parts = new List<string>();
+            for (var i = 0; i < Items.Count; i++)
+            {
+                var start = at;
+                at += Items[i].Value / sum * 360m;
+                parts.Add($"{Colors[i % Colors.Length]} {start.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}deg {at.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}deg");
+            }
+            return $"conic-gradient({string.Join(",", parts)})";
+        }
+    }
+}
