@@ -20,3 +20,9 @@ packages/
 *.db-shm
 *.db-wal
 appsettings.Local.json
+
+# Private chat attachments and local test output
+App_Data/
+TestResults/
+__pycache__/
+.pytest_cache/

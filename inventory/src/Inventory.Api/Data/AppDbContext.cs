@@ -132,6 +132,7 @@ public class AppDbContext : DbContext
     public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();
     public DbSet<Inventory.Api.Entities.Chat.ChatMember> ChatMembers => Set<Inventory.Api.Entities.Chat.ChatMember>();
     public DbSet<Inventory.Api.Entities.Chat.ChatMessage> ChatMessages => Set<Inventory.Api.Entities.Chat.ChatMessage>();
+    public DbSet<Inventory.Api.Entities.Chat.ChatAttachment> ChatAttachments => Set<Inventory.Api.Entities.Chat.ChatAttachment>();
 
     // ==================== ماژول انبارداری ====================
     public DbSet<ProductAttributeDef> ProductAttributeDefs => Set<ProductAttributeDef>();
@@ -236,6 +237,8 @@ public class AppDbContext : DbContext
         mb.Entity<Inventory.Api.Entities.Chat.ChatMessage>().HasIndex(m => new { m.ConversationId, m.CreatedAt });
         mb.Entity<Inventory.Api.Entities.Chat.ChatMessage>().HasIndex(m => m.SenderUserId);
         mb.Entity<Inventory.Api.Entities.Chat.ChatConversation>().HasIndex(c => c.LastMessageAt);
+        mb.Entity<Inventory.Api.Entities.Chat.ChatAttachment>().HasIndex(a => a.ConversationId);
+        mb.Entity<Inventory.Api.Entities.Chat.ChatAttachment>().HasIndex(a => a.UploadedByUserId);
 
         // ---------- امنیت حضور و غیاب: ایندکس‌های دستگاه‌ها و هشدارها ----------
         // هر کاربر برای هر Device ID فقط یک رکورد دستگاه دارد (دستگاه یکتا)

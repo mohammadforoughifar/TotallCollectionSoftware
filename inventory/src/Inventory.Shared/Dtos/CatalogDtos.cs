@@ -246,10 +246,30 @@ public class Party
 }
 
 /// <summary>نتیجه فیلتر/صفحه‌بندی اقلام پایه</summary>
+/// <remarks>
+/// تعریف یکپارچهٔ PagedResult: بخش پایه از CatalogDtos و بخش صفحه‌بندی/جمع (Page, PageSize,
+/// PageCount, SumTicks) از نسخهٔ پروژه‌ها. (در یکی از PRهای موازی، کلاس دوم در ProjectDtos
+/// اضافه شده بود و Inventory.Shared را ناقابل‌کامپایل می‌کرد؛ این‌جا یک‌جا شده است.)
+/// </remarks>
 public class PagedResult<T>
 {
     public List<T> Items { get; set; } = new();
     public int TotalCount { get; set; }
+
+    /// <summary>تعداد کل ردیف‌های منطبق با فیلترها (نه فقط این صفحه)</summary>
+    public int Total { get; set; }
+
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+
+    /// <summary>تعداد صفحه‌ها (محاسبه‌شده)</summary>
+    public int PageCount => PageSize <= 0 ? 1 : Math.Max(1, (int)Math.Ceiling(Total / (double)PageSize));
+
+    /// <summary>
+    /// جمع کل (تیک) روی «همهٔ» ردیف‌های منطبق با فیلتر — نه فقط صفحهٔ جاری.
+    /// در لیست گزارش‌های کار برای نمایش «جمع ساعت» استفاده می‌شود.
+    /// </summary>
+    public long? SumTicks { get; set; }
 }
 
 /// <summary>آیتم سبک برای انتخاب در فرم‌ها</summary>
