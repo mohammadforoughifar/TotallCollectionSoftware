@@ -117,6 +117,7 @@ public class AuthState
         Session = null;
         _http.DefaultRequestHeaders.Authorization = null;
         await _js.InvokeVoidAsync("radisInterop.removeItem", StorageKey);
+        await _js.InvokeVoidAsync("localStorage.removeItem", "authSession");
         Changed?.Invoke();
     }
 
