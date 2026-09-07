@@ -1,36 +1,66 @@
-@* ورودی ساعت ۲۴ساعته — بدون AM/PM — با ارقام فارسی.
-   جایگزین input[type=time] که بسته به مرورگر AM/PM نشان می‌دهد و 00:30 را با 12:30 اشتباه می‌گرفت. *@
-<div class="time-input @CssClass">
-    <select class="form-select form-select-sm" disabled="@Disabled"
-            value="@Value.Hour" @onchange="SetHour" aria-label="ساعت">
-        @for (var h = 0; h <= Math.Max(MaxHour, Value.Hour); h++)
-        {
-            <option value="@h">@Fa.Digits(h.ToString("00"))</option>
-        }
-    </select>
-    <span class="ti-sep">:</span>
-    <select class="form-select form-select-sm" disabled="@Disabled"
-            value="@Value.Minute" @onchange="SetMinute" aria-label="دقیقه">
-        @for (var m = 0; m < 60; m += MinuteStep)
-        {
-            <option value="@m">@Fa.Digits(m.ToString("00"))</option>
-        }
-    </select>
+@* ورودی ساعت ۲۴ساعته زیبا، مدرن و کاربرپسند با ارقام فارسی *@
+<div class="ti-wrapper @CssClass">
+    <div class="ti-container @(Disabled ? "disabled" : "")">
+        <div class="ti-icon" title="انتخاب زمان">
+            <i class="bi bi-clock-history"></i>
+        </div>
+        <div class="ti-select-group">
+            <div class="ti-field" title="ساعت">
+                <select disabled="@Disabled" value="@Value.Hour" @onchange="SetHour" aria-label="ساعت">
+                    @for (var h = 0; h <= Math.Max(MaxHour, Value.Hour); h++)
+                    {
+                        <option value="@h">@Fa.Digits(h.ToString("00"))</option>
+                    }
+                </select>
+                <span class="ti-lbl">ساعت</span>
+            </div>
+            <span class="ti-colon">:</span>
+            <div class="ti-field" title="دقیقه">
+                <select disabled="@Disabled" value="@Value.Minute" @onchange="SetMinute" aria-label="دقیقه">
+                    @for (var m = 0; m < 60; m += MinuteStep)
+                    {
+                        <option value="@m">@Fa.Digits(m.ToString("00"))</option>
+                    }
+                </select>
+                <span class="ti-lbl">دقیقه</span>
+            </div>
+        </div>
+    </div>
     @if (!string.IsNullOrWhiteSpace(Suffix))
     {
-        <span class="ti-suffix">@Suffix</span>
+        <div class="ti-suffix"><i class="bi bi-info-circle ms-1"></i>@Suffix</div>
     }
 </div>
 
 <style>
-    /* چیدمان چپ‌به‌راست مثل ساعت دیجیتال: ساعت : دقیقه (درخواست کاربر) */
-    .time-input { display: flex; align-items: center; gap: .35rem; direction: ltr; justify-content: flex-end; }
-    .time-input select {
-        width: auto; min-width: 66px; text-align: center; font-weight: 700;
-        border-radius: 9px; cursor: pointer;
+    .ti-wrapper { display: inline-flex; flex-direction: column; gap: .25rem; width: 100%; }
+    .ti-container {
+        display: flex; align-items: center; gap: .5rem; background: #ffffff;
+        border: 1.5px solid #cbd5e1; border-radius: 12px; padding: .3rem .65rem;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, .06); transition: all .15s ease-in-out;
     }
-    .ti-sep { font-weight: 800; color: #64748b; }
-    .ti-suffix { font-size: .75rem; color: #64748b; direction: rtl; }
+    .ti-container:focus-within {
+        border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99, 102, 241, .18); background: #f8fafc;
+    }
+    .ti-container.disabled { opacity: .6; pointer-events: none; background: #f1f5f9; }
+    .ti-icon {
+        display: flex; align-items: center; justify-content: center;
+        width: 32px; height: 32px; border-radius: 9px; background: #eef2ff; color: #4338ca;
+        font-size: .95rem; flex-shrink: 0;
+    }
+    .ti-select-group { display: flex; align-items: center; gap: .35rem; direction: ltr; flex: 1; }
+    .ti-field { display: flex; flex-direction: column; align-items: center; position: relative; flex: 1; }
+    .ti-field select {
+        border: 0; background: transparent; font-weight: 800; font-size: 1.05rem;
+        color: #1e293b; text-align: center; cursor: pointer; padding: .1rem .2rem;
+        width: 100%; outline: none; appearance: none; -webkit-appearance: none;
+        border-radius: 6px; transition: background .12s ease;
+    }
+    .ti-field select:hover { background: #eef2ff; color: #4338ca; }
+    .ti-field select:focus { background: #e0e7ff; color: #3730a3; }
+    .ti-lbl { font-size: .62rem; color: #94a3b8; font-weight: 700; margin-top: -2px; }
+    .ti-colon { font-size: 1.1rem; font-weight: 900; color: #6366f1; line-height: 1; margin-bottom: .6rem; }
+    .ti-suffix { font-size: .72rem; color: #64748b; direction: rtl; display: flex; align-items: center; margin-top: 2px; }
 </style>
 
 @code {

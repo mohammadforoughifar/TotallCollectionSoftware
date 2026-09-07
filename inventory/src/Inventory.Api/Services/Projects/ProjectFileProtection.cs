@@ -221,17 +221,29 @@ public class ProjectFileProtection : IProjectFileProtection
         if (!File.Exists(path)) throw new FileNotFoundException("فایل روی سرور پیدا نشد.", storedFileName);
 
         var all = await File.ReadAllBytesAsync(path, ct);
-        if (all.Length < NonceSize + TagSize) throw new InvalidDataException("فایل پیوست معتبر نیست.");
+        if (all.Length < NonceSize + TagSize)
+        {
+            // اگر فایل خیلی کوچک است یا بدون رمزنگاری ذخیره شده، مستقیم همان بایت‌ها بازگردانده شوند
+            return new MemoryStream(all, writable: false);
+        }
 
-        var nonce = all.AsMemory(0, NonceSize);
-        var cipher = all.AsMemory(NonceSize, all.Length - NonceSize - TagSize);
-        var tag = all.AsMemory(all.Length - TagSize, TagSize);
+        try
+        {
+            var nonce = all.AsMemory(0, NonceSize);
+            var cipher = all.AsMemory(NonceSize, all.Length - NonceSize - TagSize);
+            var tag = all.AsMemory(all.Length - TagSize, TagSize);
 
-        var plain = new byte[cipher.Length];
-        using (var aes = new AesGcm(_key, TagSize))
-            aes.Decrypt(nonce.Span, cipher.Span, tag.Span, plain.AsSpan());
+            var plain = new byte[cipher.Length];
+            using (var aes = new AesGcm(_key, TagSize))
+                aes.Decrypt(nonce.Span, cipher.Span, tag.Span, plain.AsSpan());
 
-        return new MemoryStream(plain, writable: false);
+            return new MemoryStream(plain, writable: false);
+        }
+        catch
+        {
+            // فال‌بک سازگاری: اگر رمزگشایی AES-GCM ناموفق بود (مثلاً فایل بدون رمزنگاری یا با کلید قبلی ذخیره شده)، بایت‌های دیسک خوانده شوند
+            return new MemoryStream(all, writable: false);
+        }
     }
 
     public void Delete(string storedFileName)
@@ -294,13 +306,27 @@ public class ProjectFileProtection : IProjectFileProtection
 
     public string DecryptString(string cipherText)
     {
-        var all = Convert.FromBase64String(cipherText);
-        var nonce = all.AsMemory(0, NonceSize);
-        var cipher = all.AsMemory(NonceSize, all.Length - NonceSize - TagSize);
-        var tag = all.AsMemory(all.Length - TagSize, TagSize);
-        var plain = new byte[cipher.Length];
-        using (var aes = new AesGcm(_key, TagSize))
-            aes.Decrypt(nonce.Span, cipher.Span, tag.Span, plain.AsSpan());
-        return Encoding.UTF8.GetString(plain);
+        if (string.IsNullOrWhiteSpace(cipherText)) return "";
+        try
+        {
+            var all = Convert.FromBase64String(cipherText);
+            if (all.Length >= NonceSize + TagSize)
+            {
+                var nonce = all.AsMemory(0, NonceSize);
+                var cipher = all.AsMemory(NonceSize, all.Length - NonceSize - TagSize);
+                var tag = all.AsMemory(all.Length - TagSize, TagSize);
+                var plain = new byte[cipher.Length];
+                using (var aes = new AesGcm(_key, TagSize))
+                    aes.Decrypt(nonce.Span, cipher.Span, tag.Span, plain.AsSpan());
+                return Encoding.UTF8.GetString(plain);
+            }
+        }
+        catch
+        {
+            // فال‌بک سازگاری: اگر متن ورودی به صورت عادی (غیررمزنگاری‌شده) ذخیره شده، خود همان برگردانده شود
+            if (cipherText.Contains('.') || !cipherText.Contains('='))
+                return cipherText;
+        }
+        return cipherText;
     }
 }

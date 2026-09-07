@@ -1,0 +1,360 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Inventory.Api.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddTreasuryModule : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.CreateTable(
+                name: "TrsAccounts",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Code = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    AccountId = table.Column<int>(type: "int", nullable: true),
+                    BankName = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    BranchName = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    BranchCode = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
+                    AccountNumber = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: true),
+                    Iban = table.Column<string>(type: "nvarchar(34)", maxLength: 34, nullable: true),
+                    CardNumber = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
+                    OpeningBalance = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    IsDefault = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    SortOrder = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrsAccounts", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrsAccounts_AccAccounts_AccountId",
+                        column: x => x.AccountId,
+                        principalTable: "AccAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrsRules",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    PartyAccountId = table.Column<int>(type: "int", nullable: true),
+                    ChequeAccountId = table.Column<int>(type: "int", nullable: true),
+                    CollectionAccountId = table.Column<int>(type: "int", nullable: true),
+                    DiscountAccountId = table.Column<int>(type: "int", nullable: true),
+                    FeeAccountId = table.Column<int>(type: "int", nullable: true),
+                    AutoVoucher = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrsRules", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrsCheques",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    Number = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: false),
+                    SayadId = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
+                    Amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    IssueDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    DueDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    BankName = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    BranchName = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    AccountNumber = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: true),
+                    OwnerName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    PartyId = table.Column<int>(type: "int", nullable: true),
+                    TrsAccountId = table.Column<int>(type: "int", nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    StatusDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    TrsVoucherId = table.Column<int>(type: "int", nullable: true),
+                    CreatedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrsCheques", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrsCheques_Parties_PartyId",
+                        column: x => x.PartyId,
+                        principalTable: "Parties",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TrsCheques_TrsAccounts_TrsAccountId",
+                        column: x => x.TrsAccountId,
+                        principalTable: "TrsAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrsVouchers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Number = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    PartyId = table.Column<int>(type: "int", nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true),
+                    RefNumber = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    FromAccountId = table.Column<int>(type: "int", nullable: true),
+                    ToAccountId = table.Column<int>(type: "int", nullable: true),
+                    FeeAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    InvoiceId = table.Column<int>(type: "int", nullable: true),
+                    TotalAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    CashAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    ChequeAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    DiscountAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    VoucherId = table.Column<int>(type: "int", nullable: true),
+                    CreatedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ConfirmedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    ConfirmedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrsVouchers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrsVouchers_Parties_PartyId",
+                        column: x => x.PartyId,
+                        principalTable: "Parties",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TrsVouchers_TrsAccounts_FromAccountId",
+                        column: x => x.FromAccountId,
+                        principalTable: "TrsAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TrsVouchers_TrsAccounts_ToAccountId",
+                        column: x => x.ToAccountId,
+                        principalTable: "TrsAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrsChequeActions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ChequeId = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    TrsAccountId = table.Column<int>(type: "int", nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    VoucherId = table.Column<int>(type: "int", nullable: true),
+                    CreatedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrsChequeActions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrsChequeActions_TrsCheques_ChequeId",
+                        column: x => x.ChequeId,
+                        principalTable: "TrsCheques",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "TrsVoucherLines",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    TrsVoucherId = table.Column<int>(type: "int", nullable: false),
+                    RowNo = table.Column<int>(type: "int", nullable: false),
+                    Method = table.Column<int>(type: "int", nullable: false),
+                    TrsAccountId = table.Column<int>(type: "int", nullable: true),
+                    Amount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    RefNumber = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    ChequeId = table.Column<int>(type: "int", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_TrsVoucherLines", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_TrsVoucherLines_TrsAccounts_TrsAccountId",
+                        column: x => x.TrsAccountId,
+                        principalTable: "TrsAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_TrsVoucherLines_TrsCheques_ChequeId",
+                        column: x => x.ChequeId,
+                        principalTable: "TrsCheques",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                    table.ForeignKey(
+                        name: "FK_TrsVoucherLines_TrsVouchers_TrsVoucherId",
+                        column: x => x.TrsVoucherId,
+                        principalTable: "TrsVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsAccounts_AccountId",
+                table: "TrsAccounts",
+                column: "AccountId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsAccounts_Code",
+                table: "TrsAccounts",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsAccounts_Kind",
+                table: "TrsAccounts",
+                column: "Kind");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsChequeActions_ChequeId",
+                table: "TrsChequeActions",
+                column: "ChequeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsCheques_DueDate",
+                table: "TrsCheques",
+                column: "DueDate");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsCheques_Kind_Number",
+                table: "TrsCheques",
+                columns: new[] { "Kind", "Number" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsCheques_PartyId",
+                table: "TrsCheques",
+                column: "PartyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsCheques_Status",
+                table: "TrsCheques",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsCheques_TrsAccountId",
+                table: "TrsCheques",
+                column: "TrsAccountId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsCheques_TrsVoucherId",
+                table: "TrsCheques",
+                column: "TrsVoucherId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsRules_Kind",
+                table: "TrsRules",
+                column: "Kind",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVoucherLines_ChequeId",
+                table: "TrsVoucherLines",
+                column: "ChequeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVoucherLines_TrsAccountId",
+                table: "TrsVoucherLines",
+                column: "TrsAccountId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVoucherLines_TrsVoucherId",
+                table: "TrsVoucherLines",
+                column: "TrsVoucherId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_Date",
+                table: "TrsVouchers",
+                column: "Date");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_FromAccountId",
+                table: "TrsVouchers",
+                column: "FromAccountId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_InvoiceId",
+                table: "TrsVouchers",
+                column: "InvoiceId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_Kind_Number",
+                table: "TrsVouchers",
+                columns: new[] { "Kind", "Number" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_PartyId",
+                table: "TrsVouchers",
+                column: "PartyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_Status",
+                table: "TrsVouchers",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_ToAccountId",
+                table: "TrsVouchers",
+                column: "ToAccountId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_TrsVouchers_VoucherId",
+                table: "TrsVouchers",
+                column: "VoucherId");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(
+                name: "TrsChequeActions");
+
+            migrationBuilder.DropTable(
+                name: "TrsRules");
+
+            migrationBuilder.DropTable(
+                name: "TrsVoucherLines");
+
+            migrationBuilder.DropTable(
+                name: "TrsCheques");
+
+            migrationBuilder.DropTable(
+                name: "TrsVouchers");
+
+            migrationBuilder.DropTable(
+                name: "TrsAccounts");
+        }
+    }
+}

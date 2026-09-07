@@ -141,25 +141,72 @@ public class AttachmentsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly FileStore _store;
-    public AttachmentsController(AppDbContext db, FileStore store) { _db = db; _store = store; }
+    private readonly IAttachmentGuard _guard;
+    private readonly Inventory.Api.Services.DocArchive.IDocIndexService _docIndex;
+    public AttachmentsController(AppDbContext db, FileStore store, IAttachmentGuard guard, Inventory.Api.Services.DocArchive.IDocIndexService docIndex)
+    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
+    private bool IsAdmin => User.IsInRole("Admin");
+
+    /// <summary>فرمت‌هایی که داخل مرورگر قابل نمایش‌اند (پیش‌نمایش بدون دانلود).</summary>
+    private static readonly HashSet<string> InlineTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/pdf", "image/png", "image/jpeg", "image/jpg",
+        "image/gif", "image/webp", "image/bmp", "image/svg+xml", "text/plain"
+    };
+
+    private static string GuessContentType(string fileName, string stored)
+    {
+        if (!string.IsNullOrWhiteSpace(stored) && stored != "application/octet-stream") return stored;
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".svg" => "image/svg+xml",
+            ".txt" => "text/plain",
+            _ => stored ?? "application/octet-stream"
+        };
+    }
 
     [HttpGet("{module}/{refId:int}")]
     public async Task<IActionResult> List(string module, int refId)
     {
+        var access = await _guard.CheckAsync(module, refId, MyUserId, IsAdmin);
+        if (access == AttachmentAccess.None)
+            return StatusCode(403, new { message = "شما به پیوست‌های این مورد دسترسی ندارید." });
+
         var rows = await _db.AppAttachments.Where(a => a.Module == module && a.RefId == refId)
-            .Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
             .ToListAsync();
-        return Ok(rows.Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploaderUserId, a.UploadedAt,
-            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length }));
+
+        return Ok(rows.Select(a =>
+        {
+            var ct = GuessContentType(a.FileName, a.ContentType);
+            return new
+            {
+                a.Id, a.FileName, a.UploaderName, a.UploaderUserId, a.UploadedAt,
+                Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+                ContentType = ct,
+                CanPreview = InlineTypes.Contains(ct),
+                CanDownload = access == AttachmentAccess.Download
+            };
+        }));
     }
 
     [HttpPost("{module}/{refId:int}")]
     [RequestSizeLimit(15 * 1024 * 1024)]
     public async Task<IActionResult> Upload(string module, int refId, IFormFile file)
     {
+        var access = await _guard.CheckAsync(module, refId, MyUserId, IsAdmin);
+        if (access != AttachmentAccess.Download)
+            return StatusCode(403, new { message = "شما اجازه افزودن پیوست به این مورد را ندارید." });
+
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
         if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
 
@@ -167,7 +214,7 @@ public class AttachmentsController : ControllerBase
         await file.CopyToAsync(ms);
         ms.Position = 0;
         var relPath = await _store.SaveAsync(module, refId, ms, file.FileName);
-        _db.AppAttachments.Add(new AppAttachment
+        var att = new AppAttachment
         {
             Module = module, RefId = refId,
             FileName = Path.GetFileName(file.FileName),
@@ -175,20 +222,61 @@ public class AttachmentsController : ControllerBase
             FilePath = relPath,
             Data = Array.Empty<byte>(),
             UploaderName = MyUsername, UploaderUserId = MyUserId
-        });
+        };
+        _db.AppAttachments.Add(att);
         await _db.SaveChangesAsync();
+
+        if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))
+        {
+            _docIndex.QueueAttachmentIndexing(att.Id);
+        }
+
         return Ok();
     }
 
+    /// <summary>دانلود پیوست — نیازمند احراز هویت و دسترسی دانلود روی رکورد صاحبِ پیوست.</summary>
     [HttpGet("download/{id:int}")]
-    [AllowAnonymous]
     public async Task<IActionResult> Download(int id)
     {
         var a = await _db.AppAttachments.FindAsync(id);
         if (a == null) return NotFound();
+
+        var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
+        if (access == AttachmentAccess.None)
+            return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
+        if (access == AttachmentAccess.PreviewOnly)
+            return StatusCode(403, new { message = "شما اجازه دانلود این فایل را ندارید؛ فقط امکان مشاهده دارید." });
+
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
-        return File(bytes, a.ContentType, a.FileName);
+        return File(bytes, GuessContentType(a.FileName, a.ContentType), a.FileName);
+    }
+
+    /// <summary>
+    /// پیش‌نمایش داخل برنامه — فایل به‌صورت inline برگردانده می‌شود (بدون هدر دانلود).
+    /// برای کاربرانی که فقط حق «مشاهده» دارند هم کار می‌کند.
+    /// </summary>
+    [HttpGet("preview/{id:int}")]
+    public async Task<IActionResult> Preview(int id)
+    {
+        var a = await _db.AppAttachments.FindAsync(id);
+        if (a == null) return NotFound();
+
+        var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
+        if (access == AttachmentAccess.None)
+            return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
+
+        var ct = GuessContentType(a.FileName, a.ContentType);
+        if (!InlineTypes.Contains(ct))
+            return BadRequest(new { message = "این نوع فایل قابل پیش‌نمایش نیست." });
+
+        var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
+        if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+
+        // inline تا مرورگر داخل iframe/img نمایش دهد و پنجره دانلود باز نشود
+        Response.Headers["Content-Disposition"] = "inline; filename=\"preview\"";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(bytes, ct);
     }
 
     /// <summary>حذف — فقط آپلودکننده یا مدیر.</summary>
@@ -197,8 +285,18 @@ public class AttachmentsController : ControllerBase
     {
         var a = await _db.AppAttachments.FindAsync(id);
         if (a == null) return NotFound();
-        if (a.UploaderUserId != MyUserId && !User.IsInRole("Admin")) return Forbid();
+
+        var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
+        if (access != AttachmentAccess.Download)
+            return StatusCode(403, new { message = "شما اجازه حذف پیوست این مورد را ندارید." });
+        if (a.UploaderUserId != MyUserId && !IsAdmin)
+            return StatusCode(403, new { message = "فقط آپلودکننده یا مدیر می‌تواند این پیوست را حذف کند." });
         _store.Delete(a.FilePath);
+        if (string.Equals(a.Module, "DocVersion", StringComparison.OrdinalIgnoreCase))
+        {
+            var oldExtracted = await _db.DocExtractedTexts.Where(x => x.AttachmentId == a.Id).ToListAsync();
+            _db.DocExtractedTexts.RemoveRange(oldExtracted);
+        }
         _db.AppAttachments.Remove(a);
         await _db.SaveChangesAsync();
         return Ok();

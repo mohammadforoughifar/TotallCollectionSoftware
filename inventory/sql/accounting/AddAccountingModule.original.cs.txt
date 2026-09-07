@@ -1,0 +1,246 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Inventory.Api.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddAccountingModule : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.CreateTable(
+                name: "AccAccounts",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Code = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(180)", maxLength: 180, nullable: false),
+                    EnName = table.Column<string>(type: "nvarchar(180)", maxLength: 180, nullable: true),
+                    ParentId = table.Column<int>(type: "int", nullable: true),
+                    Level = table.Column<int>(type: "int", nullable: false),
+                    Type = table.Column<int>(type: "int", nullable: false),
+                    Nature = table.Column<int>(type: "int", nullable: false),
+                    IsPermanent = table.Column<bool>(type: "bit", nullable: false),
+                    IsPostable = table.Column<bool>(type: "bit", nullable: false),
+                    RequiresParty = table.Column<bool>(type: "bit", nullable: false),
+                    IsSystem = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    SortOrder = table.Column<int>(type: "int", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AccAccounts", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AccAccounts_AccAccounts_ParentId",
+                        column: x => x.ParentId,
+                        principalTable: "AccAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AccFiscalYears",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Title = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: false),
+                    Code = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
+                    StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsCurrent = table.Column<bool>(type: "bit", nullable: false),
+                    IsClosed = table.Column<bool>(type: "bit", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AccFiscalYears", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AccInvRules",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DocTypeId = table.Column<int>(type: "int", nullable: false),
+                    InventoryAccountId = table.Column<int>(type: "int", nullable: true),
+                    CounterAccountId = table.Column<int>(type: "int", nullable: true),
+                    UseCostValue = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AccInvRules", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AccInvRules_InvDocTypes_DocTypeId",
+                        column: x => x.DocTypeId,
+                        principalTable: "InvDocTypes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AccVouchers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Number = table.Column<int>(type: "int", nullable: false),
+                    RefNumber = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: true),
+                    FiscalYearId = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    Source = table.Column<int>(type: "int", nullable: false),
+                    SourceId = table.Column<int>(type: "int", nullable: true),
+                    SourceTitle = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    TotalDebit = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    TotalCredit = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    CreatedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ConfirmedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    ConfirmedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AccVouchers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AccVouchers_AccFiscalYears_FiscalYearId",
+                        column: x => x.FiscalYearId,
+                        principalTable: "AccFiscalYears",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "AccVoucherLines",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    VoucherId = table.Column<int>(type: "int", nullable: false),
+                    RowNo = table.Column<int>(type: "int", nullable: false),
+                    AccountId = table.Column<int>(type: "int", nullable: false),
+                    PartyId = table.Column<int>(type: "int", nullable: true),
+                    ProjectId = table.Column<int>(type: "int", nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true),
+                    RefNumber = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: true),
+                    Debit = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    Credit = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AccVoucherLines", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_AccVoucherLines_AccAccounts_AccountId",
+                        column: x => x.AccountId,
+                        principalTable: "AccAccounts",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_AccVoucherLines_AccVouchers_VoucherId",
+                        column: x => x.VoucherId,
+                        principalTable: "AccVouchers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccAccounts_Code",
+                table: "AccAccounts",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccAccounts_Level",
+                table: "AccAccounts",
+                column: "Level");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccAccounts_ParentId",
+                table: "AccAccounts",
+                column: "ParentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccFiscalYears_IsCurrent",
+                table: "AccFiscalYears",
+                column: "IsCurrent");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccFiscalYears_Title",
+                table: "AccFiscalYears",
+                column: "Title",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccInvRules_DocTypeId",
+                table: "AccInvRules",
+                column: "DocTypeId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccVoucherLines_AccountId",
+                table: "AccVoucherLines",
+                column: "AccountId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccVoucherLines_PartyId",
+                table: "AccVoucherLines",
+                column: "PartyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccVoucherLines_VoucherId",
+                table: "AccVoucherLines",
+                column: "VoucherId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccVouchers_Date",
+                table: "AccVouchers",
+                column: "Date");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccVouchers_FiscalYearId_Number",
+                table: "AccVouchers",
+                columns: new[] { "FiscalYearId", "Number" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccVouchers_Source_SourceId",
+                table: "AccVouchers",
+                columns: new[] { "Source", "SourceId" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AccVouchers_Status",
+                table: "AccVouchers",
+                column: "Status");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(
+                name: "AccInvRules");
+
+            migrationBuilder.DropTable(
+                name: "AccVoucherLines");
+
+            migrationBuilder.DropTable(
+                name: "AccAccounts");
+
+            migrationBuilder.DropTable(
+                name: "AccVouchers");
+
+            migrationBuilder.DropTable(
+                name: "AccFiscalYears");
+        }
+    }
+}

@@ -32,11 +32,25 @@ public interface IProjectService
     Task<string> GetNextSerialAsync();
     Task<List<ProjectEntryExitDto>> GetAllAsync(string? search = null, int? karfarmaId = null,
         int? typeFactorId = null, int? userId = null, bool? returned = null);
+
+    /// <summary>لیست صفحه‌بندی‌شده سمت سرور (فقط ردیف‌های همان صفحه از دیتابیس خوانده می‌شوند).</summary>
+    Task<PagedResult<ProjectEntryExitDto>> GetPagedAsync(ProjectListQuery query);
+
+    /// <summary>کدهای برگشتی (RE) یک پروژه — برای نمایش در ستون «برگشتی» بدون خواندن کل لیست.</summary>
+    Task<ProjectReturnsDto?> GetReturnsAsync(int id);
+
+    /// <summary>آدرس دانلود اکسل با همان فیلترهای جاری لیست.</summary>
+    string BuildExportUrl(ProjectListQuery query);
+
     Task<ProjectEntryExitDto> GetAsync(int id);
     /// <summary>ایجاد پروژه — خروجی: شناسه + کد پروژه صادرشده در سرور</summary>
     Task<(int Id, string Code)> CreateAsync(ProjectEntryExitDto dto);
-    Task<int> UpdateAsync(int id, ProjectEntryExitDto dto);
-    Task DeleteAsync(int id);
+
+    /// <summary>ویرایش پروژه — اگر کاربر مدیر نباشد، فقط «درخواست ویرایش» ثبت می‌شود (Pending=true).</summary>
+    Task<ChangeActionResult> UpdateAsync(int id, ProjectEntryExitDto dto);
+
+    /// <summary>حذف پروژه — اگر کاربر مدیر نباشد، فقط «درخواست حذف» ثبت می‌شود (Pending=true).</summary>
+    Task<ChangeActionResult> DeleteAsync(int id);
 
     /// <summary>ثبت/ویرایش اطلاعات فاکتور (فرم مجزا)</summary>
     Task UpdateFactorAsync(int id, ProjectFactorDto dto);
@@ -50,6 +64,13 @@ public interface IReportWorkService
 {
     Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
         DateTime? from = null, DateTime? to = null, int? operatorId = null);
+
+    /// <summary>لیست صفحه‌بندی‌شده سمت سرور با فیلتر سرستون‌ها.</summary>
+    Task<PagedResult<ReportWorkDto>> GetPagedAsync(ReportWorkListQuery query);
+
+    /// <summary>آدرس دانلود اکسل گزارش‌های کار با همان فیلترهای جاری.</summary>
+    string BuildExportUrl(ReportWorkListQuery query);
+
     Task CreateAsync(ReportWorkDto dto);
     Task UpdateAsync(int id, ReportWorkDto dto);
     Task DeleteAsync(int id);
@@ -114,16 +135,35 @@ public class ProjectService : IProjectService
 
     private class NextSerialResponse { public string Next { get; set; } = ""; }
 
-    public Task<List<ProjectEntryExitDto>> GetAllAsync(string? search = null, int? karfarmaId = null,
+    /// <summary>سازگاری با کدهای قدیمی — همهٔ ردیف‌ها را یکجا می‌گیرد (PageSize=0).</summary>
+    public async Task<List<ProjectEntryExitDto>> GetAllAsync(string? search = null, int? karfarmaId = null,
         int? typeFactorId = null, int? userId = null, bool? returned = null)
     {
-        var url = $"api/projects?search={Uri.EscapeDataString(search ?? "")}";
-        if (karfarmaId is > 0) url += $"&karfarmaId={karfarmaId}";
-        if (typeFactorId is > 0) url += $"&typeFactorId={typeFactorId}";
-        if (userId is > 0) url += $"&userId={userId}";
-        if (returned is true) url += "&returned=true";
-        return _api.GetAsync<List<ProjectEntryExitDto>>(url);
+        var q = new ProjectListQuery
+        {
+            Search = search,
+            KarfarmaId = karfarmaId,
+            TypeFactorId = typeFactorId,
+            UserId = userId,
+            Returned = returned,
+            PageSize = 0
+        };
+        var res = await GetPagedAsync(q);
+        return res.Items;
     }
+
+    public async Task<PagedResult<ProjectEntryExitDto>> GetPagedAsync(ProjectListQuery query)
+    {
+        var qs = (query ?? new ProjectListQuery()).ToQueryString();
+        var res = await _api.GetAsync<PagedResult<ProjectEntryExitDto>>($"api/projects?{qs}");
+        return res ?? new PagedResult<ProjectEntryExitDto>();
+    }
+
+    public Task<ProjectReturnsDto?> GetReturnsAsync(int id)
+        => _api.GetAsync<ProjectReturnsDto?>($"api/projects/{id}/returns");
+
+    public string BuildExportUrl(ProjectListQuery query)
+        => _api.BuildUrl($"api/projects/export?{(query ?? new ProjectListQuery()).ToQueryString()}");
 
     public Task<ProjectEntryExitDto> GetAsync(int id)
         => _api.GetAsync<ProjectEntryExitDto>($"api/projects/{id}");
@@ -136,14 +176,17 @@ public class ProjectService : IProjectService
 
     private class CreateResponse { public int Id { get; set; } public string? CodeProject { get; set; } }
 
-    public async Task<int> UpdateAsync(int id, ProjectEntryExitDto dto)
+    public async Task<ChangeActionResult> UpdateAsync(int id, ProjectEntryExitDto dto)
     {
-        var res = await _api.PutAsync<IdResponse>($"api/projects/{id}", dto);
-        return res.Id;
+        var res = await _api.PutAsync<ChangeActionResult>($"api/projects/{id}", dto);
+        return res ?? new ChangeActionResult { Id = id };
     }
 
-    public Task DeleteAsync(int id)
-        => _api.DeleteAsync($"api/projects/{id}");
+    public async Task<ChangeActionResult> DeleteAsync(int id)
+    {
+        var res = await _api.DeleteAsync<ChangeActionResult>($"api/projects/{id}");
+        return res ?? new ChangeActionResult { Id = id };
+    }
 
     public Task UpdateFactorAsync(int id, ProjectFactorDto dto)
         => _api.PutAsync<object>($"api/projects/{id}/factor", dto);
@@ -159,17 +202,33 @@ public class ReportWorkService : IReportWorkService
     private readonly IApiClient _api;
     public ReportWorkService(IApiClient api) => _api = api;
 
-    public Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
+    /// <summary>سازگاری با کدهای قدیمی — همهٔ ردیف‌ها را یکجا می‌گیرد (PageSize=0).</summary>
+    public async Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
         DateTime? from = null, DateTime? to = null, int? operatorId = null)
+
     {
-        var url = "api/reportworks?";
-        if (projectId is > 0) url += $"projectId={projectId}&";
-        if (userId is > 0) url += $"userId={userId}&";
-        if (operatorId is > 0) url += $"operatorId={operatorId}&";
-        if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
-        if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
-        return _api.GetAsync<List<ReportWorkDto>>(url);
+        var res = await GetPagedAsync(new ReportWorkListQuery
+        {
+            ProjectId = projectId,
+            UserId = userId,
+            OperatorId = operatorId,
+            From = from,
+            To = to,
+            PageSize = 0
+        });
+        return res.Items;
+
     }
+
+    public async Task<PagedResult<ReportWorkDto>> GetPagedAsync(ReportWorkListQuery query)
+    {
+        var qs = (query ?? new ReportWorkListQuery()).ToQueryString();
+        var res = await _api.GetAsync<PagedResult<ReportWorkDto>>($"api/reportworks?{qs}");
+        return res ?? new PagedResult<ReportWorkDto>();
+    }
+
+    public string BuildExportUrl(ReportWorkListQuery query)
+        => _api.BuildUrl($"api/reportworks/export?{(query ?? new ReportWorkListQuery()).ToQueryString()}");
 
     public Task CreateAsync(ReportWorkDto dto)
         => _api.PostAsync<object>("api/reportworks", dto);
@@ -213,6 +272,15 @@ public interface IProjectCartableService
 
     /// <summary>ارسال مجدد پروژهٔ ردشده به کارتابل مدیر (بعد از اصلاح)</summary>
     Task ResubmitAsync(int id, string? note);
+
+    /// <summary>صف «درخواست‌های ویرایش/حذف» در انتظار تایید مدیر</summary>
+    Task<List<ProjectChangeRequestDto>> GetChangeRequestsAsync();
+
+    /// <summary>تایید درخواست ویرایش/حذف → تغییر اعمال می‌شود</summary>
+    Task ApproveChangeAsync(int id, string? note);
+
+    /// <summary>رد درخواست ویرایش/حذف (دلیل الزامی)</summary>
+    Task RejectChangeAsync(int id, string note);
 }
 
 public class ProjectCartableService : IProjectCartableService
@@ -237,4 +305,14 @@ public class ProjectCartableService : IProjectCartableService
 
     public Task ResubmitAsync(int id, string? note)
         => _api.PostAsync<object>($"api/projectcartable/{id}/resubmit", new ProjectFlowActionDto { Note = note });
+
+    public async Task<List<ProjectChangeRequestDto>> GetChangeRequestsAsync()
+        => await _api.GetAsync<List<ProjectChangeRequestDto>>("api/projectcartable/changes")
+           ?? new List<ProjectChangeRequestDto>();
+
+    public Task ApproveChangeAsync(int id, string? note)
+        => _api.PostAsync<object>($"api/projectcartable/changes/{id}/approve", new ProjectFlowActionDto { Note = note });
+
+    public Task RejectChangeAsync(int id, string note)
+        => _api.PostAsync<object>($"api/projectcartable/changes/{id}/reject", new ProjectFlowActionDto { Note = note });
 }

@@ -1,0 +1,1000 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Inventory.Api.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddWarehousingModule : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropIndex(
+                name: "IX_PushSubscriptions_UserId",
+                table: "PushSubscriptions");
+
+            migrationBuilder.DropIndex(
+                name: "IX_PushSubscriptions_UserId_Endpoint",
+                table: "PushSubscriptions");
+
+            migrationBuilder.AddColumn<bool>(
+                name: "AllowNegative",
+                table: "Warehouses",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Code",
+                table: "Warehouses",
+                type: "nvarchar(30)",
+                maxLength: 30,
+                nullable: true);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "IsDefault",
+                table: "Warehouses",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<string>(
+                name: "KeeperName",
+                table: "Warehouses",
+                type: "nvarchar(120)",
+                maxLength: 120,
+                nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "Kind",
+                table: "Warehouses",
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<TimeSpan>(
+                name: "EndTime2",
+                table: "ShiftGroups",
+                type: "time",
+                nullable: true);
+
+            migrationBuilder.AddColumn<TimeSpan>(
+                name: "StartTime2",
+                table: "ShiftGroups",
+                type: "time",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Brand",
+                table: "Products",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "CategoryId",
+                table: "Products",
+                type: "int",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "CountryOfOrigin",
+                table: "Products",
+                type: "nvarchar(80)",
+                maxLength: 80,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "CustomsCode",
+                table: "Products",
+                type: "nvarchar(30)",
+                maxLength: 30,
+                nullable: true);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "DutyRate",
+                table: "Products",
+                type: "decimal(6,2)",
+                precision: 6,
+                scale: 2,
+                nullable: false,
+                defaultValue: 0m);
+
+            migrationBuilder.AddColumn<string>(
+                name: "EnName",
+                table: "Products",
+                type: "nvarchar(200)",
+                maxLength: 200,
+                nullable: true);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "Height",
+                table: "Products",
+                type: "decimal(18,3)",
+                precision: 18,
+                scale: 3,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ImageUrl",
+                table: "Products",
+                type: "nvarchar(300)",
+                maxLength: 300,
+                nullable: true);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "IsVatIncluded",
+                table: "Products",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "Length",
+                table: "Products",
+                type: "decimal(18,3)",
+                precision: 18,
+                scale: 3,
+                nullable: true);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "MinOrderQty",
+                table: "Products",
+                type: "decimal(18,3)",
+                precision: 18,
+                scale: 3,
+                nullable: false,
+                defaultValue: 0m);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Model",
+                table: "Products",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Note",
+                table: "Products",
+                type: "nvarchar(max)",
+                nullable: true);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "OtherTaxRate",
+                table: "Products",
+                type: "decimal(6,2)",
+                precision: 6,
+                scale: 2,
+                nullable: false,
+                defaultValue: 0m);
+
+            migrationBuilder.AddColumn<string>(
+                name: "PartNumber",
+                table: "Products",
+                type: "nvarchar(100)",
+                maxLength: 100,
+                nullable: true);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "SalePrice2",
+                table: "Products",
+                type: "decimal(18,2)",
+                precision: 18,
+                scale: 2,
+                nullable: false,
+                defaultValue: 0m);
+
+            migrationBuilder.AddColumn<string>(
+                name: "SecondUnit",
+                table: "Products",
+                type: "nvarchar(50)",
+                maxLength: 50,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "ShelfCode",
+                table: "Products",
+                type: "nvarchar(50)",
+                maxLength: 50,
+                nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "ShelfLifeDays",
+                table: "Products",
+                type: "int",
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "TaxCode",
+                table: "Products",
+                type: "nvarchar(20)",
+                maxLength: 20,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "TaxUnitCode",
+                table: "Products",
+                type: "nvarchar(20)",
+                maxLength: 20,
+                nullable: true);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "TrackBatch",
+                table: "Products",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "TrackExpiry",
+                table: "Products",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "TrackSerial",
+                table: "Products",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "UnitFactor",
+                table: "Products",
+                type: "decimal(18,4)",
+                precision: 18,
+                scale: 4,
+                nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "Valuation",
+                table: "Products",
+                type: "int",
+                nullable: true);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "VatRate",
+                table: "Products",
+                type: "decimal(6,2)",
+                precision: 6,
+                scale: 2,
+                nullable: false,
+                defaultValue: 0m);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "Weight",
+                table: "Products",
+                type: "decimal(18,3)",
+                precision: 18,
+                scale: 3,
+                nullable: true);
+
+            migrationBuilder.AddColumn<decimal>(
+                name: "Width",
+                table: "Products",
+                type: "decimal(18,3)",
+                precision: 18,
+                scale: 3,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "Code",
+                table: "ProductCategories",
+                type: "nvarchar(30)",
+                maxLength: 30,
+                nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "SortOrder",
+                table: "ProductCategories",
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<int>(
+                name: "Valuation",
+                table: "ProductCategories",
+                type: "int",
+                nullable: true);
+
+            migrationBuilder.AddColumn<int>(
+                name: "OutgoingLetterId",
+                table: "OutgoingLetterSigners",
+                type: "int",
+                nullable: true);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "IsOfficial",
+                table: "CompanyHolidays",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<string>(
+                name: "EnterDevice",
+                table: "AttendanceSegments",
+                type: "nvarchar(250)",
+                maxLength: 250,
+                nullable: true);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "IsUnauthorized",
+                table: "AttendanceSegments",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.AddColumn<int>(
+                name: "OvertimeMinutes",
+                table: "AttendanceSegments",
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<int>(
+                name: "OvertimeMinutes",
+                table: "AttendanceRecords",
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<int>(
+                name: "UnauthorizedMinutes",
+                table: "AttendanceRecords",
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.CreateTable(
+                name: "AuditLogs",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    At = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UserId = table.Column<int>(type: "int", nullable: true),
+                    Username = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    Module = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    Action = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    HttpMethod = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    Path = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
+                    Summary = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    Payload = table.Column<string>(type: "nvarchar(4000)", maxLength: 4000, nullable: true),
+                    Ip = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: true),
+                    Device = table.Column<string>(type: "nvarchar(250)", maxLength: 250, nullable: true),
+                    StatusCode = table.Column<int>(type: "int", nullable: false),
+                    DurationMs = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_AuditLogs", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "InvDocs",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Number = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    DocTypeId = table.Column<int>(type: "int", nullable: false),
+                    WarehouseId = table.Column<int>(type: "int", nullable: false),
+                    CounterWarehouseId = table.Column<int>(type: "int", nullable: true),
+                    PartyId = table.Column<int>(type: "int", nullable: true),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    RefNumber = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    TotalQuantity = table.Column<decimal>(type: "decimal(18,3)", precision: 18, scale: 3, nullable: false),
+                    TotalValue = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    CreatedBy = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ConfirmedBy = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: true),
+                    ConfirmedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InvDocs", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "InvDocTypes",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Code = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: false),
+                    Nature = table.Column<int>(type: "int", nullable: false),
+                    IsTransfer = table.Column<bool>(type: "bit", nullable: false),
+                    RequiresParty = table.Column<bool>(type: "bit", nullable: false),
+                    RequiresPrice = table.Column<bool>(type: "bit", nullable: false),
+                    NumberPrefix = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: true),
+                    Color = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
+                    Icon = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    IsSystem = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    SortOrder = table.Column<int>(type: "int", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InvDocTypes", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "InvLedger",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ProductId = table.Column<int>(type: "int", nullable: false),
+                    WarehouseId = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    DocId = table.Column<int>(type: "int", nullable: false),
+                    DocLineId = table.Column<int>(type: "int", nullable: false),
+                    DocTypeId = table.Column<int>(type: "int", nullable: false),
+                    Nature = table.Column<int>(type: "int", nullable: false),
+                    Number = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
+                    QtyIn = table.Column<decimal>(type: "decimal(18,3)", precision: 18, scale: 3, nullable: false),
+                    QtyOut = table.Column<decimal>(type: "decimal(18,3)", precision: 18, scale: 3, nullable: false),
+                    UnitCost = table.Column<decimal>(type: "decimal(18,4)", precision: 18, scale: 4, nullable: false),
+                    ValueIn = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    ValueOut = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    BalanceQty = table.Column<decimal>(type: "decimal(18,3)", precision: 18, scale: 3, nullable: false),
+                    BalanceValue = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    RemainingQty = table.Column<decimal>(type: "decimal(18,3)", precision: 18, scale: 3, nullable: false),
+                    Seq = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InvLedger", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "InvStocks",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ProductId = table.Column<int>(type: "int", nullable: false),
+                    WarehouseId = table.Column<int>(type: "int", nullable: false),
+                    Quantity = table.Column<decimal>(type: "decimal(18,3)", precision: 18, scale: 3, nullable: false),
+                    Value = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    AvgCost = table.Column<decimal>(type: "decimal(18,4)", precision: 18, scale: 4, nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InvStocks", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProductAttributeDefs",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Name = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: false),
+                    Code = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    ValueType = table.Column<int>(type: "int", nullable: false),
+                    Unit = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    CategoryId = table.Column<int>(type: "int", nullable: true),
+                    IsRequired = table.Column<bool>(type: "bit", nullable: false),
+                    ShowInList = table.Column<bool>(type: "bit", nullable: false),
+                    SortOrder = table.Column<int>(type: "int", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProductAttributeDefs", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProductAttributeOptions",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    AttributeId = table.Column<int>(type: "int", nullable: false),
+                    Title = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    SortOrder = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProductAttributeOptions", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProductAttributeValues",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ProductId = table.Column<int>(type: "int", nullable: false),
+                    AttributeId = table.Column<int>(type: "int", nullable: false),
+                    OptionId = table.Column<int>(type: "int", nullable: true),
+                    TextValue = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    NumberValue = table.Column<decimal>(type: "decimal(18,4)", precision: 18, scale: 4, nullable: true),
+                    BoolValue = table.Column<bool>(type: "bit", nullable: true),
+                    DateValue = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProductAttributeValues", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "WorkCalendarDays",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsWorkday = table.Column<bool>(type: "bit", nullable: false),
+                    StartTime = table.Column<TimeSpan>(type: "time", nullable: true),
+                    EndTime = table.Column<TimeSpan>(type: "time", nullable: true),
+                    GraceMinutes = table.Column<int>(type: "int", nullable: false),
+                    OvertimeHours = table.Column<double>(type: "float", nullable: false),
+                    OvertimeMode = table.Column<int>(type: "int", nullable: false),
+                    OvertimeStart = table.Column<TimeSpan>(type: "time", nullable: true),
+                    OvertimeEnd = table.Column<TimeSpan>(type: "time", nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_WorkCalendarDays", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "WorkCalendarSettings",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DefaultStart = table.Column<TimeSpan>(type: "time", nullable: false),
+                    DefaultEnd = table.Column<TimeSpan>(type: "time", nullable: false),
+                    GraceMinutes = table.Column<int>(type: "int", nullable: false),
+                    RestDayFlags = table.Column<int>(type: "int", nullable: false),
+                    ApplyOfficialHolidays = table.Column<bool>(type: "bit", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_WorkCalendarSettings", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "InvDocLines",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DocId = table.Column<int>(type: "int", nullable: false),
+                    RowNo = table.Column<int>(type: "int", nullable: false),
+                    ProductId = table.Column<int>(type: "int", nullable: false),
+                    Quantity = table.Column<decimal>(type: "decimal(18,3)", precision: 18, scale: 3, nullable: false),
+                    UnitPrice = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    Discount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    BatchNo = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    SerialNo = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: true),
+                    ExpiryDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
+                    OutCost = table.Column<decimal>(type: "decimal(18,4)", precision: 18, scale: 4, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_InvDocLines", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_InvDocLines_InvDocs_DocId",
+                        column: x => x.DocId,
+                        principalTable: "InvDocs",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Warehouses_Code",
+                table: "Warehouses",
+                column: "Code");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Products_CategoryId",
+                table: "Products",
+                column: "CategoryId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Products_TaxCode",
+                table: "Products",
+                column: "TaxCode");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProductCategories_ParentId",
+                table: "ProductCategories",
+                column: "ParentId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_OutgoingLetterSigners_OutgoingLetterId",
+                table: "OutgoingLetterSigners",
+                column: "OutgoingLetterId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_At",
+                table: "AuditLogs",
+                column: "At");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_AuditLogs_UserId",
+                table: "AuditLogs",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocLines_DocId",
+                table: "InvDocLines",
+                column: "DocId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocLines_ProductId",
+                table: "InvDocLines",
+                column: "ProductId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocs_Date",
+                table: "InvDocs",
+                column: "Date");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocs_DocTypeId",
+                table: "InvDocs",
+                column: "DocTypeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocs_Number",
+                table: "InvDocs",
+                column: "Number",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocs_Status",
+                table: "InvDocs",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocs_WarehouseId",
+                table: "InvDocs",
+                column: "WarehouseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocTypes_Code",
+                table: "InvDocTypes",
+                column: "Code",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvDocTypes_Nature",
+                table: "InvDocTypes",
+                column: "Nature");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvLedger_DocId",
+                table: "InvLedger",
+                column: "DocId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvLedger_ProductId_WarehouseId_Date",
+                table: "InvLedger",
+                columns: new[] { "ProductId", "WarehouseId", "Date" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_InvStocks_ProductId_WarehouseId",
+                table: "InvStocks",
+                columns: new[] { "ProductId", "WarehouseId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProductAttributeDefs_CategoryId",
+                table: "ProductAttributeDefs",
+                column: "CategoryId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProductAttributeDefs_Name",
+                table: "ProductAttributeDefs",
+                column: "Name");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProductAttributeOptions_AttributeId",
+                table: "ProductAttributeOptions",
+                column: "AttributeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProductAttributeValues_ProductId_AttributeId",
+                table: "ProductAttributeValues",
+                columns: new[] { "ProductId", "AttributeId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WorkCalendarDays_Date",
+                table: "WorkCalendarDays",
+                column: "Date",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WorkCalendarSettings_Id",
+                table: "WorkCalendarSettings",
+                column: "Id",
+                unique: true);
+
+            migrationBuilder.AddForeignKey(
+                name: "FK_OutgoingLetterSigners_OutgoingLetters_OutgoingLetterId",
+                table: "OutgoingLetterSigners",
+                column: "OutgoingLetterId",
+                principalTable: "OutgoingLetters",
+                principalColumn: "Id");
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropForeignKey(
+                name: "FK_OutgoingLetterSigners_OutgoingLetters_OutgoingLetterId",
+                table: "OutgoingLetterSigners");
+
+            migrationBuilder.DropTable(
+                name: "AuditLogs");
+
+            migrationBuilder.DropTable(
+                name: "InvDocLines");
+
+            migrationBuilder.DropTable(
+                name: "InvDocTypes");
+
+            migrationBuilder.DropTable(
+                name: "InvLedger");
+
+            migrationBuilder.DropTable(
+                name: "InvStocks");
+
+            migrationBuilder.DropTable(
+                name: "ProductAttributeDefs");
+
+            migrationBuilder.DropTable(
+                name: "ProductAttributeOptions");
+
+            migrationBuilder.DropTable(
+                name: "ProductAttributeValues");
+
+            migrationBuilder.DropTable(
+                name: "WorkCalendarDays");
+
+            migrationBuilder.DropTable(
+                name: "WorkCalendarSettings");
+
+            migrationBuilder.DropTable(
+                name: "InvDocs");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Warehouses_Code",
+                table: "Warehouses");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Products_CategoryId",
+                table: "Products");
+
+            migrationBuilder.DropIndex(
+                name: "IX_Products_TaxCode",
+                table: "Products");
+
+            migrationBuilder.DropIndex(
+                name: "IX_ProductCategories_ParentId",
+                table: "ProductCategories");
+
+            migrationBuilder.DropIndex(
+                name: "IX_OutgoingLetterSigners_OutgoingLetterId",
+                table: "OutgoingLetterSigners");
+
+            migrationBuilder.DropColumn(
+                name: "AllowNegative",
+                table: "Warehouses");
+
+            migrationBuilder.DropColumn(
+                name: "Code",
+                table: "Warehouses");
+
+            migrationBuilder.DropColumn(
+                name: "IsDefault",
+                table: "Warehouses");
+
+            migrationBuilder.DropColumn(
+                name: "KeeperName",
+                table: "Warehouses");
+
+            migrationBuilder.DropColumn(
+                name: "Kind",
+                table: "Warehouses");
+
+            migrationBuilder.DropColumn(
+                name: "EndTime2",
+                table: "ShiftGroups");
+
+            migrationBuilder.DropColumn(
+                name: "StartTime2",
+                table: "ShiftGroups");
+
+            migrationBuilder.DropColumn(
+                name: "Brand",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "CategoryId",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "CountryOfOrigin",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "CustomsCode",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "DutyRate",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "EnName",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Height",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "ImageUrl",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "IsVatIncluded",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Length",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "MinOrderQty",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Model",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Note",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "OtherTaxRate",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "PartNumber",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "SalePrice2",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "SecondUnit",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "ShelfCode",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "ShelfLifeDays",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "TaxCode",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "TaxUnitCode",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "TrackBatch",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "TrackExpiry",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "TrackSerial",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "UnitFactor",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Valuation",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "VatRate",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Weight",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Width",
+                table: "Products");
+
+            migrationBuilder.DropColumn(
+                name: "Code",
+                table: "ProductCategories");
+
+            migrationBuilder.DropColumn(
+                name: "SortOrder",
+                table: "ProductCategories");
+
+            migrationBuilder.DropColumn(
+                name: "Valuation",
+                table: "ProductCategories");
+
+            migrationBuilder.DropColumn(
+                name: "OutgoingLetterId",
+                table: "OutgoingLetterSigners");
+
+            migrationBuilder.DropColumn(
+                name: "IsOfficial",
+                table: "CompanyHolidays");
+
+            migrationBuilder.DropColumn(
+                name: "EnterDevice",
+                table: "AttendanceSegments");
+
+            migrationBuilder.DropColumn(
+                name: "IsUnauthorized",
+                table: "AttendanceSegments");
+
+            migrationBuilder.DropColumn(
+                name: "OvertimeMinutes",
+                table: "AttendanceSegments");
+
+            migrationBuilder.DropColumn(
+                name: "OvertimeMinutes",
+                table: "AttendanceRecords");
+
+            migrationBuilder.DropColumn(
+                name: "UnauthorizedMinutes",
+                table: "AttendanceRecords");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PushSubscriptions_UserId",
+                table: "PushSubscriptions",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_PushSubscriptions_UserId_Endpoint",
+                table: "PushSubscriptions",
+                columns: new[] { "UserId", "Endpoint" },
+                unique: true);
+        }
+    }
+}

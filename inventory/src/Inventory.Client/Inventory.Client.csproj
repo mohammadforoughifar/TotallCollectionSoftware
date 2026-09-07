@@ -8,6 +8,7 @@
     <!-- حذف وابستگی به فایل‌های ICU (رفع مشکل بوت و حجم کمتر) -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <BlazorWebAssemblyPreserveCollationData>false</BlazorWebAssemblyPreserveCollationData>
+    <NoWarn>CS0414</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

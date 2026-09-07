@@ -1,0 +1,198 @@
+﻿using System;
+using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Inventory.Api.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddInvoicingModule : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.CreateTable(
+                name: "FacInvoices",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Number = table.Column<int>(type: "int", nullable: false),
+                    RefNumber = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: true),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    DueDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    PartyId = table.Column<int>(type: "int", nullable: true),
+                    WarehouseId = table.Column<int>(type: "int", nullable: false),
+                    Settlement = table.Column<int>(type: "int", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    TotalGross = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    TotalLineDiscount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    InvoiceDiscount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    TotalTaxable = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    TotalVat = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    ShippingCost = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    TotalNet = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    InvDocId = table.Column<int>(type: "int", nullable: true),
+                    VoucherId = table.Column<int>(type: "int", nullable: true),
+                    CreatedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ConfirmedBy = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
+                    ConfirmedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FacInvoices", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FacInvoices_Parties_PartyId",
+                        column: x => x.PartyId,
+                        principalTable: "Parties",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "FK_FacInvoices_Warehouses_WarehouseId",
+                        column: x => x.WarehouseId,
+                        principalTable: "Warehouses",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "FacRules",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Kind = table.Column<int>(type: "int", nullable: false),
+                    DocTypeId = table.Column<int>(type: "int", nullable: true),
+                    PartyAccountId = table.Column<int>(type: "int", nullable: true),
+                    MainAccountId = table.Column<int>(type: "int", nullable: true),
+                    VatAccountId = table.Column<int>(type: "int", nullable: true),
+                    CashAccountId = table.Column<int>(type: "int", nullable: true),
+                    ShippingAccountId = table.Column<int>(type: "int", nullable: true),
+                    AutoInvDoc = table.Column<bool>(type: "bit", nullable: false),
+                    AutoVoucher = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FacRules", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FacRules_InvDocTypes_DocTypeId",
+                        column: x => x.DocTypeId,
+                        principalTable: "InvDocTypes",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.SetNull);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "FacInvoiceLines",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    InvoiceId = table.Column<int>(type: "int", nullable: false),
+                    RowNo = table.Column<int>(type: "int", nullable: false),
+                    ProductId = table.Column<int>(type: "int", nullable: false),
+                    TaxCode = table.Column<string>(type: "nvarchar(40)", maxLength: 40, nullable: true),
+                    Quantity = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    UnitPrice = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    DiscountPercent = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    Discount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    VatRate = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    VatAmount = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    Taxable = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    Total = table.Column<decimal>(type: "decimal(18,2)", precision: 18, scale: 2, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(400)", maxLength: 400, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FacInvoiceLines", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FacInvoiceLines_FacInvoices_InvoiceId",
+                        column: x => x.InvoiceId,
+                        principalTable: "FacInvoices",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_FacInvoiceLines_Products_ProductId",
+                        column: x => x.ProductId,
+                        principalTable: "Products",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Restrict);
+                });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoiceLines_InvoiceId",
+                table: "FacInvoiceLines",
+                column: "InvoiceId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoiceLines_ProductId",
+                table: "FacInvoiceLines",
+                column: "ProductId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoices_Date",
+                table: "FacInvoices",
+                column: "Date");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoices_InvDocId",
+                table: "FacInvoices",
+                column: "InvDocId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoices_Kind_Number",
+                table: "FacInvoices",
+                columns: new[] { "Kind", "Number" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoices_PartyId",
+                table: "FacInvoices",
+                column: "PartyId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoices_Status",
+                table: "FacInvoices",
+                column: "Status");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoices_VoucherId",
+                table: "FacInvoices",
+                column: "VoucherId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacInvoices_WarehouseId",
+                table: "FacInvoices",
+                column: "WarehouseId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacRules_DocTypeId",
+                table: "FacRules",
+                column: "DocTypeId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FacRules_Kind",
+                table: "FacRules",
+                column: "Kind",
+                unique: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropTable(
+                name: "FacInvoiceLines");
+
+            migrationBuilder.DropTable(
+                name: "FacRules");
+
+            migrationBuilder.DropTable(
+                name: "FacInvoices");
+        }
+    }
+}

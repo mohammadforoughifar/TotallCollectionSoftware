@@ -1998,6 +1998,16 @@ public class InventoryService : IInventoryService
             }
         }
 
+        // ---------- ماژول انبارداری ----------
+        // گردش اسناد رسید/حواله انبار هم به مانده اضافه می‌شود تا مانده «یکپارچه» بماند.
+        var invStock = await _db.InvStocks.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.WarehouseId == warehouseId && s.ProductId == productId);
+        if (invStock is not null)
+        {
+            qty += invStock.Quantity;
+            if (invStock.AvgCost > 0) cost = invStock.AvgCost;
+        }
+
         var stock = await _db.Stocks.FirstOrDefaultAsync(s => s.WarehouseId == warehouseId && s.ProductId == productId);
         if (qty == 0 && stock is null) return;
 

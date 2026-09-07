@@ -2,11 +2,11 @@
 @page "/system-info"
 @inject HttpClient Http
 
-<PageTitle>شناسنامه سیستم — لیست</PageTitle>
+<PageTitle>شناسنامه سیستم‌ها</PageTitle>
 
 <div class="page-head mb-4">
-    <h1><i class="bi bi-cpu-fill"></i> شناسنامه سیستم</h1>
-    <div class="lead">همه‌ی سیستم‌های ثبت‌شده توسط ایجنت — تأییدشده و در انتظار</div>
+    <h1><i class="bi bi-cpu-fill"></i> شناسنامه سیستم‌ها</h1>
+    <div class="lead">فهرست تجهیزات رایانه‌ای، وضعیت ایجنت و تغییرات سخت‌افزاری</div>
 </div>
 
 @if (pendingAlarm > 0)
@@ -200,6 +200,9 @@
                                     <a href="/system-id/@item.Id" class="btn btn-sm btn-outline-info ops-btn" title="جزئیات">
                                         <i class="bi bi-eye-fill"></i>
                                     </a>
+                                    <button class="btn btn-sm btn-outline-primary ops-btn" title="آرشیو مدارک و فاکتورها" @onclick="() => OpenDocArchive(item)">
+                                        <i class="bi bi-folder-check"></i>
+                                    </button>
                                     <button class="btn btn-sm btn-outline-secondary ops-btn" title="تاریخچه تغییرات" @onclick="() => OpenHistory(item)">
                                         <i class="bi bi-clock-history"></i>
                                     </button>
@@ -241,6 +244,24 @@
                             Diffs = h.Diffs.Select(d => new ChangeTimeline.TimelineDiff { Field = d.Field, Old = d.Old, New = d.New, Changed = d.Changed }).ToList()
                         }).ToList()" />
                     }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ---------- مودال اسناد و مدارک آرشیو سیستم ---------- *@
+@if (docArchiveSys != null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)" @onclick="CloseDocArchive">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" @onclick="() => { }" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-folder-check text-primary"></i> آرشیو مدارک و فاکتورهای سیستم #@docArchiveSys.Id (@docArchiveSys.AgentId)</h5>
+                    <button type="button" class="btn-close" @onclick="CloseDocArchive"></button>
+                </div>
+                <div class="modal-body p-3">
+                    <DocArchiveEntityPanel Module="ItAssets" EntityId="@docArchiveSys.Id" EntityTitle="@($"سیستم {docArchiveSys.AgentId}")" EntityCode="@docArchiveSys.AgentId" />
                 </div>
             </div>
         </div>
@@ -329,6 +350,11 @@
 
 
     private static string HealthTip(int? h) => h.HasValue ? "امتیاز سلامت: " + h.Value + "از ۱۰۰" : "";
+    // ---------- آرشیو اسناد و مدارک سیستم ----------
+    private SystemInfoItem? docArchiveSys;
+    private void OpenDocArchive(SystemInfoItem it) => docArchiveSys = it;
+    private void CloseDocArchive() => docArchiveSys = null;
+
     // ---------- تاریخچه ----------
     private SystemInfoItem? historySys;
     private List<HistoryEntry> sysHistory = new();

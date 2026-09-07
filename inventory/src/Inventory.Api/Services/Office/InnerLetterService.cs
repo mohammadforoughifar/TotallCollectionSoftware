@@ -26,6 +26,9 @@ public interface IInnerLetterService
     Task<List<LetterPickDto>> PickListAsync(int userId, string? search);
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditInnerLetterDto dto, int userId, bool isAdmin);
+
+    /// <summary>نشان‌کردن نامه توسط فرستنده (برای نامه‌های ارسالی — نشان گیرنده روی ارجاع است)</summary>
+    Task<bool> ToggleLetterNeshanAsync(int letterId, int userId);
 }
 
 public class InnerLetterService : IInnerLetterService
@@ -33,37 +36,54 @@ public class InnerLetterService : IInnerLetterService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
+    private readonly ILetterStratureService _strature;
 
-    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups)
+    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
+        _strature = strature;
     }
 
-    // ---------- شماره‌گذاری بر اساس سال شمسی (منطق LetterNumber کارفرما) ----------
+    // ---------- شماره‌گذاری بر اساس سال شمسی — نسخه اصلاح‌شده ----------
+    // باگ قبلی: فقط آخرین نامه (بر اساس Id) بررسی می‌شد و فیلتر IsDelete نداشت.
+    // نسخه جدید: بیشترین شماره در سال شمسی جاری بین نامه‌های غیرحذفی محاسبه می‌شود.
     private async Task<int> NextNumberAsync()
     {
         var pc = new PersianCalendar();
         int currentYear = pc.GetYear(DateTime.Now);
 
-        var last = await _db.InnerLetters
-            .OrderByDescending(l => l.Id)
+        // تقریب شروع سال شمسی به میلادی — برای فیلتر اولیه در SQL
+        DateTime startOfYear;
+        try { startOfYear = new DateTime(currentYear, 1, 1, pc); }
+        catch { startOfYear = DateTime.Now.AddDays(-400); } // fallback
+
+        var candidates = await _db.InnerLetters
+            .Where(l => !l.IsDelete && !l.Source.IsDelete && l.DateSabt >= startOfYear)
             .Select(l => new { l.Number, l.DateSabt })
-            .FirstOrDefaultAsync();
+            .ToListAsync();
 
-        if (last == null) return 1;
+        var maxInYear = candidates
+            .Where(x => pc.GetYear(x.DateSabt) == currentYear)
+            .Select(x => (int?)x.Number)
+            .Max() ?? 0;
 
-        // اگر سال آخرین نامه‌ی ثبت‌شده کوچکتر از سال جاری است، شماره از ۱ شروع می‌شود
-        int lastYear = pc.GetYear(last.DateSabt);
-        return lastYear < currentYear ? 1 : last.Number + 1;
+        // اگر هیچ نامه‌ای در سال جاری نبود، از ۱ شروع می‌شود
+        return maxInYear + 1;
     }
 
-    /// <summary>ساخت شماره اندیکاتور: «سال شمسی/شماره» — مثل 1404/12</summary>
-    private static string BuildLetterNumber(int number)
+    /// <summary>
+    /// ساخت شماره اندیکاتور از سرویس ساختار (LetterStrature کارفرما) — مثل MQ/1/1405.
+    /// اگر ساختاری تعریف نشده باشد، به فرمت قبلی این پروژه «سال/شماره» (مثل 1404/12) برمی‌گردد
+    /// تا شماره‌ی نامه‌های موجود بدون پیکربندی ساختار تغییر نکند.
+    /// </summary>
+    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null)
     {
+        var s = await _strature.TotalNumberAsync(number, typeForm: 1, date: date);
+        if (!string.IsNullOrEmpty(s)) return s;
         var pc = new PersianCalendar();
-        return $"{pc.GetYear(DateTime.Now)}/{number}";
+        return $"{pc.GetYear(date ?? DateTime.Now)}/{number}";
     }
 
     private static Erja NewErja(int sourceId, int senderUserId, int reciverUserId, DateTime date, string type, string matn = "", int amalgarId = 1, DateTime? mohlat = null, int? parentErjaId = null) => new()
@@ -141,7 +161,7 @@ public class InnerLetterService : IInnerLetterService
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = BuildLetterNumber(number),
+            LetterNumber = await BuildLetterNumberAsync(number),
             CreatorUserId = creatorUserId,
             Title = dto.Title.Trim(),
             Text = dto.Text,
@@ -307,7 +327,9 @@ public class InnerLetterService : IInnerLetterService
     public async Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search)
     {
         var q = _db.InnerLetters.AsNoTracking()
-            .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete);
+            .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete
+                        // نامه‌های ارسالیِ بایگانی‌شده توسط فرستنده در پوشه بایگانی نمایش داده می‌شوند
+                        && !_db.LetterBayeganis.Any(b => b.LetterId == l.Id && b.UserId == userId && !b.IsDelete));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -338,6 +360,8 @@ public class InnerLetterService : IInnerLetterService
                 Foriat = l.Foriat,
                 // خوانده‌شدن توسط همه گیرندگان اولیه
                 IsRead = l.Source.Erjas.Where(e => !e.IsDelete && e.ParentErjaId == null).All(e => e.IsRead),
+                // نشانِ فرستنده روی خود نامه (ستاره پوشه ارسالی)
+                IsNeshan = l.IsNeshan,
                 // آیا پاسخی از طرف گیرندگان ثبت شده؟ (برای فیلتر پاسخ داده شده/بدون پاسخ)
                 HasAnswer = l.Source.Erjas.Any(e => !e.IsDelete && e.Answer != ""),
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == l.Id)
@@ -486,6 +510,20 @@ public class InnerLetterService : IInnerLetterService
             .ToListAsync();
     }
 
+    public async Task<bool> ToggleLetterNeshanAsync(int letterId, int userId)
+    {
+        var letter = await _db.InnerLetters
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
+            ?? throw new Exception("نامه پیدا نشد.");
+
+        if (letter.CreatorUserId != userId)
+            throw new Exception("فقط فرستنده می‌تواند نامه ارسالی خود را نشان کند.");
+
+        letter.IsNeshan = !letter.IsNeshan;
+        await _db.SaveChangesAsync();
+        return letter.IsNeshan;
+    }
+
     public async Task DeleteAsync(int letterId, int userId, bool isAdmin)
     {
         var letter = await _db.InnerLetters
@@ -525,9 +563,11 @@ public class InnerLetterService : IInnerLetterService
         if (letter.CreatorUserId != userId && !isAdmin)
             throw new Exception("فقط فرستنده یا مدیر می‌تواند نامه را ویرایش کند.");
 
-        // قانون سختگیرانه: به محض این‌که حتی یک گیرنده نامه را بخواند، ویرایش برای همه (حتی ادمین) بسته می‌شود
+        // قانون: به محض این‌که حتی یک گیرنده نامه را بخواند، ویرایش برای کاربران عادی بسته می‌شود
+        // باگ قبلی: حتی ادمین هم نمی‌توانست ویرایش کند در حالی که کامنت کنترلر می‌گوید «مدیر: همیشه»
+        // رفع شد: ادمین می‌تواند حتی بعد از خوانده‌شدن ویرایش کند (همانند حذف)
         var anyRead = await _db.Erjas.AnyAsync(e => e.SourceId == letterId && !e.IsDelete && e.IsRead);
-        if (anyRead)
+        if (anyRead && !isAdmin)
             throw new Exception("این نامه توسط گیرنده(ها) خوانده شده و دیگر قابل ویرایش نیست.");
 
         // ---------- گیرندگان جدید (همان منطق فرم ایجاد: گروه‌ها باز و فرستنده حذف می‌شود) ----------
@@ -575,6 +615,10 @@ public class InnerLetterService : IInnerLetterService
         foreach (var uid in hamesh) wanted.TryAdd(uid, "هامش");
 
         var newlyAdded = new List<int>();
+        // باگ قبلی: برای هر گیرنده حذف‌شده، تمام زیردرخت‌ها دوباره از دیتابیس لود می‌شد
+        // رفع شد: یک بار همه زیردرخت‌ها لود می‌شوند
+        var allSubErjas = await _db.Erjas.Where(x => x.SourceId == letterId && !x.IsDelete && x.ParentErjaId != null).ToListAsync();
+
         foreach (var e in rootErjas)
         {
             if (wanted.TryGetValue(e.ReciverUserId, out var type))
@@ -587,12 +631,11 @@ public class InnerLetterService : IInnerLetterService
                 // گیرنده حذف‌شده — ارجاع او و گردش‌های زیرشاخه‌اش حذف نرم می‌شود
                 e.IsDelete = true;
                 var subIds = new List<int> { e.ErjaId };
-                var all = await _db.Erjas.Where(x => x.SourceId == letterId && !x.IsDelete && x.ParentErjaId != null).ToListAsync();
                 bool changed = true;
                 while (changed)
                 {
                     changed = false;
-                    foreach (var s in all.Where(s => s.ParentErjaId is { } pid && subIds.Contains(pid) && !subIds.Contains(s.ErjaId)))
+                    foreach (var s in allSubErjas.Where(s => s.ParentErjaId is { } pid && subIds.Contains(pid) && !subIds.Contains(s.ErjaId)))
                     { subIds.Add(s.ErjaId); s.IsDelete = true; changed = true; }
                 }
             }

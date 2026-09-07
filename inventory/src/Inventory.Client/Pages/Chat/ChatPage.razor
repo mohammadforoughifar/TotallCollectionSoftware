@@ -1,0 +1,1273 @@
+@page "/chat"
+@page "/chat/{ConversationId:int}"
+@inject IChatClientService Chat
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="telegram-container">
+    @* ========================== ستون سمت راست: لیست گفتگوها (Sidebar) ========================== *@
+    <div class="telegram-sidebar @(activeConv != null && isMobileView ? "d-none d-md-flex" : "")">
+        <div class="sidebar-header">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="chat-avatar-self">
+                        <i class="bi bi-person-fill"></i>
+                    </div>
+                    <div>
+                        <div class="fw-bold fs-7">پیام‌رسان سازمانی</div>
+                        <div class="fs-9 text-muted">@Auth.DisplayName</div>
+                    </div>
+                </div>
+                <div class="d-flex gap-1">
+                    <button class="btn btn-sm btn-icon" title="گفتگوی دونفره جدید" @onclick="OpenNewDirectModal">
+                        <i class="bi bi-pencil-square fs-6 text-primary"></i>
+                    </button>
+                    <button class="btn btn-sm btn-icon" title="ایجاد گروه کاری" @onclick="OpenNewGroupModal">
+                        <i class="bi bi-people-fill fs-6 text-success"></i>
+                    </button>
+                </div>
+            </div>
+
+            @* جستجوی گفتگوها *@
+            <div class="chat-search-wrap mt-2">
+                <i class="bi bi-search search-icon"></i>
+                <input type="text" class="form-control form-control-sm chat-search-input"
+                       placeholder="جستجو در گفتگوها و پیام‌ها..."
+                       @bind="searchQuery" @bind:event="oninput" @bind:after="OnSearchChanged" />
+                @if (!string.IsNullOrWhiteSpace(searchQuery))
+                {
+                    <button class="btn-clear-search" @onclick="ClearSearch"><i class="bi bi-x"></i></button>
+                }
+            </div>
+
+            @* تب‌های فیلتر *@
+            <div class="chat-filter-tabs mt-2">
+                <button class="tab-btn @(currentTab == "all" ? "active" : "")" @onclick='() => ChangeTab("all")'>همه</button>
+                <button class="tab-btn @(currentTab == "direct" ? "active" : "")" @onclick='() => ChangeTab("direct")'>خصوصی</button>
+                <button class="tab-btn @(currentTab == "group" ? "active" : "")" @onclick='() => ChangeTab("group")'>گروه‌ها</button>
+                <button class="tab-btn @(currentTab == "unread" ? "active" : "")" @onclick='() => ChangeTab("unread")'>
+                    نخوانده
+                    @if (totalUnread > 0)
+                    {
+                        <span class="tab-unread-pill">@totalUnread</span>
+                    }
+                </button>
+            </div>
+        </div>
+
+        @* فهرست گفتگوها *@
+        <div class="dialogs-list">
+            @if (loadingConversations)
+            {
+                <div class="text-center py-5 text-muted">
+                    <div class="spinner-border spinner-border-sm text-primary mb-2"></div>
+                    <div class="fs-8">در حال بارگذاری گفتگوها...</div>
+                </div>
+            }
+            else if (conversations.Count == 0)
+            {
+                <div class="text-center py-5 text-muted px-3">
+                    <i class="bi bi-chat-square-dots fs-1 d-block mb-2 text-secondary opacity-50"></i>
+                    <div class="fw-bold fs-8">گفتگویی یافت نشد</div>
+                    <div class="fs-9 mt-1">با همکاران خود در سازمان گفتگوی جدیدی آغاز کنید.</div>
+                    <button class="btn btn-sm btn-primary mt-3" @onclick="OpenNewDirectModal">
+                        <i class="bi bi-plus-lg me-1"></i>شروع گفتگوی جدید
+                    </button>
+                </div>
+            }
+            else
+            {
+                @foreach (var c in conversations)
+                {
+                    <div class="dialog-item @(activeConv?.Id == c.Id ? "active" : "") @(c.IsPinned ? "pinned" : "")"
+                         @onclick="() => SelectConversation(c)">
+                        <div class="dialog-avatar-wrap">
+                            @if (c.Type == ChatTypeDto.Direct)
+                            {
+                                <div class="dialog-avatar direct-avatar">
+                                    <i class="bi bi-person"></i>
+                                </div>
+                                @if (c.DirectPeerIsOnline)
+                                {
+                                    <span class="online-indicator" title="آنلاین"></span>
+                                }
+                            }
+                            else
+                            {
+                                <div class="dialog-avatar group-avatar">
+                                    <i class="bi bi-people-fill"></i>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="dialog-info">
+                            <div class="dialog-top">
+                                <div class="dialog-title text-truncate">
+                                    @if (c.IsPinned)
+                                    {
+                                        <i class="bi bi-pin-angle-fill text-warning me-1 fs-9"></i>
+                                    }
+                                    @c.Title
+                                </div>
+                                <div class="dialog-time">@FormatTime(c.LastMessageAt)</div>
+                            </div>
+                            <div class="dialog-bottom">
+                                <div class="dialog-snippet text-truncate">
+                                    @if (typingUsers.TryGetValue(c.Id, out var typer))
+                                    {
+                                        <span class="text-success fst-italic">@typer در حال نوشتن...</span>
+                                    }
+                                    else
+                                    {
+                                        @if (c.Type == ChatTypeDto.Group && !string.IsNullOrWhiteSpace(c.LastMessageSenderName))
+                                        {
+                                            <span class="fw-bold text-dark me-1">@c.LastMessageSenderName:</span>
+                                        }
+                                        @c.LastMessageSnippet
+                                    }
+                                </div>
+                                @if (c.UnreadCount > 0)
+                                {
+                                    <span class="unread-badge">@c.UnreadCount</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    @* ========================== ستون سمت چپ: پنجره فعال گفتگو (Chat Window) ========================== *@
+    <div class="telegram-main @(activeConv == null && isMobileView ? "d-none d-md-flex" : "")">
+        @if (activeConv == null)
+        {
+            <div class="chat-placeholder">
+                <div class="placeholder-card">
+                    <div class="placeholder-icon">
+                        <i class="bi bi-chat-left-quote-fill"></i>
+                    </div>
+                    <div class="fw-bold fs-5 mb-1">پیام‌رسان سازمانی</div>
+                    <div class="text-muted fs-8 mb-4">یک گفتگو را از فهرست انتخاب کنید یا پیام جدیدی ارسال نمایید.</div>
+                    <div class="d-flex justify-content-center gap-2">
+                        <button class="btn btn-outline-primary btn-sm" @onclick="OpenNewDirectModal">
+                            <i class="bi bi-chat-dots me-1"></i>گفتگوی جدید
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" @onclick="OpenNewGroupModal">
+                            <i class="bi bi-people me-1"></i>گروه جدید
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* هدر چت فعال *@
+            <div class="chat-header">
+                <div class="d-flex align-items-center gap-2">
+                    @if (isMobileView)
+                    {
+                        <button class="btn btn-sm btn-icon me-1" @onclick="BackToSidebar">
+                            <i class="bi bi-arrow-right fs-6"></i>
+                        </button>
+                    }
+                    <div class="dialog-avatar-wrap">
+                        @if (activeConv.Type == ChatTypeDto.Direct)
+                        {
+                            <div class="dialog-avatar direct-avatar sm">
+                                <i class="bi bi-person"></i>
+                            </div>
+                            @if (activeConv.DirectPeerIsOnline)
+                            {
+                                <span class="online-indicator sm"></span>
+                            }
+                        }
+                        else
+                        {
+                            <div class="dialog-avatar group-avatar sm" @onclick="OpenGroupInfoModal" style="cursor:pointer">
+                                <i class="bi bi-people-fill"></i>
+                            </div>
+                        }
+                    </div>
+                    <div>
+                        <div class="fw-bold fs-7 d-flex align-items-center gap-1">
+                            @activeConv.Title
+                            @if (activeConv.Type == ChatTypeDto.Group)
+                            {
+                                <span class="badge bg-secondary-subtle text-secondary fs-9">گروه</span>
+                            }
+                        </div>
+                        <div class="fs-9 text-muted">
+                            @if (typingUsers.TryGetValue(activeConv.Id, out var typer))
+                            {
+                                <span class="text-success fw-bold">@typer در حال نوشتن...</span>
+                            }
+                            else if (activeConv.Type == ChatTypeDto.Direct)
+                            {
+                                if (activeConv.DirectPeerIsOnline)
+                                {
+                                    <span class="text-success fw-600">آنلاین</span>
+                                }
+                                else if (activeConv.DirectPeerLastSeen.HasValue)
+                                {
+                                    <span>آخرین بازدید @activeConv.DirectPeerLastSeen.Value.ToFaDateTime()</span>
+                                }
+                                else
+                                {
+                                    <span>آفلاین</span>
+                                }
+                            }
+                            else
+                            {
+                                <span>@activeConv.MembersCount عضو</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-1">
+                    @if (activeConv.Type == ChatTypeDto.Group)
+                    {
+                        <button class="btn btn-sm btn-icon" title="اعضای گروه" @onclick="OpenGroupInfoModal">
+                            <i class="bi bi-info-circle fs-6"></i>
+                        </button>
+                    }
+                    <button class="btn btn-sm btn-icon" title="@(activeConv.IsPinned ? "برداشتن پین" : "پین گفتگو")" @onclick="TogglePinConversation">
+                        <i class="bi @(activeConv.IsPinned ? "bi-pin-angle-fill text-warning" : "bi-pin-angle") fs-6"></i>
+                    </button>
+                    <button class="btn btn-sm btn-icon" title="@(activeConv.IsMuted ? "فعال‌سازی صدا" : "بی‌صدا کردن")" @onclick="ToggleMuteConversation">
+                        <i class="bi @(activeConv.IsMuted ? "bi-bell-slash text-danger" : "bi-bell") fs-6"></i>
+                    </button>
+                </div>
+            </div>
+
+            @* نوار پیام پین‌شده *@
+            @if (activeConv.PinnedMessageId.HasValue)
+            {
+                <div class="pinned-bar">
+                    <i class="bi bi-pin-fill text-primary me-2"></i>
+                    <div class="flex-grow-1 text-truncate fs-8">
+                        <span class="fw-bold">پیام سنجاق‌شده:</span> @(activeConv.PinnedMessageSnippet ?? "مشاهده پیام")
+                    </div>
+                </div>
+            }
+
+            @* جریان پیام‌ها (Message Stream) *@
+            <div class="chat-messages-scroll" id="chatMessagesScroll">
+                @if (loadingMessages)
+                {
+                    <div class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm text-primary mb-1"></div>
+                        <div class="fs-8">در حال بارگذاری پیام‌ها...</div>
+                    </div>
+                }
+                else if (messages.Count == 0)
+                {
+                    <div class="text-center py-5 text-muted">
+                        <i class="bi bi-chat-dots fs-2 text-secondary opacity-50 d-block mb-2"></i>
+                        <div class="fs-8">هنوز پیامی ارسال نشده است. اولین پیام را شما بنویسید!</div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var msg in messages)
+                    {
+                        @if (msg.MessageType == ChatMessageTypeDto.System)
+                        {
+                            <div class="system-message-row">
+                                <span class="system-bubble">@msg.Text</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="message-row @(msg.IsOutgoing ? "outgoing" : "incoming")" id="msg-@msg.Id">
+                                <div class="message-bubble @(msg.IsOutgoing ? "bubble-out" : "bubble-in")">
+                                    @* نام فرستنده در گروه‌ها برای پیام‌های دریافتی *@
+                                    @if (!msg.IsOutgoing && activeConv.Type == ChatTypeDto.Group)
+                                    {
+                                        <div class="bubble-sender">@msg.SenderName</div>
+                                    }
+
+                                    @* بخش ریپلای *@
+                                    @if (msg.ReplyToMessageId.HasValue)
+                                    {
+                                        <div class="bubble-reply-preview" @onclick="() => ScrollToMessage(msg.ReplyToMessageId.Value)">
+                                            <div class="reply-bar"></div>
+                                            <div class="reply-body">
+                                                <div class="reply-sender">@msg.ReplyToSenderName</div>
+                                                <div class="reply-text text-truncate">@msg.ReplyToSnippet</div>
+                                            </div>
+                                        </div>
+                                    }
+
+                                    @* محتوای رسانه / فایل پیوست *@
+                                    @if (!string.IsNullOrWhiteSpace(msg.FileUrl))
+                                    {
+                                        @if (msg.MessageType == ChatMessageTypeDto.Image)
+                                        {
+                                            <div class="bubble-image-wrap">
+                                                <img src="@msg.FileUrl" class="bubble-img" alt="تصویر" @onclick="() => OpenImagePreview(msg.FileUrl)" />
+                                            </div>
+                                        }
+                                        else if (msg.MessageType == ChatMessageTypeDto.Audio)
+                                        {
+                                            <div class="bubble-audio-wrap">
+                                                <audio controls class="w-100 mt-1">
+                                                    <source src="@msg.FileUrl" type="@msg.FileContentType" />
+                                                </audio>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="bubble-file-card">
+                                                <div class="file-icon">
+                                                    <i class="bi bi-file-earmark-arrow-down-fill fs-3 text-primary"></i>
+                                                </div>
+                                                <div class="file-info text-truncate">
+                                                    <div class="file-name text-truncate">@msg.FileName</div>
+                                                    <div class="file-size fs-9 text-muted">@FormatFileSize(msg.FileSizeBytes)</div>
+                                                </div>
+                                                <a href="@msg.FileUrl" download="@msg.FileName" class="btn btn-sm btn-light file-dl-btn" target="_blank">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                            </div>
+                                        }
+                                    }
+
+                                    @* کارت اشتراک سند/موجودیت سازمانی ERP *@
+                                    @if (!string.IsNullOrWhiteSpace(msg.ErpModule))
+                                    {
+                                        <div class="bubble-erp-card">
+                                            <div class="d-flex align-items-center gap-2 mb-1">
+                                                <span class="badge bg-primary text-white fs-9">@msg.ErpModule</span>
+                                                <span class="fw-bold fs-8">@msg.ErpEntityTitle</span>
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(msg.ErpEntitySummary))
+                                            {
+                                                <div class="fs-9 text-muted mb-2">@msg.ErpEntitySummary</div>
+                                            }
+                                            <button class="btn btn-xs btn-outline-primary" @onclick="() => NavigateToErp(msg.ErpModule, msg.ErpEntityId)">
+                                                <i class="bi bi-box-arrow-up-right me-1"></i>مشاهده در سیستم
+                                            </button>
+                                        </div>
+                                    }
+
+                                    @* متن پیام *@
+                                    @if (!string.IsNullOrWhiteSpace(msg.Text))
+                                    {
+                                        <div class="bubble-text">@msg.Text</div>
+                                    }
+
+                                    @* نوار اطلاعات زیرین پیام (ساعت، تیک، ویرایش) *@
+                                    <div class="bubble-footer">
+                                        @if (msg.IsEdited)
+                                        {
+                                            <span class="edited-label">ویرایش‌شده</span>
+                                        }
+                                        <span class="bubble-time">@msg.CreatedAt.ToString("HH:mm")</span>
+                                        @if (msg.IsOutgoing)
+                                        {
+                                            <span class="bubble-checks">
+                                                @if (msg.IsReadByPeer)
+                                                {
+                                                    <i class="bi bi-check2-all text-primary fw-bold" title="خوانده شد"></i>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-check2 text-muted" title="ارسال شد"></i>
+                                                }
+                                            </span>
+                                        }
+                                    </div>
+
+                                    @* واکنش‌های ثبت‌شده *@
+                                    @if (msg.Reactions.Count > 0)
+                                    {
+                                        <div class="bubble-reactions">
+                                            @foreach (var r in msg.Reactions)
+                                            {
+                                                bool hasMine = r.Value.Any(u => u.UserId == Auth.UserId);
+                                                <button class="reaction-pill @(hasMine ? "active" : "")"
+                                                        title="@string.Join("، ", r.Value.Select(u => u.UserName))"
+                                                        @onclick="() => ToggleReaction(msg.Id, r.Key)">
+                                                    <span>@r.Key</span>
+                                                    <span class="count">@r.Value.Count</span>
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+
+                                    @* منوی سریع روی حباب پیام (Hover Actions) *@
+                                    <div class="bubble-actions-overlay">
+                                        <button class="action-btn" title="پاسخ (Reply)" @onclick="() => StartReply(msg)">
+                                            <i class="bi bi-reply-fill"></i>
+                                        </button>
+                                        <button class="action-btn" title="واکنش 👍" @onclick='() => ToggleReaction(msg.Id, "👍")'>
+                                            👍
+                                        </button>
+                                        <button class="action-btn" title="واکنش ❤️" @onclick='() => ToggleReaction(msg.Id, "❤️")'>
+                                            ❤️
+                                        </button>
+                                        <button class="action-btn" title="سنجاق پیام" @onclick="() => TogglePinMsg(msg.Id)">
+                                            <i class="bi bi-pin-angle"></i>
+                                        </button>
+                                        @if (msg.IsOutgoing && !msg.IsDeleted)
+                                        {
+                                            <button class="action-btn" title="ویرایش" @onclick="() => StartEdit(msg)">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+                                            <button class="action-btn text-danger" title="حذف" @onclick="() => DeleteMsg(msg.Id)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                }
+            </div>
+
+            @* بخش ورودی پیام (Input Toolbar) *@
+            <div class="chat-input-area">
+                @* بنر ریپلای یا ادیت *@
+                @if (replyingTo != null)
+                {
+                    <div class="input-banner reply-banner">
+                        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                            <i class="bi bi-reply-fill text-primary"></i>
+                            <div class="text-truncate fs-8">
+                                <span class="fw-bold">پاسخ به @replyingTo.SenderName:</span> @(replyingTo.Text ?? replyingTo.FileName)
+                            </div>
+                        </div>
+                        <button class="btn-close btn-close-sm" @onclick="CancelReply"></button>
+                    </div>
+                }
+                else if (editingMsg != null)
+                {
+                    <div class="input-banner edit-banner">
+                        <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                            <i class="bi bi-pencil-fill text-warning"></i>
+                            <div class="text-truncate fs-8">
+                                <span class="fw-bold">ویرایش پیام:</span> @editingMsg.Text
+                            </div>
+                        </div>
+                        <button class="btn-close btn-close-sm" @onclick="CancelEdit"></button>
+                    </div>
+                }
+
+                <div class="input-row">
+                    @* دکمه پیوست فایل *@
+                    <label class="btn btn-icon btn-attach" title="پیوست فایل یا تصویر">
+                        <i class="bi bi-paperclip fs-5"></i>
+                        <InputFile OnChange="OnFileSelected" class="d-none" />
+                    </label>
+
+                    @* منوی سریع ایموجی *@
+                    <div class="emoji-quick-bar d-none d-sm-flex">
+                        <button type="button" class="btn-emoji" @onclick='() => AppendEmoji("👍")'>👍</button>
+                        <button type="button" class="btn-emoji" @onclick='() => AppendEmoji("❤️")'>❤️</button>
+                        <button type="button" class="btn-emoji" @onclick='() => AppendEmoji("😂")'>😂</button>
+                        <button type="button" class="btn-emoji" @onclick='() => AppendEmoji("🔥")'>🔥</button>
+                        <button type="button" class="btn-emoji" @onclick='() => AppendEmoji("👏")'>👏</button>
+                    </div>
+
+                    @* کادر متنی پیام *@
+                    <textarea class="form-control chat-textarea"
+                              placeholder="پیام خود را بنویسید..."
+                              rows="1"
+                              @bind="messageInput"
+                              @bind:event="oninput"
+                              @onkeydown="HandleKeyDown"></textarea>
+
+                    @* دکمه ارسال *@
+                    <button class="btn btn-primary btn-send" @onclick="SendCurrentMessage" disabled="@(string.IsNullOrWhiteSpace(messageInput) && uploadingFile == null)">
+                        @if (isSending)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-send-fill"></i>
+                        }
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* ========================== مدال ۱: شروع گفتگوی دونفره جدید ========================== *@
+@if (showDirectModal)
+{
+    <div class="modal fade show d-block chat-modal-backdrop" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0 rounded-4">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold fs-6">شروع گفتگوی جدید با همکاران</h5>
+                    <button type="button" class="btn-close" @onclick="() => showDirectModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="input-group mb-3">
+                        <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+                        <input type="text" class="form-control form-control-sm" placeholder="جستجوی نام یا واحد سازمانی..."
+                               @bind="userSearchQuery" @bind:event="oninput" @bind:after="FilterUsers" />
+                    </div>
+
+                    <div class="users-picker-list">
+                        @if (loadingUsers)
+                        {
+                            <div class="text-center py-4 text-muted"><span class="spinner-border spinner-border-sm"></span></div>
+                        }
+                        else if (filteredUsers.Count == 0)
+                        {
+                            <div class="text-center py-4 text-muted fs-8">کاربری با این مشخصات یافت نشد.</div>
+                        }
+                        else
+                        {
+                            @foreach (var u in filteredUsers)
+                            {
+                                <div class="user-picker-item" @onclick="() => StartDirectWith(u.Id)">
+                                    <div class="dialog-avatar direct-avatar sm">
+                                        <i class="bi bi-person"></i>
+                                    </div>
+                                    <div class="flex-grow-1 min-w-0 ms-2">
+                                        <div class="fw-bold fs-8">@u.DisplayName</div>
+                                        <div class="fs-9 text-muted">@u.Username @(!string.IsNullOrWhiteSpace(u.Department) ? $"— {u.Department}" : "")</div>
+                                    </div>
+                                    @if (u.IsOnline)
+                                    {
+                                        <span class="badge bg-success-subtle text-success fs-9">آنلاین</span>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========================== مدال ۲: ایجاد گروه کاری جدید ========================== *@
+@if (showGroupModal)
+{
+    <div class="modal fade show d-block chat-modal-backdrop" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0 rounded-4">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold fs-6">ایجاد گروه کاری جدید</h5>
+                    <button type="button" class="btn-close" @onclick="() => showGroupModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fs-8 fw-bold">نام گروه <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control form-control-sm" placeholder="مثال: کارگروه پروژه پالایشگاه" @bind="newGroupTitle" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fs-8 fw-bold">توضیحات گروه (اختیاری)</label>
+                        <input type="text" class="form-control form-control-sm" placeholder="هدف از تشکیل این گروه..." @bind="newGroupDesc" />
+                    </div>
+
+                    <label class="form-label fs-8 fw-bold">انتخاب اعضای گروه</label>
+                    <div class="users-picker-list" style="max-height: 220px;">
+                        @foreach (var u in allSoftwareUsers)
+                        {
+                            bool isSelected = selectedGroupUserIds.Contains(u.Id);
+                            <div class="user-picker-item @(isSelected ? "selected" : "")" @onclick="() => ToggleUserSelectForGroup(u.Id)">
+                                <input type="checkbox" class="form-check-input me-2" checked="@isSelected" />
+                                <div class="flex-grow-1 min-w-0">
+                                    <div class="fw-bold fs-8">@u.DisplayName</div>
+                                    <div class="fs-9 text-muted">@u.Username</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="() => showGroupModal = false">انصراف</button>
+                    <button type="button" class="btn btn-sm btn-success px-4" @onclick="CreateGroupSubmit" disabled="@string.IsNullOrWhiteSpace(newGroupTitle)">
+                        ساخت گروه
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ========================== مدال ۳: اطلاعات و اعضای گروه ========================== *@
+@if (showGroupInfoModal && activeConv != null)
+{
+    <div class="modal fade show d-block chat-modal-backdrop" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content shadow-lg border-0 rounded-4">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold fs-6">مشخصات گروه «@activeConv.Title»</h5>
+                    <button type="button" class="btn-close" @onclick="() => showGroupInfoModal = false"></button>
+                </div>
+                <div class="modal-body">
+                    @if (!string.IsNullOrWhiteSpace(activeConv.Description))
+                    {
+                        <div class="alert alert-light border fs-8 mb-3">@activeConv.Description</div>
+                    }
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold fs-8">اعضای گروه (@groupMembers.Count نفر)</span>
+                    </div>
+
+                    <div class="users-picker-list" style="max-height: 250px;">
+                        @foreach (var m in groupMembers)
+                        {
+                            <div class="user-picker-item justify-content-between">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="dialog-avatar direct-avatar sm"><i class="bi bi-person"></i></div>
+                                    <div>
+                                        <div class="fw-bold fs-8">@m.UserDisplayName</div>
+                                        <div class="fs-9 text-muted">
+                                            @if (m.Role == ChatMemberRoleDto.Owner) { <span class="badge bg-warning text-dark me-1">سازنده</span> }
+                                            else if (m.Role == ChatMemberRoleDto.Admin) { <span class="badge bg-info text-dark me-1">مدیر</span> }
+                                            @(m.IsOnline ? "آنلاین" : "آفلاین")
+                                        </div>
+                                    </div>
+                                </div>
+                                @if (m.UserId != Auth.UserId && (activeConv.MyRole == ChatMemberRoleDto.Owner || activeConv.MyRole == ChatMemberRoleDto.Admin))
+                                {
+                                    <button class="btn btn-xs btn-outline-danger" title="حذف از گروه" @onclick="() => RemoveMember(m.UserId)">
+                                        <i class="bi bi-person-x"></i>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-sm btn-outline-danger me-auto" @onclick="LeaveGroup">
+                        <i class="bi bi-box-arrow-right me-1"></i>خروج از گروه
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" @onclick="() => showGroupInfoModal = false">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int? ConversationId { get; set; }
+
+    private List<ChatConversationDto> conversations = new();
+    private ChatConversationDto? activeConv;
+    private List<ChatMessageDto> messages = new();
+    private List<ChatMemberDto> groupMembers = new();
+    private List<ChatUserDto> allSoftwareUsers = new();
+    private List<ChatUserDto> filteredUsers = new();
+
+    private bool loadingConversations = true;
+    private bool loadingMessages = false;
+    private bool loadingUsers = false;
+    private bool isSending = false;
+    private bool isMobileView = false;
+
+    private string searchQuery = "";
+    private string currentTab = "all";
+    private int totalUnread = 0;
+    private string messageInput = "";
+
+    // ریپلای و ادیت
+    private ChatMessageDto? replyingTo;
+    private ChatMessageDto? editingMsg;
+    private ChatUploadResultDto? uploadingFile;
+
+    // تایپینگ لایو
+    private Dictionary<int, string> typingUsers = new();
+
+    // مدال‌ها
+    private bool showDirectModal = false;
+    private bool showGroupModal = false;
+    private bool showGroupInfoModal = false;
+    private string userSearchQuery = "";
+    private string newGroupTitle = "";
+    private string newGroupDesc = "";
+    private HashSet<int> selectedGroupUserIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // کنترل دسترسی: فقط کاربرانی که مجوز پیام‌رسان دارند وارد می‌شوند
+        if (!Auth.HasModule("Chat"))
+        {
+            Nav.NavigateTo("");
+            return;
+        }
+
+        Chat.OnMessageReceived += HandleMessageReceived;
+        Chat.OnMessageUpdated += HandleMessageUpdated;
+        Chat.OnMessageDeleted += HandleMessageDeleted;
+        Chat.OnReactionUpdated += HandleReactionUpdated;
+        Chat.OnMessagesRead += HandleMessagesRead;
+        Chat.OnUserTyping += HandleUserTyping;
+        Chat.OnUserStatusChanged += HandleUserStatusChanged;
+        Chat.OnConversationUpdated += HandleConversationUpdated;
+
+        await Chat.EnsureHubConnectedAsync();
+        await LoadConversations();
+
+        if (ConversationId.HasValue && ConversationId.Value > 0)
+        {
+            var target = conversations.FirstOrDefault(c => c.Id == ConversationId.Value);
+            if (target != null)
+            {
+                await SelectConversation(target);
+            }
+            else
+            {
+                try
+                {
+                    var c = await Chat.GetConversationAsync(ConversationId.Value);
+                    await SelectConversation(c);
+                }
+                catch { }
+            }
+        }
+    }
+
+    private async Task LoadConversations()
+    {
+        loadingConversations = true;
+        try
+        {
+            ChatTypeDto? filter = currentTab switch
+            {
+                "direct" => ChatTypeDto.Direct,
+                "group" => ChatTypeDto.Group,
+                _ => null
+            };
+            bool onlyUnread = currentTab == "unread";
+            conversations = await Chat.GetConversationsAsync(searchQuery, filter, onlyUnread);
+            totalUnread = conversations.Sum(c => c.UnreadCount);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            loadingConversations = false;
+        }
+    }
+
+    private async Task SelectConversation(ChatConversationDto c)
+    {
+        if (activeConv?.Id == c.Id) return;
+
+        if (activeConv != null)
+        {
+            await Chat.LeaveConversationHubAsync(activeConv.Id);
+        }
+
+        activeConv = c;
+        replyingTo = null;
+        editingMsg = null;
+        loadingMessages = true;
+
+        try
+        {
+            await Chat.JoinConversationHubAsync(c.Id);
+            messages = await Chat.GetMessagesAsync(c.Id, null, 80);
+
+            if (c.UnreadCount > 0)
+            {
+                await Chat.MarkReadAsync(c.Id);
+                c.UnreadCount = 0;
+                totalUnread = conversations.Sum(x => x.UnreadCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            loadingMessages = false;
+            await ScrollToBottom();
+        }
+    }
+
+    private async Task SendCurrentMessage()
+    {
+        if (activeConv == null || isSending) return;
+
+        var text = messageInput.Trim();
+        if (string.IsNullOrWhiteSpace(text) && uploadingFile == null) return;
+
+        isSending = true;
+        try
+        {
+            if (editingMsg != null)
+            {
+                await Chat.EditMessageAsync(editingMsg.Id, text);
+                editingMsg = null;
+            }
+            else
+            {
+                var req = new SendChatMessageRequest
+                {
+                    ConversationId = activeConv.Id,
+                    Text = text,
+                    ReplyToMessageId = replyingTo?.Id,
+                    FileUrl = uploadingFile?.FileUrl,
+                    FileName = uploadingFile?.FileName,
+                    FileSizeBytes = uploadingFile?.FileSizeBytes,
+                    FileContentType = uploadingFile?.FileContentType,
+                    MessageType = uploadingFile?.MessageType ?? ChatMessageTypeDto.Text
+                };
+                await Chat.SendMessageAsync(activeConv.Id, req);
+                replyingTo = null;
+                uploadingFile = null;
+            }
+            messageInput = "";
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            isSending = false;
+            await ScrollToBottom();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendCurrentMessage();
+        }
+        else if (activeConv != null)
+        {
+            await Chat.SendTypingHubAsync(activeConv.Id);
+        }
+    }
+
+    private void StartReply(ChatMessageDto msg)
+    {
+        editingMsg = null;
+        replyingTo = msg;
+    }
+
+    private void CancelReply() => replyingTo = null;
+
+    private void StartEdit(ChatMessageDto msg)
+    {
+        replyingTo = null;
+        editingMsg = msg;
+        messageInput = msg.Text ?? "";
+    }
+
+    private void CancelEdit()
+    {
+        editingMsg = null;
+        messageInput = "";
+    }
+
+    private async Task DeleteMsg(int id)
+    {
+        try
+        {
+            await Chat.DeleteMessageAsync(id);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task ToggleReaction(int messageId, string emoji)
+    {
+        try
+        {
+            await Chat.ReactAsync(messageId, emoji);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task TogglePinMsg(int messageId)
+    {
+        try
+        {
+            var res = await Chat.TogglePinMessageAsync(messageId);
+            if (activeConv != null)
+            {
+                activeConv.PinnedMessageId = res.IsPinned ? res.Id : null;
+                activeConv.PinnedMessageSnippet = res.Text;
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task TogglePinConversation()
+    {
+        if (activeConv == null) return;
+        activeConv.IsPinned = !activeConv.IsPinned;
+        await Chat.TogglePinConversationAsync(activeConv.Id);
+        await LoadConversations();
+    }
+
+    private async Task ToggleMuteConversation()
+    {
+        if (activeConv == null) return;
+        activeConv.IsMuted = !activeConv.IsMuted;
+        await Chat.ToggleMuteConversationAsync(activeConv.Id);
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        if (e.File == null) return;
+        try
+        {
+            Toast.Info("در حال بارگذاری فایل...");
+            uploadingFile = await Chat.UploadAttachmentAsync(e.File);
+            Toast.Success("فایل بارگذاری شد.");
+            await SendCurrentMessage();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void AppendEmoji(string emoji)
+    {
+        messageInput += emoji;
+    }
+
+    private async Task ChangeTab(string tab)
+    {
+        currentTab = tab;
+        await LoadConversations();
+    }
+
+    private async Task OnSearchChanged()
+    {
+        await LoadConversations();
+    }
+
+    private async Task ClearSearch()
+    {
+        searchQuery = "";
+        await LoadConversations();
+    }
+
+    private void BackToSidebar() => activeConv = null;
+
+    // ============================ مدیریت اعضا و مدال‌ها ============================
+
+    private async Task OpenNewDirectModal()
+    {
+        showDirectModal = true;
+        loadingUsers = true;
+        try
+        {
+            allSoftwareUsers = await Chat.GetSoftwareUsersAsync();
+            filteredUsers = allSoftwareUsers;
+        }
+        finally
+        {
+            loadingUsers = false;
+        }
+    }
+
+    private void FilterUsers()
+    {
+        if (string.IsNullOrWhiteSpace(userSearchQuery))
+        {
+            filteredUsers = allSoftwareUsers;
+            return;
+        }
+        var q = userSearchQuery.ToLowerInvariant();
+        var result = allSoftwareUsers.Where(u =>
+            u.DisplayName.ToLower().Contains(q) ||
+            u.Username.ToLower().Contains(q) ||
+            (u.Department != null && u.Department.ToLower().Contains(q))).ToList();
+        // اگر نتیجه‌ای نبود، کل لیست پرسنل نمایش داده شود
+        filteredUsers = result.Count > 0 ? result : allSoftwareUsers;
+    }
+
+    private async Task StartDirectWith(int targetUserId)
+    {
+        showDirectModal = false;
+        try
+        {
+            var conv = await Chat.CreateDirectAsync(targetUserId);
+            await LoadConversations();
+            await SelectConversation(conv);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task OpenNewGroupModal()
+    {
+        showGroupModal = true;
+        newGroupTitle = "";
+        newGroupDesc = "";
+        selectedGroupUserIds.Clear();
+        allSoftwareUsers = await Chat.GetSoftwareUsersAsync();
+    }
+
+    private void ToggleUserSelectForGroup(int uid)
+    {
+        if (selectedGroupUserIds.Contains(uid))
+            selectedGroupUserIds.Remove(uid);
+        else
+            selectedGroupUserIds.Add(uid);
+    }
+
+    private async Task CreateGroupSubmit()
+    {
+        if (string.IsNullOrWhiteSpace(newGroupTitle)) return;
+        showGroupModal = false;
+        try
+        {
+            var req = new CreateGroupChatRequest
+            {
+                Title = newGroupTitle,
+                Description = newGroupDesc,
+                MemberUserIds = selectedGroupUserIds.ToList()
+            };
+            var conv = await Chat.CreateGroupAsync(req);
+            await LoadConversations();
+            await SelectConversation(conv);
+            Toast.Success("گروه با موفقیت ساخته شد.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task OpenGroupInfoModal()
+    {
+        if (activeConv == null || activeConv.Type == ChatTypeDto.Direct) return;
+        showGroupInfoModal = true;
+        groupMembers = await Chat.GetMembersAsync(activeConv.Id);
+    }
+
+    private async Task RemoveMember(int userId)
+    {
+        if (activeConv == null) return;
+        try
+        {
+            await Chat.RemoveMemberAsync(activeConv.Id, userId);
+            groupMembers = await Chat.GetMembersAsync(activeConv.Id);
+            Toast.Success("عضو با موفقیت از گروه حذف شد.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task LeaveGroup()
+    {
+        if (activeConv == null) return;
+        showGroupInfoModal = false;
+        try
+        {
+            await Chat.RemoveMemberAsync(activeConv.Id, Auth.UserId);
+            activeConv = null;
+            await LoadConversations();
+            Toast.Info("شما از گروه خارج شدید.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void NavigateToErp(string module, string? entityId)
+    {
+        if (string.IsNullOrWhiteSpace(entityId)) return;
+        switch (module.ToLowerInvariant())
+        {
+            case "docarchive": Nav.NavigateTo($"/doc-archive/documents/{entityId}"); break;
+            case "projects": Nav.NavigateTo($"/projects/view/{entityId}"); break;
+            case "invoicing": Nav.NavigateTo($"/invoices"); break;
+            case "itassets": Nav.NavigateTo($"/it-requests"); break;
+        }
+    }
+
+    private void OpenImagePreview(string url)
+    {
+        // باز کردن پیش‌نمایش تمام‌صفحه تصویر
+        Nav.NavigateTo(url, forceLoad: true);
+    }
+
+    // ============================ رویدادهای بلادرنگ SignalR ============================
+
+    private async void HandleMessageReceived(ChatMessageDto msg)
+    {
+        if (activeConv?.Id == msg.ConversationId)
+        {
+            if (!messages.Any(m => m.Id == msg.Id))
+            {
+                messages.Add(msg);
+                await Chat.MarkReadAsync(activeConv.Id);
+            }
+            await InvokeAsync(StateHasChanged);
+            await ScrollToBottom();
+        }
+
+        var conv = conversations.FirstOrDefault(c => c.Id == msg.ConversationId);
+        if (conv != null)
+        {
+            conv.LastMessageSnippet = msg.Text ?? msg.FileName;
+            conv.LastMessageAt = msg.CreatedAt;
+            if (activeConv?.Id != msg.ConversationId && !msg.IsOutgoing)
+            {
+                conv.UnreadCount++;
+            }
+            totalUnread = conversations.Sum(c => c.UnreadCount);
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            await LoadConversations();
+        }
+    }
+
+    private async void HandleMessageUpdated(ChatMessageDto msg)
+    {
+        var existing = messages.FirstOrDefault(m => m.Id == msg.Id);
+        if (existing != null)
+        {
+            existing.Text = msg.Text;
+            existing.IsEdited = msg.IsEdited;
+            existing.IsPinned = msg.IsPinned;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async void HandleMessageDeleted(int convId, int msgId)
+    {
+        if (activeConv?.Id == convId)
+        {
+            var existing = messages.FirstOrDefault(m => m.Id == msgId);
+            if (existing != null)
+            {
+                messages.Remove(existing);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async void HandleReactionUpdated(int convId, int msgId, Dictionary<string, List<ChatReactionUserDto>> reactions)
+    {
+        if (activeConv?.Id == convId)
+        {
+            var msg = messages.FirstOrDefault(m => m.Id == msgId);
+            if (msg != null)
+            {
+                msg.Reactions = reactions;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async void HandleMessagesRead(int convId, int readerUid, int lastReadId)
+    {
+        if (activeConv?.Id == convId && readerUid != Auth.UserId)
+        {
+            foreach (var m in messages.Where(m => m.Id <= lastReadId && m.IsOutgoing))
+            {
+                m.IsReadByPeer = true;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async void HandleUserTyping(int convId, int uid, string uname)
+    {
+        if (uid == Auth.UserId) return;
+        typingUsers[convId] = uname;
+        await InvokeAsync(StateHasChanged);
+        _ = Task.Delay(3000).ContinueWith(async _ =>
+        {
+            typingUsers.Remove(convId);
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private async void HandleUserStatusChanged(int uid, bool online, DateTime seen)
+    {
+        foreach (var c in conversations.Where(c => c.DirectPeerUserId == uid))
+        {
+            c.DirectPeerIsOnline = online;
+            c.DirectPeerLastSeen = seen;
+        }
+        if (activeConv?.DirectPeerUserId == uid)
+        {
+            activeConv.DirectPeerIsOnline = online;
+            activeConv.DirectPeerLastSeen = seen;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void HandleConversationUpdated(ChatConversationDto c)
+    {
+        await LoadConversations();
+    }
+
+    private async Task ScrollToBottom()
+    {
+        try { await JS.InvokeVoidAsync("eval", "var el = document.getElementById('chatMessagesScroll'); if (el) el.scrollTop = el.scrollHeight;"); } catch { }
+    }
+
+    private async Task ScrollToMessage(int msgId)
+    {
+        try { await JS.InvokeVoidAsync("eval", $"var el = document.getElementById('msg-{msgId}'); if (el) el.scrollIntoView({{ behavior: 'smooth' }});"); } catch { }
+    }
+
+    private string FormatTime(DateTime dt)
+    {
+        var local = dt.ToLocalTime();
+        if (local.Date == DateTime.Now.Date) return local.ToString("HH:mm");
+        if (local.Date == DateTime.Now.AddDays(-1).Date) return "دیروز";
+        return dt.ToFa();
+    }
+
+    private string FormatFileSize(long? bytes)
+    {
+        if (!bytes.HasValue) return "";
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Chat.OnMessageReceived -= HandleMessageReceived;
+        Chat.OnMessageUpdated -= HandleMessageUpdated;
+        Chat.OnMessageDeleted -= HandleMessageDeleted;
+        Chat.OnReactionUpdated -= HandleReactionUpdated;
+        Chat.OnMessagesRead -= HandleMessagesRead;
+        Chat.OnUserTyping -= HandleUserTyping;
+        Chat.OnUserStatusChanged -= HandleUserStatusChanged;
+        Chat.OnConversationUpdated -= HandleConversationUpdated;
+
+        if (activeConv != null)
+        {
+            await Chat.LeaveConversationHubAsync(activeConv.Id);
+        }
+    }
+}

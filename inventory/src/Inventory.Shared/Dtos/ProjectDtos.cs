@@ -125,6 +125,9 @@ public class ProjectCartableCountsDto
 {
     public int Manager { get; set; }
     public int Expert { get; set; }
+
+    /// <summary>تعداد درخواست‌های ویرایش/حذف در انتظار تایید مدیر</summary>
+    public int Changes { get; set; }
 }
 
 /// <summary>
@@ -229,4 +232,220 @@ public class ProjectLookups
     /// پروژه‌های «در انتظار تایید مدیر» و «رد شده» قابل گزارش‌دهی نیستند.
     /// </summary>
     public List<LookupItem> ReportableProjects { get; set; } = new();
+}
+
+// ============================================================
+//  صفحه‌بندی سمت سرور (بک‌اند) — لیست پروژه‌ها و گزارش‌های کار
+//  داده‌ها ۲۰تا۲۰تا (قابل تنظیم) از دیتابیس واکشی می‌شوند تا لود صفحه سبک بماند.
+// ============================================================
+
+/// <summary>نتیجهٔ صفحه‌بندی‌شده: فقط ردیف‌های همان صفحه + تعداد کل ردیف‌های منطبق با فیلتر</summary>
+public class PagedResult<T>
+{
+    public List<T> Items { get; set; } = new();
+
+    /// <summary>تعداد کل ردیف‌های منطبق با فیلترها (نه فقط این صفحه)</summary>
+    public int Total { get; set; }
+
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+
+    /// <summary>تعداد صفحه‌ها (محاسبه‌شده)</summary>
+    public int PageCount => PageSize <= 0 ? 1 : Math.Max(1, (int)Math.Ceiling(Total / (double)PageSize));
+
+    /// <summary>
+    /// جمع کل (تیک) روی «همهٔ» ردیف‌های منطبق با فیلتر — نه فقط صفحهٔ جاری.
+    /// در لیست گزارش‌های کار برای نمایش «جمع ساعت» استفاده می‌شود.
+    /// </summary>
+    public long? SumTicks { get; set; }
+}
+
+/// <summary>پارامترهای فیلتر/مرتب‌سازی/صفحه‌بندی لیست پروژه‌ها — یکسان بین کلاینت و سرور</summary>
+public class ProjectListQuery
+{
+    // ---------- فیلترهای بالای صفحه ----------
+    public string? Search { get; set; }
+    public int? KarfarmaId { get; set; }
+    public int? TypeFactorId { get; set; }
+    public int? UserId { get; set; }
+    public bool? Returned { get; set; }
+
+    // ---------- جستجوی سرستون‌ها ----------
+    public string? FCode { get; set; }
+    public string? FName { get; set; }
+    public string? FSerial { get; set; }
+    public string? FKarfarma { get; set; }
+    public string? FEntry { get; set; }
+    public string? FExit { get; set; }
+    public string? FFactor { get; set; }
+    public string? FFactorType { get; set; }
+    public string? FKarshenasi { get; set; }
+    public string? FSabt { get; set; }
+    public string? FNeed { get; set; }
+    public string? FSpent { get; set; }
+
+    /// <summary>پوشه: y = دارد، n = ندارد، خالی = همه</summary>
+    public string? FFolder { get; set; }
+
+    /// <summary>وضعیت گردش‌کار: 0..3 — خالی = همه</summary>
+    public string? FStatus { get; set; }
+
+    // ---------- مرتب‌سازی و صفحه‌بندی ----------
+    public string? Sort { get; set; }
+    public bool Desc { get; set; } = true;
+    public int Page { get; set; } = 1;
+
+    /// <summary>اندازه صفحه — ۰ یا منفی یعنی «همه» (برای خروجی اکسل/چاپ)</summary>
+    public int PageSize { get; set; } = 20;
+
+    /// <summary>ساخت رشتهٔ کوئری برای فراخوانی API (فقط مقادیر پرشده)</summary>
+    public string ToQueryString()
+    {
+        var parts = new List<string>();
+        void Add(string k, string? v)
+        {
+            if (!string.IsNullOrWhiteSpace(v)) parts.Add($"{k}={Uri.EscapeDataString(v)}");
+        }
+        Add("search", Search);
+        if (KarfarmaId is > 0) Add("karfarmaId", KarfarmaId.ToString());
+        if (TypeFactorId is > 0) Add("typeFactorId", TypeFactorId.ToString());
+        if (UserId is > 0) Add("userId", UserId.ToString());
+        if (Returned is true) Add("returned", "true");
+        Add("fCode", FCode);
+        Add("fName", FName);
+        Add("fSerial", FSerial);
+        Add("fKarfarma", FKarfarma);
+        Add("fEntry", FEntry);
+        Add("fExit", FExit);
+        Add("fFactor", FFactor);
+        Add("fFactorType", FFactorType);
+        Add("fKarshenasi", FKarshenasi);
+        Add("fSabt", FSabt);
+        Add("fNeed", FNeed);
+        Add("fSpent", FSpent);
+        Add("fFolder", FFolder);
+        Add("fStatus", FStatus);
+        Add("sort", Sort);
+        Add("desc", Desc ? "true" : "false");
+        Add("page", Page.ToString());
+        Add("pageSize", PageSize.ToString());
+        return string.Join("&", parts);
+    }
+}
+
+/// <summary>پارامترهای فیلتر/مرتب‌سازی/صفحه‌بندی لیست گزارش‌های کار</summary>
+public class ReportWorkListQuery
+{
+    // ---------- فیلترهای بالای صفحه ----------
+    public int? ProjectId { get; set; }
+    public int? UserId { get; set; }
+
+    /// <summary>اپراتور گزارش (انجام‌دهندهٔ کار) — متفاوت از ثبت‌کننده</summary>
+    public int? OperatorId { get; set; }
+    public DateTime? From { get; set; }
+    public DateTime? To { get; set; }
+
+    // ---------- جستجوی سرستون‌ها ----------
+    public string? FDate { get; set; }
+    public string? FCode { get; set; }
+    public string? FProject { get; set; }
+    public string? FUser { get; set; }
+
+    /// <summary>فیلتر متنی اپراتور (نام یا نام کاربری)</summary>
+    public string? FOperator { get; set; }
+    public string? FStart { get; set; }
+    public string? FEnd { get; set; }
+    public string? FRest { get; set; }
+    public string? FSpent { get; set; }
+    public string? FDesc { get; set; }
+
+    // ---------- مرتب‌سازی و صفحه‌بندی ----------
+    public string? Sort { get; set; }
+    public bool Desc { get; set; } = true;
+    public int Page { get; set; } = 1;
+
+    /// <summary>اندازه صفحه — ۰ یا منفی یعنی «همه» (برای خروجی اکسل/چاپ)</summary>
+    public int PageSize { get; set; } = 20;
+
+    public string ToQueryString()
+    {
+        var parts = new List<string>();
+        void Add(string k, string? v)
+        {
+            if (!string.IsNullOrWhiteSpace(v)) parts.Add($"{k}={Uri.EscapeDataString(v)}");
+        }
+        if (ProjectId is > 0) Add("projectId", ProjectId.ToString());
+        if (UserId is > 0) Add("userId", UserId.ToString());
+        if (OperatorId is > 0) Add("operatorId", OperatorId.ToString());
+        if (From.HasValue) Add("from", From.Value.ToString("yyyy-MM-dd"));
+        if (To.HasValue) Add("to", To.Value.ToString("yyyy-MM-dd"));
+        Add("fDate", FDate);
+        Add("fCode", FCode);
+        Add("fProject", FProject);
+        Add("fUser", FUser);
+        Add("fOperator", FOperator);
+        Add("fStart", FStart);
+        Add("fEnd", FEnd);
+        Add("fRest", FRest);
+        Add("fSpent", FSpent);
+        Add("fDesc", FDesc);
+        Add("sort", Sort);
+        Add("desc", Desc ? "true" : "false");
+        Add("page", Page.ToString());
+        Add("pageSize", PageSize.ToString());
+        return string.Join("&", parts);
+    }
+}
+
+/// <summary>
+/// درخواست تغییر پروژه (ویرایش/حذف) که در انتظار تایید مدیر است — بند «تایید مدیر برای حذف و ویرایش».
+/// </summary>
+public class ProjectChangeRequestDto
+{
+    public int Id { get; set; }
+    public int ProjectId { get; set; }
+
+    /// <summary>۱ = ویرایش، ۲ = حذف</summary>
+    public int Kind { get; set; }
+
+    /// <summary>۰ = در انتظار مدیر، ۱ = تاییدشده و اعمال‌شده، ۲ = ردشده</summary>
+    public int Status { get; set; }
+
+    public string CodeProject { get; set; } = "";
+    public string ProjectName { get; set; } = "";
+    public string? KarFarmaName { get; set; }
+
+    /// <summary>خلاصهٔ خوانای تغییرات (برای نمایش به مدیر)</summary>
+    public string Summary { get; set; } = "";
+
+    public string? RequestNote { get; set; }
+    public string? ManagerNote { get; set; }
+    public string? RequestedByName { get; set; }
+    public DateTime RequestedAt { get; set; }
+    public DateTime? ManagerActionAt { get; set; }
+
+    /// <summary>تعداد روز انتظار در کارتابل</summary>
+    public int DaysWaiting { get; set; }
+}
+
+/// <summary>خروجی GET api/projects/{id}/returns — کدهای برگشتی (RE) یک پروژه</summary>
+public class ProjectReturnsDto
+{
+    public string ParentCode { get; set; } = "";
+    public string ParentName { get; set; } = "";
+    public string? ParentReceiver { get; set; }
+    public int KarFarmaId { get; set; }
+    public List<string> Codes { get; set; } = new();
+}
+
+/// <summary>
+/// نتیجهٔ ویرایش/حذف پروژه — اگر کاربر مدیر نباشد، عملیات فقط به‌صورت «درخواست»
+/// ثبت می‌شود و <see cref="Pending"/> برابر true برمی‌گردد.
+/// </summary>
+public class ChangeActionResult
+{
+    public int Id { get; set; }
+    public bool Ok { get; set; }
+    public bool Pending { get; set; }
+    public string? Message { get; set; }
 }

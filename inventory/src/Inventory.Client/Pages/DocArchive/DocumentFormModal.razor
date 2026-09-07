@@ -1,0 +1,278 @@
+@* ================== فرم ثبت / ویرایش مدرک ================== *@
+@inject IDocArchiveService Svc
+@inject IToastService Toast
+
+<Modal Visible="Visible" Title="@(EditId > 0 ? "ویرایش مدرک" : "ثبت مدرک جدید")" Size="modal-xl" OnClose="OnClose">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">کد مدرک <span class="text-danger">*</span></label>
+                <input class="form-control @(codeError ? "is-invalid" : "")" @bind="form.Code"
+                       placeholder="مثلاً: QP-001" />
+                <div class="form-text fs-9">کد اجباری است و نباید تکراری باشد.</div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">شماره مدرک مشتری</label>
+                <input class="form-control" @bind="form.CustomerCode" placeholder="شماره مدرک نزد کارفرما" />
+                <div class="form-text fs-9">اختیاری — نیازی به یکتا بودن ندارد.</div>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">عنوان مدرک <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="form.Title" placeholder="عنوان کامل مدرک" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">تاریخ انقضا</label>
+                <DatePicker @bind-Value="form.ExpireDate" AllowClear="true" />
+            </div>
+
+            <div class="col-md-6">
+                <label class="form-label">پوشه <span class="text-danger">*</span></label>
+                <SearchSelect Items="Folders" @bind-Value="form.FolderId" Placeholder="انتخاب پوشه…" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">توضیحات</label>
+                <input class="form-control" @bind="form.Description" />
+            </div>
+
+            <div class="col-12"><hr class="my-1" /></div>
+
+            @* ---------- سیاست ورژن ---------- *@
+            <div class="col-md-6">
+                <label class="form-label fw-700"><i class="bi bi-layers ms-1"></i> سیاست ورژن</label>
+                <div class="border rounded-3 p-2">
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" id="vOne" name="vpol"
+                               checked="@(!form.AllowMultipleActiveVersions)"
+                               @onchange="() => form.AllowMultipleActiveVersions = false" />
+                        <label class="form-check-label" for="vOne">
+                            فقط یک ورژن فعال باشد
+                            <span class="fs-9 text-muted d-block">با فعال شدن ورژن جدید، ورژن قبلی خودکار غیرفعال می‌شود.</span>
+                        </label>
+                    </div>
+                    <div class="form-check mt-1">
+                        <input class="form-check-input" type="radio" id="vMulti" name="vpol"
+                               checked="@form.AllowMultipleActiveVersions"
+                               @onchange="() => form.AllowMultipleActiveVersions = true" />
+                        <label class="form-check-label" for="vMulti">
+                            چند ورژن هم‌زمان فعال باشند
+                            <span class="fs-9 text-muted d-block">همه ورژن‌های تاییدشده می‌توانند هم‌زمان فعال بمانند.</span>
+                        </label>
+                    </div>
+                    @if (EditId == 0)
+                    {
+                        <div class="form-check form-switch mt-2 pt-2 border-top">
+                            <input class="form-check-input" type="checkbox" id="v1act" @bind="form.FirstVersionActive" />
+                            <label class="form-check-label fs-8" for="v1act">ورژن ۱ بلافاصله فعال باشد (در نبود گردش تایید)</label>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* ---------- نمایش برای همه ---------- *@
+            <div class="col-md-6">
+                <label class="form-label fw-700"><i class="bi bi-globe2 ms-1"></i> مجوز عمومی</label>
+                <div class="border rounded-3 p-2">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="dPub" @bind="form.IsPublic" />
+                        <label class="form-check-label fw-700" for="dPub">نمایش برای همه</label>
+                        <span class="fs-9 text-muted d-block">همه کاربران سیستم می‌توانند این مدرک را بخوانند.</span>
+                    </div>
+                    <div class="form-check form-switch mt-1">
+                        <input class="form-check-input" type="checkbox" id="dPubDl" @bind="form.PublicCanDownload"
+                               disabled="@(!form.IsPublic)" />
+                        <label class="form-check-label" for="dPubDl">دانلود برای همه آزاد باشد</label>
+                    </div>
+                </div>
+            </div>
+
+            @* ---------- تگ‌ها و برچسب‌ها ---------- *@
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label fw-700 mb-0"><i class="bi bi-tags ms-1"></i> برچسب‌ها و تگ‌های مدرک</label>
+                    <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 fs-8" @onclick="() => showTagsModal = true">
+                        <i class="bi bi-plus-circle"></i> تعریف تگ جدید
+                    </button>
+                </div>
+                <div class="d-flex flex-wrap gap-2 p-2 border rounded-3 bg-light">
+                    @if (availableTags.Count == 0)
+                    {
+                        <span class="fs-8 text-muted">تگی تعریف نشده است.</span>
+                    }
+                    else
+                    {
+                        @foreach (var t in availableTags)
+                        {
+                            var isSelected = selectedTagIds.Contains(t.Id);
+                            <button type="button" class="btn btn-sm rounded-pill d-flex align-items-center gap-1 shadow-sm"
+                                    style="@(isSelected ? $"background-color:{t.Color};color:#fff;border:2px solid #000;" : $"background-color:#fff;color:#333;border:1px solid {t.Color};")"
+                                    @onclick="() => ToggleTag(t.Id)">
+                                <i class="bi @(isSelected ? "bi-check-circle-fill" : "bi-tag")"></i>
+                                @t.Name
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+
+            @* ---------- نفرات گردش ---------- *@
+            <div class="col-12">
+                <label class="form-label fw-700">
+                    <i class="bi bi-arrow-repeat ms-1"></i> نفرات گردش و تاییدیه مدرک
+                </label>
+                <MultiSearchSelect Items="Users" Values="approverIds" ValuesChanged="v => approverIds = v"
+                                   Placeholder="نام نفر را تایپ کنید…"
+                                   EmptyText="نفری برای گردش انتخاب نشده — مدرک بدون گردش، مستقیم تایید می‌شود." />
+                <div class="form-text fs-9">
+                    اگر نفری انتخاب شود، هر ورژن پس از ثبت <b>فریز</b> می‌شود و در کارتابل این افراد می‌نشیند؛
+                    پس از تایید همه، ورژن به‌صورت خودکار فعال می‌گردد.
+                </div>
+            </div>
+
+            @* ---------- مدارک مرتبط (چندانتخابی سرچ‌دار) ---------- *@
+            <div class="col-12">
+                <label class="form-label fw-700"><i class="bi bi-link-45deg ms-1"></i> مدارک مرتبط</label>
+                <MultiSearchSelect Items="LinkableDocs" Values="linkIds" ValuesChanged="v => linkIds = v"
+                                   Placeholder="کد یا عنوان مدرک را تایپ کنید…"
+                                   EmptyText="مدرک مرتبطی انتخاب نشده است." />
+                <div class="form-text fs-9">
+                    می‌توانید هم‌زمان چند مدرک انتخاب کنید. با ورژن خوردن این مدرک، در کارتابل صاحبان
+                    مدارک مرتبط کار «بررسی/به‌روزرسانی» ایجاد می‌شود. فقط مدارک <b>فعال</b> قابل لینک هستند.
+                </div>
+            </div>
+
+            @* ---------- دسترسی نفرات ---------- *@
+            <div class="col-12">
+                <label class="form-label fw-700"><i class="bi bi-shield-lock ms-1"></i> دسترسی اختصاصی این مدرک</label>
+                <div class="fs-9 text-muted mb-1">
+                    علاوه بر دسترسی ارث‌بری‌شده از پوشه. بالاترین سطح برنده است.
+                </div>
+                <DocPermissionEditor Users="Users" Items="perms" />
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="OnClose">انصراف (Esc)</button>
+        <button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-check-lg ms-1"></i> ذخیره (F1)
+        </button>
+    </Footer>
+</Modal>
+
+<DocTagsModal Visible="showTagsModal" OnClose="() => showTagsModal = false" OnTagsChanged="LoadTags" />
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public List<LookupItem> Folders { get; set; } = new();
+    [Parameter] public List<LookupItem> Users { get; set; } = new();
+
+    /// <summary>مدارک قابل لینک (فقط فعال) — از lookups می‌آید</summary>
+    [Parameter] public List<LookupItem> Documents { get; set; } = new();
+    [Parameter] public int DefaultFolderId { get; set; }
+
+    /// <summary>در حالت ویرایش، شناسه مدرک</summary>
+    [Parameter] public int EditId { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private List<LookupItem> LinkableDocs => Documents.Where(d => d.Id != EditId).ToList();
+
+    private DocumentDto form = new();
+    private List<int> approverIds = new();
+    private List<int> linkIds = new();
+    private List<int> selectedTagIds = new();
+    private List<DocTagDto> availableTags = new();
+    private List<DocPermissionDto> perms = new();
+    private bool saving, codeError, showTagsModal;
+    private bool lastVisible;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !lastVisible)
+        {
+            codeError = false;
+            await LoadTags();
+            if (EditId > 0)
+            {
+                try
+                {
+                    form = await Svc.GetDocumentAsync(EditId);
+                    approverIds = form.Approvers.Select(a => a.UserId).ToList();
+                    linkIds = form.Links.Select(l => l.LinkedDocumentId).ToList();
+                    selectedTagIds = form.Tags.Select(t => t.Id).ToList();
+                    perms = form.Permissions;
+                }
+                catch (Exception ex) { Toast.Error(ex.Message); }
+            }
+            else
+            {
+                form = new DocumentDto { FolderId = DefaultFolderId, FirstVersionActive = true };
+                approverIds = new();
+                linkIds = new();
+                selectedTagIds = new();
+                perms = new();
+            }
+        }
+        lastVisible = Visible;
+    }
+
+    private async Task LoadTags()
+    {
+        try { availableTags = await Svc.GetTagsAsync(); }
+        catch { availableTags = new(); }
+    }
+
+    private void ToggleTag(int tagId)
+    {
+        if (selectedTagIds.Contains(tagId)) selectedTagIds.Remove(tagId);
+        else selectedTagIds.Add(tagId);
+    }
+
+    private async Task Save()
+    {
+        codeError = false;
+        if (string.IsNullOrWhiteSpace(form.Title)) { Toast.Error("عنوان مدرک اجباری است."); return; }
+        if (string.IsNullOrWhiteSpace(form.Code)) { Toast.Error("کد مدرک اجباری است."); codeError = true; return; }
+        if (form.FolderId <= 0) { Toast.Error("پوشه مدرک را انتخاب کنید."); return; }
+
+        form.Approvers = approverIds.Select((id, i) => new DocApproverDto
+        {
+            UserId = id,
+            UserName = Users.FirstOrDefault(u => u.Id == id)?.Name ?? "",
+            Order = i
+        }).ToList();
+        form.Permissions = perms;
+        form.LinkedDocumentIds = linkIds;
+        form.TagIds = selectedTagIds;
+
+        saving = true;
+        try
+        {
+            if (EditId > 0)
+            {
+                await Svc.UpdateDocumentAsync(EditId, form);
+
+                // همگام‌سازی مدارک مرتبط: افزودن موارد جدید و حذف موارد برداشته‌شده
+                var current = form.Links.Select(l => l.LinkedDocumentId).ToList();
+                var toAdd = linkIds.Except(current).ToList();
+                var toRemove = current.Except(linkIds).ToList();
+
+                if (toAdd.Count > 0)
+                    await Svc.LinkManyAsync(new DocLinkSaveDto { DocumentId = EditId, LinkedDocumentIds = toAdd });
+                foreach (var r in toRemove)
+                    await Svc.UnlinkAsync(EditId, r);
+            }
+            else await Svc.CreateDocumentAsync(form);
+
+            Toast.Success(EditId > 0 ? "مدرک ویرایش شد." : "مدرک ثبت شد.");
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            if (ex.Message.Contains("یکتا") || ex.Message.Contains("تکراری")) codeError = true;
+            Toast.Error(ex.Message);
+        }
+        finally { saving = false; }
+    }
+}

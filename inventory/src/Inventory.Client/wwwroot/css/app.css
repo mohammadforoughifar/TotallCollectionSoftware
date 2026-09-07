@@ -34,6 +34,36 @@
     font-weight: 900; font-style: normal; font-display: swap;
 }
 
+/* ---------- فونت‌های فارسی اضافه برای ادیتور متن غنی (حروف‌بوکی) ---------- */
+/* شبنم (OFL) */
+@font-face {
+    font-family: 'Shabnam';
+    src: url('../fonts/Shabnam-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Shabnam';
+    src: url('../fonts/Shabnam-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+/* ساحل (OFL) */
+@font-face {
+    font-family: 'Sahel';
+    src: url('../fonts/Sahel-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Sahel';
+    src: url('../fonts/Sahel-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+/* یکان (خانواده یکان‌بخ — رایگان) */
+@font-face {
+    font-family: 'Yekan';
+    src: url('../fonts/Yekan.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+
 /* ---------- متغیرهای رنگ ---------- */
 :root {
     --primary: #4f46e5;
@@ -1182,11 +1212,40 @@ body {
 .bottom-nav-item { position: relative; }
 
 /* ---------- انیمیشن ورود محتوا ---------- */
+/* نکته مهم: در حالت پایانی transform به «none» می‌رسد (نه translateY(0)) تا هیچ ancestor و
+   عنصر شناوری (position:fixed مثل تقویم فیلتر و منوی ⋮) به اشتباه داخل یک stacking context با
+   transform محبوس نشود. همین موضوع باعث می‌شد تقویم/دراپ‌داون فیلتر وسط صفحه یا زیر کارت‌ها باز شود. */
 @keyframes fadeSlideIn {
     from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
+    to { opacity: 1; transform: none; }
 }
 .app-content > * { animation: fadeSlideIn .28s ease both; }
+
+/* کارت حاوی فیلترهای بالای لیست — بالاتر از کارت گرید قرار می‌گیرد تا دراپ‌داون‌های فیلتر
+   (SearchSelect و …) زیر کارت‌ها باز نشوند. */
+.filter-card { position: relative; z-index: 30; }
+
+/* ====== تغییر #9: رفع مشکل z-index کمبوها و تقویم‌ها ====== */
+/* تمام کارت‌ها و مودال‌ها overflow:visible بگیرند تا دراپ‌داون‌ها بریده نشوند */
+.card { overflow: visible; }
+.modal-body { overflow: visible; }
+.modal-content { overflow: visible; }
+
+/* تقویم شمسی و منوی SearchSelect باید بالاتر از همه کارت‌ها باشند */
+.dp-popover,
+.ss-menu,
+.datepicker-dropdown,
+.dropdown-menu {
+    z-index: 1090 !important;
+}
+
+/* مودال‌ها بالاتر از همه باشند */
+.modal { z-index: 1050; }
+.modal-backdrop { z-index: 1040; }
+
+/* کارت‌های داخل مودال نباید overflow:hidden داشته باشند */
+.modal .card { overflow: visible; }
+.modal .card-body { overflow: visible; }
 
 /* حرکت کمتر برای کاربران حساس به حرکت */
 @media (prefers-reduced-motion: reduce) {
@@ -1263,6 +1322,7 @@ button.nav-toggle:focus-visible{outline:none;}
 .group-reports .nav-section-title { color: #fbbf24; }
 .group-base .nav-section-title    { color: #60a5fa; }
 .group-sys .nav-section-title     { color: #fb923c; }
+.group-erp .nav-section-title     { color: #f472b6; }
 
 /* لینک‌ها: کپسول + هاور نرم */
 .nav-link { border-radius: 12px; transition: all .2s cubic-bezier(.4,0,.2,1); }
@@ -1276,6 +1336,7 @@ button.nav-toggle:focus-visible{outline:none;}
 .group-reports .nav-link i { color: #fbbf24; }
 .group-base .nav-link i    { color: #60a5fa; }
 .group-sys .nav-link i     { color: #fb923c; }
+.group-erp .nav-link i     { color: #f472b6; }
 
 /* خط کنار آیتم‌های بازشده */
 .group-dash .nav-group-items    { border-inline-start-color: rgba(34,211,238,.28); }
@@ -1284,6 +1345,7 @@ button.nav-toggle:focus-visible{outline:none;}
 .group-reports .nav-group-items { border-inline-start-color: rgba(251,191,36,.28); }
 .group-base .nav-group-items    { border-inline-start-color: rgba(96,165,250,.28); }
 .group-sys .nav-group-items     { border-inline-start-color: rgba(251,146,60,.28); }
+.group-erp .nav-group-items     { border-inline-start-color: rgba(244,114,182,.28); }
 
 /* فلش باز/بسته رنگی */
 .group-dash .nav-toggle.open > span:first-child,    .group-dash .nav-toggle:hover .nav-chevron    { color: #22d3ee; }
@@ -1292,6 +1354,7 @@ button.nav-toggle:focus-visible{outline:none;}
 .group-reports .nav-toggle.open > span:first-child, .group-reports .nav-toggle:hover .nav-chevron { color: #fbbf24; }
 .group-base .nav-toggle.open > span:first-child,    .group-base .nav-toggle:hover .nav-chevron    { color: #60a5fa; }
 .group-sys .nav-toggle.open > span:first-child,     .group-sys .nav-toggle:hover .nav-chevron     { color: #fb923c; }
+.group-erp .nav-toggle.open > span:first-child,     .group-erp .nav-toggle:hover .nav-chevron     { color: #f472b6; }
 .nav-toggle.open .nav-chevron { transform: rotate(180deg); }
 
 /* حالت فعال: گرادیان رنگی هر بخش + درخشش */
@@ -1301,6 +1364,41 @@ button.nav-toggle:focus-visible{outline:none;}
 .group-reports .nav-link.active { background: linear-gradient(135deg, #fbbf24, #d97706); box-shadow: 0 8px 22px rgba(245,158,11,.42); }
 .group-base .nav-link.active    { background: linear-gradient(135deg, #60a5fa, #2563eb); box-shadow: 0 8px 22px rgba(59,130,246,.42); }
 .group-sys .nav-link.active     { background: linear-gradient(135deg, #fb923c, #ea580c); box-shadow: 0 8px 22px rgba(249,115,22,.42); }
+.group-erp .nav-link.active     { background: linear-gradient(135deg, #f472b6, #db2777); box-shadow: 0 8px 22px rgba(236,72,153,.42); }
+
+/* عنوان «ERP» با تایپوگرافی لاتین و کمی برجسته‌تر */
+.group-erp .nav-section-title > span:first-child {
+    font-family: "Segoe UI", "Vazirmatn", sans-serif;
+    letter-spacing: .12em;
+    font-weight: 800;
+}
+
+.group-chat .nav-section-title { color: #0284c7; }
+.group-chat .nav-link i { color: #0284c7; }
+.group-chat .nav-link.active { background: linear-gradient(135deg, #0284c7, #0369a1); box-shadow: 0 8px 22px rgba(2,132,199,.42); }
+.group-chat .nav-group-items { border-inline-start-color: rgba(2,132,199,.28); }
+.group-chat .nav-toggle.open > span:first-child, .group-chat .nav-toggle:hover .nav-chevron { color: #0284c7; }
+
+/* زیرعنوان‌های داخل یک گروه (تعاریف پایه / عملیات انبار / گزارش‌ها) */
+.nav-subhead {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    color: rgba(226, 232, 240, .42);
+    padding: .55rem 1.05rem .2rem;
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    white-space: nowrap;
+}
+.nav-subhead::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(to left, currentColor, transparent);
+    opacity: .45;
+}
+.nav-subhead:first-child { padding-top: .25rem; }
 .nav-link.active i { color: #fff !important; }
 .nav-link.active::before { background: rgba(255,255,255,.95); box-shadow: 0 0 8px rgba(255,255,255,.6); }
 
@@ -1318,6 +1416,14 @@ button.nav-toggle:focus-visible{outline:none;}
 }
 
 /* ====== آواتار دایره‌ای کاربران (سراسری) ====== */
+
+/* ====== تغییر #5: تمام دکمه‌های ماژول ERP به سمت چپ ====== */
+.page-head .ms-auto,
+.page-head .d-flex.ms-auto,
+.page-head > .d-flex.gap-2 {
+    margin-right: auto !important;
+    margin-left: 0 !important;
+}
 .user-avatar {
     width: 36px; height: 36px;
     border-radius: 50%;
@@ -1342,3 +1448,436 @@ button.nav-toggle:focus-visible{outline:none;}
 }
 .pp-preview img { width: 100%; height: 100%; object-fit: cover; }
 .pp-preview-lg { width: 110px; height: 110px; font-size: 3rem; }
+
+/* ============================================================
+   ماژول انبارداری — تب‌های فرم، درخت گروه کالا، گرید سطرهای سند
+   (کاملاً هم‌خانواده با قالب فعلی: همان متغیرها، شعاع و سایه‌ها)
+   ============================================================ */
+
+/* ---------- تب‌های داخل مودال / فرم چندمرحله‌ای ---------- */
+.mtabs {
+    display: flex; gap: .4rem; flex-wrap: nowrap; overflow-x: auto;
+    border-bottom: 1px solid var(--border); padding-bottom: .65rem; margin-bottom: 1.1rem;
+    scrollbar-width: thin;
+}
+.mtab {
+    display: inline-flex; align-items: center; gap: .45rem; white-space: nowrap;
+    border: 1px solid var(--border); background: #fff; color: var(--text-muted);
+    border-radius: 10px; padding: .5rem .85rem; font-size: .85rem; font-weight: 600;
+    cursor: pointer; transition: all .15s ease;
+}
+.mtab i { font-size: 1rem; }
+.mtab:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-50); }
+.mtab.active {
+    background: linear-gradient(135deg, var(--primary), var(--primary-600));
+    border-color: transparent; color: #fff; box-shadow: 0 6px 16px rgba(79, 70, 229, .28);
+}
+.mtab.invalid { border-color: var(--danger); color: var(--danger); }
+.mtab .mtab-num {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--primary-50); color: var(--primary);
+    display: inline-flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 800;
+}
+.mtab.active .mtab-num { background: rgba(255, 255, 255, .25); color: #fff; }
+
+/* ---------- نوار مرحله‌ای (Wizard) ---------- */
+.wiz-bar { display: flex; align-items: center; gap: .25rem; margin-bottom: 1rem; }
+.wiz-dot {
+    width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center;
+    justify-content: center; font-size: .72rem; font-weight: 800;
+    background: #f1f5f9; color: var(--text-soft); flex: 0 0 auto;
+}
+.wiz-dot.done { background: #d1fae5; color: #065f46; }
+.wiz-dot.active { background: var(--primary); color: #fff; box-shadow: 0 0 0 4px var(--primary-50); }
+.wiz-line { height: 3px; flex: 1; background: #e2e8f0; border-radius: 3px; }
+.wiz-line.done { background: #a7f3d0; }
+
+/* ---------- درخت گروه کالا ---------- */
+.tree { padding: .35rem .2rem; user-select: none; }
+.tree-children { padding-right: 1.15rem; position: relative; }
+.tree-children::before {
+    content: ""; position: absolute; right: .42rem; top: 0; bottom: .55rem;
+    width: 2px; background: linear-gradient(180deg, var(--primary-100), #eef2f7); border-radius: 2px;
+}
+.tree-row {
+    display: flex; align-items: center; gap: .5rem; padding: .45rem .6rem; margin-bottom: .25rem;
+    border: 1px solid transparent; border-radius: 10px; cursor: pointer; transition: all .13s ease;
+}
+.tree-row:hover { background: var(--primary-50); border-color: #e0e7ff; }
+.tree-row.selected {
+    background: linear-gradient(135deg, var(--primary-50), #fff);
+    border-color: var(--primary); box-shadow: var(--shadow-sm);
+}
+.tree-row.inactive .tree-name { color: var(--text-soft); text-decoration: line-through; }
+.tree-caret {
+    width: 22px; height: 22px; flex: 0 0 auto; border: none; background: transparent; color: var(--text-soft);
+    border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: .8rem;
+    transition: transform .15s ease, background .15s ease;
+}
+.tree-caret:hover { background: #e2e8f0; color: var(--text); }
+.tree-caret.open { transform: rotate(-90deg); }
+.tree-caret.leaf { visibility: hidden; }
+.tree-icon {
+    width: 28px; height: 28px; flex: 0 0 auto; border-radius: 8px; display: inline-flex;
+    align-items: center; justify-content: center; background: var(--primary-50); color: var(--primary);
+    font-size: .95rem;
+}
+.tree-row.selected .tree-icon { background: var(--primary); color: #fff; }
+.tree-name { font-weight: 600; font-size: .9rem; }
+.tree-code { font-size: .7rem; color: var(--text-soft); }
+.tree-count {
+    font-size: .68rem; font-weight: 700; background: #f1f5f9; color: #64748b;
+    border-radius: 999px; padding: .05rem .5rem;
+}
+.tree-actions { margin-right: auto; display: flex; gap: .15rem; opacity: 0; transition: opacity .15s; }
+.tree-row:hover .tree-actions, .tree-row.selected .tree-actions { opacity: 1; }
+.tree-actions .btn { --bs-btn-padding-y: .1rem; --bs-btn-padding-x: .4rem; font-size: .8rem; }
+
+/* ---------- ماهیت اسناد ---------- */
+.badge-nature-inc { background: #d1fae5; color: #065f46; }
+.badge-nature-dec { background: #fee2e2; color: #991b1b; }
+.badge-nature-neu { background: #e0f2fe; color: #075985; }
+.nature-strip { width: 4px; border-radius: 4px; align-self: stretch; }
+.nature-strip.inc { background: var(--success); }
+.nature-strip.dec { background: var(--danger); }
+.nature-strip.neu { background: var(--info); }
+
+/* ---------- گرید سطرهای سند انبار ---------- */
+.doc-grid { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.doc-grid table { margin: 0; }
+.doc-grid thead th {
+    background: #f8fafc; font-size: .74rem; padding: .55rem .6rem; white-space: nowrap;
+}
+.doc-grid tbody td { padding: .35rem .45rem; vertical-align: middle; }
+.doc-grid .form-control, .doc-grid .form-select { font-size: .85rem; padding: .32rem .55rem; border-radius: 8px; }
+.doc-grid tbody tr:hover { background: #f8fafc; }
+.doc-grid .row-no {
+    width: 26px; height: 26px; border-radius: 8px; background: var(--primary-50); color: var(--primary);
+    font-size: .72rem; font-weight: 800; display: inline-flex; align-items: center; justify-content: center;
+}
+.doc-total-bar {
+    display: flex; flex-wrap: wrap; gap: 1.2rem; align-items: center;
+    background: linear-gradient(135deg, var(--primary-50), #fff);
+    border: 1px solid #e0e7ff; border-radius: 12px; padding: .7rem 1rem; margin-top: .9rem;
+}
+.doc-total-bar .lbl { font-size: .72rem; color: var(--text-muted); }
+.doc-total-bar .val { font-weight: 800; font-variant-numeric: tabular-nums; }
+
+/* ---------- کارت‌های خلاصه کوچک ---------- */
+.mini-kpi {
+    display: flex; align-items: center; gap: .7rem; background: var(--card);
+    border: 1px solid var(--border); border-radius: 12px; padding: .7rem .9rem;
+}
+.mini-kpi i {
+    width: 34px; height: 34px; border-radius: 10px; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 1rem;
+}
+.mini-kpi .k-val { font-weight: 800; font-size: 1.02rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.mini-kpi .k-lbl { font-size: .72rem; color: var(--text-muted); }
+
+/* ---------- جعبه ویژگی‌های کالا ---------- */
+.attr-box {
+    border: 1px dashed var(--border); border-radius: 12px; padding: .8rem; background: #fbfdff;
+}
+.attr-empty { text-align: center; color: var(--text-soft); font-size: .84rem; padding: 1.2rem .5rem; }
+
+/* =========================================================================
+   ماژول پیام‌رسان سازمانی مشابه تلگرام (Enterprise Telegram-Style Chat)
+   ========================================================================= */
+.telegram-container {
+    display: flex; height: calc(100vh - 85px); background: #ffffff;
+    border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); margin: -0.5rem -0.5rem 0 -0.5rem;
+}
+
+/* ستون گفتگوها (Sidebar) */
+.telegram-sidebar {
+    width: 340px; min-width: 300px; max-width: 380px; display: flex; flex-direction: column;
+    border-left: 1px solid #e2e8f0; background: #f8fafc;
+}
+.sidebar-header {
+    padding: 0.9rem 1rem 0.6rem 1rem; background: #ffffff; border-bottom: 1px solid #e2e8f0;
+}
+.chat-avatar-self {
+    width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: #ffffff; display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+}
+.chat-search-wrap {
+    position: relative; display: flex; align-items: center;
+}
+.chat-search-wrap .search-icon {
+    position: absolute; right: 10px; color: #94a3b8; font-size: 0.85rem; pointer-events: none;
+}
+.chat-search-input {
+    padding-right: 32px; padding-left: 28px; border-radius: 20px; background: #f1f5f9; border: 1px solid transparent;
+}
+.chat-search-input:focus {
+    background: #ffffff; border-color: #0284c7; box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+.btn-clear-search {
+    position: absolute; left: 8px; background: transparent; border: none; color: #94a3b8; cursor: pointer;
+}
+.chat-filter-tabs {
+    display: flex; gap: 0.3rem; overflow-x: auto; padding-bottom: 0.2rem;
+}
+.chat-filter-tabs .tab-btn {
+    background: transparent; border: none; font-size: 0.78rem; font-weight: 600; color: #64748b;
+    padding: 0.3rem 0.7rem; border-radius: 14px; cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.chat-filter-tabs .tab-btn.active {
+    background: #0284c7; color: #ffffff;
+}
+.tab-unread-pill {
+    background: #ef4444; color: #ffffff; font-size: 0.68rem; padding: 1px 5px; border-radius: 10px; margin-right: 3px;
+}
+
+/* لیست دیالوگ‌ها */
+.dialogs-list {
+    flex: 1; overflow-y: auto;
+}
+.dialog-item {
+    display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; cursor: pointer;
+    border-bottom: 1px solid #f1f5f9; transition: background 0.15s; position: relative;
+}
+.dialog-item:hover {
+    background: #f1f5f9;
+}
+.dialog-item.active {
+    background: #e0f2fe; border-right: 3px solid #0284c7;
+}
+.dialog-item.pinned {
+    background: #fdfbf7;
+}
+.dialog-avatar-wrap {
+    position: relative; flex-shrink: 0;
+}
+.dialog-avatar {
+    width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem; color: #ffffff;
+}
+.dialog-avatar.sm {
+    width: 36px; height: 36px; font-size: 1rem;
+}
+.direct-avatar {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+}
+.group-avatar {
+    background: linear-gradient(135deg, #10b981, #059669);
+}
+.online-indicator {
+    position: absolute; bottom: 1px; left: 1px; width: 11px; height: 11px; background: #22c55e;
+    border: 2px solid #ffffff; border-radius: 50%;
+}
+.online-indicator.sm {
+    width: 9px; height: 9px;
+}
+.dialog-info {
+    flex: 1; min-width: 0;
+}
+.dialog-top {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.2rem;
+}
+.dialog-title {
+    font-weight: 700; font-size: 0.85rem; color: #1e293b;
+}
+.dialog-time {
+    font-size: 0.7rem; color: #94a3b8; flex-shrink: 0;
+}
+.dialog-bottom {
+    display: flex; justify-content: space-between; align-items: center;
+}
+.dialog-snippet {
+    font-size: 0.78rem; color: #64748b;
+}
+.unread-badge {
+    background: #0284c7; color: #ffffff; font-size: 0.7rem; font-weight: 700;
+    padding: 2px 7px; border-radius: 12px; min-width: 20px; text-align: center;
+}
+
+/* پنجره پیام‌ها (Main Chat) */
+.telegram-main {
+    flex: 1; display: flex; flex-direction: column; background: #f8fafc;
+    background-image: radial-gradient(#e2e8f0 1px, transparent 1px); background-size: 20px 20px;
+}
+.chat-placeholder {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+}
+.placeholder-card {
+    text-align: center; background: #ffffff; padding: 2.5rem 3rem; border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); border: 1px solid #e2e8f0; max-width: 440px;
+}
+.placeholder-icon {
+    width: 70px; height: 70px; border-radius: 50%; background: #e0f2fe; color: #0284c7;
+    display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 1.2rem auto;
+}
+.chat-header {
+    height: 60px; background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 0 1.2rem;
+    display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+}
+.pinned-bar {
+    background: #fffbeb; border-bottom: 1px solid #fef3c7; padding: 0.4rem 1rem;
+    display: flex; align-items: center; font-size: 0.8rem; color: #92400e;
+}
+.chat-messages-scroll {
+    flex: 1; overflow-y: auto; padding: 1.2rem 1.5rem; display: flex; flex-direction: column; gap: 0.6rem;
+}
+
+/* حباب‌های پیام */
+.system-message-row {
+    display: flex; justify-content: center; margin: 0.4rem 0;
+}
+.system-bubble {
+    background: rgba(100, 116, 139, 0.2); color: #334155; font-size: 0.72rem; padding: 3px 12px;
+    border-radius: 12px; font-weight: 600;
+}
+.message-row {
+    display: flex; width: 100%; position: relative;
+}
+.message-row.outgoing {
+    justify-content: flex-start; /* در چت RTL پیام ارسالی سمت راست */
+}
+.message-row.incoming {
+    justify-content: flex-end;
+}
+.message-bubble {
+    max-width: 72%; padding: 0.6rem 0.85rem; border-radius: 14px; position: relative;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06); font-size: 0.86rem; line-height: 1.45;
+}
+.bubble-out {
+    background: #dcf8c6; color: #1e293b; border-bottom-right-radius: 4px;
+}
+.bubble-in {
+    background: #ffffff; color: #1e293b; border-bottom-left-radius: 4px;
+}
+.bubble-sender {
+    font-size: 0.74rem; font-weight: 700; color: #0284c7; margin-bottom: 0.2rem;
+}
+.bubble-reply-preview {
+    display: flex; background: rgba(0, 0, 0, 0.04); border-radius: 6px; padding: 0.3rem 0.5rem;
+    margin-bottom: 0.4rem; cursor: pointer; gap: 0.4rem;
+}
+.reply-bar {
+    width: 3px; background: #0284c7; border-radius: 3px;
+}
+.reply-sender {
+    font-size: 0.7rem; font-weight: 700; color: #0284c7;
+}
+.reply-text {
+    font-size: 0.72rem; color: #64748b;
+}
+.bubble-text {
+    word-break: break-word; white-space: pre-wrap;
+}
+.bubble-footer {
+    display: flex; align-items: center; justify-content: flex-end; gap: 0.3rem; margin-top: 0.2rem;
+}
+.bubble-time {
+    font-size: 0.65rem; color: #64748b;
+}
+.edited-label {
+    font-size: 0.62rem; color: #94a3b8; font-style: italic;
+}
+.bubble-checks {
+    font-size: 0.85rem; line-height: 1;
+}
+
+/* پیوست‌ها و کارت‌های ERP */
+.bubble-image-wrap {
+    margin-bottom: 0.4rem; border-radius: 10px; overflow: hidden; max-height: 280px;
+}
+.bubble-img {
+    width: 100%; height: auto; object-fit: cover; cursor: pointer; border-radius: 10px;
+}
+.bubble-file-card {
+    display: flex; align-items: center; gap: 0.6rem; background: rgba(0, 0, 0, 0.04);
+    padding: 0.5rem 0.7rem; border-radius: 10px; margin-bottom: 0.4rem;
+}
+.file-dl-btn {
+    border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+}
+.bubble-erp-card {
+    background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 0.6rem 0.8rem;
+    margin-bottom: 0.4rem; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+}
+
+/* واکنش‌ها */
+.bubble-reactions {
+    display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem;
+}
+.reaction-pill {
+    background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1px 7px;
+    font-size: 0.75rem; cursor: pointer; display: flex; align-items: center; gap: 3px; transition: all 0.15s;
+}
+.reaction-pill.active {
+    background: #e0f2fe; border-color: #0284c7;
+}
+.reaction-pill .count {
+    font-size: 0.68rem; font-weight: 700; color: #475569;
+}
+
+/* منوی سریع روی پیام */
+.bubble-actions-overlay {
+    position: absolute; top: -14px; left: 10px; background: #ffffff; border: 1px solid #e2e8f0;
+    border-radius: 18px; padding: 2px 6px; display: none; align-items: center; gap: 4px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1); z-index: 10;
+}
+.message-bubble:hover .bubble-actions-overlay {
+    display: flex;
+}
+.bubble-actions-overlay .action-btn {
+    background: transparent; border: none; font-size: 0.75rem; padding: 2px 5px; border-radius: 6px;
+    cursor: pointer; color: #64748b;
+}
+.bubble-actions-overlay .action-btn:hover {
+    background: #f1f5f9; color: #0284c7;
+}
+
+/* ورودی پیام */
+.chat-input-area {
+    background: #ffffff; border-top: 1px solid #e2e8f0; padding: 0.6rem 1rem; position: relative;
+}
+.input-banner {
+    display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0.8rem;
+    border-radius: 8px; margin-bottom: 0.5rem;
+}
+.reply-banner { background: #e0f2fe; border: 1px solid #bae6fd; }
+.edit-banner { background: #fef3c7; border: 1px solid #fde68a; }
+.input-row {
+    display: flex; align-items: center; gap: 0.5rem;
+}
+.btn-attach {
+    color: #64748b; cursor: pointer; padding: 0.35rem 0.6rem; border-radius: 50%;
+}
+.btn-attach:hover { background: #f1f5f9; color: #0284c7; }
+.emoji-quick-bar {
+    display: flex; gap: 2px;
+}
+.btn-emoji {
+    background: transparent; border: none; font-size: 1.1rem; cursor: pointer; padding: 2px 4px; border-radius: 6px;
+}
+.btn-emoji:hover { background: #f1f5f9; }
+.chat-textarea {
+    resize: none; border-radius: 20px; padding: 0.45rem 1rem; border: 1px solid #cbd5e1; max-height: 120px;
+}
+.btn-send {
+    border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; background: #0284c7; border-color: #0284c7;
+}
+
+/* مدال‌ها و انتخاب‌گر کاربر */
+.chat-modal-backdrop {
+    background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(4px);
+}
+.users-picker-list {
+    max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.3rem;
+}
+.user-picker-item {
+    display: flex; align-items: center; padding: 0.5rem 0.7rem; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: all 0.15s;
+}
+.user-picker-item:hover {
+    background: #f1f5f9;
+}
+.user-picker-item.selected {
+    background: #e0f2fe; border-color: #7dd3fc;
+}
+

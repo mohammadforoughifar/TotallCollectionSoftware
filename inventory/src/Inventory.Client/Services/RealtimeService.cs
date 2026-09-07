@@ -26,17 +26,23 @@ public class RealtimeService : IAsyncDisposable
     private HubConnection? _hub;
     private string? _startedFor;
 
-    /// <summary>برقراری اتصال (فقط یک‌بار — فراخوانی‌های بعدی بی‌اثرند).</summary>
-    public async Task EnsureStartedAsync(string baseUrl, int userId)
+    /// <summary>برقراری اتصال تفکیک‌شده بر اساس شناسه کاربر و نقش (فقط یک‌بار — فراخوانی‌های بعدی بی‌اثرند).</summary>
+    public async Task EnsureStartedAsync(string baseUrl, int userId, string? role = null)
     {
-        var key = $"{baseUrl}|{userId}";
+        var key = $"{baseUrl}|{userId}|{role}";
         if (_hub != null && _startedFor == key && IsConnected) return;
 
         await StopAsync();
         if (userId <= 0 || string.IsNullOrWhiteSpace(baseUrl)) return;
 
+        var hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/notify?userId={userId}";
+        if (!string.IsNullOrWhiteSpace(role))
+        {
+            hubUrl += $"&role={Uri.EscapeDataString(role)}";
+        }
+
         _hub = new HubConnectionBuilder()
-            .WithUrl($"{baseUrl.TrimEnd('/')}/hubs/notify?userId={userId}")
+            .WithUrl(hubUrl)
             .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) })
             .Build();
 
