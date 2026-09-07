@@ -95,6 +95,7 @@ public class ReportWorksController : RbacControllerBase
     {
         if (q.ProjectId is > 0) query = query.Where(r => r.ProjectId == q.ProjectId);
         if (q.UserId is > 0) query = query.Where(r => r.UserId == q.UserId);
+        if (q.OperatorId is > 0) query = query.Where(r => r.OperatorId == q.OperatorId);
         if (q.From is not null)
         {
             var f = q.From.Value.Date;
@@ -177,6 +178,8 @@ public class ReportWorksController : RbacControllerBase
             "project" => desc ? query.OrderByDescending(r => r.Project!.ProjectName) : query.OrderBy(r => r.Project!.ProjectName),
             "user" => desc ? query.OrderByDescending(r => r.User!.FirstName).ThenByDescending(r => r.User!.LastName)
                            : query.OrderBy(r => r.User!.FirstName).ThenBy(r => r.User!.LastName),
+            "operator" => desc ? query.OrderByDescending(r => r.Operator!.FirstName).ThenByDescending(r => r.Operator!.LastName)
+                               : query.OrderBy(r => r.Operator!.FirstName).ThenBy(r => r.Operator!.LastName),
             "start" => desc ? query.OrderByDescending(r => r.StartTime) : query.OrderBy(r => r.StartTime),
             "end" => desc ? query.OrderByDescending(r => r.EndTime) : query.OrderBy(r => r.EndTime),
             "rest" => desc
@@ -213,6 +216,7 @@ public class ReportWorksController : RbacControllerBase
         var rows = await Db.ReportWorks.AsNoTracking()
             .Include(r => r.Project)
             .Include(r => r.User)
+            .Include(r => r.Operator)
             .Where(r => ids.Contains(r.Id))
             .ToListAsync();
         var map = rows.ToDictionary(r => r.Id);
@@ -244,13 +248,14 @@ public class ReportWorksController : RbacControllerBase
         var list = await ApplySort(filtered, q.Sort, q.Desc)
             .Include(r => r.Project)
             .Include(r => r.User)
+            .Include(r => r.Operator)
             .ToListAsync();
 
         using var wb = new ClosedXML.Excel.XLWorkbook();
         var ws = wb.Worksheets.Add("گزارش‌های کار");
         ws.RightToLeft = true;
 
-        var headers = new[] { "ردیف", "تاریخ", "کد پروژه", "پروژه", "کاربر", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" };
+        var headers = new[] { "ردیف", "تاریخ", "کد پروژه", "پروژه", "کاربر", "اپراتور", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" };
         for (var i = 0; i < headers.Length; i++)
         {
             var c = ws.Cell(1, i + 1);
@@ -271,11 +276,12 @@ public class ReportWorksController : RbacControllerBase
             ws.Cell(row, 3).Value = !string.IsNullOrEmpty(r.CodeProject) ? r.CodeProject : (r.Project?.CodeProject ?? "");
             ws.Cell(row, 4).Value = r.Project?.ProjectName ?? "";
             ws.Cell(row, 5).Value = r.User is null ? "" : DisplayOf(r.User);
-            ws.Cell(row, 6).Value = r.StartTime.ToString("HH:mm");
-            ws.Cell(row, 7).Value = r.EndTime.ToString("HH:mm");
-            ws.Cell(row, 8).Value = $"{(int)rest.TotalHours}:{rest.Minutes:00}";
-            ws.Cell(row, 9).Value = $"{(int)r.SpentTime.TotalHours}:{r.SpentTime.Minutes:00}";
-            ws.Cell(row, 10).Value = r.WorkDescription;
+            ws.Cell(row, 6).Value = r.Operator is null ? "" : DisplayOf(r.Operator);
+            ws.Cell(row, 7).Value = r.StartTime.ToString("HH:mm");
+            ws.Cell(row, 8).Value = r.EndTime.ToString("HH:mm");
+            ws.Cell(row, 9).Value = $"{(int)rest.TotalHours}:{rest.Minutes:00}";
+            ws.Cell(row, 10).Value = $"{(int)r.SpentTime.TotalHours}:{r.SpentTime.Minutes:00}";
+            ws.Cell(row, 11).Value = r.WorkDescription;
             totalTicks += r.SpentTime.Ticks;
             row++;
         }
@@ -283,8 +289,8 @@ public class ReportWorksController : RbacControllerBase
         var sum = TimeSpan.FromTicks(totalTicks);
         ws.Cell(row, 1).Value = $"جمع کل — {list.Count} گزارش";
         ws.Cell(row, 1).Style.Font.Bold = true;
-        ws.Cell(row, 9).Value = $"{(int)sum.TotalHours}:{sum.Minutes:00}";
-        ws.Cell(row, 9).Style.Font.Bold = true;
+        ws.Cell(row, 10).Value = $"{(int)sum.TotalHours}:{sum.Minutes:00}";
+        ws.Cell(row, 10).Style.Font.Bold = true;
         ws.Range(row, 1, row, headers.Length).Style.Fill.BackgroundColor = ClosedXML.Excel.XLColor.FromHtml("#FEF3C7");
         ws.Columns(1, headers.Length).AdjustToContents();
 
@@ -302,6 +308,7 @@ public class ReportWorksController : RbacControllerBase
         var r = await Db.ReportWorks.AsNoTracking()
             .Include(x => x.Project)
             .Include(x => x.User)
+            .Include(x => x.Operator)
             .FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
         return r is null ? NotFound(new { message = "گزارش کار پیدا نشد." }) : Ok(ToDto(r));
     }
@@ -410,6 +417,10 @@ public class ReportWorksController : RbacControllerBase
 
         if (dto.EndTime == dto.StartTime)
             return BadRequest(new { message = "ساعت شروع و پایان نمی‌توانند یکسان باشند." });
+
+        // اپراتور (انجام‌دهندهٔ کار) اختیاری است ولی اگر داده شد باید کاربر معتبر باشد
+        if (dto.OperatorId is > 0 && !await Db.Users.AnyAsync(u => u.Id == dto.OperatorId))
+            return BadRequest(new { message = "اپراتور انتخاب‌شده در لیست کاربران وجود ندارد." });
         return null;
     }
 
@@ -417,6 +428,7 @@ public class ReportWorksController : RbacControllerBase
     {
         e.ReportDate = dto.ReportDate.Date;
         e.UserId = dto.UserId;
+        e.OperatorId = dto.OperatorId is > 0 ? dto.OperatorId : null;
         e.WorkDescription = dto.WorkDescription.Trim();
         e.ProjectId = dto.ProjectId;
         e.StartTime = dto.StartTime;
@@ -445,6 +457,7 @@ public class ReportWorksController : RbacControllerBase
         Id = r.Id,
         ReportDate = r.ReportDate,
         UserId = r.UserId,
+        OperatorId = r.OperatorId,
         WorkDescription = r.WorkDescription,
         ProjectId = r.ProjectId,
         // اولویت با کد ذخیره‌شده روی گزارش (اسنادی)؛ برای داده‌های خیلی قدیمی از خود پروژه
@@ -455,6 +468,7 @@ public class ReportWorksController : RbacControllerBase
         LunchTime = r.LunchTime,
         SpentTime = r.SpentTime,
         ProjectName = r.Project is null ? null : r.Project.ProjectName,
-        UserName = r.User is null ? null : DisplayOf(r.User)
+        UserName = r.User is null ? null : DisplayOf(r.User),
+        OperatorName = r.Operator is null ? null : DisplayOf(r.Operator)
     };
 }

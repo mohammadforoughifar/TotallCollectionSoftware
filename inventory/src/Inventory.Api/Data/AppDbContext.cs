@@ -183,9 +183,13 @@ public class AppDbContext : DbContext
         mb.Entity<ProjectEntryExit>().HasIndex(p => p.UserId);
         mb.Entity<ReportWork>().HasIndex(r => r.ProjectId);
         mb.Entity<ReportWork>().HasIndex(r => r.UserId);
+        mb.Entity<ReportWork>().HasIndex(r => r.OperatorId);
         mb.Entity<ProjectAttach>().HasIndex(a => a.ProjectId);
         mb.Entity<ProjectChangeRequest>().HasIndex(c => c.ProjectId);
         mb.Entity<ProjectChangeRequest>().HasIndex(c => c.Status);
+
+        // جمع ساعات پروژه به‌صورت تیک (bigint) — نوع time فقط تا ۲۴ ساعت را می‌پذیرد
+        mb.Entity<ProjectEntryExit>().Property(p => p.TotalSpentTime).HasConversion<long>();
 
         // رکوردهای ورود/خروج → مراجع (حذف نرم — جلوگیری از حذف فیزیکی مرجع‌های درحال‌استفاده)
         mb.Entity<ProjectEntryExit>()
@@ -214,6 +218,12 @@ public class AppDbContext : DbContext
             .HasOne(r => r.User)
             .WithMany()
             .HasForeignKey(r => r.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
+        // اپراتور (انجام‌دهندهٔ کار) — جدا از ثبت‌کننده؛ اختیاری
+        mb.Entity<ReportWork>()
+            .HasOne(r => r.Operator)
+            .WithMany()
+            .HasForeignKey(r => r.OperatorId)
             .OnDelete(DeleteBehavior.Restrict);
         mb.Entity<ProjectAttach>()
             .HasOne(a => a.Project)

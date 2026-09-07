@@ -170,8 +170,11 @@ public class ReportWorkDto
     /// <summary>تاریخ گزارش</summary>
     public DateTime ReportDate { get; set; } = DateTime.Today;
 
-    /// <summary>شناسه کاربر لاگین (اپراتور)</summary>
+    /// <summary>شناسه کاربر لاگین — ثبت‌کنندهٔ گزارش</summary>
     public int UserId { get; set; }
+
+    /// <summary>اپراتور — کسی که روی پروژه کار انجام داده (از لیست کاربران؛ اختیاری). با ثبت‌کننده فرق دارد.</summary>
+    public int? OperatorId { get; set; }
     public string WorkDescription { get; set; } = "";
     public int ProjectId { get; set; }
 
@@ -193,6 +196,7 @@ public class ReportWorkDto
     // ---------- نمایشی ----------
     public string? ProjectName { get; set; }
     public string? UserName { get; set; }
+    public string? OperatorName { get; set; }
 }
 
 /// <summary>پیوست پروژه (فایل رمزنگاری‌شده روی سرور)</summary>
@@ -213,6 +217,9 @@ public class ProjectAttachDto
 public class ProjectLookups
 {
     public List<LookupItem> Users { get; set; } = new();
+
+    /// <summary>اپراتورها (انجام‌دهندگان کار) — همهٔ کاربران شامل غیرفعال‌ها/کاربران قدیمیِ مهاجرت‌شده، تا گزارش‌های قدیمی قابل فیلتر بمانند</summary>
+    public List<LookupItem> Operators { get; set; } = new();
     public List<LookupItem> KarFarmas { get; set; } = new();
     public List<LookupItem> TypeFactors { get; set; } = new();
     public List<LookupItem> Projects { get; set; } = new();
@@ -332,6 +339,9 @@ public class ReportWorkListQuery
     // ---------- فیلترهای بالای صفحه ----------
     public int? ProjectId { get; set; }
     public int? UserId { get; set; }
+
+    /// <summary>اپراتور (انجام‌دهندهٔ واقعی کار) — جدا از ثبت‌کننده (UserId)</summary>
+    public int? OperatorId { get; set; }
     public DateTime? From { get; set; }
     public DateTime? To { get; set; }
 
@@ -363,6 +373,7 @@ public class ReportWorkListQuery
         }
         if (ProjectId is > 0) Add("projectId", ProjectId.ToString());
         if (UserId is > 0) Add("userId", UserId.ToString());
+        if (OperatorId is > 0) Add("operatorId", OperatorId.ToString());
         if (From.HasValue) Add("from", From.Value.ToString("yyyy-MM-dd"));
         if (To.HasValue) Add("to", To.Value.ToString("yyyy-MM-dd"));
         Add("fDate", FDate);

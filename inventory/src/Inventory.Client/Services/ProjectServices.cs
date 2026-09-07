@@ -63,7 +63,7 @@ public interface IProjectService
 public interface IReportWorkService
 {
     Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
-        DateTime? from = null, DateTime? to = null);
+        DateTime? from = null, DateTime? to = null, int? operatorId = null);
 
     /// <summary>لیست صفحه‌بندی‌شده سمت سرور با فیلتر سرستون‌ها.</summary>
     Task<PagedResult<ReportWorkDto>> GetPagedAsync(ReportWorkListQuery query);
@@ -204,12 +204,13 @@ public class ReportWorkService : IReportWorkService
 
     /// <summary>سازگاری با کدهای قدیمی — همهٔ ردیف‌ها را یکجا می‌گیرد (PageSize=0).</summary>
     public async Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
-        DateTime? from = null, DateTime? to = null)
+        DateTime? from = null, DateTime? to = null, int? operatorId = null)
     {
         var res = await GetPagedAsync(new ReportWorkListQuery
         {
             ProjectId = projectId,
             UserId = userId,
+            OperatorId = operatorId,
             From = from,
             To = to,
             PageSize = 0
