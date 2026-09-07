@@ -75,13 +75,16 @@ else
                 </div>
                 <div class="d-flex align-items-center gap-2 me-2">
                     @* ================== دکمه پیام‌رسان سازمانی (Chat) ================== *@
-                    <a href="chat" class="btn btn-sm btn-light ntf-bell" title="پیام‌رسان سازمانی">
-                        <i class="bi bi-chat-dots-fill text-primary"></i>
-                        @if (chatUnreadCount > 0)
-                        {
-                            <span class="ntf-badge bg-danger">@(chatUnreadCount > 99 ? "99+" : chatUnreadCount.ToString())</span>
-                        }
-                    </a>
+                    @if (Auth.HasModule("Chat"))
+                    {
+                        <a href="chat" class="btn btn-sm btn-light ntf-bell" title="پیام‌رسان سازمانی">
+                            <i class="bi bi-chat-dots-fill text-primary"></i>
+                            @if (chatUnreadCount > 0)
+                            {
+                                <span class="ntf-badge bg-danger">@(chatUnreadCount > 99 ? "99+" : chatUnreadCount.ToString())</span>
+                            }
+                        </a>
+                    }
 
                     @* ================== زنگ اعلان‌ها ================== *@
                     <div class="ntf-bell-wrap">

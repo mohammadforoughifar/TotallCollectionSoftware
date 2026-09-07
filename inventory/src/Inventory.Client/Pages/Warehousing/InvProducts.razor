@@ -6,6 +6,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject IServiceProvider ServiceProvider
 
 <PageTitle>تعریف کالا</PageTitle>
 
@@ -481,11 +482,11 @@
             </div>
         }
 
-        @* ============ تب ۴: ویژگی‌ها ============ *@
+        @* ============ تب ۴: ویژگی‌ها (گرید با کمبو + مقدار بر اساس نوع) ============ *@
         else if (tab == 3)
         {
             <div class="attr-box">
-                @if (form.Attributes.Count == 0)
+                @if (availableAttributes.Count == 0 && form.Attributes.Count == 0)
                 {
                     <div class="attr-empty">
                         <i class="bi bi-sliders fs-3 d-block mb-2"></i>
@@ -499,54 +500,85 @@
                 }
                 else
                 {
-                    <div class="row g-3">
-                        @foreach (var a in form.Attributes)
-                        {
-                            <div class="col-md-4">
-                                <label class="form-label">
-                                    @a.AttributeName
-                                    @if (a.IsRequired)
-                                    {
-                                        <span class="text-danger">*</span>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(a.Unit))
-                                    {
-                                        <span class="fs-8 text-muted">(@a.Unit)</span>
-                                    }
-                                </label>
-
-                                @switch (a.ValueType)
-                                {
-                                    case AttrValueType.Text:
-                                        <input class="form-control" @bind="a.TextValue" />
-                                        break;
-                                    case AttrValueType.Number:
-                                        <input type="number" step="any" class="form-control num" @bind="a.NumberValue" dir="ltr" />
-                                        break;
-                                    case AttrValueType.Boolean:
-                                        <select class="form-select" value="@BoolStr(a)" @onchange="e => SetBool(a, e)">
-                                            <option value="">—</option>
-                                            <option value="true">بله</option>
-                                            <option value="false">خیر</option>
-                                        </select>
-                                        break;
-                                    case AttrValueType.Date:
-                                        <DatePicker Value="a.DateValue" ValueChanged="v => a.DateValue = v" AllowClear="true" />
-                                        break;
-                                    case AttrValueType.List:
-                                        <select class="form-select" value="@(a.OptionId?.ToString() ?? "")"
-                                                @onchange="e => a.OptionId = int.TryParse(e.Value?.ToString(), out var oid) ? oid : null">
-                                            <option value="">— انتخاب کنید —</option>
-                                            @foreach (var o in a.Options)
-                                            {
-                                                <option value="@o.Id">@o.Title</option>
-                                            }
-                                        </select>
-                                        break;
-                                }
-                            </div>
-                        }
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="fw-600"><i class="bi bi-sliders text-primary"></i> ویژگی‌های کالا</span>
+                        <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="AddAttributeRow">
+                            <i class="bi bi-plus-lg"></i> افزودن ویژگی
+                        </button>
                     </div>
+
+                    @if (form.Attributes.Count > 0)
+                    {
+                        <div class="doc-grid">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px">#</th>
+                                        <th style="width:35%">ویژگی</th>
+                                        <th>مقدار</th>
+                                        <th style="width:60px"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @for (var i = 0; i < form.Attributes.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var a = form.Attributes[idx];
+                                        <tr>
+                                            <td><span class="row-no">@((idx + 1).FaDigits())</span></td>
+                                            <td>
+                                                <select class="form-select form-select-sm"
+                                                        value="@a.AttributeId"
+                                                        @onchange="e => OnAttributeChanged(idx, e)">
+                                                    <option value="0">— انتخاب ویژگی —</option>
+                                                    @foreach (var attr in availableAttributes)
+                                                    {
+                                                        <option value="@attr.Id">@attr.Name @(!string.IsNullOrWhiteSpace(attr.Unit) ? $"({attr.Unit})" : "")</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                @switch (a.ValueType)
+                                                {
+                                                    case AttrValueType.Text:
+                                                        <input class="form-control form-control-sm" @bind="a.TextValue" placeholder="مقدار متنی" />
+                                                        break;
+                                                    case AttrValueType.Number:
+                                                        <input type="number" step="any" class="form-control form-control-sm num" @bind="a.NumberValue" dir="ltr" placeholder="مقدار عددی" />
+                                                        break;
+                                                    case AttrValueType.Boolean:
+                                                        <select class="form-select form-select-sm" value="@BoolStr(a)" @onchange="e => SetBool(a, e)">
+                                                            <option value="">—</option>
+                                                            <option value="true">بله</option>
+                                                            <option value="false">خیر</option>
+                                                        </select>
+                                                        break;
+                                                    case AttrValueType.Date:
+                                                        <DatePicker Value="a.DateValue" ValueChanged="v => a.DateValue = v" AllowClear="true" />
+                                                        break;
+                                                    case AttrValueType.List:
+                                                        <select class="form-select form-select-sm" value="@(a.OptionId?.ToString() ?? "")"
+                                                                @onchange="e => a.OptionId = int.TryParse(e.Value?.ToString(), out var oid) ? oid : null">
+                                                            <option value="">— انتخاب کنید —</option>
+                                                            @foreach (var o in a.Options)
+                                                            {
+                                                                <option value="@o.Id">@o.Title</option>
+                                                            }
+                                                        </select>
+                                                        break;
+                                                }
+                                            </td>
+                                            <td>
+                                                <button class="btn btn-sm btn-light" title="حذف" @onclick="() => RemoveAttributeRow(idx)">
+                                                    <i class="bi bi-trash text-danger"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
                 }
             </div>
         }
@@ -692,6 +724,7 @@
         fSale = fSale2 = fPurchase = fReorder = fMax = fMinOrder = "";
         tab = 0;
         showModal = true;
+        await LoadAvailableAttributes();
     }
 
     private async Task OpenEdit(InvProduct p)
@@ -711,6 +744,7 @@
         fMinOrder = Fa.Money(form.MinOrderQty);
         tab = 0;
         showModal = true;
+        await LoadAvailableAttributes();
     }
 
     private void CloseModal() => showModal = false;
@@ -735,6 +769,7 @@
             form.Attributes = fresh.Attributes;
             form.EffectiveValuation = fresh.EffectiveValuation;
             form.ValuationSource = fresh.ValuationSource;
+            await LoadAvailableAttributes();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -795,6 +830,58 @@
             return $"{formatted}.{frac}";
         }
         return formatted;
+    }
+
+    // ---------- ویژگی‌ها: لیست ویژگی‌های قابل انتخاب ----------
+    private List<InvAttribute> availableAttributes = new();
+
+    private async Task LoadAvailableAttributes()
+    {
+        try
+        {
+            var attrSvc = (IInvAttributeService)ServiceProvider.GetService(typeof(IInvAttributeService))!;
+            var all = await attrSvc.GetAllAsync(true);
+            availableAttributes = all.Where(a => a.CategoryId == null || a.CategoryId == form.CategoryId).ToList();
+        }
+        catch { availableAttributes = new(); }
+    }
+
+    private void AddAttributeRow()
+    {
+        form.Attributes.Add(new InvProductAttrValue());
+    }
+
+    private async Task OnAttributeChanged(int idx, ChangeEventArgs e)
+    {
+        var attrId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        var attr = availableAttributes.FirstOrDefault(a => a.Id == attrId);
+        var row = form.Attributes[idx];
+        row.AttributeId = attrId;
+        if (attr != null)
+        {
+            row.AttributeName = attr.Name;
+            row.ValueType = attr.ValueType;
+            row.Unit = attr.Unit;
+            row.IsRequired = attr.IsRequired;
+            row.Options = attr.Options.Select(o => new InvAttributeOption
+            {
+                Id = o.Id, AttributeId = o.AttributeId, Title = o.Title, SortOrder = o.SortOrder
+            }).ToList();
+        }
+        else
+        {
+            row.AttributeName = "";
+            row.ValueType = AttrValueType.Text;
+            row.Unit = "";
+            row.Options.Clear();
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RemoveAttributeRow(int idx)
+    {
+        if (idx >= 0 && idx < form.Attributes.Count)
+            form.Attributes.RemoveAt(idx);
     }
 
     private static string BoolStr(InvProductAttrValue a) => a.BoolValue is null ? "" : (a.BoolValue.Value ? "true" : "false");

@@ -1225,6 +1225,28 @@ body {
    (SearchSelect و …) زیر کارت‌ها باز نشوند. */
 .filter-card { position: relative; z-index: 30; }
 
+/* ====== تغییر #9: رفع مشکل z-index کمبوها و تقویم‌ها ====== */
+/* تمام کارت‌ها و مودال‌ها overflow:visible بگیرند تا دراپ‌داون‌ها بریده نشوند */
+.card { overflow: visible; }
+.modal-body { overflow: visible; }
+.modal-content { overflow: visible; }
+
+/* تقویم شمسی و منوی SearchSelect باید بالاتر از همه کارت‌ها باشند */
+.dp-popover,
+.ss-menu,
+.datepicker-dropdown,
+.dropdown-menu {
+    z-index: 1090 !important;
+}
+
+/* مودال‌ها بالاتر از همه باشند */
+.modal { z-index: 1050; }
+.modal-backdrop { z-index: 1040; }
+
+/* کارت‌های داخل مودال نباید overflow:hidden داشته باشند */
+.modal .card { overflow: visible; }
+.modal .card-body { overflow: visible; }
+
 /* حرکت کمتر برای کاربران حساس به حرکت */
 @media (prefers-reduced-motion: reduce) {
     .app-content > *, .btn-primary, .ref-stat, .m-card { animation: none !important; transition: none !important; }
@@ -1351,6 +1373,12 @@ button.nav-toggle:focus-visible{outline:none;}
     font-weight: 800;
 }
 
+.group-chat .nav-section-title { color: #0284c7; }
+.group-chat .nav-link i { color: #0284c7; }
+.group-chat .nav-link.active { background: linear-gradient(135deg, #0284c7, #0369a1); box-shadow: 0 8px 22px rgba(2,132,199,.42); }
+.group-chat .nav-group-items { border-inline-start-color: rgba(2,132,199,.28); }
+.group-chat .nav-toggle.open > span:first-child, .group-chat .nav-toggle:hover .nav-chevron { color: #0284c7; }
+
 /* زیرعنوان‌های داخل یک گروه (تعاریف پایه / عملیات انبار / گزارش‌ها) */
 .nav-subhead {
     font-size: .68rem;
@@ -1388,6 +1416,14 @@ button.nav-toggle:focus-visible{outline:none;}
 }
 
 /* ====== آواتار دایره‌ای کاربران (سراسری) ====== */
+
+/* ====== تغییر #5: تمام دکمه‌های ماژول ERP به سمت چپ ====== */
+.page-head .ms-auto,
+.page-head .d-flex.ms-auto,
+.page-head > .d-flex.gap-2 {
+    margin-right: auto !important;
+    margin-left: 0 !important;
+}
 .user-avatar {
     width: 36px; height: 36px;
     border-radius: 50%;
