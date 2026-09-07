@@ -5,7 +5,7 @@
         <input type="text"
                class="form-control @CssClass"
                value="@Text"
-               placeholder="1403/05/12"
+               placeholder="@(string.IsNullOrWhiteSpace(Placeholder) ? "1403/05/12" : Placeholder)"
                @oninput="OnInput"
                @onblur="OnBlur" />
         @if (AllowClear && Value.HasValue)
@@ -97,6 +97,9 @@
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
     [Parameter] public bool AllowClear { get; set; }
     [Parameter] public string CssClass { get; set; } = "";
+
+    /// <summary>متن جای‌نمای فیلد — مثلاً «از تاریخ» در فیلترها (پیش‌فرض: نمونهٔ تاریخ شمسی)</summary>
+    [Parameter] public string? Placeholder { get; set; }
 
     /// <summary>کلاسِ وضعیتِ روزها (کلید: yyyy-MM-dd میلادی) — مثل «dp-hol» برای تعطیل رسمی یا «dp-leave» برای مرخصی کاربر.</summary>
     [Parameter] public Dictionary<string, string>? DayClasses { get; set; }

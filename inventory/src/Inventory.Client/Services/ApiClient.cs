@@ -140,6 +140,8 @@ public class ApiClient : IApiClient
 
     public async Task DeleteAsync(string path) => await SendAsync<object>(HttpMethod.Delete, path);
 
+    public async Task<T> DeleteAsync<T>(string path) => await SendAsync<T>(HttpMethod.Delete, path);
+
     private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null)
     {
         var req = new HttpRequestMessage(method, Url(path));

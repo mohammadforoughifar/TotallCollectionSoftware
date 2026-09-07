@@ -21,6 +21,7 @@
     }
     .crt-count.m { background: #fff7ed; color: #c2410c; }
     .crt-count.e { background: #eff6ff; color: #1d4ed8; }
+    .crt-count.c { background: #fdf2f8; color: #be185d; }
 
     .crt-tabs { display: flex; gap: .5rem; margin-bottom: 1.1rem; flex-wrap: wrap; }
     .crt-tab {
@@ -34,6 +35,8 @@
     .crt-tab.active.manager .crt-n { background: #fde68a; color: #92400e; }
     .crt-tab.active.expert { border-color: #6366f1; background: linear-gradient(180deg,#eef2ff,#fff); color: #4338ca; }
     .crt-tab.active.expert .crt-n { background: #c7d2fe; color: #3730a3; }
+    .crt-tab.active.changes { border-color: #db2777; background: linear-gradient(180deg,#fdf2f8,#fff); color: #be185d; }
+    .crt-tab.active.changes .crt-n { background: #fbcfe8; color: #9d174d; }
 
     .crt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: .9rem; }
     .crt-card {
@@ -43,6 +46,14 @@
     }
     .crt-card.manager { border-right-color: #f59e0b; }
     .crt-card.expert { border-right-color: #6366f1; }
+    .crt-card.changes { border-right-color: #db2777; }
+    .crt-kind { font-size: .7rem; font-weight: 900; border-radius: 999px; padding: .15rem .6rem; }
+    .crt-kind.edit { background: #eff6ff; color: #1d4ed8; }
+    .crt-kind.del { background: #fef2f2; color: #dc2626; }
+    .crt-summary {
+        font-size: .76rem; color: #334155; background: #f8fafc; border: 1px dashed #e2e8f0;
+        border-radius: 10px; padding: .45rem .6rem; line-height: 1.9; max-height: 160px; overflow: auto;
+    }
     .crt-card-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
     .crt-code { background: #eff6ff; color: #1d4ed8; border-radius: 9px; padding: 2px 10px; font-size: .78rem; font-weight: 800; }
     .crt-wait { font-size: .7rem; font-weight: 800; border-radius: 999px; padding: .15rem .6rem; }
@@ -79,6 +90,10 @@
         <span class="crt-sub">گردش‌کار: ثبت پروژه ← کارتابل مدیر ← کارتابل کارشناسی ← نهایی</span>
         <span class="crt-count m"><i class="bi bi-person-badge"></i> مدیر: @FaDigits(counts?.Manager ?? 0)</span>
         <span class="crt-count e"><i class="bi bi-clipboard2-check"></i> کارشناسی: @FaDigits(counts?.Expert ?? 0)</span>
+        @if (canManager)
+        {
+            <span class="crt-count c"><i class="bi bi-pencil-square"></i> ویرایش/حذف: @FaDigits(counts?.Changes ?? 0)</span>
+        }
         @if (Rt.IsConnected)
         {
             <span class="crt-live">متصل زنده</span>
@@ -101,11 +116,73 @@
                 <i class="bi bi-clipboard2-check"></i> کارتابل کارشناسی <span class="crt-n">@FaDigits(counts?.Expert ?? 0)</span>
             </button>
         }
+        @if (canManager)
+        {
+            <button class="crt-tab changes @(queue == "changes" ? "active" : "")" @onclick='() => SetQueue("changes")'>
+                <i class="bi bi-pencil-square"></i> درخواست ویرایش/حذف <span class="crt-n">@FaDigits(counts?.Changes ?? 0)</span>
+            </button>
+        }
     </div>
 
     @if (loading)
     {
         <div class="crt-empty"><i class="bi bi-arrow-repeat"></i> در حال دریافت…</div>
+    }
+    else if (queue == "changes")
+    {
+        @if (changes.Count == 0)
+        {
+            <div class="crt-empty">
+                <i class="bi bi-check2-circle"></i>
+                <b>درخواست ویرایش/حذفی در انتظار تایید نیست</b>
+                <div class="mt-1 small">هر بار کاربری پروژه‌ای را ویرایش یا حذف کند، درخواستش اینجا برای تایید شما می‌نشیند.</div>
+            </div>
+        }
+        else
+        {
+            <div class="crt-grid">
+                @foreach (var c in changes)
+                {
+                    <div class="crt-card changes">
+                        <div class="crt-card-top">
+                            <span class="crt-code">@c.CodeProject.FaDigits()</span>
+                            <span class="crt-kind @(c.Kind == 2 ? "del" : "edit")">
+                                <i class="bi @(c.Kind == 2 ? "bi-trash" : "bi-pencil")"></i>
+                                @(c.Kind == 2 ? "درخواست حذف" : "درخواست ویرایش")
+                            </span>
+                            <span class="crt-wait @WaitCss(c.DaysWaiting)">@WaitText(c.DaysWaiting)</span>
+                        </div>
+                        <div class="crt-name">@c.ProjectName</div>
+                        <div class="crt-rows">
+                            <span><i class="bi bi-briefcase"></i>کارفرما: <b>@c.KarFarmaName</b></span>
+                            <span><i class="bi bi-person"></i>درخواست‌دهنده: <b>@c.RequestedByName</b></span>
+                            <span><i class="bi bi-clock"></i>زمان: <b dir="ltr">@DateFa(c.RequestedAt)</b></span>
+                        </div>
+                        <div class="crt-summary">
+                            @if (string.IsNullOrWhiteSpace(c.Summary))
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                @foreach (var line in c.Summary.Split(" | ", StringSplitOptions.RemoveEmptyEntries))
+                                {
+                                    <div><i class="bi bi-dot"></i>@Inventory.Shared.Fa.Digits(line)</div>
+                                }
+                            }
+                        </div>
+                        <div class="crt-foot">
+                            <button class="crt-btn ok" @onclick='() => OpenChangeAction(c, "approve")'>
+                                <i class="bi bi-check2-circle"></i> تایید و اعمال
+                            </button>
+                            <button class="crt-btn no" @onclick='() => OpenChangeAction(c, "reject")'>
+                                <i class="bi bi-x-circle"></i> رد
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
     }
     else if (items.Count == 0)
     {
@@ -154,6 +231,58 @@
     }
 </div>
 
+@* ================== مودال تایید/رد «درخواست ویرایش یا حذف پروژه» ================== *@
+@if (chgItem is not null)
+{
+    <Modal Visible="true" Title="@(chgKind == "approve" ? (chgItem.Kind == 2 ? "تایید حذف پروژه" : "تایید ویرایش پروژه") : "رد درخواست")" OnClose="CloseChangeAction">
+        <ChildContent>
+            <div class="mb-2 small" style="color:#475569">
+                <b>@chgItem.ProjectName</b> <span class="crt-code">@chgItem.CodeProject.FaDigits()</span>
+                <span class="crt-kind @(chgItem.Kind == 2 ? "del" : "edit")">@(chgItem.Kind == 2 ? "حذف" : "ویرایش")</span>
+            </div>
+            <div class="crt-summary mb-2">
+                @if (string.IsNullOrWhiteSpace(chgItem.Summary))
+                {
+                    <span class="text-muted">—</span>
+                }
+                else
+                {
+                    @foreach (var line in chgItem.Summary.Split(" | ", StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        <div><i class="bi bi-dot"></i>@Inventory.Shared.Fa.Digits(line)</div>
+                    }
+                }
+            </div>
+            @if (chgKind == "approve" && chgItem.Kind == 2)
+            {
+                <div class="alert alert-danger py-2 px-3 small">
+                    <i class="bi bi-exclamation-triangle ms-1"></i>
+                    با تایید شما، پروژه به‌همراه گزارش‌های کار و پیوست‌هایش حذف می‌شود.
+                </div>
+            }
+            <label class="form-label small fw-bold">
+                @(chgKind == "reject" ? "دلیل رد" : "یادداشت (اختیاری)")
+                @if (chgKind == "reject") { <span class="text-danger">(الزامی — برای درخواست‌دهنده اعلان می‌شود)</span> }
+            </label>
+            <textarea class="form-control" rows="3" @bind="chgNote" maxlength="500"
+                      placeholder="@(chgKind == "reject" ? "مثلاً: تغییر تاریخ خروج مورد تایید نیست…" : "مثلاً: تایید شد.")"></textarea>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="CloseChangeAction" disabled="@chgActing">انصراف</button>
+            @if (chgKind == "reject")
+            {
+                <button class="btn btn-danger btn-sm" @onclick="DoChangeAction" disabled="@chgActing"><i class="bi bi-x-circle"></i> ثبت رد</button>
+            }
+            else
+            {
+                <button class="btn btn-success btn-sm" @onclick="DoChangeAction" disabled="@chgActing">
+                    <i class="bi bi-check2-circle"></i> @(chgItem.Kind == 2 ? "تایید و حذف" : "تایید و اعمال ویرایش")
+                </button>
+            }
+        </Footer>
+    </Modal>
+}
+
 @* ================== مودال اقدام (تایید/رد/اتمام) با یادداشت ================== *@
 @if (actItem is not null)
 {
@@ -184,11 +313,18 @@
 
 @code {
     private List<ProjectCartableItem> items = new();
+    private List<ProjectChangeRequestDto> changes = new();
     private ProjectCartableCountsDto? counts;
     private string queue = "manager";
     private bool loading = true;
     private bool canManager, canExpert;
     private string apiBase = "";
+
+    // مودال «درخواست ویرایش/حذف»
+    private ProjectChangeRequestDto? chgItem;
+    private string chgKind = "approve";
+    private string? chgNote;
+    private bool chgActing;
 
     // مودال اقدام
     private ProjectCartableItem? actItem;
@@ -228,6 +364,7 @@
         var q = qs["queue"];
         queue = string.Equals(q, "expert", StringComparison.OrdinalIgnoreCase) ? "expert"
               : string.Equals(q, "manager", StringComparison.OrdinalIgnoreCase) ? "manager"
+              : string.Equals(q, "changes", StringComparison.OrdinalIgnoreCase) && canManager ? "changes"
               : canManager || !canExpert ? "manager" : "expert";
 
         // رفرش زنده با SignalR — هر تغییری در پروژه‌ها (ثبت/تایید/رد/اتمام/ویرایش) کارتابل را تازه می‌کند
@@ -254,12 +391,21 @@
         try
         {
             counts = await CartSvc.GetCountsAsync();
-            items = await CartSvc.GetQueueAsync(queue) ?? new();
+            if (queue == "changes")
+            {
+                changes = await CartSvc.GetChangeRequestsAsync() ?? new();
+                items = new();
+            }
+            else
+            {
+                items = await CartSvc.GetQueueAsync(queue) ?? new();
+            }
         }
         catch (Exception ex)
         {
             if (!silent) Toast.Error(ex.Message);
             items = new();
+            if (queue == "changes") changes = new();
         }
         loading = false;
         await InvokeAsync(StateHasChanged);
@@ -303,9 +449,47 @@
         acting = false;
     }
 
+    // ==================== اقدام روی درخواست ویرایش/حذف ====================
+
+    private void OpenChangeAction(ProjectChangeRequestDto c, string kind)
+    {
+        chgItem = c;
+        chgKind = kind;
+        chgNote = null;
+        chgActing = false;
+    }
+
+    private void CloseChangeAction() { chgItem = null; chgActing = false; }
+
+    private async Task DoChangeAction()
+    {
+        if (chgItem is null) return;
+        if (chgKind == "reject" && string.IsNullOrWhiteSpace(chgNote))
+        {
+            Toast.Error("دلیل رد را بنویسید — بدون دلیل امکان‌پذیر نیست.");
+            return;
+        }
+        chgActing = true;
+        try
+        {
+            var isDelete = chgItem.Kind == 2;
+            if (chgKind == "approve") await CartSvc.ApproveChangeAsync(chgItem.Id, chgNote);
+            else await CartSvc.RejectChangeAsync(chgItem.Id, chgNote!);
+
+            Toast.Success(chgKind == "approve"
+                ? (isDelete ? "پروژه حذف شد." : "ویرایش روی پروژه اعمال شد.")
+                : "درخواست رد شد و به درخواست‌دهنده اعلان رسید.");
+            chgItem = null;
+            await Reload(silent: true);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        chgActing = false;
+    }
+
     private static string WaitCss(int days) => days >= 3 ? "bad" : days >= 1 ? "warn" : "ok";
     private string WaitText(int days) => days <= 0 ? "ثبت امروز" : $"{FaDigits(days)} روز در انتظار";
     private static string DateFa(DateTime? dt) => dt.HasValue ? PersianDate.ToShortFa(dt.Value) : "—";
+    private static string DateFa(DateTime dt) => PersianDate.ToShortFa(dt);
     private static string FaDigits(int n) => Inventory.Shared.Fa.Digits(n);
 
     public void Dispose() => Rt.DataChanged -= OnRtDataChanged;
