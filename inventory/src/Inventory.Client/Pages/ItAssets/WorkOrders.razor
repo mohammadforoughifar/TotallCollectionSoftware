@@ -382,7 +382,7 @@ else
                             <label class="form-label">گیرندگان <span class="text-danger">*</span></label>
                             @* کمبوی چندانتخابی با جستجو (بند ۷) *@
                             <div class="ms-combo">
-                                <div class="ms-combo-control form-control @(tDropOpen ? "focus" : "")" @onclick="() => tDropOpen = !tDropOpen">
+                                <div class="ms-combo-control form-control @(tDropOpen ? "focus" : "")" @ref="_tComboEl" @onclick="ToggleTargetsCombo">
                                     @if (selTargets.Count == 0)
                                     {
                                         <span class="text-muted">— انتخاب افراد —</span>
@@ -395,7 +395,8 @@ else
                                 </div>
                                 @if (tDropOpen)
                                 {
-                                    <div class="ms-combo-menu shadow">
+                                    <div class="pop-overlay" @onclick="() => tDropOpen = false" @onclick:stopPropagation="true"></div>
+                                    <div class="ms-combo-menu shadow" style="@TargetsMenuStyle" @onclick:stopPropagation="true">
                                         <div class="p-2 border-bottom">
                                             <input class="form-control form-control-sm" placeholder="جستجو..." @bind="tSearch" @bind:event="oninput" @onclick:stopPropagation="true" />
                                         </div>
@@ -856,6 +857,23 @@ else
 
     // فرم جدید
     private bool showNew, tDropOpen;
+
+    // ---------- منوی شناور کمبوی افراد (fixed + پوشش نامرئی — مصون از کارت‌ویو/مودال) ----------
+    private ElementReference _tComboEl;
+    private double _tTop, _tLeft, _tWidth;
+    private string TargetsMenuStyle => Popover.FixedStyle(_tTop, _tLeft, _tWidth, 300);
+
+    private async Task ToggleTargetsCombo()
+    {
+        if (tDropOpen) { tDropOpen = false; return; }
+        try
+        {
+            var r = await JS.InvokeAsync<UiRect>("uiRect", _tComboEl);
+            (_tTop, _tLeft, _tWidth) = Popover.Below(r, 0, 300);
+        }
+        catch (JSException) { }
+        tDropOpen = true;
+    }
     private string newTitle = "", tSearch = "";
     private DateTime? newDueDate;
     private TimeOnly newDueTime = new(14, 0);

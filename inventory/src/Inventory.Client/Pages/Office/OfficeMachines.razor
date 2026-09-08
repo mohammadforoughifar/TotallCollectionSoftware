@@ -1,6 +1,7 @@
 @namespace Inventory.Client.Pages
 @page "/office-machines"
 @inject HttpClient Http
+@inject IJSRuntime JS
 
 <PageTitle>ماشین‌های اداری</PageTitle>
 
@@ -150,7 +151,7 @@
                                 <label class="form-label small fw-800">سیستم متصل <span class="text-danger">*</span></label>
                                 @* کمبوی سیستم با جستجو — نام مالک مشخص است *@
                                 <div class="om-combo">
-                                    <div class="om-combo-control form-control form-control-sm" @onclick="() => sysDropOpen = !sysDropOpen">
+                                    <div class="om-combo-control form-control form-control-sm" @ref="_omComboEl" @onclick="ToggleSysCombo">
                                         @if (form.LinkedSystemInfoId is null)
                                         {
                                             <span class="text-muted">— انتخاب سیستم —</span>
@@ -164,7 +165,8 @@
                                     </div>
                                     @if (sysDropOpen)
                                     {
-                                        <div class="om-combo-menu shadow">
+                                        <div class="pop-overlay" @onclick="() => sysDropOpen = false" @onclick:stopPropagation="true"></div>
+                                        <div class="om-combo-menu shadow" style="@OmMenuStyle" @onclick:stopPropagation="true">
                                             <div class="p-2 border-bottom">
                                                 <input class="form-control form-control-sm" placeholder="جستجو (سیستم، مالک، IP)..."
                                                        @bind="sysSearch" @bind:event="oninput" @onclick:stopPropagation="true" />
@@ -325,8 +327,8 @@
 }
 
 <style>
-/* تقویم شمسی داخل مودال — کامل و بالاتر از مودال */
-.modal .dp-popover{z-index:1095;box-shadow:0 12px 40px rgba(30,40,90,.28);}
+/* تقویم شمسی داخل مودال — از این پس «شناور» است (z خودکار ۴۵۰۰ از Popover.FixedStyle/CalendarStyle) */
+.modal .dp-popover{box-shadow:0 12px 40px rgba(30,40,90,.28);}
 .modal .date-picker{position:relative;}
 .ops-btn{width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:8px;}
     .om-combo { position: relative; }
@@ -558,6 +560,24 @@
     private List<SysOpt> sysLookup = new();
     private bool sysDropOpen;
     private string sysSearch = "";
+
+    // ---------- منوی شناور کمبوی سیستم (fixed + پوشش نامرئی — مصون از کارت‌ویو/مودال) ----------
+    private ElementReference _omComboEl;
+    private double _omTop, _omLeft, _omWidth;
+    private string OmMenuStyle => Popover.FixedStyle(_omTop, _omLeft, _omWidth, 300);
+
+    private async Task ToggleSysCombo()
+    {
+        if (sysDropOpen) { sysDropOpen = false; return; }
+        try
+        {
+            var r = await JS.InvokeAsync<UiRect>("uiRect", _omComboEl);
+            (_omTop, _omLeft, _omWidth) = Popover.Below(r, 0, 300);
+        }
+        catch (JSException) { }
+        sysDropOpen = true;
+    }
+
     private IEnumerable<SysOpt> FilteredSys =>
         string.IsNullOrWhiteSpace(sysSearch) ? sysLookup :
         sysLookup.Where(x => x.Label.Contains(sysSearch.Trim(), StringComparison.OrdinalIgnoreCase)

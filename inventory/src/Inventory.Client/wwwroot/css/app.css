@@ -435,11 +435,11 @@ a { text-decoration: none; }
 
 /* ---------- تقویم / انتخاب تاریخ شمسی ---------- */
 .date-picker { position: relative; }
+/* منوی شناور: جای‌گذاری دقیق (top/left) توسط استایل inline انجام می‌شود
+   (Popover.CalendarStyle بر اساس نقطه کلیک) — هیچ‌گاه زیر کارت‌ها نمی‌رود */
 .dp-popover {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    z-index: 1080;
+    position: fixed;
+    z-index: 4500;
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 15px;
@@ -467,17 +467,16 @@ a { text-decoration: none; }
 
 /* ---------- جستجوی انتخاب (کمبوباکس) ---------- */
 .ss { position: relative; }
+/* منوی شناور: جای‌گذاری (top/left/width) توسط استایل inline از Popover.FixedStyle */
 .ss-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0; left: 0;
+    position: fixed;
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 12px;
     box-shadow: var(--shadow);
     max-height: 250px;
     overflow: auto;
-    z-index: 1080;
+    z-index: 4500;
 }
 .ss-item { padding: .5rem .85rem; cursor: pointer; font-size: .88rem; }
 .ss-item:hover { background: var(--primary-50); }
@@ -1139,7 +1138,10 @@ body {
 .modal-header {
     background: linear-gradient(180deg, #fafbfe, #f4f6fb);
 }
-.modal.d-block { backdrop-filter: blur(4px); }
+/* ⚠️ روی .modal از backdrop-filter استفاده نکنید:
+   backdrop-filter (مثل transform و filter) والد را به «containing block»
+   عناصر position:fixed تبدیل می‌کند و منوی شناورِ تقویم/کمبو داخل مودال
+   جابه‌جا می‌شد. تیره‌شدن پس‌زمینه با background inline خود مودال کفایت می‌کند. */
 
 /* ---------- کارت آماری داشبورد: نوار برند بالا ---------- */
 .stat-card { position: relative; overflow: hidden; }
@@ -1213,34 +1215,57 @@ body {
 .bottom-nav-item { position: relative; }
 
 /* ---------- انیمیشن ورود محتوا ---------- */
-/* نکته مهم: در حالت پایانی transform به «none» می‌رسد (نه translateY(0)) تا هیچ ancestor و
-   عنصر شناوری (position:fixed مثل تقویم فیلتر و منوی ⋮) به اشتباه داخل یک stacking context با
-   transform محبوس نشود. همین موضوع باعث می‌شد تقویم/دراپ‌داون فیلتر وسط صفحه یا زیر کارت‌ها باز شود. */
+/* ⚠️ نکته‌ی مهم: انیمیشن باید روی خودِ .app-content باشد نه فرزندانش، و فقط opacity:
+   - opacity کمتر از ۱ هم stacking context می‌سازد (مثل transform)؛ اگر فرزندان
+     جداگانه fade شوند، در همان بازه‌ی کوتاه انیمیشن (fill-mode هر چه باشد)،
+     منوی بازِ تقویم/کمبو زیر کارت‌های بعدی می‌رفت. با یک context واحد برای کل
+     محتوا، z-index منوها در داخل محتوا همیشه معتبر است.
+   - transform و filter و backdrop-filter نه‌تنها stacking context بلکه
+     «containing block» عناصر position:fixed هم می‌شوند و منوی شناور را جابه‌جا
+     می‌کنند — به همین دلیل هرگز روی محتوا استفاده نمی‌شوند. */
 @keyframes fadeSlideIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: none; }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
-.app-content > * { animation: fadeSlideIn .28s ease both; }
+.app-content { animation: fadeSlideIn .28s ease backwards; }
 
 /* کارت حاوی فیلترهای بالای لیست — بالاتر از کارت گرید قرار می‌گیرد تا دراپ‌داون‌های فیلتر
    (SearchSelect و …) زیر کارت‌ها باز نشوند. */
 .filter-card { position: relative; z-index: 30; }
 
-/* ====== تغییر #9: رفع مشکل z-index کمبوها و تقویم‌ها ====== */
+/* ====== رفع مشکل z-index کمبوها و تقویم‌ها ====== */
 /* تمام کارت‌ها و مودال‌ها overflow:visible بگیرند تا دراپ‌داون‌ها بریده نشوند */
 .card { overflow: visible; }
 .modal-body { overflow: visible; }
 .modal-content { overflow: visible; }
 
-/* تقویم شمسی و منوی SearchSelect باید بالاتر از همه کارت‌ها باشند */
+/* تقویم شمسی و منوی کمبوها «شناور» هستند و باید بالاتر از پوششِ نامرئیِ
+   بستن منو (pop-overlay با z=4490) هم باشند، وگرنه کلیک روی آیتم‌ها به پوشش می‌خورد. */
 .dp-popover,
 .ss-menu,
 .datepicker-dropdown,
 .dropdown-menu {
-    z-index: 1090 !important;
+    z-index: 4500 !important;
 }
 
-/* مودال‌ها بالاتر از همه باشند */
+/* ---------- پوشش نامرئی منوهای شناور (الگوی مشترک تقویم/کمبو/منوی سطر) ----------
+   تمام‌صفحه‌ی fixed است؛ کلیک روی آن، منوی باز را می‌بندد و تضمین می‌کند منو
+   هیچ‌گاه زیر کارت‌ها نرود. z بالاتر از مودال بوت‌استرپ (1055) است. */
+.pop-overlay { position: fixed; inset: 0; z-index: 4490; background: transparent; }
+
+/* شبکه‌ی ایمنی برای منوهای قدیمیِ absolute: تا وقتی منویی باز است، بخشِ حاوی آن
+   بالاتر از کارت‌های هم‌سطح نگه داشته می‌شود. (منوهای اصلیِ تقویم/کمبو از این
+   به بعد «شناور» هستند و اصلاً به این شبکه نیاز ندارند؛ این فقط حافظِ
+   منوهای inline دیگر است.) */
+.app-content > *:not(.modal):has(.dp-popover),
+.app-content > *:not(.modal):has(.ss-menu),
+.app-content > *:not(.modal):has(.ms-combo-menu),
+.app-content > *:not(.modal):has(.om-combo-menu) {
+    position: relative;
+    z-index: 10;
+}
+
+/* مودال‌ها بالاتر از همه‌ی کارت‌ها باشند (منوهای شناور ۴۵۰۰ بالاتر از مودال می‌مانند) */
 .modal { z-index: 1050; }
 .modal-backdrop { z-index: 1040; }
 
@@ -1250,7 +1275,7 @@ body {
 
 /* حرکت کمتر برای کاربران حساس به حرکت */
 @media (prefers-reduced-motion: reduce) {
-    .app-content > *, .btn-primary, .ref-stat, .m-card { animation: none !important; transition: none !important; }
+    .app-content, .btn-primary, .ref-stat, .m-card { animation: none !important; transition: none !important; }
 }
 
 
