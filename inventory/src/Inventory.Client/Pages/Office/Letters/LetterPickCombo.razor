@@ -1,0 +1,138 @@
+@* ============================================================
+   کمبوباکس انتخاب گیرنده — مطابق طرح مصوب:
+   حالت «انفرادی | گروهی»، پنل چندانتخابی، پیل‌های انتخاب‌شده
+   استفاده در فرم ایجاد نامه (گیرنده/ارجاع/هامش) و فرم ارجاع/هامش
+   ============================================================ *@
+
+<div class="fcard @(HasError ? "err" : "")">
+    <label>
+        @Label
+        @if (Required) { <span class="req">*</span> }
+        else { <span class="opt">اختیاری</span> }
+    </label>
+
+    @if (AllowGroups)
+    {
+        <div class="mode">
+            <button type="button" class="@(mode == "user" ? "on" : "")" @onclick="@(() => SetMode("user"))">انفرادی</button>
+            <button type="button" class="@(mode == "group" ? "on" : "")" @onclick="@(() => SetMode("group"))">گروهی</button>
+        </div>
+    }
+
+    <div class="combo @(open ? "open" : "")">
+        <button type="button" class="combo-btn" @onclick="Toggle" @onclick:stopPropagation="true">
+            <i class="bi @Icon"></i>
+            <span>@(mode == "user" ? "انتخاب کاربران" : "انتخاب گروه‌ها")</span>
+            @if (Count > 0) { <span class="cnt">@Count.FaDigits()</span> }
+            <i class="bi bi-chevron-down car"></i>
+        </button>
+        @if (open)
+        {
+            <div class="cpanel" @onclick:stopPropagation="true">
+                <input class="cpanel-search" placeholder="جستجو…" @bind="query" @bind:event="oninput" />
+                @if (mode == "user")
+                {
+                    @foreach (var u in FilteredUsers)
+                    {
+                        <div class="copt @(SelectedUsers.Contains(u.UserId) ? "on" : "")" @onclick="() => ToggleUser(u.UserId)">
+                            <span class="chk"><i class="bi bi-check"></i></span>
+                            <span class="mini"><i class="bi bi-person-circle"></i></span>
+                            <span>@u.FullName</span>
+                        </div>
+                    }
+                    @if (FilteredUsers.Count == 0) { <div class="cempty">کاربری یافت نشد</div> }
+                }
+                else
+                {
+                    @foreach (var g in FilteredGroups)
+                    {
+                        <div class="copt @(SelectedGroups.Contains(g.GroupId) ? "on" : "")" @onclick="() => ToggleGroup(g.GroupId)">
+                            <span class="chk"><i class="bi bi-check"></i></span>
+                            <i class="bi bi-people" style="color:var(--bs-primary,#4f46e5)"></i>
+                            <span>@g.NameGroup</span><small>@g.MemberCount.FaDigits() عضو</small>
+                        </div>
+                    }
+                    @if (FilteredGroups.Count == 0) { <div class="cempty">گروهی یافت نشد</div> }
+                }
+            </div>
+        }
+    </div>
+
+    <div class="selpills">
+        @foreach (var uid in SelectedUsers)
+        {
+            var u = Users.FirstOrDefault(x => x.UserId == uid);
+            <span class="spill">@(u?.FullName ?? uid.ToString()) <i class="bi bi-x-lg" @onclick="() => ToggleUser(uid)"></i></span>
+        }
+        @foreach (var gid in SelectedGroups)
+        {
+            var g = Groups.FirstOrDefault(x => x.GroupId == gid);
+            <span class="spill gp"><i class="bi bi-people"></i> @(g?.NameGroup ?? gid.ToString()) <i class="bi bi-x-lg" @onclick="() => ToggleGroup(gid)"></i></span>
+        }
+    </div>
+
+    @if (HasError)
+    {
+        <div class="ferr"><i class="bi bi-exclamation-circle"></i> انتخاب حداقل یک گیرنده الزامی است</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "bi-person-plus";
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool AllowGroups { get; set; } = true;
+    [Parameter] public List<LetterReciverDto> Users { get; set; } = new();
+    [Parameter] public List<LetterGroupDto> Groups { get; set; } = new();
+    [Parameter] public HashSet<int> SelectedUsers { get; set; } = new();
+    [Parameter] public HashSet<int> SelectedGroups { get; set; } = new();
+    [Parameter] public EventCallback Changed { get; set; }
+    [Parameter] public bool HasError { get; set; }
+
+    private string mode = "user";
+    private bool open;
+    private string query = "";
+
+    private int Count => SelectedUsers.Count + SelectedGroups.Count;
+
+    private List<LetterReciverDto> FilteredUsers =>
+        Users.Where(u => string.IsNullOrWhiteSpace(query) || u.FullName.Contains(query.Trim())).Take(30).ToList();
+
+    private List<LetterGroupDto> FilteredGroups =>
+        Groups.Where(g => string.IsNullOrWhiteSpace(query) || g.NameGroup.Contains(query.Trim())).Take(30).ToList();
+
+    /// <summary>بازنشانی کامل (هنگام باز شدن فرم)</summary>
+    public void Reset()
+    {
+        mode = "user"; open = false; query = "";
+        SelectedUsers.Clear(); SelectedGroups.Clear();
+        StateHasChanged();
+    }
+
+    public void Close() { if (open) { open = false; StateHasChanged(); } }
+
+    private void SetMode(string m)
+    {
+        if (mode == m) return;
+        mode = m;
+        // مطابق طرح مصوب: تعویض حالت، انتخاب‌های قبلی همان بخش را پاک می‌کند
+        SelectedUsers.Clear();
+        SelectedGroups.Clear();
+        query = "";
+        _ = Changed.InvokeAsync();
+    }
+
+    private void Toggle() { open = !open; query = ""; }
+
+    private async Task ToggleUser(int id)
+    {
+        if (!SelectedUsers.Remove(id)) SelectedUsers.Add(id);
+        await Changed.InvokeAsync();
+    }
+
+    private async Task ToggleGroup(int id)
+    {
+        if (!SelectedGroups.Remove(id)) SelectedGroups.Add(id);
+        await Changed.InvokeAsync();
+    }
+}

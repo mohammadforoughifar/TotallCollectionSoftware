@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Inventory.Shared</RootNamespace>
+    <AssemblyName>Inventory.Shared</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <!-- وابسته‌ها (Api/Client) نباید دنبال obj\...\ref\Inventory.Shared.dll بگردند. -->
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

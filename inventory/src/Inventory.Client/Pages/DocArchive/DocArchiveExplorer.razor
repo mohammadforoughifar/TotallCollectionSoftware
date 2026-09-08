@@ -1,0 +1,1421 @@
+@page "/doc-archive"
+@inject IDocArchiveService Svc
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject LayoutState Layout
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>آرشیو اسناد و مدارک</PageTitle>
+
+<div class="doc-archive-shell">
+<div class="card shadow-sm mb-3">
+    <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2"
+         style="background:linear-gradient(135deg,#6366f1,#0ea5e9);color:#fff;border-radius:14px 14px 0 0;">
+        <span>
+            <i class="bi @(statusFilter switch { "inactive" => "bi-archive-fill", "deleted" => "bi-trash3", _ => "bi-folder2-open" }) me-2"></i>
+            @(statusFilter switch { "inactive" => "مدارک غیرفعال", "deleted" => "سطل بازیافت", _ => "آرشیو اسناد و مدارک" })
+            <span class="badge bg-light text-dark ms-1">@documents.Count.Num()</span>
+        </span>
+        <div class="d-flex gap-2 flex-wrap">
+            <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#4f46e5;"
+                    @onclick="() => showTagsModal = true">
+                <i class="bi bi-tags-fill"></i> مدیریت تگ‌ها
+            </button>
+            <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#0d9488;"
+                    @onclick="() => OpenZipModal(selectedFolderId)">
+                <i class="bi bi-file-earmark-zip-fill"></i> دانلود درختی ZIP
+            </button>
+            @if (Auth.Has("DocArchive.Create"))
+            {
+                <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#3730a3;"
+                        @onclick="() => OpenFolder(null)">
+                    <i class="bi bi-folder-plus"></i> پوشه جدید
+                </button>
+                <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#065f46;"
+                        data-hotkey="f2" title="کلید میانبر: F2" @onclick="OpenNewDoc" disabled="@(!CanWriteHere || statusFilter != "active")">
+                    <i class="bi bi-file-earmark-plus"></i> مدرک جدید (F2)
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    @* ---------------- درخت پوشه‌ها (قابل جمع شدن، مخصوص موبایل) ---------------- *@
+    <div class="col-lg-3 @(showFoldersPane ? "" : "d-none")">
+        <div class="card h-100">
+            <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-diagram-3 ms-1"></i> پوشه‌ها</span>
+                <span class="badge bg-secondary">@folders.Count</span>
+            </div>
+            <div class="card-body p-2" style="max-height:75vh;overflow:auto;">
+                <div class="ftree-item @(statusFilter == "active" && selectedFolderId == null ? "active" : "")"
+                     @onclick="ShowAllActive">
+                    <i class="bi bi-archive text-primary"></i>
+                    <span class="fw-500">همه مدارک</span>
+                </div>
+
+                @* ---- زیرمنوهای انقضا ---- *@
+                <div class="ftree-item @(expiryFilter == "expired" ? "active" : "")" @onclick="ShowExpired">
+                    <i class="bi bi-calendar-x-fill text-danger"></i>
+                    <span class="fw-500 text-danger">منقضی شده</span>
+                    @if (expirySummary.Expired > 0)
+                    {
+                        <span class="badge bg-danger ms-auto">@expirySummary.Expired.Num()</span>
+                    }
+                </div>
+                <div class="ftree-item @(expiryFilter == "expiring" ? "active" : "")" @onclick="ShowExpiring">
+                    <i class="bi bi-clock-history text-warning"></i>
+                    <span class="fw-500 text-warning-emphasis">رو به انقضا</span>
+                    @if (expirySummary.ExpiringSoon > 0)
+                    {
+                        <span class="badge bg-warning text-dark ms-auto">@expirySummary.ExpiringSoon.Num()</span>
+                    }
+                </div>
+
+                @* ---- زیرمنوی مدارک غیرفعال ---- *@
+                <div class="ftree-item @(statusFilter == "inactive" ? "active" : "")" @onclick="ShowInactive">
+                    <i class="bi bi-archive-fill text-secondary"></i>
+                    <span class="fw-500 text-secondary">مدارک غیرفعال</span>
+                    @if (inactiveCount > 0)
+                    {
+                        <span class="badge bg-secondary ms-auto">@inactiveCount.Num()</span>
+                    }
+                </div>
+                <div class="ftree-item @(statusFilter == "deleted" ? "active" : "")" @onclick="ShowTrash">
+                    <i class="bi bi-trash3 text-danger"></i>
+                    <span class="fw-500 text-secondary">سطل بازیافت</span>
+                    @if (trashCount > 0)
+                    {
+                        <span class="badge bg-danger-subtle text-danger ms-auto">@trashCount.Num()</span>
+                    }
+                </div>
+                <hr class="my-1" />
+                @if (loadingFolders)
+                {
+                    <div class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+                }
+                else
+                {
+                    @RenderTree(null, 0)
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ---------------- لیست مدارک و ابزار جستجو ---------------- *@
+    <div class="col-lg-@(showFoldersPane ? 9 : 12)">
+        @* نوار جستجوی سریع و دکمه‌ها *@
+        <div class="card mb-2">
+            <div class="card-body py-2">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-5">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text bg-light"><i class="bi bi-search text-primary"></i></span>
+                            <input class="form-control" placeholder="جستجوی هوشمند در عنوان، کد، متن اسناد و OCR تصاویر…"
+                                   @bind="search" @bind:event="oninput" @bind:after="LoadDocs" />
+                            @if (!string.IsNullOrWhiteSpace(search))
+                            {
+                                <button class="btn btn-outline-secondary" type="button" @onclick="ClearSearch" title="پاک کردن جستجو">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-sm @(showAdvancedFilter || ActiveFilterCount > 0 ? "btn-primary" : "btn-outline-primary")"
+                                @onclick="() => showAdvancedFilter = !showAdvancedFilter">
+                            <i class="bi bi-funnel"></i> فیلترهای پیشرفته و OCR
+                            @if (ActiveFilterCount > 0)
+                            {
+                                <span class="badge bg-white text-primary ms-1">@ActiveFilterCount.Num()</span>
+                            }
+                        </button>
+                    </div>
+                    @if (expiryFilter != null)
+                    {
+                        <div class="col-auto">
+                            <span class="badge @(expiryFilter == "expired" ? "bg-danger" : "bg-warning text-dark")">
+                                <i class="bi @(expiryFilter == "expired" ? "bi-calendar-x" : "bi-clock-history") me-1"></i>
+                                @(expiryFilter == "expired" ? "منقضی شده" : $"رو به انقضا (تا {expirySummary.ExpiringDays.Num()} روز)")
+                            </span>
+                            <button class="btn btn-sm btn-link text-decoration-none p-0 ms-1"
+                                    title="حذف فیلتر" @onclick="ClearExpiryFilter">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        </div>
+                    }
+                    <div class="col-auto">
+                        <div class="btn-group btn-group-sm" role="group" title="قالب نمایش مدارک">
+                            <button type="button" class="btn @(viewMode == "table" ? "btn-primary" : "btn-outline-primary")"
+                                    title="نمای جدولی" @onclick='() => SetViewMode("table")'>
+                                <i class="bi bi-table"></i>
+                            </button>
+                            <button type="button" class="btn @(viewMode == "cards" ? "btn-primary" : "btn-outline-primary")"
+                                    title="نمای کارتی" @onclick='() => SetViewMode("cards")'>
+                                <i class="bi bi-grid-3x3-gap"></i>
+                            </button>
+                        </div>
+                        <button type="button" class="btn btn-sm @(showFoldersPane ? "btn-outline-secondary" : "btn-secondary") ms-1"
+                                title="نمایش / پنهان کردن درخت پوشه‌ها" @onclick="() => showFoldersPane = !showFoldersPane">
+                            <i class="bi bi-layout-sidebar"></i>
+                        </button>
+                    </div>
+                    <div class="col-auto">
+                        <ExportButtons ReportKey="@(expiryFilter is null ? "doc-list" : "doc-expiring")"
+                                       ShowText="false"
+                                       Query="@(new { status = statusFilter, search = search,
+                                                      id = selectedFolderId })" />
+                    </div>
+                    @if (statusFilter == "deleted" && IsManager && documents.Count > 0)
+                    {
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-danger" @onclick="OpenPurgeAll">
+                                <i class="bi bi-x-octagon"></i>
+                                <span class="ms-1">خالی کردن سطل</span>
+                            </button>
+                        </div>
+                    }
+                    @if (IsManager && statusFilter != "deleted")
+                    {
+                        <div class="col-auto">
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="RunExpiryCheck"
+                                    disabled="@checkingExpiry"
+                                    title="بررسی فوری مدارک در آستانه انقضا و ارسال هشدار به کارتابل">
+                                @if (checkingExpiry)
+                                {
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-bell"></i>
+                                }
+                                <span class="ms-1">بررسی انقضا</span>
+                            </button>
+                            <button class="btn btn-sm btn-outline-info ms-1" @onclick="ReindexAll"
+                                    disabled="@reindexing" title="استخراج متن و OCR مجدد کلیه پیوست‌ها">
+                                @if (reindexing)
+                                {
+                                    <span class="spinner-border spinner-border-sm"></span>
+                                }
+                                else
+                                {
+                                    <i class="bi bi-cpu"></i>
+                                }
+                                <span class="ms-1">بازایندکس OCR</span>
+                            </button>
+                        </div>
+                    }
+                    <div class="col-auto ms-auto fs-8 text-muted d-flex align-items-center gap-2">
+                        @if (selectedFolderId is int fid)
+                        {
+                            var f = folders.FirstOrDefault(x => x.Id == fid);
+                            <span>پوشه: <b>@f?.Name</b> — دسترسی: <b>@LevelName(f?.MyLevel ?? DocAccessLevelDto.None)</b></span>
+                            @if (f?.MyCanDownload == true)
+                            {
+                                <button class="btn btn-xs btn-outline-secondary py-0.5" @onclick="() => OpenZipModal(fid)" title="دانلود فایل ZIP این پوشه">
+                                    <i class="bi bi-download text-teal me-1"></i> دانلود ZIP پوشه
+                                </button>
+                            }
+                        }
+                        else
+                        {
+                            <span>@documents.Count.Num() مدرک</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ---------------- پنل فیلترهای پیشرفته و جستجوی تمام‌متن (Full-Text Search) ---------------- *@
+        @if (showAdvancedFilter)
+        {
+            <div class="card mb-3 border-primary shadow-sm bg-light">
+                <div class="card-header py-2 bg-white d-flex justify-content-between align-items-center">
+                    <span class="fw-700 fs-8 text-primary">
+                        <i class="bi bi-sliders me-1"></i> فیلترهای ترکیبی، تمام‌متن (Full-Text) و پردازش OCR
+                    </span>
+                    <button class="btn btn-sm btn-link text-decoration-none text-muted p-0" @onclick="ResetFilters">
+                        <i class="bi bi-trash"></i> پاک کردن فیلترها
+                    </button>
+                </div>
+                <div class="card-body py-2 fs-8">
+                    <div class="row g-2">
+                        @* جستجوی محتوای فایل‌ها و OCR *@
+                        <div class="col-md-12">
+                            <label class="form-label fw-600 mb-1">
+                                <i class="bi bi-file-earmark-font text-primary ms-1"></i> جستجو در محتوای فایل‌ها (PDF، Word، Excel و اسکن‌های تصویری OCR)
+                            </label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-primary text-white"><i class="bi bi-search"></i></span>
+                                <input class="form-control" placeholder="کلمه یا عبارت مورد نظر در متن اسناد و اسکن‌ها را وارد کنید…"
+                                       @bind="contentSearch" @bind:event="oninput" @bind:after="LoadDocs" />
+                            </div>
+                        </div>
+
+                        @* بازه زمانی ایجاد *@
+                        <div class="col-md-3">
+                            <label class="form-label mb-1 text-muted">ثبت از تاریخ:</label>
+                            <DatePicker @bind-Value="createdFrom" AllowClear="true" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1 text-muted">ثبت تا تاریخ:</label>
+                            <DatePicker @bind-Value="createdTo" AllowClear="true" />
+                        </div>
+
+                        @* بازه زمانی انقضا *@
+                        <div class="col-md-3">
+                            <label class="form-label mb-1 text-muted">انقضا از تاریخ:</label>
+                            <DatePicker @bind-Value="expiryFrom" AllowClear="true" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label mb-1 text-muted">انقضا تا تاریخ:</label>
+                            <DatePicker @bind-Value="expiryTo" AllowClear="true" />
+                        </div>
+
+                        @* اتصال به ماژول ERP *@
+                        <div class="col-md-6">
+                            <label class="form-label mb-1 text-muted">اتصال به ماژول‌های سامانه (ERP):</label>
+                            <select class="form-select form-select-sm" @bind="linkedModuleFilter" @bind:after="LoadDocs">
+                                <option value="">-- همه مدارک (بدون فیلتر ماژول) --</option>
+                                <option value="Projects">پروژه‌ها و قراردادها</option>
+                                <option value="Hr">پرسنلی و منابع انسانی</option>
+                                <option value="ItAssets">اموال و تجهیزات IT</option>
+                                <option value="Invoicing">فاکتورها و فروش</option>
+                                <option value="KarFarma">کارفرمایان و طرف‌حساب‌ها</option>
+                                <option value="Repairs">سفارشات تعمیرات</option>
+                                <option value="Warehousing">اسناد انبارداری</option>
+                            </select>
+                        </div>
+
+                        @* نوع فایل پیوست *@
+                        <div class="col-md-6">
+                            <label class="form-label mb-1 text-muted">نوع فایل پیوست:</label>
+                            <div class="d-flex flex-wrap gap-1">
+                                <button type="button" class="btn btn-xs rounded-pill @(selectedFileTypes.Count == 0 ? "btn-dark" : "btn-outline-secondary")"
+                                        @onclick="() => selectedFileTypes.Clear()">همه</button>
+                                <button type="button" class="btn btn-xs rounded-pill @(selectedFileTypes.Contains("pdf") ? "btn-danger" : "btn-outline-danger")"
+                                        @onclick='() => ToggleFileType("pdf")'><i class="bi bi-filetype-pdf me-1"></i>PDF</button>
+                                <button type="button" class="btn btn-xs rounded-pill @(selectedFileTypes.Contains("word") ? "btn-primary" : "btn-outline-primary")"
+                                        @onclick='() => ToggleFileType("word")'><i class="bi bi-file-earmark-word me-1"></i>Word</button>
+                                <button type="button" class="btn btn-xs rounded-pill @(selectedFileTypes.Contains("excel") ? "btn-success" : "btn-outline-success")"
+                                        @onclick='() => ToggleFileType("excel")'><i class="bi bi-file-earmark-excel me-1"></i>Excel</button>
+                                <button type="button" class="btn btn-xs rounded-pill @(selectedFileTypes.Contains("image") ? "btn-info text-dark" : "btn-outline-info")"
+                                        @onclick='() => ToggleFileType("image")'><i class="bi bi-file-earmark-image me-1"></i>عکس و OCR</button>
+                                <button type="button" class="btn btn-xs rounded-pill @(selectedFileTypes.Contains("text") ? "btn-secondary" : "btn-outline-secondary")"
+                                        @onclick='() => ToggleFileType("text")'><i class="bi bi-file-earmark-text me-1"></i>متن</button>
+                            </div>
+                        </div>
+
+                        @* فیلتر تگ‌ها *@
+                        <div class="col-md-12">
+                            <label class="form-label mb-1 text-muted">فیلتر بر اساس تگ‌ها:</label>
+                            <div class="d-flex flex-wrap gap-1 align-items-center">
+                                @if (availableTags.Count == 0)
+                                {
+                                    <span class="text-muted">تگی وجود ندارد.</span>
+                                }
+                                else
+                                {
+                                    @foreach (var t in availableTags)
+                                    {
+                                        var isSel = selectedTagIds.Contains(t.Id);
+                                        <button type="button" class="btn btn-xs rounded-pill"
+                                                style="@(isSel ? $"background-color:{t.Color};color:#fff;border:2px solid #000;" : $"background-color:#fff;color:#333;border:1px solid {t.Color};")"
+                                                @onclick="() => ToggleTagFilter(t.Id)">
+                                            <i class="bi @(isSel ? "bi-check-circle-fill" : "bi-tag")"></i> @t.Name
+                                        </button>
+                                    }
+                                }
+                            </div>
+                        </div>
+
+                        @* تنظیمات دامنه و دکمه اعمال *@
+                        <div class="col-12 d-flex justify-content-between align-items-center pt-2 border-top">
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="incSub" @bind="includeSubfolders" @bind:after="LoadDocs" />
+                                <label class="form-check-label" for="incSub">جستجو شامل کلیه زیرپوشه‌ها باشد (درختی)</label>
+                            </div>
+                            <button class="btn btn-sm btn-primary" @onclick="LoadDocs">
+                                <i class="bi bi-search me-1"></i> اعمال فیلترها
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ---------------- جدول مدارک ---------------- *@
+        <div class="card">
+            <div class="card-body p-0">
+                @if (loadingDocs)
+                {
+                    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+                }
+                else if (documents.Count == 0)
+                {
+                    <div class="empty-state py-5 text-center text-muted">
+                        <i class="bi bi-file-earmark-x fs-1 d-block mb-2"></i>
+                        <h5>مدرکی مطابق با فیلترها یافت نشد</h5>
+                        <p class="fs-8">برای یافتن اسناد، فیلترها یا عبارت جستجو را تغییر دهید.</p>
+                    </div>
+                }
+                else if (viewMode == "cards")
+                {
+                    @* ---------------- نمای کارتی مدارک (قالب دوم؛ پیش‌فرض حالت موبایل/اندروید) ---------------- *@
+                    <div class="doc-cards-wrap">
+                        <div class="row g-2 g-md-3 row-cols-1 row-cols-md-2 row-cols-xxl-3">
+                            @foreach (var d in documents)
+                            {
+                                <div class="col">
+                                    <div class="m-card h-100 @(d.IsExpired ? "st-cancelled" : (d.DaysToExpire <= 30 ? "st-progress" : (!d.IsActive ? "st-delivered" : "st-ready")))">
+                                        <div class="m-card-head">
+                                            <div class="m-card-icon"><i class="bi bi-file-earmark-text"></i></div>
+                                            <div class="flex-grow-1 min-w-0">
+                                                <div class="d-flex align-items-center gap-1 flex-wrap">
+                                                    <span class="fw-700 num">@d.Code</span>
+                                                    @if (d.HasIndexedContent)
+                                                    {
+                                                        <span class="text-primary" title="دارای متن استخراج‌شده / OCR"><i class="bi bi-file-earmark-font"></i></span>
+                                                    }
+                                                    @if (d.ActiveVersionNo > 0)
+                                                    {
+                                                        <span class="badge bg-success">v@(d.ActiveVersionNo.Num())</span>
+                                                        <span class="fs-9 text-muted">/ @d.VersionCount.Num()</span>
+                                                    }
+                                                </div>
+                                                <div class="fw-600 text-truncate" title="@d.Title">@d.Title</div>
+                                                <div class="fs-8 text-muted text-truncate">
+                                                    <i class="bi bi-folder2 ms-1"></i>@d.FolderName
+                                                    @if (!string.IsNullOrWhiteSpace(d.CustomerCode))
+                                                    {
+                                                        <span class="num"> — مشتری: @d.CustomerCode</span>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="m-card-body">
+                                            <div class="m-card-row">
+                                                <span>وضعیت ورژن</span>
+                                                <b>@StatusBadge(d.LastVersionStatus)</b>
+                                            </div>
+                                            <div class="m-card-row">
+                                                <span>وضعیت مدرک</span>
+                                                <b>
+                                                    @if (d.IsActive)
+                                                    {
+                                                        <span class="badge bg-success">فعال</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge bg-secondary" title="@d.DeactivateReason">غیرفعال</span>
+                                                    }
+                                                </b>
+                                            </div>
+                                            <div class="m-card-row">
+                                                <span>@(statusFilter == "deleted" ? "حذف شده در" : "انقضا")</span>
+                                                <b class="num @(d.IsExpired ? "text-danger" : "")">
+                                                    @if (statusFilter == "deleted")
+                                                    {
+                                                        @(d.DeletedAt?.ToFa() ?? "—")
+                                                    }
+                                                    else
+                                                    {
+                                                        @(d.ExpireDate?.ToFa() ?? "—")
+                                                        @if (d.ExpireDate.HasValue)
+                                                        {
+                                                            <span class="badge @ExpiryClass(d) ms-1">@ExpiryText(d)</span>
+                                                        }
+                                                    }
+                                                </b>
+                                            </div>
+                                            <div class="d-flex flex-wrap gap-1 mt-2">
+                                                @if (d.IsPublic) { <span class="badge bg-info">عمومی</span> }
+                                                @if (d.LinkCount > 0) { <span class="badge bg-light text-dark border"><i class="bi bi-link-45deg"></i> @d.LinkCount.Num()</span> }
+                                                @if (d.EntityLinkCount > 0)
+                                                {
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                                                        <i class="bi bi-diagram-3-fill me-0.5"></i> @d.EntityLinkCount.Num() ERP
+                                                    </span>
+                                                }
+                                                @foreach (var t in d.Tags)
+                                                {
+                                                    <span class="badge rounded-pill text-white" style="background-color:@t.Color;padding:3px 7px;">@t.Name</span>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(d.ContentSnippet))
+                                            {
+                                                <div class="mt-2 p-1 px-2 rounded bg-warning-subtle text-dark fs-9 border">
+                                                    <i class="bi bi-search me-1 text-warning-emphasis"></i>
+                                                    <b>یافت‌شده در متن (@d.MatchedAttachmentFileName):</b>
+                                                    <span>@d.ContentSnippet</span>
+                                                </div>
+                                            }
+                                        </div>
+                                        <div class="m-card-actions">
+                                            @if (statusFilter == "deleted")
+                                            {
+                                                @if (d.MyLevel >= DocAccessLevelDto.Full)
+                                                {
+                                                    <button class="btn btn-light text-success" @onclick="() => OpenRestore(d)">
+                                                        <i class="bi bi-arrow-counterclockwise"></i> بازگردانی
+                                                    </button>
+                                                }
+                                                @if (IsManager)
+                                                {
+                                                    <button class="btn btn-light text-danger" @onclick="() => OpenPurge(d)">
+                                                        <i class="bi bi-x-octagon-fill"></i> حذف قطعی
+                                                    </button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-outline-primary" @onclick="() => GoDoc(d.Id)">
+                                                    <i class="bi bi-eye"></i> مشاهده
+                                                </button>
+                                                @if (d.MyLevel >= DocAccessLevelDto.Read && d.IsActive && Auth.Has("WorkOrders.Create"))
+                                                {
+                                                    <button class="btn btn-light fw-700" style="color:#9a3412"
+                                                            title="صدور دستور کار برای این مدرک (پرسنل)" @onclick="() => GoWorkOrder(d.Id)">
+                                                        <i class="bi bi-list-task"></i> دستور کار
+                                                    </button>
+                                                }
+                                                @if (d.MyLevel >= DocAccessLevelDto.Full && d.IsActive)
+                                                {
+                                                    <button class="btn btn-light text-danger" title="انتقال به سطل بازیافت" @onclick="() => DeleteDoc(d)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>کد</th>
+                                    <th>کد مشتری</th>
+                                    <th>عنوان و برچسب‌ها</th>
+                                    <th>پوشه</th>
+                                    <th class="text-center">ورژن فعال</th>
+                                    <th class="text-center">وضعیت ورژن</th>
+                                    <th class="text-center">وضعیت مدرک</th>
+                                    <th>@(statusFilter == "deleted" ? "حذف شده در" : "انقضا")</th>
+                                    <th class="text-end">عملیات</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var d in documents)
+                                {
+                                    <tr class="@(d.IsActive ? "" : "table-light text-muted")">
+                                        <td class="num fw-700">
+                                            @d.Code
+                                            @if (d.HasIndexedContent)
+                                            {
+                                                <span class="text-primary ms-1" title="دارای متن استخراج‌شده / OCR">
+                                                    <i class="bi bi-file-earmark-font"></i>
+                                                </span>
+                                            }
+                                        </td>
+                                        <td class="num fs-8 text-muted">@(string.IsNullOrWhiteSpace(d.CustomerCode) ? "—" : d.CustomerCode)</td>
+                                        <td>
+                                            <div class="fw-600">@d.Title</div>
+                                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                                @if (d.IsPublic) { <span class="badge bg-info">عمومی</span> }
+                                                @if (d.LinkCount > 0) { <span class="badge bg-light text-dark"><i class="bi bi-link-45deg"></i> @d.LinkCount.Num()</span> }
+                                                @if (d.EntityLinkCount > 0)
+                                                {
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle" title="اتصال به موجودیت‌های ERP">
+                                                        <i class="bi bi-diagram-3-fill me-0.5"></i> @d.EntityLinkCount.Num() ERP
+                                                    </span>
+                                                }
+                                                @foreach (var t in d.Tags)
+                                                {
+                                                    <span class="badge rounded-pill text-white" style="background-color:@t.Color;padding:3px 7px;">
+                                                        @t.Name
+                                                    </span>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(d.ContentSnippet))
+                                            {
+                                                <div class="mt-1 p-1 px-2 rounded bg-warning-subtle text-dark fs-9 border">
+                                                    <i class="bi bi-search me-1 text-warning-emphasis"></i>
+                                                    <b>یافت‌شده در متن (@d.MatchedAttachmentFileName):</b>
+                                                    <span>@d.ContentSnippet</span>
+                                                </div>
+                                            }
+                                        </td>
+                                        <td class="fs-8 text-muted">@d.FolderName</td>
+                                        <td class="text-center num">
+                                            @if (d.ActiveVersionNo > 0)
+                                            {
+                                                <span class="badge bg-success">v@(d.ActiveVersionNo.Num())</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary">—</span>
+                                            }
+                                            <span class="fs-9 text-muted">/ @d.VersionCount.Num()</span>
+                                        </td>
+                                        <td class="text-center">@StatusBadge(d.LastVersionStatus)</td>
+                                        <td class="text-center">
+                                            @if (d.IsActive)
+                                            {
+                                                <span class="badge bg-success">فعال</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary" title="@d.DeactivateReason">غیرفعال</span>
+                                            }
+                                        </td>
+                                        @if (statusFilter == "deleted")
+                                        {
+                                            <td class="num fs-8 text-muted">
+                                                @(d.DeletedAt?.ToFa() ?? "—")
+                                                @if (!string.IsNullOrEmpty(d.DeletedByName))
+                                                {
+                                                    <div class="fs-9">توسط @d.DeletedByName</div>
+                                                }
+                                            </td>
+                                        }
+                                        else
+                                        {
+                                            <td class="num @(d.IsExpired ? "text-danger fw-700" : "")">
+                                                @(d.ExpireDate?.ToFa() ?? "—")
+                                                @if (d.ExpireDate.HasValue)
+                                                {
+                                                    <span class="badge @ExpiryClass(d) ms-1" title="@ExpiryTitle(d)">@ExpiryText(d)</span>
+                                                }
+                                            </td>
+                                        }
+                                        <td class="text-end">
+                                            @if (statusFilter == "deleted")
+                                            {
+                                                @if (d.MyLevel >= DocAccessLevelDto.Full)
+                                                {
+                                                    <button class="btn btn-sm btn-light" title="بازگرداندن مدرک"
+                                                            @onclick="() => OpenRestore(d)">
+                                                        <i class="bi bi-arrow-counterclockwise text-success"></i>
+                                                    </button>
+                                                }
+                                                @if (IsManager)
+                                                {
+                                                    <button class="btn btn-sm btn-light" title="حذف قطعی و برگشت‌ناپذیر"
+                                                            @onclick="() => OpenPurge(d)">
+                                                        <i class="bi bi-x-octagon-fill text-danger"></i>
+                                                    </button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-outline-primary" @onclick="() => GoDoc(d.Id)">
+                                                    <i class="bi bi-eye"></i> مشاهده
+                                                </button>
+                                                @if (d.MyLevel >= DocAccessLevelDto.Read && d.IsActive && Auth.Has("WorkOrders.Create"))
+                                                {
+                                                    <button class="btn btn-sm btn-light fw-700" style="color:#9a3412"
+                                                            title="صدور دستور کار برای این مدرک (پرسنل)" @onclick="() => GoWorkOrder(d.Id)">
+                                                        <i class="bi bi-list-task"></i> دستور کار
+                                                    </button>
+                                                }
+                                                @if (d.MyLevel >= DocAccessLevelDto.Full && d.IsActive)
+                                                {
+                                                    <button class="btn btn-sm btn-light" title="انتقال به سطل بازیافت"
+                                                            @onclick="() => DeleteDoc(d)">
+                                                        <i class="bi bi-trash text-danger"></i>
+                                                    </button>
+                                                }
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ==================== مودال بازگردانی مدرک ==================== *@
+<Modal Visible="showRestore" Title="بازگرداندن مدرک از سطل بازیافت" OnClose="() => showRestore = false">
+    <ChildContent>
+        <p>آیا مدرک «<b class="num">@trashTarget?.Code</b> — @trashTarget?.Title» بازگردانده شود؟</p>
+        <div class="alert alert-info fs-8">
+            مدرک مجدداً در پوشه اصلی خود (یا اولین پوشه موجود در صورت حذف پوشه اصلی) فعال خواهد شد.
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showRestore = false">انصراف</button>
+        <button class="btn btn-success" @onclick="DoRestore" disabled="@saving">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-arrow-counterclockwise ms-1"></i> بازگرداندن مدرک
+        </button>
+    </Footer>
+</Modal>
+
+@* ==================== مودال حذف قطعی ==================== *@
+<Modal Visible="showPurge" Title="@(purgeAll ? "خالی کردن کامل سطل بازیافت" : "حذف قطعی و برگشت‌ناپذیر مدرک")"
+       OnClose="() => showPurge = false">
+    <ChildContent>
+        <div class="alert alert-danger">
+            <b><i class="bi bi-exclamation-triangle-fill me-1"></i> هشدار بسیار مهم:</b>
+            این عملیات <b>برگشت‌ناپذیر</b> است. مدرک به‌همراه کلیه ورژن‌ها، پیوست‌ها، دسترسی‌ها و تاریخچه به‌صورت قطعی از دیتابیس پاک خواهد شد.
+        </div>
+        <p>برای تایید، عبارت <b>حذف قطعی</b> را در کادر زیر تایپ کنید:</p>
+        <input class="form-control" @bind="purgeConfirm" placeholder="حذف قطعی" />
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showPurge = false">انصراف</button>
+        <button class="btn btn-danger" @onclick="DoPurge"
+                disabled="@(saving || purgeConfirm?.Trim() != "حذف قطعی")">
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-x-octagon-fill ms-1"></i> تایید و حذف قطعی
+        </button>
+    </Footer>
+</Modal>
+
+@* ==================== مودال پوشه ==================== *@
+<Modal Visible="showFolder" Title="@(folderForm.Id == 0 ? "پوشه جدید" : "تنظیمات و دسترسی پوشه")"
+       Size="modal-lg" OnClose="() => showFolder = false">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-md-8">
+                <label class="form-label">نام پوشه <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="folderForm.Name" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">پوشه والد</label>
+                <select class="form-select" @bind="folderParentId">
+                    <option value="0">— پوشه ریشه (بدون والد) —</option>
+                    @foreach (var f in folders.Where(x => x.Id != folderForm.Id))
+                    {
+                        <option value="@f.Id">@FolderPath(f)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-12">
+                <label class="form-label">توضیحات</label>
+                <input class="form-control" @bind="folderForm.Description" />
+            </div>
+            <div class="col-md-6">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="fPub" @bind="folderForm.IsPublic" />
+                    <label class="form-check-label fw-700" for="fPub">نمایش برای همه</label>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="fPubDl" @bind="folderForm.PublicCanDownload"
+                           disabled="@(!folderForm.IsPublic)" />
+                    <label class="form-check-label" for="fPubDl">دانلود برای همه آزاد باشد</label>
+                </div>
+            </div>
+            <div class="col-12"><hr class="my-1" /></div>
+            <div class="col-12">
+                <label class="form-label fw-700">دسترسی نفرات به این پوشه</label>
+                <div class="fs-9 text-muted mb-2">این دسترسی‌ها به کلیه زیرپوشه‌ها و مدارک داخل این پوشه ارث می‌رسد.</div>
+                <DocPermissionEditor Users="lookups.Users" Items="folderPerms" />
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        @if (folderForm.Id > 0 && IsManager)
+        {
+            <button class="btn btn-outline-danger me-auto" @onclick="DeleteFolder">حذف پوشه</button>
+        }
+        <button class="btn btn-light" @onclick="() => showFolder = false">انصراف</button>
+        <button class="btn btn-primary" @onclick="SaveFolder" disabled="@saving">ذخیره</button>
+    </Footer>
+</Modal>
+
+@* ==================== مودال فرم مدرک جدید ==================== *@
+<DocumentFormModal Visible="showDoc" DefaultFolderId="@(selectedFolderId ?? 0)"
+                   Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents"
+                   OnClose="() => showDoc = false" OnSaved="OnDocSaved" />
+
+@* ==================== مودال مدیریت تگ‌ها ==================== *@
+<DocTagsModal Visible="showTagsModal" OnClose="() => showTagsModal = false" OnTagsChanged="OnTagsChanged" />
+
+@* ==================== مودال دانلود درختی ZIP ==================== *@
+<Modal Visible="showZipModal" Title="دانلود درختی پوشه‌ها در قالب فایل ZIP" Size="modal-md" OnClose="() => showZipModal = false">
+    <ChildContent>
+        <div class="alert alert-info fs-8 py-2 mb-3">
+            <i class="bi bi-info-circle-fill me-1"></i>
+            کلیه فایل‌های پیوست مدارک به همراه ساختار درختی پوشه‌ها در قالب یک فایل ZIP سازمان‌یافته با نام‌گذاری استاندارد UTF-8 فشرده‌سازی و دانلود می‌شوند.
+        </div>
+        <div class="mb-3">
+            <label class="form-label fs-8 fw-bold">محدوده خروجی ZIP:</label>
+            <select class="form-select form-select-sm" @bind="zipTargetFolderId">
+                <option value="0">📦 کل آرشیو اسناد (تمام پوشه‌های مجاز)</option>
+                @foreach (var f in folders.Where(x => x.MyCanDownload))
+                {
+                    <option value="@f.Id">📁 پوشه: @FolderPath(f)</option>
+                }
+            </select>
+        </div>
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="zipSub" @bind="zipIncludeSubfolders" />
+            <label class="form-check-label fs-8 fw-bold" for="zipSub">شامل کلیه زیرپوشه‌ها و شاخه‌های فرعی (Export درختی کامل)</label>
+        </div>
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="zipActive" @bind="zipOnlyActiveVersions" />
+            <label class="form-check-label fs-8 fw-bold" for="zipActive">فقط آخرین نسخه‌های فعال مدارک (صرف‌نظر از نسخه‌های پیش‌نویس/منسوخ)</label>
+        </div>
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" id="zipManifest" @bind="zipIncludeManifest" />
+            <label class="form-check-label fs-8 fw-bold text-success" for="zipManifest">
+                <i class="bi bi-file-earmark-excel-fill text-success me-1"></i>
+                تولید و درج خودکار فایل اکسل شناسنامه اسناد (_فهرست_شناسنامه_اسناد.xlsx) در ریشه ZIP
+            </label>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showZipModal = false">انصراف</button>
+        <button class="btn btn-primary" @onclick="StartZipDownload" disabled="@downloadingZip">
+            @if (downloadingZip)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+                <span>در حال فشرده‌سازی و دانلود…</span>
+            }
+            else
+            {
+                <i class="bi bi-file-earmark-zip-fill me-1"></i>
+                <span>دانلود بسته ZIP</span>
+            }
+        </button>
+    </Footer>
+</Modal>
+
+<style>
+    .ftree-item { display:flex; align-items:center; gap:.5rem; padding:.45rem .6rem; border-radius:8px; cursor:pointer; margin-bottom:2px; font-size:.85rem; }
+    .ftree-item:hover { background:#f1f5f9; }
+    .ftree-item.active { background:#e0e7ff; color:#3730a3; font-weight:700; }
+    .btn-xs { padding:.15rem .45rem; font-size:.75rem; }
+    .fs-9 { font-size:.85rem; }
+    .doc-cards-wrap { padding:.8rem; background:#f8fafc; border-radius:0 0 12px 12px; }
+    .doc-cards-wrap .m-card { box-shadow:0 2px 10px rgba(15,23,42,.05); }
+    @@media (max-width: 575.98px) {
+        .doc-cards-wrap { padding:.5rem; }
+    }
+</style>
+</div>
+
+@code {
+    private List<DocFolderDto> folders = new();
+    private List<DocumentListDto> documents = new();
+    private List<DocTagDto> availableTags = new();
+    private DocArchiveLookups lookups = new();
+    private DocExpirySummaryDto expirySummary = new() { ExpiringDays = 60 };
+    private int inactiveCount;
+    private int trashCount;
+
+    private int? selectedFolderId;
+    private string search = "";
+    private string contentSearch = "";
+    private DateTime? createdFrom;
+    private DateTime? createdTo;
+    private DateTime? expiryFrom;
+    private DateTime? expiryTo;
+    private List<string> selectedFileTypes = new();
+    private List<int> selectedTagIds = new();
+    private bool includeSubfolders = true;
+
+    private string statusFilter = "active";
+    private string? expiryFilter = null;
+    private string linkedModuleFilter = "";
+    private bool showAdvancedFilter;
+    private bool showTagsModal;
+
+    // ---------- دو قالب نمایش (جدول / کارت) + حالت موبایل/اندروید ----------
+    private string viewMode = "table";
+    private bool viewTouched;
+    private bool showFoldersPane = true;
+    private bool isMobileView;
+    private DotNetObjectReference<DocArchiveExplorer>? selfRef;
+
+    // متغیرهای دانلود درختی ZIP
+    private bool showZipModal, downloadingZip;
+    private int zipTargetFolderId;
+    private bool zipIncludeSubfolders = true;
+    private bool zipOnlyActiveVersions = true;
+    private bool zipIncludeManifest = true;
+
+    private bool loadingFolders = true, loadingDocs = true, saving, checkingExpiry, reindexing;
+    private bool showFolder, showDoc, showRestore, showPurge, purgeAll;
+    private string purgeConfirm = "";
+    private DocumentListDto? trashTarget;
+
+    private DocFolderDto folderForm = new();
+    private int folderParentId;
+    private List<DocPermissionDto> folderPerms = new();
+
+    private bool IsManager => Auth.Has("DocArchive.Manage");
+
+    private int ActiveFilterCount =>
+        (!string.IsNullOrWhiteSpace(contentSearch) ? 1 : 0) +
+        (!string.IsNullOrWhiteSpace(linkedModuleFilter) ? 1 : 0) +
+        (createdFrom.HasValue || createdTo.HasValue ? 1 : 0) +
+        (expiryFrom.HasValue || expiryTo.HasValue ? 1 : 0) +
+        (selectedFileTypes.Count > 0 ? 1 : 0) +
+        (selectedTagIds.Count > 0 ? 1 : 0);
+
+    private bool CanWriteHere
+    {
+        get
+        {
+            if (IsManager) return true;
+            if (selectedFolderId is int fid)
+            {
+                var f = folders.FirstOrDefault(x => x.Id == fid);
+                return f != null && f.MyLevel >= DocAccessLevelDto.Write;
+            }
+            return folders.Any(f => f.MyLevel >= DocAccessLevelDto.Write);
+        }
+    }
+
+    private List<LookupItem> FolderLookup =>
+        folders.Select(f => new LookupItem { Id = f.Id, Name = FolderPath(f) }).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("آرشیو اسناد و مدارک");
+        await LoadLookups();
+        await LoadTags();
+        await LoadFolders();
+        await LoadDocs();
+    }
+
+    private async Task LoadLookups()
+    {
+        try { lookups = await Svc.GetLookupsAsync(); } catch { }
+    }
+
+    private async Task LoadTags()
+    {
+        try { availableTags = await Svc.GetTagsAsync(); } catch { }
+    }
+
+    private async Task OnTagsChanged()
+    {
+        await LoadTags();
+        await LoadDocs();
+    }
+
+    private void ToggleFileType(string type)
+    {
+        if (selectedFileTypes.Contains(type)) selectedFileTypes.Remove(type);
+        else selectedFileTypes.Add(type);
+        _ = LoadDocs();
+    }
+
+    private void ToggleTagFilter(int tagId)
+    {
+        if (selectedTagIds.Contains(tagId)) selectedTagIds.Remove(tagId);
+        else selectedTagIds.Add(tagId);
+        _ = LoadDocs();
+    }
+
+    private void ClearSearch()
+    {
+        search = "";
+        _ = LoadDocs();
+    }
+
+    private void ResetFilters()
+    {
+        search = "";
+        contentSearch = "";
+        linkedModuleFilter = "";
+        createdFrom = null;
+        createdTo = null;
+        expiryFrom = null;
+        expiryTo = null;
+        selectedFileTypes.Clear();
+        selectedTagIds.Clear();
+        includeSubfolders = true;
+        _ = LoadDocs();
+    }
+
+    private async Task LoadFolders()
+    {
+        loadingFolders = true;
+        try { folders = await Svc.GetFoldersAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loadingFolders = false; }
+    }
+
+    private async Task LoadDocs()
+    {
+        loadingDocs = true;
+        try
+        {
+            var filter = new DocSearchFilterDto
+            {
+                Search = search,
+                ContentSearch = contentSearch,
+                FolderId = selectedFolderId,
+                IncludeSubfolders = includeSubfolders,
+                Status = statusFilter,
+                ExpiryStatus = expiryFilter switch { "expiring" => "expiring", "expired" => "expired", _ => "all" },
+                CreatedFrom = createdFrom,
+                CreatedTo = createdTo,
+                ExpiryFrom = expiryFrom,
+                ExpiryTo = expiryTo,
+                FileTypes = selectedFileTypes,
+                TagIds = selectedTagIds,
+                LinkedModule = string.IsNullOrWhiteSpace(linkedModuleFilter) ? null : linkedModuleFilter
+            };
+
+            documents = await Svc.SearchDocumentsAsync(filter);
+            inactiveCount = (await Svc.GetDocumentsAsync(null, null, false, "inactive")).Count;
+            trashCount = (await Svc.GetDocumentsAsync(null, null, false, "deleted")).Count;
+            expirySummary = await Svc.GetExpirySummaryAsync() ?? expirySummary;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loadingDocs = false; }
+    }
+
+    private async Task SelectFolder(int? id)
+    {
+        selectedFolderId = id;
+        if (statusFilter == "inactive") statusFilter = "active";
+        expiryFilter = null;
+        await LoadDocs();
+    }
+
+    private async Task ShowAllActive()
+    {
+        selectedFolderId = null;
+        statusFilter = "active";
+        expiryFilter = null;
+        await LoadDocs();
+    }
+
+    private async Task ShowInactive()
+    {
+        selectedFolderId = null;
+        statusFilter = "inactive";
+        expiryFilter = null;
+        await LoadDocs();
+    }
+
+    private async Task ShowTrash()
+    {
+        selectedFolderId = null;
+        statusFilter = "deleted";
+        expiryFilter = null;
+        await LoadDocs();
+    }
+
+    private void OpenRestore(DocumentListDto d)
+    {
+        trashTarget = d;
+        showRestore = true;
+    }
+
+    private async Task DoRestore()
+    {
+        if (trashTarget is null) return;
+        saving = true;
+        try
+        {
+            var msg = await Svc.RestoreDocumentAsync(trashTarget.Id);
+            Toast.Success(msg);
+            showRestore = false;
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private void OpenPurge(DocumentListDto d)
+    {
+        trashTarget = d;
+        purgeAll = false;
+        purgeConfirm = "";
+        showPurge = true;
+    }
+
+    private void OpenPurgeAll()
+    {
+        trashTarget = null;
+        purgeAll = true;
+        purgeConfirm = "";
+        showPurge = true;
+    }
+
+    private async Task DoPurge()
+    {
+        saving = true;
+        try
+        {
+            var msg = purgeAll
+                ? await Svc.EmptyTrashAsync()
+                : await Svc.PurgeDocumentAsync(trashTarget!.Id);
+            Toast.Success(msg);
+            showPurge = false;
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task ShowExpiring()
+    {
+        selectedFolderId = null;
+        statusFilter = "active";
+        expiryFilter = "expiring";
+        await LoadDocs();
+    }
+
+    private async Task ShowExpired()
+    {
+        selectedFolderId = null;
+        statusFilter = "active";
+        expiryFilter = "expired";
+        await LoadDocs();
+    }
+
+    private async Task ClearExpiryFilter()
+    {
+        expiryFilter = null;
+        await LoadDocs();
+    }
+
+    private async Task RunExpiryCheck()
+    {
+        checkingExpiry = true;
+        try
+        {
+            var msg = await Svc.RunExpiryCheckAsync();
+            Toast.Success(msg);
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { checkingExpiry = false; }
+    }
+
+    private async Task ReindexAll()
+    {
+        reindexing = true;
+        try
+        {
+            Toast.Info("در حال بازایندکس و پردازش OCR کلیه فایل‌ها...");
+            var res = await Svc.ReindexAllAsync();
+            Toast.Success(res.Message);
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { reindexing = false; }
+    }
+
+    private static string ExpiryClass(DocumentListDto d)
+    {
+        if (d.IsExpired) return "bg-danger";
+        return d.DaysToExpire switch
+        {
+            <= 7 => "bg-danger",
+            <= 30 => "bg-warning text-dark",
+            <= 60 => "bg-info text-dark",
+            _ => "bg-light text-secondary"
+        };
+    }
+
+    private static string ExpiryText(DocumentListDto d)
+    {
+        if (d.DaysToExpire is not int n) return "";
+        if (n < 0) return $"{(-n).Num()} روز گذشته";
+        if (n == 0) return "امروز";
+        return $"{n.Num()} روز";
+    }
+
+    private static string ExpiryTitle(DocumentListDto d)
+    {
+        if (d.DaysToExpire is not int n) return "";
+        if (n < 0) return $"این مدرک {(-n).Num()} روز است منقضی شده";
+        if (n == 0) return "امروز منقضی می‌شود";
+        return $"{n.Num()} روز تا انقضا";
+    }
+
+    private async Task DeleteFolder()
+    {
+        if (folderForm.Id == 0) return;
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"پوشه «{folderForm.Name}» و همه زیرپوشه‌ها و مدارک داخل آن حذف شوند؟");
+        if (!ok) return;
+        try
+        {
+            await Svc.DeleteFolderAsync(folderForm.Id);
+            Toast.Success("پوشه حذف شد.");
+            showFolder = false;
+            selectedFolderId = null;
+            await LoadFolders();
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private string FolderPath(DocFolderDto f)
+    {
+        var parts = new List<string> { f.Name };
+        var cur = f.ParentId;
+        var guard = 0;
+        while (cur is int p && guard++ < 20)
+        {
+            var pf = folders.FirstOrDefault(x => x.Id == p);
+            if (pf == null) break;
+            parts.Insert(0, pf.Name);
+            cur = pf.ParentId;
+        }
+        return string.Join(" / ", parts);
+    }
+
+    private RenderFragment RenderTree(int? parentId, int depth) => builder =>
+    {
+        var seq = 0;
+        foreach (var f in folders.Where(x => x.ParentId == parentId).OrderBy(x => x.Name))
+        {
+            var current = f;
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "ftree-item " + (selectedFolderId == current.Id ? "active" : ""));
+            builder.AddAttribute(seq++, "style", $"padding-right:{depth * 14 + 8}px");
+            builder.AddAttribute(seq++, "onclick",
+                Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => SelectFolder(current.Id)));
+
+            builder.OpenElement(seq++, "i");
+            builder.AddAttribute(seq++, "class", current.IsPublic ? "bi bi-folder-fill text-info" : "bi bi-folder-fill text-warning");
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "span");
+            builder.AddContent(seq++, current.Name);
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "badge bg-light text-dark ms-auto");
+            builder.AddContent(seq++, current.DocumentCount);
+            builder.CloseElement();
+
+            if (current.MyLevel >= DocAccessLevelDto.Full)
+            {
+                builder.OpenElement(seq++, "i");
+                builder.AddAttribute(seq++, "class", "bi bi-gear text-secondary");
+                builder.AddAttribute(seq++, "title", "تنظیمات و دسترسی");
+                builder.AddAttribute(seq++, "onclick",
+                    Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => OpenFolder(current)));
+                builder.AddEventStopPropagationAttribute(seq++, "onclick", true);
+                builder.CloseElement();
+            }
+
+            builder.CloseElement();
+
+            builder.AddContent(seq++, RenderTree(current.Id, depth + 1));
+        }
+    };
+
+    private async Task OpenFolder(DocFolderDto? f)
+    {
+        if (f == null)
+        {
+            folderForm = new DocFolderDto();
+            folderParentId = selectedFolderId ?? 0;
+            folderPerms = new();
+        }
+        else
+        {
+            try
+            {
+                var full = await Svc.GetFolderAsync(f.Id);
+                folderForm = full;
+                folderParentId = full.ParentId ?? 0;
+                folderPerms = full.Permissions;
+            }
+            catch (Exception ex) { Toast.Error(ex.Message); }
+        }
+        showFolder = true;
+    }
+
+    private async Task SaveFolder()
+    {
+        if (string.IsNullOrWhiteSpace(folderForm.Name)) { Toast.Error("نام پوشه اجباری است."); return; }
+        saving = true;
+        try
+        {
+            folderForm.ParentId = folderParentId > 0 ? folderParentId : null;
+            folderForm.Permissions = folderPerms;
+
+            int id;
+            if (folderForm.Id == 0)
+            {
+                // سرور هنگام ساخت، دسترسی‌های فرم + دسترسی کامل سازنده را یکجا ذخیره می‌کند؛
+                // فراخوانی دوم حذف شد تا خطای کاذب «مدیریت دسترسی نیازمند دسترسی کامل است» رخ ندهد.
+                id = await Svc.CreateFolderAsync(folderForm);
+            }
+            else
+            {
+                id = folderForm.Id;
+                await Svc.UpdateFolderAsync(id, folderForm);
+                await Svc.SaveFolderPermissionsAsync(id, new DocPermissionsSaveDto
+                {
+                    IsPublic = folderForm.IsPublic,
+                    PublicCanDownload = folderForm.PublicCanDownload,
+                    Items = folderPerms
+                });
+            }
+
+            Toast.Success("پوشه ذخیره شد.");
+            showFolder = false;
+            await LoadFolders();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private void GoDoc(int id) => Nav.NavigateTo($"doc-archive/documents/{id}");
+
+    // میانبر صدور دستور کار از فهرست/کارت آرشیو — فرم با شماره فرم و مدرک مبدأ پر می‌شود
+    private void GoWorkOrder(int id) => Nav.NavigateTo($"/work-orders?sourceModule=Document&sourceId={id}");
+
+    private void OpenNewDoc()
+    {
+        if (showDoc || showFolder) return;
+        showDoc = true;
+    }
+
+    private async Task OnDocSaved()
+    {
+        showDoc = false;
+        await LoadFolders();
+        await LoadDocs();
+    }
+
+    private async Task DeleteDoc(DocumentListDto d)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm",
+            $"مدرک «{d.Code} — {d.Title}» به سطل بازیافت منتقل شود؟ بعداً می‌توانید آن را بازگردانید.");
+        if (!ok) return;
+        try { await Svc.DeleteDocumentAsync(d.Id); Toast.Success("مدرک به سطل بازیافت منتقل شد."); await LoadDocs(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ---------- دانلود درختی ZIP ----------
+    private void OpenZipModal(int? folderId)
+    {
+        zipTargetFolderId = folderId ?? (selectedFolderId ?? 0);
+        zipIncludeSubfolders = true;
+        zipOnlyActiveVersions = true;
+        zipIncludeManifest = true;
+        showZipModal = true;
+    }
+
+    private async Task StartZipDownload()
+    {
+        downloadingZip = true;
+        try
+        {
+            Toast.Info("در حال فشرده‌سازی بسته ZIP در سرور…");
+            var (data, fileName, contentType) = await Svc.DownloadFolderZipAsync(
+                zipTargetFolderId > 0 ? zipTargetFolderId : null,
+                zipIncludeSubfolders,
+                zipOnlyActiveVersions,
+                zipIncludeManifest);
+
+            if (data.Length == 0)
+            {
+                Toast.Info("بسته ZIP خالی است؛ مدرک قابل دانلودی در این محدوده یافت نشد.");
+                return;
+            }
+
+            await JS.InvokeVoidAsync("downloadBlob", fileName, contentType, Convert.ToBase64String(data));
+            Toast.Success("بسته ZIP دانلود شد.");
+            showZipModal = false;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در دانلود ZIP: {ex.Message}");
+        }
+        finally
+        {
+            downloadingZip = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            // در حالت موبایل/اندروید، قالب خودکار به نمای کارتی تغییر می‌کند
+            isMobileView = await JS.InvokeAsync<bool>("appShell.isMobile");
+            if (isMobileView && !viewTouched)
+            {
+                viewMode = "cards";
+                showFoldersPane = false;
+                StateHasChanged();
+            }
+            selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("appShell.watch", selfRef);
+        }
+        catch { /* JS در دسترس نیست */ }
+    }
+
+    [JSInvokable]
+    public void OnScreenChanged(bool mobile)
+    {
+        if (isMobileView == mobile) return;
+        isMobileView = mobile;
+        // فقط اگر کاربر دستی قالب را عوض نکرده باشد، با تغییر اندازه صفحه قالب عوض می‌شود
+        if (!viewTouched)
+        {
+            viewMode = mobile ? "cards" : "table";
+            showFoldersPane = !mobile;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void SetViewMode(string mode)
+    {
+        viewMode = mode;
+        viewTouched = true;
+    }
+
+    public void Dispose()
+    {
+        try { selfRef?.Dispose(); } catch { }
+    }
+
+    private static string LevelName(DocAccessLevelDto l) => l switch
+    {
+        DocAccessLevelDto.View => "مشاهده",
+        DocAccessLevelDto.Read => "خواندن",
+        DocAccessLevelDto.Write => "نوشتن",
+        DocAccessLevelDto.Full => "کامل",
+        _ => "ندارد"
+    };
+
+    private static RenderFragment StatusBadge(DocVersionStatusDto s) => builder =>
+    {
+        var (cls, txt) = s switch
+        {
+            DocVersionStatusDto.Draft => ("bg-secondary", "پیش‌نویس"),
+            DocVersionStatusDto.InReview => ("bg-warning text-dark", "در گردش (فریز)"),
+            DocVersionStatusDto.Approved => ("bg-success", "تایید شده"),
+            DocVersionStatusDto.Rejected => ("bg-danger", "رد شده"),
+            _ => ("bg-dark", "بایگانی")
+        };
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "badge " + cls);
+        builder.AddContent(2, txt);
+        builder.CloseElement();
+    };
+}

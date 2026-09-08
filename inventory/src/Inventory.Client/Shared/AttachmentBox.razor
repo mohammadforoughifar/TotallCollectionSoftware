@@ -1,0 +1,304 @@
+@* ================== کامپوننت پیوست جامع ==================
+   استفاده در هر فرم: <AttachmentBox Module="WorkOrders" RefId="123" CanUpload="true" />
+   بک‌اند مشترک: /api/attachments/{module}/{refId} — بدون کد جدید برای فرم‌های بعدی
+   پیش‌نمایش داخل برنامه: PDF/عکس/متن + (در آرشیو اسناد) متن استخراج‌شدهٔ Word/Excel *@
+@using System.Net.Http.Headers
+@inject HttpClient Http
+@inject IAuthState Auth
+@inject IToastService Toast
+
+<div class="attx-box">
+    <div class="attx-title">
+        <i class="bi bi-paperclip"></i> پیوست‌ها
+        <span class="attx-count">@items.Count</span>
+    </div>
+    <div class="attx-body">
+        @if (items.Count == 0)
+        {
+            <div class="fs-8 text-muted py-1">پیوستی ثبت نشده است.</div>
+        }
+        @foreach (var a in items.OrderByDescending(x => x.UploadedAt))
+        {
+            <div class="attx-row">
+                <i class="bi @IconOf(a) attx-fileicon @(CanPreviewOf(a) ? "attx-linkable" : "")"></i>
+                <div class="attx-main">
+                    @if (CanPreviewOf(a))
+                    {
+                        <a href="javascript:void(0)" @onclick="() => Preview(a)" class="attx-name" title="پیش‌نمایش داخل برنامه">
+                            @a.FileName
+                        </a>
+                    }
+                    else if (a.CanDownload)
+                    {
+                        <a href="@DownloadUrl(a)" target="_blank" class="attx-name" title="دانلود (تب جدید)">
+                            @a.FileName
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="attx-name text-muted" title="این فایل قابل پیش‌نمایش نیست و اجازهٔ دانلود ندارید">
+                            @a.FileName
+                        </span>
+                    }
+                    <div class="attx-meta">
+                        @if (!CanPreviewOf(a) && a.CanDownload)
+                        {
+                            <span class="attx-tag">پیش‌نمایش ندارد</span>
+                        }
+                        @if (!a.CanDownload)
+                        {
+                            <span class="attx-tag attx-tag-warn"><i class="bi bi-eye"></i> فقط مشاهده</span>
+                        }
+                        <span>@a.UploaderName</span>
+                        <span>•</span>
+                        <span>@FormatSize(a.Size)</span>
+                        <span>•</span>
+                        <span title="@a.UploadedAt.ToString("g")">@a.UploadedAt.ToFa()</span>
+                    </div>
+                </div>
+                <div class="attx-actions">
+                    @if (CanPreviewOf(a))
+                    {
+                        <button class="btn btn-sm btn-light py-0" title="پیش‌نمایش" @onclick="() => Preview(a)">
+                            <i class="bi bi-eye text-primary"></i>
+                        </button>
+                    }
+                    @if (a.CanDownload)
+                    {
+                        <a class="btn btn-sm btn-light py-0" href="@DownloadUrl(a)" target="_blank" title="دانلود">
+                            <i class="bi bi-download text-success"></i>
+                        </a>
+                    }
+                    @if (CanUpload && a.CanDownload && (a.UploaderUserId == MyUserId || Auth.IsAdmin))
+                    {
+                        <button class="btn btn-sm btn-light py-0" title="حذف" @onclick="() => Delete(a.Id)">
+                            <i class="bi bi-trash text-danger"></i>
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (CanUpload)
+        {
+            <div class="attx-drop @(dragOver ? "drag" : "") @(uploading ? "busy" : "") mt-2"
+                 @ondragenter="OnDragEnter" @ondragenter:preventDefault
+                 @ondragover:preventDefault
+                 @ondragleave="OnDragLeave"
+                 @ondrop="OnDropReset" @ondrop:preventDefault>
+                <div class="attx-drop-inner">
+                    @if (uploading)
+                    {
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <div class="fw-700 fs-8 text-primary ms-1 mt-1">در حال بارگذاری…</div>
+                        @if (pendingUploads.Count > 0)
+                        {
+                            <div class="fs-9 text-muted mt-1">
+                                @string.Join(" ، ", pendingUploads)
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <i class="bi bi-cloud-arrow-up attx-drop-icon"></i>
+                        <div class="fw-700 fs-8">فایل‌ها را اینجا رها کنید یا کلیک کنید</div>
+                        <div class="fs-9 text-muted">تا ۵ فایل — هر فایل حداکثر ۱۰ مگابایت — PDF ،Word ،Excel ،تصویر و متن</div>
+                    }
+                </div>
+                <InputFile class="attx-file-overlay" OnChange="OnFiles" multiple disabled="@uploading" />
+            </div>
+            @if (Module == "DocVersion")
+            {
+                <div class="fs-9 text-muted mt-1">
+                    <i class="bi bi-info-circle ms-1"></i>
+                    پس از بارگذاری، متن PDF/Word/Excel/تصویر به‌صورت خودکار استخراج می‌شود و در جستجوی آرشیو قابل‌یافتن است.
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<FilePreviewModal @ref="previewModal" />
+
+<style>
+    .attx-box { border: 1px solid #e8edf3; border-radius: 14px; overflow: hidden; background:#fff; }
+    .attx-title { background: #f8fafc; padding: .5rem .85rem; font-size: .82rem; font-weight: 700; color: #334155;
+                  border-bottom: 1px solid #eef2f7; display:flex; align-items:center; gap:.4rem; }
+    .attx-title i { color: #2563eb; }
+    .attx-count { background:#e8eefc; color:#2563eb; border-radius:999px; font-size:.7rem; padding:.05rem .5rem; }
+    .attx-body { padding: .6rem .85rem; }
+    .attx-row { display:flex; align-items:flex-start; gap:.55rem; padding:.42rem .1rem; border-bottom:1px dashed #eef2f7; }
+    .attx-row:last-of-type { border-bottom:0; }
+    .attx-fileicon { font-size:1.15rem; line-height:1.4; color:#94a3b8; }
+    .attx-fileicon.attx-linkable { color:#2563eb; }
+    .attx-main { flex:1; min-width:0; }
+    .attx-name { font-size:.8rem; font-weight:600; color:#1e293b; text-decoration:none; word-break:break-all; }
+    a.attx-name:hover { color:#2563eb; text-decoration:underline; }
+    .attx-meta { font-size:.68rem; color:#94a3b8; display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; margin-top:.1rem; }
+    .attx-tag { background:#f1f5f9; color:#64748b; border-radius:999px; padding:.02rem .45rem; }
+    .attx-tag-warn { background:#fef3c7; color:#92400e; }
+    .attx-actions { display:flex; gap:.25rem; align-items:center; }
+    .attx-actions .btn { line-height:1.3; }
+    .attx-drop { position: relative; border: 2px dashed #c7d7f5; border-radius: 12px; background: #f8fbff;
+                 transition: all .15s ease; overflow: hidden; }
+    .attx-drop-inner { padding: .85rem .75rem; text-align: center; color: #475569; pointer-events: none; }
+    .attx-drop-icon { font-size: 1.6rem; color: #2563eb; display: block; margin-bottom: .15rem; }
+    .attx-file-overlay { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .attx-file-overlay::-webkit-file-upload-button { cursor: pointer; }
+    .attx-drop.drag { border-color: #2563eb; background: #eff6ff; box-shadow: 0 0 0 4px rgba(37,99,235,.12); }
+    .attx-drop.busy { opacity: .8; pointer-events: none; }
+    .fs-9 { font-size: .68rem; }
+</style>
+
+@code {
+    /// <summary>نام ماژول — مثل WorkOrders، ItRequests، Orders، DocVersion</summary>
+    [Parameter] public string Module { get; set; } = "";
+
+    /// <summary>شناسه رکورد در ماژول</summary>
+    [Parameter] public int RefId { get; set; }
+
+    /// <summary>اجازه آپلود/حذف</summary>
+    [Parameter] public bool CanUpload { get; set; } = true;
+
+    /// <summary>
+    /// آدرس پایهٔ متن استخراج‌شده برای پیش‌نمایش Word/Excel (فقط آرشیو اسناد):
+    /// مثل "/api/doc-archive/attachments" — خالی یعنی چنین امکانی نیست.
+    /// </summary>
+    [Parameter] public string? TextPreviewApi { get; set; }
+
+    private const long MaxBytes = 10L * 1024 * 1024;
+    private const int MaxFiles = 5;
+
+    private List<AttItem> items = new();
+    private readonly List<string> pendingUploads = new();
+    private FilePreviewModal? previewModal;
+    private string apiBase = "";
+    private bool dragOver, uploading;
+    private int dragDepth;
+    private int MyUserId => Auth.UserId;
+
+    private void OnDragEnter() { dragDepth++; dragOver = true; }
+    private void OnDragLeave() { if (--dragDepth <= 0) { dragDepth = 0; dragOver = false; } }
+    private void OnDropReset() { dragDepth = 0; dragOver = false; }
+
+    public class AttItem
+    {
+        public int Id { get; set; }
+        public string FileName { get; set; } = "";
+        public string UploaderName { get; set; } = "";
+        public int UploaderUserId { get; set; }
+        public DateTime UploadedAt { get; set; }
+        public long Size { get; set; }
+        public string? ContentType { get; set; }
+        /// <summary>قابل نمایش داخل برنامه (PDF/عکس/متن) — از سمت سرور</summary>
+        public bool CanPreview { get; set; }
+        /// <summary>کاربر جاری حق دانلود دارد</summary>
+        public bool CanDownload { get; set; } = true;
+    }
+
+    /// <summary>ورد/اکسلِ جدید — پیش‌نمایش از طریق متن استخراج‌شده</summary>
+    private static bool IsOffice(AttItem a)
+    {
+        var fn = a.FileName.ToLowerInvariant();
+        var ct = (a.ContentType ?? "").ToLowerInvariant();
+        return fn.EndsWith(".docx") || fn.EndsWith(".xlsx")
+               || ct.Contains("wordprocessingml") || ct.Contains("spreadsheetml");
+    }
+
+    private bool CanPreviewOf(AttItem a) => a.CanPreview || IsOffice(a);
+
+    private string DownloadUrl(AttItem a) =>
+        $"{apiBase}/api/attachments/download/{a.Id}?access_token={Auth.Token}";
+
+    private static string IconOf(AttItem a)
+    {
+        var fn = a.FileName.ToLowerInvariant();
+        var ct = (a.ContentType ?? "").ToLowerInvariant();
+        if (fn.EndsWith(".pdf") || ct.Contains("pdf")) return "bi-file-earmark-pdf";
+        if (ct.StartsWith("image/")) return "bi-file-earmark-image";
+        if (fn.EndsWith(".docx") || ct.Contains("wordprocessingml")) return "bi-file-earmark-word";
+        if (fn.EndsWith(".xlsx") || ct.Contains("spreadsheetml")) return "bi-file-earmark-excel";
+        return "bi-file-earmark-text";
+    }
+
+    private async Task Preview(AttItem a)
+    {
+        if (previewModal is not null)
+        {
+            var textApi = TextPreviewApi != null && IsOffice(a)
+                ? TextPreviewApi.TrimEnd('/') + "/" + a.Id + "/text"
+                : null;
+            await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload, textApi);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        if (RefId <= 0 || string.IsNullOrWhiteSpace(Module)) { items = new(); return; }
+        try { items = await Http.GetFromJsonAsync<List<AttItem>>($"/api/attachments/{Module}/{RefId}") ?? new(); }
+        catch { items = new(); }
+    }
+
+    private async Task OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        OnDropReset();
+        var files = e.GetMultipleFiles(MaxFiles).ToList();
+
+        // پیش‌چک حجم/تعداد با پیام واضح
+        var oversized = files.Where(f => f.Size > MaxBytes).Select(f => f.Name).ToList();
+        foreach (var n in oversized) files.RemoveAll(f => f.Name == n);
+        if (oversized.Count > 0)
+            Toast.Error($"{string.Join("، ", oversized.Take(3))}{(oversized.Count > 3 ? " و …" : "")} حذف شد: هر فایل حداکثر ۱۰ مگابایت.");
+
+        if (files.Count == 0) { await Reload(); return; }
+
+        uploading = true;
+        try
+        {
+            var ok = 0;
+            foreach (var f in files)
+            {
+                pendingUploads.Add(f.Name);
+                try
+                {
+                    using var content = new MultipartFormDataContent();
+                    var sc = new StreamContent(f.OpenReadStream(MaxBytes));
+                    sc.Headers.ContentType = new MediaTypeHeaderValue(
+                        string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
+                    content.Add(sc, "file", f.Name);
+                    var resp = await Http.PostAsync($"/api/attachments/{Module}/{RefId}", content);
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        var body = await resp.Content.ReadAsStringAsync();
+                        Toast.Error($"بارگذاری {f.Name} ناموفق بود ({(int)resp.StatusCode}).");
+                    }
+                    else ok++;
+                }
+                catch (Exception ex) { Toast.Error($"بارگذاری {f.Name}: {ex.Message}"); }
+                pendingUploads.Remove(f.Name);
+            }
+            await Reload();
+            if (ok > 0)
+                Toast.Success(Module == "DocVersion"
+                    ? $"{ok.Num()} پیوست بارگذاری شد — استخراج متن به‌صورت خودکار در حال انجام است."
+                    : $"{ok.Num()} پیوست بارگذاری شد.");
+        }
+        finally { uploading = false; pendingUploads.Clear(); }
+    }
+
+    private async Task Delete(int id)
+    {
+        try { await Http.DeleteAsync($"/api/attachments/{id}"); await Reload(); } catch { }
+    }
+
+    private static string FormatSize(long b) =>
+        b < 1024 ? $"{b}B" : b < 1024 * 1024 ? $"{b / 1024}KB" : $"{b / 1024 / 1024:0.#}MB";
+}

@@ -1,0 +1,83 @@
+@inject IAuthApi AuthApi
+@inject IAuthState Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="login-page">
+    <div class="login-card">
+        <div class="text-center mb-4">
+            <div class="login-logo"><i class="bi bi-box2-fill"></i></div>
+            <h4 class="fw-800 mt-3 mb-1">انبار و فروش</h4>
+            <div class="text-muted fs-8">برای ورود، نام کاربری و رمز عبور خود را وارد کنید</div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">نام کاربری</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-person"></i></span>
+                <input class="form-control" @bind="username" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
+            </div>
+        </div>
+        <div class="mb-4">
+            <label class="form-label">رمز عبور</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="bi bi-key"></i></span>
+                <input type="password" class="form-control" @bind="password" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <div class="alert alert-danger fs-8 py-2">@error</div>
+        }
+
+        <button class="btn btn-primary w-100" @onclick="DoLogin" disabled="@busy">
+            @if (busy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            <i class="bi bi-box-arrow-in-left"></i> ورود (F1)
+        </button>
+
+        <div class="text-center text-muted fs-8 mt-3">
+            ورود پیش‌فرض: admin / admin
+        </div>
+        <div class="text-center mt-3 pt-3" style="border-top:1px dashed #e2e8f0">
+            <a href="/request" class="text-decoration-none fs-8">
+                <i class="bi bi-headset"></i> ثبت درخواست خدمت IT بدون ورود (شرکت‌های راه دور)
+            </a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string username = "", password = "", error = "";
+    private bool busy;
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or "F1") await DoLogin();
+    }
+
+    private async Task DoLogin()
+    {
+        error = "";
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+        {
+            error = "نام کاربری و رمز عبور را وارد کنید.";
+            return;
+        }
+
+        busy = true;
+        try
+        {
+            var res = await AuthApi.LoginAsync(new LoginRequest { Username = username.Trim(), Password = password });
+            await Auth.SignInAsync(res);
+            // پرچم برای نمایش توست خوش‌آمد بعد از بارگذاری صفحه
+            try { await JS.InvokeVoidAsync("sessionStorage.setItem", "justLoggedIn", res.DisplayName ?? res.Username); } catch { }
+            Nav.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally { busy = false; }
+    }
+}

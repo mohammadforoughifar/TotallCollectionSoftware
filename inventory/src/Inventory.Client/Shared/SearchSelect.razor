@@ -1,0 +1,113 @@
+@inject ApiOptions ApiCfg
+
+@code {
+    private string Dflt => (ApiCfg?.BaseUrl ?? "").TrimEnd('/') + "/uploads/users/default.jpg";
+}
+
+<div class="ss">
+    <input type="text"
+           class="form-control @CssClass"
+           value="@query"
+           placeholder="@Placeholder"
+           @onfocus="OnFocus"
+           @oninput="OnInput"
+           @onfocusout="OnBlur" />
+
+    @if (open)
+    {
+        <div class="ss-menu">
+            @if (filtered.Count == 0)
+            {
+                <div class="ss-empty">موردی یافت نشد</div>
+            }
+            else
+            {
+                @foreach (var it in filtered)
+                {
+                    <div class="ss-item @(it.Id == Value ? "selected" : "")" @onmousedown="@(() => Select(it))" @onmousedown:preventDefault="true">
+                        @if (!string.IsNullOrWhiteSpace(it.AvatarUrl))
+                        {
+                            <img class="user-avatar user-avatar-sm" src="@it.AvatarUrl" alt="" onerror="this.onerror=null;this.src='@Dflt';" />
+                        }
+                        <span class="ss-item-name">@it.Name</span>
+                    </div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<LookupItem> Items { get; set; } = new();
+    [Parameter] public int Value { get; set; }
+    [Parameter] public EventCallback<int> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "انتخاب کنید…";
+    [Parameter] public string CssClass { get; set; } = "";
+
+    private string query = "";
+    private bool open;
+
+    private List<LookupItem> filtered
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(query)) return Items;
+            return Items.Where(i => i.Name.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Value > 0 && string.IsNullOrEmpty(query))
+        {
+            var sel = Items.FirstOrDefault(i => i.Id == Value);
+            if (sel is not null) query = sel.Name;
+        }
+        if (Value == 0 && !string.IsNullOrEmpty(query) && !focused)
+        {
+            // مقدار پاک شده — فقط در صورت عدم فوکوس
+            var exists = Items.Any(i => i.Name == query);
+            if (!exists) query = "";
+        }
+    }
+
+    private bool focused;
+
+    private void OnFocus()
+    {
+        focused = true;
+        open = true;
+        if (Value > 0)
+        {
+            var sel = Items.FirstOrDefault(i => i.Id == Value);
+            if (sel is not null) query = sel.Name;
+        }
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        open = true;
+    }
+
+    private async Task OnBlur()
+    {
+        focused = false;
+        await Task.Delay(160);
+        open = false;
+        // اگر متن انتخابی مطابق نیست، برگرد به نام گزینه انتخاب‌شده
+        var sel = Items.FirstOrDefault(i => i.Id == Value);
+        query = sel?.Name ?? "";
+    }
+
+    private async Task Select(LookupItem item)
+    {
+        query = item.Name;
+        open = false;
+        if (Value != item.Id)
+        {
+            Value = item.Id;
+            await ValueChanged.InvokeAsync(item.Id);
+        }
+    }
+}

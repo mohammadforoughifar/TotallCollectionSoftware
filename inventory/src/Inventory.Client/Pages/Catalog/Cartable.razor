@@ -1,0 +1,238 @@
+@namespace Inventory.Client.Pages
+@page "/cartable"
+@inject HttpClient Http
+@inject IAuthState Auth
+@inject NavigationManager Nav
+@inject LayoutState Layout
+@inject RealtimeService Rt
+@implements IDisposable
+
+<PageTitle>کارتابل من</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>کارتابل من</h1>
+        <p class="lead">پیام‌ها و مواردی که منتظر اقدام شما هستند</p>
+    </div>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="row g-3">
+        @* ================== موارد منتظر اقدام ================== *@
+        <div class="col-12 col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-lightning-charge text-warning"></i>
+                    <span class="card-title">منتظر اقدام شما (@actions.Count)</span>
+                </div>
+                <div class="card-body p-2">
+                    @if (actions.Count == 0)
+                    {
+                        <div class="text-center text-muted py-4 fs-8"><i class="bi bi-check2-circle d-block fs-3 mb-1 text-success"></i>موردی منتظر اقدام شما نیست</div>
+                    }
+                    @foreach (var a in actions)
+                    {
+                        <div class="ct-item" @onclick="@(() => Nav.NavigateTo(a.Link))">
+                            <div class="ct-icon" style="background:@a.Color"><i class="bi @a.Icon"></i></div>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="fw-600 fs-8">@a.Title</div>
+                                <div class="fs-9 text-muted">@a.Sub</div>
+                            </div>
+                            <i class="bi bi-chevron-left text-muted"></i>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ================== پیام‌های اخیر ================== *@
+        <div class="col-12 col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">
+                    <i class="bi bi-bell text-primary"></i>
+                    <span class="card-title">پیام‌های اخیر</span>
+                </div>
+                <div class="card-body p-2">
+                    @if (ntfs.Count == 0)
+                    {
+                        <div class="text-center text-muted py-4 fs-8"><i class="bi bi-bell-slash d-block fs-3 mb-1"></i>پیامی ندارید</div>
+                    }
+                    @foreach (var n in ntfs.Take(15))
+                    {
+                        <div class="ct-item @(n.IsRead ? "" : "ct-unread")" @onclick="() => OpenNtf(n)">
+                            <div class="ct-icon" style="background:#2563eb"><i class="bi bi-envelope"></i></div>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="fw-600 fs-8">@n.Title</div>
+                                <div class="fs-9 text-muted">@n.FormName — از: @n.FromName — @n.CreatedAt.ToFa()</div>
+                            </div>
+                            @if (!n.IsRead)
+                            {
+                                <span class="badge bg-primary rounded-pill fs-9">جدید</span>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .ct-item { display: flex; align-items: center; gap: .6rem; padding: .55rem .7rem; border-radius: 12px; cursor: pointer; transition: background .12s; }
+    .ct-item:hover { background: #f1f5f9; }
+    .ct-unread { background: #eff6ff; }
+    .ct-icon { width: 34px; height: 34px; border-radius: 10px; color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .fs-9 { font-size: .7rem; }
+</style>
+
+@code {
+    private bool loading = true;
+    private List<NtfItem> ntfs = new();
+    private List<ActionItem> actions = new();
+
+    public class NtfItem { public int Id { get; set; } public string Title { get; set; } = ""; public string? Body { get; set; } public string FromName { get; set; } = ""; public string FormName { get; set; } = ""; public string? Link { get; set; } public bool IsRead { get; set; } public DateTime CreatedAt { get; set; } }
+    public class ActionItem { public string Title { get; set; } = ""; public string Sub { get; set; } = ""; public string Link { get; set; } = "/"; public string Icon { get; set; } = "bi-lightning"; public string Color { get; set; } = "#2563eb"; }
+    private class AccessInfo { public int UserId { get; set; } public bool CanCreate { get; set; } public bool IsExpert { get; set; } public bool IsManager { get; set; } }
+    private class ReqLite { public int Id { get; set; } public string Title { get; set; } = ""; public string Status { get; set; } = ""; public List<AsgLite> Assignments { get; set; } = new(); }
+    private class AsgLite { public int Id { get; set; } public int ExpertUserId { get; set; } public bool ReportSubmitted { get; set; } public string? ManagerDecision { get; set; } }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("کارتابل من");
+        // ================== برخط: رفرش خودکار با SignalR ==================
+        Rt.DataChanged += OnRtChanged;
+        Rt.NotifyReceived += OnRtNotify;
+        if (!string.IsNullOrWhiteSpace(Auth.Token))
+            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+
+        await ReloadAsync();
+        loading = false;
+    }
+
+    private async Task ReloadAsync()
+    {
+        actions = new();
+        try { ntfs = await Http.GetFromJsonAsync<List<NtfItem>>("/api/notifications") ?? new(); } catch { }
+
+        // ================== موارد منتظر اقدام ==================
+        try
+        {
+            var access = await Http.GetFromJsonAsync<AccessInfo>("/api/itrequests/my-access") ?? new();
+
+            // درخواست‌دهنده: پاسخ آماده تایید
+            var mine = await Http.GetFromJsonAsync<List<ReqLite>>("/api/itrequests/mine") ?? new();
+            foreach (var r in mine.Where(r => r.Status == "ManagerApproved"))
+                actions.Add(new ActionItem { Title = $"پاسخ درخواست «{r.Title}» آماده تایید شماست", Sub = "درخواست خدمت IT", Link = "/it-requests", Icon = "bi-check2-circle", Color = "#0ea5e9" });
+
+            // کارشناس: ارجاع‌های بدون گزارش
+            if (access.IsExpert)
+            {
+                var exp = await Http.GetFromJsonAsync<List<ReqLite>>("/api/itrequests/expert") ?? new();
+                foreach (var r in exp.Where(r => r.Status == "Assigned" &&
+                         r.Assignments.Any(a => a.ExpertUserId == access.UserId && !a.ReportSubmitted)))
+                    actions.Add(new ActionItem { Title = $"درخواست «{r.Title}» منتظر گزارش شماست", Sub = "کارتابل کارشناس IT", Link = "/it-requests", Icon = "bi-tools", Color = "#d97706" });
+            }
+
+            // مدیر IT: درخواست‌های جدید + گزارش‌های منتظر تصمیم
+            if (access.IsManager)
+            {
+                var mgr = await Http.GetFromJsonAsync<List<ReqLite>>("/api/itrequests/manager") ?? new();
+                foreach (var r in mgr.Where(r => r.Status == "New"))
+                    actions.Add(new ActionItem { Title = $"درخواست جدید «{r.Title}» منتظر ارجاع", Sub = "کارتابل مدیر IT", Link = "/it-requests", Icon = "bi-inbox", Color = "#7c3aed" });
+                foreach (var r in mgr.Where(r => r.Status == "Assigned" &&
+                         r.Assignments.Any(a => a.ReportSubmitted && a.ManagerDecision == null)))
+                    actions.Add(new ActionItem { Title = $"گزارش کارشناس برای «{r.Title}» منتظر تایید/رد شماست", Sub = "کارتابل مدیر IT", Link = "/it-requests", Icon = "bi-patch-check", Color = "#059669" });
+            }
+        }
+        catch { }
+
+        // ================== مدیر منابع انسانی: درخواست‌های مرخصی/ماموریت در انتظار تایید ==================
+        if (Auth.Has("LeaveRequests.Approve"))
+        {
+            try
+            {
+                var stats = await Http.GetFromJsonAsync<LeaveStats>("/api/LeaveRequests/stats");
+                if (stats != null && stats.Pending > 0)
+                {
+                    actions.Add(new ActionItem
+                    {
+                        Title = $"تعداد {Fa.Digits(stats.Pending)} درخواست مرخصی/ماموریت در انتظار تایید",
+                        Sub = "پنل مدیریت منابع انسانی",
+                        Link = "/hr-admin",
+                        Icon = "bi-calendar2-check",
+                        Color = "#b06a00"
+                    });
+                }
+            }
+            catch { }
+        }
+
+        // ================== مدیر حضور و غیاب: تاخیرها و غیبت‌های امروز ==================
+        if (Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+        {
+            try
+            {
+                var t = await Http.GetFromJsonAsync<AttStatus>("/api/Attendance/today-status");
+                if (t != null)
+                {
+                    if (t.stats.Late > 0)
+                        actions.Add(new ActionItem
+                        {
+                            Title = $"{Fa.Digits(t.stats.Late)} نفر با تاخیر وارد شده‌اند",
+                            Sub = "مدیریت حضور و غیاب",
+                            Link = "/attendance-admin",
+                            Icon = "bi-stopwatch",
+                            Color = "#e0245e"
+                        });
+                    if (t.stats.Absent > 0)
+                        actions.Add(new ActionItem
+                        {
+                            Title = $"{Fa.Digits(t.stats.Absent)} نفر امروز هنوز وارد نشده‌اند",
+                            Sub = "مدیریت حضور و غیاب",
+                            Link = "/attendance-admin",
+                            Icon = "bi-exclamation-triangle",
+                            Color = "#b21b4c"
+                        });
+                }
+            }
+            catch { }
+        }
+    }
+
+    private class LeaveStats { public int Pending { get; set; } }
+    private class AttStatus { public AttStats stats { get; set; } = new(); public List<object> items { get; set; } = new(); }
+    private class AttStats { public int Total { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Pending { get; set; } public int Late { get; set; } public int OnLeave { get; set; } }
+
+    private async void OnRtChanged(string scope)
+    {
+        await ReloadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void OnRtNotify(RtNotification rn)
+    {
+        ntfs.Insert(0, new NtfItem { Id = rn.Id, Title = rn.Title, Body = rn.Body, FromName = rn.FromName, FormName = rn.FormName, Link = rn.Link, CreatedAt = rn.CreatedAt });
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Rt.DataChanged -= OnRtChanged;
+        Rt.NotifyReceived -= OnRtNotify;
+    }
+
+    private async Task OpenNtf(NtfItem n)
+    {
+        if (!n.IsRead)
+        {
+            n.IsRead = true;
+            try { await Http.PostAsync($"/api/notifications/{n.Id}/read", null); } catch { }
+        }
+        if (!string.IsNullOrWhiteSpace(n.Link)) Nav.NavigateTo(n.Link);
+    }
+}
