@@ -249,7 +249,7 @@ else
                             <label class="form-label">سیستم مربوطه</label>
                             @* ================== کمبوی سیستم با جستجو ================== *@
                             <div class="ms-combo">
-                                <div class="ms-combo-control form-control @(sysDropOpen ? "focus" : "")" @onclick="() => sysDropOpen = !sysDropOpen">
+                                <div class="ms-combo-control form-control @(sysDropOpen ? "focus" : "")" @ref="_sysComboEl" @onclick="ToggleSysCombo">
                                     @if (newForm.SystemInfoId is null)
                                     {
                                         <span class="text-muted">— بدون سیستم / سایر —</span>
@@ -267,7 +267,8 @@ else
                                 </div>
                                 @if (sysDropOpen)
                                 {
-                                    <div class="ms-combo-menu shadow">
+                                    <div class="pop-overlay" @onclick="() => sysDropOpen = false" @onclick:stopPropagation="true"></div>
+                                    <div class="ms-combo-menu shadow" style="@SysMenuStyle" @onclick:stopPropagation="true">
                                         <div class="p-2 border-bottom">
                                             <input class="form-control form-control-sm" placeholder="جستجو (نام سیستم، IP، مالک)..."
                                                    @bind="sysSearch" @bind:event="oninput" @onclick:stopPropagation="true" />
@@ -778,6 +779,23 @@ else
         $"{s.Label}{(string.IsNullOrWhiteSpace(s.Ip) ? "" : $" ({s.Ip})")}{(string.IsNullOrWhiteSpace(s.UserName) ? "" : $" — {s.UserName}")}";
 
     private void PickSystem(int? id) { newForm.SystemInfoId = id; sysDropOpen = false; }
+
+    // ---------- منوی شناور کمبوی سیستم (fixed + پوشش نامرئی — مصون از کارت‌ویو/مودال) ----------
+    private ElementReference _sysComboEl;
+    private double _sysTop, _sysLeft, _sysWidth;
+    private string SysMenuStyle => Popover.FixedStyle(_sysTop, _sysLeft, _sysWidth, 300);
+
+    private async Task ToggleSysCombo()
+    {
+        if (sysDropOpen) { sysDropOpen = false; return; }
+        try
+        {
+            var r = await JS.InvokeAsync<UiRect>("uiRect", _sysComboEl);
+            (_sysTop, _sysLeft, _sysWidth) = Popover.Below(r, 0, 300);
+        }
+        catch (JSException) { }
+        sysDropOpen = true;
+    }
 
     // جزئیات
     private ReqItem? detail;

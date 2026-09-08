@@ -295,7 +295,7 @@ else
                 {
                     @* ================== کمبوی چندانتخابی با جستجو ================== *@
                     <div class="ms-combo">
-                        <div class="ms-combo-control form-control @(roleDropdownOpen ? "focus" : "")" @onclick="ToggleRoleDropdown">
+                        <div class="ms-combo-control form-control @(roleDropdownOpen ? "focus" : "")" @ref="_roleComboEl" @onclick="ToggleRoleDropdown">
                             @if (selectedRoleIds.Count == 0)
                             {
                                 <span class="text-muted">— انتخاب نقش(ها) —</span>
@@ -315,7 +315,8 @@ else
                         </div>
                         @if (roleDropdownOpen)
                         {
-                            <div class="ms-combo-menu shadow">
+                            <div class="pop-overlay" @onclick="() => roleDropdownOpen = false" @onclick:stopPropagation="true"></div>
+                            <div class="ms-combo-menu shadow" style="@RoleMenuStyle" @onclick:stopPropagation="true">
                                 <div class="p-2 border-bottom">
                                     <input class="form-control form-control-sm" placeholder="جستجوی نقش..."
                                            @bind="roleSearch" @bind:event="oninput" @onclick:stopPropagation="true" />
@@ -490,7 +491,22 @@ else
     private bool roleDropdownOpen;
     private string roleSearch = "";
 
-    private void ToggleRoleDropdown() => roleDropdownOpen = !roleDropdownOpen;
+    // ---------- منوی شناور کمبوی نقش‌ها (fixed + پوشش نامرئی — مصون از کارت‌ویو/مودال) ----------
+    private ElementReference _roleComboEl;
+    private double _roleTop, _roleLeft, _roleWidth;
+    private string RoleMenuStyle => Popover.FixedStyle(_roleTop, _roleLeft, _roleWidth, 300);
+
+    private async Task ToggleRoleDropdown()
+    {
+        if (roleDropdownOpen) { roleDropdownOpen = false; return; }
+        try
+        {
+            var r = await JS.InvokeAsync<UiRect>("uiRect", _roleComboEl);
+            (_roleTop, _roleLeft, _roleWidth) = Popover.Below(r, 0, 300);
+        }
+        catch (JSException) { }
+        roleDropdownOpen = true;
+    }
 
     private IEnumerable<RoleOpt> FilteredRoles =>
         string.IsNullOrWhiteSpace(roleSearch)

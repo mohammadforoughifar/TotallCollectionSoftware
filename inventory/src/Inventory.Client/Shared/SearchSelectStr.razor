@@ -1,14 +1,19 @@
+@inject IJSRuntime JS
+
 <div class="ss">
     <input type="text"
            class="form-control @CssClass"
            value="@query"
            placeholder="@Placeholder"
+           @ref="_input"
            @onfocus="OnFocus"
            @oninput="OnInput"
            @onfocusout="OnBlur" />
     @if (open)
     {
-        <div class="ss-menu">
+        @* پوشش نامرئی تمام‌صفحه — کلیک بیرون منو را می‌بندد؛ منوی fixed هیچ‌گاه زیر کارت‌ها نمی‌رود *@
+        <div class="pop-overlay" @onclick="CloseMenu" @onclick:stopPropagation="true"></div>
+        <div class="ss-menu" style="@MenuStyle" @onclick:stopPropagation="true">
             @if (filtered.Count == 0)
             {
                 <div class="ss-empty">موردی یافت نشد</div>
@@ -37,6 +42,13 @@
     private string query = "";
     private bool open;
 
+    private ElementReference _input;
+    private double _mTop, _mLeft, _mWidth;
+
+    /// <summary>منو با position:fixed هم‌عرض ورودی زیر آن باز می‌شود (الگوی منوی شناور) —
+    /// مصون از stacking context کارت‌ها و overflow جدول/مودال</summary>
+    private string MenuStyle => Popover.FixedStyle(_mTop, _mLeft, _mWidth);
+
     private List<string> filtered
     {
         get
@@ -46,11 +58,19 @@
         }
     }
 
-    private void OnFocus()
+    private async Task OnFocus()
     {
+        try
+        {
+            var r = await JS.InvokeAsync<UiRect>("uiRect", _input);
+            (_mTop, _mLeft, _mWidth) = Popover.Below(r);
+        }
+        catch (JSException) { }
         open = true;
         if (!string.IsNullOrEmpty(Value)) query = Value;
     }
+
+    private void CloseMenu() => open = false;
 
     private void OnInput(ChangeEventArgs e)
     {
