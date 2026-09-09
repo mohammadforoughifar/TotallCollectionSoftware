@@ -69,12 +69,17 @@ public class DocFolder
     public bool IsActive { get; set; } = true;
 }
 
-/// <summary>دسترسی یک کاربر روی یک پوشه (به زیرپوشه‌ها و مدارک داخل آن ارث می‌رسد).</summary>
+/// <summary>دسترسی روی یک پوشه (به زیرپوشه‌ها و مدارک داخل آن ارث می‌رسد).</summary>
 public class DocFolderPermission
 {
     public int Id { get; set; }
     public int FolderId { get; set; }
+
+    /// <summary>شناسه کاربر — مقدار 0 یعنی این سطر «دسترسی گروهی (نقش)» است و RoleId تعیین‌کننده است.</summary>
     public int UserId { get; set; }
+
+    /// <summary>شناسه نقش RBAC برای دسترسی گروهی — مقدار 0 یعنی دسترسی فردی (UserId).</summary>
+    public int RoleId { get; set; }
 
     public DocAccessLevel Level { get; set; } = DocAccessLevel.Read;
 
@@ -118,6 +123,13 @@ public class ArchiveDocument
     public bool IsPublic { get; set; }
     public bool PublicCanDownload { get; set; }
 
+    /// <summary>
+    /// محرمانه — اگر فعال باشد، مشاهده/دانلود هر فایل پیوست این مدرک
+    /// مستلزم تایید مجدد رمز عبور کاربر است (اعطای موقت کوتاه‌مدت).
+    /// مدیر مدرک (دسترسی کامل) می‌تواند این گزینه را فعال/غیرفعال کند.
+    /// </summary>
+    public bool RequireDownloadConfirm { get; set; }
+
     public int CreatedByUserId { get; set; }
 
     [MaxLength(150)]
@@ -157,7 +169,13 @@ public class DocumentPermission
 {
     public int Id { get; set; }
     public int DocumentId { get; set; }
+
+    /// <summary>شناسه کاربر — مقدار 0 یعنی این سطر «دسترسی گروهی (نقش)» است و RoleId تعیین‌کننده است.</summary>
     public int UserId { get; set; }
+
+    /// <summary>شناسه نقش RBAC برای دسترسی گروهی — مقدار 0 یعنی دسترسی فردی (UserId).</summary>
+    public int RoleId { get; set; }
+
     public DocAccessLevel Level { get; set; } = DocAccessLevel.Read;
     public bool CanDownload { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;

@@ -15,6 +15,7 @@ public class DocSearchController : RbacControllerBase
     private readonly IDocAccessService _access;
     private readonly IDocIndexService _indexService;
     private readonly IDocTextExtractorService _extractor;
+    private readonly IDocDownloadConfirmService _confirm;
 
     private const string Mod = "DocArchive";
 
@@ -22,11 +23,13 @@ public class DocSearchController : RbacControllerBase
         AppDbContext db,
         IDocAccessService access,
         IDocIndexService indexService,
-        IDocTextExtractorService extractor) : base(db)
+        IDocTextExtractorService extractor,
+        IDocDownloadConfirmService confirm) : base(db)
     {
         _access = access;
         _indexService = indexService;
         _extractor = extractor;
+        _confirm = confirm;
     }
 
     private Task<bool> IsManagerAsync() => HasAsync(Mod, "Manage");
@@ -278,6 +281,7 @@ public class DocSearchController : RbacControllerBase
                 IsExpiringSoon = expiringSoon,
                 AllowMultipleActiveVersions = d.AllowMultipleActiveVersions,
                 IsPublic = d.IsPublic,
+                RequireDownloadConfirm = d.RequireDownloadConfirm,
                 CreatedByName = d.CreatedByName,
                 CreatedAt = d.CreatedAt,
                 IsActive = d.IsActive,
@@ -396,6 +400,17 @@ public class DocSearchController : RbacControllerBase
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, version.DocumentId);
         if (lvl < DocAccessLevel.Read)
             return StatusCode(403, new { message = "پیش‌نمایش نیازمند دسترسی خواندن است." });
+
+        // مدرک محرمانه: متن استخراج‌شده هم فقط با اعطای «تایید مجدد رمز» معتبر قابل مشاهده است
+        var confidential = await Db.Documents.Where(d => d.Id == version.DocumentId)
+            .Select(d => d.RequireDownloadConfirm).FirstOrDefaultAsync();
+        if (confidential && !_confirm.IsConfirmed(MyUserId, version.DocumentId))
+            return StatusCode(403, new
+            {
+                code = "PASSWORD_CONFIRM_REQUIRED",
+                documentId = version.DocumentId,
+                message = "این مدرک محرمانه است؛ برای مشاهده متن فایل‌ها تایید مجدد رمز لازم است."
+            });
 
         var row = await Db.DocExtractedTexts.AsNoTracking()
             .FirstOrDefaultAsync(x => x.AttachmentId == attachmentId);

@@ -376,6 +376,10 @@
                                             <div class="flex-grow-1 min-w-0">
                                                 <div class="d-flex align-items-center gap-1 flex-wrap">
                                                     <span class="fw-700 num">@d.Code</span>
+                                                    @if (d.RequireDownloadConfirm)
+                                                    {
+                                                        <span class="text-danger" title="محرمانه — دانلود/مشاهده فایل‌ها با تایید مجدد رمز"><i class="bi bi-shield-lock-fill"></i></span>
+                                                    }
                                                     @if (d.HasIndexedContent)
                                                     {
                                                         <span class="text-primary" title="دارای متن استخراج‌شده / OCR"><i class="bi bi-file-earmark-font"></i></span>
@@ -723,9 +727,9 @@
             </div>
             <div class="col-12"><hr class="my-1" /></div>
             <div class="col-12">
-                <label class="form-label fw-700">دسترسی نفرات به این پوشه</label>
+                <label class="form-label fw-700">دسترسی نفرات و گروه‌ها به این پوشه</label>
                 <div class="fs-9 text-muted mb-2">این دسترسی‌ها به کلیه زیرپوشه‌ها و مدارک داخل این پوشه ارث می‌رسد.</div>
-                <DocPermissionEditor Users="lookups.Users" Items="folderPerms" />
+                <DocPermissionEditor Users="lookups.Users" Roles="lookups.Roles" Items="folderPerms" />
             </div>
         </div>
     </ChildContent>
@@ -741,7 +745,7 @@
 
 @* ==================== مودال فرم مدرک جدید ==================== *@
 <DocumentFormModal Visible="showDoc" DefaultFolderId="@(selectedFolderId ?? 0)"
-                   Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents"
+                   Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents" Roles="lookups.Roles"
                    OnClose="() => showDoc = false" OnSaved="OnDocSaved" />
 
 @* ==================== مودال مدیریت تگ‌ها ==================== *@

@@ -31,11 +31,15 @@ public static class DbInitializer
                     await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
                     // EnsureCreated ستون‌های جدید را به دیتابیسِ موجود اضافه نمی‌کند؛ اینجا خودتعمیر می‌کنیم
                     EnsureSqliteWorkCalendarSchema(db);
+                    // امکانات امنیتی آرشیو: لاگ دانلود/مشاهده، تایید رمز برای دانلود، دسترسی گروهی
+                    await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                 }
                 else
                 {
                     MigrateSqlServer(db);
                     EnsureSystemUserPhoneColumn(db);
+                    // امکانات امنیتی آرشیو: لاگ دانلود/مشاهده، تایید رمز برای دانلود، دسترسی گروهی
+                    await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                 }
 
                 if (seedDemo && !db.Products.Any())

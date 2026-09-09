@@ -67,6 +67,7 @@ public class DocumentService : IDocumentService
             AllowMultipleActiveVersions = dto.AllowMultipleActiveVersions,
             IsPublic = dto.IsPublic,
             PublicCanDownload = dto.PublicCanDownload,
+            RequireDownloadConfirm = dto.RequireDownloadConfirm,
             CreatedByUserId = userId,
             CreatedByName = userName,
             IsActive = true
@@ -186,6 +187,7 @@ public class DocumentService : IDocumentService
         doc.FolderId = dto.FolderId;
         doc.IsPublic = dto.IsPublic;
         doc.PublicCanDownload = dto.PublicCanDownload;
+        doc.RequireDownloadConfirm = dto.RequireDownloadConfirm;
         doc.AllowMultipleActiveVersions = dto.AllowMultipleActiveVersions;
 
         // اگر از چند-ورژن‌فعال به تک‌ورژن تغییر کرد، فقط آخرین ورژنِ فعال بماند
@@ -242,12 +244,17 @@ public class DocumentService : IDocumentService
         var old = await _db.DocumentPermissions.Where(p => p.DocumentId == documentId).ToListAsync();
         _db.DocumentPermissions.RemoveRange(old);
 
-        foreach (var p in items.Where(x => x.UserId > 0).DistinctBy(x => x.UserId))
+        // ردیف فردی (RoleId=0) یا گروهی (RoleId>0) — هر کدام فقط یک‌بار؛ ردیف گروهی UserId=0 دارد
+        foreach (var p in items
+                     .Where(x => x.RoleId > 0 || x.UserId > 0)
+                     .GroupBy(x => x.RoleId > 0 ? $"R:{x.RoleId}" : $"U:{x.UserId}")
+                     .Select(g => g.First()))
         {
             _db.DocumentPermissions.Add(new DocumentPermission
             {
                 DocumentId = documentId,
-                UserId = p.UserId,
+                UserId = p.RoleId > 0 ? 0 : p.UserId,
+                RoleId = p.RoleId > 0 ? p.RoleId : 0,
                 Level = (DocAccessLevel)(int)p.Level,
                 CanDownload = p.CanDownload
             });

@@ -6,6 +6,8 @@
 @inject HttpClient Http
 @inject IAuthState Auth
 @inject IToastService Toast
+@inject IJSRuntime JS
+@inject IDocArchiveService DocArchiveSvc
 
 <div class="attx-box">
     <div class="attx-title">
@@ -30,9 +32,9 @@
                     }
                     else if (a.CanDownload)
                     {
-                        <a href="@DownloadUrl(a)" target="_blank" class="attx-name" title="دانلود (تب جدید)">
+                        <button class="attx-name attx-name-btn" title="دانلود" @onclick="() => Download(a)">
                             @a.FileName
-                        </a>
+                        </button>
                     }
                     else
                     {
@@ -48,6 +50,12 @@
                         @if (!a.CanDownload)
                         {
                             <span class="attx-tag attx-tag-warn"><i class="bi bi-eye"></i> فقط مشاهده</span>
+                        }
+                        @if (a.DocumentId > 0)
+                        {
+                            <span class="attx-tag attx-tag-conf" title="این مدرک محرمانه است؛ دانلود/مشاهده فایل‌های آن با تایید مجدد رمز است">
+                                <i class="bi bi-shield-lock"></i> @(NeedsConfirmNow(a) ? "محرمانه — نیازمند تایید رمز" : "محرمانه — نمایش تایید شده")
+                            </span>
                         }
                         <span>@a.UploaderName</span>
                         <span>•</span>
@@ -65,9 +73,9 @@
                     }
                     @if (a.CanDownload)
                     {
-                        <a class="btn btn-sm btn-light py-0" href="@DownloadUrl(a)" target="_blank" title="دانلود">
+                        <button class="btn btn-sm btn-light py-0" title="دانلود" @onclick="() => Download(a)">
                             <i class="bi bi-download text-success"></i>
-                        </a>
+                        </button>
                     }
                     @if (CanUpload && a.CanDownload && (a.UploaderUserId == MyUserId || Auth.IsAdmin))
                     {
@@ -120,6 +128,37 @@
 
 <FilePreviewModal @ref="previewModal" />
 
+@* مودال تایید مجدد رمز برای فایل‌های مدرک محرمانه *@
+@if (Module == "DocVersion")
+{
+    <Modal Visible="showConfirm" Title="تایید مجدد رمز — مدرک محرمانه" Size="modal-sm" OnClose="CloseConfirm">
+        <ChildContent>
+            <div class="fs-8 mb-2 text-body-secondary">
+                <i class="bi bi-shield-lock text-warning"></i>
+                مدیر این مدرک آن را محرمانه تعیین کرده است؛ برای @(pendingDownload ? "دانلود" : "مشاهده")
+                فایل «@pendingItem?.FileName» رمز ورودتان را دوباره وارد کنید.
+            </div>
+            <input type="password" class="form-control form-control-sm" placeholder="رمز عبور شما"
+                   @bind="confirmPassword" @onkeydown="OnConfirmKey" disabled="@confirmBusy" autocomplete="current-password" />
+            @if (confirmError != null)
+            {
+                <div class="fs-8 text-danger mt-1"><i class="bi bi-exclamation-triangle"></i> @confirmError</div>
+            }
+            <div class="fs-9 text-muted mt-2">پس از تایید، تا ۱۵ دقیقه نیازی به ورود مجدد رمز نیست.</div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-sm btn-light" @onclick="CloseConfirm" disabled="@confirmBusy">انصراف</button>
+            <button class="btn btn-sm btn-primary" @onclick="DoConfirm" disabled="@confirmBusy">
+                @if (confirmBusy)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                تایید رمز
+            </button>
+        </Footer>
+    </Modal>
+}
+
 <style>
     .attx-box { border: 1px solid #e8edf3; border-radius: 14px; overflow: hidden; background:#fff; }
     .attx-title { background: #f8fafc; padding: .5rem .85rem; font-size: .82rem; font-weight: 700; color: #334155;
@@ -135,8 +174,10 @@
     .attx-name { font-size:.8rem; font-weight:600; color:#1e293b; text-decoration:none; word-break:break-all; }
     a.attx-name:hover { color:#2563eb; text-decoration:underline; }
     .attx-meta { font-size:.68rem; color:#94a3b8; display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; margin-top:.1rem; }
+    .attx-name-btn { background:none; border:none; padding:0; font:inherit; color:inherit; text-align:right; cursor:pointer; }
     .attx-tag { background:#f1f5f9; color:#64748b; border-radius:999px; padding:.02rem .45rem; }
     .attx-tag-warn { background:#fef3c7; color:#92400e; }
+    .attx-tag-conf { background:#ede9fe; color:#5b21b6; }
     .attx-actions { display:flex; gap:.25rem; align-items:center; }
     .attx-actions .btn { line-height:1.3; }
     .attx-drop { position: relative; border: 2px dashed #c7d7f5; border-radius: 12px; background: #f8fbff;
@@ -177,6 +218,18 @@
     private int dragDepth;
     private int MyUserId => Auth.UserId;
 
+    // ---------- مدرک محرمانه (تایید مجدد رمز) ----------
+    private readonly HashSet<int> confirmedDocs = new();
+    private bool showConfirm;
+    private AttItem? pendingItem;
+    private bool pendingDownload;
+    private string confirmPassword = "";
+    private bool confirmBusy;
+    private string? confirmError;
+
+    private bool NeedsConfirmNow(AttItem a) =>
+        a.DocumentId > 0 && a.NeedsConfirm && !confirmedDocs.Contains(a.DocumentId);
+
     private void OnDragEnter() { dragDepth++; dragOver = true; }
     private void OnDragLeave() { if (--dragDepth <= 0) { dragDepth = 0; dragOver = false; } }
     private void OnDropReset() { dragDepth = 0; dragOver = false; }
@@ -194,6 +247,10 @@
         public bool CanPreview { get; set; }
         /// <summary>کاربر جاری حق دانلود دارد</summary>
         public bool CanDownload { get; set; } = true;
+        /// <summary>شناسه مدرک — برای پیوست‌های DocVersion وقتی مدرک «محرمانه» است (0 یعنی محرمانه نیست)</summary>
+        public int DocumentId { get; set; }
+        /// <summary>قفل تایید رمز برای این کاربر هنوز باز نشده است</summary>
+        public bool NeedsConfirm { get; set; }
     }
 
     /// <summary>ورد/اکسل — پیش‌نمایش HTML + متن استخراج‌شده</summary>
@@ -244,6 +301,7 @@
 
     private async Task Preview(AttItem a)
     {
+        if (NeedsConfirmNow(a)) { ShowConfirm(a, false); return; }
         if (previewModal is not null)
         {
             var textApi = TextPreviewApi != null && IsOffice(a)
@@ -251,6 +309,65 @@
                 : null;
             await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload, textApi);
         }
+    }
+
+    private async Task Download(AttItem a)
+    {
+        if (NeedsConfirmNow(a)) { ShowConfirm(a, true); return; }
+        await JS.InvokeVoidAsync("open", DownloadUrl(a), "_blank");
+    }
+
+    private void ShowConfirm(AttItem a, bool download)
+    {
+        pendingItem = a;
+        pendingDownload = download;
+        confirmPassword = "";
+        confirmError = null;
+        showConfirm = true;
+    }
+
+    private Task CloseConfirm()
+    {
+        if (confirmBusy) return Task.CompletedTask;
+        showConfirm = false;
+        pendingItem = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnConfirmKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await DoConfirm();
+    }
+
+    private async Task DoConfirm()
+    {
+        if (pendingItem is null) return;
+        if (string.IsNullOrWhiteSpace(confirmPassword))
+        {
+            confirmError = "رمز عبور را وارد کنید.";
+            return;
+        }
+
+        confirmBusy = true;
+        confirmError = null;
+        try
+        {
+            await DocArchiveSvc.ConfirmDownloadAsync(pendingItem.DocumentId, confirmPassword);
+            confirmedDocs.Add(pendingItem.DocumentId);
+            var item = pendingItem;
+            var wasDownload = pendingDownload;
+            showConfirm = false;
+            pendingItem = null;
+            await Reload();
+            StateHasChanged();
+            Toast.Success("تایید شد — تا ۱۵ دقیقه فایل‌های این مدرک باز هستند.");
+            if (wasDownload) await Download(item); else await Preview(item);
+        }
+        catch (Exception ex)
+        {
+            confirmError = string.IsNullOrWhiteSpace(ex.Message) ? "تایید رمز ناموفق بود." : ex.Message;
+        }
+        finally { confirmBusy = false; }
     }
 
     protected override async Task OnParametersSetAsync()

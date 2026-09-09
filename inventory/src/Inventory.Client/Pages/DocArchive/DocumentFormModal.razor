@@ -82,6 +82,12 @@
                                disabled="@(!form.IsPublic)" />
                         <label class="form-check-label" for="dPubDl">دانلود برای همه آزاد باشد</label>
                     </div>
+                    <hr class="my-2" />
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="dConf" @bind="form.RequireDownloadConfirm" />
+                        <label class="form-check-label fw-700 text-danger" for="dConf"><i class="bi bi-shield-lock ms-1"></i> محرمانه — فایل‌ها با تایید مجدد رمز باز شوند</label>
+                        <span class="fs-9 text-muted d-block">برای دانلود یا مشاهده هر فایل این مدرک، کاربر باید رمز ورودش را دوباره وارد کند (۱۵ دقیقه اعتبار) — حتی کاربران دارای مجوز دانلود.</span>
+                    </div>
                 </div>
             </div>
 
@@ -146,7 +152,7 @@
                 <div class="fs-9 text-muted mb-1">
                     علاوه بر دسترسی ارث‌بری‌شده از پوشه. بالاترین سطح برنده است.
                 </div>
-                <DocPermissionEditor Users="Users" Items="perms" />
+                <DocPermissionEditor Users="Users" Roles="Roles" Items="perms" />
             </div>
         </div>
     </ChildContent>
@@ -168,6 +174,10 @@
 
     /// <summary>مدارک قابل لینک (فقط فعال) — از lookups می‌آید</summary>
     [Parameter] public List<LookupItem> Documents { get; set; } = new();
+
+    /// <summary>نقش‌های فعال RBAC برای تعریف «دسترسی گروهی» — از lookups می‌آید</summary>
+    [Parameter] public List<LookupItem> Roles { get; set; } = new();
+
     [Parameter] public int DefaultFolderId { get; set; }
 
     /// <summary>در حالت ویرایش، شناسه مدرک</summary>

@@ -43,6 +43,12 @@ public interface IDocArchiveService
     Task SaveDocumentPermissionsAsync(int id, DocPermissionsSaveDto dto);
     Task DeleteDocumentAsync(int id);
 
+    /// <summary>تایید مجدد رمز برای باز کردن قفل دانلود/مشاهده فایل‌های مدرک محرمانه (۱۵ دقیقه اعتبار).</summary>
+    Task ConfirmDownloadAsync(int id, string password);
+
+    /// <summary>گزارش مشاهده/دانلود فایل‌های مدرک — فقط دسترسی کامل.</summary>
+    Task<List<DocAttachmentAccessLogDto>> GetAccessLogsAsync(int id);
+
     // ورژن و گردش
     Task<int> CreateVersionAsync(DocVersionCreateDto dto);
     Task SetVersionActiveAsync(int versionId, bool active);
@@ -162,6 +168,12 @@ public class DocArchiveService : IDocArchiveService
 
     public Task SaveDocumentPermissionsAsync(int id, DocPermissionsSaveDto dto)
         => _api.PutAsync<object>($"{Root}/documents/{id}/permissions", dto);
+
+    public Task ConfirmDownloadAsync(int id, string password)
+        => _api.PostAsync<object>($"{Root}/documents/{id}/confirm-download", new { Password = password });
+
+    public Task<List<DocAttachmentAccessLogDto>> GetAccessLogsAsync(int id)
+        => _api.GetAsync<List<DocAttachmentAccessLogDto>>($"{Root}/documents/{id}/access-logs");
 
     public Task DeleteDocumentAsync(int id)
         => _api.DeleteAsync($"{Root}/documents/{id}");

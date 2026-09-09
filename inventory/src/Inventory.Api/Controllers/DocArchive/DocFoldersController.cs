@@ -83,10 +83,25 @@ public class DocFoldersController : RbacControllerBase
             {
                 Id = p.Id,
                 UserId = p.UserId,
+                RoleId = p.RoleId,
                 UserName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim(),
                 Level = (DocAccessLevelDto)(int)p.Level,
                 CanDownload = p.CanDownload
             }).ToListAsync();
+
+        // سطرهای گروهی (UserId=0 — دسترسی نقش‌محور)
+        var roleRows = await Db.DocFolderPermissions.AsNoTracking()
+            .Where(p => p.FolderId == id && p.UserId == 0)
+            .Join(Db.Roles, p => p.RoleId, r => r.Id, (p, r) => new DocPermissionDto
+            {
+                Id = p.Id,
+                UserId = 0,
+                RoleId = p.RoleId,
+                RoleName = r.Name,
+                Level = (DocAccessLevelDto)(int)p.Level,
+                CanDownload = p.CanDownload
+            }).ToListAsync();
+        perms.AddRange(roleRows);
 
         return Ok(new DocFolderDto
         {
@@ -144,8 +159,9 @@ public class DocFoldersController : RbacControllerBase
         // چون SavePermissionsAsync جایگزین کامل دسترسی‌هاست، رکورد سازنده را هم داخل همان لیست می‌گذاریم
         // تا با یک ذخیره‌سازی، هم پوشه و هم دسترسی‌ها ثبت شوند و خطای کاذب رخ ندهد.
         var items = (dto.Permissions ?? new List<DocPermissionDto>())
-            .Where(x => x.UserId > 0 && x.UserId != MyUserId)
-            .DistinctBy(x => x.UserId)
+            .Where(x => (x.RoleId > 0) || (x.UserId > 0 && x.UserId != MyUserId))
+            .GroupBy(x => x.RoleId > 0 ? $"R:{x.RoleId}" : $"U:{x.UserId}")
+            .Select(g => g.First())
             .ToList();
         items.Add(new DocPermissionDto { UserId = MyUserId, Level = DocAccessLevelDto.Full, CanDownload = true });
         await SavePermissionsAsync(entity.Id, items);
@@ -203,12 +219,17 @@ public class DocFoldersController : RbacControllerBase
         items ??= new();
         var old = await Db.DocFolderPermissions.Where(p => p.FolderId == folderId).ToListAsync();
         Db.DocFolderPermissions.RemoveRange(old);
-        foreach (var p in items.Where(x => x.UserId > 0).DistinctBy(x => x.UserId))
+        // ردیف فردی (RoleId=0) یا گروهی (RoleId>0) — هر کدام فقط یک‌بار؛ ردیف گروهی UserId=0 دارد
+        foreach (var p in items
+                     .Where(x => x.RoleId > 0 || x.UserId > 0)
+                     .GroupBy(x => x.RoleId > 0 ? $"R:{x.RoleId}" : $"U:{x.UserId}")
+                     .Select(g => g.First()))
         {
             Db.DocFolderPermissions.Add(new DocFolderPermission
             {
                 FolderId = folderId,
-                UserId = p.UserId,
+                UserId = p.RoleId > 0 ? 0 : p.UserId,
+                RoleId = p.RoleId > 0 ? p.RoleId : 0,
                 Level = (DocAccessLevel)(int)p.Level,
                 CanDownload = p.CanDownload
             });
@@ -265,7 +286,13 @@ public class DocFoldersController : RbacControllerBase
             })
             .ToListAsync();
 
-        return Ok(new DocArchiveLookups { Users = users, Documents = docs });
+        // نقش‌های فعال RBAC — برای تعریف «دسترسی گروهی» روی پوشه/مدرک
+        var roles = await Db.Roles.AsNoTracking().Where(r => r.IsActive)
+            .OrderBy(r => r.Name)
+            .Select(r => new LookupItem { Id = r.Id, Name = r.Name })
+            .ToListAsync();
+
+        return Ok(new DocArchiveLookups { Users = users, Documents = docs, Roles = roles });
     }
 
     /// <summary>

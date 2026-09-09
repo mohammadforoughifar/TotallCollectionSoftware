@@ -51,8 +51,21 @@ public class DocFolderDto
 public class DocPermissionDto
 {
     public int Id { get; set; }
+
+    /// <summary>شناسه کاربر — مقدار 0 یعنی این ردیف «دسترسی گروهی (نقش)» است.</summary>
     public int UserId { get; set; }
+
+    /// <summary>شناسه نقش RBAC برای دسترسی گروهی — مقدار 0 یعنی دسترسی فردی.</summary>
+    public int RoleId { get; set; }
+
     public string UserName { get; set; } = "";
+
+    /// <summary>نام نقش — فقط در ردیف‌های گروهی پر می‌شود.</summary>
+    public string? RoleName { get; set; }
+
+    /// <summary>آیا ردیف گروهی است؟</summary>
+    public bool IsRole => RoleId > 0;
+
     public string? AvatarUrl { get; set; }
     public DocAccessLevelDto Level { get; set; } = DocAccessLevelDto.Read;
     public bool CanDownload { get; set; }
@@ -120,6 +133,10 @@ public class DocumentListDto
 
     public bool AllowMultipleActiveVersions { get; set; }
     public bool IsPublic { get; set; }
+
+    /// <summary>محرمانه — دانلود/مشاهده فایل‌ها با تایید مجدد رمز</summary>
+    public bool RequireDownloadConfirm { get; set; }
+
     public string CreatedByName { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public bool IsActive { get; set; } = true;
@@ -181,6 +198,10 @@ public class DocumentDto
     public bool AllowMultipleActiveVersions { get; set; }
     public bool IsPublic { get; set; }
     public bool PublicCanDownload { get; set; }
+
+    /// <summary>محرمانه — دانلود/مشاهده هر فایل این مدرک با تایید مجدد رمز کاربر</summary>
+    public bool RequireDownloadConfirm { get; set; }
+
     public string CreatedByName { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public bool IsActive { get; set; } = true;
@@ -305,6 +326,10 @@ public class DocPermissionsSaveDto
 {
     public bool IsPublic { get; set; }
     public bool PublicCanDownload { get; set; }
+
+    /// <summary>محرمانه — دانلود/مشاهده هر فایل با تایید مجدد رمز کاربر</summary>
+    public bool RequireDownloadConfirm { get; set; }
+
     public List<DocPermissionDto> Items { get; set; } = new();
 }
 
@@ -313,6 +338,21 @@ public class DocArchiveLookups
 {
     public List<LookupItem> Users { get; set; } = new();
     public List<LookupItem> Documents { get; set; } = new();
+
+    /// <summary>نقش‌های فعال RBAC — برای تعریف «دسترسی گروهی» روی پوشه/مدرک</summary>
+    public List<LookupItem> Roles { get; set; } = new();
+}
+
+/// <summary>یک مورد از گزارش مشاهده/دانلود فایل‌های مدرک</summary>
+public class DocAttachmentAccessLogDto
+{
+    public int AttachmentId { get; set; }
+    public string FileName { get; set; } = "";
+    /// <summary>Preview یا Download</summary>
+    public string Action { get; set; } = "";
+    public string UserName { get; set; } = "";
+    public string? Ip { get; set; }
+    public DateTime At { get; set; }
 }
 
 /// <summary>خلاصه وضعیت انقضای مدارک برای بج‌های درخت پوشه‌ها</summary>
