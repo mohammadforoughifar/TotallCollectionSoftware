@@ -41,7 +41,7 @@ public class DocSearchController : RbacControllerBase
     [HttpPost("search")]
     public async Task<IActionResult> AdvancedSearch([FromBody] DocSearchFilterDto filter)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
@@ -318,7 +318,7 @@ public class DocSearchController : RbacControllerBase
     [HttpGet("documents/{id:int}/extracted-texts")]
     public async Task<IActionResult> GetExtractedTexts(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -355,7 +355,7 @@ public class DocSearchController : RbacControllerBase
     [HttpPost("attachments/{attachmentId:int}/ocr")]
     public async Task<IActionResult> RunOcrOnAttachment(int attachmentId)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var att = await Db.AppAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId && a.Module == "DocVersion");
         if (att == null) return NotFound(new { message = "پیوست یافت نشد." });
@@ -389,7 +389,7 @@ public class DocSearchController : RbacControllerBase
     [HttpGet("attachments/{attachmentId:int}/text")]
     public async Task<IActionResult> GetAttachmentText(int attachmentId)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var att = await Db.AppAttachments.FirstOrDefaultAsync(a => a.Id == attachmentId && a.Module == "DocVersion");
         if (att == null) return NotFound(new { message = "پیوست یافت نشد." });

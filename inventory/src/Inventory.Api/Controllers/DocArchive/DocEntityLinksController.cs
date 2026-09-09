@@ -31,7 +31,7 @@ public class DocEntityLinksController : RbacControllerBase
     [HttpGet("{module}/{entityId:int}")]
     public async Task<IActionResult> GetLinkedDocuments(string module, int entityId)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
 
@@ -146,7 +146,7 @@ public class DocEntityLinksController : RbacControllerBase
     [HttpPost]
     public async Task<IActionResult> AddLink([FromBody] DocEntityLinkSaveDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         if (dto.DocumentId <= 0) return BadRequest(new { message = "سند آرشیو نامعتبر است." });
         if (string.IsNullOrWhiteSpace(dto.Module)) return BadRequest(new { message = "نام ماژول اجباری است." });
@@ -204,7 +204,7 @@ public class DocEntityLinksController : RbacControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> RemoveLink(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var link = await Db.DocEntityLinks.FirstOrDefaultAsync(l => l.Id == id);
         if (link == null) return NotFound(new { message = "پیوند یافت نشد." });
@@ -235,7 +235,7 @@ public class DocEntityLinksController : RbacControllerBase
     [HttpPost("quick-create")]
     public async Task<IActionResult> QuickCreateLinked([FromBody] DocQuickCreateLinkedDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Create") is { } f) return f;
 
         if (string.IsNullOrWhiteSpace(dto.Title)) return BadRequest(new { message = "عنوان مدرک اجباری است." });
         if (string.IsNullOrWhiteSpace(dto.Code)) return BadRequest(new { message = "کد مدرک اجباری است." });
@@ -288,7 +288,7 @@ public class DocEntityLinksController : RbacControllerBase
     [HttpGet("/api/doc-archive/entity-lookups/{module}")]
     public async Task<IActionResult> SearchEntities(string module, [FromQuery] string? q = null)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var term = (q ?? "").Trim();
         var results = new List<DocEntityLookupItemDto>();

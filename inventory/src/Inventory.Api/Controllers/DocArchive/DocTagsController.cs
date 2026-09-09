@@ -18,7 +18,7 @@ public class DocTagsController : RbacControllerBase
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var counts = await Db.DocumentTags.AsNoTracking()
             .GroupBy(t => t.TagId)
@@ -118,7 +118,7 @@ public class DocTagsController : RbacControllerBase
     [HttpPost("/api/doc-archive/documents/{docId:int}/tags")]
     public async Task<IActionResult> SetDocumentTags(int docId, [FromBody] List<int> tagIds)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var doc = await Db.Documents.FindAsync(docId);
         if (doc == null) return NotFound(new { message = "مدرک یافت نشد." });

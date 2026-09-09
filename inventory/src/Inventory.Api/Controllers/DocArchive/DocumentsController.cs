@@ -37,7 +37,7 @@ public class DocumentsController : RbacControllerBase
         bool onlyExpiring = false, string status = "active",
         string? expiry = null, int expiringDays = 60)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
@@ -170,7 +170,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (level, dl) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -348,7 +348,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] DocumentDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Create") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.FolderAccessAsync(MyUserId, manager, dto.FolderId);
@@ -362,7 +362,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] DocumentDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -382,7 +382,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPut("{id:int}/permissions")]
     public async Task<IActionResult> SavePermissions(int id, [FromBody] DocPermissionsSaveDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -438,7 +438,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPost("{id:int}/confirm-download")]
     public async Task<IActionResult> ConfirmDownload(int id, [FromBody] ConfirmDownloadDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (level, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -473,7 +473,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("{id:int}/access-logs")]
     public async Task<IActionResult> AccessLogs(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (level, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -515,7 +515,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPost("{id:int}/request-access")]
     public async Task<IActionResult> RequestAccess(int id, [FromBody] DocAccessRequestSaveDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var doc = await Db.Documents.AsNoTracking().Where(d => d.Id == id && !d.IsDeleted)
             .Select(d => new { d.Id, d.Code, d.Title }).FirstOrDefaultAsync();
@@ -581,7 +581,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("{id:int}/access-requests")]
     public async Task<IActionResult> AccessRequests(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (level, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -601,7 +601,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("{id:int}/access-requests/mine")]
     public async Task<IActionResult> MyAccessRequests(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var list = await Db.DocAccessRequests.AsNoTracking()
             .Where(r => r.DocumentId == id && r.RequesterUserId == MyUserId)
@@ -638,7 +638,7 @@ public class DocumentsController : RbacControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Delete") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -667,7 +667,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPost("versions")]
     public async Task<IActionResult> CreateVersion([FromBody] DocVersionCreateDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, dto.DocumentId);
@@ -681,7 +681,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPut("versions/{versionId:int}/active")]
     public async Task<IActionResult> SetActive(int versionId, [FromQuery] bool active)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var ver = await Db.DocumentVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == versionId);
         if (ver == null) return NotFound(new { message = "ورژن یافت نشد." });
@@ -699,7 +699,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPost("approval")]
     public async Task<IActionResult> Approval([FromBody] DocApprovalActionDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
         await _svc.ActApprovalAsync(dto, MyUserId, MyUsername);
         return Ok();
     }
@@ -711,7 +711,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPost("links")]
     public async Task<IActionResult> Link([FromBody] LinkRequest req)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, req.DocumentId);
@@ -725,7 +725,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPost("links/many")]
     public async Task<IActionResult> LinkMany([FromBody] DocLinkSaveDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, dto.DocumentId);
@@ -741,7 +741,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPut("{id:int}/active")]
     public async Task<IActionResult> SetDocumentActive(int id, [FromBody] DocSetActiveDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -755,7 +755,7 @@ public class DocumentsController : RbacControllerBase
     [HttpDelete("links")]
     public async Task<IActionResult> Unlink([FromQuery] int documentId, [FromQuery] int linkedDocumentId)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, documentId);
@@ -771,7 +771,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("{id:int}/compare")]
     public async Task<IActionResult> Compare(int id, [FromQuery] int from, [FromQuery] int to)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -937,7 +937,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPut("{id:int}/restore")]
     public async Task<IActionResult> Restore(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Delete") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
@@ -1027,7 +1027,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("/api/doc-archive/expiry-summary")]
     public async Task<IActionResult> ExpirySummary(int expiringDays = 60)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
@@ -1071,7 +1071,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("/api/doc-archive/cartable")]
     public async Task<IActionResult> Cartable(bool includeDone = false)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var q = Db.DocCartableTasks.AsNoTracking().Where(t => t.UserId == MyUserId);
         if (!includeDone) q = q.Where(t => t.Status == 0);
@@ -1109,7 +1109,7 @@ public class DocumentsController : RbacControllerBase
     [HttpPut("/api/doc-archive/cartable/{id:int}/done")]
     public async Task<IActionResult> CloseTask(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var t = await Db.DocCartableTasks.FirstOrDefaultAsync(x => x.Id == id && x.UserId == MyUserId);
         if (t == null) return NotFound(new { message = "کار یافت نشد." });
