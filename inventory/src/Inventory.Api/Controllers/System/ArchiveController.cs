@@ -147,8 +147,11 @@ public class AttachmentsController : ControllerBase
     private readonly FileStore _store;
     private readonly IAttachmentGuard _guard;
     private readonly Inventory.Api.Services.DocArchive.IDocIndexService _docIndex;
-    public AttachmentsController(AppDbContext db, FileStore store, IAttachmentGuard guard, Inventory.Api.Services.DocArchive.IDocIndexService docIndex)
-    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; }
+    private readonly Inventory.Api.Services.DocArchive.IDocDownloadConfirmService _confirm;
+    public AttachmentsController(AppDbContext db, FileStore store, IAttachmentGuard guard,
+        Inventory.Api.Services.DocArchive.IDocIndexService docIndex,
+        Inventory.Api.Services.DocArchive.IDocDownloadConfirmService confirm)
+    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; _confirm = confirm; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -220,6 +223,36 @@ public class AttachmentsController : ControllerBase
             || ct.Contains("heif", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// برای پیوست ورژنِ آرشیو اسناد: اگر مدرک «محرمانه» باشد (تایید مجدد رمز) شناسه مدرک، در غیر این‌صورت null.
+    /// </summary>
+    private async Task<int?> ConfidentialDocumentIdAsync(string module, int refId)
+    {
+        if (!string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase)) return null;
+        var docId = await _db.DocumentVersions.Where(v => v.Id == refId)
+            .Select(v => (int?)v.DocumentId).FirstOrDefaultAsync();
+        if (docId is not int dId) return null;
+        var flag = await _db.Documents.Where(d => d.Id == dId)
+            .Select(d => d.RequireDownloadConfirm).FirstOrDefaultAsync();
+        return flag ? dId : null;
+    }
+
+    /// <summary>ثبت گردانه مشاهده/دانلود پیوست (همه ماژول‌ها) — خطای لاگ دانلود را متوقف نمی‌کند.</summary>
+    private async Task LogAccessAsync(AppAttachment a, string action)
+    {
+        try
+        {
+            _db.AppAttachmentAccessLogs.Add(new AppAttachmentAccessLog
+            {
+                AttachmentId = a.Id, Module = a.Module, RefId = a.RefId, FileName = a.FileName,
+                Action = action, UserId = MyUserId, UserName = MyUsername,
+                Ip = HttpContext.Connection.RemoteIpAddress?.ToString(), At = DateTime.Now
+            });
+            await _db.SaveChangesAsync();
+        }
+        catch { /* گردانه نباید جریان اصلی را متوقف کند */ }
+    }
+
     [HttpGet("{module}/{refId:int}")]
     public async Task<IActionResult> List(string module, int refId)
     {
@@ -231,6 +264,10 @@ public class AttachmentsController : ControllerBase
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
             .ToListAsync();
 
+        // اگر مدرک محرمانه باشد، کلاینت از این فیلدها برای مودال تایید رمز استفاده می‌کند
+        var confDocId = await ConfidentialDocumentIdAsync(module, refId);
+        var needsConfirm = confDocId is int cd && !_confirm.IsConfirmed(MyUserId, cd);
+
         return Ok(rows.Select(a =>
         {
             var ct = GuessContentType(a.FileName, a.ContentType);
@@ -240,7 +277,9 @@ public class AttachmentsController : ControllerBase
                 Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
                 ContentType = ct,
                 CanPreview = IsPreviewable(a.FileName, ct),
-                CanDownload = access == AttachmentAccess.Download
+                CanDownload = access == AttachmentAccess.Download,
+                DocumentId = confDocId ?? 0,
+                NeedsConfirm = needsConfirm
             };
         }));
     }
@@ -293,8 +332,19 @@ public class AttachmentsController : ControllerBase
         if (access == AttachmentAccess.PreviewOnly)
             return StatusCode(403, new { message = "شما اجازه دانلود این فایل را ندارید؛ فقط امکان مشاهده دارید." });
 
+        // مدرک محرمانه: دانلود فقط با اعطای «تایید مجدد رمز» معتبر
+        var confDocId = await ConfidentialDocumentIdAsync(a.Module, a.RefId);
+        if (confDocId is int dId && !_confirm.IsConfirmed(MyUserId, dId))
+            return StatusCode(403, new
+            {
+                code = "PASSWORD_CONFIRM_REQUIRED",
+                documentId = dId,
+                message = "این مدرک محرمانه است؛ برای دانلود فایل‌های آن تایید مجدد رمز لازم است."
+            });
+
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+        await LogAccessAsync(a, "Download");
         return File(bytes, GuessContentType(a.FileName, a.ContentType), a.FileName);
     }
 
@@ -316,8 +366,20 @@ public class AttachmentsController : ControllerBase
         if (!IsPreviewable(a.FileName, ct))
             return BadRequest(new { message = "این نوع فایل قابل پیش‌نمایش نیست." });
 
+        // مدرک محرمانه: مشاهده هم فقط با اعطای «تایید مجدد رمز» معتبر
+        var confDocId = await ConfidentialDocumentIdAsync(a.Module, a.RefId);
+        if (confDocId is int pId && !_confirm.IsConfirmed(MyUserId, pId))
+            return StatusCode(403, new
+            {
+                code = "PASSWORD_CONFIRM_REQUIRED",
+                documentId = pId,
+                message = "این مدرک محرمانه است؛ برای مشاهده فایل‌های آن تایید مجدد رمز لازم است."
+            });
+
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+
+        await LogAccessAsync(a, "Preview");
 
         // TIFF / HEIC را به PNG تبدیل کن تا در همه مرورگرها دیده شود
         if (NeedsImageConvert(a.FileName, ct) || (ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !InlineTypes.Contains(ct)))
@@ -349,6 +411,7 @@ public class AttachmentsController : ControllerBase
         if (!InlineTypes.Contains(ct) && !ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "این نوع فایل را از پیش‌نمایش HTML باز کنید." });
 
+        // inline تا مرورگر داخل iframe/img نمایش دهد و پنجره دانلود باز نشود
         Response.Headers["Content-Disposition"] = "inline; filename=\"preview\"";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         return File(bytes, ct);

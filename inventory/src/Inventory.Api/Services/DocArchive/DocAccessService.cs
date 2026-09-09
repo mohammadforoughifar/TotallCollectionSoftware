@@ -43,8 +43,14 @@ public class DocAccessService : IDocAccessService
             return map;
         }
 
+        // نقش‌های کاربر — سطرهای گروهی (UserId=0 و RoleId>0) برای اعضای آن نقش اعمال می‌شوند
+        var roleIds = await _db.UserRoles.AsNoTracking()
+            .Where(r => r.UserId == userId)
+            .Select(r => r.RoleId)
+            .ToListAsync();
+
         var perms = await _db.DocFolderPermissions.AsNoTracking()
-            .Where(p => p.UserId == userId)
+            .Where(p => p.UserId == userId || (p.RoleId != 0 && roleIds.Contains(p.RoleId)))
             .ToListAsync();
         var direct = perms.GroupBy(p => p.FolderId)
             .ToDictionary(g => g.Key,
@@ -93,8 +99,14 @@ public class DocAccessService : IDocAccessService
         if (doc.CreatedByUserId == userId) result = Max(result, (DocAccessLevel.Full, true));
         if (doc.IsPublic) result = Max(result, (DocAccessLevel.Read, doc.PublicCanDownload));
 
+        var roleIds = await _db.UserRoles.AsNoTracking()
+            .Where(r => r.UserId == userId)
+            .Select(r => r.RoleId)
+            .ToListAsync();
+
         var dp = await _db.DocumentPermissions.AsNoTracking()
-            .Where(p => p.DocumentId == documentId && p.UserId == userId)
+            .Where(p => p.DocumentId == documentId &&
+                        (p.UserId == userId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
             .ToListAsync();
         foreach (var p in dp) result = Max(result, (p.Level, p.CanDownload));
 
@@ -113,12 +125,17 @@ public class DocAccessService : IDocAccessService
         if (doc == null) return new();
 
         var ids = new HashSet<int> { doc.CreatedByUserId };
+        var roleIds = new HashSet<int>();
 
-        // دسترسی مستقیم کامل روی مدرک
-        var direct = await _db.DocumentPermissions.AsNoTracking()
+        // دسترسی مستقیم کامل روی مدرک (فردی + گروهی)
+        var directRows = await _db.DocumentPermissions.AsNoTracking()
             .Where(p => p.DocumentId == documentId && p.Level == DocAccessLevel.Full)
-            .Select(p => p.UserId).ToListAsync();
-        foreach (var id in direct) ids.Add(id);
+            .Select(p => new { p.UserId, p.RoleId }).ToListAsync();
+        foreach (var r in directRows)
+        {
+            if (r.UserId > 0) ids.Add(r.UserId);
+            if (r.RoleId > 0) roleIds.Add(r.RoleId);
+        }
 
         // دسترسی کامل روی پوشه یا هر پوشه والد
         var folders = await _db.DocFolders.AsNoTracking()
@@ -136,8 +153,21 @@ public class DocAccessService : IDocAccessService
 
         var folderFull = await _db.DocFolderPermissions.AsNoTracking()
             .Where(p => chain.Contains(p.FolderId) && p.Level == DocAccessLevel.Full)
-            .Select(p => p.UserId).ToListAsync();
-        foreach (var id in folderFull) ids.Add(id);
+            .Select(p => new { p.UserId, p.RoleId }).ToListAsync();
+        foreach (var r in folderFull)
+        {
+            if (r.UserId > 0) ids.Add(r.UserId);
+            if (r.RoleId > 0) roleIds.Add(r.RoleId);
+        }
+
+        // بسط دسترسی‌های گروهی به اعضای نقش‌ها
+        if (roleIds.Count > 0)
+        {
+            var members = await _db.UserRoles.AsNoTracking()
+                .Where(ur => roleIds.Contains(ur.RoleId))
+                .Select(ur => ur.UserId).ToListAsync();
+            foreach (var id in members) ids.Add(id);
+        }
 
         return ids.Where(i => i > 0).ToList();
     }

@@ -85,3 +85,36 @@ public class AppAttachment
     public int UploaderUserId { get; set; }
     public DateTime UploadedAt { get; set; } = DateTime.Now;
 }
+
+/// <summary>
+/// لاگ مشاهده/دانلود پیوست — برای هر ماژول (Module/RefId) یک‌جا ثبت می‌شود
+/// تا گردانه (Audit Trail) فایل‌ها قابل ردیابی باشد.
+/// </summary>
+public class AppAttachmentAccessLog
+{
+    public int Id { get; set; }
+
+    public int AttachmentId { get; set; }
+
+    [MaxLength(50)]
+    public string Module { get; set; } = "";
+
+    public int RefId { get; set; }
+
+    [MaxLength(150)]
+    public string FileName { get; set; } = "";
+
+    /// <summary>Preview / Download</summary>
+    [MaxLength(20)]
+    public string Action { get; set; } = "";
+
+    public int UserId { get; set; }
+
+    [MaxLength(150)]
+    public string UserName { get; set; } = "";
+
+    [MaxLength(60)]
+    public string? Ip { get; set; }
+
+    public DateTime At { get; set; } = DateTime.Now;
+}

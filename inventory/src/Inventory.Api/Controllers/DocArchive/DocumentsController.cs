@@ -15,10 +15,11 @@ public class DocumentsController : RbacControllerBase
     private readonly IDocAccessService _access;
     private readonly IDocumentService _svc;
     private readonly DocExpiryWatcher _expiry;
+    private readonly IDocDownloadConfirmService _confirm;
 
     public DocumentsController(AppDbContext db, IDocAccessService access, IDocumentService svc,
-        DocExpiryWatcher expiry) : base(db)
-    { _access = access; _svc = svc; _expiry = expiry; }
+        DocExpiryWatcher expiry, IDocDownloadConfirmService confirm) : base(db)
+    { _access = access; _svc = svc; _expiry = expiry; _confirm = confirm; }
 
     private const string Mod = "DocArchive";
     private Task<bool> IsManagerAsync() => HasAsync(Mod, "Manage");
@@ -132,6 +133,7 @@ public class DocumentsController : RbacControllerBase
                 IsExpiringSoon = expiringSoon,
                 AllowMultipleActiveVersions = d.AllowMultipleActiveVersions,
                 IsPublic = d.IsPublic,
+                RequireDownloadConfirm = d.RequireDownloadConfirm,
                 CreatedByName = d.CreatedByName,
                 CreatedAt = d.CreatedAt,
                 IsActive = d.IsActive,
@@ -184,6 +186,7 @@ public class DocumentsController : RbacControllerBase
             AllowMultipleActiveVersions = d.AllowMultipleActiveVersions,
             IsPublic = d.IsPublic,
             PublicCanDownload = d.PublicCanDownload,
+            RequireDownloadConfirm = d.RequireDownloadConfirm,
             CreatedByName = d.CreatedByName,
             CreatedAt = d.CreatedAt,
             IsActive = d.IsActive,
@@ -300,12 +303,17 @@ public class DocumentsController : RbacControllerBase
                 {
                     Id = p.Id,
                     UserId = p.UserId,
+                    RoleId = p.RoleId,
                     UserName = "",
                     Level = (DocAccessLevelDto)(int)p.Level,
                     CanDownload = p.CanDownload
                 }).ToListAsync();
+            var roleNames = await Db.Roles.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.Name);
             foreach (var p in dto.Permissions)
-                if (users.TryGetValue(p.UserId, out var u)) p.UserName = u.Name;
+            {
+                if (p.RoleId > 0) p.RoleName = roleNames.TryGetValue(p.RoleId, out var rn) ? rn : $"#{p.RoleId}";
+                else if (users.TryGetValue(p.UserId, out var u)) p.UserName = u.Name;
+            }
         }
 
         dto.Logs = await Db.DocumentLogs.AsNoTracking().Where(l => l.DocumentId == id)
@@ -364,29 +372,108 @@ public class DocumentsController : RbacControllerBase
 
         doc.IsPublic = dto.IsPublic;
         doc.PublicCanDownload = dto.PublicCanDownload;
+        doc.RequireDownloadConfirm = dto.RequireDownloadConfirm;
 
         var old = await Db.DocumentPermissions.Where(p => p.DocumentId == id).ToListAsync();
         Db.DocumentPermissions.RemoveRange(old);
-        var newItems = dto.Items.Where(x => x.UserId > 0).DistinctBy(x => x.UserId).ToList();
+        // ردیف فردی (RoleId=0) یا گروهی (RoleId>0) — هر کدام فقط یک‌بار؛ ردیف گروهی UserId=0 دارد
+        var newItems = dto.Items
+            .Where(x => x.RoleId > 0 || x.UserId > 0)
+            .GroupBy(x => x.RoleId > 0 ? $"R:{x.RoleId}" : $"U:{x.UserId}")
+            .Select(g => g.First())
+            .ToList();
         foreach (var p in newItems)
             Db.DocumentPermissions.Add(new DocumentPermission
             {
-                DocumentId = id, UserId = p.UserId,
+                DocumentId = id,
+                UserId = p.RoleId > 0 ? 0 : p.UserId,
+                RoleId = p.RoleId > 0 ? p.RoleId : 0,
                 Level = (DocAccessLevel)(int)p.Level, CanDownload = p.CanDownload
             });
 
+        var userCount = newItems.Count(x => x.RoleId == 0);
+        var roleCount = newItems.Count(x => x.RoleId > 0);
         Db.DocumentLogs.Add(new DocumentLog
         {
             DocumentId = id,
             Action = "Permissions",
-            Detail = $"دسترسی‌ها به‌روزرسانی شد: {newItems.Count} کاربر" +
-                     (dto.IsPublic ? " — نمایش برای همه: فعال" : "") +
-                     (old.Count != newItems.Count ? $" (قبلاً {old.Count} کاربر)" : ""),
+            Detail = $"دسترسی‌ها به‌روزرسانی شد: {userCount} کاربر"
+                     + (roleCount > 0 ? $" + {roleCount} گروه/نقش" : "")
+                     + (dto.IsPublic ? " — نمایش برای همه: فعال" : "")
+                     + (dto.RequireDownloadConfirm ? " — محرمانه (تایید رمز برای فایل): فعال" : "")
+                     + (old.Count != newItems.Count ? $" (قبلاً {old.Count} ردیف)" : ""),
             UserId = MyUserId, UserName = MyUsername
         });
 
         await Db.SaveChangesAsync();
         return Ok();
+    }
+
+    /// <summary>تایید مجدد رمز عبور کاربر برای باز کردن قفل دانلود/مشاهده فایل‌های مدرک محرمانه (۱۵ دقیقه اعتبار).</summary>
+    public class ConfirmDownloadDto { public string Password { get; set; } = ""; }
+
+    [HttpPost("{id:int}/confirm-download")]
+    public async Task<IActionResult> ConfirmDownload(int id, [FromBody] ConfirmDownloadDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        var manager = await IsManagerAsync();
+        var (level, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
+        if (level == DocAccessLevel.None)
+            return StatusCode(403, new { message = "به این مدرک دسترسی ندارید." });
+
+        var user = await Db.Users.FirstOrDefaultAsync(u => u.Id == MyUserId);
+        if (user == null || !Inventory.Api.Services.AuthService.VerifyPassword(dto.Password ?? "", user.PasswordHash))
+        {
+            Db.DocumentLogs.Add(new DocumentLog
+            {
+                DocumentId = id, Action = "DownloadConfirmFailed",
+                Detail = "تلاش ناموفق تایید رمز برای دانلود/مشاهده فایل",
+                UserId = MyUserId, UserName = MyUsername
+            });
+            await Db.SaveChangesAsync();
+            return StatusCode(403, new { message = "رمز عبور اشتباه است." });
+        }
+
+        _confirm.Confirm(MyUserId, id);
+        Db.DocumentLogs.Add(new DocumentLog
+        {
+            DocumentId = id, Action = "DownloadConfirm",
+            Detail = "تایید مجدد رمز برای دانلود/مشاهده فایل (اعتبار: ۱۵ دقیقه)",
+            UserId = MyUserId, UserName = MyUsername
+        });
+        await Db.SaveChangesAsync();
+        return Ok();
+    }
+
+    /// <summary>گزارش مشاهده/دانلود فایل‌های این مدرک — فقط برای دارندگان دسترسی کامل.</summary>
+    [HttpGet("{id:int}/access-logs")]
+    public async Task<IActionResult> AccessLogs(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        var manager = await IsManagerAsync();
+        var (level, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
+        if (level < DocAccessLevel.Full)
+            return StatusCode(403, new { message = "مشاهده گزارش دانلود فایل‌ها نیازمند دسترسی کامل است." });
+
+        var versionIds = await Db.DocumentVersions.Where(v => v.DocumentId == id)
+            .Select(v => v.Id).ToListAsync();
+
+        var logs = await Db.AppAttachmentAccessLogs.AsNoTracking()
+            .Where(l => l.Module == "DocVersion" && versionIds.Contains(l.RefId))
+            .OrderByDescending(l => l.Id).Take(200)
+            .Select(l => new DocAttachmentAccessLogDto
+            {
+                AttachmentId = l.AttachmentId,
+                FileName = l.FileName,
+                Action = l.Action,
+                UserName = l.UserName,
+                Ip = l.Ip,
+                At = l.At
+            }).ToListAsync();
+
+        return Ok(logs);
     }
 
     [HttpDelete("{id:int}")]

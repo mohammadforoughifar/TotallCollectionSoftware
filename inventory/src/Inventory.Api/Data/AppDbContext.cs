@@ -50,6 +50,8 @@ public class AppDbContext : DbContext
     public DbSet<ArchiveFolder> ArchiveFolders => Set<ArchiveFolder>();
     public DbSet<ArchiveItem> ArchiveItems => Set<ArchiveItem>();
     public DbSet<AppAttachment> AppAttachments => Set<AppAttachment>();
+    /// <summary>لاگ مشاهده/دانلود پیوست‌ها (گردانه فایل‌ها)</summary>
+    public DbSet<AppAttachmentAccessLog> AppAttachmentAccessLogs => Set<AppAttachmentAccessLog>();
     public DbSet<SystemInfoChangeLog> SystemInfoChangeLogs => Set<SystemInfoChangeLog>();
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
     public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
@@ -215,8 +217,9 @@ public class AppDbContext : DbContext
         mb.Entity<ArchiveDocument>().HasIndex(d => d.FolderId);
         mb.Entity<ArchiveDocument>().HasIndex(d => d.ExpireDate);
         mb.Entity<DocFolder>().HasIndex(f => f.ParentId);
-        mb.Entity<DocFolderPermission>().HasIndex(p => new { p.FolderId, p.UserId }).IsUnique();
-        mb.Entity<DocumentPermission>().HasIndex(p => new { p.DocumentId, p.UserId }).IsUnique();
+        // ردیف فردی = (…,UserId>0,RoleId=0)، ردیف گروهی = (…,UserId=0,RoleId>0) — هر کدام یک‌بار
+        mb.Entity<DocFolderPermission>().HasIndex(p => new { p.FolderId, p.UserId, p.RoleId }).IsUnique();
+        mb.Entity<DocumentPermission>().HasIndex(p => new { p.DocumentId, p.UserId, p.RoleId }).IsUnique();
         mb.Entity<DocumentVersion>().HasIndex(v => new { v.DocumentId, v.VersionNo }).IsUnique();
         // هر مدرک برای هر آستانه و هر تاریخ انقضا فقط یک‌بار هشدار می‌گیرد
         mb.Entity<DocExpiryAlert>().HasIndex(a => new { a.DocumentId, a.ThresholdDays, a.ExpireDate }).IsUnique();
@@ -230,6 +233,11 @@ public class AppDbContext : DbContext
         mb.Entity<DocExtractedText>().HasIndex(e => e.AttachmentId);
         mb.Entity<DocEntityLink>().HasIndex(l => new { l.DocumentId, l.Module, l.EntityId });
         mb.Entity<DocEntityLink>().HasIndex(l => new { l.Module, l.EntityId });
+
+        // لاگ دسترسی به پیوست‌ها (گردانه دانلود/مشاهده)
+        mb.Entity<AppAttachmentAccessLog>().HasIndex(l => new { l.Module, l.RefId });
+        mb.Entity<AppAttachmentAccessLog>().HasIndex(l => l.AttachmentId);
+        mb.Entity<AppAttachmentAccessLog>().HasIndex(l => l.At);
 
         // ---------- ماژول پیام‌رسان سازمانی (Chat) ----------
         mb.Entity<Inventory.Api.Entities.Chat.ChatMember>().HasIndex(m => new { m.ConversationId, m.UserId }).IsUnique();
