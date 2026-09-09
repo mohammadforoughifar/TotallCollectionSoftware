@@ -129,6 +129,10 @@ public class AppDbContext : DbContext
     public DbSet<DocumentTag> DocumentTags => Set<DocumentTag>();
     public DbSet<DocExtractedText> DocExtractedTexts => Set<DocExtractedText>();
     public DbSet<DocEntityLink> DocEntityLinks => Set<DocEntityLink>();
+    /// <summary>درخواست دسترسی به مدرک (از کاربر بدون دسترسی به مدیر مدرک)</summary>
+    public DbSet<DocAccessRequest> DocAccessRequests => Set<DocAccessRequest>();
+    /// <summary>تنظیمات شماره‌گذار خودکار کد مدرک (تک‌ردیف)</summary>
+    public DbSet<DocCodeSettings> DocCodeSettings => Set<DocCodeSettings>();
 
     // ==================== ماژول پیام‌رسان سازمانی (Chat) ====================
     public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();
@@ -238,6 +242,10 @@ public class AppDbContext : DbContext
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => new { l.Module, l.RefId });
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => l.AttachmentId);
         mb.Entity<AppAttachmentAccessLog>().HasIndex(l => l.At);
+
+        // درخواست دسترسی به مدرک
+        mb.Entity<DocAccessRequest>().HasIndex(r => new { r.DocumentId, r.Status });
+        mb.Entity<DocAccessRequest>().HasIndex(r => new { r.RequesterUserId, r.Status });
 
         // ---------- ماژول پیام‌رسان سازمانی (Chat) ----------
         mb.Entity<Inventory.Api.Entities.Chat.ChatMember>().HasIndex(m => new { m.ConversationId, m.UserId }).IsUnique();

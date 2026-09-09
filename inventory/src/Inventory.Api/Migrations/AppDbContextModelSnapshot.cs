@@ -693,6 +693,9 @@ namespace Inventory.Api.Migrations
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
 
+                    b.Property<bool>("WatermarkPreview")
+                        .HasColumnType("bit");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
@@ -1471,6 +1474,61 @@ namespace Inventory.Api.Migrations
                     b.ToTable("CompanyHolidays");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.DocAccessRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("HandledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HandledByName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int?>("HandledByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HandlerNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("RequestedLevel")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequesterName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("RequesterUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "Status");
+
+                    b.HasIndex("RequesterUserId", "Status");
+
+                    b.ToTable("DocAccessRequests");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.DocCartableTask", b =>
                 {
                     b.Property<int>("Id")
@@ -1517,6 +1575,39 @@ namespace Inventory.Api.Migrations
                     b.ToTable("DocCartableTasks");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.DocCodeSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BackfillAssignedCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("BackfillRanAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("BackfillRanByName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("NextNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Padding")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DocCodeSettings");
+                });
             modelBuilder.Entity("Inventory.Api.Data.DocEntityLink", b =>
                 {
                     b.Property<int>("Id")

@@ -57,6 +57,12 @@
                                 <i class="bi bi-shield-lock"></i> @(NeedsConfirmNow(a) ? "محرمانه — نیازمند تایید رمز" : "محرمانه — نمایش تایید شده")
                             </span>
                         }
+                        @if (a.Watermark)
+                        {
+                            <span class="attx-tag attx-tag-wm" title="پیش‌نمایش فایل‌های این مدرک با واترمارک نام شما نمایش داده می‌شود">
+                                <i class="bi bi-droplet-half"></i> واترمارک
+                            </span>
+                        }
                         <span>@a.UploaderName</span>
                         <span>•</span>
                         <span>@FormatSize(a.Size)</span>
@@ -178,6 +184,7 @@
     .attx-tag { background:#f1f5f9; color:#64748b; border-radius:999px; padding:.02rem .45rem; }
     .attx-tag-warn { background:#fef3c7; color:#92400e; }
     .attx-tag-conf { background:#ede9fe; color:#5b21b6; }
+    .attx-tag-wm { background:#e0f2fe; color:#075985; }
     .attx-actions { display:flex; gap:.25rem; align-items:center; }
     .attx-actions .btn { line-height:1.3; }
     .attx-drop { position: relative; border: 2px dashed #c7d7f5; border-radius: 12px; background: #f8fbff;
@@ -251,6 +258,8 @@
         public int DocumentId { get; set; }
         /// <summary>قفل تایید رمز برای این کاربر هنوز باز نشده است</summary>
         public bool NeedsConfirm { get; set; }
+        /// <summary>مدرک واترمارک‌دار است — پیش‌نمایش داخل برنامه با واترمارک کاربر نمایش داده می‌شود</summary>
+        public bool Watermark { get; set; }
     }
 
     /// <summary>ورد/اکسل — پیش‌نمایش HTML + متن استخراج‌شده</summary>
@@ -307,7 +316,8 @@
             var textApi = TextPreviewApi != null && IsOffice(a)
                 ? TextPreviewApi.TrimEnd('/') + "/" + a.Id + "/text"
                 : null;
-            await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload, textApi);
+            var wm = a.Watermark ? $"{Auth.DisplayName} — {DateTime.Now:yyyy/MM/dd HH:mm}" : null;
+            await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload, textApi, wm);
         }
     }
 
