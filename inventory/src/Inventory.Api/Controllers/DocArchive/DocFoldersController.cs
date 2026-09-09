@@ -29,7 +29,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpGet]
     public async Task<IActionResult> List()
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
         var map = await _access.FolderAccessMapAsync(MyUserId, manager);
@@ -69,7 +69,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var x = await Db.DocFolders.AsNoTracking().FirstOrDefaultAsync(v => v.Id == id);
         if (x == null) return NotFound(new { message = "پوشه یافت نشد." });
@@ -129,7 +129,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] DocFolderDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Create") is { } f) return f;
         if (string.IsNullOrWhiteSpace(dto.Name)) return BadRequest(new { message = "نام پوشه اجباری است." });
 
         // برای ساخت زیرپوشه باید حداقل «نوشتن» روی والد داشته باشد
@@ -178,7 +178,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Update(int id, [FromBody] DocFolderDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var entity = await Db.DocFolders.FirstOrDefaultAsync(x => x.Id == id);
         if (entity == null) return NotFound(new { message = "پوشه یافت نشد." });
@@ -204,7 +204,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpPut("{id:int}/permissions")]
     public async Task<IActionResult> SavePermissions(int id, [FromBody] DocPermissionsSaveDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var entity = await Db.DocFolders.FirstOrDefaultAsync(x => x.Id == id);
         if (entity == null) return NotFound(new { message = "پوشه یافت نشد." });
@@ -246,7 +246,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Delete") is { } f) return f;
 
         var entity = await Db.DocFolders.FirstOrDefaultAsync(x => x.Id == id);
         if (entity == null) return NotFound(new { message = "پوشه یافت نشد." });
@@ -270,7 +270,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpGet("/api/doc-archive/lookups")]
     public async Task<IActionResult> Lookups()
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var users = await Db.Users.AsNoTracking().Where(u => u.IsActive)
             .OrderBy(u => u.FirstName ?? u.Username)
@@ -315,7 +315,7 @@ public class DocFoldersController : RbacControllerBase
         [FromQuery] bool onlyActiveVersions = true,
         [FromQuery] bool includeManifest = true)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         try
         {
@@ -349,7 +349,7 @@ public class DocFoldersController : RbacControllerBase
         [FromQuery] bool onlyActiveVersions = true,
         [FromQuery] bool includeManifest = true)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         try
         {

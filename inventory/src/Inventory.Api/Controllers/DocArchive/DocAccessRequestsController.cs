@@ -44,7 +44,7 @@ public class DocAccessRequestsController : RbacControllerBase
     [HttpPost("{id:int}/approve")]
     public async Task<IActionResult> Approve(int id, [FromBody] DocAccessRequestApproveDto dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
         var (req, err) = await LoadPendingAsync(id, requireFull: true);
         if (err != null || req == null) return err!;
 
@@ -102,7 +102,7 @@ public class DocAccessRequestsController : RbacControllerBase
     [HttpPost("{id:int}/reject")]
     public async Task<IActionResult> Reject(int id, [FromBody] RejectRequest dto)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
         var (req, err) = await LoadPendingAsync(id, requireFull: true);
         if (err != null || req == null) return err!;
 
@@ -145,7 +145,7 @@ public class DocAccessRequestsController : RbacControllerBase
     [HttpPost("{id:int}/cancel")]
     public async Task<IActionResult> Cancel(int id)
     {
-        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
         var (req, err) = await LoadPendingAsync(id, requireFull: false);
         if (err != null || req == null) return err!;
         if (req.RequesterUserId != MyUserId)

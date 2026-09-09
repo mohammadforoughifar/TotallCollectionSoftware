@@ -2,6 +2,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Inventory.Api.Services.DocArchive;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Inventory.Shared.Entities;
@@ -112,6 +113,18 @@ public class AuthService : IAuthService
                                                       || (p.Module == "Attendance" && p.Action == "SelfCheckin"))
                     .Select(p => p.Module + "." + p.Action).ToListAsync()
             };
+        }
+
+        // -------- آرشیو اسناد و مدارک: دسترسی «به‌ازای هر پوشه و هر مدرک» --------
+        // مجوز DocArchive.* در «تنظیمات ← نقش‌ها و دسترسی‌ها» یک دسترسی سراسری است؛ اگر
+        // کاربر آن را نداشته باشد اما روی پوشه/مدرکی به او دسترسی داده شده باشد، باید
+        // منوی آرشیو را ببیند و داخل ماژول فقط همان مواردِ مجاز را ببیند (فیلتر واقعی
+        // سمت سرور و به‌ازای هر آیتم انجام می‌شود). پس فقط «Read» مجازی اضافه می‌شود —
+        // ایجاد/ویرایش/حذف همچنان به سطح همان پوشه/مدرک وابسته است.
+        if (permissions.All(p => !p.StartsWith("DocArchive.", StringComparison.OrdinalIgnoreCase))
+            && await DocArchiveAccessProbe.AnyAsync(_db, user.Id))
+        {
+            permissions.Add("DocArchive.Read");
         }
 
         // توکن واحد برنامه شامل دسترسی‌های مؤثر است؛ Host ماژول RADIS-HR نیز همین
