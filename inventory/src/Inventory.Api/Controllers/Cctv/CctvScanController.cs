@@ -360,7 +360,19 @@ public class CctvScanController : ControllerBase
         var netLong = (long)network[0] << 24 | (long)network[1] << 16 | (long)network[2] << 8 | network[3];
         var result = new List<string>();
         for (var i = 1; i < total - 1 && result.Count < maxCount; i++)
-            result.Add(new IPAddress(BitConverter.GetBytes((int)(netLong + i)).Reverse().ToArray()).ToString());
+        {
+            // Explicit network byte order: independent of machine endianness and
+            // of C# overload resolution between Enumerable.Reverse and Span.Reverse.
+            var address = (uint)(netLong + i);
+            var bytes = new byte[]
+            {
+                (byte)((address >> 24) & 0xff),
+                (byte)((address >> 16) & 0xff),
+                (byte)((address >> 8) & 0xff),
+                (byte)(address & 0xff)
+            };
+            result.Add(new IPAddress(bytes).ToString());
+        }
         result.Add(localIp.ToString());
         return result.Distinct().ToList();
     }
