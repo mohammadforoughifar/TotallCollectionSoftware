@@ -137,6 +137,9 @@ public class DocumentListDto
     /// <summary>محرمانه — دانلود/مشاهده فایل‌ها با تایید مجدد رمز</summary>
     public bool RequireDownloadConfirm { get; set; }
 
+    /// <summary>واترمارک پیش‌نمایش فایل‌ها</summary>
+    public bool WatermarkPreview { get; set; }
+
     public string CreatedByName { get; set; } = "";
     public DateTime CreatedAt { get; set; }
     public bool IsActive { get; set; } = true;
@@ -201,6 +204,9 @@ public class DocumentDto
 
     /// <summary>محرمانه — دانلود/مشاهده هر فایل این مدرک با تایید مجدد رمز کاربر</summary>
     public bool RequireDownloadConfirm { get; set; }
+
+    /// <summary>واترمارک پیش‌نمایش — روی نمایش داخل برنامه فایل‌ها نام کاربر+زمان حک می‌شود</summary>
+    public bool WatermarkPreview { get; set; }
 
     public string CreatedByName { get; set; } = "";
     public DateTime CreatedAt { get; set; }
@@ -330,6 +336,9 @@ public class DocPermissionsSaveDto
     /// <summary>محرمانه — دانلود/مشاهده هر فایل با تایید مجدد رمز کاربر</summary>
     public bool RequireDownloadConfirm { get; set; }
 
+    /// <summary>واترمارک پیش‌نمایش فایل‌های مدرک</summary>
+    public bool WatermarkPreview { get; set; }
+
     public List<DocPermissionDto> Items { get; set; } = new();
 }
 
@@ -341,6 +350,60 @@ public class DocArchiveLookups
 
     /// <summary>نقش‌های فعال RBAC — برای تعریف «دسترسی گروهی» روی پوشه/مدرک</summary>
     public List<LookupItem> Roles { get; set; } = new();
+
+    /// <summary>شماره‌گذار خودکار کد مدرک فعال است — در فرم ساخت، کد می‌تواند خالی بماند</summary>
+    public bool CodeNumberingEnabled { get; set; }
+}
+
+/// <summary>ردیف درخواست دسترسی به مدرک</summary>
+public class DocAccessRequestDto
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public int RequesterUserId { get; set; }
+    public string RequesterName { get; set; } = "";
+    public DocAccessLevelDto RequestedLevel { get; set; } = DocAccessLevelDto.Read;
+    public string? Note { get; set; }
+
+    /// <summary>0=درانتظار، 1=پذیرفته، 2=ردشده، 3=لغوشده</summary>
+    public int Status { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public string? HandledByName { get; set; }
+    public string? HandlerNote { get; set; }
+    public DateTime? HandledAt { get; set; }
+}
+
+/// <summary>ثبت درخواست دسترسی</summary>
+public class DocAccessRequestSaveDto
+{
+    public DocAccessLevelDto Level { get; set; } = DocAccessLevelDto.Read;
+    public string? Note { get; set; }
+}
+
+/// <summary>پذیرش درخواست دسترسی (توسط مدیر مدرک)</summary>
+public class DocAccessRequestApproveDto
+{
+    public DocAccessLevelDto Level { get; set; } = DocAccessLevelDto.Read;
+    public bool CanDownload { get; set; } = true;
+}
+
+/// <summary>تنظیمات شماره‌گذار خودکار کد مدرک</summary>
+public class DocCodeSettingsDto
+{
+    public bool Enabled { get; set; }
+    public string Prefix { get; set; } = "DOC-";
+    public int Padding { get; set; } = 5;
+    public int NextNumber { get; set; } = 1;
+    public DateTime? BackfillRanAt { get; set; }
+    public string? BackfillRanByName { get; set; }
+    public int BackfillAssignedCount { get; set; }
+}
+
+/// <summary>نتیجه اجرای یک‌باره بازشمارش مدارک موجود</summary>
+public class DocCodeBackfillResultDto
+{
+    public int Assigned { get; set; }
+    public string Message { get; set; } = "";
 }
 
 /// <summary>یک مورد از گزارش مشاهده/دانلود فایل‌های مدرک</summary>

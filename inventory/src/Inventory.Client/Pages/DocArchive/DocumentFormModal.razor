@@ -6,10 +6,28 @@
     <ChildContent>
         <div class="row g-3">
             <div class="col-md-3">
-                <label class="form-label">کد مدرک <span class="text-danger">*</span></label>
-                <input class="form-control @(codeError ? "is-invalid" : "")" @bind="form.Code"
-                       placeholder="مثلاً: QP-001" />
-                <div class="form-text fs-9">کد اجباری است و نباید تکراری باشد.</div>
+                <label class="form-label">
+                    کد مدرک
+                    @if (!(EditId == 0 && NumberingEnabled))
+                    {
+                        <span class="text-danger">*</span>
+                    }
+                </label>
+                <input class="form-control @((codeError || codeExists) ? "is-invalid" : "")" @bind="form.Code"
+                       placeholder="@(EditId == 0 && NumberingEnabled ? "خالی بماند تا خودکار تخصیص یابد" : "مثلاً: QP-001")"
+                       @onfocusout="CheckCodeLive" />
+                @if (codeExists)
+                {
+                    <div class="form-text fs-9 text-danger fw-700"><i class="bi bi-exclamation-triangle"></i> این کد قبلاً برای مدرک دیگری ثبت شده است — کد باید یکتا باشد.</div>
+                }
+                else if (EditId == 0 && NumberingEnabled)
+                {
+                    <div class="form-text fs-9">شماره‌گذار خودکار فعال است؛ با خالی‌گذاشتن، کد خودکار تخصیص می‌یابد. اگر دستی وارد کنید نباید تکراری باشد.</div>
+                }
+                else
+                {
+                    <div class="form-text fs-9">کد اجباری است و نباید تکراری باشد.</div>
+                }
             </div>
             <div class="col-md-3">
                 <label class="form-label">شماره مدرک مشتری</label>
@@ -87,6 +105,11 @@
                         <input class="form-check-input" type="checkbox" id="dConf" @bind="form.RequireDownloadConfirm" />
                         <label class="form-check-label fw-700 text-danger" for="dConf"><i class="bi bi-shield-lock ms-1"></i> محرمانه — فایل‌ها با تایید مجدد رمز باز شوند</label>
                         <span class="fs-9 text-muted d-block">برای دانلود یا مشاهده هر فایل این مدرک، کاربر باید رمز ورودش را دوباره وارد کند (۱۵ دقیقه اعتبار) — حتی کاربران دارای مجوز دانلود.</span>
+                    </div>
+                    <div class="form-check form-switch mt-1">
+                        <input class="form-check-input" type="checkbox" id="dWm" @bind="form.WatermarkPreview" />
+                        <label class="form-check-label fw-700" for="dWm"><i class="bi bi-droplet-half ms-1" style="color:#0284c7"></i> واترمارک پیش‌نمایش</label>
+                        <span class="fs-9 text-muted d-block">روی پیش‌نمایش داخل برنامه فایل‌های این مدرک (PDF/تصویر/متن)، نام کاربر بازدیدکننده و زمان مشاهده به‌صورت واترمارک نمایش داده می‌شود.</span>
                     </div>
                 </div>
             </div>
@@ -178,6 +201,9 @@
     /// <summary>نقش‌های فعال RBAC برای تعریف «دسترسی گروهی» — از lookups می‌آید</summary>
     [Parameter] public List<LookupItem> Roles { get; set; } = new();
 
+    /// <summary>شماره‌گذار خودکار فعال است (از lookups) — در ساخت، کد می‌تواند خالی بماند</summary>
+    [Parameter] public bool NumberingEnabled { get; set; }
+
     [Parameter] public int DefaultFolderId { get; set; }
 
     /// <summary>در حالت ویرایش، شناسه مدرک</summary>
@@ -194,7 +220,7 @@
     private List<int> selectedTagIds = new();
     private List<DocTagDto> availableTags = new();
     private List<DocPermissionDto> perms = new();
-    private bool saving, codeError, showTagsModal;
+    private bool saving, codeError, codeExists, showTagsModal;
     private bool lastVisible;
 
     protected override async Task OnParametersSetAsync()
@@ -202,6 +228,7 @@
         if (Visible && !lastVisible)
         {
             codeError = false;
+            codeExists = false;
             await LoadTags();
             if (EditId > 0)
             {
@@ -239,11 +266,26 @@
         else selectedTagIds.Add(tagId);
     }
 
+    /// <summary>هشدار زنده تکراری بودن کد (بدون جلوگیری از ذخیره — سرست هم کنترل می‌کند).</summary>
+    private async Task CheckCodeLive()
+    {
+        var c = (form.Code ?? "").Trim();
+        if (c.Length == 0) { codeExists = false; return; }
+        try { codeExists = await Svc.CheckCodeExistsAsync(c, EditId); }
+        catch { /* هشدار زنده اختیاری است */ }
+    }
+
     private async Task Save()
     {
         codeError = false;
         if (string.IsNullOrWhiteSpace(form.Title)) { Toast.Error("عنوان مدرک اجباری است."); return; }
-        if (string.IsNullOrWhiteSpace(form.Code)) { Toast.Error("کد مدرک اجباری است."); codeError = true; return; }
+        // در ساخت مدرک با شماره‌گذار فعال، کد می‌تواند خالی بماند تا خودکار تخصیص یابد
+        if (string.IsNullOrWhiteSpace(form.Code) && !(EditId == 0 && NumberingEnabled))
+        {
+            Toast.Error("کد مدرک اجباری است.");
+            codeError = true;
+            return;
+        }
         if (form.FolderId <= 0) { Toast.Error("پوشه مدرک را انتخاب کنید."); return; }
 
         form.Approvers = approverIds.Select((id, i) => new DocApproverDto

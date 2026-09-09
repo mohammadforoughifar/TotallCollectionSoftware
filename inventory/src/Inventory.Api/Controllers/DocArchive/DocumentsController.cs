@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
+using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -16,10 +17,14 @@ public class DocumentsController : RbacControllerBase
     private readonly IDocumentService _svc;
     private readonly DocExpiryWatcher _expiry;
     private readonly IDocDownloadConfirmService _confirm;
+    private readonly INotifyService _notify;
+
+    /// <summary>نام فرم — در نوتیفیکیشن‌های ارسالی به کار می‌رود</summary>
+    private const string FormName = "آرشیو اسناد و مدارک";
 
     public DocumentsController(AppDbContext db, IDocAccessService access, IDocumentService svc,
-        DocExpiryWatcher expiry, IDocDownloadConfirmService confirm) : base(db)
-    { _access = access; _svc = svc; _expiry = expiry; _confirm = confirm; }
+        DocExpiryWatcher expiry, IDocDownloadConfirmService confirm, INotifyService notify) : base(db)
+    { _access = access; _svc = svc; _expiry = expiry; _confirm = confirm; _notify = notify; }
 
     private const string Mod = "DocArchive";
     private Task<bool> IsManagerAsync() => HasAsync(Mod, "Manage");
@@ -134,6 +139,7 @@ public class DocumentsController : RbacControllerBase
                 AllowMultipleActiveVersions = d.AllowMultipleActiveVersions,
                 IsPublic = d.IsPublic,
                 RequireDownloadConfirm = d.RequireDownloadConfirm,
+                WatermarkPreview = d.WatermarkPreview,
                 CreatedByName = d.CreatedByName,
                 CreatedAt = d.CreatedAt,
                 IsActive = d.IsActive,
@@ -187,6 +193,7 @@ public class DocumentsController : RbacControllerBase
             IsPublic = d.IsPublic,
             PublicCanDownload = d.PublicCanDownload,
             RequireDownloadConfirm = d.RequireDownloadConfirm,
+            WatermarkPreview = d.WatermarkPreview,
             CreatedByName = d.CreatedByName,
             CreatedAt = d.CreatedAt,
             IsActive = d.IsActive,
@@ -373,6 +380,7 @@ public class DocumentsController : RbacControllerBase
         doc.IsPublic = dto.IsPublic;
         doc.PublicCanDownload = dto.PublicCanDownload;
         doc.RequireDownloadConfirm = dto.RequireDownloadConfirm;
+        doc.WatermarkPreview = dto.WatermarkPreview;
 
         var old = await Db.DocumentPermissions.Where(p => p.DocumentId == id).ToListAsync();
         Db.DocumentPermissions.RemoveRange(old);
@@ -475,6 +483,142 @@ public class DocumentsController : RbacControllerBase
 
         return Ok(logs);
     }
+
+    /// <summary>آیا این کد مدرک قبلاً ثبت شده است؟ — برای هشدار زنده در فرم ساخت/ویرایش.</summary>
+    [HttpGet("check-code")]
+    public async Task<IActionResult> CheckCode([FromQuery] string? code, [FromQuery] int excludingId = 0)
+    {
+        var c = (code ?? "").Trim();
+        if (c.Length == 0) return Ok(new { exists = false });
+        var exists = await Db.Documents.AnyAsync(d => d.Code == c && d.Id != excludingId);
+        return Ok(new { exists });
+    }
+
+    // ---------------------------- درخواست دسترسی ----------------------------
+
+    /// <summary>کاربر بدون دسترسی کافی، برای این مدرک درخواست دسترسی ثبت می‌کند؛ مدیران مدرک نوتیف می‌شوند.</summary>
+    [HttpPost("{id:int}/request-access")]
+    public async Task<IActionResult> RequestAccess(int id, [FromBody] DocAccessRequestSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        var doc = await Db.Documents.AsNoTracking().Where(d => d.Id == id && !d.IsDeleted)
+            .Select(d => new { d.Id, d.Code, d.Title }).FirstOrDefaultAsync();
+        if (doc == null) return NotFound(new { message = "مدرک یافت نشد." });
+
+        var manager = await IsManagerAsync();
+        var (level, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
+        if (level == DocAccessLevel.Full)
+            return BadRequest(new { message = "شما دسترسی کامل به این مدرک دارید؛ نیازی به درخواست نیست." });
+        if ((int)dto.Level <= (int)DocAccessLevel.View || (int)dto.Level <= (int)level)
+            return BadRequest(new { message = "سطح دسترسی درخواستی بالاتر از دسترسی فعلی شما نیست." });
+
+        var me = await Db.Users.AsNoTracking().Where(u => u.Id == MyUserId)
+            .Select(u => string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim())
+            .FirstOrDefaultAsync() ?? MyUsername;
+
+        // اگر درخواست درانتظارِ همین کاربر وجود دارد، همان به‌روزرسانی می‌شود
+        var pending = await Db.DocAccessRequests.FirstOrDefaultAsync(r =>
+            r.DocumentId == id && r.RequesterUserId == MyUserId && r.Status == DocAccessRequestStatus.Pending);
+        if (pending != null)
+        {
+            pending.RequestedLevel = (DocAccessLevel)(int)dto.Level;
+            pending.Note = dto.Note?.Trim();
+            pending.CreatedAt = DateTime.Now;
+            await Db.SaveChangesAsync();
+            return Ok(new { id = pending.Id });
+        }
+
+        var req = new DocAccessRequest
+        {
+            DocumentId = id,
+            RequesterUserId = MyUserId,
+            RequesterName = me,
+            RequestedLevel = (DocAccessLevel)(int)dto.Level,
+            Note = dto.Note?.Trim()
+        };
+        Db.DocAccessRequests.Add(req);
+
+        Db.DocumentLogs.Add(new DocumentLog
+        {
+            DocumentId = id,
+            Action = "AccessRequest",
+            Detail = $"«{me}» درخواست دسترسی «{LevelFa((DocAccessLevel)(int)dto.Level)}» ثبت کرد.",
+            UserId = MyUserId, UserName = MyUsername
+        });
+        await Db.SaveChangesAsync();
+
+        try
+        {
+            var fullUsers = await _access.UsersWithFullAccessAsync(id);
+            fullUsers.Remove(MyUserId);
+            await _notify.SendManyAsync(fullUsers,
+                "درخواست دسترسی به مدرک",
+                $"«{me}» برای مدرک {doc.Code} — {doc.Title} سطح «{LevelFa((DocAccessLevel)(int)dto.Level)}» درخواست کرده است.",
+                me, FormName, $"/doc-archive/documents/{id}");
+        }
+        catch { /* خطای نوتیف نباید جریان را متوقف کند */ }
+
+        return Ok(new { id = req.Id });
+    }
+
+    /// <summary>فهرست درخواست‌های دسترسی این مدرک — فقط مدیران مدرک (دسترسی کامل).</summary>
+    [HttpGet("{id:int}/access-requests")]
+    public async Task<IActionResult> AccessRequests(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        var manager = await IsManagerAsync();
+        var (level, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
+        if (level < DocAccessLevel.Full)
+            return StatusCode(403, new { message = "مشاهده درخواست‌های دسترسی نیازمند دسترسی کامل است." });
+
+        var list = await Db.DocAccessRequests.AsNoTracking()
+            .Where(r => r.DocumentId == id)
+            .OrderBy(r => r.Status != DocAccessRequestStatus.Pending)
+            .ThenByDescending(r => r.Id)
+            .Select(r => ToRequestDto(r))
+            .ToListAsync();
+        return Ok(list);
+    }
+
+    /// <summary>درخواست‌های من برای این مدرک — برای نمایش وضعیت به خودِ درخواست‌کننده.</summary>
+    [HttpGet("{id:int}/access-requests/mine")]
+    public async Task<IActionResult> MyAccessRequests(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+
+        var list = await Db.DocAccessRequests.AsNoTracking()
+            .Where(r => r.DocumentId == id && r.RequesterUserId == MyUserId)
+            .OrderByDescending(r => r.Id)
+            .Select(r => ToRequestDto(r))
+            .ToListAsync();
+        return Ok(list);
+    }
+
+    private static DocAccessRequestDto ToRequestDto(DocAccessRequest r) => new()
+    {
+        Id = r.Id,
+        DocumentId = r.DocumentId,
+        RequesterUserId = r.RequesterUserId,
+        RequesterName = r.RequesterName,
+        RequestedLevel = (DocAccessLevelDto)(int)r.RequestedLevel,
+        Note = r.Note,
+        Status = (int)r.Status,
+        CreatedAt = r.CreatedAt,
+        HandledByName = r.HandledByName,
+        HandlerNote = r.HandlerNote,
+        HandledAt = r.HandledAt
+    };
+
+    internal static string LevelFa(DocAccessLevel lvl) => lvl switch
+    {
+        DocAccessLevel.Read => "خواندن",
+        DocAccessLevel.Write => "نوشتن",
+        DocAccessLevel.Full => "دسترسی کامل",
+        DocAccessLevel.View => "مشاهده",
+        _ => lvl.ToString()
+    };
 
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id)

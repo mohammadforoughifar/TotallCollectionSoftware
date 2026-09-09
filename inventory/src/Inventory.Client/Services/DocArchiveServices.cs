@@ -49,6 +49,29 @@ public interface IDocArchiveService
     /// <summary>گزارش مشاهده/دانلود فایل‌های مدرک — فقط دسترسی کامل.</summary>
     Task<List<DocAttachmentAccessLogDto>> GetAccessLogsAsync(int id);
 
+    // درخواست دسترسی
+    /// <summary>ثبت درخواست دسترسی به مدرک (کاربر بدون دسترسی).</summary>
+    Task RequestAccessAsync(int id, DocAccessRequestSaveDto dto);
+    /// <summary>درخواست‌های دسترسی یک مدرک — فقط مدیران مدرک.</summary>
+    Task<List<DocAccessRequestDto>> GetAccessRequestsAsync(int id);
+    /// <summary>درخواست‌های من برای این مدرک.</summary>
+    Task<List<DocAccessRequestDto>> GetMyAccessRequestsAsync(int id);
+    /// <summary>پذیرش درخواست دسترسی (مدیر مدرک).</summary>
+    Task ApproveAccessRequestAsync(int requestId, DocAccessRequestApproveDto dto);
+    /// <summary>رد درخواست دسترسی.</summary>
+    Task RejectAccessRequestAsync(int requestId, string? note);
+    /// <summary>لغو درخواست توسط خودِ درخواست‌کننده.</summary>
+    Task CancelAccessRequestAsync(int requestId);
+
+    // شماره‌گذار خودکار کد مدرک
+    /// <summary>آیا کد مدرک قبلاً ثبت شده است؟ (هشدار زنده در فرم)</summary>
+    Task<bool> CheckCodeExistsAsync(string code, int excludingId = 0);
+    /// <summary>تنظیمات شماره‌گذار خودکار — مدیر آرشیو.</summary>
+    Task<DocCodeSettingsDto> GetCodeSettingsAsync();
+    Task<DocCodeSettingsDto> SaveCodeSettingsAsync(DocCodeSettingsDto dto);
+    /// <summary>اجرای یک‌باره بازشمارش مدارک موجود.</summary>
+    Task<DocCodeBackfillResultDto> RunCodeBackfillAsync();
+
     // ورژن و گردش
     Task<int> CreateVersionAsync(DocVersionCreateDto dto);
     Task SetVersionActiveAsync(int versionId, bool active);
@@ -174,6 +197,40 @@ public class DocArchiveService : IDocArchiveService
 
     public Task<List<DocAttachmentAccessLogDto>> GetAccessLogsAsync(int id)
         => _api.GetAsync<List<DocAttachmentAccessLogDto>>($"{Root}/documents/{id}/access-logs");
+
+    public Task RequestAccessAsync(int id, DocAccessRequestSaveDto dto)
+        => _api.PostAsync<object>($"{Root}/documents/{id}/request-access", dto);
+
+    public Task<List<DocAccessRequestDto>> GetAccessRequestsAsync(int id)
+        => _api.GetAsync<List<DocAccessRequestDto>>($"{Root}/documents/{id}/access-requests");
+
+    public Task<List<DocAccessRequestDto>> GetMyAccessRequestsAsync(int id)
+        => _api.GetAsync<List<DocAccessRequestDto>>($"{Root}/documents/{id}/access-requests/mine");
+
+    public Task ApproveAccessRequestAsync(int requestId, DocAccessRequestApproveDto dto)
+        => _api.PostAsync<object>($"{Root}/access-requests/{requestId}/approve", dto);
+
+    public Task RejectAccessRequestAsync(int requestId, string? note)
+        => _api.PostAsync<object>($"{Root}/access-requests/{requestId}/reject", new { Note = note });
+
+    public Task CancelAccessRequestAsync(int requestId)
+        => _api.PostAsync<object>($"{Root}/access-requests/{requestId}/cancel", new { });
+
+    public async Task<bool> CheckCodeExistsAsync(string code, int excludingId = 0)
+    {
+        var res = await _api.GetAsync<CodeCheckResult>($"{Root}/documents/check-code?code={Uri.EscapeDataString(code)}&excludingId={excludingId}");
+        return res?.Exists == true;
+    }
+    private class CodeCheckResult { public bool Exists { get; set; } }
+
+    public Task<DocCodeSettingsDto> GetCodeSettingsAsync()
+        => _api.GetAsync<DocCodeSettingsDto>($"{Root}/settings/code-numbering");
+
+    public Task<DocCodeSettingsDto> SaveCodeSettingsAsync(DocCodeSettingsDto dto)
+        => _api.PutAsync<DocCodeSettingsDto>($"{Root}/settings/code-numbering", dto);
+
+    public Task<DocCodeBackfillResultDto> RunCodeBackfillAsync()
+        => _api.PostAsync<DocCodeBackfillResultDto>($"{Root}/settings/code-numbering/run-once", new { });
 
     public Task DeleteDocumentAsync(int id)
         => _api.DeleteAsync($"{Root}/documents/{id}");

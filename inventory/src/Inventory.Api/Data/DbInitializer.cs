@@ -33,6 +33,8 @@ public static class DbInitializer
                     EnsureSqliteWorkCalendarSchema(db);
                     // امکانات امنیتی آرشیو: لاگ دانلود/مشاهده، تایید رمز برای دانلود، دسترسی گروهی
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
+                    // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
+                    await DocArchiveSecuritySchemaV2.EnsureAsync(db);
                 }
                 else
                 {
@@ -40,6 +42,8 @@ public static class DbInitializer
                     EnsureSystemUserPhoneColumn(db);
                     // امکانات امنیتی آرشیو: لاگ دانلود/مشاهده، تایید رمز برای دانلود، دسترسی گروهی
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
+                    // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
+                    await DocArchiveSecuritySchemaV2.EnsureAsync(db);
                 }
 
                 if (seedDemo && !db.Products.Any())

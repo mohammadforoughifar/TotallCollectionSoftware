@@ -292,7 +292,11 @@ public class DocFoldersController : RbacControllerBase
             .Select(r => new LookupItem { Id = r.Id, Name = r.Name })
             .ToListAsync();
 
-        return Ok(new DocArchiveLookups { Users = users, Documents = docs, Roles = roles });
+        // اگر شماره‌گذار خودکار فعال باشد، فرم ساخت مدرک می‌تواند کد را خالی رها کند
+        var numberingEnabled = await Db.DocCodeSettings.AsNoTracking()
+            .Where(s => s.Id == 1).Select(s => s.Enabled).FirstOrDefaultAsync();
+
+        return Ok(new DocArchiveLookups { Users = users, Documents = docs, Roles = roles, CodeNumberingEnabled = numberingEnabled });
     }
 
     /// <summary>

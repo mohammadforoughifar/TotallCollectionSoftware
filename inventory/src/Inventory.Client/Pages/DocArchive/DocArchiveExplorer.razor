@@ -27,6 +27,13 @@
                     @onclick="() => OpenZipModal(selectedFolderId)">
                 <i class="bi bi-file-earmark-zip-fill"></i> دانلود درختی ZIP
             </button>
+            @if (Auth.Has("DocArchive.Manage"))
+            {
+                <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#b45309;"
+                        @onclick="OpenCodeSettings" title="شماره‌گذار خودکار کد مدرک">
+                    <i class="bi bi-gear-fill"></i> تنظیمات
+                </button>
+            }
             @if (Auth.Has("DocArchive.Create"))
             {
                 <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#3730a3;"
@@ -379,6 +386,10 @@
                                                     @if (d.RequireDownloadConfirm)
                                                     {
                                                         <span class="text-danger" title="محرمانه — دانلود/مشاهده فایل‌ها با تایید مجدد رمز"><i class="bi bi-shield-lock-fill"></i></span>
+                                                    }
+                                                    @if (d.WatermarkPreview)
+                                                    {
+                                                        <span class="text-info" title="پیش‌نمایش فایل‌ها با واترمارک نام کاربر"><i class="bi bi-droplet-half"></i></span>
                                                     }
                                                     @if (d.HasIndexedContent)
                                                     {
@@ -746,10 +757,91 @@
 @* ==================== مودال فرم مدرک جدید ==================== *@
 <DocumentFormModal Visible="showDoc" DefaultFolderId="@(selectedFolderId ?? 0)"
                    Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents" Roles="lookups.Roles"
+                   NumberingEnabled="lookups.CodeNumberingEnabled"
                    OnClose="() => showDoc = false" OnSaved="OnDocSaved" />
 
 @* ==================== مودال مدیریت تگ‌ها ==================== *@
 <DocTagsModal Visible="showTagsModal" OnClose="() => showTagsModal = false" OnTagsChanged="OnTagsChanged" />
+
+@* ==================== مودال تنظیمات: شماره‌گذار خودکار کد مدرک ==================== *@
+<Modal Visible="showCodeSettings" Title="تنظیمات آرشیو — شماره‌گذار خودکار کد مدرک" Size="modal-md" OnClose="() => showCodeSettings = false">
+    <ChildContent>
+        @if (codeSettings == null)
+        {
+            <div class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+        }
+        else
+        {
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" id="csEn" @bind="codeSettings.Enabled" />
+                <label class="form-check-label fw-700" for="csEn">شماره‌گذار خودکار کد مدرک فعال باشد</label>
+                <div class="fs-9 text-muted">وقتی فعال باشد، کاربر می‌تواند کد مدرک را در فرم ساخت خالی بگذارد تا به‌صورت خودکار از شمارنده تخصیص یابد.</div>
+            </div>
+            <div class="row g-2">
+                <div class="col-4">
+                    <label class="form-label fs-8">پیشوند کد</label>
+                    <input class="form-control form-control-sm" @bind="codeSettings.Prefix" maxlength="10" />
+                </div>
+                <div class="col-4">
+                    <label class="form-label fs-8">تعداد رقم (Padding)</label>
+                    <input class="form-control form-control-sm" type="number" min="3" max="10" @bind="codeSettings.Padding" />
+                </div>
+                <div class="col-4">
+                    <label class="form-label fs-8">شماره بعدی</label>
+                    <input class="form-control form-control-sm" type="number" min="1" @bind="codeSettings.NextNumber" />
+                </div>
+            </div>
+            <div class="fs-9 text-muted mt-2">نمونه کد بعدی: <b class="num">@CodePreview</b></div>
+
+            <hr />
+            <div class="fw-700 fs-8 mb-1"><i class="bi bi-play-circle ms-1"></i> اجرای یک‌باره بازشمارش مدارک موجود</div>
+            <div class="fs-9 text-muted mb-2">
+                کد مدارکی که با الگوی فعلی سازگار نیستند، با کد خودکار جدید جایگزین می‌شود (کدهای سازگار دست‌نخورده می‌مانند؛
+                هر جایگزینی در رخ‌نامه همان مدرک ثبت می‌شود). <b>این عمل فقط یک‌بار قابل اجراست.</b>
+            </div>
+            @if (codeSettings.BackfillRanAt != null)
+            {
+                <div class="alert alert-secondary py-2 fs-8 mb-0">
+                    قبلاً اجرا شده است — @codeSettings.BackfillRanAt.Value.ToFa() توسط «@codeSettings.BackfillRanByName»
+                    (@codeSettings.BackfillAssignedCount.Num() مدرک بازشمارش شد).
+                </div>
+            }
+            else if (!confirmRun)
+            {
+                <button class="btn btn-sm btn-outline-warning fw-700" @onclick="() => confirmRun = true" disabled="@runningBackfill">
+                    <i class="bi bi-play-circle"></i> اجرای یک‌باره بازشمارش
+                </button>
+            }
+            else
+            {
+                <div class="border border-warning rounded-3 p-2" style="background:#fffbeb">
+                    <div class="fs-8 mb-2"><i class="bi bi-exclamation-triangle text-warning"></i> کدهای دستیِ ناسازگار با الگو جایگزین می‌شوند؛ مطمئن هستید؟</div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-warning fw-700" @onclick="RunBackfill" disabled="@runningBackfill">
+                            @if (runningBackfill) { <span class="spinner-border spinner-border-sm"></span> }
+                            بله، اجرا شود
+                        </button>
+                        <button class="btn btn-sm btn-light" @onclick="() => confirmRun = false" disabled="@runningBackfill">انصراف</button>
+                    </div>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(backfillMessage))
+            {
+                <div class="alert alert-success py-2 fs-8 mt-2 mb-0">@backfillMessage</div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light btn-sm" @onclick="() => showCodeSettings = false">بستن</button>
+        @if (codeSettings != null)
+        {
+            <button class="btn btn-primary btn-sm fw-700" @onclick="SaveCodeSettings" disabled="@settingsSaving">
+                @if (settingsSaving) { <span class="spinner-border spinner-border-sm"></span> }
+                ذخیره تنظیمات
+            </button>
+        }
+    </Footer>
+</Modal>
 
 @* ==================== مودال دانلود درختی ZIP ==================== *@
 <Modal Visible="showZipModal" Title="دانلود درختی پوشه‌ها در قالب فایل ZIP" Size="modal-md" OnClose="() => showZipModal = false">
@@ -820,6 +912,54 @@
     private List<DocumentListDto> documents = new();
     private List<DocTagDto> availableTags = new();
     private DocArchiveLookups lookups = new();
+
+    // ---------- تنظیمات شماره‌گذار خودکار کد مدرک ----------
+    private bool showCodeSettings, settingsSaving, confirmRun, runningBackfill;
+    private DocCodeSettingsDto? codeSettings;
+    private string? backfillMessage;
+
+    private string CodePreview => codeSettings == null ? "" :
+        (codeSettings.Prefix ?? "") + codeSettings.NextNumber.ToString().PadLeft(Math.Clamp(codeSettings.Padding, 3, 10), '0');
+
+    private async Task OpenCodeSettings()
+    {
+        showCodeSettings = true;
+        settingsSaving = false;
+        confirmRun = false;
+        backfillMessage = null;
+        codeSettings = null;
+        try { codeSettings = await Svc.GetCodeSettingsAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); codeSettings = new DocCodeSettingsDto(); }
+    }
+
+    private async Task SaveCodeSettings()
+    {
+        if (codeSettings == null) return;
+        settingsSaving = true;
+        try
+        {
+            codeSettings = await Svc.SaveCodeSettingsAsync(codeSettings);
+            lookups.CodeNumberingEnabled = codeSettings.Enabled;
+            Toast.Success("تنظیمات شماره‌گذار ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { settingsSaving = false; }
+    }
+
+    private async Task RunBackfill()
+    {
+        runningBackfill = true;
+        try
+        {
+            var res = await Svc.RunCodeBackfillAsync();
+            backfillMessage = res.Message;
+            confirmRun = false;
+            codeSettings = await Svc.GetCodeSettingsAsync();
+            await LoadDocs();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); confirmRun = false; }
+        finally { runningBackfill = false; }
+    }
     private DocExpirySummaryDto expirySummary = new() { ExpiringDays = 60 };
     private int inactiveCount;
     private int trashCount;

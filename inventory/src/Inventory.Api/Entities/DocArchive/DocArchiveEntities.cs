@@ -130,6 +130,13 @@ public class ArchiveDocument
     /// </summary>
     public bool RequireDownloadConfirm { get; set; }
 
+    /// <summary>
+    /// واترمارک پیش‌نمایش — اگر فعال باشد، روی پیش‌نمایش داخل برنامه‌ی فایل‌های این مدرک
+    /// (PDF/تصویر/متن) نام کاربر بازدیدکننده و زمان مشاهده به‌صورت واترمارک نمایش داده می‌شود.
+    /// per-document توسط مدیر مدرک تعیین می‌شود.
+    /// </summary>
+    public bool WatermarkPreview { get; set; }
+
     public int CreatedByUserId { get; set; }
 
     [MaxLength(150)]
@@ -433,3 +440,80 @@ public class DocEntityLink
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
 
+
+/// <summary>وضعیت درخواست دسترسی به مدرک</summary>
+public enum DocAccessRequestStatus
+{
+    Pending = 0,
+    Approved = 1,
+    Rejected = 2,
+    Canceled = 3
+}
+
+/// <summary>
+/// درخواست دسترسی — کاربری که به مدرکی دسترسی ندارد می‌تواند
+/// از مدیران آن مدرک (دارندگان دسترسی کامل) سطح دسترسی بخواهد.
+/// </summary>
+public class DocAccessRequest
+{
+    public int Id { get; set; }
+
+    public int DocumentId { get; set; }
+
+    public int RequesterUserId { get; set; }
+
+    [MaxLength(150)]
+    public string RequesterName { get; set; } = "";
+
+    /// <summary>سطح دسترسی درخواستی (خواندن / نوشتن / دسترسی کامل)</summary>
+    public DocAccessLevel RequestedLevel { get; set; } = DocAccessLevel.Read;
+
+    /// <summary>توضیح درخواست‌کننده — دلیل نیاز به دسترسی</summary>
+    [MaxLength(500)]
+    public string? Note { get; set; }
+
+    public DocAccessRequestStatus Status { get; set; } = DocAccessRequestStatus.Pending;
+
+    public int? HandledByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string? HandledByName { get; set; }
+
+    /// <summary>توضیح رسیدگی (مثلاً دلیل رد)</summary>
+    [MaxLength(500)]
+    public string? HandlerNote { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime? HandledAt { get; set; }
+}
+
+/// <summary>
+/// تنظیمات شماره‌گذار خودکار کد مدرک — تک‌ردیف (Id=1)، فقط مدیر آرشیو.
+/// فعال‌سازی در «تنظیمات»؛ هنگام ساخت مدرک اگر کد خالی بماند به‌صورت خودکار تخصیص می‌یابد.
+/// مدیر می‌تواند یک‌بار اجرای بازشمارش مدارک موجود را بزند.
+/// </summary>
+public class DocCodeSettings
+{
+    public int Id { get; set; }
+
+    /// <summary>شماره‌گذار خودکار فعال باشد؟</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>پیشوند کد — مثل DOC-</summary>
+    [MaxLength(10)]
+    public string Prefix { get; set; } = "DOC-";
+
+    /// <summary>تعداد ارقام عدد (Padding) — مثل 5 ⇒ DOC-00012</summary>
+    public int Padding { get; set; } = 5;
+
+    /// <summary>شماره بعدی که تخصیص خواهد یافت</summary>
+    public int NextNumber { get; set; } = 1;
+
+    /// <summary>اجرای یک‌باره بازشمارش مدارک موجود (فقط مدارک بدون کد منطبق با الگو)</summary>
+    public DateTime? BackfillRanAt { get; set; }
+
+    [MaxLength(150)]
+    public string? BackfillRanByName { get; set; }
+
+    public int BackfillAssignedCount { get; set; }
+}

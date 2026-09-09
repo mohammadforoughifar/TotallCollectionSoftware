@@ -282,6 +282,7 @@ public class DocSearchController : RbacControllerBase
                 AllowMultipleActiveVersions = d.AllowMultipleActiveVersions,
                 IsPublic = d.IsPublic,
                 RequireDownloadConfirm = d.RequireDownloadConfirm,
+                WatermarkPreview = d.WatermarkPreview,
                 CreatedByName = d.CreatedByName,
                 CreatedAt = d.CreatedAt,
                 IsActive = d.IsActive,

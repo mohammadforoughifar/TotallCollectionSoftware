@@ -224,17 +224,19 @@ public class AttachmentsController : ControllerBase
     }
 
     /// <summary>
-    /// برای پیوست ورژنِ آرشیو اسناد: اگر مدرک «محرمانه» باشد (تایید مجدد رمز) شناسه مدرک، در غیر این‌صورت null.
+    /// برای پیوست ورژنِ آرشیو اسناد، فلگ‌های امنیتی مدرک (شناسه + محرمانه + واترمارک پیش‌نمایش).
+    /// اگر پیوست ماژول DocVersion نباشد یا ورژن یافت نشود null.
     /// </summary>
-    private async Task<int?> ConfidentialDocumentIdAsync(string module, int refId)
+    private async Task<(int DocId, bool RequireConfirm, bool Watermark)?> DocSecurityFlagsAsync(string module, int refId)
     {
         if (!string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase)) return null;
         var docId = await _db.DocumentVersions.Where(v => v.Id == refId)
             .Select(v => (int?)v.DocumentId).FirstOrDefaultAsync();
         if (docId is not int dId) return null;
-        var flag = await _db.Documents.Where(d => d.Id == dId)
-            .Select(d => d.RequireDownloadConfirm).FirstOrDefaultAsync();
-        return flag ? dId : null;
+        var flags = await _db.Documents.Where(d => d.Id == dId)
+            .Select(d => new { d.RequireDownloadConfirm, d.WatermarkPreview }).FirstOrDefaultAsync();
+        if (flags == null) return null;
+        return (dId, flags.RequireDownloadConfirm, flags.WatermarkPreview);
     }
 
     /// <summary>ثبت گردانه مشاهده/دانلود پیوست (همه ماژول‌ها) — خطای لاگ دانلود را متوقف نمی‌کند.</summary>
@@ -264,9 +266,9 @@ public class AttachmentsController : ControllerBase
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
             .ToListAsync();
 
-        // اگر مدرک محرمانه باشد، کلاینت از این فیلدها برای مودال تایید رمز استفاده می‌کند
-        var confDocId = await ConfidentialDocumentIdAsync(module, refId);
-        var needsConfirm = confDocId is int cd && !_confirm.IsConfirmed(MyUserId, cd);
+        // اگر مدرک فلگ‌های امنیتی (محرمانه/واترمارک) داشته باشد، کلاینت از این فیلدها برای UX متناسب استفاده می‌کند
+        var flags = await DocSecurityFlagsAsync(module, refId);
+        var needsConfirm = flags is { RequireConfirm: true } f0 && !_confirm.IsConfirmed(MyUserId, f0.DocId);
 
         return Ok(rows.Select(a =>
         {
@@ -278,8 +280,9 @@ public class AttachmentsController : ControllerBase
                 ContentType = ct,
                 CanPreview = IsPreviewable(a.FileName, ct),
                 CanDownload = access == AttachmentAccess.Download,
-                DocumentId = confDocId ?? 0,
-                NeedsConfirm = needsConfirm
+                DocumentId = flags?.DocId ?? 0,
+                NeedsConfirm = needsConfirm,
+                Watermark = flags?.Watermark ?? false
             };
         }));
     }
@@ -333,12 +336,12 @@ public class AttachmentsController : ControllerBase
             return StatusCode(403, new { message = "شما اجازه دانلود این فایل را ندارید؛ فقط امکان مشاهده دارید." });
 
         // مدرک محرمانه: دانلود فقط با اعطای «تایید مجدد رمز» معتبر
-        var confDocId = await ConfidentialDocumentIdAsync(a.Module, a.RefId);
-        if (confDocId is int dId && !_confirm.IsConfirmed(MyUserId, dId))
+        var flags = await DocSecurityFlagsAsync(a.Module, a.RefId);
+        if (flags is { RequireConfirm: true } fl && !_confirm.IsConfirmed(MyUserId, fl.DocId))
             return StatusCode(403, new
             {
                 code = "PASSWORD_CONFIRM_REQUIRED",
-                documentId = dId,
+                documentId = fl.DocId,
                 message = "این مدرک محرمانه است؛ برای دانلود فایل‌های آن تایید مجدد رمز لازم است."
             });
 
@@ -367,12 +370,12 @@ public class AttachmentsController : ControllerBase
             return BadRequest(new { message = "این نوع فایل قابل پیش‌نمایش نیست." });
 
         // مدرک محرمانه: مشاهده هم فقط با اعطای «تایید مجدد رمز» معتبر
-        var confDocId = await ConfidentialDocumentIdAsync(a.Module, a.RefId);
-        if (confDocId is int pId && !_confirm.IsConfirmed(MyUserId, pId))
+        var flags = await DocSecurityFlagsAsync(a.Module, a.RefId);
+        if (flags is { RequireConfirm: true } fl && !_confirm.IsConfirmed(MyUserId, fl.DocId))
             return StatusCode(403, new
             {
                 code = "PASSWORD_CONFIRM_REQUIRED",
-                documentId = pId,
+                documentId = fl.DocId,
                 message = "این مدرک محرمانه است؛ برای مشاهده فایل‌های آن تایید مجدد رمز لازم است."
             });
 

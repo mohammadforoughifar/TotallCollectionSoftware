@@ -14,6 +14,70 @@
 {
     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
 }
+else if (accessDenied)
+{
+    @* ---------- کاربر به مدرک دسترسی ندارد — فرم درخواست دسترسی ---------- *@
+    <div class="doc-archive-shell">
+        <div class="card shadow-sm mx-auto" style="max-width:580px">
+            <div class="card-body p-4 text-center">
+                <i class="bi bi-shield-lock" style="font-size:2.4rem;color:#f59e0b"></i>
+                <h6 class="fw-700 mt-2">به این مدرک دسترسی ندارید</h6>
+                <p class="fs-8 text-muted mb-3">اگر برای کار خود به این مدرک نیاز دارید، می‌توانید از مدیران آن (دارندگان دسترسی کامل) درخواست دسترسی کنید؛ نتیجه با نوتیفیکیشن به شما اطلاع داده می‌شود.</p>
+
+                <div class="text-start">
+                    <label class="form-label fs-8 fw-700">سطح دسترسی درخواستی</label>
+                    <select class="form-select form-select-sm" @bind="reqLevel">
+                        <option value="2">خواندن</option>
+                        <option value="3">نوشتن</option>
+                        <option value="4">دسترسی کامل</option>
+                    </select>
+                    <label class="form-label fs-8 fw-700 mt-2">دلیل / توضیح</label>
+                    <textarea class="form-control form-control-sm" rows="3" @bind="reqNote"
+                              placeholder="مثلاً: برای رسیدگی به پرونده این مشتری به مدرک نیاز دارم."></textarea>
+                    <button class="btn btn-primary btn-sm w-100 mt-3 fw-700" @onclick="SendAccessRequest" disabled="@reqBusy">
+                        @if (reqBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                        <i class="bi bi-send"></i> ارسال درخواست دسترسی
+                    </button>
+                </div>
+
+                @if (myRequests.Count > 0)
+                {
+                    <hr />
+                    <div class="fw-700 fs-8 text-start mb-1"><i class="bi bi-clock-history ms-1"></i> درخواست‌های شما برای این مدرک:</div>
+                    @foreach (var r in myRequests)
+                    {
+                        <div class="d-flex justify-content-between align-items-center border rounded-3 p-2 mb-1">
+                            <div class="fs-8 text-start">
+                                <b>@LevelFa(r.RequestedLevel)</b>
+                                <span class="text-muted"> — @r.CreatedAt.ToFa()</span>
+                                @if (!string.IsNullOrWhiteSpace(r.HandlerNote))
+                                {
+                                    <div class="text-muted fs-9 mt-1"><b>پاسخ:</b> @r.HandlerNote</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(r.HandledByName))
+                                {
+                                    <div class="text-muted fs-9">(توسط @r.HandledByName)</div>
+                                }
+                            </div>
+                            <div class="d-flex align-items-center gap-1">
+                                <span class="badge @StatusBadgeClass(r.Status)">@StatusFa(r.Status)</span>
+                                @if (r.Status == 0)
+                                {
+                                    <button class="btn btn-sm btn-light py-0" title="لغو درخواست" @onclick="() => CancelRequest(r.Id)">
+                                        <i class="bi bi-x-lg text-danger"></i>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                <button class="btn btn-outline-secondary btn-sm mt-3" @onclick="GoBack">
+                    <i class="bi bi-arrow-right"></i> بازگشت
+                </button>
+            </div>
+        </div>
+    </div>
+}
 else
 {
 <div class="doc-archive-shell">
@@ -24,6 +88,7 @@ else
             <i class="bi bi-file-earmark-text me-2"></i>@doc.Code — @doc.Title
             @if (doc.IsPublic) { <span class="badge bg-light text-dark ms-2">نمایش برای همه</span> }
             @if (doc.RequireDownloadConfirm) { <span class="badge bg-warning text-dark ms-2" title="دانلود/مشاهده فایل‌های این مدرک با تایید مجدد رمز است"><i class="bi bi-shield-lock"></i> محرمانه</span> }
+            @if (doc.WatermarkPreview) { <span class="badge bg-info text-dark ms-2" title="پیش‌نمایش فایل‌های این مدرک با واترمارک نام کاربر نمایش داده می‌شود"><i class="bi bi-droplet-half"></i> واترمارک</span> }
             @if (!doc.IsActive) { <span class="badge bg-dark ms-2"><i class="bi bi-lock-fill"></i> غیرفعال</span> }
         </span>
         <div class="d-flex gap-2 flex-wrap">
@@ -511,9 +576,96 @@ else
                         <input class="form-check-input" type="checkbox" id="vConf" @bind="doc.RequireDownloadConfirm" />
                         <label class="form-check-label fs-8 fw-700 text-danger" for="vConf"><i class="bi bi-shield-lock ms-1"></i> محرمانه — فایل‌ها با تایید مجدد رمز</label>
                     </div>
+                    <div class="form-check form-switch mt-1 border rounded-3 p-1 px-2 bg-light">
+                        <input class="form-check-input" type="checkbox" id="vWm" @bind="doc.WatermarkPreview" />
+                        <label class="form-check-label fs-8 fw-700" for="vWm"><i class="bi bi-droplet-half ms-1" style="color:#0284c7"></i> واترمارک پیش‌نمایش فایل‌ها</label>
+                    </div>
                     <button class="btn btn-sm btn-primary w-100 mt-2" @onclick="SavePerms">
                         <i class="bi bi-check-lg"></i> ذخیره دسترسی‌ها
                     </button>
+                </div>
+            </div>
+
+            @* ---------- کارت درخواست‌های دسترسی (مدیران مدرک) ---------- *@
+            <div class="card mb-3">
+                <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center">
+                    <span>
+                        <i class="bi bi-person-plus ms-1" style="color:#2563eb"></i> درخواست‌های دسترسی
+                        @if (accessRequests.Any(r => r.Status == 0))
+                        {
+                            <span class="badge bg-warning text-dark ms-1">@accessRequests.Count(r => r.Status == 0).Num() در انتظار</span>
+                        }
+                    </span>
+                    <button class="btn btn-sm btn-light py-0" title="به‌روزرسانی" @onclick="LoadAccessRequests">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+                <div class="card-body p-1" style="max-height:300px;overflow-y:auto">
+                    @if (accessRequests.Count == 0)
+                    {
+                        <div class="fs-8 text-muted p-2">درخواستی برای این مدرک ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        @foreach (var r in accessRequests)
+                        {
+                            <div class="border rounded-3 p-2 mb-1">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="fs-8 fw-700">@r.RequesterName</div>
+                                    <span class="badge @StatusBadgeClass(r.Status)">@StatusFa(r.Status)</span>
+                                </div>
+                                <div class="fs-9 text-muted mt-1">
+                                    سطح درخواستی: <b>@LevelFa(r.RequestedLevel)</b> — @r.CreatedAt.ToFa() @r.CreatedAt.ToString("HH:mm")
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(r.Note))
+                                {
+                                    <div class="fs-9 mt-1" title="@r.Note">«@r.Note»</div>
+                                }
+                                @if (r.Status == 0 && actingReqId != r.Id)
+                                {
+                                    <div class="d-flex gap-1 mt-2">
+                                        <button class="btn btn-sm btn-success py-0 px-2 fs-8" @onclick="() => StartAct(r, false)">
+                                            <i class="bi bi-check-lg"></i> پذیرش
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-danger py-0 px-2 fs-8" @onclick="() => StartAct(r, true)">
+                                            <i class="bi bi-x-lg"></i> رد
+                                        </button>
+                                    </div>
+                                }
+                                @if (r.Status == 0 && actingReqId == r.Id)
+                                {
+                                    <div class="mt-2 border-top pt-2">
+                                        @if (!rejectMode)
+                                        {
+                                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                <select class="form-select form-select-sm" style="width:auto" @bind="approveLevel">
+                                                    <option value="1">مشاهده</option>
+                                                    <option value="2">خواندن</option>
+                                                    <option value="3">نوشتن</option>
+                                                    <option value="4">دسترسی کامل</option>
+                                                </select>
+                                                <div class="form-check form-switch mb-0">
+                                                    <input class="form-check-input" type="checkbox" id="apr-@r.Id" @bind="approveDownload" />
+                                                    <label class="form-check-label fs-8" for="apr-@r.Id">دانلود</label>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <input class="form-control form-control-sm" placeholder="دلیل رد (اختیاری)…" @bind="rejectNote" />
+                                        }
+                                        <div class="d-flex gap-1 mt-2">
+                                            <button class="btn btn-sm @(rejectMode ? "btn-danger" : "btn-success") py-0 px-2 fs-8 fw-700" @onclick="ApplyRequest" disabled="@reqActBusy">
+                                                @if (reqActBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                                @(rejectMode ? "رد درخواست" : "اعطای دسترسی")
+                                            </button>
+                                            <button class="btn btn-sm btn-light py-0 px-2 fs-8" @onclick="() => { actingReqId = 0; rejectNote = null; }">انصراف</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
                 </div>
             </div>
 
@@ -801,6 +953,7 @@ else
 <VersionCompareModal @ref="compareModal" />
 
 <DocumentFormModal Visible="showEdit" EditId="Id" Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents" Roles="lookups.Roles"
+                   NumberingEnabled="lookups.CodeNumberingEnabled"
                    OnClose="() => showEdit = false" OnSaved="OnEdited" />
 
 <style>
@@ -964,6 +1117,7 @@ else
     private async Task Load()
     {
         loading = true;
+        accessDenied = false;
         try
         {
             if (!string.IsNullOrWhiteSpace(Auth.Token))
@@ -974,6 +1128,14 @@ else
             Layout.SetTitle($"{doc.Code} — {doc.Title}");
             await LoadExtractedTexts();
             await LoadDocWorkOrdersAsync();
+            if (doc.MyLevel >= DocAccessLevelDto.Full)
+                await LoadAccessRequests();
+        }
+        catch (ApiException ex) when (ex.Message.Contains("دسترسی ندارید"))
+        {
+            // کاربر به این مدرک دسترسی ندارد — صفحه درخواست دسترسی نمایش داده می‌شود
+            accessDenied = true;
+            await LoadMyRequests();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -1186,6 +1348,7 @@ else
                 IsPublic = doc.IsPublic,
                 PublicCanDownload = doc.PublicCanDownload,
                 RequireDownloadConfirm = doc.RequireDownloadConfirm,
+                WatermarkPreview = doc.WatermarkPreview,
                 Items = doc.Permissions
             });
             Toast.Success("دسترسی‌ها ذخیره شد.");
@@ -1207,6 +1370,116 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { accessLogsLoading = false; }
+    }
+
+    // ---------- درخواست دسترسی ----------
+    private bool accessDenied, reqBusy;
+    private int reqLevel = 2;
+    private string? reqNote;
+    private List<DocAccessRequestDto> myRequests = new();
+    private List<DocAccessRequestDto> accessRequests = new();
+    private int actingReqId, approveLevel = 2;
+    private bool approveDownload = true, rejectMode, reqActBusy;
+    private string? rejectNote;
+
+    private static string LevelFa(DocAccessLevelDto lvl) => lvl switch
+    {
+        DocAccessLevelDto.Read => "خواندن",
+        DocAccessLevelDto.Write => "نوشتن",
+        DocAccessLevelDto.Full => "دسترسی کامل",
+        _ => "مشاهده"
+    };
+
+    private static string StatusFa(int s) => s switch
+    {
+        0 => "در انتظار بررسی",
+        1 => "پذیرفته شد",
+        2 => "رد شد",
+        3 => "لغو شده",
+        _ => "نامشخص"
+    };
+
+    private static string StatusBadgeClass(int s) => s switch
+    {
+        0 => "bg-warning text-dark",
+        1 => "bg-success",
+        2 => "bg-danger",
+        _ => "bg-secondary"
+    };
+
+    private async Task LoadMyRequests()
+    {
+        try { myRequests = await Svc.GetMyAccessRequestsAsync(Id); }
+        catch { myRequests = new(); }
+    }
+
+    private async Task LoadAccessRequests()
+    {
+        try { accessRequests = await Svc.GetAccessRequestsAsync(Id); }
+        catch { accessRequests = new(); }
+    }
+
+    private async Task SendAccessRequest()
+    {
+        reqBusy = true;
+        try
+        {
+            await Svc.RequestAccessAsync(Id, new DocAccessRequestSaveDto
+            {
+                Level = (DocAccessLevelDto)reqLevel,
+                Note = reqNote
+            });
+            Toast.Success("درخواست دسترسی ثبت شد؛ پس از بررسی مدیر مدرک، نتیجه به شما اطلاع داده می‌شود.");
+            reqNote = null;
+            await LoadMyRequests();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { reqBusy = false; }
+    }
+
+    private async Task CancelRequest(int requestId)
+    {
+        try
+        {
+            await Svc.CancelAccessRequestAsync(requestId);
+            Toast.Success("درخواست لغو شد.");
+            await LoadMyRequests();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void StartAct(DocAccessRequestDto r, bool reject)
+    {
+        actingReqId = r.Id;
+        rejectMode = reject;
+        rejectNote = null;
+        approveLevel = Math.Max((int)r.RequestedLevel, 1);
+        approveDownload = true;
+    }
+
+    private async Task ApplyRequest()
+    {
+        if (actingReqId == 0) return;
+        reqActBusy = true;
+        try
+        {
+            if (rejectMode)
+                await Svc.RejectAccessRequestAsync(actingReqId, rejectNote);
+            else
+                await Svc.ApproveAccessRequestAsync(actingReqId, new DocAccessRequestApproveDto
+                {
+                    Level = (DocAccessLevelDto)approveLevel,
+                    CanDownload = approveDownload
+                });
+
+            Toast.Success(rejectMode ? "درخواست رد شد." : "درخواست پذیرفته شد و دسترسی داده شد.");
+            actingReqId = 0;
+            rejectNote = null;
+            if (rejectMode) await LoadAccessRequests();
+            else await Load(); // ردیف دسترسی جدید در کارت «دسترسی‌ها» هم آمده باشد تا ذخیره بعدی آن را بازنویسی نکند
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { reqActBusy = false; }
     }
 
     private async Task OnEdited()

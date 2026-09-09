@@ -50,7 +50,11 @@ public class DocumentService : IDocumentService
         var title = (dto.Title ?? "").Trim();
 
         if (string.IsNullOrWhiteSpace(title)) throw new Exception("عنوان مدرک اجباری است.");
-        if (string.IsNullOrWhiteSpace(code)) throw new Exception("کد مدرک اجباری است.");
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            // اگر کد خالی بماند و شماره‌گذار خودکار فعال باشد، کد به‌صورت اتمیک تخصیص می‌یابد
+            code = await AllocateNextCodeAsync() ?? throw new Exception("کد مدرک اجباری است.");
+        }
         if (await _db.Documents.AnyAsync(d => d.Code == code))
             throw new Exception($"کد مدرک «{code}» قبلاً ثبت شده است. کد باید یکتا باشد.");
         if (!await _db.DocFolders.AnyAsync(f => f.Id == dto.FolderId))
@@ -68,6 +72,7 @@ public class DocumentService : IDocumentService
             IsPublic = dto.IsPublic,
             PublicCanDownload = dto.PublicCanDownload,
             RequireDownloadConfirm = dto.RequireDownloadConfirm,
+            WatermarkPreview = dto.WatermarkPreview,
             CreatedByUserId = userId,
             CreatedByName = userName,
             IsActive = true
@@ -188,6 +193,7 @@ public class DocumentService : IDocumentService
         doc.IsPublic = dto.IsPublic;
         doc.PublicCanDownload = dto.PublicCanDownload;
         doc.RequireDownloadConfirm = dto.RequireDownloadConfirm;
+        doc.WatermarkPreview = dto.WatermarkPreview;
         doc.AllowMultipleActiveVersions = dto.AllowMultipleActiveVersions;
 
         // اگر از چند-ورژن‌فعال به تک‌ورژن تغییر کرد، فقط آخرین ورژنِ فعال بماند
@@ -237,6 +243,34 @@ public class DocumentService : IDocumentService
             });
         }
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// تخصیص اتمیک کد بعدی از شماره‌گذار خودکار (تنظیمات تک‌ردیف DocCodeSettings)؛
+    /// اگر شماره‌گذار غیرفعال باشد null برمی‌گرداند. هم‌زمانی با UPDATE شرطی (NextNumber قبلی) کنترل می‌شود.
+    /// </summary>
+    private async Task<string?> AllocateNextCodeAsync()
+    {
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            var st = await _db.DocCodeSettings.AsNoTracking().FirstOrDefaultAsync(s => s.Id == 1);
+            if (st is null || !st.Enabled) return null;
+
+            var prefix = (st.Prefix ?? "").Trim();
+            var pad = Math.Clamp(st.Padding, 3, 12);
+            var n = st.NextNumber;
+
+            // پرش از روی کدهایی که قبلاً (مثلاً به‌صورت دستی) با همین الگو ثبت شده‌اند
+            while (await _db.Documents.AnyAsync(d => d.Code == prefix + n.ToString().PadLeft(pad, '0')))
+                n++;
+
+            var affected = await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE DocCodeSettings SET NextNumber = {n + 1} WHERE Id = 1 AND NextNumber = {st.NextNumber}");
+            if (affected == 1)
+                return prefix + n.ToString().PadLeft(pad, '0');
+            // هم‌زمان دیگری شماره را برداشت — دوباره تلاش کن
+        }
+        throw new Exception("تخصیص خودکار کد مدرک به‌خاطر تداخل هم‌زمانی ناموفق بود؛ دوباره تلاش کنید.");
     }
 
     private async Task SaveDocPermissionsAsync(int documentId, List<DocPermissionDto> items)
