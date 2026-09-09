@@ -104,7 +104,7 @@
                             @* PDF و HTML ورد/اکسل *@
                             <iframe src="@objectUrl" class="fpv-frame" title="@fileName"></iframe>
                         }
-                        @if (!string.IsNullOrWhiteSpace(watermarkText))
+                        @if (ShowCssWatermark)
                         {
                             <div class="fpv-watermark" aria-hidden="true">
                                 @for (var r = 0; r < 14; r++)
@@ -171,9 +171,30 @@
     private bool visible, loading;
     private int attachmentId;
     private string fileName = "", kind = "other";
-    private string? objectUrl, error, officeHint, plainText, watermarkText;
+    private string? contentType, objectUrl, error, officeHint, plainText, watermarkText;
     private bool canDownload;
     private OfficeTextInfo? officeText;
+
+    /// <summary>
+    /// پوشش CSS فقط برای پیش‌نمایش‌هایی که واترمارکِ سمت سرور روی بایت فایل حک نمی‌شود
+    /// (مثل HTML ورد/اکسل یا SVG). برای PDF و تصاویر عادی، سرور خودش نام/زمان را روی
+    /// بایت‌ها می‌نشاند و این پوشش نشان داده نمی‌شود تا دوباره‌رویی پیش نیاید.
+    /// </summary>
+    private bool ShowCssWatermark
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(watermarkText)) return false;
+            if (kind == "pdf") return false;
+            if (kind == "image")
+            {
+                var isSvg = fileName.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)
+                    || (contentType ?? "").Contains("svg", StringComparison.OrdinalIgnoreCase);
+                return isSvg;
+            }
+            return true; // html (پیش‌نمایش ورد/اکسل) و امثال آن
+        }
+    }
 
     private string FileIcon => kind switch
     {
@@ -207,6 +228,7 @@
         attachmentId = id;
         fileName = name;
         canDownload = allowDownload;
+        this.contentType = contentType;
         this.watermarkText = watermarkText;
         kind = Classify(contentType, name);
         error = null;

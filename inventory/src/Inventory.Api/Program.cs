@@ -102,6 +102,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Serv
 builder.Services.AddSingleton<FileStore>();
 // نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
 builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
+// واترمارک سمت سرور (حک روی بایت تصویر/PDF) برای مدارکِ دارای فلگ واترمارک
+builder.Services.AddSingleton<Inventory.Api.Services.Watermark.IServerWatermarkService,
+                               Inventory.Api.Services.Watermark.ServerWatermarkService>();
 // گزارش‌های خروجی آرشیو اسناد (نیازمند فیلتر دسترسی کاربر)
 builder.Services.AddScoped<Inventory.Api.Services.Export.IDocArchiveExportService,
                            Inventory.Api.Services.Export.DocArchiveExportService>();

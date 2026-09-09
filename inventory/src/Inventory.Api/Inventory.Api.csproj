@@ -29,6 +29,12 @@
     <!-- PDFsharp برای قرار دادن متن نامه صادره روی سربرگ PDF شرکت (چاپ A4/A5) -->
     <PackageReference Include="PDFsharp" Version="6.1.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="2.88.8" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.8" />
+    <PackageReference Include="SkiaSharp.HarfBuzz" Version="2.88.8" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="7.3.0.2" />
+    <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="7.3.0.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.1" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.1">

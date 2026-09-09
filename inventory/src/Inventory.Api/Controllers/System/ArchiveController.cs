@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
+using Inventory.Api.Services.Watermark;
+using Inventory.Shared;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
@@ -148,10 +150,12 @@ public class AttachmentsController : ControllerBase
     private readonly IAttachmentGuard _guard;
     private readonly Inventory.Api.Services.DocArchive.IDocIndexService _docIndex;
     private readonly Inventory.Api.Services.DocArchive.IDocDownloadConfirmService _confirm;
+    private readonly IServerWatermarkService _watermark;
     public AttachmentsController(AppDbContext db, FileStore store, IAttachmentGuard guard,
         Inventory.Api.Services.DocArchive.IDocIndexService docIndex,
-        Inventory.Api.Services.DocArchive.IDocDownloadConfirmService confirm)
-    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; _confirm = confirm; }
+        Inventory.Api.Services.DocArchive.IDocDownloadConfirmService confirm,
+        IServerWatermarkService watermark)
+    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; _confirm = confirm; _watermark = watermark; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -255,6 +259,27 @@ public class AttachmentsController : ControllerBase
         catch { /* گردانه نباید جریان اصلی را متوقف کند */ }
     }
 
+    /// <summary>
+    /// ساخت متن واترمارک: «نام نمایشی کاربر — تاریخ شمسی ساعت» (منطق سمت سرور؛ نه متنی که
+    /// کلاینت می‌فرستد). این رشته روی خودِ بایت فایل حک می‌شود تا در دانلود/چاپ/عکس‌برداری بماند.
+    /// </summary>
+    private async Task<string?> BuildWatermarkLineAsync()
+    {
+        try
+        {
+            var fullName = await _db.Users.AsNoTracking()
+                .Where(u => u.Id == MyUserId)
+                .Select(u => ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim())
+                .FirstOrDefaultAsync();
+            var display = string.IsNullOrWhiteSpace(fullName) ? MyUsername : fullName;
+            return $"{display} — {PersianDate.ToShortFa(DateTime.Now)} {Fa.Digits(DateTime.Now.ToString("HH:mm"))}";
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     [HttpGet("{module}/{refId:int}")]
     public async Task<IActionResult> List(string module, int refId)
     {
@@ -347,8 +372,29 @@ public class AttachmentsController : ControllerBase
 
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+
+        var ct = GuessContentType(a.FileName, a.ContentType);
+        var fileName = a.FileName;
+
+        // واترمارک سمت سرور: مدرک با فلگ واترمارک → بایت حک‌شده تحویل داده می‌شود
+        // (فایل اصلی در حافظه دست‌نخورده می‌ماند؛ فقط همین پاسخِ دانلود واترمارک می‌خورد).
+        if (flags is { Watermark: true })
+        {
+            var wmLine = await BuildWatermarkLineAsync();
+            if (!string.IsNullOrWhiteSpace(wmLine) && _watermark.CanStamp(ct, fileName))
+            {
+                var stamped = _watermark.Stamp(bytes, ct, fileName, wmLine!);
+                if (stamped is not null)
+                {
+                    bytes = stamped.Bytes;
+                    ct = stamped.ContentType;
+                    fileName = stamped.FileName;
+                }
+            }
+        }
+
         await LogAccessAsync(a, "Download");
-        return File(bytes, GuessContentType(a.FileName, a.ContentType), a.FileName);
+        return File(bytes, ct, fileName);
     }
 
     /// <summary>
@@ -384,7 +430,11 @@ public class AttachmentsController : ControllerBase
 
         await LogAccessAsync(a, "Preview");
 
-        // TIFF / HEIC را به PNG تبدیل کن تا در همه مرورگرها دیده شود
+        // پیش‌فرض: همان فایلِ inline (تصویر/PDF/متن)
+        var servedCt = ct;
+        var previewName = "preview";
+
+        // TIFF / HEIC (یا هر image/ خارج از لیست inline) را به PNG تبدیل کن تا در همه مرورگرها دیده شود
         if (NeedsImageConvert(a.FileName, ct) || (ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !InlineTypes.Contains(ct)))
         {
             try
@@ -401,23 +451,41 @@ public class AttachmentsController : ControllerBase
                 }
                 using var outMs = new MemoryStream();
                 image.Save(outMs, new PngEncoder());
-                Response.Headers["Content-Disposition"] = "inline; filename=\"preview.png\"";
-                Response.Headers["X-Content-Type-Options"] = "nosniff";
-                return File(outMs.ToArray(), "image/png");
+                bytes = outMs.ToArray();
+                servedCt = "image/png";
+                previewName = "preview.png";
             }
             catch (Exception ex)
             {
                 return BadRequest(new { message = "تبدیل تصویر برای پیش‌نمایش ممکن نشد: " + ex.Message });
             }
         }
-
-        if (!InlineTypes.Contains(ct) && !ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        else if (!InlineTypes.Contains(servedCt) && !servedCt.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
             return BadRequest(new { message = "این نوع فایل را از پیش‌نمایش HTML باز کنید." });
+        }
+
+        // واترمارک سمت سرور: روی بایتِ همین پاسخ پیش‌نمایش حک می‌شود تا حتی اگر کسی
+        // آدرس فایل را کپی یا فایل را از حافظه مرورگر بیرون بکشد، نام و زمان او رویش باشد.
+        if (flags is { Watermark: true })
+        {
+            var wmLine = await BuildWatermarkLineAsync();
+            if (!string.IsNullOrWhiteSpace(wmLine) && _watermark.CanStamp(servedCt, previewName))
+            {
+                var stamped = _watermark.Stamp(bytes, servedCt, previewName, wmLine!);
+                if (stamped is not null)
+                {
+                    bytes = stamped.Bytes;
+                    servedCt = stamped.ContentType;
+                    previewName = Path.GetFileName(stamped.FileName);
+                }
+            }
+        }
 
         // inline تا مرورگر داخل iframe/img نمایش دهد و پنجره دانلود باز نشود
-        Response.Headers["Content-Disposition"] = "inline; filename=\"preview\"";
+        Response.Headers["Content-Disposition"] = "inline; filename=\"" + previewName + "\"";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
-        return File(bytes, ct);
+        return File(bytes, servedCt);
     }
 
     /// <summary>
