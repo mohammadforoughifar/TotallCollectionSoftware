@@ -45,12 +45,14 @@ public class OutgoingLetterService : IOutgoingLetterService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
+    private readonly ILetterStratureService _strature;
 
-    public OutgoingLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups)
+    public OutgoingLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
+        _strature = strature;
     }
 
     private async Task<int> NextNumberAsync()
@@ -71,10 +73,18 @@ public class OutgoingLetterService : IOutgoingLetterService
         return maxInYear + 1;
     }
 
-    private static string BuildLetterNumber(int number)
+    /// <summary>
+    /// ساخت شماره نامه صادره از ساختار پیکربندی‌شده (TypeForm=2) — قابل تنظیم از
+    /// «تنظیمات ← ساختار شماره نامه». اگر ساختاری تعریف نشده باشد، فرمت قبلی
+    /// «سال/ص-شماره» (مثل 1404/ص-5) حفظ می‌شود تا رفتار قدیمی نشکند.
+    /// </summary>
+    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null, int? sematId = null)
     {
+        var s = await _strature.TotalNumberAsync(number, typeForm: 2, date: date, sematId: sematId);
+        if (!string.IsNullOrEmpty(s)) return s;
+
         var pc = new PersianCalendar();
-        return $"{pc.GetYear(DateTime.Now)}/ص-{number}";
+        return $"{pc.GetYear(date ?? DateTime.Now)}/ص-{number}";
     }
 
     private static Erja NewErja(int sourceId, int senderUserId, int reciverUserId, DateTime date, string type, string matn = "", int amalgarId = 1, DateTime? mohlat = null, int? parentErjaId = null) => new()
@@ -202,7 +212,8 @@ public class OutgoingLetterService : IOutgoingLetterService
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = BuildLetterNumber(number),
+            // sematId بعداً از CreatorSematId صادرکننده پر می‌شود (فاز چارت سازمانی)
+            LetterNumber = await BuildLetterNumberAsync(number, now),
             CreatorUserId = creatorUserId,
             Title = dto.Title.Trim(),
             Text = dto.Text,

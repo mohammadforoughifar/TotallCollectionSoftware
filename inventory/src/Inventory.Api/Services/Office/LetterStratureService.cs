@@ -8,11 +8,12 @@ namespace Inventory.Api.Services;
 //  سرویس ساختار شماره اندیکاتور — پورت StructureLetterService کارفرما
 //  خروجی نمونه با ترتیب واحد/شماره/سال:  MQ/1/1405
 //
-//  نکته «واحد»: در طرح مرجع، واحد از چارت سازمانی
-//  (GetOrganizationNameUniqAsync بر اساس SematId فرستنده) گرفته می‌شود.
-//  چون چارت سازمانی هنوز پورت نشده، فعلاً از تنظیمات (Letters:UnitCode)
-//  خوانده می‌شود؛ بعد از دریافت سرویس‌های سازمان از کارفرما، همین‌جا
-//  جایگزین می‌شود (امضای متد از الان sematId را می‌پذیرد).
+//  جزء «واحد» در طرح مرجع از چارت سازمانی گرفته می‌شود:
+//      GetOrganizationNameUniqAsync(sematId)  ←  Organization.NameUniq
+//  اینجا همان منطق با IOrganizationServices پیاده شده است:
+//    • اگر سمت صادرکننده (CreatorSematId) موجود باشد → NameUniq سازمانِ آن سمت
+//    • وگرنه → سازمانِ پیش‌فرض (تنظیم‌شده در صفحه‌ی «تنظیمات ← ساختار شماره نامه»)
+//  مقدار ثابت appsettings (Letters:UnitCode) فقط برای «سید سازمان اولیه» استفاده می‌شود.
 // ============================================================
 
 public interface ILetterStratureService
@@ -20,6 +21,7 @@ public interface ILetterStratureService
     /// <summary>
     /// ساخت شماره اندیکاتور کامل بر اساس ساختار ذخیره‌شده (معادل TotalNumberAsync مرجع).
     /// date: تاریخ مبنای جزء «سال» (پیش‌فرض: اکنون — برای بازسازی شماره نامه‌های قدیمی، تاریخ ثبت نامه پاس داده می‌شود)
+    /// sematId: سمت صادرکننده — مبنای «واحد» (سازمانِ سمت)؛ null یعنی سازمان پیش‌فرض
     /// </summary>
     Task<string> TotalNumberAsync(int number, int typeForm, DateTime? date = null, int? sematId = null);
 
@@ -28,17 +30,25 @@ public interface ILetterStratureService
 
     /// <summary>ثبت/جایگزینی ساختار فرم (معادل Add/EditStratureLetter مرجع)</summary>
     Task SetStructureAsync(int typeForm, List<string> parts);
+
+    /// <summary>
+    /// اجزای معتبر ساختار — «واحد» | «شماره» | «سال»
+    /// </summary>
+    Task<List<string>> GetValidPartsAsync();
 }
 
 public class LetterStratureService : ILetterStratureService
 {
-    private readonly AppDbContext _db;
-    private readonly IConfiguration _config;
+    /// <summary>اجزای مجاز ساختار (فارسی — همان کلیدهای ذخیره‌شده در LetterStratures.TypeStrature)</summary>
+    public static readonly string[] ValidParts = { "واحد", "شماره", "سال" };
 
-    public LetterStratureService(AppDbContext db, IConfiguration config)
+    private readonly AppDbContext _db;
+    private readonly IOrganizationServices _org;
+
+    public LetterStratureService(AppDbContext db, IOrganizationServices org)
     {
         _db = db;
-        _config = config;
+        _org = org;
     }
 
     public async Task<string> TotalNumberAsync(int number, int typeForm, DateTime? date = null, int? sematId = null)
@@ -48,6 +58,7 @@ public class LetterStratureService : ILetterStratureService
         var structure = await _db.LetterStratures
             .Where(s => s.TypeForm == typeForm)
             .OrderBy(s => s.StratureId)
+            .Select(s => s.TypeStrature)
             .ToListAsync();
 
         if (structure.Count == 0) return string.Empty;
@@ -55,18 +66,19 @@ public class LetterStratureService : ILetterStratureService
         var pc = new PersianCalendar();
         var year = pc.GetYear(date ?? DateTime.Now);
 
-        // «واحد» — تا پورت چارت سازمانی از تنظیمات؛ بعداً: GetOrganizationNameUniqAsync(sematId)
-        var unit = _config["Letters:UnitCode"] ?? "MQ";
+        // «واحد» — از سازمانِ سمتِ صادرکننده، وگرنه سازمانِ پیش‌فرض (Organization.NameUniq)
+        var unit = await _org.GetOrganizationNameUniqAsync(sematId);
 
         var parts = new List<string>();
         foreach (var item in structure)
         {
-            switch (item.TypeStrature)
+            switch (item)
             {
                 case "سال":
                     parts.Add(year.ToString());
                     break;
                 case "واحد":
+                    // اگر سازمانی تعریف نشده، جزء «واحد» انداخته می‌شود تا شماره بدون شکاف ساخته شود
                     if (!string.IsNullOrEmpty(unit)) parts.Add(unit);
                     break;
                 case "شماره":
@@ -86,9 +98,21 @@ public class LetterStratureService : ILetterStratureService
 
     public async Task SetStructureAsync(int typeForm, List<string> parts)
     {
-        var valid = new[] { "واحد", "شماره", "سال" };
-        if (parts.Count == 0 || parts.Any(p => !valid.Contains(p)) || !parts.Contains("شماره"))
-            throw new Exception("ساختار نامعتبر است — اجزای مجاز: واحد، شماره، سال (وجود «شماره» الزامی است).");
+        parts ??= new List<string>();
+
+        // اعتبارسنجی: اجزای مجاز، بدون تکرار، «شماره» الزامی، حداقل «شماره + یک جزء دیگر»
+        if (parts.Count == 0)
+            throw new Exception("ساختار نمی‌تواند خالی باشد.");
+        if (parts.Count > ValidParts.Length)
+            throw new Exception($"ساختار نمی‌تواند بیشتر از {ValidParts.Length} جزء داشته باشد.");
+        if (parts.Any(p => !ValidParts.Contains(p)))
+            throw new Exception($"جزء نامعتبر است — اجزای مجاز: {string.Join("، ", ValidParts)}.");
+        if (parts.Distinct().Count() != parts.Count)
+            throw new Exception("اجزای ساختار نباید تکراری باشند.");
+        if (!parts.Contains("شماره"))
+            throw new Exception("جزء «شماره» در ساختار الزامی است.");
+        if (parts.Count < 2)
+            throw new Exception("ساختار باید حداقل «شماره + یک جزء دیگر» داشته باشد.");
 
         var old = _db.LetterStratures.Where(s => s.TypeForm == typeForm);
         _db.LetterStratures.RemoveRange(old);
@@ -96,4 +120,6 @@ public class LetterStratureService : ILetterStratureService
             _db.LetterStratures.Add(new LetterStrature { TypeForm = typeForm, TypeStrature = p });
         await _db.SaveChangesAsync();
     }
+
+    public Task<List<string>> GetValidPartsAsync() => Task.FromResult(ValidParts.ToList());
 }

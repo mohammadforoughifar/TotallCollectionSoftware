@@ -108,7 +108,11 @@ public static class RbacSeeder
         // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
         // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
         // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده
-        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" }
+        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" },
+        // ================== اتوماسیون اداری — ساختار شماره نامه (تنظیمات مدیر سیستم) ==================
+        // Read: مشاهده ساختار شماره سه نوع نامه (داخلی/صادره/وارده) در تنظیمات
+        // Update: تغییر ترتیب/اجزای ساختار شماره اندیکاتور
+        ["LetterStructures"] = new[] { "Read", "Update" }
     };
 
     public static async Task SeedAsync(AppDbContext db)
