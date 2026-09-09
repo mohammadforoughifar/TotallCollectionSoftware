@@ -86,6 +86,8 @@ builder.Services.AddScoped<IReportWorkService, ReportWorkService>();
 // ---------- ماژول اتوماسیون اداری (نامه داخلی + صادره) ----------
 builder.Services.AddScoped<ILetterService, LetterService>();
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();
+// تنظیمات ساختار شماره نامه (سازمان‌ها — جزء «واحد»)
+builder.Services.AddScoped<ILetterStructureService, LetterStructureService>();
 builder.Services.AddSingleton<IToastService, ToastService>();
 builder.Services.AddSingleton<LayoutState>();
 builder.Services.AddSingleton<RealtimeService>(); // هسته‌ی بلادرنگ سراسری (SignalR)

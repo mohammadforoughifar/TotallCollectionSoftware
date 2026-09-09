@@ -87,6 +87,10 @@ public class AppDbContext : DbContext
     public DbSet<SystemDepartment> SystemDepartments => Set<SystemDepartment>();
     public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
 
+    // ==================== سازمان‌ها و سمت‌ها (مبنای جزء «واحد» در شماره نامه) ====================
+    public DbSet<Organization> Organizations => Set<Organization>();
+    public DbSet<Semat> Semats => Set<Semat>();
+
     // ==================== مدیریت پروژه‌ها (ورود/خروج، گزارش کار، پیوست) ====================
     public DbSet<KarFarma> KarFarmas => Set<KarFarma>();
     public DbSet<TypeFactor> TypeFactors => Set<TypeFactor>();
@@ -519,6 +523,22 @@ public class AppDbContext : DbContext
         // ساختار شماره اندیکاتور (LetterStrature طرح کارفرما)
         mb.Entity<LetterStrature>().HasKey(s => s.StratureId);
         mb.Entity<LetterStrature>().HasIndex(s => s.TypeForm);
+
+        // ---------- سازمان‌ها و سمت‌ها (مبنای جزء «واحد» در شماره نامه) ----------
+        // NameUniq سازمان در شماره اندیکاتور می‌نشیند — برای جستجو/یکتایی ایندکس می‌شود
+        mb.Entity<Organization>().HasIndex(o => o.NameUniq).IsUnique();
+        mb.Entity<Semat>()
+            .HasOne(s => s.Organization)
+            .WithMany(o => o.Semats)
+            .HasForeignKey(s => s.OrganizationId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<Semat>()
+            .HasOne(s => s.User)
+            .WithMany()
+            .HasForeignKey(s => s.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<Semat>().HasIndex(s => s.UserId);
+        mb.Entity<Semat>().HasIndex(s => s.OrganizationId);
 
         // ==================== RBAC Configuration ====================
         mb.Entity<Role>().HasIndex(r => r.Name).IsUnique();
