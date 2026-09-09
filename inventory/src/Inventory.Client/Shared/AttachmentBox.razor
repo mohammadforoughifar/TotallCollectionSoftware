@@ -190,22 +190,41 @@
         public DateTime UploadedAt { get; set; }
         public long Size { get; set; }
         public string? ContentType { get; set; }
-        /// <summary>قابل نمایش داخل برنامه (PDF/عکس/متن) — از سمت سرور</summary>
+        /// <summary>قابل نمایش داخل برنامه (PDF/عکس/آفیس/متن) — از سمت سرور</summary>
         public bool CanPreview { get; set; }
         /// <summary>کاربر جاری حق دانلود دارد</summary>
         public bool CanDownload { get; set; } = true;
     }
 
-    /// <summary>ورد/اکسلِ جدید — پیش‌نمایش از طریق متن استخراج‌شده</summary>
+    /// <summary>ورد/اکسل — پیش‌نمایش HTML + متن استخراج‌شده</summary>
     private static bool IsOffice(AttItem a)
     {
         var fn = a.FileName.ToLowerInvariant();
         var ct = (a.ContentType ?? "").ToLowerInvariant();
-        return fn.EndsWith(".docx") || fn.EndsWith(".xlsx")
-               || ct.Contains("wordprocessingml") || ct.Contains("spreadsheetml");
+        return fn.EndsWith(".docx") || fn.EndsWith(".doc") || fn.EndsWith(".xlsx") || fn.EndsWith(".xls") || fn.EndsWith(".csv")
+               || ct.Contains("wordprocessingml") || ct.Contains("spreadsheetml")
+               || ct.Contains("msword") || ct.Contains("ms-excel") || ct.Contains("csv");
     }
 
-    private bool CanPreviewOf(AttItem a) => a.CanPreview || IsOffice(a);
+    private static bool IsImage(AttItem a)
+    {
+        var fn = a.FileName.ToLowerInvariant();
+        var ct = (a.ContentType ?? "").ToLowerInvariant();
+        if (ct.StartsWith("image/")) return true;
+        return fn.EndsWith(".png") || fn.EndsWith(".jpg") || fn.EndsWith(".jpeg") || fn.EndsWith(".jfif")
+            || fn.EndsWith(".gif") || fn.EndsWith(".webp") || fn.EndsWith(".bmp") || fn.EndsWith(".svg")
+            || fn.EndsWith(".tif") || fn.EndsWith(".tiff") || fn.EndsWith(".ico") || fn.EndsWith(".avif")
+            || fn.EndsWith(".heic") || fn.EndsWith(".heif");
+    }
+
+    private static bool IsPdf(AttItem a)
+    {
+        var fn = a.FileName.ToLowerInvariant();
+        var ct = (a.ContentType ?? "").ToLowerInvariant();
+        return fn.EndsWith(".pdf") || ct.Contains("pdf");
+    }
+
+    private bool CanPreviewOf(AttItem a) => a.CanPreview || IsOffice(a) || IsImage(a) || IsPdf(a);
 
     private string DownloadUrl(AttItem a) =>
         $"{apiBase}/api/attachments/download/{a.Id}?access_token={Auth.Token}";
@@ -215,9 +234,11 @@
         var fn = a.FileName.ToLowerInvariant();
         var ct = (a.ContentType ?? "").ToLowerInvariant();
         if (fn.EndsWith(".pdf") || ct.Contains("pdf")) return "bi-file-earmark-pdf";
-        if (ct.StartsWith("image/")) return "bi-file-earmark-image";
-        if (fn.EndsWith(".docx") || ct.Contains("wordprocessingml")) return "bi-file-earmark-word";
-        if (fn.EndsWith(".xlsx") || ct.Contains("spreadsheetml")) return "bi-file-earmark-excel";
+        if (ct.StartsWith("image/") || fn.EndsWith(".png") || fn.EndsWith(".jpg") || fn.EndsWith(".jpeg")
+            || fn.EndsWith(".gif") || fn.EndsWith(".webp") || fn.EndsWith(".bmp") || fn.EndsWith(".svg")
+            || fn.EndsWith(".tif") || fn.EndsWith(".tiff") || fn.EndsWith(".ico")) return "bi-file-earmark-image";
+        if (fn.EndsWith(".docx") || fn.EndsWith(".doc") || ct.Contains("wordprocessingml") || ct.Contains("msword")) return "bi-file-earmark-word";
+        if (fn.EndsWith(".xlsx") || fn.EndsWith(".xls") || fn.EndsWith(".csv") || ct.Contains("spreadsheetml") || ct.Contains("ms-excel")) return "bi-file-earmark-excel";
         return "bi-file-earmark-text";
     }
 

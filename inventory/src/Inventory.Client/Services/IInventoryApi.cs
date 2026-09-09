@@ -56,8 +56,8 @@ public interface IProductService
     /// <summary>ورود گروهی کالا از فایل اکسل.</summary>
     Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName);
 
-    /// <summary>آدرس دانلود فایل اکسل نمونه.</summary>
-    string TemplateUrl { get; }
+    /// <summary>دانلود فایل اکسل نمونه (با توکن احراز هویت؛ مرورگر را از صفحه خارج نمی‌کند).</summary>
+    Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync();
 }
 
 /// <summary>سرویس انبارها.</summary>

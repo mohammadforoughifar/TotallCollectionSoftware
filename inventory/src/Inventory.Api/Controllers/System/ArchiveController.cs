@@ -1,9 +1,13 @@
 using System.Security.Claims;
 using Inventory.Api.Data;
+using Inventory.Api.Services.DocArchive;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
 using Microsoft.EntityFrameworkCore;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Processing;
+using SixLabors.ImageSharp.Formats.Png;
 
 namespace Inventory.Api.Controllers;
 
@@ -150,28 +154,70 @@ public class AttachmentsController : ControllerBase
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
     private bool IsAdmin => User.IsInRole("Admin");
 
-    /// <summary>فرمت‌هایی که داخل مرورگر قابل نمایش‌اند (پیش‌نمایش بدون دانلود).</summary>
+    /// <summary>فرمت‌هایی که مرورگر به‌صورت native نمایش می‌دهد.</summary>
     private static readonly HashSet<string> InlineTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "application/pdf", "image/png", "image/jpeg", "image/jpg",
-        "image/gif", "image/webp", "image/bmp", "image/svg+xml", "text/plain"
+        "application/pdf",
+        "image/png", "image/jpeg", "image/jpg", "image/pjpeg", "image/gif",
+        "image/webp", "image/bmp", "image/x-ms-bmp", "image/svg+xml",
+        "image/x-icon", "image/vnd.microsoft.icon", "image/avif",
+        "text/plain", "text/csv", "text/html", "application/json", "application/xml", "text/xml"
     };
 
     private static string GuessContentType(string fileName, string stored)
     {
-        if (!string.IsNullOrWhiteSpace(stored) && stored != "application/octet-stream") return stored;
-        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(stored) && stored != "application/octet-stream")
+        {
+            if (stored.Equals("image/jpg", StringComparison.OrdinalIgnoreCase)) return "image/jpeg";
+            if (stored.Equals("image/pjpeg", StringComparison.OrdinalIgnoreCase)) return "image/jpeg";
+            return stored;
+        }
+        return ext switch
         {
             ".pdf" => "application/pdf",
             ".png" => "image/png",
-            ".jpg" or ".jpeg" => "image/jpeg",
+            ".jpg" or ".jpeg" or ".jfif" => "image/jpeg",
             ".gif" => "image/gif",
             ".webp" => "image/webp",
             ".bmp" => "image/bmp",
             ".svg" => "image/svg+xml",
-            ".txt" => "text/plain",
+            ".tif" or ".tiff" => "image/tiff",
+            ".ico" => "image/x-icon",
+            ".avif" => "image/avif",
+            ".heic" or ".heif" => "image/heic",
+            ".txt" or ".log" or ".md" => "text/plain",
+            ".csv" => "text/csv",
+            ".json" => "application/json",
+            ".xml" => "application/xml",
+            ".html" or ".htm" => "text/html",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".doc" => "application/msword",
+            ".xls" => "application/vnd.ms-excel",
             _ => stored ?? "application/octet-stream"
         };
+    }
+
+    private static bool IsPreviewable(string fileName, string ct)
+    {
+        if (InlineTypes.Contains(ct)) return true;
+        if (ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return true;
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext is ".pdf"
+            or ".png" or ".jpg" or ".jpeg" or ".jfif" or ".gif" or ".webp" or ".bmp"
+            or ".svg" or ".tif" or ".tiff" or ".ico" or ".avif" or ".heic" or ".heif"
+            or ".docx" or ".doc" or ".xlsx" or ".xls" or ".csv"
+            or ".txt" or ".json" or ".xml" or ".md" or ".log" or ".html" or ".htm";
+    }
+
+    private static bool NeedsImageConvert(string fileName, string ct)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext is ".tif" or ".tiff" or ".heic" or ".heif"
+            || ct.Contains("tiff", StringComparison.OrdinalIgnoreCase)
+            || ct.Contains("heic", StringComparison.OrdinalIgnoreCase)
+            || ct.Contains("heif", StringComparison.OrdinalIgnoreCase);
     }
 
     [HttpGet("{module}/{refId:int}")]
@@ -193,7 +239,7 @@ public class AttachmentsController : ControllerBase
                 a.Id, a.FileName, a.UploaderName, a.UploaderUserId, a.UploadedAt,
                 Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
                 ContentType = ct,
-                CanPreview = InlineTypes.Contains(ct),
+                CanPreview = IsPreviewable(a.FileName, ct),
                 CanDownload = access == AttachmentAccess.Download
             };
         }));
@@ -267,16 +313,69 @@ public class AttachmentsController : ControllerBase
             return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
 
         var ct = GuessContentType(a.FileName, a.ContentType);
-        if (!InlineTypes.Contains(ct))
+        if (!IsPreviewable(a.FileName, ct))
             return BadRequest(new { message = "این نوع فایل قابل پیش‌نمایش نیست." });
 
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
 
-        // inline تا مرورگر داخل iframe/img نمایش دهد و پنجره دانلود باز نشود
+        // TIFF / HEIC را به PNG تبدیل کن تا در همه مرورگرها دیده شود
+        if (NeedsImageConvert(a.FileName, ct) || (ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase) && !InlineTypes.Contains(ct)))
+        {
+            try
+            {
+                using var image = Image.Load(bytes);
+                image.Mutate(x => x.AutoOrient());
+                if (image.Width > 2400 || image.Height > 2400)
+                {
+                    image.Mutate(x => x.Resize(new ResizeOptions
+                    {
+                        Mode = ResizeMode.Max,
+                        Size = new Size(2400, 2400)
+                    }));
+                }
+                using var outMs = new MemoryStream();
+                image.Save(outMs, new PngEncoder());
+                Response.Headers["Content-Disposition"] = "inline; filename=\"preview.png\"";
+                Response.Headers["X-Content-Type-Options"] = "nosniff";
+                return File(outMs.ToArray(), "image/png");
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "تبدیل تصویر برای پیش‌نمایش ممکن نشد: " + ex.Message });
+            }
+        }
+
+        if (!InlineTypes.Contains(ct) && !ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { message = "این نوع فایل را از پیش‌نمایش HTML باز کنید." });
+
         Response.Headers["Content-Disposition"] = "inline; filename=\"preview\"";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         return File(bytes, ct);
+    }
+
+    /// <summary>
+    /// پیش‌نمایش Word/Excel به‌صورت HTML (جداول و پاراگراف‌ها، بدون نیاز به دانلود).
+    /// </summary>
+    [HttpGet("preview-html/{id:int}")]
+    public async Task<IActionResult> PreviewHtml(int id)
+    {
+        var a = await _db.AppAttachments.FindAsync(id);
+        if (a == null) return NotFound();
+
+        var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
+        if (access == AttachmentAccess.None)
+            return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
+
+        var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
+        if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+
+        if (!OfficePreviewHtml.TryBuild(bytes, a.FileName, a.ContentType, out var html, out var error))
+            return BadRequest(new { message = error ?? "تبدیل پیش‌نمایش ممکن نشد." });
+
+        Response.Headers["Content-Disposition"] = "inline; filename=\"preview.html\"";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return Content(html, "text/html; charset=utf-8");
     }
 
     /// <summary>حذف — فقط آپلودکننده یا مدیر.</summary>

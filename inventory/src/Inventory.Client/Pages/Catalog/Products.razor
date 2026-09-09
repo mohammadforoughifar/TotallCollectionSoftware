@@ -320,7 +320,12 @@
         <div class="col-12">
             <div class="alert alert-info fs-8 mb-0">
                 <i class="bi bi-info-circle ms-1"></i>
-                ابتدا <a href="@ProductSvc.TemplateUrl" target="_blank" class="fw-500">فایل اکسل نمونه</a>
+                ابتدا
+                <button type="button" class="btn btn-link p-0 fw-500 align-baseline" @onclick="DownloadTemplate" disabled="@downloadingTemplate">
+                    @if (downloadingTemplate) { <span class="spinner-border spinner-border-sm"></span> }
+                    else { <i class="bi bi-download"></i> }
+                    فایل اکسل نمونه
+                </button>
                 را دانلود کنید، کالاها را مطابق آن وارد کرده و سپس فایل را بارگذاری نمایید.
                 گروه یا واحد جدید به‌صورت خودکار در اطلاعات پایه ساخته می‌شود.
             </div>
@@ -384,7 +389,7 @@
     private string prodWarehouseIdStr = "0";
 
     // ---------- ورود اکسل ----------
-    private bool showImport, importing;
+    private bool showImport, importing, downloadingTemplate;
     private IBrowserFile? importFile;
     private ExcelImportResult? importResult;
 
@@ -410,7 +415,32 @@
     {
         importFile = null;
         importResult = null;
+        downloadingTemplate = false;
         showImport = true;
+    }
+
+    private async Task DownloadTemplate()
+    {
+        if (downloadingTemplate) return;
+        downloadingTemplate = true;
+        try
+        {
+            var (data, fileName, contentType) = await ProductSvc.DownloadTemplateAsync();
+            if (data is null || data.Length == 0)
+            {
+                Toast.Error("فایل نمونه خالی برگشت.");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(fileName) || !fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                fileName = "Products-Template.xlsx";
+
+            var ok = await JS.InvokeAsync<bool>("downloadBlob",
+                fileName, contentType, Convert.ToBase64String(data));
+            if (ok) Toast.Success("فایل نمونه اکسل دانلود شد.");
+            else Toast.Error("دانلود فایل انجام نشد. مسدودکننده پاپ‌آپ را بررسی کنید.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { downloadingTemplate = false; }
     }
 
     private void CloseImport() => showImport = false;

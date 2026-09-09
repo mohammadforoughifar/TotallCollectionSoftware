@@ -19,6 +19,10 @@ public class SystemUser
     [MaxLength(50)]
     public string StaffNumber { get; set; } = "";
 
+    /// <summary>شماره تماس</summary>
+    [MaxLength(30)]
+    public string? Phone { get; set; }
+
     public int? DepartmentId { get; set; }
     public int? CompanyId { get; set; }
 

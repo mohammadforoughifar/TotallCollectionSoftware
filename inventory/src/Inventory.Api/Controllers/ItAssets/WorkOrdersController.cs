@@ -23,6 +23,13 @@ public class WorkOrdersController : ControllerBase
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
     private bool IsLegacyAdmin => User.IsInRole("Admin");
 
+    private async Task<string> MyDisplayNameAsync()
+    {
+        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == MyUserId);
+        var n = UserDisplay.Name(me);
+        return string.IsNullOrWhiteSpace(n) ? MyUsername : n;
+    }
+
     private async Task<bool> HasAsync(string action)
     {
         var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
@@ -164,7 +171,7 @@ public class WorkOrdersController : ControllerBase
             Title = dto.Title.Trim(),
             Description = dto.Description ?? "",
             OwnerUserId = MyUserId,
-            OwnerName = MyUsername,
+            OwnerName = await MyDisplayNameAsync(),
             DueAt = dto.DueAt,
             Status = "Open",
             SourceModule = dto.SourceModule,
@@ -197,15 +204,79 @@ public class WorkOrdersController : ControllerBase
             _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = u.Id, Name = $"{u.FirstName} {u.LastName}".Trim() });
         }
 
-        Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm} — گیرندگان: {string.Join("، ", users.Select(u => u.Username))}");
+        var actor = await MyDisplayNameAsync();
+        Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm} — گیرندگان: {string.Join("، ", users.Select(u => UserDisplay.Name(u)))}");
         await _db.SaveChangesAsync();
 
         foreach (var uid in dto.AssigneeUserIds.Distinct().Where(id => id != MyUserId))
             await _notify.SendAsync(uid, "دستور کار جدید 📋",
                 $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}",
-                MyUsername, "دستور کار", $"/work-orders?open={wo.Id}");
+                actor, "دستور کار", $"/work-orders?open={wo.Id}");
         await _notify.BroadcastChangedAsync("workorders");
 
+        return Ok(new { id = wo.Id, number = wo.Number });
+    }
+
+    /// <summary>ویرایش دستور کار باز توسط دستوردهنده — عنوان، شرح، مهلت و گیرندگان.</summary>
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> Update(int id, [FromBody] CreateDto dto)
+    {
+        if (!await HasAsync("Create")) return Forbid();
+        var wo = await _db.WorkOrders.FindAsync(id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.OwnerUserId != MyUserId) return Forbid();
+        if (wo.Status == "Closed")
+            return BadRequest(new { message = "دستور کار بسته شده و قابل ویرایش نیست." });
+        if (string.IsNullOrWhiteSpace(dto.Title))
+            return BadRequest(new { message = "عنوان دستور کار را وارد کنید." });
+        if (dto.AssigneeUserIds.Count == 0)
+            return BadRequest(new { message = "حداقل یک نفر را انتخاب کنید." });
+        if (dto.DueAt <= DateTime.Now)
+            return BadRequest(new { message = "تاریخ و ساعت مقرر نمی‌تواند قبل از زمان فعلی باشد." });
+
+        var others = dto.AssigneeUserIds.Where(x => x != MyUserId).Distinct().ToList();
+        if (others.Count > 0)
+        {
+            if (!await HasAsync("AssignOthers"))
+                return BadRequest(new { message = "شما فقط مجاز به ثبت دستور کار برای خودتان هستید." });
+            if (!IsLegacyAdmin)
+            {
+                var allowed = await _db.WorkOrderAllowedAssignees.Where(a => a.OwnerUserId == MyUserId)
+                    .Select(a => a.TargetUserId).ToListAsync();
+                if (others.Any(x => !allowed.Contains(x)))
+                    return BadRequest(new { message = "برخی افراد انتخابی در لیست مجاز شما نیستند." });
+            }
+        }
+
+        var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id)).ToListAsync();
+        var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
+            .Select(u => u.Username).ToList();
+        if (noName.Count > 0)
+            return BadRequest(new { message = $"این کاربران نام و نام خانوادگی ندارند: {string.Join("، ", noName)} — از بخش کاربران تکمیل کنید." });
+
+        var existing = await _db.WorkOrderAssignees.Where(a => a.OrderId == id).ToListAsync();
+        var keep = dto.AssigneeUserIds.Distinct().ToHashSet();
+        foreach (var a in existing.Where(a => !keep.Contains(a.UserId)).ToList())
+        {
+            if (a.RepliedAt != null)
+                return BadRequest(new { message = $"نمی‌توان «{a.Name}» را حذف کرد چون پاسخ ثبت کرده است." });
+            _db.WorkOrderAssignees.Remove(a);
+        }
+        foreach (var uid in keep.Where(uid => !existing.Any(a => a.UserId == uid)))
+        {
+            var u = users.FirstOrDefault(x => x.Id == uid);
+            if (u == null) continue;
+            _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = u.Id, Name = UserDisplay.Name(u) });
+        }
+
+        wo.Title = dto.Title.Trim();
+        wo.Description = dto.Description ?? "";
+        wo.DueAt = dto.DueAt;
+        wo.OwnerName = await MyDisplayNameAsync();
+
+        Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workorders");
         return Ok(new { id = wo.Id, number = wo.Number });
     }
 

@@ -69,8 +69,9 @@ public class AuthService : IAuthService
             Console.WriteLine($"[Auth] معرف «{user.Username}» به‌صورت خودکار ساخته و به کاربر متصل شد.");
         }
 
-        var display = user.Username;
-        if (user.ReferrerId is > 0)
+        var display = UserDisplay.Name(user);
+        if (string.IsNullOrWhiteSpace(display)) display = user.Username;
+        if (user.ReferrerId is > 0 && string.IsNullOrWhiteSpace($"{user.FirstName} {user.LastName}".Trim()))
         {
             var r = await _db.Referrers.FindAsync(user.ReferrerId);
             if (r is not null) display = r.Name;

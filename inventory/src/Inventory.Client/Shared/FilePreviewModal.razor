@@ -1,7 +1,8 @@
 @* ================== مودال پیش‌نمایش فایل ==================
-   نمایش PDF / عکس / متن داخل برنامه بدون دانلود،
-   و نمایش متن استخراج‌شدهٔ فایل‌های Word/Excel (در آرشیو اسناد).
-   استفاده: <FilePreviewModal @ref="preview" /> سپس preview.ShowAsync(id, fileName, contentType, canDownload, textPreviewUrl?)
+   PDF و عکس: نمایش واقعی داخل برنامه
+   Word/Excel: تبدیل HTML سمت سرور (جداول و پاراگراف‌ها)
+   متن: نمایش RTL
+   استفاده: preview.ShowAsync(id, fileName, contentType, canDownload, textPreviewUrl?)
 *@
 @using System.Net.Http.Headers
 @inject IAuthState Auth
@@ -16,7 +17,11 @@
                 <div class="text-truncate d-flex align-items-center gap-2">
                     <i class="bi @FileIcon"></i>
                     <b class="fs-8 text-truncate">@fileName</b>
-                    @if (kind == "office")
+                    @if (kind == "html")
+                    {
+                        <span class="badge bg-primary fs-9">پیش‌نمایش</span>
+                    }
+                    else if (kind == "office")
                     {
                         <span class="badge bg-info fs-9">متن استخراج‌شده</span>
                     }
@@ -45,7 +50,7 @@
                 {
                     <div class="text-center py-5">
                         <div class="spinner-border text-primary"></div>
-                        <div class="fs-8 text-muted mt-2">در حال بارگذاری…</div>
+                        <div class="fs-8 text-muted mt-2">در حال بارگذاری پیش‌نمایش…</div>
                     </div>
                 }
                 else if (error is not null)
@@ -81,13 +86,13 @@
                         </div>
                     }
                 }
+                else if (kind == "text")
+                {
+                    <pre class="fpv-text" dir="auto">@plainText</pre>
+                }
                 else if (objectUrl is not null)
                 {
-                    @if (kind == "pdf")
-                    {
-                        <iframe src="@objectUrl" class="fpv-frame"></iframe>
-                    }
-                    else if (kind == "image")
+                    @if (kind == "image")
                     {
                         <div class="fpv-imgwrap">
                             <img src="@objectUrl" alt="@fileName" class="fpv-img" />
@@ -95,7 +100,8 @@
                     }
                     else
                     {
-                        <iframe src="@objectUrl" class="fpv-frame"></iframe>
+                        @* PDF و HTML ورد/اکسل *@
+                        <iframe src="@objectUrl" class="fpv-frame" title="@fileName"></iframe>
                     }
                 }
             </div>
@@ -121,14 +127,18 @@
     .fpv-head i { color: #2563eb; }
     .fpv-body { flex: 1; overflow: auto; background: #f1f5f9; }
     .fpv-frame { width: 100%; height: 100%; border: 0; background: #fff; }
-    .fpv-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 1rem; }
-    .fpv-img { max-width: 100%; max-height: 100%; object-fit: contain; background: #fff;
+    .fpv-imgwrap { display: flex; align-items: center; justify-content: center; min-height: 100%; padding: 1rem;
+                   background:
+                     linear-gradient(45deg, #e2e8f0 25%, transparent 25%) 0 0 / 16px 16px,
+                     linear-gradient(45deg, transparent 75%, #e2e8f0 75%) 8px 8px / 16px 16px,
+                     #f8fafc; }
+    .fpv-img { max-width: 100%; max-height: calc(88vh - 90px); object-fit: contain; background: #fff;
                border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
     .fpv-text-meta { padding: .45rem .9rem; background: #fff; border-bottom: 1px solid #eef2f7;
                      display:flex; align-items:center; gap:.6rem; font-size:.75rem; }
     .fpv-text { margin: 0; padding: 1rem 1.2rem; white-space: pre-wrap; word-break: break-word;
                 font-size: .82rem; line-height: 2; direction: rtl; text-align: right;
-                background: #fff; font-family: inherit; max-height: calc(88vh - 140px); overflow: auto; }
+                background: #fff; font-family: inherit; min-height: 100%; }
     .fpv-foot { padding: .45rem .9rem; border-top: 1px solid #eef2f7; background: #fffbeb;
                 color: #92400e; font-size: .72rem; }
     .fs-9 { font-size: .68rem; }
@@ -138,7 +148,7 @@
     private bool visible, loading;
     private int attachmentId;
     private string fileName = "", kind = "other";
-    private string? objectUrl, error, officeHint;
+    private string? objectUrl, error, officeHint, plainText;
     private bool canDownload;
     private OfficeTextInfo? officeText;
 
@@ -146,20 +156,17 @@
     {
         "pdf" => "bi-file-earmark-pdf",
         "image" => "bi-file-earmark-image",
+        "html" => "bi-file-earmark-richtext",
         "office" => "bi-file-earmark-text",
-        _ => "bi-file-earmark-text"
+        "text" => "bi-file-earmark-text",
+        _ => "bi-file-earmark"
     };
 
-    private string DownloadUrl =>
-        $"{Http.BaseAddress?.ToString().TrimEnd('/')}/api/attachments/download/{attachmentId}?access_token={Auth.Token}";
+    private string ApiRoot => (Http.BaseAddress?.ToString() ?? "/").TrimEnd('/');
 
-    /// <summary>
-    /// نمایش پیش‌نمایش یک پیوست.
-    /// </summary>
-    /// <param name="textPreviewUrl">
-    /// برای Word/Excel، آدرس متن استخراج‌شده (مثل /api/doc-archive/attachments/{id})؛
-    /// null یعنی چنین امکانی برای این ماژول نیست.
-    /// </param>
+    private string DownloadUrl =>
+        $"{ApiRoot}/api/attachments/download/{attachmentId}?access_token={Auth.Token}";
+
     public async Task ShowAsync(int id, string name, string? contentType, bool allowDownload,
                                 string? textPreviewUrl = null)
     {
@@ -170,22 +177,38 @@
         error = null;
         officeText = null;
         officeHint = null;
+        plainText = null;
         visible = true;
         loading = true;
         await ReleaseAsync();
-        // هدر احراز هویت را روی همین نمونهٔ HttpClient هم ست کن (ممکن است نمونهٔ جدا باشد)
         if (!string.IsNullOrWhiteSpace(Auth.Token))
             Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
         StateHasChanged();
 
         try
         {
-            // ورد/اکسل → پیش‌نمایش متن استخراج‌شده (بدون نیاز به دانلود فایل)
+            var token = Auth.Token ?? "";
+
+            // ورد/اکسل → HTML واقعی؛ اگر نشد متن استخراج‌شده
             if (kind == "office")
             {
+                try
+                {
+                    objectUrl = await BlobUrlAsync($"/api/attachments/preview-html/{id}", token, "text/html");
+                    if (!string.IsNullOrWhiteSpace(objectUrl))
+                    {
+                        kind = "html";
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    officeHint = ex.Message;
+                }
+
                 if (string.IsNullOrWhiteSpace(textPreviewUrl))
                 {
-                    officeHint = "پیش‌نمایش متنی برای این بخش در دسترس نیست؛ فایل را دانلود کنید.";
+                    officeHint ??= "پیش‌نمایش جدولی این فایل ساخته نشد.";
                     return;
                 }
                 try
@@ -195,23 +218,37 @@
                 catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
                 {
                     error = "شما به متن این فایل دسترسی ندارید.";
+                    return;
                 }
                 if (officeText is not null && officeText.Available == false)
                 {
                     var failMsg = officeText.Status == "Failed"
-                        ? $"استخراج متن با خطا مواجه شده است. ({(string.IsNullOrEmpty(officeText.ErrorMessage) ? "" : officeText.ErrorMessage)})"
+                        ? $"استخراج متن با خطا مواجه شده است. ({officeText.ErrorMessage})"
                         : "متن این فایل هنوز استخراج نشده است — لحظاتی دیگر دوباره تلاش کنید.";
                     officeText = null;
-                    officeHint = failMsg;
+                    officeHint = string.IsNullOrWhiteSpace(officeHint) ? failMsg : officeHint + " — " + failMsg;
                 }
                 return;
             }
 
-            // PDF/عکس/متن → بایت فایل با هدر احراز هویت، بدون افشای توکن در URL
-            var bytes = await Http.GetByteArrayAsync($"/api/attachments/preview/{id}");
-            var b64 = Convert.ToBase64String(bytes);
+            if (kind == "text")
+            {
+                var previewUrl = $"{ApiRoot}/api/attachments/preview/{id}";
+                plainText = await JS.InvokeAsync<string>("filePreview.fetchText", previewUrl, token);
+                return;
+            }
+
+            // PDF / عکس / سایر
+            var url = $"{ApiRoot}/api/attachments/preview/{id}";
             var mime = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
-            objectUrl = await JS.InvokeAsync<string>("filePreview.toBlobUrl", b64, mime);
+            if (kind == "pdf") mime = "application/pdf";
+            objectUrl = await JS.InvokeAsync<string>("filePreview.fetchBlobUrl", url, token, mime);
+            if (string.IsNullOrWhiteSpace(objectUrl))
+                error = "ساخت پیش‌نمایش فایل ممکن نشد.";
+        }
+        catch (JSException jex)
+        {
+            error = jex.Message;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
         {
@@ -231,17 +268,21 @@
     private static string Classify(string? contentType, string name)
     {
         var ct = (contentType ?? "").ToLowerInvariant();
-        if (ct.Contains("pdf")) return "pdf";
-        if (ct.StartsWith("image/")) return "image";
-        if (ct.Contains("wordprocessingml") || ct.Contains("spreadsheetml")) return "office";
+        var ext = Path.GetExtension(name).ToLowerInvariant();
 
-        return Path.GetExtension(name).ToLowerInvariant() switch
-        {
-            ".pdf" => "pdf",
-            ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "image",
-            ".docx" or ".xlsx" => "office",
-            _ => "other"
-        };
+        if (ct.Contains("pdf") || ext == ".pdf") return "pdf";
+        if (ct.StartsWith("image/") || ext is ".png" or ".jpg" or ".jpeg" or ".jfif" or ".gif"
+            or ".webp" or ".bmp" or ".svg" or ".tif" or ".tiff" or ".ico" or ".avif" or ".heic" or ".heif")
+            return "image";
+        if (ct.Contains("wordprocessingml") || ct.Contains("spreadsheetml") || ct.Contains("msword")
+            || ct.Contains("ms-excel")
+            || ext is ".docx" or ".doc" or ".xlsx" or ".xls" or ".csv")
+            return "office";
+        if (ct.StartsWith("text/") || ct.Contains("json") || ct.Contains("xml")
+            || ext is ".txt" or ".json" or ".xml" or ".md" or ".log" or ".html" or ".htm")
+            return "text";
+
+        return "other";
     }
 
     private async Task Close()
@@ -255,9 +296,38 @@
     {
         if (objectUrl is not null)
         {
+            try { await JS.InvokeVoidAsync("fpRevoke", objectUrl); } catch { }
             try { await JS.InvokeVoidAsync("filePreview.revoke", objectUrl); } catch { }
             objectUrl = null;
         }
+    }
+
+    /// <summary>
+    /// اول توابع سطح بالای JS؛ اگر کش قدیمی بود از HttpClient + toBlobUrl/data-URI.
+    /// </summary>
+    private async Task<string?> BlobUrlAsync(string relative, string token, string mime)
+    {
+        var abs = ApiRoot + relative;
+        try { return await JS.InvokeAsync<string>("fpFetchBlobUrl", abs, token, mime); } catch { }
+        try { return await JS.InvokeAsync<string>("filePreview.fetchBlobUrl", abs, token, mime); } catch { }
+
+        var bytes = await Http.GetByteArrayAsync(relative);
+        var b64 = Convert.ToBase64String(bytes);
+        try
+        {
+            var blob = await JS.InvokeAsync<string>("filePreview.toBlobUrl", b64, mime);
+            if (!string.IsNullOrWhiteSpace(blob)) return blob;
+        }
+        catch { }
+        return $"data:{mime};base64,{b64}";
+    }
+
+    private async Task<string> FetchTextAsync(string relative, string token)
+    {
+        var abs = ApiRoot + relative;
+        try { return await JS.InvokeAsync<string>("fpFetchText", abs, token); } catch { }
+        try { return await JS.InvokeAsync<string>("filePreview.fetchText", abs, token); } catch { }
+        return await Http.GetStringAsync(relative);
     }
 
     private class OfficeTextInfo
