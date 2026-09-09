@@ -957,6 +957,7 @@ else
 
 <DocumentFormModal Visible="showEdit" EditId="Id" Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents" Roles="lookups.Roles"
                    NumberingEnabled="lookups.CodeNumberingEnabled"
+                   CanManageAccess="doc.MyLevel >= DocAccessLevelDto.Full"
                    OnClose="() => showEdit = false" OnSaved="OnEdited" />
 
 <style>
