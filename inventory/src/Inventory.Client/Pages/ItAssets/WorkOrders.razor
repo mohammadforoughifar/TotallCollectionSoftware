@@ -475,6 +475,9 @@ else
                         }
                     </div>
                     <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenGardesh">
+                            <i class="bi bi-diagram-3"></i> گردش کار
+                        </button>
                         @if (isOwner && detail.Status == "Open")
                         {
                             <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenEditFromDetail">
@@ -845,6 +848,191 @@ else
     }
 </style>
 
+@* ================== گردش کار دستور — مشابه گردش نامه داخلی ================== *@
+@if (gardeshOpen && detail != null)
+{
+    var isOwnerG = detail.OwnerUserId == access.UserId;
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.55);z-index:2000">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h5 class="modal-title mb-1"><i class="bi bi-diagram-3 text-primary"></i> گردش کار — @detail.Title</h5>
+                        <span class="badge bg-dark-subtle text-dark border num me-1">@detail.Number</span>
+                        <span class="fs-8 text-muted">مهلت: <span class="num">@detail.DueAt.ToFa()</span></span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="btn-group btn-group-sm">
+                            <button type="button" class="btn @(gardeshView == 0 ? "btn-primary" : "btn-light border")" @onclick="() => gardeshView = 0">لیستی</button>
+                            <button type="button" class="btn @(gardeshView == 1 ? "btn-primary" : "btn-light border")" @onclick="() => gardeshView = 1">درختواره</button>
+                            <button type="button" class="btn @(gardeshView == 2 ? "btn-primary" : "btn-light border")" @onclick="() => gardeshView = 2">فلوچارتی</button>
+                        </div>
+                        <button type="button" class="btn-close" @onclick="() => gardeshOpen = false"></button>
+                    </div>
+                </div>
+                <div class="modal-body">
+
+                    @* ---------- نمای لیستی ---------- *@
+                    @if (gardeshView == 0)
+                    {
+                        <div class="wo-gd-station">
+                            <div class="d-flex justify-content-between flex-wrap gap-1">
+                                <b><i class="bi bi-person-badge text-primary"></i> @detail.OwnerName @(isOwnerG ? "(شما)" : "")</b>
+                                <span class="fs-8 text-muted">دستوردهنده · ثبت: <span class="num">@detail.CreatedAt.ToFa()</span></span>
+                            </div>
+                            <div class="fs-8 text-muted mt-1">شروع گردش — وضعیت دستور: @(detail.Status == "Open" ? "باز" : "بسته‌شده")</div>
+                        </div>
+                        @foreach (var a in detail.Assignees)
+                        {
+                            var aa = a;
+                            <div class="wo-gd-station @(aa.Done == true ? "done" : "")">
+                                <div class="d-flex justify-content-between flex-wrap gap-1">
+                                    <b><i class="bi bi-person"></i> @aa.Name @(aa.UserId == access.UserId ? "(شما)" : "")</b>
+                                    @if (aa.Done == true) { <span class="badge bg-success-subtle text-success border">✅ انجام شد</span> }
+                                    else if (aa.Done == false) { <span class="badge bg-danger-subtle text-danger border">❌ انجام نشد</span> }
+                                    else if (aa.SeenAt != null) { <span class="badge bg-info-subtle text-info border">رویت شده</span> }
+                                    else { <span class="badge bg-light text-dark border">در انتظار رویت</span> }
+                                </div>
+                                <div class="fs-8 text-muted mt-1">
+                                    رویت: <span class="num">@(aa.SeenAt == null ? "—" : aa.SeenAt.Value.ToFa())</span>
+                                    · پاسخ: <span class="num">@(aa.RepliedAt == null ? "—" : aa.RepliedAt.Value.ToFa())</span>
+                                    @if (aa.OwnerDecision != null) { <span>· تصمیم دستوردهنده: <b>@(aa.OwnerDecision == "Approved" ? "تایید ✔" : "رد ✗")</b></span> }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(aa.ReplyText))
+                                {
+                                    <div class="wo-reply mt-1"><i class="bi bi-reply"></i> @aa.ReplyText</div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(aa.OwnerDecisionNote))
+                                {
+                                    <div class="fs-8 text-muted mt-1">یادداشت دستوردهنده: @aa.OwnerDecisionNote</div>
+                                }
+                            </div>
+                        }
+                        @if (detail.Assignees.Count == 0)
+                        {
+                            <div class="text-muted text-center py-4"><i class="bi bi-people"></i> گیرنده‌ای ثبت نشده است</div>
+                        }
+                    }
+
+                    @* ---------- نمای درختواره ---------- *@
+                    else if (gardeshView == 1)
+                    {
+                        <div class="ltx" style="animation:none">
+                            <div class="gtree">
+                                <ul>
+                                    <li>
+                                        <div class="tnode">
+                                            <span class="mini"><i class="bi bi-person-badge"></i></span>
+                                            <div><b>@detail.OwnerName</b><small> — دستوردهنده · @detail.CreatedAt.ToFa()</small></div>
+                                            <span class="tst p">شروع گردش</span>
+                                        </div>
+                                        <ul>
+                                            <li>
+                                                <div class="tnode">
+                                                    <span class="mini"><i class="bi bi-card-checklist"></i></span>
+                                                    <div><b>گیرندگان دستور</b><small> — @detail.Assignees.Count(a => a.RepliedAt != null)/@detail.Assignees.Count پاسخ</small></div>
+                                                    <span class="tst @(detail.Assignees.Count > 0 && detail.Assignees.All(a => a.Done == true) ? "g" : "w")">
+                                                        @(detail.Assignees.Count > 0 && detail.Assignees.All(a => a.Done == true) ? "انجام شد" : "در جریان")
+                                                    </span>
+                                                </div>
+                                                <ul>
+                                                    @foreach (var a in detail.Assignees)
+                                                    {
+                                                        var aa = a;
+                                                        <li>
+                                                            <div class="tnode">
+                                                                <span class="mini"><i class="bi bi-person"></i></span>
+                                                                <div><b>@aa.Name</b><small> — رویت: @(aa.SeenAt == null ? "—" : aa.SeenAt.Value.ToFa())</small></div>
+                                                                <span class="tst @(aa.Done == true ? "g" : aa.Done == false ? "r" : "w")">
+                                                                    @(aa.Done == true ? "انجام شد" : aa.Done == false ? "انجام نشد" : aa.SeenAt != null ? "رویت شده" : "در انتظار")
+                                                                </span>
+                                                            </div>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            </li>
+                                        </ul>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    }
+
+                    @* ---------- نمای فلوچارتی ---------- *@
+                    else
+                    {
+                        <div class="ltx" style="animation:none">
+                            <div class="fcwrap">
+                                <div class="fc">
+                                    <ul>
+                                        <li>
+                                            <div class="fnode root">
+                                                <span class="mini"><i class="bi bi-person-badge"></i></span>
+                                                <div><b>@detail.OwnerName</b><small>دستوردهنده</small></div>
+                                                <span class="fdot p"></span>
+                                            </div>
+                                            <ul>
+                                                @foreach (var a in detail.Assignees)
+                                                {
+                                                    var aa = a;
+                                                    <li>
+                                                        <div class="fnode @(aa.Done == true ? "ok" : aa.Done == false ? "no" : "wt")">
+                                                            <span class="mini"><i class="bi bi-person"></i></span>
+                                                            <div><b>@aa.Name</b><small>@(aa.Done == true ? "انجام شد" : aa.Done == false ? "انجام نشد" : aa.SeenAt != null ? "رویت شده" : "در انتظار رویت")</small></div>
+                                                            <span class="fdot @(aa.Done == true ? "g" : aa.Done == false ? "r" : "w")"></span>
+                                                        </div>
+                                                    </li>
+                                                }
+                                                @if (detail.Assignees.Count == 0)
+                                                {
+                                                    <li>
+                                                        <div class="fnode wt">
+                                                            <span class="mini"><i class="bi bi-people"></i></span>
+                                                            <div><b>گیرنده‌ای ثبت نشده</b></div>
+                                                            <span class="fdot w"></span>
+                                                        </div>
+                                                    </li>
+                                                }
+                                            </ul>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="fleg">
+                                <span><span class="fdot p"></span> شروع</span>
+                                <span><span class="fdot g"></span> انجام‌شده</span>
+                                <span><span class="fdot w"></span> در انتظار</span>
+                                <span><span class="fdot r"></span> انجام‌نشده</span>
+                            </div>
+                        </div>
+                    }
+
+                    @* ---------- تاریخچه (لاگ) ---------- *@
+                    @if (logs.Count > 0)
+                    {
+                        <div class="wo-block mt-3">
+                            <div class="wo-block-title"><i class="bi bi-clock-history"></i> تاریخچه گردش</div>
+                            <div class="wo-block-body">
+                                @foreach (var l in logs)
+                                {
+                                    <div class="d-flex gap-2 fs-9 py-1 border-bottom">
+                                        <span class="num text-muted" style="min-width:110px">@l.CreatedAt.ToFaDateTime()</span>
+                                        <span style="min-width:90px">@((MarkupString)LogBadge(l.Action))</span>
+                                        <span class="flex-grow-1">@l.ActorName@(string.IsNullOrWhiteSpace(l.Text) ? "" : " — " + l.Text)</span>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" @onclick="() => gardeshOpen = false">بستن</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private bool loading = true, busy;
     private string tab = "mine", formError = "", apiBase = "";
@@ -904,6 +1092,30 @@ else
     private WoItem? detail;
     private List<AttItem> attachments = new();
     private List<LogItem> logs = new();
+
+    // گردش کار (مشابه گردش نامه داخلی)
+    private bool gardeshOpen;
+    private int gardeshView;
+
+    private void OpenGardesh()
+    {
+        gardeshView = 0;
+        gardeshOpen = true;
+    }
+
+    /// <summary>نشان تاریخچه گردش</summary>
+    private static string LogBadge(string action) => action switch
+    {
+        "Created" => "<span class='badge bg-primary-subtle text-primary border'>ثبت</span>",
+        "Edited" => "<span class='badge bg-light text-dark border'>ویرایش</span>",
+        "Seen" => "<span class='badge bg-info-subtle text-info border'>رویت</span>",
+        "Reply" => "<span class='badge bg-secondary-subtle text-secondary border'>پاسخ</span>",
+        "Approved" => "<span class='badge bg-success-subtle text-success border'>تایید</span>",
+        "Rejected" => "<span class='badge bg-danger-subtle text-danger border'>رد</span>",
+        "Extended" => "<span class='badge bg-warning-subtle text-warning border'>تمدید</span>",
+        "Closed" => "<span class='badge bg-dark-subtle text-dark border'>بستن</span>",
+        _ => $"<span class='badge bg-light text-dark border'>{action}</span>"
+    };
     private bool? myDone = true;
     private string myReply = "", closeNote = "";
     private Dictionary<int, string> decideNotes = new();

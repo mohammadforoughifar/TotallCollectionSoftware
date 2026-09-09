@@ -118,6 +118,13 @@ public class AppDbContext : DbContext
     public DbSet<OutgoingPishnevisLetter> OutgoingPishnevisLetters => Set<OutgoingPishnevisLetter>();
     public DbSet<OutgoingLetterSigner> OutgoingLetterSigners => Set<OutgoingLetterSigner>();
 
+    // ==================== ایمیل سازمانی (پست الکترونیک) — جداول Oto_* دیتابیس Otomasion ====================
+    public DbSet<OtoEmail> OtoEmails => Set<OtoEmail>();
+    public DbSet<OtoSentEmail> OtoSentEmails => Set<OtoSentEmail>();
+    public DbSet<OtoInboxEmail> OtoInboxEmails => Set<OtoInboxEmail>();
+    public DbSet<OtoEmailFolder> OtoEmailFolders => Set<OtoEmailFolder>();
+    public DbSet<OtoEmailAttachment> OtoEmailAttachments => Set<OtoEmailAttachment>();
+
     // ==================== آرشیو اسناد و مدارک (DocArchive) ====================
     public DbSet<DocFolder> DocFolders => Set<DocFolder>();
     public DbSet<DocFolderPermission> DocFolderPermissions => Set<DocFolderPermission>();
@@ -978,6 +985,22 @@ public class AppDbContext : DbContext
           .HasOne(l => l.Session).WithMany(s => s.Lines)
           .HasForeignKey(l => l.SessionId)
           .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<StkLine>()
+          .HasOne(l => l.Product).WithMany()
+          .HasForeignKey(l => l.ProductId)
+          .OnDelete(DeleteBehavior.Restrict);
+
+        // ---------- تاریخچه اسکن ----------
+        mb.Entity<StkScan>().HasIndex(s => s.SessionId);
+        mb.Entity<StkScan>().HasIndex(s => s.LineId);
+        mb.Entity<StkScan>().Property(s => s.Quantity).HasPrecision(18, 3);
+        mb.Entity<StkScan>()
+          .HasOne(s => s.Session).WithMany()
+          .HasForeignKey(s => s.SessionId)
+          .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+leteBehavior.Cascade);
         mb.Entity<StkLine>()
           .HasOne(l => l.Product).WithMany()
           .HasForeignKey(l => l.ProductId)

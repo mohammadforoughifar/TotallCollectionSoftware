@@ -71,6 +71,9 @@
                 }
                 else if (folder == "draft")
                 {
+                    <button class="draft-add" @onclick='() => compose?.Open()'>
+                        <i class="bi bi-plus-lg"></i> افزودن پیش‌نویس
+                    </button>
                     @if (drafts.Count == 0)
                     {
                         <div class="empty"><i class="bi bi-pencil-square"></i>پیش‌نویس صادره ندارید</div>
@@ -162,10 +165,6 @@
                                         @if (FolderIsSent)
                                         {
                                             <button @onclick="() => EditLetter(ll.LetterId)"><i class="bi bi-pencil-square"></i> ویرایش</button>
-                                            @if (ll.Status != 3)
-                                            {
-                                                <button @onclick="() => SetStatus(ll, 3)"><i class="bi bi-send-check"></i> علامت صادر شده</button>
-                                            }
                                         }
                                         else
                                         {
@@ -178,6 +177,13 @@
                                         @if (ll.ErjaId is { } eid1)
                                         {
                                             <button @onclick="() => ToggleStar(ll)">
+                                                <i class="bi @(ll.IsNeshan ? "bi-star-fill" : "bi-star")" style="@(ll.IsNeshan ? "color:#eab308" : "")"></i>
+                                                @(ll.IsNeshan ? "حذف نشان" : "نشان‌کردن")
+                                            </button>
+                                        }
+                                        else if (FolderIsSent)
+                                        {
+                                            <button @onclick="() => ToggleSentStar(ll)">
                                                 <i class="bi @(ll.IsNeshan ? "bi-star-fill" : "bi-star")" style="@(ll.IsNeshan ? "color:#eab308" : "")"></i>
                                                 @(ll.IsNeshan ? "حذف نشان" : "نشان‌کردن")
                                             </button>
@@ -223,6 +229,12 @@
                     {
                         <button class="icb @(myStar.IsNeshan ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStarReader">
                             <i class="bi @(myStar.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
+                        </button>
+                    }
+                    else if (selected.IsMine)
+                    {
+                        <button class="icb @(selected.IsNeshan ? "gold" : "")" title="نشان‌کردن نامه ارسالی" @onclick="ToggleStarReader">
+                            <i class="bi @(selected.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
                         </button>
                     }
                     <button class="icb" title="نمایش نامه (صفحه کامل)" @onclick="() => ViewLetter(selected.LetterId)"><i class="bi bi-eye"></i></button>
@@ -375,10 +387,6 @@
                                 @if (selected.CanEdit)
                                 {
                                     <button class="lbtn ghost" @onclick="() => EditLetter(selected.LetterId)"><i class="bi bi-pencil-square"></i> ویرایش</button>
-                                }
-                                @if (selected.Status != 3)
-                                {
-                                    <button class="lbtn ghost" @onclick="() => SetStatusCur(3)"><i class="bi bi-send-check"></i> علامت صادر شده</button>
                                 }
                             }
                         </div>
@@ -631,6 +639,12 @@
                 case "draft": drafts = await OutgoingSvc.GetPishnevisListAsync(s); break;
                 case "archive": items = await OutgoingSvc.GetArchiveAsync(s); break;
                 case "signing": items = await OutgoingSvc.GetSigningInboxAsync(s, null); break;
+                case "starred":
+                    // نشان‌شده‌ها = ستاره گیرنده (روی ارجاع) + ستاره فرستنده (روی خود نامه صادره)
+                    var inboxItems = await OutgoingSvc.GetInboxAsync(s);
+                    var sentItems = await OutgoingSvc.GetSentAsync(s);
+                    items = inboxItems.Concat(sentItems).GroupBy(x => x.LetterId).Select(g => g.First()).ToList();
+                    break;
                 default: items = await OutgoingSvc.GetInboxAsync(s); break;
             }
             stats = await OutgoingSvc.GetStatsAsync();
@@ -795,7 +809,7 @@
     private async Task ToggleStar(OutgoingLetterListItemDto l)
     {
         openMenuId = 0;
-        if (l.ErjaId is not { } eid) return;
+        if (l.ErjaId is not { } eid) { await ToggleSentStar(l); return; }
         try
         {
             l.IsNeshan = await OutgoingSvc.ToggleNeshanAsync(eid);
@@ -805,18 +819,46 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private async Task ToggleStarReader()
+    /// <summary>نشان‌کردن نامه صادره ارسالی (سمت فرستنده) — روی خود نامه</summary>
+    private async Task ToggleSentStar(OutgoingLetterListItemDto l)
     {
-        if (selected?.MyErja is not { } my) return;
+        openMenuId = 0;
         try
         {
-            my.IsNeshan = await OutgoingSvc.ToggleNeshanAsync(my.ErjaId);
-            var l = items.FirstOrDefault(x => x.ErjaId == my.ErjaId);
-            if (l != null) l.IsNeshan = my.IsNeshan;
-            if (selectedItem?.ErjaId == my.ErjaId) selectedItem!.IsNeshan = my.IsNeshan;
-            Toast.Success(my.IsNeshan ? "نشان شد ⭐" : "نشان برداشته شد");
+            l.IsNeshan = await OutgoingSvc.ToggleLetterNeshanAsync(l.LetterId);
+            if (selected?.LetterId == l.LetterId) selected.IsNeshan = l.IsNeshan;
+            Toast.Success(l.IsNeshan ? "نامه نشان شد ⭐" : "نشان برداشته شد");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ToggleStarReader()
+    {
+        // گیرنده: نشان روی ارجاع من | فرستنده: نشان روی خود نامه صادره
+        if (selected?.MyErja is { } my)
+        {
+            try
+            {
+                my.IsNeshan = await OutgoingSvc.ToggleNeshanAsync(my.ErjaId);
+                var l = items.FirstOrDefault(x => x.ErjaId == my.ErjaId);
+                if (l != null) l.IsNeshan = my.IsNeshan;
+                if (selectedItem?.ErjaId == my.ErjaId) selectedItem!.IsNeshan = my.IsNeshan;
+                Toast.Success(my.IsNeshan ? "نشان شد ⭐" : "نشان برداشته شد");
+            }
+            catch (Exception ex) { Toast.Error(ex.Message); }
+            return;
+        }
+        if (selected is { IsMine: true })
+        {
+            try
+            {
+                selected.IsNeshan = await OutgoingSvc.ToggleLetterNeshanAsync(selected.LetterId);
+                var ls = items.FirstOrDefault(x => x.LetterId == selected.LetterId);
+                if (ls != null) ls.IsNeshan = selected.IsNeshan;
+                Toast.Success(selected.IsNeshan ? "نشان شد ⭐" : "نشان برداشته شد");
+            }
+            catch (Exception ex) { Toast.Error(ex.Message); }
+        }
     }
 
     private async Task ToggleArchive(OutgoingLetterListItemDto l)
@@ -904,20 +946,6 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }
-    }
-
-    private async Task SetStatus(OutgoingLetterListItemDto l, int status)
-    {
-        openMenuId = 0;
-        try { await OutgoingSvc.UpdateStatusAsync(l.LetterId, status); Toast.Success("وضعیت به‌روزرسانی شد."); await ReloadAsync(keepSelection: true); if (selected?.LetterId == l.LetterId) await LoadDetailAsync(l.LetterId); }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-    }
-
-    private async Task SetStatusCur(int status)
-    {
-        if (selected == null) return;
-        try { await OutgoingSvc.UpdateStatusAsync(selected.LetterId, status); Toast.Success("وضعیت به‌روزرسانی شد."); await ReloadAsync(keepSelection: true); await LoadDetailAsync(selected.LetterId); }
-        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     public void Dispose() => Rt.DataChanged -= OnDataChanged;
