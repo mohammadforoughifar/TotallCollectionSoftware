@@ -37,13 +37,15 @@ public class InnerLetterService : IInnerLetterService
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
     private readonly ILetterStratureService _strature;
+    private readonly FileStore _store;
 
-    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature)
+    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature, FileStore store)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
         _strature = strature;
+        _store = store;
     }
 
     // ---------- شماره‌گذاری بر اساس سال شمسی — نسخه اصلاح‌شده ----------
@@ -209,6 +211,7 @@ public class InnerLetterService : IInnerLetterService
                 pish.IsDelete = true;
 
                 // پیوست‌های پیش‌نویس → پیوست نامه ارسال‌شده
+                // فایل‌های روی دیسک هم از مسیر innerletter/pishnevis/{id} به innerletter/{letterId} منتقل می‌شوند
                 var pishAtts = await _db.AppAttachments
                     .Where(a => a.Module == "Pishnevis" && a.RefId == pish.PishnevisId)
                     .ToListAsync();
@@ -216,6 +219,16 @@ public class InnerLetterService : IInnerLetterService
                 {
                     a.Module = "InnerLetters";
                     a.RefId = source.Id;
+
+                    if (a.FilePath is not null)
+                    {
+                        var newPath = _store.Move(a.FilePath, "innerletter", source.Id);
+                        if (newPath is not null)
+                        {
+                            a.FilePath = newPath;
+                            a.Data = Array.Empty<byte>();
+                        }
+                    }
                 }
                 await _db.SaveChangesAsync();
             }
