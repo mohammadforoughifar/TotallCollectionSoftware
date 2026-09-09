@@ -559,7 +559,7 @@ else
 
         @if (doc.MyLevel >= DocAccessLevelDto.Full && doc.IsActive)
         {
-            <div class="card">
+            <div class="card mb-3">
                 <div class="card-header fw-700 fs-8"><i class="bi bi-shield-lock ms-1"></i> دسترسی‌ها</div>
                 <div class="card-body p-2">
                     <div class="form-check form-switch mb-1">
@@ -572,11 +572,14 @@ else
                         <label class="form-check-label fs-8" for="vPubDl">دانلود عمومی</label>
                     </div>
                     <DocPermissionEditor Users="lookups.Users" Roles="lookups.Roles" Items="doc.Permissions" />
-                    <div class="form-check form-switch mt-2 border rounded-3 p-1 px-2 bg-light">
+                    @* نکته: روی عنصر form-switch نباید از کلاس‌های p یا px بوت‌استرپ استفاده کرد؛
+                       بوت‌استرپ با padding-left برابر 2.5em و margin-left منفی سوئیچ را جا می‌اندازد
+                       و utility (با important) آن را خراب و روی متن می‌اندازد. *@
+                    <div class="form-check form-switch mt-2 border rounded-3 py-1 pe-2 bg-light">
                         <input class="form-check-input" type="checkbox" id="vConf" @bind="doc.RequireDownloadConfirm" />
                         <label class="form-check-label fs-8 fw-700 text-danger" for="vConf"><i class="bi bi-shield-lock ms-1"></i> محرمانه — فایل‌ها با تایید مجدد رمز</label>
                     </div>
-                    <div class="form-check form-switch mt-1 border rounded-3 p-1 px-2 bg-light">
+                    <div class="form-check form-switch mt-1 border rounded-3 py-1 pe-2 bg-light">
                         <input class="form-check-input" type="checkbox" id="vWm" @bind="doc.WatermarkPreview" />
                         <label class="form-check-label fs-8 fw-700" for="vWm"><i class="bi bi-droplet-half ms-1" style="color:#0284c7"></i> واترمارک پیش‌نمایش فایل‌ها</label>
                     </div>
