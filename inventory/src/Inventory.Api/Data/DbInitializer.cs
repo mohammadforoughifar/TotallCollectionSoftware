@@ -35,6 +35,8 @@ public static class DbInitializer
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                     // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
                     await DocArchiveSecuritySchemaV2.EnsureAsync(db);
+                    // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
+                    await OfficeEmailSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
@@ -44,6 +46,8 @@ public static class DbInitializer
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                     // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
                     await DocArchiveSecuritySchemaV2.EnsureAsync(db);
+                    // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
+                    await OfficeEmailSchemaV1.EnsureAsync(db);
                 }
 
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها

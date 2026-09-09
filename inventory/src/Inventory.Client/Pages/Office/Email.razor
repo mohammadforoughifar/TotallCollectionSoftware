@@ -1,0 +1,836 @@
+@page "/office/email"
+@inject IEmailClientService EmailSvc
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject LayoutState Layout
+@implements IDisposable
+
+@* ============================================================
+   ایمیل سازمانی (پست الکترونیک)
+   • حساب‌های شخصی هر کاربر + حساب‌های رسمی دبیرخانه (جدا از شخصی)
+   • پشتیبانی Gmail / Yahoo / Outlook / وب‌میل هاست / سفارشی
+   • دریافت با IMAP، ارسال با SMTP، پیوست، نشان‌کردن، بایگانی پوشه‌ای
+   ============================================================ *@
+
+<PageTitle>ایمیل سازمانی</PageTitle>
+
+<div class="ltx" style="animation:none;transform:none">
+    <div style="max-width:1280px;margin:0 auto;padding:14px">
+
+        <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
+            <span class="t"><i class="bi bi-envelope-at" style="color:var(--p2)"></i> ایمیل سازمانی</span>
+            <span class="spacer" style="flex:1"></span>
+            @if (Auth.Has("Email.Create"))
+            {
+                <button class="lbtn pri" @onclick="OpenCompose"><i class="bi bi-pencil-square"></i> ایمیل جدید</button>
+            }
+        </div>
+
+        @* ---------- نوار ابزار ---------- *@
+        <div class="scard" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+            <div class="chips" style="margin:0">
+                <button class="chip @(tab == "inbox" ? "on" : "")" @onclick='() => SetTab("inbox")'>
+                    <i class="bi bi-inbox"></i> دریافتی @if (unreadCount > 0) { <span class="n">@unreadCount.FaDigits()</span> }
+                </button>
+                <button class="chip @(tab == "sent" ? "on" : "")" @onclick='() => SetTab("sent")'>
+                    <i class="bi bi-send"></i> ارسالی
+                </button>
+                <button class="chip @(tab == "starred" ? "on" : "")" @onclick='() => SetTab("starred")'>
+                    <i class="bi bi-star"></i> نشان‌شده
+                </button>
+                <button class="chip @(tab == "archive" ? "on" : "")" @onclick='() => SetTab("archive")'>
+                    <i class="bi bi-archive"></i> بایگانی
+                </button>
+                <button class="chip @(tab == "accounts" ? "on" : "")" @onclick='() => SetTab("accounts")'>
+                    <i class="bi bi-gear"></i> حساب‌ها
+                </button>
+            </div>
+
+            @if (tab != "accounts")
+            {
+                <select class="tin" style="max-width:270px" @bind="accFilter" @bind:after="ReloadAsync">
+                    <option value="0">— همه حساب‌ها —</option>
+                    @foreach (var a in accounts)
+                    {
+                        <option value="@a.EmailId">
+                            @(a.IsDabirkhane ? "📮 " : "")@a.EmailAddress @(a.IsMine ? "" : "(دبیرخانه)")
+                        </option>
+                    }
+                </select>
+
+                <div class="search" style="flex:1;min-width:180px">
+                    <i class="bi bi-search"></i>
+                    <input placeholder="جستجو در موضوع، آدرس، متن…" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
+                </div>
+
+                @if (accFilter > 0)
+                {
+                    <button class="lbtn ghost" disabled="@syncing" @onclick="SyncNow">
+                        <i class="bi @(syncing ? "bi-arrow-repeat bi-spin" : "bi-cloud-arrow-down")"></i>
+                        @(syncing ? "در حال دریافت…" : "دریافت ایمیل‌ها")
+                    </button>
+                }
+            }
+        </div>
+
+        @* ---------- مدیریت پوشه‌های بایگانی (تب بایگانی) ---------- *@
+        @if (tab == "archive" && Auth.Has("Email.Create"))
+        {
+            <div class="scard" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                <b style="font-size:13px"><i class="bi bi-folder-plus" style="color:var(--p2)"></i> پوشه‌های بایگانی:</b>
+                @foreach (var f in folders)
+                {
+                    var ff = f;
+                    <span class="tg purple">
+                        <i class="bi bi-folder"></i> @f.Title @(f.TypeEmail == 1 ? "(ارسالی)" : "(دریافتی)")
+                        @if (Auth.Has("Email.Delete"))
+                        {
+                            <i class="bi bi-x-lg" style="cursor:pointer;margin-inline-start:4px" title="حذف پوشه" @onclick="() => DeleteFolder(ff)"></i>
+                        }
+                    </span>
+                }
+                @if (folders.Count == 0) { <span style="color:#64748b;font-size:12.5px">پوشه‌ای نیست</span> }
+                <span style="flex:1"></span>
+                <input class="tin" style="max-width:200px" placeholder="نام پوشه جدید…" @bind="newFolderTitle" />
+                <select class="tin" style="max-width:120px" @bind="newFolderType">
+                    <option value="0">دریافتی</option>
+                    <option value="1">ارسالی</option>
+                </select>
+                <button class="lbtn pri" @onclick="AddFolder"><i class="bi bi-plus-lg"></i> افزودن</button>
+            </div>
+        }
+
+        @* ==================== حساب‌ها ==================== *@
+        @if (tab == "accounts")
+        {
+            @if (Auth.Has("Email.Create"))
+            {
+                <div style="margin-bottom:10px">
+                    <button class="lbtn pri" @onclick='() => OpenAccountEditor(null)'><i class="bi bi-plus-lg"></i> افزودن حساب ایمیل</button>
+                </div>
+            }
+
+            @* ----- حساب‌های دبیرخانه ----- *@
+            @if (CanManageDabirkhane)
+            {
+                <div class="scard" style="margin-bottom:12px">
+                    <h3><i class="bi bi-mailbox" style="color:var(--p2)"></i> حساب‌های رسمی دبیرخانه <span class="opt">— جدا از ایمیل شخصی؛ برای ارسال نامه صادره</span></h3>
+                    @if (!accounts.Any(a => a.IsDabirkhane))
+                    {
+                        <div style="color:#d97706;font-size:13px;padding:6px 0">
+                            <i class="bi bi-info-circle"></i> هنوز حساب دبیرخانه‌ای ثبت نشده — برای ارسال نامه با پست الکترونیک، حساب رسمی دبیرخانه را با تیک «دبیرخانه» اضافه کنید.
+                        </div>
+                    }
+                    @foreach (var a in accounts.Where(x => x.IsDabirkhane))
+                    {
+                        var aa = a;
+                        @AccountRow(aa)
+                    }
+                </div>
+            }
+
+            @* ----- حساب‌های شخصی ----- *@
+            <div class="scard">
+                <h3><i class="bi bi-person"></i> حساب‌های شخصی من</h3>
+                @if (!accounts.Any(a => !a.IsDabirkhane))
+                {
+                    <div style="color:#64748b;font-size:13px;padding:6px 0">حساب شخصی ثبت نکرده‌اید.</div>
+                }
+                @foreach (var a in accounts.Where(x => !x.IsDabirkhane))
+                {
+                    var aa = a;
+                    @AccountRow(aa)
+                }
+            </div>
+        }
+        else
+        {
+            @* ==================== دو ستون لیست + خواندن ==================== *@
+            <div style="display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:12px;align-items:start">
+                <div>
+                    @if (loading)
+                    {
+                        <div class="empty" style="padding:40px"><div class="spinner-border text-primary"></div></div>
+                    }
+                    else if (messages.Count == 0)
+                    {
+                        <div class="empty" style="padding:40px">
+                            <i class="bi bi-inbox"></i>
+                            @(accFilter > 0 ? "ایمیلی نیست — دکمه «دریافت ایمیل‌ها» را بزنید." : "ایمیلی نیست — یک حساب انتخاب کنید و دریافت بزنید.")
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var m in messages)
+                        {
+                            var mm = m;
+                            <div class="mail @(mm.IsRead || mm.Box == "Sent" ? "" : "unread") @(openId == mm.Id && openBox == mm.Box ? "sel" : "")"
+                                 style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px"
+                                 @onclick="() => OpenMessage(mm)">
+                                <div style="display:flex;align-items:center;gap:8px">
+                                    <span class="who" style="font-weight:700;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                                        @if (mm.Box == "Sent")
+                                        {
+                                            <span><i class="bi bi-arrow-right-short"></i> به: @mm.FromOrTo</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@mm.FromOrTo</span>
+                                        }
+                                        @if (mm.IsNeshan) { <i class="bi bi-star-fill" style="color:#eab308;font-size:11px"></i> }
+                                    </span>
+                                    <span class="tm num" style="font-size:11.5px;color:#64748b">@mm.Date.ToFaDateTime()</span>
+                                </div>
+                                <div style="font-size:13px;margin-top:3px;@(mm.IsRead || mm.Box == "Sent" ? "" : "font-weight:800")">@mm.Subject</div>
+                                <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
+                                    <span class="tg gray" style="font-size:11px">@mm.AccountAddress</span>
+                                    @if (mm.IsAttachment) { <span class="tg gray" style="font-size:11px"><i class="bi bi-paperclip"></i></span> }
+                                    @if (!string.IsNullOrEmpty(mm.FolderTitle)) { <span class="tg purple" style="font-size:11px"><i class="bi bi-folder"></i> @mm.FolderTitle</span> }
+                                    @if (!mm.IsRead && mm.Box == "Inbox") { <span class="tg blue" style="font-size:11px">جدید</span> }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div>
+                    @if (openMsg == null)
+                    {
+                        <div class="empty" style="padding:60px"><i class="bi bi-envelope-open"></i> ایمیلی برای نمایش انتخاب نشده است</div>
+                    }
+                    else
+                    {
+                        <div class="paper">
+                            <div class="paper-h">
+                                <div class="avt"><i class="bi @(openMsg.Box == "Sent" ? "bi-send" : "bi-envelope")"></i></div>
+                                <div class="ph-meta">
+                                    <div class="n1">@(openMsg.Box == "Sent" ? "به: " + openMsg.FromOrTo : openMsg.FromOrTo)</div>
+                                    <div class="n2">از حساب @openMsg.AccountAddress — @openMsg.Date.ToFaDateTime()</div>
+                                </div>
+                                <div class="ind" style="display:flex;gap:6px">
+                                    <button class="icb @(openMsg.IsNeshan ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStar">
+                                        <i class="bi @(openMsg.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
+                                    </button>
+                                    @if (openMsg.Box == "Inbox" && Auth.Has("Email.Create"))
+                                    {
+                                        <button class="icb" title="پاسخ" @onclick="ReplyTo"><i class="bi bi-reply"></i></button>
+                                    }
+                                    <button class="icb" title="بایگانی" @onclick="() => archOpen = !archOpen"><i class="bi bi-archive"></i></button>
+                                </div>
+                            </div>
+                            <div style="padding:8px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <b style="font-size:13.5px">@openMsg.Subject</b>
+                                @if (archOpen)
+                                {
+                                    <span style="flex:1"></span>
+                                    <select class="tin" style="max-width:220px" @bind="archFolderId">
+                                        <option value="0">— خروج از بایگانی —</option>
+                                        @foreach (var f in folders.Where(f => f.TypeEmail == (openMsg.Box == "Sent" ? 1 : 0)))
+                                        {
+                                            <option value="@f.EmailFolderId">@f.Title</option>
+                                        }
+                                    </select>
+                                    <button class="lbtn ghost" @onclick="ArchiveCurrent"><i class="bi bi-check-lg"></i> ثبت</button>
+                                }
+                            </div>
+                            <div class="paper-body" style="min-height:180px">@((MarkupString)(openMsg.Body ?? "—"))</div>
+                            @if (openMsg.Attachments.Count > 0)
+                            {
+                                <div class="paper-foot">
+                                    @foreach (var a in openMsg.Attachments)
+                                    {
+                                        var att = a;
+                                        <a class="att" href="@EmailSvc.AttachmentDownloadUrl(att.AttachmentId)" target="_blank">
+                                            <div class="ic"><i class="bi bi-paperclip"></i></div>
+                                            <div>@att.RealName<small>@FmtSize(att.Size)</small></div>
+                                        </a>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* ==================== مودال ارسال ایمیل ==================== *@
+@if (composeOpen)
+{
+    <div class="ltx" style="animation:none;transform:none">
+        <div class="ov" @onclick="() => composeOpen = false"></div>
+        <div class="sheet" style="max-width:640px">
+            <div class="sheet-h">
+                <b><i class="bi bi-pencil-square" style="color:var(--p2)"></i> @(composeReplyTo != null ? "پاسخ به ایمیل" : "ایمیل جدید")</b>
+                <button class="x" @onclick="() => composeOpen = false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="sheet-b">
+                <div class="fcard">
+                    <label>از حساب <span class="req">*</span></label>
+                    <select class="tin" @bind="cpAccountId">
+                        @foreach (var a in accounts.Where(x => x.IsActive))
+                        {
+                            <option value="@a.EmailId">@(a.IsDabirkhane ? "📮 دبیرخانه — " : "")@a.EmailAddress</option>
+                        }
+                    </select>
+                    @if (!accounts.Any(x => x.IsActive))
+                    {
+                        <div class="ferr"><i class="bi bi-info-circle"></i> ابتدا از تب «حساب‌ها» یک حساب اضافه کنید.</div>
+                    }
+                </div>
+                <div class="fcard @(cpErrTo ? "err" : "")">
+                    <label>گیرنده(ها) <span class="req">*</span> <span class="opt">با کاما جدا شوند</span></label>
+                    <input class="tin" placeholder="a@sample.com، b@sample.com…" @bind="cpTo" @bind:event="oninput" />
+                    @if (cpErrTo)
+                    {
+                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> گیرنده الزامی است</div>
+                    }
+                </div>
+                <div class="fcard">
+                    <label>رونوشت <span class="opt">اختیاری</span></label>
+                    <input class="tin" @bind="cpCc" />
+                </div>
+                <div class="fcard @(cpErrSubject ? "err" : "")">
+                    <label>موضوع <span class="req">*</span></label>
+                    <input class="tin" @bind="cpSubject" @bind:event="oninput" />
+                    @if (cpErrSubject)
+                    {
+                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> موضوع الزامی است</div>
+                    }
+                </div>
+                <div class="fcard">
+                    <label>متن ایمیل</label>
+                    <textarea class="tin" rows="8" style="min-height:140px" @bind="cpBody"></textarea>
+                </div>
+                <div class="fcard">
+                    <label>پیوست <span class="opt">هر فایل حداکثر ۲۰ مگابایت</span></label>
+                    <InputFile OnChange="OnComposeFiles" multiple />
+                    <div class="selpills">
+                        @foreach (var f in _pendingBrowser)
+                        {
+                            var ff = f;
+                            <span class="spill"><i class="bi bi-paperclip"></i> @ff.Name <small>(@FmtSize(ff.Size))</small> <i class="bi bi-x-lg" @onclick="() => _pendingBrowser.Remove(ff)"></i></span>
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="sheet-f">
+                <span class="spacer"></span>
+                <button class="lbtn ghost" @onclick="() => composeOpen = false">انصراف</button>
+                <button class="lbtn pri" disabled="@cpBusy" @onclick="SubmitCompose">
+                    @if (cpBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                    <i class="bi bi-send"></i> ارسال
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ==================== مودال حساب ایمیل ==================== *@
+@if (accOpen)
+{
+    <div class="ltx" style="animation:none;transform:none">
+        <div class="ov" @onclick="() => accOpen = false"></div>
+        <div class="sheet" style="max-width:620px">
+            <div class="sheet-h">
+                <b><i class="bi bi-envelope-at" style="color:var(--p2)"></i> @(accEditId > 0 ? "ویرایش حساب ایمیل" : "افزودن حساب ایمیل")</b>
+                <button class="x" @onclick="() => accOpen = false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="sheet-b">
+                <div class="fcard">
+                    <label>نوع حساب</label>
+                    <div class="chips" style="margin:0">
+                        @foreach (var t in new[] { "Gmail", "Yahoo", "Outlook", "Webmail", "Custom" })
+                        {
+                            var tt = t;
+                            <button type="button" class="chip @(accType == tt ? "on" : "")" @onclick="() => ApplyPreset(tt)">@PresetTitle(tt)</button>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(presetHint))
+                    {
+                        <div style="font-size:12px;color:#d97706;margin-top:8px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:7px 10px">
+                            <i class="bi bi-info-circle"></i> @presetHint
+                        </div>
+                    }
+                </div>
+                <div class="row2">
+                    <div class="fcard @(accErrAddr ? "err" : "")">
+                        <label>آدرس ایمیل <span class="req">*</span></label>
+                        <input class="tin" placeholder="name@gmail.com" @bind="accAddress" @bind:event="oninput" />
+                        @if (accErrAddr)
+                        {
+                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> آدرس ایمیل معتبر وارد کنید</div>
+                        }
+                    </div>
+                    <div class="fcard @(accErrPass ? "err" : "")">
+                        <label>رمز عبور <span class="opt">@(accEditId > 0 ? "خالی = بدون تغییر" : "App Password")</span></label>
+                        <input class="tin" type="password" @bind="accPassword" />
+                        @if (accErrPass)
+                        {
+                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> رمز عبور الزامی است</div>
+                        }
+                    </div>
+                </div>
+                <div class="fcard">
+                    <label>نام نمایشی فرستنده <span class="opt">اختیاری — مثلا «دبیرخانه شرکت»</span></label>
+                    <input class="tin" @bind="accDisplayName" />
+                </div>
+                <div class="row2">
+                    <div class="fcard">
+                        <label>سرور SMTP <span class="req">*</span></label>
+                        <input class="tin" placeholder="smtp.gmail.com" @bind="accSmtp" />
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <div class="fcard" style="flex:1">
+                            <label>پورت SMTP</label>
+                            <input class="tin num" @bind="accSmtpPort" />
+                        </div>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:16px;cursor:pointer">
+                            <input type="checkbox" @bind="accSmtpSsl" /> امن (SSL/TLS)
+                        </label>
+                    </div>
+                </div>
+                <div class="row2">
+                    <div class="fcard">
+                        <label>سرور IMAP <span class="opt">برای دریافت</span></label>
+                        <input class="tin" placeholder="imap.gmail.com" @bind="accImap" />
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center">
+                        <div class="fcard" style="flex:1">
+                            <label>پورت IMAP</label>
+                            <input class="tin num" @bind="accImapPort" />
+                        </div>
+                        <label style="display:flex;align-items:center;gap:5px;font-size:12px;margin-top:16px;cursor:pointer">
+                            <input type="checkbox" @bind="accImapSsl" /> امن (SSL)
+                        </label>
+                    </div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:14px;margin:4px 0 8px">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
+                        <input type="checkbox" @bind="accIsActive" /> حساب فعال باشد
+                    </label>
+                    @if (CanManageDabirkhane)
+                    {
+                        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
+                            <input type="checkbox" @bind="accIsDabirkhane" />
+                            <b>📮 حساب رسمی دبیرخانه</b> <span style="color:#64748b">(جدا از ایمیل شخصی — برای ارسال نامه صادره)</span>
+                        </label>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(testMessage))
+                {
+                    <div class="@(testOk ? "" : "ferr")" style="@(testOk ? "background:#dcfce7;border:1px solid #86efac;color:#166534;border-radius:8px;padding:8px 10px;font-size:12.5px" : "")">
+                        @(testOk ? "✓ " : "")@testMessage
+                    </div>
+                }
+            </div>
+            <div class="sheet-f">
+                <button class="lbtn ghost" disabled="@accBusy" @onclick="TestAccount"><i class="bi bi-plug"></i> تست اتصال</button>
+                <span class="spacer"></span>
+                <button class="lbtn red" @onclick="() => accOpen = false">انصراف</button>
+                <button class="lbtn pri" disabled="@accBusy" @onclick="SaveAccount">
+                    @if (accBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                    <i class="bi bi-check-lg"></i> ذخیره
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool loading = true;
+    private bool syncing;
+    private string tab = "inbox";
+    private string search = "";
+    private int accFilter;
+
+    private List<EmailAccountDto> accounts = new();
+    private List<EmailMessageListItemDto> messages = new();
+    private EmailMessageDetailDto? openMsg;
+    private int openId;
+    private string openBox = "";
+    private int unreadCount;
+
+    private bool CanManageDabirkhane => Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Email.Delete");
+
+    // ---------- بایگانی ----------
+    private List<EmailFolderDto> folders = new();
+    private bool archOpen;
+    private int archFolderId;
+    private string newFolderTitle = "";
+    private int newFolderType;
+
+    private async Task AddFolder()
+    {
+        if (string.IsNullOrWhiteSpace(newFolderTitle)) { Toast.Error("نام پوشه را وارد کنید."); return; }
+        try
+        {
+            await EmailSvc.SaveFolderAsync(new SaveEmailFolderDto { Title = newFolderTitle.Trim(), TypeEmail = newFolderType });
+            newFolderTitle = "";
+            folders = await EmailSvc.GetFoldersAsync();
+            Toast.Success("پوشه ایجاد شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeleteFolder(EmailFolderDto f)
+    {
+        try
+        {
+            await EmailSvc.DeleteFolderAsync(f.EmailFolderId);
+            folders = await EmailSvc.GetFoldersAsync();
+            Toast.Success("پوشه حذف شد.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ---------- مودال ارسال ----------
+    private bool composeOpen;
+    private bool cpBusy, cpErrTo, cpErrSubject;
+    private int cpAccountId;
+    private string cpTo = "", cpCc = "", cpSubject = "", cpBody = "";
+    private List<EmailOutAttachment> cpFiles = new();
+    private EmailMessageListItemDto? composeReplyTo;
+
+    // ---------- مودال حساب ----------
+    private bool accOpen;
+    private bool accBusy, accErrAddr, accErrPass;
+    private int accEditId;
+    private string accType = "Gmail", accAddress = "", accPassword = "", accSmtp = "", accImap = "";
+    private int accSmtpPort = 587, accImapPort = 993;
+    private bool accSmtpSsl = true, accImapSsl = true, accIsActive = true, accIsDabirkhane;
+    private string? accDisplayName, presetHint, testMessage;
+    private bool testOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("ایمیل سازمانی");
+        await LoadAccountsAsync();
+        await ReloadAsync();
+    }
+
+    public void Dispose() { }
+
+    private async Task SetTab(string t)
+    {
+        tab = t; openMsg = null; openId = 0; openBox = ""; archOpen = false;
+        if (t == "accounts") await LoadAccountsAsync();
+        if (t == "archive" && folders.Count == 0) { try { folders = await EmailSvc.GetFoldersAsync(); } catch { } }
+        await ReloadAsync();
+    }
+
+    private async Task LoadAccountsAsync()
+    {
+        try
+        {
+            accounts = await EmailSvc.GetAccountsAsync();
+            if (cpAccountId == 0 && accounts.Any(x => x.IsActive))
+                cpAccountId = accounts.First(x => x.IsActive).EmailId;
+            if (accFilter > 0 && accounts.All(x => x.EmailId != accFilter)) accFilter = 0;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ReloadAsync()
+    {
+        loading = true;
+        try
+        {
+                if (tab == "archive")
+            {
+                // همه ایمیل‌های بایگانی‌شده (دریافتی + ارسالی در پوشه‌ها)
+                var inbox = await EmailSvc.GetInboxAsync(accFilter, null, null, -1);
+                var sent = await EmailSvc.GetSentAsync(accFilter, null, -1);
+                messages = inbox.Concat(sent).OrderByDescending(x => x.Date).ToList();
+            }
+            else if (tab == "sent")
+            {
+                messages = await EmailSvc.GetSentAsync(accFilter, search);
+            }
+            else
+            {
+                var list = await EmailSvc.GetInboxAsync(accFilter, search);
+                messages = tab == "starred" ? list.Where(x => x.IsNeshan).ToList() : list;
+                unreadCount = list.Count(x => !x.IsRead);
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task SyncNow()
+    {
+        if (accFilter <= 0) { Toast.Error("ابتدا یک حساب انتخاب کنید."); return; }
+        syncing = true;
+        try
+        {
+            var r = await EmailSvc.SyncAsync(accFilter);
+            Toast.Success(r.Message);
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { syncing = false; }
+    }
+
+    // ==================== پیام‌ها ====================
+
+    private async Task OpenMessage(EmailMessageListItemDto m)
+    {
+        try
+        {
+            if (folders.Count == 0)
+            {
+                try { folders = await EmailSvc.GetFoldersAsync(); } catch { }
+            }
+            openMsg = await EmailSvc.GetMessageAsync(m.Box, m.Id);
+            openId = m.Id; openBox = m.Box; archOpen = false;
+            archFolderId = openMsg.IsInFolder;
+            if (!m.IsRead && m.Box == "Inbox") { m.IsRead = true; unreadCount = Math.Max(0, unreadCount - 1); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ToggleStar()
+    {
+        if (openMsg == null) return;
+        try
+        {
+            openMsg.IsNeshan = await EmailSvc.ToggleNeshanAsync(openMsg.Box, openMsg.Id);
+            var m = messages.FirstOrDefault(x => x.Id == openMsg.Id && x.Box == openMsg.Box);
+            if (m != null) m.IsNeshan = openMsg.IsNeshan;
+            if (tab == "starred" && !openMsg.IsNeshan) await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ArchiveCurrent()
+    {
+        if (openMsg == null) return;
+        try
+        {
+            await EmailSvc.ArchiveAsync(openMsg.Box, openMsg.Id, archFolderId);
+            Toast.Success(archFolderId > 0 ? "ایمیل بایگانی شد." : "از بایگانی خارج شد.");
+            archOpen = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== ارسال ====================
+
+    private void OpenCompose()
+    {
+        composeReplyTo = null;
+        cpTo = cpCc = cpSubject = cpBody = "";
+        cpErrTo = cpErrSubject = false;
+        cpFiles.Clear();
+        _pendingBrowser.Clear();
+        if (accounts.Any(x => x.IsActive)) cpAccountId = accounts.First(x => x.IsActive).EmailId;
+        composeOpen = true;
+    }
+
+    private void ReplyTo()
+    {
+        if (openMsg == null) return;
+        composeReplyTo = openMsg;
+        cpAccountId = openMsg.EmailId;
+        cpTo = openMsg.FromOrTo;
+        cpCc = ""; cpBody = "";
+        cpSubject = openMsg.Subject.StartsWith("پاسخ:", StringComparison.OrdinalIgnoreCase) ? openMsg.Subject : "پاسخ: " + openMsg.Subject;
+        cpErrTo = cpErrSubject = false;
+        cpFiles.Clear();
+        _pendingBrowser.Clear();
+        composeOpen = true;
+    }
+
+    private List<Microsoft.AspNetCore.Components.Forms.IBrowserFile> _pendingBrowser = new();
+
+    private void OnComposeFiles(InputFileChangeEventArgs e)
+    {
+        foreach (var f in e.GetMultipleFiles(20))
+        {
+            if (f.Size <= 0 || f.Size > 20L * 1024 * 1024)
+            {
+                Toast.Error($"فایل {f.Name} پذیرفته نشد (حداکثر ۲۰ مگابایت).");
+                continue;
+            }
+            _pendingBrowser.Add(f);
+        }
+    }
+
+    private async Task SubmitCompose()
+    {
+        cpErrTo = string.IsNullOrWhiteSpace(cpTo);
+        cpErrSubject = string.IsNullOrWhiteSpace(cpSubject);
+        if (cpErrTo || cpErrSubject) { Toast.Error("گیرنده و موضوع الزامی است."); return; }
+        if (cpAccountId <= 0) { Toast.Error("حساب فرستنده را انتخاب کنید."); return; }
+
+        cpBusy = true;
+        try
+        {
+            var files = new List<EmailOutAttachment>();
+            foreach (var bf in _pendingBrowser)
+            {
+                try
+                {
+                    await using var s = bf.OpenReadStream(20L * 1024 * 1024);
+                    using var ms = new MemoryStream();
+                    await s.CopyToAsync(ms);
+                    files.Add(new EmailOutAttachment(bf.Name, bf.ContentType, ms.ToArray()));
+                }
+                catch (Exception ex) { Toast.Error($"خواندن {bf.Name}: {ex.Message}"); }
+            }
+            await EmailSvc.SendAsync(cpAccountId, cpTo, cpCc, cpSubject, cpBody, files);
+            Toast.Success("ایمیل ارسال شد.");
+            composeOpen = false;
+            _pendingBrowser.Clear();
+            cpFiles.Clear();
+            if (tab == "sent") await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { cpBusy = false; }
+    }
+
+    // ==================== حساب‌ها ====================
+
+    private static string PresetTitle(string t) => t switch
+    {
+        "Gmail" => "جیمیل",
+        "Yahoo" => "یاهو",
+        "Outlook" => "اوت‌لوک / Office365",
+        "Webmail" => "وب‌میل (هاست/سازمان)",
+        _ => "سفارشی"
+    };
+
+    private void ApplyPreset(string type)
+    {
+        accType = type;
+        testMessage = null;
+        var preset = OtoEmailPresets.Find(type);
+        if (preset != null)
+        {
+            if (type != "Custom")
+            {
+                accSmtp = preset.Smtp; accSmtpPort = preset.SmtpPort; accSmtpSsl = preset.SmtpSsl;
+                accImap = preset.Imap; accImapPort = preset.ImapPort; accImapSsl = preset.ImapSsl;
+            }
+            presetHint = preset.Hint;
+        }
+    }
+
+    private void OpenAccountEditor(EmailAccountDto? a)
+    {
+        accErrAddr = accErrPass = false;
+        testMessage = null;
+        if (a == null)
+        {
+            accEditId = 0;
+            accAddress = accPassword = ""; accDisplayName = null;
+            accIsActive = true; accIsDabirkhane = false;
+            ApplyPreset("Gmail");
+        }
+        else
+        {
+            accEditId = a.EmailId;
+            accAddress = a.EmailAddress; accPassword = "";
+            accType = string.IsNullOrWhiteSpace(a.EmailType) ? "Custom" : a.EmailType;
+            accSmtp = a.Smtp; accSmtpPort = a.SmtpPort; accSmtpSsl = a.SmtpSsl;
+            accImap = a.Imap; accImapPort = a.ImapPort; accImapSsl = a.ImapSsl;
+            accDisplayName = a.DisplayName; accIsActive = a.IsActive; accIsDabirkhane = a.IsDabirkhane;
+            presetHint = OtoEmailPresets.Find(accType)?.Hint;
+        }
+        accOpen = true;
+    }
+
+    private SaveEmailAccountDto BuildDto() => new()
+    {
+        EmailId = accEditId,
+        EmailAddress = accAddress?.Trim() ?? "",
+        Password = accPassword,
+        EmailType = accType,
+        Smtp = accSmtp?.Trim() ?? "",
+        SmtpPort = accSmtpPort,
+        SmtpSsl = accSmtpSsl,
+        Imap = accImap?.Trim() ?? "",
+        ImapPort = accImapPort,
+        ImapSsl = accImapSsl,
+        DisplayName = accDisplayName,
+        IsActive = accIsActive,
+        IsDabirkhane = accIsDabirkhane
+    };
+
+    private async Task TestAccount()
+    {
+        accErrAddr = string.IsNullOrWhiteSpace(accAddress);
+        accErrPass = accEditId == 0 && string.IsNullOrWhiteSpace(accPassword);
+        if (accErrAddr || accErrPass) return;
+        accBusy = true;
+        try
+        {
+            var r = await EmailSvc.TestAccountAsync(BuildDto());
+            testOk = r.SmtpOk && r.ImapOk;
+            testMessage = r.Message;
+        }
+        catch (Exception ex) { testOk = false; testMessage = ex.Message; }
+        finally { accBusy = false; }
+    }
+
+    private async Task SaveAccount()
+    {
+        accErrAddr = string.IsNullOrWhiteSpace(accAddress);
+        accErrPass = accEditId == 0 && string.IsNullOrWhiteSpace(accPassword);
+        if (accErrAddr || accErrPass) { Toast.Error("موارد الزامی را تکمیل کنید."); return; }
+        accBusy = true;
+        try
+        {
+            await EmailSvc.SaveAccountAsync(BuildDto());
+            Toast.Success("حساب ایمیل ذخیره شد.");
+            accOpen = false;
+            await LoadAccountsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { accBusy = false; }
+    }
+
+    private async Task DeleteAccount(EmailAccountDto a)
+    {
+        try
+        {
+            await EmailSvc.DeleteAccountAsync(a.EmailId);
+            Toast.Success("حساب حذف شد.");
+            await LoadAccountsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private RenderFragment AccountRow(EmailAccountDto a) => @<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+        <i class="bi @(a.IsDabirkhane ? "bi-mailbox" : "bi-person-badge")" style="color:var(--p2);font-size:18px"></i>
+        <div style="flex:1;min-width:200px">
+            <div style="font-weight:700;font-size:13.5px">@a.EmailAddress @if (!a.IsActive) { <span class="tg gray">غیرفعال</span> }</div>
+            <div style="font-size:12px;color:#64748b;display:flex;gap:10px;flex-wrap:wrap;margin-top:2px">
+                <span>@PresetTitleSafe(a.EmailType)</span>
+                <span>SMTP: @(string.IsNullOrWhiteSpace(a.Smtp) ? "—" : a.Smtp + ":" + a.SmtpPort)</span>
+                <span>IMAP: @(string.IsNullOrWhiteSpace(a.Imap) ? "—" : a.Imap + ":" + a.ImapPort)</span>
+                @if (a.LastSync is { } ls) { <span>آخرین دریافت: @ls.ToFaDateTime()</span> }
+                @if (!a.IsMine) { <span>مالک: @a.UserName</span> }
+            </div>
+        </div>
+        @if (a.IsMine && Auth.Has("Email.Create"))
+        {
+            <button class="lbtn ghost" @onclick="() => OpenAccountEditor(a)"><i class="bi bi-pencil-square"></i> ویرایش</button>
+        }
+        @if (a.IsMine && Auth.Has("Email.Delete"))
+        {
+            <button class="lbtn red" @onclick="() => DeleteAccount(a)"><i class="bi bi-trash"></i></button>
+        }
+    </div>;
+
+    private static string PresetTitleSafe(string t) => OtoEmailPresets.Title(t);
+
+    private static string FmtSize(long b) =>
+        b >= 1024 * 1024 ? $"{b / 1024.0 / 1024.0:0.#} مگابایت".FaDigits()
+        : b >= 1024 ? $"{b / 1024} کیلوبایت".FaDigits()
+        : $"{b} بایت".FaDigits();
+}

@@ -2,6 +2,7 @@ using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Services;
+using Inventory.Api.Services.Office.Email;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
@@ -31,6 +32,7 @@ public interface IOutgoingLetterService
     Task UpdateStatusAsync(int letterId, int newStatus, int userId, bool isAdmin);
     Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId);
     Task SignAsync(int letterId, int userId, string? signNote);
+    Task<bool> ToggleLetterNeshanAsync(int letterId, int userId);
     Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search);
 
     // ==================== دبیرخانه نامه صادره ====================
@@ -46,13 +48,15 @@ public class OutgoingLetterService : IOutgoingLetterService
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
     private readonly ILetterStratureService _strature;
+    private readonly IEmailService _email;
 
-    public OutgoingLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature)
+    public OutgoingLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups, ILetterStratureService strature, IEmailService email)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
         _strature = strature;
+        _email = email;
     }
 
     private async Task<int> NextNumberAsync()
@@ -565,6 +569,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 Title = l.Title,
                 Sender = "",
                 SenderUserId = l.CreatorUserId,
+                IsNeshan = l.IsNeshan,
                 ReceiverOrganization = l.ReceiverOrganization,
                 ReceiverName = l.ReceiverName,
                 Date = l.DateSabt,
@@ -641,6 +646,8 @@ public class OutgoingLetterService : IOutgoingLetterService
             DestRegNumber = letter.DestRegNumber,
             SendMethod = letter.SendMethod,
             DabirkhaneNote = letter.DabirkhaneNote,
+            DestEmail = letter.DestEmail,
+            IsNeshan = letter.IsNeshan,
             CanEdit = isAdmin || (isMine && !erjas.Any(e => e.IsRead) && signers.All(s => !s.IsSigned)),
             IsSigner = mySigner != null,
             CanSign = mySigner != null && !mySigner.IsSigned
@@ -995,6 +1002,11 @@ public class OutgoingLetterService : IOutgoingLetterService
         if (newStatus < 0 || newStatus > 3)
             throw new Exception("وضعیت نامعتبر است.");
 
+        // درخواست کارفرما: گزینه «صادره شده» از دراپ‌داون حذف شد —
+        // وضعیت 3 فقط به‌صورت خودکار بعد از امضای همه امضاکنندگان ثبت می‌شود.
+        if (newStatus == 3)
+            throw new Exception("وضعیت «صادر شده» به‌صورت دستی قابل انتخاب نیست و فقط با امضای نامه ثبت می‌شود.");
+
         letter.Status = newStatus;
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("outgoing-letters");
@@ -1067,6 +1079,23 @@ public class OutgoingLetterService : IOutgoingLetterService
             senderName, "نامه صادره", $"outgoing-letters/view/{letterId}");
 
         await _notify.BroadcastChangedAsync("outgoing-letters");
+    }
+
+    /// <summary>
+    /// نشان‌کردن/برداشتن نشان (ستاره) نامه صادره توسط فرستنده — مشابه ToggleLetterNeshan نامه داخلی.
+    /// نشان گیرندگان داخلی روی Erja.IsNeshan است؛ این متد برای سمت «ارسالی/صادره» است.
+    /// </summary>
+    public async Task<bool> ToggleLetterNeshanAsync(int letterId, int userId)
+    {
+        var letter = await _db.OutgoingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
+            ?? throw new Exception("نامه پیدا نشد.");
+        if (letter.CreatorUserId != userId)
+            throw new Exception("فقط فرستنده نامه می‌تواند آن را نشان کند.");
+
+        letter.IsNeshan = !letter.IsNeshan;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+        return letter.IsNeshan;
     }
 
     public async Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search)
@@ -1151,7 +1180,8 @@ public class OutgoingLetterService : IOutgoingLetterService
                 DateDabirkhane = l.DateDabirkhane,
                 DestRegNumber = l.DestRegNumber,
                 SendMethod = l.SendMethod,
-                DabirkhaneNote = l.DabirkhaneNote
+                DabirkhaneNote = l.DabirkhaneNote,
+                DestEmail = l.DestEmail
             })
             .ToListAsync();
 
@@ -1212,23 +1242,48 @@ public class OutgoingLetterService : IOutgoingLetterService
         if (string.IsNullOrWhiteSpace(dto.SendMethod))
             throw new Exception("روش ارسال نامه الزامی است.");
 
+        bool byEmail = dto.SendByEmail || string.Equals(dto.SendMethod?.Trim(), "ایمیل", StringComparison.OrdinalIgnoreCase);
+        string? destEmail = dto.DestEmail?.Trim();
+
         letter.DabirkhaneSabt = true;
         letter.DabirkhaneUserId = userId;
         letter.DateDabirkhane ??= DateTime.Now;
         letter.DestRegNumber = dto.DestRegNumber?.Trim();
         letter.SendMethod = dto.SendMethod.Trim();
         letter.DabirkhaneNote = dto.Note?.Trim();
+        if (byEmail) letter.DestEmail = destEmail;
 
         await _db.SaveChangesAsync();
+
+        // ==================== ارسال نامه با پست الکترونیک ====================
+        // دبیرخانه نامه امضا شده را (PDF روی سربرگ + پیوست‌ها) به ایمیل مقصد می‌فرستد.
+        // اگر ارسال ایمیل ناموفق باشد، ثبت دبیرخانه حفظ می‌شود اما خطا به کاربر نمایش داده می‌شود.
+        string? emailError = null;
+        if (byEmail)
+        {
+            try
+            {
+                await _email.SendLetterEmailAsync(letterId, dto, userName);
+            }
+            catch (Exception ex)
+            {
+                emailError = ex.Message;
+            }
+        }
 
         // اطلاع به ایجادکننده نامه
         await _notify.SendAsync(letter.CreatorUserId,
             $"نامه صادره در دبیرخانه ثبت شد: {letter.Title}",
             $"شماره صادره: {letter.SadereNumber} — روش ارسال: {letter.SendMethod}" +
-            (string.IsNullOrWhiteSpace(letter.DestRegNumber) ? "" : $" — شماره ثبت مقصد: {letter.DestRegNumber}"),
+            (string.IsNullOrWhiteSpace(letter.DestRegNumber) ? "" : $" — شماره ثبت مقصد: {letter.DestRegNumber}") +
+            (byEmail && emailError == null && !string.IsNullOrWhiteSpace(destEmail) ? $" — ارسال با ایمیل به {destEmail}" : "") +
+            (emailError != null ? $" — ⚠️ ارسال ایمیل ناموفق: {emailError}" : ""),
             userName, "دبیرخانه صادره", $"outgoing-letters/view/{letterId}");
 
         await _notify.BroadcastChangedAsync("outgoing-letters");
+
+        if (emailError != null)
+            throw new Exception($"نامه در دبیرخانه ثبت شد اما ارسال ایمیل ناموفق بود: {emailError}");
     }
 
     /// <summary>شرکت‌های فعال برای انتخاب سربرگ نامه صادره</summary>

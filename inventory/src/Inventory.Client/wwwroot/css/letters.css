@@ -556,3 +556,14 @@
     .ltx .arv-bar { flex-wrap:wrap; }
     .ltx .arv-menu { min-width:200px; }
 }
+
+
+/* ============================================================
+   گردش کار دستور کار — ایستگاه‌ها و وضعیت‌های انجام‌نشده
+   (هم‌خوان با استایل گردش نامه در همین فایل)
+   ============================================================ */
+.ltx .gtree .tst.r { background:#fee2e2; color:#b91c1c; }
+.ltx .fcwrap .fnode.no { border-color:#fca5a5; }
+.ltx .fcwrap .fdot.r { background:#ef4444; }
+.wo-gd-station { border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:8px; background:#fff; }
+.wo-gd-station.done { background:#f0fdf4; border-color:#86efac; }

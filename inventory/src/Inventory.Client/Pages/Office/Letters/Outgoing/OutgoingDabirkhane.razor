@@ -1,5 +1,6 @@
 @page "/outgoing-letters/dabirkhane"
 @inject IOutgoingLetterService OutgoingSvc
+@inject IEmailClientService EmailSvc
 @inject IToastService Toast
 @inject NavigationManager Nav
 @inject LayoutState Layout
@@ -90,6 +91,7 @@
                                     <span class="tg green"><i class="bi bi-patch-check-fill"></i> ثبت شده</span>
                                     @if (!string.IsNullOrWhiteSpace(ll.SendMethod)) { <span><b>روش ارسال:</b> @ll.SendMethod</span> }
                                     @if (!string.IsNullOrWhiteSpace(ll.DestRegNumber)) { <span><b>شماره ثبت مقصد:</b> <span class="num">@ll.DestRegNumber.FaDigits()</span></span> }
+                                    @if (!string.IsNullOrWhiteSpace(ll.DestEmail)) { <span><b>ارسال با ایمیل به:</b> @ll.DestEmail</span> }
                                     @if (ll.DateDabirkhane is { } dd) { <span><b>تاریخ ثبت:</b> @dd.ToFaDateTime()</span> }
                                     @if (!string.IsNullOrWhiteSpace(ll.DabirkhaneUserName)) { <span><b>توسط:</b> @ll.DabirkhaneUserName</span> }
                                 </div>
@@ -137,7 +139,7 @@
 
                 <div class="fcard @(errMethod ? "err" : "")">
                     <label>روش ارسال نامه <span class="req">*</span></label>
-                    <select class="tin" @bind="regMethod">
+                    <select class="tin" @bind="regMethod" @bind:after="OnMethodChanged">
                         <option value="">— انتخاب روش ارسال —</option>
                         @foreach (var m in LetterSendMethods.All)
                         {
@@ -153,6 +155,47 @@
                 <div class="fcard">
                     <label>شماره ثبت مقصد <span class="opt">شماره‌ای که دبیرخانه سازمان مقصد به نامه داده</span></label>
                     <input class="tin" placeholder="مثلاً 1404/د-321…" @bind="regDestNumber" />
+                </div>
+
+                @* ---------- ارسال با پست الکترونیک ---------- *@
+                <div class="fcard" style="background:#f8fafc;border:1px dashed #cbd5e1">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                        <input type="checkbox" @bind="regSendByEmail" />
+                        <b><i class="bi bi-envelope-at" style="color:var(--p2)"></i> ارسال نامه با پست الکترونیک</b>
+                    </label>
+                    @if (regSendByEmail)
+                    {
+                        <div style="margin-top:10px;display:grid;gap:10px">
+                            <div>
+                                <label>آدرس ایمیل مقصد <span class="req">*</span></label>
+                                <input class="tin @(regEmailError ? "err" : "")" placeholder="مثلا office@target-org.ir…" @bind="regDestEmail" />
+                                @if (regEmailError)
+                                {
+                                    <div class="ferr"><i class="bi bi-exclamation-circle"></i> آدرس ایمیل مقصد الزامی است</div>
+                                }
+                            </div>
+                            <div>
+                                <label>حساب ایمیل دبیرخانه <span class="opt">ایمیل رسمی دبیرخانه — جدا از ایمیل شخصی</span></label>
+                                <select class="tin" @bind="regEmailAccountId">
+                                    @if (dabirAccounts.Count == 0)
+                                    {
+                                        <option value="0">— هیچ حساب دبیرخانه‌ای ثبت نشده —</option>
+                                    }
+                                    @foreach (var a in dabirAccounts)
+                                    {
+                                        <option value="@a.EmailId">@a.EmailAddress @(string.IsNullOrWhiteSpace(a.DisplayName) ? "" : $"({a.DisplayName})")</option>
+                                    }
+                                </select>
+                                @if (dabirAccounts.Count == 0)
+                                {
+                                    <div class="ferr"><i class="bi bi-info-circle"></i> ابتدا از بخش «ایمیل سازمانی ← حساب دبیرخانه» یک حساب رسمی اضافه کنید.</div>
+                                }
+                                <div style="font-size:12px;color:#64748b;margin-top:6px">
+                                    <i class="bi bi-info-circle"></i> PDF نامه روی سربرگ شرکت به‌همراه پیوست‌های نامه ایمیل می‌شود.
+                                </div>
+                            </div>
+                        </div>
+                    }
                 </div>
 
                 <div class="fcard">
@@ -186,6 +229,13 @@
     private string? regDestNumber;
     private string? regNote;
     private bool errMethod, busy;
+
+    // ارسال با پست الکترونیک
+    private bool regSendByEmail;
+    private string? regDestEmail;
+    private int regEmailAccountId;
+    private bool regEmailError;
+    private List<EmailAccountDto> dabirAccounts = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -245,7 +295,36 @@
         regDestNumber = l.DestRegNumber;
         regNote = l.DabirkhaneNote;
         errMethod = false;
+
+        // پیش‌فرض‌های ارسال با پست الکترونیک
+        regSendByEmail = string.Equals(regMethod, "ایمیل", StringComparison.OrdinalIgnoreCase);
+        regDestEmail = l.DestEmail;
+        regEmailError = false;
+        regEmailAccountId = 0;
         regOpen = true;
+        _ = LoadDabirkhaneAccountsAsync();
+    }
+
+    private async Task LoadDabirkhaneAccountsAsync()
+    {
+        try
+        {
+            dabirAccounts = await EmailSvc.GetDabirkhaneAccountsAsync();
+            if (regEmailAccountId == 0 && dabirAccounts.Count > 0)
+                regEmailAccountId = dabirAccounts[0].EmailId;
+            StateHasChanged();
+        }
+        catch { dabirAccounts = new(); }
+    }
+
+    /// <summary>انتخاب «ایمیل» در روش ارسال، بخش ارسال با پست الکترونیک را خودکار فعال می‌کند</summary>
+    private void OnMethodChanged()
+    {
+        if (string.Equals(regMethod, "ایمیل", StringComparison.OrdinalIgnoreCase))
+        {
+            regSendByEmail = true;
+            StateHasChanged();
+        }
     }
 
     private void CloseRegister() { regOpen = false; regItem = null; }
@@ -256,6 +335,16 @@
         errMethod = string.IsNullOrWhiteSpace(regMethod);
         if (errMethod) { Toast.Error("روش ارسال نامه را انتخاب کنید."); return; }
 
+        // اگر روش ارسال «ایمیل» است، ارسال با پست الکترونیک اجباری و ایمیل مقصد الزامی است
+        bool byEmail = regSendByEmail || string.Equals(regMethod, "ایمیل", StringComparison.OrdinalIgnoreCase);
+        regEmailError = byEmail && string.IsNullOrWhiteSpace(regDestEmail);
+        if (regEmailError) { Toast.Error("آدرس ایمیل مقصد را وارد کنید."); return; }
+        if (byEmail && regEmailAccountId == 0)
+        {
+            Toast.Error("حساب ایمیل دبیرخانه ثبت نشده است — از بخش «ایمیل سازمانی» حساب رسمی دبیرخانه را اضافه کنید.");
+            return;
+        }
+
         busy = true;
         try
         {
@@ -263,9 +352,12 @@
             {
                 SendMethod = regMethod,
                 DestRegNumber = regDestNumber?.Trim(),
-                Note = regNote?.Trim()
+                Note = regNote?.Trim(),
+                SendByEmail = byEmail,
+                DestEmail = byEmail ? regDestEmail?.Trim() : null,
+                EmailAccountId = byEmail && regEmailAccountId > 0 ? regEmailAccountId : null
             });
-            Toast.Success("نامه در دبیرخانه ثبت شد.");
+            Toast.Success(byEmail ? "نامه در دبیرخانه ثبت و با ایمیل ارسال شد." : "نامه در دبیرخانه ثبت شد.");
             regOpen = false;
             regItem = null;
             await ReloadAsync();

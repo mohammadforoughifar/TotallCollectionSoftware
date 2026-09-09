@@ -177,7 +177,7 @@
     }
 
     @* ============ اتوماسیون اداری ============ *@
-    @if (Auth.HasModule("InnerLetters") || Auth.HasModule("OutgoingLetters"))
+    @if (Auth.HasModule("InnerLetters") || Auth.HasModule("OutgoingLetters") || Auth.HasModule("Email"))
     {
         <div class="nav-group group-letters">
             <button type="button" class="nav-section-title nav-toggle @(gLetters ? "open" : "")" @onclick="() => gLetters = !gLetters">
@@ -208,6 +208,12 @@
                                 <i class="bi bi-mailbox"></i><span>دبیرخانه نامه صادره</span>
                             </NavLink>
                         }
+                    }
+                    @if (Auth.HasModule("Email"))
+                    {
+                        <NavLink class="nav-link" href="office/email" @onclick="NotifyClose">
+                            <i class="bi bi-envelope-at"></i><span>ایمیل سازمانی</span>
+                        </NavLink>
                     }
                 </div>
             }
