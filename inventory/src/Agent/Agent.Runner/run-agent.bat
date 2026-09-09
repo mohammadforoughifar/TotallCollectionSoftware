@@ -34,7 +34,7 @@ echo [i] ایجنت شروع می‌شود... اگر پنجره ماندگار �
 echo     برای خروج Ctrl+C بزنید.
 echo.
 
-dotnet Agent.Console.dll
+dotnet Agent.Runner.dll
 echo.
 echo ─────────────────────────────────────────────
 pause
