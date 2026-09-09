@@ -216,6 +216,22 @@ public class DocFoldersController : RbacControllerBase
 
         entity.IsPublic = dto.IsPublic;
         entity.PublicCanDownload = dto.PublicCanDownload;
+
+        // محافظ: کاربرِ دارای «دسترسی کامل» نباید خودش را از فهرست حذف کند و پوشه را
+        // بدون مدیرِ دارای Full رها کند (تا پوشه برای همیشه «قفل» نشود).
+        dto.Items ??= new List<DocPermissionDto>();
+        var roleIdsForMe = await Db.UserRoles.AsNoTracking()
+            .Where(ur => ur.UserId == MyUserId)
+            .Select(ur => ur.RoleId)
+            .ToListAsync();
+        var hasFullForMe = dto.Items.Any(p =>
+            (p.RoleId == 0 && p.UserId == MyUserId && p.Level == DocAccessLevelDto.Full)
+         || (p.RoleId != 0 && p.Level == DocAccessLevelDto.Full && roleIdsForMe.Contains(p.RoleId)));
+        if (!hasFullForMe)
+        {
+            dto.Items.Add(new DocPermissionDto { UserId = MyUserId, RoleId = 0, Level = DocAccessLevelDto.Full, CanDownload = true });
+        }
+
         await SavePermissionsAsync(id, dto.Items);
         return Ok();
     }

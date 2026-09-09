@@ -199,8 +199,16 @@ public class DocSearchController : RbacControllerBase
         var ids = docs.Select(d => d.Id).ToList();
 
         var folders = await Db.DocFolders.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
+        // دسترسی مستقیم مدرک: ردیف فردی + گروهیِ نقش‌های کاربر — بدون نقش‌ها، جستجو
+        // مدارکی که کاربر از طریق «گروه/نقش» به آن‌ها دسترسی دارد را برنمی‌گرداند.
+        var roleIds = await Db.UserRoles.AsNoTracking()
+            .Where(r => r.UserId == MyUserId)
+            .Select(r => r.RoleId)
+            .ToListAsync();
         var directPerms = await Db.DocumentPermissions.AsNoTracking()
-            .Where(p => ids.Contains(p.DocumentId) && p.UserId == MyUserId).ToListAsync();
+            .Where(p => ids.Contains(p.DocumentId) &&
+                        (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
+            .ToListAsync();
         var versions = await Db.DocumentVersions.AsNoTracking().Where(v => ids.Contains(v.DocumentId)).ToListAsync();
         var links = await Db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId))
             .GroupBy(l => l.DocumentId).Select(g => new { g.Key, C = g.Count() })
