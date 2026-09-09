@@ -331,6 +331,15 @@ public class DocumentsController : RbacControllerBase
                 UserName = l.UserName, CreatedAt = l.CreatedAt, VersionId = l.VersionId
             }).ToListAsync();
 
+        // کاربر بدون «دسترسی کامل» نباید بفهمد چه کسانی/چه گروه‌هایی روی این مدرک دسترسی
+        // دارند یا چه کسی درخواست دسترسی داده است؛ این رویدادها فقط برای دارندگان دسترسی کامل
+        // (و مدیر آرشیو) نمایش داده می‌شوند.
+        if (level < DocAccessLevel.Full)
+        {
+            string[] hiddenActions = { "Permissions", "AccessRequest", "AccessRequestApproved", "AccessRequestRejected" };
+            dto.Logs = dto.Logs.Where(l => !hiddenActions.Contains(l.Action)).ToList();
+        }
+
         return Ok(dto);
     }
 
@@ -359,6 +368,12 @@ public class DocumentsController : RbacControllerBase
         var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, id);
         if (lvl < DocAccessLevel.Write)
             return StatusCode(403, new { message = "ویرایش مدرک نیازمند دسترسی نوشتن است." });
+
+        // مدیریت دسترسی فقط با «دسترسی کامل» ممکن است. کاربر بدون دسترسی کامل حتی با
+        // ارسال دستی فهرست دسترسی‌ها نمی‌تواند دسترسی‌های موجود را پاک یا تغییر دهد:
+        // null یعنی «دست نزن» (در سرویس، ردیف‌های موجود حفظ می‌شوند).
+        if (lvl < DocAccessLevel.Full)
+            dto.Permissions = null!;
 
         await _svc.UpdateDocumentAsync(id, dto, MyUserId, MyUsername);
         return Ok();

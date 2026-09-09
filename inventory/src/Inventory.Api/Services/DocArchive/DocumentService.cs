@@ -273,8 +273,16 @@ public class DocumentService : IDocumentService
         throw new Exception("تخصیص خودکار کد مدرک به‌خاطر تداخل هم‌زمانی ناموفق بود؛ دوباره تلاش کنید.");
     }
 
-    private async Task SaveDocPermissionsAsync(int documentId, List<DocPermissionDto> items)
+    /// <summary>
+    /// ذخیره دسترسی‌های اختصاصی مدرک.
+    /// اگر <paramref name="items"/> برابر null باشد یعنی «فهرست دسترسی‌ها ارسال نشده» و
+    /// ردیف‌های موجود دست‌نخورده باقی می‌مانند (مثلاً کاربری که دسترسی کامل ندارد و
+    /// اجازه مدیریت دسترسی ندارد). فهرست خالی (نه null) یعنی حذف همه دسترسی‌ها.
+    /// </summary>
+    private async Task SaveDocPermissionsAsync(int documentId, List<DocPermissionDto>? items)
     {
+        if (items == null) return;
+
         var old = await _db.DocumentPermissions.Where(p => p.DocumentId == documentId).ToListAsync();
         _db.DocumentPermissions.RemoveRange(old);
 

@@ -78,30 +78,36 @@ public class DocFoldersController : RbacControllerBase
         var (level, dl) = await _access.FolderAccessAsync(MyUserId, manager, id);
         if (level == DocAccessLevel.None) return StatusCode(403, new { message = "به این پوشه دسترسی ندارید." });
 
-        var perms = await Db.DocFolderPermissions.AsNoTracking().Where(p => p.FolderId == id)
-            .Join(Db.Users, p => p.UserId, u => u.Id, (p, u) => new DocPermissionDto
-            {
-                Id = p.Id,
-                UserId = p.UserId,
-                RoleId = p.RoleId,
-                UserName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim(),
-                Level = (DocAccessLevelDto)(int)p.Level,
-                CanDownload = p.CanDownload
-            }).ToListAsync();
+        // فهرست «چه کسی به این پوشه دسترسی دارد» فقط برای دارندگان «دسترسی کامل» روی پوشه
+        // (یا مدیر آرشیو) برمی‌گردد؛ بقیه حتی با صدا زدن مستقیم API هم آن را نمی‌بینند.
+        var perms = new List<DocPermissionDto>();
+        if (level >= DocAccessLevel.Full)
+        {
+            perms = await Db.DocFolderPermissions.AsNoTracking().Where(p => p.FolderId == id)
+                .Join(Db.Users, p => p.UserId, u => u.Id, (p, u) => new DocPermissionDto
+                {
+                    Id = p.Id,
+                    UserId = p.UserId,
+                    RoleId = p.RoleId,
+                    UserName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim(),
+                    Level = (DocAccessLevelDto)(int)p.Level,
+                    CanDownload = p.CanDownload
+                }).ToListAsync();
 
-        // سطرهای گروهی (UserId=0 — دسترسی نقش‌محور)
-        var roleRows = await Db.DocFolderPermissions.AsNoTracking()
-            .Where(p => p.FolderId == id && p.UserId == 0)
-            .Join(Db.Roles, p => p.RoleId, r => r.Id, (p, r) => new DocPermissionDto
-            {
-                Id = p.Id,
-                UserId = 0,
-                RoleId = p.RoleId,
-                RoleName = r.Name,
-                Level = (DocAccessLevelDto)(int)p.Level,
-                CanDownload = p.CanDownload
-            }).ToListAsync();
-        perms.AddRange(roleRows);
+            // سطرهای گروهی (UserId=0 — دسترسی نقش‌محور)
+            var roleRows = await Db.DocFolderPermissions.AsNoTracking()
+                .Where(p => p.FolderId == id && p.UserId == 0)
+                .Join(Db.Roles, p => p.RoleId, r => r.Id, (p, r) => new DocPermissionDto
+                {
+                    Id = p.Id,
+                    UserId = 0,
+                    RoleId = p.RoleId,
+                    RoleName = r.Name,
+                    Level = (DocAccessLevelDto)(int)p.Level,
+                    CanDownload = p.CanDownload
+                }).ToListAsync();
+            perms.AddRange(roleRows);
+        }
 
         return Ok(new DocFolderDto
         {
