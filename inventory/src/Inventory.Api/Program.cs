@@ -68,6 +68,8 @@ builder.Services.AddScoped<IPishnevisService, PishnevisService>();
 // ساختار شماره اندیکاتور (LetterStrature) و بایگانی درختی نامه‌ها
 builder.Services.AddScoped<ILetterStratureService, LetterStratureService>();
 builder.Services.AddScoped<IArchiveService, ArchiveService>();
+// سازمان‌ها/سمت‌ها — مبنای جزء «واحد» در شماره نامه (Organization.NameUniq)
+builder.Services.AddScoped<IOrganizationServices, OrganizationServices>();
 
 // ---------- اتوماسیون اداری — نامه صادره (فاز دوم) — پوشه‌بندی تمیز ----------
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();

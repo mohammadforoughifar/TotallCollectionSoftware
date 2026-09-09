@@ -702,6 +702,12 @@
                     <NavLink class="nav-link" href="settings" @onclick="NotifyClose">
                         <i class="bi bi-gear"></i><span>تنظیمات</span>
                     </NavLink>
+                    @if (Auth.Has("LetterStructures.Read"))
+                    {
+                        <NavLink class="nav-link" href="settings/letter-structure" @onclick="NotifyClose">
+                            <i class="bi bi-diagram-2"></i><span>ساختار شماره نامه</span>
+                        </NavLink>
+                    }
                     <NavLink class="nav-link" href="settings/audit-log" @onclick="NotifyClose">
                         <i class="bi bi-clipboard-data"></i><span>لاگ عملیات</span>
                     </NavLink>
