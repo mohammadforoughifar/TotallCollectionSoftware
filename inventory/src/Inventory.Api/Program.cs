@@ -75,6 +75,8 @@ builder.Services.AddScoped<IOrganizationServices, OrganizationServices>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishnevisService, Inventory.Api.Services.Office.Outgoing.OutgoingPishnevisService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
+// ایمیل سازمانی (پست الکترونیک) — SMTP/IMAP با MailKit + حساب‌های دبیرخانه
+builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, Inventory.Api.Services.Office.Email.EmailService>();
 
 // ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
@@ -308,6 +310,17 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
     app.Use(async (ctx, next) =>
     {
         if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+        // پیوست نامه صادره (فایل های صادره) و پیوست ایمیل سازمانی (فایل های ایمیل)
+        // هرگز به‌صورت استاتیک و بدون احراز هویت سرو نمی‌شوند —
+        // دانلود فقط از مسیر API مجاز (OutgoingLetters / Email با RBAC) انجام می‌شود.
+        if (ctx.Request.Path.StartsWithSegments("/فایل های صادره", StringComparison.OrdinalIgnoreCase) ||
+            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87", StringComparison.OrdinalIgnoreCase) ||
+            ctx.Request.Path.StartsWithSegments("/فایل های ایمیل", StringComparison.OrdinalIgnoreCase) ||
+            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;

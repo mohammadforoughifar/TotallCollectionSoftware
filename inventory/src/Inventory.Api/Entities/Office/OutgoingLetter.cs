@@ -94,8 +94,16 @@ public class OutgoingLetter
     /// <summary>توضیحات دبیرخانه (اختیاری)</summary>
     [MaxLength(1000)] public string? DabirkhaneNote { get; set; }
 
-    /// <summary>وضعیت صدور: 0=پیش‌نویس داخلی، 1=در گردش تایید، 2=تایید شده، 3=صادر شده</summary>
+    /// <summary>وضعیت صدور: 0=پیش‌نویس داخلی، 1=در گردش تایید، 2=تایید شده، 3=صادر شده
+    /// وضعیت 3 فقط با امضای همه امضا کنندگان ثبت می‌شود و به‌صورت دستی قابل انتخاب نیست.</summary>
     public int Status { get; set; } = 0;
+
+    /// <summary>نشان‌کردن (ستاره) نامه صادره توسط فرستنده — مشابه IsNeshan نامه داخلی.
+    /// نشان گیرندگان داخلی روی Erja.IsNeshan است؛ این ستون برای سمت «ارسالی/صادره» است.</summary>
+    public bool IsNeshan { get; set; }
+
+    /// <summary>ایمیل مقصد — وقتی دبیرخانه نامه را با «پست الکترونیک» ارسال می‌کند پر می‌شود</summary>
+    [MaxLength(250)] public string? DestEmail { get; set; }
 
     public bool IsDelete { get; set; }
 

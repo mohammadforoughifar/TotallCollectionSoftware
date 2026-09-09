@@ -18,6 +18,9 @@ public interface IOutgoingLetterService
     Task AnswerAsync(int erjaId, AnswerErjaDto dto);
     Task MarkReadAsync(int erjaId);
     Task<bool> ToggleNeshanAsync(int erjaId);
+
+    /// <summary>نشان‌کردن (ستاره) نامه صادره ارسالی توسط فرستنده — روی خود نامه</summary>
+    Task<bool> ToggleLetterNeshanAsync(int letterId);
     Task<bool> ToggleBayeganiAsync(int erjaId);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
     Task<List<OutgoingPishnevisDto>> GetPishnevisListAsync(string? search = null);
@@ -113,6 +116,10 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public async Task<bool> ToggleNeshanAsync(int erjaId) =>
         (await _api.PostAsync<NeshanResponse>($"api/outgoing-letters/erja/{erjaId}/neshan")).IsNeshan;
+
+    /// <summary>نشان‌کردن نامه صادره ارسالی (سمت فرستنده) — مشابه نامه داخلی</summary>
+    public async Task<bool> ToggleLetterNeshanAsync(int letterId) =>
+        (await _api.PostAsync<NeshanResponse>($"api/outgoing-letters/{letterId}/neshan")).IsNeshan;
 
     public async Task<bool> ToggleBayeganiAsync(int erjaId) =>
         (await _api.PostAsync<BayeganiResponse>($"api/outgoing-letters/erja/{erjaId}/bayegani")).IsBayegani;

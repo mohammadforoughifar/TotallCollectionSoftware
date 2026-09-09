@@ -10,15 +10,82 @@ namespace Inventory.Api.Services;
 public class FileStore
 {
     private readonly string _root;
+    private readonly string _webRoot;
 
     public FileStore(IWebHostEnvironment env)
     {
         // همه‌ی فایل‌های آپلودی در wwwroot/uploads ذخیره می‌شوند و با سرو استاتیک wwwroot در دسترس هستند
         _root = Path.Combine(env.ContentRootPath, "wwwroot", "uploads");
+        _webRoot = Path.Combine(env.ContentRootPath, "wwwroot");
         Directory.CreateDirectory(_root);
     }
 
     public string RootPath => _root;
+
+    // ==================== پوشه‌های اختصاصی مستقیم زیر wwwroot ====================
+    // مثال درخواست کارفرما: «wwwroot/فایل های صادره» برای پیوست نامه صادره و
+    // «wwwroot/فایل های ایمیل» برای پیوست‌های ایمیل سازمانی.
+    // دانلود این فایل‌ها فقط از مسیر API با احراز هویت انجام می‌شود (Program.cs سرو استاتیک
+    // این پوشه‌ها را می‌بندد) و FilePath در دیتابیس نسبیِ از جذر wwwroot ذخیره می‌شود.
+
+    /// <summary>ذخیره فایل در پوشه‌ای مستقیم زیر wwwroot — مثل («فایل های صادره», letterId)</summary>
+    public async Task<string> SaveWebRootAsync(string folder, int refId, Stream stream, string originalName)
+    {
+        var dir = WebRootDir(folder, refId);
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, $"{Guid.NewGuid():N}_{SanitizeName(originalName)}");
+        await using (var fs = File.Create(file))
+        {
+            await stream.CopyToAsync(fs);
+        }
+        return ToWebRootRelative(file);
+    }
+
+    /// <summary>خواندن فایل از پوشه اختصاصی wwwroot — مسیر نسبی از جذر wwwroot. در صورت نبود null.</summary>
+    public byte[]? ReadWebRoot(string? relativePath)
+    {
+        var full = ToWebRootFull(relativePath);
+        if (full is null || !File.Exists(full)) return null;
+        try { return File.ReadAllBytes(full); }
+        catch { return null; }
+    }
+
+    /// <summary>حذف فایل از پوشه اختصاصی wwwroot (در صورت وجود)</summary>
+    public void DeleteWebRoot(string? relativePath)
+    {
+        var full = ToWebRootFull(relativePath);
+        if (full is not null && File.Exists(full))
+        {
+            try { File.Delete(full); } catch { }
+        }
+    }
+
+    /// <summary>حجم فایل اختصاصی wwwroot</summary>
+    public long SizeWebRoot(string? relativePath)
+    {
+        var full = ToWebRootFull(relativePath);
+        return full is not null && File.Exists(full) ? new FileInfo(full).Length : 0;
+    }
+
+    private string WebRootDir(string folder, int refId)
+    {
+        var clean = (folder ?? "").Replace('\\', '/').Trim('/').Replace("..", "");
+        if (string.IsNullOrWhiteSpace(clean)) clean = "misc";
+        return Path.Combine(_webRoot, clean, refId.ToString());
+    }
+
+    private string? ToWebRootFull(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath)) return null;
+        var clean = relativePath.Replace('\\', '/').TrimStart('/');
+        if (clean.Contains("..")) return null;
+        var full = Path.GetFullPath(Path.Combine(_webRoot, clean));
+        if (!full.StartsWith(Path.GetFullPath(_webRoot), StringComparison.Ordinal)) return null;
+        return full;
+    }
+
+    private string ToWebRootRelative(string fullPath) =>
+        Path.GetRelativePath(_webRoot, fullPath).Replace('\\', '/');
 
     /// <summary>فایل جدید را روی دیسک می‌نویسد و مسیر نسبی برمی‌گرداند.</summary>
     public async Task<string> SaveAsync(string module, int refId, Stream stream, string originalName)
