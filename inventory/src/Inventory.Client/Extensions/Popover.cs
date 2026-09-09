@@ -49,7 +49,8 @@ public static class Popover
     public static string FixedStyle(double top, double left, double width, double maxHeight = 0)
     {
         var s = FormattableString.Invariant(
-            $"position:fixed;top:{top:0}px;left:{left:0}px;right:auto;width:{width:0}px;" +
+            $"position:fixed;top:{top:0}px;left:{left:0}px;right:auto;width:{width:0}px;")
+            + FormattableString.Invariant(
             $"z-index:{MenuZ};max-width:calc(100vw - 16px);");
         return maxHeight > 0
             ? s + FormattableString.Invariant($"max-height:{maxHeight:0}px;")
@@ -62,7 +63,9 @@ public static class Popover
     /// </summary>
     public static string CalendarStyle(double clickX, double clickY) =>
         FormattableString.Invariant(
-            $"position:fixed;top:max(8px,min({clickY + 8:0}px,calc(100vh - 340px)));" +
-            $"left:max(8px,min({clickX - 40:0}px,calc(100vw - 300px)));right:auto;" +
+            $"position:fixed;top:max(8px,min({clickY + 8:0}px,calc(100vh - 340px)));")
+        + FormattableString.Invariant(
+            $"left:max(8px,min({clickX - 40:0}px,calc(100vw - 300px)));right:auto;")
+        + FormattableString.Invariant(
             $"z-index:{MenuZ};max-width:calc(100vw - 16px);max-height:calc(100vh - 24px);overflow:auto;");
 }
