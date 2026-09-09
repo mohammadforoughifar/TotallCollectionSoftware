@@ -100,8 +100,20 @@
                                         <div class="fs-8 text-muted">@r.DeviceModel</div>
                                     }
                                 </td>
-                                <td>@r.PartyName</td>
-                                <td>@(r.TechnicianName ?? "—")</td>
+                                <td>
+                                    <div>@r.PartyName</div>
+                                    @if (!string.IsNullOrWhiteSpace(PartyTel(r)))
+                                    {
+                                        <div class="fs-8 text-muted num" dir="ltr">@PartyTel(r)</div>
+                                    }
+                                </td>
+                                <td>
+                                    <div>@(r.TechnicianName ?? "—")</div>
+                                    @if (!string.IsNullOrWhiteSpace(r.TechnicianPhone))
+                                    {
+                                        <div class="fs-8 text-muted num" dir="ltr">@r.TechnicianPhone</div>
+                                    }
+                                </td>
                                 <td class="num fs-8">@r.ReceivedAt.ToFa()</td>
                                 <td class="num fs-8">@(r.DeliveredAt.HasValue ? r.DeliveredAt.Value.ToFa() : "—")</td>
                                 <td class="text-start num">@r.TotalPrice.Money()</td>
@@ -135,7 +147,9 @@
                                     @StatusBadge(r)
                                 </div>
                                 <div class="fw-700 text-truncate">@r.DeviceType @r.DeviceModel</div>
-                                <div class="fs-8 text-muted text-truncate"><i class="bi bi-person"></i> @r.PartyName</div>
+                                <div class="fs-8 text-muted text-truncate"><i class="bi bi-person"></i> @r.PartyName
+                                    @if (!string.IsNullOrWhiteSpace(PartyTel(r))) { <span class="num" dir="ltr"> — @PartyTel(r)</span> }
+                                </div>
                             </div>
                         </div>
                         <div class="m-card-body">
@@ -199,6 +213,10 @@
                         <span class="d-none d-sm-inline">جدید</span>
                     </button>
                 </div>
+                @if (!string.IsNullOrWhiteSpace(PartyTel(form)))
+                {
+                    <div class="fs-8 text-muted mt-1 num" dir="ltr"><i class="bi bi-telephone"></i> @PartyTel(form)</div>
+                }
             </div>
             <div class="col-md-4">
                 <label class="form-label">نوع دستگاه <span class="text-danger">*</span></label>
@@ -325,8 +343,20 @@
             <div class="d-flex flex-wrap gap-3 mb-3">
                 <div class="flex-grow-1"><div class="fs-8 text-muted">دستگاه</div><div class="fw-500">@viewing.DeviceType @viewing.DeviceModel</div></div>
                 <div class="flex-grow-1"><div class="fs-8 text-muted">سریال</div><div class="fw-500 num">@(viewing.SerialNumber ?? "—")</div></div>
-                <div class="flex-grow-1"><div class="fs-8 text-muted">مشتری</div><div class="fw-500">@viewing.PartyName</div></div>
-                <div class="flex-grow-1"><div class="fs-8 text-muted">تعمیرکار</div><div class="fw-500">@(viewing.TechnicianName ?? "—")</div></div>
+                <div class="flex-grow-1"><div class="fs-8 text-muted">مشتری</div>
+                    <div class="fw-500">@viewing.PartyName</div>
+                    @if (!string.IsNullOrWhiteSpace(PartyTel(viewing)))
+                    {
+                        <div class="fs-8 text-muted num" dir="ltr"><i class="bi bi-telephone"></i> @PartyTel(viewing)</div>
+                    }
+                </div>
+                <div class="flex-grow-1"><div class="fs-8 text-muted">تعمیرکار</div>
+                    <div class="fw-500">@(viewing.TechnicianName ?? "—")</div>
+                    @if (!string.IsNullOrWhiteSpace(viewing.TechnicianPhone))
+                    {
+                        <div class="fs-8 text-muted num" dir="ltr"><i class="bi bi-telephone"></i> @viewing.TechnicianPhone</div>
+                    }
+                </div>
             </div>
             <div class="d-flex flex-wrap gap-3 mb-3">
                 <div class="flex-grow-1"><div class="fs-8 text-muted">ورود به مجموعه</div><div class="fw-500 num">@viewing.ReceivedAt.ToFaDateTime()</div></div>
@@ -382,14 +412,6 @@
                 <div><span class="text-muted fs-8 ms-1">جمع دریافتی:</span><span class="fw-800 fs-5 text-primary num">@viewing.TotalPrice.Money()</span></div>
                 <div><span class="text-muted fs-8 ms-1">سود:</span><span class="fw-700 num @(viewing.Profit >= 0 ? "text-success" : "text-danger")">@viewing.Profit.Money()</span></div>
             </div>
-            @if (Auth.HasModule("DocArchive"))
-            {
-                <div class="mt-3">
-                    <DocArchiveEntityPanel Module="Repairs" EntityId="@viewing.Id"
-                                            EntityTitle="@($"پذیرش {viewing.Number} — {viewing.DeviceType} {viewing.DeviceModel}")"
-                                            EntityCode="@viewing.Number" />
-                </div>
-            }
         }
     </ChildContent>
 </Modal>
@@ -593,6 +615,11 @@
         RepairStatus.Delivered => "st-delivered",
         _ => "st-cancelled"
     };
+
+    private static string PartyTel(RepairOrderDto r)
+        => !string.IsNullOrWhiteSpace(r.PartyMobile) ? r.PartyMobile!
+         : !string.IsNullOrWhiteSpace(r.PartyPhone) ? r.PartyPhone!
+         : "";
 
     private static string DeviceIcon(string deviceType) => deviceType switch
     {

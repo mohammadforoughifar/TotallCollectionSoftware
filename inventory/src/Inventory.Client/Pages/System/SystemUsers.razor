@@ -18,18 +18,18 @@
         <table class="table table-hover align-middle mb-0">
             <thead>
                 <tr>
-                    <th>#</th><th>نام و نام خانوادگی</th><th>شماره پرسنلی</th>
+                    <th>#</th><th>نام و نام خانوادگی</th><th>شماره تماس</th><th>شماره پرسنلی</th>
                     <th>شرکت</th><th>واحد</th><th>دسته‌بندی</th><th>وضعیت</th><th></th>
                 </tr>
             </thead>
             <tbody>
                 @if (isLoading)
                 {
-                    <tr><td colspan="8" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>
+                    <tr><td colspan="9" class="text-center py-4"><div class="spinner-border text-primary"></div></td></tr>
                 }
                 else if (!filteredItems.Any())
                 {
-                    <tr><td colspan="8" class="text-center text-muted py-4">کاربری یافت نشد.</td></tr>
+                    <tr><td colspan="9" class="text-center text-muted py-4">کاربری یافت نشد.</td></tr>
                 }
                 else
                 {
@@ -44,6 +44,7 @@
                                     <span class="uv-name">@u.FirstName @u.LastName</span>
                                 </div>
                             </td>
+                            <td class="num" dir="ltr">@(string.IsNullOrWhiteSpace(u.Phone) ? "—" : u.Phone)</td>
                             <td>@u.StaffNumber</td>
                             <td>@GetCompanyName(u.CompanyId)</td>
                             <td>@GetDepartmentName(u.DepartmentId)</td>
@@ -82,6 +83,7 @@
                         <UserAvatar SystemUserId="@u.Id" Size="40" CacheBust="@photoBust" />
                         @u.FirstName @u.LastName
                     </div>
+                    <div class="m-row"><span class="m-label">شماره تماس</span><span class="m-val num" dir="ltr">@(string.IsNullOrWhiteSpace(u.Phone) ? "—" : u.Phone)</span></div>
                     <div class="m-row"><span class="m-label">شماره پرسنلی</span><span class="m-val">@u.StaffNumber</span></div>
                     <div class="m-row"><span class="m-label">شرکت</span><span class="m-val">@GetCompanyName(u.CompanyId)</span></div>
                     <div class="m-row"><span class="m-label">واحد</span><span class="m-val">@GetDepartmentName(u.DepartmentId)</span></div>
@@ -143,6 +145,10 @@
                         <div class="col-md-6">
                             <label class="form-label">نام خانوادگی</label>
                             <input class="form-control" @bind="form.LastName" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">شماره تماس</label>
+                            <input class="form-control num" dir="ltr" @bind="form.Phone" placeholder="09xxxxxxxxx" inputmode="tel" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">شماره پرسنلی <span class="text-danger">*</span></label>
@@ -402,6 +408,7 @@
         ? items
         : items.Where(u =>
             (u.FirstName + " " + u.LastName).Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase) ||
+            (u.Phone ?? "").Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase) ||
             u.StaffNumber.Contains(searchText.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
@@ -436,12 +443,18 @@
         editingUser = true; editId = u.Id; formError = "";
         form = new UserForm
         {
-            FirstName = u.FirstName, LastName = u.LastName, StaffNumber = u.StaffNumber,
-            DepartmentId = u.DepartmentId, Role = u.Role ?? "User", IsActive = u.IsActive
+            FirstName = u.FirstName ?? "",
+            LastName = u.LastName ?? "",
+            Phone = u.Phone ?? "",
+            StaffNumber = u.StaffNumber ?? "",
+            DepartmentId = u.DepartmentId,
+            Role = string.IsNullOrWhiteSpace(u.Role) ? "User" : u.Role,
+            IsActive = u.IsActive
         };
         selectedCompanyId = u.CompanyId ?? 0;
         ResetPhoto();
         ShowForm = true;
+        StateHasChanged();
     }
 
     private void CloseForm()
@@ -479,6 +492,7 @@
                 Id = editId,
                 FirstName = form.FirstName.Trim(),
                 LastName = form.LastName?.Trim() ?? "",
+                Phone = string.IsNullOrWhiteSpace(form.Phone) ? null : form.Phone.Trim(),
                 StaffNumber = form.StaffNumber.Trim(),
                 DepartmentId = form.DepartmentId != null &&
                                departments.Any(d => d.Id == form.DepartmentId && d.CompanyId == selectedCompanyId)
@@ -567,6 +581,7 @@
     {
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
+        public string Phone { get; set; } = "";
         public string StaffNumber { get; set; } = "";
         public int? DepartmentId { get; set; }
         public string Role { get; set; } = "User";
@@ -578,6 +593,7 @@
         public int Id { get; set; }
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
+        public string? Phone { get; set; }
         public string StaffNumber { get; set; } = "";
         public int? DepartmentId { get; set; }
         public int? CompanyId { get; set; }

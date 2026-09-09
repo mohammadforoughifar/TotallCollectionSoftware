@@ -122,6 +122,8 @@ else
                                             <div class="fs-9 text-muted ntf-push-msg">@pushStatusText</div>
                                         </div>
                                     </div>
+                                    @if (pushSupported || pushEnabled)
+                                    {
                                     <button class="btn btn-sm @(pushEnabled ? "btn-outline-danger" : "btn-primary")" @onclick="TogglePush" disabled="@pushBusy" title="اعلان‌ها مثل نوتیف گوشی از بالای صفحه می‌آیند و بالای گوشی می‌مانند">
                                         @if (pushBusy)
                                         {
@@ -136,6 +138,7 @@ else
                                             <i class="bi bi-bell"></i><span>فعال‌سازی</span>
                                         }
                                     </button>
+                                    }
                                 </div>
                                 <div class="ntf-panel-body">
                                     @if (ntfList.Count == 0)
@@ -341,6 +344,8 @@ else
     private bool pushBusy;
     private bool pushSupportChecked;
     private bool pushSupported;
+    private bool pushCanPush;
+    private bool pushCanLocal;
     private string pushStatusText = "بررسی وضعیت…";
 
     private void OnRtNotifySetPushStatus(string s) => pushStatusText = s;
@@ -349,38 +354,83 @@ else
     {
         try
         {
-            pushSupported = await JS.InvokeAsync<bool>("attPushSupported");
+            var d = await JS.InvokeAsync<PushDiagnoseRes>("attPushDiagnose");
             pushSupportChecked = true;
+            pushCanPush = d?.canPush == true;
+            pushCanLocal = d?.canLocal == true;
+            pushSupported = pushCanPush || pushCanLocal;
             if (!pushSupported)
             {
-                pushStatusText = "این مرورگر از نوتیفیکیشن پشتیبانی نمی‌کند.";
+                pushStatusText = string.IsNullOrWhiteSpace(d?.message)
+                    ? "نوتیفیکیشن سیستم در این محیط در دسترس نیست. اعلان‌ها داخل برنامه نمایش داده می‌شوند."
+                    : d!.message;
                 return;
             }
-            pushEnabled = await JS.InvokeAsync<bool>("attPushIsSubscribed");
-            pushStatusText = pushEnabled
-                ? "فعال — اعلان‌ها مثل نوتیف گوشی از بالای صفحه می‌آیند و می‌مانند."
-                : "غیرفعال — اعلان‌ها فقط داخل برنامه نمایش داده می‌شوند.";
+            if (pushCanPush)
+            {
+                pushEnabled = await JS.InvokeAsync<bool>("attPushIsSubscribed");
+                pushStatusText = pushEnabled
+                    ? "فعال — اعلان‌ها مثل نوتیف گوشی از بالای صفحه می‌آیند و می‌مانند."
+                    : "غیرفعال — برای نوتیف بالای گوشی «فعال‌سازی» را بزنید. اعلان داخل برنامه همیشه کار می‌کند.";
+            }
+            else
+            {
+                var perm = await JS.InvokeAsync<string>("attPushPermission");
+                pushEnabled = perm == "granted";
+                pushStatusText = pushEnabled
+                    ? "اعلان محلی فعال است. وقتی برنامه باز باشد اعلان سیستم می‌آید."
+                    : (string.IsNullOrWhiteSpace(d?.message)
+                        ? "اعلان سیستم محدود است. می‌توانید اعلان محلی را فعال کنید."
+                        : d!.message);
+            }
         }
-        catch { pushSupportChecked = false; pushStatusText = "نوتیفیکیشن در دسترس نیست."; }
+        catch { pushSupportChecked = false; pushStatusText = "نوتیفیکیشن سیستم در دسترس نیست. اعلان‌ها داخل برنامه نمایش داده می‌شوند."; }
     }
 
     private async Task TogglePush()
     {
         if (pushBusy) return;
+        if (!pushSupported && !pushEnabled)
+        {
+            Toast.Error(pushStatusText);
+            return;
+        }
         pushBusy = true;
         try
         {
             if (pushEnabled)
             {
                 // غیرفعال‌سازی
-                var r = await JS.InvokeAsync<PushDisableResult>("attPushDisable");
-                if (!string.IsNullOrWhiteSpace(r?.endpoint))
+                if (pushCanPush)
                 {
-                    try { await Http.PostAsJsonAsync("api/notifications/push-unsubscribe", new { endpoint = r.endpoint }); } catch { }
+                    var r = await JS.InvokeAsync<PushDisableResult>("attPushDisable");
+                    if (!string.IsNullOrWhiteSpace(r?.endpoint))
+                    {
+                        try { await Http.PostAsJsonAsync("api/notifications/push-unsubscribe", new { endpoint = r.endpoint }); } catch { }
+                    }
+                    Toast.Success(r?.message ?? "نوتیفیکیشن غیرفعال شد.");
+                }
+                else
+                {
+                    Toast.Success("اعلان محلی غیرفعال شد. اعلان‌ها داخل برنامه می‌مانند.");
                 }
                 pushEnabled = false;
                 pushStatusText = "غیرفعال — اعلان‌ها فقط داخل برنامه نمایش داده می‌شوند.";
-                Toast.Success(r?.message ?? "نوتیفیکیشن غیرفعال شد.");
+            }
+            else if (!pushCanPush && pushCanLocal)
+            {
+                var res = await JS.InvokeAsync<PushEnableResult>("attPushEnableLocal");
+                if (res?.ok == true)
+                {
+                    pushEnabled = true;
+                    pushStatusText = "اعلان محلی فعال است. وقتی برنامه باز باشد اعلان سیستم می‌آید.";
+                    Toast.Success(res.message ?? "اعلان محلی فعال شد.");
+                }
+                else
+                {
+                    pushStatusText = res?.message ?? "فعال‌سازی اعلان محلی ناموفق بود.";
+                    Toast.Error(pushStatusText);
+                }
             }
             else
             {
@@ -394,7 +444,14 @@ else
                 }
 
                 var res = await JS.InvokeAsync<PushEnableResult>("attPushEnable", keyResp.publicKey);
-                if (res?.ok == true && !string.IsNullOrWhiteSpace(res.endpoint))
+                if (res?.ok == true && res.localOnly == true)
+                {
+                    pushEnabled = true;
+                    pushCanLocal = true;
+                    pushStatusText = "اعلان محلی فعال است. وقتی برنامه باز باشد اعلان سیستم می‌آید.";
+                    Toast.Success(res.message ?? "اعلان محلی فعال شد.");
+                }
+                else if (res?.ok == true && !string.IsNullOrWhiteSpace(res.endpoint))
                 {
                     var save = await Http.PostAsJsonAsync("api/notifications/push-subscribe", new
                     {
@@ -430,8 +487,9 @@ else
     }
 
     private class VapidKeyRes { public string? publicKey { get; set; } }
-    private class PushEnableResult { public bool ok { get; set; } public string? message { get; set; } public string? endpoint { get; set; } public string? p256dh { get; set; } public string? auth { get; set; } }
+    private class PushEnableResult { public bool ok { get; set; } public string? message { get; set; } public string? endpoint { get; set; } public string? p256dh { get; set; } public string? auth { get; set; } public bool localOnly { get; set; } }
     private class PushDisableResult { public bool ok { get; set; } public string? message { get; set; } public string? endpoint { get; set; } }
+    private class PushDiagnoseRes { public bool canPush { get; set; } public bool canLocal { get; set; } public string? code { get; set; } public string? message { get; set; } }
 
     public class NtfItem
     {
@@ -507,6 +565,10 @@ else
         liveToasts.Insert(0, n);
         if (liveToasts.Count > 4) liveToasts.RemoveAt(liveToasts.Count - 1);
         await InvokeAsync(StateHasChanged);
+        if (!pushEnabled)
+        {
+            try { await JS.InvokeVoidAsync("attLocalNotify", n.Title, n.Body ?? ""); } catch { }
+        }
         // اعلان ۱۵ ثانیه بالای صفحه می‌ماند (مثل نوتیف گوشی) — کاربر می‌تواند ببندد یا کلیک کند
         _ = Task.Delay(15000).ContinueWith(async _ =>
         {

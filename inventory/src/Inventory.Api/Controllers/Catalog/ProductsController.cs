@@ -1,5 +1,6 @@
 using Inventory.Api.Services;
 using Inventory.Shared.Dtos;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Inventory.Api.Controllers;
@@ -63,10 +64,17 @@ public class ProductsController : ApiControllerBase
         return Ok(await _service.ImportProductsAsync(stream));
     }
 
-    /// <summary>دانلود فایل اکسل نمونه برای ورود گروهی کالا.</summary>
+    /// <summary>
+    /// دانلود فایل اکسل نمونه برای ورود گروهی کالا.
+    /// AllowAnonymous: این فایل دادهٔ محرمانه ندارد و لینک مستقیم مرورگر هدر JWT ندارد.
+    /// </summary>
     [HttpGet("import/template")]
+    [AllowAnonymous]
     public IActionResult DownloadTemplate()
-        => File(_service.BuildProductTemplate(),
+    {
+        var bytes = _service.BuildProductTemplate();
+        return File(bytes,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Products-Template.xlsx");
+            fileDownloadName: "Products-Template.xlsx");
+    }
 }

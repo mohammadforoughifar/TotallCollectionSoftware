@@ -339,15 +339,63 @@
         });
     };
 
-    // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
+    // ================== نوتیفیکیشن گوشی/تبلت (Web Push + اعلان محلی) ==================
+
+    function attIsIos() {
+        var ua = navigator.userAgent || '';
+        return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function attIsStandalone() {
+        try {
+            if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+        } catch (e) { }
+        return window.navigator.standalone === true;
+    }
 
     /**
-     * آیا مرورگر از Web Push پشتیبانی می‌کند؟
+     * علت واقعی در دسترس نبودن نوتیفیکیشن سیستم (HTTP، iOS بدون Home Screen، …).
+     * @returns {{canPush:boolean, canLocal:boolean, code:string, message:string}}
+     */
+    window.attPushDiagnose = function () {
+        try {
+            var isIOS = attIsIos();
+            var isStandalone = attIsStandalone();
+            var isSecure = window.isSecureContext === true;
+            var hasSW = 'serviceWorker' in navigator;
+            var hasPush = 'PushManager' in window;
+            var hasNtf = 'Notification' in window;
+            var canPush = !!(isSecure && hasSW && hasPush && hasNtf && (!isIOS || isStandalone));
+            var canLocal = !!(isSecure && hasNtf && (!isIOS || isStandalone));
+            var code = 'ok';
+            var message = '';
+            if (!isSecure) {
+                code = 'insecure';
+                message = 'این صفحه با HTTP باز شده (بدون HTTPS). مرورگر اجازه نوتیفیکیشن بالای گوشی را نمی‌دهد. اعلان‌ها داخل برنامه نمایش داده می‌شوند. برای نوتیف سیستم، سایت را با HTTPS باز کنید.';
+            } else if (isIOS && !isStandalone) {
+                code = 'ios-pwa';
+                message = 'در آیفون/آیپد ابتدا این سایت را با Share → Add to Home Screen به صفحه اصلی اضافه کنید و از همان آیکون باز کنید تا نوتیفیکیشن کار کند. فعلاً اعلان‌ها داخل برنامه نمایش داده می‌شوند.';
+            } else if (!hasNtf) {
+                code = 'no-notification';
+                message = 'این مرورگر نوتیفیکیشن سیستم ندارد. اعلان‌ها داخل برنامه نمایش داده می‌شوند.';
+            } else if (!hasSW || !hasPush) {
+                code = 'no-push';
+                message = 'این مرورگر Web Push ندارد. می‌توانید اعلان محلی را فعال کنید؛ اعلان داخل برنامه هم کار می‌کند.';
+            }
+            return { canPush: canPush, canLocal: canLocal, code: code, message: message };
+        } catch (e) {
+            return { canPush: false, canLocal: false, code: 'error', message: 'بررسی نوتیفیکیشن ناموفق بود. اعلان‌ها داخل برنامه نمایش داده می‌شوند.' };
+        }
+    };
+
+    /**
+     * آیا نوتیفیکیشن سیستم (Web Push یا اعلان محلی) در این محیط ممکن است؟
      * @returns {boolean}
      */
     window.attPushSupported = function () {
         try {
-            return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+            var d = window.attPushDiagnose();
+            return !!(d && (d.canPush || d.canLocal));
         } catch (e) { return false; }
     };
 
@@ -363,18 +411,70 @@
     };
 
     /**
+     * اعلان محلی وقتی برنامه باز است: ویبره + چشمک عنوان + Notification API اگر اجازه باشد.
+     * روی HTTP هم ویبره و چشمک عنوان کار می‌کند (fallback).
+     */
+    window.attLocalNotify = function (title, body) {
+        try {
+            try { if (navigator.vibrate) navigator.vibrate([80, 40, 80]); } catch (e) { }
+            try {
+                var orig = document.title;
+                document.title = '🔔 ' + (title || 'اعلان جدید');
+                setTimeout(function () {
+                    if (document.title.indexOf('🔔') === 0) document.title = orig;
+                }, 3500);
+            } catch (e) { }
+            if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                    var n = new Notification(title || 'اعلان', {
+                        body: body || '',
+                        icon: 'icon-192.png',
+                        dir: 'rtl',
+                        lang: 'fa'
+                    });
+                    n.onclick = function () { try { window.focus(); n.close(); } catch (e2) { } };
+                    return true;
+                } catch (e) { }
+            }
+            return false;
+        } catch (e) { return false; }
+    };
+
+    /**
+     * فعال‌سازی فقط اعلان محلی (بدون Web Push) — برای مرورگرهایی که Notification دارند ولی Push ندارند.
+     */
+    window.attPushEnableLocal = async function () {
+        try {
+            var d = window.attPushDiagnose();
+            if (!d.canLocal)
+                return { ok: false, localOnly: true, message: d.message || 'اعلان محلی در این محیط در دسترس نیست.' };
+            var permission = Notification.requestPermission
+                ? await Notification.requestPermission()
+                : 'default';
+            if (permission !== 'granted')
+                return { ok: false, localOnly: true, message: 'دسترسی نوتیفیکیشن داده نشد.' };
+            return { ok: true, localOnly: true, message: 'اعلان محلی فعال شد. وقتی برنامه باز باشد اعلان سیستم نمایش داده می‌شود.' };
+        } catch (e) {
+            return { ok: false, localOnly: true, message: e && e.message ? e.message : 'خطا در فعال‌سازی اعلان محلی.' };
+        }
+    };
+
+    /**
      * فعال‌سازی نوتیفیکیشن گوشی/تبلت:
      *  ۱) درخواست اجازه از کاربر
      *  ۲) ثبت سرویس‌ورکر
      *  ۳) ساخت اشتراک push با کلید عمومی VAPID سرور
      * اشتراک ساخته شده برمی‌گردد تا Blazor با توکن احراز هویت آن را در سرور ذخیره کند.
      * @param {string} vapidPublicKey کلید عمومی VAPID (از سرور)
-     * @returns {Promise<{ok:boolean, message?:string, endpoint?:string, p256dh?:string, auth?:string}>}
+     * @returns {Promise<{ok:boolean, message?:string, endpoint?:string, p256dh?:string, auth?:string, localOnly?:boolean}>}
      */
     window.attPushEnable = async function (vapidPublicKey) {
         try {
-            if (!window.attPushSupported())
-                return { ok: false, message: 'این مرورگر از نوتیفیکیشن پشتیبانی نمی‌کند.' };
+            var d = window.attPushDiagnose();
+            if (!d.canPush) {
+                if (d.canLocal) return await window.attPushEnableLocal();
+                return { ok: false, message: d.message || 'نوتیفیکیشن سیستم در این محیط در دسترس نیست.' };
+            }
 
             var permission = Notification.requestPermission
                 ? await Notification.requestPermission()

@@ -58,6 +58,7 @@ public class SystemUsersController : ControllerBase
         item.Username = u.Username;
         item.FirstName = u.FirstName;
         item.LastName = u.LastName;
+        item.Phone = u.Phone;
         item.StaffNumber = u.StaffNumber;
         item.DepartmentId = u.DepartmentId;
         item.CompanyId = u.CompanyId;

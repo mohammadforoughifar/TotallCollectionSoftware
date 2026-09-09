@@ -29,6 +29,14 @@
         // یافتن ریشه ادیتور
         window.rteGetHtml = function (id) { var el = document.getElementById(id); return el ? el.innerHTML : ""; };
         window.rteSetHtml = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html || ""; };
+        window.rteGetEl = function (el) { return el ? el.innerHTML : ""; };
+        window.rteSetEl = function (el, html) { if (el) el.innerHTML = html || ""; };
+        window.rteExecEl = function (el, cmd, value) {
+            if (!el) return;
+            el.focus();
+            document.execCommand("styleWithCSS", false, true);
+            document.execCommand(cmd, false, value === undefined ? null : value);
+        };
 
         // نگهداری آخرین انتخاب متن (برای اعمال فونت/رنگ/اندازه وقتی فوکوس به نوار ابزار می‌رود)
         window.__rteSavedRange = null;
@@ -351,7 +359,44 @@
     <script src="js/ui.js"></script>
     <script src="js/project-interop.js"></script>
     <script src="js/stocktaking.js"></script>
-    <script src="js/file-preview.js"></script>
+    <script src="js/file-preview.js?v=3"></script>
+    <script>
+        (function () {
+            async function fpFetch(url, token, mimeHint) {
+                var h = {};
+                if (token) h['Authorization'] = 'Bearer ' + token;
+                var r = await fetch(url, { headers: h });
+                if (!r.ok) {
+                    var t = '';
+                    try { t = await r.text(); } catch (e) { }
+                    var msg = t || ('خطای ' + r.status);
+                    try { var j = JSON.parse(t); if (j && j.message) msg = j.message; } catch (e) { }
+                    throw new Error(msg);
+                }
+                var buf = await r.arrayBuffer();
+                var mime = ((r.headers.get('content-type') || mimeHint || 'application/octet-stream').split(';')[0] || '').trim();
+                return URL.createObjectURL(new Blob([buf], { type: mime || 'application/octet-stream' }));
+            }
+            async function fpText(url, token) {
+                var h = {};
+                if (token) h['Authorization'] = 'Bearer ' + token;
+                var r = await fetch(url, { headers: h });
+                if (!r.ok) throw new Error('خطای ' + r.status);
+                return await r.text();
+            }
+            window.filePreview = window.filePreview || {};
+            window.filePreview.fetchBlobUrl = fpFetch;
+            window.filePreview.fetchText = fpText;
+            window.filePreview.htmlToBlobUrl = window.filePreview.htmlToBlobUrl || function (html) {
+                return URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+            };
+            window.filePreview.revoke = window.filePreview.revoke || function (u) { try { if (u) URL.revokeObjectURL(u); } catch (e) { } };
+            window.fpFetchBlobUrl = window.filePreview.fetchBlobUrl;
+            window.fpFetchText = window.filePreview.fetchText;
+            window.fpHtmlToBlobUrl = window.filePreview.htmlToBlobUrl;
+            window.fpRevoke = window.filePreview.revoke;
+        })();
+    </script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>navigator.serviceWorker.register('service-worker.js');</script>
 </body>

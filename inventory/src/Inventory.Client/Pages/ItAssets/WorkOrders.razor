@@ -168,6 +168,10 @@ else
                                 <td class="text-end">
                                     <div class="d-flex gap-1 justify-content-end align-items-center">
                                         <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenDetail(w)"><i class="bi bi-eye text-primary"></i></button>
+                                        @if (CanEdit(w))
+                                        {
+                                            <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEditFromList(w)"><i class="bi bi-pencil text-primary"></i></button>
+                                        }
                                         <ArchiveButton Module="WorkOrders" RefId="@w.Id"
                                                        Title="@($"{w.Number} — {w.Title}")"
                                                        Link="@($"/work-orders?open={w.Id}")"
@@ -250,7 +254,11 @@ else
                 <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId)</div>
                 <div class="d-flex justify-content-between align-items-center">
                     <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
-                    <div @onclick:stopPropagation="true">
+                    <div class="d-flex gap-1" @onclick:stopPropagation="true">
+                        @if (CanEdit(w))
+                        {
+                            <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEditFromList(w)"><i class="bi bi-pencil text-primary"></i></button>
+                        }
                         <ArchiveButton Module="WorkOrders" RefId="@w.Id"
                                        Title="@($"{w.Number} — {w.Title}")"
                                        Link="@($"/work-orders?open={w.Id}")"
@@ -338,7 +346,7 @@ else
             <div class="modal-content wo-modal">
                 <div class="modal-header">
                     <h5 class="modal-title d-flex align-items-center flex-wrap gap-1">
-                        <i class="bi bi-list-task text-primary"></i> دستور کار جدید
+                        <i class="bi bi-list-task text-primary"></i> @(editingId > 0 ? "ویرایش دستور کار" : "دستور کار جدید")
                         @if (!string.IsNullOrWhiteSpace(_sourceLabel))
                         {
                             if (_sourceModule == "Document" && _sourceId is > 0)
@@ -427,15 +435,7 @@ else
                         </div>
                         <div class="col-12">
                             <label class="form-label">شرح (بند ۳ — ادیتور)</label>
-                            <div class="rte-toolbar">
-                                <button type="button" @onclick='() => RteCmd("bold")'><i class="bi bi-type-bold"></i></button>
-                                <button type="button" @onclick='() => RteCmd("italic")'><i class="bi bi-type-italic"></i></button>
-                                <button type="button" @onclick='() => RteCmd("underline")'><i class="bi bi-type-underline"></i></button>
-                                <button type="button" @onclick='() => RteCmd("insertUnorderedList")'><i class="bi bi-list-ul"></i></button>
-                                <button type="button" @onclick='() => RteCmd("insertOrderedList")'><i class="bi bi-list-ol"></i></button>
-                                <button type="button" @onclick='() => RteCmd("removeFormat")'><i class="bi bi-eraser"></i></button>
-                            </div>
-                            <div id="rte-wo" class="rte-editor" contenteditable="true"></div>
+                            <RteEditor @ref="rte" />
                         </div>
                         <div class="col-12">
                             <label class="form-label"><i class="bi bi-paperclip"></i> پیوست (اختیاری)</label>
@@ -447,7 +447,7 @@ else
                     <button class="btn btn-secondary" @onclick="() => showNew = false">انصراف</button>
                     <button class="btn btn-primary px-4" disabled="@busy" @onclick="SubmitNew">
                         @if (busy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-                        <i class="bi bi-send"></i> ثبت دستور کار
+                        <i class="bi bi-send"></i> @(editingId > 0 ? "ذخیره تغییرات" : "ثبت دستور کار")
                     </button>
                 </div>
             </div>
@@ -474,7 +474,15 @@ else
                             <span class="badge bg-warning-subtle text-warning border">تمدید @detail.ExtensionCount از ۵</span>
                         }
                     </div>
-                    <button type="button" class="btn-close" @onclick="() => detail = null"></button>
+                    <div class="d-flex align-items-center gap-2">
+                        @if (isOwner && detail.Status == "Open")
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenEditFromDetail">
+                                <i class="bi bi-pencil"></i> ویرایش
+                            </button>
+                        }
+                        <button type="button" class="btn-close" @onclick="() => detail = null"></button>
+                    </div>
                 </div>
                 <div class="modal-body">
                         <div class="wo-info mb-3">
@@ -855,8 +863,10 @@ else
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(TabItems.Count / (double)PageSize));
     private IEnumerable<WoItem> PagedItems => TabItems.Skip((page - 1) * PageSize).Take(PageSize);
 
-    // فرم جدید
+    // فرم جدید / ویرایش
     private bool showNew, tDropOpen;
+    private int editingId;
+    private RteEditor? rte;
 
     // ---------- منوی شناور کمبوی افراد (fixed + پوشش نامرئی — مصون از کارت‌ویو/مودال) ----------
     private ElementReference _tComboEl;
@@ -1049,8 +1059,41 @@ else
     // ================== دستور کار جدید ==================
     private async Task OpenNew()
     {
+        editingId = 0;
         _sourceModule = null; _sourceId = null; _sourceLabel = ""; _sourceDocTitle = "";
         await ShowNewFormAsync("", "");
+    }
+
+    private bool CanEdit(WoItem w) => w.Status == "Open" && w.OwnerUserId == access.UserId;
+
+    private async Task OpenEditFromList(WoItem w)
+    {
+        detail = w;
+        await OpenEditFromDetail();
+    }
+
+    private async Task OpenEditFromDetail()
+    {
+        if (detail == null) return;
+        editingId = detail.Id;
+        _sourceModule = detail.SourceModule;
+        _sourceId = detail.SourceId;
+        _sourceLabel = "";
+        _sourceDocTitle = "";
+        var desc = detail.Description ?? "";
+        var title = detail.Title;
+        var due = detail.DueAt;
+        var ids = detail.Assignees.Select(a => a.UserId).ToHashSet();
+        var extra = detail.Assignees.Select(a => new TargetOpt { Id = a.UserId, Username = a.Name }).ToList();
+        detail = null;
+        await ShowNewFormAsync(title, desc);
+        newDueDate = due.Date;
+        newDueTime = TimeOnly.FromDateTime(due);
+        selTargets = ids;
+        foreach (var t in extra)
+            if (!targets.Any(x => x.Id == t.Id))
+                targets.Add(t);
+        StateHasChanged();
     }
 
     /// <summary>باز کردن فرم ایجاد از یک مبدأ (سورس) — پیش‌پُرش عنوان/شرح/گیرندگان از نامه.</summary>
@@ -1132,7 +1175,7 @@ else
         showNew = true;
         StateHasChanged();
         await Task.Delay(80);
-        try { await JS.InvokeVoidAsync("rteSetHtml", "rte-wo", desc ?? ""); } catch { }
+        if (rte != null) await rte.SetHtmlAsync(desc ?? "");
     }
 
     /// <summary>گیرندگان گردش نامه که در لیست مجاز نیستند را به‌عنوان گزینه اضافه می‌کند تا چیپ قابل نمایش باشند.</summary>
@@ -1149,8 +1192,6 @@ else
     private void OnFilesSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
         => newFiles = e.GetMultipleFiles(5).ToList();
 
-    private async Task RteCmd(string cmd) { try { await JS.InvokeVoidAsync("rteExec", cmd); } catch { } }
-
     private async Task SubmitNew()
     {
         formError = "";
@@ -1165,26 +1206,32 @@ else
         busy = true;
         try
         {
-            string desc = "";
-            try { desc = await JS.InvokeAsync<string>("rteGetHtml", "rte-wo") ?? ""; } catch { }
+            string desc = rte != null ? await rte.GetHtmlAsync() : "";
             var due = newDueDate.Value.Date.Add(newDueTime.ToTimeSpan());
 
-            var resp = await Http.PostAsJsonAsync("/api/workorders", new
+            var payload = new
             {
                 title = newTitle, description = desc, dueAt = due,
                 assigneeUserIds = selTargets.ToList(),
                 sourceModule = _sourceModule, sourceId = _sourceId
-            });
+            };
+            var resp = editingId > 0
+                ? await Http.PutAsJsonAsync($"/api/workorders/{editingId}", payload)
+                : await Http.PostAsJsonAsync("/api/workorders", payload);
             if (!resp.IsSuccessStatusCode)
             {
                 formError = await resp.Content.ReadAsStringAsync();
                 return;
             }
             var created = await resp.Content.ReadFromJsonAsync<CreatedRes>();
-            foreach (var f in newFiles)
-                await UploadFile(created!.Id, f);
+            if (editingId <= 0 && created != null)
+            {
+                foreach (var f in newFiles)
+                    await UploadFile(created.Id, f);
+            }
 
-            Toast.Success($"دستور کار ثبت شد — {created!.Number}");
+            Toast.Success(editingId > 0 ? "دستور کار ویرایش شد." : $"دستور کار ثبت شد — {created?.Number}");
+            editingId = 0;
             showNew = false;
             await LoadAll();
             // پاک‌سازی پارامترهای مبدأ (سورس) بعد از ثبت
@@ -1361,7 +1408,7 @@ else
     {
         "Created" => "ثبت دستور کار", "Seen" => "رویت", "Reply" => "ثبت پاسخ",
         "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
-        "Extended" => "تمدید مهلت", "Closed" => "بستن نهایی", _ => a
+        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی", _ => a
     };
 
     // ================== مدل‌ها ==================

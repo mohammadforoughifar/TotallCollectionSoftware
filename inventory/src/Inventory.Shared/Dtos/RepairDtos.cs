@@ -25,9 +25,12 @@ public class RepairOrderDto
 
     public int PartyId { get; set; }
     public string? PartyName { get; set; }
+    public string? PartyPhone { get; set; }
+    public string? PartyMobile { get; set; }
 
     public int? TechnicianId { get; set; }
     public string? TechnicianName { get; set; }
+    public string? TechnicianPhone { get; set; }
 
     public string DeviceType { get; set; } = "";
     public string? DeviceModel { get; set; }

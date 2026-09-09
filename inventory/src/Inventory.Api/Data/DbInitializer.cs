@@ -35,6 +35,7 @@ public static class DbInitializer
                 else
                 {
                     MigrateSqlServer(db);
+                    EnsureSystemUserPhoneColumn(db);
                 }
 
                 if (seedDemo && !db.Products.Any())
@@ -410,6 +411,56 @@ AND (
         }
 
         db.Database.Migrate();
+    }
+
+    /// <summary>ستون شماره تماس کاربران سیستم — دیتابیس‌های قدیمی این ستون را ندارند.</summary>
+    private static void EnsureSystemUserPhoneColumn(AppDbContext db)
+    {
+        try
+        {
+            db.Database.ExecuteSqlRaw(@"
+IF OBJECT_ID(N'dbo.SystemUsers', N'U') IS NOT NULL
+AND COL_LENGTH(N'dbo.SystemUsers', N'Phone') IS NULL
+    ALTER TABLE dbo.SystemUsers ADD Phone nvarchar(30) NULL;");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB] هشدار: افزودن ستون Phone به SystemUsers: {ex.Message}");
+        }
+    }
+
+    private static void EnsureSqliteSystemUserPhone(AppDbContext db)
+    {
+        try
+        {
+            if (db.Database.GetDbConnection() is not Microsoft.Data.Sqlite.SqliteConnection sqlConn)
+                return;
+            using var raw = new Microsoft.Data.Sqlite.SqliteConnection(sqlConn.ConnectionString);
+            raw.Open();
+            using (var check = raw.CreateCommand())
+            {
+                check.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='SystemUsers'";
+                if (Convert.ToInt32(check.ExecuteScalar()) == 0) return;
+            }
+            var cols = new List<string>();
+            using (var c = raw.CreateCommand())
+            {
+                c.CommandText = "SELECT name FROM pragma_table_info('SystemUsers')";
+                using var rd = c.ExecuteReader();
+                while (rd.Read()) cols.Add(rd.GetString(0));
+            }
+            if (!cols.Contains("Phone"))
+            {
+                using var c = raw.CreateCommand();
+                c.CommandText = "ALTER TABLE SystemUsers ADD COLUMN Phone TEXT";
+                c.ExecuteNonQuery();
+                Console.WriteLine("[DB] SQLite: ستون Phone به SystemUsers اضافه شد.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DB] هشدار: ستون Phone در SQLite: {ex.Message}");
+        }
     }
 
     private static void StampMigration(AppDbContext db, string migrationId)

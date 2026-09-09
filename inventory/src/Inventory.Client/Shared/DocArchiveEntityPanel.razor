@@ -544,7 +544,8 @@
     private async Task PreviewAttachment(DocAttachmentSummaryDto a)
     {
         if (previewModal != null)
-            await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload);
+            await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload,
+                $"/api/doc-archive/attachments/{a.Id}/text");
     }
 
     private static string GetFileIcon(string fileName)

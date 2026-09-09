@@ -103,7 +103,10 @@ public class RepairService : IRepairService
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
-            var partyIds = await _db.Parties.Where(p => p.Name.Contains(s)).Select(p => p.Id).ToListAsync();
+            var partyIds = await _db.Parties.Where(p => p.Name.Contains(s)
+                    || (p.Mobile != null && p.Mobile.Contains(s))
+                    || (p.Phone != null && p.Phone.Contains(s)))
+                .Select(p => p.Id).ToListAsync();
             q = q.Where(r => r.Number.Contains(s) ||
                              r.DeviceType.Contains(s) ||
                              (r.DeviceModel != null && r.DeviceModel.Contains(s)) ||
@@ -289,9 +292,15 @@ public class RepairService : IRepairService
 
     private async Task<RepairOrderDto> ToDtoAsync(Db.RepairOrder r)
     {
-        var partyName = await _db.Parties.Where(p => p.Id == r.PartyId).Select(p => p.Name).FirstOrDefaultAsync();
-        var techName = r.TechnicianId.HasValue
-            ? await _db.Technicians.Where(t => t.Id == r.TechnicianId.Value).Select(t => t.Name).FirstOrDefaultAsync()
+        var party = await _db.Parties.AsNoTracking()
+            .Where(p => p.Id == r.PartyId)
+            .Select(p => new { p.Name, p.Phone, p.Mobile })
+            .FirstOrDefaultAsync();
+        var tech = r.TechnicianId.HasValue
+            ? await _db.Technicians.AsNoTracking()
+                .Where(t => t.Id == r.TechnicianId.Value)
+                .Select(t => new { t.Name, t.Phone })
+                .FirstOrDefaultAsync()
             : null;
         var invoiceNumber = r.InvoiceTransactionId.HasValue
             ? await _db.Transactions.Where(t => t.Id == r.InvoiceTransactionId.Value).Select(t => t.Number).FirstOrDefaultAsync()
@@ -322,9 +331,12 @@ public class RepairService : IRepairService
             Id = r.Id,
             Number = r.Number,
             PartyId = r.PartyId,
-            PartyName = partyName,
+            PartyName = party?.Name,
+            PartyPhone = party?.Phone,
+            PartyMobile = party?.Mobile,
             TechnicianId = r.TechnicianId,
-            TechnicianName = techName,
+            TechnicianName = tech?.Name,
+            TechnicianPhone = tech?.Phone,
             DeviceType = r.DeviceType,
             DeviceModel = r.DeviceModel,
             SerialNumber = r.SerialNumber,

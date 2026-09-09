@@ -91,7 +91,8 @@ public class ProductService : IProductService
     public Task<ExcelImportResult> ImportExcelAsync(Stream fileStream, string fileName)
         => _api.PostFileAsync<ExcelImportResult>("api/products/import", fileStream, fileName);
 
-    public string TemplateUrl => _api.BuildUrl("api/products/import/template");
+    public Task<(byte[] Data, string FileName, string ContentType)> DownloadTemplateAsync()
+        => _api.GetFileAsync("api/products/import/template");
 }
 
 /// <summary>پیاده‌سازی سرویس واحدهای شمارش.</summary>
