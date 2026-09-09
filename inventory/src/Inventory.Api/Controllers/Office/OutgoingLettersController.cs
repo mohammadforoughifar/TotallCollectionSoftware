@@ -23,6 +23,10 @@ public class OutgoingLettersController : RbacControllerBase
     private readonly IErjaService _erja;
     private readonly ILetterGroupService _groups;
     private readonly IOutgoingLetterPrintService _print;
+    private readonly FileStore _store;
+
+    /// <summary>پوشه پیوست‌های نامه صادره — مستقیم زیر wwwroot (درخواست کارفرما)</summary>
+    private const string SadereFolder = "فایل های صادره";
 
     public OutgoingLettersController(
         AppDbContext db,
@@ -30,13 +34,15 @@ public class OutgoingLettersController : RbacControllerBase
         IOutgoingPishnevisService pishnevis,
         IErjaService erja,
         ILetterGroupService groups,
-        IOutgoingLetterPrintService print) : base(db)
+        IOutgoingLetterPrintService print,
+        FileStore store) : base(db)
     {
         _letters = letters;
         _pishnevis = pishnevis;
         _erja = erja;
         _groups = groups;
         _print = print;
+        _store = store;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
@@ -130,6 +136,9 @@ public class OutgoingLettersController : RbacControllerBase
     [HttpPost("{id:int}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] UpdateStatusDto dto)
     {
+        // وضعیت «صادر شده» (3) فقط با امضای همه امضاکنندگان ثبت می‌شود — از دراپ‌داون/منو حذف شده است
+        if (dto.Status == 3)
+            return BadRequest(new { message = "وضعیت «صادر شده» به‌صورت دستی قابل انتخاب نیست و فقط با امضای نامه ثبت می‌شود." });
         var isAdmin = await IsAdminAsync();
         if (!isAdmin && !await HasAsync(Module, "Create"))
             return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
@@ -280,6 +289,14 @@ public class OutgoingLettersController : RbacControllerBase
         return Ok(new { isNeshan });
     }
 
+    /// <summary>نشان‌کردن/برداشتن نشان (ستاره) — نامه صادره ارسالی توسط فرستنده (مشابه نامه داخلی)</summary>
+    [HttpPost("{id:int}/neshan")]
+    public async Task<IActionResult> ToggleLetterNeshan(int id)
+    {
+        var isNeshan = await _letters.ToggleLetterNeshanAsync(id, MyUserId);
+        return Ok(new { isNeshan });
+    }
+
     [HttpPost("erja/{erjaId:int}/bayegani")]
     public async Task<IActionResult> ToggleBayegani(int erjaId)
     {
@@ -407,15 +424,18 @@ public class OutgoingLettersController : RbacControllerBase
         if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
+        // پیوست‌های صادره روی دیسک در «wwwroot/فایل های صادره/{شناسه نامه}/» ذخیره می‌شوند
+        // (مشابه نامه داخلی؛ دانلود فقط از مسیر مجاز API)
+        await using var stream = file.OpenReadStream();
+        var relPath = await _store.SaveWebRootAsync(SadereFolder, id, stream, file.FileName);
         var att = new AppAttachment
         {
             Module = AttachmentModule,
             RefId = id,
             FileName = Path.GetFileName(file.FileName),
             ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-            Data = ms.ToArray(),
+            Data = Array.Empty<byte>(),
+            FilePath = relPath,
             UploaderName = await MyDisplayNameAsync(),
             UploaderUserId = MyUserId
         };
@@ -438,7 +458,12 @@ public class OutgoingLettersController : RbacControllerBase
         }
         else if (!await InFlowAsync(a.RefId) && !await IsAdminAsync())
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
-        return File(a.Data, a.ContentType, a.FileName);
+
+        // فایل‌های جدید روی دیسک (فایل های صادره) — رکوردهای قدیمی از خود دیتابیس
+        var bytes = a.FilePath is not null ? _store.ReadWebRoot(a.FilePath) : null;
+        bytes ??= a.Data is { Length: > 0 } ? a.Data : null;
+        if (bytes == null) return NotFound(new { message = "فایل پیوست پیدا نشد." });
+        return File(bytes, a.ContentType, a.FileName);
     }
 
     [HttpGet("pishnevis/{id:int}/attachments")]
@@ -478,15 +503,18 @@ public class OutgoingLettersController : RbacControllerBase
         if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
-        using var ms = new MemoryStream();
-        await file.CopyToAsync(ms);
+        // پیوست پیش‌نویس صادره هم در «فایل های صادره» ذخیره می‌شود و بعد از ارسال،
+        // همراه رکورد پیوست به خود نامه منتقل می‌شود (مسیر فایل تغییر نمی‌کند).
+        await using var stream = file.OpenReadStream();
+        var relPath = await _store.SaveWebRootAsync(SadereFolder, id, stream, file.FileName);
         Db.AppAttachments.Add(new AppAttachment
         {
             Module = PishnevisAttachmentModule,
             RefId = id,
             FileName = Path.GetFileName(file.FileName),
             ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-            Data = ms.ToArray(),
+            Data = Array.Empty<byte>(),
+            FilePath = relPath,
             UploaderName = await MyDisplayNameAsync(),
             UploaderUserId = MyUserId
         });
@@ -501,6 +529,7 @@ public class OutgoingLettersController : RbacControllerBase
         if (a == null) return NotFound();
         if (a.UploaderUserId != MyUserId && !await IsAdminAsync())
             return StatusCode(403, new { message = "فقط بارگذارنده یا مدیر می‌تواند پیوست را حذف کند." });
+        if (a.FilePath is not null) _store.DeleteWebRoot(a.FilePath);
         Db.AppAttachments.Remove(a);
         await Db.SaveChangesAsync();
         return Ok(new { message = "پیوست حذف شد." });

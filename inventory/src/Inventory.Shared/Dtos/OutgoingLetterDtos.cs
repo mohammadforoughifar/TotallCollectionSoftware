@@ -223,6 +223,12 @@ public class OutgoingLetterDetailDto
     public string? DabirkhaneNote { get; set; }
     public string? DabirkhaneUserName { get; set; }
 
+    /// <summary>ایمیل مقصد که دبیرخانه نامه را به آن ارسال کرده (روش ارسال ایمیل)</summary>
+    public string? DestEmail { get; set; }
+
+    /// <summary>نشان‌کردن (ستاره) نامه صادره توسط فرستنده — سمت ارسالی</summary>
+    public bool IsNeshan { get; set; }
+
     public List<LetterReciverDto> ReciversGirande { get; set; } = new();
     public List<LetterReciverDto> ReciversErja { get; set; } = new();
     public List<LetterReciverDto> ReciversHamesh { get; set; } = new();
@@ -322,9 +328,12 @@ public class DabirkhaneListItemDto
     public string? SendMethod { get; set; }
     public string? DabirkhaneNote { get; set; }
     public string? DabirkhaneUserName { get; set; }
+
+    /// <summary>ایمیل مقصد — وقتی با پست الکترونیک ارسال شده پر می‌شود</summary>
+    public string? DestEmail { get; set; }
 }
 
-/// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال + توضیح</summary>
+/// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال + توضیح (+ ارسال با پست الکترونیک)</summary>
 public class DabirkhaneRegisterDto
 {
     /// <summary>شماره ثبت مقصد — شماره‌ای که دبیرخانه سازمان مقصد به نامه داده است</summary>
@@ -335,6 +344,17 @@ public class DabirkhaneRegisterDto
     public string SendMethod { get; set; } = "";
 
     public string? Note { get; set; }
+
+    // ==================== ارسال با پست الکترونیک ====================
+
+    /// <summary>ارسال نامه با ایمیل انجام شود؟ (روش ارسال = ایمیل یا انتخاب صریح کاربر)</summary>
+    public bool SendByEmail { get; set; }
+
+    /// <summary>آدرس ایمیل مقصد — برای روش ارسال «ایمیل» الزامی است</summary>
+    public string? DestEmail { get; set; }
+
+    /// <summary>شناسه حساب ایمیل دبیرخانه (Oto_TBL_Email با IsDabirkhane=true) — خالی = اولین حساب فعال دبیرخانه</summary>
+    public int? EmailAccountId { get; set; }
 }
 
 /// <summary>آمار دبیرخانه صادره</summary>
