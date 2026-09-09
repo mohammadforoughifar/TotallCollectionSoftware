@@ -46,6 +46,9 @@ public static class DbInitializer
                     await DocArchiveSecuritySchemaV2.EnsureAsync(db);
                 }
 
+                // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها
+                await OrganizationSchemaV1.EnsureAsync(db);
+
                 if (seedDemo && !db.Products.Any())
                 {
                     Console.WriteLine("[DB] حالت دمو فعال است؛ در حال بارگذاری داده نمونه...");
@@ -223,26 +226,53 @@ public static class DbInitializer
                     Console.WriteLine("[DB] عملگرهای پیش‌فرض ارجاع نامه ساخته شدند.");
                 }
 
-                // ============ اتوماسیون اداری: ساختار پیش‌فرض شماره اندیکاتور ============
-                // ترتیب پیش‌فرض: واحد/شماره/سال → مثل MQ/1/1405 (ساختار مرجع کارفرما)
-                if (!db.LetterStratures.Any(s => s.TypeForm == 1))
+                // ============ اتوماسیون اداری: سازمان‌ها — مبنای جزء «واحد» در شماره نامه ============
+                // در اولین اجرا یک سازمان پیش‌فرض از تنظیمات ساخته می‌شود (کد قدیمی Letters:UnitCode
+                // به‌عنوان NameUniq نگه داشته می‌شود تا شماره‌های قبلی مثل MQ/12/1404 تغییر نکنند).
+                if (!db.Organizations.Any(o => !o.IsDelete))
                 {
-                    db.LetterStratures.AddRange(
-                        new LetterStrature { TypeForm = 1, TypeStrature = "واحد" },
-                        new LetterStrature { TypeForm = 1, TypeStrature = "شماره" },
-                        new LetterStrature { TypeForm = 1, TypeStrature = "سال" });
+                    var unitCode = config?["Letters:UnitCode"] ?? "MQ";
+                    var unitName = config?["Letters:UnitName"] ?? "سازمان پیش‌فرض";
+                    db.Organizations.Add(new Organization
+                    {
+                        NameUnit = unitName,
+                        NameUniq = unitCode,
+                        IsDefault = true,
+                        IsActive = true
+                    });
                     db.SaveChanges();
-                    Console.WriteLine("[DB] ساختار پیش‌فرض شماره اندیکاتور (واحد/شماره/سال) ساخته شد.");
+                    Console.WriteLine($"[DB] سازمان پیش‌فرض «{unitName}» ({unitCode}) ساخته شد — مبنای جزء «واحد» شماره نامه.");
                 }
 
-                // بازسازی شماره اندیکاتور نامه‌های قدیمی با ساختار جدید
+                // ============ اتوماسیون اداری: ساختار پیش‌فرض شماره اندیکاتور ============
+                // هر سه نوع نامه: 1=داخلی، 2=صادره، 3=وارده
+                // ترتیب پیش‌فرض داخلی: واحد/شماره/سال → مثل MQ/1/1405 (ساختار مرجع کارفرما)
+                // صادره و وارده: سال/شماره → مثل 1404/6 (جایگزین «سال/ص-شماره» هاردکد می‌شود)
+                var defaultStructures = new Dictionary<int, string[]>
+                {
+                    [1] = new[] { "واحد", "شماره", "سال" },
+                    [2] = new[] { "سال", "شماره" },
+                    [3] = new[] { "سال", "شماره" }
+                };
+                foreach (var (typeForm, parts) in defaultStructures)
+                {
+                    if (db.LetterStratures.Any(s => s.TypeForm == typeForm)) continue;
+                    foreach (var p in parts)
+                        db.LetterStratures.Add(new LetterStrature { TypeForm = typeForm, TypeStrature = p });
+                    db.SaveChanges();
+                    Console.WriteLine($"[DB] ساختار پیش‌فرض شماره اندیکاتور TypeForm={typeForm} ({string.Join("/", parts)}) ساخته شد.");
+                }
+
+                // بازسازی شماره اندیکاتور نامه‌های قدیمی (داخلی) با ساختار جدید
                 // (شماره ترتیبی Number ثابت می‌ماند؛ فقط رشته نمایشی بازتولید می‌شود)
                 {
                     var structure = db.LetterStratures.Where(s => s.TypeForm == 1)
                         .OrderBy(s => s.StratureId).Select(s => s.TypeStrature).ToList();
                     if (structure.Count > 0)
                     {
-                        var unit = config?["Letters:UnitCode"] ?? "MQ";
+                        var defaultOrg = db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive && o.IsDefault)
+                                         ?? db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive);
+                        var unit = defaultOrg?.NameUniq ?? config?["Letters:UnitCode"] ?? "MQ";
                         var pc = new System.Globalization.PersianCalendar();
                         var toFix = db.InnerLetters.Where(l => !l.IsDelete).ToList();
                         int fixedCount = 0;
