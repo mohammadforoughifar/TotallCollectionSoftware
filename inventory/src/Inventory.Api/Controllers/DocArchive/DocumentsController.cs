@@ -65,8 +65,16 @@ public class DocumentsController : RbacControllerBase
         var ids = docs.Select(d => d.Id).ToList();
 
         var folders = await Db.DocFolders.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
+        // دسترسی مستقیم مدرک: ردیف فردی (UserId == خودم) + ردیف گروهیِ نقش‌های کاربر (RoleId)
+        // — بدون نقش‌ها، کاربری که از طریق «گروه/نقش» دسترسی دارد، مدرک را در فهرست نمی‌دید.
+        var roleIds = await Db.UserRoles.AsNoTracking()
+            .Where(r => r.UserId == MyUserId)
+            .Select(r => r.RoleId)
+            .ToListAsync();
         var directPerms = await Db.DocumentPermissions.AsNoTracking()
-            .Where(p => ids.Contains(p.DocumentId) && p.UserId == MyUserId).ToListAsync();
+            .Where(p => ids.Contains(p.DocumentId) &&
+                        (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
+            .ToListAsync();
         var versions = await Db.DocumentVersions.AsNoTracking().Where(v => ids.Contains(v.DocumentId)).ToListAsync();
         var links = await Db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId))
             .GroupBy(l => l.DocumentId).Select(g => new { g.Key, C = g.Count() })
@@ -373,7 +381,24 @@ public class DocumentsController : RbacControllerBase
         // ارسال دستی فهرست دسترسی‌ها نمی‌تواند دسترسی‌های موجود را پاک یا تغییر دهد:
         // null یعنی «دست نزن» (در سرویس، ردیف‌های موجود حفظ می‌شوند).
         if (lvl < DocAccessLevel.Full)
+        {
             dto.Permissions = null!;
+        }
+        else
+        {
+            // محافظ: ذخیره‌کنندهٔ دارای Full نباید خودش را حذف کند و مدرک را بدون
+            // مدیرِ دارای Full رها کند.
+            dto.Permissions ??= new List<DocPermissionDto>();
+            var roleIdsForMe = await Db.UserRoles.AsNoTracking()
+                .Where(ur => ur.UserId == MyUserId)
+                .Select(ur => ur.RoleId)
+                .ToListAsync();
+            var hasFullForMe = dto.Permissions.Any(p =>
+                (p.RoleId == 0 && p.UserId == MyUserId && p.Level == DocAccessLevelDto.Full)
+             || (p.RoleId != 0 && p.Level == DocAccessLevelDto.Full && roleIdsForMe.Contains(p.RoleId)));
+            if (!hasFullForMe)
+                dto.Permissions.Add(new DocPermissionDto { UserId = MyUserId, RoleId = 0, Level = DocAccessLevelDto.Full, CanDownload = true });
+        }
 
         await _svc.UpdateDocumentAsync(id, dto, MyUserId, MyUsername);
         return Ok();
@@ -396,6 +421,21 @@ public class DocumentsController : RbacControllerBase
         doc.PublicCanDownload = dto.PublicCanDownload;
         doc.RequireDownloadConfirm = dto.RequireDownloadConfirm;
         doc.WatermarkPreview = dto.WatermarkPreview;
+
+        // محافظ: کاربرِ دارای «دسترسی کامل» نباید خودش را از فهرست حذف کند و مدرک را
+        // بدون مدیرِ دارای Full رها کند (تا مدرک برای همیشه «قفل» نشود).
+        dto.Items ??= new List<DocPermissionDto>();
+        var roleIdsForMe = await Db.UserRoles.AsNoTracking()
+            .Where(ur => ur.UserId == MyUserId)
+            .Select(ur => ur.RoleId)
+            .ToListAsync();
+        var hasFullForMe = dto.Items.Any(p =>
+            (p.RoleId == 0 && p.UserId == MyUserId && p.Level == DocAccessLevelDto.Full)
+         || (p.RoleId != 0 && p.Level == DocAccessLevelDto.Full && roleIdsForMe.Contains(p.RoleId)));
+        if (!hasFullForMe)
+        {
+            dto.Items.Add(new DocPermissionDto { UserId = MyUserId, RoleId = 0, Level = DocAccessLevelDto.Full, CanDownload = true });
+        }
 
         var old = await Db.DocumentPermissions.Where(p => p.DocumentId == id).ToListAsync();
         Db.DocumentPermissions.RemoveRange(old);
@@ -1040,8 +1080,16 @@ public class DocumentsController : RbacControllerBase
             .ToListAsync();
 
         var ids = docs.Select(d => d.Id).ToList();
+        // ردیف فردی + گروهیِ نقش‌های کاربر — بدون نقش‌ها، شمارش انقضا برای دارندگان
+        // دسترسی «گروهی/نقشی» روی خود مدرک ناقص بود.
+        var roleIds = await Db.UserRoles.AsNoTracking()
+            .Where(r => r.UserId == MyUserId)
+            .Select(r => r.RoleId)
+            .ToListAsync();
         var perms = await Db.DocumentPermissions.AsNoTracking()
-            .Where(p => ids.Contains(p.DocumentId) && p.UserId == MyUserId).ToListAsync();
+            .Where(p => ids.Contains(p.DocumentId) &&
+                        (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
+            .ToListAsync();
 
         int expired = 0, soon = 0;
         foreach (var d in docs)

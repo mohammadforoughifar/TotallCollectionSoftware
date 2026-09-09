@@ -777,7 +777,7 @@
 <DocumentFormModal Visible="showDoc" DefaultFolderId="@(selectedFolderId ?? 0)"
                    Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents" Roles="lookups.Roles"
                    NumberingEnabled="lookups.CodeNumberingEnabled"
-                   CanManageAccess="IsManager"
+                   CanManageAccess="@CanManageDocAccessHere"
                    OnClose="() => showDoc = false" OnSaved="OnDocSaved" />
 
 @* ==================== مودال مدیریت تگ‌ها ==================== *@
@@ -1054,6 +1054,24 @@
                 return f != null && f.MyLevel >= DocAccessLevelDto.Write;
             }
             return folders.Any(f => f.MyLevel >= DocAccessLevelDto.Write);
+        }
+    }
+
+    /// <summary>
+    /// آیا کاربر می‌تواند در «مدرک جدید/ویرایش» (که در پوشهٔ انتخابی یا اولین پوشهٔ قابل نوشتن
+    /// ساخته می‌شود) بخش دسترسی‌ها را مدیریت کند؟ مدیر آرشیو همیشه؛ غیرمدیر فقط اگر روی همان
+    /// پوشه «دسترسی کامل» داشته باشد. (قبلاً فقط IsManager بود و کاربرِ Full غیرمدیر نمی‌توانست
+    /// هنگام ساخت/ویرایش از همین صفحه دسترسی مدرک را تنظیم کند.)
+    /// </summary>
+    private bool CanManageDocAccessHere
+    {
+        get
+        {
+            if (IsManager) return true;
+            var targetFolder = selectedFolderId is int fid
+                ? folders.FirstOrDefault(x => x.Id == fid)
+                : folders.FirstOrDefault(f => f.MyLevel >= DocAccessLevelDto.Write);
+            return targetFolder != null && targetFolder.MyLevel >= DocAccessLevelDto.Full;
         }
     }
 

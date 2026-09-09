@@ -86,6 +86,23 @@ public class DocumentService : IDocumentService
         // دسترسی‌های مستقیم
         await SaveDocPermissionsAsync(doc.Id, dto.Permissions);
 
+        // سازنده همیشه باید یک ردیف «دسترسی کامل» مستقیم در جدول داشته باشد؛
+        // بدون آن، فهرست دسترسی‌ها در UI خالی می‌ماند و اولین ذخیرهٔ بعدی دسترسی‌ها
+        // (که جایگزین کامل است) می‌تواند عملاً هیچ مدیری را در جدول باقی نگذارد.
+        // (اگر سازنده از طریق فهرستِ dto.Permissions ردیف Full مستقیم دارد، ردیف تکراری ساخته نمی‌شود.)
+        if (!await _db.DocumentPermissions.AnyAsync(p => p.DocumentId == doc.Id && p.UserId == userId))
+        {
+            _db.DocumentPermissions.Add(new DocumentPermission
+            {
+                DocumentId = doc.Id,
+                UserId = userId,
+                RoleId = 0,
+                Level = DocAccessLevel.Full,
+                CanDownload = true
+            });
+            await _db.SaveChangesAsync();
+        }
+
         // ورژن ۱
         var v1 = new DocumentVersion
         {
