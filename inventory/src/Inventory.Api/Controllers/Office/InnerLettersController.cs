@@ -19,8 +19,9 @@ public class InnerLettersController : RbacControllerBase
     private readonly IPishnevisService _pishnevis;
     private readonly ILetterGroupService _groups;
     private readonly IArchiveService _archive;
+    private readonly FileStore _store;
 
-    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups, IArchiveService archive)
+    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups, IArchiveService archive, FileStore store)
         : base(db)
     {
         _letters = letters;
@@ -28,6 +29,7 @@ public class InnerLettersController : RbacControllerBase
         _pishnevis = pishnevis;
         _groups = groups;
         _archive = archive;
+        _store = store;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
@@ -363,20 +365,22 @@ public class InnerLettersController : RbacControllerBase
         if (!await InFlowAsync(id) && !await IsAdminAsync())
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
 
-        var list = await Db.AppAttachments.AsNoTracking()
+        var rows = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == Module && a.RefId == id)
             .OrderBy(a => a.Id)
-            .Select(a => new LetterAttachmentDto
-            {
-                Id = a.Id,
-                FileName = a.FileName,
-                ContentType = a.ContentType,
-                Size = a.Data.Length,
-                UploaderName = a.UploaderName,
-                UploaderUserId = a.UploaderUserId,
-                UploadedAt = a.UploadedAt
-            })
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
             .ToListAsync();
+
+        var list = rows.Select(a => new LetterAttachmentDto
+        {
+            Id = a.Id,
+            FileName = a.FileName,
+            ContentType = a.ContentType,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length,
+            UploaderName = a.UploaderName,
+            UploaderUserId = a.UploaderUserId,
+            UploadedAt = a.UploadedAt
+        }).ToList();
         return Ok(list);
     }
 
@@ -393,6 +397,7 @@ public class InnerLettersController : RbacControllerBase
     /// <summary>
     /// آپلود پیوست — بدون محدودیت تعداد؛ هر فایل حداکثر ۲۰ مگابایت؛ فایل خالی رد می‌شود.
     /// فقط فرستنده نامه می‌تواند پیوست اضافه کند (قاعده مصوب کارفرما).
+    /// فایل‌ها در wwwroot/uploads/innerletter/{letterId} ذخیره می‌شوند و در DB فقط اطلاعات + مسیر (FilePath) ثبت می‌شود.
     /// </summary>
     [HttpPost("{id:int}/attachments")]
     [RequestSizeLimit(25 * 1024 * 1024)]
@@ -409,13 +414,19 @@ public class InnerLettersController : RbacControllerBase
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
+        ms.Position = 0;
+
+        // فایل روی دیسک در wwwroot/uploads/innerletter/{letterId} ذخیره می‌شود
+        var relPath = await _store.SaveAsync("innerletter", id, ms, file.FileName);
+
         var att = new AppAttachment
         {
             Module = Module,
             RefId = id,
             FileName = Path.GetFileName(file.FileName),
             ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-            Data = ms.ToArray(),
+            FilePath = relPath,
+            Data = Array.Empty<byte>(),
             UploaderName = await MyDisplayNameAsync(),
             UploaderUserId = MyUserId
         };
@@ -440,7 +451,11 @@ public class InnerLettersController : RbacControllerBase
         }
         else if (!await InFlowAsync(a.RefId) && !await IsAdminAsync())
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
-        return File(a.Data, a.ContentType, a.FileName);
+
+        // اول از دیسک خوانده می‌شود؛ در صورت نبود، به blob قدیمی در DB برمی‌گردد
+        var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
+        if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+        return File(bytes, a.ContentType, a.FileName);
     }
 
     /// <summary>لیست پیوست‌های پیش‌نویس کاربر جاری</summary>
@@ -451,20 +466,25 @@ public class InnerLettersController : RbacControllerBase
         var owns = await Db.PishnevisLetters.AnyAsync(p => p.PishnevisId == id && p.UserId == MyUserId && !p.IsDelete);
         if (!owns) return StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." });
 
-        var list = await Db.AppAttachments.AsNoTracking()
+        var rows = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == "Pishnevis" && a.RefId == id)
             .OrderBy(a => a.Id)
-            .Select(a => new LetterAttachmentDto
-            {
-                Id = a.Id, FileName = a.FileName, ContentType = a.ContentType,
-                Size = a.Data.Length, UploaderName = a.UploaderName,
-                UploaderUserId = a.UploaderUserId, UploadedAt = a.UploadedAt
-            })
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
             .ToListAsync();
+
+        var list = rows.Select(a => new LetterAttachmentDto
+        {
+            Id = a.Id, FileName = a.FileName, ContentType = a.ContentType,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length, UploaderName = a.UploaderName,
+            UploaderUserId = a.UploaderUserId, UploadedAt = a.UploadedAt
+        }).ToList();
         return Ok(list);
     }
 
-    /// <summary>آپلود پیوست روی پیش‌نویس — همان قواعد ۲۰ مگابایت/فایل خالی</summary>
+    /// <summary>
+    /// آپلود پیوست روی پیش‌نویس — همان قواعد ۲۰ مگابایت/فایل خالی.
+    /// فایل‌ها در wwwroot/uploads/innerletter/pishnevis/{pishnevisId} ذخیره می‌شوند.
+    /// </summary>
     [HttpPost("pishnevis/{id:int}/attachments")]
     [RequestSizeLimit(25 * 1024 * 1024)]
     public async Task<IActionResult> UploadPishnevisAttachment(int id, IFormFile file)
@@ -480,13 +500,19 @@ public class InnerLettersController : RbacControllerBase
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
+        ms.Position = 0;
+
+        // فایل پیش‌نویس زیر wwwroot/uploads/innerletter/pishnevis/{pishnevisId} ذخیره می‌شود
+        var relPath = await _store.SaveAsync("innerletter", id, ms, file.FileName, "pishnevis");
+
         Db.AppAttachments.Add(new AppAttachment
         {
             Module = "Pishnevis",
             RefId = id,
             FileName = Path.GetFileName(file.FileName),
             ContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
-            Data = ms.ToArray(),
+            FilePath = relPath,
+            Data = Array.Empty<byte>(),
             UploaderName = await MyDisplayNameAsync(),
             UploaderUserId = MyUserId
         });
@@ -502,6 +528,9 @@ public class InnerLettersController : RbacControllerBase
         if (a == null) return NotFound();
         if (a.UploaderUserId != MyUserId && !await IsAdminAsync())
             return StatusCode(403, new { message = "فقط بارگذارنده یا مدیر می‌تواند پیوست را حذف کند." });
+
+        // فایل روی دیسک هم حذف می‌شود
+        _store.Delete(a.FilePath);
         Db.AppAttachments.Remove(a);
         await Db.SaveChangesAsync();
         return Ok(new { message = "پیوست حذف شد." });

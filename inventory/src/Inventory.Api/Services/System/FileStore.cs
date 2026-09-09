@@ -87,11 +87,14 @@ public class FileStore
     private string ToWebRootRelative(string fullPath) =>
         Path.GetRelativePath(_webRoot, fullPath).Replace('\\', '/');
 
-    /// <summary>فایل جدید را روی دیسک می‌نویسد و مسیر نسبی برمی‌گرداند.</summary>
-    public async Task<string> SaveAsync(string module, int refId, Stream stream, string originalName)
+    /// <summary>
+    /// فایل جدید را روی دیسک می‌نویسد و مسیر نسبی برمی‌گرداند.
+    /// subFolder برای ساخت مسیرهای واضح مثل innerletter/pishnevis/{refId} استفاده می‌شود.
+    /// </summary>
+    public async Task<string> SaveAsync(string module, int refId, Stream stream, string originalName, string? subFolder = null)
     {
         var safe = SanitizeName(originalName);
-        var dir = Path.Combine(_root, SafeModule(module), refId.ToString());
+        var dir = BuildDirectory(module, refId, subFolder);
         Directory.CreateDirectory(dir);
         var file = Path.Combine(dir, $"{Guid.NewGuid():N}_{safe}");
         await using (var fs = File.Create(file))
@@ -99,6 +102,44 @@ public class FileStore
             await stream.CopyToAsync(fs);
         }
         return ToRelative(file);
+    }
+
+    /// <summary>
+    /// فایل موجود (مثلاً پیوست پیش‌نویس) را به پوشه جدید منتقل می‌کند و مسیر نسبی جدید برمی‌گرداند.
+    /// اگر فایل موجود نباشد یا انتقال ناموفق باشد null برمی‌گرداند.
+    /// </summary>
+    public string? Move(string? relativePath, string module, int refId, string? subFolder = null)
+    {
+        var full = ToFull(relativePath);
+        if (full is null || !File.Exists(full)) return null;
+
+        var dir = BuildDirectory(module, refId, subFolder);
+        Directory.CreateDirectory(dir);
+        var dest = Path.Combine(dir, Path.GetFileName(full));
+
+        // اگر فایل از قبل در مقصد است، کاری لازم نیست
+        if (Path.GetFullPath(dest) == Path.GetFullPath(full)) return relativePath;
+
+        try
+        {
+            File.Move(full, dest, true);
+        }
+        catch
+        {
+            return null;
+        }
+
+        return ToRelative(dest);
+    }
+
+    /// <summary>ساخت مسیر کامل در پوشه uploads: uploads/{module}[/{subFolder}]/{refId}</summary>
+    private string BuildDirectory(string module, int refId, string? subFolder = null)
+    {
+        var parts = new List<string> { SafeModule(module) };
+        if (!string.IsNullOrWhiteSpace(subFolder))
+            parts.Add(SafeModule(subFolder));
+        parts.Add(refId.ToString());
+        return Path.Combine(parts.ToArray());
     }
 
     /// <summary>خواندن فایل از دیسک. اگر موجود نباشد، null (صاحب‌کار به blob قدیمی در DB برمی‌گردد).</summary>
