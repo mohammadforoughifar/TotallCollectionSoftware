@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
-    <LangVersion>latest</LangVersion>
+    <!-- .NET 8 uses C# 12. Do not use latest: C# 14 can bind array
+         extension calls to Span overloads that .NET 8 expression interpreters cannot execute. -->
+    <LangVersion>12.0</LangVersion>
     <!--
       CS0006 Metadata file '...\\obj\\Debug\\net8.0\\ref\\*.dll' could not be found
       اسمبلی مرجع (ref) اگر مسیر پروژه پرانتز/فاصله داشته باشد (مثل Downloads\\... (2)\\)
