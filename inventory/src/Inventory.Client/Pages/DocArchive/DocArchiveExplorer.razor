@@ -742,11 +742,25 @@
                 </div>
             </div>
             <div class="col-12"><hr class="my-1" /></div>
-            <div class="col-12">
-                <label class="form-label fw-700">دسترسی نفرات و گروه‌ها به این پوشه</label>
-                <div class="fs-9 text-muted mb-2">این دسترسی‌ها به کلیه زیرپوشه‌ها و مدارک داخل این پوشه ارث می‌رسد.</div>
-                <DocPermissionEditor Users="lookups.Users" Roles="lookups.Roles" Items="folderPerms" />
-            </div>
+            @* مدیریت دسترسی پوشه هم فقط برای دارندگان «دسترسی کامل» روی همان پوشه (یا مدیر آرشیو) *@
+            @if (CanManageFolderAccess)
+            {
+                <div class="col-12">
+                    <label class="form-label fw-700">دسترسی نفرات و گروه‌ها به این پوشه</label>
+                    <div class="fs-9 text-muted mb-2">این دسترسی‌ها به کلیه زیرپوشه‌ها و مدارک داخل این پوشه ارث می‌رسد.</div>
+                    <DocPermissionEditor Users="lookups.Users" Roles="lookups.Roles" Items="folderPerms" />
+                </div>
+            }
+            else
+            {
+                <div class="col-12">
+                    <div class="alert alert-secondary py-2 fs-9 mb-0">
+                        <i class="bi bi-info-circle ms-1"></i>
+                        تعیین دسترسی کاربران به این پوشه فقط توسط دارندگان <b>دسترسی کامل</b> روی همان پوشه
+                        (یا مدیر آرشیو) و از دکمهٔ چرخ‌دندهٔ کنار پوشه انجام می‌شود.
+                    </div>
+                </div>
+            }
         </div>
     </ChildContent>
     <Footer>
@@ -763,6 +777,7 @@
 <DocumentFormModal Visible="showDoc" DefaultFolderId="@(selectedFolderId ?? 0)"
                    Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents" Roles="lookups.Roles"
                    NumberingEnabled="lookups.CodeNumberingEnabled"
+                   CanManageAccess="IsManager"
                    OnClose="() => showDoc = false" OnSaved="OnDocSaved" />
 
 @* ==================== مودال مدیریت تگ‌ها ==================== *@
@@ -1018,6 +1033,15 @@
         (expiryFrom.HasValue || expiryTo.HasValue ? 1 : 0) +
         (selectedFileTypes.Count > 0 ? 1 : 0) +
         (selectedTagIds.Count > 0 ? 1 : 0);
+
+    /// <summary>
+    /// مدیریت دسترسی پوشه فقط برای دارندگان «دسترسی کامل» روی <b>همان پوشه</b> (یا مدیر آرشیو).
+    /// برای پوشهٔ تازه (Id=0) فقط مدیر آرشیو — چون دسترسی کامل از grant های خود پوشه می‌آید
+    /// و بعد از ساخت، از چرخ‌دندهٔ کنار پوشه قابل مدیریت است.
+    /// </summary>
+    private bool CanManageFolderAccess =>
+        IsManager || (folderForm.Id > 0 &&
+                      folders.FirstOrDefault(f => f.Id == folderForm.Id)?.MyLevel >= DocAccessLevelDto.Full);
 
     private bool CanWriteHere
     {
@@ -1401,7 +1425,8 @@
         try
         {
             folderForm.ParentId = folderParentId > 0 ? folderParentId : null;
-            folderForm.Permissions = folderPerms;
+            // فقط دارندهٔ دسترسی کامل روی این پوشه، فهرست دسترسی‌ها را ارسال می‌کند
+            folderForm.Permissions = CanManageFolderAccess ? folderPerms : new();
 
             int id;
             if (folderForm.Id == 0)
@@ -1414,12 +1439,16 @@
             {
                 id = folderForm.Id;
                 await Svc.UpdateFolderAsync(id, folderForm);
-                await Svc.SaveFolderPermissionsAsync(id, new DocPermissionsSaveDto
+                // ذخیرهٔ دسترسی‌ها فقط وقتی مجاز باشیم — وگرنه سرور ۴۰۳ می‌دهد و خطای کاذب می‌بینیم
+                if (CanManageFolderAccess)
                 {
-                    IsPublic = folderForm.IsPublic,
-                    PublicCanDownload = folderForm.PublicCanDownload,
-                    Items = folderPerms
-                });
+                    await Svc.SaveFolderPermissionsAsync(id, new DocPermissionsSaveDto
+                    {
+                        IsPublic = folderForm.IsPublic,
+                        PublicCanDownload = folderForm.PublicCanDownload,
+                        Items = folderPerms
+                    });
+                }
             }
 
             Toast.Success("پوشه ذخیره شد.");

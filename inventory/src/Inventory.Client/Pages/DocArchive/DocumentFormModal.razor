@@ -169,14 +169,29 @@
                 </div>
             </div>
 
-            @* ---------- دسترسی نفرات ---------- *@
-            <div class="col-12">
-                <label class="form-label fw-700"><i class="bi bi-shield-lock ms-1"></i> دسترسی اختصاصی این مدرک</label>
-                <div class="fs-9 text-muted mb-1">
-                    علاوه بر دسترسی ارث‌بری‌شده از پوشه. بالاترین سطح برنده است.
+            @* ---------- دسترسی نفرات ----------
+               فقط دارندگان «دسترسی کامل» روی همین مدرک می‌توانند دسترسی دیگران را تعیین کنند؛
+               برای بقیه این بخش اصلاً نمایش داده نمی‌شود (دسترسی از صفحهٔ خود مدرک مدیریت می‌شود). *@
+            @if (CanManageAccess)
+            {
+                <div class="col-12">
+                    <label class="form-label fw-700"><i class="bi bi-shield-lock ms-1"></i> دسترسی اختصاصی این مدرک</label>
+                    <div class="fs-9 text-muted mb-1">
+                        علاوه بر دسترسی ارث‌بری‌شده از پوشه. بالاترین سطح برنده است.
+                    </div>
+                    <DocPermissionEditor Users="Users" Roles="Roles" Items="perms" />
                 </div>
-                <DocPermissionEditor Users="Users" Roles="Roles" Items="perms" />
-            </div>
+            }
+            else
+            {
+                <div class="col-12">
+                    <div class="alert alert-secondary py-2 fs-9 mb-0">
+                        <i class="bi bi-info-circle ms-1"></i>
+                        تعیین دسترسی کاربران روی این مدرک فقط در <b>صفحهٔ خود مدرک</b> و توسط دارندگان
+                        <b>دسترسی کامل</b> روی همان مدرک انجام می‌شود.
+                    </div>
+                </div>
+            }
         </div>
     </ChildContent>
     <Footer>
@@ -203,6 +218,13 @@
 
     /// <summary>شماره‌گذار خودکار فعال است (از lookups) — در ساخت، کد می‌تواند خالی بماند</summary>
     [Parameter] public bool NumberingEnabled { get; set; }
+
+    /// <summary>
+    /// آیا کاربر جاری «دسترسی کامل» روی این مدرک دارد و بنابراین مجاز است دسترسی دیگران را
+    /// تعیین کند؟ اگر false باشد بخش دسترسی نمایش داده نمی‌شود و هنگام ذخیره هم فهرست
+    /// دسترسی‌ها ارسال نمی‌شود (null ⇒ سرور ردیف‌های موجود را دست‌نخورده نگه می‌دارد).
+    /// </summary>
+    [Parameter] public bool CanManageAccess { get; set; }
 
     [Parameter] public int DefaultFolderId { get; set; }
 
@@ -294,7 +316,9 @@
             UserName = Users.FirstOrDefault(u => u.Id == id)?.Name ?? "",
             Order = i
         }).ToList();
-        form.Permissions = perms;
+        // فقط دارندهٔ «دسترسی کامل» روی این مدرک فهرست دسترسی‌ها را ارسال می‌کند؛
+        // null یعنی «دست نزن» و سرور ردیف‌های موجود را حفظ می‌کند.
+        form.Permissions = CanManageAccess ? perms : null!;
         form.LinkedDocumentIds = linkIds;
         form.TagIds = selectedTagIds;
 
