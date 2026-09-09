@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- کلاس لایبرری ایجنت شناسنامه سخت‌افزار — بدون خروجی اجرایی -->
     <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>Agent.Console</RootNamespace>
+    <RootNamespace>Agent.Core</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- CA1416: هشدار «فقط ویندوز» — در زمان اجرا با OperatingSystem.IsWindows کنترل می‌شود -->
@@ -10,10 +10,5 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.Management" Version="8.0.0" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- فایل‌های اجرایی دستی: دکمه‌ی دابل‌کلیک و پیکربندی سرور -->
-    <None Include="run-agent.bat" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="agent.config.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

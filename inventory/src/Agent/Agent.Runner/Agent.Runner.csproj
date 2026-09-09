@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- رانر مستقل ایجنت — فقط یک پوسته‌ی نازک روی کلاس لایبرری Agent.Core -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Agent.Runner</RootNamespace>
+    <AssemblyName>Agent.Runner</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Agent.Core\Agent.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- فایل‌های اجرایی دستی: دکمه‌ی دابل‌کلیک و پیکربندی سرور -->
+    <None Include="run-agent.bat" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="agent.config.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

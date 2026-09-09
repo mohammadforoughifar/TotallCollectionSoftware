@@ -27,6 +27,10 @@
 | **System** (سیستم/سازمان) | SystemCompanies, SystemDepartments, SystemUsers, Roles, Permissions, Settings, Notifications, Dashboard, Archive | SystemCompany, SystemDepartment, SystemUser, ArchiveAndAttachments | FileStore, UserPhotoService, MessengerService | SystemUsers, SystemCompany, SystemDepartment, MyArchive, Users, Settings/ |
 | **Dashboards** (لندینگ) | — (در System) | — | — | DashboardLive, DashboardHardware (در روت Pages) |
 
+## ایجنت شناسنامه سخت‌افزار (`src/Agent/`)
+- `Agent.Core` — **کلاس لایبرری** جمع‌آوری مشخصات سخت‌افزار (WMI) + کلاینت ارتباط با `api/SystemInfo` — قابل استفاده در هر برنامه‌ی دیگر
+- `Agent.Runner` — رانر کنسولی مستقل روی `Agent.Core` — برای رانش مجزا روی سیستم کاربرها (`run-agent.bat` + `agent.config.json`)
+
 ## زیرساخت (ماژول‌دار نیست)
 - `API/Data/` — DbContext، Initializer، Seederها
 - `API/Hubs/` — SignalR (Dashboard, Notify)
