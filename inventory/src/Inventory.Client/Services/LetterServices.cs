@@ -61,6 +61,7 @@ public interface ILetterService
     // تنظیمات ساختار شماره نامه
     Task<LetterNumberSettingDto> GetNumberSettingsAsync(int sourceType = 1);
     Task<List<LetterNumberPartDto>> GetNumberPartsAsync();
+    Task<LetterNumberLookupsDto> GetNumberLookupsAsync();
     Task<string> PreviewNumberAsync(LetterNumberSettingDto dto);
     Task<LetterNumberSettingDto> SaveNumberSettingsAsync(LetterNumberSettingDto dto);
 }
@@ -253,6 +254,9 @@ public class LetterService : ILetterService
 
     public Task<List<LetterNumberPartDto>> GetNumberPartsAsync() =>
         _api.GetAsync<List<LetterNumberPartDto>>("api/letters/number-settings/parts");
+
+    public Task<LetterNumberLookupsDto> GetNumberLookupsAsync() =>
+        _api.GetAsync<LetterNumberLookupsDto>("api/letters/number-settings/lookups");
 
     private class PreviewResponse { public string? Preview { get; set; } }
 

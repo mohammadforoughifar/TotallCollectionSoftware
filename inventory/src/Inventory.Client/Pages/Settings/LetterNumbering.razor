@@ -64,6 +64,23 @@ else
                         }
                     </div>
 
+                    @* هشدار: اگر جزء واحد/شرکت انتخاب شده ولی هیچ کدی تعریف نشده، آن بخش از شماره حذف می‌شود *@
+                    @if (DeptWarning)
+                    {
+                        <div class="alert alert-warning py-2 px-3 mt-3 fs-8 mb-0">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            جزء «کد واحد» انتخاب شده، اما هیچ واحدی در «شناسنامه سیستم ← واحد / بخش» کد ندارد
+                            و واحد پیش‌فرضی هم انتخاب نشده — این بخش از شماره خالی می‌ماند.
+                        </div>
+                    }
+                    @if (CompanyWarning)
+                    {
+                        <div class="alert alert-warning py-2 px-3 mt-2 fs-8 mb-0">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            جزء «کد شرکت» انتخاب شده، اما هیچ کمپانی‌ای کد ندارد و شرکت پیش‌فرضی هم انتخاب نشده.
+                        </div>
+                    }
+
                     <div class="mt-3">
                         <label class="form-label small fw-700">افزودن جزء</label>
                         <div class="d-flex flex-wrap gap-2">
@@ -148,15 +165,36 @@ else
                             </select>
                         </div>
 
+                        @* واحد و شرکت از «شناسنامه سیستم» خوانده می‌شوند — همان‌جایی که تعریف شده‌اند *@
                         <div class="col-md-4">
-                            <label class="form-label small fw-700">کد واحد پیش‌فرض</label>
-                            <input class="form-control form-control-sm"
-                                   value="@model.DefaultDeptCode" @onchange="OnDeptCodeChanged" />
+                            <label class="form-label small fw-700">واحد پیش‌فرض</label>
+                            <select class="form-select form-select-sm" @onchange="OnDeptCodeChanged">
+                                <option value="">— بدون واحد پیش‌فرض —</option>
+                                @foreach (var d in lookups.Departments)
+                                {
+                                    <option value="@d.Code" selected="@(d.Code == model.DefaultDeptCode)">
+                                        @d.Name @(string.IsNullOrWhiteSpace(d.Code) ? "(بدون کد)" : $"— کد {d.Code}")
+                                    </option>
+                                }
+                            </select>
+                            <div class="fs-8 text-muted mt-1">
+                                اگر کاربرِ ثبت‌کننده واحد داشته باشد، کد واحد خودش استفاده می‌شود؛ این مقدار فقط پشتیبان است.
+                            </div>
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-700">کد شرکت پیش‌فرض</label>
-                            <input class="form-control form-control-sm"
-                                   value="@model.DefaultCompanyCode" @onchange="OnCompanyCodeChanged" />
+                            <label class="form-label small fw-700">شرکت پیش‌فرض</label>
+                            <select class="form-select form-select-sm" @onchange="OnCompanyCodeChanged">
+                                <option value="">— بدون شرکت پیش‌فرض —</option>
+                                @foreach (var c in lookups.Companies)
+                                {
+                                    <option value="@c.Code" selected="@(c.Code == model.DefaultCompanyCode)">
+                                        @c.Name @(string.IsNullOrWhiteSpace(c.Code) ? "(بدون کد)" : $"— کد {c.Code}")
+                                    </option>
+                                }
+                            </select>
+                            <div class="fs-8 text-muted mt-1">
+                                کدها در «شناسنامه سیستم ← واحد / بخش» و «کمپانی‌ها» تعریف می‌شوند.
+                            </div>
                         </div>
                         <div class="col-md-4 d-flex align-items-end">
                             <div class="form-check">
@@ -209,6 +247,7 @@ else
 
 @code {
     private LetterNumberSettingDto model = new();
+    private LetterNumberLookupsDto lookups = new();
     private List<LetterNumberPartDto> parts = new();
     private string preview = "";
     private bool loading = true, saving;
@@ -224,13 +263,27 @@ else
         loading = true;
         try
         {
-            parts = await LetterSvc.GetNumberPartsAsync();
+            // واحدها/کمپانی‌ها از تنظیمات سیستم + اجزای قابل انتخاب
+            lookups = await LetterSvc.GetNumberLookupsAsync();
+            parts = lookups.Parts;
             model = await LetterSvc.GetNumberSettingsAsync();
             preview = model.Preview ?? "";
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
     }
+
+    /// <summary>جزء «کد واحد» انتخاب شده ولی هیچ کدی در دسترس نیست</summary>
+    private bool DeptWarning =>
+        model.Parts.Contains("dept")
+        && string.IsNullOrWhiteSpace(model.DefaultDeptCode)
+        && !lookups.Departments.Any(d => !string.IsNullOrWhiteSpace(d.Code));
+
+    /// <summary>جزء «کد شرکت» انتخاب شده ولی هیچ کدی در دسترس نیست</summary>
+    private bool CompanyWarning =>
+        model.Parts.Contains("company")
+        && string.IsNullOrWhiteSpace(model.DefaultCompanyCode)
+        && !lookups.Companies.Any(c => !string.IsNullOrWhiteSpace(c.Code));
 
     private string PartTitle(string code) =>
         parts.FirstOrDefault(p => p.Code == code)?.Title ?? code;
@@ -245,8 +298,8 @@ else
         "year" => model.YearDigits == 2 ? "04" : "1404",
         "month" => "06",
         "day" => "19",
-        "dept" => model.DefaultDeptCode ?? "کد واحد کاربر",
-        "company" => model.DefaultCompanyCode ?? "کد شرکت کاربر",
+        "dept" => DeptSample(),
+        "company" => CompanySample(),
         "user" => "شناسه کاربر",
         "serial" => model.SerialDigits > 0 ? new string('0', Math.Max(0, model.SerialDigits - 2)) + "12" : "12",
         _ => ""
@@ -296,13 +349,15 @@ else
 
     private async Task OnDeptCodeChanged(ChangeEventArgs e)
     {
-        model.DefaultDeptCode = e.Value?.ToString();
+        var v = e.Value?.ToString();
+        model.DefaultDeptCode = string.IsNullOrWhiteSpace(v) ? null : v;
         await Preview();
     }
 
     private async Task OnCompanyCodeChanged(ChangeEventArgs e)
     {
-        model.DefaultCompanyCode = e.Value?.ToString();
+        var v = e.Value?.ToString();
+        model.DefaultCompanyCode = string.IsNullOrWhiteSpace(v) ? null : v;
         await Preview();
     }
 
@@ -328,6 +383,28 @@ else
     {
         model.ResetPolicy = e.Value?.ToString() ?? "Yearly";
         await Preview();
+    }
+
+    /// <summary>نمونه‌ی کد واحد: کد واحد کاربر، وگرنه واحد پیش‌فرض انتخاب‌شده</summary>
+    private string DeptSample()
+    {
+        if (!string.IsNullOrWhiteSpace(model.DefaultDeptCode))
+        {
+            var d = lookups.Departments.FirstOrDefault(x => x.Code == model.DefaultDeptCode);
+            return d is null ? model.DefaultDeptCode! : $"{model.DefaultDeptCode} ({d.Name})";
+        }
+        return "کد واحد کاربر";
+    }
+
+    /// <summary>نمونه‌ی کد شرکت: کد شرکت کاربر، وگرنه شرکت پیش‌فرض انتخاب‌شده</summary>
+    private string CompanySample()
+    {
+        if (!string.IsNullOrWhiteSpace(model.DefaultCompanyCode))
+        {
+            var c = lookups.Companies.FirstOrDefault(x => x.Code == model.DefaultCompanyCode);
+            return c is null ? model.DefaultCompanyCode! : $"{model.DefaultCompanyCode} ({c.Name})";
+        }
+        return "کد شرکت کاربر";
     }
 
     private static int ToInt(object? v, int fallback) =>
