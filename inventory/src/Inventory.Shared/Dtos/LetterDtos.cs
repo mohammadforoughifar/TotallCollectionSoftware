@@ -330,4 +330,60 @@ public class LetterAttachmentDto
     public string UploaderName { get; set; } = "";
     public int UploaderUserId { get; set; }
     public DateTime UploadedAt { get; set; }
+
+    /// <summary>مسیر نسبی فایل داخل uploads/ (مثلاً innerletter/12/ab…_file.pdf)</summary>
+    public string? FilePath { get; set; }
+
+    /// <summary>آیا این فایل در مرورگر قابل مشاهده است (تصویر/PDF/متن)؟</summary>
+    public bool CanPreview { get; set; }
+}
+
+// ==================== تنظیمات ساختار شماره نامه ====================
+
+/// <summary>یک جزء از ساختار شماره نامه</summary>
+public class LetterNumberPartDto
+{
+    /// <summary>کد جزء: prefix|year|month|day|dept|company|user|serial|suffix|text1|text2</summary>
+    public string Code { get; set; } = "";
+
+    /// <summary>عنوان فارسی برای نمایش</summary>
+    public string Title { get; set; } = "";
+}
+
+/// <summary>تنظیمات ساختار شماره نامه (اندیکاتور)</summary>
+public class LetterNumberSettingDto
+{
+    /// <summary>نوع نامه: 1=داخلی، 2=صادره، 3=وارده</summary>
+    public int SourceType { get; set; } = 1;
+
+    /// <summary>ترتیب اجزای شماره — به همان ترتیبی که در شماره ظاهر می‌شوند</summary>
+    public List<string> Parts { get; set; } = new() { "year", "serial" };
+
+    public string Separator { get; set; } = "/";
+    public string? Prefix { get; set; }
+    public string? Suffix { get; set; }
+    public string? Text1 { get; set; }
+    public string? Text2 { get; set; }
+
+    /// <summary>تعداد ارقام سال: ۲ یا ۴</summary>
+    public int YearDigits { get; set; } = 4;
+
+    /// <summary>تعداد ارقام سریال (۰ = بدون صفر ابتدایی)</summary>
+    public int SerialDigits { get; set; }
+
+    public int StartNumber { get; set; } = 1;
+    public int Step { get; set; } = 1;
+
+    /// <summary>Yearly | Monthly | Never</summary>
+    public string ResetPolicy { get; set; } = "Yearly";
+
+    public bool UsePersianDigits { get; set; }
+    public string? DefaultDeptCode { get; set; }
+    public string? DefaultCompanyCode { get; set; }
+
+    /// <summary>پیش‌نمایش نمونه‌ی شماره‌ی بعدی (فقط خواندنی — سرور پر می‌کند)</summary>
+    public string? Preview { get; set; }
+
+    /// <summary>شماره‌ی بعدی که به نامه‌ی جدید داده می‌شود (فقط خواندنی)</summary>
+    public int NextSerial { get; set; }
 }

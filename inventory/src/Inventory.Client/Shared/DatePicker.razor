@@ -1,5 +1,8 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
 <div class="date-picker">
-    <div class="input-group input-group-sm">
+    <div class="input-group input-group-sm" @ref="anchorRef">
         <input type="text"
                class="form-control @CssClass"
                value="@Text"
@@ -19,7 +22,7 @@
 
     @if (open)
     {
-        <div class="dp-popover">
+        <div class="dp-popover" @ref="popRef" @onclick:stopPropagation="true">
             <div class="dp-head">
                 <button class="btn btn-sm btn-light" type="button" @onclick="() => MoveMonth(1)">
                     <i class="bi bi-chevron-right"></i>
@@ -90,6 +93,13 @@
     private DateTime? _last;
     private bool open;
     private int viewYear, viewMonth;
+
+    // ---------- جای‌گذاری منو روی ویوپورت (تا زیر کارت‌ها نرود) ----------
+    private ElementReference anchorRef;
+    private ElementReference popRef;
+    private DotNetObjectReference<DatePicker>? selfRef;
+    private readonly string dpKey = "dp_" + Guid.NewGuid().ToString("N");
+    private bool jsOpen;
 
     private int minYear = 1390;
     private int maxYear = 1430;
@@ -164,17 +174,62 @@
     {
         open = !open;
         if (open) InitView();
+        else _ = CloseJsAsync();
+    }
+
+    /// <summary>بسته‌شدن از سمت جاوااسکریپت (کلیک بیرون یا Esc)</summary>
+    [JSInvokable]
+    public async Task CloseFromJs()
+    {
+        if (!open) return;
+        open = false;
+        await CloseJsAsync();
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (open && !jsOpen)
+        {
+            jsOpen = true;
+            selfRef ??= DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("dpOpen", dpKey, anchorRef, popRef, selfRef); } catch { }
+        }
+        else if (open && jsOpen)
+        {
+            // تغییر ماه/سال ارتفاع منو را عوض می‌کند
+            try { await JS.InvokeVoidAsync("dpReposition", dpKey); } catch { }
+        }
+        else if (!open && jsOpen)
+        {
+            await CloseJsAsync();
+        }
+    }
+
+    private async Task CloseJsAsync()
+    {
+        if (!jsOpen) return;
+        jsOpen = false;
+        try { await JS.InvokeVoidAsync("dpClose", dpKey); } catch { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await CloseJsAsync();
+        selfRef?.Dispose();
     }
 
     private async Task SetToday()
     {
         open = false;
+        await CloseJsAsync();
         await Notify(DateTime.Now);
     }
 
     private async Task Pick(int day)
     {
         open = false;
+        await CloseJsAsync();
         var dt = PersianDate.ToGregorian(viewYear, viewMonth, day);
         if (dt != DateTime.MinValue)
             await Notify(dt);
