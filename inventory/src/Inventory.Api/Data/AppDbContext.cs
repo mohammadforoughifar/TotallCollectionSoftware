@@ -96,9 +96,6 @@ public class AppDbContext : DbContext
     public DbSet<LetterGroup> LetterGroups => Set<LetterGroup>();
     public DbSet<LetterGroupMember> LetterGroupMembers => Set<LetterGroupMember>();
 
-    /// <summary>تنظیمات ساختار شماره نامه (اندیکاتور) — یک رکورد به ازای هر نوع نامه</summary>
-    public DbSet<LetterNumberSetting> LetterNumberSettings => Set<LetterNumberSetting>();
-
     // ==================== RBAC ====================
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Permission> Permissions => Set<Permission>();
@@ -232,8 +229,6 @@ public class AppDbContext : DbContext
 
         // ==================== اتوماسیون اداری — نامه داخلی ====================
         // کلیدهای اصلی صریح (نام‌گذاری مطابق طرح کارفرما)
-        mb.Entity<LetterNumberSetting>().HasIndex(x => x.SourceType).IsUnique();
-
         mb.Entity<Erja>().HasKey(e => e.ErjaId);
         mb.Entity<Amalgar>().HasKey(a => a.AmalgarId);
         mb.Entity<PishnevisLetter>().HasKey(p => p.PishnevisId);

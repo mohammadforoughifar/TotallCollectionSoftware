@@ -18,11 +18,10 @@ public class InnerLettersController : RbacControllerBase
     private readonly IErjaService _erja;
     private readonly IPishnevisService _pishnevis;
     private readonly ILetterGroupService _groups;
-    private readonly ILetterNumberService _numbers;
     private readonly LetterAttachmentStore _files;
 
     public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja,
-        IPishnevisService pishnevis, ILetterGroupService groups, ILetterNumberService numbers,
+        IPishnevisService pishnevis, ILetterGroupService groups,
         LetterAttachmentStore files)
         : base(db)
     {
@@ -30,7 +29,6 @@ public class InnerLettersController : RbacControllerBase
         _erja = erja;
         _pishnevis = pishnevis;
         _groups = groups;
-        _numbers = numbers;
         _files = files;
     }
 
@@ -275,52 +273,6 @@ public class InnerLettersController : RbacControllerBase
             return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
         await _groups.DeleteAsync(id, MyUserId, isAdmin);
         return Ok(new { message = "گروه حذف شد." });
-    }
-
-    // ==================== تنظیمات ساختار شماره نامه ====================
-
-    /// <summary>خواندن تنظیمات ساختار شماره نامه (+ پیش‌نمایش شماره‌ی بعدی)</summary>
-    [HttpGet("number-settings")]
-    public async Task<IActionResult> GetNumberSettings([FromQuery] int sourceType = 1)
-    {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _numbers.GetAsync(sourceType));
-    }
-
-    /// <summary>فهرست اجزای قابل انتخاب برای ساختار شماره</summary>
-    [HttpGet("number-settings/parts")]
-    public async Task<IActionResult> NumberParts()
-    {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(_numbers.AvailableParts());
-    }
-
-    /// <summary>
-    /// فهرست‌های کمکی صفحه‌ی ساختار شماره: واحدها و کمپانی‌های تعریف‌شده در تنظیمات سیستم
-    /// (تا کد واحد/شرکت به‌جای تایپ دستی از فهرست انتخاب شود) + اجزای قابل انتخاب
-    /// </summary>
-    [HttpGet("number-settings/lookups")]
-    public async Task<IActionResult> NumberLookups()
-    {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _numbers.LookupsAsync());
-    }
-
-    /// <summary>پیش‌نمایش شماره با تنظیمات ارسالی (بدون ذخیره)</summary>
-    [HttpPost("number-settings/preview")]
-    public async Task<IActionResult> PreviewNumber([FromBody] LetterNumberSettingDto dto)
-    {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(new { preview = await _numbers.PreviewAsync(dto, MyUserId) });
-    }
-
-    /// <summary>ذخیره‌ی تنظیمات ساختار شماره نامه — فقط مدیر</summary>
-    [HttpPost("number-settings")]
-    public async Task<IActionResult> SaveNumberSettings([FromBody] LetterNumberSettingDto dto)
-    {
-        if (!await IsAdminAsync())
-            return StatusCode(403, new { message = "فقط مدیر می‌تواند ساختار شماره نامه را تغییر دهد." });
-        return Ok(await _numbers.SaveAsync(dto));
     }
 
     // ==================== پیوست‌ها ====================

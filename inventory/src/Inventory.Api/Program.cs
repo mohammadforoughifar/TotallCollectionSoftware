@@ -44,7 +44,6 @@ builder.Services.AddScoped<IExpenseService, ExpenseService>();
 // ---------- اتوماسیون اداری — نامه داخلی (کارتابل، ارجاع، پیش‌نویس، گروه‌های گیرندگان) ----------
 builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
 builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
-builder.Services.AddScoped<ILetterNumberService, LetterNumberService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
 

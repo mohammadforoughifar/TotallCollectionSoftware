@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
@@ -7,7 +8,7 @@ namespace Inventory.Api.Services;
 
 // ============================================================
 //  سرویس نامه داخلی — منطق بر اساس InerletterService کارفرما:
-//  • شماره‌گذاری اندیکاتور طبق «تنظیمات ساختار شماره نامه» (ILetterNumberService)
+//  • شماره‌گذاری اندیکاتور بر اساس سال شمسی (هر سال از ۱ شروع می‌شود)
 //  • سه نوع گیرنده: گیرنده (اصلی) / ارجاع (جهت اقدام) / هامش (جهت اطلاع)
 //  • هر گیرنده یک رکورد Erja دریافت می‌کند (گردش نامه)
 //  • عطف/پیرو با RelatedLetter
@@ -32,22 +33,41 @@ public class InnerLetterService : IInnerLetterService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
-    private readonly ILetterNumberService _numbers;
     private readonly LetterAttachmentStore _files;
 
     public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups,
-        ILetterNumberService numbers, LetterAttachmentStore files)
+        LetterAttachmentStore files)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
-        _numbers = numbers;
         _files = files;
     }
 
-    // ---------- شماره‌گذاری ----------
-    // ساختار شماره (ترتیب اجزا، جداکننده، تعداد ارقام، ریست سالانه/ماهانه و…)
-    // از «تنظیمات → ساختار شماره نامه» خوانده می‌شود؛ ILetterNumberService آن را اعمال می‌کند.
+    // ---------- شماره‌گذاری بر اساس سال شمسی (منطق LetterNumber کارفرما) ----------
+    private async Task<int> NextNumberAsync()
+    {
+        var pc = new PersianCalendar();
+        int currentYear = pc.GetYear(DateTime.Now);
+
+        var last = await _db.InnerLetters
+            .OrderByDescending(l => l.Id)
+            .Select(l => new { l.Number, l.DateSabt })
+            .FirstOrDefaultAsync();
+
+        if (last == null) return 1;
+
+        // اگر سال آخرین نامه‌ی ثبت‌شده کوچکتر از سال جاری است، شماره از ۱ شروع می‌شود
+        int lastYear = pc.GetYear(last.DateSabt);
+        return lastYear < currentYear ? 1 : last.Number + 1;
+    }
+
+    /// <summary>ساخت شماره اندیکاتور: «سال شمسی/شماره» — مثل 1404/12</summary>
+    private static string BuildLetterNumber(int number)
+    {
+        var pc = new PersianCalendar();
+        return $"{pc.GetYear(DateTime.Now)}/{number}";
+    }
 
     private static Erja NewErja(int sourceId, int senderUserId, int reciverUserId, DateTime date, string type, string matn = "", int amalgarId = 1, DateTime? mohlat = null, int? parentErjaId = null) => new()
     {
@@ -119,13 +139,12 @@ public class InnerLetterService : IInnerLetterService
         await _db.SaveChangesAsync();
 
         // ---------- نامه ----------
-        // شماره اندیکاتور دقیقاً مطابق تنظیمات «ساختار شماره نامه» ساخته می‌شود
-        var (number, letterNumber) = await _numbers.NextAsync(creatorUserId, now, sourceType: 1);
+        var number = await NextNumberAsync();
         var letter = new InnerLetter
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = letterNumber,
+            LetterNumber = BuildLetterNumber(number),
             CreatorUserId = creatorUserId,
             Title = dto.Title.Trim(),
             Text = dto.Text,

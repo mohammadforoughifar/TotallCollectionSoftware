@@ -1662,10 +1662,6 @@ namespace Inventory.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Code")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
                     b.Property<int?>("CompanyId")
                         .HasColumnType("int");
 
@@ -3499,82 +3495,6 @@ namespace Inventory.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("LetterGroupMembers");
-                });
-
-            modelBuilder.Entity("Inventory.Api.Data.LetterNumberSetting", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("DefaultCompanyCode")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("DefaultDeptCode")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("PartsOrder")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("nvarchar(300)");
-
-                    b.Property<string>("Prefix")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("ResetPolicy")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
-
-                    b.Property<string>("Separator")
-                        .IsRequired()
-                        .HasMaxLength(5)
-                        .HasColumnType("nvarchar(5)");
-
-                    b.Property<int>("SerialDigits")
-                        .HasColumnType("int");
-
-                    b.Property<int>("SourceType")
-                        .HasColumnType("int");
-
-                    b.Property<int>("StartNumber")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Step")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Suffix")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("Text1")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<string>("Text2")
-                        .HasMaxLength(30)
-                        .HasColumnType("nvarchar(30)");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("UsePersianDigits")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("YearDigits")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("SourceType")
-                        .IsUnique();
-
-                    b.ToTable("LetterNumberSettings");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.LetterSource", b =>

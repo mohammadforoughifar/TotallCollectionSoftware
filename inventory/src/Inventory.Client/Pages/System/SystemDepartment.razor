@@ -32,7 +32,6 @@
             {
                 <div class="m-card">
                     <div class="m-title">@d.Name</div>
-                    <div class="m-row"><span class="m-label">کد واحد</span><span class="m-val num">@(string.IsNullOrWhiteSpace(d.Code) ? "—" : d.Code)</span></div>
                     <div class="m-row"><span class="m-label">کمپانی</span><span class="m-val">@GetCompanyName(d.CompanyId)</span></div>
                     <div class="m-row"><span class="m-label">وضعیت</span><span class="m-val">@(d.IsActive ? "فعال ✅" : "غیرفعال")</span></div>
                     <div class="m-actions">
@@ -46,7 +45,7 @@
         <div class="d-none d-md-block">
             <table class="table table-hover align-middle" style="border-radius:14px;overflow:hidden;">
                 <thead style="background:#f0f3ff;color:#4f5b8a;">
-                    <tr><th>#</th><th>نام واحد</th><th>کد واحد</th><th>کمپانی</th><th>وضعیت</th><th>عملیات</th></tr>
+                    <tr><th>#</th><th>نام واحد</th><th>کمپانی</th><th>وضعیت</th><th>عملیات</th></tr>
                 </thead>
                 <tbody>
                     @foreach (var d in items)
@@ -54,7 +53,6 @@
                         <tr style="border-bottom:1px solid #f0f3ff;">
                             <td class="fw-600 text-secondary">@d.Id</td>
                             <td><b style="color:#2a2a4a;">@d.Name</b></td>
-                            <td><span class="num text-secondary">@(string.IsNullOrWhiteSpace(d.Code) ? "—" : d.Code)</span></td>
                             <td><span class="badge rounded-pill" style="background:#e8ecff;color:#4f5b8a;">@GetCompanyName(d.CompanyId)</span></td>
                             
                             <td>
@@ -81,11 +79,6 @@
                 <div class="col-12">
                     <label class="form-label">نام واحد <span class="text-danger">*</span></label>
                     <input class="form-control" @bind="newDept.Name" placeholder="نام واحد" />
-                </div>
-                <div class="col-12">
-                    @* کد واحد در «ساختار شماره نامه» به‌عنوان جزء کد واحد استفاده می‌شود *@
-                    <label class="form-label">کد واحد <small class="text-muted">(در شماره نامه استفاده می‌شود)</small></label>
-                    <input class="form-control" @bind="newDept.Code" placeholder="مثلاً 101 یا IT" maxlength="30" />
                 </div>
                 <div class="col-12">
                     <label class="form-label">کمپانی</label>
@@ -148,7 +141,7 @@ window.addEventListener('keydown', function(e) {
 
     private void EditDept(SystemDepartmentItem d)
     {
-        newDept = new() { Id = d.Id, Name = d.Name, Code = d.Code, CompanyId = d.CompanyId, IsActive = d.IsActive };
+        newDept = new() { Id = d.Id, Name = d.Name, CompanyId = d.CompanyId, IsActive = d.IsActive };
         editingDept = true; ShowForm = true; StateHasChanged();
     }
 
@@ -203,8 +196,7 @@ window.addEventListener('keydown', function(e) {
     {
         public int Id { get; set; }
         public string Name { get; set; } = "";
-        public string? Code { get; set; }
-        public int? CompanyId { get; set; }
+                public int? CompanyId { get; set; }
         public bool IsActive { get; set; } = true;
         public int SystemCount { get; set; }
     }
