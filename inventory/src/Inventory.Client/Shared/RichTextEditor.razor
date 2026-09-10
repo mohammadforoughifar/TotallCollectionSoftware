@@ -1,0 +1,395 @@
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* ============================================================
+   ادیتور متن غنی با امکانات Word — قابل استفاده در همه‌ی فرم‌ها
+   • فونت، اندازه، سرتیتر، رنگ متن و هایلایت
+   • بولد/ایتالیک/زیرخط/خط‌خورده/بالانویس/زیرنویس
+   • لیست نقطه‌ای و شماره‌ای، تورفتگی، ترازها، جهت متن
+   • جدول، تصویر، لینک، خط افقی، نقل‌قول، کد
+   • جستجو و جایگزینی، شمارش کلمات، تمام‌صفحه، چاپ
+   استفاده:  <RichTextEditor @ref="ed" Placeholder="…" />
+             await ed.GetHtmlAsync() / await ed.SetHtmlAsync(html)
+   ============================================================ *@
+
+<div class="rte" id="@WrapId">
+    <div class="rte-bar rte-bar-wrap">
+
+        @* ---------- سطر اول: قلم و پاراگراف ---------- *@
+        <div class="rte-row">
+            <select title="سبک پاراگراف" @onchange="OnBlockChanged">
+                <option value="p">متن عادی</option>
+                <option value="h1">سرتیتر ۱</option>
+                <option value="h2">سرتیتر ۲</option>
+                <option value="h3">سرتیتر ۳</option>
+                <option value="pre">کد / متن ثابت</option>
+            </select>
+
+            <select title="فونت" @onchange="OnFontChanged">
+                @foreach (var f in Fonts)
+                {
+                    <option value="@f.Value">@f.Key</option>
+                }
+            </select>
+
+            <select title="اندازه قلم" @onchange="OnSizeChanged">
+                @foreach (var s in Sizes)
+                {
+                    <option value="@s" selected="@(s == 11)">@s.ToString().FaDigits()</option>
+                }
+            </select>
+
+            <span class="sep"></span>
+
+            <button type="button" title="پررنگ (Ctrl+B)" class="@(st.GetValueOrDefault("bold") ? "on" : "")" @onclick='() => Exec("bold")'><i class="bi bi-type-bold"></i></button>
+            <button type="button" title="مورب (Ctrl+I)" class="@(st.GetValueOrDefault("italic") ? "on" : "")" @onclick='() => Exec("italic")'><i class="bi bi-type-italic"></i></button>
+            <button type="button" title="زیرخط (Ctrl+U)" class="@(st.GetValueOrDefault("underline") ? "on" : "")" @onclick='() => Exec("underline")'><i class="bi bi-type-underline"></i></button>
+            <button type="button" title="خط‌خورده" class="@(st.GetValueOrDefault("strikeThrough") ? "on" : "")" @onclick='() => Exec("strikeThrough")'><i class="bi bi-type-strikethrough"></i></button>
+            <button type="button" title="بالانویس" @onclick='() => Exec("superscript")'><i class="bi bi-superscript"></i></button>
+            <button type="button" title="زیرنویس" @onclick='() => Exec("subscript")'><i class="bi bi-subscript"></i></button>
+
+            <span class="sep"></span>
+
+            <span class="rte-color" title="رنگ متن">
+                <button type="button"><i class="bi bi-fonts"></i></button>
+                <input type="color" value="@foreColor" @onchange="OnForeColor" />
+                <span class="bar" style="background:@foreColor"></span>
+            </span>
+            <span class="rte-color" title="رنگ هایلایت">
+                <button type="button"><i class="bi bi-highlighter"></i></button>
+                <input type="color" value="@backColor" @onchange="OnBackColor" />
+                <span class="bar" style="background:@backColor"></span>
+            </span>
+            <button type="button" title="حذف قالب‌بندی" @onclick='() => Exec("removeFormat")'><i class="bi bi-eraser"></i></button>
+        </div>
+
+        @* ---------- سطر دوم: پاراگراف و درج ---------- *@
+        <div class="rte-row">
+            <button type="button" title="راست‌چین" class="@(st.GetValueOrDefault("justifyRight") ? "on" : "")" @onclick='() => Exec("justifyRight")'><i class="bi bi-text-right"></i></button>
+            <button type="button" title="وسط‌چین" class="@(st.GetValueOrDefault("justifyCenter") ? "on" : "")" @onclick='() => Exec("justifyCenter")'><i class="bi bi-text-center"></i></button>
+            <button type="button" title="چپ‌چین" class="@(st.GetValueOrDefault("justifyLeft") ? "on" : "")" @onclick='() => Exec("justifyLeft")'><i class="bi bi-text-left"></i></button>
+            <button type="button" title="تراز از دو طرف" @onclick='() => Exec("justifyFull")'><i class="bi bi-justify"></i></button>
+
+            <span class="sep"></span>
+
+            <button type="button" title="لیست نقطه‌ای" class="@(st.GetValueOrDefault("insertUnorderedList") ? "on" : "")" @onclick='() => Exec("insertUnorderedList")'><i class="bi bi-list-ul"></i></button>
+            <button type="button" title="لیست شماره‌ای" class="@(st.GetValueOrDefault("insertOrderedList") ? "on" : "")" @onclick='() => Exec("insertOrderedList")'><i class="bi bi-list-ol"></i></button>
+            <button type="button" title="افزایش تورفتگی" @onclick='() => Exec("indent")'><i class="bi bi-text-indent-right"></i></button>
+            <button type="button" title="کاهش تورفتگی" @onclick='() => Exec("outdent")'><i class="bi bi-text-indent-left"></i></button>
+            <button type="button" title="فاصله خطوط" @onclick="ToggleLine"><i class="bi bi-distribute-vertical"></i></button>
+
+            <span class="sep"></span>
+
+            <button type="button" title="متن راست‌به‌چپ" @onclick='() => Dir("rtl")'><i class="bi bi-text-paragraph"></i> RTL</button>
+            <button type="button" title="متن چپ‌به‌راست" @onclick='() => Dir("ltr")'>LTR</button>
+
+            <span class="sep"></span>
+
+            <button type="button" title="درج جدول" @onclick='() => TogglePop("table")'><i class="bi bi-table"></i></button>
+            <button type="button" title="درج تصویر" @onclick="PickImage"><i class="bi bi-image"></i></button>
+            <button type="button" title="درج لینک" @onclick='() => TogglePop("link")'><i class="bi bi-link-45deg"></i></button>
+            <button type="button" title="حذف لینک" @onclick='() => Exec("unlink")'><i class="bi bi-link-slash"></i></button>
+            <button type="button" title="خط افقی" @onclick="InsertHr"><i class="bi bi-dash-lg"></i></button>
+            <button type="button" title="نقل‌قول" @onclick="InsertQuote"><i class="bi bi-quote"></i></button>
+
+            <span class="sep"></span>
+
+            <button type="button" title="جستجو و جایگزینی" @onclick='() => TogglePop("find")'><i class="bi bi-search"></i></button>
+            <button type="button" title="واگرد (Ctrl+Z)" @onclick='() => Exec("undo")'><i class="bi bi-arrow-counterclockwise"></i></button>
+            <button type="button" title="ازنو (Ctrl+Y)" @onclick='() => Exec("redo")'><i class="bi bi-arrow-clockwise"></i></button>
+
+            <span class="sep"></span>
+
+            <button type="button" title="تمام‌صفحه" @onclick="ToggleFullscreen"><i class="bi @(fullscreen ? "bi-fullscreen-exit" : "bi-arrows-fullscreen")"></i></button>
+            <button type="button" title="چاپ متن" @onclick="PrintContent"><i class="bi bi-printer"></i></button>
+        </div>
+
+        @* ---------- پنل جدول ---------- *@
+        @if (pop == "table")
+        {
+            <div class="rte-pop" @onclick:stopPropagation="true">
+                <label>تعداد سطر</label>
+                <input type="number" min="1" max="30" @bind="tRows" />
+                <label>تعداد ستون</label>
+                <input type="number" min="1" max="15" @bind="tCols" />
+                <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                    <input type="checkbox" checked="@tHeader" @onchange="e => tHeader = (bool)(e.Value ?? false)" style="width:auto;margin:0" />
+                    سطر اول به‌عنوان عنوان
+                </label>
+                <div class="acts">
+                    <button type="button" class="no" @onclick='() => pop = ""'>انصراف</button>
+                    <button type="button" class="ok" @onclick="InsertTable">درج جدول</button>
+                </div>
+            </div>
+        }
+
+        @* ---------- پنل لینک ---------- *@
+        @if (pop == "link")
+        {
+            <div class="rte-pop" @onclick:stopPropagation="true">
+                <label>آدرس لینک</label>
+                <input type="text" dir="ltr" placeholder="https://example.com" @bind="linkUrl" />
+                <label>متن نمایشی (اختیاری)</label>
+                <input type="text" @bind="linkText" />
+                <div class="acts">
+                    <button type="button" class="no" @onclick='() => pop = ""'>انصراف</button>
+                    <button type="button" class="ok" @onclick="InsertLink">درج لینک</button>
+                </div>
+            </div>
+        }
+
+        @* ---------- پنل جستجو و جایگزینی ---------- *@
+        @if (pop == "find")
+        {
+            <div class="rte-pop" @onclick:stopPropagation="true">
+                <label>یافتن</label>
+                <input type="text" @bind="findText" />
+                <label>جایگزینی با</label>
+                <input type="text" @bind="replaceText" />
+                <div class="acts">
+                    <button type="button" class="no" @onclick='() => pop = ""'>بستن</button>
+                    <button type="button" class="ok" @onclick="() => DoReplace(false)">جایگزینی</button>
+                    <button type="button" class="ok" @onclick="() => DoReplace(true)">همه</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="rte-body" id="@EditorId" contenteditable="true" data-ph="@Placeholder"
+         style="@BodyStyle" @onkeyup="RefreshState" @onmouseup="RefreshState"></div>
+
+    @if (ShowStatusBar)
+    {
+        <div class="rte-foot">
+            <span><i class="bi bi-fonts"></i> @words.FaDigits() کلمه</span>
+            <span><i class="bi bi-textarea-t"></i> @chars.FaDigits() نویسه</span>
+            <span class="spacer"></span>
+            <span><i class="bi bi-info-circle"></i> برای درج تصویر از دکمه‌ی تصویر یا چسباندن (Ctrl+V) استفاده کنید</span>
+        </div>
+    }
+
+    <InputFile id="@($"{EditorId}_img")" OnChange="OnImageSelected" accept="image/*" style="display:none" />
+</div>
+
+@code {
+    /// <summary>شناسه‌ی یکتای ادیتور — اگر چند ادیتور در یک صفحه باشد باید متفاوت باشد</summary>
+    [Parameter] public string EditorId { get; set; } = "rteEditor";
+    [Parameter] public string Placeholder { get; set; } = "متن را بنویسید…";
+    [Parameter] public bool ShowStatusBar { get; set; } = true;
+    [Parameter] public string? MinHeight { get; set; }
+    [Parameter] public string? MaxHeight { get; set; }
+
+    /// <summary>متن اولیه (HTML) — پس از رندر داخل ادیتور قرار می‌گیرد</summary>
+    [Parameter] public string? Html { get; set; }
+
+    private string WrapId => $"{EditorId}_wrap";
+    private string BodyStyle =>
+        (string.IsNullOrEmpty(MinHeight) ? "" : $"min-height:{MinHeight};") +
+        (string.IsNullOrEmpty(MaxHeight) ? "" : $"max-height:{MaxHeight};");
+
+    private static readonly Dictionary<string, string> Fonts = new()
+    {
+        ["وزیرمتن"] = "Vazirmatn, Tahoma, sans-serif",
+        ["تاهوما"] = "Tahoma, sans-serif",
+        ["ایران‌سنس"] = "IRANSans, Vazirmatn, Tahoma, sans-serif",
+        ["نازنین"] = "'B Nazanin', Nazanin, Vazirmatn, serif",
+        ["میترا"] = "'B Mitra', Mitra, Vazirmatn, serif",
+        ["زر"] = "'B Zar', Zar, Vazirmatn, serif",
+        ["تیتر"] = "'B Titr', Titr, Vazirmatn, serif",
+        ["Arial"] = "Arial, Helvetica, sans-serif",
+        ["Times New Roman"] = "'Times New Roman', Times, serif",
+        ["Calibri"] = "Calibri, Candara, sans-serif",
+        ["Courier New"] = "'Courier New', monospace"
+    };
+
+    private static readonly int[] Sizes = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 72 };
+
+    private Dictionary<string, bool> st = new();
+    private string foreColor = "#111827";
+    private string backColor = "#fff3a3";
+    private string pop = "";
+    private bool fullscreen;
+    private bool lineWide;
+    private int words, chars;
+
+    private int tRows = 3, tCols = 3;
+    private bool tHeader = true;
+    private string linkUrl = "", linkText = "";
+    private string findText = "", replaceText = "";
+
+    private bool jsReady;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        try
+        {
+            await JS.InvokeVoidAsync("rteInit", EditorId);
+            jsReady = true;
+            if (!string.IsNullOrEmpty(Html)) await SetHtmlAsync(Html);
+            await RefreshState();
+        }
+        catch { }
+    }
+
+    // ==================== API عمومی کامپوننت ====================
+
+    /// <summary>محتوای HTML ادیتور</summary>
+    public async Task<string> GetHtmlAsync()
+    {
+        try { return await JS.InvokeAsync<string>("rteGetHtml", EditorId) ?? ""; }
+        catch { return ""; }
+    }
+
+    /// <summary>مقداردهی محتوای ادیتور</summary>
+    public async Task SetHtmlAsync(string? html)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("rteSetHtml", EditorId, html ?? "");
+            await RefreshState();
+        }
+        catch { }
+    }
+
+    public async Task FocusAsync()
+    {
+        try { await JS.InvokeVoidAsync("rteFocus", EditorId); } catch { }
+    }
+
+    // ==================== فرمان‌ها ====================
+
+    private async Task Exec(string cmd, string? val = null)
+    {
+        try { await JS.InvokeVoidAsync("rteExec", cmd, val, EditorId); } catch { }
+        await RefreshState();
+    }
+
+    private async Task RefreshState()
+    {
+        if (!jsReady) return;
+        try
+        {
+            st = await JS.InvokeAsync<Dictionary<string, bool>>("rteState", EditorId) ?? new();
+            var s = await JS.InvokeAsync<RteStats>("rteStats", EditorId);
+            words = s?.Words ?? 0; chars = s?.Chars ?? 0;
+        }
+        catch { }
+    }
+
+    private class RteStats
+    {
+        public int Words { get; set; }
+        public int Chars { get; set; }
+    }
+
+    private async Task OnBlockChanged(ChangeEventArgs e)
+    {
+        var tag = e.Value?.ToString() ?? "p";
+        try { await JS.InvokeVoidAsync("rteBlock", EditorId, tag); } catch { }
+        await RefreshState();
+    }
+
+    private async Task OnFontChanged(ChangeEventArgs e)
+    {
+        var f = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(f)) return;
+        try { await JS.InvokeVoidAsync("rteFontName", EditorId, f); } catch { }
+    }
+
+    private async Task OnSizeChanged(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var pt)) return;
+        try { await JS.InvokeVoidAsync("rteFontSize", EditorId, pt); } catch { }
+    }
+
+    private async Task OnForeColor(ChangeEventArgs e)
+    {
+        foreColor = e.Value?.ToString() ?? foreColor;
+        await Exec("foreColor", foreColor);
+    }
+
+    private async Task OnBackColor(ChangeEventArgs e)
+    {
+        backColor = e.Value?.ToString() ?? backColor;
+        await Exec("hiliteColor", backColor);
+    }
+
+    private async Task Dir(string dir)
+    {
+        try { await JS.InvokeVoidAsync("rteDir", EditorId, dir); } catch { }
+    }
+
+    private async Task ToggleLine()
+    {
+        lineWide = !lineWide;
+        try { await JS.InvokeVoidAsync("rteLineHeight", EditorId, lineWide ? "2.9" : "2"); } catch { }
+    }
+
+    private void TogglePop(string p) => pop = pop == p ? "" : p;
+
+    private async Task InsertTable()
+    {
+        pop = "";
+        try { await JS.InvokeVoidAsync("rteTable", EditorId, tRows, tCols, tHeader); } catch { }
+    }
+
+    private async Task InsertLink()
+    {
+        pop = "";
+        if (string.IsNullOrWhiteSpace(linkUrl)) return;
+        try { await JS.InvokeVoidAsync("rteLink", EditorId, linkUrl.Trim(), linkText?.Trim()); } catch { }
+        linkUrl = linkText = "";
+    }
+
+    private async Task InsertHr()
+    {
+        try { await JS.InvokeVoidAsync("rteHr", EditorId); } catch { }
+    }
+
+    private async Task InsertQuote()
+    {
+        try { await JS.InvokeVoidAsync("rteQuote", EditorId); } catch { }
+    }
+
+    private async Task DoReplace(bool all)
+    {
+        if (string.IsNullOrEmpty(findText)) return;
+        try { await JS.InvokeAsync<int>("rteReplace", EditorId, findText, replaceText ?? "", all); } catch { }
+        await RefreshState();
+    }
+
+    private async Task PickImage()
+    {
+        try { await JS.InvokeVoidAsync("rteClickInput", $"{EditorId}_img"); } catch { }
+    }
+
+    private async Task OnImageSelected(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f == null) return;
+        if (f.Size > 5 * 1024 * 1024) return; // حداکثر ۵ مگابایت برای تصویر درون‌متنی
+        try
+        {
+            await using var s = f.OpenReadStream(5 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await s.CopyToAsync(ms);
+            var b64 = Convert.ToBase64String(ms.ToArray());
+            var type = string.IsNullOrWhiteSpace(f.ContentType) ? "image/png" : f.ContentType;
+            await JS.InvokeVoidAsync("rteImage", EditorId, $"data:{type};base64,{b64}", null);
+        }
+        catch { }
+    }
+
+    private async Task ToggleFullscreen()
+    {
+        try { fullscreen = await JS.InvokeAsync<bool>("rteFullscreen", WrapId); } catch { }
+    }
+
+    private async Task PrintContent()
+    {
+        try { await JS.InvokeVoidAsync("rtePrintContent", EditorId, "چاپ متن"); } catch { }
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

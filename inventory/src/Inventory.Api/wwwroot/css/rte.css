@@ -1,0 +1,145 @@
+/* ============================================================
+   ادیتور متن غنی (شبیه Word) — استایل نوار ابزار و بدنه
+   ============================================================ */
+
+.rte {
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.rte-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    padding: 5px 6px;
+    border-bottom: 1px solid #e2e8f0;
+    background: linear-gradient(#fbfcfe, #f1f5f9);
+}
+
+.rte-bar .rte-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+}
+
+.rte-bar button {
+    min-width: 29px;
+    height: 29px;
+    padding: 0 5px;
+    border: 0;
+    background: transparent;
+    border-radius: 8px;
+    color: #64748b;
+    cursor: pointer;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    line-height: 1;
+    transition: background .12s, color .12s;
+}
+
+.rte-bar button:hover { background: #e2e8f0; color: #0f172a; }
+.rte-bar button.on { background: #ede9fe; color: #6d28d9; }
+.rte-bar button:disabled { opacity: .45; cursor: default; }
+
+.rte-bar .sep { width: 1px; align-self: stretch; background: #e2e8f0; margin: 3px 4px; }
+
+.rte-bar select {
+    height: 29px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font: inherit;
+    font-size: 11.5px;
+    padding: 0 4px;
+    cursor: pointer;
+    max-width: 130px;
+}
+.rte-bar select:focus { outline: 0; border-color: #8e5cff; }
+
+/* انتخاب رنگ */
+.rte-color { position: relative; display: inline-flex; }
+.rte-color input[type=color] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0;
+}
+.rte-color .bar { position: absolute; inset-inline: 5px; bottom: 4px; height: 3px; border-radius: 2px; }
+
+/* بدنه */
+.rte-body {
+    min-height: 190px;
+    max-height: 420px;
+    overflow: auto;
+    padding: 14px 16px;
+    font-size: 13.5px;
+    line-height: 2;
+    outline: 0;
+    background: #fff;
+    color: #0f172a;
+    direction: rtl;
+    text-align: justify;
+}
+.rte-body:empty::before { content: attr(data-ph); color: #94a3b8; }
+.rte-body:focus { background: #fff; }
+
+.rte-body h1 { font-size: 1.7em; font-weight: 800; margin: .5em 0 .35em; }
+.rte-body h2 { font-size: 1.42em; font-weight: 800; margin: .5em 0 .35em; }
+.rte-body h3 { font-size: 1.2em; font-weight: 700; margin: .5em 0 .35em; }
+.rte-body p { margin: 0 0 .55em; }
+.rte-body ul, .rte-body ol { padding-inline-start: 1.7em; margin: .3em 0 .6em; }
+.rte-body blockquote { border-inline-start: 3px solid #8e5cff; padding: 4px 12px; margin: 8px 0; color: #475569; background: #f8fafc; }
+.rte-body table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.rte-body table td, .rte-body table th { border: 1px solid #94a3b8; padding: 6px 8px; }
+.rte-body table th { background: #f1f5f9; font-weight: 700; }
+.rte-body img { max-width: 100%; height: auto; border-radius: 6px; }
+.rte-body pre, .rte-body code { font-family: Consolas, monospace; background: #f1f5f9; border-radius: 6px; padding: 1px 5px; direction: ltr; unicode-bidi: embed; }
+.rte-body a { color: #4f46e5; }
+.rte-body hr { border: 0; border-top: 1px solid #cbd5e1; margin: 10px 0; }
+
+/* نوار وضعیت */
+.rte-foot {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 4px 10px; border-top: 1px solid #e2e8f0; background: #f8fafc;
+    font-size: 10.5px; color: #64748b;
+}
+.rte-foot .spacer { flex: 1; }
+
+/* تمام‌صفحه */
+.rte.rte-fs {
+    position: fixed; inset: 0; z-index: 20000; border-radius: 0; max-height: none;
+}
+.rte.rte-fs .rte-body { max-height: none; height: calc(100vh - 108px); }
+body.rte-fs-open { overflow: hidden; }
+
+/* پنل‌های کوچک (جدول/لینک/تصویر/جایگزینی) */
+.rte-pop {
+    position: absolute; z-index: 30; top: 100%; inset-inline-start: 6px; margin-top: 4px;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .16); padding: 10px; min-width: 230px;
+}
+.rte-pop label { font-size: 10.5px; color: #64748b; font-weight: 700; display: block; margin-bottom: 2px; }
+.rte-pop input[type=text], .rte-pop input[type=number] {
+    width: 100%; border: 1px solid #e2e8f0; border-radius: 8px; padding: 5px 8px; font: inherit; font-size: 12px; margin-bottom: 6px;
+}
+.rte-pop input:focus { outline: 0; border-color: #8e5cff; }
+.rte-pop .acts { display: flex; gap: 6px; justify-content: flex-end; }
+.rte-pop .acts button {
+    border: 0; border-radius: 8px; padding: 4px 12px; font-size: 11.5px; font-weight: 700; cursor: pointer;
+}
+.rte-pop .acts .ok { background: #8e5cff; color: #fff; }
+.rte-pop .acts .no { background: #f1f5f9; color: #475569; }
+.rte-bar-wrap { position: relative; }
+
+@media (max-width: 575.98px) {
+    .rte-bar select { max-width: 92px; font-size: 10.5px; }
+    .rte-body { font-size: 13px; }
+}

@@ -33,12 +33,15 @@ public class InnerLetterService : IInnerLetterService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
+    private readonly LetterAttachmentStore _files;
 
-    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups)
+    public InnerLetterService(AppDbContext db, INotifyService notify, ILetterGroupService groups,
+        LetterAttachmentStore files)
     {
         _db = db;
         _notify = notify;
         _groups = groups;
+        _files = files;
     }
 
     // ---------- شماره‌گذاری بر اساس سال شمسی (منطق LetterNumber کارفرما) ----------
@@ -196,6 +199,9 @@ public class InnerLetterService : IInnerLetterService
                 {
                     a.Module = "InnerLetters";
                     a.RefId = source.Id;
+                    // فایل فیزیکی هم از پوشه‌ی پیش‌نویس به پوشه‌ی نامه منتقل می‌شود
+                    if (!string.IsNullOrEmpty(a.FilePath))
+                        a.FilePath = _files.Move(a.FilePath, source.Id);
                 }
                 await _db.SaveChangesAsync();
             }

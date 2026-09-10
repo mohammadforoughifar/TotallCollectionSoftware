@@ -330,4 +330,10 @@ public class LetterAttachmentDto
     public string UploaderName { get; set; } = "";
     public int UploaderUserId { get; set; }
     public DateTime UploadedAt { get; set; }
+
+    /// <summary>مسیر نسبی فایل داخل uploads/ (مثلاً innerletter/12/ab…_file.pdf)</summary>
+    public string? FilePath { get; set; }
+
+    /// <summary>آیا این فایل در مرورگر قابل مشاهده است (تصویر/PDF/متن)؟</summary>
+    public bool CanPreview { get; set; }
 }

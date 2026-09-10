@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="icons/bootstrap-icons.css" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="stylesheet" href="css/letters.css" />
+    <link rel="stylesheet" href="css/rte.css" />
     <link href="manifest.webmanifest" rel="manifest" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -21,12 +22,9 @@
     <meta name="apple-mobile-web-app-title" content="انبار و فروش" />
     <script>
         // تعیین آدرس سرور API در زمان اجرا
-        // ================== ادیتور متن ساده ==================
-        window.rteExec = function (cmd) { document.execCommand(cmd, false, null); };
-        window.rteGetHtml = function (id) { var el = document.getElementById(id); return el ? el.innerHTML : ""; };
+        // ================== ادیتور متن غنی (شبیه Word) — در js/rte.js ==================
         // چاپ نامه (اتوماسیون اداری)
         window.ltxPrint = function () { window.print(); };
-        window.rteSetHtml = function (id, html) { var el = document.getElementById(id); if (el) el.innerHTML = html || ""; };
 
         window.inventoryApiBase = function (fallback) {
             try {
@@ -242,6 +240,8 @@
             }
         };
     </script>
+    <script src="js/rte.js"></script>
+    <script src="js/datepicker.js"></script>
     <script src="js/project-interop.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>navigator.serviceWorker.register('service-worker.js');</script>

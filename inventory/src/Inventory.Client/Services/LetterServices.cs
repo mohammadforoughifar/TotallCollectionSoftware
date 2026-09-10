@@ -51,6 +51,12 @@ public interface ILetterService
     Task UploadPishnevisAttachmentAsync(int pishnevisId, Stream stream, string fileName, string contentType);
     Task DeleteAttachmentAsync(int attachmentId);
     string AttachmentDownloadUrl(int attachmentId);
+
+    /// <summary>آدرس مشاهده‌ی پیوست داخل مرورگر (inline)</summary>
+    string AttachmentViewUrl(int attachmentId);
+
+    /// <summary>محتوای پیوست به‌همراه توکن (برای دانلود/مشاهده‌ی امن در مرورگر)</summary>
+    Task<(byte[] data, string contentType)> DownloadAttachmentAsync(int attachmentId, bool inline = false);
 }
 
 public class LetterService : ILetterService
@@ -200,4 +206,37 @@ public class LetterService : ILetterService
 
     public string AttachmentDownloadUrl(int attachmentId) =>
         _api.BuildUrl($"api/letters/attachments/{attachmentId}/download");
+
+    public string AttachmentViewUrl(int attachmentId) =>
+        _api.BuildUrl($"api/letters/attachments/{attachmentId}/view");
+
+    /// <summary>
+    /// دریافت محتوای پیوست با هدر Authorization — لینک ساده‌ی href توکن ندارد و ۴۰۱ می‌گیرد،
+    /// بنابراین فایل اینجا خوانده و در مرورگر به‌صورت Blob باز/ذخیره می‌شود.
+    /// </summary>
+    public async Task<(byte[] data, string contentType)> DownloadAttachmentAsync(int attachmentId, bool inline = false)
+    {
+        var url = inline ? AttachmentViewUrl(attachmentId) : AttachmentDownloadUrl(attachmentId);
+        var req = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrWhiteSpace(_auth.Token))
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
+
+        var resp = await _http.SendAsync(req);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var text = await resp.Content.ReadAsStringAsync();
+            var msg = "دریافت پیوست ناموفق بود.";
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(text);
+                if (doc.RootElement.TryGetProperty("message", out var m)) msg = m.GetString() ?? msg;
+            }
+            catch { }
+            throw new ApiException(msg);
+        }
+
+        var bytes = await resp.Content.ReadAsByteArrayAsync();
+        var ct = resp.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
+        return (bytes, ct);
+    }
 }
