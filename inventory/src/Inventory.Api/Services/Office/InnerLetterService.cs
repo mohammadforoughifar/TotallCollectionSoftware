@@ -80,9 +80,9 @@ public class InnerLetterService : IInnerLetterService
     /// اگر ساختاری تعریف نشده باشد، به فرمت قبلی این پروژه «سال/شماره» (مثل 1404/12) برمی‌گردد
     /// تا شماره‌ی نامه‌های موجود بدون پیکربندی ساختار تغییر نکند.
     /// </summary>
-    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null)
+    private async Task<string> BuildLetterNumberAsync(int number, DateTime? date = null, int? sematId = null)
     {
-        var s = await _strature.TotalNumberAsync(number, typeForm: 1, date: date);
+        var s = await _strature.TotalNumberAsync(number, typeForm: 1, date: date, sematId: sematId);
         if (!string.IsNullOrEmpty(s)) return s;
         var pc = new PersianCalendar();
         return $"{pc.GetYear(date ?? DateTime.Now)}/{number}";
@@ -159,12 +159,18 @@ public class InnerLetterService : IInnerLetterService
 
         // ---------- نامه ----------
         var number = await NextNumberAsync();
+        var creatorSematId = await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId == creatorUserId && s.IsActive && !s.IsDelete)
+            .OrderBy(s => s.SematId)
+            .Select(s => (int?)s.SematId)
+            .FirstOrDefaultAsync();
         var letter = new InnerLetter
         {
             Id = source.Id,
             Number = number,
-            LetterNumber = await BuildLetterNumberAsync(number),
+            LetterNumber = await BuildLetterNumberAsync(number, now, creatorSematId),
             CreatorUserId = creatorUserId,
+            CreatorSematId = creatorSematId,
             Title = dto.Title.Trim(),
             Text = dto.Text,
             DateSabt = now,

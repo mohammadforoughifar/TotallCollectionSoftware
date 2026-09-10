@@ -43,7 +43,9 @@ public class AttachmentGuard : IAttachmentGuard
     /// <summary>ماژول‌هایی که کنترل دسترسی اختصاصی دارند.</summary>
     private static readonly HashSet<string> Protected = new(StringComparer.OrdinalIgnoreCase)
     {
-        "DocVersion"
+        "DocVersion",
+        "InnerLetters",
+        "Pishnevis"
     };
 
     public bool IsProtected(string module) => Protected.Contains(module);
@@ -74,6 +76,14 @@ public class AttachmentGuard : IAttachmentGuard
             if (level == DocAccessLevel.View) return AttachmentAccess.PreviewOnly;
             return canDownload ? AttachmentAccess.Download : AttachmentAccess.PreviewOnly;
         }
+
+        // ---------- نامه داخلی / پیش‌نویس ----------
+        // این دو ماژول عمداً از API عمومی پیوست‌ها قابل دسترسی نیستند. فقط endpointهای
+        // اختصاصی api/letters مجازند تا هم گردش نامه را کنترل کنند و هم فایل را الزاماً
+        // زیر wwwroot/uploads/innerletter ذخیره کنند.
+        if (string.Equals(module, "InnerLetters", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(module, "Pishnevis", StringComparison.OrdinalIgnoreCase))
+            return AttachmentAccess.None;
 
         // ---------- سایر ماژول‌ها ----------
         // رفتار قبلی حفظ می‌شود: هر کاربر واردشده دسترسی دارد.

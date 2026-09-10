@@ -38,22 +38,23 @@
             document.execCommand(cmd, false, value === undefined ? null : value);
         };
 
-        // نگهداری آخرین انتخاب متن (برای اعمال فونت/رنگ/اندازه وقتی فوکوس به نوار ابزار می‌رود)
-        window.__rteSavedRange = null;
+        // نگهداری انتخاب متن به‌ازای هر ادیتور؛ انتخاب یک فرم نباید روی ادیتور فرم دیگر اعمال شود.
+        window.__rteSavedRanges = window.__rteSavedRanges || {};
         window.rteSaveSelection = function (id) {
             var el = document.getElementById(id);
             if (!el) return;
             var sel = window.getSelection();
             if (sel.rangeCount > 0 && el.contains(sel.anchorNode))
-                window.__rteSavedRange = sel.getRangeAt(0).cloneRange();
+                window.__rteSavedRanges[id] = sel.getRangeAt(0).cloneRange();
         };
         window.rteRestoreSelection = function (id) {
             var el = document.getElementById(id);
-            if (!el || !window.__rteSavedRange) return;
+            var range = window.__rteSavedRanges[id];
+            if (!el || !range) return;
             el.focus();
             var sel = window.getSelection();
             sel.removeAllRanges();
-            sel.addRange(window.__rteSavedRange);
+            sel.addRange(range);
         };
 
         // اجرای دستور روی ادیتور مشخص — فوکوس و dispatch
@@ -101,15 +102,71 @@
             document.execCommand("styleWithCSS", false, true);
             document.execCommand("hiliteColor", false, color);
         };
-        // درج لینک
+        // درج لینک — پروتکل‌های اجرایی مثل javascript: پذیرفته نمی‌شوند.
         window.rteLink = function (id) {
-            var url = window.prompt("آدرس لینک را وارد کنید:", "https://");
+            var url = (window.prompt("آدرس لینک را وارد کنید:", "https://") || "").trim();
             if (!url) return;
+            if (!/^(https?:\/\/|mailto:|tel:|\/)/i.test(url)) url = "https://" + url;
             var el = document.getElementById(id); if (!el) return;
             window.rteRestoreSelection(id); el.focus();
             document.execCommand("styleWithCSS", false, true);
             document.execCommand("createLink", false, url);
         };
+
+        // فاصله خطوط و جهت نوشتار روی پاراگراف جاری (مشابه Paragraph در Word)
+        window.rteCurrentBlock = function (id) {
+            var el = document.getElementById(id); if (!el) return null;
+            window.rteRestoreSelection(id);
+            var sel = window.getSelection(), node = sel && sel.anchorNode;
+            if (node && node.nodeType === 3) node = node.parentElement;
+            while (node && node !== el && !/^(P|DIV|H1|H2|H3|H4|BLOCKQUOTE|LI|TD|TH)$/.test(node.tagName || ""))
+                node = node.parentElement;
+            return !node || node === el ? el : node;
+        };
+        window.rteLineHeight = function (id, value) {
+            var block = window.rteCurrentBlock(id); if (!block) return;
+            block.style.lineHeight = /^([1-3](\.[0-9]+)?)$/.test(value || "") ? value : "2";
+            block.focus && block.focus();
+        };
+        window.rteDirection = function (id, value) {
+            var block = window.rteCurrentBlock(id); if (!block) return;
+            var dir = value === "ltr" ? "ltr" : "rtl";
+            block.setAttribute("dir", dir);
+            block.style.textAlign = dir === "rtl" ? "right" : "left";
+        };
+
+        // درج جدول با تعداد سطر/ستون محدود تا HTML بسیار بزرگ ناخواسته ساخته نشود.
+        window.rteInsertTable = function (id) {
+            var faToEn = function (v) { return (v || "").replace(/[۰-۹]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹".indexOf(d); }); };
+            var rows = parseInt(faToEn(window.prompt("تعداد سطر جدول (۱ تا ۲۰):", "3")), 10);
+            if (!rows) return;
+            var cols = parseInt(faToEn(window.prompt("تعداد ستون جدول (۱ تا ۱۰):", "3")), 10);
+            if (!cols) return;
+            rows = Math.max(1, Math.min(20, rows)); cols = Math.max(1, Math.min(10, cols));
+            var html = "<table><tbody>";
+            for (var r = 0; r < rows; r++) {
+                html += "<tr>";
+                for (var c = 0; c < cols; c++) html += "<td><br></td>";
+                html += "</tr>";
+            }
+            html += "</tbody></table><p><br></p>";
+            window.rteExecId(id, "insertHTML", html);
+        };
+
+        // چاپ فقط متن ادیتور در iframe sandbox؛ محتوای پیست‌شده اجازه اجرای script ندارد.
+        window.rtePrint = function (id) {
+            var el = document.getElementById(id); if (!el) return;
+            var frame = document.createElement("iframe");
+            frame.setAttribute("sandbox", "allow-modals allow-same-origin");
+            frame.style.cssText = "position:fixed;width:1px;height:1px;left:-9999px;border:0";
+            frame.srcdoc = "<!doctype html><html lang='fa' dir='rtl'><head><meta charset='utf-8'><style>body{font-family:Tahoma,Arial,sans-serif;line-height:2;padding:18mm;color:#111}table{border-collapse:collapse;width:100%}td,th{border:1px solid #777;padding:6px}img{max-width:100%}</style></head><body>" + el.innerHTML + "</body></html>";
+            frame.onload = function () {
+                try { frame.contentWindow.focus(); frame.contentWindow.print(); } catch (e) { window.print(); }
+                setTimeout(function () { frame.remove(); }, 1000);
+            };
+            document.body.appendChild(frame);
+        };
+
         // چاپ نامه (اتوماسیون اداری)
         window.ltxPrint = function () { window.print(); };
         // باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی base64

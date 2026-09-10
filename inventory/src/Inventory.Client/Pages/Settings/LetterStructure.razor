@@ -31,8 +31,9 @@ else
     <div class="alert alert-info fs-8">
         <i class="bi bi-info-circle"></i>
         جزء <b>«واحد»</b> از <b>نام اختصاصی سازمان (NameUniq)</b> در جدول Organization خوانده می‌شود —
-        سازمانِ سمتِ صادرکننده‌ی نامه؛ تا وقتی چارت سازمانی فعال نشده،
-        <b>سازمان پیش‌فرض «@DefaultOrgName»</b> ملاک است. تغییر ساختار فقط روی نامه‌های <b>بعدی</b> اثر می‌گذارد.
+        سازمانِ سمتِ صادرکننده‌ی نامه؛ و اگر کاربر سمت فعالی نداشته باشد،
+        <b>سازمان پیش‌فرض «@DefaultOrgName»</b> ملاک است. پس از ذخیره، ترتیب جدید هم روی نامه‌های <b>موجود</b>
+        و هم روی نامه‌های بعدی اعمال می‌شود.
     </div>
 
     <div class="card mb-3">
@@ -213,9 +214,11 @@ else
     {
         foreach (var item in items)
         {
-            if (Defaults.TryGetValue(item.TypeForm, out var defs))
-                item.Parts = defs.ToList();
-            dirty.Remove(item.TypeForm);
+            if (!Defaults.TryGetValue(item.TypeForm, out var defs)) continue;
+            item.Parts = defs.ToList();
+            // باگ قبلی: Reset تغییر را از dirty حذف می‌کرد؛ دکمه ذخیره غیرفعال می‌شد و
+            // پیش‌فرض‌ها فقط ظاهراً روی صفحه دیده می‌شدند و هرگز به API نمی‌رسیدند.
+            dirty.Add(item.TypeForm);
         }
     }
 

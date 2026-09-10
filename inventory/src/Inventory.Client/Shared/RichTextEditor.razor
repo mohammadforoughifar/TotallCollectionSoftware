@@ -3,12 +3,13 @@
 @* ============================================================
    RichTextEditor — ادیتور متن غنی قابل‌استفاده در همه‌جای سامانه.
    • فونت فارسی/لاتین (Shabnam, Sahel, Yekan, Vazirmatn + فونت‌های لاتین سیستم)
-   • اندازه قلم، رنگ متن، هایلایت پس‌زمینه
-   • پررنگ/مورب/زیرخط/خط‌خورده، تراز، لیست، تورفتگی، لینک، حذف قالب، واگرد/ازنو
+   • اندازه و سبک قلم، رنگ متن، هایلایت، عنوان‌ها و نقل‌قول
+   • پررنگ/مورب/زیرخط/خط‌خورده، بالا/زیرنویس، تراز، جهت، فاصله خطوط، لیست و تورفتگی
+   • لینک، جدول، خط جداکننده، چاپ، تمام‌صفحه، شمارش واژه و واگرد/ازنو
    جفت‌شدن با Value/ValueChanged — ارتفاع پیش‌فرض و placeholder قابل تنظیم.
    ============================================================ *@
 
-    <div class="richt @CssClass">
+<div class="richt @CssClass @(_fullScreen ? "richt-fullscreen" : "")">
     <div class="richt-toolbar">
         <button type="button" title="واگرد" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("undo")'><i class="bi bi-arrow-counterclockwise"></i></button>
         <button type="button" title="ازنو" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("redo")'><i class="bi bi-arrow-clockwise"></i></button>
@@ -30,12 +31,22 @@
             }
         </select>
 
+        @* سبک پاراگراف (Normal/Heading/Quote مشابه Word) *@
+        <select class="richt-sel richt-block" title="سبک متن" @onchange="OnBlock">
+            @foreach (var b in Blocks)
+            {
+                <option value="@b.Value" selected="@(b.Value == _blockSel)">@b.Label</option>
+            }
+        </select>
+
         <span class="richt-sep"></span>
 
         <button type="button" title="پررنگ" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("bold")'><i class="bi bi-type-bold"></i></button>
         <button type="button" title="مورب" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("italic")'><i class="bi bi-type-italic"></i></button>
         <button type="button" title="زیرخط" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("underline")'><i class="bi bi-type-underline"></i></button>
         <button type="button" title="خط‌خورده" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("strikeThrough")'><i class="bi bi-type-strikethrough"></i></button>
+        <button type="button" title="بالانویس" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("superscript")'><span class="richt-txticon">x²</span></button>
+        <button type="button" title="زیرنویس" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("subscript")'><span class="richt-txticon">x₂</span></button>
 
         <span class="richt-sep"></span>
 
@@ -52,6 +63,14 @@
         <button type="button" title="وسط‌چین" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("justifyCenter")'><i class="bi bi-text-center"></i></button>
         <button type="button" title="چپ‌چین" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("justifyLeft")'><i class="bi bi-text-left"></i></button>
         <button type="button" title="هم‌تراز" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("justifyFull")'><i class="bi bi-text-paragraph"></i></button>
+        <button type="button" title="جهت راست به چپ" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => SetDirection("rtl")'><b class="richt-dir">RTL</b></button>
+        <button type="button" title="جهت چپ به راست" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => SetDirection("ltr")'><b class="richt-dir">LTR</b></button>
+        <select class="richt-sel richt-line" title="فاصله خطوط" @onchange="OnLineHeight">
+            @foreach (var line in LineHeights)
+            {
+                <option value="@line.Value" selected="@(line.Value == _lineHeightSel)">@line.Label</option>
+            }
+        </select>
 
         <span class="richt-sep"></span>
 
@@ -63,11 +82,25 @@
         <span class="richt-sep"></span>
 
         <button type="button" title="درج لینک" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick="InsertLink"><i class="bi bi-link-45deg"></i></button>
+        <button type="button" title="حذف لینک" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("unlink")'><i class="bi bi-link-45deg richt-unlink"></i></button>
+        <button type="button" title="درج جدول" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick="InsertTable"><i class="bi bi-table"></i></button>
+        <button type="button" title="درج خط جداکننده" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("insertHorizontalRule")'><i class="bi bi-hr"></i></button>
         <button type="button" title="حذف قالب" @onmousedown="OnToolbarDown" @onmousedown:preventDefault @onclick='() => Cmd("removeFormat")'><i class="bi bi-eraser"></i></button>
+
+        <span class="richt-sep"></span>
+        <button type="button" title="چاپ متن" @onclick="Print"><i class="bi bi-printer"></i></button>
+        <button type="button" title="@(_fullScreen ? "خروج از تمام‌صفحه" : "تمام‌صفحه")" @onclick="ToggleFullScreen">
+            <i class="bi @(_fullScreen ? "bi-fullscreen-exit" : "bi-arrows-fullscreen")"></i>
+        </button>
     </div>
-    <div class="richt-body" id="@Id" contenteditable="true" dir="rtl" data-ph="@Placeholder"
-         style="@(string.IsNullOrWhiteSpace(Height) ? "" : $"min-height:{Height}px;max-height:{Height}px;")"
+    <div class="richt-body" id="@Id" contenteditable="true" dir="rtl" spellcheck="true" data-ph="@Placeholder"
+         style="@(string.IsNullOrWhiteSpace(Height) || _fullScreen ? "" : $"min-height:{Height}px;max-height:{Height}px;")"
          @oninput="OnInput" @onmouseup="SaveSelection" @onkeyup="SaveSelection" @onfocus="SaveSelection"></div>
+    <div class="richt-status">
+        <span><i class="bi bi-file-text"></i> @_wordCount.ToString().FaDigits() واژه</span>
+        <span>@_charCount.ToString().FaDigits() نویسه</span>
+        <span class="richt-shortcut">میانبرها: Ctrl+B / Ctrl+I / Ctrl+U / Ctrl+Z</span>
+    </div>
 </div>
 
 <style>
@@ -79,6 +112,8 @@
     .richt-sel { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #334155; font-size: 11.5px; height: 29px; padding: 0 6px; max-width: 130px; }
     .richt-sel:focus { outline: none; border-color: #818cf8; }
     .richt-sel.richt-size { max-width: 74px; }
+    .richt-sel.richt-block { max-width: 100px; }
+    .richt-sel.richt-line { max-width: 92px; }
     .richt-color { position: relative; min-width: 30px; width: auto; height: 29px; display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0 4px; border-radius: 8px; cursor: pointer; color: #64748b; }
     .richt-color:hover { background: #e2e8f0; color: #0f172a; }
     .richt-color input[type=color] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; border: 0; padding: 0; }
@@ -86,6 +121,20 @@
     .richt-body { min-height: 150px; max-height: 320px; overflow: auto; padding: 12px 14px; font-size: 13px; line-height: 2; outline: 0; color: #0f172a; }
     .richt-body:empty::before { content: attr(data-ph); color: #94a3b8; }
     .richt-body a { color: #2563eb; text-decoration: underline; }
+    .richt-body blockquote { border-inline-start:4px solid #c7d2fe; margin:8px 0; padding:5px 12px; color:#475569; background:#f8fafc; }
+    .richt-body table { border-collapse:collapse; width:100%; margin:10px 0; }
+    .richt-body td, .richt-body th { border:1px solid #94a3b8; min-width:54px; padding:6px 8px; vertical-align:top; }
+    .richt-body hr { border:0; border-top:1px solid #94a3b8; margin:12px 0; }
+    .richt-status { display:flex; align-items:center; gap:12px; padding:4px 9px; border-top:1px solid #e2e8f0; background:#f8fafc; color:#64748b; font-size:10px; }
+    .richt-shortcut { margin-inline-start:auto; }
+    .richt-txticon { font:700 10px/1 Tahoma,sans-serif; direction:ltr; }
+    .richt-dir { font:700 8px/1 Arial,sans-serif; direction:ltr; }
+    .richt-unlink { position:relative; opacity:.7; }
+    .richt-fullscreen { position:fixed; inset:10px; z-index:4700; display:flex; flex-direction:column; border-radius:14px; box-shadow:0 24px 80px rgba(15,23,42,.4); }
+    .richt-fullscreen .richt-toolbar { flex:0 0 auto; }
+    .richt-fullscreen .richt-body { flex:1 1 auto; min-height:0; max-height:none; font-size:15px; padding:20px 28px; }
+    .richt-fullscreen .richt-status { flex:0 0 auto; }
+    @@media (max-width:700px) { .richt-shortcut { display:none; } .richt-fullscreen { inset:4px; } }
 </style>
 
 @code {
@@ -99,8 +148,13 @@
     private bool _initialized;
     private string _fontSel = "Vazirmatn";
     private string _sizeSel = "14";
+    private string _blockSel = "p";
+    private string _lineHeightSel = "2";
     private string _colorSel = "#0f172a";
     private string _hlSel = "#fef08a";
+    private bool _fullScreen;
+    private int _wordCount;
+    private int _charCount;
 
     private static readonly List<(string Value, string Label)> Fonts = new()
     {
@@ -123,12 +177,26 @@
         ("16", "۱۶"), ("18", "۱۸"), ("20", "۲۰"), ("24", "۲۴"), ("28", "۲۸"), ("32", "۳۲"),
     };
 
+    private static readonly List<(string Value, string Label)> Blocks = new()
+    {
+        ("p", "متن عادی"), ("h1", "عنوان ۱"), ("h2", "عنوان ۲"),
+        ("h3", "عنوان ۳"), ("blockquote", "نقل قول")
+    };
+
+    private static readonly List<(string Value, string Label)> LineHeights = new()
+    {
+        ("1", "خط ۱"), ("1.15", "خط ۱٫۱۵"), ("1.5", "خط ۱٫۵"),
+        ("2", "خط ۲"), ("2.5", "خط ۲٫۵"), ("3", "خط ۳")
+    };
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && !_initialized)
         {
             _initialized = true;
             try { await JS.InvokeVoidAsync("rteSetHtml", Id, Value ?? ""); } catch { }
+            UpdateStats(Value ?? "");
+            StateHasChanged();
         }
     }
 
@@ -136,6 +204,8 @@
     public async Task SetContentAsync(string html)
     {
         try { await JS.InvokeVoidAsync("rteSetHtml", Id, html ?? ""); } catch { }
+        UpdateStats(html ?? "");
+        StateHasChanged();
     }
 
     /// <summary>خواندن محتوای HTML ادیتور.</summary>
@@ -149,12 +219,14 @@
     public async Task ClearAsync()
     {
         try { await JS.InvokeVoidAsync("rteSetHtml", Id, ""); } catch { }
+        UpdateStats("");
         await ValueChanged.InvokeAsync("");
     }
 
     private async Task OnInput(Microsoft.AspNetCore.Components.ChangeEventArgs e)
     {
         var html = await GetContentAsync();
+        UpdateStats(html);
         await ValueChanged.InvokeAsync(html);
     }
 
@@ -196,6 +268,25 @@
         await PushChange();
     }
 
+    private async Task OnBlock(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        _blockSel = e.Value?.ToString() ?? "p";
+        await Cmd("formatBlock", _blockSel);
+    }
+
+    private async Task OnLineHeight(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    {
+        _lineHeightSel = e.Value?.ToString() ?? "2";
+        try { await JS.InvokeVoidAsync("rteLineHeight", Id, _lineHeightSel); } catch { }
+        await PushChange();
+    }
+
+    private async Task SetDirection(string direction)
+    {
+        try { await JS.InvokeVoidAsync("rteDirection", Id, direction); } catch { }
+        await PushChange();
+    }
+
     private async Task OnColor(Microsoft.AspNetCore.Components.ChangeEventArgs e)
     {
         _colorSel = e.Value?.ToString() ?? "#0f172a";
@@ -218,9 +309,34 @@
         await PushChange();
     }
 
+    private async Task InsertTable()
+    {
+        try { await JS.InvokeVoidAsync("rteInsertTable", Id); } catch { }
+        await PushChange();
+    }
+
+    private async Task Print()
+    {
+        try { await JS.InvokeVoidAsync("rtePrint", Id); } catch { }
+    }
+
+    private void ToggleFullScreen() => _fullScreen = !_fullScreen;
+
     private async Task PushChange()
     {
         var html = await GetContentAsync();
+        UpdateStats(html);
         await ValueChanged.InvokeAsync(html);
+    }
+
+    private void UpdateStats(string html)
+    {
+        var plain = System.Text.RegularExpressions.Regex.Replace(html ?? "", "<[^>]*>", " ");
+        plain = System.Net.WebUtility.HtmlDecode(plain).Replace('\u00a0', ' ').Trim();
+        _charCount = plain.Count(c => !char.IsWhiteSpace(c));
+        _wordCount = string.IsNullOrWhiteSpace(plain)
+            ? 0
+            : System.Text.RegularExpressions.Regex.Split(plain, @"\s+")
+                .Count(x => !string.IsNullOrWhiteSpace(x));
     }
 }
