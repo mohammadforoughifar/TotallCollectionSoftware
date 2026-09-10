@@ -72,27 +72,9 @@
 
             <div class="fcard">
                 <label>متن نامه</label>
-                <div class="edt">
-                    <div class="edt-bar">
-                        <button type="button" title="واگرد" @onclick='() => Ed("undo")'><i class="bi bi-arrow-clockwise"></i></button>
-                        <button type="button" title="ازنو" @onclick='() => Ed("redo")'><i class="bi bi-arrow-counterclockwise"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="پررنگ" @onclick='() => Ed("bold")'><i class="bi bi-type-bold"></i></button>
-                        <button type="button" title="مورب" @onclick='() => Ed("italic")'><i class="bi bi-type-italic"></i></button>
-                        <button type="button" title="زیرخط" @onclick='() => Ed("underline")'><i class="bi bi-type-underline"></i></button>
-                        <button type="button" title="خط‌خورده" @onclick='() => Ed("strikeThrough")'><i class="bi bi-type-strikethrough"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="راست‌چین" @onclick='() => Ed("justifyRight")'><i class="bi bi-text-right"></i></button>
-                        <button type="button" title="وسط‌چین" @onclick='() => Ed("justifyCenter")'><i class="bi bi-text-center"></i></button>
-                        <button type="button" title="چپ‌چین" @onclick='() => Ed("justifyLeft")'><i class="bi bi-text-left"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="لیست نقطه‌ای" @onclick='() => Ed("insertUnorderedList")'><i class="bi bi-list-ul"></i></button>
-                        <button type="button" title="لیست شماره‌ای" @onclick='() => Ed("insertOrderedList")'><i class="bi bi-list-ol"></i></button>
-                        <span class="sep"></span>
-                        <button type="button" title="حذف قالب" @onclick='() => Ed("removeFormat")'><i class="bi bi-eraser"></i></button>
-                    </div>
-                    <div class="edt-body" id="ltxEditor" contenteditable="true" data-ph="متن نامه را بنویسید…"></div>
-                </div>
+                @* ادیتور متن غنی با امکانات Word: فونت/اندازه/رنگ، جدول، تصویر، لینک، ترازها، لیست‌ها و… *@
+                <RichTextEditor @ref="editor" EditorId="ltxEditor" Placeholder="متن نامه را بنویسید…"
+                                MinHeight="200px" MaxHeight="360px" />
             </div>
 
                 <div class="fcard">
@@ -111,7 +93,15 @@
                         @foreach (var a in savedAtts)
                         {
                             var aa = a;
-                            <span class="spill"><i class="bi @FileIcon(aa.FileName)"></i> @aa.FileName <small>(@FmtSize(aa.Size))</small> <i class="bi bi-x-lg" @onclick="() => RemoveSavedAtt(aa)"></i></span>
+                            <span class="spill">
+                                <i class="bi @FileIcon(aa.FileName)"></i> @aa.FileName <small>(@FmtSize(aa.Size))</small>
+                                @if (aa.CanPreview)
+                                {
+                                    <i class="bi bi-eye" title="مشاهده" @onclick="() => ViewAtt(aa)"></i>
+                                }
+                                <i class="bi bi-download" title="دانلود" @onclick="() => DownloadAtt(aa)"></i>
+                                <i class="bi bi-x-lg" title="حذف" @onclick="() => RemoveSavedAtt(aa)"></i>
+                            </span>
                         }
                     </div>
                     @if (!string.IsNullOrEmpty(fileErr))
@@ -218,6 +208,8 @@
     private List<LetterReciverDto> allUsers = new();
     private List<LetterGroupDto> allGroups = new();
 
+    private RichTextEditor? editor;
+
     private LetterPickCombo? cbRcv, cbErja, cbHamesh;
     private HashSet<int> rcvUsers = new(), rcvGroups = new();
     private HashSet<int> erjaUsers = new(), erjaGroups = new();
@@ -306,8 +298,8 @@
 
     private async Task SetEditorSoonAsync()
     {
-        await Task.Delay(60); // صبر برای رندر contenteditable
-        try { await JS.InvokeVoidAsync("rteSetHtml", "ltxEditor", pendingBody); } catch { }
+        await Task.Delay(80); // صبر برای رندر ادیتور
+        if (editor != null) await editor.SetHtmlAsync(pendingBody);
     }
 
     private async Task LoadListsAsync()
@@ -339,11 +331,6 @@
         if (rcvUsers.Count + rcvGroups.Count > 0) errRcv = false;
     }
 
-    private async Task Ed(string cmd)
-    {
-        try { await JS.InvokeVoidAsync("rteExec", cmd); } catch { }
-    }
-
     // ==================== پیوست‌ها ====================
 
     private void OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
@@ -360,6 +347,28 @@
         }
         fileErr = rejected.Count > 0 ? "این فایل‌ها پذیرفته نشدند: " + string.Join("، ", rejected) : "";
         if (rejected.Count > 0) Toast.Error("برخی فایل‌ها پذیرفته نشدند.");
+    }
+
+    /// <summary>مشاهده‌ی پیوست ذخیره‌شده در مرورگر (فایل با توکن خوانده می‌شود)</summary>
+    private async Task ViewAtt(LetterAttachmentDto a)
+    {
+        try
+        {
+            var (bytes, ct) = await LetterSvc.DownloadAttachmentAsync(a.Id, inline: true);
+            await JS.InvokeVoidAsync("openBlobFile", Convert.ToBase64String(bytes), ct);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>دانلود پیوست ذخیره‌شده</summary>
+    private async Task DownloadAtt(LetterAttachmentDto a)
+    {
+        try
+        {
+            var (bytes, ct) = await LetterSvc.DownloadAttachmentAsync(a.Id);
+            await JS.InvokeVoidAsync("saveBlobFile", a.FileName, Convert.ToBase64String(bytes), ct);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private async Task RemoveSavedAtt(LetterAttachmentDto a)
@@ -436,8 +445,9 @@
 
     private async Task<string> EditorHtmlAsync()
     {
-        try { return await JS.InvokeAsync<string>("rteGetHtml", "ltxEditor") ?? ""; }
-        catch { return pendingBody; }
+        if (editor == null) return pendingBody;
+        var html = await editor.GetHtmlAsync();
+        return string.IsNullOrWhiteSpace(html) ? "" : html;
     }
 
     private bool Validate()

@@ -405,11 +405,12 @@ a { text-decoration: none; }
 
 /* ---------- تقویم / انتخاب تاریخ شمسی ---------- */
 .date-picker { position: relative; }
+/* منوی تقویم: با جاوااسکریپت (js/datepicker.js) به position:fixed و مختصات
+   نسبت به ورودی تبدیل می‌شود تا هیچ‌وقت زیر کارت‌های صفحه (مثل گرید کارت‌های
+   مرخصی/ماموریت) نرود. مقدار absolute زیر فقط حالتِ پیش از اجرای اسکریپت است. */
 .dp-popover {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    z-index: 1080;
+    position: fixed;
+    z-index: 20050;
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 15px;
@@ -1186,7 +1187,29 @@ body {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
 }
-.app-content > * { animation: fadeSlideIn .28s ease both; }
+/* ⚠️ fill-mode باید `backwards` باشد نه `both`/`forwards`:
+   با `both` مقدار transform: translateY(0) حتی بعد از پایان انیمیشن روی همه‌ی
+   بخش‌های سطح‌بالای صفحه (هر کارت/ردیف) فعال می‌ماند؛ هر مقدار transform غیر از
+   none، آن بخش را به یک stacking context (لایه‌ی z-index مستقل) تبدیل می‌کند.
+   به‌دلیل همین، منوی بازِ تقویم (.dp-popover) و کمبوباکس (.ss-menu) که z-index
+   بالایی دارند فقط داخلِ بخشِ حاوی‌شان اعتبار داشت و کارت‌های پایین‌تر صفحه
+   (کارت‌ویو لیست که در DOM بعدی‌اند) روی کل آن بخش — از جملهِ منوی باز —
+   رنگ‌آمیزی می‌شدند؛ نتیجه: تقویم و کمبو زیر کارت می‌رفتند و قابل کلیک نبودند.
+   `backwards` از نظر بصری دقیقاً یکسان است (بدون تأخیر و حالت پایان = حالت طبیعی)
+   ولی transform را بعد از انیمیشن برمی‌دارد و stacking context باقی نمی‌ماند. */
+.app-content > * { animation: fadeSlideIn .28s ease backwards; }
+
+/* شبکه‌ی ایمنی: تا وقتی منوی تقویم/کمبوباکس باز است، بخشِ حاوی آن را
+   از کارت‌های هم‌سطح بالاتر نگه می‌داریم تا در صورت هر stacking context
+   آینده روی کارت‌ها، منو دوباره زیر کارت‌ویو نرود.
+   (z-index: 10 پایین‌تر از توبار (1025)، نوار پایین (1040) و توست‌هاست؛
+   مودال با :not(.modal) مستثنی شده تا position: fixed بوت‌استرپ برود.) */
+.app-content > *:not(.modal):has(.ss-menu),
+.app-content > *:not(.modal):has(.ms-combo-menu),
+.app-content > *:not(.modal):has(.om-combo-menu) {
+    position: relative;
+    z-index: 10;
+}
 
 /* حرکت کمتر برای کاربران حساس به حرکت */
 @media (prefers-reduced-motion: reduce) {

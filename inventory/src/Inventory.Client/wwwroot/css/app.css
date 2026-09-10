@@ -405,11 +405,12 @@ a { text-decoration: none; }
 
 /* ---------- تقویم / انتخاب تاریخ شمسی ---------- */
 .date-picker { position: relative; }
+/* منوی تقویم: با جاوااسکریپت (js/datepicker.js) به position:fixed و مختصات
+   نسبت به ورودی تبدیل می‌شود تا هیچ‌وقت زیر کارت‌های صفحه (مثل گرید کارت‌های
+   مرخصی/ماموریت) نرود. مقدار absolute زیر فقط حالتِ پیش از اجرای اسکریپت است. */
 .dp-popover {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    z-index: 1080;
+    position: fixed;
+    z-index: 20050;
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 15px;
@@ -1203,7 +1204,6 @@ body {
    آینده روی کارت‌ها، منو دوباره زیر کارت‌ویو نرود.
    (z-index: 10 پایین‌تر از توبار (1025)، نوار پایین (1040) و توست‌هاست؛
    مودال با :not(.modal) مستثنی شده تا position: fixed بوت‌استرپ برود.) */
-.app-content > *:not(.modal):has(.dp-popover),
 .app-content > *:not(.modal):has(.ss-menu),
 .app-content > *:not(.modal):has(.ms-combo-menu),
 .app-content > *:not(.modal):has(.om-combo-menu) {

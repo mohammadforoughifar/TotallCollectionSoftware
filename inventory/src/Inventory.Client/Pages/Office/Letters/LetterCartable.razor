@@ -248,14 +248,20 @@
                             <div class="paper-body">@((MarkupString)(selected.Text ?? "—"))</div>
                             @if (attachments.Count > 0)
                             {
+                                @* پیوست‌ها: فایل روی سرور در uploads/innerletter ذخیره شده — مشاهده و دانلود با توکن *@
                                 <div class="paper-foot">
                                     @foreach (var a in attachments)
                                     {
                                         var aa = a;
-                                        <a class="att" href="@LetterSvc.AttachmentDownloadUrl(aa.Id)" target="_blank">
+                                        <span class="att">
                                             <div class="ic"><i class="bi @FileIcon(aa.FileName)"></i></div>
                                             <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
-                                        </a>
+                                            @if (aa.CanPreview)
+                                            {
+                                                <button type="button" class="attbtn" title="مشاهده" @onclick="() => ViewAtt(aa)"><i class="bi bi-eye"></i></button>
+                                            }
+                                            <button type="button" class="attbtn" title="دانلود" @onclick="() => DownloadAtt(aa)"><i class="bi bi-download"></i></button>
+                                        </span>
                                     }
                                 </div>
                             }
@@ -547,6 +553,30 @@
         var text = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ");
         text = System.Net.WebUtility.HtmlDecode(text).Trim();
         return text.Length > 80 ? text[..80] + "…" : text;
+    }
+
+    // ==================== پیوست: مشاهده و دانلود ====================
+    //  لینک ساده‌ی href توکن JWT را نمی‌فرستد؛ فایل با هدر Authorization خوانده
+    //  و در مرورگر به‌صورت Blob باز یا ذخیره می‌شود.
+
+    private async Task ViewAtt(LetterAttachmentDto a)
+    {
+        try
+        {
+            var (bytes, ct) = await LetterSvc.DownloadAttachmentAsync(a.Id, inline: true);
+            await JS.InvokeVoidAsync("openBlobFile", Convert.ToBase64String(bytes), ct);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DownloadAtt(LetterAttachmentDto a)
+    {
+        try
+        {
+            var (bytes, ct) = await LetterSvc.DownloadAttachmentAsync(a.Id);
+            await JS.InvokeVoidAsync("saveBlobFile", a.FileName, Convert.ToBase64String(bytes), ct);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private static string FmtSize(long b) =>

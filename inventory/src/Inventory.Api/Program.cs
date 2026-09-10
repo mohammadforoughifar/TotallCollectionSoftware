@@ -44,11 +44,14 @@ builder.Services.AddScoped<IExpenseService, ExpenseService>();
 // ---------- اتوماسیون اداری — نامه داخلی (کارتابل، ارجاع، پیش‌نویس، گروه‌های گیرندگان) ----------
 builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
 builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
+builder.Services.AddScoped<ILetterNumberService, LetterNumberService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
+// پیوست‌های نامه داخلی: فایل‌ها در wwwroot/uploads/innerletter ذخیره می‌شوند
+builder.Services.AddSingleton<LetterAttachmentStore>();
 builder.Services.AddSingleton<UserPhotoService>();
 
 // ================== پیوست‌های پروژه — رمزنگاری AES روی دیسک ==================
@@ -157,6 +160,8 @@ app.MapHub<Inventory.Api.Hubs.NotifyHub>("/hubs/notify");
 
 // پوشه‌ی فایل‌های آپلودی داخل wwwroot (عکس‌های کاربران، پیوست‌ها) — با UseStaticFiles معمول سرو می‌شود
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "users"));
+// پوشه‌ی پیوست‌های نامه داخلی (اتوماسیون اداری)
+Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "innerletter", "pishnevis"));
 
 // سرو فایل‌های استاتیک کلاینت (استقرار تک‌سروره — در صورت وجود پوشه wwwroot)
 var clientRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
