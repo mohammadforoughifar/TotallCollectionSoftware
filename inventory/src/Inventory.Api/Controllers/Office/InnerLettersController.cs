@@ -295,6 +295,17 @@ public class InnerLettersController : RbacControllerBase
         return Ok(_numbers.AvailableParts());
     }
 
+    /// <summary>
+    /// فهرست‌های کمکی صفحه‌ی ساختار شماره: واحدها و کمپانی‌های تعریف‌شده در تنظیمات سیستم
+    /// (تا کد واحد/شرکت به‌جای تایپ دستی از فهرست انتخاب شود) + اجزای قابل انتخاب
+    /// </summary>
+    [HttpGet("number-settings/lookups")]
+    public async Task<IActionResult> NumberLookups()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _numbers.LookupsAsync());
+    }
+
     /// <summary>پیش‌نمایش شماره با تنظیمات ارسالی (بدون ذخیره)</summary>
     [HttpPost("number-settings/preview")]
     public async Task<IActionResult> PreviewNumber([FromBody] LetterNumberSettingDto dto)

@@ -30,6 +30,9 @@ public interface ILetterNumberService
 
     /// <summary>فهرست اجزای قابل انتخاب برای رابط کاربری</summary>
     List<LetterNumberPartDto> AvailableParts();
+
+    /// <summary>واحدها و کمپانی‌های تعریف‌شده در تنظیمات سیستم + اجزا (برای صفحه‌ی تنظیمات)</summary>
+    Task<LetterNumberLookupsDto> LookupsAsync();
 }
 
 public class LetterNumberService : ILetterNumberService
@@ -55,6 +58,27 @@ public class LetterNumberService : ILetterNumberService
 
     public List<LetterNumberPartDto> AvailableParts() =>
         Parts.Select(p => new LetterNumberPartDto { Code = p.Code, Title = p.Title }).ToList();
+
+    /// <summary>
+    /// واحد و کمپانی از «شناسنامه سیستم» خوانده می‌شوند تا در صفحه‌ی ساختار شماره نامه
+    /// به‌جای تایپ دستیِ کد، از فهرست موجود انتخاب شوند.
+    /// </summary>
+    public async Task<LetterNumberLookupsDto> LookupsAsync() => new()
+    {
+        Departments = await _db.SystemDepartments.AsNoTracking()
+            .Where(d => d.IsActive)
+            .OrderBy(d => d.Name)
+            .Select(d => new OrgCodeItemDto { Id = d.Id, Name = d.Name, Code = d.Code })
+            .ToListAsync(),
+
+        Companies = await _db.SystemCompanies.AsNoTracking()
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .Select(c => new OrgCodeItemDto { Id = c.Id, Name = c.Name, Code = c.Code })
+            .ToListAsync(),
+
+        Parts = AvailableParts()
+    };
 
     // ==================== خواندن / ذخیره ====================
 

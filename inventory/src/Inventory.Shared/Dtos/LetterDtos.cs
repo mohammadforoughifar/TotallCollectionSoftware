@@ -340,6 +340,31 @@ public class LetterAttachmentDto
 
 // ==================== تنظیمات ساختار شماره نامه ====================
 
+/// <summary>یک واحد/شرکت تعریف‌شده در تنظیمات سیستم — برای انتخاب کد در ساختار شماره نامه</summary>
+public class OrgCodeItemDto
+{
+    public int Id { get; set; }
+
+    /// <summary>نام واحد یا شرکت</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>کدی که در شماره نامه درج می‌شود (اگر خالی باشد باید در شناسنامه سیستم ثبت شود)</summary>
+    public string? Code { get; set; }
+}
+
+/// <summary>فهرست‌های کمکی صفحه‌ی ساختار شماره نامه (واحدها، شرکت‌ها، اجزا)</summary>
+public class LetterNumberLookupsDto
+{
+    /// <summary>واحدها/بخش‌های تعریف‌شده در «شناسنامه سیستم ← واحد / بخش»</summary>
+    public List<OrgCodeItemDto> Departments { get; set; } = new();
+
+    /// <summary>کمپانی‌های تعریف‌شده در «شناسنامه سیستم ← کمپانی‌ها»</summary>
+    public List<OrgCodeItemDto> Companies { get; set; } = new();
+
+    /// <summary>اجزای قابل انتخاب برای ساختار شماره</summary>
+    public List<LetterNumberPartDto> Parts { get; set; } = new();
+}
+
 /// <summary>یک جزء از ساختار شماره نامه</summary>
 public class LetterNumberPartDto
 {
