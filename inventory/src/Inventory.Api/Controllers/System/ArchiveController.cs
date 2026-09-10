@@ -146,9 +146,20 @@ public class AttachmentsController : ControllerBase
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
 
+    /// <summary>
+    /// پیوست نامه و پیش‌نویس قواعد دسترسی اختصاصی دارند و نباید از API عمومیِ
+    /// module/refId فهرست، بارگذاری، دانلود یا حذف شوند.
+    /// </summary>
+    private static bool IsPrivateLetterModule(string? module) =>
+        string.Equals(module, "InnerLetters", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(module, "InnerLetter", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(module, "Pishnevis", StringComparison.OrdinalIgnoreCase);
+
     [HttpGet("{module}/{refId:int}")]
     public async Task<IActionResult> List(string module, int refId)
     {
+        if (IsPrivateLetterModule(module)) return NotFound();
+
         var rows = await _db.AppAttachments.Where(a => a.Module == module && a.RefId == refId)
             .Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
             .ToListAsync();
@@ -160,6 +171,7 @@ public class AttachmentsController : ControllerBase
     [RequestSizeLimit(15 * 1024 * 1024)]
     public async Task<IActionResult> Upload(string module, int refId, IFormFile file)
     {
+        if (IsPrivateLetterModule(module)) return NotFound();
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
         if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
 
@@ -181,11 +193,10 @@ public class AttachmentsController : ControllerBase
     }
 
     [HttpGet("download/{id:int}")]
-    [AllowAnonymous]
     public async Task<IActionResult> Download(int id)
     {
         var a = await _db.AppAttachments.FindAsync(id);
-        if (a == null) return NotFound();
+        if (a == null || IsPrivateLetterModule(a.Module)) return NotFound();
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
         return File(bytes, a.ContentType, a.FileName);
@@ -196,7 +207,7 @@ public class AttachmentsController : ControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         var a = await _db.AppAttachments.FindAsync(id);
-        if (a == null) return NotFound();
+        if (a == null || IsPrivateLetterModule(a.Module)) return NotFound();
         if (a.UploaderUserId != MyUserId && !User.IsInRole("Admin")) return Forbid();
         _store.Delete(a.FilePath);
         _db.AppAttachments.Remove(a);

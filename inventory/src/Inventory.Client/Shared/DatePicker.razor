@@ -22,7 +22,9 @@
 
     @if (open)
     {
-        <div class="dp-popover" @ref="popRef" @onclick:stopPropagation="true">
+        @* popover="manual" عنصر را در Top Layer مرورگر قرار می‌دهد؛ بنابراین stacking-context
+           یا overflow کارت/گرید نمی‌تواند تقویم را بپوشاند. JS برای مرورگر قدیمی fixed fallback دارد. *@
+        <div class="dp-popover" popover="manual" @ref="popRef" @onclick:stopPropagation="true">
             <div class="dp-head">
                 <button class="btn btn-sm btn-light" type="button" @onclick="() => MoveMonth(1)">
                     <i class="bi bi-chevron-right"></i>

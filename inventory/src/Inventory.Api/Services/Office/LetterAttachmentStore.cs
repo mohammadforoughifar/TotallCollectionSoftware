@@ -57,10 +57,22 @@ public class LetterAttachmentStore
     public string? FullPath(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
-        var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
-        var full = Path.GetFullPath(Path.Combine(UploadsRoot, clean));
-        return full.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal) ? full : null;
+        try
+        {
+            var clean = relativePath.Replace('\\', '/').TrimStart('/');
+            var full = Path.GetFullPath(Path.Combine(UploadsRoot, clean));
+            var root = Path.GetFullPath(_root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+
+            // مرز پوشه هم بررسی می‌شود؛ StartsWith ساده مسیرهایی مثل innerletter-old را می‌پذیرفت.
+            return full.StartsWith(root + Path.DirectorySeparatorChar, comparison) ? full : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public bool Exists(string? relativePath)
@@ -149,7 +161,8 @@ public class LetterAttachmentStore
     public static bool IsInlineViewable(string fileName)
     {
         var e = (Path.GetExtension(fileName) ?? "").TrimStart('.').ToLowerInvariant();
-        return e is "pdf" or "png" or "jpg" or "jpeg" or "gif" or "webp" or "svg" or "bmp"
+        // SVG/HTML عمداً inline نمی‌شوند؛ محتوای فعال آن‌ها می‌تواند در origin برنامه اسکریپت اجرا کند.
+        return e is "pdf" or "png" or "jpg" or "jpeg" or "gif" or "webp" or "bmp"
                  or "txt" or "log" or "csv" or "mp4" or "mp3";
     }
 

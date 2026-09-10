@@ -4,10 +4,9 @@
    مشکل: منوی تقویم به‌صورت absolute داخل کارت باز می‌شد و به‌خاطر
    ترتیب چیدمان/overflow کارت‌های بعدی صفحه (مثلاً در صفحه‌ی مرخصی و
    ماموریت) زیر گرید کارت‌ها می‌رفت و روزها قابل انتخاب نبودند.
-   راه‌حل: منو با position:fixed و مختصات محاسبه‌شده نسبت به ورودی
-   نمایش داده می‌شود (بدون جابه‌جایی در DOM تا با رندر بلیزور تداخل
-   نکند) و روی اسکرول/تغییر اندازه به‌روزرسانی می‌شود؛ کلیک بیرون و
-   کلید Esc هم آن را می‌بندد.
+   راه‌حل: Popover API منو را بدون جابه‌جایی DOM به Top Layer می‌برد و
+   position:fixed هم fallback مرورگرهای قدیمی است. مختصات نسبت به ورودی
+   روی اسکرول/تغییر اندازه به‌روزرسانی می‌شود؛ کلیک بیرون و Esc نیز آن را می‌بندد.
    ============================================================ */
 (function () {
     'use strict';
@@ -33,6 +32,7 @@
         if (left + pw > vw - 8) left = Math.max(8, vw - pw - 8);
 
         pop.style.position = 'fixed';
+        pop.style.inset = 'auto';
         pop.style.top = top + 'px';
         pop.style.left = left + 'px';
         pop.style.right = 'auto';
@@ -53,6 +53,13 @@
         if (!anchor || !pop) return;
         window.dpClose(key);
 
+        // Popover API عنصر را بدون جابه‌جایی DOM به Top Layer می‌برد؛ این راه‌حل
+        // قطعیِ stacking-context کارت‌هاست. position:fixed پایین fallback مرورگر قدیمی است.
+        if (typeof pop.showPopover === 'function') {
+            try {
+                if (!pop.matches(':popover-open')) pop.showPopover();
+            } catch (err) { }
+        }
         place(anchor, pop);
 
         var onScroll = function () { place(anchor, pop); };
@@ -86,6 +93,11 @@
         window.removeEventListener('resize', r.onScroll);
         document.removeEventListener('mousedown', r.onDown, true);
         document.removeEventListener('keydown', r.onKey, true);
+        if (r.pop && typeof r.pop.hidePopover === 'function') {
+            try {
+                if (r.pop.matches(':popover-open')) r.pop.hidePopover();
+            } catch (err) { }
+        }
         delete reg[key];
     };
 })();

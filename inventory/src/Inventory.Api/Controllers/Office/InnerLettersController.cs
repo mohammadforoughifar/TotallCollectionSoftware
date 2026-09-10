@@ -18,10 +18,11 @@ public class InnerLettersController : RbacControllerBase
     private readonly IErjaService _erja;
     private readonly IPishnevisService _pishnevis;
     private readonly ILetterGroupService _groups;
+    private readonly ILetterNumberService _numbers;
     private readonly LetterAttachmentStore _files;
 
     public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja,
-        IPishnevisService pishnevis, ILetterGroupService groups,
+        IPishnevisService pishnevis, ILetterGroupService groups, ILetterNumberService numbers,
         LetterAttachmentStore files)
         : base(db)
     {
@@ -29,6 +30,7 @@ public class InnerLettersController : RbacControllerBase
         _erja = erja;
         _pishnevis = pishnevis;
         _groups = groups;
+        _numbers = numbers;
         _files = files;
     }
 
@@ -275,6 +277,52 @@ public class InnerLettersController : RbacControllerBase
         return Ok(new { message = "گروه حذف شد." });
     }
 
+    // ==================== تنظیمات ساختار شماره نامه ====================
+
+    /// <summary>خواندن تنظیمات ساختار شماره نامه (+ پیش‌نمایش شماره‌ی بعدی)</summary>
+    [HttpGet("number-settings")]
+    public async Task<IActionResult> GetNumberSettings([FromQuery] int sourceType = 1)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _numbers.GetAsync(sourceType, MyUserId));
+    }
+
+    /// <summary>فهرست اجزای قابل انتخاب برای ساختار شماره</summary>
+    [HttpGet("number-settings/parts")]
+    public async Task<IActionResult> NumberParts()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(_numbers.AvailableParts());
+    }
+
+    /// <summary>
+    /// فهرست‌های کمکی صفحه‌ی ساختار شماره: واحدها و کمپانی‌های تعریف‌شده در تنظیمات سیستم
+    /// (تا کد واحد/شرکت به‌جای تایپ دستی از فهرست انتخاب شود) + اجزای قابل انتخاب
+    /// </summary>
+    [HttpGet("number-settings/lookups")]
+    public async Task<IActionResult> NumberLookups()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _numbers.LookupsAsync());
+    }
+
+    /// <summary>پیش‌نمایش شماره با تنظیمات ارسالی (بدون ذخیره)</summary>
+    [HttpPost("number-settings/preview")]
+    public async Task<IActionResult> PreviewNumber([FromBody] LetterNumberSettingDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(new { preview = await _numbers.PreviewAsync(dto, MyUserId) });
+    }
+
+    /// <summary>ذخیره‌ی تنظیمات ساختار شماره نامه — فقط مدیر</summary>
+    [HttpPost("number-settings")]
+    public async Task<IActionResult> SaveNumberSettings([FromBody] LetterNumberSettingDto dto)
+    {
+        if (!await IsAdminAsync())
+            return StatusCode(403, new { message = "فقط مدیر می‌تواند ساختار شماره نامه را تغییر دهد." });
+        return Ok(await _numbers.SaveAsync(dto, MyUserId));
+    }
+
     // ==================== پیوست‌ها ====================
     //  اطلاعات فایل در جدول AppAttachment و خودِ فایل روی دیسک در مسیر
     //  wwwroot/uploads/innerletter/{letterId}/… ذخیره می‌شود.
@@ -353,7 +401,16 @@ public class InnerLettersController : RbacControllerBase
             UploaderUserId = MyUserId
         };
         Db.AppAttachments.Add(att);
-        await Db.SaveChangesAsync();
+        try
+        {
+            await Db.SaveChangesAsync();
+        }
+        catch
+        {
+            // اگر ثبت متادیتا شکست خورد، فایل بدون رکورد روی دیسک باقی نماند.
+            _files.Delete(path);
+            throw;
+        }
         return Ok(new { id = att.Id, filePath = path, message = "پیوست بارگذاری شد." });
     }
 
@@ -366,7 +423,8 @@ public class InnerLettersController : RbacControllerBase
 
         if (a.Module == "Pishnevis")
         {
-            var owns = await Db.PishnevisLetters.AnyAsync(p => p.PishnevisId == a.RefId && p.UserId == MyUserId);
+            var owns = await Db.PishnevisLetters.AnyAsync(p =>
+                p.PishnevisId == a.RefId && p.UserId == MyUserId && !p.IsDelete);
             if (!owns && !await IsAdminAsync())
                 return (null, StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." }));
         }
@@ -402,9 +460,14 @@ public class InnerLettersController : RbacControllerBase
     {
         var (a, err) = await LoadAttachmentAsync(attId);
         if (err != null) return err;
+        if (!LetterAttachmentStore.IsInlineViewable(a!.FileName))
+            return BadRequest(new { message = "این نوع فایل فقط قابل دانلود است." });
 
-        var ct = LetterAttachmentStore.GuessContentType(a!.FileName);
+        // نوع محتوا فقط از پسوند امن محاسبه می‌شود؛ Content-Type ارسالیِ کاربر
+        // برای نمایش inline قابل اعتماد نیست.
+        var ct = LetterAttachmentStore.GuessContentType(a.FileName);
         Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(a.FileName)}";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
 
         var s = _files.OpenRead(a.FilePath);
         if (s != null) return File(s, ct);
@@ -445,7 +508,7 @@ public class InnerLettersController : RbacControllerBase
         await using var stream = file.OpenReadStream();
         var path = await _files.SaveAsync(id, pishnevis: true, stream, name);
 
-        Db.AppAttachments.Add(new AppAttachment
+        var att = new AppAttachment
         {
             Module = "Pishnevis",
             RefId = id,
@@ -457,9 +520,18 @@ public class InnerLettersController : RbacControllerBase
             FilePath = path,
             UploaderName = await MyDisplayNameAsync(),
             UploaderUserId = MyUserId
-        });
-        await Db.SaveChangesAsync();
-        return Ok(new { message = "پیوست بارگذاری شد." });
+        };
+        Db.AppAttachments.Add(att);
+        try
+        {
+            await Db.SaveChangesAsync();
+        }
+        catch
+        {
+            _files.Delete(path);
+            throw;
+        }
+        return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 
     /// <summary>حذف پیوست (رکورد + فایل روی دیسک) — فقط آپلودکننده یا مدیر</summary>
@@ -471,9 +543,11 @@ public class InnerLettersController : RbacControllerBase
         if (a.UploaderUserId != MyUserId && !await IsAdminAsync())
             return StatusCode(403, new { message = "فقط بارگذارنده یا مدیر می‌تواند پیوست را حذف کند." });
 
-        _files.Delete(a.FilePath);
+        var path = a.FilePath;
         Db.AppAttachments.Remove(a);
         await Db.SaveChangesAsync();
+        // ابتدا حذف متادیتا قطعی می‌شود؛ در خطای دیتابیس فایل معتبر از بین نمی‌رود.
+        _files.Delete(path);
         return Ok(new { message = "پیوست حذف شد." });
     }
 }

@@ -72,11 +72,20 @@ public class FileStore
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         // فقط مسیر نسبی امن داخل uploads بپذیر (ضد path traversal)
-        var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
-        var full = Path.GetFullPath(Path.Combine(_root, clean));
-        if (!full.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal)) return null;
-        return full;
+        try
+        {
+            var clean = relativePath.Replace('\\', '/').TrimStart('/');
+            var full = Path.GetFullPath(Path.Combine(_root, clean));
+            var root = Path.GetFullPath(_root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            var comparison = OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+            return full.StartsWith(root + Path.DirectorySeparatorChar, comparison) ? full : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private string ToRelative(string fullPath) =>

@@ -43,9 +43,9 @@ public class InnerLetter
     public int Id { get; set; }
 
     /// <summary>شماره اندیکاتور کامل نامه — مثل «1404/12»</summary>
-    [MaxLength(60)] public string? LetterNumber { get; set; }
+    [MaxLength(400)] public string? LetterNumber { get; set; }
 
-    /// <summary>شماره ترتیبی داخل سال شمسی (هر سال از ۱ شروع می‌شود)</summary>
+    /// <summary>شماره ترتیبی طبق دوره، شماره شروع و گامِ تنظیمات ساختار شماره</summary>
     public int Number { get; set; }
 
     /// <summary>کاربر ثبت‌کننده (فرستنده)</summary>

@@ -44,6 +44,7 @@ builder.Services.AddScoped<IExpenseService, ExpenseService>();
 // ---------- اتوماسیون اداری — نامه داخلی (کارتابل، ارجاع، پیش‌نویس، گروه‌های گیرندگان) ----------
 builder.Services.AddScoped<ILetterGroupService, LetterGroupService>();
 builder.Services.AddScoped<IInnerLetterService, InnerLetterService>();
+builder.Services.AddScoped<ILetterNumberService, LetterNumberService>();
 builder.Services.AddScoped<IErjaService, ErjaService>();
 builder.Services.AddScoped<IPishnevisService, PishnevisService>();
 
@@ -162,24 +163,28 @@ Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot
 // پوشه‌ی پیوست‌های نامه داخلی (اتوماسیون اداری)
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "innerletter", "pishnevis"));
 
+// این نگهبان باید مستقل از وجود index.html و حتماً پیش از هر StaticFiles اجرا شود.
+// پیوست‌های نامه داخلی فقط از endpointهای احرازهویت‌شده‌ی api/letters و پس از
+// بررسی حضور کاربر در گردش نامه قابل دریافت‌اند. نام‌های قدیمی هم برای جلوگیری
+// از دسترسی مستقیم به فایل‌های ایجادشده با API عمومی پیوست مسدود می‌شوند.
+app.Use(async (ctx, next) =>
+{
+    var path = ctx.Request.Path;
+    if (path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/innerletter", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/InnerLetters", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWithSegments("/uploads/Pishnevis", StringComparison.OrdinalIgnoreCase))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
+
 // سرو فایل‌های استاتیک کلاینت (استقرار تک‌سروره — در صورت وجود پوشه wwwroot)
 var clientRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.html")))
 {
-    // امنیت پیوست‌ها: فایل‌های رمزنگاری‌شده زیر wwwroot/SecureFiles هرگز به‌صورت استاتیک و بدون احراز هویت
-    // سرو نشوند — دسترسی به آن‌ها فقط از مسیر API (ProjectAttachController با RBAC) مجاز است.
-    // همچنین پیوست‌های نامه داخلی (uploads/innerletter) محرمانه‌اند و فقط از مسیر
-    // api/letters/attachments/{id}/download|view با بررسی گردش نامه قابل دریافت‌اند.
-    app.Use(async (ctx, next) =>
-    {
-        if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/innerletter", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-        await next();
-    });
     app.UseDefaultFiles();
     app.UseStaticFiles(new StaticFileOptions
     {
