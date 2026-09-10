@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Api.Services;
+using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -431,7 +432,16 @@ public class InnerLettersController : RbacControllerBase
             UploaderUserId = MyUserId
         };
         Db.AppAttachments.Add(att);
-        await Db.SaveChangesAsync();
+        try
+        {
+            await Db.SaveChangesAsync();
+        }
+        catch
+        {
+            // اگر ثبت متادیتا شکست خورد، فایل بی‌صاحب روی دیسک باقی نماند.
+            _store.Delete(relPath);
+            throw;
+        }
         return Ok(new { id = att.Id, message = "پیوست بارگذاری شد." });
     }
 
@@ -439,23 +449,109 @@ public class InnerLettersController : RbacControllerBase
     [HttpGet("attachments/{attId:int}/download")]
     public async Task<IActionResult> DownloadAttachment(int attId)
     {
-        var a = await Db.AppAttachments.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == attId && (x.Module == Module || x.Module == "Pishnevis"));
-        if (a == null) return NotFound();
-        if (a.Module == "Pishnevis")
-        {
-            // پیش‌نویس فقط برای صاحبش
-            var owns = await Db.PishnevisLetters.AnyAsync(p => p.PishnevisId == a.RefId && p.UserId == MyUserId);
-            if (!owns && !await IsAdminAsync())
-                return StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." });
-        }
-        else if (!await InFlowAsync(a.RefId) && !await IsAdminAsync())
-            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        var (attachment, error) = await FindReadableAttachmentAsync(attId);
+        if (error is not null) return error;
 
-        // اول از دیسک خوانده می‌شود؛ در صورت نبود، به blob قدیمی در DB برمی‌گردد
-        var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
+        // اول از دیسک خوانده می‌شود؛ در صورت نبود، به blob قدیمی در DB برمی‌گردد.
+        var bytes = _store.ReadBytes(attachment!.FilePath)
+                    ?? (attachment.Data is { Length: > 0 } ? attachment.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
-        return File(bytes, a.ContentType, a.FileName);
+        Response.Headers["Cache-Control"] = "no-store";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        return File(bytes, attachment.ContentType, attachment.FileName);
+    }
+
+    /// <summary>
+    /// مشاهده امن پیوست در مرورگر — فقط PDF، تصاویر بی‌خطر و فایل‌های متنی.
+    /// این endpoint مانند دانلود به JWT و عضویت کاربر در گردش نامه نیاز دارد؛ مسیر فیزیکی فایل افشا نمی‌شود.
+    /// </summary>
+    [HttpGet("attachments/{attId:int}/preview")]
+    public async Task<IActionResult> PreviewAttachment(int attId)
+    {
+        var (attachment, error) = await FindReadableAttachmentAsync(attId);
+        if (error is not null) return error;
+
+        var bytes = _store.ReadBytes(attachment!.FilePath)
+                    ?? (attachment.Data is { Length: > 0 } ? attachment.Data : null);
+        if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+
+        var contentType = SafeInlineContentType(attachment.FileName, attachment.ContentType);
+        if (contentType is null)
+            return BadRequest(new { message = "این نوع فایل پیش‌نمایش مستقیم ندارد؛ آن را دانلود کنید." });
+
+        // فایل HTML/SVG یا Content-Type ارسالی کاربر هرگز با نوع فعال از دامنه برنامه اجرا نمی‌شود.
+        Response.Headers["Content-Disposition"] = "inline";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["Cache-Control"] = "no-store";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        if (contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+            Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'";
+
+        return new FileContentResult(bytes, contentType) { EnableRangeProcessing = true };
+    }
+
+    /// <summary>
+    /// پیش‌نمایش امن Word جدید، Excel جدید و CSV به HTML پاک‌سازی‌شده؛ فایل اصلی عمومی نمی‌شود.
+    /// </summary>
+    [HttpGet("attachments/{attId:int}/preview-html")]
+    public async Task<IActionResult> PreviewOfficeAttachment(int attId)
+    {
+        var (attachment, error) = await FindReadableAttachmentAsync(attId);
+        if (error is not null) return error;
+
+        var bytes = _store.ReadBytes(attachment!.FilePath)
+                    ?? (attachment.Data is { Length: > 0 } ? attachment.Data : null);
+        if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
+
+        if (!OfficePreviewHtml.TryBuild(bytes, attachment.FileName, attachment.ContentType, out var html, out var previewError))
+            return BadRequest(new { message = previewError ?? "پیش‌نمایش این فایل ممکن نیست؛ آن را دانلود کنید." });
+
+        Response.Headers["Content-Disposition"] = "inline";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["Cache-Control"] = "no-store";
+        Response.Headers["Referrer-Policy"] = "no-referrer";
+        Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'; style-src 'unsafe-inline'";
+        return Content(html, "text/html; charset=utf-8");
+    }
+
+    private async Task<(AppAttachment? Attachment, IActionResult? Error)> FindReadableAttachmentAsync(int attId)
+    {
+        var attachment = await Db.AppAttachments.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == attId && (x.Module == Module || x.Module == "Pishnevis"));
+        if (attachment is null) return (null, NotFound());
+
+        if (attachment.Module == "Pishnevis")
+        {
+            var owns = await Db.PishnevisLetters.AsNoTracking()
+                .AnyAsync(p => p.PishnevisId == attachment.RefId && p.UserId == MyUserId && !p.IsDelete);
+            if (!owns && !await IsAdminAsync())
+                return (null, StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." }));
+        }
+        else if (!await InFlowAsync(attachment.RefId) && !await IsAdminAsync())
+        {
+            return (null, StatusCode(403, new { message = "شما در گردش این نامه نیستید." }));
+        }
+
+        return (attachment, null);
+    }
+
+    private static string? SafeInlineContentType(string fileName, string? storedContentType)
+    {
+        // نوع نمایش از پسوند مورد اعتماد سامانه تعیین می‌شود، نه Content-Type قابل جعلِ درخواست آپلود.
+        return Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" or ".jfif" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".bmp" => "image/bmp",
+            ".ico" => "image/x-icon",
+            ".avif" => "image/avif",
+            ".txt" or ".log" or ".md" or ".csv" or ".json" or ".xml" or ".html" or ".htm" => "text/plain; charset=utf-8",
+            _ when string.Equals(storedContentType, "application/pdf", StringComparison.OrdinalIgnoreCase) => "application/pdf",
+            _ => null
+        };
     }
 
     /// <summary>لیست پیوست‌های پیش‌نویس کاربر جاری</summary>
@@ -516,7 +612,15 @@ public class InnerLettersController : RbacControllerBase
             UploaderName = await MyDisplayNameAsync(),
             UploaderUserId = MyUserId
         });
-        await Db.SaveChangesAsync();
+        try
+        {
+            await Db.SaveChangesAsync();
+        }
+        catch
+        {
+            _store.Delete(relPath);
+            throw;
+        }
         return Ok(new { message = "پیوست بارگذاری شد." });
     }
 
@@ -529,10 +633,11 @@ public class InnerLettersController : RbacControllerBase
         if (a.UploaderUserId != MyUserId && !await IsAdminAsync())
             return StatusCode(403, new { message = "فقط بارگذارنده یا مدیر می‌تواند پیوست را حذف کند." });
 
-        // فایل روی دیسک هم حذف می‌شود
-        _store.Delete(a.FilePath);
+        var filePath = a.FilePath;
         Db.AppAttachments.Remove(a);
         await Db.SaveChangesAsync();
+        // ابتدا حذف متادیتا قطعی می‌شود؛ در خطای دیتابیس فایل معتبر از بین نمی‌رود.
+        _store.Delete(filePath);
         return Ok(new { message = "پیوست حذف شد." });
     }
 }

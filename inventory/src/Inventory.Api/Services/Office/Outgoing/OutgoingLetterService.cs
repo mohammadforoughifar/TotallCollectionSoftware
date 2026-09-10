@@ -212,13 +212,18 @@ public class OutgoingLetterService : IOutgoingLetterService
         await _db.SaveChangesAsync();
 
         var number = await NextNumberAsync();
+        var creatorSematId = await _db.Semats.AsNoTracking()
+            .Where(s => s.UserId == creatorUserId && s.IsActive && !s.IsDelete)
+            .OrderBy(s => s.SematId)
+            .Select(s => (int?)s.SematId)
+            .FirstOrDefaultAsync();
         var letter = new OutgoingLetter
         {
             Id = source.Id,
             Number = number,
-            // sematId بعداً از CreatorSematId صادرکننده پر می‌شود (فاز چارت سازمانی)
-            LetterNumber = await BuildLetterNumberAsync(number, now),
+            LetterNumber = await BuildLetterNumberAsync(number, now, creatorSematId),
             CreatorUserId = creatorUserId,
+            CreatorSematId = creatorSematId,
             Title = dto.Title.Trim(),
             Text = dto.Text,
             DateSabt = now,

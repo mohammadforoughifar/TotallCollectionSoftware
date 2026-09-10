@@ -3,9 +3,14 @@ using System.Linq.Expressions;
 using System.Net;
 using System.Reflection;
 using Inventory.Api.Controllers;
+using Inventory.Api.Infrastructure;
+using Inventory.Api.Services;
 using Inventory.Client.Extensions;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 using Xunit;
 
 namespace Inventory.Compatibility.Tests;
@@ -37,6 +42,68 @@ public class CompatibilityTests
         using var scope = new CultureScope(culture);
         Assert.Equal("position:fixed;top:max(8px,min(59px,calc(100vh - 340px)));left:max(8px,min(61px,calc(100vw - 300px)));right:auto;z-index:4500;max-width:calc(100vw - 16px);max-height:calc(100vh - 24px);overflow:auto;",
             Popover.CalendarStyle(100.6, 50.6));
+    }
+
+    [Theory]
+    [InlineData("/SecureFiles/project/file.bin")]
+    [InlineData("/securefiles/project/file.bin")]
+    [InlineData("/uploads/innerletter/42/file.pdf")]
+    [InlineData("/UPLOADS/INNERLETTER/pishnevis/8/file.docx")]
+    [InlineData("/فایل های صادره/1/file.pdf")]
+    [InlineData("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87/1/file.pdf")]
+    [InlineData("/فایل های ایمیل/1/file.eml")]
+    [InlineData("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84/1/file.eml")]
+    public void Private_wwwroot_paths_are_blocked_before_static_files(string path)
+    {
+        Assert.True(ProtectedStaticFilePaths.IsBlocked(new PathString(path)));
+    }
+
+    [Theory]
+    [InlineData("/uploads/users/avatar.png")]
+    [InlineData("/uploads/innerletter-public/file.pdf")]
+    [InlineData("/css/app.css")]
+    public void Public_static_paths_are_not_overblocked(string path)
+    {
+        Assert.False(ProtectedStaticFilePaths.IsBlocked(new PathString(path)));
+    }
+
+    [Fact]
+    public async Task FileStore_writes_inner_letter_under_api_wwwroot_uploads()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), "inventory-filestore-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        try
+        {
+            var store = new FileStore(new TestWebHostEnvironment(temp));
+            var payload = new byte[] { 1, 2, 3, 4, 5 };
+            await using var input = new MemoryStream(payload);
+
+            var relative = await store.SaveAsync("innerletter", 42, input, "نامه.pdf");
+
+            Assert.True(relative.StartsWith("innerletter/42/", StringComparison.Ordinal));
+            Assert.False(relative.Contains("..", StringComparison.Ordinal));
+            var expected = Path.Combine(temp, "wwwroot", "uploads",
+                relative.Replace('/', Path.DirectorySeparatorChar));
+            Assert.True(File.Exists(expected));
+            Assert.Equal(payload, store.ReadBytes(relative));
+            Assert.Equal(payload.Length, store.Size(relative));
+        }
+        finally
+        {
+            try { Directory.Delete(temp, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Letter_number_formatter_honors_saved_part_order()
+    {
+        var date = new DateTime(1405, 2, 3, new PersianCalendar());
+        Assert.Equal("QA/27/1405",
+            LetterStratureService.FormatNumber(new[] { "واحد", "شماره", "سال" }, 27, date, "QA"));
+        Assert.Equal("1405/QA/27",
+            LetterStratureService.FormatNumber(new[] { "سال", "واحد", "شماره" }, 27, date, "QA"));
+        Assert.Equal("27/1405",
+            LetterStratureService.FormatNumber(new[] { "شماره", "سال" }, 27, date, ""));
     }
 
     public static IEnumerable<object[]> NetworkCases()
@@ -114,6 +181,25 @@ public class CompatibilityTests
     {
         public int Id { get; set; }
         public string Name { get; set; } = "";
+    }
+
+    private sealed class TestWebHostEnvironment : IWebHostEnvironment
+    {
+        public TestWebHostEnvironment(string contentRootPath)
+        {
+            ContentRootPath = contentRootPath;
+            WebRootPath = Path.Combine(contentRootPath, "wwwroot");
+            ContentRootFileProvider = new NullFileProvider();
+            Directory.CreateDirectory(WebRootPath);
+            WebRootFileProvider = new NullFileProvider();
+        }
+
+        public string ApplicationName { get; set; } = "Inventory.Compatibility.Tests";
+        public IFileProvider WebRootFileProvider { get; set; }
+        public string WebRootPath { get; set; }
+        public string EnvironmentName { get; set; } = "Testing";
+        public string ContentRootPath { get; set; }
+        public IFileProvider ContentRootFileProvider { get; set; }
     }
 
     private sealed class CultureScope : IDisposable

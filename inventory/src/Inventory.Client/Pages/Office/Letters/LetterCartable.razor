@@ -276,15 +276,28 @@
                                     @foreach (var a in attachments)
                                     {
                                         var aa = a;
-                                        <a class="att" href="@LetterSvc.AttachmentDownloadUrl(aa.Id)" target="_blank">
+                                        var previewUrl = LetterSvc.AttachmentPreviewUrl(aa);
+                                        <div class="att">
                                             <div class="ic"><i class="bi @FileIcon(aa.FileName)"></i></div>
-                                            <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
-                                            @if (selected.IsMine || Auth.IsAdmin)
-                                            {
-                                                <i class="bi bi-x-circle-fill arm" title="حذف پیوست"
-                                                   @onclick="() => DeleteAttachment(aa)" @onclick:preventDefault="true" @onclick:stopPropagation="true"></i>
-                                            }
-                                        </a>
+                                            <div class="att-name">@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
+                                            <div class="att-actions">
+                                                @if (previewUrl is not null)
+                                                {
+                                                    <a href="@previewUrl" target="_blank" rel="noopener noreferrer" title="مشاهده امن">
+                                                        <i class="bi bi-eye"></i>
+                                                    </a>
+                                                }
+                                                <a href="@LetterSvc.AttachmentDownloadUrl(aa.Id)" target="_blank" rel="noopener noreferrer" title="دانلود">
+                                                    <i class="bi bi-download"></i>
+                                                </a>
+                                                @if (selected.IsMine || Auth.IsAdmin)
+                                                {
+                                                    <button type="button" class="arm" title="حذف پیوست" @onclick="() => DeleteAttachment(aa)">
+                                                        <i class="bi bi-x-circle-fill"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
                                     }
                                     @if (selected.IsMine)
                                     {

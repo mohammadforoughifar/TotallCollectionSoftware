@@ -64,6 +64,7 @@ public interface ILetterService
     Task UploadPishnevisAttachmentAsync(int pishnevisId, Stream stream, string fileName, string contentType);
     Task DeleteAttachmentAsync(int attachmentId);
     string AttachmentDownloadUrl(int attachmentId);
+    string? AttachmentPreviewUrl(LetterAttachmentDto attachment);
 }
 
 public class LetterService : ILetterService
@@ -246,10 +247,34 @@ public class LetterService : ILetterService
     public Task DeleteAttachmentAsync(int attachmentId) =>
         _api.DeleteAsync($"api/letters/attachments/{attachmentId}");
 
-    public string AttachmentDownloadUrl(int attachmentId)
+    public string AttachmentDownloadUrl(int attachmentId) =>
+        WithAccessToken(_api.BuildUrl($"api/letters/attachments/{attachmentId}/download"));
+
+    public string? AttachmentPreviewUrl(LetterAttachmentDto attachment)
     {
-        // لینک مستقیم <a> هدر Authorization ندارد — توکن در query string ارسال می‌شود
-        var url = _api.BuildUrl($"api/letters/attachments/{attachmentId}/download");
+        var ext = Path.GetExtension(attachment.FileName).ToLowerInvariant();
+        var contentType = attachment.ContentType ?? "";
+
+        var office = ext is ".docx" or ".xlsx" or ".csv"
+            || contentType.Contains("wordprocessingml", StringComparison.OrdinalIgnoreCase)
+            || contentType.Contains("spreadsheetml", StringComparison.OrdinalIgnoreCase)
+            || contentType.Contains("csv", StringComparison.OrdinalIgnoreCase);
+
+        var inline = ext is ".pdf" or ".png" or ".jpg" or ".jpeg" or ".jfif" or ".gif"
+            or ".webp" or ".bmp" or ".ico" or ".avif" or ".txt" or ".log" or ".md"
+            or ".json" or ".xml" or ".html" or ".htm";
+
+        if (!office && !inline && !contentType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var action = office ? "preview-html" : "preview";
+        return WithAccessToken(_api.BuildUrl($"api/letters/attachments/{attachment.Id}/{action}"));
+    }
+
+    private string WithAccessToken(string url)
+    {
+        // لینک مستقیم <a> هدر Authorization ندارد — JwtBearer فقط برای endpointهای preview/download
+        // توکن query را می‌پذیرد. خود مسیر فیزیکی wwwroot هرگز در کلاینت نمایش داده نمی‌شود.
         return string.IsNullOrWhiteSpace(_auth.Token)
             ? url
             : $"{url}?access_token={Uri.EscapeDataString(_auth.Token)}";

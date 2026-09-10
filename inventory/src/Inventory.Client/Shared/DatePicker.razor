@@ -21,7 +21,9 @@
 
     @if (open)
     {
-        <div class="dp-popover" style="@_popStyle" @ref="_pop">
+        @* popover="manual" آن را در Top Layer مرورگر می‌گذارد؛ بنابراین هیچ card/grid/overflow
+           یا stacking-context نمی‌تواند تقویم را بپوشاند. JS برای مرورگرهای قدیمی fallback fixed دارد. *@
+        <div class="dp-popover" style="@_popStyle" @ref="_pop" popover="manual" @onclick:stopPropagation="true">
             <div class="dp-head">
                 <button class="btn btn-sm btn-light" type="button" @onclick="() => MoveMonth(1)">
                     <i class="bi bi-chevron-right"></i>
@@ -252,11 +254,19 @@
                 if (!window._dpBound) {
                     window._dpBound = true;
                     var rp = function () {
-                        var p = document.querySelector('.dp-popover');
-                        if (p && p.style.visibility === 'visible' && p._dpAnchor) window.dpPlace(p._dpAnchor, p);
+                        var pops = document.querySelectorAll('.dp-popover');
+                        for (var i = 0; i < pops.length; i++) {
+                            var p = pops[i];
+                            if (p.style.visibility === 'visible' && p._dpAnchor) window.dpPlace(p._dpAnchor, p);
+                        }
                     };
                     window.addEventListener('scroll', rp, true);
                     window.addEventListener('resize', rp);
+                }
+                // Popover API تقویم را به top layer می‌برد و آن را از stacking context کارت‌ها خارج می‌کند.
+                // در مرورگر قدیمی همین عنصر با position:fixed و z-index بالا کار می‌کند.
+                if (typeof pop.showPopover === 'function') {
+                    try { if (!pop.matches(':popover-open')) pop.showPopover(); } catch (ignore) { }
                 }
                 var r = anchor.getBoundingClientRect();
                 var pw = pop.offsetWidth || 292, ph = pop.offsetHeight || 400;
@@ -267,6 +277,8 @@
                 if (right < m) right = m;
                 if (right + pw > vw - m) right = m + 4;
                 pop.style.position = 'fixed';
+                pop.style.inset = 'auto';
+                pop.style.margin = '0';
                 pop.style.top = Math.round(top) + 'px';
                 pop.style.right = Math.round(right) + 'px';
                 pop.style.left = 'auto';

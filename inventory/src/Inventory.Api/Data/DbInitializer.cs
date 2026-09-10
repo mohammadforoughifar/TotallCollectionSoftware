@@ -267,39 +267,9 @@ public static class DbInitializer
                     Console.WriteLine($"[DB] ساختار پیش‌فرض شماره اندیکاتور TypeForm={typeForm} ({string.Join("/", parts)}) ساخته شد.");
                 }
 
-                // بازسازی شماره اندیکاتور نامه‌های قدیمی (داخلی) با ساختار جدید
-                // (شماره ترتیبی Number ثابت می‌ماند؛ فقط رشته نمایشی بازتولید می‌شود)
-                {
-                    var structure = db.LetterStratures.Where(s => s.TypeForm == 1)
-                        .OrderBy(s => s.StratureId).Select(s => s.TypeStrature).ToList();
-                    if (structure.Count > 0)
-                    {
-                        var defaultOrg = db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive && o.IsDefault)
-                                         ?? db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive);
-                        var unit = defaultOrg?.NameUniq ?? config?["Letters:UnitCode"] ?? "MQ";
-                        var pc = new System.Globalization.PersianCalendar();
-                        var toFix = db.InnerLetters.Where(l => !l.IsDelete).ToList();
-                        int fixedCount = 0;
-                        foreach (var l in toFix)
-                        {
-                            var parts = new List<string>();
-                            foreach (var p in structure)
-                                switch (p)
-                                {
-                                    case "سال": parts.Add(pc.GetYear(l.DateSabt).ToString()); break;
-                                    case "واحد": if (!string.IsNullOrEmpty(unit)) parts.Add(unit); break;
-                                    case "شماره": parts.Add(l.Number.ToString()); break;
-                                }
-                            var newNum = string.Join("/", parts);
-                            if (l.LetterNumber != newNum) { l.LetterNumber = newNum; fixedCount++; }
-                        }
-                        if (fixedCount > 0)
-                        {
-                            db.SaveChanges();
-                            Console.WriteLine($"[DB] شماره اندیکاتور {fixedCount} نامه قدیمی با ساختار جدید بازسازی شد.");
-                        }
-                    }
-                }
+                // بازاعمال ساختار روی نامه‌های موجود در LetterStratureService و دقیقاً هنگام ذخیره‌ی
+                // تنظیمات انجام می‌شود. اجرای قبلیِ بازسازی در هر startup حذف شد چون واحد همه‌ی
+                // نامه‌ها را به سازمان پیش‌فرض برمی‌گرداند و CreatorSematId نامه را نادیده می‌گرفت.
 
                 // کاربران نمونه برای دموی کارتابل نامه (فقط در حالت دمو)
                 if (seedDemo && db.Users.Count() <= 1)

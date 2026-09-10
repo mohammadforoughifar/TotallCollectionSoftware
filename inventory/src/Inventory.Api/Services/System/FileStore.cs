@@ -3,9 +3,12 @@ using Microsoft.AspNetCore.Http;
 namespace Inventory.Api.Services;
 
 /// <summary>
-/// ذخیره‌سازی فایل‌ها روی دیسک — همه‌ی فایل‌ها در پوشه‌ی uploads/ روت API قرار می‌گیرند
+/// ذخیره‌سازی فایل‌ها روی دیسک — همه‌ی فایل‌ها در پوشه‌ی wwwroot/uploads روت API قرار می‌گیرند
 /// و در دیتابیس فقط مسیر نسبی (اطلاعات) ثبت می‌شود.
-/// ساختار: uploads/{module}/{refId}/{guid}_{نام-اصلی}
+/// ساختار: wwwroot/uploads/{module}/{refId}/{guid}_{نام-اصلی}
+///
+/// وجود فایل زیر wwwroot به معنی عمومی‌بودن آن نیست؛ مسیر ماژول‌های محرمانه (از جمله
+/// uploads/innerletter) در Program.cs از سرو استاتیک مسدود است و فقط endpoint مجاز آن را می‌خواند.
 /// </summary>
 public class FileStore
 {
@@ -14,9 +17,8 @@ public class FileStore
 
     public FileStore(IWebHostEnvironment env)
     {
-        // همه‌ی فایل‌های آپلودی در wwwroot/uploads ذخیره می‌شوند و با سرو استاتیک wwwroot در دسترس هستند
-        _root = Path.Combine(env.ContentRootPath, "wwwroot", "uploads");
-        _webRoot = Path.Combine(env.ContentRootPath, "wwwroot");
+        _root = Path.GetFullPath(Path.Combine(env.ContentRootPath, "wwwroot", "uploads"));
+        _webRoot = Path.GetFullPath(Path.Combine(env.ContentRootPath, "wwwroot"));
         Directory.CreateDirectory(_root);
     }
 
@@ -78,10 +80,9 @@ public class FileStore
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
+        if (clean.Contains("..", StringComparison.Ordinal)) return null;
         var full = Path.GetFullPath(Path.Combine(_webRoot, clean));
-        if (!full.StartsWith(Path.GetFullPath(_webRoot), StringComparison.Ordinal)) return null;
-        return full;
+        return IsInside(_webRoot, full) ? full : null;
     }
 
     private string ToWebRootRelative(string fullPath) =>
@@ -135,10 +136,13 @@ public class FileStore
     /// <summary>ساخت مسیر کامل در پوشه uploads: uploads/{module}[/{subFolder}]/{refId}</summary>
     private string BuildDirectory(string module, int refId, string? subFolder = null)
     {
-        var parts = new List<string> { SafeModule(module) };
+        // باگ قبلی: _root به Path.Combine داده نمی‌شد و فایل نسبت به current working directory
+        // (مثلاً Api/innerletter/...) نوشته می‌شد؛ در نتیجه FilePath شامل ../ بود، ReadBytes آن را
+        // به‌درستی ناامن تشخیص می‌داد و پیوست دیگر قابل دانلود نبود.
+        var parts = new List<string> { _root, SafeModule(module) };
         if (!string.IsNullOrWhiteSpace(subFolder))
             parts.Add(SafeModule(subFolder));
-        parts.Add(refId.ToString());
+        parts.Add(refId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         return Path.Combine(parts.ToArray());
     }
 
@@ -181,14 +185,28 @@ public class FileStore
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         // فقط مسیر نسبی امن داخل uploads بپذیر (ضد path traversal)
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
+        if (clean.Contains("..", StringComparison.Ordinal)) return null;
         var full = Path.GetFullPath(Path.Combine(_root, clean));
-        if (!full.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal)) return null;
-        return full;
+        return IsInside(_root, full) ? full : null;
     }
 
-    private string ToRelative(string fullPath) =>
-        Path.GetRelativePath(_root, fullPath).Replace('\\', '/');
+    private string ToRelative(string fullPath)
+    {
+        var full = Path.GetFullPath(fullPath);
+        if (!IsInside(_root, full))
+            throw new InvalidOperationException("مسیر فایل خارج از پوشه امن uploads است.");
+        return Path.GetRelativePath(_root, full).Replace('\\', '/');
+    }
+
+    private static bool IsInside(string root, string candidate)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var normalizedRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
+        var prefix = normalizedRoot + Path.DirectorySeparatorChar;
+        return candidate.Equals(normalizedRoot, comparison) || candidate.StartsWith(prefix, comparison);
+    }
 
     private static string SafeModule(string m)
     {

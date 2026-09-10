@@ -268,6 +268,19 @@ app.UseCors("wasm");
 app.UseAuthentication();
 app.UseAuthorization();
 
+// این پوشه‌ها فیزیکی زیر wwwroot هستند، ولی محتوای خصوصی دارند. حتی اگر StaticFiles یا
+// یک index.html پابلیش‌شده موجود باشد، URL مستقیم همیشه 404 است؛ دسترسی فقط از endpoint
+// دارای JWT و کنترل دسترسی ماژول انجام می‌شود. گارد عمداً برای کاربر لاگین‌شده هم 404 می‌دهد.
+app.Use(async (ctx, next) =>
+{
+    if (ProtectedStaticFilePaths.IsBlocked(ctx.Request.Path))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    await next();
+});
+
 // فایل‌های قدیمی چت هم فقط از endpoint دارای کنترل عضویت دانلود می‌شوند.
 // این گارد مستقل از وجود index.html و از استقرار تک/دو سروره است.
 app.Use(async (ctx, next) =>
@@ -301,35 +314,15 @@ app.MapHub<DashboardHub>("/hubs/dashboard");
 app.MapHub<Inventory.Api.Hubs.NotifyHub>("/hubs/notify");
 app.MapHub<Inventory.Api.Hubs.ChatHub>("/hubs/chat");
 
-// پوشه‌ی فایل‌های آپلودی داخل wwwroot (عکس‌های کاربران، پیوست‌ها) — با UseStaticFiles معمول سرو می‌شود
+// فقط زیرپوشه‌های عمومی مثل عکس کاربر با StaticFiles سرو می‌شوند؛ زیرپوشه‌های خصوصی
+// (از جمله uploads/innerletter) توسط ProtectedStaticFilePaths پیش از StaticFiles با 404 بسته شده‌اند.
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "users"));
 
 // سرو فایل‌های استاتیک کلاینت (استقرار تک‌سروره — در صورت وجود پوشه wwwroot)
 var clientRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.html")))
 {
-    // امنیت پیوست‌ها: فایل‌های رمزنگاری‌شده زیر wwwroot/SecureFiles هرگز به‌صورت استاتیک و بدون احراز هویت
-    // سرو نشوند — دسترسی به آن‌ها فقط از مسیر API (ProjectAttachController با RBAC) مجاز است.
-    app.Use(async (ctx, next) =>
-    {
-        if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-        // پیوست نامه صادره (فایل های صادره) و پیوست ایمیل سازمانی (فایل های ایمیل)
-        // هرگز به‌صورت استاتیک و بدون احراز هویت سرو نمی‌شوند —
-        // دانلود فقط از مسیر API مجاز (OutgoingLetters / Email با RBAC) انجام می‌شود.
-        if (ctx.Request.Path.StartsWithSegments("/فایل های صادره", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/فایل های ایمیل", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
-            return;
-        }
-        await next();
-    });
+    // گارد پوشه‌های خصوصی پیش از این بلوک و مستقل از نوع استقرار ثبت شده است.
     app.UseDefaultFiles();
     app.UseStaticFiles(new StaticFileOptions
     {

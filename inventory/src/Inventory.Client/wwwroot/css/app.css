@@ -439,6 +439,8 @@ a { text-decoration: none; }
    (Popover.CalendarStyle بر اساس نقطه کلیک) — هیچ‌گاه زیر کارت‌ها نمی‌رود */
 .dp-popover {
     position: fixed;
+    inset: auto;
+    margin: 0;
     z-index: 4500;
     background: #fff;
     border: 1px solid var(--border);
