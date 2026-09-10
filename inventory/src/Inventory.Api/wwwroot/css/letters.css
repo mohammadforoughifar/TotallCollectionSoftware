@@ -201,6 +201,9 @@
 .ltx .spill.gp { background:#f5f3ff; border-color:#ddd6fe; color:#6d28d9; }
 .ltx .spill i.bi-x-lg { cursor:pointer; font-size:10px; opacity:.65; }
 .ltx .spill i.bi-x-lg:hover { opacity:1; color:var(--bad); }
+/* مشاهده و دانلود پیوستِ ذخیره‌شده */
+.ltx .spill i.bi-eye, .ltx .spill i.bi-download { cursor:pointer; font-size:11px; opacity:.7; }
+.ltx .spill i.bi-eye:hover, .ltx .spill i.bi-download:hover { opacity:1; color:var(--p); }
 .ltx .spill small { opacity:.7; }
 
 .ltx .rads { display:flex; gap:8px; flex-wrap:wrap; }

@@ -2132,3 +2132,66 @@ GO
 COMMIT;
 GO
 
+-- ============================================================
+--  20260831103000_AddOfficeAutomation / 20260901120000_AddLetterNumberSettings
+--  توجه: جداول ماژول اتوماسیون اداری توسط مایگریشن‌های EF ساخته می‌شوند
+--  (اجرای dotnet run در Inventory.Api). بخش زیر فقط تغییرات مربوط به
+--  «ساختار شماره نامه» را به‌صورت idempotent اضافه می‌کند تا در نصب‌های
+--  موجود بدون اجرای مایگریشن هم قابل اعمال باشد.
+-- ============================================================
+
+-- کد واحد سازمانی (در ساختار شماره نامه استفاده می‌شود)
+IF COL_LENGTH('dbo.SystemDepartments', 'Code') IS NULL
+BEGIN
+    ALTER TABLE [SystemDepartments] ADD [Code] nvarchar(30) NULL;
+END;
+GO
+
+-- تنظیمات ساختار شماره نامه (اندیکاتور)
+IF OBJECT_ID(N'dbo.LetterNumberSettings', 'U') IS NULL
+BEGIN
+    CREATE TABLE [LetterNumberSettings] (
+        [Id] int NOT NULL IDENTITY,
+        [SourceType] int NOT NULL,
+        [PartsOrder] nvarchar(300) NOT NULL,
+        [Separator] nvarchar(5) NOT NULL,
+        [Prefix] nvarchar(30) NULL,
+        [Suffix] nvarchar(30) NULL,
+        [Text1] nvarchar(30) NULL,
+        [Text2] nvarchar(30) NULL,
+        [YearDigits] int NOT NULL,
+        [SerialDigits] int NOT NULL,
+        [StartNumber] int NOT NULL,
+        [Step] int NOT NULL,
+        [ResetPolicy] nvarchar(20) NOT NULL,
+        [UsePersianDigits] bit NOT NULL,
+        [DefaultDeptCode] nvarchar(20) NULL,
+        [DefaultCompanyCode] nvarchar(20) NULL,
+        [UpdatedAt] datetime2 NOT NULL,
+        CONSTRAINT [PK_LetterNumberSettings] PRIMARY KEY ([Id])
+    );
+
+    CREATE UNIQUE INDEX [IX_LetterNumberSettings_SourceType]
+        ON [LetterNumberSettings] ([SourceType]);
+END;
+GO
+
+-- مقدار پیش‌فرض برای نامه داخلی: «سال شمسی/شماره ترتیبی»
+IF NOT EXISTS (SELECT 1 FROM [LetterNumberSettings] WHERE [SourceType] = 1)
+BEGIN
+    INSERT INTO [LetterNumberSettings]
+        ([SourceType],[PartsOrder],[Separator],[YearDigits],[SerialDigits],
+         [StartNumber],[Step],[ResetPolicy],[UsePersianDigits],[UpdatedAt])
+    VALUES (1, N'year,serial', N'/', 4, 0, 1, 1, N'Yearly', 0, SYSDATETIME());
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20260901120000_AddLetterNumberSettings'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20260901120000_AddLetterNumberSettings', N'8.0.1');
+END;
+GO

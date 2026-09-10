@@ -147,6 +147,10 @@
 - `GET api/letters/attachments/{id}/download` و `GET .../view` (نمایش inline).
 - سمت کلاینت، فایل با هدر Authorization خوانده و به‌صورت Blob دانلود یا در تب جدید نمایش داده می‌شود
   (لینک ساده‌ی `href` توکن JWT نداشت و خطای ۴۰۱ می‌گرفت — علت اصلی کار نکردن دانلود).
+- امنیت: مسیر استاتیک `/uploads/innerletter` روی سرور مسدود شد؛ پیوست‌ها فقط از API با بررسی
+  «حضور در گردش نامه» قابل دریافت‌اند. پوشه‌ی `wwwroot/uploads/` هم به `.gitignore` اضافه شد.
+- `sql/Update-Database-Full.sql` هم به‌روزرسانی شد (ستون `Code`، جدول `LetterNumberSettings`،
+  رکورد پیش‌فرض «سال/سریال» و ثبت مایگریشن) تا نصب‌های SQL Server بدون اجرای EF هم به‌روز شوند.
 
 ---
 
