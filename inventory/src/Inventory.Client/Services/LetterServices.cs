@@ -57,13 +57,6 @@ public interface ILetterService
 
     /// <summary>محتوای پیوست به‌همراه توکن (برای دانلود/مشاهده‌ی امن در مرورگر)</summary>
     Task<(byte[] data, string contentType)> DownloadAttachmentAsync(int attachmentId, bool inline = false);
-
-    // تنظیمات ساختار شماره نامه
-    Task<LetterNumberSettingDto> GetNumberSettingsAsync(int sourceType = 1);
-    Task<List<LetterNumberPartDto>> GetNumberPartsAsync();
-    Task<LetterNumberLookupsDto> GetNumberLookupsAsync();
-    Task<string> PreviewNumberAsync(LetterNumberSettingDto dto);
-    Task<LetterNumberSettingDto> SaveNumberSettingsAsync(LetterNumberSettingDto dto);
 }
 
 public class LetterService : ILetterService
@@ -246,23 +239,4 @@ public class LetterService : ILetterService
         var ct = resp.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
         return (bytes, ct);
     }
-
-    // ==================== تنظیمات ساختار شماره نامه ====================
-
-    public Task<LetterNumberSettingDto> GetNumberSettingsAsync(int sourceType = 1) =>
-        _api.GetAsync<LetterNumberSettingDto>($"api/letters/number-settings?sourceType={sourceType}");
-
-    public Task<List<LetterNumberPartDto>> GetNumberPartsAsync() =>
-        _api.GetAsync<List<LetterNumberPartDto>>("api/letters/number-settings/parts");
-
-    public Task<LetterNumberLookupsDto> GetNumberLookupsAsync() =>
-        _api.GetAsync<LetterNumberLookupsDto>("api/letters/number-settings/lookups");
-
-    private class PreviewResponse { public string? Preview { get; set; } }
-
-    public async Task<string> PreviewNumberAsync(LetterNumberSettingDto dto) =>
-        (await _api.PostAsync<PreviewResponse>("api/letters/number-settings/preview", dto)).Preview ?? "";
-
-    public Task<LetterNumberSettingDto> SaveNumberSettingsAsync(LetterNumberSettingDto dto) =>
-        _api.PostAsync<LetterNumberSettingDto>("api/letters/number-settings", dto);
 }
