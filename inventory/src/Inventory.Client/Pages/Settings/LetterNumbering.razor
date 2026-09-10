@@ -65,7 +65,7 @@ else
                     </div>
 
                     <div class="mt-3">
-                        <label class="form-label small fw-800">افزودن جزء</label>
+                        <label class="form-label small fw-700">افزودن جزء</label>
                         <div class="d-flex flex-wrap gap-2">
                             @foreach (var p in parts.Where(p => !model.Parts.Contains(p.Code)))
                             {
@@ -90,57 +90,57 @@ else
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">جداکننده</label>
+                            <label class="form-label small fw-700">جداکننده</label>
                             <input class="form-control form-control-sm num" dir="ltr" maxlength="5"
                                    value="@model.Separator" @onchange="OnSeparatorChanged" />
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">پیشوند ثابت</label>
+                            <label class="form-label small fw-700">پیشوند ثابت</label>
                             <input class="form-control form-control-sm" placeholder="مثلاً ف‌آ"
-                                   value="@model.Prefix" @onchange="e => { model.Prefix = e.Value?.ToString(); _ = Preview(); }" />
+                                   value="@model.Prefix" @onchange="OnPrefixChanged" />
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">پسوند ثابت</label>
+                            <label class="form-label small fw-700">پسوند ثابت</label>
                             <input class="form-control form-control-sm"
-                                   value="@model.Suffix" @onchange="e => { model.Suffix = e.Value?.ToString(); _ = Preview(); }" />
+                                   value="@model.Suffix" @onchange="OnSuffixChanged" />
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label small fw-800">متن دلخواه ۱</label>
+                            <label class="form-label small fw-700">متن دلخواه ۱</label>
                             <input class="form-control form-control-sm"
-                                   value="@model.Text1" @onchange="e => { model.Text1 = e.Value?.ToString(); _ = Preview(); }" />
+                                   value="@model.Text1" @onchange="OnText1Changed" />
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-800">متن دلخواه ۲</label>
+                            <label class="form-label small fw-700">متن دلخواه ۲</label>
                             <input class="form-control form-control-sm"
-                                   value="@model.Text2" @onchange="e => { model.Text2 = e.Value?.ToString(); _ = Preview(); }" />
+                                   value="@model.Text2" @onchange="OnText2Changed" />
                         </div>
 
                         <div class="col-md-6">
-                            <label class="form-label small fw-800">تعداد ارقام سال</label>
+                            <label class="form-label small fw-700">تعداد ارقام سال</label>
                             <select class="form-select form-select-sm" @onchange="OnYearDigitsChanged">
                                 <option value="4" selected="@(model.YearDigits == 4)">۴ رقمی (۱۴۰۴)</option>
                                 <option value="2" selected="@(model.YearDigits == 2)">۲ رقمی (۰۴)</option>
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-800">تعداد ارقام سریال (۰ = بدون صفر ابتدایی)</label>
+                            <label class="form-label small fw-700">تعداد ارقام سریال (۰ = بدون صفر ابتدایی)</label>
                             <input type="number" min="0" max="10" class="form-control form-control-sm num" dir="ltr"
-                                   value="@model.SerialDigits" @onchange="e => { model.SerialDigits = ToInt(e.Value, 0); _ = Preview(); }" />
+                                   value="@model.SerialDigits" @onchange="OnSerialDigitsChanged" />
                         </div>
 
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">شماره شروع</label>
+                            <label class="form-label small fw-700">شماره شروع</label>
                             <input type="number" min="0" class="form-control form-control-sm num" dir="ltr"
-                                   value="@model.StartNumber" @onchange="e => { model.StartNumber = ToInt(e.Value, 1); _ = Preview(); }" />
+                                   value="@model.StartNumber" @onchange="OnStartNumberChanged" />
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">گام افزایش</label>
+                            <label class="form-label small fw-700">گام افزایش</label>
                             <input type="number" min="1" class="form-control form-control-sm num" dir="ltr"
-                                   value="@model.Step" @onchange="e => { model.Step = ToInt(e.Value, 1); _ = Preview(); }" />
+                                   value="@model.Step" @onchange="OnStepChanged" />
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">صفر شدن شمارنده</label>
+                            <label class="form-label small fw-700">صفر شدن شمارنده</label>
                             <select class="form-select form-select-sm" @onchange="OnResetPolicyChanged">
                                 <option value="Yearly" selected="@(model.ResetPolicy == "Yearly")">هر سال شمسی</option>
                                 <option value="Monthly" selected="@(model.ResetPolicy == "Monthly")">هر ماه شمسی</option>
@@ -149,20 +149,20 @@ else
                         </div>
 
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">کد واحد پیش‌فرض</label>
+                            <label class="form-label small fw-700">کد واحد پیش‌فرض</label>
                             <input class="form-control form-control-sm"
-                                   value="@model.DefaultDeptCode" @onchange="e => { model.DefaultDeptCode = e.Value?.ToString(); _ = Preview(); }" />
+                                   value="@model.DefaultDeptCode" @onchange="OnDeptCodeChanged" />
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label small fw-800">کد شرکت پیش‌فرض</label>
+                            <label class="form-label small fw-700">کد شرکت پیش‌فرض</label>
                             <input class="form-control form-control-sm"
-                                   value="@model.DefaultCompanyCode" @onchange="e => { model.DefaultCompanyCode = e.Value?.ToString(); _ = Preview(); }" />
+                                   value="@model.DefaultCompanyCode" @onchange="OnCompanyCodeChanged" />
                         </div>
                         <div class="col-md-4 d-flex align-items-end">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="faDig" checked="@model.UsePersianDigits"
-                                       @onchange="e => { model.UsePersianDigits = (bool)(e.Value ?? false); _ = Preview(); }" />
-                                <label class="form-check-label small fw-800" for="faDig">ذخیره‌ی شماره با ارقام فارسی</label>
+                                       @onchange="OnFaDigitsChanged" />
+                                <label class="form-check-label small fw-700" for="faDig">ذخیره‌ی شماره با ارقام فارسی</label>
                             </div>
                         </div>
                     </div>
@@ -252,6 +252,66 @@ else
         _ => ""
     };
 
+    private async Task OnPrefixChanged(ChangeEventArgs e)
+    {
+        model.Prefix = e.Value?.ToString();
+        await Preview();
+    }
+
+    private async Task OnSuffixChanged(ChangeEventArgs e)
+    {
+        model.Suffix = e.Value?.ToString();
+        await Preview();
+    }
+
+    private async Task OnText1Changed(ChangeEventArgs e)
+    {
+        model.Text1 = e.Value?.ToString();
+        await Preview();
+    }
+
+    private async Task OnText2Changed(ChangeEventArgs e)
+    {
+        model.Text2 = e.Value?.ToString();
+        await Preview();
+    }
+
+    private async Task OnSerialDigitsChanged(ChangeEventArgs e)
+    {
+        model.SerialDigits = Math.Clamp(ToInt(e.Value, 0), 0, 10);
+        await Preview();
+    }
+
+    private async Task OnStartNumberChanged(ChangeEventArgs e)
+    {
+        model.StartNumber = Math.Max(0, ToInt(e.Value, 1));
+        await Preview();
+    }
+
+    private async Task OnStepChanged(ChangeEventArgs e)
+    {
+        model.Step = Math.Max(1, ToInt(e.Value, 1));
+        await Preview();
+    }
+
+    private async Task OnDeptCodeChanged(ChangeEventArgs e)
+    {
+        model.DefaultDeptCode = e.Value?.ToString();
+        await Preview();
+    }
+
+    private async Task OnCompanyCodeChanged(ChangeEventArgs e)
+    {
+        model.DefaultCompanyCode = e.Value?.ToString();
+        await Preview();
+    }
+
+    private async Task OnFaDigitsChanged(ChangeEventArgs e)
+    {
+        model.UsePersianDigits = e.Value is bool b && b;
+        await Preview();
+    }
+
     private async Task OnSeparatorChanged(ChangeEventArgs e)
     {
         model.Separator = e.Value?.ToString() ?? "";
@@ -273,24 +333,25 @@ else
     private static int ToInt(object? v, int fallback) =>
         int.TryParse(v?.ToString(), out var n) ? n : fallback;
 
-    private void AddPart(string code)
+    private async Task AddPart(string code)
     {
         if (!model.Parts.Contains(code)) model.Parts.Add(code);
-        _ = Preview();
+        await Preview();
     }
 
-    private void RemovePart(int idx)
+    private async Task RemovePart(int idx)
     {
         if (idx >= 0 && idx < model.Parts.Count) model.Parts.RemoveAt(idx);
-        _ = Preview();
+        await Preview();
     }
 
-    private void Move(int idx, int delta)
+    /// <summary>جابه‌جایی جزء در ترتیب شماره (بالا/پایین)</summary>
+    private async Task Move(int idx, int delta)
     {
         var to = idx + delta;
         if (to < 0 || to >= model.Parts.Count) return;
         (model.Parts[idx], model.Parts[to]) = (model.Parts[to], model.Parts[idx]);
-        _ = Preview();
+        await Preview();
     }
 
     /// <summary>پیش‌نمایش زنده از سرور (تا دقیقاً همان چیزی که ذخیره می‌شود دیده شود)</summary>

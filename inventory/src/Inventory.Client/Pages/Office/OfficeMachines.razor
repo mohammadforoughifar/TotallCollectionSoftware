@@ -325,8 +325,9 @@
 }
 
 <style>
-/* تقویم شمسی داخل مودال — کامل و بالاتر از مودال */
-.modal .dp-popover{z-index:1095;box-shadow:0 12px 40px rgba(30,40,90,.28);}
+/* تقویم شمسی داخل مودال — با js/datepicker.js به position:fixed تبدیل می‌شود
+   و باید بالاتر از مودال بماند (هم‌تراز مقدار سراسری در app.css) */
+.modal .dp-popover{z-index:20050;box-shadow:0 12px 40px rgba(30,40,90,.28);}
 .modal .date-picker{position:relative;}
 .ops-btn{width:34px;height:30px;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:8px;}
     .om-combo { position: relative; }
