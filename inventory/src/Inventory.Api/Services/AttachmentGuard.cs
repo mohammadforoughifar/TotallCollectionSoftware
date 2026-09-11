@@ -43,7 +43,8 @@ public class AttachmentGuard : IAttachmentGuard
     /// <summary>ماژول‌هایی که کنترل دسترسی اختصاصی دارند.</summary>
     private static readonly HashSet<string> Protected = new(StringComparer.OrdinalIgnoreCase)
     {
-        "DocVersion"
+        "DocVersion",
+        "HrEmployee"
     };
 
     public bool IsProtected(string module) => Protected.Contains(module);
@@ -78,6 +79,18 @@ public class AttachmentGuard : IAttachmentGuard
         // ---------- سایر ماژول‌ها ----------
         // رفتار قبلی حفظ می‌شود: هر کاربر واردشده دسترسی دارد.
         // برای محدودتر کردن، ماژول را به Protected اضافه و قانونش را اینجا بنویسید.
+        if (string.Equals(module, "HrEmployee", StringComparison.OrdinalIgnoreCase))
+        {
+            if (isAdmin) return AttachmentAccess.Download;
+            var exists = await _db.HrEmployees.AsNoTracking().AnyAsync(e => e.Id == refId);
+            if (!exists) return AttachmentAccess.None;
+            var allowed = await _db.UserRoles.Where(ur => ur.UserId == userId)
+                .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+                .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+                .AnyAsync(p => p.Module == "HrCore" && (p.Action == "Read" || p.Action == "Manage"));
+            return allowed ? AttachmentAccess.Download : AttachmentAccess.None;
+        }
+
         return AttachmentAccess.Download;
     }
 }
