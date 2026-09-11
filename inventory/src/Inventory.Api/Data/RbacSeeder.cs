@@ -102,6 +102,10 @@ public static class RbacSeeder
         ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
         // ================== آرشیو اسناد و مدارک ==================
         ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage", "Export" },
+        // ================== هسته پرسنلی (کارگزینی) ==================
+        // Read: مشاهده پرونده/چارت/قرارداد/احکام | Create: ثبت جدید | Update: ویرایش + اجرای حکم
+        // Delete: حذف/غیرفعال‌سازی | Manage: داشبورد مدیریتی و گزارش‌ها
+        ["HrCore"] = new[] { "Read", "Create", "Update", "Delete", "Manage" },
         // ================== پیام‌رسان سازمانی ==================
         // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
         ["Chat"] = new[] { "View", "Send", "Manage" },

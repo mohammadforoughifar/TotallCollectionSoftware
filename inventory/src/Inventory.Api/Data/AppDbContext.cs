@@ -148,6 +148,12 @@ public class AppDbContext : DbContext
     /// <summary>لاگ چاپ فایل‌های مدرک (DocArchive — جدول DocumentPrintLogs)</summary>
     public DbSet<DocumentPrintLog> DocumentPrintLogs => Set<DocumentPrintLog>();
 
+    /// <summary>ماژول هسته پرسنلی (کارگزینی) — HrCore</summary>
+    public DbSet<HrOrgUnit> HrOrgUnits => Set<HrOrgUnit>();
+    public DbSet<HrEmployee> HrEmployees => Set<HrEmployee>();
+    public DbSet<HrContract> HrContracts => Set<HrContract>();
+    public DbSet<HrDecree> HrDecrees => Set<HrDecree>();
+
     // ==================== ماژول پیام‌رسان سازمانی (Chat) ====================
     public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();
     public DbSet<Inventory.Api.Entities.Chat.ChatMember> ChatMembers => Set<Inventory.Api.Entities.Chat.ChatMember>();

@@ -81,6 +81,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, In
 // ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
+builder.Services.AddScoped<Inventory.Api.Services.HrCore.IHrCoreService, Inventory.Api.Services.HrCore.HrCoreService>(); // HrCore
 // اعطای موقت «تایید مجدد رمز» برای فایل‌های مدارک محرمانه (در حافظه — ۱۵ دقیقه)
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocDownloadConfirmService, Inventory.Api.Services.DocArchive.DocDownloadConfirmService>();
