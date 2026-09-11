@@ -154,6 +154,28 @@ public class AppDbContext : DbContext
     public DbSet<HrContract> HrContracts => Set<HrContract>();
     public DbSet<HrDecree> HrDecrees => Set<HrDecree>();
 
+    /// <summary>ماژول زمان‌بندی و حقوق — جدول‌های اختصاصی (بدون هیچ تغییری در جداول قبلی)</summary>
+    public DbSet<HrRequestStep> HrRequestSteps => Set<HrRequestStep>();
+    public DbSet<HrLeaveBalance> HrLeaveBalances => Set<HrLeaveBalance>();
+    public DbSet<HrOvertimeRequest> HrOvertimeRequests => Set<HrOvertimeRequest>();
+    public DbSet<HrShiftRoster> HrShiftRosters => Set<HrShiftRoster>();
+    public DbSet<HrDevicePunch> HrDevicePunches => Set<HrDevicePunch>();
+    public DbSet<HrDeviceUserMap> HrDeviceUserMaps => Set<HrDeviceUserMap>();
+    public DbSet<HrTimeRule> HrTimeRules => Set<HrTimeRule>();
+    public DbSet<HrLeaveExtra> HrLeaveExtras => Set<HrLeaveExtra>();
+    public DbSet<HrDayExtra> HrDayExtras => Set<HrDayExtra>();
+    public DbSet<HrUserLink> HrUserLinks => Set<HrUserLink>();
+    public DbSet<HrPayItem> HrPayItems => Set<HrPayItem>();
+    public DbSet<HrPayEmployeeItem> HrPayEmployeeItems => Set<HrPayEmployeeItem>();
+    public DbSet<HrPayProfile> HrPayProfiles => Set<HrPayProfile>();
+    public DbSet<HrPayTaxBracket> HrPayTaxBrackets => Set<HrPayTaxBracket>();
+    public DbSet<HrPayLoan> HrPayLoans => Set<HrPayLoan>();
+    public DbSet<HrPayArrear> HrPayArrears => Set<HrPayArrear>();
+    public DbSet<HrPayOnAccount> HrPayOnAccounts => Set<HrPayOnAccount>();
+    public DbSet<HrPayRun> HrPayRuns => Set<HrPayRun>();
+    public DbSet<HrPaySlip> HrPaySlips => Set<HrPaySlip>();
+    public DbSet<HrPaySettlement> HrPaySettlements => Set<HrPaySettlement>();
+
     // ==================== ماژول پیام‌رسان سازمانی (Chat) ====================
     public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();
     public DbSet<Inventory.Api.Entities.Chat.ChatMember> ChatMembers => Set<Inventory.Api.Entities.Chat.ChatMember>();

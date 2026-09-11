@@ -236,7 +236,10 @@ public enum VoucherSource
     Opening = 3,
 
     /// <summary>سند اختتامیه</summary>
-    Closing = 4
+    Closing = 4,
+
+    /// <summary>خودکار از حقوق و دستمزد</summary>
+    Payroll = 5
 }
 
 // ===================== ابعاد تحلیلی، دارایی ثابت، بودجه =====================

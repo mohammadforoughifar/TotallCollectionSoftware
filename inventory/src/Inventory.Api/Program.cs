@@ -56,6 +56,8 @@ builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingServic
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AttendanceRecalcService>();
+builder.Services.AddScoped<HrTimeService>(); // ماژول زمان‌بندی
+builder.Services.AddScoped<HrPayService>(); // ماژول حقوق
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
 builder.Services.AddScoped<IExpenseService, ExpenseService>();

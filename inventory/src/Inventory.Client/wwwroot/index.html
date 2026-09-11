@@ -355,6 +355,18 @@
                 console.error('saveAsFile error:', e);
             }
         };
+        window.printHtml = function (html) {
+            try {
+                var w = window.open('', '_blank');
+                if (!w) return;
+                w.document.write(html);
+                w.document.close();
+                w.focus();
+                setTimeout(function () { w.print(); }, 300);
+            } catch (e) {
+                console.error('printHtml error:', e);
+            }
+        };
     </script>
     <script src="js/ui.js"></script>
     <script src="js/project-interop.js"></script>
