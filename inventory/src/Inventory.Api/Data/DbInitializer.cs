@@ -35,6 +35,8 @@ public static class DbInitializer
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                     // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
                     await DocArchiveSecuritySchemaV2.EnsureAsync(db);
+                    // موج سوم: لاگ چاپ فایل‌های مدرک (چاپ‌کننده + تاریخ روی خروجی)
+                    await DocPrintSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                 }
@@ -46,6 +48,8 @@ public static class DbInitializer
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                     // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
                     await DocArchiveSecuritySchemaV2.EnsureAsync(db);
+                    // موج سوم: لاگ چاپ فایل‌های مدرک (چاپ‌کننده + تاریخ روی خروجی)
+                    await DocPrintSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                 }

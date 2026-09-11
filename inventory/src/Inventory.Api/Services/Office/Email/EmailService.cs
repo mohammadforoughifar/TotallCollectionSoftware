@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Api.Services.Office.Outgoing;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using MailKit;

@@ -517,3 +517,51 @@ public class DocCodeSettings
 
     public int BackfillAssignedCount { get; set; }
 }
+
+/// <summary>
+/// لاگ چاپ فایل‌های مدرک — هر بار که کاربر نسخهٔ چاپی (واترمارک‌دار با نام
+/// چاپ‌کننده + تاریخ) را دریافت می‌کند، یک ردیف اینجا + یک رویداد Print در
+/// تاریخچه مدرک + یک ردیف Print در لاگ دسترسی پیوست ثبت می‌شود.
+/// جدول با DocPrintSchemaV1 خودترمیم ساخته می‌شود (هر دو دیتابیس).
+/// </summary>
+public class DocumentPrintLog
+{
+    public int Id { get; set; }
+
+    public int DocumentId { get; set; }
+
+    public int VersionId { get; set; }
+
+    public int AttachmentId { get; set; }
+
+    /// <summary>نام فایل در لحظه چاپ (ممکن است بعداً حذف/جایگزین شود)</summary>
+    [MaxLength(250)]
+    public string FileName { get; set; } = "";
+
+    [MaxLength(150)]
+    public string? ContentType { get; set; }
+
+    public int PrintedByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string PrintedByName { get; set; } = "";
+
+    public DateTime PrintedAt { get; set; } = DateTime.Now;
+
+    /// <summary>متن واترمارکی که روی خروجی چاپی حک شد — مثل «نام — چاپ ۱۴۰۵/۰۶/۲۰ ۱۴:۳۲»</summary>
+    [MaxLength(300)]
+    public string WatermarkText { get; set; } = "";
+
+    /// <summary>تعداد صفحات PDF؛ برای عکس ۱؛ اگر قابل‌تشخیص نبود null</summary>
+    public int? PageCount { get; set; }
+
+    /// <summary>حجم فایل واترمارک‌دار تحویلی (بایت)</summary>
+    public long FileSizeBytes { get; set; }
+
+    [MaxLength(60)]
+    public string? IpAddress { get; set; }
+
+    /// <summary>منبع چاپ: نسخه وب / موبایل / …</summary>
+    [MaxLength(30)]
+    public string Source { get; set; } = "Web";
+}

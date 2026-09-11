@@ -728,6 +728,54 @@ else
                     }
                 </div>
             </div>
+
+            @* ---------- کارت لاگ چاپ فایل‌ها (چاپ‌کننده + تاریخ روی خروجی) ---------- *@
+            <div class="card mb-3">
+                <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-printer ms-1" style="color:#0ea5e9"></i> لاگ چاپ فایل‌ها</span>
+                    <button class="btn btn-sm btn-light py-0" title="بارگذاری / به‌روزرسانی" @onclick="LoadPrintLogs" disabled="@printLogsLoading">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+                <div class="card-body p-1" style="max-height:280px;overflow-y:auto">
+                    @if (!printLogsLoaded && !printLogsLoading)
+                    {
+                        <div class="fs-8 text-muted p-2">برای مشاهده لاگ چاپ، دکمه به‌روزرسانی را بزنید.</div>
+                    }
+                    else if (printLogsLoading)
+                    {
+                        <div class="fs-8 text-muted p-2"><span class="spinner-border spinner-border-sm"></span> در حال بارگذاری…</div>
+                    }
+                    else if (printLogs.Count == 0)
+                    {
+                        <div class="fs-8 text-muted p-2">هنوز چاپی از فایل‌های این مدرک ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light">
+                                <tr class="fs-9">
+                                    <th>چاپ‌کننده</th>
+                                    <th>فایل</th>
+                                    <th>ورژن</th>
+                                    <th>زمان چاپ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in printLogs)
+                                {
+                                    <tr class="fs-9" title="واترمارک حک‌شده: @p.WatermarkText">
+                                        <td>@p.UserName</td>
+                                        <td class="text-truncate" style="max-width:130px" title="@p.FileName">@p.FileName</td>
+                                        <td class="num">@(p.VersionNo > 0 ? $"ورژن {p.VersionNo.ToString()}" : "—")</td>
+                                        <td class="text-muted" title="@(p.Ip ?? "")">@p.At.ToFa() @p.At.ToString("HH:mm")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
             }
     </div>
 </div>
@@ -1089,6 +1137,7 @@ else
         "ExpiryAlert" => "هشدار انقضا",
         "Delete" => "حذف",
         "Restore" => "بازگردانی",
+        "Print" => "چاپ",
         _ => a
     };
 
@@ -1601,6 +1650,17 @@ else
         {
             DocVersionStatusDto.Draft => ("bg-secondary", "پیش‌نویس"),
             DocVersionStatusDto.InReview => ("bg-warning text-dark", "در گردش"),
+            DocVersionStatusDto.Approved => ("bg-success", "تایید شده"),
+            DocVersionStatusDto.Rejected => ("bg-danger", "رد شده"),
+            _ => ("bg-dark", "بایگانی")
+        };
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", "badge ms-1 " + cls);
+        builder.AddContent(2, txt);
+        builder.CloseElement();
+    };
+}
+.InReview => ("bg-warning text-dark", "در گردش"),
             DocVersionStatusDto.Approved => ("bg-success", "تایید شده"),
             DocVersionStatusDto.Rejected => ("bg-danger", "رد شده"),
             _ => ("bg-dark", "بایگانی")
