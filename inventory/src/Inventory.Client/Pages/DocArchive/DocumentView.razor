@@ -1150,6 +1150,7 @@ else
         "Deactivate" or "ExpiryAlert" => "bg-warning text-dark",
         "Permissions" => "bg-dark",
         "Link" or "Unlink" or "RelatedUpdate" => "bg-secondary",
+        "Print" => "text-bg-info",
         _ => "bg-light text-secondary"
     };
 
@@ -1423,6 +1424,22 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { accessLogsLoading = false; }
+    }
+
+    // ---------- Print logs ----------
+    private List<DocPrintLogDto> printLogs = new();
+    private bool printLogsLoaded, printLogsLoading;
+
+    private async Task LoadPrintLogs()
+    {
+        printLogsLoading = true;
+        try
+        {
+            printLogs = await Svc.GetPrintLogsAsync(Id);
+            printLogsLoaded = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printLogsLoading = false; }
     }
 
     // ---------- درخواست دسترسی ----------
