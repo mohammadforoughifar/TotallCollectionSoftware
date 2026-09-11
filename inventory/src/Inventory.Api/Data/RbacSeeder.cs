@@ -106,6 +106,8 @@ public static class RbacSeeder
         // Read: مشاهده پرونده/چارت/قرارداد/احکام | Create: ثبت جدید | Update: ویرایش + اجرای حکم
         // Delete: حذف/غیرفعال‌سازی | Manage: داشبورد مدیریتی و گزارش‌ها
         ["HrCore"] = new[] { "Read", "Create", "Update", "Delete", "Manage" },
+        // حقوق و دستمزد: Read=مشاهده فیش و گزارش‌ها | Manage=تعریف آیتم، محاسبه، قفل دوره
+        ["HrPay"] = new[] { "Read", "Manage" },
         // ================== پیام‌رسان سازمانی ==================
         // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
         ["Chat"] = new[] { "View", "Send", "Manage" },

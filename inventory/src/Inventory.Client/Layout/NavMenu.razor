@@ -150,6 +150,34 @@
         </div>
     }
 
+    @* ============ زمان‌بندی و حقوق (ماژول جدید) ============ *@
+    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+    {
+        <div class="nav-group group-hrtime">
+            <button type="button" class="nav-section-title nav-toggle @(gHrTime ? "open" : "")" @onclick="() => gHrTime = !gHrTime">
+                <span>زمان‌بندی و حقوق</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gHrTime)
+            {
+                <div class="nav-group-items">
+                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="hr-time" @onclick="NotifyClose">
+                            <i class="bi bi-calendar2-week"></i><span>مدیریت زمان‌بندی</span>
+                        </NavLink>
+                    }
+                    @if (Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="payroll" @onclick="NotifyClose">
+                            <i class="bi bi-cash-stack"></i><span>حقوق و دستمزد</span>
+                        </NavLink>
+                    }
+                </div>
+            }
+        </div>
+    }
+
     @* ============ آرشیو اسناد و مدارک ============ *@
     @* ============ هسته پرسنلی (کارگزینی) ============ *@
     @if (Auth.HasModule("HrCore"))
@@ -766,7 +794,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gBonHr, gLetters, gErp, gDocs, gChat, gHrCore;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gBonHr, gLetters, gErp, gDocs, gChat, gHrCore, gHrTime;
 
     protected override void OnInitialized()
     {

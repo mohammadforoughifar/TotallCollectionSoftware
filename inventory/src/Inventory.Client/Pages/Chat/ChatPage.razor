@@ -936,6 +936,8 @@
                 if (disposed) { await chatJs.DisposeAsync(); return; }
                 chatSelf = DotNetObjectReference.Create(this);
                 interopId = await chatJs.InvokeAsync<int>("initialize", chatSelf);
+                isMobileView = await chatJs.InvokeAsync<bool>("isMobileView");
+                await chatJs.InvokeVoidAsync("watchMobile", interopId);
             }
             finally { initializingChatJs = false; }
         }
@@ -1073,6 +1075,14 @@
     {
         documentVisible = visible;
         if (visible) markReadAfterRender = true;
+        if (!disposed) StateHasChanged();
+    });
+
+    [JSInvokable]
+    public Task MobileViewChanged(bool mobile) => InvokeAsync(() =>
+    {
+        if (isMobileView == mobile) return;
+        isMobileView = mobile;
         if (!disposed) StateHasChanged();
     });
 

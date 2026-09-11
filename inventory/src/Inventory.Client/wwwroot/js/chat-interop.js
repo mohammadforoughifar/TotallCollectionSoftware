@@ -39,12 +39,34 @@ export function scrollToMessage(id) {
     document.getElementById('msg-' + Number(id))?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+const mobileQuery = '(max-width: 767.98px)';
+
+export function isMobileView() {
+    return window.matchMedia(mobileQuery).matches;
+}
+
+export function watchMobile(id) {
+    const state = instances.get(id);
+    if (!state || state.mobileWatch) return;
+    const mq = window.matchMedia(mobileQuery);
+    state.mobileWatch = event => {
+        state.dotnet.invokeMethodAsync('MobileViewChanged', !!event.matches).catch(() => {});
+    };
+    if (mq.addEventListener) mq.addEventListener('change', state.mobileWatch);
+    else mq.addListener(state.mobileWatch);
+    state.mobileQuery = mq;
+}
+
 export function dispose(id) {
     const state = instances.get(id);
     if (!state) return;
     document.removeEventListener('visibilitychange', state.visibility);
     window.removeEventListener('focus', state.visibility);
     window.removeEventListener('blur', state.visibility);
+    if (state.mobileWatch && state.mobileQuery) {
+        if (state.mobileQuery.removeEventListener) state.mobileQuery.removeEventListener('change', state.mobileWatch);
+        else state.mobileQuery.removeListener(state.mobileWatch);
+    }
     if (state.element) state.element.removeEventListener('keydown', state.keydown);
     instances.delete(id);
 }
