@@ -137,7 +137,7 @@ public class FileStore
     /// <summary>ساخت مسیر کامل در پوشه uploads: uploads/{module}[/{subFolder}]/{refId}</summary>
     private string BuildDirectory(string module, int refId, string? subFolder = null)
     {
-        var parts = new List<string> { SafeModule(module) };
+        var parts = new List<string> { _root, SafeModule(module) };
         if (!string.IsNullOrWhiteSpace(subFolder))
             parts.Add(SafeModule(subFolder));
         parts.Add(refId.ToString());
