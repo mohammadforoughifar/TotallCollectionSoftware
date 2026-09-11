@@ -49,6 +49,9 @@ public interface IDocArchiveService
     /// <summary>گزارش مشاهده/دانلود فایل‌های مدرک — فقط دسترسی کامل.</summary>
     Task<List<DocAttachmentAccessLogDto>> GetAccessLogsAsync(int id);
 
+    /// <summary>لاگ چاپ فایل‌های مدرک — فقط دسترسی کامل.</summary>
+    Task<List<DocPrintLogDto>> GetPrintLogsAsync(int id);
+
     // درخواست دسترسی
     /// <summary>ثبت درخواست دسترسی به مدرک (کاربر بدون دسترسی).</summary>
     Task RequestAccessAsync(int id, DocAccessRequestSaveDto dto);

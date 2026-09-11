@@ -83,6 +83,12 @@
                             <i class="bi bi-download text-success"></i>
                         </button>
                     }
+                    @if (Module == "DocVersion" && a.CanDownload && CanPrintOf(a))
+                    {
+                        <button class="btn btn-sm btn-light py-0" title="\u0686\u0627\u067e \u0628\u0627 \u0644\u0627\u06af \u0648 \u0648\u0627\u062a\u0631\u0645\u0627\u0631\u06a9 \u0646\u0627\u0645 \u0634\u0645\u0627" @onclick="() => Print(a)">
+                            <i class="bi bi-printer text-info"></i>
+                        </button>
+                    }
                     @if (CanUpload && a.CanDownload && (a.UploaderUserId == MyUserId || Auth.IsAdmin))
                     {
                         <button class="btn btn-sm btn-light py-0" title="حذف" @onclick="() => Delete(a.Id)">
@@ -230,6 +236,7 @@
     private bool showConfirm;
     private AttItem? pendingItem;
     private bool pendingDownload;
+    private bool pendingPrint;
     private string confirmPassword = "";
     private bool confirmBusy;
     private string? confirmError;
@@ -382,12 +389,16 @@
             confirmedDocs.Add(pendingItem.DocumentId);
             var item = pendingItem;
             var wasDownload = pendingDownload;
+            var wasPrint = pendingPrint;
             showConfirm = false;
             pendingItem = null;
+            pendingPrint = false;
             await Reload();
             StateHasChanged();
             Toast.Success("تایید شد — تا ۱۵ دقیقه فایل‌های این مدرک باز هستند.");
-            if (wasDownload) await Download(item); else await Preview(item);
+            if (wasPrint) await Print(item);
+            else if (wasDownload) await Download(item);
+            else await Preview(item);
         }
         catch (Exception ex)
         {
