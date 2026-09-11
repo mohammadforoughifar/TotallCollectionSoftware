@@ -300,7 +300,7 @@ public class DocPrintController : RbacControllerBase
         try
         {
             using var ms = new MemoryStream(pdfBytes, writable: false);
-            using var doc = PdfReader.Open(ms, PdfDocumentOpenMode.ReadOnly);
+            using var doc = PdfReader.Open(ms, PdfDocumentOpenMode.Import);
             return doc.PageCount;
         }
         catch

@@ -11,10 +11,12 @@ public class FileStore
 {
     private readonly string _root;
     private readonly string _webRoot;
+    private readonly string _contentRoot;
 
     public FileStore(IWebHostEnvironment env)
     {
         // همه‌ی فایل‌های آپلودی در wwwroot/uploads ذخیره می‌شوند و با سرو استاتیک wwwroot در دسترس هستند
+        _contentRoot = env.ContentRootPath;
         _root = Path.Combine(env.ContentRootPath, "wwwroot", "uploads");
         _webRoot = Path.Combine(env.ContentRootPath, "wwwroot");
         Directory.CreateDirectory(_root);
@@ -179,11 +181,13 @@ public class FileStore
     private string? ToFull(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
-        // فقط مسیر نسبی امن داخل uploads بپذیر (ضد path traversal)
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
         var full = Path.GetFullPath(Path.Combine(_root, clean));
-        if (!full.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal)) return null;
+        // مسیرهای عادی باید داخل uploads باشند (ضد path traversal)؛
+        // مسیرهای قدیمیِ «../../Module/...» هم فقط اگر داخل ContentRoot باشند پذیرفته می‌شوند.
+        var insideUploads = full.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal);
+        var insideContent = full.StartsWith(Path.GetFullPath(_contentRoot), StringComparison.Ordinal);
+        if (!insideUploads && !insideContent) return null;
         return full;
     }
 

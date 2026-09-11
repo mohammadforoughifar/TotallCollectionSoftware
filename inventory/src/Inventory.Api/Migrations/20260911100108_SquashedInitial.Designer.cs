@@ -12,8 +12,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Inventory.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260906093024_AddAnalyticalAccounting_FixedAssets_Budgets")]
-    partial class AddAnalyticalAccounting_FixedAssets_Budgets
+    [Migration("20260911100108_SquashedInitial")]
+    partial class SquashedInitial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -480,6 +480,61 @@ namespace Inventory.Api.Migrations
                     b.ToTable("AppAttachments");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.AppAttachmentAccessLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("AttachmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Ip")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("RefId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("AttachmentId");
+
+                    b.HasIndex("Module", "RefId");
+
+                    b.ToTable("AppAttachmentAccessLogs");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.AppNotification", b =>
                 {
                     b.Property<int>("Id")
@@ -633,10 +688,16 @@ namespace Inventory.Api.Migrations
                     b.Property<bool>("PublicCanDownload")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("RequireDownloadConfirm")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(250)
                         .HasColumnType("nvarchar(250)");
+
+                    b.Property<bool>("WatermarkPreview")
+                        .HasColumnType("bit");
 
                     b.HasKey("Id");
 
@@ -1416,6 +1477,61 @@ namespace Inventory.Api.Migrations
                     b.ToTable("CompanyHolidays");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.DocAccessRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("HandledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HandledByName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int?>("HandledByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("HandlerNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("RequestedLevel")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequesterName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("RequesterUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "Status");
+
+                    b.HasIndex("RequesterUserId", "Status");
+
+                    b.ToTable("DocAccessRequests");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.DocCartableTask", b =>
                 {
                     b.Property<int>("Id")
@@ -1462,6 +1578,95 @@ namespace Inventory.Api.Migrations
                     b.ToTable("DocCartableTasks");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.DocCodeSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BackfillAssignedCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("BackfillRanAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("BackfillRanByName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("NextNumber")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Padding")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Prefix")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DocCodeSettings");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocEntityLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EntityCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("EntityId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EntityTitle")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Module", "EntityId");
+
+                    b.HasIndex("DocumentId", "Module", "EntityId");
+
+                    b.ToTable("DocEntityLinks");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.DocExpiryAlert", b =>
                 {
                     b.Property<int>("Id")
@@ -1491,6 +1696,70 @@ namespace Inventory.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("DocExpiryAlerts");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocExtractedText", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttachmentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CharacterCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ExtractedText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTime>("IndexedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NormalizedText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("VersionId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttachmentId");
+
+                    b.HasIndex("DocumentId", "AttachmentId");
+
+                    b.ToTable("DocExtractedTexts");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.DocFolder", b =>
@@ -1560,15 +1829,51 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("Level")
                         .HasColumnType("int");
 
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
                     b.Property<int>("UserId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FolderId", "UserId")
+                    b.HasIndex("FolderId", "UserId", "RoleId")
                         .IsUnique();
 
                     b.ToTable("DocFolderPermissions");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocTag", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("DocTags");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.DocumentApprover", b =>
@@ -1709,15 +2014,102 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("Level")
                         .HasColumnType("int");
 
+                    b.Property<int>("RoleId")
+                        .HasColumnType("int");
+
                     b.Property<int>("UserId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DocumentId", "UserId")
+                    b.HasIndex("DocumentId", "UserId", "RoleId")
                         .IsUnique();
 
                     b.ToTable("DocumentPermissions");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocumentPrintLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AttachmentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<long>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<int?>("PageCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PrintedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PrintedByName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("PrintedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("VersionId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("WatermarkText")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DocumentPrintLogs");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocumentTag", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TagId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DocumentId", "TagId")
+                        .IsUnique();
+
+                    b.ToTable("DocumentTags");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.DocumentVersion", b =>
@@ -2177,7 +2569,51 @@ namespace Inventory.Api.Migrations
                     b.ToTable("FacRules");
                 });
 
-            
+            modelBuilder.Entity("Inventory.Api.Data.FiscalPrinterSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Copies")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CutPaper")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("FooterLines")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("HeaderLines")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("PaperWidthMm")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PortName")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("PrinterName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("FiscalPrinterSettings");
+                });
 
             modelBuilder.Entity("Inventory.Api.Data.FixedAsset", b =>
                 {
@@ -3361,17 +3797,375 @@ namespace Inventory.Api.Migrations
                     b.ToTable("MeasureUnits");
                 });
 
-            
+            modelBuilder.Entity("Inventory.Api.Data.MoadianCpc", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
 
-            
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-            
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
 
-            
+                    b.Property<string>("EnTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
 
-            
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
 
-            
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("MoadianCpcList");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.MoadianFiscalPeriod", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("IsClosed")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Month")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Year", "Month")
+                        .IsUnique();
+
+                    b.ToTable("MoadianFiscalPeriods");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.MoadianInvoice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BuyerAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("BuyerName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("BuyerPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("BuyerPostalCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("BuyerTaxId")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(600)
+                        .HasColumnType("nvarchar(600)");
+
+                    b.Property<string>("EconomicCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("FacInvoiceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FacInvoiceRef")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<int>("FiscalPeriodId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("QueuedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReferenceId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ReturnedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("SellerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("SendAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Settlement")
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TaxId")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<decimal>("TotalDiscount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalGross")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalNet")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalTaxable")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("TotalVat")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("TrackingId")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FacInvoiceId");
+
+                    b.HasIndex("ReferenceId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("FiscalPeriodId", "Number")
+                        .IsUnique();
+
+                    b.ToTable("MoadianInvoices");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.MoadianInvoiceLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Discount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 3)
+                        .HasColumnType("decimal(18,3)");
+
+                    b.Property<int>("RowNo")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SstId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("SstTitle")
+                        .IsRequired()
+                        .HasMaxLength(400)
+                        .HasColumnType("nvarchar(400)");
+
+                    b.Property<decimal>("Total")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("VatAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("VatRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.ToTable("MoadianInvoiceLines");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.MoadianLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Detail")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("InvoiceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InvoiceId");
+
+                    b.ToTable("MoadianLogs");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.MoadianSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AutoSend")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("BaseUrl")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<decimal>("DefaultVatRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<string>("EconomicCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("LoggingEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PrivateKeyPem")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PublicKeyPem")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SellerAddress")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("SellerName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("SellerPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("SellerPostalCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("SendIntervalMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TaxCardToken")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("TaxId")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MoadianSettings");
+                });
 
             modelBuilder.Entity("Inventory.Api.Data.OfficeMachine", b =>
                 {
@@ -3501,6 +4295,374 @@ namespace Inventory.Api.Migrations
                     b.ToTable("OfficeMachineRepairs");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.Organization", b =>
+                {
+                    b.Property<int>("OrganizationId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("OrganizationId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NameUniq")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("NameUnit")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("OrganizationId");
+
+                    b.HasIndex("NameUniq")
+                        .IsUnique();
+
+                    b.ToTable("Organizations");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoEmail", b =>
+                {
+                    b.Property<int>("EmailId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("Email_Id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EmailId"));
+
+                    b.Property<string>("ActivationCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("Activation_Code");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("Display_Name");
+
+                    b.Property<string>("EmailAddress")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)")
+                        .HasColumnName("Email_Address");
+
+                    b.Property<string>("EmailType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasColumnName("EmailType");
+
+                    b.Property<string>("Imap")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("IMAP");
+
+                    b.Property<int>("ImapPort")
+                        .HasColumnType("int")
+                        .HasColumnName("ImapPort");
+
+                    b.Property<bool>("ImapSsl")
+                        .HasColumnType("bit")
+                        .HasColumnName("ImapSsl");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit")
+                        .HasColumnName("IsActive");
+
+                    b.Property<bool>("IsDabirkhane")
+                        .HasColumnType("bit")
+                        .HasColumnName("IsDabirkhane");
+
+                    b.Property<DateTime?>("LastSync")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("Last_Sync");
+
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("Password");
+
+                    b.Property<int?>("SematId")
+                        .HasColumnType("int")
+                        .HasColumnName("Semat_Id");
+
+                    b.Property<string>("Smtp")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)")
+                        .HasColumnName("SMTP");
+
+                    b.Property<int>("SmtpPort")
+                        .HasColumnType("int")
+                        .HasColumnName("SmtpPort");
+
+                    b.Property<bool>("SmtpSsl")
+                        .HasColumnType("bit")
+                        .HasColumnName("SmtpSsl");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("User_Id");
+
+                    b.HasKey("EmailId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Oto_TBL_Email");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoEmailAttachment", b =>
+                {
+                    b.Property<int>("AttachmentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("Attachment_Id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("AttachmentId"));
+
+                    b.Property<string>("AttachmentRealName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("Attachment_Real_Name");
+
+                    b.Property<string>("AttachmentSavedName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)")
+                        .HasColumnName("Attachment_Saved_Name");
+
+                    b.Property<int>("EmailId")
+                        .HasColumnType("int")
+                        .HasColumnName("Email_id");
+
+                    b.Property<string>("FilePath")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("Attachment_FilePath");
+
+                    b.Property<int?>("OtoInboxEmailInboxId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OtoSentEmailSentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)")
+                        .HasColumnName("Type");
+
+                    b.Property<string>("UId")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("UId");
+
+                    b.HasKey("AttachmentId");
+
+                    b.HasIndex("OtoInboxEmailInboxId");
+
+                    b.HasIndex("OtoSentEmailSentId");
+
+                    b.ToTable("Oto_TBL_EmailAttachments");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoEmailFolder", b =>
+                {
+                    b.Property<int>("EmailFolderId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("EmailFolderId");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("EmailFolderId"));
+
+                    b.Property<int>("EmailId")
+                        .HasColumnType("int")
+                        .HasColumnName("EmailId");
+
+                    b.Property<int?>("EmailSetId")
+                        .HasColumnType("int")
+                        .HasColumnName("EmailSetId");
+
+                    b.Property<bool>("IsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsFolder")
+                        .HasColumnType("bit")
+                        .HasColumnName("IsFolder");
+
+                    b.Property<int>("ParentId")
+                        .HasColumnType("int")
+                        .HasColumnName("ParentId");
+
+                    b.Property<int?>("SematId")
+                        .HasColumnType("int")
+                        .HasColumnName("SematId");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)")
+                        .HasColumnName("Title");
+
+                    b.Property<int>("TypeEmail")
+                        .HasColumnType("int")
+                        .HasColumnName("TypeEmail");
+
+                    b.Property<int>("Uid")
+                        .HasColumnType("int")
+                        .HasColumnName("Uid");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("UserId");
+
+                    b.HasKey("EmailFolderId");
+
+                    b.ToTable("Oto_TBl_EmailFolder");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoInboxEmail", b =>
+                {
+                    b.Property<int>("InboxId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("Inbox_Id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("InboxId"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("Body");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("Date");
+
+                    b.Property<int>("EmailId")
+                        .HasColumnType("int")
+                        .HasColumnName("Email_Id");
+
+                    b.Property<string>("FromAddress")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("From_Address");
+
+                    b.Property<bool>("IsAttachment")
+                        .HasColumnType("bit")
+                        .HasColumnName("Is_Attachment");
+
+                    b.Property<int>("IsInFolder")
+                        .HasColumnType("int")
+                        .HasColumnName("IsInFolder");
+
+                    b.Property<bool>("IsNeshan")
+                        .HasColumnType("bit")
+                        .HasColumnName("Is_Neshan");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("bit")
+                        .HasColumnName("Is_Read");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("Subject");
+
+                    b.Property<string>("UId")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("UId");
+
+                    b.HasKey("InboxId");
+
+                    b.HasIndex("EmailId");
+
+                    b.ToTable("Oto_TBL_Inbox");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoSentEmail", b =>
+                {
+                    b.Property<int>("SentId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("Sent_Id");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SentId"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)")
+                        .HasColumnName("Body");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2")
+                        .HasColumnName("Date");
+
+                    b.Property<int>("EmailId")
+                        .HasColumnType("int")
+                        .HasColumnName("Email_Id");
+
+                    b.Property<bool>("IsAttachment")
+                        .HasColumnType("bit")
+                        .HasColumnName("Is_Attachment");
+
+                    b.Property<int>("IsInFolder")
+                        .HasColumnType("int")
+                        .HasColumnName("IsInFolder");
+
+                    b.Property<bool>("IsNeshan")
+                        .HasColumnType("bit")
+                        .HasColumnName("Is_Neshan");
+
+                    b.Property<int?>("LetterSourceId")
+                        .HasColumnType("int")
+                        .HasColumnName("LetterSourceId");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)")
+                        .HasColumnName("Subject");
+
+                    b.Property<string>("ToDisplay")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)")
+                        .HasColumnName("To_Display");
+
+                    b.Property<string>("UId")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .HasColumnName("UId");
+
+                    b.HasKey("SentId");
+
+                    b.HasIndex("EmailId");
+
+                    b.ToTable("Oto_TBL_Sent");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.OutgoingLetter", b =>
                 {
                     b.Property<int>("Id")
@@ -3538,6 +4700,10 @@ namespace Inventory.Api.Migrations
                     b.Property<DateTime?>("DateSadere")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("DestEmail")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
                     b.Property<string>("DestRegNumber")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -3552,6 +4718,9 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<bool>("IsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsNeshan")
                         .HasColumnType("bit");
 
                     b.Property<string>("LetterNumber")
@@ -4190,6 +5359,62 @@ namespace Inventory.Api.Migrations
                     b.ToTable("ProjectAttaches");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.ProjectChangeRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ManagerActionAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ManagerActionById")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ManagerNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PayloadJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RequestedById")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("RequestedById");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("ProjectChangeRequests");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.ProjectEntryExit", b =>
                 {
                     b.Property<int>("Id")
@@ -4656,6 +5881,50 @@ namespace Inventory.Api.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("ReportWorks");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.Semat", b =>
+                {
+                    b.Property<int>("SematId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("SematId"));
+
+                    b.Property<bool>("DefaultSemat")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDelete")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("OnvanMokatebati")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("OrganizationId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Parent")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("SematId");
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Semats");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.ShiftGroup", b =>
@@ -5488,6 +6757,10 @@ namespace Inventory.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<string>("PhotoPath")
                         .HasMaxLength(200)
@@ -6571,6 +7844,267 @@ namespace Inventory.Api.Migrations
                     b.ToTable("WorkOrderLogs");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Entities.Chat.ChatAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("UploadedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("UploadedByUserId");
+
+                    b.ToTable("ChatAttachments");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Entities.Chat.ChatConversation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("LastMessageSenderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LastMessageSenderName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("LastMessageSnippet")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("PinnedMessageId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastMessageAt");
+
+                    b.ToTable("ChatConversations");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Entities.Chat.ChatMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsArchived")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsMuted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("JoinedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("LastReadMessageId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UnreadCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserAvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("UserDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("ConversationId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("ChatMembers");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Entities.Chat.ChatMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ErpEntityId")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ErpEntitySummary")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ErpEntityTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ErpModule")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("FileContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<long?>("FileSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("FileUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("ForwardFromMessageId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ForwardFromSenderName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsEdited")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MessageType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReactionsJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("ReplyToMessageId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ReplyToSenderName")
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("ReplyToSnippet")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("SenderAvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("SenderName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<int>("SenderUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SenderUserId");
+
+                    b.HasIndex("ConversationId", "CreatedAt");
+
+                    b.ToTable("ChatMessages");
+                });
+
             modelBuilder.Entity("Inventory.Shared.Entities.Permission", b =>
                 {
                     b.Property<int>("Id")
@@ -6835,6 +8369,17 @@ namespace Inventory.Api.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.DocEntityLink", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.ArchiveDocument", "Document")
+                        .WithMany()
+                        .HasForeignKey("DocumentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Document");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.Erja", b =>
                 {
                     b.HasOne("Inventory.Api.Data.Amalgar", "Amalgar")
@@ -7023,11 +8568,82 @@ namespace Inventory.Api.Migrations
                     b.Navigation("User");
                 });
 
-            
+            modelBuilder.Entity("Inventory.Api.Data.MoadianInvoice", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.MoadianFiscalPeriod", "FiscalPeriod")
+                        .WithMany()
+                        .HasForeignKey("FiscalPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
-            
+                    b.Navigation("FiscalPeriod");
+                });
 
-            
+            modelBuilder.Entity("Inventory.Api.Data.MoadianInvoiceLine", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.MoadianInvoice", "Invoice")
+                        .WithMany("Lines")
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.MoadianLog", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.MoadianInvoice", "Invoice")
+                        .WithMany()
+                        .HasForeignKey("InvoiceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Invoice");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoEmail", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoEmailAttachment", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.OtoInboxEmail", null)
+                        .WithMany("Attachments")
+                        .HasForeignKey("OtoInboxEmailInboxId");
+
+                    b.HasOne("Inventory.Api.Data.OtoSentEmail", null)
+                        .WithMany("Attachments")
+                        .HasForeignKey("OtoSentEmailSentId");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoInboxEmail", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.OtoEmail", "Email")
+                        .WithMany("InboxEmails")
+                        .HasForeignKey("EmailId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Email");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoSentEmail", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.OtoEmail", "Email")
+                        .WithMany("SentEmails")
+                        .HasForeignKey("EmailId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Email");
+                });
 
             modelBuilder.Entity("Inventory.Api.Data.OutgoingLetter", b =>
                 {
@@ -7112,6 +8728,25 @@ namespace Inventory.Api.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.ProjectChangeRequest", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.ProjectEntryExit", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Inventory.Api.Data.User", "RequestedBy")
+                        .WithMany()
+                        .HasForeignKey("RequestedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+
+                    b.Navigation("RequestedBy");
+                });
+
             modelBuilder.Entity("Inventory.Api.Data.ProjectEntryExit", b =>
                 {
                     b.HasOne("Inventory.Api.Data.TypeFactor", "TypeFactor")
@@ -7188,6 +8823,24 @@ namespace Inventory.Api.Migrations
                     b.Navigation("Operator");
 
                     b.Navigation("Project");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.Semat", b =>
+                {
+                    b.HasOne("Inventory.Api.Data.Organization", "Organization")
+                        .WithMany("Semats")
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Inventory.Api.Data.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Organization");
 
                     b.Navigation("User");
                 });
@@ -7338,6 +8991,28 @@ namespace Inventory.Api.Migrations
                     b.Navigation("ShiftGroup");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Entities.Chat.ChatMember", b =>
+                {
+                    b.HasOne("Inventory.Api.Entities.Chat.ChatConversation", "Conversation")
+                        .WithMany("Members")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Entities.Chat.ChatMessage", b =>
+                {
+                    b.HasOne("Inventory.Api.Entities.Chat.ChatConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
             modelBuilder.Entity("Inventory.Shared.Entities.RolePermission", b =>
                 {
                     b.HasOne("Inventory.Shared.Entities.Permission", "Permission")
@@ -7426,7 +9101,32 @@ namespace Inventory.Api.Migrations
                     b.Navigation("RelatedToLetters");
                 });
 
-            
+            modelBuilder.Entity("Inventory.Api.Data.MoadianInvoice", b =>
+                {
+                    b.Navigation("Lines");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.Organization", b =>
+                {
+                    b.Navigation("Semats");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoEmail", b =>
+                {
+                    b.Navigation("InboxEmails");
+
+                    b.Navigation("SentEmails");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoInboxEmail", b =>
+                {
+                    b.Navigation("Attachments");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.OtoSentEmail", b =>
+                {
+                    b.Navigation("Attachments");
+                });
 
             modelBuilder.Entity("Inventory.Api.Data.OutgoingLetter", b =>
                 {
@@ -7477,6 +9177,13 @@ namespace Inventory.Api.Migrations
             modelBuilder.Entity("Inventory.Api.Data.TypeFactor", b =>
                 {
                     b.Navigation("Projects");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Entities.Chat.ChatConversation", b =>
+                {
+                    b.Navigation("Members");
+
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("Inventory.Shared.Entities.Permission", b =>
