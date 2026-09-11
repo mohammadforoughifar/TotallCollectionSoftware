@@ -20,6 +20,7 @@ namespace Inventory.Api.Data;
 [Table("Oto_TBL_Email")]
 public class OtoEmail
 {
+    [Key]
     [Column("Email_Id")]
     public int EmailId { get; set; }
 
@@ -107,6 +108,7 @@ public class OtoEmail
 [Table("Oto_TBL_Sent")]
 public class OtoSentEmail
 {
+    [Key]
     [Column("Sent_Id")]
     public int SentId { get; set; }
 
@@ -160,6 +162,7 @@ public class OtoSentEmail
 [Table("Oto_TBL_Inbox")]
 public class OtoInboxEmail
 {
+    [Key]
     [Column("Inbox_Id")]
     public int InboxId { get; set; }
 
@@ -212,6 +215,7 @@ public class OtoInboxEmail
 [Table("Oto_TBl_EmailFolder")]
 public class OtoEmailFolder
 {
+    [Key]
     [Column("EmailFolderId")]
     public int EmailFolderId { get; set; }
 
@@ -258,6 +262,7 @@ public class OtoEmailFolder
 [Table("Oto_TBL_EmailAttachments")]
 public class OtoEmailAttachment
 {
+    [Key]
     [Column("Attachment_Id")]
     public int AttachmentId { get; set; }
 

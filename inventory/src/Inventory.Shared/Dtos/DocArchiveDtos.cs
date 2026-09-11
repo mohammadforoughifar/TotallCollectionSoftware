@@ -418,6 +418,27 @@ public class DocAttachmentAccessLogDto
     public DateTime At { get; set; }
 }
 
+/// <summary>یک مورد از لاگ چاپ فایل‌های مدرک — چه کسی، چه فایلی، کی، با چه واترمارکی</summary>
+public class DocPrintLogDto
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public string DocumentCode { get; set; } = "";
+    public string DocumentTitle { get; set; } = "";
+    public int VersionId { get; set; }
+    public int VersionNo { get; set; }
+    public int AttachmentId { get; set; }
+    public string FileName { get; set; } = "";
+    public string UserName { get; set; } = "";
+    /// <summary>متن واترمارک حک‌شده روی خروجی چاپی</summary>
+    public string WatermarkText { get; set; } = "";
+    /// <summary>تعداد صفحات (PDF) — برای عکس ۱</summary>
+    public int? PageCount { get; set; }
+    public long FileSizeBytes { get; set; }
+    public string? Ip { get; set; }
+    public DateTime At { get; set; }
+}
+
 /// <summary>خلاصه وضعیت انقضای مدارک برای بج‌های درخت پوشه‌ها</summary>
 public class DocExpirySummaryDto
 {

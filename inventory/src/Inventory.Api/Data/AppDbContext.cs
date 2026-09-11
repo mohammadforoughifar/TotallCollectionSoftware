@@ -145,6 +145,9 @@ public class AppDbContext : DbContext
     /// <summary>تنظیمات شماره‌گذار خودکار کد مدرک (تک‌ردیف)</summary>
     public DbSet<DocCodeSettings> DocCodeSettings => Set<DocCodeSettings>();
 
+    /// <summary>لاگ چاپ فایل‌های مدرک (DocArchive — جدول DocumentPrintLogs)</summary>
+    public DbSet<DocumentPrintLog> DocumentPrintLogs => Set<DocumentPrintLog>();
+
     // ==================== ماژول پیام‌رسان سازمانی (Chat) ====================
     public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();
     public DbSet<Inventory.Api.Entities.Chat.ChatMember> ChatMembers => Set<Inventory.Api.Entities.Chat.ChatMember>();
@@ -985,22 +988,6 @@ public class AppDbContext : DbContext
           .HasOne(l => l.Session).WithMany(s => s.Lines)
           .HasForeignKey(l => l.SessionId)
           .OnDelete(DeleteBehavior.Cascade);
-        mb.Entity<StkLine>()
-          .HasOne(l => l.Product).WithMany()
-          .HasForeignKey(l => l.ProductId)
-          .OnDelete(DeleteBehavior.Restrict);
-
-        // ---------- تاریخچه اسکن ----------
-        mb.Entity<StkScan>().HasIndex(s => s.SessionId);
-        mb.Entity<StkScan>().HasIndex(s => s.LineId);
-        mb.Entity<StkScan>().Property(s => s.Quantity).HasPrecision(18, 3);
-        mb.Entity<StkScan>()
-          .HasOne(s => s.Session).WithMany()
-          .HasForeignKey(s => s.SessionId)
-          .OnDelete(DeleteBehavior.Cascade);
-    }
-}
-leteBehavior.Cascade);
         mb.Entity<StkLine>()
           .HasOne(l => l.Product).WithMany()
           .HasForeignKey(l => l.ProductId)

@@ -141,7 +141,7 @@
         <ChildContent>
             <div class="fs-8 mb-2 text-body-secondary">
                 <i class="bi bi-shield-lock text-warning"></i>
-                مدیر این مدرک آن را محرمانه تعیین کرده است؛ برای @(pendingDownload ? "دانلود" : "مشاهده")
+                مدیر این مدرک آن را محرمانه تعیین کرده است؛ برای @(pendingPrint ? "چاپ" : pendingDownload ? "دانلود" : "مشاهده")
                 فایل «@pendingItem?.FileName» رمز ورودتان را دوباره وارد کنید.
             </div>
             <input type="password" class="form-control form-control-sm" placeholder="رمز عبور شما"
@@ -295,6 +295,12 @@
     private string DownloadUrl(AttItem a) =>
         $"{apiBase}/api/attachments/download/{a.Id}?access_token={Auth.Token}";
 
+    /// <summary>قابل چاپ با لاگ؟ فقط PDF و عکس (همان پوشش واترمارک سمت سرور).</summary>
+    private static bool CanPrintOf(AttItem a) => IsPdf(a) || IsImage(a);
+
+    private string PrintUrl(AttItem a) =>
+        $"{apiBase}/api/doc-archive/print/file/{a.Id}?access_token={Auth.Token}";
+
     private static string IconOf(AttItem a)
     {
         var fn = a.FileName.ToLowerInvariant();
@@ -327,10 +333,19 @@
         await JS.InvokeVoidAsync("open", DownloadUrl(a), "_blank");
     }
 
-    private void ShowConfirm(AttItem a, bool download)
+    /// <summary>باز کردن نسخه چاپی (واترمارک‌دار با نام چاپ‌کننده + تاریخ) در تب جدید — چاپ در لاگ ثبت می‌شود.</summary>
+    private async Task Print(AttItem a)
+    {
+        if (NeedsConfirmNow(a)) { ShowConfirm(a, false, true); return; }
+        await JS.InvokeVoidAsync("open", PrintUrl(a), "_blank");
+        Toast.Info("نسخه چاپی با واترمارک نام شما باز شد — با Ctrl+P چاپ کنید. این چاپ در لاگ ثبت می‌شود.");
+    }
+
+    private void ShowConfirm(AttItem a, bool download, bool print = false)
     {
         pendingItem = a;
         pendingDownload = download;
+        pendingPrint = print;
         confirmPassword = "";
         confirmError = null;
         showConfirm = true;
@@ -341,6 +356,7 @@
         if (confirmBusy) return Task.CompletedTask;
         showConfirm = false;
         pendingItem = null;
+        pendingPrint = false;
         return Task.CompletedTask;
     }
 

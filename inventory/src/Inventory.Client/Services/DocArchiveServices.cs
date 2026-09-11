@@ -198,6 +198,9 @@ public class DocArchiveService : IDocArchiveService
     public Task<List<DocAttachmentAccessLogDto>> GetAccessLogsAsync(int id)
         => _api.GetAsync<List<DocAttachmentAccessLogDto>>($"{Root}/documents/{id}/access-logs");
 
+    public Task<List<DocPrintLogDto>> GetPrintLogsAsync(int id)
+        => _api.GetAsync<List<DocPrintLogDto>>($"{Root}/print/logs/{id}");
+
     public Task RequestAccessAsync(int id, DocAccessRequestSaveDto dto)
         => _api.PostAsync<object>($"{Root}/documents/{id}/request-access", dto);
 
