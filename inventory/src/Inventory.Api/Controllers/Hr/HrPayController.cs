@@ -217,6 +217,7 @@ public class HrPayController : ControllerBase
         public string? Iban { get; set; }
         public string? AccountNo { get; set; }
         public decimal ExtraTaxExempt { get; set; }
+        public bool IsHardJob { get; set; }
     }
 
     [HttpPost("profiles")]
@@ -230,6 +231,7 @@ public class HrPayController : ControllerBase
         p.InsuranceNo = input.InsuranceNo; p.BankName = input.BankName;
         p.Iban = input.Iban; p.AccountNo = input.AccountNo;
         p.ExtraTaxExempt = Math.Max(0, input.ExtraTaxExempt);
+        p.IsHardJob = input.IsHardJob;
         await _db.SaveChangesAsync();
         return Ok(p);
     }
@@ -452,13 +454,27 @@ public class HrPayController : ControllerBase
         return Ok(await _db.HrPayRuns.AsNoTracking().OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).Take(60).ToListAsync());
     }
 
-    public class RunInput { public int Year { get; set; } public int Month { get; set; } }
+    public class RunInput { public int Year { get; set; } public int Month { get; set; } public string? Kind { get; set; } }
 
     [HttpPost("runs")]
     public async Task<IActionResult> CreateRun([FromBody] RunInput input)
     {
         if (!await IsManagerAsync()) return Forbid();
-        try { return Ok(await _svc.CreateRunAsync(input.Year, input.Month, MyName)); }
+        try { return Ok(await _svc.CreateRunAsync(input.Year, input.Month, MyName, input.Kind ?? "Monthly")); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    public class EydiInput { public int Year { get; set; } }
+
+    [HttpPost("runs/eydi")]
+    public async Task<IActionResult> CreateEydi([FromBody] EydiInput input)
+    {
+        if (!await IsManagerAsync()) return Forbid();
+        try
+        {
+            var run = await _svc.CreateRunAsync(input.Year, 12, MyName, "Eydi");
+            return Ok(await _svc.CalculateRunAsync(run.Id));
+        }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
@@ -636,5 +652,50 @@ public class HrPayController : ControllerBase
         if (emp == null) return NotFound();
         var uid = await _db.HrUserLinks.AsNoTracking().Where(x => x.EmployeeId == employeeId).Select(x => (int?)x.UserId).FirstOrDefaultAsync();
         return Ok(await _svc.MonthAggAsync(uid, year, month));
+    }
+
+    // ================= فاز ۳: بایگانی ارسال لیست‌های قانونی =================
+
+    [HttpGet("filings/preflight")]
+    public async Task<IActionResult> FilingPreflight([FromQuery] int runId, [FromQuery] string kind)
+    {
+        if (!await CanReadAsync()) return Forbid();
+        try
+        {
+            var r = await _svc.PreflightAsync(runId, kind ?? "");
+            return Ok(new { errors = r.Errors, warnings = r.Warnings, canFile = r.Errors.Count == 0 });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    public class FileInput
+    {
+        public int RunId { get; set; }
+        public string Kind { get; set; } = "";
+        public string? ReceiptNo { get; set; }
+        public string? Note { get; set; }
+    }
+
+    [HttpPost("filings")]
+    public async Task<IActionResult> FileList([FromBody] FileInput input)
+    {
+        if (!await IsManagerAsync()) return Forbid();
+        try { return Ok(await _svc.FileAsync(input.RunId, input.Kind ?? "", MyName, input.ReceiptNo, input.Note)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpGet("filings")]
+    public async Task<IActionResult> Filings([FromQuery] int? runId)
+    {
+        if (!await CanReadAsync()) return Forbid();
+        return Ok(await _svc.FilingsAsync(runId));
+    }
+
+    [HttpGet("filings/verify")]
+    public async Task<IActionResult> VerifyFiling([FromQuery] int runId, [FromQuery] string kind)
+    {
+        if (!await CanReadAsync()) return Forbid();
+        try { return Ok(await _svc.VerifyFilingAsync(runId, kind ?? "")); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 }

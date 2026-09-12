@@ -22,10 +22,12 @@
             <li class="nav-item"><button class="nav-link @(tab=="overtime"?"active":"")" @onclick='() => SetTab("overtime")'>اضافه‌کاری</button></li>
             <li class="nav-item"><button class="nav-link @(tab=="balance"?"active":"")" @onclick='() => SetTab("balance")'>موجودی مرخصی</button></li>
             <li class="nav-item"><button class="nav-link @(tab=="roster"?"active":"")" @onclick='() => SetTab("roster")'>روستِر شیفت</button></li>
+            <li class="nav-item"><button class="nav-link @(tab=="attend"?"active":"")" @onclick='() => SetTab("attend")'>کارکرد ماهانه</button></li>
             @if (isHr)
             {
                 <li class="nav-item"><button class="nav-link @(tab=="device"?"active":"")" @onclick='() => SetTab("device")'>دستگاه حضوروغیاب</button></li>
                 <li class="nav-item"><button class="nav-link @(tab=="rules"?"active":"")" @onclick='() => SetTab("rules")'>قوانین</button></li>
+                <li class="nav-item"><button class="nav-link @(tab=="legal"?"active":"")" @onclick='() => SetTab("legal")'>قانونی</button></li>
             }
         </ul>
 
@@ -142,7 +144,7 @@
                     </div>
                     <div class="table-responsive">
                         <table class="table table-striped table-sm align-middle">
-                            <thead><tr><th>نوع مرخصی</th><th>سهمیه</th><th>مصرف‌شده</th><th>در انتظار</th><th>مانده</th>@if (isHr){<th></th>}</tr></thead>
+                            <thead><tr><th>نوع مرخصی</th><th>سهمیه</th><th>مصرف‌شده</th><th>در انتظار</th><th>مانده</th><th>قابل انتقال</th>@if (isHr){<th></th>}</tr></thead>
                             <tbody>
                                 @foreach (var b in balances)
                                 {
@@ -153,6 +155,7 @@
                                         <td>@Fa.Digits(x.Used.ToString())</td>
                                         <td>@Fa.Digits(x.Pending.ToString())</td>
                                         <td><strong class="@(x.Remaining < 0 ? "text-danger" : "text-success")">@Fa.Digits(x.Remaining.ToString())</strong></td>
+                                        <td>@(x.Carryover > 0 ? Fa.Digits(x.Carryover.ToString()) : "—")</td>
                                         @if (isHr)
                                         {
                                             <td><button class="btn btn-sm btn-outline-primary" @onclick="() => OpenGrant(x)">سهمیه</button></td>
@@ -185,6 +188,9 @@
                                             <option value="Annual">استحقاقی</option>
                                             <option value="Sick">استعلاجی</option>
                                             <option value="Maternity">زایمان</option>
+                                            <option value="Marriage">ازدواج</option>
+                                            <option value="Bereavement">فوت بستگان</option>
+                                            <option value="Hajj">حج</option>
                                             <option value="Unpaid">بدون حقوق</option>
                                         </select>
                                     </div>
@@ -399,6 +405,157 @@
             </div>
             <button class="btn btn-sm btn-primary" @onclick="SaveRules" disabled="@busy">ذخیره قوانین</button>
         }
+        else if (tab == "legal" && isHr)
+        {
+            <div class="row g-3">
+                <div class="col-lg-6">
+                    <div class="card mb-3">
+                        <div class="card-header"><strong>دوره آزمایشی (ماده ۱۱) — رو به اتمام (۳۰ روز)</strong></div>
+                        <div class="card-body p-2">
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle">
+                                    <thead><tr><th>پرسنل</th><th>پایان</th><th></th></tr></thead>
+                                    <tbody>
+                                        @foreach (var x in probations)
+                                        {
+                                            var pr = x;
+                                            <tr>
+                                                <td>@pr.Name</td>
+                                                <td>@pr.EndDate.ToString("yyyy/MM/dd")</td>
+                                                <td class="d-flex gap-1">
+                                                    <button class="btn btn-sm btn-outline-success" @onclick="() => CompleteProbation(pr.Id, true)">قبول</button>
+                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => CompleteProbation(pr.Id, false)">مردود</button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex gap-2 align-items-end flex-wrap">
+                                <div><label class="form-label small">کد پرسنل</label><input type="number" class="form-control form-control-sm" style="width:90px" @bind="prEmpId" /></div>
+                                <div><label class="form-label small">شروع</label><input type="date" class="form-control form-control-sm" @bind="prStart" /></div>
+                                <div><label class="form-label small">مدت</label><select class="form-select form-select-sm" @bind="prMonths"><option value="1">۱ ماه (ساده)</option><option value="3">۳ ماه (ماهر)</option></select></div>
+                                <button class="btn btn-sm btn-primary" @onclick="StartProbation">شروع دوره</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card mb-3">
+                        <div class="card-header"><strong>حداقل مزد مصوب سالانه</strong></div>
+                        <div class="card-body p-2">
+                            <div class="table-responsive">
+                                <table class="table table-sm align-middle">
+                                    <thead><tr><th>سال</th><th>ماهانه (ریال)</th><th>روزانه</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var m in minwages)
+                                        {
+                                            <tr><td>@Fa.Digits(m.Year.ToString())</td><td>@Fa.Digits(m.MonthlyWage.ToString("0"))</td><td>@Fa.Digits(m.DailyWage.ToString("0"))</td></tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="d-flex gap-2 align-items-end">
+                                <div><label class="form-label small">سال</label><input type="number" class="form-control form-control-sm" style="width:90px" @bind="mwYear" /></div>
+                                <div><label class="form-label small">ماهانه (ریال)</label><input type="number" class="form-control form-control-sm" style="width:150px" @bind="mwMonthly" /></div>
+                                <button class="btn btn-sm btn-primary" @onclick="SaveMinWage">ذخیره</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card mb-3">
+                        <div class="card-header"><strong>بستن سال مرخصی (انتقال تا ۹ روز — ماده ۶۶)</strong></div>
+                        <div class="card-body">
+                            <div class="d-flex gap-2 align-items-end flex-wrap">
+                                <div><label class="form-label small">کاربر</label><select class="form-select form-select-sm" @bind="coUserId"><option value="0">—</option>@foreach (var u in users){<option value="@u.Id">@u.FullName</option>}</select></div>
+                                <div><label class="form-label small">از سال</label><input type="number" class="form-control form-control-sm" style="width:90px" @bind="coYear" /></div>
+                                <button class="btn btn-sm btn-warning" @onclick="DoCarryover">بستن و انتقال</button>
+                            </div>
+                            @if (coResult != null){<div class="alert alert-info small mt-2 mb-0">@coResult</div>}
+                        </div>
+                    </div>
+                    <div class="card mb-3">
+                        <div class="card-header"><strong>استعلام کد ملی</strong></div>
+                        <div class="card-body">
+                            <div class="d-flex gap-2 align-items-end">
+                                <div><label class="form-label small">کد ملی</label><input class="form-control form-control-sm" dir="ltr" maxlength="10" @bind="natCode" /></div>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="CheckNational">بررسی</button>
+                                @if (natResult != null){<span class="badge @(natValid ? "bg-success" : "bg-danger")">@natResult</span>}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card mb-3">
+                        <div class="card-header"><strong>ارفاق شیردهی (ماده ۷۸ — ۲ ساعت روزانه)</strong></div>
+                        <div class="card-body">
+                            <div class="d-flex gap-2 align-items-end flex-wrap">
+                                <div><label class="form-label small">کد پرسنل</label><input type="number" class="form-control form-control-sm" style="width:90px" @bind="nurEmpId" /></div>
+                                <div><label class="form-label small">تولد فرزند</label><input type="date" class="form-control form-control-sm" @bind="nurBirth" /></div>
+                                <button class="btn btn-sm btn-primary" @onclick="SaveNursing">ثبت</button>
+                            </div>
+                            @if (nurInfo != null){<div class="alert alert-info small mt-2 mb-0">@nurInfo</div>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (tab == "attend")
+        {
+            <div class="d-flex gap-2 mb-2 align-items-end flex-wrap">
+                @if (isHr)
+                {
+                    <div><label class="form-label small">کاربر</label><select class="form-select form-select-sm" @bind="atUserId"><option value="0">خودم</option>@foreach (var u in users){<option value="@u.Id">@u.FullName</option>}</select></div>
+                }
+                <div><label class="form-label small">سال</label><input type="number" class="form-control form-control-sm" style="width:90px" @bind="atJy" /></div>
+                <div><label class="form-label small">ماه</label><input type="number" class="form-control form-control-sm" style="width:70px" @bind="atJm" /></div>
+                <button class="btn btn-sm btn-primary" @onclick="LoadAttend" disabled="@busy">نمایش</button>
+                @if (attend != null && isHr)
+                {
+                    <span class="badge @(attend.Closed ? "bg-secondary" : "bg-success")">@(attend.Closed ? "ماه بسته" : "ماه باز")</span>
+                    <button class="btn btn-sm btn-outline-success" @onclick="ApproveMonth" disabled="@(busy || attend.Closed)">تأیید همه اضافه‌کارها</button>
+                    @if (!attend.Closed){<button class="btn btn-sm btn-outline-warning" @onclick="CloseMonth" disabled="@busy">بستن ماه</button>}
+                    else{<button class="btn btn-sm btn-outline-secondary" @onclick="ReopenMonth" disabled="@busy">بازگشایی</button>}
+                }
+            </div>
+            @if (attend != null)
+            {
+                <div class="alert alert-light small py-1">حاضر: @Fa.Digits(attend.PresentCount) | غایب: @Fa.Digits(attend.AbsentCount) | کارکرد: @Fa.Digits(attend.WorkMin) دقیقه | تأخیر: @Fa.Digits(attend.LateMin) | تعجیل: @Fa.Digits(attend.EarlyMin) | اضافه‌کار محاسباتی: @Fa.Digits((attend.OtNH + attend.OtHH + attend.OtNtH).ToString("0.##")) ساعت | تأییدشده: @Fa.Digits((attend.ApprOtNH + attend.ApprOtHH + attend.ApprOtNtH).ToString("0.##")) ساعت</div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm align-middle">
+                        <thead><tr><th>روز</th><th>هفته</th><th>شیفت</th><th>ورود</th><th>خروج</th><th>کار (د)</th><th>تأخیر</th><th>تعجیل</th><th>اضافه محاسباتی</th><th>وضعیت</th><th>تأیید اضافه‌کار</th></tr></thead>
+                        <tbody>
+                            @foreach (var d in attend.Days)
+                            {
+                                var r = d;
+                                <tr>
+                                    <td>@Fa.Digits(r.Date.ToString("MM/dd"))</td>
+                                    <td>@r.Weekday</td>
+                                    <td>@(r.ShiftName ?? "—")</td>
+                                    <td dir="ltr">@(r.EnterAt?.ToString("HH:mm") ?? "—")</td>
+                                    <td dir="ltr">@(r.ExitAt?.ToString("HH:mm") ?? "—")</td>
+                                    <td>@Fa.Digits(r.WorkMin)</td>
+                                    <td>@Fa.Digits(r.LateMin)</td>
+                                    <td>@Fa.Digits(r.EarlyMin)</td>
+                                    <td>@OtMinFa(r)</td>
+                                    <td><span class="badge @AttendCls(r.Status)">@r.Status</span></td>
+                                    <td>
+                                        @if (r.OtN + r.OtH + r.OtNt > 0)
+                                        {
+                                            <span class="badge @StatusCls(r.OtStatus ?? "Pending")">@StatusFa(r.OtStatus ?? "Pending")</span>
+                                            @if (isHr && r.OtStatus != "Approved" && !attend.Closed)
+                                            {
+                                                <button class="btn btn-sm btn-outline-success ms-1" @onclick="() => DecideOt(r, true)" disabled="@busy">تأیید</button>
+                                                <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DecideOt(r, false)" disabled="@busy">رد</button>
+                                            }
+                                            @if (r.OtStatus == "Approved"){<span class="small text-muted ms-1">@Fa.Digits(r.ApprN + r.ApprH + r.ApprNt) د</span>}
+                                        }
+                                        else{<span class="text-muted">—</span>}
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
     </div>
 </div>
 
@@ -526,11 +683,13 @@
         else if (tab == "roster") { await EnsureUsers(); await LoadShifts(); await LoadRoster(); }
         else if (tab == "device") { await EnsureUsers(); await LoadMaps(); await LoadPunches(); }
         else if (tab == "rules") await LoadRules();
+        else if (tab == "legal") { await EnsureUsers(); await LoadLegal(); }
+        else if (tab == "attend") { await EnsureUsers(); await LoadShifts(); await LoadAttend(); }
     }
 
     protected override async Task OnInitializedAsync() => await LoadSteps();
 
-    private static string CatFa(string c) => c switch { "Annual" => "استحقاقی", "Sick" => "استعلاجی", "Maternity" => "زایمان", "Unpaid" => "بدون حقوق", _ => c };
+    private static string CatFa(string c) => c switch { "Annual" => "استحقاقی", "Sick" => "استعلاجی", "Maternity" => "زایمان", "Marriage" => "ازدواج", "Bereavement" => "فوت بستگان", "Hajj" => "حج", "Unpaid" => "بدون حقوق", _ => c };
     private static string RoleFa(string r) => r switch { "Manager" => "مدیر مستقیم", "Hr" => "کارگزینی", _ => r };
     private static string StatusFa(string s) => s switch { "Pending" => "در انتظار", "Approved" => "تأیید", "Rejected" => "رد", "Skipped" => "منتفی", _ => s };
     private static string StatusCls(string s) => s switch { "Approved" => "bg-success", "Rejected" => "bg-danger", "Skipped" => "bg-secondary", _ => "bg-warning text-dark" };
@@ -555,6 +714,72 @@
         catch { }
         return $"خطا: {(int)r.StatusCode}";
     }
+
+    // ---------- کارکرد ماهانه (فاز ۲) ----------
+    private AttendMonthDto? attend;
+    private int atUserId; private int atJy = 1405; private int atJm = 6;
+    private static string AttendCls(string s) => s switch { "حاضر" => "bg-success", "غایب" => "bg-danger", "تعطیل" => "bg-secondary", "—" => "bg-light text-dark border", _ => "bg-info text-dark" };
+    private static string OtMinFa(AttendDayDto r)
+    {
+        var p = new List<string>();
+        if (r.OtN > 0) p.Add($"عادی {r.OtN}");
+        if (r.OtH > 0) p.Add($"تعطیل {r.OtH}");
+        if (r.OtNt > 0) p.Add($"شب {r.OtNt}");
+        return p.Count == 0 ? "—" : Fa.Digits(string.Join("، ", p));
+    }
+    private async Task LoadAttend()
+    {
+        busy = true;
+        try
+        {
+            var q = $"/api/hr-time/attendance?jy={atJy}&jm={atJm}" + (isHr && atUserId > 0 ? $"&userId={atUserId}" : "");
+            attend = await Http.GetFromJsonAsync<AttendMonthDto>(q);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task DecideOt(AttendDayDto r, bool approve)
+    {
+        if (attend == null) return;
+        busy = true;
+        try
+        {
+            var req = await Http.PostAsJsonAsync("/api/hr-time/ot-approvals/decide",
+                new { userId = attend.UserId, date = r.Date, approve, n = r.OtN, h = r.OtH, ni = r.OtNt });
+            if (req.IsSuccessStatusCode) { Toast.Success("ثبت شد."); await LoadAttend(); }
+            else Toast.Error(await Err(req) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task ApproveMonth()
+    {
+        if (attend == null) return;
+        busy = true;
+        try
+        {
+            var req = await Http.PostAsJsonAsync("/api/hr-time/ot-approvals/decide-month",
+                new { userId = attend.UserId, jy = atJy, jm = atJm, approve = true });
+            if (req.IsSuccessStatusCode) { Toast.Success("تأیید شد."); await LoadAttend(); }
+            else Toast.Error(await Err(req) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task SetClosed(bool closed)
+    {
+        busy = true;
+        try
+        {
+            var req = await Http.PostAsJsonAsync("/api/hr-time/attend-close", new { jy = atJy, jm = atJm, closed });
+            if (req.IsSuccessStatusCode) { Toast.Success(closed ? "ماه بسته شد." : "ماه بازگشایی شد."); await LoadAttend(); }
+            else Toast.Error(await Err(req) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task CloseMonth() => await SetClosed(true);
+    private async Task ReopenMonth() => await SetClosed(false);
 
     // ---------- عمومی ----------
     private List<UserDto> users = new();
@@ -876,6 +1101,98 @@
         public string Type { get; set; } = "";
         public string Status { get; set; } = "";
     }
+    // ---------- تب قانونی (فاز ۱) ----------
+    private List<ProbationDto> probations = new();
+    private List<MinWageDto> minwages = new();
+    private int prEmpId; private DateTime prStart = DateTime.Today; private int prMonths = 3;
+    private int mwYear = 1405; private decimal mwMonthly;
+    private string? natCode; private string? natResult; private bool natValid;
+    private int nurEmpId; private DateTime nurBirth = DateTime.Today; private string? nurInfo;
+    private int coUserId; private int coYear = 1405; private string? coResult;
+    private async Task LoadLegal()
+    {
+        try
+        {
+            probations = await Http.GetFromJsonAsync<List<ProbationDto>>("/api/hr-time/probations?endingWithinDays=30") ?? new();
+            minwages = await Http.GetFromJsonAsync<List<MinWageDto>>("/api/hr-time/minwages") ?? new();
+            if (mwMonthly == 0) { var cur = minwages.FirstOrDefault(m => m.Year == mwYear); if (cur != null) mwMonthly = cur.MonthlyWage; }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task StartProbation()
+    {
+        busy = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync("/api/hr-time/probations", new { employeeId = prEmpId, startDate = prStart, months = prMonths, skillLevel = prMonths == 1 ? "Simple" : "Skilled" });
+            if (r.IsSuccessStatusCode) { Toast.Success("دوره آزمایشی شروع شد."); await LoadLegal(); }
+            else Toast.Error(await Err(r) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task CompleteProbation(int id, bool pass)
+    {
+        busy = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync($"/api/hr-time/probations/{id}/complete", new { pass });
+            if (r.IsSuccessStatusCode) { Toast.Success(pass ? "قبول شد." : "مردود شد."); await LoadLegal(); }
+            else Toast.Error(await Err(r) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task SaveMinWage()
+    {
+        busy = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync("/api/hr-time/minwages", new { year = mwYear, monthlyWage = mwMonthly });
+            if (r.IsSuccessStatusCode) { Toast.Success("ذخیره شد."); await LoadLegal(); }
+            else Toast.Error(await Err(r) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task CheckNational()
+    {
+        try
+        {
+            var r = await Http.GetFromJsonAsync<NationalResp>($"/api/hr-time/validate-national/{natCode}");
+            natValid = r?.Valid == true; natResult = natValid ? "معتبر" : "نامعتبر";
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task SaveNursing()
+    {
+        busy = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync("/api/hr-time/nursing", new { employeeId = nurEmpId, childBirthDate = nurBirth });
+            if (r.IsSuccessStatusCode) { var nb = await r.Content.ReadFromJsonAsync<NursingDto>(); nurInfo = $"فعال تا {nb?.EndDate:yyyy/MM/dd}"; Toast.Success("ثبت شد."); }
+            else Toast.Error(await Err(r) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task DoCarryover()
+    {
+        busy = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync("/api/hr-time/balances/carryover", new { userId = coUserId, year = coYear });
+            if (r.IsSuccessStatusCode) { var d = await r.Content.ReadFromJsonAsync<CarryResp>(); coResult = $"مانده: {d?.Remaining} — منتقل شد: {d?.Carry} — سهمیه سال بعد: {d?.NextGrant}"; await LoadBalances(); }
+            else Toast.Error(await Err(r) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private class ProbationDto { public int Id { get; set; } public int EmployeeId { get; set; } public string? Name { get; set; } public DateTime StartDate { get; set; } public DateTime EndDate { get; set; } public int Months { get; set; } public string SkillLevel { get; set; } = ""; public string Status { get; set; } = ""; }
+    private class MinWageDto { public int Year { get; set; } public decimal MonthlyWage { get; set; } public decimal DailyWage { get; set; } public DateTime EffectiveDate { get; set; } public string? Note { get; set; } }
+    private class NationalResp { public string? Code { get; set; } public bool Valid { get; set; } }
+    private class NursingDto { public int Id { get; set; } public int EmployeeId { get; set; } public DateTime ChildBirthDate { get; set; } public double DailyHours { get; set; } public DateTime StartDate { get; set; } public DateTime EndDate { get; set; } public bool IsActive { get; set; } }
+    private class CarryResp { public double Remaining { get; set; } public double Carry { get; set; } public double NextGrant { get; set; } }
     private class BalanceResp { public int Year { get; set; } public List<BalanceDto> Items { get; set; } = new(); }
     private class BalanceDto
     {
@@ -884,6 +1201,7 @@
         public double Used { get; set; }
         public double Pending { get; set; }
         public double Remaining { get; set; }
+        public double Carryover { get; set; }
     }
     private class RosterDto
     {
@@ -895,6 +1213,24 @@
     }
     private class UserDto { public int Id { get; set; } public string Username { get; set; } = ""; public string FullName { get; set; } = ""; }
     private class ShiftDto { public int Id { get; set; } public string Name { get; set; } = ""; }
+    private class AttendDayDto
+    {
+        public DateTime Date { get; set; } public string Weekday { get; set; } = "";
+        public string? ShiftName { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; }
+        public int WorkMin { get; set; } public int LateMin { get; set; } public int EarlyMin { get; set; }
+        public int OtN { get; set; } public int OtH { get; set; } public int OtNt { get; set; }
+        public string Status { get; set; } = ""; public string? OtStatus { get; set; }
+        public int ApprN { get; set; } public int ApprH { get; set; } public int ApprNt { get; set; }
+    }
+    private class AttendMonthDto
+    {
+        public int UserId { get; set; }
+        public List<AttendDayDto> Days { get; set; } = new();
+        public int WorkMin { get; set; } public int LateMin { get; set; } public int EarlyMin { get; set; }
+        public double OtNH { get; set; } public double OtHH { get; set; } public double OtNtH { get; set; }
+        public double ApprOtNH { get; set; } public double ApprOtHH { get; set; } public double ApprOtNtH { get; set; }
+        public int PresentCount { get; set; } public int AbsentCount { get; set; } public bool Closed { get; set; }
+    }
     private class MapDto { public int Id { get; set; } public string? DeviceCode { get; set; } public string UserCode { get; set; } = ""; public int SystemUserId { get; set; } }
     private class PunchDto
     {

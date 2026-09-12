@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using ClosedXML.Excel;
@@ -155,6 +156,8 @@ public class HrPayService
         ("pay.ins.employer", "20", "بیمه سهم کارفرما (٪)"),
         ("pay.ins.unemployment", "3", "بیمه بیکاری (٪)"),
         ("pay.ins.ceiling", "0", "سقف مشمول بیمه ماهانه (ریال — 0=بدون سقف)"),
+        ("pay.ins.hardjob.extra", "4", "اضافه بیمه کارفرما برای مشاغل سخت و زیان‌آور (٪)"),
+        ("pay.tax.eydi.exemption", "0", "معافیت مالیاتی عیدی (ریال — ۱/۱۲ معافیت سالانه)"),
         ("pay.workshop.code", "", "کد کارگاه بیمه"),
         ("pay.workshop.name", "", "نام کارگاه"),
         ("pay.variance.pct", "10", "آستانه هشدار مغایرت ماهانه (٪)"),
@@ -299,14 +302,16 @@ public class HrPayService
 
     public record SlipLine(string Code, string Title, string Kind, decimal Amount, bool Taxable, bool Insuranceable, int? RefId = null);
 
-    public async Task<HrPayRun> CreateRunAsync(int year, int month, string byName)
+    public async Task<HrPayRun> CreateRunAsync(int year, int month, string byName, string kind = "Monthly")
     {
         if (month is < 1 or > 12) throw new InvalidOperationException("ماه نامعتبر است.");
-        if (await _db.HrPayRuns.AnyAsync(r => r.Year == year && r.Month == month))
-            throw new InvalidOperationException("برای این ماه قبلاً دوره ساخته شده است.");
+        kind = kind == "Eydi" ? "Eydi" : "Monthly";
+        if (kind == "Eydi") month = 12;
+        if (await _db.HrPayRuns.AnyAsync(r => r.Year == year && r.Month == month && r.Kind == kind))
+            throw new InvalidOperationException("برای این دوره قبلاً دوره ساخته شده است.");
         await EnsureSeedAsync();
         await EnsureTaxSeedAsync(year);
-        var run = new HrPayRun { Year = year, Month = month, Status = "Draft", CreatedBy = byName };
+        var run = new HrPayRun { Year = year, Month = month, Kind = kind, Status = "Draft", CreatedBy = byName };
         _db.HrPayRuns.Add(run);
         await _db.SaveChangesAsync();
         return run;
@@ -317,9 +322,10 @@ public class HrPayService
         var run = await _db.HrPayRuns.FirstOrDefaultAsync(r => r.Id == runId)
             ?? throw new InvalidOperationException("دوره پیدا نشد.");
         if (run.Status == "Locked") throw new InvalidOperationException("دوره قفل است؛ ابتدا باز کنید.");
+        if (run.Kind == "Eydi") return await CalculateEydiAsync(run);
         var rules = await GetPayRulesAsync();
         var allRules = await _hrtime.GetRulesAsync();
-        var minWage = R(rules, "pay.min_wage", 103909270);
+        var minWage = await _hrtime.EffectiveMinWageAsync(run.Year);
         var brackets = await _db.HrPayTaxBrackets.AsNoTracking().Where(b => b.Year == run.Year).ToListAsync();
         var items = await _db.HrPayItems.AsNoTracking().Where(i => i.IsActive).OrderBy(i => i.SortOrder).ToListAsync();
         var employees = await _db.HrEmployees.AsNoTracking().Where(e => e.Status == HrEmployeeStatus.Active).ToListAsync();
@@ -401,6 +407,10 @@ public class HrPayService
             var arrears = await _db.HrPayArrears.Where(a => a.EmployeeId == emp.Id && a.Year == run.Year && a.Month == run.Month && a.Status == "Pending").ToListAsync();
             foreach (var a in arrears)
                 lines.Add(new("SYS_ARREAR", a.Title ?? "معوقه", "Earning", a.Amount, true, true, a.Id));
+            // فاز ۴: پاداش عملکرد قطعی‌شده (مشمول مالیات، غیرمشمول بیمه)
+            var perfs = await _db.HrPerfResults.Where(x => x.EmployeeId == emp.Id && x.Status == "Final" && x.PayYear == run.Year && x.PayMonth == run.Month && x.BonusAmount > 0).ToListAsync();
+            foreach (var pf in perfs)
+                lines.Add(new("SYS_PERF", "پاداش عملکرد", "Earning", pf.BonusAmount, true, false, pf.Id));
             var loans = await _db.HrPayLoans.Where(l => l.EmployeeId == emp.Id && l.Status == "Active").ToListAsync();
             foreach (var ln in loans)
             {
@@ -423,7 +433,8 @@ public class HrPayService
             if (ceiling > 0) insBase = Math.Min(insBase, ceiling);
             var insPct = R(rules, "pay.ins.employee", 7);
             var insEmp = Math.Round(insBase * insPct / 100);
-            var erPct = R(rules, "pay.ins.employer", 20) + R(rules, "pay.ins.unemployment", 3);
+            var erPct = R(rules, "pay.ins.employer", 20) + R(rules, "pay.ins.unemployment", 3)
+                + ((prof?.IsHardJob == true) ? R(rules, "pay.ins.hardjob.extra", 4) : 0);
             var insEr = Math.Round(insBase * erPct / 100);
             var taxBase = Math.Max(0, taxable - (prof?.ExtraTaxExempt ?? 0));
             var tax = CalcTax(taxBase, brackets);
@@ -454,6 +465,65 @@ public class HrPayService
         run.TotalInsuranceEmp = slips.Sum(s => s.InsuranceAmount);
         run.TotalInsuranceEr = slips.Sum(s => s.EmployerInsurance);
         if (run.Status == "Approved") run.Status = "Draft"; // محاسبه مجدد → پیش‌نویس
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("hr-pay");
+        return run;
+    }
+
+    /// <summary>محاسبه عیدی و پاداش پایان سال: ۲×مبنای آخرین حقوق تا سقف ۳×حداقل مزد، به نسبت کارکرد سال (بدون بیمه)</summary>
+    public async Task<HrPayRun> CalculateEydiAsync(HrPayRun run)
+    {
+        var rules = await GetPayRulesAsync();
+        var minWage = await _hrtime.EffectiveMinWageAsync(run.Year);
+        var brackets = await _db.HrPayTaxBrackets.AsNoTracking().Where(b => b.Year == run.Year).ToListAsync();
+        var exempt = R(rules, "pay.tax.eydi.exemption", 0);
+        var yStart = PersianDate.ToGregorian(run.Year, 1, 1);
+        var yEnd = PersianDate.ToGregorian(run.Year + 1, 1, 1);
+        var employees = await _db.HrEmployees.AsNoTracking().Where(e => e.Status == HrEmployeeStatus.Active).ToListAsync();
+        var monthlyRunIds = await _db.HrPayRuns.AsNoTracking()
+            .Where(r => r.Year == run.Year && r.Kind == "Monthly").Select(r => r.Id).ToListAsync();
+        _db.HrPaySlips.RemoveRange(_db.HrPaySlips.Where(x => x.RunId == run.Id));
+        await _db.SaveChangesAsync();
+        foreach (var emp in employees)
+        {
+            var from = emp.HireDate.Date > yStart ? emp.HireDate.Date : yStart;
+            var daysIn = Math.Max(0, (yEnd - from).TotalDays);
+            var factor = Math.Min(1, daysIn / 365.0);
+            decimal? lastGross = null;
+            if (monthlyRunIds.Count > 0)
+                lastGross = await _db.HrPaySlips.AsNoTracking()
+                    .Where(x => monthlyRunIds.Contains(x.RunId) && x.EmployeeId == emp.Id)
+                    .OrderByDescending(x => x.RunId).Select(x => (decimal?)x.GrossEarnings).FirstOrDefaultAsync();
+            var basis = lastGross ?? emp.BaseSalary;
+            var full = Math.Min(2 * basis, 3 * minWage);
+            var eydi = Math.Round(full * (decimal)factor);
+            var tax = eydi <= 0 ? 0 : CalcTax(Math.Max(0, eydi - exempt), brackets);
+            var uid = await _hrtime.UserIdOfEmployeeAsync(emp.Id);
+            var lines = new List<SlipLine>
+            {
+                new("EYDI", "عیدی و پاداش پایان سال", "Earning", eydi, true, false),
+            };
+            _db.HrPaySlips.Add(new HrPaySlip
+            {
+                RunId = run.Id, EmployeeId = emp.Id, UserId = uid,
+                EmployeeName = $"{emp.FirstName} {emp.LastName}".Trim(),
+                DaysPaid = 30, DaysWorked = Math.Round(daysIn), BaseAmount = basis,
+                GrossEarnings = eydi, TaxableAmount = eydi, InsuranceableAmount = 0,
+                TaxAmount = tax, InsuranceAmount = 0, EmployerInsurance = 0,
+                OtherDeductions = 0, NetPay = eydi - tax,
+                DetailsJson = JsonSerializer.Serialize(lines),
+            });
+        }
+        await _db.SaveChangesAsync();
+        var slips = await _db.HrPaySlips.AsNoTracking().Where(x => x.RunId == run.Id).ToListAsync();
+        run.SlipCount = slips.Count;
+        run.TotalGross = slips.Sum(x => x.GrossEarnings);
+        run.TotalDeductions = slips.Sum(x => x.TaxAmount);
+        run.TotalNet = slips.Sum(x => x.NetPay);
+        run.TotalTax = slips.Sum(x => x.TaxAmount);
+        run.TotalInsuranceEmp = 0;
+        run.TotalInsuranceEr = 0;
+        if (run.Status == "Approved") run.Status = "Draft";
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("hr-pay");
         return run;
@@ -772,5 +842,113 @@ public class HrPayService
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("hr-pay");
         return s;
+    }
+
+    // ================= فاز ۳: بایگانی ارسال لیست‌های قانونی =================
+
+    public record PreflightResult(List<string> Errors, List<string> Warnings);
+    public record VerifyResult(bool Match, string CurrentHash, List<string> Diffs);
+
+    public static string NormFilingKind(string kind)
+        => kind is "Insurance" or "Tax" or "Bank" ? kind : throw new InvalidOperationException("نوع لیست نامعتبر است.");
+
+    public async Task<PreflightResult> PreflightAsync(int runId, string kind)
+    {
+        kind = NormFilingKind(kind);
+        var run = await _db.HrPayRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == runId)
+            ?? throw new InvalidOperationException("دوره پیدا نشد.");
+        var errors = new List<string>(); var warnings = new List<string>();
+        var slips = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).ToListAsync();
+        if (slips.Count == 0) { errors.Add("دوره محاسبه نشده است (فیشی ندارد)."); return new(errors, warnings); }
+        if (run.Status == "Draft") errors.Add("دوره هنوز تأیید نشده است؛ ابتدا تأیید کنید.");
+        var rows = await SlipRowsAsync(runId);
+        var noNat = rows.Where(r => string.IsNullOrWhiteSpace(r.NationalCode)).Select(r => r.Slip.EmployeeName).ToList();
+        if (noNat.Count > 0) errors.Add($"کد ملی ثبت نشده: {string.Join("، ", noNat.Take(5))}" + (noNat.Count > 5 ? " و…" : ""));
+        if (kind == "Insurance")
+        {
+            var noIns = rows.Where(r => string.IsNullOrWhiteSpace(r.InsuranceNo)).Select(r => r.Slip.EmployeeName).ToList();
+            if (noIns.Count > 0) errors.Add($"شماره بیمه ثبت نشده: {string.Join("، ", noIns.Take(5))}" + (noIns.Count > 5 ? " و…" : ""));
+        }
+        if (kind == "Bank")
+        {
+            var noIban = rows.Where(r => string.IsNullOrWhiteSpace(r.Iban)).Select(r => r.Slip.EmployeeName).ToList();
+            if (noIban.Count > 0) errors.Add($"شبا ثبت نشده: {string.Join("، ", noIban.Take(5))}" + (noIban.Count > 5 ? " و…" : ""));
+        }
+        var badNet = slips.Where(s => s.NetPay <= 0).Select(s => s.EmployeeName).ToList();
+        if (badNet.Count > 0) errors.Add($"خالص نامعتبر (صفر/منفی): {string.Join("، ", badNet.Take(5))}");
+        if (run.Status != "Locked") warnings.Add("دوره قفل نهایی نشده است.");
+        var (start, end) = JMonthRange(run.Year, run.Month);
+        var pendOt = await _db.HrOtApprovals.AsNoTracking()
+            .CountAsync(x => x.WorkDate >= start && x.WorkDate < end && x.Status == "Pending");
+        if (pendOt > 0) warnings.Add($"{pendOt} ردیف اضافه‌کار معلق در این ماه وجود دارد.");
+        var closed = await _db.HrAttendCloses.AsNoTracking()
+            .AnyAsync(c => c.Year == run.Year && c.Month == run.Month && c.IsClosed);
+        if (!closed) warnings.Add("ماه کارکرد بسته نشده است.");
+        List<CompareRow> cmp;
+        try { cmp = await CompareAsync(runId); } catch { cmp = new(); }
+        var flagged = cmp.Where(c => c.Flag).ToList();
+        if (flagged.Count > 0) warnings.Add($"{flagged.Count} نفر مغایرت بالای آستانه با دوره قبل دارند (مثلاً {flagged[0].Name}).");
+        return new(errors, warnings);
+    }
+
+    public async Task<HrPayFiling> FileAsync(int runId, string kind, string byName, string? receiptNo, string? note)
+    {
+        kind = NormFilingKind(kind);
+        var pre = await PreflightAsync(runId, kind);
+        if (pre.Errors.Count > 0) throw new InvalidOperationException("ارسال ممکن نیست: " + string.Join(" | ", pre.Errors));
+        // بانک با فرمت متنی ثبت می‌شود تا هش بازتولید پایدار بماند (خروجی xlsx قطعی نیست)
+        var (bytes, name, _) = kind switch
+        {
+            "Tax" => await TaxFileAsync(runId, "txt"),
+            "Bank" => await BankFileAsync(runId, "csv"),
+            _ => await InsuranceFileAsync(runId, "txt"),
+        };
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+        var slips = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).ToListAsync();
+        var f = await _db.HrPayFilings.FirstOrDefaultAsync(x => x.RunId == runId && x.Kind == kind);
+        if (f == null) { f = new HrPayFiling { RunId = runId, Kind = kind }; _db.HrPayFilings.Add(f); }
+        else f.Version++;
+        f.FileName = name; f.Sha256 = hash;
+        f.SlipCount = slips.Count;
+        f.TotalGross = slips.Sum(s => s.GrossEarnings);
+        f.TotalTax = slips.Sum(s => s.TaxAmount);
+        f.TotalInsurance = slips.Sum(s => s.InsuranceAmount + s.EmployerInsurance);
+        f.TotalNet = slips.Sum(s => s.NetPay);
+        f.FiledBy = byName; f.FiledAt = DateTime.Now;
+        f.ReceiptNo = receiptNo; f.Note = note;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("hr-pay");
+        return f;
+    }
+
+    public async Task<VerifyResult> VerifyFilingAsync(int runId, string kind)
+    {
+        kind = NormFilingKind(kind);
+        var f = await _db.HrPayFilings.AsNoTracking().FirstOrDefaultAsync(x => x.RunId == runId && x.Kind == kind)
+            ?? throw new InvalidOperationException("برای این دوره ارسالی ثبت نشده است.");
+        var (bytes, _, _) = kind switch
+        {
+            "Tax" => await TaxFileAsync(runId, "txt"),
+            "Bank" => await BankFileAsync(runId, "csv"),
+            _ => await InsuranceFileAsync(runId, "txt"),
+        };
+        var hash = Convert.ToHexString(SHA256.HashData(bytes));
+        var diffs = new List<string>();
+        if (!hash.Equals(f.Sha256, StringComparison.OrdinalIgnoreCase))
+            diffs.Add("فایل بازتولیدشده با فایل ارسال‌شده فرق دارد.");
+        var slips = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).ToListAsync();
+        if (slips.Count != f.SlipCount) diffs.Add($"تعداد فیش: {f.SlipCount} ← {slips.Count}");
+        if (slips.Sum(s => s.GrossEarnings) != f.TotalGross) diffs.Add("جمع ناخالص تغییر کرده.");
+        if (slips.Sum(s => s.TaxAmount) != f.TotalTax) diffs.Add("جمع مالیات تغییر کرده.");
+        if (slips.Sum(s => s.InsuranceAmount + s.EmployerInsurance) != f.TotalInsurance) diffs.Add("جمع بیمه تغییر کرده.");
+        if (slips.Sum(s => s.NetPay) != f.TotalNet) diffs.Add("جمع خالص تغییر کرده.");
+        return new(diffs.Count == 0, hash, diffs);
+    }
+
+    public async Task<List<HrPayFiling>> FilingsAsync(int? runId)
+    {
+        var q = _db.HrPayFilings.AsNoTracking().AsQueryable();
+        if (runId != null) q = q.Where(x => x.RunId == runId);
+        return await q.OrderByDescending(x => x.FiledAt).Take(500).ToListAsync();
     }
 }
