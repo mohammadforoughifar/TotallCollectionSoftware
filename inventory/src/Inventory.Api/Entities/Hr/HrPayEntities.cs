@@ -47,6 +47,8 @@ public class HrPayProfile
     [MaxLength(30)] public string? AccountNo { get; set; }
     /// <summary>معافیت مالیاتی اضافه (ریال/ماه — جانبازی و...)</summary>
     public decimal ExtraTaxExempt { get; set; }
+    /// <summary>شغل سخت و زیان‌آور (۴٪ اضافه بیمه سهم کارفرما)</summary>
+    public bool IsHardJob { get; set; }
 }
 
 /// <summary>پلکان مالیات حقوق یک سال (مبالغ ماهانه به ریال، نرخ به درصد)</summary>
@@ -107,6 +109,8 @@ public class HrPayRun
     public int Id { get; set; }
     public int Year { get; set; }
     public int Month { get; set; }
+    /// <summary>Monthly=حقوق ماه | Eydi=عیدی و پاداش پایان سال</summary>
+    [MaxLength(10)] public string Kind { get; set; } = "Monthly";
     [MaxLength(20)] public string Status { get; set; } = "Draft";
     public int SlipCount { get; set; }
     public decimal TotalGross { get; set; }
@@ -161,4 +165,24 @@ public class HrPaySettlement
     public decimal TotalAmount { get; set; }
     [MaxLength(20)] public string Status { get; set; } = "Draft";
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>بایگانی ارسال لیست‌های قانونی — Kind: Insurance=بیمه | Tax=مالیات | Bank=بانک. هش فایل + جمع‌ها برای تشخیص تغییر پس از ارسال.</summary>
+public class HrPayFiling
+{
+    public int Id { get; set; }
+    public int RunId { get; set; }
+    [MaxLength(10)] public string Kind { get; set; } = "Insurance";
+    [MaxLength(150)] public string FileName { get; set; } = "";
+    [MaxLength(64)] public string Sha256 { get; set; } = "";
+    public int SlipCount { get; set; }
+    public decimal TotalGross { get; set; }
+    public decimal TotalTax { get; set; }
+    public decimal TotalInsurance { get; set; }
+    public decimal TotalNet { get; set; }
+    public int Version { get; set; } = 1;
+    [MaxLength(150)] public string FiledBy { get; set; } = "";
+    public DateTime FiledAt { get; set; } = DateTime.Now;
+    [MaxLength(100)] public string? ReceiptNo { get; set; }
+    [MaxLength(500)] public string? Note { get; set; }
 }

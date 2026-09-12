@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Services;
+using Inventory.Api.Services.HrCore;
+using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,8 +17,9 @@ public class HrTimeController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly HrTimeService _svc;
+    private readonly IHrCoreService _hrcore;
 
-    public HrTimeController(AppDbContext db, HrTimeService svc) { _db = db; _svc = svc; }
+    public HrTimeController(AppDbContext db, HrTimeService svc, IHrCoreService hrcore) { _db = db; _svc = svc; _hrcore = hrcore; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyName => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -68,7 +71,7 @@ public class HrTimeController : ControllerBase
     public async Task<IActionResult> Grant([FromBody] GrantInput input)
     {
         if (!await IsHrAsync()) return Forbid();
-        if (input.Category is not ("Annual" or "Sick" or "Maternity" or "Unpaid"))
+        if (input.Category is not ("Annual" or "Sick" or "Maternity" or "Marriage" or "Bereavement" or "Hajj" or "Unpaid"))
             return BadRequest(new { message = "دسته مرخصی نامعتبر است." });
         await _svc.SetGrantAsync(input.UserId, input.Year, input.Category, Math.Max(0, input.Days));
         return Ok(new { ok = true });
@@ -335,8 +338,12 @@ public class HrTimeController : ControllerBase
     public async Task<IActionResult> ApplyPunches([FromBody] ApplyInput input)
     {
         if (!await IsHrAsync()) return Forbid();
-        var r = await _svc.ApplyPunchesAsync(input.From, input.To);
-        return Ok(new { ok = true, punches = r.Punches, records = r.Records, unmapped = r.Unmapped });
+        try
+        {
+            var r = await _svc.ApplyPunchesAsync(input.From, input.To);
+            return Ok(new { ok = true, punches = r.Punches, records = r.Records, unmapped = r.Unmapped });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
     [HttpGet("device/punches")]
@@ -495,5 +502,217 @@ public class HrTimeController : ControllerBase
         if (input == null) return BadRequest(new { message = "داده‌ای ارسال نشده است." });
         await _svc.SaveGpsAsync(MyUserId, input.Date == default ? DateTime.Today : input.Date, input.IsEnter, input.Lat, input.Lng);
         return Ok(new { ok = true });
+    }
+
+    // ================= فاز ۱ قانونی =================
+
+    public class CarryoverInput { public int UserId { get; set; } public int Year { get; set; } }
+
+    /// <summary>بستن سال مرخصی: انتقال مانده استحقاقی تا سقف ۹ روز (ماده ۶۶) به سال بعد</summary>
+    [HttpPost("balances/carryover")]
+    public async Task<IActionResult> Carryover([FromBody] CarryoverInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        var r = await _svc.CarryoverCloseAsync(input.UserId, input.Year);
+        return Ok(new { ok = true, remaining = r.Remaining, carry = r.Carry, nextGrant = r.NextGrant });
+    }
+
+    [HttpGet("probations")]
+    public async Task<IActionResult> Probations([FromQuery] int? employeeId, [FromQuery] int endingWithinDays = 0)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        if (endingWithinDays > 0)
+        {
+            var soon = await _svc.ProbationsEndingSoonAsync(endingWithinDays);
+            var empIds = soon.Select(x => x.EmployeeId).Distinct().ToList();
+            var names = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id, e => $"{e.FirstName} {e.LastName}".Trim());
+            return Ok(soon.Select(x => new { x.Id, x.EmployeeId, Name = names.TryGetValue(x.EmployeeId, out var n) ? n : "", x.StartDate, x.EndDate, x.Months, x.SkillLevel, x.Status }));
+        }
+        var q = _db.HrProbations.AsNoTracking().AsQueryable();
+        if (employeeId != null) q = q.Where(x => x.EmployeeId == employeeId);
+        return Ok(await q.OrderByDescending(x => x.Id).Take(500).ToListAsync());
+    }
+
+    public class ProbationInput { public int EmployeeId { get; set; } public DateTime StartDate { get; set; } public int Months { get; set; } = 3; public string SkillLevel { get; set; } = "Skilled"; }
+
+    [HttpPost("probations")]
+    public async Task<IActionResult> StartProbation([FromBody] ProbationInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        try { return Ok(await _svc.StartProbationAsync(input.EmployeeId, input.StartDate == default ? DateTime.Today : input.StartDate, input.Months, input.SkillLevel)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    public class ProbationDecideInput { public bool Pass { get; set; } public string? Note { get; set; } }
+
+    [HttpPost("probations/{id:int}/complete")]
+    public async Task<IActionResult> CompleteProbation(int id, [FromBody] ProbationDecideInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        try { return Ok(await _svc.CompleteProbationAsync(id, input?.Pass == true, input?.Note, MyName)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    /// <summary>اعتبارسنجی کد ملی با الگوریتم check-digit</summary>
+    [HttpGet("validate-national/{code}")]
+    public async Task<IActionResult> ValidateNational(string code)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        return Ok(new { code, valid = HrTimeService.IsValidIranianNationalCode(code) });
+    }
+
+    /// <summary>ثبت پرسنل با اعتبارسنجی کد ملی (بدون هیچ تغییری در سرویس کارگزینی)</summary>
+    [HttpPost("employees")]
+    public async Task<IActionResult> CreateEmployee([FromBody] HrEmployeeSaveDto dto)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        if (dto == null) return BadRequest(new { message = "داده‌ای ارسال نشده است." });
+        if (!HrTimeService.IsValidIranianNationalCode(dto.NationalCode))
+            return BadRequest(new { message = "کد ملی معتبر نیست (رقم کنترل اشتباه است)." });
+        try { return Ok(await _hrcore.CreateEmployeeAsync(dto)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpGet("minwages")]
+    public async Task<IActionResult> MinWages()
+    {
+        if (!await IsHrAsync()) return Forbid();
+        return Ok(await _db.HrMinWages.AsNoTracking().OrderByDescending(x => x.Year).ToListAsync());
+    }
+
+    public class MinWageInput { public int Year { get; set; } public decimal MonthlyWage { get; set; } public DateTime? EffectiveDate { get; set; } public string? Note { get; set; } }
+
+    [HttpPost("minwages")]
+    public async Task<IActionResult> SaveMinWage([FromBody] MinWageInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        try { return Ok(await _svc.SaveMinWageAsync(input.Year, input.MonthlyWage, input.EffectiveDate, input.Note)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpGet("nursing")]
+    public async Task<IActionResult> Nursing([FromQuery] int employeeId)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        var nb = await _svc.ActiveNursingAsync(employeeId);
+        if (nb == null) return NotFound();
+        return Ok(nb);
+    }
+
+    public class NursingInput { public int EmployeeId { get; set; } public DateTime ChildBirthDate { get; set; } }
+
+    [HttpPost("nursing")]
+    public async Task<IActionResult> SetNursing([FromBody] NursingInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        try { return Ok(await _svc.SetNursingAsync(input.EmployeeId, input.ChildBirthDate)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    /// <summary>موظفی روزانه با لحاظ ارفاق شیردهی</summary>
+    [HttpGet("obligation")]
+    public async Task<IActionResult> Obligation([FromQuery] int? userId, [FromQuery] DateTime? date)
+    {
+        var uid = userId ?? MyUserId;
+        if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        var r = await _svc.DailyObligationAsync(uid, date ?? DateTime.Today);
+        return Ok(new { scheduledMin = r.ScheduledMin, nursingMin = r.NursingMin, requiredMin = r.RequiredMin });
+    }
+
+    // ================= فاز ۲: کارکرد ماهانه، تأیید اضافه‌کار، بستن ماه =================
+
+    [HttpGet("attendance")]
+    public async Task<IActionResult> Attendance([FromQuery] int? userId, [FromQuery] int jy, [FromQuery] int jm)
+    {
+        var uid = userId ?? MyUserId;
+        if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        if (jy is < 1300 or > 1500 || jm is < 1 or > 12)
+            return BadRequest(new { message = "سال/ماه نامعتبر است." });
+        return Ok(await _svc.MonthAttendanceAsync(uid, jy, jm));
+    }
+
+    [HttpGet("ot-approvals")]
+    public async Task<IActionResult> OtApprovals([FromQuery] int? userId, [FromQuery] int jy, [FromQuery] int jm)
+    {
+        var uid = userId ?? MyUserId;
+        if (uid != MyUserId && !await IsHrAsync()) return Forbid();
+        if (jy is < 1300 or > 1500 || jm is < 1 or > 12)
+            return BadRequest(new { message = "سال/ماه نامعتبر است." });
+        var rows = await _svc.OtApprovalsAsync(uid == MyUserId && !await IsHrAsync() ? MyUserId : uid, jy, jm);
+        return Ok(rows);
+    }
+
+    public class OtDecideInput
+    {
+        public int UserId { get; set; }
+        public DateTime Date { get; set; }
+        public bool Approve { get; set; } = true;
+        public int N { get; set; }
+        public int H { get; set; }
+        public int Ni { get; set; }
+        public string? Note { get; set; }
+    }
+
+    [HttpPost("ot-approvals/decide")]
+    public async Task<IActionResult> DecideOt([FromBody] OtDecideInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        try
+        {
+            var a = await _svc.DecideOtAsync(input.UserId, input.Date, input.Approve,
+                input.N, input.H, input.Ni, MyUserId, MyName, input.Note);
+            return Ok(a);
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    public class OtDecideMonthInput
+    {
+        public int UserId { get; set; }
+        public int Jy { get; set; }
+        public int Jm { get; set; }
+        public bool Approve { get; set; } = true;
+    }
+
+    [HttpPost("ot-approvals/decide-month")]
+    public async Task<IActionResult> DecideOtMonth([FromBody] OtDecideMonthInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        try
+        {
+            var n = await _svc.DecideOtMonthAsync(input.UserId, input.Jy, input.Jm, input.Approve, MyUserId, MyName);
+            return Ok(new { ok = true, count = n });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    public class AttendCloseInput
+    {
+        public int Jy { get; set; }
+        public int Jm { get; set; }
+        public bool Closed { get; set; } = true;
+        public string? Note { get; set; }
+    }
+
+    [HttpPost("attend-close")]
+    public async Task<IActionResult> AttendClose([FromBody] AttendCloseInput input)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        try
+        {
+            var c = await _svc.SetMonthClosedAsync(input.Jy, input.Jm, input.Closed, MyName, input.Note);
+            return Ok(c);
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    [HttpGet("attend-close")]
+    public async Task<IActionResult> AttendCloseStatus([FromQuery] int jy, [FromQuery] int jm)
+    {
+        if (!await IsHrAsync()) return Forbid();
+        if (jy is < 1300 or > 1500 || jm is < 1 or > 12)
+            return BadRequest(new { message = "سال/ماه نامعتبر است." });
+        return Ok(new { jy, jm, closed = await _svc.IsMonthClosedAsync(jy, jm) });
     }
 }

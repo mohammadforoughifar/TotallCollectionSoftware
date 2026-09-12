@@ -173,6 +173,12 @@
                             <i class="bi bi-cash-stack"></i><span>حقوق و دستمزد</span>
                         </NavLink>
                     }
+                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("HrPay.Read") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="hr-performance" @onclick="NotifyClose">
+                            <i class="bi bi-graph-up-arrow"></i><span>ارزیابی عملکرد</span>
+                        </NavLink>
+                    }
                 </div>
             }
         </div>

@@ -165,6 +165,11 @@ public class AppDbContext : DbContext
     public DbSet<HrLeaveExtra> HrLeaveExtras => Set<HrLeaveExtra>();
     public DbSet<HrDayExtra> HrDayExtras => Set<HrDayExtra>();
     public DbSet<HrUserLink> HrUserLinks => Set<HrUserLink>();
+    public DbSet<HrProbation> HrProbations => Set<HrProbation>();
+    public DbSet<HrMinWage> HrMinWages => Set<HrMinWage>();
+    public DbSet<HrNursingBreak> HrNursingBreaks => Set<HrNursingBreak>();
+    public DbSet<HrOtApproval> HrOtApprovals => Set<HrOtApproval>();
+    public DbSet<HrAttendClose> HrAttendCloses => Set<HrAttendClose>();
     public DbSet<HrPayItem> HrPayItems => Set<HrPayItem>();
     public DbSet<HrPayEmployeeItem> HrPayEmployeeItems => Set<HrPayEmployeeItem>();
     public DbSet<HrPayProfile> HrPayProfiles => Set<HrPayProfile>();
@@ -175,6 +180,11 @@ public class AppDbContext : DbContext
     public DbSet<HrPayRun> HrPayRuns => Set<HrPayRun>();
     public DbSet<HrPaySlip> HrPaySlips => Set<HrPaySlip>();
     public DbSet<HrPaySettlement> HrPaySettlements => Set<HrPaySettlement>();
+    public DbSet<HrPayFiling> HrPayFilings => Set<HrPayFiling>();
+    public DbSet<HrPerfPeriod> HrPerfPeriods => Set<HrPerfPeriod>();
+    public DbSet<HrPerfKpi> HrPerfKpis => Set<HrPerfKpi>();
+    public DbSet<HrPerfScore> HrPerfScores => Set<HrPerfScore>();
+    public DbSet<HrPerfResult> HrPerfResults => Set<HrPerfResult>();
 
     // ==================== ماژول پیام‌رسان سازمانی (Chat) ====================
     public DbSet<Inventory.Api.Entities.Chat.ChatConversation> ChatConversations => Set<Inventory.Api.Entities.Chat.ChatConversation>();

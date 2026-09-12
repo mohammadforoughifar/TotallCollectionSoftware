@@ -64,19 +64,21 @@
                 <div class="d-flex gap-2 mb-2 align-items-end">
                     <div><label class="form-label small">سال</label><input type="number" class="form-control form-control-sm" style="width:90px" @bind="newYear" /></div>
                     <div><label class="form-label small">ماه</label><input type="number" class="form-control form-control-sm" style="width:70px" @bind="newMonth" /></div>
+                    <div><label class="form-label small">نوع</label><select class="form-select form-select-sm" @bind="newKind"><option value="Monthly">حقوق ماه</option><option value="Eydi">عیدی پایان سال</option></select></div>
                     <button class="btn btn-sm btn-primary" @onclick="CreateRun" disabled="@busy">دوره جدید</button>
                     <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadRuns">به‌روزرسانی</button>
                 </div>
             }
             <div class="table-responsive">
                 <table class="table table-striped table-sm align-middle">
-                    <thead><tr><th>دوره</th><th>وضعیت</th><th>فیش</th><th>ناخالص</th><th>خالص</th><th>مالیات</th><th>بیمه کارگر/کارفرما</th><th>سند</th><th></th></tr></thead>
+                    <thead><tr><th>دوره</th><th>نوع</th><th>وضعیت</th><th>فیش</th><th>ناخالص</th><th>خالص</th><th>مالیات</th><th>بیمه کارگر/کارفرما</th><th>سند</th><th></th></tr></thead>
                     <tbody>
                         @foreach (var r in runs)
                         {
                             var x = r;
                             <tr>
                                 <td>@Fa.Digits($"{x.Year}/{x.Month:D2}")</td>
+                                <td>@(x.Kind == "Eydi" ? "عیدی" : "ماهانه")</td>
                                 <td><span class="badge @RunCls(x.Status)">@RunFa(x.Status)</span></td>
                                 <td>@Fa.Digits(x.SlipCount.ToString())</td>
                                 <td>@Fa.Digits(x.TotalGross.ToString("N0"))</td>
@@ -444,6 +446,71 @@
                     </div></div>
                 </div>
             </div>
+            <div class="row g-3 mt-1">
+                <div class="col-md-5">
+                    <div class="card"><div class="card-body">
+                        <h6>کنترل پیش از ارسال</h6>
+                        <div class="d-flex gap-2 align-items-end flex-wrap">
+                            <div><label class="form-label small">نوع لیست</label><select class="form-select form-select-sm" @bind="filPreKind"><option value="Insurance">بیمه</option><option value="Tax">مالیات</option><option value="Bank">بانک</option></select></div>
+                            <button class="btn btn-sm btn-outline-primary" @onclick="LoadPreflight" disabled="@busy">بررسی</button>
+                        </div>
+                        @if (filPre != null)
+                        {
+                            @if (filPre.Errors.Count == 0){<div class="alert alert-success small py-1 mt-2 mb-1">آماده ارسال است.</div>}
+                            @foreach (var e in filPre.Errors){<div class="alert alert-danger small py-1 mt-1 mb-1">@e</div>}
+                            @foreach (var w in filPre.Warnings){<div class="alert alert-warning small py-1 mt-1 mb-1">@w</div>}
+                        }
+                    </div></div>
+                </div>
+                @if (isMgr)
+                {
+                    <div class="col-md-7">
+                        <div class="card"><div class="card-body">
+                            <h6>ثبت ارسال لیست</h6>
+                            <div class="d-flex gap-2 align-items-end flex-wrap">
+                                <div><label class="form-label small">نوع لیست</label><select class="form-select form-select-sm" @bind="filKind"><option value="Insurance">بیمه</option><option value="Tax">مالیات</option><option value="Bank">بانک</option></select></div>
+                                <div><label class="form-label small">شماره رسید</label><input class="form-control form-control-sm" style="width:130px" @bind="filReceipt" /></div>
+                                <div><label class="form-label small">یادداشت</label><input class="form-control form-control-sm" @bind="filNote" /></div>
+                                <button class="btn btn-sm btn-success" @onclick="FileList" disabled="@busy">ثبت ارسال</button>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="LoadFilings">به‌روزرسانی</button>
+                            </div>
+                        </div></div>
+                    </div>
+                }
+            </div>
+            <div class="card mt-3"><div class="card-body">
+                <h6>بایگانی ارسال‌ها</h6>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm align-middle">
+                        <thead><tr><th>نوع</th><th>فایل</th><th>هش</th><th>فیش</th><th>ناخالص/خالص</th><th>توسط</th><th>رسید</th><th>نسخه</th><th>صحت</th></tr></thead>
+                        <tbody>
+                            @foreach (var f in filings.Where(x => x.RunId == expRunId))
+                            {
+                                var v = f;
+                                <tr>
+                                    <td>@FilingKindFa(v.Kind)</td>
+                                    <td dir="ltr" class="small">@v.FileName</td>
+                                    <td dir="ltr" class="small">@(v.Sha256.Length > 12 ? v.Sha256.Substring(0, 12) + "…" : v.Sha256)</td>
+                                    <td>@Fa.Digits(v.SlipCount)</td>
+                                    <td>@Fa.Digits(v.TotalGross.ToString("N0")) / @Fa.Digits(v.TotalNet.ToString("N0"))</td>
+                                    <td>@v.FiledBy <span class="text-muted small">@Fa.Digits(v.FiledAt.ToString("MM/dd HH:mm"))</span></td>
+                                    <td>@(v.ReceiptNo ?? "—")</td>
+                                    <td>@Fa.Digits(v.Version)</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-info" @onclick="() => VerifyFiling(v.Kind)" disabled="@busy">بررسی صحت</button>
+                                        @if (verKind == v.Kind && verMatch != null)
+                                        {
+                                            <span class="badge @(verMatch.Value ? "bg-success" : "bg-danger") ms-1">@(verMatch.Value ? "سالم" : "تغییر کرده")</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                            @if (!filings.Any(x => x.RunId == expRunId)){<tr><td colspan="9" class="text-muted text-center">ارسالی ثبت نشده است.</td></tr>}
+                        </tbody>
+                    </table>
+                </div>
+                @if (!string.IsNullOrEmpty(verDiff)){<div class="alert alert-danger small py-1 mt-2 mb-0">@verDiff</div>}
+            </div></div>
         }
     </div>
 </div>
@@ -547,6 +614,7 @@
         <div class="col-8"><label class="form-label small">شبا</label><input class="form-control form-control-sm" dir="ltr" @bind="pfIban" /></div>
         <div class="col-6"><label class="form-label small">شماره حساب</label><input type="number" class="form-control form-control-sm" @bind="pfAcc" /></div>
         <div class="col-6"><label class="form-label small">معافیت مالیاتی اضافه</label><input type="number" class="form-control form-control-sm" @bind="pfExempt" /></div>
+        <div class="col-6 d-flex align-items-end"><div class="form-check"><input type="checkbox" class="form-check-input" id="pfHard" @bind="pfHard" /><label class="form-check-label small" for="pfHard">شغل سخت و زیان‌آور (۴٪ بیمه اضافه)</label></div></div>
     </div>
     <div class="d-flex gap-2 mt-3">
         <button class="btn btn-sm btn-primary" @onclick="SubmitProfile" disabled="@busy">ذخیره</button>
@@ -608,7 +676,7 @@
         else if (tab == "profiles") { await EnsureEmployees(); await LoadProfiles(); await LoadEmpItems(); }
         else if (tab == "tax") { await LoadBrackets(); await LoadRules(); }
         else if (tab == "settle") { await EnsureEmployees(); await LoadSettlements(); }
-        else if (tab == "exports") { if (runs.Count == 0) await LoadRuns(); if (expRunId == 0 && runs.Count > 0) expRunId = runs[0].Id; }
+        else if (tab == "exports") { if (runs.Count == 0) await LoadRuns(); if (expRunId == 0 && runs.Count > 0) expRunId = runs[0].Id; await LoadFilings(); }
     }
     protected override async Task OnInitializedAsync() => await LoadMySlips();
 
@@ -655,7 +723,7 @@
     }
 
     private List<RunDto> runs = new();
-    private int newYear = 1405; private int newMonth = 6;
+    private int newYear = 1405; private int newMonth = 6; private string newKind = "Monthly";
     private async Task LoadRuns()
     {
         try { runs = await Http.GetFromJsonAsync<List<RunDto>>("/api/hr-pay/runs") ?? new(); }
@@ -666,7 +734,9 @@
         busy = true;
         try
         {
-            var r = await Http.PostAsJsonAsync("/api/hr-pay/runs", new { year = newYear, month = newMonth });
+            var r = newKind == "Eydi"
+                ? await Http.PostAsJsonAsync("/api/hr-pay/runs/eydi", new { year = newYear })
+                : await Http.PostAsJsonAsync("/api/hr-pay/runs", new { year = newYear, month = newMonth });
             if (r.IsSuccessStatusCode) { Toast.Success("دوره ساخته شد."); await LoadRuns(); }
             else Toast.Error(await Err(r) ?? "خطا");
         }
@@ -885,13 +955,13 @@
         else Toast.Error(await Err(r) ?? "خطا");
     }
     private bool showProfile; private int pfEmp; private int pfChildren; private string? pfIns, pfBank, pfIban, pfAcc;
-    private decimal pfExempt;
+    private decimal pfExempt; private bool pfHard;
     private void OpenProfile(int empId)
     {
         pfEmp = empId;
         var p = profiles.FirstOrDefault(v => v.EmployeeId == empId);
         pfChildren = p?.ChildrenCount ?? 0; pfIns = p?.InsuranceNo; pfBank = p?.BankName;
-        pfIban = p?.Iban; pfAcc = p?.AccountNo; pfExempt = p?.ExtraTaxExempt ?? 0;
+        pfIban = p?.Iban; pfAcc = p?.AccountNo; pfExempt = p?.ExtraTaxExempt ?? 0; pfHard = p?.IsHardJob ?? false;
         showProfile = true;
     }
     private async Task SubmitProfile()
@@ -899,7 +969,7 @@
         busy = true;
         try
         {
-            var r = await Http.PostAsJsonAsync("/api/hr-pay/profiles", new { employeeId = pfEmp, childrenCount = pfChildren, insuranceNo = pfIns, bankName = pfBank, iban = pfIban, accountNo = pfAcc, extraTaxExempt = pfExempt });
+            var r = await Http.PostAsJsonAsync("/api/hr-pay/profiles", new { employeeId = pfEmp, childrenCount = pfChildren, insuranceNo = pfIns, bankName = pfBank, iban = pfIban, accountNo = pfAcc, extraTaxExempt = pfExempt, isHardJob = pfHard });
             if (r.IsSuccessStatusCode) { Toast.Success("ذخیره شد."); showProfile = false; await LoadProfiles(); }
             else Toast.Error(await Err(r) ?? "خطا");
         }
@@ -1013,6 +1083,57 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    private static string FilingKindFa(string k) => k switch { "Insurance" => "بیمه", "Tax" => "مالیات", "Bank" => "بانک", _ => k };
+    private List<FilingDto> filings = new();
+    private string filPreKind = "Insurance"; private PreflightDto? filPre;
+    private string filKind = "Insurance"; private string? filReceipt; private string? filNote;
+    private string? verKind; private bool? verMatch; private string? verDiff;
+    private async Task LoadFilings()
+    {
+        try { filings = await Http.GetFromJsonAsync<List<FilingDto>>($"/api/hr-pay/filings?runId={expRunId}") ?? new(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task LoadPreflight()
+    {
+        busy = true; filPre = null;
+        try { filPre = await Http.GetFromJsonAsync<PreflightDto>($"/api/hr-pay/filings/preflight?runId={expRunId}&kind={filPreKind}"); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task FileList()
+    {
+        busy = true;
+        try
+        {
+            var r = await Http.PostAsJsonAsync("/api/hr-pay/filings", new { runId = expRunId, kind = filKind, receiptNo = filReceipt, note = filNote });
+            if (r.IsSuccessStatusCode) { Toast.Success("ارسال ثبت شد."); filReceipt = null; filNote = null; await LoadFilings(); }
+            else Toast.Error(await Err(r) ?? "خطا");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private async Task VerifyFiling(string kind)
+    {
+        busy = true; verKind = kind; verMatch = null; verDiff = null;
+        try
+        {
+            var v = await Http.GetFromJsonAsync<VerifyDto>($"/api/hr-pay/filings/verify?runId={expRunId}&kind={kind}");
+            if (v != null) { verMatch = v.Match; if (!v.Match) verDiff = string.Join(" | ", v.Diffs); }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        busy = false;
+    }
+    private class FilingDto
+    {
+        public int RunId { get; set; } public string Kind { get; set; } = "";
+        public string FileName { get; set; } = ""; public string Sha256 { get; set; } = "";
+        public int SlipCount { get; set; } public decimal TotalGross { get; set; } public decimal TotalNet { get; set; }
+        public string FiledBy { get; set; } = ""; public DateTime FiledAt { get; set; }
+        public string? ReceiptNo { get; set; } public int Version { get; set; }
+    }
+    private class PreflightDto { public List<string> Errors { get; set; } = new(); public List<string> Warnings { get; set; } = new(); public bool CanFile { get; set; } }
+    private class VerifyDto { public bool Match { get; set; } public string CurrentHash { get; set; } = ""; public List<string> Diffs { get; set; } = new(); }
+
     private class MySlipDto
     {
         public int Id { get; set; } public int RunId { get; set; } public int Year { get; set; } public int Month { get; set; }
@@ -1021,7 +1142,7 @@
     }
     private class RunDto
     {
-        public int Id { get; set; } public int Year { get; set; } public int Month { get; set; }
+        public int Id { get; set; } public int Year { get; set; } public int Month { get; set; } public string Kind { get; set; } = "";
         public string Status { get; set; } = ""; public int SlipCount { get; set; }
         public decimal TotalGross { get; set; } public decimal TotalNet { get; set; } public decimal TotalTax { get; set; }
         public decimal TotalInsuranceEmp { get; set; } public decimal TotalInsuranceEr { get; set; }
@@ -1083,7 +1204,7 @@
     {
         public int EmployeeId { get; set; } public int ChildrenCount { get; set; }
         public string? InsuranceNo { get; set; } public string? BankName { get; set; }
-        public string? Iban { get; set; } public string? AccountNo { get; set; } public decimal ExtraTaxExempt { get; set; }
+        public string? Iban { get; set; } public string? AccountNo { get; set; } public decimal ExtraTaxExempt { get; set; } public bool IsHardJob { get; set; }
     }
     private class EmpItemDto
     {

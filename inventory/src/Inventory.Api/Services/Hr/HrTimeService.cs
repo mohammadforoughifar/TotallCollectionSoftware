@@ -36,6 +36,10 @@ public class HrTimeService
         ("leave.sick.grant", "90", "سقف سالانه استعلاجی (روز)"),
         ("leave.maternity.grant", "270", "سقف مرخصی زایمان (روز)"),
         ("leave.unpaid.grant", "9999", "سقف سالانه بدون حقوق (روز)"),
+        ("leave.marriage.grant", "3", "مرخصی ازدواج (روز/سال — ماده ۷۳)"),
+        ("leave.bereavement.grant", "3", "مرخصی فوت بستگان (روز/سال — ماده ۷۳)"),
+        ("leave.hajj.grant", "30", "مرخصی حج (روز)"),
+        ("leave.carryover.cap", "9", "سقف ذخیره مرخصی استحقاقی (روز — ماده ۶۶)"),
         ("mission.allowance.inner", "0", "حق ماموریت داخل شهر (ریال/روز)"),
         ("mission.allowance.outer", "1000000", "حق ماموریت خارج شهر (ریال/روز)"),
     ];
@@ -77,7 +81,7 @@ public class HrTimeService
 
     // ================= موجودی مرخصی =================
 
-    public record BalanceRow(string Category, double Granted, double Used, double Pending, double Remaining);
+    public record BalanceRow(string Category, double Granted, double Used, double Pending, double Remaining, double Carryover);
 
     public async Task<List<BalanceRow>> GetBalancesAsync(int userId, int year)
     {
@@ -88,8 +92,12 @@ public class HrTimeService
             ["Annual"] = G("leave.annual.grant", 24),
             ["Sick"] = G("leave.sick.grant", 90),
             ["Maternity"] = G("leave.maternity.grant", 270),
+            ["Marriage"] = G("leave.marriage.grant", 3),
+            ["Bereavement"] = G("leave.bereavement.grant", 3),
+            ["Hajj"] = G("leave.hajj.grant", 30),
             ["Unpaid"] = G("leave.unpaid.grant", 9999),
         };
+        var carryCap = G("leave.carryover.cap", 9);
         // ردیف‌های ذخیره‌شده (قابل ویرایش دستی توسط کارگزینی) بر پیش‌فرض قوانین اولویت دارند
         var saved = await _db.HrLeaveBalances.AsNoTracking()
             .Where(b => b.UserId == userId && b.Year == year).ToListAsync();
@@ -103,14 +111,16 @@ public class HrTimeService
             : await _db.HrLeaveExtras.AsNoTracking().Where(x => reqIds.Contains(x.LeaveRequestId))
                 .ToDictionaryAsync(x => x.LeaveRequestId, x => x.Category);
         string CatOf(LeaveRequest l) => catMap.TryGetValue(l.Id, out var c) && !string.IsNullOrWhiteSpace(c) ? c : "Annual";
-        var cats = new[] { "Annual", "Sick", "Maternity", "Unpaid" };
+        var cats = new[] { "Annual", "Sick", "Maternity", "Marriage", "Bereavement", "Hajj", "Unpaid" };
         return cats.Select(c =>
         {
             var mine = reqs.Where(l => CatOf(l) == c && JalaliYear(l.StartDate) == year).ToList();
             var used = Math.Round(mine.Where(l => l.Status == "Approved").Sum(QuotaOf), 2);
             var pend = Math.Round(mine.Where(l => l.Status == "Pending").Sum(QuotaOf), 2);
             var g = grants[c];
-            return new BalanceRow(c, g, used, pend, Math.Round(g - used - pend, 2));
+            var rem = Math.Round(g - used - pend, 2);
+            var carry = c == "Annual" ? Math.Min(Math.Max(rem, 0), carryCap) : 0;
+            return new BalanceRow(c, g, used, pend, rem, Math.Round(carry, 2));
         }).ToList();
     }
 
@@ -273,6 +283,7 @@ public class HrTimeService
             o.Status = approve ? "Approved" : "Rejected";
             o.DecidedByUserId = byId; o.DecidedByName = byName; o.DecidedAt = DateTime.Now;
             if (!approve) o.Reason = (o.Reason ?? "") + (string.IsNullOrWhiteSpace(note) ? "" : $" [علت رد: {note}]");
+            if (approve) await UpsertManualOtApprovalAsync(o, byId, byName);
             await _db.SaveChangesAsync();
             await _notify.SendAsync(o.RequesterUserId, approve ? "اضافه‌کاری تایید شد" : "اضافه‌کاری رد شد",
                 $"{o.Number} توسط {byName} " + (approve ? "تایید شد." : $"رد شد. {note}"), byName, "اضافه‌کاری", "/hr-time");
@@ -448,6 +459,9 @@ public class HrTimeService
 
     public async Task<ApplyResult> ApplyPunchesAsync(DateTime from, DateTime to)
     {
+        for (var d = from.Date; d <= to.Date; d = d.AddDays(1))
+            if (await IsMonthClosedAsync(Pc.GetYear(d), Pc.GetMonth(d)))
+                throw new InvalidOperationException($"ماه {Pc.GetYear(d)}/{Pc.GetMonth(d):D2} بسته است؛ ابتدا بازگشایی کنید.");
         var punches = await _db.HrDevicePunches
             .Where(p => p.PunchTime >= from.Date && p.PunchTime < to.Date.AddDays(1) && p.AppliedRecordId == null && p.MappedUserId != null)
             .OrderBy(p => p.PunchTime).Take(5000).ToListAsync();
@@ -586,9 +600,12 @@ public class HrTimeService
             var d = start.AddDays(i);
             if (!have.Contains(d)) rows.Add(await ComputeDayExtrasAsync(userId, d));
         }
-        return new(Math.Round(rows.Sum(r => r.OtNormalMinutes) / 60.0, 2),
-                   Math.Round(rows.Sum(r => r.OtHolidayMinutes) / 60.0, 2),
-                   Math.Round(rows.Sum(r => r.OtNightMinutes) / 60.0, 2));
+        // فاز ۲: فقط اضافه‌کار تأییدشده وارد حقوق می‌شود
+        var appr = await _db.HrOtApprovals.AsNoTracking()
+            .Where(x => x.UserId == userId && x.WorkDate >= start && x.WorkDate < end && x.Status == "Approved").ToListAsync();
+        return new(Math.Round(appr.Sum(r => r.ApprNormalMin) / 60.0, 2),
+                   Math.Round(appr.Sum(r => r.ApprHolidayMin) / 60.0, 2),
+                   Math.Round(appr.Sum(r => r.ApprNightMin) / 60.0, 2));
     }
 
     /// <summary>ثبت مختصات ورود/خروج موبایل در جدول مجزا (بدون دست‌کاری تردد قبلی)</summary>
@@ -649,7 +666,7 @@ public class HrTimeService
         if (type == "HourlyMission" && string.IsNullOrWhiteSpace(destination))
             return new(false, "مقصد ماموریت را وارد کنید.");
 
-        var cat = category is "Annual" or "Sick" or "Maternity" or "Unpaid" ? category : "Annual";
+        var cat = category is "Annual" or "Sick" or "Maternity" or "Marriage" or "Bereavement" or "Hajj" or "Unpaid" ? category : "Annual";
         double consume = type == "Hourly" ? hours / HourlyWorkdayHours : days;
         if (type is "Daily" or "Hourly" && consume > 0)
         {
@@ -722,5 +739,333 @@ public class HrTimeService
             n++;
         }
         return n;
+    }
+
+    // ================= فاز ۱ قانونی =================
+
+    public record CarryoverResult(double Remaining, double Carry, double NextGrant);
+
+    /// <summary>بستن سال مرخصی: انتقال مانده استحقاقی تا سقف قانونی (ماده ۶۶) به سهمیه سال بعد</summary>
+    public async Task<CarryoverResult> CarryoverCloseAsync(int userId, int fromYear)
+    {
+        var rules = await GetRulesAsync();
+        var cap = rules.TryGetValue("leave.carryover.cap", out var cv) && double.TryParse(cv, out var cd) ? cd : 9;
+        var baseGrant = rules.TryGetValue("leave.annual.grant", out var gv) && double.TryParse(gv, out var gd) ? gd : 24;
+        var bal = (await GetBalancesAsync(userId, fromYear)).FirstOrDefault(b => b.Category == "Annual");
+        var rem = Math.Max(0, bal?.Remaining ?? 0);
+        var carry = Math.Min(rem, cap);
+        await SetGrantAsync(userId, fromYear + 1, "Annual", baseGrant + carry);
+        return new(Math.Round(rem, 2), Math.Round(carry, 2), Math.Round(baseGrant + carry, 2));
+    }
+
+    // ---------- دوره آزمایشی (ماده ۱۱) ----------
+
+    public async Task<HrProbation> StartProbationAsync(int employeeId, DateTime start, int months, string skillLevel)
+    {
+        if (months is not (1 or 3)) throw new InvalidOperationException("مدت آزمایشی ۱ یا ۳ ماه است (ماده ۱۱).");
+        if (skillLevel != "Simple" && skillLevel != "Skilled") skillLevel = months == 1 ? "Simple" : "Skilled";
+        if (!await _db.HrEmployees.AnyAsync(e => e.Id == employeeId))
+            throw new InvalidOperationException("پرونده پرسنلی پیدا نشد.");
+        var active = await _db.HrProbations.FirstOrDefaultAsync(x => x.EmployeeId == employeeId && x.Status == "Active");
+        if (active != null) throw new InvalidOperationException("این پرسنل دوره آزمایشی فعال دارد.");
+        var pr = new HrProbation
+        {
+            EmployeeId = employeeId, StartDate = start.Date, Months = months,
+            SkillLevel = skillLevel, EndDate = start.Date.AddMonths(months).AddDays(-1),
+        };
+        _db.HrProbations.Add(pr);
+        await _db.SaveChangesAsync();
+        return pr;
+    }
+
+    public async Task<HrProbation> CompleteProbationAsync(int id, bool pass, string? note, string byName)
+    {
+        var pr = await _db.HrProbations.FirstOrDefaultAsync(x => x.Id == id);
+        if (pr == null) throw new InvalidOperationException("دوره آزمایشی پیدا نشد.");
+        if (pr.Status != "Active") throw new InvalidOperationException("این دوره قبلاً تعیین‌تکلیف شده است.");
+        pr.Status = pass ? "Passed" : "Failed";
+        pr.ResultNote = note; pr.DecidedBy = byName; pr.DecidedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        return pr;
+    }
+
+    public async Task<List<HrProbation>> ProbationsEndingSoonAsync(int withinDays)
+    {
+        var to = DateTime.Today.AddDays(Math.Max(0, withinDays));
+        return await _db.HrProbations.AsNoTracking()
+            .Where(x => x.Status == "Active" && x.EndDate <= to).OrderBy(x => x.EndDate).ToListAsync();
+    }
+
+    // ---------- اعتبارسنجی کد ملی (الگوریتم check-digit) ----------
+
+    public static bool IsValidIranianNationalCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code) || code.Length != 10 || !code.All(char.IsDigit)) return false;
+        if (code.Distinct().Count() == 1) return false;
+        var sum = 0;
+        for (var i = 0; i < 9; i++) sum += (code[i] - '0') * (10 - i);
+        var r = sum % 11;
+        var check = r < 2 ? r : 11 - r;
+        return check == code[9] - '0';
+    }
+
+    // ---------- حداقل مزد مصوب سالانه ----------
+
+    public async Task<HrMinWage> SaveMinWageAsync(int year, decimal monthly, DateTime? effective, string? note)
+    {
+        if (monthly <= 0) throw new InvalidOperationException("مبلغ حداقل مزد معتبر نیست.");
+        var row = await _db.HrMinWages.FirstOrDefaultAsync(x => x.Year == year);
+        if (row == null) { row = new HrMinWage { Year = year }; _db.HrMinWages.Add(row); }
+        row.MonthlyWage = monthly;
+        row.DailyWage = Math.Round(monthly / 30, 0);
+        row.EffectiveDate = (effective ?? new DateTime(year - 621, 3, 21)).Date;
+        row.Note = note; row.UpdatedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        return row;
+    }
+
+    /// <summary>حداقل مزد موثر یک سال شمسی: ردیف مصوب، وگرنه قانون کلی</summary>
+    public async Task<decimal> EffectiveMinWageAsync(int jy)
+    {
+        var row = await _db.HrMinWages.AsNoTracking().FirstOrDefaultAsync(x => x.Year == jy);
+        if (row != null && row.MonthlyWage > 0) return row.MonthlyWage;
+        var rules = await GetRulesAsync();
+        return rules.TryGetValue("pay.min_wage", out var v) && decimal.TryParse(v, out var d) && d > 0 ? d : 103909270;
+    }
+
+    // ---------- شیردهی مادران (ماده ۷۸) ----------
+
+    public async Task<HrNursingBreak> SetNursingAsync(int employeeId, DateTime childBirth)
+    {
+        if (!await _db.HrEmployees.AnyAsync(e => e.Id == employeeId))
+            throw new InvalidOperationException("پرونده پرسنلی پیدا نشد.");
+        var end = childBirth.Date.AddYears(2).AddDays(-1);
+        if (end < DateTime.Today) throw new InvalidOperationException("فرزند بالای ۲ سال است؛ ارفاق شیردهی تعلق نمی‌گیرد.");
+        var olds = await _db.HrNursingBreaks.Where(x => x.EmployeeId == employeeId && x.IsActive).ToListAsync();
+        foreach (var o in olds) o.IsActive = false;
+        var nb = new HrNursingBreak
+        {
+            EmployeeId = employeeId, ChildBirthDate = childBirth.Date,
+            StartDate = DateTime.Today > childBirth.Date ? DateTime.Today : childBirth.Date, EndDate = end,
+        };
+        _db.HrNursingBreaks.Add(nb);
+        await _db.SaveChangesAsync();
+        return nb;
+    }
+
+    public async Task<HrNursingBreak?> ActiveNursingAsync(int employeeId)
+        => await _db.HrNursingBreaks.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.EmployeeId == employeeId && x.IsActive && x.EndDate >= DateTime.Today);
+
+    public record ObligationRow(int ScheduledMin, int NursingMin, int RequiredMin);
+
+    /// <summary>موظفی روزانه با لحاظ ارفاق شیردهی (فقط-خواندنی؛ محاسبه قبلی دست نمی‌خورد)</summary>
+    public async Task<ObligationRow> DailyObligationAsync(int userId, DateTime date)
+    {
+        var user = await _db.Users.Include(u => u.ShiftGroup).AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId);
+        var sg = await RosterShiftAsync(userId, date) ?? user?.ShiftGroup;
+        var sched = AttendanceRecalcService.ScheduledMinutes(sg);
+        var empId = await EmployeeIdOfUserAsync(userId);
+        var nurs = empId == null ? 0 : (await ActiveNursingAsync(empId.Value) is { } nb
+            && date.Date >= nb.StartDate && date.Date <= nb.EndDate ? (int)(nb.DailyHours * 60) : 0);
+        return new(sched, nurs, Math.Max(0, sched - nurs));
+    }
+
+    // ================= فاز ۲: کارکرد ماهانه، تأیید اضافه‌کار، بستن ماه =================
+
+    public static string FaWeekday(DateTime d) => d.DayOfWeek switch
+    {
+        DayOfWeek.Saturday => "شنبه",
+        DayOfWeek.Sunday => "یکشنبه",
+        DayOfWeek.Monday => "دوشنبه",
+        DayOfWeek.Tuesday => "سه‌شنبه",
+        DayOfWeek.Wednesday => "چهارشنبه",
+        DayOfWeek.Thursday => "پنجشنبه",
+        _ => "جمعه",
+    };
+
+    public async Task<bool> IsMonthClosedAsync(int jy, int jm)
+        => await _db.HrAttendCloses.AnyAsync(c => c.Year == jy && c.Month == jm && c.IsClosed);
+
+    public async Task<HrAttendClose> SetMonthClosedAsync(int jy, int jm, bool closed, string byName, string? note)
+    {
+        if (jm is < 1 or > 12) throw new InvalidOperationException("ماه نامعتبر است.");
+        var c = await _db.HrAttendCloses.FirstOrDefaultAsync(x => x.Year == jy && x.Month == jm);
+        if (c == null) { c = new HrAttendClose { Year = jy, Month = jm }; _db.HrAttendCloses.Add(c); }
+        c.IsClosed = closed;
+        c.ClosedBy = closed ? byName : null;
+        c.ClosedAt = closed ? DateTime.Now : null;
+        c.Note = note;
+        await _db.SaveChangesAsync();
+        return c;
+    }
+
+    public record AttendDayRow(DateTime Date, string Weekday, string? ShiftName, DateTime? EnterAt, DateTime? ExitAt,
+        int WorkMin, int LateMin, int EarlyMin, int OtN, int OtH, int OtNt, string Status, string? OtStatus,
+        int ApprN, int ApprH, int ApprNt);
+    public record AttendMonthResult(int UserId, List<AttendDayRow> Days, int WorkMin, int LateMin, int EarlyMin,
+        double OtNH, double OtHH, double OtNtH, double ApprOtNH, double ApprOtHH, double ApprOtNtH,
+        int PresentCount, int AbsentCount, bool Closed);
+
+    public async Task<AttendMonthResult> MonthAttendanceAsync(int userId, int jy, int jm)
+    {
+        var start = Pc.ToDateTime(jy, jm, 1, 0, 0, 0, 0);
+        var days = Pc.GetDaysInMonth(jy, jm);
+        var end = start.AddDays(days);
+        var closed = await IsMonthClosedAsync(jy, jm);
+        var user = await _db.Users.Include(u => u.ShiftGroup).AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        var recs = await _db.AttendanceRecords.AsNoTracking()
+            .Where(a => a.UserId == userId && a.WorkDate >= start && a.WorkDate < end).ToDictionaryAsync(a => a.WorkDate);
+        var extras = await _db.HrDayExtras.Where(x => x.UserId == userId && x.WorkDate >= start && x.WorkDate < end)
+            .ToDictionaryAsync(x => x.WorkDate);
+        foreach (var i in Enumerable.Range(0, days))
+        {
+            var cd = start.AddDays(i);
+            if (!extras.ContainsKey(cd)) extras[cd] = await ComputeDayExtrasAsync(userId, cd);
+        }
+        var apprs = await _db.HrOtApprovals.Where(x => x.UserId == userId && x.WorkDate >= start && x.WorkDate < end)
+            .ToDictionaryAsync(x => x.WorkDate);
+        var rosters = await _db.HrShiftRosters.AsNoTracking()
+            .Where(r => r.UserId == userId && r.Date >= start && r.Date < end).ToDictionaryAsync(r => r.Date);
+        var shifts = await _db.ShiftGroups.AsNoTracking().ToDictionaryAsync(s => s.Id);
+        var cals = (await _db.WorkCalendarDays.AsNoTracking()
+            .Where(d => d.Date >= start && d.Date < end).ToListAsync()).ToDictionary(d => d.Date.Date);
+        var hols = (await _db.CompanyHolidays.AsNoTracking()
+            .Where(h => h.HolidayDate >= start && h.HolidayDate < end).ToListAsync()).ToDictionary(h => h.HolidayDate.Date);
+        var settings = await _db.WorkCalendarSettings.AsNoTracking().FirstOrDefaultAsync();
+        var leaves = await _db.LeaveRequests.AsNoTracking()
+            .Where(l => l.RequesterUserId == userId && l.Status == "Approved" && l.StartDate < end && l.EndDate >= start).ToListAsync();
+        if (!closed)
+        {
+            foreach (var kv in extras)
+            {
+                var tot = kv.Value.OtNormalMinutes + kv.Value.OtHolidayMinutes + kv.Value.OtNightMinutes;
+                if (tot > 0 && !apprs.ContainsKey(kv.Key))
+                {
+                    var na = new HrOtApproval
+                    {
+                        UserId = userId, WorkDate = kv.Key, Source = "Auto",
+                        ReqNormalMin = kv.Value.OtNormalMinutes, ReqHolidayMin = kv.Value.OtHolidayMinutes, ReqNightMin = kv.Value.OtNightMinutes,
+                        ApprNormalMin = kv.Value.OtNormalMinutes, ApprHolidayMin = kv.Value.OtHolidayMinutes, ApprNightMin = kv.Value.OtNightMinutes,
+                    };
+                    _db.HrOtApprovals.Add(na);
+                    apprs[kv.Key] = na;
+                }
+            }
+            await _db.SaveChangesAsync();
+        }
+        var rows = new List<AttendDayRow>();
+        for (var i = 0; i < days; i++)
+        {
+            var d = start.AddDays(i);
+            recs.TryGetValue(d, out var rec);
+            var ex = extras[d];
+            apprs.TryGetValue(d, out var ap);
+            ShiftGroup? sg = null;
+            if (rosters.TryGetValue(d, out var rr)) shifts.TryGetValue(rr.ShiftGroupId, out sg);
+            sg ??= user?.ShiftGroup;
+            var rule = WorkRules.Resolve(d, sg,
+                cals.TryGetValue(d, out var cd2) ? cd2 : null,
+                hols.TryGetValue(d, out var hd2) ? hd2 : null, settings);
+            var dayLeaves = leaves.Where(l => l.StartDate.Date <= d && l.EndDate.Date >= d).ToList();
+            var worked = (rec?.WorkMinutes ?? 0) > 0;
+            string status;
+            if (worked) status = "حاضر";
+            else if (dayLeaves.Any(l => l.Type == "Mission")) status = "مأموریت";
+            else if (dayLeaves.Any(l => l.Type == "Daily")) status = "مرخصی";
+            else if (dayLeaves.Any(l => l.Type == "HourlyMission")) status = "مأموریت ساعتی";
+            else if (dayLeaves.Any(l => l.Type == "Hourly")) status = "مرخصی ساعتی";
+            else if (!rule.IsWorkday || rule.Source == "Holiday") status = "تعطیل";
+            else if (d > DateTime.Today) status = "—";
+            else status = "غایب";
+            rows.Add(new(d, FaWeekday(d), sg?.Name, rec?.EnterAt, rec?.ExitAt,
+                rec?.WorkMinutes ?? 0, rec?.LateMinutes ?? 0, rec?.EarlyLeaveMinutes ?? 0,
+                ex.OtNormalMinutes, ex.OtHolidayMinutes, ex.OtNightMinutes, status, ap?.Status,
+                ap?.ApprNormalMin ?? 0, ap?.ApprHolidayMin ?? 0, ap?.ApprNightMin ?? 0));
+        }
+        return new(userId, rows, rows.Sum(r => r.WorkMin), rows.Sum(r => r.LateMin), rows.Sum(r => r.EarlyMin),
+            Math.Round(rows.Sum(r => r.OtN) / 60.0, 2), Math.Round(rows.Sum(r => r.OtH) / 60.0, 2), Math.Round(rows.Sum(r => r.OtNt) / 60.0, 2),
+            Math.Round(rows.Where(r => r.OtStatus == "Approved").Sum(r => r.ApprN) / 60.0, 2),
+            Math.Round(rows.Where(r => r.OtStatus == "Approved").Sum(r => r.ApprH) / 60.0, 2),
+            Math.Round(rows.Where(r => r.OtStatus == "Approved").Sum(r => r.ApprNt) / 60.0, 2),
+            rows.Count(r => r.Status == "حاضر"), rows.Count(r => r.Status == "غایب"), closed);
+    }
+
+    public async Task<HrOtApproval> DecideOtAsync(int userId, DateTime date, bool approve, int n, int h, int ni,
+        int byId, string byName, string? note)
+    {
+        date = date.Date;
+        if (await IsMonthClosedAsync(Pc.GetYear(date), Pc.GetMonth(date)))
+            throw new InvalidOperationException("این ماه بسته است؛ ابتدا بازگشایی کنید.");
+        var a = await _db.HrOtApprovals.FirstOrDefaultAsync(x => x.UserId == userId && x.WorkDate == date);
+        if (a == null)
+        {
+            var ex = await ComputeDayExtrasAsync(userId, date);
+            a = new HrOtApproval
+            {
+                UserId = userId, WorkDate = date, Source = "Auto",
+                ReqNormalMin = ex.OtNormalMinutes, ReqHolidayMin = ex.OtHolidayMinutes, ReqNightMin = ex.OtNightMinutes,
+            };
+            _db.HrOtApprovals.Add(a);
+        }
+        a.ApprNormalMin = Math.Max(0, n); a.ApprHolidayMin = Math.Max(0, h); a.ApprNightMin = Math.Max(0, ni);
+        a.Status = approve ? "Approved" : "Rejected";
+        a.DecidedByUserId = byId; a.DecidedByName = byName; a.DecidedAt = DateTime.Now;
+        a.Note = note; a.UpdatedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        await _notify.SendAsync(userId, approve ? "اضافه‌کار تأیید شد" : "اضافه‌کار رد شد",
+            $"{date:yyyy/MM/dd} توسط {byName} " + (approve ? "تأیید شد." : $"رد شد. {note}"), byName, "کارکرد ماهانه", "/hr-time");
+        return a;
+    }
+
+    public async Task<int> DecideOtMonthAsync(int userId, int jy, int jm, bool approve, int byId, string byName)
+    {
+        if (await IsMonthClosedAsync(jy, jm))
+            throw new InvalidOperationException("این ماه بسته است؛ ابتدا بازگشایی کنید.");
+        await MonthAttendanceAsync(userId, jy, jm);
+        var start = Pc.ToDateTime(jy, jm, 1, 0, 0, 0, 0);
+        var end = start.AddDays(Pc.GetDaysInMonth(jy, jm));
+        var rows = await _db.HrOtApprovals
+            .Where(x => x.UserId == userId && x.WorkDate >= start && x.WorkDate < end && x.Status == "Pending").ToListAsync();
+        foreach (var a in rows)
+        {
+            if (approve) { a.ApprNormalMin = a.ReqNormalMin; a.ApprHolidayMin = a.ReqHolidayMin; a.ApprNightMin = a.ReqNightMin; }
+            a.Status = approve ? "Approved" : "Rejected";
+            a.DecidedByUserId = byId; a.DecidedByName = byName; a.DecidedAt = DateTime.Now; a.UpdatedAt = DateTime.Now;
+        }
+        await _db.SaveChangesAsync();
+        return rows.Count;
+    }
+
+    public async Task<List<HrOtApproval>> OtApprovalsAsync(int? userId, int jy, int jm)
+    {
+        var start = Pc.ToDateTime(jy, jm, 1, 0, 0, 0, 0);
+        var end = start.AddDays(Pc.GetDaysInMonth(jy, jm));
+        var q = _db.HrOtApprovals.AsNoTracking().Where(x => x.WorkDate >= start && x.WorkDate < end);
+        if (userId != null) q = q.Where(x => x.UserId == userId);
+        return await q.OrderBy(x => x.WorkDate).Take(2000).ToListAsync();
+    }
+
+    private async Task UpsertManualOtApprovalAsync(HrOvertimeRequest o, int byId, string byName)
+    {
+        var d = o.WorkDate.Date;
+        var a = await _db.HrOtApprovals.FirstOrDefaultAsync(x => x.UserId == o.RequesterUserId && x.WorkDate == d);
+        var n = o.Type == "Normal" ? o.Minutes : 0;
+        var h = o.Type == "Holiday" ? o.Minutes : 0;
+        var ni = o.Type == "Night" ? o.Minutes : 0;
+        if (a == null)
+        {
+            a = new HrOtApproval
+            {
+                UserId = o.RequesterUserId, WorkDate = d,
+                ReqNormalMin = n, ReqHolidayMin = h, ReqNightMin = ni,
+            };
+            _db.HrOtApprovals.Add(a);
+        }
+        a.Source = "Manual"; a.OvertimeRequestId = o.Id;
+        a.ApprNormalMin = n; a.ApprHolidayMin = h; a.ApprNightMin = ni;
+        a.Status = "Approved";
+        a.DecidedByUserId = byId; a.DecidedByName = byName; a.DecidedAt = DateTime.Now; a.UpdatedAt = DateTime.Now;
     }
 }

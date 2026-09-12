@@ -150,3 +150,83 @@ public class HrUserLink
     public int EmployeeId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
+
+/// <summary>دوره آزمایشی استخدام — ماده ۱۱ قانون کار (۱ ماه مشاغل ساده / ۳ ماه تخصصی‌وماهر)</summary>
+public class HrProbation
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public DateTime StartDate { get; set; }
+    /// <summary>مدت به ماه: 1 | 3</summary>
+    public int Months { get; set; } = 3;
+    /// <summary>Simple=ساده | Skilled=ماهر/تخصصی</summary>
+    [MaxLength(10)] public string SkillLevel { get; set; } = "Skilled";
+    public DateTime EndDate { get; set; }
+    /// <summary>Active=در جریان | Passed=قبول | Failed=مردود (فسخ)</summary>
+    [MaxLength(10)] public string Status { get; set; } = "Active";
+    [MaxLength(500)] public string? ResultNote { get; set; }
+    [MaxLength(150)] public string? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>حداقل مزد مصوب سالانه شورای عالی کار (نسخه‌بندی‌شده با تاریخ اجرا)</summary>
+public class HrMinWage
+{
+    [Key] public int Year { get; set; }
+    public decimal MonthlyWage { get; set; }
+    public decimal DailyWage { get; set; }
+    public DateTime EffectiveDate { get; set; }
+    [MaxLength(300)] public string? Note { get; set; }
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>مرخصی شیردهی مادران — ماده ۷۸ (روزانه ۲ ساعت تا ۲ سالگی فرزند، با مزد)</summary>
+public class HrNursingBreak
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public DateTime ChildBirthDate { get; set; }
+    /// <summary>ساعت ارفاق روزانه</summary>
+    public double DailyHours { get; set; } = 2;
+    public DateTime StartDate { get; set; }
+    public DateTime EndDate { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>تأیید اضافه‌کار محاسباتی یک روز — فقط مقادیر Approved وارد حقوق می‌شود. Source: Auto=از تردد | Manual=از درخواست دستی</summary>
+public class HrOtApproval
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public DateTime WorkDate { get; set; }
+    public int ReqNormalMin { get; set; }
+    public int ReqHolidayMin { get; set; }
+    public int ReqNightMin { get; set; }
+    public int ApprNormalMin { get; set; }
+    public int ApprHolidayMin { get; set; }
+    public int ApprNightMin { get; set; }
+    [MaxLength(10)] public string Source { get; set; } = "Auto";
+    public int? OvertimeRequestId { get; set; }
+    /// <summary>Pending|Approved|Rejected</summary>
+    [MaxLength(20)] public string Status { get; set; } = "Pending";
+    public int? DecidedByUserId { get; set; }
+    [MaxLength(150)] public string? DecidedByName { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    [MaxLength(500)] public string? Note { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>بستن ماه کارکرد (سال/ماه شمسی) — پس از بستن، تأیید/رد اضافه‌کار و اعمال تردد در آن ماه مجاز نیست</summary>
+public class HrAttendClose
+{
+    public int Id { get; set; }
+    public int Year { get; set; }
+    public int Month { get; set; }
+    public bool IsClosed { get; set; }
+    [MaxLength(150)] public string? ClosedBy { get; set; }
+    public DateTime? ClosedAt { get; set; }
+    [MaxLength(500)] public string? Note { get; set; }
+}
