@@ -23,6 +23,8 @@
         <b><i class="bi bi-diagram-2 ms-1"></i> ساختار سازمانی</b>
         <div class="d-flex gap-2">
             <button class="btn btn-sm btn-light" @onclick="Reload" title="به‌روزرسانی"><i class="bi bi-arrow-clockwise"></i></button>
+            <button class="btn btn-sm btn-outline-primary" @onclick="PrintChart" title="چاپ چارت"><i class="bi bi-printer"></i> چاپ</button>
+            <button class="btn btn-sm btn-outline-success" @onclick="ExportExcel" title="خروجی اکسل"><i class="bi bi-file-earmark-excel"></i> اکسل</button>
             @if (canCreate)
             {
                 <button class="btn btn-sm btn-success" @onclick="() => OpenEdit(null, null)"><i class="bi bi-plus-lg"></i> واحد ریشه</button>
@@ -173,6 +175,38 @@
         if (!await JS.InvokeAsync<bool>("confirm", "واحد حذف شود؟")) return;
         try { await Svc.DeleteOrgUnitAsync(id); await Reload(); Toast.Success("حذف شد."); }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ExportExcel()
+    {
+        try
+        {
+            var f = await Svc.ExportOrgExcelAsync();
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task PrintChart()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<html dir='rtl' lang='fa'><head><meta charset='utf-8'><title>چارت سازمانی</title>");
+        sb.Append("<style>body{font-family:Tahoma;font-size:13px}h2{text-align:center}ul{list-style:none;padding-right:20px;border-right:2px solid #0d6efd;margin:6px 0}li{margin:4px 0}.box{border:1px solid #999;border-radius:6px;padding:4px 10px;display:inline-block}.t{color:#666;font-size:11px}</style>");
+        sb.Append("</head><body><h2>چارت سازمانی</h2>");
+        void Walk(List<HrOrgUnitDto> list)
+        {
+            sb.Append("<ul>");
+            foreach (var x in list)
+            {
+                sb.Append($"<li><span class='box'><b>{System.Net.WebUtility.HtmlEncode(x.Name)}</b> <span class='t'>({HrCoreUi.OrgType(x.Type)} • {System.Net.WebUtility.HtmlEncode(x.Code)})</span></span>");
+                if (x.Children.Count > 0) Walk(x.Children);
+                sb.Append("</li>");
+            }
+            sb.Append("</ul>");
+        }
+        Walk(tree);
+        sb.Append("</body></html>");
+        await JS.InvokeVoidAsync("printHtml", sb.ToString());
     }
 
     private async Task Save()
