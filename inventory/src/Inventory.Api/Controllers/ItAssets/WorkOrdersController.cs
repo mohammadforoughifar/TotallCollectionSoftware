@@ -897,6 +897,101 @@ public class WorkOrdersController : ControllerBase
         });
     }
 
+    // ================== خروجی Excel / PDF ==================
+
+    /// <summary>
+    /// خروجی گرفتن از لیست دستورها — همان فیلترهای لیست + انتخاب تب.
+    /// tab: mine | assigned | archive — format: xlsx | pdf
+    /// </summary>
+    [HttpGet("export")]
+    public async Task<IActionResult> Export([FromQuery] string tab = "mine", [FromQuery] string format = "xlsx",
+        [FromQuery] ListFilterDto? filter = null)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        filter ??= new ListFilterDto();
+
+        var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
+        var (query, tabFa) = tab switch
+        {
+            "assigned" => (_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), "محول به من"),
+            "archive" => (_db.WorkOrders.Where(w => w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), "بایگانی"),
+            _ => (_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), "دستورهای من")
+        };
+
+        var orders = await ApplyFilter(query, filter)
+            .OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id).ToListAsync();
+        var ids = orders.Select(o => o.Id).ToList();
+        var asgs = await _db.WorkOrderAssignees.AsNoTracking().Where(a => ids.Contains(a.OrderId)).ToListAsync();
+        var clStats = await _db.WorkOrderChecklistItems.Where(c => ids.Contains(c.OrderId))
+            .GroupBy(c => c.OrderId)
+            .Select(g => new { g.Key, Total = g.Count(), Done = g.Count(x => x.IsDone) }).ToListAsync();
+
+        var spec = new Services.Export.ExportSpec
+        {
+            Title = "گزارش دستور کار",
+            Subtitle = tabFa,
+            Module = "دستور کار",
+            FileBaseName = $"workorders_{tab}",
+            Landscape = true,
+            Columns =
+            {
+                // عرض‌ها بر حسب point در PDF (مثل DocArchiveExportService) — صفر یعنی نسبی
+                new("شماره", Services.Export.ExportValueKind.Text, 70),
+                new("عنوان") { Wrap = true },
+                new("اولویت", Services.Export.ExportValueKind.Text, 45),
+                new("تکرار", Services.Export.ExportValueKind.Text, 48),
+                new("دستوردهنده", Services.Export.ExportValueKind.Text, 80),
+                new("مهلت", Services.Export.ExportValueKind.DateTime, 85),
+                new("گیرندگان") { Wrap = true },
+                new("پاسخ", Services.Export.ExportValueKind.Text, 50),
+                new("چک‌لیست", Services.Export.ExportValueKind.Text, 55),
+                new("وضعیت", Services.Export.ExportValueKind.Text, 70),
+            }
+        };
+
+        if (!string.IsNullOrWhiteSpace(filter.Q)) spec.Meta.Add(new("جستجو", filter.Q));
+        if (filter.Priority is >= 0) spec.Meta.Add(new("اولویت", WorkOrderPriority.ToFa(filter.Priority.Value)));
+
+        var now = DateTime.Now;
+        foreach (var w in orders)
+        {
+            var list = asgs.Where(a => a.OrderId == w.Id).ToList();
+            var replied = list.Count(a => a.RepliedAt != null);
+            var cl = clStats.FirstOrDefault(c => c.Key == w.Id);
+            var allDone = list.Count > 0 && list.All(a => a.Done == true);
+            var lastReply = allDone ? list.Max(a => a.RepliedAt) : null;
+            var status = allDone
+                ? (lastReply <= w.DueAt ? "انجام به‌موقع" : "انجام با تاخیر")
+                : w.Status == "Closed" ? "بسته شده"
+                : w.DueAt < now ? "گذشته از مهلت"
+                : w.DueAt.Date == now.Date ? "مهلت امروز" : "در جریان";
+
+            var row = new Services.Export.ExportRow(
+                w.Number, w.Title,
+                WorkOrderPriority.ToFa(w.Priority),
+                WorkOrderRecurrence.ToFa(w.Recurrence),
+                w.OwnerName, w.DueAt,
+                string.Join("، ", list.Select(a => a.Name)),
+                $"{replied} از {list.Count}",
+                cl == null ? "—" : $"{cl.Done} از {cl.Total}",
+                status);
+            if (status == "گذشته از مهلت") row.Style = Services.Export.ExportRowStyle.Danger;
+            else if (status == "انجام به‌موقع") row.Style = Services.Export.ExportRowStyle.Success;
+            spec.Rows.Add(row);
+        }
+
+        spec.Summary.Add(new("تعداد کل", spec.Rows.Count.ToString()));
+        spec.Summary.Add(new("گذشته از مهلت", orders.Count(o => o.Status == "Open" && o.DueAt < now).ToString()));
+
+        var isExcel = format.Equals("xlsx", StringComparison.OrdinalIgnoreCase);
+        // عرض ستون در اکسل کاراکتری است؛ صفر می‌کنیم تا خودِ ExcelWriter بر اساس محتوا تنظیم کند
+        if (isExcel) foreach (var c in spec.Columns) c.Width = 0;
+        var bytes = isExcel ? Services.Export.ExcelWriter.Build(spec) : Services.Export.PdfWriter.Build(spec);
+        return File(bytes,
+            isExcel ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf",
+            spec.FileName(isExcel ? "xlsx" : "pdf"));
+    }
+
     // ================== تاریخچه (بند ۱۷ و ۱۸) ==================
     [HttpGet("{id:int}/logs")]
     public async Task<IActionResult> Logs(int id) =>

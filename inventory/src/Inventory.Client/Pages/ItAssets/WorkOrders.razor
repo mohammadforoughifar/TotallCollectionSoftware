@@ -72,6 +72,17 @@
         {
             <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
         }
+        <div class="d-flex gap-1 ms-auto">
+            <button class="btn btn-sm btn-outline-success" title="خروجی اکسل (با فیلترهای جاری)" disabled="@exporting" @onclick='() => ExportList("xlsx")'>
+                @if (exporting) { <span class="spinner-border spinner-border-sm"></span> }
+                else { <i class="bi bi-file-earmark-excel"></i> }
+                <span class="d-none d-sm-inline">اکسل</span>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" title="خروجی PDF (با فیلترهای جاری)" disabled="@exporting" @onclick='() => ExportList("pdf")'>
+                <i class="bi bi-file-earmark-pdf"></i>
+                <span class="d-none d-sm-inline">PDF</span>
+            </button>
+        </div>
     </div>
 }
 
@@ -689,6 +700,30 @@ else
                         }
                     </div>
                     <div class="d-flex align-items-center gap-2">
+                        @if (Auth.HasModule("Chat") && ChatTargets(detail).Any())
+                        {
+                            <div class="wo-chat-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-info" title="گفتگو دربارهٔ این دستور در پیام‌رسان"
+                                        disabled="@chatBusy" @onclick="ToggleChatMenu">
+                                    @if (chatBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                    else { <i class="bi bi-chat-dots"></i> }
+                                    گفتگو
+                                </button>
+                                @if (chatMenuOpen)
+                                {
+                                    <div class="wo-chat-menu shadow">
+                                        @foreach (var t in ChatTargets(detail))
+                                        {
+                                            var t2 = t;
+                                            <button type="button" class="wo-chat-item" @onclick="() => StartChatAbout(t2.Id, t2.Name)">
+                                                <UserAvatar LoginUserId="t2.Id" Size="22" CssClass="user-avatar-sm" />
+                                                <span>@t2.Name</span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
                         <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenGardesh">
                             <i class="bi bi-diagram-3"></i> گردش کار
                         </button>
@@ -1152,6 +1187,19 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* منوی انتخاب طرف گفتگو در جزئیات دستور */
+    .wo-chat-wrap { position: relative; }
+    .wo-chat-menu {
+        position: absolute; top: calc(100% + 4px); inset-inline-start: 0; z-index: 1060;
+        min-width: 200px; max-height: 240px; overflow-y: auto;
+        background: #fff; border: 1px solid #dee2e6; border-radius: .5rem; padding: .25rem;
+    }
+    .wo-chat-item {
+        display: flex; align-items: center; gap: .5rem; width: 100%;
+        border: 0; background: none; text-align: start;
+        padding: .35rem .5rem; border-radius: .35rem; font-size: .85rem;
+    }
+    .wo-chat-item:hover { background: #f1f3f5; }
 </style>
 
 @* ================== گردش کار دستور — مشابه گردش نامه داخلی ================== *@
@@ -1380,6 +1428,71 @@ else
     private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; }
     private void ClearSearch() { fltQ = ""; page = 1; }
     private void SetPriorityFilter(int p) { fltPriority = p; page = 1; }
+
+    // ---- خروجی Excel / PDF ----
+    private bool exporting;
+
+    /// <summary>خروجی گرفتن از تب جاری با فیلترهای جاری — فایل از سرور ساخته و دانلود می‌شود.</summary>
+    private async Task ExportList(string format)
+    {
+        exporting = true;
+        try
+        {
+            var url = $"/api/workorders/export?tab={tab}&format={format}";
+            if (!string.IsNullOrWhiteSpace(fltQ)) url += $"&q={Uri.EscapeDataString(fltQ.Trim())}";
+            if (fltPriority >= 0) url += $"&priority={fltPriority}";
+
+            var resp = await Http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در تهیه خروجی"); return; }
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var name = resp.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? $"workorders-{tab}.{format}";
+            var mime = format == "pdf" ? "application/pdf"
+                       : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            await JS.InvokeVoidAsync("downloadBlob", name, mime, Convert.ToBase64String(bytes));
+        }
+        catch { Toast.Error("خطا در تهیه خروجی"); }
+        finally { exporting = false; }
+    }
+
+    // ---- گفتگو دربارهٔ دستور (اتصال به پیام‌رسان) ----
+    private bool chatMenuOpen, chatBusy;
+
+    private void ToggleChatMenu() => chatMenuOpen = !chatMenuOpen;
+
+    /// <summary>طرف‌های ممکن گفتگو: اگر دستوردهنده‌ام → گیرندگان؛ اگر گیرنده‌ام → دستوردهنده.</summary>
+    private List<(int Id, string Name)> ChatTargets(WoItem? w)
+    {
+        if (w == null) return new();
+        var result = new List<(int, string)>();
+        if (w.OwnerUserId == access.UserId)
+            result.AddRange(w.Assignees.Where(a => a.UserId != access.UserId)
+                .Select(a => (a.UserId, a.Name)).Distinct());
+        else
+            result.Add((w.OwnerUserId, w.OwnerName));
+        return result;
+    }
+
+    /// <summary>ساخت/بازکردن گفتگوی خصوصی با طرف مقابل و رفتن به پیام‌رسان.</summary>
+    private async Task StartChatAbout(int targetUserId, string targetName)
+    {
+        if (chatBusy) return;
+        chatBusy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("/api/chat/conversations/direct", new { TargetUserId = targetUserId });
+            if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در بازکردن گفتگو"); return; }
+            var conv = await resp.Content.ReadFromJsonAsync<ChatConvRes>();
+            if (conv == null || conv.Id <= 0) { Toast.Error("خطا در بازکردن گفتگو"); return; }
+            Nav.NavigateTo($"/chat/{conv.Id}");
+        }
+        catch { Toast.Error("خطا در بازکردن گفتگو"); }
+        finally { chatBusy = false; chatMenuOpen = false; }
+    }
+
+    private class ChatConvRes { public int Id { get; set; } }
 
     // ---- اولویت ----
     private static readonly (int Val, string Fa)[] PriorityOpts = { (0, "کم"), (1, "عادی"), (2, "بالا"), (3, "فوری") };
