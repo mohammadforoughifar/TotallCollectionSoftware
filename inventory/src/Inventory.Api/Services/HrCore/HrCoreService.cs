@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using ClosedXML.Excel;
 using Inventory.Api.Services.Pdf;
 using Microsoft.EntityFrameworkCore;
 
@@ -57,6 +58,12 @@ public interface IHrCoreService
     Task<List<HrContractDto>> ExpiringContractsAsync(int days);
     Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto, int byUserId, string byName);
     Task DeleteContractAsync(int id);
+    Task<HrContractDto> RenewContractAsync(int id, int months);
+    Task<int> RemindExpiringDocumentsAsync(int days);
+    Task<byte[]> DossierPdfAsync(int employeeId);
+    Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q);
+    Task<(byte[] Data, string FileName)> ExportContractsExcelAsync();
+    Task<(byte[] Data, string FileName)> ExportDecreesExcelAsync();
 
     // قالب‌های قرارداد (§۹)
     Task<List<HrContractTemplateDto>> ListTemplatesAsync();
@@ -1296,5 +1303,247 @@ public class HrCoreService : IHrCoreService
             RecentDecrees = recentDtos,
             ByEmploymentType = byType
         };
+    }
+
+    // ==================== تمدید یک‌کلیکه / یادآور مدارک / چاپ پرونده / اکسل ====================
+
+    /// <summary>تمدید یک‌کلیکه: قرارداد قبلی غیرفعال و نسخه جدید از فردای پایان ساخته می‌شود.</summary>
+    public async Task<HrContractDto> RenewContractAsync(int id, int months)
+    {
+        months = Math.Clamp(months, 1, 60);
+        var old = await _db.HrContracts.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("قرارداد یافت نشد.");
+        if (old.EndDate == null) throw new InvalidOperationException("تمدید فقط برای قراردادهای مدت‌دار ممکن است.");
+        var prefix = old.ContractNo.Trim() + "/R";
+        var k = await _db.HrContracts.AsNoTracking()
+            .Where(x => x.EmployeeId == old.EmployeeId && x.ContractNo.StartsWith(prefix)).CountAsync() + 1;
+        var start = old.EndDate.Value.Date.AddDays(1);
+        var c = new HrContract
+        {
+            EmployeeId = old.EmployeeId, ContractNo = prefix + k,
+            Type = old.Type, StartDate = start, EndDate = start.AddMonths(months).AddDays(-1),
+            BaseSalary = old.BaseSalary, JobTitle = old.JobTitle, OrgUnitId = old.OrgUnitId,
+            Description = $"تمدید قرارداد {old.ContractNo}",
+            IsActive = true, TemplateId = old.TemplateId, SignStatus = HrContractSignStatus.Draft
+        };
+        old.IsActive = false;
+        _db.HrContracts.Add(c);
+        await _db.SaveChangesAsync();
+        return (await EmployeeContractsAsync(c.EmployeeId)).First(x => x.Id == c.Id);
+    }
+
+    /// <summary>یادآوری انقضای مدارک: برای هر پرسنلِ دارای مدرک نزدیک‌به‌انقضا یک اعلان درون‌سیستمی.</summary>
+    public async Task<int> RemindExpiringDocumentsAsync(int days)
+    {
+        var docs = await ExpiringDocumentsAsync(days);
+        if (docs.Count == 0) return 0;
+        var empIds = docs.Select(d => d.EmployeeId).Distinct().ToList();
+        var emps = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id)).ToListAsync();
+        var n = 0;
+        foreach (var g in docs.GroupBy(d => d.EmployeeId))
+        {
+            var e = emps.FirstOrDefault(x => x.Id == g.Key);
+            if (e?.SystemUserId is not > 0) continue;
+            var titles = string.Join("، ", g.Select(x => x.Title).Distinct().Take(3));
+            var msg = $"مدارک زیر نزدیک به انقضاست: {titles}. لطفاً برای تمدید اقدام کنید.";
+            try { await _notify.SendAsync(e.SystemUserId.Value, "یادآور انقضای مدارک", msg, "منابع انسانی", "HrCore", "hr-core/profile"); n++; }
+            catch { }
+        }
+        try { await _notify.BroadcastChangedAsync("hr-core"); } catch { }
+        return n;
+    }
+
+    /// <summary>چاپ پرونده پرسنل (PDF یک‌جا: مشخصات + خانواده + دوره‌ها + مهارت‌ها + زبان‌ها + مدارک).</summary>
+    public async Task<byte[]> DossierPdfAsync(int employeeId)
+    {
+        var d = await GetDossierAsync(employeeId, 365);
+        var e = d.Employee;
+        var co = await _db.HrMainCompanies.AsNoTracking().FirstOrDefaultAsync();
+        HrPdf.EnsureFonts();
+        var logo = await HrPdf.TryLoadLogoAsync(_env.WebRootPath, co?.LogoPath);
+        var hire = e.HireDate == null ? "—" : PersianDate.ToShortFa(e.HireDate.Value);
+        var contracts = await EmployeeContractsAsync(employeeId);
+        var decrees = await EmployeeDecreesAsync(employeeId);
+        var doc = Document.Create(c =>
+        {
+            c.Page(pg =>
+            {
+                pg.Size(PageSizes.A4);
+                pg.Margin(28);
+                pg.ContentFromRightToLeft();
+                pg.DefaultTextStyle(x => x.FontFamily(HrPdf.Font).FontSize(10));
+                pg.Header().Column(col =>
+                {
+                    col.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(15).AlignCenter();
+                    col.Item().PaddingTop(2).Text($"پرونده پرسنلی — {e.FirstName} {e.LastName} ({Fa.Digits(e.Code)})")
+                        .FontFamily(HrPdf.FontBold).FontSize(14).AlignCenter();
+                    col.Item().PaddingTop(2).Text($"کدملی: {Fa.Digits(e.NationalCode ?? "—")} • استخدام: {hire} • وضعیت: {(e.IsActive ? "فعال" : "غیرفعال")}")
+                        .FontSize(9).AlignCenter();
+                    col.Item().PaddingTop(4).LineHorizontal(1);
+                });
+                pg.Content().Column(col =>
+                {
+                    col.Item().PaddingTop(6).Text("مشخصات فردی").FontFamily(HrPdf.FontBold).FontSize(12);
+                    col.Item().Table(t =>
+                    {
+                        t.ColumnsDefinition(cd => { cd.RelativeColumn(); cd.RelativeColumn(); cd.RelativeColumn(); cd.RelativeColumn(); });
+                        HrPdf.KvRow(t, "سمت", e.PostTitle ?? e.HrMainNodeName ?? "—");
+                        HrPdf.KvRow(t, "تاریخ تولد", e.BirthDate == null ? "—" : PersianDate.ToShortFa(e.BirthDate.Value));
+                        HrPdf.KvRow(t, "موبایل", Fa.Digits(e.Mobile ?? "—"));
+                        HrPdf.KvRow(t, "مدرک", string.IsNullOrWhiteSpace(e.Degree) ? "—" : e.Degree + (string.IsNullOrWhiteSpace(e.FieldOfStudy) ? "" : " — " + e.FieldOfStudy));
+                    });
+                    if (d.Dependents.Count > 0)
+                    {
+                        col.Item().PaddingTop(8).Text("افراد تحت تکفل").FontFamily(HrPdf.FontBold).FontSize(12);
+                        col.Item().Table(t =>
+                        {
+                            t.ColumnsDefinition(cd => { cd.RelativeColumn(2); cd.RelativeColumn(); cd.RelativeColumn(); });
+                            t.Cell().Text("نام").FontFamily(HrPdf.FontBold).FontSize(9);
+                            t.Cell().Text("نسبت").FontFamily(HrPdf.FontBold).FontSize(9);
+                            t.Cell().Text("کدملی").FontFamily(HrPdf.FontBold).FontSize(9);
+                            foreach (var x in d.Dependents)
+                            {
+                                t.Cell().Text(x.FullName).FontSize(9);
+                                t.Cell().Text(x.Relation ?? "—").FontSize(9);
+                                t.Cell().Text(Fa.Digits(x.NationalCode ?? "—")).FontSize(9);
+                            }
+                        });
+                    }
+                    if (d.Courses.Count > 0)
+                    {
+                        col.Item().PaddingTop(8).Text("دوره‌های آموزشی").FontFamily(HrPdf.FontBold).FontSize(12);
+                        foreach (var x in d.Courses)
+                            col.Item().Text($"• {x.Title}" + (x.Institute == null ? "" : $" — {x.Institute}") + (x.Year == null ? "" : $" ({Fa.Digits(x.Year.Value.ToString())})")).FontSize(9);
+                    }
+                    if (d.Skills.Count > 0)
+                        col.Item().PaddingTop(6).Text("مهارت‌ها: " + string.Join("، ", d.Skills.Select(x => x.Title))).FontSize(9);
+                    if (d.Languages.Count > 0)
+                        col.Item().PaddingTop(2).Text("زبان‌ها: " + string.Join("، ", d.Languages.Select(x => x.Language + (string.IsNullOrWhiteSpace(x.Level) ? "" : $" ({x.Level})")))).FontSize(9);
+                    if (d.Documents.Count > 0)
+                    {
+                        col.Item().PaddingTop(8).Text("مدارک").FontFamily(HrPdf.FontBold).FontSize(12);
+                        col.Item().Table(t =>
+                        {
+                            t.ColumnsDefinition(cd => { cd.RelativeColumn(2); cd.RelativeColumn(); cd.RelativeColumn(); });
+                            t.Cell().Text("عنوان").FontFamily(HrPdf.FontBold).FontSize(9);
+                            t.Cell().Text("انقضا").FontFamily(HrPdf.FontBold).FontSize(9);
+                            t.Cell().Text("وضعیت").FontFamily(HrPdf.FontBold).FontSize(9);
+                            foreach (var x in d.Documents)
+                            {
+                                t.Cell().Text(x.Title).FontSize(9);
+                                t.Cell().Text(x.ExpiryDate == null ? "—" : PersianDate.ToShortFa(x.ExpiryDate.Value)).FontSize(9);
+                                t.Cell().Text(x.IsExpired ? "منقضی" : x.IsExpiringSoon ? "نزدیک انقضا" : "معتبر").FontSize(9);
+                            }
+                        });
+                    }
+                    if (contracts.Count > 0)
+                    {
+                        col.Item().PaddingTop(8).Text("قراردادها").FontFamily(HrPdf.FontBold).FontSize(12);
+                        foreach (var x in contracts.Take(10))
+                        {
+                            var end = x.EndDate == null ? "دائمی" : PersianDate.ToShortFa(x.EndDate.Value);
+                            col.Item().Text($"• {Fa.Digits(x.ContractNo)} — {HrCoreTexts.EmploymentType(x.Type)} — {PersianDate.ToShortFa(x.StartDate)} تا {end}{(x.IsActive ? " (فعال)" : "")}").FontSize(9);
+                        }
+                    }
+                    if (decrees.Count > 0)
+                    {
+                        col.Item().PaddingTop(8).Text("احکام").FontFamily(HrPdf.FontBold).FontSize(12);
+                        foreach (var x in decrees.Take(10))
+                            col.Item().Text($"• {Fa.Digits(x.DecreeNo)} — اجرا: {PersianDate.ToShortFa(x.EffectiveDate)}{(x.IsApplied ? "" : " (اعمال‌نشده)")}").FontSize(9);
+                    }
+                });
+                pg.Footer().AlignCenter().Text(x =>
+                {
+                    x.Span("صفحه ").FontSize(8);
+                    x.CurrentPageNumber().FontSize(8);
+                });
+            });
+        });
+        return doc.GeneratePdf();
+    }
+
+    private static XLWorkbook NewWorkbook(string sheet)
+    {
+        var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add(sheet);
+        ws.RightToLeft = true;
+        return wb;
+    }
+
+    private static byte[] WorkbookBytes(XLWorkbook wb)
+    {
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    public async Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q)
+    {
+        var (items, _) = await SearchEmployeesAsync(q, null, null, 0, 10000);
+        using var wb = NewWorkbook("پرسنل");
+        var ws = wb.Worksheet(1);
+        string[] heads = { "کد", "نام", "نام خانوادگی", "کدملی", "موبایل", "استخدام", "وضعیت" };
+        for (var i = 0; i < heads.Length; i++) ws.Cell(1, i + 1).Value = heads[i];
+        var r = 2;
+        foreach (var e in items)
+        {
+            ws.Cell(r, 1).Value = e.Code;
+            ws.Cell(r, 2).Value = e.FirstName;
+            ws.Cell(r, 3).Value = e.LastName;
+            ws.Cell(r, 4).Value = e.NationalCode ?? "";
+            ws.Cell(r, 5).Value = e.Mobile ?? "";
+            ws.Cell(r, 6).Value = e.HireDate == null ? "" : PersianDate.ToShortFa(e.HireDate.Value);
+            ws.Cell(r, 7).Value = e.IsActive ? "فعال" : "غیرفعال";
+            r++;
+        }
+        ws.Columns().AdjustToContents();
+        return (WorkbookBytes(wb), "employees.xlsx");
+    }
+
+    public async Task<(byte[] Data, string FileName)> ExportContractsExcelAsync()
+    {
+        var items = await ListContractsAsync(null);
+        using var wb = NewWorkbook("قراردادها");
+        var ws = wb.Worksheet(1);
+        string[] heads = { "پرسنل", "شماره", "نوع", "شروع", "پایان", "حقوق پایه", "سمت", "فعال" };
+        for (var i = 0; i < heads.Length; i++) ws.Cell(1, i + 1).Value = heads[i];
+        var r = 2;
+        foreach (var x in items)
+        {
+            ws.Cell(r, 1).Value = x.EmployeeName;
+            ws.Cell(r, 2).Value = x.ContractNo;
+            ws.Cell(r, 3).Value = HrCoreTexts.EmploymentType(x.Type);
+            ws.Cell(r, 4).Value = PersianDate.ToShortFa(x.StartDate);
+            ws.Cell(r, 5).Value = x.EndDate == null ? "دائمی" : PersianDate.ToShortFa(x.EndDate.Value);
+            ws.Cell(r, 6).Value = (double)x.BaseSalary;
+            ws.Cell(r, 7).Value = x.JobTitle ?? "";
+            ws.Cell(r, 8).Value = x.IsActive ? "بله" : "خیر";
+            r++;
+        }
+        ws.Columns().AdjustToContents();
+        return (WorkbookBytes(wb), "contracts.xlsx");
+    }
+
+    public async Task<(byte[] Data, string FileName)> ExportDecreesExcelAsync()
+    {
+        var items = await ListDecreesAsync(null, null);
+        using var wb = NewWorkbook("احکام");
+        var ws = wb.Worksheet(1);
+        string[] heads = { "پرسنل", "شماره حکم", "اجرا", "سمت جدید", "واحد جدید", "حقوق جدید", "اعمال‌شده" };
+        for (var i = 0; i < heads.Length; i++) ws.Cell(1, i + 1).Value = heads[i];
+        var r = 2;
+        foreach (var x in items)
+        {
+            ws.Cell(r, 1).Value = x.EmployeeName;
+            ws.Cell(r, 2).Value = x.DecreeNo;
+            ws.Cell(r, 3).Value = PersianDate.ToShortFa(x.EffectiveDate);
+            ws.Cell(r, 4).Value = x.NewPostTitle ?? "";
+            ws.Cell(r, 5).Value = x.NewOrgUnitName ?? "";
+            ws.Cell(r, 6).Value = x.NewBaseSalary == null ? "" : ((double)x.NewBaseSalary.Value).ToString();
+            ws.Cell(r, 7).Value = x.IsApplied ? "بله" : "خیر";
+            r++;
+        }
+        ws.Columns().AdjustToContents();
+        return (WorkbookBytes(wb), "decrees.xlsx");
     }
 }

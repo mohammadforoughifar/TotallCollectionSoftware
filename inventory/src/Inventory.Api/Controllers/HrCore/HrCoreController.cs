@@ -224,6 +224,53 @@ public class HrCoreController : RbacControllerBase
         catch (InvalidOperationException) { return NotFound(); }
     }
 
+    [HttpPost("contracts/{id:int}/renew")]
+    public async Task<IActionResult> RenewContract(int id, [FromQuery] int months = 12)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        try { return Ok(await _svc.RenewContractAsync(id, months)); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPost("documents/remind")]
+    public async Task<IActionResult> RemindDocuments([FromQuery] int days = 30)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(new { count = await _svc.RemindExpiringDocumentsAsync(days) });
+    }
+
+    [HttpGet("employees/{id:int}/dossier-pdf")]
+    public async Task<IActionResult> DossierPdf(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        try { return File(await _svc.DossierPdfAsync(id), "application/pdf", $"Dossier-{id}.pdf"); }
+        catch (InvalidOperationException) { return NotFound(); }
+    }
+
+    [HttpGet("employees/export")]
+    public async Task<IActionResult> ExportEmployees([FromQuery] string? q)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        var (data, name) = await _svc.ExportEmployeesExcelAsync(q);
+        return File(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
+    }
+
+    [HttpGet("contracts/export")]
+    public async Task<IActionResult> ExportContracts()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        var (data, name) = await _svc.ExportContractsExcelAsync();
+        return File(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
+    }
+
+    [HttpGet("decrees/export")]
+    public async Task<IActionResult> ExportDecrees()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        var (data, name) = await _svc.ExportDecreesExcelAsync();
+        return File(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
+    }
+
     // ------------------- هشدارهای انقضای قرارداد (§۹) -------------------
 
     [HttpGet("contract-alerts")]
