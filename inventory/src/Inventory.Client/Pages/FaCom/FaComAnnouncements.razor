@@ -18,6 +18,7 @@
         {
             <div class="d-flex gap-2">
                 <button class="btn btn-outline-primary" @onclick="CheckBirthdays"><i class="bi bi-cake"></i> بررسی تولدها</button>
+                <button class="btn btn-outline-info" title="انتشار دستی موارد زمان‌بندی‌شده فرارسیده" @onclick="CheckDue"><i class="bi bi-clock-history"></i> انتشار فرارسیده‌ها</button>
                 <button class="btn btn-success" @onclick="() => OpenEdit(null)"><i class="bi bi-plus-lg"></i> اطلاعیه جدید</button>
             </div>
         }
@@ -45,6 +46,7 @@
                         <th>عنوان</th>
                         <th>مخاطب</th>
                         <th>بازه انتشار</th>
+                        <th>وضعیت انتشار</th>
                         <th class="text-center">فعال؟</th>
                         <th>ایجادکننده</th>
                         <th style="width:150px">عملیات</th>
@@ -63,11 +65,13 @@
                                 }
                             </td>
                             <td class="small num">@FaComUi.Dt(a.PublishFrom) تا @FaComUi.Dt(a.PublishTo)</td>
+                            <td><span class="badge @PublishBadge(a)">@PublishText(a)</span></td>
                             <td class="text-center">@if (a.IsActive) { <i class="bi bi-check-circle text-success"></i> } else { <i class="bi bi-x-circle text-danger"></i> }</td>
                             <td class="small text-muted">@a.CreatedByName<div>@FaComUi.Dt(a.CreatedAt)</div></td>
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <button class="btn btn-outline-success" title="ارسال همگانی" @onclick="() => OpenBroadcast(a)"><i class="bi bi-send"></i></button>
+                                    <button class="btn btn-outline-success" title="انتشار فوری (اعلان سیستمی)" @onclick="() => PublishNow(a)"><i class="bi bi-megaphone"></i></button>
+                                    <button class="btn btn-outline-info" title="ارسال همگانی (ایمیل/پوش/پیامک)" @onclick="() => OpenBroadcast(a)"><i class="bi bi-send"></i></button>
                                     <button class="btn btn-outline-primary" title="ویرایش" @onclick="() => OpenEdit(a)"><i class="bi bi-pen"></i></button>
                                     <button class="btn btn-outline-danger" title="حذف" @onclick="() => Del(a)"><i class="bi bi-trash"></i></button>
                                 </div>
@@ -76,7 +80,7 @@
                     }
                     @if (rows.Count == 0)
                     {
-                        <tr><td colspan="6" class="text-center text-muted py-4">اطلاعیه‌ای ثبت نشده است.</td></tr>
+                        <tr><td colspan="7" class="text-center text-muted py-4">اطلاعیه‌ای ثبت نشده است.</td></tr>
                     }
                 </tbody>
             </table>
@@ -211,6 +215,43 @@
             var n = await Svc.BroadcastAsync(bcId, bcEmail, bcPush, bcSms);
             showBc = false;
             Toast.Success($"ارسال شد به {Fa.Digits(n.ToString())} نفر.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private static string PublishText(FaComAnnouncementDto a)
+    {
+        if (a.PublishFrom != null && a.PublishFrom > DateTime.Now) return "زمان‌بندی‌شده";
+        if (a.NotifiedAt != null) return "منتشرشده";
+        return "پیش‌نویس انتشار";
+    }
+
+    private static string PublishBadge(FaComAnnouncementDto a)
+    {
+        if (a.PublishFrom != null && a.PublishFrom > DateTime.Now) return "text-bg-warning";
+        if (a.NotifiedAt != null) return "text-bg-success";
+        return "text-bg-secondary";
+    }
+
+    private async Task PublishNow(FaComAnnouncementDto a)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"اطلاعیه «{a.Title}» همین حالا منتشر و اعلان شود؟")) return;
+        try
+        {
+            var n = await Svc.PublishNowAsync(a.Id);
+            Toast.Success($"منتشر شد؛ اعلان به {Fa.Digits(n.ToString())} نفر ارسال شد.");
+            await Reload();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task CheckDue()
+    {
+        try
+        {
+            var n = await Svc.CheckDueAnnouncementsAsync();
+            Toast.Success(n == 0 ? "مورد فرارسیده‌ای نیست." : $"{Fa.Digits(n.ToString())} اطلاعیه منتشر شد.");
+            await Reload();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }

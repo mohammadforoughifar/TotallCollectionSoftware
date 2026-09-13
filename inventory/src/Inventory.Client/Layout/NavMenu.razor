@@ -378,6 +378,9 @@
                         <NavLink class="nav-link" href="fa-com/polls" @onclick="NotifyClose">
                             <i class="bi bi-bar-chart"></i><span>نظرسنجی‌ها</span>
                         </NavLink>
+                        <NavLink class="nav-link" href="fa-com/my-suggestions" @onclick="NotifyClose">
+                            <i class="bi bi-lightbulb"></i><span>صندوق پیشنهادها</span>
+                        </NavLink>
                         @if (Auth.Has("FaCom.Manage") || Auth.IsAdmin)
                         {
                             <NavLink class="nav-link" href="fa-com/announcements" @onclick="NotifyClose">
@@ -385,6 +388,9 @@
                             </NavLink>
                             <NavLink class="nav-link" href="fa-com/tickets" @onclick="NotifyClose">
                                 <i class="bi bi-ticket-detailed"></i><span>کارتابل تیکت‌ها</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-com/suggestions" @onclick="NotifyClose">
+                                <i class="bi bi-inbox-fill"></i><span>کارتابل پیشنهادها</span>
                             </NavLink>
                         }
                     }
