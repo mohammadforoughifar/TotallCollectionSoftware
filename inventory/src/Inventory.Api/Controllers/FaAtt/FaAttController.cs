@@ -245,6 +245,13 @@ public class FaAttController : RbacControllerBase
         return Ok(await _svc.DecideMissionAsync(id, approve, MyUserId, MyUsername));
     }
 
+    [HttpPost("missions/decide-batch")]
+    public async Task<IActionResult> DecideMissionBatch([FromBody] FaAttDecideBatchDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.DecideMissionBatchAsync(dto.Ids, dto.Approve, MyUserId, MyUsername));
+    }
+
     [HttpDelete("missions/{id:int}")]
     public async Task<IActionResult> DeleteMission(int id)
     {
@@ -348,11 +355,34 @@ public class FaAttController : RbacControllerBase
         return Ok(await _svc.HrDecideAsync(id, approve, MyUserId, MyUsername));
     }
 
+    [HttpPost("leaves/manager-decide-batch")]
+    public async Task<IActionResult> ManagerDecideBatch([FromBody] FaAttDecideBatchDto dto)
+    {
+        bool isHr = await ForbiddenUnlessAsync(Mod, "Manage") == null;
+        if (!isHr && await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ManagerDecideBatchAsync(dto.Ids, dto.Approve, MyUserId, MyUsername, isHr));
+    }
+
+    [HttpPost("leaves/hr-decide-batch")]
+    public async Task<IActionResult> HrDecideBatch([FromBody] FaAttDecideBatchDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _svc.HrDecideBatchAsync(dto.Ids, dto.Approve, MyUserId, MyUsername));
+    }
+
     [HttpGet("leaves/by-unit")]
     public async Task<IActionResult> LeavesByUnit([FromQuery] int orgUnitId, [FromQuery] DateTime from, [FromQuery] DateTime to)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
         return Ok(await _svc.LeavesByUnitAsync(orgUnitId, from, to));
+    }
+
+    [HttpGet("absence-calendar")]
+    public async Task<IActionResult> AbsenceCalendar([FromQuery] DateTime from, [FromQuery] DateTime to,
+        [FromQuery] int? employeeId, [FromQuery] int? orgUnitId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.AbsenceCalendarAsync(from, to, employeeId, orgUnitId));
     }
 
     [HttpGet("balances/my")]

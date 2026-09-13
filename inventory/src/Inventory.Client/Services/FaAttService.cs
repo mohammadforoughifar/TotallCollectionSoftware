@@ -31,6 +31,7 @@ public interface IFaAttService
     Task<List<FaAttMissionDto>> GetMissionsAsync(int? employeeId = null, int? status = null);
     Task<FaAttMissionDto> SaveMissionAsync(int? id, FaAttMissionSaveDto dto);
     Task<FaAttMissionDto> DecideMissionAsync(int id, bool approve);
+    Task<FaAttBatchResultDto> DecideMissionBatchAsync(List<int> ids, bool approve);
     Task DeleteMissionAsync(int id);
     Task<List<FaAttMissionDto>> MyMissionsAsync();
     Task<FaAttMissionDto> RequestMyMissionAsync(FaAttMissionSaveDto dto);
@@ -45,7 +46,10 @@ public interface IFaAttService
     Task<FaAttLeaveDto> UpdateMyLeaveAsync(int id, FaAttLeaveSaveDto dto);
     Task<FaAttLeaveDto> ManagerDecideAsync(int id, bool approve);
     Task<FaAttLeaveDto> HrDecideAsync(int id, bool approve);
+    Task<FaAttBatchResultDto> ManagerDecideBatchAsync(List<int> ids, bool approve);
+    Task<FaAttBatchResultDto> HrDecideBatchAsync(List<int> ids, bool approve);
     Task<List<FaAttLeaveDto>> GetLeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to);
+    Task<List<FaAttCalendarEventDto>> GetAbsenceCalendarAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId);
     Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId = null, int? year = null, int? leaveTypeId = null);
     Task<FaAttLeaveBalanceDto> SaveBalanceAsync(int employeeId, int year, int leaveTypeId, FaAttLeaveBalanceSaveDto dto);
     Task<FaAttLeaveBalanceDto> CarryOverAsync(int employeeId, int leaveTypeId, FaAttLeaveCarryDto dto);
@@ -168,6 +172,9 @@ public class FaAttService : IFaAttService
     public Task<FaAttMissionDto> DecideMissionAsync(int id, bool approve)
         => _api.PostAsync<FaAttMissionDto>($"{Root}/missions/{id}/decide?approve={approve}", null);
 
+    public Task<FaAttBatchResultDto> DecideMissionBatchAsync(List<int> ids, bool approve)
+        => _api.PostAsync<FaAttBatchResultDto>($"{Root}/missions/decide-batch", new FaAttDecideBatchDto { Ids = ids, Approve = approve });
+
     public Task DeleteMissionAsync(int id)
         => _api.DeleteAsync($"{Root}/missions/{id}");
 
@@ -214,8 +221,17 @@ public class FaAttService : IFaAttService
     public Task<FaAttLeaveDto> HrDecideAsync(int id, bool approve)
         => _api.PostAsync<FaAttLeaveDto>($"{Root}/leaves/{id}/hr-decide?approve={approve}", null);
 
+    public Task<FaAttBatchResultDto> ManagerDecideBatchAsync(List<int> ids, bool approve)
+        => _api.PostAsync<FaAttBatchResultDto>($"{Root}/leaves/manager-decide-batch", new FaAttDecideBatchDto { Ids = ids, Approve = approve });
+
+    public Task<FaAttBatchResultDto> HrDecideBatchAsync(List<int> ids, bool approve)
+        => _api.PostAsync<FaAttBatchResultDto>($"{Root}/leaves/hr-decide-batch", new FaAttDecideBatchDto { Ids = ids, Approve = approve });
+
     public Task<List<FaAttLeaveDto>> GetLeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to)
         => _api.GetAsync<List<FaAttLeaveDto>>($"{Root}/leaves/by-unit?orgUnitId={orgUnitId}&from={F(from)}&to={F(to)}");
+
+    public Task<List<FaAttCalendarEventDto>> GetAbsenceCalendarAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId)
+        => _api.GetAsync<List<FaAttCalendarEventDto>>($"{Root}/absence-calendar?from={F(from)}&to={F(to)}&employeeId={employeeId}&orgUnitId={orgUnitId}");
 
     public Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId = null, int? year = null, int? leaveTypeId = null)
     {
