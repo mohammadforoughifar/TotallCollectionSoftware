@@ -81,12 +81,27 @@
             }
             else
             {
+                @if (selected.Count > 0)
+                {
+                    <div class="d-flex gap-2 align-items-center p-2 border-bottom bg-light">
+                        <span class="small text-muted">@FaAttUi.Num(selected.Count) انتخاب‌شده:</span>
+                        <button class="btn btn-sm btn-success" @onclick="() => BatchDecide(true)"><i class="bi bi-check-all"></i> تأیید گروهی</button>
+                        <button class="btn btn-sm btn-outline-warning" @onclick="() => BatchDecide(false)"><i class="bi bi-x-lg"></i> رد گروهی</button>
+                        <button class="btn btn-sm btn-light" @onclick="() => selected.Clear()">لغو انتخاب</button>
+                    </div>
+                }
                 <div class="table-responsive"><table class="table table-hover mb-0 align-middle">
-                    <thead class="table-light"><tr><th>پرسنل</th><th>بازه</th><th>مقصد</th><th>وضعیت</th><th style="width:150px"></th></tr></thead>
+                    <thead class="table-light"><tr><th style="width:40px"><input class="form-check-input" type="checkbox" @onchange="ToggleAll" checked="@allChecked" title="انتخاب همه در انتظار" /></th><th>پرسنل</th><th>بازه</th><th>مقصد</th><th>وضعیت</th><th style="width:150px"></th></tr></thead>
                     <tbody>
                         @foreach (var m in all)
                         {
-                            <tr>
+                            <tr class="@(selected.Contains(m.Id) ? "table-active" : "")">
+                                <td>
+                                    @if (m.Status == 0)
+                                    {
+                                        <input class="form-check-input" type="checkbox" checked="@selected.Contains(m.Id)" @onchange="() => Toggle(m.Id)" />
+                                    }
+                                </td>
                                 <td><b>@m.EmployeeName</b></td>
                                 <td class="num">@m.FromDate.ToFa() تا @m.ToDate.ToFa()</td>
                                 <td>@(m.Destination ?? "—")</td>
@@ -165,6 +180,7 @@
 
     private async Task ReloadAll()
     {
+        selected.Clear();
         int? e = int.TryParse(fEmp, out var x) ? x : null;
         int? st = int.TryParse(fStatus, out var s) ? s : null;
         all = await Svc.GetMissionsAsync(e, st);
@@ -197,6 +213,35 @@
     private async Task Decide(FaAttMissionDto m, bool approve)
     {
         try { await Svc.DecideMissionAsync(m.Id, approve); Toast.Success(approve ? "تأیید شد." : "رد شد."); await Reload(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private HashSet<int> selected = new();
+    private bool allChecked => all.Any(m => m.Status == 0) && all.Where(m => m.Status == 0).All(m => selected.Contains(m.Id));
+
+    private void Toggle(int id)
+    {
+        if (!selected.Add(id)) selected.Remove(id);
+    }
+
+    private void ToggleAll(ChangeEventArgs e)
+    {
+        selected.Clear();
+        if ((bool)(e.Value ?? false))
+            foreach (var m in all.Where(m => m.Status == 0)) selected.Add(m.Id);
+    }
+
+    private async Task BatchDecide(bool approve)
+    {
+        if (selected.Count == 0) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"{FaAttUi.Num(selected.Count)} مأموریت به‌صورت گروهی {(approve ? "تأیید" : "رد")} شود؟")) return;
+        try
+        {
+            var r = await Svc.DecideMissionBatchAsync(selected.ToList(), approve);
+            if (r.Failed == 0) Toast.Success($"هر {FaAttUi.Num(r.Ok)} مأموریت انجام شد.");
+            else Toast.Error($"{FaAttUi.Num(r.Ok)} موفق — {FaAttUi.Num(r.Failed)} ناموفق: {string.Join("؛ ", r.Errors.Take(3))}");
+            await Reload();
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 

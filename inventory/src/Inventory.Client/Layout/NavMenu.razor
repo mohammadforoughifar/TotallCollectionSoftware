@@ -278,6 +278,9 @@
                             <NavLink class="nav-link" href="fa-att/reports" @onclick="NotifyClose">
                                 <i class="bi bi-file-earmark-spreadsheet"></i><span>گزارش ماهانه</span>
                             </NavLink>
+                            <NavLink class="nav-link" href="fa-att/calendar" @onclick="NotifyClose">
+                                <i class="bi bi-calendar3"></i><span>تقویم یکپارچه غیبت</span>
+                            </NavLink>
                         }
                     }
 
@@ -1006,7 +1009,7 @@
         // صفحه‌های حضور و مرخصی (§۷) زیر «منابع انسانی اصلی» هستند، نه گروه فروغ آریا
         bool hrLeave = p is "fa-att/my-leaves" or "fa-att/approvals" or "fa-att/leaves" or "fa-att/leave-types"
             or "fa-att/balances" or "fa-att/missions" or "fa-att/devices" or "fa-att/reports"
-            or "fa-att/clock" or "fa-att/shifts" or "fa-att/daily";
+            or "fa-att/clock" or "fa-att/shifts" or "fa-att/daily" or "fa-att/calendar";
         gHrMain = p.StartsWith("hr-main") || p.StartsWith("hr-time") || p.StartsWith("payroll") || p.StartsWith("hr-performance")
                   || p.StartsWith("hr-core") || p.StartsWith("fa-lms") || p.StartsWith("fa-pay") || p.StartsWith("fa-com") || hrLeave;
         gFaAtt = (p.StartsWith("fa-att") && !hrLeave) || p == "attendance" || p.StartsWith("attendance-")

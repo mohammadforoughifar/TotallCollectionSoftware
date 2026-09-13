@@ -227,6 +227,33 @@ public class FaAttLeaveDto
     public DateTime? ManagerDecidedAt { get; set; }
 }
 
+public class FaAttDecideBatchDto
+{
+    public List<int> Ids { get; set; } = new();
+    public bool Approve { get; set; }
+}
+
+public class FaAttBatchResultDto
+{
+    public int Ok { get; set; }
+    public int Failed { get; set; }
+    public List<string> Errors { get; set; } = new();
+}
+
+public class FaAttCalendarEventDto
+{
+    /// <summary>Leave | Mission | Shift | Training | Holiday</summary>
+    public string Kind { get; set; } = "";
+    public DateTime FromDate { get; set; }
+    public DateTime ToDate { get; set; }
+    public int? EmployeeId { get; set; }
+    public string? EmployeeName { get; set; }
+    public string Title { get; set; } = "";
+    public string? Color { get; set; }
+    /// <summary>0=در انتظار، 1=تأییدشده/فعال</summary>
+    public int Status { get; set; }
+}
+
 public class FaAttLeaveSaveDto
 {
     public int EmployeeId { get; set; }

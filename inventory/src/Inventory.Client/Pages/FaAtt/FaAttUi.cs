@@ -83,6 +83,21 @@ public static class FaAttUi
 
     public static int CurrentYear => JalaliYear(DateTime.Today);
 
+    public static int CurrentMonth
+    {
+        get
+        {
+            try { return new System.Globalization.PersianCalendar().GetMonth(DateTime.Today); }
+            catch { return 1; }
+        }
+    }
+
+    public static string MonthName(int m) => m switch
+    {
+        1 => "فروردین", 2 => "اردیبهشت", 3 => "خرداد", 4 => "تیر", 5 => "مرداد", 6 => "شهریور",
+        7 => "مهر", 8 => "آبان", 9 => "آذر", 10 => "دی", 11 => "بهمن", 12 => "اسفند", _ => "—"
+    };
+
     public static string Num(double v) => Inventory.Shared.Fa.Digits(v.ToString("0.##"));
     public static string Num(double? v) => v == null ? "—" : Num(v.Value);
     public static string Money(double v) => Inventory.Shared.Fa.Digits(v.ToString("#,0"));

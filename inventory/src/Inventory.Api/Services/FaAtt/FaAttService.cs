@@ -79,7 +79,11 @@ public interface IFaAttService
     Task<FaAttLeaveDto> RequestMyLeaveAsync(int userId, string userName, FaAttLeaveSaveDto dto);
     Task<FaAttLeaveDto> ManagerDecideAsync(int id, bool approve, int byUserId, string byName, bool isHr);
     Task<FaAttLeaveDto> HrDecideAsync(int id, bool approve, int byUserId, string byName);
+    Task<FaAttBatchResultDto> ManagerDecideBatchAsync(List<int> ids, bool approve, int byUserId, string byName, bool isHr);
+    Task<FaAttBatchResultDto> HrDecideBatchAsync(List<int> ids, bool approve, int byUserId, string byName);
+    Task<FaAttBatchResultDto> DecideMissionBatchAsync(List<int> ids, bool approve, int byUserId, string byName);
     Task<List<FaAttLeaveDto>> LeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to);
+    Task<List<FaAttCalendarEventDto>> AbsenceCalendarAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId);
     Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId, int? year, int? leaveTypeId);
     Task<FaAttLeaveBalanceDto> SaveBalanceAsync(int employeeId, int year, int leaveTypeId, FaAttLeaveBalanceSaveDto dto);
     Task<FaAttLeaveBalanceDto> CarryOverAsync(int employeeId, int leaveTypeId, FaAttLeaveCarryDto dto);
@@ -1490,4 +1494,162 @@ public class FaAttService : IFaAttService
         if (clash) throw new InvalidOperationException("با یک مأموریت دیگر در این بازه تداخل دارد.");
     }
 
+
+    // ==================== تقویم یکپارچه غیبت ====================
+
+    /// <summary>مرخصی + مأموریت + شیفت + آموزش + تعطیلات در یک نما (سقف بازه ۶۲ روز).</summary>
+    public async Task<List<FaAttCalendarEventDto>> AbsenceCalendarAsync(
+        DateTime from, DateTime to, int? employeeId, int? orgUnitId)
+    {
+        from = from.Date; to = to.Date;
+        if (to < from) (from, to) = (to, from);
+        if ((to - from).Days > 62) to = from.AddDays(62);
+        var empQ = _db.HrEmployees.AsNoTracking().Where(e => e.IsActive);
+        if (employeeId is > 0) empQ = empQ.Where(e => e.Id == employeeId.Value);
+        else if (orgUnitId is > 0) empQ = empQ.Where(e => e.OrgUnitId == orgUnitId.Value || e.HrMainNodeId == orgUnitId.Value);
+        var emps = await empQ.OrderBy(e => e.Code).Take(500)
+            .ToDictionaryAsync(e => e.Id, e => e.FirstName + " " + e.LastName);
+        var empIds = emps.Keys.ToList();
+        var ev = new List<FaAttCalendarEventDto>();
+        if (empIds.Count == 0 && employeeId == null && orgUnitId == null)
+            return ev;
+
+        var leaves = await _db.FaAttLeaves.AsNoTracking()
+            .Where(l => empIds.Contains(l.EmployeeId)
+                && l.Status != FaAttRequestStatus.Rejected
+                && l.FromDate.Date <= to && l.ToDate.Date >= from)
+            .OrderBy(l => l.FromDate).Take(2000).ToListAsync();
+        var typeNames = await _db.FaAttLeaveTypes.AsNoTracking()
+            .ToDictionaryAsync(x => x.Id, x => x.Name);
+        foreach (var l in leaves)
+            ev.Add(new FaAttCalendarEventDto
+            {
+                Kind = "Leave", FromDate = l.FromDate.Date, ToDate = l.ToDate.Date,
+                EmployeeId = l.EmployeeId,
+                EmployeeName = emps.TryGetValue(l.EmployeeId, out var n) ? n : null,
+                Title = (typeNames.TryGetValue(l.LeaveTypeId, out var tn) ? tn : "مرخصی")
+                    + (l.HoursPerDay == null ? "" : $" (ساعتی {l.HoursPerDay:0.#})"),
+                Color = l.Status == FaAttRequestStatus.Approved ? "#16a34a" : "#d97706",
+                Status = l.Status == FaAttRequestStatus.Approved ? 1 : 0
+            });
+
+        var missions = await _db.FaAttMissions.AsNoTracking()
+            .Where(m => empIds.Contains(m.EmployeeId)
+                && m.Status != FaAttRequestStatus.Rejected
+                && m.FromDate.Date <= to && m.ToDate.Date >= from)
+            .OrderBy(m => m.FromDate).Take(1000).ToListAsync();
+        foreach (var m in missions)
+            ev.Add(new FaAttCalendarEventDto
+            {
+                Kind = "Mission", FromDate = m.FromDate.Date, ToDate = m.ToDate.Date,
+                EmployeeId = m.EmployeeId,
+                EmployeeName = emps.TryGetValue(m.EmployeeId, out var n2) ? n2 : null,
+                Title = string.IsNullOrWhiteSpace(m.Destination) ? "مأموریت" : $"مأموریت: {m.Destination}",
+                Color = m.Status == FaAttRequestStatus.Approved ? "#2563eb" : "#93c5fd",
+                Status = m.Status == FaAttRequestStatus.Approved ? 1 : 0
+            });
+
+        var assigns = await _db.FaAttShiftAssigns.AsNoTracking()
+            .Where(a => empIds.Contains(a.EmployeeId)
+                && a.FromDate.Date <= to && (a.ToDate == null || a.ToDate.Value.Date >= from))
+            .Take(1000).ToListAsync();
+        var shiftIds = assigns.Select(a => a.ShiftId).Distinct().ToList();
+        var shifts = shiftIds.Count == 0 ? new Dictionary<int, FaAttShift>()
+            : await _db.FaAttShifts.AsNoTracking().Where(s => shiftIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id);
+        foreach (var a in assigns)
+        {
+            shifts.TryGetValue(a.ShiftId, out var sh);
+            ev.Add(new FaAttCalendarEventDto
+            {
+                Kind = "Shift",
+                FromDate = a.FromDate.Date < from ? from : a.FromDate.Date,
+                ToDate = a.ToDate == null || a.ToDate.Value.Date > to ? to : a.ToDate.Value.Date,
+                EmployeeId = a.EmployeeId,
+                EmployeeName = emps.TryGetValue(a.EmployeeId, out var n3) ? n3 : null,
+                Title = "شیفت: " + (sh?.Name ?? "—"),
+                Color = string.IsNullOrWhiteSpace(sh?.Color) ? "#64748b" : sh.Color,
+                Status = 1
+            });
+        }
+
+        var sessions = await _db.FaLmsSessions.AsNoTracking()
+            .Where(s => s.SessionDate.Date >= from && s.SessionDate.Date <= to)
+            .Take(500).ToListAsync();
+        if (sessions.Count > 0)
+        {
+            var courseIds = sessions.Select(s => s.CourseId).Distinct().ToList();
+            var courseNames = await _db.FaLmsCourses.AsNoTracking()
+                .Where(c => courseIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Title);
+            var enrolls = await _db.FaLmsEnrollments.AsNoTracking()
+                .Where(x => courseIds.Contains(x.CourseId) && empIds.Contains(x.EmployeeId)
+                    && x.Status == FaLmsEnrollStatus.Approved)
+                .Take(2000).ToListAsync();
+            foreach (var s in sessions)
+                foreach (var g in enrolls.Where(x => x.CourseId == s.CourseId))
+                    ev.Add(new FaAttCalendarEventDto
+                    {
+                        Kind = "Training", FromDate = s.SessionDate.Date, ToDate = s.SessionDate.Date,
+                        EmployeeId = g.EmployeeId,
+                        EmployeeName = emps.TryGetValue(g.EmployeeId, out var n4) ? n4 : null,
+                        Title = "آموزش: " + (courseNames.TryGetValue(s.CourseId, out var cn) ? cn : "")
+                            + (string.IsNullOrWhiteSpace(s.Topic) ? "" : $" — {s.Topic}"),
+                        Color = "#9333ea",
+                        Status = 1
+                    });
+        }
+
+        var holidays = await _db.CompanyHolidays.AsNoTracking()
+            .Where(h => h.HolidayDate.Date >= from && h.HolidayDate.Date <= to)
+            .OrderBy(h => h.HolidayDate).Take(100).ToListAsync();
+        foreach (var h in holidays)
+            ev.Add(new FaAttCalendarEventDto
+            {
+                Kind = "Holiday", FromDate = h.HolidayDate.Date, ToDate = h.HolidayDate.Date,
+                Title = h.Name ?? "تعطیل رسمی", Color = "#dc2626", Status = 1
+            });
+
+        return ev.OrderBy(e => e.FromDate).ToList();
+    }
+
+    // ==================== تأیید/رد گروهی ====================
+
+    public async Task<FaAttBatchResultDto> ManagerDecideBatchAsync(
+        List<int> ids, bool approve, int byUserId, string byName, bool isHr)
+    {
+        var res = new FaAttBatchResultDto();
+        foreach (var id in (ids ?? new()).Distinct().Take(200))
+        {
+            try { await ManagerDecideAsync(id, approve, byUserId, byName, isHr); res.Ok++; }
+            catch (Exception ex) { res.Failed++; res.Errors.Add($"درخواست {id}: {ex.Message}"); }
+        }
+        if (res.Ok == 0 && res.Failed == 0) throw new InvalidOperationException("موردی انتخاب نشده است.");
+        return res;
+    }
+
+    public async Task<FaAttBatchResultDto> HrDecideBatchAsync(
+        List<int> ids, bool approve, int byUserId, string byName)
+    {
+        var res = new FaAttBatchResultDto();
+        foreach (var id in (ids ?? new()).Distinct().Take(200))
+        {
+            try { await HrDecideAsync(id, approve, byUserId, byName); res.Ok++; }
+            catch (Exception ex) { res.Failed++; res.Errors.Add($"درخواست {id}: {ex.Message}"); }
+        }
+        if (res.Ok == 0 && res.Failed == 0) throw new InvalidOperationException("موردی انتخاب نشده است.");
+        return res;
+    }
+
+    public async Task<FaAttBatchResultDto> DecideMissionBatchAsync(
+        List<int> ids, bool approve, int byUserId, string byName)
+    {
+        var res = new FaAttBatchResultDto();
+        foreach (var id in (ids ?? new()).Distinct().Take(200))
+        {
+            try { await DecideMissionAsync(id, approve, byUserId, byName); res.Ok++; }
+            catch (Exception ex) { res.Failed++; res.Errors.Add($"مأموریت {id}: {ex.Message}"); }
+        }
+        if (res.Ok == 0 && res.Failed == 0) throw new InvalidOperationException("موردی انتخاب نشده است.");
+        return res;
+    }
 }
