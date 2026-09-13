@@ -47,6 +47,7 @@ public class AppDbContext : DbContext
     public DbSet<WorkOrderAllowedAssignee> WorkOrderAllowedAssignees => Set<WorkOrderAllowedAssignee>();
     public DbSet<WorkOrderReminderLog> WorkOrderReminderLogs => Set<WorkOrderReminderLog>();
     public DbSet<WorkOrderChecklistItem> WorkOrderChecklistItems => Set<WorkOrderChecklistItem>();
+    public DbSet<WorkOrderComment> WorkOrderComments => Set<WorkOrderComment>();
 
     // ================== بایگانی و پیوست جامع (عمومی) ==================
     public DbSet<ArchiveFolder> ArchiveFolders => Set<ArchiveFolder>();

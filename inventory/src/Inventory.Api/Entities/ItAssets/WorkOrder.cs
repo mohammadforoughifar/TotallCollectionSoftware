@@ -213,6 +213,33 @@ public class WorkOrderReminderLog
     public DateTime SentAt { get; set; } = DateTime.Now;
 }
 
+/// <summary>
+/// کامنت (رشتهٔ گفتگو) داخل دستور کار — دستوردهنده و گیرندگان می‌توانند
+/// دربارهٔ همان دستور گفتگو کنند و سابقه داخل خود دستور می‌ماند.
+/// </summary>
+public class WorkOrderComment
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+
+    public int AuthorUserId { get; set; }
+
+    [MaxLength(150)]
+    public string AuthorName { get; set; } = "";
+
+    [MaxLength(2000)]
+    public string Text { get; set; } = "";
+
+    /// <summary>پاسخ به کامنت دیگر — null یعنی کامنت ریشه.</summary>
+    public int? ReplyToId { get; set; }
+
+    /// <summary>حذف نرم — متن پاک می‌شود اما جای آن در رشته می‌ماند.</summary>
+    public bool IsDeleted { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime? EditedAt { get; set; }
+}
+
 /// <summary>لیست افرادی که هر کاربر مجاز است به آن‌ها دستور کار بدهد.</summary>
 public class WorkOrderAllowedAssignee
 {

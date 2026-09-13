@@ -379,6 +379,8 @@ public class WorkOrdersController : ControllerBase
         var clStats = await _db.WorkOrderChecklistItems.Where(c => ids.Contains(c.OrderId))
             .GroupBy(c => c.OrderId)
             .Select(g => new { g.Key, Total = g.Count(), Done = g.Count(x => x.IsDone) }).ToListAsync();
+        var cmCounts = await _db.WorkOrderComments.Where(c => ids.Contains(c.OrderId) && !c.IsDeleted)
+            .GroupBy(c => c.OrderId).Select(g => new { g.Key, C = g.Count() }).ToListAsync();
 
         return orders.Select(w => (object)new
         {
@@ -389,6 +391,7 @@ public class WorkOrdersController : ControllerBase
             ChecklistTotal = clStats.FirstOrDefault(c => c.Key == w.Id)?.Total ?? 0,
             ChecklistDone = clStats.FirstOrDefault(c => c.Key == w.Id)?.Done ?? 0,
             AttachmentCount = attCounts.FirstOrDefault(c => c.Key == w.Id)?.C ?? 0,
+            CommentCount = cmCounts.FirstOrDefault(c => c.Key == w.Id)?.C ?? 0,
             Assignees = asgs.Where(a => a.OrderId == w.Id).Select(a => new
             {
                 a.Id, a.UserId, a.Name, a.SeenAt, a.RepliedAt, a.Done, a.ReplyText,
@@ -895,6 +898,114 @@ public class WorkOrdersController : ControllerBase
             PerAssignee = perAssignee,
             Months = months
         });
+    }
+
+    // ================== رشتهٔ گفتگو (کامنت) داخل دستور ==================
+
+    /// <summary>لیست کامنت‌های یک دستور — قدیمی به جدید. کامنت‌های حذف‌شده با متن خالی می‌آیند تا رشتهٔ پاسخ‌ها نشکند.</summary>
+    [HttpGet("{id:int}/comments")]
+    public async Task<IActionResult> Comments(int id)
+    {
+        if (!await CanSeeOrderAsync(id)) return Forbid();
+        var items = await _db.WorkOrderComments.AsNoTracking()
+            .Where(c => c.OrderId == id)
+            .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
+            .ToListAsync();
+        return Ok(items.Select(c => new
+        {
+            c.Id, c.AuthorUserId, c.AuthorName,
+            Text = c.IsDeleted ? "" : c.Text,
+            c.ReplyToId, c.IsDeleted, c.CreatedAt, c.EditedAt
+        }));
+    }
+
+    public class CommentDto { public string Text { get; set; } = ""; public int? ReplyToId { get; set; } }
+
+    /// <summary>ثبت کامنت — دستوردهنده و گیرندگان؛ فقط تا وقتی دستور باز است. به بقیهٔ طرف‌ها اعلان می‌رود.</summary>
+    [HttpPost("{id:int}/comments")]
+    public async Task<IActionResult> AddComment(int id, [FromBody] CommentDto dto)
+    {
+        var wo = await _db.WorkOrders.FindAsync(id);
+        if (wo == null) return NotFound();
+        if (wo.Status != "Open") return BadRequest(new { message = "دستور بسته شده است؛ امکان ثبت کامنت نیست." });
+
+        var isOwner = wo.OwnerUserId == MyUserId;
+        var isAssignee = await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == id && a.UserId == MyUserId);
+        if (!isOwner && !isAssignee) return Forbid();
+
+        var text = (dto.Text ?? "").Trim();
+        if (text.Length == 0) return BadRequest(new { message = "متن کامنت خالی است." });
+        if (text.Length > 2000) return BadRequest(new { message = "متن کامنت حداکثر ۲۰۰۰ حرف است." });
+
+        // پاسخ باید به کامنتی از همین دستور باشد
+        if (dto.ReplyToId is > 0 &&
+            !await _db.WorkOrderComments.AnyAsync(c => c.Id == dto.ReplyToId && c.OrderId == id))
+            return BadRequest(new { message = "کامنت مرجع یافت نشد." });
+
+        var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == MyUserId);
+        var myName = UserDisplay.Name(me) is { Length: > 0 } n ? n : MyUsername;
+
+        var cm = new WorkOrderComment
+        {
+            OrderId = id, AuthorUserId = MyUserId, AuthorName = myName,
+            Text = text, ReplyToId = dto.ReplyToId is > 0 ? dto.ReplyToId : null
+        };
+        _db.WorkOrderComments.Add(cm);
+        Log(id, "Commented", text.Length > 120 ? text[..120] + "…" : text);
+        await _db.SaveChangesAsync();
+
+        // اعلان به همهٔ طرف‌های دستور به‌جز نویسنده
+        var others = await _db.WorkOrderAssignees.Where(a => a.OrderId == id && a.UserId != MyUserId)
+            .Select(a => a.UserId).Distinct().ToListAsync();
+        if (wo.OwnerUserId != MyUserId) others.Add(wo.OwnerUserId);
+        var brief = text.Length > 80 ? text[..80] + "…" : text;
+        foreach (var uid in others.Distinct())
+            await _notify.SendAsync(uid, "کامنت جدید دستور کار 💬",
+                $"{wo.Number} — «{wo.Title}»: {brief}",
+                myName, "دستور کار", $"/work-orders?open={wo.Id}");
+        await _notify.BroadcastChangedAsync("workorders");
+
+        return Ok(new { cm.Id, cm.AuthorUserId, cm.AuthorName, cm.Text, cm.ReplyToId, cm.IsDeleted, cm.CreatedAt, cm.EditedAt });
+    }
+
+    /// <summary>ویرایش کامنت — فقط نویسنده و فقط تا وقتی دستور باز است.</summary>
+    [HttpPut("comments/{commentId:int}")]
+    public async Task<IActionResult> EditComment(int commentId, [FromBody] CommentDto dto)
+    {
+        var cm = await _db.WorkOrderComments.FindAsync(commentId);
+        if (cm == null || cm.IsDeleted) return NotFound();
+        if (cm.AuthorUserId != MyUserId) return Forbid();
+
+        var wo = await _db.WorkOrders.FindAsync(cm.OrderId);
+        if (wo == null || wo.Status != "Open") return BadRequest(new { message = "دستور بسته شده است." });
+
+        var text = (dto.Text ?? "").Trim();
+        if (text.Length == 0) return BadRequest(new { message = "متن کامنت خالی است." });
+        if (text.Length > 2000) return BadRequest(new { message = "متن کامنت حداکثر ۲۰۰۰ حرف است." });
+
+        cm.Text = text;
+        cm.EditedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok(new { cm.Id, cm.Text, cm.EditedAt });
+    }
+
+    /// <summary>حذف نرم کامنت — نویسنده یا دستوردهنده؛ متن پاک می‌شود اما جای آن در رشته می‌ماند.</summary>
+    [HttpDelete("comments/{commentId:int}")]
+    public async Task<IActionResult> DeleteComment(int commentId)
+    {
+        var cm = await _db.WorkOrderComments.FindAsync(commentId);
+        if (cm == null || cm.IsDeleted) return NotFound();
+
+        var wo = await _db.WorkOrders.FindAsync(cm.OrderId);
+        if (wo == null) return NotFound();
+        if (cm.AuthorUserId != MyUserId && wo.OwnerUserId != MyUserId) return Forbid();
+
+        cm.IsDeleted = true;
+        cm.Text = "";
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok();
     }
 
     // ================== خروجی Excel / PDF ==================

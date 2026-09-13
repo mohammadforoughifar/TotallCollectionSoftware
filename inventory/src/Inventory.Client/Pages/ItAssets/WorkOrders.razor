@@ -329,6 +329,10 @@ else
                                     {
                                         <span class="badge bg-light text-dark border fs-9 num" title="چک‌لیست">☑ @w.ChecklistDone/@w.ChecklistTotal</span>
                                     }
+                                    @if (w.CommentCount > 0)
+                                    {
+                                        <span class="badge bg-light text-dark border fs-9 num" title="کامنت‌ها">💬 @w.CommentCount</span>
+                                    }
                                 </td>
                                 <td>@w.OwnerName</td>
                                 <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
@@ -919,6 +923,104 @@ else
                         </div>
                     }
 
+                    @* ---------- رشتهٔ گفتگو (کامنت‌ها) ---------- *@
+                    @{
+                        var canComment = detail.Status == "Open" &&
+                            (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
+                    }
+                    <div class="wo-block mb-3">
+                        <div class="wo-block-title"><i class="bi bi-chat-left-text"></i> گفتگو (@comments.Count(c => !c.IsDeleted))</div>
+                        <div class="wo-block-body">
+                            @if (comments.Count == 0)
+                            {
+                                <div class="fs-8 text-muted">هنوز کامنتی ثبت نشده است.</div>
+                            }
+                            @foreach (var cm in comments)
+                            {
+                                var mine = cm.AuthorUserId == access.UserId;
+                                <div class="wo-cm @(mine ? "mine" : "")" id="wo-cm-@cm.Id">
+                                    <UserAvatar LoginUserId="cm.AuthorUserId" Size="28" CssClass="user-avatar-sm" />
+                                    <div class="wo-cm-bubble">
+                                        <div class="wo-cm-head">
+                                            <span class="fw-700 fs-8">@cm.AuthorName</span>
+                                            <span class="fs-9 text-muted num">@cm.CreatedAt.ToFa() @cm.CreatedAt.ToString("HH:mm")</span>
+                                            @if (cm.EditedAt != null && !cm.IsDeleted)
+                                            {
+                                                <span class="fs-9 text-muted">(ویرایش‌شده)</span>
+                                            }
+                                        </div>
+                                        @if (cm.ReplyToId != null)
+                                        {
+                                            var parent = comments.FirstOrDefault(x => x.Id == cm.ReplyToId);
+                                            <div class="wo-cm-quote">
+                                                <i class="bi bi-reply-fill"></i>
+                                                @(parent == null || parent.IsDeleted ? "کامنت حذف‌شده" : $"{parent.AuthorName}: {Brief(parent.Text)}")
+                                            </div>
+                                        }
+                                        @if (cm.IsDeleted)
+                                        {
+                                            <div class="fs-8 text-muted fst-italic"><i class="bi bi-trash"></i> این کامنت حذف شده است.</div>
+                                        }
+                                        else if (editingCommentId == cm.Id)
+                                        {
+                                            <textarea class="form-control form-control-sm mb-1" rows="2" @bind="editingCommentText"></textarea>
+                                            <div class="d-flex gap-1">
+                                                <button class="btn btn-sm btn-primary py-0 fs-8" disabled="@cmBusy" @onclick="SubmitEditComment">ذخیره</button>
+                                                <button class="btn btn-sm btn-light py-0 fs-8" @onclick="CancelEditComment">انصراف</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="wo-cm-text">@cm.Text</div>
+                                            @if (canComment)
+                                            {
+                                                <div class="wo-cm-actions">
+                                                    <button class="wo-cm-link" @onclick="() => SetReplyTo(cm)"><i class="bi bi-reply"></i> پاسخ</button>
+                                                    @if (mine)
+                                                    {
+                                                        <button class="wo-cm-link" @onclick="() => StartEditComment(cm)"><i class="bi bi-pencil"></i> ویرایش</button>
+                                                    }
+                                                    @if (mine || isOwner)
+                                                    {
+                                                        <button class="wo-cm-link text-danger" @onclick="() => DeleteComment(cm)"><i class="bi bi-trash"></i> حذف</button>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+
+                            @if (canComment)
+                            {
+                                <div class="mt-2 pt-2 border-top">
+                                    @if (replyTo != null)
+                                    {
+                                        <div class="wo-cm-quote d-flex justify-content-between align-items-center mb-1">
+                                            <span><i class="bi bi-reply-fill"></i> پاسخ به @replyTo.AuthorName: @Brief(replyTo.Text)</span>
+                                            <button class="wo-cm-link" @onclick="() => replyTo = null"><i class="bi bi-x-lg"></i></button>
+                                        </div>
+                                    }
+                                    <div class="d-flex gap-2 align-items-start">
+                                        <textarea class="form-control form-control-sm" rows="2" maxlength="2000"
+                                                  placeholder="کامنت خود را بنویسید... (برای همهٔ طرف‌های دستور اعلان می‌رود)"
+                                                  @bind="newCommentText" @bind:event="oninput"></textarea>
+                                        <button class="btn btn-primary btn-sm" style="white-space:nowrap"
+                                                disabled="@(cmBusy || string.IsNullOrWhiteSpace(newCommentText))" @onclick="SubmitComment">
+                                            @if (cmBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                            else { <i class="bi bi-send"></i> }
+                                            ارسال
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                            else if (detail.Status == "Closed")
+                            {
+                                <div class="fs-9 text-muted mt-2"><i class="bi bi-lock"></i> دستور بسته شده — ثبت کامنت جدید ممکن نیست.</div>
+                            }
+                        </div>
+                    </div>
+
                     @* ---------- تاریخچه (بند ۱۷ و ۱۸) ---------- *@
                     @if (logs.Any())
                     {
@@ -1187,6 +1289,27 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* ---------- رشتهٔ گفتگو (کامنت‌ها) ---------- */
+    .wo-cm { display: flex; gap: .5rem; align-items: flex-start; margin-bottom: .6rem; }
+    .wo-cm-bubble {
+        flex: 1; background: #f8f9fa; border: 1px solid #e9ecef;
+        border-radius: .6rem; padding: .45rem .65rem; min-width: 0;
+    }
+    .wo-cm.mine .wo-cm-bubble { background: #eef2ff; border-color: #dbe4ff; }
+    .wo-cm-head { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+    .wo-cm-text { font-size: .85rem; white-space: pre-wrap; word-break: break-word; margin-top: .15rem; }
+    .wo-cm-quote {
+        font-size: .75rem; color: #6c757d; background: #fff;
+        border-inline-start: 3px solid #adb5bd; border-radius: .25rem;
+        padding: .2rem .5rem; margin: .25rem 0;
+    }
+    .wo-cm-actions { display: flex; gap: .75rem; margin-top: .25rem; }
+    .wo-cm-link {
+        border: 0; background: none; padding: 0; font-size: .72rem;
+        color: #6c757d; cursor: pointer;
+    }
+    .wo-cm-link:hover { color: #4f46e5; text-decoration: underline; }
+
     /* منوی انتخاب طرف گفتگو در جزئیات دستور */
     .wo-chat-wrap { position: relative; }
     .wo-chat-menu {
@@ -1702,6 +1825,98 @@ else
     public class AssigneeStat { public int UserId { get; set; } public string Name { get; set; } = ""; public int Total { get; set; } public int Done { get; set; } public int OnTime { get; set; } public int NotDone { get; set; } public int Pending { get; set; } }
     public class MonthStat { public int Year { get; set; } public int Month { get; set; } public int Created { get; set; } public int OnTime { get; set; } public int Late { get; set; } public int NotDone { get; set; } }
 
+    // ================== رشتهٔ گفتگو (کامنت‌ها) ==================
+    private List<CmItem> comments = new();
+    private string newCommentText = "";
+    private CmItem? replyTo;
+    private int editingCommentId;
+    private string editingCommentText = "";
+    private bool cmBusy;
+
+    public class CmItem
+    {
+        public int Id { get; set; } public int AuthorUserId { get; set; } public string AuthorName { get; set; } = "";
+        public string Text { get; set; } = ""; public int? ReplyToId { get; set; } public bool IsDeleted { get; set; }
+        public DateTime CreatedAt { get; set; } public DateTime? EditedAt { get; set; }
+    }
+
+    /// <summary>خلاصهٔ متن برای نمایش در نقل‌قول پاسخ.</summary>
+    private static string Brief(string t) => t.Length > 60 ? t[..60] + "…" : t;
+
+    private async Task LoadComments(int orderId)
+    {
+        try { comments = await Http.GetFromJsonAsync<List<CmItem>>($"/api/workorders/{orderId}/comments") ?? new(); }
+        catch { comments = new(); }
+    }
+
+    private void SetReplyTo(CmItem cm) { replyTo = cm; editingCommentId = 0; }
+
+    private async Task SubmitComment()
+    {
+        if (detail == null || string.IsNullOrWhiteSpace(newCommentText)) return;
+        cmBusy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/comments",
+                new { Text = newCommentText.Trim(), ReplyToId = replyTo?.Id });
+            if (resp.IsSuccessStatusCode)
+            {
+                var cm = await resp.Content.ReadFromJsonAsync<CmItem>();
+                if (cm != null) comments.Add(cm);
+                newCommentText = ""; replyTo = null;
+            }
+            else await ShowApiError(resp, "خطا در ثبت کامنت");
+        }
+        catch { Toast.Error("خطا در ثبت کامنت"); }
+        finally { cmBusy = false; }
+    }
+
+    private void StartEditComment(CmItem cm) { editingCommentId = cm.Id; editingCommentText = cm.Text; replyTo = null; }
+    private void CancelEditComment() { editingCommentId = 0; editingCommentText = ""; }
+
+    private async Task SubmitEditComment()
+    {
+        if (editingCommentId == 0 || string.IsNullOrWhiteSpace(editingCommentText)) return;
+        cmBusy = true;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"/api/workorders/comments/{editingCommentId}",
+                new { Text = editingCommentText.Trim() });
+            if (resp.IsSuccessStatusCode)
+            {
+                var cm = comments.FirstOrDefault(c => c.Id == editingCommentId);
+                if (cm != null) { cm.Text = editingCommentText.Trim(); cm.EditedAt = DateTime.Now; }
+                CancelEditComment();
+            }
+            else await ShowApiError(resp, "خطا در ویرایش کامنت");
+        }
+        catch { Toast.Error("خطا در ویرایش کامنت"); }
+        finally { cmBusy = false; }
+    }
+
+    private async Task DeleteComment(CmItem cm)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این کامنت حذف شود؟")) return;
+        try
+        {
+            var resp = await Http.DeleteAsync($"/api/workorders/comments/{cm.Id}");
+            if (resp.IsSuccessStatusCode) { cm.IsDeleted = true; cm.Text = ""; }
+            else await ShowApiError(resp, "خطا در حذف کامنت");
+        }
+        catch { Toast.Error("خطا در حذف کامنت"); }
+    }
+
+    /// <summary>نمایش پیام خطای برگشتی از API (message فارسی سرور) یا پیام پیش‌فرض.</summary>
+    private async Task ShowApiError(HttpResponseMessage resp, string fallback)
+    {
+        try
+        {
+            var err = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            Toast.Error(err != null && err.TryGetValue("message", out var m) && !string.IsNullOrWhiteSpace(m) ? m : fallback);
+        }
+        catch { Toast.Error(fallback); }
+    }
+
     // ================== چک‌لیست زیرکار ==================
     private List<string> newChecklist = new();   // فرم ایجاد/ویرایش
     private string newClText = "";
@@ -2014,7 +2229,9 @@ else
         extDate = w.DueAt.Date; extTime = TimeOnly.FromDateTime(w.DueAt);
         attachments = new(); logs = new();
         detailChecklist = new();
+        comments = new(); newCommentText = ""; replyTo = null; editingCommentId = 0;
         _ = LoadDetailChecklist(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
+        _ = LoadComments(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
 
         // ثبت رویت (بند ۸)
         if (w.Assignees.Any(a => a.UserId == access.UserId && a.SeenAt == null))
@@ -2156,7 +2373,8 @@ else
     {
         "Created" => "ثبت دستور کار", "Seen" => "رویت", "Reply" => "ثبت پاسخ",
         "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
-        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی", _ => a
+        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی",
+        "Commented" => "ثبت کامنت", "Recurred" => "تکرار خودکار", _ => a
     };
 
     // ================== مدل‌ها ==================
@@ -2183,6 +2401,7 @@ else
         public int Priority { get; set; } = 1;
         public int Recurrence { get; set; }
         public int ChecklistTotal { get; set; } public int ChecklistDone { get; set; }
+        public int CommentCount { get; set; }
         public string? SourceModule { get; set; } public int? SourceId { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
     }

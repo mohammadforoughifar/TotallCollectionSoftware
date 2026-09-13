@@ -65,6 +65,24 @@ BEGIN
     );
     CREATE INDEX [IX_WorkOrderChecklistItems_OrderId] ON [dbo].[WorkOrderChecklistItems] ([OrderId]);
 END");
+
+        // ---------- موج ۳: رشتهٔ گفتگو (کامنت) داخل دستور ----------
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.WorkOrderComments', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[WorkOrderComments](
+        [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
+        [OrderId] int NOT NULL,
+        [AuthorUserId] int NOT NULL,
+        [AuthorName] nvarchar(150) NOT NULL,
+        [Text] nvarchar(2000) NOT NULL,
+        [ReplyToId] int NULL,
+        [IsDeleted] bit NOT NULL DEFAULT(0),
+        [CreatedAt] datetime2 NOT NULL DEFAULT(SYSDATETIME()),
+        [EditedAt] datetime2 NULL
+    );
+    CREATE INDEX [IX_WorkOrderComments_OrderId] ON [dbo].[WorkOrderComments] ([OrderId]);
+END");
     }
 
     // ==================== SQLite ====================
@@ -133,6 +151,22 @@ CREATE TABLE IF NOT EXISTS WorkOrderChecklistItems (
 );");
         await SafeAsync(db, @"
 CREATE INDEX IF NOT EXISTS IX_WorkOrderChecklistItems_OrderId ON WorkOrderChecklistItems (OrderId);");
+
+        // ---------- موج ۳: رشتهٔ گفتگو (کامنت) داخل دستور ----------
+        await SafeAsync(db, @"
+CREATE TABLE IF NOT EXISTS WorkOrderComments (
+    Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    OrderId INTEGER NOT NULL,
+    AuthorUserId INTEGER NOT NULL,
+    AuthorName TEXT NOT NULL,
+    Text TEXT NOT NULL,
+    ReplyToId INTEGER NULL,
+    IsDeleted INTEGER NOT NULL DEFAULT 0,
+    CreatedAt TEXT NOT NULL,
+    EditedAt TEXT NULL
+);");
+        await SafeAsync(db, @"
+CREATE INDEX IF NOT EXISTS IX_WorkOrderComments_OrderId ON WorkOrderComments (OrderId);");
     }
 
     /// <summary>اجرای امن — خطای «شیء تکراری/موجود» راه‌اندازی برنامه را متوقف نکند.</summary>
