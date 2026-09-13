@@ -409,7 +409,7 @@ public class HrTalentService : IHrTalentService
     {
         var since = DateTime.Today.AddDays(-120);
         var hires = await _db.HrEmployees.AsNoTracking()
-            .Where(e => e.IsActive && e.HireDate != null && e.HireDate.Value.Date >= since)
+            .Where(e => e.IsActive && e.HireDate.Date >= since)
             .Select(e => new { e.Id, e.HireDate }).ToListAsync();
         if (hires.Count == 0) return 0;
         var has = await _db.HrTrialPeriods.AsNoTracking()
@@ -418,7 +418,7 @@ public class HrTalentService : IHrTalentService
         var n = 0;
         foreach (var h in hires.Where(h => !has.Contains(h.Id)))
         {
-            var start = h.HireDate!.Value.Date;
+            var start = h.HireDate.Date;
             _db.HrTrialPeriods.Add(new HrTrialPeriod
                 { EmployeeId = h.Id, StartDate = start, Months = 3, EndDate = start.AddMonths(3).AddDays(-1) });
             n++;

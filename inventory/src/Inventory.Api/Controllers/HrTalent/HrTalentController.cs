@@ -193,7 +193,7 @@ public class HrTalentController : RbacControllerBase
     [HttpPost("appraisals")]
     public async Task<IActionResult> SaveAppraisal([FromQuery] int? id, [FromBody] HrAppraisalSaveDto dto)
     {
-        if (await ForbiddenUnlessAsync(id is > 0 ? "Update" : "Create") is { } f) return f;
+        if (await ForbiddenUnlessAsync(Mod, id is > 0 ? "Update" : "Create") is { } f) return f;
         try { return Ok(await _svc.SaveAppraisalAsync(id, dto)); }
         catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
     }
