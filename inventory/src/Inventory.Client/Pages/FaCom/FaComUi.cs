@@ -42,4 +42,20 @@ public static class FaComUi
 
     public static string TicketUrl(int id) => $"/fa-com/tickets/{id}";
     public static string MyTicketUrl(int id) => $"/fa-com/my/{id}";
+
+    public static string SuggestionStatus(int s) => s switch
+    {
+        0 => "جدید", 1 => "در بررسی", 2 => "پذیرفته‌شده", 3 => "ردشده", 4 => "اجراشده", _ => "—"
+    };
+
+    public static string SuggestionBadge(int s) => s switch
+    {
+        0 => "text-bg-warning", 1 => "text-bg-primary", 2 => "text-bg-success",
+        3 => "text-bg-danger", 4 => "text-bg-dark", _ => "text-bg-light"
+    };
+
+    public static string SuggestionCategory(int c) => c switch
+    {
+        0 => "پیشنهاد", 1 => "انتقاد", 2 => "سایر", _ => "—"
+    };
 }

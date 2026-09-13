@@ -76,13 +76,14 @@ public class FaComService : IFaComService
         var q = _db.FaComAnnouncements.AsNoTracking()
             .Where(a => a.IsActive && (a.PublishFrom == null || a.PublishFrom <= now)
                      && (a.PublishTo == null || a.PublishTo >= now));
+        var chain = new HashSet<int>();
         if (emp?.OrgUnitId is > 0)
-        {
-            // مخاطب واحدی شامل زیرمجموعه‌هاست (اطلاعیه شعبه به دپارتمان‌هایش هم می‌رسد)
-            var chain = await AncestorUnitIdsAsync(emp.OrgUnitId!.Value);
+            foreach (var x in await AncestorUnitIdsAsync(emp.OrgUnitId!.Value)) chain.Add(x);
+        if (emp?.HrMainNodeId is > 0)
+            foreach (var x in await AncestorMainNodeIdsAsync(emp.HrMainNodeId!.Value)) chain.Add(x);
+        if (chain.Count > 0)
             q = q.Where(a => a.Audience == FaComAudience.All
                 || (a.Audience == FaComAudience.Unit && a.OrgUnitId != null && chain.Contains(a.OrgUnitId.Value)));
-        }
         else
             q = q.Where(a => a.Audience == FaComAudience.All);
         var rows = await q.OrderByDescending(a => a.CreatedAt).Take(50).ToListAsync();
@@ -108,8 +109,9 @@ public class FaComService : IFaComService
         if (dto.Audience == 1)
         {
             if (dto.OrgUnitId is not > 0) throw new InvalidOperationException("برای اطلاعیه واحدی، انتخاب واحد الزامی است.");
-            if (!await _db.HrOrgUnits.AnyAsync(u => u.Id == dto.OrgUnitId!.Value))
-                throw new InvalidOperationException("واحد نامعتبر است.");
+            var ok = await _db.HrOrgUnits.AnyAsync(u => u.Id == dto.OrgUnitId!.Value)
+                || await _db.HrMainOrgNodes.AnyAsync(u => u.Id == dto.OrgUnitId!.Value);
+            if (!ok) throw new InvalidOperationException("واحد نامعتبر است.");
         }
         if (dto.PublishFrom != null && dto.PublishTo != null && dto.PublishTo < dto.PublishFrom)
             throw new InvalidOperationException("پایان انتشار نمی‌تواند قبل از شروع باشد.");
@@ -154,10 +156,48 @@ public class FaComService : IFaComService
         var q = _db.HrEmployees.AsNoTracking().Where(e => e.IsActive && e.SystemUserId != null);
         if (a.Audience == FaComAudience.Unit && a.OrgUnitId is > 0)
         {
-            var set = await SubtreeUnitIdsAsync(a.OrgUnitId.Value);
-            q = q.Where(e => e.OrgUnitId != null && set.Contains(e.OrgUnitId.Value));
+            var target = a.OrgUnitId.Value;
+            var set = await SubtreeUnitIdsAsync(target);
+            var mainSet = await SubtreeMainNodeIdsAsync(target);
+            q = q.Where(e => (e.OrgUnitId != null && set.Contains(e.OrgUnitId.Value))
+                || (e.HrMainNodeId != null && mainSet.Contains(e.HrMainNodeId.Value)));
         }
         return await q.Select(e => e.SystemUserId!.Value).ToListAsync();
+    }
+
+    private async Task<HashSet<int>> SubtreeMainNodeIdsAsync(int rootId)
+    {
+        var units = await _db.HrMainOrgNodes.AsNoTracking()
+            .Select(u => new { u.Id, u.ParentId }).ToListAsync();
+        var kids = units.Where(u => u.ParentId != null)
+            .GroupBy(u => u.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+        var set = new HashSet<int> { rootId };
+        var stack = new Stack<int>();
+        stack.Push(rootId);
+        while (stack.Count > 0)
+        {
+            var cur = stack.Pop();
+            if (!kids.TryGetValue(cur, out var list)) continue;
+            foreach (var k in list)
+                if (set.Add(k)) stack.Push(k);
+        }
+        return set;
+    }
+
+    private async Task<HashSet<int>> AncestorMainNodeIdsAsync(int nodeId)
+    {
+        var map = await _db.HrMainOrgNodes.AsNoTracking()
+            .ToDictionaryAsync(u => u.Id, u => u.ParentId);
+        var set = new HashSet<int> { nodeId };
+        var cur = nodeId;
+        var guard = 0;
+        while (guard++ < 50 && map.TryGetValue(cur, out var p) && p is > 0)
+        {
+            set.Add(p.Value);
+            cur = p.Value;
+        }
+        return set;
     }
 
     private async Task<HashSet<int>> SubtreeUnitIdsAsync(int rootId)
@@ -236,10 +276,14 @@ public class FaComService : IFaComService
 
     private async Task<FaComAnnouncementDto> MapAnnouncementAsync(FaComAnnouncement a)
     {
-        var unitName = a.OrgUnitId is > 0
-            ? await _db.HrOrgUnits.AsNoTracking().Where(u => u.Id == a.OrgUnitId!.Value)
+        string? unitName = null;
+        if (a.OrgUnitId is > 0)
+        {
+            unitName = await _db.HrOrgUnits.AsNoTracking().Where(u => u.Id == a.OrgUnitId!.Value)
                 .Select(u => u.Name).FirstOrDefaultAsync()
-            : null;
+                ?? await _db.HrMainOrgNodes.AsNoTracking().Where(u => u.Id == a.OrgUnitId!.Value)
+                    .Select(u => u.Name).FirstOrDefaultAsync();
+        }
         return new FaComAnnouncementDto
         {
             Id = a.Id, Title = a.Title, Body = a.Body, Audience = (int)a.Audience,
