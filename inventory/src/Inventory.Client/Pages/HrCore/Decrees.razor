@@ -25,6 +25,7 @@
             <label class="form-check-label" for="pend">فقط اجرا نشده‌ها</label>
         </div>
         <div class="ms-auto">
+            <button class="btn btn-outline-success me-2" @onclick="ExportExcel"><i class="bi bi-file-earmark-excel"></i> اکسل</button>
             @if (canCreate)
             {
                 <button class="btn btn-success" @onclick="() => OpenEdit(null)"><i class="bi bi-plus-lg"></i> حکم جدید</button>
@@ -168,6 +169,16 @@ else
         }
         catch { }
         await Reload();
+    }
+
+    private async Task ExportExcel()
+    {
+        try
+        {
+            var f = await Svc.ExportDecreesExcelAsync();
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private async Task Reload()

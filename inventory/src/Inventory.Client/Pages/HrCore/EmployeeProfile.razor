@@ -26,6 +26,7 @@ else
 {
     <div class="d-flex align-items-center gap-2 mb-3 mt-1">
         <a class="btn btn-sm btn-light" href="hr-core/employees"><i class="bi bi-arrow-right"></i> لیست پرسنل</a>
+        <button class="btn btn-sm btn-outline-primary" @onclick="PrintDossier"><i class="bi bi-printer"></i> چاپ پرونده</button>
         @if (canUpdate)
         {
             <a class="btn btn-sm btn-outline-warning" href="hr-core/employees"><i class="bi bi-pencil"></i> ویرایش از لیست</a>
@@ -87,7 +88,11 @@ else
     {
         <div class="alert alert-warning d-flex align-items-center gap-2">
             <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-            <div><b>هشدار انقضای مدارک: </b>@ExpiringText</div>
+            <div class="flex-grow-1"><b>هشدار انقضای مدارک: </b>@ExpiringText</div>
+            @if (canUpdate)
+            {
+                <button class="btn btn-sm btn-warning" @onclick="RemindDocs"><i class="bi bi-bell"></i> ارسال یادآور</button>
+            }
         </div>
     }
 
@@ -839,6 +844,26 @@ else
         : emp.EmergencyContactName
             + (string.IsNullOrWhiteSpace(emp.EmergencyContactRelation) ? "" : $" ({emp.EmergencyContactRelation})")
             + (string.IsNullOrWhiteSpace(emp.EmergencyContactPhone) ? "" : $" — {emp.EmergencyContactPhone}");
+
+    private async Task PrintDossier()
+    {
+        try
+        {
+            var f = await Svc.GetDossierPdfAsync(emp!.Id);
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RemindDocs()
+    {
+        try
+        {
+            var n = await Svc.RemindExpiringDocumentsAsync(30);
+            Toast.Success(n == 0 ? "مدرک نیازمند یادآوری یافت نشد." : $"یادآور برای {n.Num()} نفر ارسال شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
 
     private string ExpiringText => string.Join("، ", expiringDocs.Select(d =>
         d.IsExpired ? $"{d.Title} (منقضی شده)" : $"{d.Title} ({Fa.Digits(d.DaysToExpiry ?? 0)} روز مانده)"));

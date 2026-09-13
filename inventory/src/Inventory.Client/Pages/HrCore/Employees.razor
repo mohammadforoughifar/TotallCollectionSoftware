@@ -3,6 +3,7 @@
 @inject IHrCoreService Svc
 @inject IAuthState Auth
 @inject IToastService Toast
+@inject IJSRuntime JS
 @inject NavigationManager Nav
 
 <PageTitle>پرسنل</PageTitle>
@@ -48,6 +49,7 @@
             </div>
             <div class="col-md-3 d-flex gap-2">
                 <button class="btn btn-primary flex-grow-1" @onclick="ReloadFirst"><i class="bi bi-search"></i> جستجو</button>
+                <button class="btn btn-outline-success" title="خروجی اکسل" @onclick="ExportExcel"><i class="bi bi-file-earmark-excel"></i></button>
                 @if (canCreate)
                 {
                     <button class="btn btn-success" @onclick="() => OpenEdit(null)"><i class="bi bi-plus-lg"></i> جدید</button>
@@ -233,6 +235,16 @@
         try { units = await Svc.GetOrgUnitsAsync(); } catch { }
         try { managers = (await Svc.SearchEmployeesAsync(null, null, 0, 0, 200)).Items; } catch { }
         await Reload();
+    }
+
+    private async Task ExportExcel()
+    {
+        try
+        {
+            var f = await Svc.ExportEmployeesExcelAsync(q);
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private async Task ReloadFirst() { skip = 0; await Reload(); }

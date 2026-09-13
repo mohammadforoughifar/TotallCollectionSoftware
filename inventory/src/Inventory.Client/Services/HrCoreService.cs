@@ -19,6 +19,12 @@ public interface IHrCoreService
     Task<List<HrContractDto>> GetExpiringContractsAsync(int days = 30);
     Task<List<HrContractDto>> GetEmployeeContractsAsync(int employeeId);
     Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto);
+    Task<HrContractDto> RenewContractAsync(int id, int months);
+    Task<int> RemindExpiringDocumentsAsync(int days);
+    Task<(byte[] Data, string FileName, string ContentType)> GetDossierPdfAsync(int employeeId);
+    Task<(byte[] Data, string FileName, string ContentType)> ExportEmployeesExcelAsync(string? q);
+    Task<(byte[] Data, string FileName, string ContentType)> ExportContractsExcelAsync();
+    Task<(byte[] Data, string FileName, string ContentType)> ExportDecreesExcelAsync();
     Task DeleteContractAsync(int id);
 
     Task<List<HrContractTemplateDto>> GetTemplatesAsync();
@@ -154,6 +160,27 @@ public class HrCoreService : IHrCoreService
         => id is > 0
             ? _api.PutAsync<HrContractDto>($"{Root}/contracts/{id}", dto)
             : _api.PostAsync<HrContractDto>($"{Root}/contracts", dto);
+
+    public Task<HrContractDto> RenewContractAsync(int id, int months)
+        => _api.PostAsync<HrContractDto>($"{Root}/contracts/{id}/renew?months={months}", null);
+
+    public async Task<int> RemindExpiringDocumentsAsync(int days)
+    {
+        var r = await _api.PostAsync<Dictionary<string, int>>($"{Root}/documents/remind?days={days}", null);
+        return r.TryGetValue("count", out var c) ? c : 0;
+    }
+
+    public Task<(byte[] Data, string FileName, string ContentType)> GetDossierPdfAsync(int employeeId)
+        => _api.GetFileAsync($"{Root}/employees/{employeeId}/dossier-pdf");
+
+    public Task<(byte[] Data, string FileName, string ContentType)> ExportEmployeesExcelAsync(string? q)
+        => _api.GetFileAsync($"{Root}/employees/export?q={Uri.EscapeDataString(q ?? "")}");
+
+    public Task<(byte[] Data, string FileName, string ContentType)> ExportContractsExcelAsync()
+        => _api.GetFileAsync($"{Root}/contracts/export");
+
+    public Task<(byte[] Data, string FileName, string ContentType)> ExportDecreesExcelAsync()
+        => _api.GetFileAsync($"{Root}/decrees/export");
 
     public Task DeleteContractAsync(int id)
         => _api.DeleteAsync($"{Root}/contracts/{id}");
