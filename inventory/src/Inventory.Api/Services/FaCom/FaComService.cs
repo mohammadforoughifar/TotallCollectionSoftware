@@ -15,6 +15,8 @@ public interface IFaComService
     Task<FaComAnnouncementDto> SaveAnnouncementAsync(int? id, FaComAnnouncementSaveDto dto, int byUserId, string byName);
     Task DeleteAnnouncementAsync(int id);
     Task<int> BroadcastAsync(int id, bool email, bool push, bool sms, int byUserId);
+    Task<int> PublishNowAsync(int id, int byUserId);
+    Task<int> CheckDueAnnouncementsAsync();
 
     // نظرسنجی‌ها
     Task<List<FaComPollDto>> ListPollsAsync(int userId);
@@ -39,6 +41,13 @@ public interface IFaComService
     Task<int> NotifyManyAsync(IEnumerable<int> userIds, string title, string? body, string? link,
         bool email, bool push, bool sms, int byUserId);
     Task<int> CheckBirthdaysAsync();
+
+    // صندوق پیشنهادها
+    Task<List<FaComSuggestionDto>> MySuggestionsAsync(int userId);
+    Task<FaComSuggestionDto> CreateSuggestionAsync(int userId, FaComSuggestionSaveDto dto);
+    Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status, int? category);
+    Task<FaComSuggestionDto> RespondSuggestionAsync(int id, FaComSuggestionRespondDto dto, string byName);
+    Task DeleteSuggestionAsync(int id);
 }
 
 public class FaComService : IFaComService
@@ -68,8 +77,12 @@ public class FaComService : IFaComService
             .Where(a => a.IsActive && (a.PublishFrom == null || a.PublishFrom <= now)
                      && (a.PublishTo == null || a.PublishTo >= now));
         if (emp?.OrgUnitId is > 0)
+        {
+            // مخاطب واحدی شامل زیرمجموعه‌هاست (اطلاعیه شعبه به دپارتمان‌هایش هم می‌رسد)
+            var chain = await AncestorUnitIdsAsync(emp.OrgUnitId!.Value);
             q = q.Where(a => a.Audience == FaComAudience.All
-                || (a.Audience == FaComAudience.Unit && a.OrgUnitId == emp.OrgUnitId!.Value));
+                || (a.Audience == FaComAudience.Unit && a.OrgUnitId != null && chain.Contains(a.OrgUnitId.Value)));
+        }
         else
             q = q.Where(a => a.Audience == FaComAudience.All);
         var rows = await q.OrderByDescending(a => a.CreatedAt).Take(50).ToListAsync();
@@ -131,11 +144,94 @@ public class FaComService : IFaComService
     {
         var a = await _db.FaComAnnouncements.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("اطلاعیه یافت نشد.");
+        var ids = await AudienceUserIdsAsync(a);
+        return await NotifyManyAsync(ids, a.Title, a.Body, "fa-com/announcements", email, push, sms, byUserId);
+    }
+
+    /// <summary>کاربران مخاطب اطلاعیه (واحدی = واحد هدف + همه زیرمجموعه‌ها).</summary>
+    private async Task<List<int>> AudienceUserIdsAsync(FaComAnnouncement a)
+    {
         var q = _db.HrEmployees.AsNoTracking().Where(e => e.IsActive && e.SystemUserId != null);
         if (a.Audience == FaComAudience.Unit && a.OrgUnitId is > 0)
-            q = q.Where(e => e.OrgUnitId == a.OrgUnitId!.Value);
-        var ids = await q.Select(e => e.SystemUserId!.Value).ToListAsync();
-        return await NotifyManyAsync(ids, a.Title, a.Body, "fa-com/announcements", email, push, sms, byUserId);
+        {
+            var set = await SubtreeUnitIdsAsync(a.OrgUnitId.Value);
+            q = q.Where(e => e.OrgUnitId != null && set.Contains(e.OrgUnitId.Value));
+        }
+        return await q.Select(e => e.SystemUserId!.Value).ToListAsync();
+    }
+
+    private async Task<HashSet<int>> SubtreeUnitIdsAsync(int rootId)
+    {
+        var units = await _db.HrOrgUnits.AsNoTracking()
+            .Select(u => new { u.Id, u.ParentId }).ToListAsync();
+        var kids = units.Where(u => u.ParentId != null)
+            .GroupBy(u => u.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+        var set = new HashSet<int> { rootId };
+        var stack = new Stack<int>();
+        stack.Push(rootId);
+        while (stack.Count > 0)
+        {
+            var cur = stack.Pop();
+            if (!kids.TryGetValue(cur, out var list)) continue;
+            foreach (var k in list)
+                if (set.Add(k)) stack.Push(k);
+        }
+        return set;
+    }
+
+    private async Task<HashSet<int>> AncestorUnitIdsAsync(int unitId)
+    {
+        var map = await _db.HrOrgUnits.AsNoTracking()
+            .ToDictionaryAsync(u => u.Id, u => u.ParentId);
+        var set = new HashSet<int> { unitId };
+        var cur = unitId;
+        var guard = 0;
+        while (guard++ < 50 && map.TryGetValue(cur, out var p) && p is > 0)
+        {
+            set.Add(p.Value);
+            cur = p.Value;
+        }
+        return set;
+    }
+
+    /// <summary>انتشار فوری: ارسال اعلان سیستمی + ثبت زمان انتشار.</summary>
+    public async Task<int> PublishNowAsync(int id, int byUserId)
+    {
+        var a = await _db.FaComAnnouncements.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("اطلاعیه یافت نشد.");
+        if (!a.IsActive) throw new InvalidOperationException("اطلاعیه غیرفعال است.");
+        if (a.PublishTo != null && a.PublishTo < DateTime.Now)
+            throw new InvalidOperationException("بازه انتشار این اطلاعیه به پایان رسیده است.");
+        if (a.PublishFrom == null || a.PublishFrom > DateTime.Now) a.PublishFrom = DateTime.Now;
+        var n = await BroadcastAsync(id, false, false, false, byUserId);
+        a.NotifiedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        return n;
+    }
+
+    /// <summary>بررسی دوره‌ای اطلاعیه‌های زمان‌بندی‌شده فرارسیده (توسط واچر، هر چند دقیقه).</summary>
+    public async Task<int> CheckDueAnnouncementsAsync()
+    {
+        var now = DateTime.Now;
+        var due = await _db.FaComAnnouncements
+            .Where(a => a.IsActive && a.PublishFrom != null && a.PublishFrom <= now && a.NotifiedAt == null
+                && (a.PublishTo == null || a.PublishTo >= now))
+            .OrderBy(a => a.PublishFrom).Take(20).ToListAsync();
+        var n = 0;
+        foreach (var a in due)
+        {
+            try
+            {
+                var ids = await AudienceUserIdsAsync(a);
+                await NotifyManyAsync(ids, a.Title, a.Body, "fa-com/announcements", false, false, false, 0);
+                a.NotifiedAt = now;
+                await _db.SaveChangesAsync();
+                n++;
+            }
+            catch { }
+        }
+        return n;
     }
 
     private async Task<FaComAnnouncementDto> MapAnnouncementAsync(FaComAnnouncement a)
@@ -149,6 +245,7 @@ public class FaComService : IFaComService
             Id = a.Id, Title = a.Title, Body = a.Body, Audience = (int)a.Audience,
             OrgUnitId = a.OrgUnitId, OrgUnitName = unitName,
             PublishFrom = a.PublishFrom, PublishTo = a.PublishTo, IsActive = a.IsActive,
+            NotifiedAt = a.NotifiedAt,
             CreatedByName = a.CreatedByName, CreatedAt = a.CreatedAt
         };
     }
@@ -557,5 +654,104 @@ public class FaComService : IFaComService
             await _notify.SendToRoleAsync("HrManager", "تولدهای امروز 🎂", names, FromName, FormName, null);
         }
         return emps.Count;
+    }
+
+    // ==================== صندوق پیشنهادها ====================
+
+    private static FaComSuggestionDto MapSuggestion(FaComSuggestion s, string? name) => new()
+    {
+        Id = s.Id, Title = s.Title, Body = s.Body, Category = s.Category, Status = (int)s.Status,
+        IsAnonymous = s.IsAnonymous,
+        EmployeeName = s.IsAnonymous ? "ناشناس" : (name ?? "—"),
+        Response = s.Response, RespondedByName = s.RespondedByName, RespondedAt = s.RespondedAt,
+        CreatedAt = s.CreatedAt
+    };
+
+    public async Task<List<FaComSuggestionDto>> MySuggestionsAsync(int userId)
+    {
+        var me = await _db.HrEmployees.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.SystemUserId == userId);
+        if (me == null) return new();
+        var rows = await _db.FaComSuggestions.AsNoTracking()
+            .Where(s => s.EmployeeId == me.Id).OrderByDescending(s => s.Id).Take(200).ToListAsync();
+        var name = (me.FirstName + " " + me.LastName).Trim();
+        return rows.Select(s => MapSuggestion(s, name)).ToList();
+    }
+
+    public async Task<FaComSuggestionDto> CreateSuggestionAsync(int userId, FaComSuggestionSaveDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Title)) throw new InvalidOperationException("عنوان الزامی است.");
+        if (string.IsNullOrWhiteSpace(dto.Body)) throw new InvalidOperationException("متن الزامی است.");
+        var me = await _db.HrEmployees.AsNoTracking()
+            .FirstOrDefaultAsync(e => e.SystemUserId == userId);
+        var s = new FaComSuggestion
+        {
+            EmployeeId = me?.Id,
+            Title = dto.Title.Trim(), Body = dto.Body.Trim(),
+            Category = Math.Clamp(dto.Category, 0, 2), IsAnonymous = dto.IsAnonymous
+        };
+        _db.FaComSuggestions.Add(s);
+        await _db.SaveChangesAsync();
+        var name = me == null ? null : (me.FirstName + " " + me.LastName).Trim();
+        return MapSuggestion(s, name);
+    }
+
+    public async Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status, int? category)
+    {
+        var q = _db.FaComSuggestions.AsNoTracking().AsQueryable();
+        if (status is >= 0) q = q.Where(s => (int)s.Status == status.Value);
+        if (category is >= 0) q = q.Where(s => s.Category == category.Value);
+        var rows = await q.OrderBy(s => s.Status).ThenByDescending(s => s.Id).Take(500).ToListAsync();
+        var empIds = rows.Where(s => s.EmployeeId != null).Select(s => s.EmployeeId!.Value).Distinct().ToList();
+        var names = empIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id))
+                .ToDictionaryAsync(e => e.Id, e => e.FirstName + " " + e.LastName);
+        return rows.Select(s => MapSuggestion(s,
+            s.EmployeeId != null && names.TryGetValue(s.EmployeeId.Value, out var n) ? n : null)).ToList();
+    }
+
+    public async Task<FaComSuggestionDto> RespondSuggestionAsync(int id, FaComSuggestionRespondDto dto, string byName)
+    {
+        var s = await _db.FaComSuggestions.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("پیشنهاد یافت نشد.");
+        s.Status = (FaComSuggestionStatus)Math.Clamp(dto.Status, 0, 4);
+        s.Response = dto.Response?.Trim();
+        s.RespondedByName = byName;
+        s.RespondedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        if (s.EmployeeId is > 0)
+        {
+            var uid = await _db.HrEmployees.AsNoTracking()
+                .Where(e => e.Id == s.EmployeeId!.Value).Select(e => e.SystemUserId).FirstOrDefaultAsync();
+            if (uid is > 0)
+            {
+                var st = s.Status switch
+                {
+                    FaComSuggestionStatus.Reviewing => "در دست بررسی است",
+                    FaComSuggestionStatus.Accepted => "پذیرفته شد",
+                    FaComSuggestionStatus.Rejected => "پذیرفته نشد",
+                    FaComSuggestionStatus.Done => "اجرا شد",
+                    _ => "به‌روز شد"
+                };
+                try
+                {
+                    await _notify.SendAsync(uid.Value, "پاسخ صندوق پیشنهادها",
+                        $"پیشنهاد «{s.Title}» {st}." +
+                        (string.IsNullOrWhiteSpace(s.Response) ? "" : $" پاسخ: {s.Response}"),
+                        FromName, FormName, "fa-com/my-suggestions");
+                }
+                catch { }
+            }
+        }
+        var all = await ListSuggestionsAsync(null, null);
+        return all.First(x => x.Id == id);
+    }
+
+    public async Task DeleteSuggestionAsync(int id)
+    {
+        var s = await _db.FaComSuggestions.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("پیشنهاد یافت نشد.");
+        _db.FaComSuggestions.Remove(s);
+        await _db.SaveChangesAsync();
     }
 }

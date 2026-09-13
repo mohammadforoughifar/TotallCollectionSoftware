@@ -112,6 +112,8 @@ builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher
 builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>()); // یادآوری تولد
+builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComPublishWatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComPublishWatcher>()); // انتشار زمان‌بندی‌شده اطلاعیه‌ها
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();

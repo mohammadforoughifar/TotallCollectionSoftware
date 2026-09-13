@@ -9,6 +9,13 @@ public interface IFaComService
     Task<FaComAnnouncementDto> SaveAnnouncementAsync(int? id, FaComAnnouncementSaveDto dto);
     Task DeleteAnnouncementAsync(int id);
     Task<int> BroadcastAsync(int id, bool email, bool push, bool sms);
+    Task<int> PublishNowAsync(int id);
+    Task<int> CheckDueAnnouncementsAsync();
+    Task<List<FaComSuggestionDto>> MySuggestionsAsync();
+    Task<FaComSuggestionDto> CreateSuggestionAsync(FaComSuggestionSaveDto dto);
+    Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status = null, int? category = null);
+    Task<FaComSuggestionDto> RespondSuggestionAsync(int id, FaComSuggestionRespondDto dto);
+    Task DeleteSuggestionAsync(int id);
 
     Task<List<FaComTicketDto>> GetMyTicketsAsync();
     Task<FaComTicketDto> GetMyTicketAsync(int id);
@@ -58,6 +65,33 @@ public class FaComService : IFaComService
             $"{Root}/announcements/{id}/broadcast?email={email}&push={push}&sms={sms}", null);
         return r.TryGetValue("count", out var c) ? c : 0;
     }
+
+    public async Task<int> PublishNowAsync(int id)
+    {
+        var r = await _api.PostAsync<Dictionary<string, int>>($"{Root}/announcements/{id}/publish-now", null);
+        return r.TryGetValue("count", out var c) ? c : 0;
+    }
+
+    public async Task<int> CheckDueAnnouncementsAsync()
+    {
+        var r = await _api.PostAsync<Dictionary<string, int>>($"{Root}/announcements/check-due", null);
+        return r.TryGetValue("count", out var c) ? c : 0;
+    }
+
+    public Task<List<FaComSuggestionDto>> MySuggestionsAsync()
+        => _api.GetAsync<List<FaComSuggestionDto>>($"{Root}/suggestions/my");
+
+    public Task<FaComSuggestionDto> CreateSuggestionAsync(FaComSuggestionSaveDto dto)
+        => _api.PostAsync<FaComSuggestionDto>($"{Root}/suggestions", dto);
+
+    public Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status = null, int? category = null)
+        => _api.GetAsync<List<FaComSuggestionDto>>($"{Root}/suggestions?status={status}&category={category}");
+
+    public Task<FaComSuggestionDto> RespondSuggestionAsync(int id, FaComSuggestionRespondDto dto)
+        => _api.PostAsync<FaComSuggestionDto>($"{Root}/suggestions/{id}/respond", dto);
+
+    public Task DeleteSuggestionAsync(int id)
+        => _api.DeleteAsync($"{Root}/suggestions/{id}");
 
     public Task<List<FaComTicketDto>> GetMyTicketsAsync()
         => _api.GetAsync<List<FaComTicketDto>>($"{Root}/tickets/my");
