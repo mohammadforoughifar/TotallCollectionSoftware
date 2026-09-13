@@ -77,6 +77,7 @@ public static class DbInitializer
                 HrContractMasterSeeder.Seed(db);
                 await FaLmsSchemaV1.EnsureAsync(db);
                 await FaLmsSchemaV2.EnsureAsync(db);
+                await FaLmsSchemaV3.EnsureAsync(db);
                 await FaComSchemaV1.EnsureAsync(db);
                 await FaComSchemaV2.EnsureAsync(db);
                 await HrTalentSchemaV1.EnsureAsync(db);

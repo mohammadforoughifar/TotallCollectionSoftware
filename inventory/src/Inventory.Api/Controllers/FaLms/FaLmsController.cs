@@ -455,6 +455,92 @@ public class FaLmsController : RbacControllerBase
         return Ok(await _svc.VerifyAsync(no, code));
     }
 
+    [HttpGet("certificates/{id:int}/pdf")]
+    public async Task<IActionResult> CertificatePdf(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        try { return File(await _svc.CertificatePdfAsync(id), "application/pdf", $"FaLmsCert-{id}.pdf"); }
+        catch (InvalidOperationException) { return NotFound(); }
+    }
+
+    // ------------------- مدرس‌ها -------------------
+
+    [HttpGet("instructors")]
+    public async Task<IActionResult> Instructors([FromQuery] bool? onlyActive)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListInstructorsAsync(onlyActive));
+    }
+
+    [HttpPost("instructors")]
+    public async Task<IActionResult> SaveInstructor([FromQuery] int? id, [FromBody] FaLmsInstructorSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { return Ok(await _svc.SaveInstructorAsync(id, dto)); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpDelete("instructors/{id:int}")]
+    public async Task<IActionResult> DeleteInstructor(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { await _svc.DeleteInstructorAsync(id); return Ok(); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    // ------------------- نظرسنجی اثربخشی -------------------
+
+    [HttpGet("courses/{id:int}/survey")]
+    public async Task<IActionResult> SurveyQuestions(int id, [FromQuery] int? employeeId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListSurveyQuestionsAsync(id, employeeId));
+    }
+
+    [HttpPost("courses/{id:int}/survey")]
+    public async Task<IActionResult> SaveSurveyQuestion(int id, [FromBody] FaLmsSurveyQuestionSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try
+        {
+            dto.CourseId = id;
+            return Ok(await _svc.SaveSurveyQuestionAsync(dto));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpDelete("survey/{qid:int}")]
+    public async Task<IActionResult> DeleteSurveyQuestion(int qid)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { await _svc.DeleteSurveyQuestionAsync(qid); return Ok(); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPost("survey/answer")]
+    public async Task<IActionResult> SaveSurveyAnswer([FromBody] FaLmsSurveyAnswerSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        try { await _svc.SaveSurveyAnswerAsync(dto); return Ok(); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpGet("courses/{id:int}/survey-results")]
+    public async Task<IActionResult> SurveyResults(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.SurveyResultsAsync(id));
+    }
+
+    // ------------------- تداخل‌یابی -------------------
+
+    [HttpGet("courses/{id:int}/conflicts")]
+    public async Task<IActionResult> Conflicts(int id, [FromQuery] int? employeeId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.CheckConflictsAsync(id, employeeId));
+    }
+
     [HttpDelete("certificates/{id:int}")]
     public async Task<IActionResult> DeleteCertificate(int id)
     {

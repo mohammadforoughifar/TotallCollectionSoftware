@@ -219,6 +219,9 @@ public class AppDbContext : DbContext
     public DbSet<FaLmsBank> FaLmsBanks => Set<FaLmsBank>();
     public DbSet<FaLmsBankQuestion> FaLmsBankQuestions => Set<FaLmsBankQuestion>();
     public DbSet<FaLmsTextAnswer> FaLmsTextAnswers => Set<FaLmsTextAnswer>();
+    public DbSet<FaLmsInstructor> FaLmsInstructors => Set<FaLmsInstructor>();
+    public DbSet<FaLmsSurveyQuestion> FaLmsSurveyQuestions => Set<FaLmsSurveyQuestion>();
+    public DbSet<FaLmsSurveyAnswer> FaLmsSurveyAnswers => Set<FaLmsSurveyAnswer>();
     public DbSet<FaComAnnouncement> FaComAnnouncements => Set<FaComAnnouncement>();
     public DbSet<FaComTicket> FaComTickets => Set<FaComTicket>();
     public DbSet<FaComReply> FaComReplies => Set<FaComReply>();
