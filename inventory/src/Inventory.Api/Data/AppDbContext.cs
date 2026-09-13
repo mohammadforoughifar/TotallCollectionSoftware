@@ -45,6 +45,8 @@ public class AppDbContext : DbContext
     public DbSet<WorkOrderLog> WorkOrderLogs => Set<WorkOrderLog>();
     public DbSet<WorkOrderAttachment> WorkOrderAttachments => Set<WorkOrderAttachment>();
     public DbSet<WorkOrderAllowedAssignee> WorkOrderAllowedAssignees => Set<WorkOrderAllowedAssignee>();
+    public DbSet<WorkOrderReminderLog> WorkOrderReminderLogs => Set<WorkOrderReminderLog>();
+    public DbSet<WorkOrderChecklistItem> WorkOrderChecklistItems => Set<WorkOrderChecklistItem>();
 
     // ================== بایگانی و پیوست جامع (عمومی) ==================
     public DbSet<ArchiveFolder> ArchiveFolders => Set<ArchiveFolder>();
@@ -627,6 +629,13 @@ public class AppDbContext : DbContext
 
         // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
         mb.Entity<WorkOrder>().HasIndex(w => new { w.SourceModule, w.SourceId });
+
+        // ---------- دستور کار: اولویت و یادآور مهلت ----------
+        mb.Entity<WorkOrder>().HasIndex(w => new { w.Status, w.DueAt });   // کوئری یادآور/فیلترها
+        mb.Entity<WorkOrderReminderLog>()
+            .HasIndex(r => new { r.OrderId, r.ThresholdHours, r.DueAtSnapshot })
+            .IsUnique();                                                    // هر آستانه فقط یک‌بار به‌ازای هر مهلت
+        mb.Entity<WorkOrderChecklistItem>().HasIndex(c => c.OrderId);       // چک‌لیست زیرکار
 
         // ==================== ماژول انبارداری ====================
 

@@ -119,6 +119,15 @@ public class WorkOrdersController : ControllerBase
         public DateTime DueAt { get; set; }
         public List<int> AssigneeUserIds { get; set; } = new();
 
+        /// <summary>اولویت: 0=کم | 1=عادی | 2=بالا | 3=فوری (پیش‌فرض: عادی).</summary>
+        public int Priority { get; set; } = WorkOrderPriority.Normal;
+
+        /// <summary>تکرار: 0=بدون تکرار | 1=روزانه | 2=هفتگی | 3=ماهانه.</summary>
+        public int Recurrence { get; set; } = WorkOrderRecurrence.None;
+
+        /// <summary>آیتم‌های چک‌لیست زیرکار (اختیاری) — به ترتیب لیست ذخیره می‌شوند.</summary>
+        public List<string> ChecklistItems { get; set; } = new();
+
         /// <summary>ماژول مبدأ — مثلاً "InnerLetter" برای نامه داخلی (اختیاری).</summary>
         public string? SourceModule { get; set; }
         public int? SourceId { get; set; }
@@ -135,6 +144,10 @@ public class WorkOrdersController : ControllerBase
         // بند ۱: تاریخ و ساعت مقرر نباید قبل از زمان ثبت باشد
         if (dto.DueAt <= DateTime.Now)
             return BadRequest(new { message = "تاریخ و ساعت مقرر نمی‌تواند قبل از زمان ثبت باشد." });
+        if (!WorkOrderPriority.IsValid(dto.Priority))
+            return BadRequest(new { message = "اولویت انتخابی نامعتبر است." });
+        if (!WorkOrderRecurrence.IsValid(dto.Recurrence))
+            return BadRequest(new { message = "الگوی تکرار نامعتبر است." });
 
         // بند ۵ و ۶: بدون مجوز «به دیگران»، فقط خودش | با مجوز، فقط لیست مجاز
         var others = dto.AssigneeUserIds.Where(id => id != MyUserId).Distinct().ToList();
@@ -174,6 +187,8 @@ public class WorkOrdersController : ControllerBase
             OwnerName = await MyDisplayNameAsync(),
             DueAt = dto.DueAt,
             Status = "Open",
+            Priority = dto.Priority,
+            Recurrence = dto.Recurrence,
             SourceModule = dto.SourceModule,
             SourceId = dto.SourceId
         };
@@ -204,13 +219,20 @@ public class WorkOrdersController : ControllerBase
             _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = u.Id, Name = $"{u.FirstName} {u.LastName}".Trim() });
         }
 
+        // چک‌لیست زیرکار (اختیاری)
+        var clOrder = 0;
+        foreach (var item in dto.ChecklistItems.Where(t => !string.IsNullOrWhiteSpace(t)).Take(50))
+            _db.WorkOrderChecklistItems.Add(new WorkOrderChecklistItem
+            { OrderId = wo.Id, Text = item.Trim(), SortOrder = clOrder++ });
+
         var actor = await MyDisplayNameAsync();
         Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm} — گیرندگان: {string.Join("، ", users.Select(u => UserDisplay.Name(u)))}");
         await _db.SaveChangesAsync();
 
+        var prTag = wo.Priority >= WorkOrderPriority.High ? $" — اولویت: {WorkOrderPriority.ToFa(wo.Priority)}" : "";
         foreach (var uid in dto.AssigneeUserIds.Distinct().Where(id => id != MyUserId))
-            await _notify.SendAsync(uid, "دستور کار جدید 📋",
-                $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}",
+            await _notify.SendAsync(uid, wo.Priority == WorkOrderPriority.Urgent ? "دستور کار فوری 🔴" : "دستور کار جدید 📋",
+                $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}{prTag}",
                 actor, "دستور کار", $"/work-orders?open={wo.Id}");
         await _notify.BroadcastChangedAsync("workorders");
 
@@ -233,6 +255,10 @@ public class WorkOrdersController : ControllerBase
             return BadRequest(new { message = "حداقل یک نفر را انتخاب کنید." });
         if (dto.DueAt <= DateTime.Now)
             return BadRequest(new { message = "تاریخ و ساعت مقرر نمی‌تواند قبل از زمان فعلی باشد." });
+        if (!WorkOrderPriority.IsValid(dto.Priority))
+            return BadRequest(new { message = "اولویت انتخابی نامعتبر است." });
+        if (!WorkOrderRecurrence.IsValid(dto.Recurrence))
+            return BadRequest(new { message = "الگوی تکرار نامعتبر است." });
 
         var others = dto.AssigneeUserIds.Where(x => x != MyUserId).Distinct().ToList();
         if (others.Count > 0)
@@ -272,7 +298,21 @@ public class WorkOrdersController : ControllerBase
         wo.Title = dto.Title.Trim();
         wo.Description = dto.Description ?? "";
         wo.DueAt = dto.DueAt;
+        wo.Priority = dto.Priority;
+        wo.Recurrence = dto.Recurrence;
         wo.OwnerName = await MyDisplayNameAsync();
+
+        // همگام‌سازی چک‌لیست: آیتم‌های تیک‌خورده حفظ می‌شوند (تطبیق بر اساس متن)، بقیه بازنویسی
+        var oldItems = await _db.WorkOrderChecklistItems.Where(c => c.OrderId == id).ToListAsync();
+        var newTexts = dto.ChecklistItems.Where(t => !string.IsNullOrWhiteSpace(t)).Select(t => t.Trim()).Take(50).ToList();
+        _db.WorkOrderChecklistItems.RemoveRange(oldItems.Where(o => !newTexts.Contains(o.Text)));
+        var clSort = 0;
+        foreach (var text in newTexts)
+        {
+            var existing2 = oldItems.FirstOrDefault(o => o.Text == text);
+            if (existing2 != null) existing2.SortOrder = clSort++;
+            else _db.WorkOrderChecklistItems.Add(new WorkOrderChecklistItem { OrderId = id, Text = text, SortOrder = clSort++ });
+        }
 
         Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
         await _db.SaveChangesAsync();
@@ -287,19 +327,67 @@ public class WorkOrdersController : ControllerBase
     }
 
     // ================== لیست‌ها ==================
+
+    /// <summary>پارامترهای فیلتر لیست — همه اختیاری؛ بدون پارامتر، رفتار قبلی حفظ می‌شود.</summary>
+    public class ListFilterDto
+    {
+        /// <summary>جستجو در شماره و عنوان (بدون حساسیت به بزرگی/کوچکی).</summary>
+        public string? Q { get; set; }
+
+        /// <summary>فیلتر اولویت: 0..3 — null یعنی همه.</summary>
+        public int? Priority { get; set; }
+
+        /// <summary>بازه مهلت — از (شامل).</summary>
+        public DateTime? DueFrom { get; set; }
+
+        /// <summary>بازه مهلت — تا (غیرشامل؛ برای «تا امروز» مقدار فردا را بفرستید).</summary>
+        public DateTime? DueTo { get; set; }
+
+        /// <summary>فیلتر شخص: دستوردهنده یا یکی از گیرندگان.</summary>
+        public int? UserId { get; set; }
+    }
+
+    /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
+    private IQueryable<WorkOrder> ApplyFilter(IQueryable<WorkOrder> q, ListFilterDto f)
+    {
+        if (!string.IsNullOrWhiteSpace(f.Q))
+        {
+            var term = f.Q.Trim();
+            q = q.Where(w => EF.Functions.Like(w.Title, $"%{term}%") || EF.Functions.Like(w.Number, $"%{term}%"));
+        }
+        if (f.Priority is >= WorkOrderPriority.Low and <= WorkOrderPriority.Urgent)
+            q = q.Where(w => w.Priority == f.Priority);
+        if (f.DueFrom != null) q = q.Where(w => w.DueAt >= f.DueFrom);
+        if (f.DueTo != null) q = q.Where(w => w.DueAt < f.DueTo);
+        if (f.UserId is > 0)
+        {
+            var uid = f.UserId.Value;
+            var uidOrders = _db.WorkOrderAssignees.Where(a => a.UserId == uid).Select(a => a.OrderId);
+            q = q.Where(w => w.OwnerUserId == uid || uidOrders.Contains(w.Id));
+        }
+        return q;
+    }
+
     private async Task<List<object>> BuildList(IQueryable<WorkOrder> q)
     {
-        var orders = await q.OrderByDescending(w => w.Id).ToListAsync();
+        // مرتب‌سازی: اول اولویت (فوری بالاتر)، بعد جدیدترین
+        var orders = await q.OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id).ToListAsync();
         var ids = orders.Select(w => w.Id).ToList();
         var asgs = await _db.WorkOrderAssignees.Where(a => ids.Contains(a.OrderId)).ToListAsync();
         var attCounts = await _db.WorkOrderAttachments.Where(a => ids.Contains(a.OrderId))
             .GroupBy(a => a.OrderId).Select(g => new { g.Key, C = g.Count() }).ToListAsync();
+        var clStats = await _db.WorkOrderChecklistItems.Where(c => ids.Contains(c.OrderId))
+            .GroupBy(c => c.OrderId)
+            .Select(g => new { g.Key, Total = g.Count(), Done = g.Count(x => x.IsDone) }).ToListAsync();
 
         return orders.Select(w => (object)new
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
+            w.Priority, w.Recurrence,
             w.SourceModule, w.SourceId,
+            ChecklistTotal = clStats.FirstOrDefault(c => c.Key == w.Id)?.Total ?? 0,
+            ChecklistDone = clStats.FirstOrDefault(c => c.Key == w.Id)?.Done ?? 0,
             AttachmentCount = attCounts.FirstOrDefault(c => c.Key == w.Id)?.C ?? 0,
             Assignees = asgs.Where(a => a.OrderId == w.Id).Select(a => new
             {
@@ -309,26 +397,28 @@ public class WorkOrdersController : ControllerBase
         }).ToList();
     }
 
-    /// <summary>دستورهایی که من داده‌ام (باز).</summary>
+    /// <summary>دستورهایی که من داده‌ام (باز) — با فیلتر اختیاری جستجو/اولویت/بازه/شخص.</summary>
     [HttpGet("mine")]
-    public async Task<IActionResult> Mine() =>
-        Ok(await BuildList(_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open")));
+    public async Task<IActionResult> Mine([FromQuery] ListFilterDto filter) =>
+        Ok(await BuildList(ApplyFilter(
+            _db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), filter)));
 
-    /// <summary>دستورهای محول به من (باز).</summary>
+    /// <summary>دستورهای محول به من (باز) — با فیلتر اختیاری.</summary>
     [HttpGet("assigned")]
-    public async Task<IActionResult> Assigned()
+    public async Task<IActionResult> Assigned([FromQuery] ListFilterDto filter)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        return Ok(await BuildList(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open")));
+        return Ok(await BuildList(ApplyFilter(
+            _db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), filter)));
     }
 
-    /// <summary>بایگانی — دستورهای بسته‌شده (من دستور داده‌ام یا به من محول شده).</summary>
+    /// <summary>بایگانی — دستورهای بسته‌شده (من دستور داده‌ام یا به من محول شده) — با فیلتر اختیاری.</summary>
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive()
+    public async Task<IActionResult> Archive([FromQuery] ListFilterDto filter)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        return Ok(await BuildList(_db.WorkOrders.Where(w =>
-            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id)))));
+        return Ok(await BuildList(ApplyFilter(_db.WorkOrders.Where(w =>
+            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), filter)));
     }
 
     /// <summary>دستورهای کارِ ساخته‌شده از یک مبدأ (سورس) — مثلاً نامه داخلی. برای لینک/نشان «دستورکار شده».</summary>
@@ -527,8 +617,284 @@ public class WorkOrdersController : ControllerBase
         foreach (var a in asgs.Where(a => a.UserId != MyUserId))
             await _notify.SendAsync(a.UserId, "دستور کار بسته شد 🔒",
                 $"{wo.Number} — «{wo.Title}»", MyUsername, "دستور کار", $"/work-orders?open={id}");
+
+        // ---------- تکرارشونده: بعد از بستن، نوبت بعدی خودکار ساخته می‌شود ----------
+        int? nextId = null;
+        if (wo.Recurrence != WorkOrderRecurrence.None)
+        {
+            nextId = await CreateNextOccurrenceAsync(wo, asgs);
+            if (nextId != null)
+                Log(id, "Recurred", $"نوبت بعدی ({WorkOrderRecurrence.ToFa(wo.Recurrence)}) به‌صورت خودکار ساخته شد.");
+            await _db.SaveChangesAsync();
+        }
+
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok(new { nextId });
+    }
+
+    /// <summary>
+    /// ساخت نوبت بعدیِ دستور تکرارشونده — کپی عنوان/شرح/اولویت/گیرندگان/چک‌لیست (تیک‌نخورده)
+    /// با مهلت جابه‌جاشده طبق الگو. اگر مهلت محاسبه‌شده در گذشته بود، از الان به جلو می‌غلتد.
+    /// </summary>
+    private async Task<int?> CreateNextOccurrenceAsync(WorkOrder prev, List<WorkOrderAssignee> prevAsgs)
+    {
+        var nextDue = prev.Recurrence switch
+        {
+            WorkOrderRecurrence.Daily => prev.DueAt.AddDays(1),
+            WorkOrderRecurrence.Weekly => prev.DueAt.AddDays(7),
+            WorkOrderRecurrence.Monthly => prev.DueAt.AddMonths(1),
+            _ => prev.DueAt
+        };
+        while (nextDue <= DateTime.Now)
+            nextDue = prev.Recurrence switch
+            {
+                WorkOrderRecurrence.Daily => nextDue.AddDays(1),
+                WorkOrderRecurrence.Weekly => nextDue.AddDays(7),
+                WorkOrderRecurrence.Monthly => nextDue.AddMonths(1),
+                _ => nextDue.AddDays(1)
+            };
+
+        var next = new WorkOrder
+        {
+            Title = prev.Title,
+            Description = prev.Description,
+            OwnerUserId = prev.OwnerUserId,
+            OwnerName = prev.OwnerName,
+            DueAt = nextDue,
+            Status = "Open",
+            Priority = prev.Priority,
+            Recurrence = prev.Recurrence,
+            RecurrenceParentId = prev.Id,
+            SourceModule = prev.SourceModule,
+            SourceId = prev.SourceId
+        };
+        _db.WorkOrders.Add(next);
+        await _db.SaveChangesAsync();
+
+        var pc = new System.Globalization.PersianCalendar();
+        var prefix = $"WO/{pc.GetYear(DateTime.Now)}/";
+        next.Number = $"{prefix}{await _db.WorkOrders.CountAsync(w => w.Number.StartsWith(prefix)) + 1}";
+
+        foreach (var a in prevAsgs)
+            _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = next.Id, UserId = a.UserId, Name = a.Name });
+
+        // چک‌لیست: همان گام‌ها ولی همه تیک‌نخورده
+        var clItems = await _db.WorkOrderChecklistItems.Where(c => c.OrderId == prev.Id)
+            .OrderBy(c => c.SortOrder).ToListAsync();
+        foreach (var c in clItems)
+            _db.WorkOrderChecklistItems.Add(new WorkOrderChecklistItem
+            { OrderId = next.Id, Text = c.Text, SortOrder = c.SortOrder });
+
+        _db.WorkOrderLogs.Add(new WorkOrderLog
+        {
+            OrderId = next.Id,
+            ActorName = "سیستم",
+            Action = "Created",
+            Text = $"ایجاد خودکار نوبت {WorkOrderRecurrence.ToFa(prev.Recurrence)} — ادامه {prev.Number} — مهلت: {ToFa(nextDue)}"
+        });
+        await _db.SaveChangesAsync();
+
+        foreach (var uid in prevAsgs.Select(a => a.UserId).Distinct().Where(u => u != prev.OwnerUserId))
+            await _notify.SendAsync(uid, "دستور کار تکرارشونده 🔁",
+                $"{next.Number} — «{next.Title}» — مهلت: {ToFa(nextDue)}",
+                prev.OwnerName, "دستور کار", $"/work-orders?open={next.Id}");
+
+        return next.Id;
+    }
+
+    // ================== چک‌لیست زیرکار ==================
+
+    /// <summary>آیتم‌های چک‌لیست یک دستور کار — به ترتیب SortOrder.</summary>
+    [HttpGet("{id:int}/checklist")]
+    public async Task<IActionResult> Checklist(int id)
+    {
+        if (!await CanSeeOrderAsync(id)) return Forbid();
+        return Ok(await _db.WorkOrderChecklistItems.Where(c => c.OrderId == id)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Id)
+            .Select(c => new { c.Id, c.Text, c.SortOrder, c.IsDone, c.DoneByName, c.DoneAt })
+            .ToListAsync());
+    }
+
+    public class ChecklistAddDto { public string Text { get; set; } = ""; }
+
+    /// <summary>افزودن آیتم چک‌لیست — فقط دستوردهنده و فقط تا وقتی دستور باز است.</summary>
+    [HttpPost("{id:int}/checklist")]
+    public async Task<IActionResult> ChecklistAdd(int id, [FromBody] ChecklistAddDto dto)
+    {
+        var wo = await _db.WorkOrders.FindAsync(id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.OwnerUserId != MyUserId) return Forbid();
+        if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
+        if (string.IsNullOrWhiteSpace(dto.Text)) return BadRequest(new { message = "متن آیتم را وارد کنید." });
+        if (await _db.WorkOrderChecklistItems.CountAsync(c => c.OrderId == id) >= 50)
+            return BadRequest(new { message = "حداکثر ۵۰ آیتم مجاز است." });
+
+        var maxSort = await _db.WorkOrderChecklistItems.Where(c => c.OrderId == id)
+            .Select(c => (int?)c.SortOrder).MaxAsync() ?? -1;
+        var item = new WorkOrderChecklistItem { OrderId = id, Text = dto.Text.Trim(), SortOrder = maxSort + 1 };
+        _db.WorkOrderChecklistItems.Add(item);
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok(new { item.Id });
+    }
+
+    public class ChecklistToggleDto { public bool IsDone { get; set; } }
+
+    /// <summary>تیک/برداشتن تیک آیتم — دستوردهنده یا هر گیرنده، تا وقتی دستور باز است.</summary>
+    [HttpPost("{id:int}/checklist/{itemId:int}/toggle")]
+    public async Task<IActionResult> ChecklistToggle(int id, int itemId, [FromBody] ChecklistToggleDto dto)
+    {
+        var wo = await _db.WorkOrders.FindAsync(id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
+
+        var isOwner = wo.OwnerUserId == MyUserId;
+        var isAssignee = await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == id && a.UserId == MyUserId);
+        if (!isOwner && !isAssignee) return Forbid();
+
+        var item = await _db.WorkOrderChecklistItems.FirstOrDefaultAsync(c => c.Id == itemId && c.OrderId == id);
+        if (item == null) return NotFound(new { message = "آیتم پیدا نشد." });
+
+        item.IsDone = dto.IsDone;
+        if (dto.IsDone)
+        {
+            item.DoneByUserId = MyUserId;
+            item.DoneByName = await MyDisplayNameAsync();
+            item.DoneAt = DateTime.Now;
+        }
+        else
+        {
+            item.DoneByUserId = null;
+            item.DoneByName = null;
+            item.DoneAt = null;
+        }
+        await _db.SaveChangesAsync();
+
+        var total = await _db.WorkOrderChecklistItems.CountAsync(c => c.OrderId == id);
+        var done = await _db.WorkOrderChecklistItems.CountAsync(c => c.OrderId == id && c.IsDone);
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok(new { total, done });
+    }
+
+    /// <summary>حذف آیتم چک‌لیست — فقط دستوردهنده، فقط دستور باز.</summary>
+    [HttpDelete("{id:int}/checklist/{itemId:int}")]
+    public async Task<IActionResult> ChecklistDelete(int id, int itemId)
+    {
+        var wo = await _db.WorkOrders.FindAsync(id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.OwnerUserId != MyUserId) return Forbid();
+        if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
+
+        var item = await _db.WorkOrderChecklistItems.FirstOrDefaultAsync(c => c.Id == itemId && c.OrderId == id);
+        if (item == null) return NotFound();
+        _db.WorkOrderChecklistItems.Remove(item);
+        await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("workorders");
         return Ok();
+    }
+
+    /// <summary>آیا کاربر جاری حق دیدن این دستور را دارد؟ (دستوردهنده یا گیرنده یا مجوز View)</summary>
+    private async Task<bool> CanSeeOrderAsync(int id)
+    {
+        if (await HasAsync("View")) return true;
+        var wo = await _db.WorkOrders.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id);
+        if (wo == null) return false;
+        return wo.OwnerUserId == MyUserId
+            || await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == id && a.UserId == MyUserId);
+    }
+
+    // ================== داشبورد آماری ==================
+
+    /// <summary>
+    /// آمار دستورهای کار مرتبط با کاربر جاری (دستوردهنده یا گیرنده).
+    /// کارت‌های KPI + توزیع اولویت + عملکرد گیرندگان + روند ۶ ماه اخیر (شمسی).
+    /// </summary>
+    [HttpGet("stats")]
+    public async Task<IActionResult> Stats()
+    {
+        var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
+        var orders = await _db.WorkOrders.AsNoTracking()
+            .Where(w => w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))
+            .ToListAsync();
+        var ids = orders.Select(o => o.Id).ToList();
+        var asgs = await _db.WorkOrderAssignees.AsNoTracking()
+            .Where(a => ids.Contains(a.OrderId)).ToListAsync();
+
+        var now = DateTime.Now;
+
+        // وضعیت هر دستور از دید نتیجه (همان قوانین Tone کلاینت)
+        string ToneOf(WorkOrder w)
+        {
+            var list = asgs.Where(a => a.OrderId == w.Id).ToList();
+            var allDone = list.Count > 0 && list.All(a => a.Done == true);
+            if (allDone)
+            {
+                var last = list.Max(a => a.RepliedAt) ?? DateTime.MaxValue;
+                return last <= w.DueAt ? "ontime" : "latedone";
+            }
+            if (w.Status == "Closed") return "closednodone";
+            if (w.DueAt < now) return "late";
+            return "open";
+        }
+
+        var tones = orders.ToDictionary(o => o.Id, ToneOf);
+
+        var open = orders.Count(o => o.Status == "Open");
+        var overdue = orders.Count(o => o.Status == "Open" && tones[o.Id] == "late");
+        var dueToday = orders.Count(o => o.Status == "Open" && o.DueAt.Date == now.Date);
+        var doneOnTime = orders.Count(o => tones[o.Id] == "ontime");
+        var doneLate = orders.Count(o => tones[o.Id] == "latedone");
+        var closedNoDone = orders.Count(o => tones[o.Id] == "closednodone");
+
+        // توزیع اولویت دستورهای باز
+        var byPriority = orders.Where(o => o.Status == "Open")
+            .GroupBy(o => o.Priority)
+            .Select(g => new { Priority = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Priority).ToList();
+
+        // عملکرد گیرندگان — فقط دستورهایی که «من» داده‌ام (برای مدیر معنا دارد)
+        var mineIds = orders.Where(o => o.OwnerUserId == MyUserId).Select(o => o.Id).ToHashSet();
+        var dueMap = orders.Where(o => mineIds.Contains(o.Id)).ToDictionary(o => o.Id, o => o.DueAt);
+        var perAssignee = asgs.Where(a => mineIds.Contains(a.OrderId) && a.UserId != MyUserId)
+            .GroupBy(a => new { a.UserId, a.Name })
+            .Select(g => new
+            {
+                g.Key.UserId,
+                g.Key.Name,
+                Total = g.Count(),
+                Done = g.Count(x => x.Done == true),
+                OnTime = g.Count(x => x.Done == true && x.RepliedAt != null && x.RepliedAt <= dueMap[x.OrderId]),
+                NotDone = g.Count(x => x.Done == false),
+                Pending = g.Count(x => x.RepliedAt == null)
+            })
+            .OrderByDescending(x => x.Total).Take(15).ToList();
+
+        // روند ۶ ماه اخیر شمسی — تعداد ایجادشده / انجام به‌موقع / انجام با تاخیر
+        var pc = new System.Globalization.PersianCalendar();
+        var months = new List<object>();
+        for (var i = 5; i >= 0; i--)
+        {
+            var refDate = now.AddMonths(-i);
+            var py = pc.GetYear(refDate); var pm = pc.GetMonth(refDate);
+            var monthOrders = orders.Where(o => pc.GetYear(o.CreatedAt) == py && pc.GetMonth(o.CreatedAt) == pm).ToList();
+            months.Add(new
+            {
+                Year = py,
+                Month = pm,
+                Created = monthOrders.Count,
+                OnTime = monthOrders.Count(o => tones[o.Id] == "ontime"),
+                Late = monthOrders.Count(o => tones[o.Id] == "latedone"),
+                NotDone = monthOrders.Count(o => tones[o.Id] is "late" or "closednodone")
+            });
+        }
+
+        return Ok(new
+        {
+            Cards = new { Total = orders.Count, Open = open, Overdue = overdue, DueToday = dueToday, DoneOnTime = doneOnTime, DoneLate = doneLate, ClosedNoDone = closedNoDone },
+            ByPriority = byPriority,
+            PerAssignee = perAssignee,
+            Months = months
+        });
     }
 
     // ================== تاریخچه (بند ۱۷ و ۱۸) ==================

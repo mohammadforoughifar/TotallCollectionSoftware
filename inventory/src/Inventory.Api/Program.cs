@@ -102,6 +102,10 @@ builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocIndexService
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
 
+// سرویس پس‌زمینه یادآور مهلت دستور کار (هر ۱۵ دقیقه — آستانه‌ها در appsettings قابل تنظیم)
+builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.WorkOrderReminderService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.ItAssets.WorkOrderReminderService>());
+
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
 // نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)

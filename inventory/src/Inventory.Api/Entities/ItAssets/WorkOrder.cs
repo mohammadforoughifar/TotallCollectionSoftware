@@ -2,6 +2,44 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Inventory.Api.Data;
 
+/// <summary>سطوح اولویت دستور کار — مقادیر ثابت تا در دیتابیس به‌صورت عدد ذخیره شود.</summary>
+public static class WorkOrderPriority
+{
+    public const int Low = 0;
+    public const int Normal = 1;
+    public const int High = 2;
+    public const int Urgent = 3;
+
+    public static bool IsValid(int p) => p is >= Low and <= Urgent;
+
+    public static string ToFa(int p) => p switch
+    {
+        Low => "کم",
+        High => "بالا",
+        Urgent => "فوری",
+        _ => "عادی"
+    };
+}
+
+/// <summary>الگوهای تکرار دستور کار — بعد از «بستن»، نوبت بعدی خودکار ساخته می‌شود.</summary>
+public static class WorkOrderRecurrence
+{
+    public const int None = 0;
+    public const int Daily = 1;
+    public const int Weekly = 2;
+    public const int Monthly = 3;
+
+    public static bool IsValid(int r) => r is >= None and <= Monthly;
+
+    public static string ToFa(int r) => r switch
+    {
+        Daily => "روزانه",
+        Weekly => "هفتگی",
+        Monthly => "ماهانه",
+        _ => "بدون تکرار"
+    };
+}
+
 /// <summary>دستور کار — قابل محول‌کردن به خود یا دیگران.</summary>
 public class WorkOrder
 {
@@ -37,6 +75,15 @@ public class WorkOrder
 
     /// <summary>تعداد تمدیدها — حداکثر ۵ بار</summary>
     public int ExtensionCount { get; set; }
+
+    /// <summary>اولویت: 0=کم | 1=عادی | 2=بالا | 3=فوری (پیش‌فرض: عادی)</summary>
+    public int Priority { get; set; } = WorkOrderPriority.Normal;
+
+    /// <summary>تکرار: 0=بدون تکرار | 1=روزانه | 2=هفتگی | 3=ماهانه — بعد از بستن، نوبت بعدی خودکار ساخته می‌شود.</summary>
+    public int Recurrence { get; set; } = WorkOrderRecurrence.None;
+
+    /// <summary>شناسه دستور والد در زنجیره تکرار (نوبت قبلی) — برای ردگیری سری.</summary>
+    public int? RecurrenceParentId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
@@ -122,6 +169,48 @@ public class WorkOrderAttachment
     public string UploaderName { get; set; } = "";
     public int UploaderUserId { get; set; }
     public DateTime UploadedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>آیتم چک‌لیست زیرکار — گام‌های تیک‌خور داخل یک دستور کار + درصد پیشرفت.</summary>
+public class WorkOrderChecklistItem
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+
+    [MaxLength(300)]
+    public string Text { get; set; } = "";
+
+    /// <summary>ترتیب نمایش.</summary>
+    public int SortOrder { get; set; }
+
+    public bool IsDone { get; set; }
+
+    /// <summary>چه کسی و چه زمانی تیک زد.</summary>
+    public int? DoneByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string? DoneByName { get; set; }
+    public DateTime? DoneAt { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>
+/// ثبت یادآورهای مهلتِ ارسال‌شده — تضمین می‌کند برای هر (دستور، آستانه، مهلت) فقط یک‌بار اعلان برود.
+/// اگر مهلت تمدید شود، DueAtSnapshot تغییر می‌کند و یادآورها دوباره فعال می‌شوند.
+/// </summary>
+public class WorkOrderReminderLog
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+
+    /// <summary>آستانه یادآور بر حسب ساعتِ مانده تا مهلت (مثلاً 24 یا 0=رسیدن مهلت).</summary>
+    public int ThresholdHours { get; set; }
+
+    /// <summary>مهلتی که یادآور بر مبنای آن ارسال شد — برای بی‌اثرشدن بعد از تمدید.</summary>
+    public DateTime DueAtSnapshot { get; set; }
+
+    public DateTime SentAt { get; set; } = DateTime.Now;
 }
 
 /// <summary>لیست افرادی که هر کاربر مجاز است به آن‌ها دستور کار بدهد.</summary>
