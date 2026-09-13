@@ -1003,10 +1003,153 @@ public class WorkOrdersController : ControllerBase
         });
     }
 
+    // ================== گزارش عملکرد افراد (موج ۸) ==================
+
+    /// <summary>
+    /// محاسبهٔ عملکرد گیرندگانِ دستورهایی که کاربر جاری داده است —
+    /// دریافتی، انجام به‌موقع/با تاخیر، انجام‌نشده، در انتظار، میانگین تاخیر و درصد به‌موقع.
+    /// خروجی برای رتبه‌بندی مرتب می‌شود: درصد به‌موقع ↓ سپس تعداد کل ↓.
+    /// <paramref name="days"/>: بازهٔ روزهای اخیر بر اساس تاریخ ایجاد دستور — 0 یعنی همه.
+    /// </summary>
+    private async Task<List<PerfRow>> BuildPerformanceAsync(int days)
+    {
+        var q = _db.WorkOrders.AsNoTracking().Where(w => w.OwnerUserId == MyUserId);
+        if (days > 0)
+        {
+            var from = DateTime.Now.AddDays(-days);
+            q = q.Where(w => w.CreatedAt >= from);
+        }
+        var orders = await q.ToListAsync();
+        var ids = orders.Select(o => o.Id).ToList();
+        var dueMap = orders.ToDictionary(o => o.Id, o => o.DueAt);
+        var statusMap = orders.ToDictionary(o => o.Id, o => o.Status);
+        var asgs = await _db.WorkOrderAssignees.AsNoTracking()
+            .Where(a => ids.Contains(a.OrderId)).ToListAsync();
+
+        var now = DateTime.Now;
+        var rows = asgs.GroupBy(a => new { a.UserId, a.Name })
+            .Select(g =>
+            {
+                var done = g.Where(x => x.Done == true).ToList();
+                var onTime = done.Count(x => x.RepliedAt != null && x.RepliedAt <= dueMap[x.OrderId]);
+                var doneLate = done.Count - onTime;
+                // میانگین تاخیر (ساعت) — فقط برای انجام‌های با تاخیر
+                var delays = done.Where(x => x.RepliedAt != null && x.RepliedAt > dueMap[x.OrderId])
+                    .Select(x => (x.RepliedAt!.Value - dueMap[x.OrderId]).TotalHours).ToList();
+                var pending = g.Count(x => x.RepliedAt == null && statusMap[x.OrderId] == "Open");
+                return new PerfRow
+                {
+                    UserId = g.Key.UserId,
+                    Name = g.Key.Name,
+                    Total = g.Count(),
+                    Done = done.Count,
+                    OnTime = onTime,
+                    DoneLate = doneLate,
+                    NotDone = g.Count(x => x.Done == false),
+                    Pending = pending,
+                    OverdueOpen = g.Count(x => x.RepliedAt == null && statusMap[x.OrderId] == "Open" && dueMap[x.OrderId] < now),
+                    AvgDelayHours = delays.Count > 0 ? Math.Round(delays.Average(), 1) : 0,
+                    OnTimePercent = g.Count() > 0 ? (int)Math.Round(onTime * 100.0 / g.Count()) : 0
+                };
+            })
+            .OrderByDescending(r => r.OnTimePercent).ThenByDescending(r => r.Total).ThenBy(r => r.Name)
+            .ToList();
+
+        for (var i = 0; i < rows.Count; i++) rows[i].Rank = i + 1;
+        return rows;
+    }
+
+    public class PerfRow
+    {
+        public int Rank { get; set; }
+        public int UserId { get; set; }
+        public string Name { get; set; } = "";
+        public int Total { get; set; }          // کل دریافتی
+        public int Done { get; set; }           // انجام‌شده (تایید گیرنده)
+        public int OnTime { get; set; }         // انجام به‌موقع
+        public int DoneLate { get; set; }       // انجام با تاخیر
+        public int NotDone { get; set; }        // اعلام «انجام نشد»
+        public int Pending { get; set; }        // در انتظار پاسخ (دستور باز)
+        public int OverdueOpen { get; set; }    // در انتظار و گذشته از مهلت
+        public double AvgDelayHours { get; set; } // میانگین تاخیر انجام‌های دیرهنگام (ساعت)
+        public int OnTimePercent { get; set; }  // درصد به‌موقع از کل دریافتی
+    }
+
+    /// <summary>گزارش عملکرد افراد — فقط دستورهایی که کاربر جاری داده است. days=0 یعنی همهٔ بازه.</summary>
+    [HttpGet("performance")]
+    public async Task<IActionResult> Performance([FromQuery] int days = 0)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        if (days is < 0 or > 3660) return BadRequest(new { message = "بازهٔ زمانی نامعتبر است." });
+        return Ok(await BuildPerformanceAsync(days));
+    }
+
+    /// <summary>خروجی Excel/PDF گزارش عملکرد افراد — همان داده با رتبه‌بندی.</summary>
+    [HttpGet("performance/export")]
+    public async Task<IActionResult> PerformanceExport([FromQuery] string format = "xlsx", [FromQuery] int days = 0)
+    {
+        if (!await HasAsync("View")) return Forbid();
+        if (days is < 0 or > 3660) return BadRequest(new { message = "بازهٔ زمانی نامعتبر است." });
+        var rows = await BuildPerformanceAsync(days);
+
+        var periodFa = days switch
+        {
+            0 => "همهٔ بازهٔ زمانی",
+            30 => "۳۰ روز اخیر",
+            90 => "۹۰ روز اخیر",
+            365 => "سال اخیر",
+            _ => $"{days} روز اخیر"
+        };
+
+        var spec = new Services.Export.ExportSpec
+        {
+            Title = "گزارش عملکرد افراد",
+            Subtitle = "دستورهای کاری که من داده‌ام",
+            Module = "دستور کار",
+            FileBaseName = "workorders_performance",
+            Landscape = true,
+            Columns =
+            {
+                new("رتبه", Services.Export.ExportValueKind.Number, 35),
+                new("نام"),
+                new("دریافتی", Services.Export.ExportValueKind.Number, 52),
+                new("انجام‌شده", Services.Export.ExportValueKind.Number, 58),
+                new("به‌موقع", Services.Export.ExportValueKind.Number, 52),
+                new("با تاخیر", Services.Export.ExportValueKind.Number, 52),
+                new("انجام نشد", Services.Export.ExportValueKind.Number, 58),
+                new("در انتظار", Services.Export.ExportValueKind.Number, 55),
+                new("منقضی باز", Services.Export.ExportValueKind.Number, 58),
+                new("میانگین تاخیر (ساعت)", Services.Export.ExportValueKind.Number, 78),
+                new("٪ به‌موقع", Services.Export.ExportValueKind.Number, 52),
+            }
+        };
+        spec.Meta.Add(new("بازه", periodFa));
+
+        foreach (var r in rows)
+        {
+            var row = new Services.Export.ExportRow(
+                r.Rank, r.Name, r.Total, r.Done, r.OnTime, r.DoneLate,
+                r.NotDone, r.Pending, r.OverdueOpen, r.AvgDelayHours, r.OnTimePercent);
+            if (r.OnTimePercent >= 80) row.Style = Services.Export.ExportRowStyle.Success;
+            else if (r.OverdueOpen > 0) row.Style = Services.Export.ExportRowStyle.Danger;
+            spec.Rows.Add(row);
+        }
+
+        spec.Summary.Add(new("تعداد افراد", rows.Count.ToString()));
+        spec.Summary.Add(new("مجموع دستورهای محول‌شده", rows.Sum(r => r.Total).ToString()));
+        spec.Summary.Add(new("مجموع انجام به‌موقع", rows.Sum(r => r.OnTime).ToString()));
+
+        var isExcel = format.Equals("xlsx", StringComparison.OrdinalIgnoreCase);
+        if (isExcel) foreach (var c in spec.Columns) c.Width = 0;
+        var bytes = isExcel ? Services.Export.ExcelWriter.Build(spec) : Services.Export.PdfWriter.Build(spec);
+        return File(bytes,
+            isExcel ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf",
+            spec.FileName(isExcel ? "xlsx" : "pdf"));
+    }
+
     // ================== کانبان: تغییر سریع اولویت ==================
 
     public class PriorityDto { public int Priority { get; set; } }
-
     /// <summary>
     /// تغییر سریع اولویت (درگ‌اند‌دراپ کانبان) — فقط دستوردهنده و فقط تا وقتی دستور باز است.
     /// </summary>

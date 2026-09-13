@@ -43,13 +43,16 @@
     <button class="wo-tab @(tab == "calendar" ? "active" : "")" @onclick='() => SwitchTab("calendar")'>
         <i class="bi bi-calendar3"></i> تقویم
     </button>
+    <button class="wo-tab @(tab == "perf" ? "active" : "")" @onclick='() => SwitchTab("perf")'>
+        <i class="bi bi-trophy"></i> عملکرد افراد
+    </button>
     <button class="wo-tab @(tab == "stats" ? "active" : "")" @onclick='() => SwitchTab("stats")'>
         <i class="bi bi-bar-chart"></i> داشبورد
     </button>
 </div>
 
 @* ================== نوار جستجو و فیلتر ================== *@
-@if (!loading && tab != "calendar" && tab != "stats" && tab != "kanban")
+@if (!loading && tab != "calendar" && tab != "stats" && tab != "kanban" && tab != "perf")
 {
     <div class="wo-filterbar mb-3">
         <div class="wo-flt-search">
@@ -251,6 +254,110 @@ else if (tab == "calendar")
             }
         </div>
     </div>
+}
+else if (tab == "perf")
+{
+    @* ================== گزارش عملکرد افراد (موج ۸) ================== *@
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <span class="fs-8 text-muted"><i class="bi bi-info-circle"></i> عملکرد گیرندگانِ دستورهایی که <b>شما</b> داده‌اید — رتبه‌بندی بر اساس درصد انجام به‌موقع.</span>
+        <div class="wo-pr-group ms-auto">
+            @foreach (var (d, fa) in PerfPeriods)
+            {
+                var d2 = d;
+                <button type="button" class="wo-pr-btn @(perfDays == d2 ? "active" : "")"
+                        @onclick="() => SetPerfPeriod(d2)">@fa</button>
+            }
+        </div>
+        <button class="btn btn-sm btn-outline-success" disabled="@exporting" @onclick='() => ExportPerf("xlsx")'>
+            <i class="bi bi-file-earmark-excel"></i> اکسل
+        </button>
+        <button class="btn btn-sm btn-outline-danger" disabled="@exporting" @onclick='() => ExportPerf("pdf")'>
+            <i class="bi bi-file-earmark-pdf"></i> PDF
+        </button>
+    </div>
+
+    @if (perfLoading)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (perfRows.Count == 0)
+    {
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-trophy fs-1 d-block mb-2 opacity-50"></i>
+            در این بازه دستوری به دیگران نداده‌اید.
+        </div>
+    }
+    else
+    {
+        @* ---------- سکوی سه نفر برتر ---------- *@
+        @if (perfRows.Count >= 2)
+        {
+            <div class="wo-podium mb-3">
+                @foreach (var r in perfRows.Take(3))
+                {
+                    <div class="wo-podium-card wo-podium-@r.Rank">
+                        <div class="wo-podium-medal">@(r.Rank == 1 ? "🥇" : r.Rank == 2 ? "🥈" : "🥉")</div>
+                        <div class="fw-700">@r.Name</div>
+                        <div class="fs-8 text-muted num">@r.OnTime از @r.Total به‌موقع</div>
+                        <div class="wo-podium-pct num">@r.OnTimePercent٪</div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 wo-perf-table">
+                        <thead>
+                            <tr class="fs-8 text-muted">
+                                <th style="width:52px">رتبه</th>
+                                <th>نام</th>
+                                <th class="text-center">دریافتی</th>
+                                <th class="text-center">انجام‌شده</th>
+                                <th class="text-center">به‌موقع</th>
+                                <th class="text-center">با تاخیر</th>
+                                <th class="text-center">انجام نشد</th>
+                                <th class="text-center">در انتظار</th>
+                                <th class="text-center" title="در انتظار پاسخ و گذشته از مهلت">منقضی باز</th>
+                                <th class="text-center">میانگین تاخیر</th>
+                                <th style="width:170px">٪ به‌موقع</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in perfRows)
+                            {
+                                <tr>
+                                    <td><span class="wo-rank num @(r.Rank <= 3 ? $"wo-rank-{r.Rank}" : "")">@r.Rank</span></td>
+                                    <td class="fw-600">@r.Name</td>
+                                    <td class="text-center num">@r.Total</td>
+                                    <td class="text-center num">@r.Done</td>
+                                    <td class="text-center num text-success fw-700">@r.OnTime</td>
+                                    <td class="text-center num" style="color:#a855f7">@r.DoneLate</td>
+                                    <td class="text-center num text-danger">@r.NotDone</td>
+                                    <td class="text-center num">@r.Pending</td>
+                                    <td class="text-center num @(r.OverdueOpen > 0 ? "text-danger fw-700" : "")">@r.OverdueOpen</td>
+                                    <td class="text-center num fs-8">@(r.AvgDelayHours > 0 ? DelayFa(r.AvgDelayHours) : "—")</td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="wo-bar-track flex-grow-1">
+                                                <div class="wo-bar @(r.OnTimePercent >= 80 ? "wo-perf-good" : r.OnTimePercent >= 50 ? "wo-perf-mid" : "wo-perf-bad")"
+                                                     style="width:@(r.OnTimePercent)%"></div>
+                                            </div>
+                                            <span class="fs-8 fw-700 num" style="width:34px">@r.OnTimePercent٪</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="fs-9 text-muted mt-2">
+            <i class="bi bi-lightbulb"></i> «میانگین تاخیر» فقط روی انجام‌های دیرهنگام محاسبه می‌شود. «منقضی باز» یعنی هنوز پاسخ نداده و مهلت گذشته است.
+        </div>
+    }
 }
 else if (tab == "stats")
 {
@@ -1536,6 +1643,29 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* ---------- گزارش عملکرد افراد (موج ۸) ---------- */
+    .wo-podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; max-width: 720px; }
+    .wo-podium-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: .9rem; text-align: center; position: relative; }
+    .wo-podium-1 { border-color: #fbbf24; background: linear-gradient(180deg, #fffbeb, #fff); order: 2; transform: translateY(-6px); box-shadow: 0 4px 14px rgba(251,191,36,.18); }
+    .wo-podium-2 { border-color: #cbd5e1; background: linear-gradient(180deg, #f8fafc, #fff); order: 1; }
+    .wo-podium-3 { border-color: #fdba74; background: linear-gradient(180deg, #fff7ed, #fff); order: 3; }
+    .wo-podium-medal { font-size: 1.6rem; line-height: 1; margin-bottom: .25rem; }
+    .wo-podium-pct { font-size: 1.25rem; font-weight: 800; color: #16a34a; margin-top: .15rem; }
+    .wo-rank { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #f1f5f9; color: #475569; font-size: .8rem; font-weight: 700; }
+    .wo-rank-1 { background: #fef3c7; color: #b45309; }
+    .wo-rank-2 { background: #f1f5f9; color: #475569; box-shadow: inset 0 0 0 1px #cbd5e1; }
+    .wo-rank-3 { background: #ffedd5; color: #c2410c; }
+    .wo-perf-good { background: #22c55e; }
+    .wo-perf-mid { background: #f59e0b; }
+    .wo-perf-bad { background: #ef4444; }
+    .wo-perf-table th, .wo-perf-table td { white-space: nowrap; }
+    @@media (max-width: 575.98px) {
+        .wo-podium { grid-template-columns: 1fr; max-width: 100%; }
+        .wo-podium-1 { transform: none; order: 1; }
+        .wo-podium-2 { order: 2; }
+        .wo-podium-3 { order: 3; }
+    }
+
     /* ---------- قالب‌های آماده (موج ۷) ---------- */
     .wo-tpl-bar { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; background: #fffbeb; border: 1px dashed #fcd34d; border-radius: 12px; padding: .5rem .75rem; }
     .wo-tpl-chip { display: inline-flex; align-items: center; gap: .25rem; background: #fff; border: 1px solid #fcd34d; border-radius: 999px; padding: .18rem .3rem .18rem .55rem; font-size: .78rem; color: #92400e; transition: all .15s; }
@@ -2286,6 +2416,63 @@ else
         tab = t; page = 1; fltTag = null; // برچسب‌های هر تب متفاوت‌اند
         if (t == "calendar") _ = LoadCal();
         if (t == "stats") _ = LoadStats();
+        if (t == "perf") _ = LoadPerf();
+    }
+
+    // ================== گزارش عملکرد افراد (موج ۸) ==================
+    private List<PerfItem> perfRows = new();
+    private bool perfLoading;
+    private int perfDays; // 0 = همه، 30/90/365 روز اخیر
+
+    private static readonly (int, string)[] PerfPeriods = { (0, "همه"), (30, "۳۰ روز"), (90, "۹۰ روز"), (365, "سال اخیر") };
+
+    private sealed class PerfItem
+    {
+        public int Rank { get; set; }
+        public int UserId { get; set; }
+        public string Name { get; set; } = "";
+        public int Total { get; set; }
+        public int Done { get; set; }
+        public int OnTime { get; set; }
+        public int DoneLate { get; set; }
+        public int NotDone { get; set; }
+        public int Pending { get; set; }
+        public int OverdueOpen { get; set; }
+        public double AvgDelayHours { get; set; }
+        public int OnTimePercent { get; set; }
+    }
+
+    private async Task LoadPerf()
+    {
+        perfLoading = true; StateHasChanged();
+        try { perfRows = await Http.GetFromJsonAsync<List<PerfItem>>($"/api/workorders/performance?days={perfDays}") ?? new(); }
+        catch { perfRows = new(); }
+        perfLoading = false; StateHasChanged();
+    }
+
+    private void SetPerfPeriod(int d) { perfDays = d; _ = LoadPerf(); }
+
+    /// <summary>نمایش میانگین تاخیر: زیر ۴۸ ساعت به ساعت، بالاتر به روز.</summary>
+    private static string DelayFa(double hours) =>
+        hours < 48 ? $"{hours:0.#} ساعت" : $"{hours / 24:0.#} روز";
+
+    private async Task ExportPerf(string format)
+    {
+        exporting = true;
+        try
+        {
+            var resp = await Http.GetAsync($"/api/workorders/performance/export?format={format}&days={perfDays}");
+            if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در تهیه خروجی"); return; }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var name = resp.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? $"performance.{format}";
+            var mime = format == "pdf" ? "application/pdf"
+                       : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            await JS.InvokeVoidAsync("downloadBlob", name, mime, Convert.ToBase64String(bytes));
+        }
+        catch { Toast.Error("خطا در تهیه خروجی"); }
+        finally { exporting = false; }
     }
 
     // ================== داشبورد آماری ==================
