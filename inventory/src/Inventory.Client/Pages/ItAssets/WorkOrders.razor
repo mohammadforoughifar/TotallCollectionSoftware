@@ -611,8 +611,8 @@ else
 @if (showNew)
 {
     <div class="modal fade show d-block" style="background:rgba(15,23,42,.55)">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content wo-modal">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content wo-modal wo-form-modal">
                 <div class="modal-header">
                     <h5 class="modal-title d-flex align-items-center flex-wrap gap-1">
                         <i class="bi bi-list-task text-primary"></i> @(editingId > 0 ? "ویرایش دستور کار" : "دستور کار جدید")
@@ -700,15 +700,15 @@ else
                                 <div class="fs-8 text-muted mt-1">شما فقط مجاز به ثبت دستور کار برای خودتان هستید.</div>
                             }
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-sm-6 col-lg-4">
                             <label class="form-label">تاریخ مقرر (شمسی) <span class="text-danger">*</span></label>
                             <DatePicker @bind-Value="newDueDate" />
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-sm-6 col-lg-4">
                             <label class="form-label">ساعت مقرر</label>
                             <input type="time" class="form-control num" dir="ltr" @bind="newDueTime" />
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-12 col-lg-4">
                             <label class="form-label">اولویت</label>
                             <div class="wo-pr-group">
                                 @foreach (var (val, fa) in PriorityOpts)
@@ -1481,6 +1481,16 @@ else
         .wo-tabs { position: sticky; top: 0; z-index: 5; background: var(--bs-body-bg, #f1f5f9); padding: .4rem 0; }
         .wo-tab { flex: 1; justify-content: center; padding: .5rem .4rem; font-size: .76rem; }
         .modal-dialog { margin: .5rem; }
+        /* فرم دستور کار جدید — رسپانسیو موبایل */
+        .modal-dialog.modal-fullscreen-sm-down { margin: 0; }
+        .wo-form-modal { border-radius: 0 !important; }
+        .wo-form-modal .wo-pr-group { display: flex; width: 100%; }
+        .wo-form-modal .wo-pr-btn { flex: 1 1 auto; min-width: 0; text-align: center; padding: .45rem .3rem; }
+        .wo-form-modal .modal-footer { flex-wrap: nowrap; gap: .5rem; }
+        .wo-form-modal .modal-footer .btn { flex: 1 1 auto; padding-block: .55rem; }
+        .wo-form-modal .modal-footer .btn.btn-primary { flex-grow: 2; }
+        .wo-form-modal .modal-title { font-size: .95rem; }
+        .wo-form-modal .form-label { font-size: .82rem; }
         .wo-cal2 { gap: .25rem; padding: .5rem; }
         .wo-cell2 { min-height: 56px; }
         .wo-chip-txt { display: none; }
