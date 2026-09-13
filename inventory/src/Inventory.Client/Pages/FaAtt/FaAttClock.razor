@@ -41,13 +41,13 @@ else
                     @if (my.Daily != null)
                     {
                         <div class="mb-3"><span class="badge @FaAttUi.DayBadge(my.Daily.Status) fs-6">@FaAttUi.DayStatus(my.Daily.Status)</span></div>
-                        <div class="d-flex justify-content-center gap-4 mb-3">
+                        <div class="d-flex flex-wrap justify-content-center gap-3 gap-sm-4 mb-3">
                             <div><div class="small text-muted">ورود</div><div class="num fw-bold" dir="ltr">@FmtClock(my.Daily.FirstIn)</div></div>
                             <div><div class="small text-muted">خروج</div><div class="num fw-bold" dir="ltr">@FmtClock(my.Daily.LastOut)</div></div>
                             <div><div class="small text-muted">کارکرد</div><div class="num fw-bold">@FaAttUi.Min(my.Daily.WorkMinutes)</div></div>
                         </div>
                     }
-                    <div class="d-flex justify-content-center gap-2">
+                    <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
                         <button class="btn btn-success btn-lg px-4" disabled="@(!canIn || punching)" @onclick="() => Punch(0)">
                             @if (punching)
                             {
@@ -72,7 +72,7 @@ else
                     }
                     else
                     {
-                        <table class="table table-sm mb-0 align-middle">
+                        <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
                             <thead class="table-light"><tr><th>ساعت</th><th>نوع</th><th>مسیر</th></tr></thead>
                             <tbody>
                                 @foreach (var l in my.Logs)
@@ -97,7 +97,7 @@ else
                                     </tr>
                                 }
                             </tbody>
-                        </table>
+                        </table></div>
                     }
                 </div>
             </div>
@@ -107,6 +107,10 @@ else
 
 <style>
     .hr-avatar-xl { width: 72px; height: 72px; border-radius: 50%; background: linear-gradient(135deg, #14b8a6, #0f766e); color: #fff; font-weight: 800; font-size: 1.4rem; display: inline-flex; align-items: center; justify-content: center; }
+    @@media (max-width: 575px) {
+        .page-head h1 { font-size: 1.25rem; }
+        .page-head .lead { font-size: .85rem; }
+    }
 </style>
 
 @code {
