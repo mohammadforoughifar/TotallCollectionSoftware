@@ -152,7 +152,65 @@ public class AppDbContext : DbContext
     public DbSet<HrOrgUnit> HrOrgUnits => Set<HrOrgUnit>();
     public DbSet<HrEmployee> HrEmployees => Set<HrEmployee>();
     public DbSet<HrContract> HrContracts => Set<HrContract>();
+    public DbSet<HrContractTemplate> HrContractTemplates => Set<HrContractTemplate>();
+    public DbSet<HrContractVersion> HrContractVersions => Set<HrContractVersion>();
+    public DbSet<HrContractExpiryAlert> HrContractExpiryAlerts => Set<HrContractExpiryAlert>();
     public DbSet<HrDecree> HrDecrees => Set<HrDecree>();
+    public DbSet<HrJobPosting> HrJobPostings => Set<HrJobPosting>();
+    public DbSet<HrApplicant> HrApplicants => Set<HrApplicant>();
+    public DbSet<HrInterview> HrInterviews => Set<HrInterview>();
+
+    /// <summary>منابع انسانی اصلی — مدیریت پایه سازمانی (HrMain) — اسکیما با HrMainSchemaV1</summary>
+    public DbSet<HrMainCompany> HrMainCompanies => Set<HrMainCompany>();
+    public DbSet<HrMainBranch> HrMainBranches => Set<HrMainBranch>();
+    public DbSet<HrMainOrgNode> HrMainOrgNodes => Set<HrMainOrgNode>();
+    public DbSet<HrMainPosition> HrMainPositions => Set<HrMainPosition>();
+    public DbSet<HrMainLocale> HrMainLocales => Set<HrMainLocale>();
+    public DbSet<HrMainRules> HrMainRules => Set<HrMainRules>();
+
+    /// <summary>پرونده کارمندان — اسکیما با HrEmployeeDossierSchemaV1</summary>
+    public DbSet<HrEmployeeDependent> HrEmployeeDependents => Set<HrEmployeeDependent>();
+    public DbSet<HrEmployeeCourse> HrEmployeeCourses => Set<HrEmployeeCourse>();
+    public DbSet<HrEmployeeSkill> HrEmployeeSkills => Set<HrEmployeeSkill>();
+    public DbSet<HrEmployeeLanguage> HrEmployeeLanguages => Set<HrEmployeeLanguage>();
+    public DbSet<HrEmployeeDocument> HrEmployeeDocuments => Set<HrEmployeeDocument>();
+
+    /// <summary>حضور و غیاب فروغ آریا — اسکیما با FaAttSchemaV1</summary>
+    public DbSet<FaAttShift> FaAttShifts => Set<FaAttShift>();
+    public DbSet<FaAttShiftAssign> FaAttShiftAssigns => Set<FaAttShiftAssign>();
+    public DbSet<FaAttDevice> FaAttDevices => Set<FaAttDevice>();
+    public DbSet<FaAttLog> FaAttLogs => Set<FaAttLog>();
+    public DbSet<FaAttDaily> FaAttDailies => Set<FaAttDaily>();
+    public DbSet<FaAttMission> FaAttMissions => Set<FaAttMission>();
+    public DbSet<FaAttLeaveType> FaAttLeaveTypes => Set<FaAttLeaveType>();
+    public DbSet<FaAttLeave> FaAttLeaves => Set<FaAttLeave>();
+    public DbSet<FaAttLeaveBalance> FaAttLeaveBalances => Set<FaAttLeaveBalance>();
+    public DbSet<FaPaySettings> FaPaySettings => Set<FaPaySettings>();
+    public DbSet<FaPayTaxBracket> FaPayTaxBrackets => Set<FaPayTaxBracket>();
+    public DbSet<FaPayItemType> FaPayItemTypes => Set<FaPayItemType>();
+    public DbSet<FaPayRun> FaPayRuns => Set<FaPayRun>();
+    public DbSet<FaPaySlip> FaPaySlips => Set<FaPaySlip>();
+    public DbSet<FaPaySlipItem> FaPaySlipItems => Set<FaPaySlipItem>();
+    public DbSet<FaPayAdjustment> FaPayAdjustments => Set<FaPayAdjustment>();
+    public DbSet<FaLmsCourse> FaLmsCourses => Set<FaLmsCourse>();
+    public DbSet<FaLmsNeed> FaLmsNeeds => Set<FaLmsNeed>();
+    public DbSet<FaLmsEnrollment> FaLmsEnrollments => Set<FaLmsEnrollment>();
+    public DbSet<FaLmsSession> FaLmsSessions => Set<FaLmsSession>();
+    public DbSet<FaLmsAttendance> FaLmsAttendances => Set<FaLmsAttendance>();
+    public DbSet<FaLmsExam> FaLmsExams => Set<FaLmsExam>();
+    public DbSet<FaLmsQuestion> FaLmsQuestions => Set<FaLmsQuestion>();
+    public DbSet<FaLmsAttempt> FaLmsAttempts => Set<FaLmsAttempt>();
+    public DbSet<FaLmsCertificate> FaLmsCertificates => Set<FaLmsCertificate>();
+    public DbSet<FaLmsBudget> FaLmsBudgets => Set<FaLmsBudget>();
+    public DbSet<FaLmsBank> FaLmsBanks => Set<FaLmsBank>();
+    public DbSet<FaLmsBankQuestion> FaLmsBankQuestions => Set<FaLmsBankQuestion>();
+    public DbSet<FaLmsTextAnswer> FaLmsTextAnswers => Set<FaLmsTextAnswer>();
+    public DbSet<FaComAnnouncement> FaComAnnouncements => Set<FaComAnnouncement>();
+    public DbSet<FaComTicket> FaComTickets => Set<FaComTicket>();
+    public DbSet<FaComReply> FaComReplies => Set<FaComReply>();
+    public DbSet<FaComPoll> FaComPolls => Set<FaComPoll>();
+    public DbSet<FaComPollOption> FaComPollOptions => Set<FaComPollOption>();
+    public DbSet<FaComVote> FaComVotes => Set<FaComVote>();
 
     /// <summary>ماژول زمان‌بندی و حقوق — جدول‌های اختصاصی (بدون هیچ تغییری در جداول قبلی)</summary>
     public DbSet<HrRequestStep> HrRequestSteps => Set<HrRequestStep>();

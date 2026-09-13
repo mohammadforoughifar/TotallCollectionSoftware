@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NoWarn>CS1998</NoWarn>
+    <!-- کاهش حجم خروجی انتشار: باندل تک‌فایل فشرده (فقط روی publish اثر دارد) -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +21,8 @@
   <ItemGroup>
     <!-- فونت‌های فارسی برای PDF شناسنامه سیستم -->
     <Content Include="Resources/fonts/**/*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- appsettings.Development فقط برای توسعه است؛ در انتشار منتشر نشود -->
+    <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <ItemGroup>

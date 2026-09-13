@@ -1425,9 +1425,21 @@ button.nav-toggle:focus-visible{outline:none;}
 .group-hr .nav-group-items { border-inline-start-color: rgba(103,232,249,.28); }
 .group-hr .nav-toggle.open > span:first-child, .group-hr .nav-toggle:hover .nav-chevron { color: #67e8f9; }
 
+/* منابع انسانی اصلی — فوچسیا متمایز */
+.group-hrmain .nav-section-title { color: #e879f9; }
+.group-hrmain .nav-link i { color: #e879f9; }
+.group-hrmain .nav-link.active { background: linear-gradient(135deg, #d946ef, #a21caf); box-shadow: 0 8px 22px rgba(217,70,239,.42); }
+.group-hrmain .nav-group-items { border-inline-start-color: rgba(232,121,249,.30); }
+.group-hrmain .nav-toggle.open > span:first-child, .group-hrmain .nav-toggle:hover .nav-chevron { color: #e879f9; }
+
 .group-bonhr .nav-section-title { color: #c4b5fd; }
 .group-bonhr .nav-link i { color: #c4b5fd; }
 .group-bonhr .nav-link.active { background: linear-gradient(135deg, #8b5cf6, #5b21b6); box-shadow: 0 8px 22px rgba(139,92,246,.42); }
+.group-faatt .nav-section-title { color: #2dd4bf; }
+.group-faatt .nav-link i { color: #2dd4bf; }
+.group-faatt .nav-link.active { background: linear-gradient(135deg, #14b8a6, #0f766e); box-shadow: 0 8px 22px rgba(20,184,166,.42); }
+.group-faatt .nav-group-items { border-inline-start-color: rgba(45,212,191,.30); }
+.group-faatt .nav-toggle.open > span:first-child, .group-faatt .nav-toggle:hover .nav-chevron { color: #2dd4bf; }
 .group-bonhr .nav-group-items { border-inline-start-color: rgba(196,181,253,.28); }
 .group-bonhr .nav-toggle.open > span:first-child, .group-bonhr .nav-toggle:hover .nav-chevron { color: #c4b5fd; }
 

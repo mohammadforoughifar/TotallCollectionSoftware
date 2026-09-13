@@ -1,0 +1,176 @@
+@namespace Inventory.Client.Pages
+@page "/fa-pay/settings"
+@inject IFaPayClientService Svc
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>تنظیمات حقوق و دستمزد</PageTitle>
+
+<div class="page-head mb-4">
+    <div>
+        <h1><i class="bi bi-gear"></i> تنظیمات حقوق و دستمزد</h1>
+        <div class="lead">ضرایب محاسبه، نرخ بیمه، معافیت و پلکان مالیاتی</div>
+    </div>
+</div>
+
+@if (!faManage)
+{
+    <div class="alert alert-warning">این صفحه مخصوص واحد حقوق و دستمزد است.</div>
+    return;
+}
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    return;
+}
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white"><strong>ضرایب و نرخ‌ها</strong></div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-3"><label class="form-label">مخرج روز ماه</label><input class="form-control" type="number" step="any" @bind="form.DaysPerMonth" /></div>
+            <div class="col-md-3"><label class="form-label">ساعت کار روز</label><input class="form-control" type="number" step="any" @bind="form.HoursPerDay" /></div>
+            <div class="col-md-3"><label class="form-label">ضریب اضافه‌کاری</label><input class="form-control" type="number" step="any" @bind="form.OvertimeFactor" /></div>
+            <div class="col-md-3"><label class="form-label">ضریب کسر تأخیر</label><input class="form-control" type="number" step="any" @bind="form.DelayFactor" /></div>
+            <div class="col-md-3"><label class="form-label">بیمه سهم کارمند (٪)</label><input class="form-control" type="number" step="any" @bind="form.InsuranceEmployeeRate" /></div>
+            <div class="col-md-3"><label class="form-label">بیمه سهم کارفرما (٪)</label><input class="form-control" type="number" step="any" @bind="form.InsuranceEmployerRate" /></div>
+            <div class="col-md-3"><label class="form-label">معافیت مالیاتی ماهانه (ریال)</label><input class="form-control" type="number" step="any" @bind="form.TaxFreeMonthly" /></div>
+            <div class="col-md-3"><label class="form-label">یادداشت</label><input class="form-control" @bind="form.Note" /></div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" @bind="form.AbsentDeductEnabled" id="payAbsent" /><label class="form-check-label" for="payAbsent">کسر غیبت فعال</label></div></div>
+            <div class="col-md-3 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" @bind="form.UnpaidLeaveDeductEnabled" id="payUnpaid" /><label class="form-check-label" for="payUnpaid">کسر مرخصی بدون حقوق فعال</label></div></div>
+        </div>
+        <div class="d-flex justify-content-end mt-3">
+            <button class="btn btn-success" @onclick="SaveSettings"><i class="bi bi-check-lg"></i> ذخیره تنظیمات</button>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <strong>پلکان مالیاتی (محاسبه روی مازاد معافیت)</strong>
+        <button class="btn btn-sm btn-success" @onclick="() => OpenBracket(null)"><i class="bi bi-plus-lg"></i> پلکان جدید</button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>از مبلغ (ریال)</th>
+                        <th>تا مبلغ (ریال)</th>
+                        <th>نرخ (٪)</th>
+                        <th class="text-center">فعال؟</th>
+                        <th style="width:120px">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var b in brackets)
+                    {
+                        <tr>
+                            <td>@FaPayUi.Money(b.FromAmount)</td>
+                            <td>@(b.ToAmount == null ? "به بالا" : FaPayUi.Money(b.ToAmount.Value))</td>
+                            <td>@FaPayUi.Num(b.Rate)٪</td>
+                            <td class="text-center">@if (b.IsActive) { <i class="bi bi-check-circle text-success"></i> } else { <i class="bi bi-x-circle text-danger"></i> }</td>
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button class="btn btn-outline-primary" title="ویرایش" @onclick="() => OpenBracket(b)"><i class="bi bi-pen"></i></button>
+                                    <button class="btn btn-outline-danger" title="حذف" @onclick="() => DelBracket(b)"><i class="bi bi-trash"></i></button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                    @if (brackets.Count == 0)
+                    {
+                        <tr><td colspan="5" class="text-center text-muted py-4">پلکانی تعریف نشده است.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<Modal Visible="showBracket" Title="@BracketTitle" OnClose="() => showBracket = false">
+    <ChildContent>
+    <div class="row g-2">
+        <div class="col-md-6"><label class="form-label">از مبلغ (ریال)</label><input class="form-control" type="number" step="any" @bind="bForm.FromAmount" /></div>
+        <div class="col-md-6"><label class="form-label">تا مبلغ (خالی = به بالا)</label><input class="form-control" type="number" step="any" @bind="bForm.ToAmount" /></div>
+        <div class="col-md-6"><label class="form-label">نرخ (٪)</label><input class="form-control" type="number" step="any" @bind="bForm.Rate" /></div>
+        <div class="col-md-3"><label class="form-label">ترتیب</label><input class="form-control" type="number" @bind="bForm.SortOrder" /></div>
+        <div class="col-md-3 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" @bind="bForm.IsActive" id="payBrAct" /><label class="form-check-label" for="payBrAct">فعال</label></div></div>
+    </div>
+    </ChildContent>
+    <Footer>
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <button class="btn btn-secondary" @onclick="() => showBracket = false">انصراف</button>
+        <button class="btn btn-success" @onclick="SaveBracket"><i class="bi bi-check-lg"></i> ذخیره</button>
+    </div>
+    </Footer>
+</Modal>
+
+@code {
+    private bool faManage => Auth.Has("FaPay.Manage") || Auth.IsAdmin;
+    private bool loading = true;
+    private FaPaySettingsSaveDto form = new();
+    private List<FaPayTaxBracketDto> brackets = new();
+
+    private bool showBracket;
+    private int? bEditId;
+    private FaPayTaxBracketSaveDto bForm = new();
+    private string BracketTitle => bEditId == null ? "پلکان جدید" : "ویرایش پلکان";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!faManage) { loading = false; return; }
+        loading = true;
+        try
+        {
+            var s = await Svc.GetSettingsAsync();
+            form = new FaPaySettingsSaveDto
+            {
+                DaysPerMonth = s.DaysPerMonth, HoursPerDay = s.HoursPerDay,
+                OvertimeFactor = s.OvertimeFactor, DelayFactor = s.DelayFactor,
+                InsuranceEmployeeRate = s.InsuranceEmployeeRate, InsuranceEmployerRate = s.InsuranceEmployerRate,
+                TaxFreeMonthly = s.TaxFreeMonthly, AbsentDeductEnabled = s.AbsentDeductEnabled,
+                UnpaidLeaveDeductEnabled = s.UnpaidLeaveDeductEnabled, Note = s.Note
+            };
+            brackets = await Svc.ListBracketsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        loading = false;
+    }
+
+    private async Task SaveSettings()
+    {
+        try { await Svc.SaveSettingsAsync(form); Toast.Success("تنظیمات ذخیره شد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OpenBracket(FaPayTaxBracketDto? b)
+    {
+        bEditId = b?.Id;
+        bForm = b == null
+            ? new FaPayTaxBracketSaveDto { IsActive = true, SortOrder = brackets.Count }
+            : new FaPayTaxBracketSaveDto { FromAmount = b.FromAmount, ToAmount = b.ToAmount, Rate = b.Rate, SortOrder = b.SortOrder, IsActive = b.IsActive };
+        showBracket = true;
+    }
+
+    private async Task SaveBracket()
+    {
+        try
+        {
+            await Svc.SaveBracketAsync(bEditId, bForm);
+            showBracket = false;
+            Toast.Success("ذخیره شد.");
+            brackets = await Svc.ListBracketsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DelBracket(FaPayTaxBracketDto b)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این پلکان مالیاتی حذف شود؟")) return;
+        try { await Svc.DeleteBracketAsync(b.Id); Toast.Success("حذف شد."); brackets = await Svc.ListBracketsAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+}

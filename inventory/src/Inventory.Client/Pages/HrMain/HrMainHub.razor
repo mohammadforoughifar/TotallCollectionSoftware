@@ -1,0 +1,179 @@
+@namespace Inventory.Client.Pages
+@page "/hr-main"
+@inject IHrMainService Svc
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject NavigationManager Nav
+
+<PageTitle>منابع انسانی اصلی</PageTitle>
+
+<div class="page-head">
+    @if (!string.IsNullOrWhiteSpace(overview?.LogoPath))
+    {
+        <img src="@LogoUrl" alt="لوگو" class="hrmain-logo flex-shrink-0" />
+    }
+    else
+    {
+        <span class="hrmain-logo hrmain-logo-empty flex-shrink-0"><i class="bi bi-building-fill"></i></span>
+    }
+    <div>
+        <h1><i class="bi bi-person-vcard"></i> منابع انسانی اصلی</h1>
+        <p class="lead">
+            @if (!string.IsNullOrWhiteSpace(overview?.CompanyName))
+            {
+                <span>@overview.CompanyName — </span>
+            }
+            مدیریت پایه سازمانی، زمان‌بندی، حقوق و کارگزینی
+        </p>
+    </div>
+</div>
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else
+{
+    @* ---------- آمار سریع ---------- *@
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+            <a href="hr-main/branches" class="hrmain-stat text-decoration-none">
+                <i class="bi bi-shop-window"></i>
+                <div><b class="num">@overview!.ActiveBranches.Num()</b><span>شعبه و دفتر فعال</span></div>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="hr-main/org" class="hrmain-stat text-decoration-none">
+                <i class="bi bi-diagram-3-fill"></i>
+                <div><b class="num">@overview!.ActiveNodes.Num()</b><span>گره سازمانی فعال</span></div>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="hr-main/positions" class="hrmain-stat text-decoration-none">
+                <i class="bi bi-person-badge-fill"></i>
+                <div><b class="num">@overview!.ActivePositions.Num()</b><span>پست سازمانی فعال</span></div>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="hr-main/employees" class="hrmain-stat text-decoration-none">
+                <i class="bi bi-people-fill"></i>
+                <div><b class="num">@overview!.ActiveEmployees.Num()</b><span>پرسنل فعال</span></div>
+            </a>
+        </div>
+    </div>
+
+    @* ---------- مدیریت پایه سازمانی ---------- *@
+    <h2 class="hrmain-sect"><i class="bi bi-layers-fill"></i> مدیریت پایه سازمانی</h2>
+    <div class="row g-3 mb-4">
+        <div class="col-md-6 col-lg-4">
+            <a href="hr-main/company" class="hrmain-card text-decoration-none">
+                <i class="bi bi-building-fill"></i>
+                <div><b>اطلاعات شرکت</b><span>نام، لوگو، آدرس، کد اقتصادی و شماره ثبت</span></div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <a href="hr-main/org" class="hrmain-card text-decoration-none">
+                <i class="bi bi-diagram-3-fill"></i>
+                <div><b>ساختار سازمانی</b><span>درخت شرکت ← واحد ← دپارتمان ← تیم + چارت بصری</span></div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <a href="hr-main/positions" class="hrmain-card text-decoration-none">
+                <i class="bi bi-person-badge-fill"></i>
+                <div><b>پست‌های سازمانی</b><span>تعریف پست‌ها و شرح وظایف هر پست</span></div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <a href="hr-main/branches" class="hrmain-card text-decoration-none">
+                <i class="bi bi-shop-window"></i>
+                <div><b>شعب و دفاتر</b><span>شعب، دفاتر و نمایندگی‌ها</span></div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <a href="hr-main/calendar" class="hrmain-card text-decoration-none">
+                <i class="bi bi-calendar3"></i>
+                <div><b>تقویم و تعطیلات</b><span>زبان و تقویم + تعطیلات رسمی (@overview!.HolidaysThisYear.Num() روز در @Fa.Digits(overview!.CurrentJalaliYear))</span></div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <a href="hr-main/rules" class="hrmain-card text-decoration-none">
+                <i class="bi bi-sliders"></i>
+                <div><b>قوانین پیش‌فرض</b><span>مرخصی، تأخیر، غیبت و اضافه‌کاری</span></div>
+            </a>
+        </div>
+        <div class="col-md-6 col-lg-4">
+            <a href="hr-main/employees" class="hrmain-card text-decoration-none">
+                <i class="bi bi-person-lines-fill"></i>
+                <div><b>پرسنل</b><span>فرم چندمرحله‌ای اطلاعات پرسنل</span></div>
+            </a>
+        </div>
+    </div>
+
+    @* ---------- ماژول‌های وابسته ---------- *@
+    <h2 class="hrmain-sect"><i class="bi bi-puzzle-fill"></i> زمان‌بندی، حقوق و کارگزینی</h2>
+    <div class="row g-3">
+        @if (Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+        {
+            <div class="col-md-6 col-lg-4">
+                <a href="payroll" class="hrmain-card text-decoration-none">
+                    <i class="bi bi-cash-stack"></i>
+                    <div><b>حقوق و دستمزد</b><span>محاسبه حقوق بر مبنای قوانین پیش‌فرض</span></div>
+                </a>
+            </div>
+        }
+        @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+        {
+            <div class="col-md-6 col-lg-4">
+                <a href="hr-time" class="hrmain-card text-decoration-none">
+                    <i class="bi bi-calendar2-week"></i>
+                    <div><b>مدیریت زمان‌بندی</b><span>شیفت‌ها و برنامه کاری</span></div>
+                </a>
+            </div>
+        }
+        @if (Auth.HasModule("HrCore"))
+        {
+            <div class="col-md-6 col-lg-4">
+                <a href="hr-core" class="hrmain-card text-decoration-none">
+                    <i class="bi bi-speedometer2"></i>
+                    <div><b>داشبورد کارگزینی</b><span>قراردادها و احکام پرسنلی</span></div>
+                </a>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .hrmain-logo { width: 56px; height: 56px; object-fit: contain; border-radius: .75rem; background: #fff; border: 1px solid #e5e7eb; padding: 4px; }
+    .hrmain-logo-empty { display: inline-flex; align-items: center; justify-content: center; font-size: 1.6rem; color: #a21caf; background: #fae8ff; border-color: #f0abfc; }
+    .hrmain-sect { font-size: 1.05rem; font-weight: 800; margin-bottom: .9rem; display: flex; align-items: center; gap: .5rem; }
+    .hrmain-sect i { color: #a21caf; }
+    .hrmain-stat { display: flex; align-items: center; gap: .8rem; background: #fff; border: 1px solid #f0e6f5; border-radius: .9rem; padding: .9rem 1rem; box-shadow: 0 2px 10px rgba(162,28,175,.06); color: inherit; height: 100%; }
+    .hrmain-stat:hover { border-color: #e879f9; }
+    .hrmain-stat i { font-size: 1.7rem; color: #a21caf; }
+    .hrmain-stat div { display: flex; flex-direction: column; }
+    .hrmain-stat b { font-size: 1.35rem; }
+    .hrmain-stat span { font-size: .78rem; color: #6b7280; }
+    .hrmain-card { display: flex; align-items: flex-start; gap: .8rem; background: #fff; border: 1px solid #f0e6f5; border-radius: .9rem; padding: 1rem; box-shadow: 0 2px 10px rgba(162,28,175,.06); color: inherit; height: 100%; }
+    .hrmain-card:hover { border-color: #e879f9; box-shadow: 0 4px 18px rgba(162,28,175,.12); }
+    .hrmain-card > i { font-size: 1.5rem; color: #a21caf; margin-top: .15rem; }
+    .hrmain-card div { display: flex; flex-direction: column; gap: .15rem; }
+    .hrmain-card b { font-size: .95rem; }
+    .hrmain-card span { font-size: .78rem; color: #6b7280; }
+</style>
+
+@code {
+    [Inject] private ApiOptions ApiCfg { get; set; } = default!;
+
+    private bool loading = true;
+    private HrMainOverviewDto? overview;
+
+    private string LogoUrl =>
+        $"{(ApiCfg?.BaseUrl ?? "").TrimEnd('/')}/{overview?.LogoPath}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { overview = await Svc.GetOverviewAsync(); }
+        catch { overview = new HrMainOverviewDto(); }
+        finally { loading = false; }
+    }
+}

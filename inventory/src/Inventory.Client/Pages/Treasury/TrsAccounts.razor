@@ -188,6 +188,7 @@ else
 
 <!-- ===================== فرم صندوق/بانک ===================== -->
 <Modal Visible="showForm" Title="@(form.Id == 0 ? "صندوق / بانک جدید" : "ویرایش صندوق / بانک")" Size="lg" OnClose="() => showForm = false">
+    <ChildContent>
     <div class="row g-3">
         <div class="col-md-4">
             <label class="form-label">نوع <span class="text-danger">*</span></label>
@@ -278,7 +279,8 @@ else
             <textarea class="form-control" rows="2" @bind="form.Description"></textarea>
         </div>
     </div>
-
+    </ChildContent>
+    <Footer>
     <div class="d-flex justify-content-end gap-2 mt-3">
         <button class="btn btn-outline-secondary" @onclick="() => showForm = false">انصراف</button>
         <button class="btn btn-primary" @onclick="Save" disabled="@saving">
@@ -286,6 +288,7 @@ else
             <i class="bi bi-save"></i> ذخیره
         </button>
     </div>
+    </Footer>
 </Modal>
 
 @code {

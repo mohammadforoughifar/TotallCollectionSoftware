@@ -138,7 +138,7 @@
             </div>
             <div class="col-md-3"><label class="form-label">موبایل</label><input class="form-control num" @bind="form.Mobile" /></div>
             <div class="col-md-3"><label class="form-label">ایمیل</label><input class="form-control" dir="ltr" @bind="form.Email" /></div>
-            <div class="col-md-3"><label class="form-label">تاریخ تولد</label><DatePicker @bind-Value="birthDate" /></div>
+            <div class="col-md-3"><label class="form-label">تاریخ تولد</label><DatePicker @bind-Value="birthDate" MinYear="1300" /></div>
             <div class="col-md-3"><label class="form-label">تاریخ استخدام</label><DatePicker @bind-Value="hireDate" /></div>
             <div class="col-md-3">
                 <label class="form-label">واحد سازمانی</label>
@@ -166,6 +166,8 @@
                 <select class="form-select" @bind="form.EmploymentType">
                     <option value="0">رسمی</option><option value="1">قراردادی</option><option value="2">پیمانی</option>
                     <option value="3">ساعتی</option><option value="4">مشاوره‌ای</option>
+                    <option value="5">تمام‌وقت</option><option value="6">پاره‌وقت</option>
+                    <option value="7">پروژه‌ای</option><option value="8">آزمایشی</option>
                 </select>
             </div>
             <div class="col-md-3">
@@ -179,6 +181,13 @@
             <div class="col-md-3 d-flex align-items-end">
                 <div class="form-check"><input class="form-check-input" type="checkbox" id="eact" @bind="form.IsActive" /><label class="form-check-label" for="eact">فعال</label></div>
             </div>
+            <div class="col-md-3"><label class="form-label">تلفن ثابت</label><input class="form-control num" @bind="form.Landline" /></div>
+            <div class="col-md-3"><label class="form-label">محل کار</label><input class="form-control" @bind="form.Workplace" /></div>
+            <div class="col-md-3"><label class="form-label">مدرک تحصیلی</label><input class="form-control" @bind="form.Degree" /></div>
+            <div class="col-md-3"><label class="form-label">رشته تحصیلی</label><input class="form-control" @bind="form.FieldOfStudy" /></div>
+            <div class="col-md-4"><label class="form-label">تماس اضطراری — نام</label><input class="form-control" @bind="form.EmergencyContactName" /></div>
+            <div class="col-md-4"><label class="form-label">تماس اضطراری — نسبت</label><input class="form-control" @bind="form.EmergencyContactRelation" /></div>
+            <div class="col-md-4"><label class="form-label">تماس اضطراری — تلفن</label><input class="form-control num" @bind="form.EmergencyContactPhone" /></div>
             <div class="col-12"><label class="form-label">آدرس</label><input class="form-control" @bind="form.Address" /></div>
         </div>
     </ChildContent>
@@ -263,6 +272,9 @@
                 Code = e.Code, FirstName = e.FirstName, LastName = e.LastName, NationalCode = e.NationalCode,
                 BirthDate = e.BirthDate, Gender = e.Gender, MaritalStatus = e.MaritalStatus,
                 Mobile = e.Mobile, Email = e.Email, Address = e.Address, HireDate = e.HireDate,
+                Landline = e.Landline, EmergencyContactName = e.EmergencyContactName,
+                EmergencyContactRelation = e.EmergencyContactRelation, EmergencyContactPhone = e.EmergencyContactPhone,
+                Workplace = e.Workplace, Degree = e.Degree, FieldOfStudy = e.FieldOfStudy,
                 OrgUnitId = e.OrgUnitId, PostTitle = e.PostTitle, ManagerId = e.ManagerId,
                 EmploymentType = e.EmploymentType, Status = e.Status, SystemUserId = e.SystemUserId,
                 BaseSalary = e.BaseSalary, IsActive = e.IsActive

@@ -57,11 +57,60 @@ public static class DbInitializer
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها
                 await OrganizationSchemaV1.EnsureAsync(db);
 
+                // منابع انسانی اصلی — مدیریت پایه سازمانی (HrMain) + پیوند پرسنل به ساختار جدید
+                await HrMainSchemaV1.EnsureAsync(db);
+
+                // پرونده کارمندان — تحت‌تکفل، دوره‌ها، مهارت‌ها، زبان‌ها، اسناد + ستون‌های جدید پرسنل
+                await HrEmployeeDossierSchemaV1.EnsureAsync(db);
+
+                // حضور و غیاب فروغ آریا (ماژول جدید و مستقل) + داده پایه (انواع مرخصی/شیفت‌ها)
+                await FaAttSchemaV1.EnsureAsync(db);
+                await FaAttSchemaV2.EnsureAsync(db);
+                FaAttMasterSeeder.Seed(db);
+                await FaPaySchemaV1.EnsureAsync(db);
+                FaPayMasterSeeder.Seed(db);
+                await HrContractSchemaV2.EnsureAsync(db);
+                await HrEmployeeSchemaV2.EnsureAsync(db);
+                await HrRecruitmentSchemaV1.EnsureAsync(db);
+                HrContractMasterSeeder.Seed(db);
+                await FaLmsSchemaV1.EnsureAsync(db);
+                await FaLmsSchemaV2.EnsureAsync(db);
+                await FaComSchemaV1.EnsureAsync(db);
+                await FaComSchemaV2.EnsureAsync(db);
+
                 if (seedDemo && !db.Products.Any())
                 {
                     Console.WriteLine("[DB] حالت دمو فعال است؛ در حال بارگذاری داده نمونه...");
                     Seeder.Seed(db);
                     Console.WriteLine("[DB] داده نمونه با موفقیت بارگذاری شد.");
+                }
+
+                if (seedDemo && !db.HrEmployees.Any())
+                {
+                    Console.WriteLine("[DB] در حال بارگذاری داده نمونه منابع انسانی...");
+                    HrDemoSeeder.Seed(db);
+                    Console.WriteLine("[DB] داده نمونه منابع انسانی بارگذاری شد.");
+                }
+
+                if (seedDemo && db.HrEmployees.Any() && !db.FaAttLeaveBalances.Any())
+                {
+                    Console.WriteLine("[DB] در حال بارگذاری داده نمونه حضور و مرخصی...");
+                    FaAttDemoSeeder.Seed(db);
+                    Console.WriteLine("[DB] داده نمونه حضور و مرخصی بارگذاری شد.");
+                }
+
+                if (seedDemo && db.HrEmployees.Any() && !db.FaPayAdjustments.Any())
+                {
+                    Console.WriteLine("[DB] در حال بارگذاری داده نمونه حقوق و دستمزد...");
+                    FaPayDemoSeeder.Seed(db);
+                    Console.WriteLine("[DB] داده نمونه حقوق و دستمزد بارگذاری شد.");
+                }
+
+                if (seedDemo && db.HrEmployees.Any() && !db.FaComPolls.Any())
+                {
+                    Console.WriteLine("[DB] در حال بارگذاری داده نمونه ارتباطات...");
+                    FaComDemoSeeder.Seed(db);
+                    Console.WriteLine("[DB] داده نمونه ارتباطات بارگذاری شد.");
                 }
 
                 // ==================== RBAC Seed ====================

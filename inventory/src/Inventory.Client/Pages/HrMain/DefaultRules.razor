@@ -1,0 +1,187 @@
+@namespace Inventory.Client.Pages
+@page "/hr-main/rules"
+@inject IHrMainService Svc
+@inject IAuthState Auth
+@inject IToastService Toast
+
+<PageTitle>قوانین پیش‌فرض</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-sliders"></i> قوانین پیش‌فرض</h1>
+        <p class="lead">قوانین مبنای مرخصی، تأخیر، غیبت و اضافه‌کاری — مورد استفاده ماژول‌های زمان‌بندی و حقوق</p>
+    </div>
+    @if (canUpdate)
+    {
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-primary" disabled="@saving" @onclick="Save">
+                @if (saving)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                <i class="bi bi-check-lg"></i> ذخیره قوانین
+            </button>
+        </div>
+    }
+</div>
+
+@if (!canRead)
+{
+    <div class="alert alert-warning">دسترسی به این بخش برای شما فعال نیست.</div>
+    return;
+}
+
+@if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+    return;
+}
+
+<div class="row g-3">
+    @* ---------- مرخصی ---------- *@
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-calendar2-check text-success"></i> مرخصی</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">مرخصی استحقاقی سالانه (روز)</label>
+                        <input class="form-control num" type="number" min="0" max="60" @bind="form.AnnualLeaveDays" disabled="@(!canUpdate)" />
+                        <div class="form-text">قانون کار: ۲۶ روز</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">حداکثر مرخصی پیوسته (روز)</label>
+                        <input class="form-control num" type="number" min="1" max="60" @bind="form.MaxConsecutiveLeaveDays" disabled="@(!canUpdate)" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">سقف انتقال به سال بعد (روز)</label>
+                        <input class="form-control num" type="number" min="0" max="60" @bind="form.MaxCarryOverDays" disabled="@(!canUpdate)" />
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end pb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rul1" @bind="form.UnpaidLeaveAllowed" disabled="@(!canUpdate)" />
+                            <label class="form-check-label" for="rul1">مرخصی بدون حقوق مجاز است</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- تأخیر ---------- *@
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-alarm text-warning"></i> تأخیر</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">ارفاق تأخیر ورود (دقیقه)</label>
+                        <input class="form-control num" type="number" min="0" max="180" @bind="form.LateGraceMinutes" disabled="@(!canUpdate)" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">سقف تأخیر مجاز ماهانه (دقیقه)</label>
+                        <input class="form-control num" type="number" min="0" @bind="form.MonthlyAllowedLateMinutes" disabled="@(!canUpdate)" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">حداکثر تأخیر بدون برگه (دقیقه)</label>
+                        <input class="form-control num" type="number" min="0" @bind="form.MaxLateWithoutLeaveMinutes" disabled="@(!canUpdate)" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">ضریب کسرکار تأخیر</label>
+                        <input class="form-control num" type="number" step="0.1" min="0" max="10" @bind="form.LateDeductionFactor" disabled="@(!canUpdate)" />
+                        <div class="form-text">۱ = کسر یک‌به‌یک</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- غیبت ---------- *@
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-calendar2-x text-danger"></i> غیبت</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">ضریب کسر هر روز غیبت</label>
+                        <input class="form-control num" type="number" step="0.1" min="0" max="10" @bind="form.AbsenceDailyDeductionFactor" disabled="@(!canUpdate)" />
+                        <div class="form-text">۱ = کسر یک روز حقوق</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">اخطار بعد از چند غیبت غیرموجه؟</label>
+                        <input class="form-control num" type="number" min="1" max="30" @bind="form.UnexcusedAbsenceWarningAfter" disabled="@(!canUpdate)" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- اضافه‌کاری ---------- *@
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-clock-history text-primary"></i> اضافه‌کاری</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">ضریب اضافه‌کاری</label>
+                        <input class="form-control num" type="number" step="0.1" min="1" max="5" @bind="form.OvertimeFactor" disabled="@(!canUpdate)" />
+                        <div class="form-text">قانون کار: ۱.۴ (۴۰٪ بیشتر)</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">سقف اضافه‌کاری ماهانه (ساعت)</label>
+                        <input class="form-control num" type="number" min="0" @bind="form.MaxMonthlyOvertimeHours" disabled="@(!canUpdate)" />
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end pb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rul2" @bind="form.OvertimeNeedsApproval" disabled="@(!canUpdate)" />
+                            <label class="form-check-label" for="rul2">اضافه‌کاری نیاز به تأیید مدیر دارد</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @* ---------- قراردادها ---------- *@
+    <div class="col-lg-6">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-white fw-bold"><i class="bi bi-file-earmark-text text-info"></i> قراردادها</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">آستانه پیش‌فرض هشدار انقضا (روز)</label>
+                        <input class="form-control num" type="number" min="1" max="365" @bind="form.ContractAlertDays" disabled="@(!canUpdate)" />
+                        <div class="form-text">مبنای «بررسی هشدارها» در صفحه قراردادها</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool canRead => Auth.Has("HrMain.Read") || Auth.IsAdmin;
+    private bool canUpdate => Auth.Has("HrMain.Update") || Auth.IsAdmin;
+
+    private bool loading = true, saving;
+    private HrMainRulesDto form = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!canRead) { loading = false; return; }
+        try { form = await Svc.GetRulesAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task Save()
+    {
+        saving = true;
+        try
+        {
+            form = await Svc.SaveRulesAsync(form);
+            Toast.Success("قوانین پیش‌فرض ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+}

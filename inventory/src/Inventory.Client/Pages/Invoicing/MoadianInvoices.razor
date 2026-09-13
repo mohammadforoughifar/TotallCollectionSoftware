@@ -237,15 +237,20 @@
 
 <!-- ===================== مودال تبدیل از فاکتور داخلی ===================== -->
 <Modal Visible="showFromFac" Title="تبدیل فاکتور داخلی به فاکتور الکترونیکی" OnClose="CloseFromFac">
+    <ChildContent>
+
     <p class="small text-muted">شماره (ID) فاکتور فروش/خرید «قطعی» را وارد کنید. از روی آن، فاکتور الکترونیکی با اقلام، مبالغ و کدهای مالیاتی ساخته می‌شود.</p>
     <div class="input-group">
         <input class="form-control" type="number" placeholder="مثلاً 12" @bind="facId" />
         <button class="btn btn-primary" @onclick="ConvertFromFac" disabled="@saving">@(saving ? "..." : "تبدیل")</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <!-- ===================== مودال payload ===================== -->
 <Modal Visible="showPayload" Title="Payload استاندارد مودیان" Size="modal-xl" OnClose="ClosePayload">
+    <ChildContent>
+
     @if (payload is not null)
     {
         @if (!string.IsNullOrWhiteSpace(payload.Warning))
@@ -259,10 +264,13 @@
         </div>
         <pre class="bg-dark text-light p-3 rounded small" style="max-height:420px;overflow:auto" dir="ltr">@payload.Json</pre>
     }
+    </ChildContent>
 </Modal>
 
 <!-- ===================== مودال چاپ رسید ===================== -->
 <Modal Visible="showPrint" Title="رسید چاپی فاکتور" Size="modal-lg" OnClose="ClosePrint">
+    <ChildContent>
+
     @if (printResult is not null)
     {
         <div class="row g-3">
@@ -284,6 +292,7 @@
             </div>
         </div>
     }
+    </ChildContent>
 </Modal>
 
 @code {

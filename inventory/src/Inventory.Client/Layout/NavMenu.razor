@@ -81,7 +81,7 @@
     }
 
     @* ============ منابع انسانی بن‌سازه (ماژول مستقل) ============ *@
-    @if (Auth.Has("RadisHr.Access") || Auth.IsAdmin)
+    @if (Auth.Has("RadisHr.Access") || Auth.HasModule("RadisHr") || Auth.IsAdmin)
     {
         <div class="nav-group group-bonhr">
             <button type="button" class="nav-section-title nav-toggle @(gBonHr ? "open" : "")" @onclick="() => gBonHr = !gBonHr">
@@ -93,90 +93,302 @@
                 <div class="nav-group-items">
                     @foreach (var item in BonHrNav.Items)
                     {
+                        @if (Auth.Has("RadisHr.Access") || Auth.Has("RadisHr." + item.Section) || Auth.IsAdmin)
+                        {
                         <NavLink class="nav-link" href="@item.Href" Match="@(item.Href == "bon-hr" ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="NotifyClose">
                             <i class="bi @item.Icon"></i><span>@item.Label</span>
                         </NavLink>
+                        }
                     }
                 </div>
             }
         </div>
     }
 
-    @* ============ منابع انسانی مجموعه ============ *@
-    @if (Auth.Has("LeaveRequests.Request") || Auth.Has("LeaveRequests.Approve") || Auth.Has("LeaveRequests.Report")
+    @* ============ منابع انسانی فروغ آریا (حضور و مرخصی + ماژول جدید) ============ *@
+    @if (Auth.HasModule("FaAtt")
+         || Auth.Has("LeaveRequests.Request") || Auth.Has("LeaveRequests.Approve") || Auth.Has("LeaveRequests.Report")
          || Auth.Has("Attendance.SelfCheckin") || Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts")
          || Auth.IsAdmin)
     {
-        <div class="nav-group group-hr">
-            <button type="button" class="nav-section-title nav-toggle @(gHr ? "open" : "")" @onclick="() => gHr = !gHr">
-                <span>منابع انسانی مجموعه</span>
+        <div class="nav-group group-faatt">
+            <button type="button" class="nav-section-title nav-toggle @(gFaAtt ? "open" : "")" @onclick="() => gFaAtt = !gFaAtt">
+                <span><i class="bi bi-stopwatch"></i> منابع انسانی فروغ آریا</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
-            @if (gHr)
+            @if (gFaAtt)
             {
                 <div class="nav-group-items">
-                    @if (Auth.Has("Attendance.SelfCheckin") || Auth.IsAdmin)
+                    @if (Auth.Has("LeaveRequests.Request") || Auth.Has("LeaveRequests.Approve") || Auth.Has("LeaveRequests.Report")
+                         || Auth.Has("Attendance.SelfCheckin") || Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
                     {
-                        <NavLink class="nav-link" href="attendance" @onclick="NotifyClose">
-                            <i class="bi bi-stopwatch"></i><span>حضور و غیاب من</span>
-                        </NavLink>
-                    }
-                    @if (Auth.Has("LeaveRequests.Request"))
-                    {
-                        <NavLink class="nav-link" href="leave" @onclick="NotifyClose">
-                            <i class="bi bi-calendar2-check"></i><span>مرخصی و ماموریت</span>
-                        </NavLink>
-                    }
-                    @if (Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
-                    {
-                        <NavLink class="nav-link" href="attendance-admin" @onclick="NotifyClose">
-                            <i class="bi bi-person-gear"></i><span>مدیریت حضور و غیاب</span>
-                        </NavLink>
-                    }
-                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("LeaveRequests.Report"))
-                    {
-                        <NavLink class="nav-link" href="hr-admin" @onclick="NotifyClose">
-                            <i class="bi bi-people-fill"></i><span>پنل مدیریت مرخصی</span>
-                        </NavLink>
-                    }
-                    @if (Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
-                    {
-                        <NavLink class="nav-link" href="work-calendar" @onclick="NotifyClose">
-                            <i class="bi bi-calendar2-week"></i><span>تقویم کاری</span>
-                        </NavLink>
+                        <div class="nav-subhead">سامانه قبلی</div>
+                        @if (Auth.Has("Attendance.SelfCheckin") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="attendance" @onclick="NotifyClose">
+                                <i class="bi bi-stopwatch"></i><span>حضور و غیاب من</span>
+                            </NavLink>
+                        }
+                        @if (Auth.Has("LeaveRequests.Request"))
+                        {
+                            <NavLink class="nav-link" href="leave" @onclick="NotifyClose">
+                                <i class="bi bi-calendar2-check"></i><span>مرخصی و ماموریت</span>
+                            </NavLink>
+                        }
+                        @if (Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="attendance-admin" @onclick="NotifyClose">
+                                <i class="bi bi-person-gear"></i><span>مدیریت حضور و غیاب</span>
+                            </NavLink>
+                        }
+                        @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("LeaveRequests.Report"))
+                        {
+                            <NavLink class="nav-link" href="hr-admin" @onclick="NotifyClose">
+                                <i class="bi bi-people-fill"></i><span>پنل مدیریت مرخصی</span>
+                            </NavLink>
+                        }
+                        @if (Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="work-calendar" @onclick="NotifyClose">
+                                <i class="bi bi-calendar2-week"></i><span>تقویم کاری</span>
+                            </NavLink>
+                        }
                     }
                 </div>
             }
         </div>
     }
 
-    @* ============ زمان‌بندی و حقوق (ماژول جدید) ============ *@
-    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+    @* ============ منابع انسانی اصلی (منوی یکپارچه: پایه سازمانی + زمان‌بندی + حقوق + کارگزینی) ============ *@
+    @if (Auth.HasModule("HrMain")
+         || Auth.Has("LeaveRequests.Request") || Auth.Has("LeaveRequests.Approve") || Auth.Has("LeaveRequests.Report")
+         || Auth.Has("Attendance.SelfCheckin") || Auth.Has("Attendance.ViewAll") || Auth.Has("Attendance.ManageShifts")
+         || Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage")
+         || Auth.HasModule("HrCore")
+         || Auth.IsAdmin)
     {
-        <div class="nav-group group-hrtime">
-            <button type="button" class="nav-section-title nav-toggle @(gHrTime ? "open" : "")" @onclick="() => gHrTime = !gHrTime">
-                <span>زمان‌بندی و حقوق</span>
+        <div class="nav-group group-hrmain">
+            <button type="button" class="nav-section-title nav-toggle @(gHrMain ? "open" : "")" @onclick="() => gHrMain = !gHrMain">
+                <span><i class="bi bi-person-vcard"></i> منابع انسانی اصلی</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
-            @if (gHrTime)
+            @if (gHrMain)
             {
                 <div class="nav-group-items">
-                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                    @* ---------- مدیریت پایه سازمانی ---------- *@
+                    <div class="nav-subhead">مدیریت پایه سازمانی</div>
+                    <NavLink class="nav-link" href="hr-main" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                        <i class="bi bi-grid-1x2-fill"></i><span>نمای کلی</span>
+                    </NavLink>
+                    @if (Auth.Has("HrMain.Read") || Auth.IsAdmin)
                     {
-                        <NavLink class="nav-link" href="hr-time" @onclick="NotifyClose">
-                            <i class="bi bi-calendar2-week"></i><span>مدیریت زمان‌بندی</span>
+                        <NavLink class="nav-link" href="hr-main/company" @onclick="NotifyClose">
+                            <i class="bi bi-building-fill"></i><span>اطلاعات شرکت</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-main/org" @onclick="NotifyClose">
+                            <i class="bi bi-diagram-3-fill"></i><span>ساختار سازمانی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-main/positions" @onclick="NotifyClose">
+                            <i class="bi bi-person-badge-fill"></i><span>پست‌های سازمانی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-main/branches" @onclick="NotifyClose">
+                            <i class="bi bi-shop-window"></i><span>شعب و دفاتر</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-main/calendar" @onclick="NotifyClose">
+                            <i class="bi bi-calendar3"></i><span>تقویم و تعطیلات</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-main/rules" @onclick="NotifyClose">
+                            <i class="bi bi-sliders"></i><span>قوانین پیش‌فرض</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-main/settings" @onclick="NotifyClose">
+                            <i class="bi bi-gear-fill"></i><span>تنظیمات</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-main/employees" @onclick="NotifyClose">
+                            <i class="bi bi-person-lines-fill"></i><span>پرسنل</span>
                         </NavLink>
                     }
-                    @if (Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+
+                    @* ---------- زمان‌بندی و حقوق ---------- *@
+                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
                     {
-                        <NavLink class="nav-link" href="payroll" @onclick="NotifyClose">
-                            <i class="bi bi-cash-stack"></i><span>حقوق و دستمزد</span>
-                        </NavLink>
+                        <div class="nav-subhead">زمان‌بندی و حقوق</div>
+                        @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="hr-time" @onclick="NotifyClose">
+                                <i class="bi bi-calendar2-week"></i><span>مدیریت زمان‌بندی</span>
+                            </NavLink>
+                        }
+                        @if (Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="payroll" @onclick="NotifyClose">
+                                <i class="bi bi-cash-stack"></i><span>حقوق و دستمزد</span>
+                            </NavLink>
+                        }
+                        @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("HrPay.Read") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="hr-performance" @onclick="NotifyClose">
+                                <i class="bi bi-graph-up-arrow"></i><span>ارزیابی عملکرد</span>
+                            </NavLink>
+                        }
                     }
-                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("HrPay.Read") || Auth.IsAdmin)
+
+                    @* ---------- حضور و مرخصی فروغ آریا (ماژول جدید) ---------- *@
+                    @if (Auth.HasModule("FaAtt") || Auth.IsAdmin)
                     {
-                        <NavLink class="nav-link" href="hr-performance" @onclick="NotifyClose">
-                            <i class="bi bi-graph-up-arrow"></i><span>ارزیابی عملکرد</span>
+                        <div class="nav-subhead">حضور و غیاب فروغ آریا</div>
+                        @if (Auth.Has("FaAtt.Read") || Auth.Has("FaAtt.Create") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="fa-att/clock" @onclick="NotifyClose">
+                                <i class="bi bi-fingerprint"></i><span>وب‌کلاک من</span>
+                            </NavLink>
+                        }
+                        @if (Auth.Has("FaAtt.Read") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="fa-att/daily" @onclick="NotifyClose">
+                                <i class="bi bi-calendar2-check"></i><span>وضعیت روزانه</span>
+                            </NavLink>
+                        }
+                        <NavLink class="nav-link" href="fa-att/shifts" @onclick="NotifyClose">
+                            <i class="bi bi-clock-history"></i><span>شیفت‌های کاری</span>
+                        </NavLink>
+                        <div class="nav-subhead">حضور و مرخصی</div>
+                        <NavLink class="nav-link" href="fa-att/my-leaves" @onclick="NotifyClose">
+                            <i class="bi bi-calendar-heart"></i><span>مرخصی‌های من</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-att/approvals" @onclick="NotifyClose">
+                            <i class="bi bi-person-check"></i><span>تأییدیه‌های مدیر</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-att/missions" @onclick="NotifyClose">
+                            <i class="bi bi-briefcase"></i><span>مأموریت‌ها</span>
+                        </NavLink>
+                        @if (Auth.Has("FaAtt.Manage") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="fa-att/leaves" @onclick="NotifyClose">
+                                <i class="bi bi-calendar2-week"></i><span>مدیریت مرخصی</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-att/balances" @onclick="NotifyClose">
+                                <i class="bi bi-piggy-bank"></i><span>مانده مرخصی</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-att/leave-types" @onclick="NotifyClose">
+                                <i class="bi bi-tags"></i><span>انواع مرخصی</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-att/devices" @onclick="NotifyClose">
+                                <i class="bi bi-fingerprint"></i><span>دستگاه‌های تردد</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-att/reports" @onclick="NotifyClose">
+                                <i class="bi bi-file-earmark-spreadsheet"></i><span>گزارش ماهانه</span>
+                            </NavLink>
+                        }
+                    }
+
+                    @* ---------- آموزش و توسعه فروغ آریا (ماژول جدید) ---------- *@
+                    @if (Auth.HasModule("FaLms") || Auth.IsAdmin)
+                    {
+                        <div class="nav-subhead">آموزش و توسعه</div>
+                        <NavLink class="nav-link" href="fa-lms" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-mortarboard"></i><span>نمای کلی آموزش</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-lms/my" @onclick="NotifyClose">
+                            <i class="bi bi-person-video3"></i><span>دوره‌های من</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-lms/courses" @onclick="NotifyClose">
+                            <i class="bi bi-collection"></i><span>دوره‌ها</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-lms/calendar" @onclick="NotifyClose">
+                            <i class="bi bi-calendar3"></i><span>تقویم سالانه</span>
+                        </NavLink>
+                        @if (Auth.Has("FaLms.Manage") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="fa-lms/needs" @onclick="NotifyClose">
+                                <i class="bi bi-clipboard-data"></i><span>نیازسنجی</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-lms/enrollments" @onclick="NotifyClose">
+                                <i class="bi bi-inbox"></i><span>کارتابل ثبت‌نام</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-lms/certificates" @onclick="NotifyClose">
+                                <i class="bi bi-award"></i><span>گواهی‌ها</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-lms/budgets" @onclick="NotifyClose">
+                                <i class="bi bi-wallet2"></i><span>بودجه آموزش</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-lms/reports" @onclick="NotifyClose">
+                                <i class="bi bi-bar-chart"></i><span>اثربخشی</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-lms/banks" @onclick="NotifyClose">
+                                <i class="bi bi-collection"></i><span>بانک سؤال</span>
+                            </NavLink>
+                        }
+                    }
+
+                    @* ---------- حقوق و دستمزد فروغ آریا (ماژول جدید) ---------- *@
+                    @if (Auth.HasModule("FaPay") || Auth.IsAdmin)
+                    {
+                        <div class="nav-subhead">حقوق و دستمزد</div>
+                        <NavLink class="nav-link" href="fa-pay" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-cash-stack"></i><span>دوره‌های حقوق</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-pay/my" @onclick="NotifyClose">
+                            <i class="bi bi-person-vcard"></i><span>فیش‌های من</span>
+                        </NavLink>
+                        @if (Auth.Has("FaPay.Manage") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="fa-pay/adjustments" @onclick="NotifyClose">
+                                <i class="bi bi-pencil-square"></i><span>ثبت‌های ماهانه</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-pay/items" @onclick="NotifyClose">
+                                <i class="bi bi-list-check"></i><span>اقلام حقوقی</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-pay/settings" @onclick="NotifyClose">
+                                <i class="bi bi-gear"></i><span>تنظیمات و مالیات</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-pay/reports" @onclick="NotifyClose">
+                                <i class="bi bi-bar-chart"></i><span>گزارش‌های حقوق</span>
+                            </NavLink>
+                        }
+                    }
+
+                    @* ---------- ارتباطات داخلی فروغ آریا (ماژول جدید) ---------- *@
+                    @if (Auth.HasModule("FaCom") || Auth.IsAdmin)
+                    {
+                        <div class="nav-subhead">ارتباطات</div>
+                        <NavLink class="nav-link" href="fa-com" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-megaphone"></i><span>تابلوی اعلان‌ها</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-com/my" @onclick="NotifyClose">
+                            <i class="bi bi-inbox"></i><span>تیکت‌های من</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="fa-com/polls" @onclick="NotifyClose">
+                            <i class="bi bi-bar-chart"></i><span>نظرسنجی‌ها</span>
+                        </NavLink>
+                        @if (Auth.Has("FaCom.Manage") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="fa-com/announcements" @onclick="NotifyClose">
+                                <i class="bi bi-megaphone-fill"></i><span>مدیریت اطلاعیه‌ها</span>
+                            </NavLink>
+                            <NavLink class="nav-link" href="fa-com/tickets" @onclick="NotifyClose">
+                                <i class="bi bi-ticket-detailed"></i><span>کارتابل تیکت‌ها</span>
+                            </NavLink>
+                        }
+                    }
+
+                    @* ---------- کارگزینی ---------- *@
+                    @if (Auth.HasModule("HrCore"))
+                    {
+                        <div class="nav-subhead">کارگزینی</div>
+                        <NavLink class="nav-link" href="hr-core" @onclick="NotifyClose">
+                            <i class="bi bi-speedometer2"></i><span>داشبورد کارگزینی</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-core/contracts" @onclick="NotifyClose">
+                            <i class="bi bi-file-earmark-text"></i><span>قراردادها</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-core/contract-templates" @onclick="NotifyClose">
+                            <i class="bi bi-layout-text-window-reverse"></i><span>قالب‌های قرارداد</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-core/decrees" @onclick="NotifyClose">
+                            <i class="bi bi-patch-check"></i><span>احکام</span>
+                        </NavLink>
+                        <NavLink class="nav-link" href="hr-core/recruitment" @onclick="NotifyClose">
+                            <i class="bi bi-person-plus"></i><span>جذب و استخدام</span>
                         </NavLink>
                     }
                 </div>
@@ -185,37 +397,6 @@
     }
 
     @* ============ آرشیو اسناد و مدارک ============ *@
-    @* ============ هسته پرسنلی (کارگزینی) ============ *@
-    @if (Auth.HasModule("HrCore"))
-    {
-        <div class="nav-group group-hrcore">
-            <button type="button" class="nav-section-title nav-toggle @(gHrCore ? "open" : "")" @onclick="() => gHrCore = !gHrCore">
-                <span><i class="bi bi-people-fill"></i> کارگزینی</span>
-                <i class="bi bi-chevron-down nav-chevron"></i>
-            </button>
-            @if (gHrCore)
-            {
-                <div class="nav-group-items">
-                    <NavLink class="nav-link" href="hr-core" @onclick="NotifyClose">
-                        <i class="bi bi-speedometer2"></i><span>داشبورد کارگزینی</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="hr-core/employees" @onclick="NotifyClose">
-                        <i class="bi bi-person-lines-fill"></i><span>پرسنل</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="hr-core/org" @onclick="NotifyClose">
-                        <i class="bi bi-diagram-3"></i><span>چارت سازمانی</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="hr-core/contracts" @onclick="NotifyClose">
-                        <i class="bi bi-file-earmark-text"></i><span>قراردادها</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="hr-core/decrees" @onclick="NotifyClose">
-                        <i class="bi bi-patch-check"></i><span>احکام</span>
-                    </NavLink>
-                </div>
-            }
-        </div>
-    }
-
     @if (Auth.HasModule("DocArchive"))
     {
         <div class="nav-group group-docarchive">
@@ -800,7 +981,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gHr, gBonHr, gLetters, gErp, gDocs, gChat, gHrCore, gHrTime;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gErp, gDocs, gChat, gHrMain, gFaAtt;
 
     protected override void OnInitialized()
     {
@@ -810,7 +991,14 @@
         gChat = p.StartsWith("chat");
         gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive");
         gWo = p.StartsWith("work-orders");
-        gHr = p.StartsWith("leave") || p.StartsWith("hr-admin") || p == "attendance" || p.StartsWith("attendance-") || p.StartsWith("work-calendar");
+        // صفحه‌های حضور و مرخصی (§۷) زیر «منابع انسانی اصلی» هستند، نه گروه فروغ آریا
+        bool hrLeave = p is "fa-att/my-leaves" or "fa-att/approvals" or "fa-att/leaves" or "fa-att/leave-types"
+            or "fa-att/balances" or "fa-att/missions" or "fa-att/devices" or "fa-att/reports"
+            or "fa-att/clock" or "fa-att/shifts" or "fa-att/daily";
+        gHrMain = p.StartsWith("hr-main") || p.StartsWith("hr-time") || p.StartsWith("payroll") || p.StartsWith("hr-performance")
+                  || p.StartsWith("hr-core") || p.StartsWith("fa-lms") || p.StartsWith("fa-pay") || p.StartsWith("fa-com") || hrLeave;
+        gFaAtt = (p.StartsWith("fa-att") && !hrLeave) || p == "attendance" || p.StartsWith("attendance-")
+                 || p.StartsWith("leave") || p.StartsWith("hr-admin") || p.StartsWith("work-calendar");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gLetters = p.StartsWith("letters");
         gDocs = p.StartsWith("doc-archive");

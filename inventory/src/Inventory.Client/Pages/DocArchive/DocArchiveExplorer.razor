@@ -685,8 +685,7 @@
 </Modal>
 
 @* ==================== مودال حذف قطعی ==================== *@
-<Modal Visible="showPurge" Title="@(purgeAll ? "خالی کردن کامل سطل بازیافت" : "حذف قطعی و برگشت‌ناپذیر مدرک")"
-       OnClose="() => showPurge = false">
+<Modal Visible="showPurge" Title="@(purgeAll ? "خالی کردن کامل سطل بازیافت" : "حذف قطعی و برگشت‌ناپذیر مدرک")" OnClose="() => showPurge = false">
     <ChildContent>
         <div class="alert alert-danger">
             <b><i class="bi bi-exclamation-triangle-fill me-1"></i> هشدار بسیار مهم:</b>
@@ -706,8 +705,7 @@
 </Modal>
 
 @* ==================== مودال پوشه ==================== *@
-<Modal Visible="showFolder" Title="@(folderForm.Id == 0 ? "پوشه جدید" : "تنظیمات و دسترسی پوشه")"
-       Size="modal-lg" OnClose="() => showFolder = false">
+<Modal Visible="showFolder" Title="@(folderForm.Id == 0 ? "پوشه جدید" : "تنظیمات و دسترسی پوشه")" Size="modal-lg" OnClose="() => showFolder = false">
     <ChildContent>
         <div class="row g-3">
             <div class="col-md-8">

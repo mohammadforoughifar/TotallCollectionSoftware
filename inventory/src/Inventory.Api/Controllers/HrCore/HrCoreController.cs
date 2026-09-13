@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Services;
 using Inventory.Api.Services.HrCore;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -15,8 +16,13 @@ public class HrCoreController : RbacControllerBase
 {
     private const string Mod = "HrCore";
     private readonly IHrCoreService _svc;
+    private readonly FileStore _files;
 
-    public HrCoreController(AppDbContext db, IHrCoreService svc) : base(db) => _svc = svc;
+    public HrCoreController(AppDbContext db, IHrCoreService svc, FileStore files) : base(db)
+    {
+        _svc = svc;
+        _files = files;
+    }
 
     // ------------------- پرسنل -------------------
 
@@ -131,14 +137,14 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> CreateContract([FromBody] HrContractSaveDto dto)
     {
         if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
-        return Ok(await _svc.SaveContractAsync(null, dto));
+        return Ok(await _svc.SaveContractAsync(null, dto, MyUserId, MyUsername));
     }
 
     [HttpPut("contracts/{id:int}")]
     public async Task<IActionResult> UpdateContract(int id, [FromBody] HrContractSaveDto dto)
     {
         if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
-        return Ok(await _svc.SaveContractAsync(id, dto));
+        return Ok(await _svc.SaveContractAsync(id, dto, MyUserId, MyUsername));
     }
 
     [HttpDelete("contracts/{id:int}")]
@@ -146,6 +152,99 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
         await _svc.DeleteContractAsync(id);
+        return Ok(new { ok = true });
+    }
+
+    // ------------------- قالب‌های قرارداد (§۹) -------------------
+
+    [HttpGet("contract-templates")]
+    public async Task<IActionResult> Templates()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListTemplatesAsync());
+    }
+
+    [HttpPost("contract-templates")]
+    public async Task<IActionResult> CreateTemplate([FromBody] HrContractTemplateSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveTemplateAsync(null, dto));
+    }
+
+    [HttpPut("contract-templates/{id:int}")]
+    public async Task<IActionResult> UpdateTemplate(int id, [FromBody] HrContractTemplateSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SaveTemplateAsync(id, dto));
+    }
+
+    [HttpDelete("contract-templates/{id:int}")]
+    public async Task<IActionResult> DeleteTemplate(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        await _svc.DeleteTemplateAsync(id);
+        return Ok(new { ok = true });
+    }
+
+    // ------------------- امضا و نسخه‌های قرارداد (§۹) -------------------
+
+    [HttpPost("contracts/{id:int}/submit-sign")]
+    public async Task<IActionResult> SubmitForSign(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SubmitForSignAsync(id));
+    }
+
+    [HttpPost("contracts/{id:int}/sign-employee")]
+    public async Task<IActionResult> SignEmployee(int id, [FromBody] HrSignNameDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SignEmployeeAsync(id, dto?.Name ?? ""));
+    }
+
+    [HttpPost("contracts/{id:int}/sign-employer")]
+    public async Task<IActionResult> SignEmployer(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SignEmployerAsync(id, MyUserId, MyUsername));
+    }
+
+    [HttpGet("contracts/{id:int}/versions")]
+    public async Task<IActionResult> ContractVersions(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListVersionsAsync(id));
+    }
+
+    [HttpGet("contracts/{id:int}/pdf")]
+    public async Task<IActionResult> ContractPdf(int id)
+    {
+        if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Contracts") is { } f) return f;
+        try { return File(await _svc.ContractPdfAsync(id), "application/pdf", $"HrContract-{id}.pdf"); }
+        catch (InvalidOperationException) { return NotFound(); }
+    }
+
+    // ------------------- هشدارهای انقضای قرارداد (§۹) -------------------
+
+    [HttpGet("contract-alerts")]
+    public async Task<IActionResult> Alerts()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListAlertsAsync());
+    }
+
+    [HttpPost("contract-alerts/check")]
+    public async Task<IActionResult> CheckAlerts([FromQuery] int days = 30)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.CheckAlertsAsync(days));
+    }
+
+    [HttpDelete("contract-alerts/{id:int}")]
+    public async Task<IActionResult> DismissAlert(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        await _svc.DismissAlertAsync(id);
         return Ok(new { ok = true });
     }
 
@@ -163,6 +262,14 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
         return Ok(await _svc.EmployeeDecreesAsync(id));
+    }
+
+    [HttpGet("decrees/{id:int}/pdf")]
+    public async Task<IActionResult> DecreePdf(int id)
+    {
+        if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Decrees") is { } f) return f;
+        try { return File(await _svc.DecreePdfAsync(id), "application/pdf", $"HrDecree-{id}.pdf"); }
+        catch (InvalidOperationException) { return NotFound(); }
     }
 
     [HttpPost("decrees")]
@@ -193,6 +300,260 @@ public class HrCoreController : RbacControllerBase
         await _svc.DeleteDecreeAsync(id);
         return Ok(new { ok = true });
     }
+
+    // ------------------- پرونده کارمندان -------------------
+
+    [HttpGet("employees/{id:int}/dossier")]
+    public async Task<IActionResult> Dossier(int id, [FromQuery] int expiringDays = 30)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.GetDossierAsync(id, expiringDays));
+    }
+
+    // ----- تحت‌تکفل -----
+
+    [HttpGet("employees/{id:int}/dependents")]
+    public async Task<IActionResult> Dependents(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListDependentsAsync(id));
+    }
+
+    [HttpPost("employees/{id:int}/dependents")]
+    public async Task<IActionResult> CreateDependent(int id, [FromBody] HrEmployeeDependentSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveDependentAsync(id, null, dto));
+    }
+
+    [HttpPut("employees/{id:int}/dependents/{depId:int}")]
+    public async Task<IActionResult> UpdateDependent(int id, int depId, [FromBody] HrEmployeeDependentSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SaveDependentAsync(id, depId, dto));
+    }
+
+    [HttpDelete("dependents/{depId:int}")]
+    public async Task<IActionResult> DeleteDependent(int depId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        await _svc.DeleteDependentAsync(depId);
+        return Ok(new { ok = true });
+    }
+
+    // ----- دوره‌های آموزشی -----
+
+    [HttpGet("employees/{id:int}/courses")]
+    public async Task<IActionResult> Courses(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListCoursesAsync(id));
+    }
+
+    [HttpPost("employees/{id:int}/courses")]
+    public async Task<IActionResult> CreateCourse(int id, [FromBody] HrEmployeeCourseSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveCourseAsync(id, null, dto));
+    }
+
+    [HttpPut("employees/{id:int}/courses/{courseId:int}")]
+    public async Task<IActionResult> UpdateCourse(int id, int courseId, [FromBody] HrEmployeeCourseSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SaveCourseAsync(id, courseId, dto));
+    }
+
+    [HttpDelete("courses/{courseId:int}")]
+    public async Task<IActionResult> DeleteCourse(int courseId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        await _svc.DeleteCourseAsync(courseId);
+        return Ok(new { ok = true });
+    }
+
+    // ----- مهارت‌ها -----
+
+    [HttpGet("employees/{id:int}/skills")]
+    public async Task<IActionResult> Skills(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListSkillsAsync(id));
+    }
+
+    [HttpPost("employees/{id:int}/skills")]
+    public async Task<IActionResult> CreateSkill(int id, [FromBody] HrEmployeeSkillSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveSkillAsync(id, null, dto));
+    }
+
+    [HttpPut("employees/{id:int}/skills/{skillId:int}")]
+    public async Task<IActionResult> UpdateSkill(int id, int skillId, [FromBody] HrEmployeeSkillSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SaveSkillAsync(id, skillId, dto));
+    }
+
+    [HttpDelete("skills/{skillId:int}")]
+    public async Task<IActionResult> DeleteSkill(int skillId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        await _svc.DeleteSkillAsync(skillId);
+        return Ok(new { ok = true });
+    }
+
+    // ----- زبان‌های خارجی -----
+
+    [HttpGet("employees/{id:int}/languages")]
+    public async Task<IActionResult> Languages(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListLanguagesAsync(id));
+    }
+
+    [HttpPost("employees/{id:int}/languages")]
+    public async Task<IActionResult> CreateLanguage(int id, [FromBody] HrEmployeeLanguageSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveLanguageAsync(id, null, dto));
+    }
+
+    [HttpPut("employees/{id:int}/languages/{langId:int}")]
+    public async Task<IActionResult> UpdateLanguage(int id, int langId, [FromBody] HrEmployeeLanguageSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SaveLanguageAsync(id, langId, dto));
+    }
+
+    [HttpDelete("languages/{langId:int}")]
+    public async Task<IActionResult> DeleteLanguage(int langId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        await _svc.DeleteLanguageAsync(langId);
+        return Ok(new { ok = true });
+    }
+
+    // ----- اسناد -----
+
+    [HttpGet("employees/{id:int}/documents")]
+    public async Task<IActionResult> Documents(int id, [FromQuery] int expiringDays = 30)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListDocumentsAsync(id, expiringDays));
+    }
+
+    [HttpPost("employees/{id:int}/documents")]
+    public async Task<IActionResult> CreateDocument(int id, [FromBody] HrEmployeeDocumentSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveDocumentAsync(id, null, dto));
+    }
+
+    [HttpPut("employees/{id:int}/documents/{docId:int}")]
+    public async Task<IActionResult> UpdateDocument(int id, int docId, [FromBody] HrEmployeeDocumentSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.SaveDocumentAsync(id, docId, dto));
+    }
+
+    [HttpDelete("documents/{docId:int}")]
+    public async Task<IActionResult> DeleteDocument(int docId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Delete") is { } f) return f;
+        var doc = await _svc.GetDocumentAsync(docId);
+        await _svc.DeleteDocumentAsync(docId);
+        _files.Delete(doc?.FilePath);
+        return Ok(new { ok = true });
+    }
+
+    [HttpGet("documents/expiring")]
+    public async Task<IActionResult> ExpiringDocuments([FromQuery] int days = 30)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ExpiringDocumentsAsync(days));
+    }
+
+    [HttpPost("documents/{docId:int}/file")]
+    [RequestSizeLimit(25 * 1024 * 1024)]
+    public async Task<IActionResult> UploadDocumentFile(int docId, IFormFile file)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        if (file is null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
+        if (file.Length > 20 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۲۰ مگابایت است." });
+        var ext = Path.GetExtension(file.FileName ?? "").ToLowerInvariant();
+        if (BlockedDocExts.Contains(ext)) return BadRequest(new { message = "این نوع فایل مجاز نیست." });
+        var doc = await _svc.GetDocumentAsync(docId);
+        if (doc is null) return NotFound(new { message = "سند یافت نشد." });
+        _files.Delete(doc.FilePath);
+        await using var stream = file.OpenReadStream();
+        var path = await _files.SaveAsync("hr-employee-documents", docId, stream, file.FileName);
+        return Ok(await _svc.AttachDocumentFileAsync(docId, path, Path.GetFileName(file.FileName),
+            string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType, file.Length));
+    }
+
+    [HttpGet("documents/{docId:int}/download")]
+    public async Task<IActionResult> DownloadDocument(int docId)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        var doc = await _svc.GetDocumentAsync(docId);
+        if (doc is null || string.IsNullOrWhiteSpace(doc.FilePath)) return NotFound(new { message = "فایل یافت نشد." });
+        var bytes = _files.ReadBytes(doc.FilePath);
+        if (bytes is null) return NotFound(new { message = "فایل روی دیسک موجود نیست." });
+        return File(bytes, doc.ContentType ?? "application/octet-stream", doc.FileName ?? $"document-{docId}");
+    }
+
+    // ----- عکس پروفایل -----
+
+    [HttpGet("employees/{id:int}/photo")]
+    public async Task<IActionResult> EmployeePhoto(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        var e = await _svc.GetEmployeeAsync(id);
+        if (e is null || string.IsNullOrWhiteSpace(e.PhotoPath)) return NotFound();
+        var bytes = _files.ReadBytes(e.PhotoPath);
+        if (bytes is null) return NotFound();
+        return File(bytes, ContentTypeForPhoto(e.PhotoPath));
+    }
+
+    [HttpPost("employees/{id:int}/photo")]
+    [RequestSizeLimit(6 * 1024 * 1024)]
+    public async Task<IActionResult> UploadEmployeePhoto(int id, IFormFile file)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        if (file is null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
+        if (file.Length > 5 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم عکس ۵ مگابایت است." });
+        var ext = Path.GetExtension(file.FileName ?? "").ToLowerInvariant();
+        if (!AllowedPhotoExts.Contains(ext)) return BadRequest(new { message = "فرمت مجاز: JPG، PNG یا WEBP" });
+        var e = await _svc.GetEmployeeAsync(id);
+        if (e is null) return NotFound(new { message = "پرسنل یافت نشد." });
+        _files.Delete(e.PhotoPath);
+        await using var stream = file.OpenReadStream();
+        var path = await _files.SaveAsync("hr-employee-photos", id, stream, file.FileName);
+        return Ok(await _svc.SetEmployeePhotoAsync(id, path));
+    }
+
+    [HttpDelete("employees/{id:int}/photo")]
+    public async Task<IActionResult> DeleteEmployeePhoto(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        var e = await _svc.GetEmployeeAsync(id);
+        if (e is null) return NotFound(new { message = "پرسنل یافت نشد." });
+        _files.Delete(e.PhotoPath);
+        return Ok(await _svc.SetEmployeePhotoAsync(id, null));
+    }
+
+    private static readonly HashSet<string> AllowedPhotoExts = new(StringComparer.OrdinalIgnoreCase)
+        { ".jpg", ".jpeg", ".png", ".webp" };
+    private static readonly HashSet<string> BlockedDocExts = new(StringComparer.OrdinalIgnoreCase)
+        { ".exe", ".bat", ".cmd", ".ps1", ".sh", ".dll", ".msi", ".com", ".scr", ".jar" };
+    private static string ContentTypeForPhoto(string? path) =>
+        Path.GetExtension(path ?? "").ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            _ => "image/jpeg"
+        };
 
     // ------------------- داشبورد -------------------
 

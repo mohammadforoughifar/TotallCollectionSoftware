@@ -289,6 +289,7 @@
 
 @* ================== مودال ثبت به‌جای کاربر ================== *@
 <Modal Visible="showOnBehalf" Title="ثبت مرخصی/ماموریت به‌جای کاربر (توسط مدیر)" OnClose="() => showOnBehalf = false">
+    <ChildContent>
     @if (!string.IsNullOrEmpty(obError))
     {
         <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle-fill"></i> @obError</div>
@@ -349,6 +350,8 @@
             <i class="bi bi-info-circle"></i> درخواست مستقیماً با وضعیت «تاییدشده» و علامت «توسط مدیر» ثبت می‌شود و کسریِ روزهای مربوطه بازحساب می‌شود.
         </div>
     </div>
+    </ChildContent>
+    <Footer>
     <div class="d-flex justify-content-end mt-3 gap-2">
         <button class="btn btn-sm btn-light" @onclick="() => showOnBehalf = false">انصراف</button>
         <button class="btn btn-sm btn-primary" @onclick="SubmitOnBehalf" disabled="@obBusy">
@@ -364,6 +367,7 @@
             }
         </button>
     </div>
+    </Footer>
 </Modal>
 
 @* ================== گزارش ماهانه ================== *@

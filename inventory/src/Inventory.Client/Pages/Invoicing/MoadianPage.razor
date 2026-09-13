@@ -103,7 +103,7 @@
                             <td>@KindFa(inv.Kind)</td>
                             <td>@StatusBadge(inv.Status)</td>
                             <td class="text-danger small">@(inv.ErrorMessage ?? "")</td>
-                            <td><button class="btn btn-sm btn-outline-primary" @onclick='() => Nav.NavigateTo($"/moadian/invoices?f={inv.Id}")'>مشاهده</button></td>
+                            <td><button class="btn btn-sm btn-outline-primary" @onclick="() => GoInvoice(inv.Id)">مشاهده</button></td>
                         </tr>
                     }
                 </tbody>
@@ -134,6 +134,8 @@
         try { dash = await MoadianSvc.GetDashboardAsync(); }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
+
+    private void GoInvoice(int id) => Nav.NavigateTo($"/moadian/invoices?f={id}");
 
     private async Task SendQueue()
     {

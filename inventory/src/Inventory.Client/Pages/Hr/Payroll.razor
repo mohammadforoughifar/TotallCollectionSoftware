@@ -516,6 +516,7 @@
 </div>
 
 <Modal Visible="showSlip" Title="فیش حقوقی" Size="modal-lg" OnClose="() => showSlip = false">
+    <ChildContent>
     @if (slipDetail != null)
     {
         <h5 class="text-center">فیش حقوقی @Fa.Digits($"{slipDetail.RunYear}/{slipDetail.RunMonth:D2}")</h5>
@@ -542,9 +543,11 @@
             <button class="btn btn-sm btn-secondary" @onclick="() => showSlip = false">بستن</button>
         </div>
     }
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showCompare" Title="مغایرت‌گیری ماهانه" Size="modal-lg" OnClose="() => showCompare = false">
+    <ChildContent>
     <div class="table-responsive">
         <table class="table table-striped table-sm align-middle">
             <thead><tr><th>پرسنل</th><th>ماه قبل</th><th>این ماه</th><th>اختلاف</th><th>٪</th><th></th></tr></thead>
@@ -563,9 +566,11 @@
             </tbody>
         </table>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showItem" Title="آیتم حقوقی" Size="modal-lg" OnClose="() => showItem = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-4"><label class="form-label small">کد (انگلیسی)</label><input class="form-control form-control-sm" dir="ltr" @bind="itCode" disabled="@(itId != 0)" /></div>
         <div class="col-8"><label class="form-label small">عنوان</label><input class="form-control form-control-sm" @bind="itTitle" /></div>
@@ -588,9 +593,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitItem" disabled="@busy">ذخیره</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showItem = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showLoan" Title="وام / مساعده" OnClose="() => showLoan = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-12"><label class="form-label small">پرسنل</label><select class="form-select form-select-sm" @bind="lnEmp"><option value="0">—</option>@foreach (var e in employees){<option value="@e.Id">@e.FirstName @e.LastName</option>}</select></div>
         <div class="col-6"><label class="form-label small">نوع</label><select class="form-select form-select-sm" @bind="lnKind"><option value="Loan">وام</option><option value="Advance">مساعده</option></select></div>
@@ -604,9 +611,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitLoan" disabled="@busy">ثبت</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showLoan = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showProfile" Title="پروفایل حقوقی" OnClose="() => showProfile = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-4"><label class="form-label small">تعداد اولاد</label><input type="number" class="form-control form-control-sm" @bind="pfChildren" /></div>
         <div class="col-8"><label class="form-label small">شماره بیمه</label><input class="form-control form-control-sm" @bind="pfIns" /></div>
@@ -620,9 +629,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitProfile" disabled="@busy">ذخیره</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showProfile = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showEmpItem" Title="مبلغ اختصاصی" OnClose="() => showEmpItem = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-12"><label class="form-label small">پرسنل</label><select class="form-select form-select-sm" @bind="eiEmp"><option value="0">—</option>@foreach (var e in employees){<option value="@e.Id">@e.FirstName @e.LastName</option>}</select></div>
         <div class="col-8"><label class="form-label small">آیتم</label><select class="form-select form-select-sm" @bind="eiItem"><option value="0">—</option>@foreach (var i in items){<option value="@i.Id">@i.Title (@i.Code)</option>}</select></div>
@@ -632,9 +643,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitEmpItem" disabled="@busy">ذخیره</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showEmpItem = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showBracket" Title="پلکان مالیاتی" OnClose="() => showBracket = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-4"><label class="form-label small">از</label><input type="number" class="form-control form-control-sm" @bind="brFrom" /></div>
         <div class="col-4"><label class="form-label small">تا (0=∞)</label><input type="number" class="form-control form-control-sm" @bind="brTo" /></div>
@@ -644,9 +657,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitBracket" disabled="@busy">ذخیره</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showBracket = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showSettle" Title="محاسبه تسویه" OnClose="() => showSettle = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-12"><label class="form-label small">پرسنل</label><select class="form-select form-select-sm" @bind="stEmp"><option value="0">—</option>@foreach (var e in employees){<option value="@e.Id">@e.FirstName @e.LastName</option>}</select></div>
         <div class="col-6"><label class="form-label small">تاریخ خروج</label><input type="date" class="form-control form-control-sm" @bind="stDate" /></div>
@@ -656,6 +671,7 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitSettle" disabled="@busy">محاسبه</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showSettle = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 @code {
