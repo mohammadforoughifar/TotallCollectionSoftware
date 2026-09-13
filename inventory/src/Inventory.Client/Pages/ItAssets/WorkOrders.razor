@@ -345,6 +345,14 @@ else
                                     {
                                         <span class="badge bg-light text-dark border fs-9 num" title="کامنت‌ها">💬 @w.CommentCount</span>
                                     }
+                                    @if (w.ParentOrderId != null)
+                                    {
+                                        <span class="badge bg-light text-dark border fs-9" title="زیر-دستورِ @w.ParentNumber">🔗 زیر-دستور</span>
+                                    }
+                                    @if (w.Children.Count > 0)
+                                    {
+                                        <span class="badge bg-light text-dark border fs-9 num" title="زیر-دستورها (بسته از کل)">🔗 @w.Children.Count(c => c.Status == "Closed")/@w.Children.Count</span>
+                                    }
                                     @foreach (var t in w.Tags)
                                     {
                                         var t2 = t;
@@ -540,6 +548,12 @@ else
                 <div class="modal-header">
                     <h5 class="modal-title d-flex align-items-center flex-wrap gap-1">
                         <i class="bi bi-list-task text-primary"></i> @(editingId > 0 ? "ویرایش دستور کار" : "دستور کار جدید")
+                        @if (chainParent != null)
+                        {
+                            <span class="badge bg-info-subtle text-info border ms-2" title="این دستور به‌صورت زیر-دستورِ متصل ساخته می‌شود">
+                                🔗 زیر-دستورِ @chainParent.Number — @chainParent.Title
+                            </span>
+                        }
                         @if (!string.IsNullOrWhiteSpace(_sourceLabel))
                         {
                             if (_sourceModule == "Document" && _sourceId is > 0)
@@ -567,7 +581,7 @@ else
                             }
                         }
                     </h5>
-                    <button type="button" class="btn-close" @onclick="() => showNew = false"></button>
+                    <button type="button" class="btn-close" @onclick="CloseNewForm"></button>
                 </div>
                 <div class="modal-body">
                     @if (!string.IsNullOrWhiteSpace(formError))
@@ -721,7 +735,7 @@ else
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => showNew = false">انصراف</button>
+                    <button class="btn btn-secondary" @onclick="CloseNewForm">انصراف</button>
                     <button class="btn btn-primary px-4" disabled="@busy" @onclick="SubmitNew">
                         @if (busy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                         <i class="bi bi-send"></i> @(editingId > 0 ? "ذخیره تغییرات" : "ثبت دستور کار")
@@ -977,6 +991,66 @@ else
                             {
                                 <div class="mt-1">یادداشت: @detail.CloseNote</div>
                             }
+                        </div>
+                    }
+
+                    @* ---------- ارجاع زنجیره‌ای (والد / زیر-دستورها) ---------- *@
+                    @{
+                        var canChain = detail.Status == "Open" && access.CanCreate &&
+                            (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
+                    }
+                    @if (detail.ParentOrderId != null || detail.Children.Count > 0 || canChain)
+                    {
+                        <div class="wo-block mb-3">
+                            <div class="wo-block-title d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <span><i class="bi bi-link-45deg"></i> زنجیرهٔ ارجاع</span>
+                                @if (canChain)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 fs-8" @onclick="OpenChainForm">
+                                        <i class="bi bi-diagram-2"></i> ارجاع بخشی از کار (زیر-دستور)
+                                    </button>
+                                }
+                            </div>
+                            <div class="wo-block-body">
+                                @if (detail.ParentOrderId != null)
+                                {
+                                    <div class="wo-chain-row">
+                                        <i class="bi bi-arrow-up-left-circle text-secondary"></i>
+                                        <span class="fs-8 text-muted">والد:</span>
+                                        <a class="wo-chain-link" @onclick="() => OpenById(detail.ParentOrderId.Value)" @onclick:preventDefault="true" href="">
+                                            @detail.ParentNumber — @detail.ParentTitle
+                                        </a>
+                                    </div>
+                                }
+                                @if (detail.Children.Count > 0)
+                                {
+                                    <div class="fs-8 text-muted mb-1 mt-1">
+                                        زیر-دستورها (@detail.Children.Count(c => c.Status == "Closed") از @detail.Children.Count بسته):
+                                    </div>
+                                    @foreach (var ch in detail.Children)
+                                    {
+                                        var ch2 = ch;
+                                        <div class="wo-chain-row">
+                                            <i class="bi @(ch2.Status == "Closed" ? "bi-check-circle-fill text-success" : "bi-circle text-warning")"></i>
+                                            <a class="wo-chain-link" @onclick="() => OpenById(ch2.Id)" @onclick:preventDefault="true" href="">
+                                                @ch2.Number — @ch2.Title
+                                            </a>
+                                            <span class="fs-9 text-muted">(@ch2.OwnerName)</span>
+                                            <span class="badge @(ch2.Status == "Closed" ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning") border fs-9">
+                                                @(ch2.Status == "Closed" ? "بسته" : "باز")
+                                            </span>
+                                        </div>
+                                    }
+                                    @if (detail.Children.Any(c => c.Status == "Open") && isOwner)
+                                    {
+                                        <div class="fs-9 text-muted mt-1"><i class="bi bi-info-circle"></i> تا بسته‌شدن همهٔ زیر-دستورهای باز، این دستور قابل بستن نیست.</div>
+                                    }
+                                }
+                                else if (detail.ParentOrderId == null && canChain)
+                                {
+                                    <div class="fs-8 text-muted">می‌توانید بخشی از این کار را به‌صورت زیر-دستورِ متصل به نفر بعدی ارجاع دهید — پیشرفت آن همین‌جا دیده می‌شود.</div>
+                                }
+                            </div>
                         </div>
                     }
 
@@ -1346,6 +1420,11 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* ---------- ارجاع زنجیره‌ای ---------- */
+    .wo-chain-row { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; flex-wrap: wrap; }
+    .wo-chain-link { color: #4f46e5; font-size: .82rem; cursor: pointer; text-decoration: none; }
+    .wo-chain-link:hover { text-decoration: underline; }
+
     /* ---------- برچسب/دسته‌بندی ---------- */
     .wo-tag {
         display: inline-flex; align-items: center; gap: .25rem;
@@ -1685,6 +1764,30 @@ else
         }
         catch { Toast.Error("خطا در تهیه خروجی"); }
         finally { exporting = false; }
+    }
+
+    // ---- ارجاع زنجیره‌ای (زیر-دستور) ----
+    private WoItem? chainParent;      // والدِ زیر-دستورِ در حال ساخت
+    private bool keepChainParent;     // پرچم: ریست فرم، والد را پاک نکند
+
+    /// <summary>بستن فرم ایجاد/ویرایش — والد زنجیره هم پاک می‌شود.</summary>
+    private void CloseNewForm() { showNew = false; chainParent = null; editingId = 0; }
+
+    /// <summary>باز کردن فرم «دستور کار جدید» به‌عنوان زیر-دستورِ دستور جاری — مهلت پیش‌فرض: مهلت والد.</summary>
+    private async Task OpenChainForm()
+    {
+        if (detail == null) return;
+        var parent = detail;
+        detail = null;
+        chainParent = parent;
+        keepChainParent = true;
+        await ShowNewFormAsync("", "");
+        // مهلت زیر-دستور نباید بعد از والد باشد → پیش‌فرض همان مهلت والد
+        newDueDate = parent.DueAt.Date;
+        newDueTime = TimeOnly.FromDateTime(parent.DueAt);
+        newPriority = parent.Priority;
+        newTags = parent.Tags.ToList();
+        StateHasChanged();
     }
 
     // ---- گفتگو دربارهٔ دستور (اتصال به پیام‌رسان) ----
@@ -2237,6 +2340,8 @@ else
         formError = ""; newTitle = title; selTargets = new(); tDropOpen = false; tSearch = "";
         newPriority = 1; newRecurrence = 0; newChecklist = new(); newClText = "";
         newTags = new(); newTagText = "";
+        if (!keepChainParent) chainParent = null;
+        keepChainParent = false;
         _ = LoadMyTags().ContinueWith(_ => InvokeAsync(StateHasChanged));
         newDueDate = DateTime.Today.AddDays(1); newDueTime = new(14, 0);
         newFiles.Clear();
@@ -2286,7 +2391,8 @@ else
                 recurrence = newRecurrence,
                 checklistItems = newChecklist,
                 tags = newTags,
-                sourceModule = _sourceModule, sourceId = _sourceId
+                sourceModule = _sourceModule, sourceId = _sourceId,
+                parentOrderId = chainParent?.Id
             };
             var resp = editingId > 0
                 ? await Http.PutAsJsonAsync($"/api/workorders/{editingId}", payload)
@@ -2306,6 +2412,7 @@ else
             Toast.Success(editingId > 0 ? "دستور کار ویرایش شد." : $"دستور کار ثبت شد — {created?.Number}");
             editingId = 0;
             showNew = false;
+            chainParent = null;
             await LoadAll();
             // پاک‌سازی پارامترهای مبدأ (سورس) بعد از ثبت
             if (!string.IsNullOrWhiteSpace(_sourceModule))
@@ -2486,7 +2593,8 @@ else
         "Created" => "ثبت دستور کار", "Seen" => "رویت", "Reply" => "ثبت پاسخ",
         "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
         "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی",
-        "Commented" => "ثبت کامنت", "Recurred" => "تکرار خودکار", _ => a
+        "Commented" => "ثبت کامنت", "Recurred" => "تکرار خودکار",
+        "Chained" => "ارجاع زنجیره‌ای", _ => a
     };
 
     // ================== مدل‌ها ==================
@@ -2496,6 +2604,7 @@ else
     public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string UploaderName { get; set; } = ""; public DateTime UploadedAt { get; set; } public long Size { get; set; } }
     public class LogItem { public int Id { get; set; } public string ActorName { get; set; } = ""; public string Action { get; set; } = ""; public string? Text { get; set; } public DateTime CreatedAt { get; set; } }
     public class CalItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public DateTime DueAt { get; set; } public string Status { get; set; } = ""; public string Kind { get; set; } = "Self"; public string Tone { get; set; } = "none"; }
+    public class ChildItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public string Status { get; set; } = ""; public string OwnerName { get; set; } = ""; }
     public class AsgItem
     {
         public int Id { get; set; } public int UserId { get; set; } public string Name { get; set; } = "";
@@ -2515,6 +2624,10 @@ else
         public int ChecklistTotal { get; set; } public int ChecklistDone { get; set; }
         public int CommentCount { get; set; }
         public List<string> Tags { get; set; } = new();
+        public int? ParentOrderId { get; set; }
+        public string? ParentNumber { get; set; }
+        public string? ParentTitle { get; set; }
+        public List<ChildItem> Children { get; set; } = new();
         public string? SourceModule { get; set; } public int? SourceId { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
     }

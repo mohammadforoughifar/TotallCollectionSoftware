@@ -134,6 +134,12 @@ public class WorkOrdersController : ControllerBase
 
         /// <summary>برچسب‌ها (اختیاری) — حداکثر ۵ برچسب، هر یک تا ۳۰ حرف.</summary>
         public List<string> Tags { get; set; } = new();
+
+        /// <summary>
+        /// ارجاع زنجیره‌ای (اختیاری) — شناسهٔ دستور والد. فقط گیرندهٔ دستور والد (تا وقتی باز است)
+        /// می‌تواند بخشی از کار را به‌صورت زیر-دستور به نفر بعدی ارجاع دهد.
+        /// </summary>
+        public int? ParentOrderId { get; set; }
     }
 
     /// <summary>
@@ -190,6 +196,32 @@ public class WorkOrdersController : ControllerBase
             }
         }
 
+        // ارجاع زنجیره‌ای — اعتبارسنجی والد: باید باز باشد و من گیرندهٔ آن باشم (یا دستوردهنده‌اش)
+        WorkOrder? parent = null;
+        if (dto.ParentOrderId is > 0)
+        {
+            parent = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == dto.ParentOrderId);
+            if (parent == null)
+                return BadRequest(new { message = "دستور والد یافت نشد." });
+            if (parent.Status != "Open")
+                return BadRequest(new { message = "دستور والد بسته شده — ارجاع زنجیره‌ای ممکن نیست." });
+            var amAssignee = await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == parent.Id && a.UserId == MyUserId);
+            if (!amAssignee && parent.OwnerUserId != MyUserId)
+                return BadRequest(new { message = "فقط گیرندگان یا دستوردهندهٔ دستور والد می‌توانند زیر-دستور بسازند." });
+            // جلوگیری از عمق بی‌نهایت: حداکثر ۵ سطح زنجیره
+            var depth = 0; var cur = parent;
+            while (cur?.ParentOrderId is > 0 && depth < 6)
+            {
+                cur = await _db.WorkOrders.AsNoTracking().FirstOrDefaultAsync(w => w.Id == cur.ParentOrderId);
+                depth++;
+            }
+            if (depth >= 5)
+                return BadRequest(new { message = "حداکثر عمق زنجیرهٔ ارجاع (۵ سطح) پر شده است." });
+            // مهلت زیر-دستور نباید بعد از مهلت والد باشد
+            if (dto.DueAt > parent.DueAt)
+                return BadRequest(new { message = $"مهلت زیر-دستور نمی‌تواند بعد از مهلت دستور والد ({ToFa(parent.DueAt)}) باشد." });
+        }
+
         // اتصال به مبدأ (سورس) — اختیاری. اگر عنوان سورس داده شده باشد، همزمان نباید خالی/بی‌اعتبار باشد.
         if (!string.IsNullOrWhiteSpace(dto.SourceModule) && dto.SourceId is not null and > 0)
         {
@@ -216,7 +248,8 @@ public class WorkOrdersController : ControllerBase
             Recurrence = dto.Recurrence,
             SourceModule = dto.SourceModule,
             SourceId = dto.SourceId,
-            Tags = NormalizeTags(dto.Tags)
+            Tags = NormalizeTags(dto.Tags),
+            ParentOrderId = parent?.Id
         };
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
@@ -253,6 +286,17 @@ public class WorkOrdersController : ControllerBase
 
         var actor = await MyDisplayNameAsync();
         Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm} — گیرندگان: {string.Join("، ", users.Select(u => UserDisplay.Name(u)))}");
+
+        // ارجاع زنجیره‌ای — ثبت در تاریخچهٔ هر دو + اعلان به دستوردهندهٔ والد
+        if (parent != null)
+        {
+            Log(wo.Id, "Chained", $"زیر-دستورِ {parent.Number} «{parent.Title}»");
+            Log(parent.Id, "Chained", $"زیر-دستور {wo.Number} «{wo.Title}» توسط {wo.OwnerName} ساخته شد");
+            if (parent.OwnerUserId != MyUserId)
+                await _notify.SendAsync(parent.OwnerUserId, "ارجاع زنجیره‌ای 🔗",
+                    $"{wo.OwnerName} بخشی از {parent.Number} را به‌صورت زیر-دستور {wo.Number} ارجاع داد.",
+                    wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
+        }
         await _db.SaveChangesAsync();
 
         var prTag = wo.Priority >= WorkOrderPriority.High ? $" — اولویت: {WorkOrderPriority.ToFa(wo.Priority)}" : "";
@@ -418,6 +462,15 @@ public class WorkOrdersController : ControllerBase
         var cmCounts = await _db.WorkOrderComments.Where(c => ids.Contains(c.OrderId) && !c.IsDeleted)
             .GroupBy(c => c.OrderId).Select(g => new { g.Key, C = g.Count() }).ToListAsync();
 
+        // ارجاع زنجیره‌ای: شماره/عنوان والدها + خلاصهٔ زیر-دستورها
+        var parentIds = orders.Where(w => w.ParentOrderId is > 0).Select(w => w.ParentOrderId!.Value).Distinct().ToList();
+        var parents = await _db.WorkOrders.AsNoTracking().Where(w => parentIds.Contains(w.Id))
+            .Select(w => new { w.Id, w.Number, w.Title }).ToListAsync();
+        var children = await _db.WorkOrders.AsNoTracking()
+            .Where(w => w.ParentOrderId != null && ids.Contains(w.ParentOrderId.Value))
+            .Select(w => new { w.Id, ParentId = w.ParentOrderId!.Value, w.Number, w.Title, w.Status, w.OwnerName })
+            .ToListAsync();
+
         return orders.Select(w => (object)new
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
@@ -429,6 +482,11 @@ public class WorkOrdersController : ControllerBase
             ChecklistDone = clStats.FirstOrDefault(c => c.Key == w.Id)?.Done ?? 0,
             AttachmentCount = attCounts.FirstOrDefault(c => c.Key == w.Id)?.C ?? 0,
             CommentCount = cmCounts.FirstOrDefault(c => c.Key == w.Id)?.C ?? 0,
+            w.ParentOrderId,
+            ParentNumber = parents.FirstOrDefault(p => p.Id == w.ParentOrderId)?.Number,
+            ParentTitle = parents.FirstOrDefault(p => p.Id == w.ParentOrderId)?.Title,
+            Children = children.Where(c => c.ParentId == w.Id)
+                .Select(c => new { c.Id, c.Number, c.Title, c.Status, c.OwnerName }).ToList(),
             Assignees = asgs.Where(a => a.OrderId == w.Id).Select(a => new
             {
                 a.Id, a.UserId, a.Name, a.SeenAt, a.RepliedAt, a.Done, a.ReplyText,
@@ -645,6 +703,13 @@ public class WorkOrdersController : ControllerBase
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed") return BadRequest(new { message = "قبلاً بسته شده است." });
+
+        // ارجاع زنجیره‌ای — تا زیر-دستورهای باز بسته نشوند، والد قابل بستن نیست
+        var openChildren = await _db.WorkOrders.AsNoTracking()
+            .Where(w => w.ParentOrderId == id && w.Status == "Open")
+            .Select(w => w.Number).ToListAsync();
+        if (openChildren.Count > 0)
+            return BadRequest(new { message = $"ابتدا زیر-دستورهای باز بسته شوند: {string.Join("، ", openChildren)}" });
 
         wo.Status = "Closed";
         wo.ClosedAt = DateTime.Now;

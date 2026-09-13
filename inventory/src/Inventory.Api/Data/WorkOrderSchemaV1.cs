@@ -88,6 +88,11 @@ END");
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'Tags') IS NULL
     ALTER TABLE dbo.WorkOrders ADD Tags nvarchar(300) NULL;");
+
+        // ---------- موج ۵: ارجاع زنجیره‌ای (زیر-دستور) ----------
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'ParentOrderId') IS NULL
+    ALTER TABLE dbo.WorkOrders ADD ParentOrderId int NULL;");
     }
 
     // ==================== SQLite ====================
@@ -185,6 +190,19 @@ CREATE INDEX IF NOT EXISTS IX_WorkOrderComments_OrderId ON WorkOrderComments (Or
         }
         catch { }
         if (!hasTags) await SafeAsync(db, "ALTER TABLE WorkOrders ADD COLUMN Tags TEXT NULL;");
+
+        // ---------- موج ۵: ارجاع زنجیره‌ای (زیر-دستور) ----------
+        var hasParent = false;
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('WorkOrders') WHERE name='ParentOrderId'";
+            hasParent = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+        }
+        catch { }
+        if (!hasParent) await SafeAsync(db, "ALTER TABLE WorkOrders ADD COLUMN ParentOrderId INTEGER NULL;");
     }
 
     /// <summary>اجرای امن — خطای «شیء تکراری/موجود» راه‌اندازی برنامه را متوقف نکند.</summary>
