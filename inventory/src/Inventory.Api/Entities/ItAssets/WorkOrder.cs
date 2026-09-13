@@ -96,6 +96,13 @@ public class WorkOrder
 
     /// <summary>شناسه رکورد مبدأ در ماژول سورس (مثلاً شناسه نامه داخلی).</summary>
     public int? SourceId { get; set; }
+
+    /// <summary>
+    /// برچسب‌ها/دسته‌بندی — حداکثر ۵ برچسب، هر یک تا ۳۰ حرف، جداشده با «,».
+    /// برای فیلتر دقیق، جستجو به شکل ",tag," روی ",Tags," انجام می‌شود.
+    /// </summary>
+    [MaxLength(300)]
+    public string? Tags { get; set; }
 }
 
 /// <summary>گیرنده دستور کار — پاسخ، رویت و تصمیم دستوردهنده.</summary>

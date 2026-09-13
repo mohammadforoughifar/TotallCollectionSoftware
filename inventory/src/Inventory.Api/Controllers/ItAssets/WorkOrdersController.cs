@@ -131,7 +131,32 @@ public class WorkOrdersController : ControllerBase
         /// <summary>ماژول مبدأ — مثلاً "InnerLetter" برای نامه داخلی (اختیاری).</summary>
         public string? SourceModule { get; set; }
         public int? SourceId { get; set; }
+
+        /// <summary>برچسب‌ها (اختیاری) — حداکثر ۵ برچسب، هر یک تا ۳۰ حرف.</summary>
+        public List<string> Tags { get; set; } = new();
     }
+
+    /// <summary>
+    /// نرمال‌سازی برچسب‌ها: حذف تکراری/خالی، برش طول، سقف ۵ عدد؛
+    /// خروجی به شکل ",کارگاه,برق," ذخیره می‌شود تا فیلتر دقیق LIKE ممکن باشد.
+    /// </summary>
+    private static string? NormalizeTags(IEnumerable<string>? tags)
+    {
+        if (tags == null) return null;
+        var list = tags.Select(t => (t ?? "").Trim().Replace(",", "،"))
+            .Where(t => t.Length > 0)
+            .Select(t => t.Length > 30 ? t[..30] : t)
+            .Distinct()
+            .Take(5)
+            .ToList();
+        return list.Count == 0 ? null : "," + string.Join(",", list) + ",";
+    }
+
+    /// <summary>تبدیل رشتهٔ ذخیره‌شده به لیست برچسب‌ها برای خروجی API.</summary>
+    private static List<string> TagsToList(string? tags) =>
+        string.IsNullOrWhiteSpace(tags)
+            ? new List<string>()
+            : tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateDto dto)
@@ -190,7 +215,8 @@ public class WorkOrdersController : ControllerBase
             Priority = dto.Priority,
             Recurrence = dto.Recurrence,
             SourceModule = dto.SourceModule,
-            SourceId = dto.SourceId
+            SourceId = dto.SourceId,
+            Tags = NormalizeTags(dto.Tags)
         };
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
@@ -300,6 +326,7 @@ public class WorkOrdersController : ControllerBase
         wo.DueAt = dto.DueAt;
         wo.Priority = dto.Priority;
         wo.Recurrence = dto.Recurrence;
+        wo.Tags = NormalizeTags(dto.Tags);
         wo.OwnerName = await MyDisplayNameAsync();
 
         // همگام‌سازی چک‌لیست: آیتم‌های تیک‌خورده حفظ می‌شوند (تطبیق بر اساس متن)، بقیه بازنویسی
@@ -345,6 +372,9 @@ public class WorkOrdersController : ControllerBase
 
         /// <summary>فیلتر شخص: دستوردهنده یا یکی از گیرندگان.</summary>
         public int? UserId { get; set; }
+
+        /// <summary>فیلتر برچسب — تطبیق دقیق یک برچسب.</summary>
+        public string? Tag { get; set; }
     }
 
     /// <summary>اعمال فیلترهای مشترک روی کوئری — سمت دیتابیس تا حد ممکن.</summary>
@@ -359,6 +389,12 @@ public class WorkOrdersController : ControllerBase
             q = q.Where(w => w.Priority == f.Priority);
         if (f.DueFrom != null) q = q.Where(w => w.DueAt >= f.DueFrom);
         if (f.DueTo != null) q = q.Where(w => w.DueAt < f.DueTo);
+        if (!string.IsNullOrWhiteSpace(f.Tag))
+        {
+            // برچسب‌ها به شکل ",برق,کارگاه," ذخیره می‌شوند → تطبیق دقیق با LIKE '%,برق,%'
+            var tagToken = $"%,{f.Tag.Trim().Replace(",", "،")},%";
+            q = q.Where(w => w.Tags != null && EF.Functions.Like(w.Tags, tagToken));
+        }
         if (f.UserId is > 0)
         {
             var uid = f.UserId.Value;
@@ -388,6 +424,7 @@ public class WorkOrdersController : ControllerBase
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
             w.Priority, w.Recurrence,
             w.SourceModule, w.SourceId,
+            Tags = TagsToList(w.Tags),
             ChecklistTotal = clStats.FirstOrDefault(c => c.Key == w.Id)?.Total ?? 0,
             ChecklistDone = clStats.FirstOrDefault(c => c.Key == w.Id)?.Done ?? 0,
             AttachmentCount = attCounts.FirstOrDefault(c => c.Key == w.Id)?.C ?? 0,
@@ -669,7 +706,8 @@ public class WorkOrdersController : ControllerBase
             Recurrence = prev.Recurrence,
             RecurrenceParentId = prev.Id,
             SourceModule = prev.SourceModule,
-            SourceId = prev.SourceId
+            SourceId = prev.SourceId,
+            Tags = prev.Tags
         };
         _db.WorkOrders.Add(next);
         await _db.SaveChangesAsync();
@@ -900,6 +938,30 @@ public class WorkOrdersController : ControllerBase
         });
     }
 
+    // ================== برچسب/دسته‌بندی ==================
+
+    /// <summary>
+    /// برچسب‌های پرکاربرد کاربر جاری (از دستورهای خودش یا محول به خودش) —
+    /// برای پیشنهاد در فرم و چیپ‌های فیلتر. مرتب بر اساس بیشترین استفاده.
+    /// </summary>
+    [HttpGet("my-tags")]
+    public async Task<IActionResult> MyTags()
+    {
+        var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
+        var tagStrings = await _db.WorkOrders.AsNoTracking()
+            .Where(w => w.Tags != null && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id)))
+            .Select(w => w.Tags!)
+            .ToListAsync();
+
+        var top = tagStrings.SelectMany(t => TagsToList(t))
+            .GroupBy(t => t)
+            .OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
+            .Take(30)
+            .Select(g => g.Key)
+            .ToList();
+        return Ok(top);
+    }
+
     // ================== رشتهٔ گفتگو (کامنت) داخل دستور ==================
 
     /// <summary>لیست کامنت‌های یک دستور — قدیمی به جدید. کامنت‌های حذف‌شده با متن خالی می‌آیند تا رشتهٔ پاسخ‌ها نشکند.</summary>
@@ -1049,6 +1111,7 @@ public class WorkOrdersController : ControllerBase
                 // عرض‌ها بر حسب point در PDF (مثل DocArchiveExportService) — صفر یعنی نسبی
                 new("شماره", Services.Export.ExportValueKind.Text, 70),
                 new("عنوان") { Wrap = true },
+                new("برچسب‌ها", Services.Export.ExportValueKind.Text, 70) { Wrap = true },
                 new("اولویت", Services.Export.ExportValueKind.Text, 45),
                 new("تکرار", Services.Export.ExportValueKind.Text, 48),
                 new("دستوردهنده", Services.Export.ExportValueKind.Text, 80),
@@ -1062,6 +1125,7 @@ public class WorkOrdersController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(filter.Q)) spec.Meta.Add(new("جستجو", filter.Q));
         if (filter.Priority is >= 0) spec.Meta.Add(new("اولویت", WorkOrderPriority.ToFa(filter.Priority.Value)));
+        if (!string.IsNullOrWhiteSpace(filter.Tag)) spec.Meta.Add(new("برچسب", filter.Tag));
 
         var now = DateTime.Now;
         foreach (var w in orders)
@@ -1079,6 +1143,7 @@ public class WorkOrdersController : ControllerBase
 
             var row = new Services.Export.ExportRow(
                 w.Number, w.Title,
+                string.Join("، ", TagsToList(w.Tags)),
                 WorkOrderPriority.ToFa(w.Priority),
                 WorkOrderRecurrence.ToFa(w.Recurrence),
                 w.OwnerName, w.DueAt,

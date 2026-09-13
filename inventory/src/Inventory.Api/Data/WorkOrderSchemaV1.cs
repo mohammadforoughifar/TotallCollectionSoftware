@@ -83,6 +83,11 @@ BEGIN
     );
     CREATE INDEX [IX_WorkOrderComments_OrderId] ON [dbo].[WorkOrderComments] ([OrderId]);
 END");
+
+        // ---------- موج ۴: برچسب/دسته‌بندی ----------
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'Tags') IS NULL
+    ALTER TABLE dbo.WorkOrders ADD Tags nvarchar(300) NULL;");
     }
 
     // ==================== SQLite ====================
@@ -167,6 +172,19 @@ CREATE TABLE IF NOT EXISTS WorkOrderComments (
 );");
         await SafeAsync(db, @"
 CREATE INDEX IF NOT EXISTS IX_WorkOrderComments_OrderId ON WorkOrderComments (OrderId);");
+
+        // ---------- موج ۴: برچسب/دسته‌بندی ----------
+        var hasTags = false;
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('WorkOrders') WHERE name='Tags'";
+            hasTags = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+        }
+        catch { }
+        if (!hasTags) await SafeAsync(db, "ALTER TABLE WorkOrders ADD COLUMN Tags TEXT NULL;");
     }
 
     /// <summary>اجرای امن — خطای «شیء تکراری/موجود» راه‌اندازی برنامه را متوقف نکند.</summary>

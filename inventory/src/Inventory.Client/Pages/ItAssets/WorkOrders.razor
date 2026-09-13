@@ -68,7 +68,19 @@
                         @onclick="() => SetPriorityFilter(v2)">@fa</button>
             }
         </div>
-        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0)
+        @if (AllTabTags.Any())
+        {
+            <div class="d-flex gap-1 flex-wrap align-items-center">
+                <i class="bi bi-tags text-muted fs-8"></i>
+                @foreach (var t in AllTabTags.Take(10))
+                {
+                    var t2 = t;
+                    <button type="button" class="wo-tag-suggest @(fltTag == t2 ? "active" : "")"
+                            @onclick="() => SetTagFilter(fltTag == t2 ? null : t2)">@t2</button>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null)
         {
             <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
         }
@@ -332,6 +344,11 @@ else
                                     @if (w.CommentCount > 0)
                                     {
                                         <span class="badge bg-light text-dark border fs-9 num" title="کامنت‌ها">💬 @w.CommentCount</span>
+                                    }
+                                    @foreach (var t in w.Tags)
+                                    {
+                                        var t2 = t;
+                                        <span class="wo-tag wo-tag-sm" title="فیلتر با این برچسب" @onclick="() => SetTagFilter(t2)" @onclick:stopPropagation="true">@t2</span>
                                     }
                                 </td>
                                 <td>@w.OwnerName</td>
@@ -633,6 +650,42 @@ else
                             </div>
                         </div>
                         <div class="col-12">
+                            <label class="form-label"><i class="bi bi-tags"></i> برچسب‌ها (اختیاری)
+                                <span class="fs-9 text-muted">— حداکثر ۵ برچسب برای دسته‌بندی و فیلتر</span></label>
+                            <div class="d-flex gap-2 mb-2">
+                                <input class="form-control form-control-sm" placeholder="برچسب را بنویسید و Enter بزنید... (مثلاً: برق، کارگاه، فوری‌ها)"
+                                       maxlength="30" @bind="newTagText" @bind:event="oninput" @onkeydown="OnTagKeyDown" />
+                                <button type="button" class="btn btn-sm btn-outline-primary text-nowrap"
+                                        disabled="@(newTags.Count >= 5)" @onclick="AddTag">
+                                    <i class="bi bi-plus-lg"></i> افزودن
+                                </button>
+                            </div>
+                            @if (newTags.Count > 0)
+                            {
+                                <div class="d-flex gap-1 flex-wrap mb-1">
+                                    @for (var ti = 0; ti < newTags.Count; ti++)
+                                    {
+                                        var tidx = ti;
+                                        <span class="wo-tag">
+                                            <i class="bi bi-tag-fill"></i> @newTags[tidx]
+                                            <button type="button" class="wo-tag-x" title="حذف" @onclick="() => newTags.RemoveAt(tidx)"><i class="bi bi-x"></i></button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            @if (myTags.Count > 0)
+                            {
+                                <div class="d-flex gap-1 flex-wrap align-items-center">
+                                    <span class="fs-9 text-muted">پیشنهاد:</span>
+                                    @foreach (var t in myTags.Where(t => !newTags.Contains(t)).Take(8))
+                                    {
+                                        var t2 = t;
+                                        <button type="button" class="wo-tag-suggest" @onclick="() => AddSuggestedTag(t2)">@t2</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="col-12">
                             <label class="form-label"><i class="bi bi-check2-square"></i> چک‌لیست زیرکار (اختیاری)</label>
                             <div class="d-flex gap-2 mb-2">
                                 <input class="form-control form-control-sm" placeholder="گام بعدی را بنویسید و Enter بزنید..."
@@ -696,6 +749,10 @@ else
                         @if (detail.Recurrence > 0)
                         {
                             <span class="badge bg-info-subtle text-info border">🔁 @RecurrenceFa(detail.Recurrence)</span>
+                        }
+                        @foreach (var t in detail.Tags)
+                        {
+                            <span class="wo-tag wo-tag-sm"><i class="bi bi-tag-fill"></i> @t</span>
                         }
                         @ToneBadge(detail, tone)
                         @if (detail.ExtensionCount > 0)
@@ -1289,6 +1346,26 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* ---------- برچسب/دسته‌بندی ---------- */
+    .wo-tag {
+        display: inline-flex; align-items: center; gap: .25rem;
+        background: #f3e8ff; color: #7c3aed; border: 1px solid #e9d5ff;
+        border-radius: 2rem; padding: .1rem .55rem; font-size: .75rem;
+    }
+    .wo-tag-sm { font-size: .68rem; padding: .05rem .45rem; cursor: pointer; }
+    .wo-tag-sm:hover { background: #e9d5ff; }
+    .wo-tag-x {
+        border: 0; background: none; padding: 0; margin-inline-start: .1rem;
+        color: #a855f7; cursor: pointer; line-height: 1;
+    }
+    .wo-tag-x:hover { color: #dc2626; }
+    .wo-tag-suggest {
+        border: 1px dashed #c4b5fd; background: none; color: #7c3aed;
+        border-radius: 2rem; padding: .05rem .5rem; font-size: .72rem; cursor: pointer;
+    }
+    .wo-tag-suggest:hover { background: #f3e8ff; }
+    .wo-tag-suggest.active { background: #7c3aed; color: #fff; border-style: solid; }
+
     /* ---------- رشتهٔ گفتگو (کامنت‌ها) ---------- */
     .wo-cm { display: flex; gap: .5rem; align-items: flex-start; margin-bottom: .6rem; }
     .wo-cm-bubble {
@@ -1542,6 +1619,7 @@ else
                                 || w.OwnerName.Contains(t, StringComparison.OrdinalIgnoreCase));
             }
             if (fltPriority >= 0) it = it.Where(w => w.Priority == fltPriority);
+            if (fltTag != null) it = it.Where(w => w.Tags.Contains(fltTag));
             return it.ToList();
         }
     }
@@ -1551,6 +1629,34 @@ else
     private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; }
     private void ClearSearch() { fltQ = ""; page = 1; }
     private void SetPriorityFilter(int p) { fltPriority = p; page = 1; }
+
+    // ---- برچسب/دسته‌بندی ----
+    private List<string> newTags = new();   // فرم ایجاد/ویرایش
+    private string newTagText = "";
+    private List<string> myTags = new();    // پیشنهادهای پرکاربرد
+    private string? fltTag;                 // فیلتر برچسب فعال
+
+    /// <summary>برچسب‌های موجود در تب جاری — برای چیپ‌های فیلتر.</summary>
+    private List<string> AllTabTags => TabItems.SelectMany(w => w.Tags)
+        .GroupBy(t => t).OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
+        .Select(g => g.Key).ToList();
+
+    private void AddTag()
+    {
+        var t = newTagText.Trim().Replace(",", "،");
+        if (t.Length == 0 || newTags.Count >= 5 || newTags.Contains(t)) { newTagText = ""; return; }
+        newTags.Add(t.Length > 30 ? t[..30] : t);
+        newTagText = "";
+    }
+    private void AddSuggestedTag(string t) { if (newTags.Count < 5 && !newTags.Contains(t)) newTags.Add(t); }
+    private void OnTagKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddTag(); }
+    private void SetTagFilter(string? t) { fltTag = t; page = 1; }
+
+    private async Task LoadMyTags()
+    {
+        try { myTags = await Http.GetFromJsonAsync<List<string>>("/api/workorders/my-tags") ?? new(); }
+        catch { myTags = new(); }
+    }
 
     // ---- خروجی Excel / PDF ----
     private bool exporting;
@@ -1564,6 +1670,7 @@ else
             var url = $"/api/workorders/export?tab={tab}&format={format}";
             if (!string.IsNullOrWhiteSpace(fltQ)) url += $"&q={Uri.EscapeDataString(fltQ.Trim())}";
             if (fltPriority >= 0) url += $"&priority={fltPriority}";
+            if (fltTag != null) url += $"&tag={Uri.EscapeDataString(fltTag)}";
 
             var resp = await Http.GetAsync(url);
             if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در تهیه خروجی"); return; }
@@ -1800,7 +1907,7 @@ else
 
     private void SwitchTab(string t)
     {
-        tab = t; page = 1;
+        tab = t; page = 1; fltTag = null; // برچسب‌های هر تب متفاوت‌اند
         if (t == "calendar") _ = LoadCal();
         if (t == "stats") _ = LoadStats();
     }
@@ -2033,10 +2140,12 @@ else
         var detailId = detail.Id;
         var ids = detail.Assignees.Select(a => a.UserId).ToHashSet();
         var extra = detail.Assignees.Select(a => new TargetOpt { Id = a.UserId, Username = a.Name }).ToList();
+        var tags = detail.Tags.ToList();
         detail = null;
         await ShowNewFormAsync(title, desc);
         newPriority = pr;
         newRecurrence = rec;
+        newTags = tags;
         // چک‌لیست موجود را برای ویرایش بیاور (متن‌ها؛ تیک‌خورده‌ها سمت سرور حفظ می‌شوند)
         try
         {
@@ -2127,6 +2236,8 @@ else
     {
         formError = ""; newTitle = title; selTargets = new(); tDropOpen = false; tSearch = "";
         newPriority = 1; newRecurrence = 0; newChecklist = new(); newClText = "";
+        newTags = new(); newTagText = "";
+        _ = LoadMyTags().ContinueWith(_ => InvokeAsync(StateHasChanged));
         newDueDate = DateTime.Today.AddDays(1); newDueTime = new(14, 0);
         newFiles.Clear();
         try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); } catch { }
@@ -2174,6 +2285,7 @@ else
                 priority = newPriority,
                 recurrence = newRecurrence,
                 checklistItems = newChecklist,
+                tags = newTags,
                 sourceModule = _sourceModule, sourceId = _sourceId
             };
             var resp = editingId > 0
@@ -2402,6 +2514,7 @@ else
         public int Recurrence { get; set; }
         public int ChecklistTotal { get; set; } public int ChecklistDone { get; set; }
         public int CommentCount { get; set; }
+        public List<string> Tags { get; set; } = new();
         public string? SourceModule { get; set; } public int? SourceId { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
     }
