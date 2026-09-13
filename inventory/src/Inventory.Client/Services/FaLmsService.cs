@@ -58,6 +58,16 @@ public interface IFaLmsService
     Task<FaLmsCertificateDto> IssueAsync(int courseId, int employeeId);
     Task<int> IssueMissingAsync(int courseId);
     Task<FaLmsVerifyResultDto> VerifyAsync(string no, string code);
+    Task<(byte[] Data, string FileName, string ContentType)> GetCertificatePdfAsync(int id);
+    Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive = null);
+    Task<FaLmsInstructorDto> SaveInstructorAsync(int? id, FaLmsInstructorSaveDto dto);
+    Task DeleteInstructorAsync(int id);
+    Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId = null);
+    Task<FaLmsSurveyQuestionDto> SaveSurveyQuestionAsync(int courseId, string text);
+    Task DeleteSurveyQuestionAsync(int qid);
+    Task SaveSurveyAnswerAsync(int questionId, int employeeId, int score);
+    Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId);
+    Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId = null);
     Task DeleteCertificateAsync(int id);
 
     Task<List<FaLmsBudgetDto>> ListBudgetsAsync();
@@ -252,6 +262,38 @@ public class FaLmsService : IFaLmsService
 
     public Task DeleteCertificateAsync(int id)
         => _api.DeleteAsync($"{Root}/certificates/{id}");
+
+    public Task<(byte[] Data, string FileName, string ContentType)> GetCertificatePdfAsync(int id)
+        => _api.GetFileAsync($"{Root}/certificates/{id}/pdf");
+
+    public Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive = null)
+        => _api.GetAsync<List<FaLmsInstructorDto>>($"{Root}/instructors?onlyActive={onlyActive}");
+
+    public Task<FaLmsInstructorDto> SaveInstructorAsync(int? id, FaLmsInstructorSaveDto dto)
+        => _api.PostAsync<FaLmsInstructorDto>($"{Root}/instructors?id={id}", dto);
+
+    public Task DeleteInstructorAsync(int id)
+        => _api.DeleteAsync($"{Root}/instructors/{id}");
+
+    public Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId = null)
+        => _api.GetAsync<List<FaLmsSurveyQuestionDto>>($"{Root}/courses/{courseId}/survey?employeeId={employeeId}");
+
+    public Task<FaLmsSurveyQuestionDto> SaveSurveyQuestionAsync(int courseId, string text)
+        => _api.PostAsync<FaLmsSurveyQuestionDto>($"{Root}/courses/{courseId}/survey",
+            new FaLmsSurveyQuestionSaveDto { CourseId = courseId, Text = text });
+
+    public Task DeleteSurveyQuestionAsync(int qid)
+        => _api.DeleteAsync($"{Root}/survey/{qid}");
+
+    public Task SaveSurveyAnswerAsync(int questionId, int employeeId, int score)
+        => _api.PostAsync<object>($"{Root}/survey/answer",
+            new FaLmsSurveyAnswerSaveDto { QuestionId = questionId, EmployeeId = employeeId, Score = score });
+
+    public Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId)
+        => _api.GetAsync<FaLmsSurveyResultDto>($"{Root}/courses/{courseId}/survey-results");
+
+    public Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId = null)
+        => _api.GetAsync<List<FaLmsConflictDto>>($"{Root}/courses/{courseId}/conflicts?employeeId={employeeId}");
 
     public Task<List<FaLmsBudgetDto>> ListBudgetsAsync()
         => _api.GetAsync<List<FaLmsBudgetDto>>($"{Root}/budgets");

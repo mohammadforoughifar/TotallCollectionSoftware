@@ -3,6 +3,11 @@ using Inventory.Api.Services.FaCom;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using Inventory.Shared;
+using Inventory.Api.Services.Pdf;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace Inventory.Api.Services.FaLms;
 
@@ -68,6 +73,19 @@ public interface IFaLmsService
     Task<FaLmsCertificateDto> IssueCertificateAsync(int courseId, int employeeId, int byUserId, string byName);
     Task<int> IssueMissingAsync(int courseId, int byUserId, string byName);
     Task<FaLmsVerifyResultDto> VerifyAsync(string certNo, string code);
+    Task<byte[]> CertificatePdfAsync(int id);
+    // مدرس‌ها
+    Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive);
+    Task<FaLmsInstructorDto> SaveInstructorAsync(int? id, FaLmsInstructorSaveDto dto);
+    Task DeleteInstructorAsync(int id);
+    // نظرسنجی اثربخشی
+    Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId);
+    Task<FaLmsSurveyQuestionDto> SaveSurveyQuestionAsync(FaLmsSurveyQuestionSaveDto dto);
+    Task DeleteSurveyQuestionAsync(int id);
+    Task SaveSurveyAnswerAsync(FaLmsSurveyAnswerSaveDto dto);
+    Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId);
+    // تداخل‌یابی
+    Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId);
     Task DeleteCertificateAsync(int id);
     // بودجه
     Task<List<FaLmsBudgetDto>> ListBudgetsAsync();
@@ -167,7 +185,7 @@ public class FaLmsService : IFaLmsService
         c.Code = code; c.Title = dto.Title.Trim();
         c.Kind = (FaLmsCourseKind)dto.Kind; c.Description = dto.Description;
         c.DurationHours = dto.DurationHours; c.CostPerPerson = dto.CostPerPerson;
-        c.MaxSeats = dto.MaxSeats; c.TrainerName = dto.TrainerName; c.Location = dto.Location;
+        c.MaxSeats = dto.MaxSeats; c.TrainerName = dto.TrainerName; c.InstructorId = dto.InstructorId; c.Location = dto.Location;
         c.StartDate = dto.StartDate; c.EndDate = dto.EndDate;
         c.Status = (FaLmsCourseStatus)dto.Status; c.HasExam = dto.HasExam;
         c.PassScore = dto.PassScore; c.IsActive = dto.IsActive;
@@ -272,7 +290,7 @@ public class FaLmsService : IFaLmsService
     {
         Id = c.Id, Code = c.Code, Title = c.Title, Kind = (int)c.Kind, Description = c.Description,
         DurationHours = c.DurationHours, CostPerPerson = c.CostPerPerson, MaxSeats = c.MaxSeats,
-        TrainerName = c.TrainerName, Location = c.Location, StartDate = c.StartDate, EndDate = c.EndDate,
+        TrainerName = c.TrainerName, InstructorId = c.InstructorId, Location = c.Location, StartDate = c.StartDate, EndDate = c.EndDate,
         Status = (int)c.Status, HasExam = c.HasExam, PassScore = c.PassScore, IsActive = c.IsActive,
         EnrolledCount = enrolled, SessionsCount = sessions
     };
@@ -579,7 +597,7 @@ public class FaLmsService : IFaLmsService
         return list.Select(s => new FaLmsSessionDto
         {
             Id = s.Id, CourseId = s.CourseId, SessionDate = s.SessionDate,
-            StartTime = s.StartTime, EndTime = s.EndTime, Topic = s.Topic,
+            StartTime = s.StartTime, EndTime = s.EndTime, Topic = s.Topic, Location = s.Location,
             PresentCount = counts.TryGetValue(s.Id, out var n) ? n : 0
         }).ToList();
     }
@@ -600,13 +618,13 @@ public class FaLmsService : IFaLmsService
                 ?? throw new InvalidOperationException("جلسه یافت نشد.");
         }
         s.CourseId = dto.CourseId; s.SessionDate = dto.SessionDate.Date;
-        s.StartTime = dto.StartTime; s.EndTime = dto.EndTime; s.Topic = dto.Topic;
+        s.StartTime = dto.StartTime; s.EndTime = dto.EndTime; s.Topic = dto.Topic; s.Location = dto.Location?.Trim();
         await _db.SaveChangesAsync();
         var present = await _db.FaLmsAttendances.CountAsync(a => a.SessionId == s.Id && a.Present);
         return new FaLmsSessionDto
         {
             Id = s.Id, CourseId = s.CourseId, SessionDate = s.SessionDate,
-            StartTime = s.StartTime, EndTime = s.EndTime, Topic = s.Topic, PresentCount = present
+            StartTime = s.StartTime, EndTime = s.EndTime, Topic = s.Topic, Location = s.Location, PresentCount = present
         };
     }
 
@@ -1362,5 +1380,265 @@ public class FaLmsService : IFaLmsService
         var me = await MyEmployeeAsync(userId);
         if (me == null) return null;
         return await EmployeeReportAsync(me.Id);
+    }
+
+    // ==================== چاپ رسمی گواهی ====================
+
+    public async Task<byte[]> CertificatePdfAsync(int id)
+    {
+        var x = await _db.FaLmsCertificates.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id)
+            ?? throw new InvalidOperationException("گواهی یافت نشد.");
+        var course = await _db.FaLmsCourses.AsNoTracking().FirstOrDefaultAsync(c => c.Id == x.CourseId);
+        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == x.EmployeeId);
+        var co = await _db.HrMainCompanies.AsNoTracking().FirstOrDefaultAsync();
+        HrPdf.EnsureFonts();
+        var empName = emp == null ? "—" : (emp.FirstName + " " + emp.LastName).Trim();
+        var doc = Document.Create(c =>
+        {
+            c.Page(pg =>
+            {
+                pg.Size(PageSizes.A4.Landscape());
+                pg.Margin(30);
+                pg.ContentFromRightToLeft();
+                pg.DefaultTextStyle(x => x.FontFamily(HrPdf.Font).FontSize(11));
+                pg.Content().Column(col =>
+                {
+                    col.Item().Border(3).BorderColor(QuestPDF.Helpers.Colors.Blue.Darken2).Padding(18).Column(inner =>
+                    {
+                        inner.Item().Border(1).BorderColor(QuestPDF.Helpers.Colors.Grey.Lighten1).Padding(16).Column(box =>
+                        {
+                            box.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(16).AlignCenter();
+                            box.Item().PaddingTop(2).Text("گواهی پایان دوره آموزشی").FontFamily(HrPdf.FontBold).FontSize(24).AlignCenter();
+                            box.Item().PaddingTop(10).Text("گواهی می‌شود").FontSize(12).AlignCenter();
+                            box.Item().PaddingTop(4).Text(empName).FontFamily(HrPdf.FontBold).FontSize(20).AlignCenter();
+                            box.Item().PaddingTop(4).Text($"دوره «{course?.Title ?? "—"}» را به مدت {Fa.Digits((course?.DurationHours ?? 0).ToString("0.#"))} ساعت با موفقیت گذرانده است.").FontSize(12).AlignCenter();
+                            if (x.Score != null)
+                                box.Item().PaddingTop(4).Text($"نمره نهایی: {Fa.Digits(x.Score.Value.ToString("0.#"))} از ۱۰۰").FontSize(12).AlignCenter();
+                            box.Item().PaddingTop(10).Row(r =>
+                            {
+                                r.RelativeItem().Text($"شماره گواهی: {Fa.Digits(x.CertNo)}").FontSize(10);
+                                r.RelativeItem().AlignCenter().Text($"تاریخ صدور: {PersianDate.ToShortFa(x.IssueDate)}").FontSize(10);
+                                r.RelativeItem().AlignLeft().Text($"کد رهگیری: {x.VerifyCode ?? "—"}").FontSize(10);
+                            });
+                            box.Item().PaddingTop(24).Row(r =>
+                            {
+                                r.RelativeItem().Column(s =>
+                                {
+                                    s.Item().Text("مدیر آموزش").FontSize(10).AlignCenter();
+                                    s.Item().PaddingTop(24).Text("امضا و مهر").FontSize(9).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                                });
+                                r.RelativeItem().Column(s =>
+                                {
+                                    s.Item().Text("مدیر منابع انسانی").FontSize(10).AlignCenter();
+                                    s.Item().PaddingTop(24).Text("امضا و مهر").FontSize(9).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+        return doc.GeneratePdf();
+    }
+
+    // ==================== مدرس‌ها ====================
+
+    public async Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive)
+    {
+        var q = _db.FaLmsInstructors.AsNoTracking().AsQueryable();
+        if (onlyActive == true) q = q.Where(x => x.IsActive);
+        var rows = await q.OrderBy(x => x.Name).Take(500).ToListAsync();
+        var ids = rows.Select(x => x.Id).ToList();
+        var courses = ids.Count == 0 ? new List<FaLmsCourse>()
+            : await _db.FaLmsCourses.AsNoTracking().Where(c => c.InstructorId != null && ids.Contains(c.InstructorId.Value)).ToListAsync();
+        return rows.Select(x =>
+        {
+            var mine = courses.Where(c => c.InstructorId == x.Id).ToList();
+            return new FaLmsInstructorDto
+            {
+                Id = x.Id, Name = x.Name, Type = (int)x.Type, Field = x.Field, Phone = x.Phone,
+                FeePerHour = x.FeePerHour, EmployeeId = x.EmployeeId, IsActive = x.IsActive,
+                CourseCount = mine.Count,
+                TotalFee = Math.Round(mine.Sum(c => c.DurationHours) * x.FeePerHour)
+            };
+        }).ToList();
+    }
+
+    private async Task<FaLmsInstructorDto> GetInstructorAsync(int id)
+        => (await ListInstructorsAsync(null)).FirstOrDefault(x => x.Id == id)
+            ?? throw new InvalidOperationException("مدرس یافت نشد.");
+
+    public async Task<FaLmsInstructorDto> SaveInstructorAsync(int? id, FaLmsInstructorSaveDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name)) throw new InvalidOperationException("نام مدرس خالی است.");
+        FaLmsInstructor x;
+        if (id is > 0)
+        {
+            x = await _db.FaLmsInstructors.FirstOrDefaultAsync(i => i.Id == id.Value)
+                ?? throw new InvalidOperationException("مدرس یافت نشد.");
+        }
+        else { x = new FaLmsInstructor(); _db.FaLmsInstructors.Add(x); }
+        x.Name = dto.Name.Trim();
+        x.Type = (FaLmsInstructorType)Math.Clamp(dto.Type, 0, 1);
+        x.Field = dto.Field?.Trim();
+        x.Phone = dto.Phone?.Trim();
+        x.FeePerHour = Math.Max(0, dto.FeePerHour);
+        x.EmployeeId = dto.EmployeeId is > 0 ? dto.EmployeeId : null;
+        x.IsActive = dto.IsActive;
+        await _db.SaveChangesAsync();
+        return await GetInstructorAsync(x.Id);
+    }
+
+    public async Task DeleteInstructorAsync(int id)
+    {
+        var x = await _db.FaLmsInstructors.FirstOrDefaultAsync(i => i.Id == id)
+            ?? throw new InvalidOperationException("مدرس یافت نشد.");
+        if (await _db.FaLmsCourses.AnyAsync(c => c.InstructorId == id))
+            throw new InvalidOperationException("این مدرس به دوره‌ای متصل است و قابل حذف نیست.");
+        _db.FaLmsInstructors.Remove(x);
+        await _db.SaveChangesAsync();
+    }
+
+    // ==================== نظرسنجی اثربخشی ====================
+
+    public async Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId)
+    {
+        var qs = await _db.FaLmsSurveyQuestions.AsNoTracking()
+            .Where(q => q.CourseId == courseId).OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToListAsync();
+        if (qs.Count == 0) return new();
+        var qids = qs.Select(q => q.Id).ToList();
+        var answers = await _db.FaLmsSurveyAnswers.AsNoTracking()
+            .Where(a => qids.Contains(a.QuestionId)).ToListAsync();
+        return qs.Select(q =>
+        {
+            var mine = answers.Where(a => a.QuestionId == q.Id).ToList();
+            return new FaLmsSurveyQuestionDto
+            {
+                Id = q.Id, Text = q.Text,
+                AvgScore = mine.Count == 0 ? 0 : Math.Round(mine.Average(a => a.Score), 1),
+                AnswerCount = mine.Count,
+                MyScore = employeeId is > 0 ? mine.FirstOrDefault(a => a.EmployeeId == employeeId.Value)?.Score : null
+            };
+        }).ToList();
+    }
+
+    public async Task<FaLmsSurveyQuestionDto> SaveSurveyQuestionAsync(FaLmsSurveyQuestionSaveDto dto)
+    {
+        if (dto.CourseId <= 0) throw new InvalidOperationException("دوره مشخص نیست.");
+        if (string.IsNullOrWhiteSpace(dto.Text)) throw new InvalidOperationException("متن سؤال خالی است.");
+        var max = await _db.FaLmsSurveyQuestions.Where(q => q.CourseId == dto.CourseId)
+            .Select(q => (int?)q.SortOrder).MaxAsync() ?? -1;
+        var q = new FaLmsSurveyQuestion { CourseId = dto.CourseId, Text = dto.Text.Trim(), SortOrder = max + 1 };
+        _db.FaLmsSurveyQuestions.Add(q);
+        await _db.SaveChangesAsync();
+        return (await ListSurveyQuestionsAsync(dto.CourseId, null)).First(x => x.Id == q.Id);
+    }
+
+    public async Task DeleteSurveyQuestionAsync(int id)
+    {
+        var q = await _db.FaLmsSurveyQuestions.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("سؤال یافت نشد.");
+        _db.FaLmsSurveyAnswers.RemoveRange(_db.FaLmsSurveyAnswers.Where(a => a.QuestionId == id));
+        _db.FaLmsSurveyQuestions.Remove(q);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task SaveSurveyAnswerAsync(FaLmsSurveyAnswerSaveDto dto)
+    {
+        if (dto.EmployeeId <= 0 || dto.QuestionId <= 0) throw new InvalidOperationException("فراگیر/سؤال مشخص نیست.");
+        var score = Math.Clamp(dto.Score, 1, 5);
+        var a = await _db.FaLmsSurveyAnswers.FirstOrDefaultAsync(x =>
+            x.QuestionId == dto.QuestionId && x.EmployeeId == dto.EmployeeId);
+        if (a == null)
+        {
+            _db.FaLmsSurveyAnswers.Add(new FaLmsSurveyAnswer
+                { QuestionId = dto.QuestionId, EmployeeId = dto.EmployeeId, Score = score });
+        }
+        else a.Score = score;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId)
+    {
+        var qs = await ListSurveyQuestionsAsync(courseId, null);
+        var qids = qs.Select(q => q.Id).ToList();
+        var respondents = qids.Count == 0 ? 0 : await _db.FaLmsSurveyAnswers.AsNoTracking()
+            .Where(a => qids.Contains(a.QuestionId)).Select(a => a.EmployeeId).Distinct().CountAsync();
+        var all = qs.SelectMany(q => Enumerable.Repeat(q.AvgScore, q.AnswerCount)).ToList();
+        return new FaLmsSurveyResultDto
+        {
+            QuestionCount = qs.Count, RespondentCount = respondents,
+            OverallAvg = all.Count == 0 ? 0 : Math.Round(all.Average(), 1),
+            Questions = qs
+        };
+    }
+
+    // ==================== تداخل‌یابی آموزشی ====================
+
+    public async Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId)
+    {
+        var sessions = await _db.FaLmsSessions.AsNoTracking()
+            .Where(s => s.CourseId == courseId).OrderBy(s => s.SessionDate).Take(200).ToListAsync();
+        if (sessions.Count == 0) return new();
+        List<int> empIds;
+        if (employeeId is > 0) empIds = new List<int> { employeeId.Value };
+        else empIds = await _db.FaLmsEnrollments.AsNoTracking()
+            .Where(e => e.CourseId == courseId && e.Status == FaLmsEnrollStatus.Approved)
+            .Select(e => e.EmployeeId).Distinct().Take(500).ToListAsync();
+        if (empIds.Count == 0) return new();
+        var names = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FirstName + " " + e.LastName);
+        var minD = sessions.Min(s => s.SessionDate).Date;
+        var maxD = sessions.Max(s => s.SessionDate).Date;
+        var leaves = await _db.FaAttLeaves.AsNoTracking()
+            .Where(l => empIds.Contains(l.EmployeeId) && l.Status != FaAttRequestStatus.Rejected
+                && l.FromDate.Date <= maxD && l.ToDate.Date >= minD).Take(2000).ToListAsync();
+        var missions = await _db.FaAttMissions.AsNoTracking()
+            .Where(m => empIds.Contains(m.EmployeeId) && m.Status != FaAttRequestStatus.Rejected
+                && m.FromDate.Date <= maxD && m.ToDate.Date >= minD).Take(1000).ToListAsync();
+        var assigns = await _db.FaAttShiftAssigns.AsNoTracking()
+            .Where(a => empIds.Contains(a.EmployeeId)
+                && a.FromDate.Date <= maxD && (a.ToDate == null || a.ToDate.Value.Date >= minD))
+            .Take(2000).ToListAsync();
+        var shiftIds = assigns.Select(a => a.ShiftId).Distinct().ToList();
+        var shifts = shiftIds.Count == 0 ? new Dictionary<int, FaAttShift>()
+            : await _db.FaAttShifts.AsNoTracking().Where(s => shiftIds.Contains(s.Id))
+                .ToDictionaryAsync(s => s.Id, s => s);
+        var out_ = new List<FaLmsConflictDto>();
+        string Nm(int id) => names.TryGetValue(id, out var n) ? n : "—";
+        foreach (var s in sessions)
+        {
+            var d = s.SessionDate.Date;
+            var sStart = s.StartTime ?? TimeSpan.Zero;
+            var sEnd = s.EndTime ?? new TimeSpan(23, 59, 59);
+            foreach (var e in empIds)
+            {
+                var lv = leaves.FirstOrDefault(l => l.EmployeeId == e && l.FromDate.Date <= d && l.ToDate.Date >= d);
+                if (lv != null) out_.Add(new FaLmsConflictDto
+                {
+                    EmployeeId = e, EmployeeName = Nm(e), SessionDate = d, Topic = s.Topic,
+                    Kind = "Leave", Detail = lv.HoursPerDay != null ? "مرخصی ساعتی در همان روز" : "مرخصی روزانه"
+                });
+                var ms = missions.FirstOrDefault(m => m.EmployeeId == e && m.FromDate.Date <= d && m.ToDate.Date >= d);
+                if (ms != null) out_.Add(new FaLmsConflictDto
+                {
+                    EmployeeId = e, EmployeeName = Nm(e), SessionDate = d, Topic = s.Topic,
+                    Kind = "Mission", Detail = string.IsNullOrWhiteSpace(ms.Destination) ? "مأموریت" : $"مأموریت: {ms.Destination}"
+                });
+                var a = assigns.FirstOrDefault(x => x.EmployeeId == e
+                    && x.FromDate.Date <= d && (x.ToDate == null || x.ToDate.Value.Date >= d));
+                if (a != null && shifts.TryGetValue(a.ShiftId, out var sh))
+                {
+                    if (sh.StartTime < sEnd && sStart < sh.EndTime)
+                        out_.Add(new FaLmsConflictDto
+                        {
+                            EmployeeId = e, EmployeeName = Nm(e), SessionDate = d, Topic = s.Topic,
+                            Kind = "Shift", Detail = $"هم‌پوشانی با شیفت {sh.Name}"
+                        });
+                }
+                if (out_.Count >= 200) return out_;
+            }
+        }
+        return out_;
     }
 }

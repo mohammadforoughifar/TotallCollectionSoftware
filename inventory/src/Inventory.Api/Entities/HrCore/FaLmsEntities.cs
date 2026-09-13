@@ -42,6 +42,9 @@ public class FaLmsCourse
     [MaxLength(150)]
     public string? TrainerName { get; set; }
 
+    /// <summary>مدرس (ارجاع به پرونده مدرس؛ TrainerName نمایشی/سازگار قدیم می‌ماند)</summary>
+    public int? InstructorId { get; set; }
+
     /// <summary>محل برگزاری / لینک کلاس آنلاین</summary>
     [MaxLength(200)]
     public string? Location { get; set; }
@@ -149,6 +152,10 @@ public class FaLmsSession
 
     [MaxLength(200)]
     public string? Topic { get; set; }
+
+    /// <summary>سالن/محل برگزاری این جلسه (اگر خالی: محل دوره)</summary>
+    [MaxLength(150)]
+    public string? Location { get; set; }
 }
 
 /// <summary>حضور یک نفر در یک جلسه</summary>
@@ -342,4 +349,63 @@ public class FaLmsTextAnswer
     public string? AnswerText { get; set; }
 
     public double? ManualScore { get; set; }
+}
+
+/// <summary>نوع مدرس: داخلی | خارجی</summary>
+public enum FaLmsInstructorType { Internal = 0, External = 1 }
+
+/// <summary>پرونده مدرس (داخلی/خارجی + نرخ حق‌التدریس ساعتی)</summary>
+public class FaLmsInstructor
+{
+    public int Id { get; set; }
+
+    [MaxLength(150)]
+    public string Name { get; set; } = "";
+
+    public FaLmsInstructorType Type { get; set; } = FaLmsInstructorType.Internal;
+
+    /// <summary>حوزه تخصص</summary>
+    [MaxLength(150)]
+    public string? Field { get; set; }
+
+    [MaxLength(30)]
+    public string? Phone { get; set; }
+
+    /// <summary>نرخ حق‌التدریس ساعتی (ریال)</summary>
+    public double FeePerHour { get; set; }
+
+    /// <summary>پیوند به پرسنل (فقط مدرس داخلی)</summary>
+    public int? EmployeeId { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>سؤال نظرسنجی اثربخشی یک دوره (نمره ۱ تا ۵)</summary>
+public class FaLmsSurveyQuestion
+{
+    public int Id { get; set; }
+
+    public int CourseId { get; set; }
+
+    [MaxLength(300)]
+    public string Text { get; set; } = "";
+
+    public int SortOrder { get; set; }
+}
+
+/// <summary>پاسخ یک فراگیر به نظرسنجی دوره</summary>
+public class FaLmsSurveyAnswer
+{
+    public int Id { get; set; }
+
+    public int QuestionId { get; set; }
+
+    public int EmployeeId { get; set; }
+
+    /// <summary>نمره ۱ تا ۵</summary>
+    public int Score { get; set; } = 5;
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

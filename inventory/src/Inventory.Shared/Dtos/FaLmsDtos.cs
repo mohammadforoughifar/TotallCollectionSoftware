@@ -13,6 +13,7 @@ public class FaLmsCourseDto
     public double CostPerPerson { get; set; }
     public int? MaxSeats { get; set; }
     public string? TrainerName { get; set; }
+    public int? InstructorId { get; set; }
     public string? Location { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
@@ -34,6 +35,7 @@ public class FaLmsCourseSaveDto
     public double CostPerPerson { get; set; }
     public int? MaxSeats { get; set; }
     public string? TrainerName { get; set; }
+    public int? InstructorId { get; set; }
     public string? Location { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
@@ -104,6 +106,7 @@ public class FaLmsSessionDto
     public TimeSpan? StartTime { get; set; }
     public TimeSpan? EndTime { get; set; }
     public string? Topic { get; set; }
+    public string? Location { get; set; }
     public int PresentCount { get; set; }
 }
 
@@ -114,6 +117,7 @@ public class FaLmsSessionSaveDto
     public TimeSpan? StartTime { get; set; }
     public TimeSpan? EndTime { get; set; }
     public string? Topic { get; set; }
+    public string? Location { get; set; }
 }
 
 public class FaLmsAttendanceDto
@@ -500,4 +504,75 @@ public class FaLmsTextAnswerDto
 public class FaLmsCopyResultDto
 {
     public int Count { get; set; }
+}
+
+// ==================== مدرس‌ها / نظرسنجی / تداخل (§۴ آموزش) ====================
+
+public class FaLmsInstructorDto
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    /// <summary>0=داخلی، 1=خارجی</summary>
+    public int Type { get; set; }
+    public string? Field { get; set; }
+    public string? Phone { get; set; }
+    public double FeePerHour { get; set; }
+    public int? EmployeeId { get; set; }
+    public bool IsActive { get; set; }
+    public int CourseCount { get; set; }
+    /// <summary>جمع حق‌التدریس دوره‌ها (ساعت × نرخ)</summary>
+    public double TotalFee { get; set; }
+}
+
+public class FaLmsInstructorSaveDto
+{
+    public string Name { get; set; } = "";
+    public int Type { get; set; }
+    public string? Field { get; set; }
+    public string? Phone { get; set; }
+    public double FeePerHour { get; set; }
+    public int? EmployeeId { get; set; }
+    public bool IsActive { get; set; } = true;
+}
+
+public class FaLmsSurveyQuestionDto
+{
+    public int Id { get; set; }
+    public string Text { get; set; } = "";
+    public double AvgScore { get; set; }
+    public int AnswerCount { get; set; }
+    public int? MyScore { get; set; }
+}
+
+public class FaLmsSurveyQuestionSaveDto
+{
+    public int CourseId { get; set; }
+    public string Text { get; set; } = "";
+}
+
+public class FaLmsSurveyAnswerSaveDto
+{
+    public int QuestionId { get; set; }
+    public int EmployeeId { get; set; }
+    public int Score { get; set; }
+}
+
+public class FaLmsSurveyResultDto
+{
+    public int QuestionCount { get; set; }
+    public int RespondentCount { get; set; }
+    /// <summary>میانگین کلی اثربخشی از ۵</summary>
+    public double OverallAvg { get; set; }
+    public List<FaLmsSurveyQuestionDto> Questions { get; set; } = new();
+}
+
+public class FaLmsConflictDto
+{
+    public int EmployeeId { get; set; }
+    public string EmployeeName { get; set; } = "";
+    public DateTime SessionDate { get; set; }
+    public string? Topic { get; set; }
+    /// <summary>Leave | Mission | Shift</summary>
+    public string Kind { get; set; } = "";
+    public string Detail { get; set; } = "";
 }
