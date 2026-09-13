@@ -156,6 +156,7 @@ public class AppDbContext : DbContext
     public DbSet<HrContractVersion> HrContractVersions => Set<HrContractVersion>();
     public DbSet<HrContractExpiryAlert> HrContractExpiryAlerts => Set<HrContractExpiryAlert>();
     public DbSet<HrDecree> HrDecrees => Set<HrDecree>();
+    public DbSet<HrReportTemplate> HrReportTemplates => Set<HrReportTemplate>();
     public DbSet<HrJobPosting> HrJobPostings => Set<HrJobPosting>();
     public DbSet<HrApplicant> HrApplicants => Set<HrApplicant>();
     public DbSet<HrInterview> HrInterviews => Set<HrInterview>();
