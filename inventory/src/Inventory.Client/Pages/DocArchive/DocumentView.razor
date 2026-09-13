@@ -1676,14 +1676,3 @@ else
         builder.CloseElement();
     };
 }
-.InReview => ("bg-warning text-dark", "در گردش"),
-            DocVersionStatusDto.Approved => ("bg-success", "تایید شده"),
-            DocVersionStatusDto.Rejected => ("bg-danger", "رد شده"),
-            _ => ("bg-dark", "بایگانی")
-        };
-        builder.OpenElement(0, "span");
-        builder.AddAttribute(1, "class", "badge ms-1 " + cls);
-        builder.AddContent(2, txt);
-        builder.CloseElement();
-    };
-}

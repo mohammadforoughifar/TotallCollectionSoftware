@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Hubs;
 using Inventory.Api.Services.FaCom;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;

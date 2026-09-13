@@ -679,7 +679,7 @@ public class HrCoreController : RbacControllerBase
     }
 
     [HttpDelete("reports/templates/{id:int}")]
-    public async Task<IActionResult> DeleteTemplate(int id)
+    public async Task<IActionResult> DeleteReportTemplate(int id)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         await _reports.DeleteTemplateAsync(MyUserId, id);
