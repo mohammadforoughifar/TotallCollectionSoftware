@@ -85,6 +85,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, In
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
 builder.Services.AddScoped<Inventory.Api.Services.HrCore.IHrCoreService, Inventory.Api.Services.HrCore.HrCoreService>(); // HrCore
+builder.Services.AddScoped<Inventory.Api.Services.HrTalent.IHrTalentService, Inventory.Api.Services.HrTalent.HrTalentService>(); // HrTalent
 builder.Services.AddScoped<Inventory.Api.Services.HrCore.IHrRecruitmentService, Inventory.Api.Services.HrCore.HrRecruitmentService>(); // HrCore-Recruitment
 builder.Services.AddScoped<Inventory.Api.Services.HrMain.IHrMainService, Inventory.Api.Services.HrMain.HrMainService>(); // HrMain — منابع انسانی اصلی
 builder.Services.AddScoped<Inventory.Api.Services.FaAtt.IFaAttService, Inventory.Api.Services.FaAtt.FaAttService>(); // FaAtt — حضور و غیاب فروغ آریا
