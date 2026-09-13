@@ -146,4 +146,12 @@ public static class HrCoreUi
         "HrCore" => "کارگزینی", "HrTalent" => "استعداد و ارزیابی", "FaAtt" => "حضور و مرخصی",
         "FaPay" => "حقوق و دستمزد", "FaLms" => "آموزش", "FaCom" => "ارتباطات", _ => m
     };
+
+    public static string MonthName(int m) => m switch
+    {
+        1 => "فروردین", 2 => "اردیبهشت", 3 => "خرداد", 4 => "تیر", 5 => "مرداد", 6 => "شهریور",
+        7 => "مهر", 8 => "آبان", 9 => "آذر", 10 => "دی", 11 => "بهمن", 12 => "اسفند", _ => "—"
+    };
+
+    public static string Money(double? v) => v == null ? "—" : Inventory.Shared.Fa.Digits(v.Value.ToString("#,0"));
 }

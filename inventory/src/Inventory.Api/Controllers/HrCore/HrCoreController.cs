@@ -637,4 +637,11 @@ public class HrCoreController : RbacControllerBase
         var r = await _svc.GetHrAuditAsync(id);
         return r == null ? NotFound() : Ok(r);
     }
+
+    [HttpGet("insights")]
+    public async Task<IActionResult> Insights([FromQuery] int year = 0)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _svc.GetManagerDashboardAsync(year));
+    }
 }
