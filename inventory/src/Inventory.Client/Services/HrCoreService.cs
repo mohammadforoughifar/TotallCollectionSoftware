@@ -25,6 +25,7 @@ public interface IHrCoreService
     Task<(byte[] Data, string FileName, string ContentType)> ExportEmployeesExcelAsync(string? q);
     Task<(byte[] Data, string FileName, string ContentType)> ExportContractsExcelAsync();
     Task<(byte[] Data, string FileName, string ContentType)> ExportDecreesExcelAsync();
+    Task<(byte[] Data, string FileName, string ContentType)> ExportOrgExcelAsync();
     Task DeleteContractAsync(int id);
 
     Task<List<HrContractTemplateDto>> GetTemplatesAsync();
@@ -181,6 +182,9 @@ public class HrCoreService : IHrCoreService
 
     public Task<(byte[] Data, string FileName, string ContentType)> ExportDecreesExcelAsync()
         => _api.GetFileAsync($"{Root}/decrees/export");
+
+    public Task<(byte[] Data, string FileName, string ContentType)> ExportOrgExcelAsync()
+        => _api.GetFileAsync($"{Root}/org/export");
 
     public Task DeleteContractAsync(int id)
         => _api.DeleteAsync($"{Root}/contracts/{id}");

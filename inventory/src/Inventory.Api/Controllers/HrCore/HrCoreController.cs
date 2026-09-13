@@ -271,6 +271,14 @@ public class HrCoreController : RbacControllerBase
         return File(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
     }
 
+    [HttpGet("org/export")]
+    public async Task<IActionResult> ExportOrg()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        var (data, name) = await _svc.ExportOrgExcelAsync();
+        return File(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
+    }
+
     // ------------------- هشدارهای انقضای قرارداد (§۹) -------------------
 
     [HttpGet("contract-alerts")]

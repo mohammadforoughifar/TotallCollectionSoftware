@@ -64,6 +64,7 @@ public interface IHrCoreService
     Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q);
     Task<(byte[] Data, string FileName)> ExportContractsExcelAsync();
     Task<(byte[] Data, string FileName)> ExportDecreesExcelAsync();
+    Task<(byte[] Data, string FileName)> ExportOrgExcelAsync();
 
     // قالب‌های قرارداد (§۹)
     Task<List<HrContractTemplateDto>> ListTemplatesAsync();
@@ -1545,5 +1546,33 @@ public class HrCoreService : IHrCoreService
         }
         ws.Columns().AdjustToContents();
         return (WorkbookBytes(wb), "decrees.xlsx");
+    }
+
+    public async Task<(byte[] Data, string FileName)> ExportOrgExcelAsync()
+    {
+        var tree = await GetOrgTreeAsync();
+        using var wb = NewWorkbook("چارت سازمانی");
+        var ws = wb.Worksheet(1);
+        string[] heads = { "سطح", "کد", "نام واحد", "نوع", "بالادستی", "مدیر", "تعداد پرسنل" };
+        for (var i = 0; i < heads.Length; i++) ws.Cell(1, i + 1).Value = heads[i];
+        var r = 2;
+        void Walk(List<HrOrgUnitDto> list, int level)
+        {
+            foreach (var x in list)
+            {
+                ws.Cell(r, 1).Value = level;
+                ws.Cell(r, 2).Value = x.Code;
+                ws.Cell(r, 3).Value = x.Name;
+                ws.Cell(r, 4).Value = HrCoreTexts.OrgType(x.Type);
+                ws.Cell(r, 5).Value = x.ParentName ?? "";
+                ws.Cell(r, 6).Value = x.ManagerName ?? "";
+                ws.Cell(r, 7).Value = x.EmployeeCount;
+                r++;
+                if (x.Children.Count > 0) Walk(x.Children, level + 1);
+            }
+        }
+        Walk(tree, 1);
+        ws.Columns().AdjustToContents();
+        return (WorkbookBytes(wb), "org-chart.xlsx");
     }
 }
