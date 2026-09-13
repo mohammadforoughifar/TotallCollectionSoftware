@@ -430,6 +430,12 @@
                         <NavLink class="nav-link" href="hr-core/exit" @onclick="NotifyClose">
                             <i class="bi bi-box-arrow-right"></i><span>ترک‌کار</span>
                         </NavLink>
+                        @if (Auth.Has("HrCore.Manage") || Auth.IsAdmin)
+                        {
+                            <NavLink class="nav-link" href="hr-core/audit" @onclick="NotifyClose">
+                                <i class="bi bi-clipboard-data"></i><span>تاریخچه عملیات</span>
+                            </NavLink>
+                        }
                     }
                 </div>
             }

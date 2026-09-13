@@ -618,4 +618,23 @@ public class HrCoreController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
         return Ok(await _svc.DashboardAsync(expiringDays));
     }
+
+    // ------------------- تاریخچه عملیات HR -------------------
+
+    [HttpGet("audit")]
+    public async Task<IActionResult> SearchAudit([FromQuery] string? module, [FromQuery] string? action,
+        [FromQuery] string? q, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] int skip = 0, [FromQuery] int take = 25)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _svc.SearchHrAuditAsync(module, action, q, from, to, skip, take));
+    }
+
+    [HttpGet("audit/{id:long}")]
+    public async Task<IActionResult> GetAudit(long id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        var r = await _svc.GetHrAuditAsync(id);
+        return r == null ? NotFound() : Ok(r);
+    }
 }

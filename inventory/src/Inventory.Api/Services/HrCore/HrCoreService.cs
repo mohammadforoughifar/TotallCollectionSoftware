@@ -65,6 +65,9 @@ public interface IHrCoreService
     Task<(byte[] Data, string FileName)> ExportContractsExcelAsync();
     Task<(byte[] Data, string FileName)> ExportDecreesExcelAsync();
     Task<(byte[] Data, string FileName)> ExportOrgExcelAsync();
+    Task<HrAuditListResult> SearchHrAuditAsync(string? module, string? action, string? q,
+        DateTime? from, DateTime? to, int skip, int take);
+    Task<HrAuditLogDto?> GetHrAuditAsync(long id);
 
     // قالب‌های قرارداد (§۹)
     Task<List<HrContractTemplateDto>> ListTemplatesAsync();
@@ -1574,5 +1577,51 @@ public class HrCoreService : IHrCoreService
         Walk(tree, 1);
         ws.Columns().AdjustToContents();
         return (WorkbookBytes(wb), "org-chart.xlsx");
+    }
+
+    // ==================== تاریخچه عملیات HR (خواندن از لاگ سراسری) ====================
+
+    private static readonly string[] HrModules = { "HrCore", "HrTalent", "FaAtt", "FaPay", "FaLms", "FaCom" };
+
+    public async Task<HrAuditListResult> SearchHrAuditAsync(string? module, string? action, string? q,
+        DateTime? from, DateTime? to, int skip, int take)
+    {
+        take = Math.Clamp(take, 1, 100);
+        var query = _db.AuditLogs.AsNoTracking().Where(l => HrModules.Contains(l.Module));
+        if (!string.IsNullOrWhiteSpace(module)) query = query.Where(l => l.Module == module);
+        if (!string.IsNullOrWhiteSpace(action)) query = query.Where(l => l.Action == action);
+        if (from != null) query = query.Where(l => l.At >= from.Value.Date);
+        if (to != null) query = query.Where(l => l.At < to.Value.Date.AddDays(1));
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(l =>
+                (l.Username != null && l.Username.Contains(term)) ||
+                (l.Summary != null && l.Summary.Contains(term)) ||
+                (l.Path != null && l.Path.Contains(term)));
+        }
+        var total = await query.CountAsync();
+        var items = await query.OrderByDescending(l => l.At).ThenByDescending(l => l.Id)
+            .Skip(skip).Take(take)
+            .Select(l => new HrAuditLogDto
+            {
+                Id = l.Id, At = l.At, UserId = l.UserId, Username = l.Username,
+                Module = l.Module, Action = l.Action, HttpMethod = l.HttpMethod,
+                Path = l.Path, Summary = l.Summary, StatusCode = l.StatusCode, DurationMs = l.DurationMs
+            }).ToListAsync();
+        return new HrAuditListResult { Total = total, Items = items };
+    }
+
+    public async Task<HrAuditLogDto?> GetHrAuditAsync(long id)
+    {
+        var l = await _db.AuditLogs.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && HrModules.Contains(x.Module));
+        if (l == null) return null;
+        return new HrAuditLogDto
+        {
+            Id = l.Id, At = l.At, UserId = l.UserId, Username = l.Username,
+            Module = l.Module, Action = l.Action, HttpMethod = l.HttpMethod,
+            Path = l.Path, Summary = l.Summary, Payload = l.Payload, Ip = l.Ip,
+            StatusCode = l.StatusCode, DurationMs = l.DurationMs
+        };
     }
 }

@@ -140,4 +140,10 @@ public static class HrCoreUi
     {
         "A" => "text-bg-success", "B" => "text-bg-primary", "C" => "text-bg-warning", _ => "text-bg-danger"
     };
+
+    public static string HrModule(string m) => m switch
+    {
+        "HrCore" => "کارگزینی", "HrTalent" => "استعداد و ارزیابی", "FaAtt" => "حضور و مرخصی",
+        "FaPay" => "حقوق و دستمزد", "FaLms" => "آموزش", "FaCom" => "ارتباطات", _ => m
+    };
 }
