@@ -48,6 +48,7 @@ public class AppDbContext : DbContext
     public DbSet<WorkOrderReminderLog> WorkOrderReminderLogs => Set<WorkOrderReminderLog>();
     public DbSet<WorkOrderChecklistItem> WorkOrderChecklistItems => Set<WorkOrderChecklistItem>();
     public DbSet<WorkOrderComment> WorkOrderComments => Set<WorkOrderComment>();
+    public DbSet<WorkOrderTemplate> WorkOrderTemplates => Set<WorkOrderTemplate>();
 
     // ================== بایگانی و پیوست جامع (عمومی) ==================
     public DbSet<ArchiveFolder> ArchiveFolders => Set<ArchiveFolder>();
@@ -637,6 +638,7 @@ public class AppDbContext : DbContext
             .HasIndex(r => new { r.OrderId, r.ThresholdHours, r.DueAtSnapshot })
             .IsUnique();                                                    // هر آستانه فقط یک‌بار به‌ازای هر مهلت
         mb.Entity<WorkOrderChecklistItem>().HasIndex(c => c.OrderId);       // چک‌لیست زیرکار
+        mb.Entity<WorkOrderTemplate>().HasIndex(t => t.OwnerUserId);        // قالب‌های آماده — فهرست هر کاربر
 
         // ==================== ماژول انبارداری ====================
 

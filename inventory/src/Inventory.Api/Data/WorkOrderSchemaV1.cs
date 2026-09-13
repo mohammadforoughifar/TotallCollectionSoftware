@@ -93,6 +93,27 @@ IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrder
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'ParentOrderId') IS NULL
     ALTER TABLE dbo.WorkOrders ADD ParentOrderId int NULL;");
+
+        // ---------- موج ۷: قالب‌های آمادهٔ دستور کار ----------
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.WorkOrderTemplates', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[WorkOrderTemplates](
+        [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
+        [OwnerUserId] int NOT NULL,
+        [Name] nvarchar(100) NOT NULL,
+        [Title] nvarchar(200) NOT NULL,
+        [Description] nvarchar(max) NOT NULL DEFAULT(N''),
+        [Priority] int NOT NULL DEFAULT(1),
+        [Recurrence] int NOT NULL DEFAULT(0),
+        [AssigneeUserIds] nvarchar(500) NULL,
+        [ChecklistItems] nvarchar(4000) NULL,
+        [Tags] nvarchar(300) NULL,
+        [UsageCount] int NOT NULL DEFAULT(0),
+        [CreatedAt] datetime2 NOT NULL DEFAULT(SYSDATETIME())
+    );
+    CREATE INDEX [IX_WorkOrderTemplates_OwnerUserId] ON [dbo].[WorkOrderTemplates] ([OwnerUserId]);
+END");
     }
 
     // ==================== SQLite ====================
@@ -203,6 +224,25 @@ CREATE INDEX IF NOT EXISTS IX_WorkOrderComments_OrderId ON WorkOrderComments (Or
         }
         catch { }
         if (!hasParent) await SafeAsync(db, "ALTER TABLE WorkOrders ADD COLUMN ParentOrderId INTEGER NULL;");
+
+        // ---------- موج ۷: قالب‌های آمادهٔ دستور کار ----------
+        await SafeAsync(db, @"
+CREATE TABLE IF NOT EXISTS WorkOrderTemplates (
+    Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    OwnerUserId INTEGER NOT NULL,
+    Name TEXT NOT NULL,
+    Title TEXT NOT NULL,
+    Description TEXT NOT NULL DEFAULT '',
+    Priority INTEGER NOT NULL DEFAULT 1,
+    Recurrence INTEGER NOT NULL DEFAULT 0,
+    AssigneeUserIds TEXT NULL,
+    ChecklistItems TEXT NULL,
+    Tags TEXT NULL,
+    UsageCount INTEGER NOT NULL DEFAULT 0,
+    CreatedAt TEXT NOT NULL
+);");
+        await SafeAsync(db, @"
+CREATE INDEX IF NOT EXISTS IX_WorkOrderTemplates_OwnerUserId ON WorkOrderTemplates (OwnerUserId);");
     }
 
     /// <summary>اجرای امن — خطای «شیء تکراری/موجود» راه‌اندازی برنامه را متوقف نکند.</summary>

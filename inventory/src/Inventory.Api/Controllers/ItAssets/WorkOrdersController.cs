@@ -1054,6 +1054,99 @@ public class WorkOrdersController : ControllerBase
         return Ok(top);
     }
 
+    // ================== قالب‌های آمادهٔ دستور کار (موج ۷) ==================
+
+    public class TemplateDto
+    {
+        public string Name { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public int Priority { get; set; } = WorkOrderPriority.Normal;
+        public int Recurrence { get; set; } = WorkOrderRecurrence.None;
+        public List<int> AssigneeUserIds { get; set; } = new();
+        public List<string> ChecklistItems { get; set; } = new();
+        public List<string> Tags { get; set; } = new();
+    }
+
+    /// <summary>فهرست قالب‌های کاربر جاری — پرکاربردها بالا. هر کاربر فقط قالب‌های خودش را می‌بیند.</summary>
+    [HttpGet("templates")]
+    public async Task<IActionResult> Templates()
+    {
+        if (!await HasAsync("Create")) return Forbid();
+        var rows = await _db.WorkOrderTemplates.AsNoTracking()
+            .Where(t => t.OwnerUserId == MyUserId)
+            .OrderByDescending(t => t.UsageCount).ThenByDescending(t => t.Id)
+            .ToListAsync();
+        return Ok(rows.Select(t => new
+        {
+            t.Id, t.Name, t.Title, t.Description, t.Priority, t.Recurrence, t.UsageCount, t.CreatedAt,
+            AssigneeUserIds = (t.AssigneeUserIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => int.TryParse(s, out var v) ? v : 0).Where(v => v > 0).ToList(),
+            ChecklistItems = (t.ChecklistItems ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim()).Where(s => s.Length > 0).ToList(),
+            Tags = TagsToList(t.Tags)
+        }));
+    }
+
+    /// <summary>ذخیرهٔ قالب جدید — حداکثر ۲۰ قالب برای هر کاربر تا فهرست شلوغ نشود.</summary>
+    [HttpPost("templates")]
+    public async Task<IActionResult> TemplateCreate([FromBody] TemplateDto dto)
+    {
+        if (!await HasAsync("Create")) return Forbid();
+
+        var name = (dto.Name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name)) return BadRequest(new { message = "نام قالب را وارد کنید." });
+        if (name.Length > 100) return BadRequest(new { message = "نام قالب حداکثر ۱۰۰ حرف است." });
+        if (string.IsNullOrWhiteSpace(dto.Title)) return BadRequest(new { message = "عنوان دستور کار قالب خالی است." });
+        if (!WorkOrderPriority.IsValid(dto.Priority)) return BadRequest(new { message = "اولویت انتخابی نامعتبر است." });
+        if (!WorkOrderRecurrence.IsValid(dto.Recurrence)) return BadRequest(new { message = "الگوی تکرار نامعتبر است." });
+        if (dto.ChecklistItems.Count > 50) return BadRequest(new { message = "چک‌لیست حداکثر ۵۰ آیتم می‌تواند داشته باشد." });
+
+        var count = await _db.WorkOrderTemplates.CountAsync(t => t.OwnerUserId == MyUserId);
+        if (count >= 20) return BadRequest(new { message = "حداکثر ۲۰ قالب می‌توانید ذخیره کنید؛ ابتدا یکی را حذف کنید." });
+
+        // نام تکراری — به‌روزرسانی همان قالب (ذخیرهٔ مجدد با یک نام = جایگزینی)
+        var existing = await _db.WorkOrderTemplates
+            .FirstOrDefaultAsync(t => t.OwnerUserId == MyUserId && t.Name == name);
+
+        var tpl = existing ?? new WorkOrderTemplate { OwnerUserId = MyUserId, Name = name };
+        tpl.Title = dto.Title.Trim();
+        tpl.Description = dto.Description ?? "";
+        tpl.Priority = dto.Priority;
+        tpl.Recurrence = dto.Recurrence;
+        tpl.AssigneeUserIds = dto.AssigneeUserIds.Count > 0 ? string.Join(",", dto.AssigneeUserIds.Distinct()) : null;
+        tpl.ChecklistItems = dto.ChecklistItems.Count > 0
+            ? string.Join("\n", dto.ChecklistItems.Select(s => (s ?? "").Trim()).Where(s => s.Length > 0).Take(50))
+            : null;
+        tpl.Tags = NormalizeTags(dto.Tags);
+
+        if (existing == null) _db.WorkOrderTemplates.Add(tpl);
+        await _db.SaveChangesAsync();
+        return Ok(new { tpl.Id, updated = existing != null });
+    }
+
+    /// <summary>ثبت یک‌بار استفاده از قالب — برای مرتب‌سازی پرکاربردها در بالا.</summary>
+    [HttpPost("templates/{tplId:int}/used")]
+    public async Task<IActionResult> TemplateUsed(int tplId)
+    {
+        var tpl = await _db.WorkOrderTemplates.FirstOrDefaultAsync(t => t.Id == tplId && t.OwnerUserId == MyUserId);
+        if (tpl == null) return NotFound(new { message = "قالب پیدا نشد." });
+        tpl.UsageCount++;
+        await _db.SaveChangesAsync();
+        return Ok();
+    }
+
+    /// <summary>حذف قالب — فقط سازنده.</summary>
+    [HttpDelete("templates/{tplId:int}")]
+    public async Task<IActionResult> TemplateDelete(int tplId)
+    {
+        var tpl = await _db.WorkOrderTemplates.FirstOrDefaultAsync(t => t.Id == tplId && t.OwnerUserId == MyUserId);
+        if (tpl == null) return NotFound(new { message = "قالب پیدا نشد." });
+        _db.WorkOrderTemplates.Remove(tpl);
+        await _db.SaveChangesAsync();
+        return Ok();
+    }
+
     // ================== رشتهٔ گفتگو (کامنت) داخل دستور ==================
 
     /// <summary>لیست کامنت‌های یک دستور — قدیمی به جدید. کامنت‌های حذف‌شده با متن خالی می‌آیند تا رشتهٔ پاسخ‌ها نشکند.</summary>

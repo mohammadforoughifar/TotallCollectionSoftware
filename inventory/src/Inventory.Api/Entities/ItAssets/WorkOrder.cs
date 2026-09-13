@@ -112,6 +112,53 @@ public class WorkOrder
     public int? ParentOrderId { get; set; }
 }
 
+/// <summary>
+/// قالب آمادهٔ دستور کار — دستورهای پرتکرار یک‌بار ذخیره می‌شوند و دفعات بعد
+/// فرم «دستور کار جدید» با یک کلیک پیش‌پُر می‌شود (عنوان، شرح، گیرندگان،
+/// اولویت، تکرار، چک‌لیست و برچسب‌ها). هر قالب خصوصیِ سازنده است.
+/// </summary>
+public class WorkOrderTemplate
+{
+    public int Id { get; set; }
+
+    /// <summary>سازندهٔ قالب — فقط خودش می‌بیند/استفاده/حذف می‌کند.</summary>
+    public int OwnerUserId { get; set; }
+
+    /// <summary>نام قالب برای نمایش در فهرست (مثلاً «سرویس ماهانه ژنراتور»).</summary>
+    [MaxLength(100)]
+    public string Name { get; set; } = "";
+
+    [MaxLength(200)]
+    public string Title { get; set; } = "";
+
+    /// <summary>شرح — HTML از ادیتور</summary>
+    [MaxLength(8000)]
+    public string Description { get; set; } = "";
+
+    /// <summary>اولویت پیش‌فرض قالب: 0=کم | 1=عادی | 2=بالا | 3=فوری</summary>
+    public int Priority { get; set; } = WorkOrderPriority.Normal;
+
+    /// <summary>تکرار پیش‌فرض قالب: 0=بدون تکرار | 1=روزانه | 2=هفتگی | 3=ماهانه</summary>
+    public int Recurrence { get; set; } = WorkOrderRecurrence.None;
+
+    /// <summary>گیرندگان پیش‌فرض — شناسه‌ها جداشده با «,» (مثلاً "2,5"). هنگام استفاده دوباره اعتبارسنجی می‌شود.</summary>
+    [MaxLength(500)]
+    public string? AssigneeUserIds { get; set; }
+
+    /// <summary>آیتم‌های چک‌لیست — هر خط یک آیتم (جداشده با \n).</summary>
+    [MaxLength(4000)]
+    public string? ChecklistItems { get; set; }
+
+    /// <summary>برچسب‌ها — همان قالب دستور کار: ",tag1,tag2,"</summary>
+    [MaxLength(300)]
+    public string? Tags { get; set; }
+
+    /// <summary>تعداد دفعات استفاده — برای مرتب‌سازی پرکاربردها در بالا.</summary>
+    public int UsageCount { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
 /// <summary>گیرنده دستور کار — پاسخ، رویت و تصمیم دستوردهنده.</summary>
 public class WorkOrderAssignee
 {

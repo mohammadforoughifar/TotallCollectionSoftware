@@ -656,6 +656,21 @@ else
                     {
                         <div class="alert alert-danger py-2">@formError</div>
                     }
+                    @* ---------- قالب‌های آماده (موج ۷) — پیش‌پُر کردن فرم با یک کلیک ---------- *@
+                    @if (editingId <= 0 && myTemplates.Count > 0)
+                    {
+                        <div class="wo-tpl-bar mb-3">
+                            <span class="fs-9 text-muted text-nowrap"><i class="bi bi-lightning-charge-fill text-warning"></i> قالب‌های آماده:</span>
+                            @foreach (var t in myTemplates)
+                            {
+                                var t2 = t;
+                                <span class="wo-tpl-chip @(appliedTplId == t2.Id ? "active" : "")" title="@($"عنوان: {t2.Title}")">
+                                    <span class="wo-tpl-name" @onclick="() => ApplyTemplate(t2)">@t2.Name</span>
+                                    <button type="button" class="wo-tpl-x" title="حذف قالب" @onclick:stopPropagation="true" @onclick="() => DeleteTemplate(t2.Id)"><i class="bi bi-x"></i></button>
+                                </span>
+                            }
+                        </div>
+                    }
                     <div class="row g-3">
                         <div class="col-12">
                             <label class="form-label">عنوان <span class="text-danger">*</span></label>
@@ -803,12 +818,35 @@ else
                     </div>
                 </div>
                 <div class="modal-footer">
+                    @if (editingId <= 0)
+                    {
+                        <button type="button" class="btn btn-outline-warning wo-tpl-save-btn" title="ذخیرهٔ محتوای فرم به‌عنوان قالب برای استفادهٔ بعدی"
+                                disabled="@busy" @onclick="() => tplSaveOpen = !tplSaveOpen">
+                            <i class="bi bi-bookmark-plus"></i> ذخیره به‌عنوان قالب
+                        </button>
+                    }
                     <button class="btn btn-secondary" @onclick="CloseNewForm">انصراف</button>
                     <button class="btn btn-primary px-4" disabled="@busy" @onclick="SubmitNew">
                         @if (busy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                         <i class="bi bi-send"></i> @(editingId > 0 ? "ذخیره تغییرات" : "ثبت دستور کار")
                     </button>
                 </div>
+                @if (tplSaveOpen && editingId <= 0)
+                {
+                    <div class="wo-tpl-save px-3 pb-3">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input class="form-control form-control-sm wo-tpl-save-input" maxlength="100"
+                                   placeholder="نام قالب (مثلاً: سرویس ماهانه ژنراتور)"
+                                   @bind="tplName" @bind:event="oninput" />
+                            <button type="button" class="btn btn-sm btn-warning text-nowrap" disabled="@(string.IsNullOrWhiteSpace(tplName) || tplBusy)"
+                                    @onclick="SaveTemplate">
+                                @if (tplBusy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                                <i class="bi bi-bookmark-check"></i> ذخیره قالب
+                            </button>
+                        </div>
+                        <div class="fs-9 text-muted mt-1">عنوان، شرح، گیرندگان، اولویت، تکرار، چک‌لیست و برچسب‌های فعلی فرم در قالب ذخیره می‌شود (تاریخ ذخیره نمی‌شود). نام تکراری = جایگزینی همان قالب.</div>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -1498,6 +1536,23 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* ---------- قالب‌های آماده (موج ۷) ---------- */
+    .wo-tpl-bar { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; background: #fffbeb; border: 1px dashed #fcd34d; border-radius: 12px; padding: .5rem .75rem; }
+    .wo-tpl-chip { display: inline-flex; align-items: center; gap: .25rem; background: #fff; border: 1px solid #fcd34d; border-radius: 999px; padding: .18rem .3rem .18rem .55rem; font-size: .78rem; color: #92400e; transition: all .15s; }
+    .wo-tpl-chip:hover { border-color: #f59e0b; box-shadow: 0 1px 4px rgba(245,158,11,.25); }
+    .wo-tpl-chip.active { background: #f59e0b; border-color: #f59e0b; color: #fff; font-weight: 700; }
+    .wo-tpl-chip.active .wo-tpl-x { color: #fff; }
+    .wo-tpl-name { cursor: pointer; }
+    .wo-tpl-x { border: 0; background: transparent; color: #b45309; padding: 0 .15rem; line-height: 1; border-radius: 50%; }
+    .wo-tpl-x:hover { color: #dc2626; }
+    .wo-tpl-save { background: #fffbeb; border-top: 1px dashed #fcd34d; padding-top: .75rem; }
+    .wo-tpl-save-input { max-width: 320px; }
+    .wo-tpl-save-btn { margin-left: auto; }
+    @@media (max-width: 575.98px) {
+        .wo-tpl-save-btn { width: 100%; margin-left: 0; }
+        .wo-tpl-save-input { max-width: 100%; flex: 1 1 100%; }
+    }
+
     /* ---------- نمای کانبان ---------- */
     .wo-kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; align-items: start; }
     @@media (max-width: 992px) { .wo-kanban { grid-template-columns: repeat(2, 1fr); } }
@@ -1832,6 +1887,93 @@ else
     {
         try { myTags = await Http.GetFromJsonAsync<List<string>>("/api/workorders/my-tags") ?? new(); }
         catch { myTags = new(); }
+    }
+
+    // ---- قالب‌های آماده (موج ۷) ----
+    private List<TplItem> myTemplates = new();  // فهرست قالب‌های کاربر — پرکاربردها بالا
+    private bool tplSaveOpen, tplBusy;          // پنل ذخیرهٔ قالب باز است؟ / در حال ارسال
+    private string tplName = "";                // نام قالب هنگام ذخیره
+    private int appliedTplId;                   // قالبی که همین الان روی فرم اعمال شده (نمایش هایلایت)
+
+    private sealed class TplItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public int Priority { get; set; }
+        public int Recurrence { get; set; }
+        public int UsageCount { get; set; }
+        public List<int> AssigneeUserIds { get; set; } = new();
+        public List<string> ChecklistItems { get; set; } = new();
+        public List<string> Tags { get; set; } = new();
+    }
+
+    private async Task LoadTemplates()
+    {
+        try { myTemplates = await Http.GetFromJsonAsync<List<TplItem>>("/api/workorders/templates") ?? new(); }
+        catch { myTemplates = new(); }
+    }
+
+    /// <summary>اعمال قالب روی فرم — همه فیلدها به‌جز تاریخ/ساعت مقرر پیش‌پُر می‌شوند.</summary>
+    private async Task ApplyTemplate(TplItem t)
+    {
+        newTitle = t.Title;
+        newPriority = t.Priority;
+        newRecurrence = t.Recurrence;
+        newChecklist = t.ChecklistItems.ToList();
+        newTags = t.Tags.ToList();
+        // فقط گیرندگانی که هنوز در لیست مجاز هستند انتخاب می‌شوند
+        selTargets = t.AssigneeUserIds.Where(id => targets.Any(x => x.Id == id)).ToHashSet();
+        appliedTplId = t.Id;
+        if (rte != null) await rte.SetHtmlAsync(t.Description ?? "");
+        // شمارش استفاده — ناهمگام؛ خطا مهم نیست
+        _ = Http.PostAsync($"/api/workorders/templates/{t.Id}/used", null);
+        Toast.Success($"قالب «{t.Name}» روی فرم اعمال شد.");
+        StateHasChanged();
+    }
+
+    /// <summary>ذخیرهٔ محتوای فعلی فرم به‌عنوان قالب.</summary>
+    private async Task SaveTemplate()
+    {
+        if (string.IsNullOrWhiteSpace(tplName)) return;
+        if (string.IsNullOrWhiteSpace(newTitle)) { formError = "برای ذخیرهٔ قالب، عنوان دستور کار را وارد کنید."; return; }
+        tplBusy = true;
+        try
+        {
+            string desc = rte != null ? await rte.GetHtmlAsync() : "";
+            var payload = new
+            {
+                name = tplName.Trim(),
+                title = newTitle,
+                description = desc,
+                priority = newPriority,
+                recurrence = newRecurrence,
+                assigneeUserIds = selTargets.ToList(),
+                checklistItems = newChecklist,
+                tags = newTags
+            };
+            var resp = await Http.PostAsJsonAsync("/api/workorders/templates", payload);
+            if (!resp.IsSuccessStatusCode) { await ShowApiError(resp, "خطا در عملیات قالب"); return; }
+            Toast.Success($"قالب «{tplName.Trim()}» ذخیره شد.");
+            tplName = ""; tplSaveOpen = false;
+            await LoadTemplates();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { tplBusy = false; }
+    }
+
+    private async Task DeleteTemplate(int tplId)
+    {
+        try
+        {
+            var resp = await Http.DeleteAsync($"/api/workorders/templates/{tplId}");
+            if (!resp.IsSuccessStatusCode) { await ShowApiError(resp, "خطا در عملیات قالب"); return; }
+            myTemplates.RemoveAll(t => t.Id == tplId);
+            if (appliedTplId == tplId) appliedTplId = 0;
+            Toast.Success("قالب حذف شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     // ---- خروجی Excel / PDF ----
@@ -2471,9 +2613,11 @@ else
         formError = ""; newTitle = title; selTargets = new(); tDropOpen = false; tSearch = "";
         newPriority = 1; newRecurrence = 0; newChecklist = new(); newClText = "";
         newTags = new(); newTagText = "";
+        tplSaveOpen = false; tplBusy = false; tplName = ""; appliedTplId = 0;
         if (!keepChainParent) chainParent = null;
         keepChainParent = false;
         _ = LoadMyTags().ContinueWith(_ => InvokeAsync(StateHasChanged));
+        _ = LoadTemplates().ContinueWith(_ => InvokeAsync(StateHasChanged));
         newDueDate = DateTime.Today.AddDays(1); newDueTime = new(14, 0);
         newFiles.Clear();
         try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); } catch { }
