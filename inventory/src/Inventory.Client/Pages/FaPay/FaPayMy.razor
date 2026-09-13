@@ -33,9 +33,9 @@
                 <thead class="table-light">
                     <tr>
                         <th>دوره</th>
-                        <th>حقوق پایه</th>
-                        <th>جمع مزایا</th>
-                        <th>جمع کسور</th>
+                        <th class="d-none d-md-table-cell">حقوق پایه</th>
+                        <th class="d-none d-md-table-cell">جمع مزایا</th>
+                        <th class="d-none d-md-table-cell">جمع کسور</th>
                         <th>خالص پرداختی</th>
                         <th>وضعیت</th>
                         <th style="width:130px">عملیات</th>
@@ -46,10 +46,10 @@
                     {
                         <tr>
                             <td><strong>@FaPayUi.YearMonth(s.RunYear, s.RunMonth)</strong></td>
-                            <td>@FaPayUi.Money(s.BaseSalary)</td>
-                            <td>@FaPayUi.Money(s.GrossEarnings)</td>
-                            <td>@FaPayUi.Money(s.TotalDeductions)</td>
-                            <td><strong class="text-primary">@FaPayUi.Money(s.NetPay)</strong></td>
+                            <td class="d-none d-md-table-cell text-nowrap">@FaPayUi.Money(s.BaseSalary)</td>
+                            <td class="d-none d-md-table-cell text-nowrap">@FaPayUi.Money(s.GrossEarnings)</td>
+                            <td class="d-none d-md-table-cell text-nowrap">@FaPayUi.Money(s.TotalDeductions)</td>
+                            <td class="text-nowrap"><strong class="text-primary">@FaPayUi.Money(s.NetPay)</strong></td>
                             <td>@if (s.IsPaid) { <span class="badge text-bg-success">پرداخت شد</span> } else { <span class="badge text-bg-secondary">پرداخت نشده</span> }</td>
                             <td>
                                 <div class="btn-group btn-group-sm" role="group">
@@ -68,6 +68,15 @@
         </div>
     </div>
 </div>
+
+<style>
+    @@media (max-width: 575px) {
+        .page-head h1 { font-size: 1.25rem; }
+        .page-head .lead { font-size: .85rem; }
+        .table { font-size: .82rem; }
+        .btn-group-sm .btn { padding: .35rem .6rem; font-size: 1rem; }
+    }
+</style>
 
 @code {
     private bool faRead => Auth.Has("FaPay.Read") || Auth.Has("FaPay.Manage") || Auth.IsAdmin;

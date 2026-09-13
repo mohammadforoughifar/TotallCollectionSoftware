@@ -53,17 +53,17 @@
         else
         {
             <div class="table-responsive"><table class="table table-hover mb-0 align-middle">
-                <thead class="table-light"><tr><th>نوع</th><th>بازه</th><th>مدت</th><th>علت</th><th>وضعیت</th><th>مرحله</th><th style="width:120px"></th></tr></thead>
+                <thead class="table-light"><tr><th>نوع</th><th>بازه</th><th>مدت</th><th class="d-none d-md-table-cell">علت</th><th>وضعیت</th><th class="d-none d-md-table-cell">مرحله</th><th style="width:120px"></th></tr></thead>
                 <tbody>
                     @foreach (var l in leaves)
                     {
                         <tr>
                             <td><b>@l.LeaveTypeName</b></td>
-                            <td class="num">@l.FromDate.ToFa() تا @l.ToDate.ToFa()</td>
+                            <td class="num text-nowrap">@l.FromDate.ToFa() تا @l.ToDate.ToFa()</td>
                             <td class="num">@(l.HoursPerDay == null ? FaAttUi.Num((l.ToDate - l.FromDate).Days + 1) + " روز" : FaAttUi.Num(l.HoursPerDay.Value) + " ساعت/روز")</td>
-                            <td>@(l.Reason ?? "—")</td>
+                            <td class="d-none d-md-table-cell">@(l.Reason ?? "—")</td>
                             <td><span class="badge @FaAttUi.ReqBadge(l.Status)">@FaAttUi.ReqStatus(l.Status)</span></td>
-                            <td><span class="badge @FaAttUi.WorkflowBadge(l.WorkflowStep)">@FaAttUi.WorkflowStep(l.WorkflowStep)</span></td>
+                            <td class="d-none d-md-table-cell"><span class="badge @FaAttUi.WorkflowBadge(l.WorkflowStep)">@FaAttUi.WorkflowStep(l.WorkflowStep)</span></td>
                             <td class="text-end">
                                 @if (l.Status == 0 && faCreate)
                                 {
@@ -102,6 +102,14 @@
     </div>
     </Footer>
 </Modal>
+
+<style>
+    @@media (max-width: 575px) {
+        .page-head h1 { font-size: 1.25rem; }
+        .page-head .lead { font-size: .85rem; }
+        .table { font-size: .82rem; }
+    }
+</style>
 
 @code {
     private bool faRead => Auth.Has("FaAtt.Read") || Auth.IsAdmin;
