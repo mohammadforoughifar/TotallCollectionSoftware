@@ -14,8 +14,8 @@ public class UnitsController : ApiControllerBase
 
     /// <summary>فهرست واحدهای شمارش (با تعداد کالای هر واحد).</summary>
     [HttpGet]
-    public async Task<ActionResult<List<MeasureUnit>>> GetAll([FromQuery] bool activeOnly = false)
-        => Ok(await _service.GetUnitsAsync(activeOnly));
+    public async Task<ActionResult<PagedResult<MeasureUnit>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Ok(await _service.GetUnitsPagedAsync(activeOnly, page, pageSize));
 
     /// <summary>ایجاد یا ویرایش واحد شمارش.</summary>
     [HttpPost]

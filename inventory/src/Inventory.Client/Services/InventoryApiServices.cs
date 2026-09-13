@@ -26,8 +26,8 @@ public class ReferrerService : IReferrerService
     private readonly IApiClient _api;
     public ReferrerService(IApiClient api) => _api = api;
 
-    public Task<List<Referrer>> GetAllAsync(bool activeOnly = false)
-        => _api.GetAsync<List<Referrer>>($"api/referrers?activeOnly={activeOnly}");
+    public async Task<List<Referrer>> GetAllAsync(bool activeOnly = false)
+        => (await _api.GetAsync<PagedResult<Referrer>>($"api/referrers?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
 
     public Task<Referrer> SaveAsync(Referrer referrer)
         => _api.PostAsync<Referrer>("api/referrers", referrer);
@@ -56,8 +56,8 @@ public class CategoryService : ICategoryService
     private readonly IApiClient _api;
     public CategoryService(IApiClient api) => _api = api;
 
-    public Task<List<ProductCategory>> GetAllAsync(bool activeOnly = false)
-        => _api.GetAsync<List<ProductCategory>>($"api/categories?activeOnly={activeOnly}");
+    public async Task<List<ProductCategory>> GetAllAsync(bool activeOnly = false)
+        => (await _api.GetAsync<PagedResult<ProductCategory>>($"api/categories?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
 
     public Task<ProductCategory> SaveAsync(ProductCategory category)
         => _api.PostAsync<ProductCategory>("api/categories", category);
@@ -100,8 +100,8 @@ public class UnitService : IUnitService
     private readonly IApiClient _api;
     public UnitService(IApiClient api) => _api = api;
 
-    public Task<List<MeasureUnit>> GetAllAsync(bool activeOnly = false)
-        => _api.GetAsync<List<MeasureUnit>>($"api/units?activeOnly={activeOnly}");
+    public async Task<List<MeasureUnit>> GetAllAsync(bool activeOnly = false)
+        => (await _api.GetAsync<PagedResult<MeasureUnit>>($"api/units?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
 
     public Task<MeasureUnit> SaveAsync(MeasureUnit unit)
         => _api.PostAsync<MeasureUnit>("api/units", unit);
@@ -116,8 +116,8 @@ public class WarehouseService : IWarehouseService
     private readonly IApiClient _api;
     public WarehouseService(IApiClient api) => _api = api;
 
-    public Task<List<Warehouse>> GetAllAsync()
-        => _api.GetAsync<List<Warehouse>>("api/warehouses");
+    public async Task<List<Warehouse>> GetAllAsync()
+        => (await _api.GetAsync<PagedResult<Warehouse>>("api/warehouses?page=1&pageSize=200")).Items;
 
     public async Task<List<LookupItem>> GetLookupsAsync(bool activeOnly = false)
     {
@@ -139,8 +139,8 @@ public class PartyService : IPartyService
     private readonly IApiClient _api;
     public PartyService(IApiClient api) => _api = api;
 
-    public Task<List<Party>> GetAsync(PartyType type)
-        => _api.GetAsync<List<Party>>($"api/parties?type={(int)type}");
+    public async Task<List<Party>> GetAsync(PartyType type)
+        => (await _api.GetAsync<PagedResult<Party>>($"api/parties?type={(int)type}&page=1&pageSize=200")).Items;
 
     public async Task<List<LookupItem>> GetLookupsAsync(PartyType type, bool activeOnly = false)
     {
@@ -263,8 +263,8 @@ public class RepairService : IRepairService
     private readonly IApiClient _api;
     public RepairService(IApiClient api) => _api = api;
 
-    public Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false)
-        => _api.GetAsync<List<Technician>>($"api/technicians?activeOnly={activeOnly}");
+    public async Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false)
+        => (await _api.GetAsync<PagedResult<Technician>>($"api/technicians?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
 
     public Task<Technician> SaveTechnicianAsync(Technician technician)
         => _api.PostAsync<Technician>("api/technicians", technician);
@@ -303,8 +303,8 @@ public class ExpenseService : IExpenseService
     private readonly IApiClient _api;
     public ExpenseService(IApiClient api) => _api = api;
 
-    public Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false)
-        => _api.GetAsync<List<ExpenseCategoryDto>>($"api/expense-categories?activeOnly={activeOnly}");
+    public async Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false)
+        => (await _api.GetAsync<PagedResult<ExpenseCategoryDto>>($"api/expense-categories?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
 
     public Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto category)
         => _api.PostAsync<ExpenseCategoryDto>("api/expense-categories", category);

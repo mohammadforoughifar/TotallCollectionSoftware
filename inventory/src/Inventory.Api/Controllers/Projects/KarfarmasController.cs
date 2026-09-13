@@ -15,7 +15,7 @@ public class KarfarmasController : RbacControllerBase
 
     /// <summary>لیست کارفرماها + جستجو</summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? search)
+    public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -25,7 +25,10 @@ public class KarfarmasController : RbacControllerBase
                                      (k.ShomareSabt != null && k.ShomareSabt.Contains(search)) ||
                                      (k.ModirAmelPhone != null && k.ModirAmelPhone.Contains(search)));
 
+        var total = await query.CountAsync();
+        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
         var items = await query.OrderByDescending(k => k.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(k => new KarFarmaDto
             {
                 Id = k.Id,
@@ -39,7 +42,7 @@ public class KarfarmasController : RbacControllerBase
                 ProjectCount = k.Projects.Count(p => !p.IsDelete)
             })
             .ToListAsync();
-        return Ok(items);
+        return Ok(new PagedResult<KarFarmaDto> { Items = items, TotalCount = total });
     }
 
     [HttpGet("{id:int}")]
