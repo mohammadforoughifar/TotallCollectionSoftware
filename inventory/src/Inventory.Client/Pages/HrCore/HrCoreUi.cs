@@ -90,4 +90,54 @@ public static class HrCoreUi
     {
         0 => "نامشخص", 1 => "قبول", 2 => "رد", 3 => "رزرو", _ => "—"
     };
+
+    public static string TalentOwner(int o) => o switch
+    {
+        0 => "کارگزینی", 1 => "مدیر", 2 => "فناوری اطلاعات", 3 => "خود پرسنل", _ => "—"
+    };
+
+    public static string TalentItemStatus(int s) => s switch
+    {
+        0 => "باز", 1 => "انجام‌شده", 2 => "ردشده", _ => "—"
+    };
+
+    public static string TalentItemBadge(int s) => s switch
+    {
+        0 => "text-bg-warning", 1 => "text-bg-success", 2 => "text-bg-secondary", _ => "text-bg-light"
+    };
+
+    public static string ExitType(int t) => t switch
+    {
+        0 => "استعفا", 1 => "اخراج", 2 => "پایان قرارداد", 3 => "بازنشستگی", 4 => "توافقی", _ => "—"
+    };
+
+    public static string TrialResult(int r) => r switch
+    {
+        0 => "فعال", 1 => "قبول", 2 => "مردود", _ => "—"
+    };
+
+    public static string TrialBadge(int r) => r switch
+    {
+        0 => "text-bg-primary", 1 => "text-bg-success", 2 => "text-bg-danger", _ => "text-bg-light"
+    };
+
+    public static string AppraisalPeriod(int p) => p switch
+    {
+        0 => "سالانه", 1 => "شش‌ماهه اول", 2 => "شش‌ماهه دوم", 3 => "فصلی", _ => "—"
+    };
+
+    public static string AppraisalStatus(int s) => s switch
+    {
+        0 => "پیش‌نویس", 1 => "در جریان", 2 => "نهایی", _ => "—"
+    };
+
+    public static string AppraisalBadge(int s) => s switch
+    {
+        0 => "text-bg-secondary", 1 => "text-bg-primary", 2 => "text-bg-success", _ => "text-bg-light"
+    };
+
+    public static string GradeBadge(string g) => g switch
+    {
+        "A" => "text-bg-success", "B" => "text-bg-primary", "C" => "text-bg-warning", _ => "text-bg-danger"
+    };
 }
