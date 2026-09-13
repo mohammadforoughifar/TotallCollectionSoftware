@@ -26,6 +26,9 @@ public interface IHrCoreService
     Task<(byte[] Data, string FileName, string ContentType)> ExportContractsExcelAsync();
     Task<(byte[] Data, string FileName, string ContentType)> ExportDecreesExcelAsync();
     Task<(byte[] Data, string FileName, string ContentType)> ExportOrgExcelAsync();
+    Task<HrAuditListResult> SearchHrAuditAsync(string? module, string? action, string? q,
+        DateTime? from, DateTime? to, int skip, int take);
+    Task<HrAuditLogDto> GetHrAuditAsync(long id);
     Task DeleteContractAsync(int id);
 
     Task<List<HrContractTemplateDto>> GetTemplatesAsync();
@@ -185,6 +188,15 @@ public class HrCoreService : IHrCoreService
 
     public Task<(byte[] Data, string FileName, string ContentType)> ExportOrgExcelAsync()
         => _api.GetFileAsync($"{Root}/org/export");
+
+    public Task<HrAuditListResult> SearchHrAuditAsync(string? module, string? action, string? q,
+        DateTime? from, DateTime? to, int skip, int take)
+        => _api.GetAsync<HrAuditListResult>($"{Root}/audit?module={module}&action={action}&q={Uri.EscapeDataString(q ?? "")}" +
+            $"&from={(from == null ? "" : from.Value.ToString("yyyy-MM-dd"))}&to={(to == null ? "" : to.Value.ToString("yyyy-MM-dd"))}" +
+            $"&skip={skip}&take={take}");
+
+    public Task<HrAuditLogDto> GetHrAuditAsync(long id)
+        => _api.GetAsync<HrAuditLogDto>($"{Root}/audit/{id}");
 
     public Task DeleteContractAsync(int id)
         => _api.DeleteAsync($"{Root}/contracts/{id}");

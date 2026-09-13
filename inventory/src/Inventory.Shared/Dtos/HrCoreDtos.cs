@@ -464,3 +464,28 @@ public class HrConvertRequestDto
     public string NationalCode { get; set; } = "";
     public DateTime? HireDate { get; set; }
 }
+
+// ==================== تاریخچه عملیات HR (§۶) ====================
+
+public class HrAuditLogDto
+{
+    public long Id { get; set; }
+    public DateTime At { get; set; }
+    public int? UserId { get; set; }
+    public string? Username { get; set; }
+    public string Module { get; set; } = "";
+    public string Action { get; set; } = "";
+    public string HttpMethod { get; set; } = "";
+    public string? Path { get; set; }
+    public string? Summary { get; set; }
+    public string? Payload { get; set; }
+    public string? Ip { get; set; }
+    public int StatusCode { get; set; }
+    public int DurationMs { get; set; }
+}
+
+public class HrAuditListResult
+{
+    public int Total { get; set; }
+    public List<HrAuditLogDto> Items { get; set; } = new();
+}
