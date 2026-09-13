@@ -27,6 +27,7 @@ else
     <div class="d-flex align-items-center gap-2 mb-3 mt-1">
         <a class="btn btn-sm btn-light" href="hr-core/employees"><i class="bi bi-arrow-right"></i> لیست پرسنل</a>
         <button class="btn btn-sm btn-outline-primary" @onclick="PrintDossier"><i class="bi bi-printer"></i> چاپ پرونده</button>
+        <a class="btn btn-sm btn-outline-secondary" href="@($"hr-core/job-history/{emp!.Id}")"><i class="bi bi-clock-history"></i> سوابق شغلی</a>
         @if (canUpdate)
         {
             <a class="btn btn-sm btn-outline-warning" href="hr-core/employees"><i class="bi bi-pencil"></i> ویرایش از لیست</a>
