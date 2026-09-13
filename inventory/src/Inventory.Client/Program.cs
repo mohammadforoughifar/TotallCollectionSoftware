@@ -42,6 +42,11 @@ builder.Services.AddScoped<IInvDocService, InvDocService>();
 builder.Services.AddScoped<IInvReportService, InvReportService>();
 builder.Services.AddScoped<IDocArchiveService, DocArchiveService>(); // ماژول آرشیو اسناد و مدارک
 builder.Services.AddScoped<IHrCoreService, HrCoreService>(); // HrCore
+builder.Services.AddScoped<IHrMainService, HrMainService>(); // HrMain — منابع انسانی اصلی
+builder.Services.AddScoped<IFaAttService, FaAttService>(); // FaAtt — حضور و غیاب فروغ آریا
+builder.Services.AddScoped<IFaComService, FaComService>(); // FaCom — ارتباطات داخلی
+builder.Services.AddScoped<IFaLmsService, FaLmsService>(); // FaLms — آموزش و توسعه
+builder.Services.AddScoped<IFaPayClientService, FaPayService>(); // FaPay — حقوق و دستمزد
 builder.Services.AddScoped<IChatClientService, ChatClientService>(); // ماژول پیام‌رسان سازمانی (Chat)
 
 // ---------- ماژول حسابداری ----------

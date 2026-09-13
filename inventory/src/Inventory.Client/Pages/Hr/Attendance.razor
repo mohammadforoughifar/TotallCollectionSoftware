@@ -338,6 +338,7 @@
 
 <!-- ======== مودال درخواست مرخصی/ماموریت از بازه‌ی کسری ======== -->
 <Modal Visible="showLeaveModal" Title="درخواست مرخصی / ماموریت ساعتی" OnClose="() => showLeaveModal = false">
+    <ChildContent>
     @if (!string.IsNullOrEmpty(leaveError))
     {
         <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle-fill"></i> @leaveError</div>
@@ -381,6 +382,8 @@
             <i class="bi bi-info-circle"></i> درخواست برای تاریخ گذشته هم قابل ثبت است؛ بعد از تایید، کسری آن روز به‌صورت خودکار اصلاح می‌شود.
         </div>
     </div>
+    </ChildContent>
+    <Footer>
     <div class="d-flex justify-content-end mt-3 gap-2">
         <button class="btn btn-sm btn-light" @onclick="() => showLeaveModal = false">انصراف</button>
         <button class="btn btn-sm btn-primary" @onclick="SubmitLeave" disabled="@leaveBusy">
@@ -396,6 +399,7 @@
             }
         </button>
     </div>
+    </Footer>
 </Modal>
 
 <style>

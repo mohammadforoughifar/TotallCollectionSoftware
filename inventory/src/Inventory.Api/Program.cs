@@ -85,6 +85,13 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, In
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocumentService, Inventory.Api.Services.DocArchive.DocumentService>();
 builder.Services.AddScoped<Inventory.Api.Services.HrCore.IHrCoreService, Inventory.Api.Services.HrCore.HrCoreService>(); // HrCore
+builder.Services.AddScoped<Inventory.Api.Services.HrCore.IHrRecruitmentService, Inventory.Api.Services.HrCore.HrRecruitmentService>(); // HrCore-Recruitment
+builder.Services.AddScoped<Inventory.Api.Services.HrMain.IHrMainService, Inventory.Api.Services.HrMain.HrMainService>(); // HrMain — منابع انسانی اصلی
+builder.Services.AddScoped<Inventory.Api.Services.FaAtt.IFaAttService, Inventory.Api.Services.FaAtt.FaAttService>(); // FaAtt — حضور و غیاب فروغ آریا
+builder.Services.AddScoped<Inventory.Api.Services.FaCom.IFaComService, Inventory.Api.Services.FaCom.FaComService>(); // FaCom — ارتباطات داخلی
+builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender>(); // پیامک وب‌هوکی
+builder.Services.AddScoped<Inventory.Api.Services.FaLms.IFaLmsService, Inventory.Api.Services.FaLms.FaLmsService>(); // FaLms — آموزش و توسعه
+builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayService, Inventory.Api.Services.FaPay.FaPayService>(); // FaPay — حقوق و دستمزد
 // اعطای موقت «تایید مجدد رمز» برای فایل‌های مدارک محرمانه (در حافظه — ۱۵ دقیقه)
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocDownloadConfirmService, Inventory.Api.Services.DocArchive.DocDownloadConfirmService>();
@@ -100,7 +107,9 @@ builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocTextExtracto
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocIndexService, Inventory.Api.Services.DocArchive.DocIndexService>();
 // سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
+builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>()); // یادآوری تولد
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();

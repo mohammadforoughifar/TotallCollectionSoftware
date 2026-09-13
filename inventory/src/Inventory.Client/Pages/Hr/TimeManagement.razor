@@ -560,6 +560,7 @@
 </div>
 
 <Modal Visible="showDecide" Title="@(decideApprove ? "تأیید مرحله" : "رد مرحله")" OnClose="() => showDecide = false">
+    <ChildContent>
     <p class="small">@decideTarget?.Title — @decideTarget?.Requester (@decideTarget?.Number)</p>
     <label class="form-label small">توضیح (اختیاری — برای رد، علت رد)</label>
     <input class="form-control form-control-sm" @bind="decideNote" />
@@ -567,9 +568,11 @@
         <button class="btn btn-sm @(decideApprove ? "btn-success" : "btn-danger")" @onclick="DoDecide" disabled="@busy">ثبت</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showDecide = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showTimeline" Title="گردش تأیید" OnClose="() => showTimeline = false">
+    <ChildContent>
     @if (timeline.Count == 0)
     {
         <div class="alert alert-info small">گردشی ثبت نشده است.</div>
@@ -590,9 +593,11 @@
             }
         </ol>
     }
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showOt" Title="درخواست اضافه‌کاری" OnClose="() => showOt = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-6"><label class="form-label small">تاریخ</label><input type="date" class="form-control form-control-sm" @bind="otDate" /></div>
         <div class="col-6">
@@ -611,9 +616,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitOt" disabled="@busy">ثبت</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showOt = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showGen" Title="تولید روستِر چرخشی" OnClose="() => showGen = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-12">
             <label class="form-label small">کاربر</label>
@@ -636,9 +643,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitGen" disabled="@busy">تولید</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showGen = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showMap" Title="نگاشت کد دستگاه" OnClose="() => showMap = false">
+    <ChildContent>
     <div class="row g-2">
         <div class="col-6"><label class="form-label small">کد دستگاه (خالی = همه)</label><input class="form-control form-control-sm" dir="ltr" @bind="mapDevice" /></div>
         <div class="col-6"><label class="form-label small">کد پرسنلی دستگاه</label><input class="form-control form-control-sm" dir="ltr" @bind="mapCode" /></div>
@@ -656,9 +665,11 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitMap" disabled="@busy">ذخیره</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showMap = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 <Modal Visible="showGrant" Title="ویرایش سهمیه" OnClose="() => showGrant = false">
+    <ChildContent>
     <p class="small">@(grantCat == null ? "" : CatFa(grantCat)) — سال @Fa.Digits(balYear)</p>
     <label class="form-label small">سهمیه (روز)</label>
     <input type="number" step="0.5" class="form-control form-control-sm" @bind="grantDays" />
@@ -666,6 +677,7 @@
         <button class="btn btn-sm btn-primary" @onclick="SubmitGrant" disabled="@busy">ذخیره</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showGrant = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 @code {

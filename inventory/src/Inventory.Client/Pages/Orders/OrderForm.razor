@@ -6,10 +6,7 @@
 @inject IReferrerService ReferrerSvc
 @inject IToastService Toast
 
-<Modal Visible="true"
-       Title="@FormTitle"
-       Size="modal-xl"
-       OnClose="Cancel">
+<Modal Visible="true" Title="@FormTitle" Size="modal-xl" OnClose="Cancel">
 
     <ChildContent>
         @if (loading)

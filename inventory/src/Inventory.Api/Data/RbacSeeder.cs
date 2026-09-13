@@ -82,7 +82,7 @@ public static class RbacSeeder
         ["Attendance"] = new[] { "SelfCheckin", "ViewAll", "ManageShifts", "Report" },
         // ================== سامانه کامل RADIS-HR V019 ==================
         // Access: ورود به کل ماژول؛ مجوز روی تمام کنترلرهای واردشده نیز در Host اعمال می‌شود.
-        ["RadisHr"] = new[] { "Access" },
+        ["RadisHr"] = new[] { "Access", "Dashboard", "Employees", "EmployeeEntry", "Attendance", "Payroll", "StatutoryRules", "OrgStructure", "OrgSettings", "Hse", "Finance", "Accounting", "ProductionDaily", "Notices" /* دسترسی تفکیکی هر لینک بن‌سازه */ },
         // ================== دسترسی به ازای هر داشبورد ==================
         ["Dashboards"] = new[] { "Financial", "Management", "Hardware" },
         // ================== دسترسی به ازای هر گزارش ==================
@@ -105,9 +105,26 @@ public static class RbacSeeder
         // ================== هسته پرسنلی (کارگزینی) ==================
         // Read: مشاهده پرونده/چارت/قرارداد/احکام | Create: ثبت جدید | Update: ویرایش + اجرای حکم
         // Delete: حذف/غیرفعال‌سازی | Manage: داشبورد مدیریتی و گزارش‌ها
-        ["HrCore"] = new[] { "Read", "Create", "Update", "Delete", "Manage" },
+        ["HrCore"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Contracts", "ContractTemplates", "Decrees", "Recruitment" /* دسترسی تفکیکی هر لینک */ },
         // حقوق و دستمزد: Read=مشاهده فیش و گزارش‌ها | Manage=تعریف آیتم، محاسبه، قفل دوره
         ["HrPay"] = new[] { "Read", "Manage" },
+        // ================== منابع انسانی اصلی — مدیریت پایه سازمانی ==================
+        // Read: مشاهده شرکت/چارت/پست‌ها/شعب/تقویم/قوانین | Create: ثبت جدید | Update: ویرایش
+        // Delete: حذف | Manage: داشبورد مدیریتی و گزارش‌ها
+        ["HrMain"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Overview", "Company", "Org", "Positions", "Branches", "Employees", "Calendar", "Rules", "Settings" /* دسترسی تفکیکی هر لینک */ },
+        // ================== حضور و غیاب فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده شیفت/وضعیت روزانه/گزارش‌ها | Create: وب‌کلاک و ثبت تردد
+        // Update: ویرایش + محاسبه مجدد + تأیید ماموریت/مرخصی | Delete: حذف | Manage: داشبورد مدیریتی
+        ["FaAtt"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Clock", "Daily", "Shifts", "LeaveTypes", "Missions", "Approvals", "Leaves", "MyLeaves", "Balances", "Devices", "Reports" /* دسترسی تفکیکی هر لینک */ },
+        // ================== حقوق و دستمزد فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده فیش خود و گزارش‌ها | Manage: تنظیمات، محاسبه، نهایی‌سازی و پرداخت
+        ["FaPay"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Runs", "My", "Adjustments", "Items", "Settings", "Reports" /* دسترسی تفکیکی هر لینک */ },
+        // ================== آموزش و توسعه فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده دوره‌ها | Create: ثبت‌نام و ثبت نیاز | Manage: مدیریت کامل LMS
+        ["FaLms"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Courses", "Calendar", "Enrollments", "Needs", "Budgets", "Certificates", "My", "Reports" /* دسترسی تفکیکی هر لینک */ },
+        // ================== ارتباطات داخلی فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده اطلاعیه‌ها و تیکت خود | Create: ثبت تیکت | Manage: مدیریت اطلاعیه‌ها و پاسخ تیکت‌ها
+        ["FaCom"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Announcements", "Tickets", "My" /* دسترسی تفکیکی هر لینک */ },
         // ================== پیام‌رسان سازمانی ==================
         // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
         ["Chat"] = new[] { "View", "Send", "Manage" },
@@ -249,6 +266,14 @@ public static class RbacSeeder
             db.RolePermissions.Add(new RolePermission { RoleId = hrManagerRole.Id, PermissionId = perm.Id });
         await db.SaveChangesAsync();
 
+        // مدیر منابع انسانی: مدیریت پایه سازمانی (HrMain) + کارگزینی (HrCore) + حقوق (HrPay)
+        var hrMainModules = new[] { "HrMain", "HrCore", "HrPay", "FaAtt", "FaPay", "FaLms", "FaCom" };
+        var hrMainPerms = await db.Permissions.Where(p => hrMainModules.Contains(p.Module)).ToListAsync();
+        var hrMainHas = await db.RolePermissions.Where(rp => rp.RoleId == hrManagerRole.Id).Select(rp => rp.PermissionId).ToListAsync();
+        foreach (var perm in hrMainPerms.Where(p => !hrMainHas.Contains(p.Id)))
+            db.RolePermissions.Add(new RolePermission { RoleId = hrManagerRole.Id, PermissionId = perm.Id });
+        await db.SaveChangesAsync();
+
         // ================== دسترسی پیش‌فرض منابع انسانی برای نقش‌های موجود ==================
         // نقش‌های Operator / Accountant / Referrer هم باید بتوانند برای خودشان درخواست مرخصی و ورود/خروج ثبت کنند
         // (مگر اینکه مدیر بعداً این دسترسی را از صفحه‌ی نقش‌ها و دسترسی‌ها حذف کند).
@@ -256,7 +281,11 @@ public static class RbacSeeder
         var defaultHrRoles = await db.Roles.Where(r => defaultHrAccessRoleNames.Contains(r.Name)).ToListAsync();
         var defaultHrPerms = await db.Permissions
             .Where(p => (p.Module == "LeaveRequests" && p.Action == "Request") ||
-                        (p.Module == "Attendance" && p.Action == "SelfCheckin")).ToListAsync();
+                        (p.Module == "Attendance" && p.Action == "SelfCheckin") ||
+                        (p.Module == "FaAtt" && (p.Action == "Read" || p.Action == "Create")) ||
+                        (p.Module == "FaPay" && p.Action == "Read") ||
+                        (p.Module == "FaLms" && (p.Action == "Read" || p.Action == "Create")) ||
+                        (p.Module == "FaCom" && (p.Action == "Read" || p.Action == "Create"))).ToListAsync();
         foreach (var perm in defaultHrPerms)
         {
             var existingRp = await db.RolePermissions

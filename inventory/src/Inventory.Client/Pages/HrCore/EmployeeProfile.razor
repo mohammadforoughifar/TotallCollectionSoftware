@@ -36,7 +36,27 @@ else
         <div class="hr-cover"></div>
         <div class="card-body pt-0">
             <div class="d-flex align-items-end gap-3" style="margin-top:-34px">
-                <span class="hr-avatar-lg" style="background:@HrCoreUi.AvatarColor(emp.Code)">@HrCoreUi.Initials(emp.FirstName, emp.LastName)</span>
+                @if (photoUrl is null)
+                {
+                    <span class="hr-avatar-lg" style="background:@HrCoreUi.AvatarColor(emp.Code)">@HrCoreUi.Initials(emp.FirstName, emp.LastName)</span>
+                }
+                else
+                {
+                    <img src="@photoUrl" class="hr-photo-lg" alt="عکس پرسنل" />
+                }
+                @if (canUpdate)
+                {
+                    <div class="d-flex flex-column gap-1 pb-1">
+                        <label class="btn btn-sm btn-light border mb-0" title="تغییر عکس">
+                            <i class="bi bi-camera"></i>
+                            <InputFile OnChange="OnPhotoSelected" accept=".jpg,.jpeg,.png,.webp" style="display:none" />
+                        </label>
+                        @if (!string.IsNullOrWhiteSpace(emp.PhotoPath))
+                        {
+                            <button class="btn btn-sm btn-light border" title="حذف عکس" @onclick="DeletePhoto"><i class="bi bi-trash text-danger"></i></button>
+                        }
+                    </div>
+                }
                 <div class="pb-1">
                     <h4 class="mb-0">@emp.FullName</h4>
                     <div class="text-muted small num">کد پرسنلی @emp.Code • کد ملی @emp.NationalCode</div>
@@ -52,12 +72,24 @@ else
                 <div class="col-md-3"><div class="hr-kv"><span>مدیر مستقیم</span><b>@(emp.ManagerName ?? "—")</b></div></div>
                 <div class="col-md-3"><div class="hr-kv"><span>تاریخ استخدام</span><b class="num">@emp.HireDate.ToFa()</b></div></div>
                 <div class="col-md-3"><div class="hr-kv"><span>موبایل</span><b class="num" dir="ltr">@(emp.Mobile ?? "—")</b></div></div>
+                <div class="col-md-3"><div class="hr-kv"><span>تلفن ثابت</span><b class="num" dir="ltr">@(emp.Landline ?? "—")</b></div></div>
+                <div class="col-md-3"><div class="hr-kv"><span>محل کار</span><b>@(emp.Workplace ?? "—")</b></div></div>
+                <div class="col-md-3"><div class="hr-kv"><span>مدرک تحصیلی</span><b>@DegreeText</b></div></div>
+                <div class="col-md-3"><div class="hr-kv"><span>تماس اضطراری</span><b>@EmergencyText</b></div></div>
                 <div class="col-md-3"><div class="hr-kv"><span>حقوق پایه</span><b class="num">@Fa.Digits(emp.BaseSalary.ToString("N0")) ریال</b></div></div>
                 <div class="col-md-3"><div class="hr-kv"><span>تاریخ تولد</span><b class="num">@(emp.BirthDate?.ToFa() ?? "—")</b></div></div>
                 <div class="col-md-3"><div class="hr-kv"><span>قرارداد فعال</span><b class="num">@(emp.ActiveContractNo ?? "—")</b></div></div>
             </div>
         </div>
     </div>
+
+    @if (expiringDocs.Count > 0)
+    {
+        <div class="alert alert-warning d-flex align-items-center gap-2">
+            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
+            <div><b>هشدار انقضای مدارک: </b>@ExpiringText</div>
+        </div>
+    }
 
     <div class="row g-3">
         <div class="col-lg-6">
@@ -179,9 +211,290 @@ else
         </div>
     </div>
 
+    <div class="row g-3 mt-3">
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-people text-info ms-1"></i> افراد تحت‌تکفل (@dependents.Count.Num())</span>
+                    @if (canCreate)
+                    {
+                        <button class="btn btn-sm btn-success" @onclick="() => OpenDependent(null)"><i class="bi bi-plus-lg"></i></button>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (dependents.Count == 0)
+                    {
+                        <div class="text-muted text-center py-3 small">موردی ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light"><tr><th>نام</th><th>نسبت</th><th>تاریخ تولد</th><th>وضعیت</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var x in dependents)
+                                {
+                                    <tr class="@(x.IsActive ? "" : "opacity-50")">
+                                        <td><b>@x.FullName</b><div class="small text-muted num">@x.NationalCode</div></td>
+                                        <td>@x.Relation</td>
+                                        <td class="num">@(x.BirthDate?.ToFa() ?? "—")</td>
+                                        <td>
+                                            @if (x.IsActive)
+                                            {
+                                                <span class="badge text-bg-success">فعال</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge text-bg-secondary">غیرفعال</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (canUpdate)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => OpenDependent(x)"><i class="bi bi-pencil"></i></button>
+                                            }
+                                            @if (canDelete)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => DeleteDependent(x.Id)"><i class="bi bi-trash text-danger"></i></button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-mortarboard text-primary ms-1"></i> دوره‌های آموزشی (@courses.Count.Num())</span>
+                    @if (canCreate)
+                    {
+                        <button class="btn btn-sm btn-success" @onclick="() => OpenCourse(null)"><i class="bi bi-plus-lg"></i></button>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (courses.Count == 0)
+                    {
+                        <div class="text-muted text-center py-3 small">موردی ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light"><tr><th>عنوان</th><th>سال</th><th>ساعت</th><th>گواهی</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var x in courses)
+                                {
+                                    <tr>
+                                        <td><b>@x.Title</b><div class="small text-muted">@x.Institute</div></td>
+                                        <td class="num">@(x.Year == null ? "—" : Fa.Digits(x.Year.Value))</td>
+                                        <td class="num">@(x.DurationHours == null ? "—" : Fa.Digits(x.DurationHours.Value))</td>
+                                        <td>
+                                            @if (x.HasCertificate)
+                                            {
+                                                <span class="badge text-bg-success">دارد</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge text-bg-light border">ندارد</span>
+                                            }
+                                        </td>
+                                        <td class="text-end">
+                                            @if (canUpdate)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => OpenCourse(x)"><i class="bi bi-pencil"></i></button>
+                                            }
+                                            @if (canDelete)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => DeleteCourse(x.Id)"><i class="bi bi-trash text-danger"></i></button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-lightning-charge text-warning ms-1"></i> مهارت‌ها (@skills.Count.Num())</span>
+                    @if (canCreate)
+                    {
+                        <button class="btn btn-sm btn-success" @onclick="() => OpenSkill(null)"><i class="bi bi-plus-lg"></i></button>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (skills.Count == 0)
+                    {
+                        <div class="text-muted text-center py-3 small">موردی ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light"><tr><th>مهارت</th><th>سطح</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var x in skills)
+                                {
+                                    <tr>
+                                        <td><b>@x.Title</b></td>
+                                        <td><span class="badge text-bg-primary">@HrCoreUi.SkillLevel(x.Level)</span></td>
+                                        <td class="text-end">
+                                            @if (canUpdate)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => OpenSkill(x)"><i class="bi bi-pencil"></i></button>
+                                            }
+                                            @if (canDelete)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => DeleteSkill(x.Id)"><i class="bi bi-trash text-danger"></i></button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-translate text-success ms-1"></i> زبان‌های خارجی (@languages.Count.Num())</span>
+                    @if (canCreate)
+                    {
+                        <button class="btn btn-sm btn-success" @onclick="() => OpenLanguage(null)"><i class="bi bi-plus-lg"></i></button>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (languages.Count == 0)
+                    {
+                        <div class="text-muted text-center py-3 small">موردی ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light"><tr><th>زبان</th><th>سطح</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var x in languages)
+                                {
+                                    <tr>
+                                        <td><b>@x.Language</b></td>
+                                        <td><span class="badge text-bg-success">@HrCoreUi.SkillLevel(x.Level)</span></td>
+                                        <td class="text-end">
+                                            @if (canUpdate)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => OpenLanguage(x)"><i class="bi bi-pencil"></i></button>
+                                            }
+                                            @if (canDelete)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => DeleteLanguage(x.Id)"><i class="bi bi-trash text-danger"></i></button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-12">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-folder2-open text-secondary ms-1"></i> اسناد و مدارک (@documents.Count.Num())</span>
+                    @if (canCreate)
+                    {
+                        <button class="btn btn-sm btn-success" @onclick="() => OpenDocument(null)"><i class="bi bi-plus-lg"></i></button>
+                    }
+                </div>
+                <div class="card-body p-0">
+                    @if (documents.Count == 0)
+                    {
+                        <div class="text-muted text-center py-3 small">سندی ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light"><tr><th>عنوان</th><th>صدور</th><th>انقضا</th><th>وضعیت</th><th>فایل</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var x in documents)
+                                {
+                                    <tr>
+                                        <td><b>@x.Title</b><div class="small text-muted">@HrCoreUi.DocType(x.DocType)</div></td>
+                                        <td class="num">@(x.IssueDate?.ToFa() ?? "—")</td>
+                                        <td class="num">@(x.ExpiryDate?.ToFa() ?? "—")</td>
+                                        <td>
+                                            @if (x.IsExpired)
+                                            {
+                                                <span class="badge text-bg-danger">منقضی شده</span>
+                                            }
+                                            else if (x.IsExpiringSoon)
+                                            {
+                                                <span class="badge text-bg-warning">رو به پایان</span>
+                                            }
+                                            else if (x.ExpiryDate is null)
+                                            {
+                                                <span class="badge text-bg-light border">بدون انقضا</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge text-bg-success">معتبر</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(x.FileName))
+                                            {
+                                                <div class="small text-muted text-truncate" style="max-width:150px" title="@x.FileName">@x.FileName</div>
+                                            }
+                                            <div class="d-flex gap-1">
+                                                @if (!string.IsNullOrWhiteSpace(x.FilePath))
+                                                {
+                                                    <button class="btn btn-sm btn-light py-0" title="دانلود" @onclick="() => DownloadDoc(x)"><i class="bi bi-download text-success"></i></button>
+                                                }
+                                                @if (canUpdate)
+                                                {
+                                                    <label class="btn btn-sm btn-light py-0 mb-0" title="آپلود فایل">
+                                                        <i class="bi bi-upload text-primary"></i>
+                                                        <InputFile OnChange="e => OnDocFileSelected(x.Id, e)" style="display:none" />
+                                                    </label>
+                                                }
+                                            </div>
+                                        </td>
+                                        <td class="text-end">
+                                            @if (canUpdate)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => OpenDocument(x)"><i class="bi bi-pencil"></i></button>
+                                            }
+                                            @if (canDelete)
+                                            {
+                                                <button class="btn btn-sm btn-light py-0" @onclick="() => DeleteDocument(x.Id)"><i class="bi bi-trash text-danger"></i></button>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="mt-3">
         <AttachmentBox Module="HrEmployee" RefId="Id" CanUpload="@canUpdate" />
     </div>
+
+    @* اتصال اپشنال به آرشیو مرکزی — فقط اگر شرکت/کاربر دسترسی ماژول DocArchive داشته باشد *@
+    @if (Auth.HasModule("DocArchive"))
+    {
+        <div class="mt-3">
+            <DocArchiveEntityPanel Module="HrCore" EntityId="Id" EntityTitle="@($"{emp?.FirstName} {emp?.LastName}".Trim())" EntityCode="@emp?.Code" CanManage="@canUpdate" />
+        </div>
+    }
 }
 
 <Modal Visible="showContract" Title="قرارداد" Size="modal-lg" OnClose="() => showContract = false">
@@ -193,6 +506,8 @@ else
                 <select class="form-select" @bind="cform.Type">
                     <option value="0">رسمی</option><option value="1">قراردادی</option><option value="2">پیمانی</option>
                     <option value="3">ساعتی</option><option value="4">مشاوره‌ای</option>
+                    <option value="5">تمام‌وقت</option><option value="6">پاره‌وقت</option>
+                    <option value="7">پروژه‌ای</option><option value="8">آزمایشی</option>
                 </select>
             </div>
             <div class="col-md-4"><label class="form-label">عنوان شغلی</label><input class="form-control" @bind="cform.JobTitle" /></div>
@@ -264,9 +579,104 @@ else
     </Footer>
 </Modal>
 
+<Modal Visible="showDependent" Title="فرد تحت‌تکفل" OnClose="() => showDependent = false">
+    <ChildContent>
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">نام و نام خانوادگی <span class="text-danger">*</span></label><input class="form-control" @bind="depform.FullName" /></div>
+            <div class="col-md-6"><label class="form-label">نسبت <span class="text-danger">*</span></label><input class="form-control" @bind="depform.Relation" placeholder="همسر، فرزند، پدر، مادر…" /></div>
+            <div class="col-md-6"><label class="form-label">تاریخ تولد</label><DatePicker @bind-Value="depBirth" AllowClear="true" MinYear="1300" /></div>
+            <div class="col-md-6"><label class="form-label">کد ملی</label><input class="form-control num" maxlength="10" dir="ltr" @bind="depform.NationalCode" /></div>
+            <div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" id="depact" @bind="depform.IsActive" /><label class="form-check-label" for="depact">تحت‌تکفل فعال</label></div></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showDependent = false">انصراف</button>
+        <button class="btn btn-primary" disabled="@saving" @onclick="SaveDependent">ذخیره</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showCourse" Title="دوره آموزشی" OnClose="() => showCourse = false">
+    <ChildContent>
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">عنوان دوره <span class="text-danger">*</span></label><input class="form-control" @bind="crsform.Title" /></div>
+            <div class="col-md-6"><label class="form-label">آموزشگاه / موسسه</label><input class="form-control" @bind="crsform.Institute" /></div>
+            <div class="col-md-4"><label class="form-label">سال (شمسی)</label><input class="form-control num" type="number" @bind="crsform.Year" placeholder="۱۴۰۳" /></div>
+            <div class="col-md-4"><label class="form-label">مدت (ساعت)</label><input class="form-control num" type="number" min="0" @bind="crsform.DurationHours" /></div>
+            <div class="col-md-4 d-flex align-items-end"><div class="form-check"><input class="form-check-input" type="checkbox" id="crsCert" @bind="crsform.HasCertificate" /><label class="form-check-label" for="crsCert">دارای گواهی</label></div></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showCourse = false">انصراف</button>
+        <button class="btn btn-primary" disabled="@saving" @onclick="SaveCourse">ذخیره</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showSkill" Title="مهارت" OnClose="() => showSkill = false">
+    <ChildContent>
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">عنوان مهارت <span class="text-danger">*</span></label><input class="form-control" @bind="sklform.Title" /></div>
+            <div class="col-md-6">
+                <label class="form-label">سطح</label>
+                <select class="form-select" @bind="sklform.Level">
+                    <option value="0">مبتدی</option><option value="1">متوسط</option>
+                    <option value="2">پیشرفته</option><option value="3">خبره</option>
+                </select>
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showSkill = false">انصراف</button>
+        <button class="btn btn-primary" disabled="@saving" @onclick="SaveSkill">ذخیره</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showLanguage" Title="زبان خارجی" OnClose="() => showLanguage = false">
+    <ChildContent>
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">زبان <span class="text-danger">*</span></label><input class="form-control" @bind="lngform.Language" placeholder="انگلیسی، عربی، …" /></div>
+            <div class="col-md-6">
+                <label class="form-label">سطح</label>
+                <select class="form-select" @bind="lngform.Level">
+                    <option value="0">مبتدی</option><option value="1">متوسط</option>
+                    <option value="2">پیشرفته</option><option value="3">خبره</option>
+                </select>
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showLanguage = false">انصراف</button>
+        <button class="btn btn-primary" disabled="@saving" @onclick="SaveLanguage">ذخیره</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showDocument" Title="سند / مدرک" Size="modal-lg" OnClose="() => showDocument = false">
+    <ChildContent>
+        <div class="row g-2">
+            <div class="col-md-6"><label class="form-label">عنوان سند <span class="text-danger">*</span></label><input class="form-control" @bind="docform.Title" /></div>
+            <div class="col-md-6">
+                <label class="form-label">نوع سند</label>
+                <select class="form-select" @bind="docform.DocType">
+                    <option value="0">قرارداد</option><option value="1">کارت ملی</option><option value="2">مدرک تحصیلی</option>
+                    <option value="3">شناسنامه</option><option value="4">پایان خدمت</option><option value="5">بیمه</option>
+                    <option value="9">متفرقه</option>
+                </select>
+            </div>
+            <div class="col-md-6"><label class="form-label">تاریخ صدور</label><DatePicker @bind-Value="docIssue" AllowClear="true" /></div>
+            <div class="col-md-6"><label class="form-label">تاریخ انقضا</label><DatePicker @bind-Value="docExpiry" AllowClear="true" /></div>
+            <div class="col-12"><label class="form-label">یادداشت</label><input class="form-control" @bind="docform.Notes" /></div>
+            <div class="col-12"><div class="alert alert-light border py-2 small mb-0"><i class="bi bi-info-circle"></i> فایل سند بعد از ذخیره، با دکمه آپلود در ردیف جدول اضافه می‌شود. اسناد نزدیک به انقضا (۳۰ روز) بالای پرونده هشدار داده می‌شوند.</div></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showDocument = false">انصراف</button>
+        <button class="btn btn-primary" disabled="@saving" @onclick="SaveDocument">ذخیره</button>
+    </Footer>
+</Modal>
+
 <style>
     .hr-cover { height: 74px; background: linear-gradient(135deg, #2563eb, #7c3aed); }
     .hr-avatar-lg { width: 76px; height: 76px; border-radius: 50%; color: #fff; font-weight: 800; font-size: 1.4rem; display: inline-flex; align-items: center; justify-content: center; border: 4px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.15); flex-shrink: 0; }
+    .hr-photo-lg { width: 76px; height: 76px; border-radius: 50%; object-fit: cover; border: 4px solid #fff; box-shadow: 0 2px 8px rgba(0,0,0,.15); flex-shrink: 0; }
     .hr-kv { background: #f8fafc; border-radius: 10px; padding: .45rem .7rem; }
     .hr-kv span { display: block; font-size: .7rem; color: #94a3b8; }
     .hr-kv b { font-size: .85rem; color: #1e293b; }
@@ -286,8 +696,24 @@ else
     private List<HrDecreeDto> decrees = new();
     private List<HrOrgUnitDto> units = new();
 
+    private List<HrEmployeeDependentDto> dependents = new();
+    private List<HrEmployeeCourseDto> courses = new();
+    private List<HrEmployeeSkillDto> skills = new();
+    private List<HrEmployeeLanguageDto> languages = new();
+    private List<HrEmployeeDocumentDto> documents = new();
+    private List<HrEmployeeDocumentDto> expiringDocs = new();
+    private string? photoUrl;
+
     private bool showContract, showDecree;
+    private bool showDependent, showCourse, showSkill, showLanguage, showDocument;
     private int? cEditId, dEditId;
+    private int? depEditId, crsEditId, sklEditId, lngEditId, docEditId;
+    private HrEmployeeDependentSaveDto depform = new();
+    private HrEmployeeCourseSaveDto crsform = new();
+    private HrEmployeeSkillSaveDto sklform = new();
+    private HrEmployeeLanguageSaveDto lngform = new();
+    private HrEmployeeDocumentSaveDto docform = new();
+    private DateTime? depBirth, docIssue, docExpiry;
     private HrContractSaveDto cform = new();
     private HrDecreeSaveDto dform = new();
     private DateTime? cStart, cEnd, dEff;
@@ -299,9 +725,17 @@ else
         try
         {
             units = await Svc.GetOrgUnitsAsync();
-            emp = await Svc.GetEmployeeAsync(Id);
+            var dossier = await Svc.GetDossierAsync(Id);
+            emp = dossier.Employee;
+            dependents = dossier.Dependents;
+            courses = dossier.Courses;
+            skills = dossier.Skills;
+            languages = dossier.Languages;
+            documents = dossier.Documents;
+            expiringDocs = dossier.ExpiringDocuments;
             contracts = await Svc.GetEmployeeContractsAsync(Id);
             decrees = await Svc.GetEmployeeDecreesAsync(Id);
+            await LoadPhoto();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -391,6 +825,277 @@ else
     {
         if (!await JS.InvokeAsync<bool>("confirm", "حکم حذف شود؟")) return;
         try { await Svc.DeleteDecreeAsync(id); decrees = await Svc.GetEmployeeDecreesAsync(Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== پرونده: هلپرهای نمایشی ====================
+
+    private string DegreeText =>
+        string.IsNullOrWhiteSpace(emp?.Degree) ? "—"
+        : string.IsNullOrWhiteSpace(emp.FieldOfStudy) ? emp.Degree! : $"{emp.Degree} — {emp.FieldOfStudy}";
+
+    private string EmergencyText =>
+        string.IsNullOrWhiteSpace(emp?.EmergencyContactName) ? "—"
+        : emp.EmergencyContactName
+            + (string.IsNullOrWhiteSpace(emp.EmergencyContactRelation) ? "" : $" ({emp.EmergencyContactRelation})")
+            + (string.IsNullOrWhiteSpace(emp.EmergencyContactPhone) ? "" : $" — {emp.EmergencyContactPhone}");
+
+    private string ExpiringText => string.Join("، ", expiringDocs.Select(d =>
+        d.IsExpired ? $"{d.Title} (منقضی شده)" : $"{d.Title} ({Fa.Digits(d.DaysToExpiry ?? 0)} روز مانده)"));
+
+    // ==================== عکس پروفایل ====================
+
+    private async Task LoadPhoto()
+    {
+        photoUrl = null;
+        if (string.IsNullOrWhiteSpace(emp?.PhotoPath)) return;
+        try
+        {
+            var f = await Svc.GetEmployeePhotoAsync(Id);
+            photoUrl = $"data:{f.ContentType};base64,{Convert.ToBase64String(f.Data)}";
+        }
+        catch { photoUrl = null; }
+    }
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 5 * 1024 * 1024) { Toast.Error("حداکثر حجم عکس ۵ مگابایت است."); return; }
+        try
+        {
+            await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            emp = await Svc.UploadEmployeePhotoAsync(Id, ms, file.Name, file.ContentType);
+            await LoadPhoto();
+            Toast.Success("عکس پروفایل به‌روز شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeletePhoto()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "عکس پروفایل حذف شود؟")) return;
+        try
+        {
+            emp = await Svc.DeleteEmployeePhotoAsync(Id);
+            photoUrl = null;
+            Toast.Success("عکس حذف شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== تحت‌تکفل ====================
+
+    private void OpenDependent(HrEmployeeDependentDto? x)
+    {
+        depEditId = x?.Id;
+        depform = x is null
+            ? new HrEmployeeDependentSaveDto()
+            : new HrEmployeeDependentSaveDto
+            {
+                FullName = x.FullName, Relation = x.Relation,
+                BirthDate = x.BirthDate, NationalCode = x.NationalCode, IsActive = x.IsActive
+            };
+        depBirth = depform.BirthDate;
+        showDependent = true;
+    }
+
+    private async Task SaveDependent()
+    {
+        saving = true;
+        try
+        {
+            depform.BirthDate = depBirth;
+            await Svc.SaveDependentAsync(Id, depEditId, depform);
+            showDependent = false;
+            dependents = await Svc.GetDependentsAsync(Id);
+            Toast.Success("ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteDependent(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این فرد تحت‌تکفل حذف شود؟")) return;
+        try { await Svc.DeleteDependentAsync(id); dependents = await Svc.GetDependentsAsync(Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== دوره‌های آموزشی ====================
+
+    private void OpenCourse(HrEmployeeCourseDto? x)
+    {
+        crsEditId = x?.Id;
+        crsform = x is null
+            ? new HrEmployeeCourseSaveDto()
+            : new HrEmployeeCourseSaveDto
+            {
+                Title = x.Title, Institute = x.Institute, Year = x.Year,
+                DurationHours = x.DurationHours, HasCertificate = x.HasCertificate
+            };
+        showCourse = true;
+    }
+
+    private async Task SaveCourse()
+    {
+        saving = true;
+        try
+        {
+            await Svc.SaveCourseAsync(Id, crsEditId, crsform);
+            showCourse = false;
+            courses = await Svc.GetCoursesAsync(Id);
+            Toast.Success("ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteCourse(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این دوره حذف شود؟")) return;
+        try { await Svc.DeleteCourseAsync(id); courses = await Svc.GetCoursesAsync(Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== مهارت‌ها ====================
+
+    private void OpenSkill(HrEmployeeSkillDto? x)
+    {
+        sklEditId = x?.Id;
+        sklform = x is null
+            ? new HrEmployeeSkillSaveDto()
+            : new HrEmployeeSkillSaveDto { Title = x.Title, Level = x.Level };
+        showSkill = true;
+    }
+
+    private async Task SaveSkill()
+    {
+        saving = true;
+        try
+        {
+            await Svc.SaveSkillAsync(Id, sklEditId, sklform);
+            showSkill = false;
+            skills = await Svc.GetSkillsAsync(Id);
+            Toast.Success("ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteSkill(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این مهارت حذف شود؟")) return;
+        try { await Svc.DeleteSkillAsync(id); skills = await Svc.GetSkillsAsync(Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== زبان‌های خارجی ====================
+
+    private void OpenLanguage(HrEmployeeLanguageDto? x)
+    {
+        lngEditId = x?.Id;
+        lngform = x is null
+            ? new HrEmployeeLanguageSaveDto()
+            : new HrEmployeeLanguageSaveDto { Language = x.Language, Level = x.Level };
+        showLanguage = true;
+    }
+
+    private async Task SaveLanguage()
+    {
+        saving = true;
+        try
+        {
+            await Svc.SaveLanguageAsync(Id, lngEditId, lngform);
+            showLanguage = false;
+            languages = await Svc.GetLanguagesAsync(Id);
+            Toast.Success("ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteLanguage(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این زبان حذف شود؟")) return;
+        try { await Svc.DeleteLanguageAsync(id); languages = await Svc.GetLanguagesAsync(Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== اسناد ====================
+
+    private void OpenDocument(HrEmployeeDocumentDto? x)
+    {
+        docEditId = x?.Id;
+        docform = x is null
+            ? new HrEmployeeDocumentSaveDto()
+            : new HrEmployeeDocumentSaveDto
+            {
+                Title = x.Title, DocType = x.DocType,
+                IssueDate = x.IssueDate, ExpiryDate = x.ExpiryDate, Notes = x.Notes
+            };
+        docIssue = docform.IssueDate;
+        docExpiry = docform.ExpiryDate;
+        showDocument = true;
+    }
+
+    private async Task SaveDocument()
+    {
+        saving = true;
+        try
+        {
+            docform.IssueDate = docIssue;
+            docform.ExpiryDate = docExpiry;
+            await Svc.SaveDocumentAsync(Id, docEditId, docform);
+            showDocument = false;
+            await RefreshDocs();
+            Toast.Success("سند ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteDocument(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این سند و فایل آن حذف شود؟")) return;
+        try { await Svc.DeleteDocumentAsync(id); await RefreshDocs(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RefreshDocs()
+    {
+        documents = await Svc.GetDocumentsAsync(Id);
+        expiringDocs = documents.Where(d => d.IsExpired || d.IsExpiringSoon).ToList();
+    }
+
+    private async Task OnDocFileSelected(int docId, InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 20 * 1024 * 1024) { Toast.Error("حداکثر حجم فایل ۲۰ مگابایت است."); return; }
+        try
+        {
+            await using var stream = file.OpenReadStream(20 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            ms.Position = 0;
+            await Svc.UploadDocumentFileAsync(docId, ms, file.Name, file.ContentType);
+            documents = await Svc.GetDocumentsAsync(Id);
+            Toast.Success("فایل سند ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DownloadDoc(HrEmployeeDocumentDto d)
+    {
+        try
+        {
+            var f = await Svc.DownloadDocumentAsync(d.Id);
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, Convert.ToBase64String(f.Data));
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 }

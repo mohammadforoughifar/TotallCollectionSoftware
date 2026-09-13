@@ -43,6 +43,28 @@ public abstract class RbacControllerBase : ApiControllerBase
         => await HasAsync(module, action) ? null
            : StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
 
+    /// <summary>آیا کاربر جاری حداقل یکی از این اکشن‌های ماژول را دارد؟ (دسترسی تفکیکی هر لینک منو)</summary>
+    protected async Task<bool> HasAnyAsync(string module, params string[] actions)
+    {
+        var hasRoles = await Db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
+        if (!hasRoles)
+        {
+            var legacy = User.FindFirstValue(ClaimTypes.Role);
+            if (legacy == "Admin") return true;
+            if (legacy == "Operator") return actions.Any(a => a is "Create" or "Read" or "Export" or "Erja");
+            return false;
+        }
+        return await Db.UserRoles.Where(ur => ur.UserId == MyUserId)
+            .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+            .Join(Db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+            .AnyAsync(p => p.Module == module && actions.Contains(p.Action));
+    }
+
+    /// <summary>اگر هیچ‌کدام از مجوزها را نداشت 403 می‌دهد.</summary>
+    protected async Task<IActionResult?> ForbiddenUnlessAnyAsync(string module, params string[] actions)
+        => await HasAnyAsync(module, actions) ? null
+           : StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
+
     /// <summary>
     /// gate مخصوص «آرشیو اسناد و مدارک»: دسترسی این ماژول به‌ازای هر پوشه و هر مدرک
     /// جداگانه تعریف می‌شود، پس مجوز ماژول در «تنظیمات ← نقش‌ها و دسترسی‌ها» تنها یک

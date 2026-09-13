@@ -5,7 +5,8 @@ public static class HrCoreUi
 {
     public static string EmpType(int t) => t switch
     {
-        0 => "رسمی", 1 => "قراردادی", 2 => "پیمانی", 3 => "ساعتی", 4 => "مشاوره‌ای", _ => "—"
+        0 => "رسمی", 1 => "قراردادی", 2 => "پیمانی", 3 => "ساعتی", 4 => "مشاوره‌ای",
+        5 => "تمام‌وقت", 6 => "پاره‌وقت", 7 => "پروژه‌ای", 8 => "آزمایشی", _ => "—"
     };
 
     public static string EmpStatus(int s) => s switch
@@ -21,6 +22,17 @@ public static class HrCoreUi
         3 => "text-bg-danger",
         4 => "text-bg-secondary",
         _ => "text-bg-light"
+    };
+
+    public static string SkillLevel(int l) => l switch
+    {
+        0 => "مبتدی", 1 => "متوسط", 2 => "پیشرفته", 3 => "خبره", _ => "—"
+    };
+
+    public static string DocType(int t) => t switch
+    {
+        0 => "قرارداد", 1 => "کارت ملی", 2 => "مدرک تحصیلی", 3 => "شناسنامه",
+        4 => "پایان خدمت", 5 => "بیمه", 9 => "متفرقه", _ => "—"
     };
 
     public static string DecreeType(int t) => t switch
@@ -51,4 +63,31 @@ public static class HrCoreUi
         foreach (var ch in seed) h = (h * 31 + ch) & 0x7fffffff;
         return AvatarColors[h % AvatarColors.Length];
     }
+
+    public static string PostStatus(int s) => s switch
+    {
+        0 => "پیش‌نویس", 1 => "منتشرشده", 2 => "بسته", _ => "—"
+    };
+
+    public static string PostStatusBadge(int s) => s switch
+    {
+        0 => "text-bg-secondary", 1 => "text-bg-success", 2 => "text-bg-dark", _ => "text-bg-light"
+    };
+
+    public static string AppStatus(int s) => s switch
+    {
+        0 => "جدید", 1 => "در حال بررسی", 2 => "دعوت به مصاحبه", 3 => "مصاحبه‌شده",
+        4 => "پذیرفته", 5 => "ردشده", 6 => "استخدام‌شده", _ => "—"
+    };
+
+    public static string AppStatusBadge(int s) => s switch
+    {
+        0 => "text-bg-info", 1 => "text-bg-primary", 2 => "text-bg-warning", 3 => "text-bg-warning",
+        4 => "text-bg-success", 5 => "text-bg-danger", 6 => "text-bg-success", _ => "text-bg-light"
+    };
+
+    public static string InterviewResult(int r) => r switch
+    {
+        0 => "نامشخص", 1 => "قبول", 2 => "رد", 3 => "رزرو", _ => "—"
+    };
 }

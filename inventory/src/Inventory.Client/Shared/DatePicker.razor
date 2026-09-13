@@ -34,7 +34,7 @@
                         }
                     </select>
                     <select class="form-select form-select-sm" style="width:auto" @bind="viewYear">
-                        @for (int y = minYear; y <= maxYear; y++)
+                        @for (int y = MinYear; y <= MaxYear; y++)
                         {
                             <option value="@y">@Fa.Digits(y)</option>
                         }
@@ -118,8 +118,11 @@
     private bool open;
     private int viewYear, viewMonth;
 
-    private int minYear = 1390;
-    private int maxYear = 1430;
+    /// <summary>کمترین سال شمسی قابل انتخاب (پیش‌فرض ۱۳۹۰ — برای تاریخ تولد ۱۳۰۰ بدهید)</summary>
+    [Parameter] public int MinYear { get; set; } = 1390;
+
+    /// <summary>بیشترین سال شمسی قابل انتخاب</summary>
+    [Parameter] public int MaxYear { get; set; } = 1430;
 
     private string Text
     {
@@ -146,8 +149,8 @@
     private void InitView()
     {
         var (y, m, _) = PersianDate.FromGregorian(Value ?? DateTime.Now);
-        viewYear = y;
-        viewMonth = m;
+        viewYear = Math.Clamp(y, MinYear, MaxYear);
+        viewMonth = Math.Clamp(m, 1, 12);
     }
 
     private void OnInput(ChangeEventArgs e)

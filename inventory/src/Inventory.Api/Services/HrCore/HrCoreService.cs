@@ -1,5 +1,13 @@
 using Inventory.Api.Data;
+using Inventory.Api.Hubs;
+using Inventory.Api.Services.FaCom;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
+using Microsoft.AspNetCore.Hosting;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
+using Inventory.Api.Services.Pdf;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services.HrCore;
@@ -9,7 +17,8 @@ public static class HrCoreTexts
 {
     public static string EmploymentType(int t) => t switch
     {
-        0 => "رسمی", 1 => "قراردادی", 2 => "پیمانی", 3 => "ساعتی", 4 => "مشاوره‌ای", _ => "نامشخص"
+        0 => "رسمی", 1 => "قراردادی", 2 => "پیمانی", 3 => "ساعتی", 4 => "مشاوره‌ای",
+        5 => "تمام‌وقت", 6 => "پاره‌وقت", 7 => "پروژه‌ای", 8 => "آزمایشی", _ => "نامشخص"
     };
     public static string EmployeeStatus(int s) => s switch
     {
@@ -46,15 +55,55 @@ public interface IHrCoreService
     Task<List<HrContractDto>> EmployeeContractsAsync(int employeeId);
     Task<List<HrContractDto>> ListContractsAsync(bool? onlyActive);
     Task<List<HrContractDto>> ExpiringContractsAsync(int days);
-    Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto);
+    Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto, int byUserId, string byName);
     Task DeleteContractAsync(int id);
+
+    // قالب‌های قرارداد (§۹)
+    Task<List<HrContractTemplateDto>> ListTemplatesAsync();
+    Task<HrContractTemplateDto> SaveTemplateAsync(int? id, HrContractTemplateSaveDto dto);
+    Task DeleteTemplateAsync(int id);
+
+    // امضا و نسخه‌های قرارداد (§۹)
+    Task<HrContractDto> SubmitForSignAsync(int id);
+    Task<HrContractDto> SignEmployeeAsync(int id, string name);
+    Task<HrContractDto> SignEmployerAsync(int id, int byUserId, string byName);
+    Task<List<HrContractVersionDto>> ListVersionsAsync(int contractId);
+
+    // هشدارهای انقضا (§۹)
+    Task<int> CheckAlertsAsync(int days);
+    Task<List<HrContractAlertDto>> ListAlertsAsync();
+    Task DismissAlertAsync(int id);
 
     // احکام
     Task<List<HrDecreeDto>> EmployeeDecreesAsync(int employeeId);
     Task<List<HrDecreeDto>> ListDecreesAsync(int? employeeId, bool? onlyPending);
     Task<HrDecreeDto> SaveDecreeAsync(int? id, HrDecreeSaveDto dto, int byUserId, string byName);
     Task<HrDecreeDto> ApplyDecreeAsync(int id);
+    Task<byte[]> DecreePdfAsync(int id);
+    Task<byte[]> ContractPdfAsync(int id);
     Task DeleteDecreeAsync(int id);
+
+    // پرونده کارمندان — تحت‌تکفل، دوره‌ها، مهارت‌ها، زبان‌ها، اسناد، عکس
+    Task<HrEmployeeDossierDto> GetDossierAsync(int employeeId, int expiringDays = 30);
+    Task<List<HrEmployeeDependentDto>> ListDependentsAsync(int employeeId);
+    Task<HrEmployeeDependentDto> SaveDependentAsync(int employeeId, int? id, HrEmployeeDependentSaveDto dto);
+    Task DeleteDependentAsync(int id);
+    Task<List<HrEmployeeCourseDto>> ListCoursesAsync(int employeeId);
+    Task<HrEmployeeCourseDto> SaveCourseAsync(int employeeId, int? id, HrEmployeeCourseSaveDto dto);
+    Task DeleteCourseAsync(int id);
+    Task<List<HrEmployeeSkillDto>> ListSkillsAsync(int employeeId);
+    Task<HrEmployeeSkillDto> SaveSkillAsync(int employeeId, int? id, HrEmployeeSkillSaveDto dto);
+    Task DeleteSkillAsync(int id);
+    Task<List<HrEmployeeLanguageDto>> ListLanguagesAsync(int employeeId);
+    Task<HrEmployeeLanguageDto> SaveLanguageAsync(int employeeId, int? id, HrEmployeeLanguageSaveDto dto);
+    Task DeleteLanguageAsync(int id);
+    Task<List<HrEmployeeDocumentDto>> ListDocumentsAsync(int employeeId, int expiringDays = 30);
+    Task<HrEmployeeDocumentDto?> GetDocumentAsync(int id);
+    Task<HrEmployeeDocumentDto> SaveDocumentAsync(int employeeId, int? id, HrEmployeeDocumentSaveDto dto);
+    Task<HrEmployeeDocumentDto> AttachDocumentFileAsync(int id, string filePath, string fileName, string contentType, long fileSize);
+    Task DeleteDocumentAsync(int id);
+    Task<List<HrEmployeeDocumentDto>> ExpiringDocumentsAsync(int days);
+    Task<HrEmployeeDto> SetEmployeePhotoAsync(int employeeId, string? photoPath);
 
     // داشبورد
     Task<HrDashboardDto> DashboardAsync(int expiringDays = 30);
@@ -63,7 +112,10 @@ public interface IHrCoreService
 public class HrCoreService : IHrCoreService
 {
     private readonly AppDbContext _db;
-    public HrCoreService(AppDbContext db) => _db = db;
+    private readonly IWebHostEnvironment _env;
+    private readonly INotifyService _notify;
+    private readonly ISmsSender _sms;
+    public HrCoreService(AppDbContext db, IWebHostEnvironment env, INotifyService notify, ISmsSender sms) => (_db, _env, _notify, _sms) = (db, env, notify, sms);
 
     // ==================== پرسنل ====================
 
@@ -104,7 +156,7 @@ public class HrCoreService : IHrCoreService
         if (await _db.HrEmployees.AnyAsync(e => e.Code == code))
             throw new InvalidOperationException($"کد پرسنلی {code} تکراری است.");
 
-        await ValidateRefsAsync(dto.OrgUnitId, dto.ManagerId, null, dto.SystemUserId);
+        await ValidateRefsAsync(dto.OrgUnitId, dto.ManagerId, null, dto.SystemUserId, dto.HrMainNodeId, dto.HrMainPositionId);
 
         var e = new HrEmployee
         {
@@ -112,10 +164,16 @@ public class HrCoreService : IHrCoreService
             NationalCode = dto.NationalCode.Trim(), BirthDate = dto.BirthDate,
             Gender = dto.Gender, MaritalStatus = dto.MaritalStatus,
             Mobile = dto.Mobile?.Trim(), Email = dto.Email?.Trim(), Address = dto.Address?.Trim(),
+            Landline = dto.Landline?.Trim(),
+            EmergencyContactName = dto.EmergencyContactName?.Trim(),
+            EmergencyContactRelation = dto.EmergencyContactRelation?.Trim(),
+            EmergencyContactPhone = dto.EmergencyContactPhone?.Trim(),
+            Workplace = dto.Workplace?.Trim(), Degree = dto.Degree?.Trim(), FieldOfStudy = dto.FieldOfStudy?.Trim(),
             HireDate = dto.HireDate == default ? DateTime.Today : dto.HireDate,
             OrgUnitId = dto.OrgUnitId, PostTitle = dto.PostTitle?.Trim(), ManagerId = dto.ManagerId,
+            HrMainNodeId = dto.HrMainNodeId, HrMainPositionId = dto.HrMainPositionId,
             EmploymentType = (HrEmploymentType)dto.EmploymentType, Status = (HrEmployeeStatus)dto.Status,
-            SystemUserId = dto.SystemUserId, BaseSalary = dto.BaseSalary, IsActive = dto.IsActive
+            SystemUserId = dto.SystemUserId, BaseSalary = dto.BaseSalary, IsActive = dto.IsActive, Sheba = HrSheba.Norm(dto.Sheba), BankName = dto.BankName?.Trim()
         };
         _db.HrEmployees.Add(e);
         await _db.SaveChangesAsync();
@@ -132,16 +190,22 @@ public class HrCoreService : IHrCoreService
         var code = string.IsNullOrWhiteSpace(dto.Code) ? e.Code : dto.Code.Trim();
         if (await _db.HrEmployees.AnyAsync(x => x.Id != id && x.Code == code))
             throw new InvalidOperationException($"کد پرسنلی {code} تکراری است.");
-        await ValidateRefsAsync(dto.OrgUnitId, dto.ManagerId, id, dto.SystemUserId);
+        await ValidateRefsAsync(dto.OrgUnitId, dto.ManagerId, id, dto.SystemUserId, dto.HrMainNodeId, dto.HrMainPositionId);
 
         e.Code = code; e.FirstName = dto.FirstName.Trim(); e.LastName = dto.LastName.Trim();
         e.NationalCode = dto.NationalCode.Trim(); e.BirthDate = dto.BirthDate;
         e.Gender = dto.Gender; e.MaritalStatus = dto.MaritalStatus;
         e.Mobile = dto.Mobile?.Trim(); e.Email = dto.Email?.Trim(); e.Address = dto.Address?.Trim();
+        e.Landline = dto.Landline?.Trim();
+        e.EmergencyContactName = dto.EmergencyContactName?.Trim();
+        e.EmergencyContactRelation = dto.EmergencyContactRelation?.Trim();
+        e.EmergencyContactPhone = dto.EmergencyContactPhone?.Trim();
+        e.Workplace = dto.Workplace?.Trim(); e.Degree = dto.Degree?.Trim(); e.FieldOfStudy = dto.FieldOfStudy?.Trim();
         e.HireDate = dto.HireDate; e.OrgUnitId = dto.OrgUnitId; e.PostTitle = dto.PostTitle?.Trim();
+        e.HrMainNodeId = dto.HrMainNodeId; e.HrMainPositionId = dto.HrMainPositionId;
         e.ManagerId = dto.ManagerId; e.EmploymentType = (HrEmploymentType)dto.EmploymentType;
         e.Status = (HrEmployeeStatus)dto.Status; e.SystemUserId = dto.SystemUserId;
-        e.BaseSalary = dto.BaseSalary; e.IsActive = dto.IsActive; e.UpdatedAt = DateTime.Now;
+        e.BaseSalary = dto.BaseSalary; e.IsActive = dto.IsActive; e.Sheba = HrSheba.Norm(dto.Sheba); e.BankName = dto.BankName?.Trim(); e.UpdatedAt = DateTime.Now;
         await _db.SaveChangesAsync();
         return (await GetEmployeeAsync(id))!;
     }
@@ -164,10 +228,15 @@ public class HrCoreService : IHrCoreService
         return (max + 1).ToString();
     }
 
-    private async Task ValidateRefsAsync(int? orgUnitId, int? managerId, int? selfId, int? systemUserId)
+    private async Task ValidateRefsAsync(int? orgUnitId, int? managerId, int? selfId, int? systemUserId,
+        int? hrMainNodeId = null, int? hrMainPositionId = null)
     {
         if (orgUnitId is > 0 && !await _db.HrOrgUnits.AnyAsync(u => u.Id == orgUnitId.Value))
             throw new InvalidOperationException("واحد سازمانی نامعتبر است.");
+        if (hrMainNodeId is > 0 && !await _db.HrMainOrgNodes.AnyAsync(n => n.Id == hrMainNodeId.Value))
+            throw new InvalidOperationException("گره ساختار سازمانی (منابع انسانی اصلی) نامعتبر است.");
+        if (hrMainPositionId is > 0 && !await _db.HrMainPositions.AnyAsync(p => p.Id == hrMainPositionId.Value))
+            throw new InvalidOperationException("پست سازمانی (منابع انسانی اصلی) نامعتبر است.");
         if (managerId is > 0)
         {
             if (selfId is > 0 && managerId.Value == selfId.Value)
@@ -198,6 +267,12 @@ public class HrCoreService : IHrCoreService
         var sysName = e.SystemUserId is > 0
             ? await _db.SystemUsers.Where(u => u.Id == e.SystemUserId!.Value).Select(u => u.Username).FirstOrDefaultAsync()
             : null;
+        var hrMainNodeName = e.HrMainNodeId is > 0
+            ? await _db.HrMainOrgNodes.Where(n => n.Id == e.HrMainNodeId!.Value).Select(n => n.Name).FirstOrDefaultAsync()
+            : null;
+        var hrMainPositionTitle = e.HrMainPositionId is > 0
+            ? await _db.HrMainPositions.Where(p => p.Id == e.HrMainPositionId!.Value).Select(p => p.Title).FirstOrDefaultAsync()
+            : null;
         var activeContract = await _db.HrContracts.AsNoTracking()
             .Where(c => c.EmployeeId == e.Id && c.IsActive)
             .OrderByDescending(c => c.StartDate).FirstOrDefaultAsync();
@@ -206,11 +281,17 @@ public class HrCoreService : IHrCoreService
             Id = e.Id, Code = e.Code, FirstName = e.FirstName, LastName = e.LastName,
             NationalCode = e.NationalCode, BirthDate = e.BirthDate, Gender = e.Gender,
             MaritalStatus = e.MaritalStatus, Mobile = e.Mobile, Email = e.Email, Address = e.Address,
+            Landline = e.Landline, PhotoPath = e.PhotoPath,
+            EmergencyContactName = e.EmergencyContactName, EmergencyContactRelation = e.EmergencyContactRelation,
+            EmergencyContactPhone = e.EmergencyContactPhone, Workplace = e.Workplace,
+            Degree = e.Degree, FieldOfStudy = e.FieldOfStudy,
             HireDate = e.HireDate, OrgUnitId = e.OrgUnitId, OrgUnitName = orgName,
             PostTitle = e.PostTitle, ManagerId = e.ManagerId, ManagerName = mgrName,
+            HrMainNodeId = e.HrMainNodeId, HrMainNodeName = hrMainNodeName,
+            HrMainPositionId = e.HrMainPositionId, HrMainPositionTitle = hrMainPositionTitle,
             EmploymentType = (int)e.EmploymentType, Status = (int)e.Status,
             SystemUserId = e.SystemUserId, SystemUserName = sysName,
-            BaseSalary = e.BaseSalary, IsActive = e.IsActive,
+            BaseSalary = e.BaseSalary, IsActive = e.IsActive, Sheba = e.Sheba, BankName = e.BankName,
             ActiveContractNo = activeContract?.ContractNo, ActiveContractEnd = activeContract?.EndDate,
             ContractsCount = await _db.HrContracts.CountAsync(c => c.EmployeeId == e.Id),
             DecreesCount = await _db.HrDecrees.CountAsync(d => d.EmployeeId == e.Id)
@@ -335,6 +416,13 @@ public class HrCoreService : IHrCoreService
     private async Task<List<HrContractDto>> ListContractsQuery(IQueryable<HrContract> q)
     {
         var rows = await q.AsNoTracking().OrderByDescending(c => c.StartDate).Take(500).ToListAsync();
+        var tmplIds = rows.Where(c => c.TemplateId != null).Select(c => c.TemplateId!.Value).Distinct().ToList();
+        var tmplNames = tmplIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.HrContractTemplates.Where(x => tmplIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
+        var cids = rows.Select(c => c.Id).ToList();
+        var vcounts = cids.Count == 0 ? new Dictionary<int, int>()
+            : await _db.HrContractVersions.Where(v => cids.Contains(v.ContractId))
+                .GroupBy(v => v.ContractId).ToDictionaryAsync(g => g.Key, g => g.Count());
         var list = new List<HrContractDto>();
         foreach (var c in rows)
         {
@@ -351,13 +439,19 @@ public class HrCoreService : IHrCoreService
                 DaysToEnd = c.EndDate == null ? null : (int)(c.EndDate.Value.Date - DateTime.Today).TotalDays,
                 BaseSalary = c.BaseSalary, JobTitle = c.JobTitle,
                 OrgUnitId = c.OrgUnitId, OrgUnitName = orgName,
-                Description = c.Description, IsActive = c.IsActive
+                Description = c.Description, IsActive = c.IsActive,
+                TemplateId = c.TemplateId,
+                TemplateName = c.TemplateId != null && tmplNames.TryGetValue(c.TemplateId.Value, out var tn) ? tn : null,
+                SignStatus = (int)c.SignStatus,
+                EmployeeSignedBy = c.EmployeeSignedBy, EmployeeSignedAt = c.EmployeeSignedAt,
+                EmployerSignedByName = c.EmployerSignedByName, EmployerSignedAt = c.EmployerSignedAt,
+                VersionsCount = vcounts.TryGetValue(c.Id, out var vc) ? vc : 0
             });
         }
         return list;
     }
 
-    public async Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto)
+    public async Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto, int byUserId, string byName)
     {
         if (!await _db.HrEmployees.AnyAsync(e => e.Id == dto.EmployeeId))
             throw new InvalidOperationException("پرسنل نامعتبر است.");
@@ -366,18 +460,33 @@ public class HrCoreService : IHrCoreService
         if (dto.OrgUnitId is > 0 && !await _db.HrOrgUnits.AnyAsync(u => u.Id == dto.OrgUnitId.Value))
             throw new InvalidOperationException("واحد سازمانی نامعتبر است.");
 
+        if (dto.TemplateId is > 0 && !await _db.HrContractTemplates.AnyAsync(x => x.Id == dto.TemplateId.Value))
+            throw new InvalidOperationException("قالب قرارداد نامعتبر است.");
+
         HrContract c;
         if (id is > 0)
         {
             c = await _db.HrContracts.FirstOrDefaultAsync(x => x.Id == id.Value)
                 ?? throw new InvalidOperationException("قرارداد یافت نشد.");
+            // اسنپ‌شات نسخه قبل از تغییر (§۹-۳) + برگشت امضا به پیش‌نویس
+            var maxV = await _db.HrContractVersions.Where(v => v.ContractId == c.Id).MaxAsync(v => (int?)v.VersionNo) ?? 0;
+            _db.HrContractVersions.Add(new HrContractVersion
+            {
+                ContractId = c.Id, VersionNo = maxV + 1, ContractNo = c.ContractNo, Type = c.Type,
+                StartDate = c.StartDate, EndDate = c.EndDate, BaseSalary = (double)c.BaseSalary,
+                JobTitle = c.JobTitle, OrgUnitId = c.OrgUnitId, Description = c.Description, IsActive = c.IsActive,
+                ChangedByUserId = byUserId, ChangedByName = byName, ChangedAt = DateTime.Now, ChangeNote = dto.ChangeNote?.Trim()
+            });
+            c.SignStatus = HrContractSignStatus.Draft;
+            c.EmployeeSignedBy = null; c.EmployeeSignedAt = null;
+            c.EmployerSignedByUserId = null; c.EmployerSignedByName = null; c.EmployerSignedAt = null;
         }
         else { c = new HrContract(); _db.HrContracts.Add(c); }
 
         c.EmployeeId = dto.EmployeeId; c.ContractNo = (dto.ContractNo ?? "").Trim();
         c.Type = (HrEmploymentType)dto.Type; c.StartDate = dto.StartDate; c.EndDate = dto.EndDate;
         c.BaseSalary = dto.BaseSalary; c.JobTitle = dto.JobTitle?.Trim(); c.OrgUnitId = dto.OrgUnitId;
-        c.Description = dto.Description?.Trim(); c.IsActive = dto.IsActive;
+        c.Description = dto.Description?.Trim(); c.IsActive = dto.IsActive; c.TemplateId = dto.TemplateId;
         await _db.SaveChangesAsync();
         return (await EmployeeContractsAsync(c.EmployeeId)).First(x => x.Id == c.Id);
     }
@@ -387,6 +496,172 @@ public class HrCoreService : IHrCoreService
         var c = await _db.HrContracts.FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("قرارداد یافت نشد.");
         _db.HrContracts.Remove(c);
+        await _db.SaveChangesAsync();
+    }
+
+    // ==================== قالب‌های قرارداد (§۹) ====================
+
+    public async Task<List<HrContractTemplateDto>> ListTemplatesAsync()
+        => await _db.HrContractTemplates.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(t => t.Id)
+            .Select(t => new HrContractTemplateDto
+            {
+                Id = t.Id, Name = t.Name, Type = (int)t.Type, DurationMonths = t.DurationMonths,
+                JobTitle = t.JobTitle, Terms = t.Terms, SortOrder = t.SortOrder, IsActive = t.IsActive
+            }).ToListAsync();
+
+    public async Task<HrContractTemplateDto> SaveTemplateAsync(int? id, HrContractTemplateSaveDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.Name)) throw new InvalidOperationException("نام قالب الزامی است.");
+        HrContractTemplate t;
+        if (id is > 0)
+            t = await _db.HrContractTemplates.FirstOrDefaultAsync(x => x.Id == id.Value)
+                ?? throw new InvalidOperationException("قالب یافت نشد.");
+        else { t = new HrContractTemplate(); _db.HrContractTemplates.Add(t); }
+        t.Name = dto.Name.Trim(); t.Type = (HrEmploymentType)dto.Type;
+        t.DurationMonths = dto.DurationMonths; t.JobTitle = dto.JobTitle?.Trim();
+        t.Terms = dto.Terms?.Trim(); t.SortOrder = dto.SortOrder; t.IsActive = dto.IsActive;
+        await _db.SaveChangesAsync();
+        return (await ListTemplatesAsync()).First(x => x.Id == t.Id);
+    }
+
+    public async Task DeleteTemplateAsync(int id)
+    {
+        var t = await _db.HrContractTemplates.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("قالب یافت نشد.");
+        if (await _db.HrContracts.AnyAsync(c => c.TemplateId == id))
+            throw new InvalidOperationException("این قالب در قراردادها استفاده شده؛ ابتدا غیرفعالش کنید.");
+        _db.HrContractTemplates.Remove(t);
+        await _db.SaveChangesAsync();
+    }
+
+    // ==================== امضا و نسخه‌های قرارداد (§۹) ====================
+
+    public async Task<HrContractDto> SubmitForSignAsync(int id)
+    {
+        var c = await _db.HrContracts.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("قرارداد یافت نشد.");
+        if (c.SignStatus != HrContractSignStatus.Draft)
+            throw new InvalidOperationException("فقط قرارداد پیش‌نویس قابل ارسال برای امضا است.");
+        c.SignStatus = HrContractSignStatus.PendingSign;
+        await _db.SaveChangesAsync();
+        return (await EmployeeContractsAsync(c.EmployeeId)).First(x => x.Id == c.Id);
+    }
+
+    public async Task<HrContractDto> SignEmployeeAsync(int id, string name)
+    {
+        var c = await _db.HrContracts.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("قرارداد یافت نشد.");
+        if (c.SignStatus != HrContractSignStatus.PendingSign)
+            throw new InvalidOperationException("قرارداد در مرحله امضا نیست.");
+        if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException("نام امضاکننده الزامی است.");
+        c.EmployeeSignedBy = name.Trim(); c.EmployeeSignedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        return (await EmployeeContractsAsync(c.EmployeeId)).First(x => x.Id == c.Id);
+    }
+
+    public async Task<HrContractDto> SignEmployerAsync(int id, int byUserId, string byName)
+    {
+        var c = await _db.HrContracts.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("قرارداد یافت نشد.");
+        if (c.SignStatus != HrContractSignStatus.PendingSign)
+            throw new InvalidOperationException("قرارداد در مرحله امضا نیست.");
+        if (c.EmployeeSignedAt == null)
+            throw new InvalidOperationException("ابتدا امضای کارمند ثبت شود.");
+        c.EmployerSignedByUserId = byUserId; c.EmployerSignedByName = byName; c.EmployerSignedAt = DateTime.Now;
+        c.SignStatus = HrContractSignStatus.Signed;
+        await _db.SaveChangesAsync();
+        return (await EmployeeContractsAsync(c.EmployeeId)).First(x => x.Id == c.Id);
+    }
+
+    public async Task<List<HrContractVersionDto>> ListVersionsAsync(int contractId)
+        => await _db.HrContractVersions.AsNoTracking().Where(v => v.ContractId == contractId)
+            .OrderByDescending(v => v.VersionNo).Select(v => new HrContractVersionDto
+            {
+                Id = v.Id, ContractId = v.ContractId, VersionNo = v.VersionNo, ContractNo = v.ContractNo,
+                Type = (int)v.Type, StartDate = v.StartDate, EndDate = v.EndDate, BaseSalary = v.BaseSalary,
+                JobTitle = v.JobTitle, OrgUnitId = v.OrgUnitId, Description = v.Description, IsActive = v.IsActive,
+                ChangedByName = v.ChangedByName, ChangedAt = v.ChangedAt, ChangeNote = v.ChangeNote
+            }).ToListAsync();
+
+    // ==================== هشدارهای انقضای قرارداد (§۹) ====================
+
+    public async Task<int> CheckAlertsAsync(int days)
+    {
+        if (days <= 0) days = 30;
+        var horizon = DateTime.Today.AddDays(days);
+        var contracts = await _db.HrContracts.AsNoTracking()
+            .Where(c => c.IsActive && c.EndDate != null && c.EndDate.Value.Date <= horizon).ToListAsync();
+        int n = 0;
+        var fresh = new List<(int EmployeeId, DateTime Expire)>();
+        foreach (var c in contracts)
+        {
+            var a = await _db.HrContractExpiryAlerts
+                .FirstOrDefaultAsync(x => x.ContractId == c.Id && x.ThresholdDays == days);
+            if (a == null)
+            {
+                _db.HrContractExpiryAlerts.Add(new HrContractExpiryAlert
+                { ContractId = c.Id, ThresholdDays = days, ExpireDate = c.EndDate!.Value, NotifiedCount = 1 });
+                n++;
+                fresh.Add((c.EmployeeId, c.EndDate!.Value));
+            }
+            else { a.ExpireDate = c.EndDate!.Value; a.NotifiedCount++; a.CreatedAt = DateTime.Now; }
+        }
+        await _db.SaveChangesAsync();
+        if (fresh.Count > 0)
+        {
+            try
+            {
+                var eids = fresh.Select(x => x.EmployeeId).Distinct().ToList();
+                var emps = await _db.HrEmployees.AsNoTracking().Where(e => eids.Contains(e.Id)).ToListAsync();
+                foreach (var f in fresh)
+                {
+                    var e = emps.FirstOrDefault(x => x.Id == f.EmployeeId);
+                    if (e == null) continue;
+                    var left = (int)(f.Expire.Date - DateTime.Today).TotalDays;
+                    var msg = left < 0 ? $"قرارداد شما {-left} روز است منقضی شده."
+                        : left == 0 ? "قرارداد شما امروز به پایان می‌رسد."
+                        : $"فقط {left} روز تا پایان قرارداد شما مانده.";
+                    if (e.SystemUserId is > 0)
+                        await _notify.SendAsync(e.SystemUserId.Value, "هشدار پایان قرارداد", msg,
+                            "منابع انسانی", "HrCore", "hr-core/contracts");
+                    if (_sms.IsConfigured && !string.IsNullOrWhiteSpace(e.Mobile))
+                        try { await _sms.SendAsync(e.Mobile!.Trim(), msg); } catch { }
+                }
+                await _notify.BroadcastChangedAsync("hr-core");
+            }
+            catch { }
+        }
+        return n;
+    }
+
+    public async Task<List<HrContractAlertDto>> ListAlertsAsync()
+    {
+        var alerts = await _db.HrContractExpiryAlerts.AsNoTracking().OrderBy(a => a.ExpireDate).Take(200).ToListAsync();
+        if (alerts.Count == 0) return new();
+        var cids = alerts.Select(a => a.ContractId).Distinct().ToList();
+        var contracts = await _db.HrContracts.AsNoTracking().Where(c => cids.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
+        var eids = contracts.Values.Select(c => c.EmployeeId).Distinct().ToList();
+        var names = await _db.HrEmployees.Where(e => eids.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.FirstName + " " + e.LastName);
+        return alerts.Select(a =>
+        {
+            contracts.TryGetValue(a.ContractId, out var c);
+            return new HrContractAlertDto
+            {
+                Id = a.Id, ContractId = a.ContractId, ContractNo = c?.ContractNo ?? "",
+                EmployeeName = c != null && names.TryGetValue(c.EmployeeId, out var nm) ? nm : "",
+                ThresholdDays = a.ThresholdDays, ExpireDate = a.ExpireDate,
+                DaysToEnd = (int)(a.ExpireDate.Date - DateTime.Today).TotalDays,
+                NotifiedCount = a.NotifiedCount, CreatedAt = a.CreatedAt
+            };
+        }).ToList();
+    }
+
+    public async Task DismissAlertAsync(int id)
+    {
+        var a = await _db.HrContractExpiryAlerts.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("هشدار یافت نشد.");
+        _db.HrContractExpiryAlerts.Remove(a);
         await _db.SaveChangesAsync();
     }
 
@@ -458,6 +733,228 @@ public class HrCoreService : IHrCoreService
     }
 
     /// <summary>اجرای حکم روی پرونده پرسنل — یک‌بار و برگشت‌ناپذیر (حکم جدید لازم است)</summary>
+    public async Task<byte[]> ContractPdfAsync(int id)
+    {
+        var list = await ListContractsQuery(_db.HrContracts.Where(c => c.Id == id));
+        var d = list.FirstOrDefault() ?? throw new InvalidOperationException("قرارداد یافت نشد.");
+        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == d.EmployeeId);
+        var co = await _db.HrMainCompanies.AsNoTracking().FirstOrDefaultAsync();
+        HrPdf.EnsureFonts();
+        var logo = await HrPdf.TryLoadLogoAsync(_env.WebRootPath, co?.LogoPath);
+        var vers = await ListVersionsAsync(id);
+        var verNo = vers.Count == 0 ? 1 : vers.Max(v => v.VersionNo);
+        string? terms = null;
+        var tmplName = d.TemplateName;
+        if (d.TemplateId is > 0)
+        {
+            var tmpl = (await ListTemplatesAsync()).FirstOrDefault(x => x.Id == d.TemplateId!.Value);
+            terms = tmpl?.Terms;
+            tmplName ??= tmpl?.Name;
+        }
+        var paras = (terms ?? "").Split('\n').Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+        var coLine = string.Join(" • ", new[] { co?.Address, co?.Phone }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        var typeName = HrCoreTexts.EmploymentType(d.Type);
+        var endText = d.EndDate == null ? "دائمی" : PersianDate.ToShortFa(d.EndDate.Value);
+        var sign = d.SignStatus switch { 0 => "پیش‌نویس", 1 => "در انتظار امضا", 2 => "امضاشده", _ => "—" };
+        var empSign = d.EmployeeSignedBy == null ? null
+            : (d.EmployeeSignedAt == null ? d.EmployeeSignedBy : $"{d.EmployeeSignedBy} — {PersianDate.ToShortFa(d.EmployeeSignedAt.Value)}");
+        var sigs = new List<(string Role, string? Name)>
+        {
+            ("امضای کارمند", empSign ?? d.EmployeeName),
+            ("امضای کارفرما", d.EmployerSignedByName ?? co?.ManagerName),
+        };
+        var doc = Document.Create(c =>
+        {
+            c.Page(pg =>
+            {
+                pg.Size(PageSizes.A4);
+                pg.Margin(28);
+                pg.ContentFromRightToLeft();
+                pg.DefaultTextStyle(x => x.FontFamily(HrPdf.Font).FontSize(10));
+                pg.Header().Column(col =>
+                {
+                    if (logo != null)
+                    {
+                        col.Item().Row(r =>
+                        {
+                            r.RelativeItem().Column(c2 =>
+                            {
+                                c2.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(16).AlignCenter();
+                                if (!string.IsNullOrWhiteSpace(coLine))
+                                    c2.Item().Text(coLine).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                            });
+                            r.ConstantItem(60).AlignMiddle().Image(logo).FitWidth();
+                        });
+                    }
+                    else
+                    {
+                        col.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(16).AlignCenter();
+                        if (!string.IsNullOrWhiteSpace(coLine))
+                            col.Item().Text(coLine).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                    }
+                    col.Item().PaddingTop(4).LineHorizontal(1);
+                    col.Item().PaddingTop(6).Text("قرارداد همکاری").FontFamily(HrPdf.FontBold).FontSize(18).AlignCenter();
+                    col.Item().Text($"{typeName} • نسخه {Fa.Digits(verNo.ToString())}").FontFamily(HrPdf.FontBold).FontSize(12).AlignCenter();
+                    col.Item().PaddingTop(2).Text($"شماره قرارداد: {Fa.Digits(d.ContractNo)} • شروع: {PersianDate.ToShortFa(d.StartDate)} • پایان: {endText} • وضعیت: {sign}").FontSize(9).AlignCenter();
+                    col.Item().PaddingTop(4).LineHorizontal(1);
+                });
+                pg.Content().Column(col =>
+                {
+                    col.Item().PaddingTop(8).Text("مشخصات پرسنل").FontFamily(HrPdf.FontBold).FontSize(12);
+                    col.Item().PaddingTop(4).Table(tb =>
+                    {
+                        tb.ColumnsDefinition(cd => { cd.RelativeColumn(2); cd.RelativeColumn(3); });
+                        HrPdf.KvRow(tb, "نام و نام خانوادگی", d.EmployeeName);
+                        HrPdf.KvRow(tb, "کد پرسنلی", Fa.Digits(emp?.Code ?? "—"));
+                        HrPdf.KvRow(tb, "کد ملی", Fa.Digits(emp?.NationalCode ?? "—"));
+                    });
+                    col.Item().PaddingTop(10).Text("مشخصات قرارداد").FontFamily(HrPdf.FontBold).FontSize(12);
+                    col.Item().PaddingTop(4).Table(tb =>
+                    {
+                        tb.ColumnsDefinition(cd => { cd.RelativeColumn(2); cd.RelativeColumn(3); });
+                        HrPdf.KvRow(tb, "نوع همکاری", typeName);
+                        HrPdf.KvRow(tb, "عنوان شغلی", d.JobTitle ?? "—");
+                        HrPdf.KvRow(tb, "واحد سازمانی", d.OrgUnitName ?? "—");
+                        HrPdf.KvRow(tb, "حقوق پایه (ریال)", Fa.Digits(d.BaseSalary.ToString("#,0")));
+                        HrPdf.KvRow(tb, "قالب قرارداد", tmplName ?? "—");
+                    });
+                    col.Item().PaddingTop(10).Text($"متن قرارداد{(tmplName == null ? "" : $" (قالب: {tmplName})")}").FontFamily(HrPdf.FontBold).FontSize(12);
+                    if (paras.Count == 0)
+                        col.Item().PaddingTop(4).Text("(متن قالب ثبت نشده است.)").FontSize(10).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                    foreach (var pa in paras)
+                        col.Item().PaddingTop(3).Text(pa).FontSize(10);
+                    if (!string.IsNullOrWhiteSpace(d.Description))
+                    {
+                        col.Item().PaddingTop(8).Text("توضیحات").FontFamily(HrPdf.FontBold).FontSize(12);
+                        col.Item().PaddingTop(3).Text(d.Description).FontSize(10);
+                    }
+                    col.Item().PaddingTop(10).Row(r =>
+                    {
+                        r.Spacing(16);
+                        foreach (var (role, name) in sigs)
+                        {
+                            r.RelativeItem().Column(c2 =>
+                            {
+                                c2.Item().PaddingTop(40).LineHorizontal(0.5f);
+                                c2.Item().Text(role).FontSize(9).AlignCenter();
+                                if (!string.IsNullOrWhiteSpace(name))
+                                    c2.Item().Text(name).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                            });
+                        }
+                    });
+                });
+                pg.Footer().Column(col =>
+                {
+                    col.Item().LineHorizontal(1);
+                    col.Item().Text($"تاریخ صدور: {PersianDate.ToShortFa(DateTime.Now)} • نسخه {Fa.Digits(verNo.ToString())} — این قرارداد به‌صورت سیستمی صادر شده است.")
+                        .FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                });
+            });
+        });
+        return doc.GeneratePdf();
+    }
+
+    public async Task<byte[]> DecreePdfAsync(int id)
+    {
+        var list = await ListDecreesQuery(_db.HrDecrees.Where(d => d.Id == id));
+        var d = list.FirstOrDefault() ?? throw new InvalidOperationException("حکم یافت نشد.");
+        var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == d.EmployeeId);
+        var co = await _db.HrMainCompanies.AsNoTracking().FirstOrDefaultAsync();
+        HrPdf.EnsureFonts();
+        var logo = await HrPdf.TryLoadLogoAsync(_env.WebRootPath, co?.LogoPath);
+        var typeName = HrCoreTexts.DecreeType(d.Type);
+        var coLine = string.Join(" • ", new[] { co?.Address, co?.Phone }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        var changes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(d.NewPostTitle)) changes.Add($"پست جدید: {d.NewPostTitle}");
+        if (!string.IsNullOrWhiteSpace(d.NewOrgUnitName)) changes.Add($"واحد سازمانی جدید: {d.NewOrgUnitName}");
+        if (d.NewBaseSalary is > 0) changes.Add($"حقوق پایه جدید: {Fa.Digits(d.NewBaseSalary.Value.ToString("#,0"))} ریال");
+        if (d.NewStatus is >= 0) changes.Add($"وضعیت جدید: {HrCoreTexts.EmployeeStatus(d.NewStatus.Value)}");
+        var status = d.IsApplied
+            ? (d.AppliedAt == null ? "اجرا شده" : $"اجرا شده در {PersianDate.ToShortFa(d.AppliedAt.Value)}")
+            : "در انتظار اجرا";
+        var sigs = new List<(string Role, string? Name)>
+        {
+            ("امضای کارمند", d.EmployeeName),
+            ("مدیر منابع انسانی", null),
+            ("مدیرعامل", co?.ManagerName),
+        };
+        var doc = Document.Create(c =>
+        {
+            c.Page(pg =>
+            {
+                pg.Size(PageSizes.A4);
+                pg.Margin(28);
+                pg.ContentFromRightToLeft();
+                pg.DefaultTextStyle(x => x.FontFamily(HrPdf.Font).FontSize(10));
+                pg.Header().Column(col =>
+                {
+                    if (logo != null)
+                    {
+                        col.Item().Row(r =>
+                        {
+                            r.RelativeItem().Column(c2 =>
+                            {
+                                c2.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(16).AlignCenter();
+                                if (!string.IsNullOrWhiteSpace(coLine))
+                                    c2.Item().Text(coLine).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                            });
+                            r.ConstantItem(60).AlignMiddle().Image(logo).FitWidth();
+                        });
+                    }
+                    else
+                    {
+                        col.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(16).AlignCenter();
+                        if (!string.IsNullOrWhiteSpace(coLine))
+                            col.Item().Text(coLine).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                    }
+                    col.Item().PaddingTop(4).LineHorizontal(1);
+                    col.Item().PaddingTop(6).Text("حکم کارگزینی").FontFamily(HrPdf.FontBold).FontSize(18).AlignCenter();
+                    col.Item().Text($"نوع حکم: {typeName}").FontFamily(HrPdf.FontBold).FontSize(12).AlignCenter();
+                    col.Item().PaddingTop(2).Text($"شماره حکم: {Fa.Digits(d.DecreeNo)} • اجرا از: {PersianDate.ToShortFa(d.EffectiveDate)} • وضعیت: {status}").FontSize(9).AlignCenter();
+                    col.Item().PaddingTop(4).LineHorizontal(1);
+                });
+                pg.Content().Column(col =>
+                {
+                    col.Item().PaddingTop(8).Text("مشخصات پرسنل").FontFamily(HrPdf.FontBold).FontSize(12);
+                    col.Item().PaddingTop(4).Table(tb =>
+                    {
+                        tb.ColumnsDefinition(cd => { cd.RelativeColumn(2); cd.RelativeColumn(3); });
+                        HrPdf.KvRow(tb, "نام و نام خانوادگی", d.EmployeeName);
+                        HrPdf.KvRow(tb, "کد پرسنلی", Fa.Digits(emp?.Code ?? "—"));
+                        HrPdf.KvRow(tb, "کد ملی", Fa.Digits(emp?.NationalCode ?? "—"));
+                    });
+                    col.Item().PaddingTop(10).Text("متن حکم").FontFamily(HrPdf.FontBold).FontSize(12);
+                    col.Item().PaddingTop(4).Text($"بدین‌وسیله {typeName} نامبرده از تاریخ {PersianDate.ToShortFa(d.EffectiveDate)} به شرح زیر اعلام می‌گردد:").FontSize(10);
+                    foreach (var ch in changes)
+                        col.Item().PaddingTop(2).Text($"• {ch}").FontSize(10);
+                    if (!string.IsNullOrWhiteSpace(d.Description))
+                        col.Item().PaddingTop(6).Text(d.Description).FontSize(10);
+                    col.Item().PaddingTop(10).Row(r =>
+                    {
+                        r.Spacing(16);
+                        foreach (var (role, name) in sigs)
+                        {
+                            r.RelativeItem().Column(c2 =>
+                            {
+                                c2.Item().PaddingTop(40).LineHorizontal(0.5f);
+                                c2.Item().Text(role).FontSize(9).AlignCenter();
+                                if (!string.IsNullOrWhiteSpace(name))
+                                    c2.Item().Text(name).FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                            });
+                        }
+                    });
+                });
+                pg.Footer().Column(col =>
+                {
+                    col.Item().LineHorizontal(1);
+                    col.Item().Text($"تاریخ صدور: {PersianDate.ToShortFa(d.CreatedAt)} • صادرکننده: {d.CreatedByName ?? "—"} — این حکم به‌صورت سیستمی صادر شده است.")
+                        .FontSize(8).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1).AlignCenter();
+                });
+            });
+        });
+        return doc.GeneratePdf();
+    }
+
     public async Task<HrDecreeDto> ApplyDecreeAsync(int id)
     {
         var d = await _db.HrDecrees.FirstOrDefaultAsync(x => x.Id == id)
@@ -493,6 +990,285 @@ public class HrCoreService : IHrCoreService
         if (d.IsApplied) throw new InvalidOperationException("حکم اجراشده قابل حذف نیست.");
         _db.HrDecrees.Remove(d);
         await _db.SaveChangesAsync();
+    }
+
+    // ==================== پرونده کارمندان ====================
+
+    private async Task EnsureEmployeeAsync(int employeeId)
+    {
+        if (!await _db.HrEmployees.AnyAsync(e => e.Id == employeeId))
+            throw new InvalidOperationException("پرسنل یافت نشد.");
+    }
+
+    public async Task<HrEmployeeDossierDto> GetDossierAsync(int employeeId, int expiringDays = 30)
+    {
+        var emp = await GetEmployeeAsync(employeeId)
+            ?? throw new InvalidOperationException("پرسنل یافت نشد.");
+        var docs = await ListDocumentsQuery(
+            _db.HrEmployeeDocuments.Where(d => d.EmployeeId == employeeId), expiringDays);
+        return new HrEmployeeDossierDto
+        {
+            Employee = emp,
+            Dependents = await ListDependentsAsync(employeeId),
+            Courses = await ListCoursesAsync(employeeId),
+            Skills = await ListSkillsAsync(employeeId),
+            Languages = await ListLanguagesAsync(employeeId),
+            Documents = docs,
+            ExpiringDocuments = docs.Where(d => d.IsExpired || d.IsExpiringSoon).ToList()
+        };
+    }
+
+    // ---------- تحت‌تکفل ----------
+
+    public async Task<List<HrEmployeeDependentDto>> ListDependentsAsync(int employeeId)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        return await _db.HrEmployeeDependents.AsNoTracking()
+            .Where(x => x.EmployeeId == employeeId).OrderBy(x => x.Id)
+            .Select(x => new HrEmployeeDependentDto
+            {
+                Id = x.Id, EmployeeId = x.EmployeeId, FullName = x.FullName, Relation = x.Relation,
+                BirthDate = x.BirthDate, NationalCode = x.NationalCode, IsActive = x.IsActive
+            }).ToListAsync();
+    }
+
+    public async Task<HrEmployeeDependentDto> SaveDependentAsync(int employeeId, int? id, HrEmployeeDependentSaveDto dto)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        if (string.IsNullOrWhiteSpace(dto.FullName)) throw new InvalidOperationException("نام و نام خانوادگی الزامی است.");
+        if (string.IsNullOrWhiteSpace(dto.Relation)) throw new InvalidOperationException("نسبت الزامی است.");
+        HrEmployeeDependent x;
+        if (id is > 0)
+        {
+            x = await _db.HrEmployeeDependents.FirstOrDefaultAsync(v => v.Id == id.Value && v.EmployeeId == employeeId)
+                ?? throw new InvalidOperationException("فرد تحت‌تکفل یافت نشد.");
+        }
+        else { x = new HrEmployeeDependent { EmployeeId = employeeId }; _db.HrEmployeeDependents.Add(x); }
+        x.FullName = dto.FullName.Trim(); x.Relation = dto.Relation.Trim();
+        x.BirthDate = dto.BirthDate; x.NationalCode = dto.NationalCode?.Trim(); x.IsActive = dto.IsActive;
+        await _db.SaveChangesAsync();
+        return (await ListDependentsAsync(employeeId)).First(v => v.Id == x.Id);
+    }
+
+    public async Task DeleteDependentAsync(int id)
+    {
+        var x = await _db.HrEmployeeDependents.FirstOrDefaultAsync(v => v.Id == id)
+            ?? throw new InvalidOperationException("فرد تحت‌تکفل یافت نشد.");
+        _db.HrEmployeeDependents.Remove(x);
+        await _db.SaveChangesAsync();
+    }
+
+    // ---------- دوره‌های آموزشی ----------
+
+    public async Task<List<HrEmployeeCourseDto>> ListCoursesAsync(int employeeId)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        return await _db.HrEmployeeCourses.AsNoTracking()
+            .Where(x => x.EmployeeId == employeeId).OrderByDescending(x => x.Year).ThenBy(x => x.Id)
+            .Select(x => new HrEmployeeCourseDto
+            {
+                Id = x.Id, EmployeeId = x.EmployeeId, Title = x.Title, Institute = x.Institute,
+                Year = x.Year, DurationHours = x.DurationHours, HasCertificate = x.HasCertificate
+            }).ToListAsync();
+    }
+
+    public async Task<HrEmployeeCourseDto> SaveCourseAsync(int employeeId, int? id, HrEmployeeCourseSaveDto dto)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        if (string.IsNullOrWhiteSpace(dto.Title)) throw new InvalidOperationException("عنوان دوره الزامی است.");
+        HrEmployeeCourse x;
+        if (id is > 0)
+        {
+            x = await _db.HrEmployeeCourses.FirstOrDefaultAsync(v => v.Id == id.Value && v.EmployeeId == employeeId)
+                ?? throw new InvalidOperationException("دوره یافت نشد.");
+        }
+        else { x = new HrEmployeeCourse { EmployeeId = employeeId }; _db.HrEmployeeCourses.Add(x); }
+        x.Title = dto.Title.Trim(); x.Institute = dto.Institute?.Trim();
+        x.Year = dto.Year; x.DurationHours = dto.DurationHours; x.HasCertificate = dto.HasCertificate;
+        await _db.SaveChangesAsync();
+        return (await ListCoursesAsync(employeeId)).First(v => v.Id == x.Id);
+    }
+
+    public async Task DeleteCourseAsync(int id)
+    {
+        var x = await _db.HrEmployeeCourses.FirstOrDefaultAsync(v => v.Id == id)
+            ?? throw new InvalidOperationException("دوره یافت نشد.");
+        _db.HrEmployeeCourses.Remove(x);
+        await _db.SaveChangesAsync();
+    }
+
+    // ---------- مهارت‌ها ----------
+
+    public async Task<List<HrEmployeeSkillDto>> ListSkillsAsync(int employeeId)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        return await _db.HrEmployeeSkills.AsNoTracking()
+            .Where(x => x.EmployeeId == employeeId).OrderBy(x => x.Id)
+            .Select(x => new HrEmployeeSkillDto
+            {
+                Id = x.Id, EmployeeId = x.EmployeeId, Title = x.Title, Level = (int)x.Level
+            }).ToListAsync();
+    }
+
+    public async Task<HrEmployeeSkillDto> SaveSkillAsync(int employeeId, int? id, HrEmployeeSkillSaveDto dto)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        if (string.IsNullOrWhiteSpace(dto.Title)) throw new InvalidOperationException("عنوان مهارت الزامی است.");
+        HrEmployeeSkill x;
+        if (id is > 0)
+        {
+            x = await _db.HrEmployeeSkills.FirstOrDefaultAsync(v => v.Id == id.Value && v.EmployeeId == employeeId)
+                ?? throw new InvalidOperationException("مهارت یافت نشد.");
+        }
+        else { x = new HrEmployeeSkill { EmployeeId = employeeId }; _db.HrEmployeeSkills.Add(x); }
+        x.Title = dto.Title.Trim(); x.Level = (HrSkillLevel)Math.Clamp(dto.Level, 0, 3);
+        await _db.SaveChangesAsync();
+        return (await ListSkillsAsync(employeeId)).First(v => v.Id == x.Id);
+    }
+
+    public async Task DeleteSkillAsync(int id)
+    {
+        var x = await _db.HrEmployeeSkills.FirstOrDefaultAsync(v => v.Id == id)
+            ?? throw new InvalidOperationException("مهارت یافت نشد.");
+        _db.HrEmployeeSkills.Remove(x);
+        await _db.SaveChangesAsync();
+    }
+
+    // ---------- زبان‌های خارجی ----------
+
+    public async Task<List<HrEmployeeLanguageDto>> ListLanguagesAsync(int employeeId)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        return await _db.HrEmployeeLanguages.AsNoTracking()
+            .Where(x => x.EmployeeId == employeeId).OrderBy(x => x.Id)
+            .Select(x => new HrEmployeeLanguageDto
+            {
+                Id = x.Id, EmployeeId = x.EmployeeId, Language = x.Language, Level = (int)x.Level
+            }).ToListAsync();
+    }
+
+    public async Task<HrEmployeeLanguageDto> SaveLanguageAsync(int employeeId, int? id, HrEmployeeLanguageSaveDto dto)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        if (string.IsNullOrWhiteSpace(dto.Language)) throw new InvalidOperationException("نام زبان الزامی است.");
+        HrEmployeeLanguage x;
+        if (id is > 0)
+        {
+            x = await _db.HrEmployeeLanguages.FirstOrDefaultAsync(v => v.Id == id.Value && v.EmployeeId == employeeId)
+                ?? throw new InvalidOperationException("زبان یافت نشد.");
+        }
+        else { x = new HrEmployeeLanguage { EmployeeId = employeeId }; _db.HrEmployeeLanguages.Add(x); }
+        x.Language = dto.Language.Trim(); x.Level = (HrSkillLevel)Math.Clamp(dto.Level, 0, 3);
+        await _db.SaveChangesAsync();
+        return (await ListLanguagesAsync(employeeId)).First(v => v.Id == x.Id);
+    }
+
+    public async Task DeleteLanguageAsync(int id)
+    {
+        var x = await _db.HrEmployeeLanguages.FirstOrDefaultAsync(v => v.Id == id)
+            ?? throw new InvalidOperationException("زبان یافت نشد.");
+        _db.HrEmployeeLanguages.Remove(x);
+        await _db.SaveChangesAsync();
+    }
+
+    // ---------- اسناد ----------
+
+    public async Task<List<HrEmployeeDocumentDto>> ListDocumentsAsync(int employeeId, int expiringDays = 30)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        return await ListDocumentsQuery(_db.HrEmployeeDocuments.Where(d => d.EmployeeId == employeeId), expiringDays);
+    }
+
+    public async Task<HrEmployeeDocumentDto?> GetDocumentAsync(int id)
+    {
+        var list = await ListDocumentsQuery(_db.HrEmployeeDocuments.Where(d => d.Id == id), 30);
+        return list.FirstOrDefault();
+    }
+
+    public async Task<HrEmployeeDocumentDto> SaveDocumentAsync(int employeeId, int? id, HrEmployeeDocumentSaveDto dto)
+    {
+        await EnsureEmployeeAsync(employeeId);
+        if (string.IsNullOrWhiteSpace(dto.Title)) throw new InvalidOperationException("عنوان سند الزامی است.");
+        if (dto.ExpiryDate != null && dto.IssueDate != null && dto.ExpiryDate < dto.IssueDate)
+            throw new InvalidOperationException("تاریخ انقضا نمی‌تواند قبل از تاریخ صدور باشد.");
+        HrEmployeeDocument x;
+        if (id is > 0)
+        {
+            x = await _db.HrEmployeeDocuments.FirstOrDefaultAsync(v => v.Id == id.Value && v.EmployeeId == employeeId)
+                ?? throw new InvalidOperationException("سند یافت نشد.");
+        }
+        else { x = new HrEmployeeDocument { EmployeeId = employeeId }; _db.HrEmployeeDocuments.Add(x); }
+        x.Title = dto.Title.Trim(); x.DocType = (HrDocType)dto.DocType;
+        x.IssueDate = dto.IssueDate; x.ExpiryDate = dto.ExpiryDate; x.Notes = dto.Notes?.Trim();
+        await _db.SaveChangesAsync();
+        return (await GetDocumentAsync(x.Id))!;
+    }
+
+    public async Task<HrEmployeeDocumentDto> AttachDocumentFileAsync(int id, string filePath, string fileName, string contentType, long fileSize)
+    {
+        var x = await _db.HrEmployeeDocuments.FirstOrDefaultAsync(v => v.Id == id)
+            ?? throw new InvalidOperationException("سند یافت نشد.");
+        x.FilePath = filePath; x.FileName = fileName; x.ContentType = contentType; x.FileSize = fileSize;
+        await _db.SaveChangesAsync();
+        return (await GetDocumentAsync(id))!;
+    }
+
+    public async Task DeleteDocumentAsync(int id)
+    {
+        var x = await _db.HrEmployeeDocuments.FirstOrDefaultAsync(v => v.Id == id)
+            ?? throw new InvalidOperationException("سند یافت نشد.");
+        _db.HrEmployeeDocuments.Remove(x);
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<List<HrEmployeeDocumentDto>> ExpiringDocumentsAsync(int days)
+    {
+        days = Math.Clamp(days, 1, 365);
+        var horizon = DateTime.Today.AddDays(days);
+        var list = await ListDocumentsQuery(_db.HrEmployeeDocuments
+            .Where(d => d.ExpiryDate != null && d.ExpiryDate.Value.Date <= horizon)
+            .Join(_db.HrEmployees.Where(e => e.IsActive), d => d.EmployeeId, e => e.Id, (d, e) => d), days);
+        return list;
+    }
+
+    private async Task<List<HrEmployeeDocumentDto>> ListDocumentsQuery(IQueryable<HrEmployeeDocument> q, int expiringDays)
+    {
+        expiringDays = Math.Clamp(expiringDays, 1, 365);
+        var rows = await q.AsNoTracking().OrderByDescending(x => x.Id).Take(500).ToListAsync();
+        var today = DateTime.Today;
+        var empIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
+        var names = await _db.HrEmployees.Where(e => empIds.Contains(e.Id))
+            .Select(e => new { e.Id, N = e.FirstName + " " + e.LastName })
+            .ToDictionaryAsync(x => x.Id, x => x.N);
+        var list = new List<HrEmployeeDocumentDto>();
+        foreach (var x in rows)
+        {
+            int? diff = x.ExpiryDate == null ? null : (int)(x.ExpiryDate.Value.Date - today).TotalDays;
+            list.Add(new HrEmployeeDocumentDto
+            {
+                Id = x.Id, EmployeeId = x.EmployeeId,
+                EmployeeName = names.TryGetValue(x.EmployeeId, out var n) ? n : null,
+                Title = x.Title, DocType = (int)x.DocType,
+                FilePath = x.FilePath, FileName = x.FileName, ContentType = x.ContentType, FileSize = x.FileSize,
+                IssueDate = x.IssueDate, ExpiryDate = x.ExpiryDate, Notes = x.Notes,
+                DaysToExpiry = diff,
+                IsExpired = diff != null && diff < 0,
+                IsExpiringSoon = diff != null && diff >= 0 && diff <= expiringDays
+            });
+        }
+        return list;
+    }
+
+    // ---------- عکس پروفایل ----------
+
+    public async Task<HrEmployeeDto> SetEmployeePhotoAsync(int employeeId, string? photoPath)
+    {
+        var e = await _db.HrEmployees.FirstOrDefaultAsync(x => x.Id == employeeId)
+            ?? throw new InvalidOperationException("پرسنل یافت نشد.");
+        e.PhotoPath = string.IsNullOrWhiteSpace(photoPath) ? null : photoPath.Trim();
+        e.UpdatedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        return (await GetEmployeeAsync(employeeId))!;
     }
 
     // ==================== داشبورد ====================

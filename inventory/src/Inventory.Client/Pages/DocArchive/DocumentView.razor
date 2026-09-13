@@ -880,8 +880,7 @@ else
 </Modal>
 
 @* ==================== مودال فعال/غیرفعال کردن مدرک ==================== *@
-<Modal Visible="showToggle" Title="@(doc.IsActive ? "غیرفعال کردن مدرک" : "فعال کردن مدرک")"
-       OnClose="() => showToggle = false">
+<Modal Visible="showToggle" Title="@(doc.IsActive ? "غیرفعال کردن مدرک" : "فعال کردن مدرک")" OnClose="() => showToggle = false">
     <ChildContent>
         <p class="mb-2">مدرک <b class="num">@doc.Code</b> — @doc.Title</p>
         @if (doc.IsActive)

@@ -19,14 +19,27 @@ public enum HrOrgUnitType
     CostCenter = 3
 }
 
-/// <summary>نوع استخدام / قرارداد</summary>
+/// <summary>نوع استخدام / قرارداد — مقادیر ۰ تا ۴ قدیمی و ۵ تا ۸ جدید (سازگار با داده موجود)</summary>
 public enum HrEmploymentType
 {
     Rasmi = 0,
     Gharardadi = 1,
     Peymani = 2,
     Saati = 3,
-    Mashaverei = 4
+    Mashaverei = 4,
+    TamamVaght = 5,
+    PareVaght = 6,
+    Projei = 7,
+    Azmayeshi = 8
+}
+
+// ================== §۹: وضعیت امضای قرارداد ==================
+/// <summary>وضعیت امضای الکترونیکی قرارداد — §۹</summary>
+public enum HrContractSignStatus
+{
+    Draft = 0,
+    PendingSign = 1,
+    Signed = 2
 }
 
 /// <summary>وضعیت پرسنل</summary>
@@ -113,6 +126,38 @@ public class HrEmployee
     [MaxLength(20)]
     public string? Mobile { get; set; }
 
+    /// <summary>تلفن ثابت</summary>
+    [MaxLength(20)]
+    public string? Landline { get; set; }
+
+    /// <summary>مسیر نسبی عکس پروفایل از جذر wwwroot</summary>
+    [MaxLength(300)]
+    public string? PhotoPath { get; set; }
+
+    /// <summary>تماس اضطراری: نام بستگان</summary>
+    [MaxLength(100)]
+    public string? EmergencyContactName { get; set; }
+
+    /// <summary>تماس اضطراری: نسبت</summary>
+    [MaxLength(50)]
+    public string? EmergencyContactRelation { get; set; }
+
+    /// <summary>تماس اضطراری: شماره تماس</summary>
+    [MaxLength(20)]
+    public string? EmergencyContactPhone { get; set; }
+
+    /// <summary>محل کار (شعبه/ساختمان/سایت)</summary>
+    [MaxLength(150)]
+    public string? Workplace { get; set; }
+
+    /// <summary>آخرین مدرک تحصیلی — مثلاً کارشناسی</summary>
+    [MaxLength(50)]
+    public string? Degree { get; set; }
+
+    /// <summary>رشته تحصیلی</summary>
+    [MaxLength(100)]
+    public string? FieldOfStudy { get; set; }
+
     [MaxLength(150)]
     public string? Email { get; set; }
 
@@ -125,6 +170,12 @@ public class HrEmployee
 
     [MaxLength(150)]
     public string? PostTitle { get; set; }
+
+    /// <summary>گره ساختار سازمانی جدید (منابع انسانی اصلی — HrMainOrgNodes) — اختیاری</summary>
+    public int? HrMainNodeId { get; set; }
+
+    /// <summary>پست سازمانی جدید (منابع انسانی اصلی — HrMainPositions) — اختیاری</summary>
+    public int? HrMainPositionId { get; set; }
 
     /// <summary>مدیر مستقیم (خودارجاع) — برای چارت و گردش تأییدها</summary>
     public int? ManagerId { get; set; }
@@ -140,6 +191,14 @@ public class HrEmployee
     public decimal BaseSalary { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>شماره شبای بانکی (نرمال‌شده: IR + ۲۴ رقم)</summary>
+    [MaxLength(29)]
+    public string? Sheba { get; set; }
+
+    /// <summary>نام بانک (برای تفکیک فایل پرداخت)</summary>
+    [MaxLength(60)]
+    public string? BankName { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? UpdatedAt { get; set; }
@@ -175,6 +234,24 @@ public class HrContract
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+    /// <summary>قالب مبنای ایجاد (§۹) — خالی یعنی بدون قالب</summary>
+    public int? TemplateId { get; set; }
+
+    /// <summary>وضعیت امضای الکترونیکی (§۹)</summary>
+    public HrContractSignStatus SignStatus { get; set; } = HrContractSignStatus.Draft;
+
+    [MaxLength(150)]
+    public string? EmployeeSignedBy { get; set; }
+
+    public DateTime? EmployeeSignedAt { get; set; }
+
+    public int? EmployerSignedByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string? EmployerSignedByName { get; set; }
+
+    public DateTime? EmployerSignedAt { get; set; }
+
 }
 
 /// <summary>حکم کارگزینی — تغییرات رسمی وضعیت/پست/حقوق/واحد پرسنل با قابلیت «اجرا»</summary>
@@ -212,6 +289,172 @@ public class HrDecree
 
     [MaxLength(150)]
     public string? CreatedByName { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+// ================== §۹: قالب، نسخه و هشدار قرارداد ==================
+/// <summary>قالب آماده قرارداد (§۹) — ایجاد سریع قرارداد موقت/دائم/پروژه‌ای</summary>
+public class HrContractTemplate
+{
+    public int Id { get; set; }
+
+    [MaxLength(100)]
+    public string Name { get; set; } = "";
+
+    public HrEmploymentType Type { get; set; } = HrEmploymentType.Gharardadi;
+
+    /// <summary>مدت پیش‌فرض (ماه) — خالی یعنی بدون پایان (دائم)</summary>
+    public int? DurationMonths { get; set; }
+
+    [MaxLength(150)]
+    public string? JobTitle { get; set; }
+
+    [MaxLength(2000)]
+    public string? Terms { get; set; }
+
+    public int SortOrder { get; set; }
+
+    public bool IsActive { get; set; } = true;
+}
+
+/// <summary>نسخه آرشیوی قرارداد (§۹) — اسنپ‌شات شرایط در هر ویرایش</summary>
+public class HrContractVersion
+{
+    public int Id { get; set; }
+
+    public int ContractId { get; set; }
+
+    public int VersionNo { get; set; }
+
+    [MaxLength(30)]
+    public string ContractNo { get; set; } = "";
+
+    public HrEmploymentType Type { get; set; }
+
+    public DateTime StartDate { get; set; }
+
+    public DateTime? EndDate { get; set; }
+
+    /// <summary>حقوق پایه اسنپ‌شات (ریال)</summary>
+    public double BaseSalary { get; set; }
+
+    [MaxLength(150)]
+    public string? JobTitle { get; set; }
+
+    public int? OrgUnitId { get; set; }
+
+    [MaxLength(500)]
+    public string? Description { get; set; }
+
+    public bool IsActive { get; set; }
+
+    public int? ChangedByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string? ChangedByName { get; set; }
+
+    public DateTime ChangedAt { get; set; } = DateTime.Now;
+
+    [MaxLength(300)]
+    public string? ChangeNote { get; set; }
+}
+
+/// <summary>رد هشدارهای انقضای قرارداد (§۹) — هر آستانه برای هر تاریخ پایان فقط یک‌بار</summary>
+public class HrContractExpiryAlert
+{
+    public int Id { get; set; }
+
+    public int ContractId { get; set; }
+
+    public int ThresholdDays { get; set; }
+
+    public DateTime ExpireDate { get; set; }
+
+    public int NotifiedCount { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>آگهی استخدام (§۴.۱)</summary>
+public class HrJobPosting
+{
+    public int Id { get; set; }
+
+    [MaxLength(150)]
+    public string Title { get; set; } = "";
+
+    public int? OrgUnitId { get; set; }
+
+    [MaxLength(500)]
+    public string? Description { get; set; }
+
+    [MaxLength(500)]
+    public string? Requirements { get; set; }
+
+    public int? Headcount { get; set; }
+
+    /// <summary>0 پیش‌نویس، 1 منتشرشده، 2 بسته</summary>
+    public int Status { get; set; }
+
+    public DateTime? PublishDate { get; set; }
+
+    public DateTime? ExpireDate { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>متقاضی استخدام (§۴.۱)</summary>
+public class HrApplicant
+{
+    public int Id { get; set; }
+
+    public int JobPostingId { get; set; }
+
+    [MaxLength(100)]
+    public string FirstName { get; set; } = "";
+
+    [MaxLength(100)]
+    public string LastName { get; set; } = "";
+
+    [MaxLength(15)]
+    public string? Mobile { get; set; }
+
+    [MaxLength(150)]
+    public string? Email { get; set; }
+
+    /// <summary>0 جدید، 1 بررسی، 2 دعوت به مصاحبه، 3 مصاحبه‌شده، 4 پذیرفته، 5 رد، 6 استخدام‌شده</summary>
+    public int Status { get; set; }
+
+    public int? Score { get; set; }
+
+    [MaxLength(500)]
+    public string? Note { get; set; }
+
+    public int? EmployeeId { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>مصاحبه استخدام (§۴.۱)</summary>
+public class HrInterview
+{
+    public int Id { get; set; }
+
+    public int ApplicantId { get; set; }
+
+    public DateTime InterviewDate { get; set; } = DateTime.Today;
+
+    [MaxLength(150)]
+    public string? InterviewerName { get; set; }
+
+    public int? Score { get; set; }
+
+    /// <summary>0 نامشخص، 1 قبول، 2 رد، 3 ذخیره</summary>
+    public int Result { get; set; }
+
+    [MaxLength(500)]
+    public string? Note { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }

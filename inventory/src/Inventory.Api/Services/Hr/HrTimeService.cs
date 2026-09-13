@@ -2,6 +2,7 @@ using System.Globalization;
 using ClosedXML.Excel;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
+using Inventory.Api.Services.FaCom;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services;
@@ -15,10 +16,11 @@ public class HrTimeService
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly AttendanceRecalcService _recalc;
+    private readonly ISmsSender _sms;
     private static readonly PersianCalendar Pc = new();
 
-    public HrTimeService(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc)
-    { _db = db; _notify = notify; _recalc = recalc; }
+    public HrTimeService(AppDbContext db, INotifyService notify, AttendanceRecalcService recalc, ISmsSender sms)
+    { _db = db; _notify = notify; _recalc = recalc; _sms = sms; }
 
     public static int JalaliYear(DateTime d) => Pc.GetYear(d);
     public static double QuotaOf(LeaveRequest l) => l.Type == "Hourly" ? l.Hours / 8.0 : (l.Type == "Daily" ? l.Days : 0);
@@ -324,9 +326,24 @@ public class HrTimeService
         var typeFa = req.Type switch { "Hourly" => "مرخصی ساعتی", "HourlyMission" => "ماموریت ساعتی", "Mission" => "ماموریت", _ => "مرخصی روزانه" };
         await _notify.SendAsync(req.RequesterUserId, approve ? $"{typeFa} شما تایید شد" : $"{typeFa} شما رد شد",
             $"{req.Number} توسط {byName} " + (approve ? "تایید شد." : $"رد شد. {note}"), byName, "مرخصی و ماموریت", "/leave");
+        await SmsToUserAsync(req.RequesterUserId, $"{typeFa} {req.Number} " + (approve ? "تایید شد." : "رد شد."));
         await _notify.BroadcastChangedAsync("leave-requests");
         await _notify.BroadcastChangedAsync("hr-time");
         return new(true, approve ? "درخواست تایید نهایی شد." : "درخواست رد شد.");
+    }
+
+    private async Task SmsToUserAsync(int userId, string text)
+    {
+        try
+        {
+            if (!_sms.IsConfigured) return;
+            var mob = await _db.HrEmployees.AsNoTracking()
+                .Where(e => e.SystemUserId == userId && e.IsActive)
+                .Select(e => e.Mobile).FirstOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(mob)) return;
+            await _sms.SendAsync(mob.Trim(), text);
+        }
+        catch { }
     }
 
     public async Task<List<int>> HrApproverIdsAsync()

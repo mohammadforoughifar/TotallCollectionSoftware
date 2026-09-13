@@ -24,8 +24,8 @@
                     <div class="d-flex gap-2 flex-wrap align-items-end">
                         <div><label class="form-label small">عنوان</label><input class="form-control form-control-sm" @bind="npTitle" /></div>
                         <div><label class="form-label small">سال</label><input type="number" class="form-control form-control-sm" style="width:80px" @bind="npYear" /></div>
-                        <div><label class="form-label small">از</label><input type="date" class="form-control form-control-sm" @bind="npStart" /></div>
-                        <div><label class="form-label small">تا</label><input type="date" class="form-control form-control-sm" @bind="npEnd" /></div>
+                        <div><label class="form-label small">از</label><DatePicker @bind-Value="npStart" CssClass="form-control-sm" /></div>
+                        <div><label class="form-label small">تا</label><DatePicker @bind-Value="npEnd" CssClass="form-control-sm" /></div>
                         <div><label class="form-label small">پاداش (ماه حقوق)</label><input type="number" step="0.5" class="form-control form-control-sm" style="width:80px" @bind="npBonus" /></div>
                         <div><label class="form-label small">حداقل نمره پاداش</label><input type="number" class="form-control form-control-sm" style="width:80px" @bind="npMin" /></div>
                         <button class="btn btn-sm btn-primary" @onclick="CreatePeriod" disabled="@busy">ایجاد</button>
@@ -175,6 +175,7 @@
 </div>
 
 <Modal Visible="showFin" Title="قطعی کردن کارنامه و پاداش" OnClose="() => showFin = false">
+    <ChildContent>
     <div class="d-flex gap-2 align-items-end">
         <div><label class="form-label small">پرداخت در سال</label><input type="number" class="form-control form-control-sm" style="width:90px" @bind="finYear" /></div>
         <div><label class="form-label small">ماه</label><input type="number" class="form-control form-control-sm" style="width:70px" @bind="finMonth" /></div>
@@ -184,6 +185,7 @@
         <button class="btn btn-sm btn-success" @onclick="DoFinalize" disabled="@busy">قطعی کن</button>
         <button class="btn btn-sm btn-secondary" @onclick="() => showFin = false">انصراف</button>
     </div>
+    </ChildContent>
 </Modal>
 
 @code {
@@ -216,8 +218,8 @@
     // ---------- دوره ----------
     private List<PerfPeriodDto> periods = new();
     private int periodId;
-    private string npTitle = ""; private int npYear = 1405;
-    private DateTime npStart = DateTime.Today; private DateTime npEnd = DateTime.Today.AddMonths(12);
+    private string npTitle = ""; private int npYear = PersianDate.FromGregorian(DateTime.Today).Year;
+    private DateTime? npStart = DateTime.Today; private DateTime? npEnd = DateTime.Today.AddMonths(12);
     private decimal npBonus = 1; private double npMin = 60;
     private async Task LoadPeriods()
     {
@@ -229,7 +231,7 @@
         busy = true;
         try
         {
-            var r = await Http.PostAsJsonAsync("/api/hr-perf/periods", new { title = npTitle, year = npYear, startDate = npStart, endDate = npEnd, bonusMonthSalary = npBonus, minScoreForBonus = npMin });
+            var r = await Http.PostAsJsonAsync("/api/hr-perf/periods", new { title = npTitle, year = npYear, startDate = (npStart ?? DateTime.Today), endDate = (npEnd ?? DateTime.Today), bonusMonthSalary = npBonus, minScoreForBonus = npMin });
             if (r.IsSuccessStatusCode) { Toast.Success("دوره ساخته شد."); npTitle = ""; await LoadPeriods(); }
             else Toast.Error(await Err(r) ?? "خطا");
         }
@@ -365,7 +367,7 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
         busy = false;
     }
-    private bool showFin; private int finEmpId; private int finYear = 1405; private int finMonth = 6; private string? finNote;
+    private bool showFin; private int finEmpId; private int finYear = PersianDate.FromGregorian(DateTime.Today).Year; private int finMonth = PersianDate.FromGregorian(DateTime.Today).Month; private string? finNote;
     private void OpenFinalize(int empId) { finEmpId = empId; finNote = null; showFin = true; }
     private async Task DoFinalize()
     {

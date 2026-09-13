@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
+using Inventory.Api.Services.FaCom;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services.DocArchive;
@@ -66,6 +67,7 @@ public class DocExpiryWatcher : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var access = scope.ServiceProvider.GetRequiredService<IDocAccessService>();
         var notify = scope.ServiceProvider.GetRequiredService<INotifyService>();
+        var sms = scope.ServiceProvider.GetRequiredService<ISmsSender>();
 
         var today = DateTime.Today;
         var thresholds = Thresholds;
@@ -159,6 +161,22 @@ public class DocExpiryWatcher : BackgroundService
 
             foreach (var n in notifyQueue)
                 await notify.SendManyAsync(n.Users, n.Title, n.Body, "سیستم", FormName, n.Link);
+
+            try
+            {
+                if (sms.IsConfigured)
+                {
+                    var allUsers = notifyQueue.SelectMany(n => n.Users).Distinct().ToList();
+                    var mobs = await db.HrEmployees.AsNoTracking()
+                        .Where(e => e.SystemUserId != null && allUsers.Contains(e.SystemUserId.Value)
+                            && e.Mobile != null && e.Mobile != "")
+                        .Select(e => e.Mobile!).Distinct().ToListAsync(ct);
+                    foreach (var m in mobs)
+                        try { await sms.SendAsync(m.Trim(), "هشدار انقضای مدرک در آرشیو اسناد ثبت شد؛ لطفاً کارتابل خود را بررسی کنید."); }
+                        catch { }
+                }
+            }
+            catch { }
 
             await notify.BroadcastChangedAsync("doc-archive");
             _log.LogInformation("هشدار انقضای مدارک: {Count} کار کارتابل ساخته شد.", totalTasks);

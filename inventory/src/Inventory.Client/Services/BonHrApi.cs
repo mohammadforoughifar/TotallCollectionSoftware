@@ -96,20 +96,20 @@ public sealed class BonHrApi
 
 public static class BonHrNav
 {
-    public static readonly (string Href, string Icon, string Label)[] Items =
+    public static readonly (string Href, string Icon, string Label, string Section)[] Items =
     {
-        ("bon-hr", "bi-speedometer2", "داشبورد"),
-        ("bon-hr/employees", "bi-people", "پرسنل"),
-        ("bon-hr/employee-entry", "bi-person-plus", "ورود اطلاعات"),
-        ("bon-hr/attendance", "bi-clock-history", "حضور و غیاب"),
-        ("bon-hr/payroll", "bi-cash-stack", "حقوق و دستمزد"),
-        ("bon-hr/statutory-rules", "bi-journal-text", "الزامات سالانه"),
-        ("bon-hr/organization-structure", "bi-diagram-3", "واحدها و ماتریس"),
-        ("bon-hr/organization-settings", "bi-calendar3", "تقویم و ساعات"),
-        ("bon-hr/hse", "bi-shield-plus", "ایمنی و حوادث"),
-        ("bon-hr/finance", "bi-wallet2", "مالی"),
-        ("bon-hr/accounting", "bi-calculator", "حسابداری حقوق"),
-        ("bon-hr/production-daily", "bi-clipboard-data", "گزارش روزانه"),
-        ("bon-hr/notices", "bi-bell", "اطلاعیه‌ها"),
+        ("bon-hr", "bi-speedometer2", "داشبورد", "Dashboard"),
+        ("bon-hr/employees", "bi-people", "پرسنل", "Employees"),
+        ("bon-hr/employee-entry", "bi-person-plus", "ورود اطلاعات", "EmployeeEntry"),
+        ("bon-hr/attendance", "bi-clock-history", "حضور و غیاب", "Attendance"),
+        ("bon-hr/payroll", "bi-cash-stack", "حقوق و دستمزد", "Payroll"),
+        ("bon-hr/statutory-rules", "bi-journal-text", "الزامات سالانه", "StatutoryRules"),
+        ("bon-hr/organization-structure", "bi-diagram-3", "واحدها و ماتریس", "OrgStructure"),
+        ("bon-hr/organization-settings", "bi-calendar3", "تقویم و ساعات", "OrgSettings"),
+        ("bon-hr/hse", "bi-shield-plus", "ایمنی و حوادث", "Hse"),
+        ("bon-hr/finance", "bi-wallet2", "مالی", "Finance"),
+        ("bon-hr/accounting", "bi-calculator", "حسابداری حقوق", "Accounting"),
+        ("bon-hr/production-daily", "bi-clipboard-data", "گزارش روزانه", "ProductionDaily"),
+        ("bon-hr/notices", "bi-bell", "اطلاعیه‌ها", "Notices"),
     };
 }

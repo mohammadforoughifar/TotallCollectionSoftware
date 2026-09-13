@@ -221,6 +221,7 @@ else
 
 <!-- ===================== فرم ثبت چک ===================== -->
 <Modal Visible="showForm" Title="ثبت چک" Size="lg" OnClose="() => showForm = false">
+    <ChildContent>
     <div class="row g-3">
         <div class="col-md-4">
             <label class="form-label">نوع چک <span class="text-danger">*</span></label>
@@ -297,7 +298,8 @@ else
             <textarea class="form-control" rows="2" @bind="form.Description"></textarea>
         </div>
     </div>
-
+    </ChildContent>
+    <Footer>
     <div class="d-flex justify-content-end gap-2 mt-3">
         <button class="btn btn-outline-secondary" @onclick="() => showForm = false">انصراف</button>
         <button class="btn btn-primary" @onclick="SaveCheque" disabled="@saving">
@@ -305,10 +307,12 @@ else
             <i class="bi bi-save"></i> ذخیره
         </button>
     </div>
+    </Footer>
 </Modal>
 
 <!-- ===================== عملیات چک ===================== -->
 <Modal Visible="showAction" Title="@ActionTitle" Size="md" OnClose="() => showAction = false">
+    <ChildContent>
     @if (current is not null)
     {
         <div class="alert alert-light border">
@@ -378,7 +382,8 @@ else
             </div>
         </div>
     }
-
+    </ChildContent>
+    <Footer>
     <div class="d-flex justify-content-end gap-2 mt-3">
         <button class="btn btn-outline-secondary" @onclick="() => showAction = false">انصراف</button>
         <button class="btn btn-success" @onclick="RunAction" disabled="@saving">
@@ -386,10 +391,12 @@ else
             <i class="bi bi-check2"></i> ثبت عملیات
         </button>
     </div>
+    </Footer>
 </Modal>
 
 <!-- ===================== پرونده چک ===================== -->
 <Modal Visible="showDetail" Title="پرونده چک" Size="lg" OnClose="() => showDetail = false">
+    <ChildContent>
     @if (detail is not null)
     {
         <div class="row g-3 mb-3">
@@ -483,6 +490,7 @@ else
             </table>
         }
     }
+    </ChildContent>
 </Modal>
 
 @code {

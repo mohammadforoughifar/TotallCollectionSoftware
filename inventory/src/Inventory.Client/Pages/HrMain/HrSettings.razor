@@ -1,0 +1,113 @@
+@namespace Inventory.Client.Pages
+@page "/hr-main/settings"
+@inject IAuthState Auth
+
+<PageTitle>تنظیمات منابع انسانی</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-gear-fill"></i> تنظیمات منابع انسانی</h1>
+        <p class="lead">دسترسی یکجا به همه تنظیمات ماژول‌های منابع انسانی</p>
+    </div>
+</div>
+
+@if (!canSee)
+{
+    <div class="alert alert-warning">به بخش تنظیمات دسترسی ندارید.</div>
+    return;
+}
+
+<div class="row g-3">
+    @if (Has("HrMain.Read"))
+    {
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="hr-main/rules">
+                <div class="card-body">
+                    <h5><i class="bi bi-sliders text-primary"></i> قوانین پیش‌فرض</h5>
+                    <div class="small text-muted">مرخصی، تأخیر، غیبت، اضافه‌کاری و آستانه هشدار قرارداد</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="hr-main/company">
+                <div class="card-body">
+                    <h5><i class="bi bi-building-fill text-primary"></i> اطلاعات شرکت</h5>
+                    <div class="small text-muted">مشخصات ثبتی و تماس شرکت</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="hr-main/org">
+                <div class="card-body">
+                    <h5><i class="bi bi-diagram-3-fill text-primary"></i> ساختار سازمانی</h5>
+                    <div class="small text-muted">واحدها، پست‌ها و سلسله‌مراتب</div>
+                </div>
+            </a>
+        </div>
+    }
+    @if (Has("FaPay.Manage"))
+    {
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="fa-pay/settings">
+                <div class="card-body">
+                    <h5><i class="bi bi-gear text-success"></i> تنظیمات حقوق و مالیات</h5>
+                    <div class="small text-muted">ضرایب، نرخ بیمه و پلکان مالیاتی</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="fa-pay/items">
+                <div class="card-body">
+                    <h5><i class="bi bi-list-check text-success"></i> اقلام حقوقی</h5>
+                    <div class="small text-muted">مزایای ثابت و اقلام متغیر حقوق</div>
+                </div>
+            </a>
+        </div>
+    }
+    @if (Has("HrCore.Read"))
+    {
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="hr-core/contract-templates">
+                <div class="card-body">
+                    <h5><i class="bi bi-layout-text-window-reverse text-info"></i> قالب‌های قرارداد</h5>
+                    <div class="small text-muted">قالب‌های آماده قرارداد پرسنل</div>
+                </div>
+            </a>
+        </div>
+    }
+    @if (Has("FaAtt.Manage"))
+    {
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="fa-att/leave-types">
+                <div class="card-body">
+                    <h5><i class="bi bi-tags text-warning"></i> انواع مرخصی</h5>
+                    <div class="small text-muted">تعریف انواع مرخصی و سقف سالانه</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="fa-att/shifts">
+                <div class="card-body">
+                    <h5><i class="bi bi-clock-history text-warning"></i> شیفت‌های کاری</h5>
+                    <div class="small text-muted">تعریف شیفت‌ها و ساعات کاری</div>
+                </div>
+            </a>
+        </div>
+    }
+    @if (Has("FaCom.Manage"))
+    {
+        <div class="col-md-4">
+            <a class="card border-0 shadow-sm h-100 text-decoration-none text-dark" href="fa-com/announcements">
+                <div class="card-body">
+                    <h5><i class="bi bi-megaphone-fill text-danger"></i> مدیریت اطلاعیه‌ها</h5>
+                    <div class="small text-muted">انتشار و ارسال همگانی اطلاعیه‌ها</div>
+                </div>
+            </a>
+        </div>
+    }
+</div>
+
+@code {
+    private bool Has(string p) => Auth.Has(p) || Auth.IsAdmin;
+    private bool canSee => Has("HrMain.Read") || Has("HrCore.Read") || Has("FaPay.Manage") || Has("FaAtt.Manage") || Has("FaCom.Manage");
+}
