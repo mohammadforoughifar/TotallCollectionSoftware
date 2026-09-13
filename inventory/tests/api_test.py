@@ -49,6 +49,36 @@ def check(name, cond, extra=""):
 def approx(a, b, tol=1.0):
     return abs(float(a) - float(b)) <= tol
 
+def items_of(res):
+    """خروجی اندپوینت‌های صفحه‌بندی‌شده (PagedResult) را به فهرست رکوردها تبدیل می‌کند.
+
+    قرارداد پروژه: هر متد GetAll در سرویس‌ها `PagedResult<T>` برمی‌گرداند
+    یعنی `{ items: [...], totalCount: n, page: p, pageSize: s, totalPages: t }`.
+    این هلپر باعث می‌شود تست هم برای شکل صفحه‌بندی‌شده و هم فهرست ساده کار کند.
+    """
+    if isinstance(res, dict):
+        it = res.get("items")
+        return it if isinstance(it, list) else []
+    return res if isinstance(res, list) else []
+
+
+def total_of(res):
+    """تعداد کل رکوردها در یک پاسخ صفحه‌بندی‌شده (در نبود totalCount، تعداد آیتم‌ها)."""
+    if isinstance(res, dict) and isinstance(res.get("totalCount"), int):
+        return res["totalCount"]
+    return len(items_of(res))
+
+
+def check_paged(name, res, cond_extra=None):
+    """بررسی می‌کند پاسخ یک اندپوینت GetAll واقعاً صفحه‌بندی‌شده (PagedResult) باشد."""
+    ok = isinstance(res, dict) and isinstance(res.get("items"), list) \
+        and isinstance(res.get("totalCount"), int) \
+        and isinstance(res.get("page"), int) and isinstance(res.get("pageSize"), int) \
+        and isinstance(res.get("totalPages"), int)
+    if ok and cond_extra is not None:
+        ok = bool(cond_extra)
+    check(name, ok, str(res)[:160])
+
 PROD_SEARCH = urllib.parse.quote("20W50")   # کد/نام یکتای روغن موتور
 
 print("=" * 60)
@@ -76,11 +106,27 @@ s, p = req("GET", "/api/products?pageSize=100")
 check("لیست کالاها", s == 200 and p["totalCount"] >= 14, f"total={p.get('totalCount')}")
 
 s, w = req("GET", "/api/warehouses")
-check("لیست انبارها", s == 200 and len(w) == 3, str(len(w)))
+check("لیست انبارها (صفحه‌بندی‌شده)", s == 200 and len(items_of(w)) == 3, str(len(items_of(w))))
+check_paged("خروجی انبارها PagedResult است", w)
 
 s, c = req("GET", "/api/parties?type=0")
 s2, sup = req("GET", "/api/parties?type=1")
-check("مشتریان و تأمین‌کنندگان", s == 200 and len(c) >= 4 and len(sup) >= 3, f"{len(c)}/{len(sup)}")
+check("مشتریان و تأمین‌کنندگان (صفحه‌بندی‌شده)",
+      s == 200 and len(items_of(c)) >= 4 and len(items_of(sup)) >= 3,
+      f"{len(items_of(c))}/{len(items_of(sup))}")
+check_paged("خروجی طرف حساب‌ها PagedResult است", c)
+
+# صفحه‌بندی واقعاً کار می‌کند: صفحهٔ اول با اندازهٔ ۱ فقط یک رکورد دارد ولی totalCount کامل است
+s, w1 = req("GET", "/api/warehouses?page=1&pageSize=1")
+s, w2 = req("GET", "/api/warehouses?page=2&pageSize=1")
+check("صفحه‌بندی انبارها (اندازهٔ صفحه و جابه‌جایی)",
+      s == 200 and len(items_of(w1)) == 1 and len(items_of(w2)) == 1
+      and total_of(w1) == 3 and items_of(w1)[0]["id"] != items_of(w2)[0]["id"],
+      f"{len(items_of(w1))}/{len(items_of(w2))}/{total_of(w1)}")
+s, wbad = req("GET", "/api/warehouses?page=0&pageSize=0")
+check("صفحه/اندازهٔ نامعتبر به پیش‌فرض برمی‌گردد",
+      s == 200 and (wbad or {}).get("page") == 1 and (wbad or {}).get("pageSize") == 20,
+      str(wbad)[:120])
 
 s, d = req("GET", "/api/dashboard")
 check("داشبورد", s == 200 and d["productCount"] >= 14, str(d.get("productCount")))
@@ -149,8 +195,8 @@ print("5) خرید و فروش و کنترل موجودی")
 print("=" * 60)
 s, sup_list = req("GET", "/api/parties?type=1")
 s, cus_list = req("GET", "/api/parties?type=0")
-supplier_id = sup_list[0]["id"]
-customer_id = cus_list[0]["id"]
+supplier_id = items_of(sup_list)[0]["id"]
+customer_id = items_of(cus_list)[0]["id"]
 
 # خرید 50 واحد
 s, po = req("POST", "/api/orders", {"warehouseId": wh_id, "partyId": supplier_id, "type": 1,
@@ -183,7 +229,9 @@ print()
 print("=" * 60)
 print("6) کاردکس کالا")
 print("=" * 60)
-s, kx = req("GET", f"/api/kardex?productId={prod_id}&warehouseId={wh_id}")
+s, kx_res = req("GET", f"/api/kardex?productId={prod_id}&warehouseId={wh_id}&pageSize=200")
+check_paged("کاردکس PagedResult است", kx_res)
+kx = items_of(kx_res)
 check("کاردکس دارای سطر است", s == 200 and len(kx) > 0, str(len(kx)))
 # بررسی سطر‌به‌سطر: مانده هر سطر باید با مجموع تجمعی ورودی/خروجی برابر باشد
 running = 0
@@ -196,7 +244,7 @@ check("مانده هر سطر کاردکس با مجموع تجمعی برابر
 check("مانده نهایی = موجودی فعلی", approx(running, 130, 0.01), f"balance={running}")
 
 s, kx2 = req("GET", f"/api/kardex?productId={prod_id}&warehouseId={wh_id}&from={_D}&to={_D2}")
-check("کاردکس فیلتر تاریخ", s == 200 and len(kx2) >= 2, str(len(kx2)))
+check("کاردکس فیلتر تاریخ", s == 200 and len(items_of(kx2)) >= 2, str(len(items_of(kx2))))
 
 print()
 print("=" * 60)
@@ -216,8 +264,10 @@ print()
 print("=" * 60)
 print("8) گزارش نقطه سفارش")
 print("=" * 60)
-s, ro = req("GET", "/api/reorder")
+s, ro_res = req("GET", "/api/reorder?pageSize=200")
 check("گزارش نقطه سفارش", s == 200, str(s))
+check_paged("گزارش نقطه سفارش PagedResult است", ro_res)
+ro = items_of(ro_res)
 names = [r["productName"] for r in ro]
 check("شامل اقلام زیر نقطه سفارش", any("لاستیک" in n or "دیسک" in n or "شمع" in n for n in names), str(names))
 ok = all(r["totalStock"] <= r["reorderPoint"] for r in ro)
@@ -282,7 +332,9 @@ check("لیست کاربران بدون توکن ممنوع (401)", s == 401, st
 
 # لیست کاربران با توکن ادمین
 s, users = req_auth("GET", "/api/users", admin_token)
-check("لیست کاربران با توکن ادمین", s == 200 and isinstance(users, list) and any(u["username"] == "admin" for u in users), str(s))
+check_paged("لیست کاربران PagedResult است", users)
+check("لیست کاربران با توکن ادمین",
+      s == 200 and any(u["username"] == "admin" for u in items_of(users)), str(s))
 
 # ساخت معرف + کاربر معرف
 s, ref10 = req("POST", "/api/referrers", {"id": 0, "name": "معرف فاز ده " + _UNIQ, "companyName": "پخش آزمون", "goodsCommissionPercent": 10, "serviceCommissionPercent": 5, "isActive": True})
@@ -315,7 +367,8 @@ check("پورسانت داشبورد = پورسانت سند", dash is not None 
 
 # کیف پول معرف (پرداخت‌ها)
 s, pays = req_auth("GET", "/api/my/payments", ref_token)
-check("کیف پول معرف (پرداخت‌ها)", s == 200 and isinstance(pays, list), str(s))
+check("کیف پول معرف (پرداخت‌ها)", s == 200 and isinstance(pays, dict) and isinstance(pays.get("items"), list), str(s))
+check_paged("پرداخت‌های پنل معرف PagedResult است", pays)
 
 # داشبورد بدون توکن ممنوع (توکن ادمین هم نقش Referrer ندارد → 403)
 try:
@@ -349,7 +402,8 @@ s, refb = req("POST", "/api/referrers", {"id": 0, "name": "معرف بانک‌�
 check("ثبت کارت و شبا معرف", s == 200 and (refb or {}).get("cardNumber") == "6037991512345678" and (refb or {}).get("iban") == "140570028870010133089001", str(refb)[:120])
 
 s, refs_all = req("GET", "/api/referrers")
-_rb = next((r for r in (refs_all or []) if r["id"] == (refb or {}).get("id")), None)
+check_paged("لیست معرف‌ها PagedResult است", refs_all)
+_rb = next((r for r in items_of(refs_all) if r["id"] == (refb or {}).get("id")), None)
 check("کارت و شبا در لیست معرف‌ها", _rb is not None and _rb.get("cardNumber") == "6037991512345678", str(_rb)[:100])
 
 s, _ = req("POST", "/api/referrers", {"id": 0, "name": "معرف کارت بد " + _UNIQ, "goodsCommissionPercent": 1, "serviceCommissionPercent": 1, "cardNumber": "1234", "isActive": True})
@@ -389,7 +443,8 @@ check("ثبت تعمیرکار", s == 200 and (tech or {}).get("id", 0) > 0, str
 tech_id = (tech or {}).get("id", 0)
 
 s, techs = req("GET", "/api/technicians")
-check("فهرست تعمیرکارها", s == 200 and any(t["id"] == tech_id for t in (techs or [])), str(s))
+check_paged("فهرست تعمیرکارها PagedResult است", techs)
+check("فهرست تعمیرکارها", s == 200 and any(t["id"] == tech_id for t in items_of(techs)), str(s))
 
 # موجودی قبل
 s, pr = req("GET", f"/api/products?search={PROD_SEARCH}")
@@ -642,8 +697,10 @@ s, uv = req_auth("POST", "/api/users", admin_token, {"id": 0, "username": "refvi
 s, lv = req("POST", "/api/auth/login", {"username": "refview" + _UNIQ, "password": "1234"})
 rv_token = (lv or {}).get("token", "")
 
-s, prods_r = req_auth("GET", "/api/my/products", rv_token)
-check("معرف با دسترسی، کالاهای موجود را می‌بیند", s == 200 and isinstance(prods_r, list) and len(prods_r) > 0, str(s))
+s, prods_r_res = req_auth("GET", "/api/my/products", rv_token)
+check_paged("کالاهای پنل معرف PagedResult است", prods_r_res)
+prods_r = items_of(prods_r_res)
+check("معرف با دسترسی، کالاهای موجود را می‌بیند", s == 200 and len(prods_r) > 0, str(s))
 check("نمای محدود (بدون قیمت خرید/موجودی)", prods_r and "purchasePrice" not in prods_r[0] and "totalStock" not in prods_r[0], str(list((prods_r or [{}])[0].keys())))
 
 # داشبورد معرف شامل فلگ
@@ -666,8 +723,9 @@ print("17) هزینه‌ها — دسته‌های قابل مدیریت + اس�
 print("=" * 60)
 
 s, ecats = req("GET", "/api/expense-categories")
-check("دسته‌های هزینه پیش‌فرض", s == 200 and len(ecats or []) >= 9, str(len(ecats or [])))
-_cat1 = (ecats or [{}])[0].get("id", 0)
+check_paged("دسته‌های هزینه PagedResult است", ecats)
+check("دسته‌های هزینه پیش‌فرض", s == 200 and len(items_of(ecats)) >= 9, str(len(items_of(ecats))))
+_cat1 = (items_of(ecats) or [{}])[0].get("id", 0)
 
 s, exp1 = req("POST", "/api/expenses", {"id": 0, "categoryId": _cat1, "amount": 50000000, "date": _T(150), "payType": 2, "payee": "موجر", "description": "اجاره تست"})
 check("ثبت سند هزینه", s == 200 and (exp1 or {}).get("number", "").startswith("EX-"), str(s))
@@ -703,7 +761,8 @@ print("=" * 60)
 s, refp = req("POST", "/api/referrers", {"id": 0, "name": "معرف بی‌قیمت " + _UNIQ, "goodsCommissionPercent": 5, "serviceCommissionPercent": 5, "canViewProducts": True, "isActive": True})
 s, up = req_auth("POST", "/api/users", admin_token, {"id": 0, "username": "refnp" + _UNIQ, "password": "1234", "role": "Referrer", "referrerId": (refp or {}).get("id", 0), "isActive": True})
 s, lp = req("POST", "/api/auth/login", {"username": "refnp" + _UNIQ, "password": "1234"})
-s, prods_np = req_auth("GET", "/api/my/products", (lp or {}).get("token", ""))
+s, prods_np_res = req_auth("GET", "/api/my/products", (lp or {}).get("token", ""))
+prods_np = items_of(prods_np_res)
 check("کالاهای معرف بدون قیمت فروش", s == 200 and prods_np and "salePrice" not in prods_np[0], str(list((prods_np or [{}])[0].keys())))
 req_auth("DELETE", f"/api/users/{(up or {}).get('id', 0)}", admin_token)
 
@@ -767,7 +826,7 @@ check("اپراتور نمی‌تواند کاربر مدیر را حذف کند
 
 # اپراتور فهرست کاربران را می‌بیند → OK
 s, ulist19 = req_auth("GET", "/api/users", op19_token)
-check("اپراتور فهرست کاربران را می‌بیند", s == 200 and isinstance(ulist19, list), str(s))
+check("اپراتور فهرست کاربران را می‌بیند", s == 200 and isinstance(ulist19, dict) and isinstance(ulist19.get("items"), list), str(s))
 
 # ادمین همچنان می‌تواند ادمین بسازد → OK
 s, adm19 = req_auth("POST", "/api/users", admin_token, {"id": 0, "username": "adm19" + _UNIQ, "password": "1234", "role": "Admin", "isActive": True})

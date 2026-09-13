@@ -18,10 +18,10 @@ public class PermissionsController : ControllerBase
     {
         var query = _db.Permissions.AsNoTracking().OrderBy(p => p.Module).ThenBy(p => p.Action);
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        (page, pageSize) = Pager.Normalize(page, pageSize);
         var items = await query.Skip((page - 1) * pageSize)
             .Take(pageSize).Select(p => new PermissionItem { Id = p.Id, Module = p.Module, Action = p.Action }).ToListAsync();
-        return Ok(new PagedResult<PermissionItem> { Items = items, TotalCount = total });
+        return Ok(new PagedResult<PermissionItem> { Items = items, TotalCount = total, Page = page, PageSize = pageSize });
     }
 
     private sealed class PermissionItem

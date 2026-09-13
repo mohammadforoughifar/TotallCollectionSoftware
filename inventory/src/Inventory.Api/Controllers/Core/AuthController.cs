@@ -153,22 +153,25 @@ public class MyPanelController : ControllerBase
         return Ok(await _auth.GetReferrerDashboardAsync(MyReferrerId));
     }
 
-    /// <summary>کالاهای موجود — فقط اگر مدیر دسترسی «مشاهده کالا» را برای این معرف فعال کرده باشد.</summary>
+    /// <summary>کالاهای موجود — فقط اگر مدیر دسترسی «مشاهده کالا» را برای این معرف فعال کرده باشد (صفحه‌بندی‌شده).</summary>
     [HttpGet("products")]
-    public async Task<ActionResult<List<ReferrerProductItem>>> Products([FromQuery] string? search)
+    public async Task<ActionResult<PagedResult<ReferrerProductItem>>> Products(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (MyReferrerId <= 0) return Forbid();
         // مجوز مشاهده کالاها: یا پرمیشن RBAC (ReferrerPanel.MyProducts) یا فلگ مشاهده کالا روی خود معرف
         var hasRbac = await HasRbacAsync("ReferrerPanel", "MyProducts");
-        return Ok(await _inventory.GetReferrerProductsAsync(MyReferrerId, search, bypassFlag: hasRbac));
+        return Ok(await _inventory.GetReferrerProductsPagedAsync(MyReferrerId, search, hasRbac, page, pageSize));
     }
 
-    /// <summary>اسناد پرداخت معرف جاری.</summary>
+    /// <summary>اسناد پرداخت معرف جاری (صفحه‌بندی‌شده).</summary>
     [HttpGet("payments")]
-    public async Task<ActionResult<List<ReferrerPayment>>> Payments()
+    public async Task<ActionResult<PagedResult<ReferrerPayment>>> Payments(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (MyReferrerId <= 0) return Forbid();
-        return Ok(await _inventory.GetReferrerPaymentsAsync(MyReferrerId));
+        return Ok(await _inventory.GetReferrerPaymentsPagedAsync(MyReferrerId, page, pageSize));
     }
 
 }

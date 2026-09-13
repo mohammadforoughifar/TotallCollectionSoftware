@@ -173,12 +173,9 @@ public class AuthService : IAuthService
         }).ToList();
     }
 
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کاربران — خروجی استاندارد GetAll.</summary>
     public async Task<PagedResult<UserDto>> GetUsersPagedAsync(int page, int pageSize)
-    {
-        var all = await GetUsersAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<UserDto> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
-    }
+        => Pager.Page(await GetUsersAsync(), page, pageSize);
 
     /// <summary>نگاشت نقش‌های RBAC به نقش قدیمی (برای احراز هویت/JWT).</summary>
     private static string DeriveLegacyRole(List<string> rbacRoleNames, string fallback)

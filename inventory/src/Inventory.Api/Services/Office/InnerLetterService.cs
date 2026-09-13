@@ -18,18 +18,37 @@ namespace Inventory.Api.Services;
 public interface IInnerLetterService
 {
     Task<int> AddInnerLetterAsync(AddInnerLetterDto dto, int creatorUserId, string creatorName);
+
+    // ---------- کارتابل (نسخهٔ لیستی — برای کمبو/lookup و مصرف داخلی) ----------
     Task<List<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly);
     Task<List<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search);
     Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search);
+
+    // ---------- کارتابل (نسخهٔ صفحه‌بندی‌شده — خروجی استاندارد GetAll) ----------
+    Task<PagedResult<InnerLetterListItemDto>> GetInboxPagedAsync(int userId, string? search, bool? unreadOnly, int page, int pageSize);
+    Task<PagedResult<InnerLetterListItemDto>> GetArchivePagedAsync(int userId, string? search, int page, int pageSize);
+    Task<PagedResult<InnerLetterListItemDto>> GetSentPagedAsync(int userId, string? search, int page, int pageSize);
+
     Task<InnerLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<LetterCartableStatsDto> GetStatsAsync(int userId);
+
+    /// <summary>فهرست انتخاب نامه برای عطف/پیرو (حداکثر ۳۰ مورد).</summary>
     Task<List<LetterPickDto>> PickListAsync(int userId, string? search);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ فهرست انتخاب نامه (خروجی استاندارد GetAll).</summary>
+    Task<PagedResult<LetterPickDto>> PickListPagedAsync(int userId, string? search, int page, int pageSize);
+
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditInnerLetterDto dto, int userId, bool isAdmin);
 }
 
 public class InnerLetterService : IInnerLetterService
 {
+    /// <summary>اندازهٔ صفحهٔ پیش‌فرض کارتابل نامه.</summary>
+    public const int DefaultLetterPageSize = 20;
+
+    /// <summary>سقف تعداد موارد فهرست انتخاب نامه (عطف/پیرو) در حالت بدون صفحه‌بندی.</summary>
+    public const int PickListLimit = 30;
+
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly ILetterGroupService _groups;
@@ -214,7 +233,8 @@ public class InnerLetterService : IInnerLetterService
         return source.Id;
     }
 
-    public async Task<List<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly)
+    /// <summary>پرس‌وجوی پایهٔ کارتابل (بدون مرتب‌سازی/پروژکشن) — برای شمارش و صفحه‌بندی سمت دیتابیس.</summary>
+    private IQueryable<Erja> InboxBaseQuery(int userId, string? search, bool? unreadOnly)
     {
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
@@ -232,36 +252,50 @@ public class InnerLetterService : IInnerLetterService
                              || e.UserSender!.Username.Contains(s));
         }
 
-        return await q
-            .OrderByDescending(e => e.ErjaId)
-            .Select(e => new InnerLetterListItemDto
-            {
-                LetterId = e.SourceId,
-                ErjaId = e.ErjaId,
-                LetterNumber = e.Source.InnerLetter!.LetterNumber ?? "",
-                Title = e.Source.InnerLetter!.Title,
-                Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
-                    ? e.UserSender.Username
-                    : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
-                SenderUserId = e.SenderUserId,
-                Date = e.Date,
-                Mahramanegi = e.Source.InnerLetter!.Mahramanegi,
-                Foriat = e.Source.InnerLetter!.Foriat,
-                ErjaType = e.Type,
-                MatnErja = e.MatnErja,
-                MohlatPasokh = e.MohlatPasokh,
-                IsNeshan = e.IsNeshan,
-                IsRead = e.IsRead,
-                TypeTaeed = e.TypeTaeed,
-                HasAnswer = e.Answer != "",
-                ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
-                HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
-            })
-            .ToListAsync();
+        return q;
     }
 
-    /// <summary>پوشه بایگانی — ارجاع‌های کاربر که IsBayegani=true دارند</summary>
-    public async Task<List<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search)
+    private IQueryable<InnerLetterListItemDto> InboxProjection(IQueryable<Erja> q) => q
+        .OrderByDescending(e => e.ErjaId)
+        .Select(e => new InnerLetterListItemDto
+        {
+            LetterId = e.SourceId,
+            ErjaId = e.ErjaId,
+            LetterNumber = e.Source.InnerLetter!.LetterNumber ?? "",
+            Title = e.Source.InnerLetter!.Title,
+            Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
+                ? e.UserSender.Username
+                : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
+            SenderUserId = e.SenderUserId,
+            Date = e.Date,
+            Mahramanegi = e.Source.InnerLetter!.Mahramanegi,
+            Foriat = e.Source.InnerLetter!.Foriat,
+            ErjaType = e.Type,
+            MatnErja = e.MatnErja,
+            MohlatPasokh = e.MohlatPasokh,
+            IsNeshan = e.IsNeshan,
+            IsRead = e.IsRead,
+            TypeTaeed = e.TypeTaeed,
+            HasAnswer = e.Answer != "",
+            ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
+            HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
+        });
+
+    public async Task<List<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly)
+        => await InboxProjection(InboxBaseQuery(userId, search, unreadOnly)).ToListAsync();
+
+    /// <summary>کارتابل با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    public async Task<PagedResult<InnerLetterListItemDto>> GetInboxPagedAsync(int userId, string? search, bool? unreadOnly, int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize, DefaultLetterPageSize);
+        var baseQ = InboxBaseQuery(userId, search, unreadOnly);
+        var total = await baseQ.CountAsync();
+        var items = await InboxProjection(baseQ).Skip((p - 1) * size).Take(size).ToListAsync();
+        return new PagedResult<InnerLetterListItemDto> { TotalCount = total, Page = p, PageSize = size, Items = items };
+    }
+
+    /// <summary>پرس‌وجوی پایهٔ پوشه بایگانی — ارجاع‌های کاربر که IsBayegani=true دارند.</summary>
+    private IQueryable<Erja> ArchiveBaseQuery(int userId, string? search)
     {
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
@@ -276,35 +310,50 @@ public class InnerLetterService : IInnerLetterService
                              || (e.UserSender!.FirstName + " " + e.UserSender.LastName).Contains(s));
         }
 
-        return await q
-            .OrderByDescending(e => e.ErjaId)
-            .Select(e => new InnerLetterListItemDto
-            {
-                LetterId = e.SourceId,
-                ErjaId = e.ErjaId,
-                LetterNumber = e.Source.InnerLetter!.LetterNumber ?? "",
-                Title = e.Source.InnerLetter!.Title,
-                Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
-                    ? e.UserSender.Username
-                    : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
-                SenderUserId = e.SenderUserId,
-                Date = e.Date,
-                Mahramanegi = e.Source.InnerLetter!.Mahramanegi,
-                Foriat = e.Source.InnerLetter!.Foriat,
-                ErjaType = e.Type,
-                MatnErja = e.MatnErja,
-                MohlatPasokh = e.MohlatPasokh,
-                IsNeshan = e.IsNeshan,
-                IsRead = e.IsRead,
-                TypeTaeed = e.TypeTaeed,
-                HasAnswer = e.Answer != "",
-                ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
-                HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
-            })
-            .ToListAsync();
+        return q;
     }
 
-    public async Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search)
+    private IQueryable<InnerLetterListItemDto> ArchiveProjection(IQueryable<Erja> q) => q
+        .OrderByDescending(e => e.ErjaId)
+        .Select(e => new InnerLetterListItemDto
+        {
+            LetterId = e.SourceId,
+            ErjaId = e.ErjaId,
+            LetterNumber = e.Source.InnerLetter!.LetterNumber ?? "",
+            Title = e.Source.InnerLetter!.Title,
+            Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
+                ? e.UserSender.Username
+                : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
+            SenderUserId = e.SenderUserId,
+            Date = e.Date,
+            Mahramanegi = e.Source.InnerLetter!.Mahramanegi,
+            Foriat = e.Source.InnerLetter!.Foriat,
+            ErjaType = e.Type,
+            MatnErja = e.MatnErja,
+            MohlatPasokh = e.MohlatPasokh,
+            IsNeshan = e.IsNeshan,
+            IsRead = e.IsRead,
+            TypeTaeed = e.TypeTaeed,
+            HasAnswer = e.Answer != "",
+            ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
+            HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
+        });
+
+    public async Task<List<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search)
+        => await ArchiveProjection(ArchiveBaseQuery(userId, search)).ToListAsync();
+
+    /// <summary>بایگانی با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    public async Task<PagedResult<InnerLetterListItemDto>> GetArchivePagedAsync(int userId, string? search, int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize, DefaultLetterPageSize);
+        var baseQ = ArchiveBaseQuery(userId, search);
+        var total = await baseQ.CountAsync();
+        var items = await ArchiveProjection(baseQ).Skip((p - 1) * size).Take(size).ToListAsync();
+        return new PagedResult<InnerLetterListItemDto> { TotalCount = total, Page = p, PageSize = size, Items = items };
+    }
+
+    /// <summary>پرس‌وجوی پایهٔ پوشه ارسالی.</summary>
+    private IQueryable<InnerLetter> SentBaseQuery(int userId, string? search)
     {
         var q = _db.InnerLetters.AsNoTracking()
             .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete);
@@ -315,34 +364,48 @@ public class InnerLetterService : IInnerLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s));
         }
 
-        return await q
-            .OrderByDescending(l => l.Id)
-            .Select(l => new InnerLetterListItemDto
-            {
-                LetterId = l.Id,
-                LetterNumber = l.LetterNumber ?? "",
-                Title = l.Title,
-                Sender = "",
-                SenderUserId = l.CreatorUserId,
-                // نام اولین گیرنده اصلی + تعداد بقیه
-                Reciver = l.Source.Erjas
-                    .Where(e => !e.IsDelete && e.Type == "گیرنده" && e.ParentErjaId == null)
-                    .OrderBy(e => e.ErjaId)
-                    .Select(e => string.IsNullOrEmpty(e.UserReciver!.FirstName + e.UserReciver.LastName)
-                        ? e.UserReciver.Username
-                        : (e.UserReciver.FirstName + " " + e.UserReciver.LastName).Trim())
-                    .FirstOrDefault() ?? "",
-                ReciverCount = l.Source.Erjas.Count(e => !e.IsDelete && e.ParentErjaId == null),
-                Date = l.DateSabt,
-                Mahramanegi = l.Mahramanegi,
-                Foriat = l.Foriat,
-                // خوانده‌شدن توسط همه گیرندگان اولیه
-                IsRead = l.Source.Erjas.Where(e => !e.IsDelete && e.ParentErjaId == null).All(e => e.IsRead),
-                // آیا پاسخی از طرف گیرندگان ثبت شده؟ (برای فیلتر پاسخ داده شده/بدون پاسخ)
-                HasAnswer = l.Source.Erjas.Any(e => !e.IsDelete && e.Answer != ""),
-                HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == l.Id)
-            })
-            .ToListAsync();
+        return q;
+    }
+
+    private IQueryable<InnerLetterListItemDto> SentProjection(IQueryable<InnerLetter> q) => q
+        .OrderByDescending(l => l.Id)
+        .Select(l => new InnerLetterListItemDto
+        {
+            LetterId = l.Id,
+            LetterNumber = l.LetterNumber ?? "",
+            Title = l.Title,
+            Sender = "",
+            SenderUserId = l.CreatorUserId,
+            // نام اولین گیرنده اصلی + تعداد بقیه
+            Reciver = l.Source.Erjas
+                .Where(e => !e.IsDelete && e.Type == "گیرنده" && e.ParentErjaId == null)
+                .OrderBy(e => e.ErjaId)
+                .Select(e => string.IsNullOrEmpty(e.UserReciver!.FirstName + e.UserReciver.LastName)
+                    ? e.UserReciver.Username
+                    : (e.UserReciver.FirstName + " " + e.UserReciver.LastName).Trim())
+                .FirstOrDefault() ?? "",
+            ReciverCount = l.Source.Erjas.Count(e => !e.IsDelete && e.ParentErjaId == null),
+            Date = l.DateSabt,
+            Mahramanegi = l.Mahramanegi,
+            Foriat = l.Foriat,
+            // خوانده‌شدن توسط همه گیرندگان اولیه
+            IsRead = l.Source.Erjas.Where(e => !e.IsDelete && e.ParentErjaId == null).All(e => e.IsRead),
+            // آیا پاسخی از طرف گیرندگان ثبت شده؟ (برای فیلتر پاسخ داده شده/بدون پاسخ)
+            HasAnswer = l.Source.Erjas.Any(e => !e.IsDelete && e.Answer != ""),
+            HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == l.Id)
+        });
+
+    public async Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search)
+        => await SentProjection(SentBaseQuery(userId, search)).ToListAsync();
+
+    /// <summary>ارسالی با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    public async Task<PagedResult<InnerLetterListItemDto>> GetSentPagedAsync(int userId, string? search, int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize, DefaultLetterPageSize);
+        var baseQ = SentBaseQuery(userId, search);
+        var total = await baseQ.CountAsync();
+        var items = await SentProjection(baseQ).Skip((p - 1) * size).Take(size).ToListAsync();
+        return new PagedResult<InnerLetterListItemDto> { TotalCount = total, Page = p, PageSize = size, Items = items };
     }
 
     public async Task<InnerLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin)
@@ -459,9 +522,9 @@ public class InnerLetterService : IInnerLetterService
         };
     }
 
-    public async Task<List<LetterPickDto>> PickListAsync(int userId, string? search)
+    /// <summary>پرس‌وجوی پایهٔ فهرست انتخاب نامه (عطف/پیرو) — نامه‌هایی که کاربر فرستنده یا گیرندهٔ آن‌ها بوده.</summary>
+    private IQueryable<LetterPickDto> PickBaseQuery(int userId, string? search)
     {
-        // نامه‌هایی که کاربر فرستنده یا گیرنده‌ی آن‌ها بوده — برای انتخاب عطف/پیرو
         var q = _db.InnerLetters.AsNoTracking()
             .Where(l => !l.IsDelete &&
                         (l.CreatorUserId == userId ||
@@ -473,8 +536,7 @@ public class InnerLetterService : IInnerLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s));
         }
 
-        return await q.OrderByDescending(l => l.Id)
-            .Take(30)
+        return q.OrderByDescending(l => l.Id)
             .Select(l => new LetterPickDto
             {
                 LetterId = l.Id,
@@ -482,8 +544,21 @@ public class InnerLetterService : IInnerLetterService
                 Title = l.Title,
                 Date = l.DateSabt,
                 IsSent = l.CreatorUserId == userId
-            })
-            .ToListAsync();
+            });
+    }
+
+    /// <summary>فهرست انتخاب نامه (عطف/پیرو) — حداکثر ۳۰ مورد برای کمبو.</summary>
+    public async Task<List<LetterPickDto>> PickListAsync(int userId, string? search)
+        => await PickBaseQuery(userId, search).Take(PickListLimit).ToListAsync();
+
+    /// <summary>فهرست انتخاب نامه با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    public async Task<PagedResult<LetterPickDto>> PickListPagedAsync(int userId, string? search, int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize, DefaultLetterPageSize);
+        var baseQ = PickBaseQuery(userId, search);
+        var total = await baseQ.CountAsync();
+        var items = await baseQ.Skip((p - 1) * size).Take(size).ToListAsync();
+        return new PagedResult<LetterPickDto> { TotalCount = total, Page = p, PageSize = size, Items = items };
     }
 
     public async Task DeleteAsync(int letterId, int userId, bool isAdmin)

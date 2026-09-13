@@ -24,7 +24,11 @@ public interface IReferrerService
 
     /// <summary>کیف پول معرف‌ها با جستجو و مرتب‌سازی (sortBy: name|commission|paid|balance).</summary>
     Task<List<Referrer>> GetWalletsAsync(string? search = null, string sortBy = "name", bool desc = false);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کیف پول معرف‌ها.</summary>
+    Task<PagedResult<Referrer>> GetWalletsPagedAsync(string? search = null, string sortBy = "name", bool desc = false, int page = 1, int pageSize = 20);
     Task<List<ReferrerPayment>> GetPaymentsAsync(int? referrerId = null);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ اسناد پرداخت معرف.</summary>
+    Task<PagedResult<ReferrerPayment>> GetPaymentsPagedAsync(int? referrerId = null, int page = 1, int pageSize = 20);
     Task<ReferrerPayment> AddPaymentAsync(ReferrerPayment payment);
     Task DeletePaymentAsync(int id);
 }
@@ -103,7 +107,11 @@ public interface IOrderService
 public interface IReportService
 {
     Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId = null, DateTime? from = null, DateTime? to = null);
+    /// <summary>کاردکس صفحه‌بندی‌شده.</summary>
+    Task<PagedResult<KardexRow>> GetKardexPagedAsync(int productId, int? warehouseId = null, DateTime? from = null, DateTime? to = null, int page = 1, int pageSize = 50);
     Task<List<ReorderItem>> GetReorderAsync(int? warehouseId = null);
+    /// <summary>نقطهٔ سفارش صفحه‌بندی‌شده.</summary>
+    Task<PagedResult<ReorderItem>> GetReorderPagedAsync(int? warehouseId = null, int page = 1, int pageSize = 50);
 }
 
 /// <summary>سرویس داشبورد.</summary>

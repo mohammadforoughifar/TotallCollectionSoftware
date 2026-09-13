@@ -50,10 +50,10 @@ public class ReportWorksController : RbacControllerBase
         if (to is not null) query = query.Where(r => r.ReportDate <= to.Value.Date.AddDays(1).AddTicks(-1));
 
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        (page, pageSize) = Pager.Normalize(page, pageSize);
         var list = await query.OrderByDescending(r => r.ReportDate).ThenByDescending(r => r.Id)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
-        return Ok(new PagedResult<ReportWorkDto> { Items = list.Select(ToDto).ToList(), TotalCount = total });
+        return Ok(new PagedResult<ReportWorkDto> { Items = list.Select(ToDto).ToList(), TotalCount = total, Page = page, PageSize = pageSize });
     }
 
     [HttpGet("{id:int}")]

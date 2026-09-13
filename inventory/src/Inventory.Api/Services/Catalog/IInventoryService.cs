@@ -23,7 +23,11 @@ public interface IInventoryService
     // ---------------- کیف پول و پرداخت معرف ----------------
     /// <summary>فهرست کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance، desc)</summary>
     Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کیف پول معرف‌ها (خروجی استاندارد GetAll).</summary>
+    Task<PagedResult<Referrer>> GetReferrerWalletsPagedAsync(string? search, string? sortBy, bool desc, int page, int pageSize);
     Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ پرداخت‌های معرف (خروجی استاندارد GetAll).</summary>
+    Task<PagedResult<ReferrerPayment>> GetReferrerPaymentsPagedAsync(int? referrerId, int page, int pageSize);
     Task<ReferrerPayment> AddReferrerPaymentAsync(ReferrerPayment dto);
     Task DeleteReferrerPaymentAsync(int id);
 
@@ -79,6 +83,8 @@ public interface IInventoryService
 
     /// <summary>کالاهای موجود برای پنل معرف (نیازمند دسترسی CanViewProducts).</summary>
     Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کالاهای پنل معرف (خروجی استاندارد GetAll).</summary>
+    Task<PagedResult<ReferrerProductItem>> GetReferrerProductsPagedAsync(int referrerId, string? search, bool bypassFlag, int page, int pageSize);
     Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize);
     Task DeleteOrderAsync(int id);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
@@ -88,9 +94,15 @@ public interface IInventoryService
 
     // ---------------- گزارش‌ها ----------------
     Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کاردکس (خروجی استاندارد GetAll).</summary>
+    Task<PagedResult<KardexRow>> GetKardexPagedAsync(int productId, int? warehouseId, DateTime? from, DateTime? to, int page, int pageSize);
     Task<List<ReorderItem>> GetReorderAsync(int? warehouseId);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ نقطهٔ سفارش (خروجی استاندارد GetAll).</summary>
+    Task<PagedResult<ReorderItem>> GetReorderPagedAsync(int? warehouseId, int page, int pageSize);
 
     // ---------------- داشبورد ----------------
     Task<DashboardSummary> GetDashboardAsync();
     Task<List<RecentActivity>> GetRecentAsync(int count);
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ آخرین فعالیت‌ها (خروجی استاندارد GetAll).</summary>
+    Task<PagedResult<RecentActivity>> GetRecentPagedAsync(int page, int pageSize);
 }

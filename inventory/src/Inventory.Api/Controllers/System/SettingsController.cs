@@ -50,16 +50,19 @@ public class ReferrersController : ApiControllerBase
         return Ok(new { ok = true });
     }
 
-    /// <summary>کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance).</summary>
+    /// <summary>کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance) — صفحه‌بندی‌شده.</summary>
     [HttpGet("wallets")]
-    public async Task<ActionResult<List<Referrer>>> GetWallets(
-        [FromQuery] string? search, [FromQuery] string? sortBy = "name", [FromQuery] bool desc = false)
-        => Ok(await _service.GetReferrerWalletsAsync(search, sortBy, desc));
+    public async Task<ActionResult<PagedResult<Referrer>>> GetWallets(
+        [FromQuery] string? search, [FromQuery] string? sortBy = "name", [FromQuery] bool desc = false,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Ok(await _service.GetReferrerWalletsPagedAsync(search, sortBy, desc, page, pageSize));
 
-    /// <summary>فهرست اسناد پرداخت (اختیاری: فقط یک معرف).</summary>
+    /// <summary>فهرست اسناد پرداخت (اختیاری: فقط یک معرف) — صفحه‌بندی‌شده.</summary>
     [HttpGet("payments")]
-    public async Task<ActionResult<List<ReferrerPayment>>> GetPayments([FromQuery] int? referrerId)
-        => Ok(await _service.GetReferrerPaymentsAsync(referrerId));
+    public async Task<ActionResult<PagedResult<ReferrerPayment>>> GetPayments(
+        [FromQuery] int? referrerId,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Ok(await _service.GetReferrerPaymentsPagedAsync(referrerId, page, pageSize));
 
     /// <summary>ثبت سند پرداخت پورسانت به معرف.</summary>
     [HttpPost("payments")]

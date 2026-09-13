@@ -23,7 +23,7 @@ public class TypeFactorsController : RbacControllerBase
             query = query.Where(t => t.Name.Contains(search));
 
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        (page, pageSize) = Pager.Normalize(page, pageSize);
         var items = await query.OrderByDescending(t => t.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(t => new TypeFactorDto
@@ -34,7 +34,7 @@ public class TypeFactorsController : RbacControllerBase
                 ProjectCount = t.Projects.Count(p => !p.IsDelete)
             })
             .ToListAsync();
-        return Ok(new PagedResult<TypeFactorDto> { Items = items, TotalCount = total });
+        return Ok(new PagedResult<TypeFactorDto> { Items = items, TotalCount = total, Page = page, PageSize = pageSize });
     }
 
     [HttpGet("{id:int}")]
