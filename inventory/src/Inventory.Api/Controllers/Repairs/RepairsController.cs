@@ -61,8 +61,8 @@ public class TechniciansController : ApiControllerBase
     public TechniciansController(IRepairService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<Technician>>> GetAll([FromQuery] bool activeOnly = false)
-        => Ok(await _svc.GetTechniciansAsync(activeOnly));
+    public async Task<ActionResult<PagedResult<Technician>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Ok(await _svc.GetTechniciansPagedAsync(activeOnly, page, pageSize));
 
     [HttpPost]
     public async Task<ActionResult<Technician>> Save([FromBody] Technician technician)

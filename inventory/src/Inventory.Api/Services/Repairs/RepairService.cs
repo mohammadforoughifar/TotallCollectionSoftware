@@ -49,6 +49,13 @@ public class RepairService : IRepairService
         }).ToList();
     }
 
+    public async Task<PagedResult<Technician>> GetTechniciansPagedAsync(bool activeOnly, int page, int pageSize)
+    {
+        var all = await GetTechniciansAsync(activeOnly);
+        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        return new PagedResult<Technician> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
+    }
+
     public async Task<Technician> SaveTechnicianAsync(Technician dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Name))

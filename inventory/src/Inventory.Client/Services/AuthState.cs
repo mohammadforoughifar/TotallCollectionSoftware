@@ -118,8 +118,8 @@ public class AuthApi : IAuthApi
     public Task<LoginResponse> LoginAsync(LoginRequest request)
         => _api.PostAsync<LoginResponse>("api/auth/login", request);
 
-    public Task<List<UserDto>> GetUsersAsync()
-        => _api.GetAsync<List<UserDto>>("api/users");
+    public async Task<List<UserDto>> GetUsersAsync()
+        => (await _api.GetAsync<PagedResult<UserDto>>("api/users?page=1&pageSize=200")).Items;
 
     public Task<UserDto> SaveUserAsync(UserDto user)
         => _api.PostAsync<UserDto>("api/users", user);

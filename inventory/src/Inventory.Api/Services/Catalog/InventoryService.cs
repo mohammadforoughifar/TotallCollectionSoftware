@@ -78,6 +78,20 @@ public class InventoryService : IInventoryService
         }).ToList();
     }
 
+
+    private static PagedResult<T> Page<T>(IReadOnlyList<T> items, int page, int pageSize)
+    {
+        page = page < 1 ? 1 : page;
+        pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        return new PagedResult<T> { TotalCount = items.Count, Items = items.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
+    }
+
+    public async Task<PagedResult<Referrer>> GetReferrersPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetReferrersAsync(activeOnly), page, pageSize);
+    public async Task<PagedResult<ProductCategory>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetCategoriesAsync(activeOnly), page, pageSize);
+    public async Task<PagedResult<MeasureUnit>> GetUnitsPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetUnitsAsync(activeOnly), page, pageSize);
+    public async Task<PagedResult<Warehouse>> GetWarehousesPagedAsync(int page, int pageSize) => Page(await GetWarehousesAsync(), page, pageSize);
+    public async Task<PagedResult<Party>> GetPartiesPagedAsync(PartyType type, int page, int pageSize) => Page(await GetPartiesAsync(type), page, pageSize);
+
     public async Task<Referrer> SaveReferrerAsync(Referrer dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Name))

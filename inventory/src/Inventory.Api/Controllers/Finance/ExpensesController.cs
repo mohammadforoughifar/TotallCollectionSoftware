@@ -43,8 +43,8 @@ public class ExpenseCategoriesController : ApiControllerBase
     public ExpenseCategoriesController(IExpenseService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<ExpenseCategoryDto>>> GetAll([FromQuery] bool activeOnly = false)
-        => Ok(await _svc.GetCategoriesAsync(activeOnly));
+    public async Task<ActionResult<PagedResult<ExpenseCategoryDto>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Ok(await _svc.GetCategoriesPagedAsync(activeOnly, page, pageSize));
 
     [HttpPost]
     public async Task<ActionResult<ExpenseCategoryDto>> Save([FromBody] ExpenseCategoryDto category)
