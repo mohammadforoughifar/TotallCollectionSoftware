@@ -7,6 +7,12 @@ namespace Inventory.Api.Services;
 /// <summary>سرویس هزینه‌ها — دسته‌های قابل مدیریت + اسناد هزینه.</summary>
 public class ExpenseService : IExpenseService
 {
+    /// <summary>اندازهٔ صفحهٔ پیش‌فرض دسته‌های هزینه.</summary>
+    public const int DefaultCategoryPageSize = 20;
+
+    /// <summary>اندازهٔ صفحهٔ پیش‌فرض اسناد هزینه.</summary>
+    public const int DefaultExpensePageSize = 15;
+
     private readonly Db.AppDbContext _db;
 
     public ExpenseService(Db.AppDbContext db) => _db = db;
@@ -35,12 +41,9 @@ public class ExpenseService : IExpenseService
         }).ToList();
     }
 
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ دسته‌های هزینه — خروجی استاندارد GetAll.</summary>
     public async Task<PagedResult<ExpenseCategoryDto>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize)
-    {
-        var all = await GetCategoriesAsync(activeOnly);
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<ExpenseCategoryDto> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
-    }
+        => Pager.Page(await GetCategoriesAsync(activeOnly), page, pageSize, DefaultCategoryPageSize);
 
     public async Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto dto)
     {
@@ -98,17 +101,19 @@ public class ExpenseService : IExpenseService
                              (e.Description != null && e.Description.Contains(s)));
         }
 
+        var (pageNo, size) = Pager.Normalize(page, pageSize, DefaultExpensePageSize);
         var total = await q.CountAsync();
-        if (pageSize <= 0) pageSize = 15;
-        if (page <= 0) page = 1;
 
         var items = await q.OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            .Skip((pageNo - 1) * size).Take(size).ToListAsync();
 
         var catNames = await _db.ExpenseCategories.ToDictionaryAsync(c => c.Id, c => c.Name);
 
         return new PagedResult<ExpenseDto>
         {
+            TotalCount = total,
+            Page = pageNo,
+            PageSize = size,
             Items = items.Select(e => new ExpenseDto
             {
                 Id = e.Id,
@@ -121,8 +126,7 @@ public class ExpenseService : IExpenseService
                 Payee = e.Payee,
                 Description = e.Description,
                 CreatedAt = e.CreatedAt
-            }).ToList(),
-            TotalCount = total
+            }).ToList()
         };
     }
 

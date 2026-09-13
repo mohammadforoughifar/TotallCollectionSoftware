@@ -21,7 +21,11 @@ public interface IErjaService
     Task MarkReadAsync(int erjaId, int userId);
     Task<bool> ToggleNeshanAsync(int erjaId, int userId);
     Task<bool> ToggleBayeganiAsync(int erjaId, int userId);
+    /// <summary>فهرست عملگرها (بدون صفحه‌بندی — برای کمبو/مصرف داخلی).</summary>
     Task<List<AmalgarDto>> GetAmalgarsAsync();
+
+    /// <summary>فهرست عملگرها با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    Task<PagedResult<AmalgarDto>> GetAmalgarsPagedAsync(int page, int pageSize);
 }
 
 public class ErjaService : IErjaService
@@ -252,10 +256,21 @@ public class ErjaService : IErjaService
         return erja.IsBayegani == true;
     }
 
-    public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
-        _db.Amalgars.AsNoTracking()
-            .Where(a => !a.IsDelete)
-            .OrderBy(a => a.AmalgarId)
-            .Select(a => new AmalgarDto { AmalgarId = a.AmalgarId, Title = a.Title, TaeedEmza = a.TaeedEmza })
-            .ToListAsync();
+    /// <summary>عملگرهای فعال، مرتب‌شده (بدون Skip/Take).</summary>
+    private IQueryable<AmalgarDto> AmalgarsQuery() => _db.Amalgars.AsNoTracking()
+        .Where(a => !a.IsDelete)
+        .OrderBy(a => a.AmalgarId)
+        .Select(a => new AmalgarDto { AmalgarId = a.AmalgarId, Title = a.Title, TaeedEmza = a.TaeedEmza });
+
+    public Task<List<AmalgarDto>> GetAmalgarsAsync() => AmalgarsQuery().ToListAsync();
+
+    /// <summary>عملگرها با صفحه‌بندی (Skip/Take سمت دیتابیس) — خروجی استاندارد GetAll.</summary>
+    public async Task<PagedResult<AmalgarDto>> GetAmalgarsPagedAsync(int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize);
+        var q = AmalgarsQuery();
+        var total = await q.CountAsync();
+        var items = await q.Skip((p - 1) * size).Take(size).ToListAsync();
+        return new PagedResult<AmalgarDto> { TotalCount = total, Page = p, PageSize = size, Items = items };
+    }
 }

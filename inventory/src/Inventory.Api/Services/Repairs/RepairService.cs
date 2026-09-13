@@ -12,6 +12,9 @@ namespace Inventory.Api.Services;
 /// </summary>
 public class RepairService : IRepairService
 {
+    /// <summary>اندازهٔ صفحهٔ پیش‌فرض فهرست پذیرش‌ها.</summary>
+    public const int DefaultRepairPageSize = 15;
+
     private readonly Db.AppDbContext _db;
     private readonly IInventoryService _inventory;
 
@@ -49,12 +52,9 @@ public class RepairService : IRepairService
         }).ToList();
     }
 
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ تعمیرکارها — خروجی استاندارد GetAll.</summary>
     public async Task<PagedResult<Technician>> GetTechniciansPagedAsync(bool activeOnly, int page, int pageSize)
-    {
-        var all = await GetTechniciansAsync(activeOnly);
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<Technician> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
-    }
+        => Pager.Page(await GetTechniciansAsync(activeOnly), page, pageSize);
 
     public async Task<Technician> SaveTechnicianAsync(Technician dto)
     {
@@ -118,18 +118,17 @@ public class RepairService : IRepairService
                              partyIds.Contains(r.PartyId));
         }
 
+        var (pageNo, size) = Pager.Normalize(page, pageSize, DefaultRepairPageSize);
         var total = await q.CountAsync();
-        if (pageSize <= 0) pageSize = 15;
-        if (page <= 0) page = 1;
 
         var items = await q.OrderByDescending(r => r.ReceivedAt).ThenByDescending(r => r.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Skip((pageNo - 1) * size).Take(size)
             .ToListAsync();
 
         var dtos = new List<RepairOrderDto>();
         foreach (var r in items) dtos.Add(await ToDtoAsync(r));
 
-        return new PagedResult<RepairOrderDto> { Items = dtos, TotalCount = total };
+        return new PagedResult<RepairOrderDto> { Items = dtos, TotalCount = total, Page = pageNo, PageSize = size };
     }
 
     public async Task<RepairOrderDto?> GetRepairAsync(int id)

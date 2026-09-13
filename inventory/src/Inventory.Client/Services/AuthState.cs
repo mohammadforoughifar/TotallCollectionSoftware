@@ -101,11 +101,17 @@ public interface IAuthApi
 {
     Task<LoginResponse> LoginAsync(LoginRequest request);
     Task<List<UserDto>> GetUsersAsync();
+    /// <summary>کاربران با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    Task<PagedResult<UserDto>> GetUsersPagedAsync(int page = 1, int pageSize = 20);
     Task<UserDto> SaveUserAsync(UserDto user);
     Task DeleteUserAsync(int id);
     Task<ReferrerDashboard> GetMyDashboardAsync();
     Task<List<ReferrerPayment>> GetMyPaymentsAsync();
+    /// <summary>پرداخت‌های پنل معرف با صفحه‌بندی.</summary>
+    Task<PagedResult<ReferrerPayment>> GetMyPaymentsPagedAsync(int page = 1, int pageSize = 20);
     Task<List<ReferrerProductItem>> GetMyProductsAsync(string? search = null);
+    /// <summary>کالاهای پنل معرف با صفحه‌بندی.</summary>
+    Task<PagedResult<ReferrerProductItem>> GetMyProductsPagedAsync(string? search = null, int page = 1, int pageSize = 20);
     Task ChangePasswordAsync(ChangePasswordRequest request);
 }
 
@@ -118,8 +124,13 @@ public class AuthApi : IAuthApi
     public Task<LoginResponse> LoginAsync(LoginRequest request)
         => _api.PostAsync<LoginResponse>("api/auth/login", request);
 
-    public async Task<List<UserDto>> GetUsersAsync()
-        => (await _api.GetAsync<PagedResult<UserDto>>("api/users?page=1&pageSize=200")).Items;
+    /// <summary>همهٔ کاربران (برای کمبو/جداول بدون صفحه‌بندی سمت کلاینت).</summary>
+    public Task<List<UserDto>> GetUsersAsync()
+        => PagedFetch.AllAsync<UserDto>((page, size) =>
+            _api.GetAsync<PagedResult<UserDto>>($"api/users?page={page}&pageSize={size}"));
+
+    public Task<PagedResult<UserDto>> GetUsersPagedAsync(int page = 1, int pageSize = 20)
+        => _api.GetAsync<PagedResult<UserDto>>($"api/users?page={page}&pageSize={pageSize}");
 
     public Task<UserDto> SaveUserAsync(UserDto user)
         => _api.PostAsync<UserDto>("api/users", user);
@@ -131,10 +142,20 @@ public class AuthApi : IAuthApi
         => _api.GetAsync<ReferrerDashboard>("api/my/dashboard");
 
     public Task<List<ReferrerPayment>> GetMyPaymentsAsync()
-        => _api.GetAsync<List<ReferrerPayment>>("api/my/payments");
+        => PagedFetch.AllAsync<ReferrerPayment>((page, size) =>
+            _api.GetAsync<PagedResult<ReferrerPayment>>($"api/my/payments?page={page}&pageSize={size}"));
+
+    public Task<PagedResult<ReferrerPayment>> GetMyPaymentsPagedAsync(int page = 1, int pageSize = 20)
+        => _api.GetAsync<PagedResult<ReferrerPayment>>($"api/my/payments?page={page}&pageSize={pageSize}");
 
     public Task<List<ReferrerProductItem>> GetMyProductsAsync(string? search = null)
-        => _api.GetAsync<List<ReferrerProductItem>>($"api/my/products?search={Uri.EscapeDataString(search ?? "")}");
+        => PagedFetch.AllAsync<ReferrerProductItem>((page, size) =>
+            _api.GetAsync<PagedResult<ReferrerProductItem>>(
+                $"api/my/products?search={Uri.EscapeDataString(search ?? "")}&page={page}&pageSize={size}"));
+
+    public Task<PagedResult<ReferrerProductItem>> GetMyProductsPagedAsync(string? search = null, int page = 1, int pageSize = 20)
+        => _api.GetAsync<PagedResult<ReferrerProductItem>>(
+            $"api/my/products?search={Uri.EscapeDataString(search ?? "")}&page={page}&pageSize={pageSize}");
 
     public Task ChangePasswordAsync(ChangePasswordRequest request)
         => _api.PostAsync<object>("api/auth/change-password", request);

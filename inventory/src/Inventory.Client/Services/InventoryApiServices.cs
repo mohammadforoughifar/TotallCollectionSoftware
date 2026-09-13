@@ -26,8 +26,10 @@ public class ReferrerService : IReferrerService
     private readonly IApiClient _api;
     public ReferrerService(IApiClient api) => _api = api;
 
-    public async Task<List<Referrer>> GetAllAsync(bool activeOnly = false)
-        => (await _api.GetAsync<PagedResult<Referrer>>($"api/referrers?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
+    /// <summary>همهٔ معرف‌ها (API صفحه‌بندی‌شده است — همهٔ صفحه‌ها گرفته می‌شود).</summary>
+    public Task<List<Referrer>> GetAllAsync(bool activeOnly = false)
+        => PagedFetch.AllAsync<Referrer>((page, size) =>
+            _api.GetAsync<PagedResult<Referrer>>($"api/referrers?activeOnly={activeOnly}&page={page}&pageSize={size}"));
 
     public Task<Referrer> SaveAsync(Referrer referrer)
         => _api.PostAsync<Referrer>("api/referrers", referrer);
@@ -36,12 +38,30 @@ public class ReferrerService : IReferrerService
         => _api.DeleteAsync($"api/referrers/{id}");
 
     public Task<List<Referrer>> GetWalletsAsync(string? search = null, string sortBy = "name", bool desc = false)
-        => _api.GetAsync<List<Referrer>>(
-            $"api/referrers/wallets?search={Uri.EscapeDataString(search ?? "")}&sortBy={sortBy}&desc={desc}");
+    {
+        var url = $"api/referrers/wallets?search={Uri.EscapeDataString(search ?? "")}&sortBy={sortBy}&desc={desc}";
+        return PagedFetch.AllAsync<Referrer>((page, size) =>
+            _api.GetAsync<PagedResult<Referrer>>($"{url}&page={page}&pageSize={size}"));
+    }
+
+    /// <summary>فهرست صفحه‌بندی‌شدهٔ کیف پول معرف‌ها (برای جدول با صفحه‌بندی واقعی).</summary>
+    public Task<PagedResult<Referrer>> GetWalletsPagedAsync(string? search = null, string sortBy = "name", bool desc = false, int page = 1, int pageSize = 20)
+        => _api.GetAsync<PagedResult<Referrer>>(
+            $"api/referrers/wallets?search={Uri.EscapeDataString(search ?? "")}&sortBy={sortBy}&desc={desc}&page={page}&pageSize={pageSize}");
+
+    /// <summary>پیشوند کوئری اسناد پرداخت (فیلتر اختیاری روی یک معرف).</summary>
+    private static string PaymentsUrl(int? referrerId, int page, int pageSize) =>
+        referrerId is > 0
+            ? $"api/referrers/payments?referrerId={referrerId}&page={page}&pageSize={pageSize}"
+            : $"api/referrers/payments?page={page}&pageSize={pageSize}";
 
     public Task<List<ReferrerPayment>> GetPaymentsAsync(int? referrerId = null)
-        => _api.GetAsync<List<ReferrerPayment>>(
-            referrerId is > 0 ? $"api/referrers/payments?referrerId={referrerId}" : "api/referrers/payments");
+        => PagedFetch.AllAsync<ReferrerPayment>((page, size) =>
+            _api.GetAsync<PagedResult<ReferrerPayment>>(PaymentsUrl(referrerId, page, size)));
+
+    /// <summary>فهرست صفحه‌بندی‌شدهٔ اسناد پرداخت معرف.</summary>
+    public Task<PagedResult<ReferrerPayment>> GetPaymentsPagedAsync(int? referrerId = null, int page = 1, int pageSize = 20)
+        => _api.GetAsync<PagedResult<ReferrerPayment>>(PaymentsUrl(referrerId, page, pageSize));
 
     public Task<ReferrerPayment> AddPaymentAsync(ReferrerPayment payment)
         => _api.PostAsync<ReferrerPayment>("api/referrers/payments", payment);
@@ -56,8 +76,10 @@ public class CategoryService : ICategoryService
     private readonly IApiClient _api;
     public CategoryService(IApiClient api) => _api = api;
 
-    public async Task<List<ProductCategory>> GetAllAsync(bool activeOnly = false)
-        => (await _api.GetAsync<PagedResult<ProductCategory>>($"api/categories?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
+    /// <summary>همهٔ گروه‌های کالا (برای درخت گروه‌ها) — API صفحه‌بندی‌شده است.</summary>
+    public Task<List<ProductCategory>> GetAllAsync(bool activeOnly = false)
+        => PagedFetch.AllAsync<ProductCategory>((page, size) =>
+            _api.GetAsync<PagedResult<ProductCategory>>($"api/categories?activeOnly={activeOnly}&page={page}&pageSize={size}"));
 
     public Task<ProductCategory> SaveAsync(ProductCategory category)
         => _api.PostAsync<ProductCategory>("api/categories", category);
@@ -100,8 +122,10 @@ public class UnitService : IUnitService
     private readonly IApiClient _api;
     public UnitService(IApiClient api) => _api = api;
 
-    public async Task<List<MeasureUnit>> GetAllAsync(bool activeOnly = false)
-        => (await _api.GetAsync<PagedResult<MeasureUnit>>($"api/units?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
+    /// <summary>همهٔ واحدهای شمارش (برای کمبو) — API صفحه‌بندی‌شده است.</summary>
+    public Task<List<MeasureUnit>> GetAllAsync(bool activeOnly = false)
+        => PagedFetch.AllAsync<MeasureUnit>((page, size) =>
+            _api.GetAsync<PagedResult<MeasureUnit>>($"api/units?activeOnly={activeOnly}&page={page}&pageSize={size}"));
 
     public Task<MeasureUnit> SaveAsync(MeasureUnit unit)
         => _api.PostAsync<MeasureUnit>("api/units", unit);
@@ -116,8 +140,10 @@ public class WarehouseService : IWarehouseService
     private readonly IApiClient _api;
     public WarehouseService(IApiClient api) => _api = api;
 
-    public async Task<List<Warehouse>> GetAllAsync()
-        => (await _api.GetAsync<PagedResult<Warehouse>>("api/warehouses?page=1&pageSize=200")).Items;
+    /// <summary>همهٔ انبارها (برای کمبو) — API صفحه‌بندی‌شده است.</summary>
+    public Task<List<Warehouse>> GetAllAsync()
+        => PagedFetch.AllAsync<Warehouse>((page, size) =>
+            _api.GetAsync<PagedResult<Warehouse>>($"api/warehouses?page={page}&pageSize={size}"));
 
     public async Task<List<LookupItem>> GetLookupsAsync(bool activeOnly = false)
     {
@@ -139,8 +165,10 @@ public class PartyService : IPartyService
     private readonly IApiClient _api;
     public PartyService(IApiClient api) => _api = api;
 
-    public async Task<List<Party>> GetAsync(PartyType type)
-        => (await _api.GetAsync<PagedResult<Party>>($"api/parties?type={(int)type}&page=1&pageSize=200")).Items;
+    /// <summary>همهٔ طرف حساب‌های یک نوع (برای کمبو) — API صفحه‌بندی‌شده است.</summary>
+    public Task<List<Party>> GetAsync(PartyType type)
+        => PagedFetch.AllAsync<Party>((page, size) =>
+            _api.GetAsync<PagedResult<Party>>($"api/parties?type={(int)type}&page={page}&pageSize={size}"));
 
     public async Task<List<LookupItem>> GetLookupsAsync(PartyType type, bool activeOnly = false)
     {
@@ -221,15 +249,29 @@ public class ReportService : IReportService
         if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
         if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
-        return _api.GetAsync<List<KardexRow>>(q);
+        return PagedFetch.AllAsync<KardexRow>((page, size) =>
+            _api.GetAsync<PagedResult<KardexRow>>($"{q}&page={page}&pageSize={size}"));
+    }
+
+    /// <summary>کاردکس صفحه‌بندی‌شده (برای جدول با صفحه‌بندی واقعی).</summary>
+    public Task<PagedResult<KardexRow>> GetKardexPagedAsync(int productId, int? warehouseId = null, DateTime? from = null, DateTime? to = null, int page = 1, int pageSize = 50)
+    {
+        var q = $"api/kardex?productId={productId}&page={page}&pageSize={pageSize}";
+        if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        return _api.GetAsync<PagedResult<KardexRow>>(q);
     }
 
     public Task<List<ReorderItem>> GetReorderAsync(int? warehouseId = null)
-    {
-        var q = "api/reorder";
-        if (warehouseId is > 0) q += $"?warehouseId={warehouseId}";
-        return _api.GetAsync<List<ReorderItem>>(q);
-    }
+        => PagedFetch.AllAsync<ReorderItem>((page, size) =>
+            _api.GetAsync<PagedResult<ReorderItem>>(
+                $"api/reorder?page={page}&pageSize={size}{(warehouseId is > 0 ? $"&warehouseId={warehouseId}" : "")}"));
+
+    /// <summary>نقطهٔ سفارش صفحه‌بندی‌شده (برای جدول با صفحه‌بندی واقعی).</summary>
+    public Task<PagedResult<ReorderItem>> GetReorderPagedAsync(int? warehouseId = null, int page = 1, int pageSize = 50)
+        => _api.GetAsync<PagedResult<ReorderItem>>(
+            $"api/reorder?page={page}&pageSize={pageSize}{(warehouseId is > 0 ? $"&warehouseId={warehouseId}" : "")}");
 }
 
 /// <summary>پیاده‌سازی سرویس داشبورد.</summary>
@@ -263,8 +305,10 @@ public class RepairService : IRepairService
     private readonly IApiClient _api;
     public RepairService(IApiClient api) => _api = api;
 
-    public async Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false)
-        => (await _api.GetAsync<PagedResult<Technician>>($"api/technicians?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
+    /// <summary>همهٔ تعمیرکارها (برای کمبو) — API صفحه‌بندی‌شده است.</summary>
+    public Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false)
+        => PagedFetch.AllAsync<Technician>((page, size) =>
+            _api.GetAsync<PagedResult<Technician>>($"api/technicians?activeOnly={activeOnly}&page={page}&pageSize={size}"));
 
     public Task<Technician> SaveTechnicianAsync(Technician technician)
         => _api.PostAsync<Technician>("api/technicians", technician);
@@ -303,8 +347,10 @@ public class ExpenseService : IExpenseService
     private readonly IApiClient _api;
     public ExpenseService(IApiClient api) => _api = api;
 
-    public async Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false)
-        => (await _api.GetAsync<PagedResult<ExpenseCategoryDto>>($"api/expense-categories?activeOnly={activeOnly}&page=1&pageSize=200")).Items;
+    /// <summary>همهٔ دسته‌های هزینه (برای کمبو) — API صفحه‌بندی‌شده است.</summary>
+    public Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false)
+        => PagedFetch.AllAsync<ExpenseCategoryDto>((page, size) =>
+            _api.GetAsync<PagedResult<ExpenseCategoryDto>>($"api/expense-categories?activeOnly={activeOnly}&page={page}&pageSize={size}"));
 
     public Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto category)
         => _api.PostAsync<ExpenseCategoryDto>("api/expense-categories", category);

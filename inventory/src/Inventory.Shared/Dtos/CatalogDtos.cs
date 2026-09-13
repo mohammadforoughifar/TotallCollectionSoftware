@@ -233,11 +233,38 @@ public class Party
     public decimal Balance { get; set; }
 }
 
-/// <summary>نتیجه فیلتر/صفحه‌بندی اقلام پایه</summary>
+/// <summary>
+/// نتیجهٔ فیلتر/صفحه‌بندی — خروجی استاندارد همهٔ متدهای «گرفتن همه» (GetAll) در سرویس‌ها.
+/// علاوه بر <see cref="Items"/> و <see cref="TotalCount"/>، اطلاعات صفحهٔ جاری را هم برمی‌گرداند
+/// تا کلاینت بتواند بدون محاسبهٔ مجدد، صفحه‌بندی (Pagination) را رندر کند.
+/// </summary>
 public class PagedResult<T>
 {
+    /// <summary>رکوردهای صفحهٔ جاری.</summary>
     public List<T> Items { get; set; } = new();
+
+    /// <summary>تعداد کل رکوردها (بدون در نظر گرفتن صفحه‌بندی، با احتساب فیلترها).</summary>
     public int TotalCount { get; set; }
+
+    /// <summary>شمارهٔ صفحهٔ جاری (۱-مبنا).</summary>
+    public int Page { get; set; } = 1;
+
+    /// <summary>اندازهٔ صفحهٔ جاری.</summary>
+    public int PageSize { get; set; } = Pager.DefaultPageSize;
+
+    // ---- موارد محاسباتی (فقط خروجی؛ در JSON deserialize نمی‌شوند) ----
+
+    /// <summary>تعداد کل صفحه‌ها.</summary>
+    public int TotalPages => PageSize <= 0 ? 0 : (TotalCount + PageSize - 1) / PageSize;
+
+    /// <summary>آیا صفحهٔ قبلی وجود دارد؟</summary>
+    public bool HasPrevious => Page > 1;
+
+    /// <summary>آیا صفحهٔ بعدی وجود دارد؟</summary>
+    public bool HasNext => Page < TotalPages;
+
+    /// <summary>شمارهٔ ردیف اولین رکورد این صفحه (۱-مبنا) — برای ستون «ردیف» جدول.</summary>
+    public int FirstItemNumber => TotalCount == 0 ? 0 : (Page - 1) * PageSize + 1;
 }
 
 /// <summary>آیتم سبک برای انتخاب در فرم‌ها</summary>

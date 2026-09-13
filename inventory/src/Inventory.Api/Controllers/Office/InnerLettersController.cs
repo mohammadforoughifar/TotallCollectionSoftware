@@ -44,28 +44,34 @@ public class InnerLettersController : RbacControllerBase
 
     // ==================== کارتابل ====================
 
-    /// <summary>صندوق وارده کاربر جاری</summary>
+    /// <summary>صندوق وارده کاربر جاری (صفحه‌بندی‌شده)</summary>
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly)
+    public async Task<IActionResult> Inbox(
+        [FromQuery] string? search, [FromQuery] bool? unreadOnly,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = InnerLetterService.DefaultLetterPageSize)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly));
+        return Ok(await _letters.GetInboxPagedAsync(MyUserId, search, unreadOnly, page, pageSize));
     }
 
-    /// <summary>پوشه بایگانی کاربر جاری</summary>
+    /// <summary>پوشه بایگانی کاربر جاری (صفحه‌بندی‌شده)</summary>
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive([FromQuery] string? search)
+    public async Task<IActionResult> Archive(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = InnerLetterService.DefaultLetterPageSize)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetArchiveAsync(MyUserId, search));
+        return Ok(await _letters.GetArchivePagedAsync(MyUserId, search, page, pageSize));
     }
 
-    /// <summary>نامه‌های ارسالی کاربر جاری</summary>
+    /// <summary>نامه‌های ارسالی کاربر جاری (صفحه‌بندی‌شده)</summary>
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search)
+    public async Task<IActionResult> Sent(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = InnerLetterService.DefaultLetterPageSize)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search));
+        return Ok(await _letters.GetSentPagedAsync(MyUserId, search, page, pageSize));
     }
 
     /// <summary>آمار کارتابل (شمارنده نخوانده‌ها و…)</summary>
@@ -118,12 +124,14 @@ public class InnerLettersController : RbacControllerBase
         return Ok(new { message = "نامه حذف شد." });
     }
 
-    /// <summary>لیست انتخاب نامه برای عطف/پیرو</summary>
+    /// <summary>لیست انتخاب نامه برای عطف/پیرو (صفحه‌بندی‌شده)</summary>
     [HttpGet("pick")]
-    public async Task<IActionResult> Pick([FromQuery] string? search)
+    public async Task<IActionResult> Pick(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = InnerLetterService.DefaultLetterPageSize)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.PickListAsync(MyUserId, search));
+        return Ok(await _letters.PickListPagedAsync(MyUserId, search, page, pageSize));
     }
 
     // ==================== گردش / ارجاع ====================
@@ -178,17 +186,21 @@ public class InnerLettersController : RbacControllerBase
         return Ok(new { isBayegani });
     }
 
-    /// <summary>لیست عملگرهای ارجاع</summary>
+    /// <summary>لیست عملگرهای ارجاع (صفحه‌بندی‌شده)</summary>
     [HttpGet("amalgars")]
-    public async Task<IActionResult> Amalgars() => Ok(await _erja.GetAmalgarsAsync());
+    public async Task<IActionResult> Amalgars(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = Pager.DefaultPageSize)
+        => Ok(await _erja.GetAmalgarsPagedAsync(page, pageSize));
 
     // ==================== پیش‌نویس ====================
 
     [HttpGet("pishnevis")]
-    public async Task<IActionResult> PishnevisList([FromQuery] string? search)
+    public async Task<IActionResult> PishnevisList(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = PishnevisService.DefaultPageSize)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _pishnevis.GetAllAsync(MyUserId, search));
+        return Ok(await _pishnevis.GetAllPagedAsync(MyUserId, search, page, pageSize));
     }
 
     [HttpGet("pishnevis/{id:int}")]
@@ -222,12 +234,13 @@ public class InnerLettersController : RbacControllerBase
 
     // ==================== گیرندگان (کاربران فعال) ====================
 
-    /// <summary>لیست کاربران فعال برای انتخاب گیرنده</summary>
+    /// <summary>لیست کاربران فعال برای انتخاب گیرنده (صفحه‌بندی‌شده)</summary>
     [HttpGet("recivers")]
-    public async Task<IActionResult> Recivers()
+    public async Task<IActionResult> Recivers(
+        [FromQuery] int page = 1, [FromQuery] int pageSize = Pager.MaxPageSize)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var users = await Db.Users.AsNoTracking()
+        var users = Db.Users.AsNoTracking()
             .Where(u => u.IsActive && u.Id != MyUserId)
             .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
             .Select(u => new LetterReciverDto
@@ -236,19 +249,20 @@ public class InnerLettersController : RbacControllerBase
                 FullName = string.IsNullOrEmpty(u.FirstName + u.LastName)
                     ? u.Username
                     : (u.FirstName + " " + u.LastName).Trim()
-            })
-            .ToListAsync();
-        return Ok(users);
+            });
+        return Ok(await users.ToPagedAsync(page, pageSize, Pager.MaxPageSize));
     }
 
     // ==================== گروه‌های گیرندگان (پورت Groups کارفرما) ====================
 
-    /// <summary>لیست گروه‌های فعال — با اعضا (برای نمایش در کمبوی گروهی)</summary>
+    /// <summary>لیست گروه‌های فعال — با اعضا (برای نمایش در کمبوی گروهی) (صفحه‌بندی‌شده)</summary>
     [HttpGet("groups")]
-    public async Task<IActionResult> Groups([FromQuery] bool withMembers = true)
+    public async Task<IActionResult> Groups(
+        [FromQuery] bool withMembers = true,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = LetterGroupService.DefaultPageSize)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _groups.GetAllAsync(withMembers));
+        return Ok(await _groups.GetAllPagedAsync(withMembers, page, pageSize));
     }
 
     /// <summary>ایجاد/ویرایش گروه گیرندگان</summary>

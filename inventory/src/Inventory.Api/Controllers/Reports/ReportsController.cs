@@ -12,12 +12,13 @@ public class KardexController : ApiControllerBase
 
     public KardexController(IInventoryService service) => _service = service;
 
-    /// <summary>گردش کالا (کاردکس) با فیلتر انبار و بازه تاریخ.</summary>
+    /// <summary>گردش کالا (کاردکس) با فیلتر انبار و بازه تاریخ — صفحه‌بندی‌شده.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<KardexRow>>> Get(
+    public async Task<ActionResult<PagedResult<KardexRow>>> Get(
         [FromQuery] int productId, [FromQuery] int? warehouseId,
-        [FromQuery] DateTime? from, [FromQuery] DateTime? to)
-        => Ok(await _service.GetKardexAsync(productId, warehouseId, from, to));
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await _service.GetKardexPagedAsync(productId, warehouseId, from, to, page, pageSize));
 }
 
 /// <summary>گزارش نقطه سفارش.</summary>
@@ -28,8 +29,10 @@ public class ReorderController : ApiControllerBase
 
     public ReorderController(IInventoryService service) => _service = service;
 
-    /// <summary>کالاهایی که موجودی‌شان به نقطه سفارش رسیده است.</summary>
+    /// <summary>کالاهایی که موجودی‌شان به نقطه سفارش رسیده است — صفحه‌بندی‌شده.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<ReorderItem>>> Get([FromQuery] int? warehouseId)
-        => Ok(await _service.GetReorderAsync(warehouseId));
+    public async Task<ActionResult<PagedResult<ReorderItem>>> Get(
+        [FromQuery] int? warehouseId,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 50)
+        => Ok(await _service.GetReorderPagedAsync(warehouseId, page, pageSize));
 }

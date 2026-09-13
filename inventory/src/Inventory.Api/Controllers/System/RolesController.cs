@@ -19,9 +19,9 @@ public class RolesController : ControllerBase
     {
         var query = _db.Roles.AsNoTracking().OrderBy(r => r.Name);
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        (page, pageSize) = Pager.Normalize(page, pageSize);
         var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
-        return Ok(new PagedResult<Role> { Items = items, TotalCount = total });
+        return Ok(new PagedResult<Role> { Items = items, TotalCount = total, Page = page, PageSize = pageSize });
     }
 
     [HttpGet("{id}/permissions")]

@@ -79,18 +79,11 @@ public class InventoryService : IInventoryService
     }
 
 
-    private static PagedResult<T> Page<T>(IReadOnlyList<T> items, int page, int pageSize)
-    {
-        page = page < 1 ? 1 : page;
-        pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<T> { TotalCount = items.Count, Items = items.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
-    }
-
-    public async Task<PagedResult<Referrer>> GetReferrersPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetReferrersAsync(activeOnly), page, pageSize);
-    public async Task<PagedResult<ProductCategory>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetCategoriesAsync(activeOnly), page, pageSize);
-    public async Task<PagedResult<MeasureUnit>> GetUnitsPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetUnitsAsync(activeOnly), page, pageSize);
-    public async Task<PagedResult<Warehouse>> GetWarehousesPagedAsync(int page, int pageSize) => Page(await GetWarehousesAsync(), page, pageSize);
-    public async Task<PagedResult<Party>> GetPartiesPagedAsync(PartyType type, int page, int pageSize) => Page(await GetPartiesAsync(type), page, pageSize);
+    public async Task<PagedResult<Referrer>> GetReferrersPagedAsync(bool activeOnly, int page, int pageSize) => Pager.Page(await GetReferrersAsync(activeOnly), page, pageSize);
+    public async Task<PagedResult<ProductCategory>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize) => Pager.Page(await GetCategoriesAsync(activeOnly), page, pageSize);
+    public async Task<PagedResult<MeasureUnit>> GetUnitsPagedAsync(bool activeOnly, int page, int pageSize) => Pager.Page(await GetUnitsAsync(activeOnly), page, pageSize);
+    public async Task<PagedResult<Warehouse>> GetWarehousesPagedAsync(int page, int pageSize) => Pager.Page(await GetWarehousesAsync(), page, pageSize);
+    public async Task<PagedResult<Party>> GetPartiesPagedAsync(PartyType type, int page, int pageSize) => Pager.Page(await GetPartiesAsync(type), page, pageSize);
 
     public async Task<Referrer> SaveReferrerAsync(Referrer dto)
     {
@@ -211,6 +204,10 @@ public class InventoryService : IInventoryService
         return list;
     }
 
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کیف پول معرف‌ها — مرتب‌سازی/فیلتر در حافظه انجام می‌شود (SQLite جمع decimal در SQL ندارد).</summary>
+    public async Task<PagedResult<Referrer>> GetReferrerWalletsPagedAsync(string? search, string? sortBy, bool desc, int page, int pageSize)
+        => Pager.Page(await GetReferrerWalletsAsync(search, sortBy, desc), page, pageSize);
+
     public async Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId)
     {
         var q = _db.ReferrerPayments.AsQueryable();
@@ -230,6 +227,10 @@ public class InventoryService : IInventoryService
             CreatedAt = p.CreatedAt
         }).ToList();
     }
+
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ پرداخت‌های معرف.</summary>
+    public async Task<PagedResult<ReferrerPayment>> GetReferrerPaymentsPagedAsync(int? referrerId, int page, int pageSize)
+        => Pager.Page(await GetReferrerPaymentsAsync(referrerId), page, pageSize);
 
     public async Task<ReferrerPayment> AddReferrerPaymentAsync(ReferrerPayment dto)
     {
@@ -802,9 +803,14 @@ public class InventoryService : IInventoryService
         if (belowReorderOnly)
             dtos = dtos.Where(p => p.BelowReorder).ToList();
 
-        var total = dtos.Count;
-        var items = dtos.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-        return new PagedResult<Product> { Items = items, TotalCount = total };
+        var (pageNo, size) = Pager.Normalize(page, pageSize);
+        return new PagedResult<Product>
+        {
+            TotalCount = dtos.Count,
+            Page = pageNo,
+            PageSize = size,
+            Items = dtos.Skip((pageNo - 1) * size).Take(size).ToList()
+        };
     }
 
     private static Product ToProductDto(Db.Product p, List<Db.Stock> stocks, Dictionary<int, string>? whNames = null)
@@ -1074,13 +1080,19 @@ public class InventoryService : IInventoryService
 
         if (belowOnly) rows = rows.Where(r => r.BelowReorder).ToList();
 
-        var total = rows.Count;
-        var items = rows
+        var (pageNo, size) = Pager.Normalize(page, pageSize);
+        var ordered = rows
             .OrderBy(r => r.ProductName)
             .ThenBy(r => r.WarehouseName)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            .ToList();
 
-        return new PagedResult<StockItem> { Items = items, TotalCount = total };
+        return new PagedResult<StockItem>
+        {
+            TotalCount = ordered.Count,
+            Page = pageNo,
+            PageSize = size,
+            Items = ordered.Skip((pageNo - 1) * size).Take(size).ToList()
+        };
     }
 
     public async Task AdjustStockAsync(AdjustmentCommand cmd)
@@ -1243,14 +1255,15 @@ public class InventoryService : IInventoryService
         if (partyId.HasValue) q = q.Where(t => t.PartyId == partyId.Value);
         if (warehouseId.HasValue) q = q.Where(t => t.WarehouseId == warehouseId.Value);
 
+        var (pageNo, size) = Pager.Normalize(page, pageSize);
         var total = await q.CountAsync();
         var pageItems = await q.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id)
-                               .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+                               .Skip((pageNo - 1) * size).Take(size).ToListAsync();
 
         var items = new List<Order>();
         foreach (var t in pageItems) items.Add(await ToOrderDtoAsync(t));
 
-        return new PagedResult<Order> { Items = items, TotalCount = total };
+        return new PagedResult<Order> { Items = items, TotalCount = total, Page = pageNo, PageSize = size };
     }
 
     private async Task<Order> ToOrderDtoAsync(Db.Transaction t)
@@ -1519,6 +1532,10 @@ public class InventoryService : IInventoryService
         return filtered.ToList();
     }
 
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کاردکس — ماندهٔ هر سطر باید روی کل تاریخچه محاسبه شود، پس فیلتر کامل انجام و سپس صفحه‌بندی می‌شود.</summary>
+    public async Task<PagedResult<KardexRow>> GetKardexPagedAsync(int productId, int? warehouseId, DateTime? from, DateTime? to, int page, int pageSize)
+        => Pager.Page(await GetKardexAsync(productId, warehouseId, from, to), page, pageSize);
+
     // =============================== نقطه سفارش ===============================
 
     public async Task<List<ReorderItem>> GetReorderAsync(int? warehouseId)
@@ -1548,6 +1565,10 @@ public class InventoryService : IInventoryService
         }
         return list.OrderByDescending(r => r.Shortage).ToList();
     }
+
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ گزارش نقطهٔ سفارش.</summary>
+    public async Task<PagedResult<ReorderItem>> GetReorderPagedAsync(int? warehouseId, int page, int pageSize)
+        => Pager.Page(await GetReorderAsync(warehouseId), page, pageSize);
 
     // =============================== داشبورد ===============================
 
@@ -1610,6 +1631,32 @@ public class InventoryService : IInventoryService
             PartyName = t.PartyId.HasValue && parties.TryGetValue(t.PartyId.Value, out var p) ? p.Name : "",
             Amount = t.Amount
         }).ToList();
+    }
+
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ آخرین فعالیت‌ها (جدیدترین‌ها اول).</summary>
+    public async Task<PagedResult<RecentActivity>> GetRecentPagedAsync(int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize);
+
+        var total = await _db.Transactions.CountAsync();
+        var txns = await _db.Transactions.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id)
+            .Skip((p - 1) * size).Take(size).ToListAsync();
+        var parties = await _db.Parties.ToDictionaryAsync(x => x.Id);
+
+        return new PagedResult<RecentActivity>
+        {
+            TotalCount = total,
+            Page = p,
+            PageSize = size,
+            Items = txns.Select(t => new RecentActivity
+            {
+                Date = t.Date,
+                Type = t.Type.ToString(),
+                Number = t.Number,
+                PartyName = t.PartyId.HasValue && parties.TryGetValue(t.PartyId.Value, out var prt) ? prt.Name : "",
+                Amount = t.Amount
+            }).ToList()
+        };
     }
 
     // =============================== ابزار ===============================
@@ -1931,6 +1978,10 @@ public class InventoryService : IInventoryService
                 InStock = true
             }).ToList();
     }
+
+    /// <summary>نسخهٔ صفحه‌بندی‌شدهٔ کالاهای پنل معرف.</summary>
+    public async Task<PagedResult<ReferrerProductItem>> GetReferrerProductsPagedAsync(int referrerId, string? search, bool bypassFlag, int page, int pageSize)
+        => Pager.Page(await GetReferrerProductsAsync(referrerId, search, bypassFlag), page, pageSize);
 
     /// <summary>پاس کردن چک.</summary>
     public async Task ClearChequeAsync(int chequeId)

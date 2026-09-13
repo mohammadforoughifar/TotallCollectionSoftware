@@ -12,7 +12,12 @@ namespace Inventory.Api.Services;
 
 public interface ILetterGroupService
 {
+    /// <summary>فهرست گروه‌های گیرندگان (بدون صفحه‌بندی — برای کمبو/مصرف داخلی).</summary>
     Task<List<LetterGroupDto>> GetAllAsync(bool includeMembers);
+
+    /// <summary>فهرست گروه‌های گیرندگان با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    Task<PagedResult<LetterGroupDto>> GetAllPagedAsync(bool includeMembers, int page, int pageSize);
+
     Task<LetterGroupDto?> GetAsync(int groupId);
     Task<int> SaveAsync(SaveLetterGroupDto dto, int userId);
     Task DeleteAsync(int groupId, int userId, bool isAdmin);
@@ -26,6 +31,9 @@ public interface ILetterGroupService
 
 public class LetterGroupService : ILetterGroupService
 {
+    /// <summary>اندازهٔ صفحهٔ پیش‌فرض فهرست گروه‌ها.</summary>
+    public const int DefaultPageSize = 20;
+
     private readonly AppDbContext _db;
     public LetterGroupService(AppDbContext db) => _db = db;
 
@@ -35,11 +43,28 @@ public class LetterGroupService : ILetterGroupService
             ? u.Username
             : $"{u.FirstName} {u.LastName}".Trim();
 
+    /// <summary>گروه‌های فعال و مرتب‌شده بر اساس نام (بدون Skip/Take).</summary>
+    private IQueryable<LetterGroup> BaseQuery() => _db.LetterGroups.AsNoTracking()
+        .Where(g => !g.IsDelete && g.Condition)
+        .OrderBy(g => g.NameGroup);
+
+    private static LetterGroupDto ToDto(LetterGroup g, bool includeMembers) => new()
+    {
+        GroupId = g.GroupId,
+        NameGroup = g.NameGroup,
+        Condition = g.Condition,
+        MemberCount = g.Members.Count,
+        Members = includeMembers
+            ? g.Members
+                .Where(m => m.User != null && m.User.IsActive)
+                .Select(m => new LetterReciverDto { UserId = m.UserId, FullName = FullName(m.User) })
+                .ToList()
+            : new List<LetterReciverDto>()
+    };
+
     public async Task<List<LetterGroupDto>> GetAllAsync(bool includeMembers)
     {
-        var q = _db.LetterGroups.AsNoTracking()
-            .Where(g => !g.IsDelete && g.Condition)
-            .OrderBy(g => g.NameGroup);
+        var q = BaseQuery();
 
         if (!includeMembers)
             return await q.Select(g => new LetterGroupDto
@@ -51,17 +76,37 @@ public class LetterGroupService : ILetterGroupService
             }).ToListAsync();
 
         var groups = await q.Include(g => g.Members).ThenInclude(m => m.User).ToListAsync();
-        return groups.Select(g => new LetterGroupDto
+        return groups.Select(g => ToDto(g, true)).ToList();
+    }
+
+    /// <summary>گروه‌های گیرندگان با صفحه‌بندی (Skip/Take سمت دیتابیس) — خروجی استاندارد GetAll.</summary>
+    public async Task<PagedResult<LetterGroupDto>> GetAllPagedAsync(bool includeMembers, int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize, DefaultPageSize);
+        var q = BaseQuery();
+
+        var total = await q.CountAsync();
+
+        List<LetterGroupDto> items;
+        if (!includeMembers)
         {
-            GroupId = g.GroupId,
-            NameGroup = g.NameGroup,
-            Condition = g.Condition,
-            MemberCount = g.Members.Count,
-            Members = g.Members
-                .Where(m => m.User != null && m.User.IsActive)
-                .Select(m => new LetterReciverDto { UserId = m.UserId, FullName = FullName(m.User) })
-                .ToList()
-        }).ToList();
+            items = await q.Skip((p - 1) * size).Take(size)
+                .Select(g => new LetterGroupDto
+                {
+                    GroupId = g.GroupId,
+                    NameGroup = g.NameGroup,
+                    Condition = g.Condition,
+                    MemberCount = g.Members.Count
+                }).ToListAsync();
+        }
+        else
+        {
+            var groups = await q.Include(g => g.Members).ThenInclude(m => m.User)
+                .Skip((p - 1) * size).Take(size).ToListAsync();
+            items = groups.Select(g => ToDto(g, true)).ToList();
+        }
+
+        return new PagedResult<LetterGroupDto> { TotalCount = total, Page = p, PageSize = size, Items = items };
     }
 
     public async Task<LetterGroupDto?> GetAsync(int groupId)

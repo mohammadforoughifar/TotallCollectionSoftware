@@ -328,10 +328,10 @@ public class ProjectsController : RbacControllerBase
         if (returned == true) query = query.Where(p => p.ReturnProjectId > 0);
 
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        (page, pageSize) = Pager.Normalize(page, pageSize);
         var list = await query.OrderByDescending(p => p.Id)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
-        return Ok(new PagedResult<ProjectEntryExitDto> { Items = list.Select(p => ToDto(p, showFactor)).ToList(), TotalCount = total });
+        return Ok(new PagedResult<ProjectEntryExitDto> { Items = list.Select(p => ToDto(p, showFactor)).ToList(), TotalCount = total, Page = page, PageSize = pageSize });
     }
 
     [HttpGet("{id:int}")]

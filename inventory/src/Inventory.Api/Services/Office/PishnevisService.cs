@@ -11,7 +11,12 @@ namespace Inventory.Api.Services;
 
 public interface IPishnevisService
 {
+    /// <summary>فهرست پیش‌نویس‌های کاربر (بدون صفحه‌بندی — برای کمبو/مصرف داخلی).</summary>
     Task<List<PishnevisDto>> GetAllAsync(int userId, string? search);
+
+    /// <summary>فهرست پیش‌نویس‌های کاربر با صفحه‌بندی — خروجی استاندارد GetAll.</summary>
+    Task<PagedResult<PishnevisDto>> GetAllPagedAsync(int userId, string? search, int page, int pageSize);
+
     Task<PishnevisDto?> GetByIdAsync(int id, int userId);
     Task<int> AddAsync(PishnevisDto dto, int userId);
     Task EditAsync(PishnevisDto dto, int userId);
@@ -20,10 +25,14 @@ public interface IPishnevisService
 
 public class PishnevisService : IPishnevisService
 {
+    /// <summary>اندازهٔ صفحهٔ پیش‌فرض فهرست پیش‌نویس‌ها.</summary>
+    public const int DefaultPageSize = 20;
+
     private readonly AppDbContext _db;
     public PishnevisService(AppDbContext db) => _db = db;
 
-    public async Task<List<PishnevisDto>> GetAllAsync(int userId, string? search)
+    /// <summary>پرس‌وجوی مرتب‌شدهٔ پیش‌نویس‌ها (بدون Skip/Take) — مشترک بین نسخهٔ لیستی و صفحه‌بندی‌شده.</summary>
+    private IQueryable<PishnevisDto> Query(int userId, string? search)
     {
         var q = _db.PishnevisLetters.AsNoTracking()
             .Where(p => p.UserId == userId && !p.IsDelete);
@@ -34,7 +43,7 @@ public class PishnevisService : IPishnevisService
             q = q.Where(p => p.Title.Contains(s));
         }
 
-        return await q
+        return q
             .OrderByDescending(p => p.IsNeshan)
             .ThenByDescending(p => p.PishnevisId)
             .Select(p => new PishnevisDto
@@ -43,8 +52,19 @@ public class PishnevisService : IPishnevisService
                 Title = p.Title,
                 Text = p.Text,
                 IsNeshan = p.IsNeshan
-            })
-            .ToListAsync();
+            });
+    }
+
+    public async Task<List<PishnevisDto>> GetAllAsync(int userId, string? search)
+        => await Query(userId, search).ToListAsync();
+
+    public async Task<PagedResult<PishnevisDto>> GetAllPagedAsync(int userId, string? search, int page, int pageSize)
+    {
+        var (p, size) = Pager.Normalize(page, pageSize, DefaultPageSize);
+        var q = Query(userId, search);
+        var total = await q.CountAsync();
+        var items = await q.Skip((p - 1) * size).Take(size).ToListAsync();
+        return new PagedResult<PishnevisDto> { TotalCount = total, Page = p, PageSize = size, Items = items };
     }
 
     public Task<PishnevisDto?> GetByIdAsync(int id, int userId) =>
