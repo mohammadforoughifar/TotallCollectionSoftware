@@ -13,6 +13,7 @@ public class FaComAnnouncementDto
     public DateTime? PublishFrom { get; set; }
     public DateTime? PublishTo { get; set; }
     public bool IsActive { get; set; }
+    public DateTime? NotifiedAt { get; set; }
     public string? CreatedByName { get; set; }
     public DateTime CreatedAt { get; set; }
 }
@@ -107,4 +108,38 @@ public class FaComPollSaveDto
     public bool IsActive { get; set; } = true;
     public DateTime? CloseAt { get; set; }
     public List<string> Options { get; set; } = new();
+}
+
+// ==================== صندوق پیشنهادها ====================
+
+public class FaComSuggestionDto
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = "";
+    public string Body { get; set; } = "";
+    /// <summary>0=پیشنهاد، 1=انتقاد، 2=سایر</summary>
+    public int Category { get; set; }
+    /// <summary>0=جدید، 1=در بررسی، 2=پذیرفته، 3=ردشده، 4=اجراشده</summary>
+    public int Status { get; set; }
+    public bool IsAnonymous { get; set; }
+    /// <summary>نام ثبت‌کننده (اگر ناشناس: «ناشناس»)</summary>
+    public string? EmployeeName { get; set; }
+    public string? Response { get; set; }
+    public string? RespondedByName { get; set; }
+    public DateTime? RespondedAt { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class FaComSuggestionSaveDto
+{
+    public string Title { get; set; } = "";
+    public string Body { get; set; } = "";
+    public int Category { get; set; }
+    public bool IsAnonymous { get; set; }
+}
+
+public class FaComSuggestionRespondDto
+{
+    public int Status { get; set; }
+    public string? Response { get; set; }
 }

@@ -63,6 +63,61 @@ public class FaComController : RbacControllerBase
         return Ok(new { count = await _svc.BroadcastAsync(id, email, push, sms, MyUserId) });
     }
 
+    [HttpPost("announcements/{id:int}/publish-now")]
+    public async Task<IActionResult> PublishNow(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { return Ok(new { count = await _svc.PublishNowAsync(id, MyUserId) }); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpPost("announcements/check-due")]
+    public async Task<IActionResult> CheckDue()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(new { count = await _svc.CheckDueAnnouncementsAsync() });
+    }
+
+    // ------------------- صندوق پیشنهادها -------------------
+
+    [HttpGet("suggestions/my")]
+    public async Task<IActionResult> MySuggestions()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.MySuggestionsAsync(MyUserId));
+    }
+
+    [HttpPost("suggestions")]
+    public async Task<IActionResult> CreateSuggestion([FromBody] FaComSuggestionSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        try { return Ok(await _svc.CreateSuggestionAsync(MyUserId, dto)); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpGet("suggestions")]
+    public async Task<IActionResult> Suggestions([FromQuery] int? status, [FromQuery] int? category)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _svc.ListSuggestionsAsync(status, category));
+    }
+
+    [HttpPost("suggestions/{id:int}/respond")]
+    public async Task<IActionResult> RespondSuggestion(int id, [FromBody] FaComSuggestionRespondDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { return Ok(await _svc.RespondSuggestionAsync(id, dto, MyUsername)); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
+    [HttpDelete("suggestions/{id:int}")]
+    public async Task<IActionResult> DeleteSuggestion(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        try { await _svc.DeleteSuggestionAsync(id); return Ok(); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
     // ------------------- نظرسنجی‌ها -------------------
 
     [HttpGet("polls")]

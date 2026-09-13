@@ -228,6 +228,7 @@ public class AppDbContext : DbContext
     public DbSet<FaComPoll> FaComPolls => Set<FaComPoll>();
     public DbSet<FaComPollOption> FaComPollOptions => Set<FaComPollOption>();
     public DbSet<FaComVote> FaComVotes => Set<FaComVote>();
+    public DbSet<FaComSuggestion> FaComSuggestions => Set<FaComSuggestion>();
 
     /// <summary>ماژول زمان‌بندی و حقوق — جدول‌های اختصاصی (بدون هیچ تغییری در جداول قبلی)</summary>
     public DbSet<HrRequestStep> HrRequestSteps => Set<HrRequestStep>();
