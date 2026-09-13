@@ -1003,6 +1003,33 @@ public class WorkOrdersController : ControllerBase
         });
     }
 
+    // ================== کانبان: تغییر سریع اولویت ==================
+
+    public class PriorityDto { public int Priority { get; set; } }
+
+    /// <summary>
+    /// تغییر سریع اولویت (درگ‌اند‌دراپ کانبان) — فقط دستوردهنده و فقط تا وقتی دستور باز است.
+    /// </summary>
+    [HttpPost("{id:int}/priority")]
+    public async Task<IActionResult> SetPriority(int id, [FromBody] PriorityDto dto)
+    {
+        var wo = await _db.WorkOrders.FindAsync(id);
+        if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
+        if (wo.OwnerUserId != MyUserId) return Forbid();
+        if (wo.Status != "Open") return BadRequest(new { message = "دستور بسته شده است؛ اولویت قابل تغییر نیست." });
+        if (!WorkOrderPriority.IsValid(dto.Priority))
+            return BadRequest(new { message = "اولویت انتخابی نامعتبر است." });
+
+        if (wo.Priority != dto.Priority)
+        {
+            Log(id, "Edited", $"تغییر اولویت از «{WorkOrderPriority.ToFa(wo.Priority)}» به «{WorkOrderPriority.ToFa(dto.Priority)}» (کانبان)");
+            wo.Priority = dto.Priority;
+            await _db.SaveChangesAsync();
+            await _notify.BroadcastChangedAsync("workorders");
+        }
+        return Ok();
+    }
+
     // ================== برچسب/دسته‌بندی ==================
 
     /// <summary>

@@ -37,6 +37,9 @@
     <button class="wo-tab @(tab == "archive" ? "active" : "")" @onclick='() => SwitchTab("archive")'>
         <i class="bi bi-archive"></i> بایگانی <span class="wo-tab-badge">@archiveItems.Count</span>
     </button>
+    <button class="wo-tab @(tab == "kanban" ? "active" : "")" @onclick='() => SwitchTab("kanban")'>
+        <i class="bi bi-kanban"></i> کانبان
+    </button>
     <button class="wo-tab @(tab == "calendar" ? "active" : "")" @onclick='() => SwitchTab("calendar")'>
         <i class="bi bi-calendar3"></i> تقویم
     </button>
@@ -46,7 +49,7 @@
 </div>
 
 @* ================== نوار جستجو و فیلتر ================== *@
-@if (!loading && tab != "calendar" && tab != "stats")
+@if (!loading && tab != "calendar" && tab != "stats" && tab != "kanban")
 {
     <div class="wo-filterbar mb-3">
         <div class="wo-flt-search">
@@ -101,6 +104,71 @@
 @if (loading)
 {
     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (tab == "kanban")
+{
+    @* ================== نمای کانبان — ستون‌بندی بر اساس اولویت، درگ‌اند‌دراپ برای تغییر اولویت ================== *@
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <div class="wo-pr-group">
+            <button type="button" class="wo-pr-btn @(kanbanScope == "mine" ? "active" : "")" @onclick='() => kanbanScope = "mine"'>دستورهای من</button>
+            <button type="button" class="wo-pr-btn @(kanbanScope == "assigned" ? "active" : "")" @onclick='() => kanbanScope = "assigned"'>محول به من</button>
+        </div>
+        <span class="fs-9 text-muted"><i class="bi bi-info-circle"></i> کارت‌ها را بین ستون‌ها بکشید تا اولویت عوض شود (فقط دستورهای خودتان).</span>
+    </div>
+    <div class="wo-kanban">
+        @foreach (var (pv, pfa) in PriorityOpts.Reverse())
+        {
+            var col = pv;
+            var colItems = KanbanItems.Where(w => w.Priority == col).OrderBy(w => w.DueAt).ToList();
+            <div class="wo-kb-col @(kbDragOver == col ? "dragover" : "")"
+                 @ondragover:preventDefault @ondragenter="() => kbDragOver = col" @ondragleave="() => kbDragOver = -1"
+                 @ondrop="() => KanbanDrop(col)">
+                <div class="wo-kb-head wo-kb-head-@col">
+                    <span>@pfa</span>
+                    <span class="wo-kb-count num">@colItems.Count</span>
+                </div>
+                <div class="wo-kb-body">
+                    @if (colItems.Count == 0)
+                    {
+                        <div class="wo-kb-empty">—</div>
+                    }
+                    @foreach (var w in colItems)
+                    {
+                        var w2 = w;
+                        var draggable = w2.OwnerUserId == access.UserId;
+                        var overdue = w2.DueAt < DateTime.Now;
+                        <div class="wo-kb-card @(overdue ? "overdue" : "") @(draggable ? "draggable" : "")"
+                             draggable="@(draggable ? "true" : "false")"
+                             @ondragstart="() => kbDragId = w2.Id"
+                             @onclick="() => OpenDetail(w2)">
+                            <div class="d-flex justify-content-between align-items-start gap-1">
+                                <span class="fw-700 fs-8">@w2.Title</span>
+                                <span class="fs-9 text-muted num text-nowrap">@w2.Number</span>
+                            </div>
+                            <div class="fs-9 text-muted mt-1 d-flex align-items-center gap-2 flex-wrap">
+                                <span class="num @(overdue ? "text-danger fw-700" : "")"><i class="bi bi-clock"></i> @w2.DueAt.ToFa() @w2.DueAt.ToString("HH:mm")</span>
+                                @if (w2.ChecklistTotal > 0) { <span class="num">☑ @w2.ChecklistDone/@w2.ChecklistTotal</span> }
+                                @if (w2.CommentCount > 0) { <span class="num">💬 @w2.CommentCount</span> }
+                                @if (w2.Children.Count > 0) { <span class="num">🔗 @w2.Children.Count(c => c.Status == "Closed")/@w2.Children.Count</span> }
+                                @if (w2.Recurrence > 0) { <span>🔁</span> }
+                            </div>
+                            <div class="fs-9 text-muted mt-1 d-flex align-items-center gap-1">
+                                <i class="bi bi-people"></i>
+                                <span>@(kanbanScope == "mine" ? string.Join("، ", w2.Assignees.Select(a => a.Name)) : w2.OwnerName)</span>
+                                <span class="ms-auto num">@w2.Assignees.Count(a => a.RepliedAt != null)/@w2.Assignees.Count پاسخ</span>
+                            </div>
+                            @if (w2.Tags.Count > 0)
+                            {
+                                <div class="d-flex gap-1 flex-wrap mt-1">
+                                    @foreach (var t in w2.Tags) { <span class="wo-tag wo-tag-sm">@t</span> }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
 }
 else if (tab == "calendar")
 {
@@ -1420,6 +1488,25 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* ---------- نمای کانبان ---------- */
+    .wo-kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; align-items: start; }
+    @@media (max-width: 992px) { .wo-kanban { grid-template-columns: repeat(2, 1fr); } }
+    @@media (max-width: 576px) { .wo-kanban { grid-template-columns: 1fr; } }
+    .wo-kb-col { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; min-height: 220px; transition: all .15s; }
+    .wo-kb-col.dragover { border-color: #7c3aed; background: #faf5ff; box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+    .wo-kb-head { display: flex; justify-content: space-between; align-items: center; padding: .55rem .8rem; font-weight: 700; font-size: .85rem; border-bottom: 2px solid; border-radius: 14px 14px 0 0; }
+    .wo-kb-head-3 { color: #dc2626; border-color: #dc2626; background: #fef2f2; }
+    .wo-kb-head-2 { color: #ea580c; border-color: #ea580c; background: #fff7ed; }
+    .wo-kb-head-1 { color: #2563eb; border-color: #2563eb; background: #eff6ff; }
+    .wo-kb-head-0 { color: #64748b; border-color: #94a3b8; background: #f1f5f9; }
+    .wo-kb-count { background: rgba(0,0,0,.07); border-radius: 999px; padding: 0 .5rem; font-size: .75rem; }
+    .wo-kb-body { padding: .5rem; display: flex; flex-direction: column; gap: .5rem; }
+    .wo-kb-empty { text-align: center; color: #cbd5e1; padding: 1rem 0; }
+    .wo-kb-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: .55rem .65rem; cursor: pointer; transition: all .12s; }
+    .wo-kb-card:hover { border-color: #93c5fd; box-shadow: 0 3px 10px rgba(37,99,235,.12); }
+    .wo-kb-card.draggable { cursor: grab; }
+    .wo-kb-card.overdue { border-inline-start: 3px solid #dc2626; }
+
     /* ---------- ارجاع زنجیره‌ای ---------- */
     .wo-chain-row { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; flex-wrap: wrap; }
     .wo-chain-link { color: #4f46e5; font-size: .82rem; cursor: pointer; text-decoration: none; }
@@ -1764,6 +1851,40 @@ else
         }
         catch { Toast.Error("خطا در تهیه خروجی"); }
         finally { exporting = false; }
+    }
+
+    // ---- نمای کانبان ----
+    private string kanbanScope = "mine";  // mine | assigned
+    private int kbDragId;                 // کارت در حال کشیدن
+    private int kbDragOver = -1;          // ستونی که کارت روی آن است
+
+    private List<WoItem> KanbanItems => kanbanScope == "assigned" ? assignedItems : mineItems;
+
+    /// <summary>رها کردن کارت روی ستون اولویت — فقط دستورهای خودم؛ سرور هم مالکیت را کنترل می‌کند.</summary>
+    private async Task KanbanDrop(int newPriority)
+    {
+        kbDragOver = -1;
+        var w = KanbanItems.FirstOrDefault(x => x.Id == kbDragId);
+        kbDragId = 0;
+        if (w == null || w.Priority == newPriority) return;
+        if (w.OwnerUserId != access.UserId)
+        {
+            Toast.Error("فقط اولویت دستورهای خودتان قابل تغییر است.");
+            return;
+        }
+        var old = w.Priority;
+        w.Priority = newPriority; // خوش‌بینانه — در خطا برمی‌گردد
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{w.Id}/priority", new { Priority = newPriority });
+            if (!resp.IsSuccessStatusCode)
+            {
+                w.Priority = old;
+                await ShowApiError(resp, "خطا در تغییر اولویت");
+            }
+        }
+        catch { w.Priority = old; Toast.Error("خطا در تغییر اولویت"); }
+        StateHasChanged();
     }
 
     // ---- ارجاع زنجیره‌ای (زیر-دستور) ----
