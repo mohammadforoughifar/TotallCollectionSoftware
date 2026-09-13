@@ -159,6 +159,15 @@ public class AppDbContext : DbContext
     public DbSet<HrJobPosting> HrJobPostings => Set<HrJobPosting>();
     public DbSet<HrApplicant> HrApplicants => Set<HrApplicant>();
     public DbSet<HrInterview> HrInterviews => Set<HrInterview>();
+    public DbSet<HrOnboarding> HrOnboardings => Set<HrOnboarding>();
+    public DbSet<HrOnboardingItem> HrOnboardingItems => Set<HrOnboardingItem>();
+    public DbSet<HrExitCase> HrExitCases => Set<HrExitCase>();
+    public DbSet<HrExitItem> HrExitItems => Set<HrExitItem>();
+    public DbSet<HrJobHistory> HrJobHistories => Set<HrJobHistory>();
+    public DbSet<HrTrialPeriod> HrTrialPeriods => Set<HrTrialPeriod>();
+    public DbSet<HrAppraisal> HrAppraisals => Set<HrAppraisal>();
+    public DbSet<HrAppraisalKpi> HrAppraisalKpis => Set<HrAppraisalKpi>();
+    public DbSet<HrAppraisalScore> HrAppraisalScores => Set<HrAppraisalScore>();
 
     /// <summary>منابع انسانی اصلی — مدیریت پایه سازمانی (HrMain) — اسکیما با HrMainSchemaV1</summary>
     public DbSet<HrMainCompany> HrMainCompanies => Set<HrMainCompany>();
