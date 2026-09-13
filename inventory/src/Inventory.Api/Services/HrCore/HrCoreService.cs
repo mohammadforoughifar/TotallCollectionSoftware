@@ -34,6 +34,10 @@ public static class HrCoreTexts
     {
         0 => "شرکت", 1 => "شعبه", 2 => "دپارتمان", 3 => "مرکز هزینه", _ => "واحد"
     };
+    public static string SkillLevel(int l) => l switch
+    {
+        0 => "مبتدی", 1 => "متوسط", 2 => "پیشرفته", 3 => "خبره", _ => "—"
+    };
 }
 
 public interface IHrCoreService
@@ -1366,7 +1370,7 @@ public class HrCoreService : IHrCoreService
         var co = await _db.HrMainCompanies.AsNoTracking().FirstOrDefaultAsync();
         HrPdf.EnsureFonts();
         var logo = await HrPdf.TryLoadLogoAsync(_env.WebRootPath, co?.LogoPath);
-        var hire = e.HireDate == null ? "—" : PersianDate.ToShortFa(e.HireDate.Value);
+        var hire = PersianDate.ToShortFa(e.HireDate);
         var contracts = await EmployeeContractsAsync(employeeId);
         var decrees = await EmployeeDecreesAsync(employeeId);
         var doc = Document.Create(c =>
@@ -1423,7 +1427,7 @@ public class HrCoreService : IHrCoreService
                     if (d.Skills.Count > 0)
                         col.Item().PaddingTop(6).Text("مهارت‌ها: " + string.Join("، ", d.Skills.Select(x => x.Title))).FontSize(9);
                     if (d.Languages.Count > 0)
-                        col.Item().PaddingTop(2).Text("زبان‌ها: " + string.Join("، ", d.Languages.Select(x => x.Language + (string.IsNullOrWhiteSpace(x.Level) ? "" : $" ({x.Level})")))).FontSize(9);
+                        col.Item().PaddingTop(2).Text("زبان‌ها: " + string.Join("، ", d.Languages.Select(x => x.Language + $" ({HrCoreTexts.SkillLevel(x.Level)})"))).FontSize(9);
                     if (d.Documents.Count > 0)
                     {
                         col.Item().PaddingTop(8).Text("مدارک").FontFamily(HrPdf.FontBold).FontSize(12);
@@ -1497,7 +1501,7 @@ public class HrCoreService : IHrCoreService
             ws.Cell(r, 3).Value = e.LastName;
             ws.Cell(r, 4).Value = e.NationalCode ?? "";
             ws.Cell(r, 5).Value = e.Mobile ?? "";
-            ws.Cell(r, 6).Value = e.HireDate == null ? "" : PersianDate.ToShortFa(e.HireDate.Value);
+            ws.Cell(r, 6).Value = PersianDate.ToShortFa(e.HireDate);
             ws.Cell(r, 7).Value = e.IsActive ? "فعال" : "غیرفعال";
             r++;
         }
@@ -1554,7 +1558,7 @@ public class HrCoreService : IHrCoreService
 
     public async Task<(byte[] Data, string FileName)> ExportOrgExcelAsync()
     {
-        var tree = await GetOrgTreeAsync();
+        var tree = await GetTreeAsync();
         using var wb = NewWorkbook("چارت سازمانی");
         var ws = wb.Worksheet(1);
         string[] heads = { "سطح", "کد", "نام واحد", "نوع", "بالادستی", "مدیر", "تعداد پرسنل" };
@@ -1567,7 +1571,7 @@ public class HrCoreService : IHrCoreService
                 ws.Cell(r, 1).Value = level;
                 ws.Cell(r, 2).Value = x.Code;
                 ws.Cell(r, 3).Value = x.Name;
-                ws.Cell(r, 4).Value = HrCoreTexts.OrgType(x.Type);
+                ws.Cell(r, 4).Value = HrCoreTexts.OrgUnitType(x.Type);
                 ws.Cell(r, 5).Value = x.ParentName ?? "";
                 ws.Cell(r, 6).Value = x.ManagerName ?? "";
                 ws.Cell(r, 7).Value = x.EmployeeCount;
@@ -1638,7 +1642,7 @@ public class HrCoreService : IHrCoreService
 
         var active = await _db.HrEmployees.AsNoTracking().CountAsync(e => e.IsActive);
         var hires = await _db.HrEmployees.AsNoTracking()
-            .CountAsync(e => e.HireDate != null && e.HireDate.Value >= from && e.HireDate.Value < to);
+            .CountAsync(e => e.HireDate >= from && e.HireDate < to);
         var exits = await _db.HrExitCases.AsNoTracking()
             .Where(x => x.Status == HrTalentCaseStatus.Completed
                 && (x.CompletedAt ?? x.RequestDate) >= from && (x.CompletedAt ?? x.RequestDate) < to)
