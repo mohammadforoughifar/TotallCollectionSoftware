@@ -35,6 +35,13 @@ public class ExpenseService : IExpenseService
         }).ToList();
     }
 
+    public async Task<PagedResult<ExpenseCategoryDto>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize)
+    {
+        var all = await GetCategoriesAsync(activeOnly);
+        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        return new PagedResult<ExpenseCategoryDto> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
+    }
+
     public async Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto dto)
     {
         if (string.IsNullOrWhiteSpace(dto.Name))

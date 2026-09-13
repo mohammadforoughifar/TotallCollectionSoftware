@@ -34,8 +34,8 @@ public class ReferrersController : ApiControllerBase
 
     /// <summary>فهرست معرف‌ها.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<Referrer>>> GetAll([FromQuery] bool activeOnly = false)
-        => Ok(await _service.GetReferrersAsync(activeOnly));
+    public async Task<ActionResult<PagedResult<Referrer>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Ok(await _service.GetReferrersPagedAsync(activeOnly, page, pageSize));
 
     /// <summary>ایجاد یا ویرایش معرف.</summary>
     [HttpPost]

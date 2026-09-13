@@ -7,6 +7,7 @@ public interface IExpenseService
 {
     // ---------------- دسته‌های هزینه ----------------
     Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false);
+    Task<PagedResult<ExpenseCategoryDto>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize);
     Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto dto);
     Task DeleteCategoryAsync(int id);
 

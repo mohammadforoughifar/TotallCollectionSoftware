@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
 using Inventory.Shared.Entities;
+using Inventory.Shared.Dtos;
 
 namespace Inventory.Api.Controllers;
 
@@ -14,8 +15,14 @@ public class RolesController : ControllerBase
     public RolesController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll() =>
-        Ok(await _db.Roles.AsNoTracking().ToListAsync());
+    public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    {
+        var query = _db.Roles.AsNoTracking().OrderBy(r => r.Name);
+        var total = await query.CountAsync();
+        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        return Ok(new PagedResult<Role> { Items = items, TotalCount = total });
+    }
 
     [HttpGet("{id}/permissions")]
     public async Task<IActionResult> GetPermissions(int id)

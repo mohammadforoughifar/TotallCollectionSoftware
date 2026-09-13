@@ -95,8 +95,8 @@ public class UsersController : ApiControllerBase
 
     /// <summary>فهرست کاربران.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<UserDto>>> GetAll()
-        => Ok(await _auth.GetUsersAsync());
+    public async Task<ActionResult<PagedResult<UserDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        => Ok(await _auth.GetUsersPagedAsync(page, pageSize));
 
     /// <summary>ایجاد یا ویرایش کاربر (رمز فقط در صورت پر بودن تغییر می‌کند).
     /// اپراتور نمی‌تواند کاربر ادمین بسازد، نقش کسی را به ادمین تغییر دهد یا کاربر ادمین را ویرایش کند.</summary>
