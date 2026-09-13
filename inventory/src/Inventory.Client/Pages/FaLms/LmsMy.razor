@@ -55,7 +55,7 @@
                             <td class="num">@e.EnrolledAt.ToFa()</td>
                             <td><span class="badge @FaLmsUi.EnrollBadge(e.Status)">@FaLmsUi.EnrollStatus(e.Status)</span></td>
                             <td class="num">@FaLmsUi.Num(e.FinalScore)</td>
-                            <td class="text-end">@if (e.Status == 0){<button class="btn btn-sm btn-outline-secondary" title="انصراف" @onclick="() => Cancel(e)">انصراف</button>}</td>
+                            <td class="text-end">@if (e.Status == 0){<button class="btn btn-sm btn-outline-secondary" title="انصراف" @onclick="() => Cancel(e)">انصراف</button>}@if (e.Status == 1){<button class="btn btn-sm btn-outline-primary ms-1" title="نظرسنجی اثربخشی" @onclick="() => OpenSurvey(e)"><i class="bi bi-star"></i> نظرسنجی</button>}</td>
                         </tr>
                     }
                 </tbody>
@@ -120,6 +120,41 @@
     </div>
 </div>
 
+<Modal Visible="showSurvey" Title="@($"نظرسنجی اثربخشی — {surveyTitle}")" OnClose="() => showSurvey = false">
+<ChildContent>
+    @if (surveyQs.Count == 0)
+    {
+        <div class="text-center text-muted py-3">برای این دوره نظرسنجی تعریف نشده است.</div>
+    }
+    else
+    {
+        <p class="small text-muted">به هر گویه از ۱ (خیلی ضعیف) تا ۵ (عالی) نمره بدهید.</p>
+        @foreach (var q in surveyQs)
+        {
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="flex-grow-1">@q.Text</span>
+                <select class="form-select" style="max-width:130px" @bind="surveyScores[q.Id]">
+                    <option value="1">۱</option>
+                    <option value="2">۲</option>
+                    <option value="3">۳</option>
+                    <option value="4">۴</option>
+                    <option value="5">۵</option>
+                </select>
+            </div>
+        }
+    }
+</ChildContent>
+<Footer>
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <button class="btn btn-secondary" @onclick="() => showSurvey = false">بستن</button>
+        @if (surveyQs.Count > 0)
+        {
+            <button class="btn btn-success" disabled="@surveySaving" @onclick="SaveSurvey">ثبت نظرسنجی</button>
+        }
+    </div>
+</Footer>
+</Modal>
+
 <div class="card border-0 shadow-sm">
     <div class="card-header bg-white fw-bold"><i class="bi bi-award"></i> گواهی‌های من</div>
     <div class="card-body p-0">
@@ -130,11 +165,11 @@
         else
         {
             <div class="table-responsive"><table class="table table-hover mb-0 align-middle">
-                <thead class="table-light"><tr><th>شماره</th><th>دوره</th><th>تاریخ صدور</th><th>نمره</th><th>کد رهگیری</th></tr></thead>
+                <thead class="table-light"><tr><th>شماره</th><th>دوره</th><th>تاریخ صدور</th><th>نمره</th><th>کد رهگیری</th><th style="width:50px"></th></tr></thead>
                 <tbody>
                     @foreach (var c in myCerts)
                     {
-                        <tr><td class="num fw-bold">@c.CertNo</td><td>@c.CourseTitle</td><td class="num">@c.IssueDate.ToFa()</td><td class="num">@FaLmsUi.Num(c.Score)</td><td class="num">@c.VerifyCode</td></tr>
+                        <tr><td class="num fw-bold">@c.CertNo</td><td>@c.CourseTitle</td><td class="num">@c.IssueDate.ToFa()</td><td class="num">@FaLmsUi.Num(c.Score)</td><td class="num">@c.VerifyCode</td><td><button class="btn btn-sm btn-outline-primary" title="چاپ" @onclick="() => PrintCert(c.Id)"><i class="bi bi-printer"></i></button></td></tr>
                     }
                 </tbody>
             </table></div>
@@ -143,6 +178,16 @@
 </div>
 
 @code {
+    private async Task PrintCert(int certId)
+    {
+        try
+        {
+            var f = await Svc.GetCertificatePdfAsync(certId);
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
     private bool faRead => Auth.Has("FaLms.Read") || Auth.IsAdmin;
     private bool faCreate => Auth.Has("FaLms.Create") || Auth.IsAdmin;
     private bool loading = true;
@@ -151,6 +196,11 @@
     private List<FaLmsExamDto> myExams = new();
     private List<FaLmsCertificateDto> myCerts = new();
     private FaLmsEmployeeReportDto? report;
+    private bool showSurvey, surveySaving;
+    private string surveyTitle = "";
+    private int surveyEmp;
+    private List<FaLmsSurveyQuestionDto> surveyQs = new();
+    private Dictionary<int, int> surveyScores = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -177,6 +227,33 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+    }
+
+    private async Task OpenSurvey(FaLmsEnrollmentDto e)
+    {
+        surveyTitle = e.CourseTitle ?? "";
+        surveyEmp = e.EmployeeId;
+        try
+        {
+            surveyQs = await Svc.ListSurveyQuestionsAsync(e.CourseId, e.EmployeeId);
+            surveyScores = surveyQs.ToDictionary(q => q.Id, q => q.MyScore ?? 5);
+            showSurvey = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SaveSurvey()
+    {
+        surveySaving = true;
+        try
+        {
+            foreach (var q in surveyQs)
+                await Svc.SaveSurveyAnswerAsync(q.Id, surveyEmp, surveyScores.GetValueOrDefault(q.Id, 5));
+            Toast.Success("نظرسنجی شما ثبت شد. سپاس!");
+            showSurvey = false;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        surveySaving = false;
     }
 
     private async Task Enroll(int courseId)

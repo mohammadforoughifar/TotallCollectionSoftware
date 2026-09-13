@@ -36,6 +36,7 @@
                 <div class="col-6 col-md-2"><div class="border rounded text-center py-2"><div class="fw-bold num">@FaLmsUi.Num(courseRep.AvgAttendance)٪</div><div class="text-muted small">میانگین حضور</div></div></div>
                 <div class="col-6 col-md-2"><div class="border rounded text-center py-2"><div class="fw-bold num">@FaLmsUi.Num(courseRep.SessionsCount)</div><div class="text-muted small">جلسات</div></div></div>
                 <div class="col-6 col-md-2"><div class="border rounded text-center py-2"><div class="fw-bold num">@FaLmsUi.Num(courseRep.IssuedCerts)</div><div class="text-muted small">گواهی</div></div></div>
+                <div class="col-6 col-md-2"><div class="border rounded text-center py-2"><div class="fw-bold text-warning num">@FaLmsUi.Num(surveyRep?.OverallAvg) از ۵</div><div class="text-muted small">اثربخشی (@FaLmsUi.Num(surveyRep?.RespondentCount ?? 0) نظر)</div></div></div>
             </div>
         }
     </div>
@@ -93,6 +94,7 @@
     private int repCourseId, repEmpId;
     private FaLmsCourseReportDto? courseRep;
     private FaLmsEmployeeReportDto? empRep;
+    private FaLmsSurveyResultDto? surveyRep;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,7 +111,11 @@
 
     private async Task LoadCourseReport()
     {
-        try { courseRep = await Svc.GetCourseReportAsync(repCourseId); }
+        try
+        {
+            courseRep = await Svc.GetCourseReportAsync(repCourseId);
+            try { surveyRep = await Svc.SurveyResultsAsync(repCourseId); } catch { surveyRep = null; }
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
