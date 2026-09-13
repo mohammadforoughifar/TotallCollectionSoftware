@@ -82,6 +82,7 @@ public static class DbInitializer
                 await FaComSchemaV2.EnsureAsync(db);
                 await FaComSchemaV3.EnsureAsync(db);
                 await HrTalentSchemaV1.EnsureAsync(db);
+                await HrReportSchemaV1.EnsureAsync(db);
 
                 if (seedDemo && !db.Products.Any())
                 {

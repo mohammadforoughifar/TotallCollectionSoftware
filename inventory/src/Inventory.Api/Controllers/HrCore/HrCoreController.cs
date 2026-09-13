@@ -17,11 +17,14 @@ public class HrCoreController : RbacControllerBase
     private const string Mod = "HrCore";
     private readonly IHrCoreService _svc;
     private readonly FileStore _files;
+    private readonly Inventory.Api.Services.HrReports.IHrReportService _reports;
 
-    public HrCoreController(AppDbContext db, IHrCoreService svc, FileStore files) : base(db)
+    public HrCoreController(AppDbContext db, IHrCoreService svc, FileStore files,
+        Inventory.Api.Services.HrReports.IHrReportService reports) : base(db)
     {
         _svc = svc;
         _files = files;
+        _reports = reports;
     }
 
     // ------------------- پرسنل -------------------
@@ -643,5 +646,43 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         return Ok(await _svc.GetManagerDashboardAsync(year));
+    }
+
+    // ------------------- گزارش‌ساز سفارشی (§۶) -------------------
+
+    [HttpGet("reports/meta")]
+    public async Task<IActionResult> ReportMeta([FromQuery] string entity = "employee")
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(_reports.Meta(entity));
+    }
+
+    [HttpPost("reports/run")]
+    public async Task<IActionResult> RunReport([FromBody] HrReportRunDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _reports.RunAsync(dto));
+    }
+
+    [HttpGet("reports/templates")]
+    public async Task<IActionResult> ListTemplates()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _reports.ListTemplatesAsync(MyUserId));
+    }
+
+    [HttpPost("reports/templates")]
+    public async Task<IActionResult> SaveTemplate([FromBody] HrReportTemplateSaveDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _reports.SaveTemplateAsync(MyUserId, dto));
+    }
+
+    [HttpDelete("reports/templates/{id:int}")]
+    public async Task<IActionResult> DeleteTemplate(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        await _reports.DeleteTemplateAsync(MyUserId, id);
+        return NoContent();
     }
 }

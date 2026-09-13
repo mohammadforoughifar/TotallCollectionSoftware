@@ -30,6 +30,11 @@ public interface IHrCoreService
         DateTime? from, DateTime? to, int skip, int take);
     Task<HrAuditLogDto> GetHrAuditAsync(long id);
     Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year);
+    Task<List<HrReportColumnDto>> GetReportMetaAsync(string entity);
+    Task<HrReportResultDto> RunReportAsync(HrReportRunDto dto);
+    Task<List<HrReportTemplateDto>> ListReportTemplatesAsync();
+    Task<HrReportTemplateDto> SaveReportTemplateAsync(HrReportTemplateSaveDto dto);
+    Task DeleteReportTemplateAsync(int id);
     Task DeleteContractAsync(int id);
 
     Task<List<HrContractTemplateDto>> GetTemplatesAsync();
@@ -201,6 +206,21 @@ public class HrCoreService : IHrCoreService
 
     public Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year)
         => _api.GetAsync<HrManagerDashboardDto>($"{Root}/insights?year={year}");
+
+    public Task<List<HrReportColumnDto>> GetReportMetaAsync(string entity)
+        => _api.GetAsync<List<HrReportColumnDto>>($"{Root}/reports/meta?entity={entity}");
+
+    public Task<HrReportResultDto> RunReportAsync(HrReportRunDto dto)
+        => _api.PostAsync<HrReportResultDto>($"{Root}/reports/run", dto);
+
+    public Task<List<HrReportTemplateDto>> ListReportTemplatesAsync()
+        => _api.GetAsync<List<HrReportTemplateDto>>($"{Root}/reports/templates");
+
+    public Task<HrReportTemplateDto> SaveReportTemplateAsync(HrReportTemplateSaveDto dto)
+        => _api.PostAsync<HrReportTemplateDto>($"{Root}/reports/templates", dto);
+
+    public Task DeleteReportTemplateAsync(int id)
+        => _api.DeleteAsync($"{Root}/reports/templates/{id}");
 
     public Task DeleteContractAsync(int id)
         => _api.DeleteAsync($"{Root}/contracts/{id}");
