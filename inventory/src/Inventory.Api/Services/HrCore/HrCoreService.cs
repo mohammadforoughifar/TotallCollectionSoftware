@@ -68,6 +68,7 @@ public interface IHrCoreService
     Task<HrAuditListResult> SearchHrAuditAsync(string? module, string? action, string? q,
         DateTime? from, DateTime? to, int skip, int take);
     Task<HrAuditLogDto?> GetHrAuditAsync(long id);
+    Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year);
 
     // قالب‌های قرارداد (§۹)
     Task<List<HrContractTemplateDto>> ListTemplatesAsync();
@@ -1623,5 +1624,91 @@ public class HrCoreService : IHrCoreService
             Path = l.Path, Summary = l.Summary, Payload = l.Payload, Ip = l.Ip,
             StatusCode = l.StatusCode, DurationMs = l.DurationMs
         };
+    }
+
+    // ==================== داشبورد یکپارچه مدیر ====================
+
+    public async Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year)
+    {
+        var pc = new System.Globalization.PersianCalendar();
+        if (year is < 1300 or > 1500) year = pc.GetYear(DateTime.Today);
+        var from = pc.ToDateTime(year, 1, 1, 0, 0, 0, 0);
+        var to = pc.ToDateTime(year + 1, 1, 1, 0, 0, 0, 0);
+        int Jm(DateTime d) { try { return pc.GetMonth(d); } catch { return 1; } }
+
+        var active = await _db.HrEmployees.AsNoTracking().CountAsync(e => e.IsActive);
+        var hires = await _db.HrEmployees.AsNoTracking()
+            .CountAsync(e => e.HireDate != null && e.HireDate.Value >= from && e.HireDate.Value < to);
+        var exits = await _db.HrExitCases.AsNoTracking()
+            .Where(x => x.Status == HrTalentCaseStatus.Completed
+                && (x.CompletedAt ?? x.RequestDate) >= from && (x.CompletedAt ?? x.RequestDate) < to)
+            .ToListAsync();
+        var avgHead = Math.Max(1, active + exits.Count / 2.0);
+
+        var leaves = await _db.FaAttLeaves.AsNoTracking()
+            .Where(l => l.Status == FaAttRequestStatus.Approved && l.FromDate >= from && l.FromDate < to)
+            .Take(20000).ToListAsync();
+        double LeaveDays(FaAttLeave l) => l.HoursPerDay != null
+            ? l.HoursPerDay.Value / 8.0 * Math.Max(1, (l.ToDate.Date - l.FromDate.Date).Days + 1)
+            : Math.Max(1, (l.ToDate.Date - l.FromDate.Date).Days + 1);
+        var totalLeaveDays = leaves.Sum(LeaveDays);
+        var typeIds = leaves.Select(l => l.LeaveTypeId).Distinct().ToList();
+        var typeNames = typeIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.FaAttLeaveTypes.AsNoTracking().Where(x => typeIds.Contains(x.Id))
+                .ToDictionaryAsync(x => x.Id, x => x.Name);
+
+        var runs = await _db.FaPayRuns.AsNoTracking()
+            .Where(r => r.Year == year && r.Kind == FaPayRunKind.Monthly)
+            .OrderBy(r => r.Month).ToListAsync();
+        var runIds = runs.Select(r => r.Id).ToList();
+        var slips = runIds.Count == 0 ? new List<FaPaySlip>()
+            : await _db.FaPaySlips.AsNoTracking().Where(s => runIds.Contains(s.RunId)).Take(60000).ToListAsync();
+        var lastRun = runs.OrderByDescending(r => r.Month).FirstOrDefault();
+        var lastSlips = lastRun == null ? new List<FaPaySlip>() : slips.Where(s => s.RunId == lastRun.Id).ToList();
+
+        var units = await _db.HrEmployees.AsNoTracking().Where(e => e.IsActive && e.OrgUnitId != null)
+            .GroupBy(e => e.OrgUnitId!.Value).Select(g => new { Id = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count).Take(8).ToListAsync();
+        var unitIds = units.Select(u => u.Id).ToList();
+        var unitNames = unitIds.Count == 0 ? new Dictionary<int, string>()
+            : await _db.HrOrgUnits.AsNoTracking().Where(u => unitIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.Name);
+
+        var dto = new HrManagerDashboardDto
+        {
+            Year = year,
+            ActiveEmployees = active,
+            HiresThisYear = hires,
+            ExitsThisYear = exits.Count,
+            TurnoverRate = Math.Round(exits.Count / avgHead * 100, 1),
+            AbsenceRate = active == 0 ? 0 : Math.Round(totalLeaveDays / (active * 260.0) * 100, 1),
+            AvgLeaveDaysPerEmp = active == 0 ? 0 : Math.Round(totalLeaveDays / active, 1),
+            AvgCostPerHead = lastSlips.Count == 0 ? null : Math.Round(lastSlips.Average(s => s.GrossEarnings)),
+            TotalPayrollLastRun = lastSlips.Count == 0 ? null : Math.Round(lastSlips.Sum(s => s.GrossEarnings)),
+            LastRunLabel = lastRun == null ? null : $"{year}/{lastRun.Month:00}",
+            LeaveByType = leaves.GroupBy(l => l.LeaveTypeId)
+                .Select(g => new HrNameValueDto
+                {
+                    Name = typeNames.TryGetValue(g.Key, out var n) ? n : "—",
+                    Value = Math.Round(g.Sum(LeaveDays), 1)
+                }).OrderByDescending(x => x.Value).Take(8).ToList(),
+            HeadcountByUnit = units.Select(u => new HrNameValueDto
+            {
+                Name = unitNames.TryGetValue(u.Id, out var n) ? n : "—",
+                Value = u.Count
+            }).ToList()
+        };
+        for (var m = 1; m <= 12; m++)
+        {
+            dto.LeaveTrend.Add(new HrMonthPointDto
+                { Month = m, Value = Math.Round(leaves.Where(l => Jm(l.FromDate) == m).Sum(LeaveDays), 1) });
+            var monthRunIds = runs.Where(r => r.Month == m).Select(r => r.Id).ToHashSet();
+            var ms = slips.Where(s => monthRunIds.Contains(s.RunId)).ToList();
+            dto.OvertimeTrend.Add(new HrMonthPointDto
+                { Month = m, Value = Math.Round(ms.Sum(s => s.OvertimeMinutes) / 60.0, 1) });
+            dto.PayrollTrend.Add(new HrMonthPointDto
+                { Month = m, Value = Math.Round(ms.Sum(s => s.GrossEarnings)) });
+        }
+        return dto;
     }
 }

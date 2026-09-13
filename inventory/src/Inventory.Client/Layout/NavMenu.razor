@@ -432,6 +432,9 @@
                         </NavLink>
                         @if (Auth.Has("HrCore.Manage") || Auth.IsAdmin)
                         {
+                            <NavLink class="nav-link" href="hr-core/insights" @onclick="NotifyClose">
+                                <i class="bi bi-speedometer2"></i><span>داشبورد مدیر</span>
+                            </NavLink>
                             <NavLink class="nav-link" href="hr-core/audit" @onclick="NotifyClose">
                                 <i class="bi bi-clipboard-data"></i><span>تاریخچه عملیات</span>
                             </NavLink>

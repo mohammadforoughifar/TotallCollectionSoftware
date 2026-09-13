@@ -29,6 +29,7 @@ public interface IHrCoreService
     Task<HrAuditListResult> SearchHrAuditAsync(string? module, string? action, string? q,
         DateTime? from, DateTime? to, int skip, int take);
     Task<HrAuditLogDto> GetHrAuditAsync(long id);
+    Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year);
     Task DeleteContractAsync(int id);
 
     Task<List<HrContractTemplateDto>> GetTemplatesAsync();
@@ -197,6 +198,9 @@ public class HrCoreService : IHrCoreService
 
     public Task<HrAuditLogDto> GetHrAuditAsync(long id)
         => _api.GetAsync<HrAuditLogDto>($"{Root}/audit/{id}");
+
+    public Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year)
+        => _api.GetAsync<HrManagerDashboardDto>($"{Root}/insights?year={year}");
 
     public Task DeleteContractAsync(int id)
         => _api.DeleteAsync($"{Root}/contracts/{id}");
