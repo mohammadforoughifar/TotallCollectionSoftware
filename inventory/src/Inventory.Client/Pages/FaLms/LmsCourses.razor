@@ -98,7 +98,16 @@
         <div class="col-md-3"><label class="form-label">نمره قبولی</label><input type="number" class="form-control" @bind="form.PassScore" /></div>
         <div class="col-md-3"><label class="form-label">شروع</label><DatePicker @bind-Value="form.StartDate" /></div>
         <div class="col-md-3"><label class="form-label">پایان</label><DatePicker @bind-Value="form.EndDate" /></div>
-        <div class="col-md-6"><label class="form-label">مدرس</label><input class="form-control" @bind="form.TrainerName" /></div>
+        <div class="col-md-3"><label class="form-label">مدرس (پرونده)</label>
+            <select class="form-select" @bind="form.InstructorId" @bind:after="OnInstructorChanged">
+                <option value="">— بدون پرونده —</option>
+                @foreach (var i in instructors)
+                {
+                    <option value="@i.Id">@i.Name (@(i.Type == 0 ? "داخلی" : "خارجی"))</option>
+                }
+            </select>
+        </div>
+        <div class="col-md-3"><label class="form-label">نام نمایشی مدرس</label><input class="form-control" @bind="form.TrainerName" /></div>
         <div class="col-md-6"><label class="form-label">محل / لینک کلاس</label><input class="form-control" @bind="form.Location" /></div>
         <div class="col-12"><label class="form-label">توضیحات</label><textarea class="form-control" rows="2" @bind="form.Description"></textarea></div>
         <div class="col-md-6"><div class="form-check mt-2"><input type="checkbox" class="form-check-input" @bind="form.HasExam" /><label class="form-check-label">آزمون پایان دوره دارد</label></div></div>
@@ -122,10 +131,12 @@
     private string? fStatus, fKind, fQ;
     private int? editId;
     private FaLmsCourseSaveDto form = new();
+    private List<FaLmsInstructorDto> instructors = new();
 
     protected override async Task OnInitializedAsync()
     {
         if (!faRead) { loading = false; return; }
+        try { instructors = await Svc.ListInstructorsAsync(true); } catch { }
         await Reload();
     }
 
@@ -154,10 +165,18 @@
             {
                 Code = c.Code, Title = c.Title, Kind = c.Kind, Description = c.Description,
                 DurationHours = c.DurationHours, CostPerPerson = c.CostPerPerson, MaxSeats = c.MaxSeats,
-                TrainerName = c.TrainerName, Location = c.Location, StartDate = c.StartDate, EndDate = c.EndDate,
+                TrainerName = c.TrainerName, InstructorId = c.InstructorId,
+                Location = c.Location, StartDate = c.StartDate, EndDate = c.EndDate,
                 Status = c.Status, HasExam = c.HasExam, PassScore = c.PassScore, IsActive = c.IsActive
             };
         showEdit = true;
+    }
+
+    private void OnInstructorChanged()
+    {
+        var i = instructors.FirstOrDefault(x => x.Id == form.InstructorId);
+        if (i != null && string.IsNullOrWhiteSpace(form.TrainerName))
+            form.TrainerName = i.Name;
     }
 
     private async Task Save()

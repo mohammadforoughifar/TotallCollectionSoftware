@@ -102,9 +102,29 @@
 
     private async Task Decide(FaLmsEnrollmentDto e, bool approve)
     {
+        if (approve)
+        {
+            try
+            {
+                var cf = await Svc.CheckConflictsAsync(e.CourseId, e.EmployeeId);
+                if (cf.Count > 0)
+                {
+                    var first = cf.Take(3).Select(x => x.SessionDate.ToFa() + " (" + KindName(x.Kind) + ")");
+                    var msg = $"هشدار تداخل آموزشی برای {e.EmployeeName} ({cf.Count} مورد):\n" + string.Join("\n"، ", first)
+                        + "\n\nبا این وجود تأیید شود؟";
+                    if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
+                }
+            }
+            catch { }
+        }
         try { await Svc.DecideEnrollmentAsync(e.Id, approve); Toast.Success(approve ? "تأیید شد." : "رد شد."); await Reload(); }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
+
+    private static string KindName(string k) => k switch
+    {
+        "Leave" => "مرخصی", "Mission" => "مأموریت", "Shift" => "شیفت", _ => k
+    };
 
     private async Task Delete(FaLmsEnrollmentDto e)
     {

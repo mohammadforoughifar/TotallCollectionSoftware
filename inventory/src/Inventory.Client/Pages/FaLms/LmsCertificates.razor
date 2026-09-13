@@ -78,7 +78,7 @@
                                 <td class="num">@c.IssueDate.ToFa()</td>
                                 <td class="num">@FaLmsUi.Num(c.Score)</td>
                                 <td class="num">@c.VerifyCode</td>
-                                <td class="text-end"><button class="btn btn-sm btn-outline-danger" title="ابطال" @onclick="() => Delete(c)"><i class="bi bi-trash"></i></button></td>
+                                <td class="text-end"><div class="btn-group btn-group-sm"><button class="btn btn-sm btn-outline-primary" title="چاپ" @onclick="() => PrintCert(c.Id)"><i class="bi bi-printer"></i></button><button class="btn btn-sm btn-outline-danger" title="ابطال" @onclick="() => Delete(c)"><i class="bi bi-trash"></i></button></div></td>
                             </tr>
                         }
                     </tbody>
@@ -124,6 +124,16 @@
     private async Task DoVerify()
     {
         try { verified = await Svc.VerifyAsync(vNo, vCode); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task PrintCert(int certId)
+    {
+        try
+        {
+            var f = await Svc.GetCertificatePdfAsync(certId);
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
