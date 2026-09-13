@@ -200,6 +200,10 @@ public class HrEmployee
     [MaxLength(60)]
     public string? BankName { get; set; }
 
+    /// <summary>شماره بیمه تأمین اجتماعی (۸ تا ۱۰ رقم) — برای فایل لیست بیمه §۲</summary>
+    [MaxLength(12)]
+    public string? InsuranceNo { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? UpdatedAt { get; set; }
 }

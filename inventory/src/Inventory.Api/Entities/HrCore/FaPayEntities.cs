@@ -101,6 +101,9 @@ public class FaPayRun
 
     public FaPayRunStatus Status { get; set; } = FaPayRunStatus.Draft;
 
+    /// <summary>نوع دوره: ماهانه یا پایان‌سال (عیدی و سنوات) — §۲</summary>
+    public FaPayRunKind Kind { get; set; } = FaPayRunKind.Monthly;
+
     [MaxLength(500)]
     public string? Note { get; set; }
 

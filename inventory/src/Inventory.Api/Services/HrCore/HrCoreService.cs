@@ -173,7 +173,7 @@ public class HrCoreService : IHrCoreService
             OrgUnitId = dto.OrgUnitId, PostTitle = dto.PostTitle?.Trim(), ManagerId = dto.ManagerId,
             HrMainNodeId = dto.HrMainNodeId, HrMainPositionId = dto.HrMainPositionId,
             EmploymentType = (HrEmploymentType)dto.EmploymentType, Status = (HrEmployeeStatus)dto.Status,
-            SystemUserId = dto.SystemUserId, BaseSalary = dto.BaseSalary, IsActive = dto.IsActive, Sheba = HrSheba.Norm(dto.Sheba), BankName = dto.BankName?.Trim()
+            SystemUserId = dto.SystemUserId, BaseSalary = dto.BaseSalary, IsActive = dto.IsActive, Sheba = HrSheba.Norm(dto.Sheba), BankName = dto.BankName?.Trim(), InsuranceNo = dto.InsuranceNo?.Trim()
         };
         _db.HrEmployees.Add(e);
         await _db.SaveChangesAsync();
@@ -205,7 +205,7 @@ public class HrCoreService : IHrCoreService
         e.HrMainNodeId = dto.HrMainNodeId; e.HrMainPositionId = dto.HrMainPositionId;
         e.ManagerId = dto.ManagerId; e.EmploymentType = (HrEmploymentType)dto.EmploymentType;
         e.Status = (HrEmployeeStatus)dto.Status; e.SystemUserId = dto.SystemUserId;
-        e.BaseSalary = dto.BaseSalary; e.IsActive = dto.IsActive; e.Sheba = HrSheba.Norm(dto.Sheba); e.BankName = dto.BankName?.Trim(); e.UpdatedAt = DateTime.Now;
+        e.BaseSalary = dto.BaseSalary; e.IsActive = dto.IsActive; e.Sheba = HrSheba.Norm(dto.Sheba); e.BankName = dto.BankName?.Trim(); e.InsuranceNo = dto.InsuranceNo?.Trim(); e.UpdatedAt = DateTime.Now;
         await _db.SaveChangesAsync();
         return (await GetEmployeeAsync(id))!;
     }
@@ -291,7 +291,7 @@ public class HrCoreService : IHrCoreService
             HrMainPositionId = e.HrMainPositionId, HrMainPositionTitle = hrMainPositionTitle,
             EmploymentType = (int)e.EmploymentType, Status = (int)e.Status,
             SystemUserId = e.SystemUserId, SystemUserName = sysName,
-            BaseSalary = e.BaseSalary, IsActive = e.IsActive, Sheba = e.Sheba, BankName = e.BankName,
+            BaseSalary = e.BaseSalary, IsActive = e.IsActive, Sheba = e.Sheba, BankName = e.BankName, InsuranceNo = e.InsuranceNo,
             ActiveContractNo = activeContract?.ContractNo, ActiveContractEnd = activeContract?.EndDate,
             ContractsCount = await _db.HrContracts.CountAsync(c => c.EmployeeId == e.Id),
             DecreesCount = await _db.HrDecrees.CountAsync(d => d.EmployeeId == e.Id)

@@ -42,7 +42,7 @@
             <div class="table-responsive">
                 <table class="table table-hover mb-0 align-middle">
                     <thead class="table-light">
-                        <tr><th>کد</th><th>نام شیفت</th><th>نوع</th><th>بازه</th><th>ارفاق تأخیر/تعجیل</th><th>وضعیت</th><th style="width:90px"></th></tr>
+                        <tr><th>کد</th><th>نام شیفت</th><th>نوع</th><th>بازه</th><th>ارفاق تأخیر/تعجیل</th><th>نوبت‌کاری ٪</th><th>وضعیت</th><th style="width:90px"></th></tr>
                     </thead>
                     <tbody>
                         @foreach (var s in shifts)
@@ -63,6 +63,7 @@
                                 <td><span class="badge rounded-pill text-bg-light border">@FaAttUi.ShiftType(s.Type)</span></td>
                                 <td class="num" dir="ltr">@FmtTime(s.StartTime) — @FmtTime(s.EndTime)</td>
                                 <td class="num">@Fa.Digits(s.LateToleranceMin) / @Fa.Digits(s.EarlyToleranceMin) دقیقه</td>
+                                <td class="num">@(s.AllowancePercent > 0 ? Fa.Digits(s.AllowancePercent.ToString("0.#")) + "٪" : "—")</td>
                                 <td>@(s.IsActive ? "فعال" : "غیرفعال")</td>
                                 <td>
                                     <div class="btn-group btn-group-sm">
@@ -150,6 +151,7 @@
             <div class="col-md-3"><label class="form-label">موظف روزانه (دقیقه)</label><input class="form-control num" type="number" min="0" @bind="sform.RequiredMinutes" /></div>
             <div class="col-md-3"><label class="form-label">روزهای استراحت</label><input class="form-control num" dir="ltr" @bind="sform.OffDays" placeholder="5" /></div>
             <div class="col-md-3"><label class="form-label">رنگ</label><input type="color" class="form-control form-control-color w-100" @bind="sform.Color" /></div>
+            <div class="col-md-3"><label class="form-label">فوق‌العاده نوبت‌کاری (٪ حقوق پایه)</label><input class="form-control num" type="number" min="0" step="any" @bind="sform.AllowancePercent" /></div>
             <div class="col-md-6 d-flex align-items-end gap-3">
                 <div class="form-check"><input class="form-check-input" type="checkbox" id="sact" @bind="sform.IsActive" /><label class="form-check-label" for="sact">فعال</label></div>
             </div>
@@ -244,7 +246,7 @@
                 LateToleranceMin = s.LateToleranceMin, EarlyToleranceMin = s.EarlyToleranceMin,
                 OvertimeGraceMin = s.OvertimeGraceMin, RequiredMinutes = s.RequiredMinutes,
                 OffDays = s.OffDays, Color = string.IsNullOrWhiteSpace(s.Color) ? "#2563eb" : s.Color,
-                IsActive = s.IsActive, SortOrder = s.SortOrder
+                IsActive = s.IsActive, SortOrder = s.SortOrder, AllowancePercent = s.AllowancePercent
             };
         sStart = TimeOnly.FromTimeSpan(sform.StartTime);
         sEnd = TimeOnly.FromTimeSpan(sform.EndTime);

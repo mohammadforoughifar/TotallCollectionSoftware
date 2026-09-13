@@ -55,6 +55,7 @@ public interface IFaPayService
     Task<FaPaySlipDto?> GetMySlipAsync(int id, int userId);
     Task SetPaidAsync(int id, bool paid);
     Task<byte[]> SlipPdfAsync(int id);
+    Task<byte[]> SlipsPdfAsync(int runId);
     Task<int> SendSlipEmailAsync(int id, int byUserId);
     Task<FaPayMailResultDto> SendRunEmailsAsync(int runId, int byUserId);
 
@@ -241,7 +242,8 @@ public class FaPayService : IFaPayService
 
     private async Task GuardRunOpenAsync(int year, int month)
     {
-        if (await _db.FaPayRuns.AnyAsync(r => r.Year == year && r.Month == month && r.Status == FaPayRunStatus.Final))
+        if (await _db.FaPayRuns.AnyAsync(r => r.Year == year && r.Month == month
+            && r.Kind == FaPayRunKind.Monthly && r.Status == FaPayRunStatus.Final))
             throw new InvalidOperationException("دوره این ماه نهایی شده و قابل تغییر نیست (ابتدا بازگشایی کنید).");
     }
 
@@ -286,7 +288,7 @@ public class FaPayService : IFaPayService
             : await _db.FaPaySlips.AsNoTracking().Where(s => ids.Contains(s.RunId)).ToListAsync();
         return runs.Select(r => new FaPayRunDto
         {
-            Id = r.Id, Year = r.Year, Month = r.Month, Status = (int)r.Status,
+            Id = r.Id, Year = r.Year, Month = r.Month, Status = (int)r.Status, Kind = (int)r.Kind,
             SlipsCount = slips.Count(s => s.RunId == r.Id),
             TotalNet = slips.Where(s => s.RunId == r.Id).Sum(s => s.NetPay),
             Note = r.Note, CreatedByName = r.CreatedByName, CreatedAt = r.CreatedAt, FinalizedAt = r.FinalizedAt
@@ -299,11 +301,14 @@ public class FaPayService : IFaPayService
     public async Task<FaPayRunDto> CreateRunAsync(FaPayRunSaveDto dto, int byUserId, string byName)
     {
         JyCheck(dto.Year, dto.Month);
-        if (await _db.FaPayRuns.AnyAsync(r => r.Year == dto.Year && r.Month == dto.Month))
-            throw new InvalidOperationException("برای این ماه قبلاً دوره ساخته شده است.");
+        if (dto.Kind is < 0 or > 1) throw new InvalidOperationException("نوع دوره نامعتبر است.");
+        if (dto.Kind == 1 && dto.Month != 12)
+            throw new InvalidOperationException("دوره عیدی و سنوات فقط برای اسفند ساخته می‌شود.");
+        if (await _db.FaPayRuns.AnyAsync(r => r.Year == dto.Year && r.Month == dto.Month && (int)r.Kind == dto.Kind))
+            throw new InvalidOperationException("برای این ماه قبلاً دوره‌ای از همین نوع ساخته شده است.");
         var r = new FaPayRun
         {
-            Year = dto.Year, Month = dto.Month, Status = FaPayRunStatus.Draft,
+            Year = dto.Year, Month = dto.Month, Status = FaPayRunStatus.Draft, Kind = (FaPayRunKind)dto.Kind,
             Note = dto.Note, CreatedByUserId = byUserId, CreatedByName = byName, CreatedAt = DateTime.Now
         };
         _db.FaPayRuns.Add(r);
@@ -318,7 +323,10 @@ public class FaPayService : IFaPayService
             ?? throw new InvalidOperationException("دوره یافت نشد.");
         if (r.Status != FaPayRunStatus.Draft)
             throw new InvalidOperationException("فقط دوره پیش‌نویس قابل محاسبه مجدد است.");
+        if (r.Kind != FaPayRunKind.Monthly)
+            throw new InvalidOperationException("دوره پایان‌سال (عیدی و سنوات) با دکمه مخصوص خودش محاسبه می‌شود.");
         var s = await _db.FaPaySettings.FirstOrDefaultAsync() ?? new FaPaySettings();
+        var xs = await _db.FaPayExtraSettings.FirstOrDefaultAsync() ?? new FaPayExtraSettings();
         var (mFrom, mTo) = JMonthRange(r.Year, r.Month);
         var monthDays = (mTo - mFrom).Days + 1;
 
@@ -357,6 +365,39 @@ public class FaPayService : IFaPayService
         var brackets = await _db.FaPayTaxBrackets.AsNoTracking()
             .Where(b => b.IsActive).OrderBy(b => b.FromAmount).ToListAsync();
 
+        // §۲ — اقساط وام سررسید این ماه (وام‌های فعال) + معوقات هدف این ماه
+        var activeLoans = await _db.FaPayLoans.AsNoTracking()
+            .Where(l => l.Status == FaPayLoanStatus.Active).ToListAsync();
+        var activeLoanIds = activeLoans.Select(l => l.Id).ToList();
+        var loanInfo = activeLoans.ToDictionary(l => l.Id, l => (l.Title, l.InstallmentCount, l.EmployeeId));
+        var dueInsts = activeLoanIds.Count == 0 ? new List<FaPayLoanInstallment>()
+            : await _db.FaPayLoanInstallments
+                .Where(i => i.Year == r.Year && i.Month == r.Month && !i.IsPaid
+                    && activeLoanIds.Contains(i.LoanId))
+                .ToListAsync();
+        var dueArrears = await _db.FaPayArrears
+            .Where(x => x.TargetYear == r.Year && x.TargetMonth == r.Month
+                && x.Status == FaPayArrearStatus.Draft)
+            .ToListAsync();
+
+        // §۲ — درصد نوبت‌کاری از شیفت جاری هر پرسنل در این ماه
+        var monthAssigns = await _db.FaAttShiftAssigns.AsNoTracking()
+            .Where(a => a.FromDate.Date <= mTo && (a.ToDate == null || a.ToDate.Value.Date >= mFrom))
+            .ToListAsync();
+        var empShiftPct = new Dictionary<int, (double Pct, string Name)>();
+        {
+            var shiftIds = monthAssigns.Select(a => a.ShiftId).Distinct().ToList();
+            var shifts = shiftIds.Count == 0 ? new Dictionary<int, FaAttShift>()
+                : await _db.FaAttShifts.AsNoTracking().Where(x => shiftIds.Contains(x.Id))
+                    .ToDictionaryAsync(x => x.Id);
+            foreach (var g in monthAssigns.GroupBy(a => a.EmployeeId))
+            {
+                var latest = g.OrderByDescending(a => a.FromDate).First();
+                if (shifts.TryGetValue(latest.ShiftId, out var sh) && sh.AllowancePercent > 0)
+                    empShiftPct[g.Key] = (sh.AllowancePercent, sh.Name);
+            }
+        }
+
         // پاک‌سازی محاسبه قبلی
         var oldSlipIds = await _db.FaPaySlips.Where(x => x.RunId == id).Select(x => x.Id).ToListAsync();
         if (oldSlipIds.Count > 0)
@@ -365,6 +406,11 @@ public class FaPayService : IFaPayService
             _db.FaPaySlips.RemoveRange(await _db.FaPaySlips.Where(x => x.RunId == id).ToListAsync());
             await _db.SaveChangesAsync();
         }
+        // آزادسازی اقساط و معوقاتِ محاسبه قبلی همین دوره (برای محاسبه مجدد تمیز)
+        var relInsts = await _db.FaPayLoanInstallments.Where(i => i.PaidRunId == id).ToListAsync();
+        foreach (var ri in relInsts) { ri.IsPaid = false; ri.PaidRunId = null; ri.PaidAt = null; }
+        var relArrs = await _db.FaPayArrears.Where(x => x.AppliedRunId == id).ToListAsync();
+        foreach (var rx in relArrs) { rx.Status = FaPayArrearStatus.Draft; rx.AppliedRunId = null; }
 
         foreach (var e in emps)
         {
@@ -379,6 +425,12 @@ public class FaPayService : IFaPayService
 
             double otAmount = R(otMin / 60.0 * hourly * s.OvertimeFactor);
             double delayAmount = R(delayMin / 60.0 * hourly * s.DelayFactor);
+            int nightMin = a?.NightMinutes ?? 0;
+            double nightAmount = R(nightMin / 60.0 * hourly * xs.NightRatePercent / 100.0);
+            empShiftPct.TryGetValue(e.Id, out var shp);
+            double shiftAmount = R(baseSalary * shp.Pct / 100.0);
+            var myInsts = dueInsts.Where(i => loanInfo.TryGetValue(i.LoanId, out var li) && li.EmployeeId == e.Id).ToList();
+            var myArrears = dueArrears.Where(x => x.EmployeeId == e.Id).ToList();
             double absentAmount = s.AbsentDeductEnabled ? R(absent * daily) : 0;
             double unpaidAmount = s.UnpaidLeaveDeductEnabled ? R(unpaidDays * daily) : 0;
 
@@ -394,6 +446,15 @@ public class FaPayService : IFaPayService
                 items.Add(new FaPaySlipItem { Title = "اضافه‌کاری", Kind = FaPayItemKind.Earning, Amount = otAmount, IsAuto = true, Note = $"{otMin} دقیقه" });
             if (bonus.TryGetValue(e.Id, out var pb) && pb != 0)
                 items.Add(new FaPaySlipItem { Title = "پاداش عملکرد", Kind = FaPayItemKind.Earning, Amount = R(pb), IsAuto = true });
+            if (nightAmount != 0)
+                items.Add(new FaPaySlipItem { Title = "فوق‌العاده شب‌کاری", Kind = FaPayItemKind.Earning, Amount = nightAmount, IsAuto = true, Note = $"{nightMin} دقیقه" });
+            if (shiftAmount != 0)
+                items.Add(new FaPaySlipItem { Title = $"فوق‌العاده نوبت‌کاری ({shp.Pct:0.#}٪)", Kind = FaPayItemKind.Earning, Amount = shiftAmount, IsAuto = true, Note = shp.Name });
+            foreach (var ar in myArrears)
+            {
+                items.Add(new FaPaySlipItem { Title = $"معوقات: {ar.Title}", Kind = FaPayItemKind.Earning, Amount = R(ar.Amount), IsAuto = true });
+                ar.Status = FaPayArrearStatus.Applied; ar.AppliedRunId = id;
+            }
             foreach (var adj in adjs.Where(x => x.EmployeeId == e.Id))
             {
                 if (!adjTypes.TryGetValue(adj.ItemTypeId, out var t)) continue;
@@ -409,6 +470,12 @@ public class FaPayService : IFaPayService
                 items.Add(new FaPaySlipItem { Title = "کسر غیبت", Kind = FaPayItemKind.Deduction, Amount = absentAmount, IsAuto = true, Note = $"{absent} روز" });
             if (unpaidAmount != 0)
                 items.Add(new FaPaySlipItem { Title = "کسر مرخصی بدون حقوق", Kind = FaPayItemKind.Deduction, Amount = unpaidAmount, IsAuto = true, Note = $"{unpaidDays:0.#} روز" });
+            foreach (var inst in myInsts)
+            {
+                loanInfo.TryGetValue(inst.LoanId, out var linfo);
+                items.Add(new FaPaySlipItem { Title = $"قسط وام: {linfo.Title} (قسط {inst.SeqNo} از {linfo.InstallmentCount})", Kind = FaPayItemKind.Deduction, Amount = R(inst.Amount), IsAuto = true });
+                inst.IsPaid = true; inst.PaidRunId = id; inst.PaidAt = DateTime.Now;
+            }
             foreach (var t in fixedTypes.Where(t => t.Kind == FaPayItemKind.Deduction))
             {
                 if (t.DefaultAmount == 0) continue;
@@ -450,6 +517,7 @@ public class FaPayService : IFaPayService
             _db.FaPaySlipItems.AddRange(items);
             await _db.SaveChangesAsync();
         }
+        await _db.SaveChangesAsync(); // ثبت علامت پرداخت اقساط و اعمال معوقات
         return emps.Count;
     }
 
@@ -467,7 +535,7 @@ public class FaPayService : IFaPayService
             var empIds = await _db.FaPaySlips.AsNoTracking().Where(s => s.RunId == id)
                 .Select(s => s.EmployeeId).Distinct().ToListAsync();
             var emps = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id)).ToListAsync();
-            var label = $"{JmName(r.Month)} {r.Year}";
+            var label = r.Kind == FaPayRunKind.YearEnd ? $"عیدی و سنوات {r.Year}" : $"{JmName(r.Month)} {r.Year}";
             var uids = emps.Where(e => e.SystemUserId is > 0).Select(e => e.SystemUserId!.Value).Distinct().ToList();
             if (uids.Count > 0)
             {
@@ -499,6 +567,10 @@ public class FaPayService : IFaPayService
             ?? throw new InvalidOperationException("دوره یافت نشد.");
         if (r.Status == FaPayRunStatus.Final)
             throw new InvalidOperationException("دوره نهایی قابل حذف نیست (ابتدا بازگشایی کنید).");
+        var relInsts = await _db.FaPayLoanInstallments.Where(i => i.PaidRunId == id).ToListAsync();
+        foreach (var ri in relInsts) { ri.IsPaid = false; ri.PaidRunId = null; ri.PaidAt = null; }
+        var relArrs = await _db.FaPayArrears.Where(x => x.AppliedRunId == id).ToListAsync();
+        foreach (var rx in relArrs) { rx.Status = FaPayArrearStatus.Draft; rx.AppliedRunId = null; }
         var sids = await _db.FaPaySlips.Where(s => s.RunId == id).Select(s => s.Id).ToListAsync();
         _db.FaPaySlipItems.RemoveRange(await _db.FaPaySlipItems.Where(i => sids.Contains(i.SlipId)).ToListAsync());
         _db.FaPaySlips.RemoveRange(await _db.FaPaySlips.Where(s => s.RunId == id).ToListAsync());
@@ -739,12 +811,35 @@ public class FaPayService : IFaPayService
     {
         var d = await GetSlipAsync(id) ?? throw new InvalidOperationException("فیش یافت نشد.");
         EnsureFonts();
-        var earn = d.Items.Where(i => i.Kind == 0).ToList();
-        var ded = d.Items.Where(i => i.Kind == 1).ToList();
         var doc = Document.Create(c =>
         {
-            c.Page(p =>
-            {
+            c.Page(p => SlipPage(p, d));
+        });
+        return doc.GeneratePdf();
+    }
+
+    /// <summary>چاپ گروهی فیش‌های یک دوره — یک فایل PDF چندصفحه‌ای (هر فیش یک صفحه).</summary>
+    public async Task<byte[]> SlipsPdfAsync(int runId)
+    {
+        var run = await _db.FaPayRuns.FindAsync(runId)
+            ?? throw new InvalidOperationException("دوره یافت نشد.");
+        var slips = await _db.FaPaySlips.AsNoTracking().Where(s => s.RunId == runId).ToListAsync();
+        if (slips.Count == 0) throw new InvalidOperationException("این دوره فیشی ندارد.");
+        EnsureFonts();
+        var list = await MapSlipsAsync(slips, run, withItems: true);
+        var doc = Document.Create(c =>
+        {
+            foreach (var dto in list)
+                c.Page(p => SlipPage(p, dto));
+        });
+        return doc.GeneratePdf();
+    }
+
+    private static void SlipPage(PageDescriptor p, FaPaySlipDto d)
+    {
+        var earn = d.Items.Where(i => i.Kind == 0).ToList();
+        var ded = d.Items.Where(i => i.Kind == 1).ToList();
+        {
                 p.Size(PageSizes.A5.Landscape());
                 p.Margin(24);
                 p.ContentFromRightToLeft();
@@ -807,9 +902,7 @@ public class FaPayService : IFaPayService
                     col.Item().Text($"تاریخ صدور: {Fa.Digits(DateTime.Today.ToString("yyyy/MM/dd"))} — این فیش به‌صورت سیستمی صادر شده است.")
                         .FontSize(8).FontColor(Colors.Grey.Darken1).AlignCenter();
                 });
-            });
-        });
-        return doc.GeneratePdf();
+        }
     }
 
     private static void InfoCell(TableDescriptor t, string label, string value)
@@ -894,7 +987,7 @@ public class FaPayService : IFaPayService
         JyCheck(year, month);
         return await _db.FaPayRuns
                 .OrderByDescending(r => r.Status).ThenByDescending(r => r.Id)
-                .FirstOrDefaultAsync(r => r.Year == year && r.Month == month)
+                .FirstOrDefaultAsync(r => r.Year == year && r.Month == month && r.Kind == FaPayRunKind.Monthly)
             ?? throw new InvalidOperationException("برای این ماه دوره حقوقی ساخته نشده است.");
     }
 

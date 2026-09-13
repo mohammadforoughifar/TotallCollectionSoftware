@@ -35,4 +35,24 @@ public static class FaPayUi
 
     public static List<FaPaySlipItemDto> Earn(FaPaySlipDto d) => d.Items.Where(i => i.Kind == 0).ToList();
     public static List<FaPaySlipItemDto> Ded(FaPaySlipDto d) => d.Items.Where(i => i.Kind == 1).ToList();
+
+    public static string RunKind(int k) => k switch { 0 => "ماهانه", 1 => "عیدی و سنوات", _ => "—" };
+    public static string RunKindBadge(int k) => k switch { 0 => "text-bg-primary", 1 => "text-bg-info", _ => "text-bg-light" };
+    public static string RunName(FaPayRunDto r) => r.Kind == 1 ? $"عیدی و سنوات {Fa.Digits(r.Year.ToString())}" : YearMonth(r.Year, r.Month);
+
+    public static string LoanStatus(int s) => s switch { 0 => "فعال", 1 => "تسویه‌شده", 2 => "لغوشده", _ => "—" };
+    public static string LoanBadge(int s) => s switch { 0 => "text-bg-primary", 1 => "text-bg-success", 2 => "text-bg-secondary", _ => "text-bg-light" };
+
+    public static string ArrearStatus(int s) => s switch { 0 => "پیش‌نویس", 1 => "اعمال‌شده", 2 => "لغوشده", _ => "—" };
+    public static string ArrearBadge(int s) => s switch { 0 => "text-bg-warning", 1 => "text-bg-success", 2 => "text-bg-secondary", _ => "text-bg-light" };
+
+    public static string SettleStatus(int s) => s switch { 0 => "پیش‌نویس", 1 => "نهایی", _ => "—" };
+    public static string SettleBadge(int s) => s switch { 0 => "text-bg-warning", 1 => "text-bg-success", _ => "text-bg-light" };
+    public static string SettleReason(int r) => r switch
+    {
+        0 => "استعفا", 1 => "اخراج/فسخ", 2 => "پایان قرارداد", 3 => "بازنشستگی", 4 => "توافق طرفین", _ => "سایر"
+    };
+
+    public static string CmpFlag(string f) => f switch { "Same" => "بدون تغییر", "Changed" => "تغییر کرده", "New" => "جدید", "Left" => "خارج‌شده", _ => f };
+    public static string CmpBadge(string f) => f switch { "Same" => "text-bg-light", "Changed" => "text-bg-warning", "New" => "text-bg-success", "Left" => "text-bg-danger", _ => "text-bg-light" };
 }

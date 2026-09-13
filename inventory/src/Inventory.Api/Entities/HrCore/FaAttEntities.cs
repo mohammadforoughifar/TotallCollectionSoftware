@@ -109,6 +109,9 @@ public class FaAttShift
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>درصد فوق‌العاده نوبت‌کاری این شیفت روی حقوق پایه (۰ یعنی ندارد)</summary>
+    public double AllowancePercent { get; set; }
+
     public int SortOrder { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
@@ -214,6 +217,9 @@ public class FaAttDaily
     public int EarlyMinutes { get; set; }
 
     public int OvertimeMinutes { get; set; }
+
+    /// <summary>دقایق شب‌کاری (۲۲ تا ۶ صبح) — مبنای فوق‌العاده شب‌کاری در حقوق</summary>
+    public int NightMinutes { get; set; }
 
     public FaAttDayStatus Status { get; set; } = FaAttDayStatus.Absent;
 
