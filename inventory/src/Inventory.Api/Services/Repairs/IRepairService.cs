@@ -8,6 +8,7 @@ public interface IRepairService
 {
     // ---------------- تعمیرکارها ----------------
     Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false);
+    Task<PagedResult<Technician>> GetTechniciansPagedAsync(bool activeOnly, int page, int pageSize);
     Task<Technician> SaveTechnicianAsync(Technician dto);
     Task DeleteTechnicianAsync(int id);
 

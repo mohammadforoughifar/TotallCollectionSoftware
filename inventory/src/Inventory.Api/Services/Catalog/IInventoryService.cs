@@ -16,6 +16,7 @@ public interface IInventoryService
 
     // ---------------- معرف (بازاریاب) ----------------
     Task<List<Referrer>> GetReferrersAsync(bool activeOnly = false);
+    Task<PagedResult<Referrer>> GetReferrersPagedAsync(bool activeOnly, int page, int pageSize);
     Task<Referrer> SaveReferrerAsync(Referrer dto);
     Task DeleteReferrerAsync(int id);
 
@@ -28,11 +29,13 @@ public interface IInventoryService
 
     // ---------------- گروه کالا (درختی) ----------------
     Task<List<ProductCategory>> GetCategoriesAsync(bool activeOnly = false);
+    Task<PagedResult<ProductCategory>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize);
     Task<ProductCategory> SaveCategoryAsync(ProductCategory dto);
     Task DeleteCategoryAsync(int id);
 
     // ---------------- واحد شمارش ----------------
     Task<List<MeasureUnit>> GetUnitsAsync(bool activeOnly = false);
+    Task<PagedResult<MeasureUnit>> GetUnitsPagedAsync(bool activeOnly, int page, int pageSize);
     Task<MeasureUnit> SaveUnitAsync(MeasureUnit dto);
     Task DeleteUnitAsync(int id);
 
@@ -49,11 +52,13 @@ public interface IInventoryService
 
     // ---------------- انبار ----------------
     Task<List<Warehouse>> GetWarehousesAsync();
+    Task<PagedResult<Warehouse>> GetWarehousesPagedAsync(int page, int pageSize);
     Task<Warehouse> SaveWarehouseAsync(Warehouse dto);
     Task DeleteWarehouseAsync(int id);
 
     // ---------------- طرف حساب ----------------
     Task<List<Party>> GetPartiesAsync(PartyType type);
+    Task<PagedResult<Party>> GetPartiesPagedAsync(PartyType type, int page, int pageSize);
     Task<Party> SavePartyAsync(Party dto);
     Task DeletePartyAsync(int id);
 

@@ -64,8 +64,8 @@ public class KarfarmaService : IKarfarmaService
     private readonly IApiClient _api;
     public KarfarmaService(IApiClient api) => _api = api;
 
-    public Task<List<KarFarmaDto>> GetAllAsync(string? search = null)
-        => _api.GetAsync<List<KarFarmaDto>>($"api/karfarmas?search={Uri.EscapeDataString(search ?? "")}");
+    public async Task<List<KarFarmaDto>> GetAllAsync(string? search = null)
+        => (await _api.GetAsync<PagedResult<KarFarmaDto>>($"api/karfarmas?search={Uri.EscapeDataString(search ?? "")}&page=1&pageSize=200")).Items;
 
     public Task<KarFarmaDto> GetAsync(int id)
         => _api.GetAsync<KarFarmaDto>($"api/karfarmas/{id}");
@@ -85,8 +85,8 @@ public class TypeFactorService : ITypeFactorService
     private readonly IApiClient _api;
     public TypeFactorService(IApiClient api) => _api = api;
 
-    public Task<List<TypeFactorDto>> GetAllAsync(string? search = null)
-        => _api.GetAsync<List<TypeFactorDto>>($"api/typefactors?search={Uri.EscapeDataString(search ?? "")}");
+    public async Task<List<TypeFactorDto>> GetAllAsync(string? search = null)
+        => (await _api.GetAsync<PagedResult<TypeFactorDto>>($"api/typefactors?search={Uri.EscapeDataString(search ?? "")}&page=1&pageSize=200")).Items;
 
     public Task<TypeFactorDto> CreateAsync(TypeFactorDto dto)
         => _api.PostAsync<TypeFactorDto>("api/typefactors", dto);
@@ -114,7 +114,7 @@ public class ProjectService : IProjectService
 
     private class NextSerialResponse { public string Next { get; set; } = ""; }
 
-    public Task<List<ProjectEntryExitDto>> GetAllAsync(string? search = null, int? karfarmaId = null,
+    public async Task<List<ProjectEntryExitDto>> GetAllAsync(string? search = null, int? karfarmaId = null,
         int? typeFactorId = null, int? userId = null, bool? returned = null)
     {
         var url = $"api/projects?search={Uri.EscapeDataString(search ?? "")}";
@@ -122,7 +122,8 @@ public class ProjectService : IProjectService
         if (typeFactorId is > 0) url += $"&typeFactorId={typeFactorId}";
         if (userId is > 0) url += $"&userId={userId}";
         if (returned is true) url += "&returned=true";
-        return _api.GetAsync<List<ProjectEntryExitDto>>(url);
+        url += "&page=1&pageSize=200";
+        return (await _api.GetAsync<PagedResult<ProjectEntryExitDto>>(url)).Items;
     }
 
     public Task<ProjectEntryExitDto> GetAsync(int id)
@@ -159,7 +160,7 @@ public class ReportWorkService : IReportWorkService
     private readonly IApiClient _api;
     public ReportWorkService(IApiClient api) => _api = api;
 
-    public Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
+    public async Task<List<ReportWorkDto>> GetAllAsync(int? projectId = null, int? userId = null,
         DateTime? from = null, DateTime? to = null)
     {
         var url = "api/reportworks?";
@@ -167,7 +168,8 @@ public class ReportWorkService : IReportWorkService
         if (userId is > 0) url += $"userId={userId}&";
         if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
         if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
-        return _api.GetAsync<List<ReportWorkDto>>(url);
+        url += "page=1&pageSize=200";
+        return (await _api.GetAsync<PagedResult<ReportWorkDto>>(url)).Items;
     }
 
     public Task CreateAsync(ReportWorkDto dto)

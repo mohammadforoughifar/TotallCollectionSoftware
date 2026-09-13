@@ -34,7 +34,8 @@ public class ReportWorksController : RbacControllerBase
         [FromQuery] int? projectId,
         [FromQuery] int? userId,
         [FromQuery] DateTime? from,
-        [FromQuery] DateTime? to)
+        [FromQuery] DateTime? to,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -48,8 +49,11 @@ public class ReportWorksController : RbacControllerBase
         if (from is not null) query = query.Where(r => r.ReportDate >= from.Value.Date);
         if (to is not null) query = query.Where(r => r.ReportDate <= to.Value.Date.AddDays(1).AddTicks(-1));
 
-        var list = await query.OrderByDescending(r => r.ReportDate).ThenByDescending(r => r.Id).ToListAsync();
-        return Ok(list.Select(ToDto).ToList());
+        var total = await query.CountAsync();
+        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
+        var list = await query.OrderByDescending(r => r.ReportDate).ThenByDescending(r => r.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+        return Ok(new PagedResult<ReportWorkDto> { Items = list.Select(ToDto).ToList(), TotalCount = total });
     }
 
     [HttpGet("{id:int}")]
