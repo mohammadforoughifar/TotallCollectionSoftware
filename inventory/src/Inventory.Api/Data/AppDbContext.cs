@@ -192,6 +192,11 @@ public class AppDbContext : DbContext
     public DbSet<FaPaySlip> FaPaySlips => Set<FaPaySlip>();
     public DbSet<FaPaySlipItem> FaPaySlipItems => Set<FaPaySlipItem>();
     public DbSet<FaPayAdjustment> FaPayAdjustments => Set<FaPayAdjustment>();
+    public DbSet<FaPayExtraSettings> FaPayExtraSettings => Set<FaPayExtraSettings>();
+    public DbSet<FaPayLoan> FaPayLoans => Set<FaPayLoan>();
+    public DbSet<FaPayLoanInstallment> FaPayLoanInstallments => Set<FaPayLoanInstallment>();
+    public DbSet<FaPayArrear> FaPayArrears => Set<FaPayArrear>();
+    public DbSet<FaPaySettlement> FaPaySettlements => Set<FaPaySettlement>();
     public DbSet<FaLmsCourse> FaLmsCourses => Set<FaLmsCourse>();
     public DbSet<FaLmsNeed> FaLmsNeeds => Set<FaLmsNeed>();
     public DbSet<FaLmsEnrollment> FaLmsEnrollments => Set<FaLmsEnrollment>();

@@ -49,6 +49,7 @@ public class HrEmployeeDto
     public int DecreesCount { get; set; }
     public string? Sheba { get; set; }
     public string? BankName { get; set; }
+    public string? InsuranceNo { get; set; }
 }
 
 public class HrEmployeeSaveDto
@@ -84,6 +85,7 @@ public class HrEmployeeSaveDto
     public bool IsActive { get; set; } = true;
     public string? Sheba { get; set; }
     public string? BankName { get; set; }
+    public string? InsuranceNo { get; set; }
 }
 
 public class HrOrgUnitDto

@@ -118,7 +118,8 @@ public class FaAttService : IFaAttService
                 StartTime = s.StartTime, EndTime = s.EndTime,
                 LateToleranceMin = s.LateToleranceMin, EarlyToleranceMin = s.EarlyToleranceMin,
                 OvertimeGraceMin = s.OvertimeGraceMin, RequiredMinutes = s.RequiredMinutes,
-                OffDays = s.OffDays, Color = s.Color, IsActive = s.IsActive, SortOrder = s.SortOrder
+                OffDays = s.OffDays, Color = s.Color, IsActive = s.IsActive,
+                AllowancePercent = s.AllowancePercent, SortOrder = s.SortOrder
             }).ToListAsync();
     }
 
@@ -144,6 +145,7 @@ public class FaAttService : IFaAttService
         s.OffDays = string.IsNullOrWhiteSpace(dto.OffDays) ? null : dto.OffDays.Trim();
         s.Color = string.IsNullOrWhiteSpace(dto.Color) ? null : dto.Color.Trim();
         s.IsActive = dto.IsActive; s.SortOrder = dto.SortOrder;
+        s.AllowancePercent = Math.Max(0, dto.AllowancePercent);
         await _db.SaveChangesAsync();
         return (await ListShiftsAsync(null)).First(x => x.Id == s.Id);
     }
@@ -669,11 +671,31 @@ public class FaAttService : IFaAttService
         row.ShiftId = shift?.Id;
         row.FirstIn = firstIn; row.LastOut = lastOut;
         row.WorkMinutes = workMin; row.LateMinutes = late; row.EarlyMinutes = early; row.OvertimeMinutes = ot;
+        row.NightMinutes = NightOverlapMinutes(firstIn, lastOut);
         row.Status = status; row.IsIncomplete = incomplete;
         row.Note = notes.Count == 0 ? null : string.Join("، ", notes);
         row.CalculatedAt = DateTime.Now;
         await _db.SaveChangesAsync();
         return await MapDailyAsync(row);
+    }
+
+    /// <summary>هم‌پوشانی بازه حضور با پنجره شب (۲۲ تا ۶ صبح) به دقیقه — مبنای فوق‌العاده شب‌کاری.</summary>
+    private static int NightOverlapMinutes(DateTime? firstIn, DateTime? lastOut)
+    {
+        if (firstIn == null || lastOut == null || lastOut <= firstIn) return 0;
+        var total = 0;
+        var day = firstIn.Value.Date;
+        while (day <= lastOut.Value.Date.AddDays(1))
+        {
+            var winStart = day.AddHours(22);
+            var winEnd = day.AddDays(1).AddHours(6);
+            var ovStart = firstIn.Value > winStart ? firstIn.Value : winStart;
+            var ovEnd = lastOut.Value < winEnd ? lastOut.Value : winEnd;
+            if (ovEnd > ovStart) total += (int)(ovEnd - ovStart).TotalMinutes;
+            day = day.AddDays(1);
+            if (day > lastOut.Value.Date.AddDays(2)) break;
+        }
+        return Math.Max(0, total);
     }
 
     /// <summary>جفت‌سازی پانچ‌ها: ورود/خروجِ مشخص با هم جفت می‌شوند؛ نامشخص‌ها یکی‌درمیان.</summary>
@@ -807,6 +829,7 @@ public class FaAttService : IFaAttService
             FirstIn = d.FirstIn, LastOut = d.LastOut,
             WorkMinutes = d.WorkMinutes, LateMinutes = d.LateMinutes,
             EarlyMinutes = d.EarlyMinutes, OvertimeMinutes = d.OvertimeMinutes,
+            NightMinutes = d.NightMinutes,
             Status = (int)d.Status, IsIncomplete = d.IsIncomplete, Note = d.Note
         };
     }
@@ -953,6 +976,7 @@ public class FaAttService : IFaAttService
             l = await _db.FaAttLeaves.FirstOrDefaultAsync(x => x.Id == id.Value)
                 ?? throw new InvalidOperationException("مرخصی یافت نشد.");
             if (l.Status != FaAttRequestStatus.Pending)
+                    if (l.Status != FaAttRequestStatus.Pending)
                 throw new InvalidOperationException("درخواست تعیین‌تکلیف‌شده قابل ویرایش نیست.");
         }
         else { l = new FaAttLeave(); _db.FaAttLeaves.Add(l); }
@@ -1087,7 +1111,8 @@ public class FaAttService : IFaAttService
                 MissionDays = ds.Count(d => d.Status == FaAttDayStatus.Mission),
                 LeaveDays = ds.Count(d => d.Status == FaAttDayStatus.Leave),
                 HolidayWorkDays = ds.Count(d => d.Status == FaAttDayStatus.WorkedOff),
-                IncompleteDays = ds.Count(d => d.IsIncomplete)
+                IncompleteDays = ds.Count(d => d.IsIncomplete),
+                NightMinutes = ds.Sum(d => d.NightMinutes)
             });
         }
         return list;
@@ -1103,7 +1128,7 @@ public class FaAttService : IFaAttService
         {
             "کد", "نام و نام خانوادگی", "روزهای حاضر", "غیبت", "تعداد تأخیر",
             "دقیقه تأخیر", "دقیقه تعجیل", "اضافه‌کاری (دقیقه)", "کارکرد (دقیقه)",
-            "مأموریت (روز)", "مرخصی (روز)", "تعطیل‌کار (روز)", "تردد ناقص (روز)"
+            "مأموریت (روز)", "مرخصی (روز)", "تعطیل‌کار (روز)", "تردد ناقص (روز)", "شب‌کاری (دقیقه)"
         };
         for (var i = 0; i < head.Length; i++)
         {
@@ -1128,6 +1153,7 @@ public class FaAttService : IFaAttService
             ws.Cell(r, 11).Value = x.LeaveDays;
             ws.Cell(r, 12).Value = x.HolidayWorkDays;
             ws.Cell(r, 13).Value = x.IncompleteDays;
+            ws.Cell(r, 14).Value = x.NightMinutes;
             r++;
         }
         ws.Columns().AdjustToContents();
@@ -1240,7 +1266,7 @@ public class FaAttService : IFaAttService
     {
         var emp = await _db.HrEmployees.AsNoTracking().Where(e => e.Id == b.EmployeeId)
             .Select(e => new { e.Code, N = e.FirstName + " " + e.LastName }).FirstOrDefaultAsync();
-        var typeName = await _db.FaAttLeaveTypes.AsNoTracking().Where(t => t.Id == b.LeaveTypeId)
+    var typeName = await _db.FaAttLeaveTypes.AsNoTracking().Where(t => t.Id == b.LeaveTypeId)
             .Select(t => t.Name).FirstOrDefaultAsync();
         return new FaAttLeaveBalanceDto
         {

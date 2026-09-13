@@ -244,6 +244,14 @@ public class FaPayController : RbacControllerBase
         return s == null ? NotFound() : Ok(s);
     }
 
+    [HttpGet("runs/{id:int}/slips-pdf")]
+    public async Task<IActionResult> RunSlipsPdf(int id)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        var bytes = await _svc.SlipsPdfAsync(id);
+        return File(bytes, "application/pdf", $"FaPaySlips-{id}.pdf");
+    }
+
     [HttpGet("slips/{id:int}/pdf")]
     public async Task<IActionResult> SlipPdf(int id)
     {

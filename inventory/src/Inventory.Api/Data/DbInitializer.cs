@@ -66,8 +66,10 @@ public static class DbInitializer
                 // حضور و غیاب فروغ آریا (ماژول جدید و مستقل) + داده پایه (انواع مرخصی/شیفت‌ها)
                 await FaAttSchemaV1.EnsureAsync(db);
                 await FaAttSchemaV2.EnsureAsync(db);
+                await FaAttSchemaV3.EnsureAsync(db);
                 FaAttMasterSeeder.Seed(db);
                 await FaPaySchemaV1.EnsureAsync(db);
+                await FaPaySchemaV2.EnsureAsync(db);
                 FaPayMasterSeeder.Seed(db);
                 await HrContractSchemaV2.EnsureAsync(db);
                 await HrEmployeeSchemaV2.EnsureAsync(db);

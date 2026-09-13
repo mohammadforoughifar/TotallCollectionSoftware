@@ -175,6 +175,7 @@
                     }
                     <div class="col-md-4"><label class="form-label">شبا (بدون فاصله)</label><input class="form-control num" dir="ltr" placeholder="IR..." @bind="form.Sheba" maxlength="29" /></div>
                     <div class="col-md-4"><label class="form-label">نام بانک</label><input class="form-control" placeholder="مثلاً ملت" @bind="form.BankName" maxlength="60" /></div>
+                    <div class="col-md-4"><label class="form-label">شماره بیمه تأمین اجتماعی</label><input class="form-control num" dir="ltr" inputmode="numeric" placeholder="۸ تا ۱۰ رقم" @bind="form.InsuranceNo" maxlength="12" /></div>
                     <div class="col-12">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="wact" @bind="form.IsActive" />
@@ -204,6 +205,7 @@
                     <dt class="col-sm-3">حقوق پایه</dt><dd class="col-sm-9 num">@(form.BaseSalary > 0 ? form.BaseSalary.Num() + " ریال" : "—")</dd>
                     <dt class="col-sm-3">شبا</dt><dd class="col-sm-9 num" dir="ltr" style="text-align:right">@(string.IsNullOrWhiteSpace(form.Sheba) ? "—" : form.Sheba)</dd>
                     <dt class="col-sm-3">بانک</dt><dd class="col-sm-9">@(string.IsNullOrWhiteSpace(form.BankName) ? "—" : form.BankName)</dd>
+                    <dt class="col-sm-3">شماره بیمه</dt><dd class="col-sm-9 num">@(string.IsNullOrWhiteSpace(form.InsuranceNo) ? "—" : form.InsuranceNo)</dd>
                 </dl>
                 @if (Id is > 0)
                 {
@@ -499,7 +501,7 @@ else
                     OrgUnitId = e.OrgUnitId, PostTitle = e.PostTitle,
                     HrMainNodeId = e.HrMainNodeId, HrMainPositionId = e.HrMainPositionId,
                     ManagerId = e.ManagerId, EmploymentType = e.EmploymentType, Status = e.Status,
-                    SystemUserId = e.SystemUserId, BaseSalary = e.BaseSalary, IsActive = e.IsActive, Sheba = e.Sheba, BankName = e.BankName
+                    SystemUserId = e.SystemUserId, BaseSalary = e.BaseSalary, IsActive = e.IsActive, Sheba = e.Sheba, BankName = e.BankName, InsuranceNo = e.InsuranceNo
                 };
                 birthDate = e.BirthDate;
                 hireDate = e.HireDate;

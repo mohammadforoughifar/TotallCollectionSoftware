@@ -92,6 +92,7 @@ builder.Services.AddScoped<Inventory.Api.Services.FaCom.IFaComService, Inventory
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender>(); // پیامک وب‌هوکی
 builder.Services.AddScoped<Inventory.Api.Services.FaLms.IFaLmsService, Inventory.Api.Services.FaLms.FaLmsService>(); // FaLms — آموزش و توسعه
 builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayService, Inventory.Api.Services.FaPay.FaPayService>(); // FaPay — حقوق و دستمزد
+builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayExtraService, Inventory.Api.Services.FaPay.FaPayExtraService>(); // FaPay — افزونه‌های §۲
 // اعطای موقت «تایید مجدد رمز» برای فایل‌های مدارک محرمانه (در حافظه — ۱۵ دقیقه)
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocDownloadConfirmService, Inventory.Api.Services.DocArchive.DocDownloadConfirmService>();

@@ -48,6 +48,23 @@
 </div>
 
 <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-white"><strong>بیمه، شب‌کاری و عیدی</strong></div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-3"><label class="form-label">کد کارگاه بیمه تأمین اجتماعی</label><input class="form-control num" dir="ltr" inputmode="numeric" placeholder="۱۰ تا ۱۴ رقم" @bind="xform.WorkshopCode" maxlength="14" /></div>
+            <div class="col-md-3"><label class="form-label">نام کارگاه بیمه</label><input class="form-control" @bind="xform.WorkshopName" maxlength="200" /></div>
+            <div class="col-md-2"><label class="form-label">درصد شب‌کاری</label><input class="form-control" type="number" step="any" @bind="xform.NightRatePercent" /></div>
+            <div class="col-md-2"><label class="form-label">مبنای عیدی (× حقوق)</label><input class="form-control" type="number" step="any" @bind="xform.EidiBaseMultiplier" /></div>
+            <div class="col-md-2"><label class="form-label">سقف عیدی (× حداقل)</label><input class="form-control" type="number" step="any" @bind="xform.EidiCapMultiplier" /></div>
+        </div>
+        <div class="small text-muted mt-2">کد کارگاه برای فایل لیست بیمه الزامی است. عیدی = مبنا × آخرین حقوق تا سقف تعیین‌شده (قانون کار: ۲ برابر حقوق تا سقف ۳ برابر حداقل).</div>
+        <div class="d-flex justify-content-end mt-3">
+            <button class="btn btn-success" @onclick="SaveExtraSettings"><i class="bi bi-check-lg"></i> ذخیره</button>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
     <div class="card-header bg-white d-flex justify-content-between align-items-center">
         <strong>پلکان مالیاتی (محاسبه روی مازاد معافیت)</strong>
         <button class="btn btn-sm btn-success" @onclick="() => OpenBracket(null)"><i class="bi bi-plus-lg"></i> پلکان جدید</button>
@@ -112,6 +129,7 @@
     private bool faManage => Auth.Has("FaPay.Manage") || Auth.IsAdmin;
     private bool loading = true;
     private FaPaySettingsSaveDto form = new();
+    private FaPayExtraSettingsSaveDto xform = new();
     private List<FaPayTaxBracketDto> brackets = new();
 
     private bool showBracket;
@@ -135,6 +153,13 @@
                 UnpaidLeaveDeductEnabled = s.UnpaidLeaveDeductEnabled, Note = s.Note
             };
             brackets = await Svc.ListBracketsAsync();
+            var xs = await Svc.GetExtraSettingsAsync();
+            xform = new FaPayExtraSettingsSaveDto
+            {
+                WorkshopCode = xs.WorkshopCode, WorkshopName = xs.WorkshopName,
+                NightRatePercent = xs.NightRatePercent,
+                EidiBaseMultiplier = xs.EidiBaseMultiplier, EidiCapMultiplier = xs.EidiCapMultiplier
+            };
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         loading = false;
@@ -143,6 +168,12 @@
     private async Task SaveSettings()
     {
         try { await Svc.SaveSettingsAsync(form); Toast.Success("تنظیمات ذخیره شد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SaveExtraSettings()
+    {
+        try { await Svc.SaveExtraSettingsAsync(xform); Toast.Success("تنظیمات بیمه و عیدی ذخیره شد."); }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 

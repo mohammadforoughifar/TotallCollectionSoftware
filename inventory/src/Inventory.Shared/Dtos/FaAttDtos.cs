@@ -19,6 +19,7 @@ public class FaAttShiftDto
     public string? OffDays { get; set; }
     public string? Color { get; set; }
     public bool IsActive { get; set; }
+    public double AllowancePercent { get; set; }
     public int SortOrder { get; set; }
     /// <summary>شب‌کاری گذرنده از نیمه‌شب (پایان کوچک‌تر/مساوی شروع)</summary>
     public bool IsOvernight => EndTime <= StartTime;
@@ -38,6 +39,7 @@ public class FaAttShiftSaveDto
     public string? OffDays { get; set; } = "5";
     public string? Color { get; set; }
     public bool IsActive { get; set; } = true;
+    public double AllowancePercent { get; set; }
     public int SortOrder { get; set; }
 }
 
@@ -147,6 +149,7 @@ public class FaAttDailyDto
     public int LateMinutes { get; set; }
     public int EarlyMinutes { get; set; }
     public int OvertimeMinutes { get; set; }
+    public int NightMinutes { get; set; }
     public int Status { get; set; }
     public bool IsIncomplete { get; set; }
     public string? Note { get; set; }
@@ -253,6 +256,7 @@ public class FaAttMonthSummaryDto
     public int LeaveDays { get; set; }
     public int HolidayWorkDays { get; set; }
     public int IncompleteDays { get; set; }
+    public int NightMinutes { get; set; }
 }
 
 public class FaAttLeaveBalanceDto

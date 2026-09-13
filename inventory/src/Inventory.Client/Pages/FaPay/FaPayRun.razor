@@ -12,14 +12,14 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
             <h1><i class="bi bi-receipt"></i> @RunTitle</h1>
-            <div class="lead">فیش‌های پرسنل + پرداخت + ارسال</div>
+            <div class="lead">فیش‌های پرسنل + پرداخت + ارسال @if (run != null) { <span class="badge @FaPayUi.RunKindBadge(run.Kind)">@FaPayUi.RunKind(run.Kind)</span> }</div>
         </div>
         <div class="d-flex gap-2">
             @if (run != null && faManage)
             {
                 @if (run.Status == 0)
                 {
-                    <button class="btn btn-success" @onclick="Calc"><i class="bi bi-calculator"></i> محاسبه مجدد</button>
+                    <button class="btn btn-success" @onclick="Calc"><i class="bi bi-calculator"></i> @(run.Kind == 1 ? "محاسبه عیدی و سنوات" : "محاسبه مجدد")</button>
                     <button class="btn btn-dark" @onclick="Finalize"><i class="bi bi-lock"></i> نهایی‌سازی</button>
                 }
                 else
@@ -28,6 +28,11 @@
                     <button class="btn btn-info" @onclick="SendAll"><i class="bi bi-envelope"></i> ارسال گروهی فیش</button>
                 }
                 <button class="btn btn-outline-primary" @onclick="OpenBank"><i class="bi bi-bank"></i> فایل بانکی</button>
+                @if (run.Kind == 0)
+                {
+                    <button class="btn btn-outline-success" @onclick="OpenInsurance"><i class="bi bi-shield-check"></i> فایل بیمه</button>
+                }
+                <button class="btn btn-outline-secondary" @onclick="PrintAll"><i class="bi bi-printer"></i> چاپ گروهی فیش‌ها</button>
             }
             <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/fa-pay")'>بازگشت</button>
         </div>
@@ -175,6 +180,70 @@
     </ChildContent>
 </Modal>
 
+<Modal Visible="showIns" Title="فایل لیست بیمه تأمین اجتماعی" Size="modal-xl" OnClose="() => showIns = false">
+<ChildContent>
+    @if (insLoading)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+    }
+    else if (ins == null)
+    {
+        <div class="empty-state"><i class="bi bi-shield-check"></i><h5>اطلاعاتی بارگذاری نشد</h5></div>
+    }
+    else
+    {
+        <div class="alert alert-info small">
+            کد کارگاه: <b class="num">@ins.WorkshopCode</b> —
+            آماده: <b>@FaPayUi.Num(ins.ReadyCount)</b> نفر از @FaPayUi.Num(ins.TotalCount) نفر —
+            جمع دستمزد مشمول: <b>@FaPayUi.Money(ins.TotalInsurable)</b> ریال
+        </div>
+        <div class="row g-2 align-items-end mb-3">
+            <div class="col-md-4">
+                <label class="form-label">فرمت فایل</label>
+                <select class="form-select" @bind="insFormat">
+                    <option value="txt">متنی استاندارد (txt)</option>
+                    <option value="xlsx">اکسل برای کنترل (xlsx)</option>
+                </select>
+            </div>
+            <div class="col-md-8">
+                <button class="btn btn-success" disabled="@(ins.ReadyCount == 0 || insBusy)" @onclick="DownloadInsurance">
+                    @if (insBusy)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                    }
+                    <i class="bi bi-download"></i> دانلود فایل بیمه (@ins.ReadyCount نفر)
+                </button>
+                <div class="small text-muted mt-1">قبل از بارگذاری در سامانه بیمه، با نسخه اکسل کنترل شود.</div>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead class="table-light"><tr><th>پرسنل</th><th>کد ملی</th><th>شماره بیمه</th><th>کارکرد (روز)</th><th>مشمول (ریال)</th><th>وضعیت</th></tr></thead>
+                <tbody>
+                    @foreach (var r in ins.Rows)
+                    {
+                        <tr class="@(r.Problem == null ? "" : "table-warning")">
+                            <td><strong>@r.EmployeeName</strong><div class="small text-muted">@r.EmployeeCode</div></td>
+                            <td class="num">@r.NationalCode</td>
+                            <td class="num">@r.InsuranceNo</td>
+                            <td class="num">@FaPayUi.Num(r.WorkDays)</td>
+                            <td>@FaPayUi.Money(r.InsurableAmount)</td>
+                            <td>@(r.Problem == null ? "✓" : r.Problem)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="small text-muted mt-2">شماره بیمه را از ویرایش پرونده پرسنل (ویزارد کارگزینی) ثبت کنید.</div>
+    }
+</ChildContent>
+<Footer>
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <button class="btn btn-light" @onclick="() => showIns = false">بستن</button>
+    </div>
+</Footer>
+</Modal>
+
 @code {
     [Parameter] public int Id { get; set; }
 
@@ -184,7 +253,7 @@
     private FaPayRunDto? run;
     private List<FaPaySlipDto> slips = new();
 
-    private string RunTitle => run == null ? "دوره حقوق" : $"دوره {FaPayUi.YearMonth(run.Year, run.Month)}";
+    private string RunTitle => run == null ? "دوره حقوق" : $"دوره {FaPayUi.RunName(run)}";
     private double TotalGross => slips.Sum(s => s.GrossEarnings);
     private double TotalNet => slips.Sum(s => s.NetPay);
 
@@ -210,8 +279,41 @@
 
     private async Task Calc()
     {
-        try { var n = await Svc.CalculateRunAsync(Id); Toast.Success($"محاسبه انجام شد: {Fa.Digits(n.ToString())} فیش."); await Reload(); }
+        try
+        {
+            var n = run?.Kind == 1 ? await Svc.CalculateYearEndAsync(Id) : await Svc.CalculateRunAsync(Id);
+            Toast.Success($"محاسبه انجام شد: {Fa.Digits(n.ToString())} فیش.");
+            await Reload();
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task PrintAll()
+    {
+        try { await Svc.DownloadRunSlipsPdfAsync(Id); Toast.Success("فایل چاپ گروهی دانلود شد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private bool showIns, insLoading, insBusy;
+    private FaPayInsuranceFileCheckDto? ins;
+    private string insFormat = "txt";
+
+    private async Task OpenInsurance()
+    {
+        showIns = true;
+        insLoading = true;
+        ins = null;
+        try { ins = await Svc.InsuranceCheckAsync(Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); showIns = false; }
+        finally { insLoading = false; }
+    }
+
+    private async Task DownloadInsurance()
+    {
+        insBusy = true;
+        try { await Svc.DownloadInsuranceFileAsync(Id, insFormat); Toast.Success("فایل بیمه دانلود شد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { insBusy = false; }
     }
 
     private async Task Finalize()

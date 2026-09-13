@@ -78,6 +78,7 @@ public class FaPayRunDto
     public int Year { get; set; }
     public int Month { get; set; }
     public int Status { get; set; }
+    public int Kind { get; set; }
     public int SlipsCount { get; set; }
     public double TotalNet { get; set; }
     public string? Note { get; set; }
@@ -182,6 +183,7 @@ public class FaPayRunSaveDto
 {
     public int Year { get; set; }
     public int Month { get; set; }
+    public int Kind { get; set; }
     public string? Note { get; set; }
 }
 

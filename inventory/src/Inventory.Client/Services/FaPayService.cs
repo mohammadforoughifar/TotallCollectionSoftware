@@ -43,6 +43,34 @@ public interface IFaPayClientService
     Task<FaPayInsuranceReportDto> InsuranceReportAsync(int year, int month);
     Task<FaPayTaxReportDto> TaxReportAsync(int year, int month);
     Task<FaPayUnitCostReportDto> UnitCostReportAsync(int year, int month);
+
+    Task DownloadRunSlipsPdfAsync(int runId);
+
+    Task<FaPayExtraSettingsDto> GetExtraSettingsAsync();
+    Task<FaPayExtraSettingsDto> SaveExtraSettingsAsync(FaPayExtraSettingsSaveDto dto);
+
+    Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId = null, int? status = null);
+    Task<FaPayLoanDto> GetLoanAsync(int id);
+    Task<FaPayLoanDto> CreateLoanAsync(FaPayLoanSaveDto dto);
+    Task CancelLoanAsync(int id);
+    Task DeleteLoanAsync(int id);
+
+    Task<List<FaPayArrearDto>> ListArrearsAsync(int? employeeId = null, int? status = null);
+    Task<FaPayArrearDto> SaveArrearAsync(int? id, FaPayArrearSaveDto dto);
+    Task DeleteArrearAsync(int id);
+    Task<int> CalculateYearEndAsync(int id);
+
+    Task<FaPaySettlementDto> PreviewSettlementAsync(int employeeId, DateTime leaveDate, int reason, double otherEarnings, double otherDeductions);
+    Task<List<FaPaySettlementDto>> ListSettlementsAsync(int? employeeId = null, int? status = null);
+    Task<FaPaySettlementDto> GetSettlementAsync(int id);
+    Task<FaPaySettlementDto> SaveSettlementAsync(int? id, FaPaySettlementSaveDto dto);
+    Task<FaPaySettlementDto> FinalizeSettlementAsync(int id);
+    Task DeleteSettlementAsync(int id);
+    Task DownloadSettlementPdfAsync(int id);
+
+    Task<FaPayInsuranceFileCheckDto> InsuranceCheckAsync(int runId);
+    Task DownloadInsuranceFileAsync(int runId, string format);
+    Task<FaPayCompareDto> CompareRunsAsync(int runAId, int runBId);
 }
 
 public class FaPayService : IFaPayClientService
@@ -158,6 +186,86 @@ public class FaPayService : IFaPayClientService
 
     public Task<FaPayUnitCostReportDto> UnitCostReportAsync(int year, int month)
         => _api.GetAsync<FaPayUnitCostReportDto>($"{Root}/reports/unit-cost?year={year}&month={month}");
+
+    public async Task DownloadRunSlipsPdfAsync(int runId)
+    {
+        var f = await _api.GetFileAsync($"{Root}/runs/{runId}/slips-pdf");
+        await _js.InvokeVoidAsync("saveAsFile", f.FileName, Convert.ToBase64String(f.Data));
+    }
+
+    public Task<FaPayExtraSettingsDto> GetExtraSettingsAsync()
+        => _api.GetAsync<FaPayExtraSettingsDto>($"{Root}/extra-settings");
+
+    public Task<FaPayExtraSettingsDto> SaveExtraSettingsAsync(FaPayExtraSettingsSaveDto dto)
+        => _api.PutAsync<FaPayExtraSettingsDto>($"{Root}/extra-settings", dto);
+
+    public Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId = null, int? status = null)
+        => _api.GetAsync<List<FaPayLoanDto>>($"{Root}/loans?employeeId={employeeId}&status={status}");
+
+    public Task<FaPayLoanDto> GetLoanAsync(int id)
+        => _api.GetAsync<FaPayLoanDto>($"{Root}/loans/{id}");
+
+    public Task<FaPayLoanDto> CreateLoanAsync(FaPayLoanSaveDto dto)
+        => _api.PostAsync<FaPayLoanDto>($"{Root}/loans", dto);
+
+    public Task CancelLoanAsync(int id)
+        => _api.PostAsync<bool>($"{Root}/loans/{id}/cancel");
+
+    public Task DeleteLoanAsync(int id)
+        => _api.DeleteAsync($"{Root}/loans/{id}");
+
+    public Task<List<FaPayArrearDto>> ListArrearsAsync(int? employeeId = null, int? status = null)
+        => _api.GetAsync<List<FaPayArrearDto>>($"{Root}/arrears?employeeId={employeeId}&status={status}");
+
+    public Task<FaPayArrearDto> SaveArrearAsync(int? id, FaPayArrearSaveDto dto)
+        => id == null ? _api.PostAsync<FaPayArrearDto>($"{Root}/arrears", dto)
+                      : _api.PutAsync<FaPayArrearDto>($"{Root}/arrears/{id}", dto);
+
+    public Task DeleteArrearAsync(int id)
+        => _api.DeleteAsync($"{Root}/arrears/{id}");
+
+    public async Task<int> CalculateYearEndAsync(int id)
+    {
+        var r = await _api.PostAsync<CalcResult>($"{Root}/runs/{id}/calculate-yearend");
+        return r?.Count ?? 0;
+    }
+
+    public Task<FaPaySettlementDto> PreviewSettlementAsync(int employeeId, DateTime leaveDate, int reason, double otherEarnings, double otherDeductions)
+        => _api.GetAsync<FaPaySettlementDto>($"{Root}/settlements/preview?employeeId={employeeId}&leaveDate={leaveDate:yyyy-MM-dd}&reason={reason}&otherEarnings={otherEarnings}&otherDeductions={otherDeductions}");
+
+    public Task<List<FaPaySettlementDto>> ListSettlementsAsync(int? employeeId = null, int? status = null)
+        => _api.GetAsync<List<FaPaySettlementDto>>($"{Root}/settlements?employeeId={employeeId}&status={status}");
+
+    public Task<FaPaySettlementDto> GetSettlementAsync(int id)
+        => _api.GetAsync<FaPaySettlementDto>($"{Root}/settlements/{id}");
+
+    public Task<FaPaySettlementDto> SaveSettlementAsync(int? id, FaPaySettlementSaveDto dto)
+        => id == null ? _api.PostAsync<FaPaySettlementDto>($"{Root}/settlements", dto)
+                      : _api.PutAsync<FaPaySettlementDto>($"{Root}/settlements/{id}", dto);
+
+    public Task<FaPaySettlementDto> FinalizeSettlementAsync(int id)
+        => _api.PostAsync<FaPaySettlementDto>($"{Root}/settlements/{id}/finalize");
+
+    public Task DeleteSettlementAsync(int id)
+        => _api.DeleteAsync($"{Root}/settlements/{id}");
+
+    public async Task DownloadSettlementPdfAsync(int id)
+    {
+        var f = await _api.GetFileAsync($"{Root}/settlements/{id}/pdf");
+        await _js.InvokeVoidAsync("saveAsFile", f.FileName, Convert.ToBase64String(f.Data));
+    }
+
+    public Task<FaPayInsuranceFileCheckDto> InsuranceCheckAsync(int runId)
+        => _api.GetAsync<FaPayInsuranceFileCheckDto>($"{Root}/runs/{runId}/insurance-check");
+
+    public async Task DownloadInsuranceFileAsync(int runId, string format)
+    {
+        var f = await _api.GetFileAsync($"{Root}/runs/{runId}/insurance-file?format={format}");
+        await _js.InvokeVoidAsync("saveAsFile", f.FileName, Convert.ToBase64String(f.Data));
+    }
+
+    public Task<FaPayCompareDto> CompareRunsAsync(int runAId, int runBId)
+        => _api.GetAsync<FaPayCompareDto>($"{Root}/runs/compare?runAId={runAId}&runBId={runBId}");
 
     private sealed class CalcResult { public int Count { get; set; } }
     private sealed class MailResult { public int MailId { get; set; } }
