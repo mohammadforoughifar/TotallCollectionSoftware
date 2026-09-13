@@ -110,7 +110,7 @@
                 if (cf.Count > 0)
                 {
                     var first = cf.Take(3).Select(x => x.SessionDate.ToFa() + " (" + KindName(x.Kind) + ")");
-                    var msg = $"هشدار تداخل آموزشی برای {e.EmployeeName} ({cf.Count} مورد):\n" + string.Join("\n"، ", first)
+                    var msg = $"هشدار تداخل آموزشی برای {e.EmployeeName} ({cf.Count} مورد):\n" + string.Join("\n", first)
                         + "\n\nبا این وجود تأیید شود؟";
                     if (!await JS.InvokeAsync<bool>("confirm", msg)) return;
                 }

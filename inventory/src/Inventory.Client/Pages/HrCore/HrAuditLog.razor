@@ -112,7 +112,7 @@ else
             <dt class="col-3">ماژول/عملیات</dt><dd class="col-9">@HrCoreUi.HrModule(detail.Module) / @detail.Action (@detail.HttpMethod)</dd>
             <dt class="col-3">مسیر</dt><dd class="col-9 num" dir="ltr">@detail.Path</dd>
             <dt class="col-3">IP</dt><dd class="col-9 num" dir="ltr">@(detail.Ip ?? "—")</dd>
-            <dt class="col-3">نتیجه/مدت</dt><dd class="col-9 num">@detail.StatusCode — @Detail.DurationMs میلی‌ثانیه</dd>
+            <dt class="col-3">نتیجه/مدت</dt><dd class="col-9 num">@detail.StatusCode — @detail.DurationMs میلی‌ثانیه</dd>
         </dl>
         @if (!string.IsNullOrWhiteSpace(detail.Payload))
         {
