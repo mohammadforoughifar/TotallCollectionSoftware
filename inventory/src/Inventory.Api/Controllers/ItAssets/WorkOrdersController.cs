@@ -4,6 +4,8 @@ using Inventory.Api.Hubs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
+using Inventory.Api.Services.ItAssets;
+using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Controllers;
@@ -40,7 +42,7 @@ public class WorkOrdersController : ControllerBase
             if (legacy == "Operator") return action is "Create" or "View";
             return false;
         }
-        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == "WorkOrders" && p.Action == action);
@@ -56,7 +58,8 @@ public class WorkOrdersController : ControllerBase
         userId = MyUserId,
         canView = await HasAsync("View"),
         canCreate = await HasAsync("Create"),
-        canAssignOthers = await HasAsync("AssignOthers")
+        canAssignOthers = await HasAsync("AssignOthers"),
+        canDelete = await HasAsync("Delete")
     });
 
     /// <summary>افرادی که کاربر جاری می‌تواند به آن‌ها دستور کار بدهد (بند ۶).</summary>
@@ -168,6 +171,7 @@ public class WorkOrdersController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateDto dto)
     {
         if (!await HasAsync("Create")) return Forbid();
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "عنوان دستور کار را وارد کنید." });
         if (dto.AssigneeUserIds.Count == 0)
@@ -236,77 +240,56 @@ public class WorkOrdersController : ControllerBase
             dto.SourceId = null;
         }
 
-        var wo = new WorkOrder
-        {
-            Title = dto.Title.Trim(),
-            Description = dto.Description ?? "",
-            OwnerUserId = MyUserId,
-            OwnerName = await MyDisplayNameAsync(),
-            DueAt = dto.DueAt,
-            Status = "Open",
-            Priority = dto.Priority,
-            Recurrence = dto.Recurrence,
-            SourceModule = dto.SourceModule,
-            SourceId = dto.SourceId,
-            Tags = NormalizeTags(dto.Tags),
-            ParentOrderId = parent?.Id
-        };
-        _db.WorkOrders.Add(wo);
-        await _db.SaveChangesAsync();
-
-        var pc = new System.Globalization.PersianCalendar();
-        var py = pc.GetYear(DateTime.Now);
-        var prefix = $"WO/{py}/";
-        wo.Number = $"{prefix}{await _db.WorkOrders.CountAsync(w => w.Number.StartsWith(prefix)) + 1}";
-
-        var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id)).ToListAsync();
-
-        // بند ۲: همه گیرندگان باید نام و نام خانوادگی داشته باشند
+        var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id) && u.IsActive).ToListAsync();
+        if (users.Count != dto.AssigneeUserIds.Distinct().Count())
+            return BadRequest(new { message = "برخی گیرندگان وجود ندارند یا غیرفعال‌اند." });
         var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
             .Select(u => u.Username).ToList();
         if (noName.Count > 0)
-        {
-            _db.WorkOrders.Remove(wo);
-            await _db.SaveChangesAsync();
             return BadRequest(new { message = $"این کاربران نام و نام خانوادگی ندارند: {string.Join("، ", noName)} — از بخش کاربران تکمیل کنید." });
-        }
+        if (parent != null && WorkOrderSchedule.Dates(dto.DueAt, dto.Recurrence).Last() > parent.DueAt)
+            return BadRequest(new { message = "پایان سری تکرار از مهلت دستور والد عبور می‌کند؛ دستور مستقل بسازید یا مهلت والد را اصلاح کنید." });
 
-        foreach (var uid in dto.AssigneeUserIds.Distinct())
+        var wo = new WorkOrder
         {
-            var u = users.FirstOrDefault(x => x.Id == uid);
-            if (u == null) continue;
-            _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = u.Id, Name = $"{u.FirstName} {u.LastName}".Trim() });
-        }
-
-        // چک‌لیست زیرکار (اختیاری)
+            Title = dto.Title.Trim(), Description = dto.Description ?? "",
+            OwnerUserId = MyUserId, OwnerName = await MyDisplayNameAsync(), DueAt = dto.DueAt,
+            Priority = dto.Priority, Recurrence = dto.Recurrence, SourceModule = dto.SourceModule,
+            SourceId = dto.SourceId, Tags = NormalizeTags(dto.Tags), ParentOrderId = parent?.Id
+        };
+        _db.WorkOrders.Add(wo);
+        await _db.SaveChangesAsync();
+        // The database identity prevents number reuse after a deletion and count-based races.
+        wo.Number = $"WO/{new System.Globalization.PersianCalendar().GetYear(wo.CreatedAt)}/{wo.Id}";
+        foreach (var u in users)
+            _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = u.Id, Name = UserDisplay.Name(u) });
         var clOrder = 0;
         foreach (var item in dto.ChecklistItems.Where(t => !string.IsNullOrWhiteSpace(t)).Take(50))
             _db.WorkOrderChecklistItems.Add(new WorkOrderChecklistItem
             { OrderId = wo.Id, Text = item.Trim(), SortOrder = clOrder++ });
-
-        var actor = await MyDisplayNameAsync();
-        Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {wo.DueAt:yyyy/MM/dd HH:mm} — گیرندگان: {string.Join("، ", users.Select(u => UserDisplay.Name(u)))}");
-
-        // ارجاع زنجیره‌ای — ثبت در تاریخچهٔ هر دو + اعلان به دستوردهندهٔ والد
+        Log(wo.Id, "Created", $"دستور کار {wo.Number} «{wo.Title}» — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
         if (parent != null)
         {
             Log(wo.Id, "Chained", $"زیر-دستورِ {parent.Number} «{parent.Title}»");
             Log(parent.Id, "Chained", $"زیر-دستور {wo.Number} «{wo.Title}» توسط {wo.OwnerName} ساخته شد");
-            if (parent.OwnerUserId != MyUserId)
-                await _notify.SendAsync(parent.OwnerUserId, "ارجاع زنجیره‌ای 🔗",
-                    $"{wo.OwnerName} بخشی از {parent.Number} را به‌صورت زیر-دستور {wo.Number} ارجاع داد.",
-                    wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
         }
         await _db.SaveChangesAsync();
+        var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
+        await tx.CommitAsync();
 
+        // One summary per recipient, not dozens of future-occurrence notifications.
+        if (parent != null && parent.OwnerUserId != MyUserId)
+            await _notify.SendAsync(parent.OwnerUserId, "ارجاع زنجیره‌ای 🔗",
+                $"{wo.OwnerName} بخشی از {parent.Number} را به‌صورت زیر-دستور {wo.Number} ارجاع داد.",
+                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
         var prTag = wo.Priority >= WorkOrderPriority.High ? $" — اولویت: {WorkOrderPriority.ToFa(wo.Priority)}" : "";
-        foreach (var uid in dto.AssigneeUserIds.Distinct().Where(id => id != MyUserId))
+        var scheduleTag = added > 0 ? $" — {added + 1} نوبت در تقویم شما ثبت شد" : "";
+        foreach (var uid in users.Select(u => u.Id).Where(id => id != MyUserId))
             await _notify.SendAsync(uid, wo.Priority == WorkOrderPriority.Urgent ? "دستور کار فوری 🔴" : "دستور کار جدید 📋",
-                $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}{prTag}",
-                actor, "دستور کار", $"/work-orders?open={wo.Id}");
+                $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}{prTag}{scheduleTag}",
+                wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
         await _notify.BroadcastChangedAsync("workorders");
-
-        return Ok(new { id = wo.Id, number = wo.Number });
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1 });
     }
 
     /// <summary>ویرایش دستور کار باز توسط دستوردهنده — عنوان، شرح، مهلت و گیرندگان.</summary>
@@ -314,7 +297,8 @@ public class WorkOrdersController : ControllerBase
     public async Task<IActionResult> Update(int id, [FromBody] CreateDto dto)
     {
         if (!await HasAsync("Create")) return Forbid();
-        var wo = await _db.WorkOrders.FindAsync(id);
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed")
@@ -329,6 +313,16 @@ public class WorkOrdersController : ControllerBase
             return BadRequest(new { message = "اولویت انتخابی نامعتبر است." });
         if (!WorkOrderRecurrence.IsValid(dto.Recurrence))
             return BadRequest(new { message = "الگوی تکرار نامعتبر است." });
+
+        if (wo.RecurrenceSeriesId != null && dto.Recurrence != wo.Recurrence)
+            return BadRequest(new { message = "الگوی سری ثبت‌شده قابل تغییر از ویرایش یک نوبت نیست؛ ویرایش فقط روی همین نوبت اعمال می‌شود." });
+        if (wo.ParentOrderId.HasValue)
+        {
+            var parent = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == wo.ParentOrderId);
+            var last = wo.RecurrenceSeriesId == null ? WorkOrderSchedule.Dates(dto.DueAt, dto.Recurrence).Last() : dto.DueAt;
+            if (parent == null || last > parent.DueAt)
+                return BadRequest(new { message = "مهلت نوبت یا سری از مهلت دستور والد عبور می‌کند." });
+        }
 
         var others = dto.AssigneeUserIds.Where(x => x != MyUserId).Distinct().ToList();
         if (others.Count > 0)
@@ -345,6 +339,8 @@ public class WorkOrdersController : ControllerBase
         }
 
         var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id)).ToListAsync();
+        if (users.Count != dto.AssigneeUserIds.Distinct().Count())
+            return BadRequest(new { message = "برخی گیرندگان وجود ندارند." });
         var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
             .Select(u => u.Username).ToList();
         if (noName.Count > 0)
@@ -387,8 +383,10 @@ public class WorkOrdersController : ControllerBase
 
         Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
         await _db.SaveChangesAsync();
+        var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
+        await tx.CommitAsync();
         await _notify.BroadcastChangedAsync("workorders");
-        return Ok(new { id = wo.Id, number = wo.Number });
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1 });
     }
 
     private static string ToFa(DateTime d)
@@ -475,7 +473,7 @@ public class WorkOrdersController : ControllerBase
         {
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
-            w.Priority, w.Recurrence,
+            w.Priority, w.Recurrence, w.RecurrenceSeriesId, w.RecurrenceScheduledAt,
             w.SourceModule, w.SourceId,
             Tags = TagsToList(w.Tags),
             ChecklistTotal = clStats.FirstOrDefault(c => c.Key == w.Id)?.Total ?? 0,
@@ -538,7 +536,7 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Detail(int id)
     {
-        if (!await HasAsync("View")) return Forbid();
+        if (!await HasAsync("View") && !await CanSeeOrderAsync(id)) return Forbid();
         var list = await BuildList(_db.WorkOrders.Where(w => w.Id == id));
         return list.Count == 0 ? NotFound() : Ok(list[0]);
     }
@@ -585,6 +583,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/seen")]
     public async Task<IActionResult> Seen(int id)
     {
+        if (!await _db.WorkOrders.AnyAsync(w => w.Id == id)) return NotFound();
         var asg = await _db.WorkOrderAssignees.FirstOrDefaultAsync(a => a.OrderId == id && a.UserId == MyUserId);
         if (asg != null && asg.SeenAt == null)
         {
@@ -601,7 +600,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/reply")]
     public async Task<IActionResult> Reply(int id, [FromBody] ReplyDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.Status == "Closed")
             return BadRequest(new { message = "این دستور کار بسته شده و قابل تغییر نیست." }); // بند ۱۰
@@ -632,7 +631,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/assignees/{asgId:int}/decide")]
     public async Task<IActionResult> Decide(int id, int asgId, [FromBody] DecideDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
@@ -668,7 +667,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/extend")]
     public async Task<IActionResult> Extend(int id, [FromBody] ExtendDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
@@ -699,7 +698,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/close")]
     public async Task<IActionResult> Close(int id, [FromBody] CloseDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed") return BadRequest(new { message = "قبلاً بسته شده است." });
@@ -723,89 +722,28 @@ public class WorkOrdersController : ControllerBase
             await _notify.SendAsync(a.UserId, "دستور کار بسته شد 🔒",
                 $"{wo.Number} — «{wo.Title}»", MyUsername, "دستور کار", $"/work-orders?open={id}");
 
-        // ---------- تکرارشونده: بعد از بستن، نوبت بعدی خودکار ساخته می‌شود ----------
-        int? nextId = null;
-        if (wo.Recurrence != WorkOrderRecurrence.None)
-        {
-            nextId = await CreateNextOccurrenceAsync(wo, asgs);
-            if (nextId != null)
-                Log(id, "Recurred", $"نوبت بعدی ({WorkOrderRecurrence.ToFa(wo.Recurrence)}) به‌صورت خودکار ساخته شد.");
-            await _db.SaveChangesAsync();
-        }
-
         await _notify.BroadcastChangedAsync("workorders");
-        return Ok(new { nextId });
+        return Ok();
     }
 
-    /// <summary>
-    /// ساخت نوبت بعدیِ دستور تکرارشونده — کپی عنوان/شرح/اولویت/گیرندگان/چک‌لیست (تیک‌نخورده)
-    /// با مهلت جابه‌جاشده طبق الگو. اگر مهلت محاسبه‌شده در گذشته بود، از الان به جلو می‌غلتد.
-    /// </summary>
-    private async Task<int?> CreateNextOccurrenceAsync(WorkOrder prev, List<WorkOrderAssignee> prevAsgs)
+    /// <summary>حذف منطقی یک نوبت؛ نه کل سری. دسترسی مستقل در نقش‌ها.</summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id)
     {
-        var nextDue = prev.Recurrence switch
-        {
-            WorkOrderRecurrence.Daily => prev.DueAt.AddDays(1),
-            WorkOrderRecurrence.Weekly => prev.DueAt.AddDays(7),
-            WorkOrderRecurrence.Monthly => prev.DueAt.AddMonths(1),
-            _ => prev.DueAt
-        };
-        while (nextDue <= DateTime.Now)
-            nextDue = prev.Recurrence switch
-            {
-                WorkOrderRecurrence.Daily => nextDue.AddDays(1),
-                WorkOrderRecurrence.Weekly => nextDue.AddDays(7),
-                WorkOrderRecurrence.Monthly => nextDue.AddMonths(1),
-                _ => nextDue.AddDays(1)
-            };
-
-        var next = new WorkOrder
-        {
-            Title = prev.Title,
-            Description = prev.Description,
-            OwnerUserId = prev.OwnerUserId,
-            OwnerName = prev.OwnerName,
-            DueAt = nextDue,
-            Status = "Open",
-            Priority = prev.Priority,
-            Recurrence = prev.Recurrence,
-            RecurrenceParentId = prev.Id,
-            SourceModule = prev.SourceModule,
-            SourceId = prev.SourceId,
-            Tags = prev.Tags
-        };
-        _db.WorkOrders.Add(next);
+        if (!await HasAsync("Delete")) return Forbid();
+        if (!await CanSeeOrderAsync(id)) return Forbid();
+        await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
+        if (wo == null) return NotFound();
+        if (await _db.WorkOrders.AnyAsync(w => w.ParentOrderId == id))
+            return BadRequest(new { message = "این دستور زیر‌دستور دارد؛ ابتدا زیر‌دستورها را بررسی و حذف کنید. حذف آبشاری انجام نمی‌شود." });
+        wo.DeletedAt = DateTime.Now;
+        wo.DeletedByUserId = MyUserId;
+        Log(id, "Deleted", $"حذف نوبت {wo.Number} توسط {await MyDisplayNameAsync()} (شناسه کاربر {MyUserId})؛ سوابق محفوظ است.");
         await _db.SaveChangesAsync();
-
-        var pc = new System.Globalization.PersianCalendar();
-        var prefix = $"WO/{pc.GetYear(DateTime.Now)}/";
-        next.Number = $"{prefix}{await _db.WorkOrders.CountAsync(w => w.Number.StartsWith(prefix)) + 1}";
-
-        foreach (var a in prevAsgs)
-            _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = next.Id, UserId = a.UserId, Name = a.Name });
-
-        // چک‌لیست: همان گام‌ها ولی همه تیک‌نخورده
-        var clItems = await _db.WorkOrderChecklistItems.Where(c => c.OrderId == prev.Id)
-            .OrderBy(c => c.SortOrder).ToListAsync();
-        foreach (var c in clItems)
-            _db.WorkOrderChecklistItems.Add(new WorkOrderChecklistItem
-            { OrderId = next.Id, Text = c.Text, SortOrder = c.SortOrder });
-
-        _db.WorkOrderLogs.Add(new WorkOrderLog
-        {
-            OrderId = next.Id,
-            ActorName = "سیستم",
-            Action = "Created",
-            Text = $"ایجاد خودکار نوبت {WorkOrderRecurrence.ToFa(prev.Recurrence)} — ادامه {prev.Number} — مهلت: {ToFa(nextDue)}"
-        });
-        await _db.SaveChangesAsync();
-
-        foreach (var uid in prevAsgs.Select(a => a.UserId).Distinct().Where(u => u != prev.OwnerUserId))
-            await _notify.SendAsync(uid, "دستور کار تکرارشونده 🔁",
-                $"{next.Number} — «{next.Title}» — مهلت: {ToFa(nextDue)}",
-                prev.OwnerName, "دستور کار", $"/work-orders?open={next.Id}");
-
-        return next.Id;
+        await tx.CommitAsync();
+        await _notify.BroadcastChangedAsync("workorders");
+        return NoContent();
     }
 
     // ================== چک‌لیست زیرکار ==================
@@ -827,7 +765,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/checklist")]
     public async Task<IActionResult> ChecklistAdd(int id, [FromBody] ChecklistAddDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
@@ -850,7 +788,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/checklist/{itemId:int}/toggle")]
     public async Task<IActionResult> ChecklistToggle(int id, int itemId, [FromBody] ChecklistToggleDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
 
@@ -886,7 +824,7 @@ public class WorkOrdersController : ControllerBase
     [HttpDelete("{id:int}/checklist/{itemId:int}")]
     public async Task<IActionResult> ChecklistDelete(int id, int itemId)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed") return BadRequest(new { message = "دستور کار بسته شده است." });
@@ -902,9 +840,9 @@ public class WorkOrdersController : ControllerBase
     /// <summary>آیا کاربر جاری حق دیدن این دستور را دارد؟ (دستوردهنده یا گیرنده یا مجوز View)</summary>
     private async Task<bool> CanSeeOrderAsync(int id)
     {
-        if (await HasAsync("View")) return true;
         var wo = await _db.WorkOrders.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return false;
+        if (await HasAsync("View")) return true;
         return wo.OwnerUserId == MyUserId
             || await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == id && a.UserId == MyUserId);
     }
@@ -1156,7 +1094,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/priority")]
     public async Task<IActionResult> SetPriority(int id, [FromBody] PriorityDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status != "Open") return BadRequest(new { message = "دستور بسته شده است؛ اولویت قابل تغییر نیست." });
@@ -1315,7 +1253,7 @@ public class WorkOrdersController : ControllerBase
     [HttpPost("{id:int}/comments")]
     public async Task<IActionResult> AddComment(int id, [FromBody] CommentDto dto)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound();
         if (wo.Status != "Open") return BadRequest(new { message = "دستور بسته شده است؛ امکان ثبت کامنت نیست." });
 
@@ -1366,7 +1304,7 @@ public class WorkOrdersController : ControllerBase
         if (cm == null || cm.IsDeleted) return NotFound();
         if (cm.AuthorUserId != MyUserId) return Forbid();
 
-        var wo = await _db.WorkOrders.FindAsync(cm.OrderId);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == cm.OrderId);
         if (wo == null || wo.Status != "Open") return BadRequest(new { message = "دستور بسته شده است." });
 
         var text = (dto.Text ?? "").Trim();
@@ -1387,7 +1325,7 @@ public class WorkOrdersController : ControllerBase
         var cm = await _db.WorkOrderComments.FindAsync(commentId);
         if (cm == null || cm.IsDeleted) return NotFound();
 
-        var wo = await _db.WorkOrders.FindAsync(cm.OrderId);
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == cm.OrderId);
         if (wo == null) return NotFound();
         if (cm.AuthorUserId != MyUserId && wo.OwnerUserId != MyUserId) return Forbid();
 
@@ -1498,14 +1436,18 @@ public class WorkOrdersController : ControllerBase
 
     // ================== تاریخچه (بند ۱۷ و ۱۸) ==================
     [HttpGet("{id:int}/logs")]
-    public async Task<IActionResult> Logs(int id) =>
-        Ok(await _db.WorkOrderLogs.Where(l => l.OrderId == id).OrderBy(l => l.Id)
+    public async Task<IActionResult> Logs(int id)
+    {
+        if (!await CanSeeOrderAsync(id)) return Forbid();
+        return Ok(await _db.WorkOrderLogs.Where(l => l.OrderId == id).OrderBy(l => l.Id)
             .Select(l => new { l.Id, l.ActorName, l.Action, l.Text, l.CreatedAt }).ToListAsync());
+    }
 
     // ================== پیوست‌ها (بند ۴) ==================
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id)
     {
+        if (!await CanSeeOrderAsync(id)) return Forbid();
         var rows = await _db.WorkOrderAttachments.Where(a => a.OrderId == id)
             .Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt, a.FilePath, a.Data })
             .ToListAsync();
@@ -1517,7 +1459,8 @@ public class WorkOrdersController : ControllerBase
     [RequestSizeLimit(15 * 1024 * 1024)]
     public async Task<IActionResult> Upload(int id, IFormFile file)
     {
-        var wo = await _db.WorkOrders.FindAsync(id);
+        if (!await CanSeeOrderAsync(id)) return Forbid();
+        var wo = await _db.WorkOrders.FirstOrDefaultAsync(w => w.Id == id);
         if (wo == null) return NotFound(new { message = "دستور کار پیدا نشد." });
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
         if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
@@ -1545,7 +1488,7 @@ public class WorkOrdersController : ControllerBase
     public async Task<IActionResult> Download(int attId)
     {
         var att = await _db.WorkOrderAttachments.FindAsync(attId);
-        if (att == null) return NotFound();
+        if (att == null || !await _db.WorkOrders.AnyAsync(w => w.Id == att.OrderId)) return NotFound();
         var bytes = _store.ReadBytes(att.FilePath) ?? (att.Data is { Length: > 0 } ? att.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
         return File(bytes, att.ContentType, att.FileName);

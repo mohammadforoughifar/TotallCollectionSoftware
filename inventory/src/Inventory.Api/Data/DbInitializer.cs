@@ -58,6 +58,9 @@ public static class DbInitializer
                     await WorkOrderSchemaV1.EnsureAsync(db);
                 }
 
+                await WorkOrderSchemaV2.EnsureAsync(db);
+                await new Inventory.Api.Services.ItAssets.WorkOrderSchedulingService(db).UpgradeLegacyAsync(DateTime.Now);
+
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها
                 await OrganizationSchemaV1.EnsureAsync(db);
 

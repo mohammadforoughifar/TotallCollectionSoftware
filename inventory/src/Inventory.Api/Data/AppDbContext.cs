@@ -708,6 +708,9 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.SetNull);
 
         // ---------- اتصال مبدأ دستور کار (اتصال عمومی بخش‌ها به دستور کار) ----------
+        mb.Entity<WorkOrder>().HasQueryFilter(w => w.DeletedAt == null);
+        mb.Entity<WorkOrder>().HasIndex(w => new { w.RecurrenceSeriesId, w.RecurrenceScheduledAt })
+            .IsUnique().HasFilter("[RecurrenceSeriesId] IS NOT NULL AND [RecurrenceScheduledAt] IS NOT NULL");
         mb.Entity<WorkOrder>().HasIndex(w => new { w.SourceModule, w.SourceId });
 
         // ---------- دستور کار: اولویت و یادآور مهلت ----------
