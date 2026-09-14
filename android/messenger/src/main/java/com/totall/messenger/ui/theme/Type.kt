@@ -11,8 +11,8 @@ import com.totall.messenger.R
 /*
  * فونت فارسی وزیرمتن — فایل‌ها را در res/font بگذارید:
  *   vazirmatn_regular.ttf / vazirmatn_medium.ttf / vazirmatn_bold.ttf
- * (همان فونت‌های پوشه erp-preview/fonts در ریپو، نسخه woff2 را به ttf تبدیل کنید
- *  یا از مخزن وزیرمتن نسخه ttf را دانلود کنید)
+ * نسخهٔ TTF را از مخزن وزیرمتن دانلود کنید.
+ * نسخهٔ وب فونت‌ها در inventory/src/Inventory.Client/wwwroot/fonts موجود است.
  */
 val Vazirmatn = FontFamily(
     Font(R.font.vazirmatn_regular, FontWeight.Normal),

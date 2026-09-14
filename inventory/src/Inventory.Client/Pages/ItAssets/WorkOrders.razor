@@ -13,14 +13,13 @@
 
 <PageTitle>دستور کار</PageTitle>
 
-<div class="page-head">
+<div class="page-head wo-page-head">
     <div>
         <h1>دستور کار و وظایف</h1>
-        <p class="lead">ارجاع وظایف، تعیین مهلت اقدام، گردش تایید و پیگیری وضعیت اجرا</p>
     </div>
     @if (access.CanCreate)
     {
-        <button class="btn btn-primary me-auto" @onclick="OpenNew">
+        <button class="btn btn-primary wo-page-action" @onclick="OpenNew">
             <i class="bi bi-plus-lg"></i> دستور کار جدید
         </button>
     }
@@ -90,7 +89,7 @@
         {
             <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
         }
-        <div class="d-flex gap-1 ms-auto">
+        <div class="d-flex gap-1 wo-filter-actions">
             <button class="btn btn-sm btn-outline-success" title="خروجی اکسل (با فیلترهای جاری)" disabled="@exporting" @onclick='() => ExportList("xlsx")'>
                 @if (exporting) { <span class="spinner-border spinner-border-sm"></span> }
                 else { <i class="bi bi-file-earmark-excel"></i> }
@@ -116,7 +115,7 @@ else if (tab == "kanban")
             <button type="button" class="wo-pr-btn @(kanbanScope == "mine" ? "active" : "")" @onclick='() => kanbanScope = "mine"'>دستورهای من</button>
             <button type="button" class="wo-pr-btn @(kanbanScope == "assigned" ? "active" : "")" @onclick='() => kanbanScope = "assigned"'>محول به من</button>
         </div>
-        <span class="fs-9 text-muted"><i class="bi bi-info-circle"></i> کارت‌ها را بین ستون‌ها بکشید تا اولویت عوض شود (فقط دستورهای خودتان).</span>
+
     </div>
     <div class="wo-kanban">
         @foreach (var (pv, pfa) in PriorityOpts.Reverse())
@@ -160,6 +159,7 @@ else if (tab == "kanban")
                                 <span>@(kanbanScope == "mine" ? string.Join("، ", w2.Assignees.Select(a => a.Name)) : w2.OwnerName)</span>
                                 <span class="ms-auto num">@w2.Assignees.Count(a => a.RepliedAt != null)/@w2.Assignees.Count پاسخ</span>
                             </div>
+                            @if (HasRelatedOrders(w2)) { @RelatedOrderLinks(w2) }
                             @if (w2.Tags.Count > 0)
                             {
                                 <div class="d-flex gap-1 flex-wrap mt-1">
@@ -259,7 +259,7 @@ else if (tab == "perf")
 {
     @* ================== گزارش عملکرد افراد (موج ۸) ================== *@
     <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
-        <span class="fs-8 text-muted"><i class="bi bi-info-circle"></i> عملکرد گیرندگانِ دستورهایی که <b>شما</b> داده‌اید — رتبه‌بندی بر اساس درصد انجام به‌موقع.</span>
+
         <div class="wo-pr-group ms-auto">
             @foreach (var (d, fa) in PerfPeriods)
             {
@@ -492,7 +492,7 @@ else
                         <tr>
                             <th style="width:44px"></th>
                             <th>شماره</th><th>عنوان</th><th>دستوردهنده</th>
-                            <th>مهلت</th><th>گیرندگان</th><th>وضعیت</th><th class="text-end">عملیات</th>
+                            <th>مهلت</th><th>گیرندگان</th><th>دستورهای مرتبط</th><th>وضعیت</th><th class="text-end">عملیات</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -520,14 +520,6 @@ else
                                     {
                                         <span class="badge bg-light text-dark border fs-9 num" title="کامنت‌ها">💬 @w.CommentCount</span>
                                     }
-                                    @if (w.ParentOrderId != null)
-                                    {
-                                        <span class="badge bg-light text-dark border fs-9" title="زیر-دستورِ @w.ParentNumber">🔗 زیر-دستور</span>
-                                    }
-                                    @if (w.Children.Count > 0)
-                                    {
-                                        <span class="badge bg-light text-dark border fs-9 num" title="زیر-دستورها (بسته از کل)">🔗 @w.Children.Count(c => c.Status == "Closed")/@w.Children.Count</span>
-                                    }
                                     @foreach (var t in w.Tags)
                                     {
                                         var t2 = t;
@@ -540,6 +532,7 @@ else
                                     <span class="badge bg-light text-dark border">@w.Assignees.Count نفر</span>
                                     <span class="fs-8 text-muted">(@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</span>
                                 </td>
+                                <td class="wo-related-cell">@RelatedOrderLinks(w)</td>
                                 <td>@ToneBadge(w, tone)</td>
                                 <td class="text-end">
                                     <div class="d-flex gap-1 justify-content-end align-items-center">
@@ -547,6 +540,10 @@ else
                                         @if (CanEdit(w))
                                         {
                                             <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEditFromList(w)"><i class="bi bi-pencil text-primary"></i></button>
+                                        }
+                                        @if (access.CanDelete)
+                                        {
+                                            <button class="btn btn-sm btn-light" title="حذف این نوبت" disabled="@busy" @onclick="() => DeleteOrder(w)"><i class="bi bi-trash text-danger"></i></button>
                                         }
                                         <ArchiveButton Module="WorkOrders" RefId="@w.Id"
                                                        Title="@($"{w.Number} — {w.Title}")"
@@ -559,7 +556,7 @@ else
                             {
                                 <tr class="wo-subrow">
                                     <td></td>
-                                    <td colspan="7">
+                                    <td colspan="8">
                                         <table class="table table-sm mb-0 wo-subtable">
                                             <thead>
                                                 <tr>
@@ -628,12 +625,17 @@ else
                     @ToneBadge(w, tone)
                 </div>
                 <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId)</div>
+                @if (HasRelatedOrders(w)) { <div class="wo-mobile-related">@RelatedOrderLinks(w)</div> }
                 <div class="d-flex justify-content-between align-items-center">
                     <div class="fs-8 d-flex align-items-center gap-1"><UserAvatar LoginUserId="w.OwnerUserId" Size="22" CssClass="user-avatar-sm" /> @w.OwnerName — @w.Assignees.Count گیرنده (@w.Assignees.Count(a => a.RepliedAt != null) پاسخ)</div>
                     <div class="d-flex gap-1" @onclick:stopPropagation="true">
                         @if (CanEdit(w))
                         {
                             <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEditFromList(w)"><i class="bi bi-pencil text-primary"></i></button>
+                        }
+                        @if (access.CanDelete)
+                        {
+                            <button class="btn btn-sm btn-light" title="حذف این نوبت" disabled="@busy" @onclick="() => DeleteOrder(w)"><i class="bi bi-trash text-danger"></i></button>
                         }
                         <ArchiveButton Module="WorkOrders" RefId="@w.Id"
                                        Title="@($"{w.Number} — {w.Title}")"
@@ -717,57 +719,34 @@ else
 @* ================== مودال دستور کار جدید ================== *@
 @if (showNew)
 {
-    <div class="modal fade show d-block" style="background:rgba(15,23,42,.55)">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
-            <div class="modal-content wo-modal wo-form-modal">
-                <div class="modal-header">
-                    <h5 class="modal-title d-flex align-items-center flex-wrap gap-1">
-                        <i class="bi bi-list-task text-primary"></i> @(editingId > 0 ? "ویرایش دستور کار" : "دستور کار جدید")
+    <div class="modal fade show d-block wo-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="wo-form-title">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down wo-form-dialog">
+            <div class="modal-content wo-modal wo-form-modal" dir="rtl">
+                <div class="modal-header wo-dialog-header">
+                    <div class="wo-dialog-heading">
+                        <h5 id="wo-form-title" class="modal-title">@(editingId > 0 ? "ویرایش دستور کار" : "دستور کار جدید")</h5>
                         @if (chainParent != null)
                         {
-                            <span class="badge bg-info-subtle text-info border ms-2" title="این دستور به‌صورت زیر-دستورِ متصل ساخته می‌شود">
-                                🔗 زیر-دستورِ @chainParent.Number — @chainParent.Title
-                            </span>
+                            <a class="wo-related-link" href="@($"/work-orders?open={chainParent.Id}")"><i class="bi bi-link-45deg"></i><bdi>@chainParent.Number</bdi></a>
                         }
                         @if (!string.IsNullOrWhiteSpace(_sourceLabel))
                         {
-                            if (_sourceModule == "Document" && _sourceId is > 0)
-                            {
-                                @* پیوند مدرک مبدأ: آیکون (لگو) + شماره فرم — کلیک = باز شدن مدرک در آرشیو *@
-                                <a class="wo-att ms-2" href="@($"/doc-archive/documents/{_sourceId}")" target="_blank" rel="noopener noreferrer"
-                                   title="@($"مدرک {_sourceDocTitle} — کلیک کنید تا در آرشیو اسناد باز شود")">
-                                    <i class="bi bi-file-earmark-text"></i><span>@_sourceLabel</span>
-                                    @if (!string.IsNullOrWhiteSpace(_sourceDocTitle))
-                                    {
-                                        <span class="wo-att-sub">@_sourceDocTitle</span>
-                                    }
-                                </a>
-                            }
-                            else if (_sourceModule == "InnerLetter" && _sourceId is > 0)
-                            {
-                                <a class="wo-att ms-2" href="@($"/letters?open={_sourceId}")" target="_blank" rel="noopener noreferrer"
-                                   title="باز کردن نامهٔ مبدأ">
-                                    <i class="bi bi-envelope"></i><span>@_sourceLabel</span>
-                                </a>
-                            }
-                            else
-                            {
-                                <span class="badge bg-primary-subtle text-primary border ms-2">از @_sourceLabel</span>
-                            }
+                            <div class="wo-source-meta">@SourceLink(_sourceModule, _sourceId) @_sourceLabel</div>
                         }
-                    </h5>
-                    <button type="button" class="btn-close" @onclick="CloseNewForm"></button>
+                    </div>
+                    <div class="wo-header-actions">
+                        <button type="button" class="btn-close" aria-label="بستن" @onclick="CloseNewForm"></button>
+                    </div>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body wo-form-body">
                     @if (!string.IsNullOrWhiteSpace(formError))
                     {
-                        <div class="alert alert-danger py-2">@formError</div>
+                        <div class="alert alert-danger py-2" role="alert">@formError</div>
                     }
-                    @* ---------- قالب‌های آماده (موج ۷) — پیش‌پُر کردن فرم با یک کلیک ---------- *@
                     @if (editingId <= 0 && myTemplates.Count > 0)
                     {
-                        <div class="wo-tpl-bar mb-3">
-                            <span class="fs-9 text-muted text-nowrap"><i class="bi bi-lightning-charge-fill text-warning"></i> قالب‌های آماده:</span>
+                        <details class="wo-fold wo-template-fold"><summary>قالب‌ها <span class="wo-count">@myTemplates.Count</span></summary><div class="wo-tpl-bar">
+
                             @foreach (var t in myTemplates)
                             {
                                 var t2 = t;
@@ -776,12 +755,16 @@ else
                                     <button type="button" class="wo-tpl-x" title="حذف قالب" @onclick:stopPropagation="true" @onclick="() => DeleteTemplate(t2.Id)"><i class="bi bi-x"></i></button>
                                 </span>
                             }
-                        </div>
+                        </div></details>
                     }
-                    <div class="row g-3">
+
+                    <div class="wo-form-grid">
+                        <section class="wo-form-main">
+                            <div class="row g-3">
+
                         <div class="col-12">
                             <label class="form-label">عنوان <span class="text-danger">*</span></label>
-                            <input class="form-control" @bind="newTitle" placeholder="مثلاً: تهیه گزارش فروش ماهانه" />
+                            <input class="form-control" @bind="newTitle" placeholder="عنوان دستور کار" />
                         </div>
                         <div class="col-12">
                             <label class="form-label">گیرندگان <span class="text-danger">*</span></label>
@@ -817,47 +800,79 @@ else
                                     </div>
                                 }
                             </div>
-                            @if (!access.CanAssignOthers)
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label">شرح</label>
+                            <RteEditor @ref="rte" />
+                        </div>
+
+                            </div>
+                        </section>
+                        <section class="wo-form-schedule" aria-label="زمان‌بندی">
+                            <div class="wo-section-label">زمان‌بندی</div>
+                            <div class="wo-date-row">
+                                <div>
+                                    <label class="form-label">تاریخ مقرر <span class="text-danger">*</span></label>
+                                    <DatePicker @bind-Value="newDueDate" />
+                                </div>
+                                <div>
+                                    <label class="form-label" for="wo-due-time">ساعت</label>
+                                    <input id="wo-due-time" type="time" class="form-control num" dir="ltr" @bind="newDueTime" />
+                                </div>
+                            </div>
+                            <div>
+                                <label class="form-label" for="wo-priority">اولویت</label>
+                                <select id="wo-priority" class="form-select" @bind="newPriority">
+                                    @foreach (var (val, fa) in PriorityOpts) { <option value="@val">@fa</option> }
+                                </select>
+                            </div>
+                            <div>
+                                <label class="form-label" for="wo-recurrence">تکرار</label>
+                                <select id="wo-recurrence" class="form-select" @bind="newRecurrence" disabled="@editingSeries">
+                                    @foreach (var (val, fa) in RecurrenceOpts) { <option value="@val">@fa</option> }
+                                </select>
+                            </div>
+                        </section>
+                    </div>
+                    <div class="wo-form-extras">
+                        <details class="wo-fold" open="@(newChecklist.Count > 0)">
+                            <summary>چک‌لیست <span class="wo-count">@newChecklist.Count</span></summary>
+                            <div class="wo-fold-body">
+                        <div class="col-12">
+                            <label class="form-label"><i class="bi bi-check2-square"></i> چک‌لیست</label>
+                            <div class="d-flex gap-2 mb-2">
+                                <input class="form-control form-control-sm" placeholder="عنوان مرحله"
+                                       @bind="newClText" @bind:event="oninput" @onkeydown="OnClKeyDown" />
+                                <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" @onclick="AddChecklistItem">
+                                    <i class="bi bi-plus-lg"></i> افزودن
+                                </button>
+                            </div>
+                            @if (newChecklist.Count > 0)
                             {
-                                <div class="fs-8 text-muted mt-1">شما فقط مجاز به ثبت دستور کار برای خودتان هستید.</div>
+                                <div class="wo-cl-editor">
+                                    @for (var ci = 0; ci < newChecklist.Count; ci++)
+                                    {
+                                        var idx = ci;
+                                        <div class="wo-cl-row">
+                                            <span class="wo-cl-num num">@(idx + 1)</span>
+                                            <span class="flex-grow-1">@newChecklist[idx]</span>
+                                            <button type="button" class="btn btn-sm btn-light text-danger" title="حذف"
+                                                    @onclick="() => RemoveChecklistItem(idx)"><i class="bi bi-x"></i></button>
+                                        </div>
+                                    }
+                                </div>
                             }
                         </div>
-                        <div class="col-sm-6 col-lg-4">
-                            <label class="form-label">تاریخ مقرر (شمسی) <span class="text-danger">*</span></label>
-                            <DatePicker @bind-Value="newDueDate" />
-                        </div>
-                        <div class="col-sm-6 col-lg-4">
-                            <label class="form-label">ساعت مقرر</label>
-                            <input type="time" class="form-control num" dir="ltr" @bind="newDueTime" />
-                        </div>
-                        <div class="col-12 col-lg-4">
-                            <label class="form-label">اولویت</label>
-                            <div class="wo-pr-group">
-                                @foreach (var (val, fa) in PriorityOpts)
-                                {
-                                    var v2 = val;
-                                    <button type="button" class="wo-pr-btn wo-pr-@v2 @(newPriority == v2 ? "active" : "")"
-                                            @onclick="() => newPriority = v2">@fa</button>
-                                }
                             </div>
-                        </div>
+                        </details>
+                        <details class="wo-fold" open="@(newTags.Count > 0)">
+                            <summary>برچسب‌ها <span class="wo-count">@newTags.Count</span></summary>
+                            <div class="wo-fold-body">
                         <div class="col-12">
-                            <label class="form-label"><i class="bi bi-arrow-repeat"></i> تکرار خودکار
-                                <span class="fs-9 text-muted">— بعد از «بستن»، نوبت بعدی با همان مشخصات ساخته می‌شود</span></label>
-                            <div class="wo-pr-group">
-                                @foreach (var (val, fa) in RecurrenceOpts)
-                                {
-                                    var v3 = val;
-                                    <button type="button" class="wo-pr-btn @(newRecurrence == v3 ? "active" : "")"
-                                            @onclick="() => newRecurrence = v3">@fa</button>
-                                }
-                            </div>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label"><i class="bi bi-tags"></i> برچسب‌ها (اختیاری)
-                                <span class="fs-9 text-muted">— حداکثر ۵ برچسب برای دسته‌بندی و فیلتر</span></label>
+                            <label class="form-label"><i class="bi bi-tags"></i> برچسب‌ها</label>
                             <div class="d-flex gap-2 mb-2">
-                                <input class="form-control form-control-sm" placeholder="برچسب را بنویسید و Enter بزنید... (مثلاً: برق، کارگاه، فوری‌ها)"
+                                <input class="form-control form-control-sm" placeholder="برچسب جدید"
                                        maxlength="30" @bind="newTagText" @bind:event="oninput" @onkeydown="OnTagKeyDown" />
                                 <button type="button" class="btn btn-sm btn-outline-primary text-nowrap"
                                         disabled="@(newTags.Count >= 5)" @onclick="AddTag">
@@ -889,71 +904,37 @@ else
                                 </div>
                             }
                         </div>
-                        <div class="col-12">
-                            <label class="form-label"><i class="bi bi-check2-square"></i> چک‌لیست زیرکار (اختیاری)</label>
-                            <div class="d-flex gap-2 mb-2">
-                                <input class="form-control form-control-sm" placeholder="گام بعدی را بنویسید و Enter بزنید..."
-                                       @bind="newClText" @bind:event="oninput" @onkeydown="OnClKeyDown" />
-                                <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" @onclick="AddChecklistItem">
-                                    <i class="bi bi-plus-lg"></i> افزودن
-                                </button>
                             </div>
-                            @if (newChecklist.Count > 0)
-                            {
-                                <div class="wo-cl-editor">
-                                    @for (var ci = 0; ci < newChecklist.Count; ci++)
-                                    {
-                                        var idx = ci;
-                                        <div class="wo-cl-row">
-                                            <span class="wo-cl-num num">@(idx + 1)</span>
-                                            <span class="flex-grow-1">@newChecklist[idx]</span>
-                                            <button type="button" class="btn btn-sm btn-light text-danger" title="حذف"
-                                                    @onclick="() => RemoveChecklistItem(idx)"><i class="bi bi-x"></i></button>
-                                        </div>
-                                    }
-                                </div>
-                            }
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">شرح (بند ۳ — ادیتور)</label>
-                            <RteEditor @ref="rte" />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label"><i class="bi bi-paperclip"></i> پیوست (اختیاری)</label>
-                            <InputFile class="form-control" OnChange="OnFilesSelected" multiple />
-                        </div>
+                        </details>
+                        @if (editingId <= 0)
+                        {
+                            <details class="wo-fold">
+                                <summary>پیوست‌ها <span class="wo-count">@newFiles.Count</span></summary>
+                                <div class="wo-fold-body"><InputFile class="form-control" OnChange="OnFilesSelected" multiple /></div>
+                            </details>
+                        }
                     </div>
+                    @if (tplSaveOpen && editingId <= 0)
+                    {
+                        <div class="wo-template-save-row">
+                            <input class="form-control form-control-sm" maxlength="100" aria-label="نام قالب" placeholder="نام قالب" @bind="tplName" @bind:event="oninput" />
+                            <button type="button" class="btn btn-sm btn-outline-primary" disabled="@(string.IsNullOrWhiteSpace(tplName) || tplBusy)" @onclick="SaveTemplate">ذخیره قالب</button>
+                        </div>
+                    }
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer wo-dialog-footer">
                     @if (editingId <= 0)
                     {
-                        <button type="button" class="btn btn-outline-warning wo-tpl-save-btn" title="ذخیرهٔ محتوای فرم به‌عنوان قالب برای استفادهٔ بعدی"
-                                disabled="@busy" @onclick="() => tplSaveOpen = !tplSaveOpen">
-                            <i class="bi bi-bookmark-plus"></i> ذخیره به‌عنوان قالب
-                        </button>
+                        <button type="button" class="btn btn-light wo-template-button" disabled="@busy" @onclick="() => tplSaveOpen = !tplSaveOpen"><i class="bi bi-bookmark-plus"></i> ذخیره قالب</button>
                     }
-                    <button class="btn btn-secondary" @onclick="CloseNewForm">انصراف</button>
-                    <button class="btn btn-primary px-4" disabled="@busy" @onclick="SubmitNew">
-                        @if (busy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-                        <i class="bi bi-send"></i> @(editingId > 0 ? "ذخیره تغییرات" : "ثبت دستور کار")
-                    </button>
-                </div>
-                @if (tplSaveOpen && editingId <= 0)
-                {
-                    <div class="wo-tpl-save px-3 pb-3">
-                        <div class="d-flex gap-2 align-items-center flex-wrap">
-                            <input class="form-control form-control-sm wo-tpl-save-input" maxlength="100"
-                                   placeholder="نام قالب (مثلاً: سرویس ماهانه ژنراتور)"
-                                   @bind="tplName" @bind:event="oninput" />
-                            <button type="button" class="btn btn-sm btn-warning text-nowrap" disabled="@(string.IsNullOrWhiteSpace(tplName) || tplBusy)"
-                                    @onclick="SaveTemplate">
-                                @if (tplBusy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-                                <i class="bi bi-bookmark-check"></i> ذخیره قالب
-                            </button>
-                        </div>
-                        <div class="fs-9 text-muted mt-1">عنوان، شرح، گیرندگان، اولویت، تکرار، چک‌لیست و برچسب‌های فعلی فرم در قالب ذخیره می‌شود (تاریخ ذخیره نمی‌شود). نام تکراری = جایگزینی همان قالب.</div>
+                    <div class="wo-footer-actions">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="CloseNewForm">انصراف</button>
+                        <button type="button" class="btn btn-primary" disabled="@busy" @onclick="SubmitNew">
+                            @if (busy) { <span class="spinner-border spinner-border-sm"></span> }
+                            @(editingId > 0 ? "ذخیره تغییرات" : "ثبت دستور کار")
+                        </button>
                     </div>
-                }
+                </div>
             </div>
         </div>
     </div>
@@ -963,31 +944,16 @@ else
 @if (detail != null)
 {
     var isOwner = detail.OwnerUserId == access.UserId;
-    var myAsg = detail.Assignees.FirstOrDefault(a => a.UserId == access.UserId);
     var tone = Tone(detail);
-    <div class="modal fade show d-block" style="background:rgba(15,23,42,.55)">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content wo-modal">
-                <div class="modal-header">
-                    <div>
-                        <h5 class="modal-title mb-1">@detail.Title</h5>
+    <div class="modal fade show d-block wo-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="wo-detail-title">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down wo-detail-dialog">
+            <div class="modal-content wo-modal wo-detail-modal" dir="rtl" @key="detail.Id">
+                <div class="modal-header wo-dialog-header">
+                    <div class="wo-dialog-heading">
+                        <h5 id="wo-detail-title" class="modal-title mb-1">@detail.Title</h5>
                         <span class="badge bg-dark-subtle text-dark border num me-1">@detail.Number</span>
-                        @PriorityBadge(detail.Priority)
-                        @if (detail.Recurrence > 0)
-                        {
-                            <span class="badge bg-info-subtle text-info border">🔁 @RecurrenceFa(detail.Recurrence)</span>
-                        }
-                        @foreach (var t in detail.Tags)
-                        {
-                            <span class="wo-tag wo-tag-sm"><i class="bi bi-tag-fill"></i> @t</span>
-                        }
-                        @ToneBadge(detail, tone)
-                        @if (detail.ExtensionCount > 0)
-                        {
-                            <span class="badge bg-warning-subtle text-warning border">تمدید @detail.ExtensionCount از ۵</span>
-                        }
                     </div>
-                    <div class="d-flex align-items-center gap-2">
+                    <div class="wo-header-actions">
                         @if (Auth.HasModule("Chat") && ChatTargets(detail).Any())
                         {
                             <div class="wo-chat-wrap">
@@ -1021,10 +987,37 @@ else
                                 <i class="bi bi-pencil"></i> ویرایش
                             </button>
                         }
-                        <button type="button" class="btn-close" @onclick="() => detail = null"></button>
+                        <button type="button" class="btn-close" aria-label="بستن" @onclick="CloseDetail"></button>
                     </div>
                 </div>
-                <div class="modal-body">
+                <div class="wo-detail-meta">
+                    @PriorityBadge(detail.Priority)
+                        @if (detail.Recurrence > 0)
+                        {
+                            <span class="badge bg-info-subtle text-info border">🔁 @RecurrenceFa(detail.Recurrence)</span>
+                        }
+                        @foreach (var t in detail.Tags)
+                        {
+                            <span class="wo-tag wo-tag-sm"><i class="bi bi-tag-fill"></i> @t</span>
+                        }
+                        @ToneBadge(detail, tone)
+                        @if (detail.ExtensionCount > 0)
+                        {
+                            <span class="badge bg-warning-subtle text-warning border">تمدید @detail.ExtensionCount از ۵</span>
+                        }
+</div>
+                <div class="wo-detail-tabs" aria-label="بخش‌های دستور کار">
+                    <button type="button" class="@(detailTab == "overview" ? "active" : "")" @onclick='() => detailTab = "overview"'>اطلاعات</button>
+                    <button type="button" class="@(detailTab == "people" ? "active" : "")" @onclick='() => detailTab = "people"'>گیرندگان <span>@detail.Assignees.Count</span></button>
+                    <button type="button" class="@(detailTab == "files" ? "active" : "")" @onclick='() => detailTab = "files"'>پیوست‌ها</button>
+                    <button type="button" class="@(detailTab == "comments" ? "active" : "")" @onclick='() => detailTab = "comments"'>گفت‌وگو <span>@comments.Count(c => !c.IsDeleted)</span></button>
+                    @if (isOwner || detail.Status == "Closed")
+                    {
+                        <button type="button" class="@(detailTab == "actions" ? "active" : "")" @onclick='() => detailTab = "actions"'>@(detail.Status == "Closed" ? "نتیجه" : "عملیات")</button>
+                    }
+                </div>
+                <div class="modal-body wo-detail-body">
+                    <section hidden="@(detailTab != "overview")" aria-label="اطلاعات">
                         <div class="wo-info mb-3">
                             <div><span class="wo-lbl">دستوردهنده</span><span>@detail.OwnerName</span></div>
                             <div><span class="wo-lbl">مهلت</span><span class="num">@detail.DueAt.ToFa() @detail.DueAt.ToString("HH:mm")</span></div>
@@ -1084,17 +1077,60 @@ else
                         </div>
                     }
 
-                    @* ---------- پیوست‌ها — کامپوننت جامع (یک کد برای همه فرم‌ها) ---------- *@
-                    <div class="mb-3 d-flex justify-content-between align-items-start gap-2 flex-wrap">
-                        <div class="flex-grow-1">
-                            <AttachmentBox Module="WorkOrders" RefId="@detail.Id" CanUpload="@(detail.Status == "Open")" />
+                     @* ---------- ارجاع زنجیره‌ای (والد / زیر-دستورها) ---------- *@
+                    @{
+                        var canChain = detail.Status == "Open" && access.CanCreate &&
+                            (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
+                    }
+                    @if (detail.ParentOrderId != null || detail.Children.Count > 0 || canChain)
+                    {
+                        <div class="wo-block mb-3">
+                            <div class="wo-block-title d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <span><i class="bi bi-link-45deg"></i> دستورهای مرتبط</span>
+                                @if (canChain)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 fs-8" @onclick="OpenChainForm">
+                                        <i class="bi bi-diagram-2"></i> زیر‌دستور جدید
+                                    </button>
+                                }
+                            </div>
+                            <div class="wo-block-body">
+                                @if (detail.ParentOrderId != null)
+                                {
+                                    <div class="wo-chain-row">
+                                        <i class="bi bi-arrow-up-left-circle text-secondary"></i>
+                                        <span class="fs-8 text-muted">والد:</span>
+                                        <a class="wo-chain-link" href="@($"/work-orders?open={detail.ParentOrderId}")">
+                                            @detail.ParentNumber — @detail.ParentTitle
+                                        </a>
+                                    </div>
+                                }
+                                @if (detail.Children.Count > 0)
+                                {
+                                    <div class="fs-8 text-muted mb-1 mt-1">
+                                        زیر-دستورها (@detail.Children.Count(c => c.Status == "Closed") از @detail.Children.Count بسته):
+                                    </div>
+                                    @foreach (var ch in detail.Children)
+                                    {
+                                        var ch2 = ch;
+                                        <div class="wo-chain-row">
+                                            <i class="bi @(ch2.Status == "Closed" ? "bi-check-circle-fill text-success" : "bi-circle text-warning")"></i>
+                                            <a class="wo-chain-link" href="@($"/work-orders?open={ch2.Id}")">
+                                                @ch2.Number — @ch2.Title
+                                            </a>
+                                            <span class="fs-9 text-muted">(@ch2.OwnerName)</span>
+                                            <span class="badge @(ch2.Status == "Closed" ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning") border fs-9">
+                                                @(ch2.Status == "Closed" ? "بسته" : "باز")
+                                            </span>
+                                        </div>
+                                    }
+                                }
+                            </div>
                         </div>
-                        <ArchiveButton Module="WorkOrders" RefId="@detail.Id"
-                                       Title="@($"{detail.Number} — {detail.Title}")"
-                                       Link="@($"/work-orders?open={detail.Id}")" />
-                    </div>
+                    }
 
-                    @* ---------- گیرندگان + عملیات ---------- *@
+                    </section>
+                    <section hidden="@(detailTab != "people")" aria-label="گیرندگان">@* ---------- گیرندگان + عملیات ---------- *@
                     <div class="wo-block mb-3">
                         <div class="wo-block-title"><i class="bi bi-people"></i> گیرندگان (@detail.Assignees.Count(a => a.RepliedAt != null)/@detail.Assignees.Count پاسخ)</div>
                         <div class="wo-block-body">
@@ -1107,15 +1143,15 @@ else
                                             <span class="badge bg-light text-dark border fs-9">رویت: @(a.SeenAt == null ? "—" : a.SeenAt.Value.ToFa())</span>
                                             @if (a.Done == true)
                                             {
-                                                <span class="badge bg-success-subtle text-success border">✅ انجام شد</span>
+                                                <span class="badge bg-success-subtle text-success border">انجام شد</span>
                                             }
                                             else if (a.Done == false)
                                             {
-                                                <span class="badge bg-danger-subtle text-danger border">❌ انجام نشد</span>
+                                                <span class="badge bg-danger-subtle text-danger border">انجام نشد</span>
                                             }
                                             @if (a.OwnerDecision == "Approved")
                                             {
-                                                <span class="badge bg-primary-subtle text-primary border">تایید ✔</span>
+                                                <span class="badge bg-primary-subtle text-primary border">تأیید</span>
                                             }
                                             else if (a.OwnerDecision == "Rejected")
                                             {
@@ -1139,11 +1175,11 @@ else
                                             <div class="d-flex gap-3 mb-2">
                                                 <div class="form-check">
                                                     <input class="form-check-input" type="radio" name="wodone" id="wod-y" checked="@(myDone == true)" @onchange="() => myDone = true" />
-                                                    <label class="form-check-label text-success fw-600" for="wod-y">✅ انجام شد</label>
+                                                    <label class="form-check-label text-success fw-600" for="wod-y">انجام شد</label>
                                                 </div>
                                                 <div class="form-check">
                                                     <input class="form-check-input" type="radio" name="wodone" id="wod-n" checked="@(myDone == false)" @onchange="() => myDone = false" />
-                                                    <label class="form-check-label text-danger fw-600" for="wod-n">❌ انجام نشد</label>
+                                                    <label class="form-check-label text-danger fw-600" for="wod-n">انجام نشد</label>
                                                 </div>
                                             </div>
                                             <textarea class="form-control form-control-sm" rows="2" placeholder="شرح پاسخ..." @bind="myReply"></textarea>
@@ -1167,107 +1203,19 @@ else
                         </div>
                     </div>
 
-                    @* ---------- تمدید و بستن (فقط دستوردهنده) ---------- *@
-                    @if (detail.Status == "Open" && isOwner)
-                    {
-                        <div class="wo-block mb-3" style="border-color:#e9d5ff">
-                            <div class="wo-block-title" style="background:#faf5ff"><i class="bi bi-sliders" style="color:#7c3aed"></i> عملیات دستوردهنده</div>
-                            <div class="wo-block-body">
-                                <div class="row g-2 align-items-end mb-2">
-                                    <div class="col-md-4">
-                                        <label class="form-label fs-8">تمدید مهلت (@detail.ExtensionCount از ۵)</label>
-                                        <DatePicker @bind-Value="extDate" />
-                                    </div>
-                                    <div class="col-md-3">
-                                        <input type="time" class="form-control num" dir="ltr" @bind="extTime" />
-                                    </div>
-                                    <div class="col-md-5">
-                                        <button class="btn btn-warning btn-sm w-100" disabled="@(busy || detail.ExtensionCount >= 5)" @onclick="SubmitExtend">
-                                            <i class="bi bi-clock-history"></i> تمدید مهلت
-                                        </button>
-                                    </div>
-                                </div>
-                                <hr />
-                                <textarea class="form-control form-control-sm mb-2" rows="2" placeholder="یادداشت بستن (اختیاری)..." @bind="closeNote"></textarea>
-                                <button class="btn btn-danger" disabled="@busy" @onclick="SubmitClose">
-                                    <i class="bi bi-lock"></i> تایید نهایی و بستن دستور کار
-                                </button>
-                                <div class="fs-8 text-muted mt-1">حتی اگر کار انجام نشده باشد، می‌توانید ببندید — بعد از بستن هیچ‌کس نمی‌تواند تغییری بدهد.</div>
-                            </div>
+                    </section>
+                    <section hidden="@(detailTab != "files")" aria-label="پیوست‌ها">@* ---------- پیوست‌ها — کامپوننت جامع (یک کد برای همه فرم‌ها) ---------- *@
+                    <div class="mb-3 d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                        <div class="flex-grow-1">
+                            <AttachmentBox Module="WorkOrders" RefId="@detail.Id" CanUpload="@(detail.Status == "Open")" />
                         </div>
-                    }
-                    @if (detail.Status == "Closed")
-                    {
-                        <div class="alert alert-secondary py-2 fs-8">
-                            <i class="bi bi-lock-fill"></i> این دستور کار در @(detail.ClosedAt?.ToFa()) نهایی و بسته شده است.
-                            @if (!string.IsNullOrWhiteSpace(detail.CloseNote))
-                            {
-                                <div class="mt-1">یادداشت: @detail.CloseNote</div>
-                            }
-                        </div>
-                    }
+                        <ArchiveButton Module="WorkOrders" RefId="@detail.Id"
+                                       Title="@($"{detail.Number} — {detail.Title}")"
+                                       Link="@($"/work-orders?open={detail.Id}")" />
+                    </div>
 
-                    @* ---------- ارجاع زنجیره‌ای (والد / زیر-دستورها) ---------- *@
-                    @{
-                        var canChain = detail.Status == "Open" && access.CanCreate &&
-                            (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
-                    }
-                    @if (detail.ParentOrderId != null || detail.Children.Count > 0 || canChain)
-                    {
-                        <div class="wo-block mb-3">
-                            <div class="wo-block-title d-flex justify-content-between align-items-center flex-wrap gap-2">
-                                <span><i class="bi bi-link-45deg"></i> زنجیرهٔ ارجاع</span>
-                                @if (canChain)
-                                {
-                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 fs-8" @onclick="OpenChainForm">
-                                        <i class="bi bi-diagram-2"></i> ارجاع بخشی از کار (زیر-دستور)
-                                    </button>
-                                }
-                            </div>
-                            <div class="wo-block-body">
-                                @if (detail.ParentOrderId != null)
-                                {
-                                    <div class="wo-chain-row">
-                                        <i class="bi bi-arrow-up-left-circle text-secondary"></i>
-                                        <span class="fs-8 text-muted">والد:</span>
-                                        <a class="wo-chain-link" @onclick="() => OpenById(detail.ParentOrderId.Value)" @onclick:preventDefault="true" href="">
-                                            @detail.ParentNumber — @detail.ParentTitle
-                                        </a>
-                                    </div>
-                                }
-                                @if (detail.Children.Count > 0)
-                                {
-                                    <div class="fs-8 text-muted mb-1 mt-1">
-                                        زیر-دستورها (@detail.Children.Count(c => c.Status == "Closed") از @detail.Children.Count بسته):
-                                    </div>
-                                    @foreach (var ch in detail.Children)
-                                    {
-                                        var ch2 = ch;
-                                        <div class="wo-chain-row">
-                                            <i class="bi @(ch2.Status == "Closed" ? "bi-check-circle-fill text-success" : "bi-circle text-warning")"></i>
-                                            <a class="wo-chain-link" @onclick="() => OpenById(ch2.Id)" @onclick:preventDefault="true" href="">
-                                                @ch2.Number — @ch2.Title
-                                            </a>
-                                            <span class="fs-9 text-muted">(@ch2.OwnerName)</span>
-                                            <span class="badge @(ch2.Status == "Closed" ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning") border fs-9">
-                                                @(ch2.Status == "Closed" ? "بسته" : "باز")
-                                            </span>
-                                        </div>
-                                    }
-                                    @if (detail.Children.Any(c => c.Status == "Open") && isOwner)
-                                    {
-                                        <div class="fs-9 text-muted mt-1"><i class="bi bi-info-circle"></i> تا بسته‌شدن همهٔ زیر-دستورهای باز، این دستور قابل بستن نیست.</div>
-                                    }
-                                }
-                                else if (detail.ParentOrderId == null && canChain)
-                                {
-                                    <div class="fs-8 text-muted">می‌توانید بخشی از این کار را به‌صورت زیر-دستورِ متصل به نفر بعدی ارجاع دهید — پیشرفت آن همین‌جا دیده می‌شود.</div>
-                                }
-                            </div>
-                        </div>
-                    }
-
-                    @* ---------- رشتهٔ گفتگو (کامنت‌ها) ---------- *@
+                    </section>
+                    <section hidden="@(detailTab != "comments")" aria-label="گفت‌وگو">@* ---------- رشتهٔ گفتگو (کامنت‌ها) ---------- *@
                     @{
                         var canComment = detail.Status == "Open" &&
                             (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
@@ -1277,7 +1225,7 @@ else
                         <div class="wo-block-body">
                             @if (comments.Count == 0)
                             {
-                                <div class="fs-8 text-muted">هنوز کامنتی ثبت نشده است.</div>
+                                <div class="wo-muted-empty">بدون پیام</div>
                             }
                             @foreach (var cm in comments)
                             {
@@ -1347,7 +1295,7 @@ else
                                     }
                                     <div class="d-flex gap-2 align-items-start">
                                         <textarea class="form-control form-control-sm" rows="2" maxlength="2000"
-                                                  placeholder="کامنت خود را بنویسید... (برای همهٔ طرف‌های دستور اعلان می‌رود)"
+                                                  placeholder="متن پیام"
                                                   @bind="newCommentText" @bind:event="oninput"></textarea>
                                         <button class="btn btn-primary btn-sm" style="white-space:nowrap"
                                                 disabled="@(cmBusy || string.IsNullOrWhiteSpace(newCommentText))" @onclick="SubmitComment">
@@ -1360,36 +1308,59 @@ else
                             }
                             else if (detail.Status == "Closed")
                             {
-                                <div class="fs-9 text-muted mt-2"><i class="bi bi-lock"></i> دستور بسته شده — ثبت کامنت جدید ممکن نیست.</div>
+                                <div class="fs-9 text-muted mt-2"><i class="bi bi-lock"></i> گفت‌وگو بسته است.</div>
                             }
                         </div>
                     </div>
 
-                    @* ---------- تاریخچه (بند ۱۷ و ۱۸) ---------- *@
-                    @if (logs.Any())
+                    </section>
+                    <section hidden="@(detailTab != "actions")" aria-label="عملیات">@* ---------- تمدید و بستن (فقط دستوردهنده) ---------- *@
+                    @if (detail.Status == "Open" && isOwner)
                     {
-                        <div class="wo-block mb-2">
-                            <div class="wo-block-title"><i class="bi bi-clock-history"></i> تاریخچه رفت‌وبرگشت‌ها</div>
-                            <div class="wo-block-body p-0">
-                                <div class="wo-timeline">
-                                    @foreach (var l in logs)
-                                    {
-                                        <div class="wo-tl-item">
-                                            <div class="wo-tl-dot wo-tl-@l.Action.ToLower()"></div>
-                                            <div>
-                                                <div class="fs-8"><span class="fw-700">@l.ActorName</span> — @ActionFa(l.Action)</div>
-                                                @if (!string.IsNullOrWhiteSpace(l.Text))
-                                                {
-                                                    <div class="fs-8 text-muted">@l.Text</div>
-                                                }
-                                                <div class="fs-9 text-muted num">@l.CreatedAt.ToFa() @l.CreatedAt.ToString("HH:mm")</div>
-                                            </div>
-                                        </div>
-                                    }
+                        <div class="wo-block mb-3" style="border-color:#e9d5ff">
+                            <div class="wo-block-title" style="background:#faf5ff"><i class="bi bi-sliders" style="color:#7c3aed"></i> عملیات دستوردهنده</div>
+                            <div class="wo-block-body">
+                                <div class="row g-2 align-items-end mb-2">
+                                    <div class="col-md-4">
+                                        <label class="form-label fs-8">تمدید مهلت (@detail.ExtensionCount از ۵)</label>
+                                        <DatePicker @bind-Value="extDate" />
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="time" class="form-control num" dir="ltr" @bind="extTime" />
+                                    </div>
+                                    <div class="col-md-5">
+                                        <button class="btn btn-warning btn-sm w-100" disabled="@(busy || detail.ExtensionCount >= 5)" @onclick="SubmitExtend">
+                                            <i class="bi bi-clock-history"></i> تمدید مهلت
+                                        </button>
+                                    </div>
                                 </div>
+                                <hr />
+                                <textarea class="form-control form-control-sm mb-2" rows="2" placeholder="یادداشت بستن (اختیاری)..." @bind="closeNote"></textarea>
+                                <button class="btn btn-danger" disabled="@busy" @onclick="SubmitClose">
+                                    <i class="bi bi-lock"></i> بستن دستور کار
+                                </button>
                             </div>
                         </div>
                     }
+                    @if (detail.Status == "Closed")
+                    {
+                        <div class="alert alert-secondary py-2 fs-8">
+                            <i class="bi bi-lock-fill"></i> این دستور کار در @(detail.ClosedAt?.ToFa()) نهایی و بسته شده است.
+                            @if (!string.IsNullOrWhiteSpace(detail.CloseNote))
+                            {
+                                <div class="mt-1">یادداشت: @detail.CloseNote</div>
+                            }
+                        </div>
+                    }
+
+                    </section>
+                </div>
+                <div class="modal-footer wo-dialog-footer">
+                    @if (access.CanDelete)
+                    {
+                        <button type="button" class="btn btn-outline-danger" disabled="@busy" @onclick="() => DeleteOrder(detail)"><i class="bi bi-trash"></i> حذف</button>
+                    }
+                    <div class="wo-footer-actions"><button type="button" class="btn btn-outline-secondary" @onclick="CloseDetail">بستن پنجره</button></div>
                 </div>
             </div>
         </div>
@@ -1761,6 +1732,105 @@ else
         padding: .35rem .5rem; border-radius: .35rem; font-size: .85rem;
     }
     .wo-chat-item:hover { background: #f1f3f5; }
+    /* Work-order layout: explicit RTL alignment, independent of Bootstrap utility direction. */
+    .wo-page-head { display:flex; align-items:center; gap:1rem; direction:rtl; }
+    .wo-page-head h1 { margin:0; }
+    .wo-page-action, .wo-filter-actions { margin-right:auto !important; margin-left:0 !important; }
+    .wo-tabs { justify-content:flex-end; }
+    .wo-dialog-backdrop { background:rgba(15,23,42,.48); }
+    .wo-form-dialog { max-width:1060px; }
+    .wo-detail-dialog { max-width:1100px; }
+    .wo-dialog-header { display:flex; align-items:center; gap:1.25rem; padding:1.1rem 1.4rem; border-bottom:1px solid #e5eaf0; flex-wrap:nowrap; flex-shrink:0; }
+    .wo-dialog-heading { min-width:0; flex:1 1 auto; }
+    .wo-dialog-heading .modal-title { font-size:1.08rem; line-height:1.8; overflow-wrap:anywhere; font-weight:750; margin:0; }
+    .wo-dialog-heading > .badge { margin-top:.2rem; background:transparent !important; border:0 !important; padding:0; color:#64748b !important; }
+    .wo-header-actions { display:flex; gap:.5rem; align-items:center; justify-content:flex-end; flex:0 0 auto; margin-right:auto; margin-left:0; }
+    .wo-header-actions .btn { white-space:nowrap; display:inline-flex; gap:.35rem; align-items:center; min-height:34px; border-radius:8px; }
+    .wo-header-actions .btn-close { margin:0 8px 0 0 !important; padding:.55rem; flex-shrink:0; background-size:12px; }
+    .wo-source-meta { margin-top:.4rem; font-size:.78rem; color:#64748b; }
+    .wo-form-body { background:#fafbfc; padding:1.25rem 1.4rem; }
+    .wo-form-grid { display:grid; grid-template-columns:minmax(0,1fr) 310px; align-items:start; gap:1.2rem; }
+    .wo-form-main, .wo-form-schedule { background:#fff; border:1px solid #e5eaf0; border-radius:12px; padding:1.05rem; min-width:0; }
+    .wo-form-main .form-label, .wo-form-schedule .form-label { font-size:.82rem; font-weight:650; margin-bottom:.45rem; color:#475569; }
+    .wo-form-main .form-control, .wo-form-schedule .form-control, .wo-form-schedule .form-select { border-radius:8px; min-height:40px; }
+    .wo-form-main .rte-editor { min-height:150px; max-height:270px; overflow:auto; }
+    .wo-form-main .rte-toolbar { flex-wrap:wrap; }
+    .wo-form-schedule { display:grid; gap:1.1rem; }
+    .wo-section-label { font-size:.87rem; font-weight:750; padding-bottom:.7rem; border-bottom:1px solid #edf0f4; }
+    .wo-date-row { display:grid; grid-template-columns:minmax(0,1fr) 112px; gap:.7rem; }
+    .wo-date-row > div { min-width:0; }
+    .wo-form-extras { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.8rem; margin-top:1rem; align-items:start; }
+    .wo-fold { background:#fff; border:1px solid #e5eaf0; border-radius:10px; overflow:hidden; min-width:0; }
+    .wo-fold > summary { padding:.85rem 1rem; cursor:pointer; font-size:.82rem; font-weight:650; color:#475569; }
+    .wo-fold[open] > summary { border-bottom:1px solid #edf0f4; }
+    .wo-count { display:inline-block; min-width:22px; margin-right:.4rem; padding:.08rem .3rem; background:#f1f5f9; color:#64748b; border-radius:5px; font-size:.7rem; text-align:center; }
+    .wo-fold-body { padding:.8rem; }
+    .wo-fold-body .form-label { display:none; }
+    .wo-fold-body .d-flex.gap-2 { flex-wrap:wrap; }
+    .wo-fold-body input.form-control { flex:1 1 140px; width:auto; min-width:0; }
+    .wo-template-fold { margin-bottom:1rem; }
+    .wo-template-fold .wo-tpl-bar { padding:.8rem; margin:0; border:0; border-radius:0; background:#fff; }
+    .wo-template-save-row { display:flex; gap:.7rem; align-items:center; margin-top:1rem; }
+    .wo-template-save-row .form-control { max-width:320px; }
+    .wo-template-save-row .btn { white-space:nowrap; }
+    .wo-dialog-footer { display:flex; direction:rtl; gap:.7rem; padding:.9rem 1.4rem; background:#fff; border-top:1px solid #e5eaf0; flex-shrink:0; }
+    .wo-dialog-footer > * { margin:0; }
+    .wo-footer-actions { display:flex; gap:.6rem; align-items:center; margin-right:auto; margin-left:0; }
+    .wo-dialog-footer .btn { min-height:38px; border-radius:8px; font-size:.83rem; }
+    .wo-detail-meta { display:flex; gap:.45rem; flex-wrap:wrap; padding:.8rem 1.4rem; align-items:center; flex-shrink:0; }
+    .wo-detail-tabs { display:flex; gap:1.4rem; padding:0 1.4rem; border-bottom:1px solid #e5eaf0; overflow-x:auto; flex-shrink:0; }
+    .wo-detail-tabs > button { flex-shrink:0; border:0; border-bottom:2px solid transparent; background:transparent; padding:.75rem .1rem; color:#64748b; font-size:.83rem; font-weight:650; }
+    .wo-detail-tabs > button.active { color:#2563eb; border-bottom-color:#2563eb; }
+    .wo-detail-tabs > button span { font-size:.7rem; background:#f1f5f9; padding:.1rem .35rem; border-radius:5px; margin-right:.25rem; }
+    .wo-detail-body { background:#fafbfc; padding:1.2rem 1.4rem; min-height:240px; }
+    .wo-detail-body > section[hidden] { display:none !important; }
+    .wo-detail-body .wo-info { gap:.8rem; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); }
+    .wo-detail-body .wo-info > div { background:#fff; border:1px solid #e5eaf0; padding:.75rem .9rem; gap:.2rem; }
+    .wo-detail-body .wo-block { border-radius:10px; background:#fff; border-color:#e5eaf0 !important; }
+    .wo-detail-body .wo-block-title { background:#fff !important; padding:.8rem 1rem; border-bottom:1px solid #edf0f4; }
+    .wo-detail-body .wo-block-body { padding:1rem; overflow-wrap:anywhere; }
+    .wo-detail-body .wo-asg { background:#fff; margin-bottom:.8rem; padding:.9rem; }
+    .wo-detail-body .wo-asg:last-child { margin-bottom:0; }
+    .wo-detail-body .wo-block-body img { max-width:100%; height:auto; }
+    .wo-related-cell { min-width:145px; max-width:240px; }
+    .wo-related-links { display:flex; align-items:center; flex-wrap:wrap; gap:.3rem; }
+    .wo-related-link { display:inline-flex; align-items:center; gap:.3rem; padding:.2rem .5rem; border:1px solid #dce6f5; border-radius:6px; color:#2563eb; background:#f8fbff; text-decoration:none; font-size:.74rem; font-weight:600; white-space:nowrap; }
+    .wo-related-link:hover { background:#eaf2ff; border-color:#93b5ed; color:#1d4ed8; text-decoration:underline; }
+    .wo-related-link:focus-visible, .wo-fold > summary:focus-visible, .wo-detail-tabs > button:focus-visible { outline:2px solid #2563eb; outline-offset:3px; }
+    .wo-mobile-related { padding:.3rem 0; }
+    .wo-muted-empty { color:#94a3b8; text-align:center; padding:2rem; }
+    @@media (max-width:991.98px) {
+        .wo-form-grid { grid-template-columns:minmax(0,1fr); }
+        .wo-form-schedule { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .wo-section-label, .wo-date-row { grid-column:1 / -1; }
+        .wo-form-extras { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        .wo-dialog-header { flex-wrap:wrap; gap:.7rem; }
+        .wo-header-actions { flex-wrap:wrap; }
+    }
+    @@media (max-width:575.98px) {
+        .wo-page-head { align-items:flex-start; }
+        .wo-page-head h1 { font-size:1.05rem; }
+        .wo-page-action { font-size:.76rem; white-space:nowrap; }
+        .wo-dialog-header, .wo-dialog-footer { padding:.85rem 1rem; }
+        .wo-form-dialog, .wo-detail-dialog { height:100dvh; min-height:100dvh; }
+        .wo-form-modal, .wo-detail-modal { border-radius:0; height:100%; max-height:100dvh; }
+        .wo-form-modal .modal-body, .wo-detail-modal .modal-body { max-height:none; min-height:0; flex:1 1 auto; }
+        .wo-modal .wo-dialog-footer { position:static; flex:0 0 auto; min-height:0; height:auto; }
+        .wo-detail-modal .wo-dialog-footer .btn { flex:0 0 auto; }
+        .wo-detail-modal .wo-dialog-heading, .wo-gardesh-modal .wo-dialog-heading { flex-basis:100%; }
+        .wo-header-actions { max-width:100%; gap:.4rem; }
+        .wo-header-actions .btn { font-size:.74rem; padding:.35rem .6rem; }
+        .wo-form-body, .wo-detail-body { padding:.85rem; }
+        .wo-form-main, .wo-form-schedule { padding:.8rem; }
+        .wo-form-extras { grid-template-columns:minmax(0,1fr); }
+        .wo-detail-meta { padding:.6rem 1rem; }
+        .wo-detail-tabs { gap:1rem; padding:0 1rem; }
+        .wo-form-modal .modal-footer { flex-wrap:wrap; }
+        .wo-form-modal .modal-footer .btn { flex:0 0 auto; }
+        .wo-form-modal .modal-footer .wo-template-button { font-size:.75rem; padding-inline:.45rem; }
+        .wo-footer-actions { flex-wrap:wrap; justify-content:flex-end; }
+        .wo-detail-body .wo-info { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    }
 </style>
 
 @* ================== گردش کار دستور — مشابه گردش نامه داخلی ================== *@
@@ -1769,20 +1839,20 @@ else
     var isOwnerG = detail.OwnerUserId == access.UserId;
     <div class="modal fade show d-block" style="background:rgba(15,23,42,.55);z-index:2000">
         <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div>
+            <div class="modal-content wo-gardesh-modal" dir="rtl">
+                <div class="modal-header wo-dialog-header">
+                    <div class="wo-dialog-heading">
                         <h5 class="modal-title mb-1"><i class="bi bi-diagram-3 text-primary"></i> گردش کار — @detail.Title</h5>
                         <span class="badge bg-dark-subtle text-dark border num me-1">@detail.Number</span>
                         <span class="fs-8 text-muted">مهلت: <span class="num">@detail.DueAt.ToFa()</span></span>
                     </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <div class="btn-group btn-group-sm">
+                    <div class="wo-header-actions">
+                        <div class="btn-group btn-group-sm" role="group" aria-label="نمای گردش کار">
                             <button type="button" class="btn @(gardeshView == 0 ? "btn-primary" : "btn-light border")" @onclick="() => gardeshView = 0">لیستی</button>
                             <button type="button" class="btn @(gardeshView == 1 ? "btn-primary" : "btn-light border")" @onclick="() => gardeshView = 1">درختواره</button>
                             <button type="button" class="btn @(gardeshView == 2 ? "btn-primary" : "btn-light border")" @onclick="() => gardeshView = 2">فلوچارتی</button>
                         </div>
-                        <button type="button" class="btn-close" @onclick="() => gardeshOpen = false"></button>
+                        <button type="button" class="btn-close" aria-label="بستن گردش کار" @onclick="() => gardeshOpen = false"></button>
                     </div>
                 </div>
                 <div class="modal-body">
@@ -2389,19 +2459,21 @@ else
 
     private async Task OpenById(int id)
     {
-        var w = mineItems.FirstOrDefault(x => x.Id == id)
-             ?? assignedItems.FirstOrDefault(x => x.Id == id)
-             ?? archiveItems.FirstOrDefault(x => x.Id == id);
-        // اگر در لیست‌های من نبود (مثلاً لینک «دستورکار شده» یک نامه)، مستقیم واکشی می‌کنیم
-        if (w == null)
+        try
         {
-            try { w = await Http.GetFromJsonAsync<WoItem>($"/api/workorders/{id}"); } catch { }
-        }
-        if (w != null)
-        {
-            tab = w.Status == "Closed" ? "archive" : (w.OwnerUserId == access.UserId ? "mine" : "assigned");
+            var response = await Http.GetAsync($"/api/workorders/{id}");
+            if (!response.IsSuccessStatusCode)
+            {
+                Toast.Error(response.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    ? "دسترسی به این دستور کار مجاز نیست."
+                    : "دستور کار در دسترس نیست.");
+                return;
+            }
+            var w = await response.Content.ReadFromJsonAsync<WoItem>();
+            if (w == null) return;
             await OpenDetail(w);
         }
+        catch { Toast.Error("دریافت دستور کار انجام نشد."); }
     }
 
     private async Task LoadAll()
@@ -2515,8 +2587,12 @@ else
 
     private async Task LoadComments(int orderId)
     {
-        try { comments = await Http.GetFromJsonAsync<List<CmItem>>($"/api/workorders/{orderId}/comments") ?? new(); }
-        catch { comments = new(); }
+        try
+        {
+            var rows = await Http.GetFromJsonAsync<List<CmItem>>($"/api/workorders/{orderId}/comments") ?? new();
+            if (detail?.Id == orderId) comments = rows;
+        }
+        catch { if (detail?.Id == orderId) comments = new(); }
     }
 
     private void SetReplyTo(CmItem cm) { replyTo = cm; editingCommentId = 0; }
@@ -2605,8 +2681,12 @@ else
 
     private async Task LoadDetailChecklist(int orderId)
     {
-        try { detailChecklist = await Http.GetFromJsonAsync<List<ClItem>>($"/api/workorders/{orderId}/checklist") ?? new(); }
-        catch { detailChecklist = new(); }
+        try
+        {
+            var rows = await Http.GetFromJsonAsync<List<ClItem>>($"/api/workorders/{orderId}/checklist") ?? new();
+            if (detail?.Id == orderId) detailChecklist = rows;
+        }
+        catch { if (detail?.Id == orderId) detailChecklist = new(); }
     }
 
     private async Task ToggleChecklist(ClItem item)
@@ -2674,9 +2754,52 @@ else
     // ================== دستور کار جدید ==================
     private async Task OpenNew()
     {
+        editingSeries = false;
         editingId = 0;
         _sourceModule = null; _sourceId = null; _sourceLabel = ""; _sourceDocTitle = "";
         await ShowNewFormAsync("", "");
+    }
+
+    private static bool HasRelatedOrders(WoItem w) =>
+        (w.ParentOrderId.HasValue && !string.IsNullOrWhiteSpace(w.ParentNumber)) || w.Children.Count > 0;
+
+    private RenderFragment RelatedOrderLinks(WoItem w) => @<div class="wo-related-links" @onclick:stopPropagation="true">
+        @if (w.ParentOrderId.HasValue && !string.IsNullOrWhiteSpace(w.ParentNumber))
+        {
+            <a class="wo-related-link wo-related-parent" href="@($"/work-orders?open={w.ParentOrderId}")" title="@($"دستور اصلی: {w.ParentTitle}")"><i class="bi bi-arrow-up-right"></i><bdi>@w.ParentNumber</bdi></a>
+        }
+        @foreach (var child in w.Children)
+        {
+            <a class="wo-related-link" href="@($"/work-orders?open={child.Id}")" title="@child.Title"><i class="bi bi-arrow-return-left"></i><bdi>@child.Number</bdi></a>
+        }
+        @if (!HasRelatedOrders(w)) { <span class="text-muted">—</span> }
+    </div>;
+
+    private string detailTab = "overview";
+    private void CloseDetail() { detail = null; gardeshOpen = false; chatMenuOpen = false; }
+
+    private bool editingSeries;
+    private async Task DeleteOrder(WoItem? order)
+    {
+        if (order == null || !access.CanDelete || busy) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"این نوبت از دستور کار {order.Number} حذف شود؟")) return;
+        busy = true;
+        try
+        {
+            var response = await Http.DeleteAsync($"/api/workorders/{order.Id}");
+            if (!response.IsSuccessStatusCode)
+            {
+                await ShowApiError(response, "حذف دستور کار انجام نشد.");
+                return;
+            }
+            if (detail?.Id == order.Id) detail = null;
+            expanded.Remove(order.Id);
+            Toast.Success("دستور کار حذف شد.");
+            await LoadAll();
+            await LoadCal();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
     }
 
     private bool CanEdit(WoItem w) => w.Status == "Open" && w.OwnerUserId == access.UserId;
@@ -2700,6 +2823,7 @@ else
         var due = detail.DueAt;
         var pr = detail.Priority;
         var rec = detail.Recurrence;
+        var hasSeries = detail.RecurrenceSeriesId != null;
         var detailId = detail.Id;
         var ids = detail.Assignees.Select(a => a.UserId).ToHashSet();
         var extra = detail.Assignees.Select(a => new TargetOpt { Id = a.UserId, Username = a.Name }).ToList();
@@ -2708,6 +2832,7 @@ else
         await ShowNewFormAsync(title, desc);
         newPriority = pr;
         newRecurrence = rec;
+        editingSeries = hasSeries;
         newTags = tags;
         // چک‌لیست موجود را برای ویرایش بیاور (متن‌ها؛ تیک‌خورده‌ها سمت سرور حفظ می‌شوند)
         try
@@ -2797,6 +2922,7 @@ else
     /// <summary>باز کردن فرم (ریست + لود لیست افراد مجاز + تنظیم ادیتور).</summary>
     private async Task ShowNewFormAsync(string title, string desc)
     {
+        editingSeries = false;
         formError = ""; newTitle = title; selTargets = new(); tDropOpen = false; tSearch = "";
         newPriority = 1; newRecurrence = 0; newChecklist = new(); newClText = "";
         newTags = new(); newTagText = "";
@@ -2871,8 +2997,9 @@ else
                     await UploadFile(created.Id, f);
             }
 
-            Toast.Success(editingId > 0 ? "دستور کار ویرایش شد." : $"دستور کار ثبت شد — {created?.Number}");
+            Toast.Success(editingId > 0 ? "تغییرات ذخیره شد." : "دستور کار ثبت شد.");
             editingId = 0;
+            editingSeries = false;
             showNew = false;
             chainParent = null;
             await LoadAll();
@@ -2905,6 +3032,10 @@ else
     private async Task OpenDetail(WoItem w)
     {
         detail = w;
+        detailTab = "overview";
+        chatMenuOpen = false;
+        gardeshOpen = false;
+        showNew = false;
         myDone = true; myReply = ""; closeNote = "";
         decideNotes = w.Assignees.ToDictionary(a => a.Id, a => "");
         extDate = w.DueAt.Date; extTime = TimeOnly.FromDateTime(w.DueAt);
@@ -2922,7 +3053,12 @@ else
             mine.SeenAt = DateTime.Now;
         }
 
-        try { logs = await Http.GetFromJsonAsync<List<LogItem>>($"/api/workorders/{w.Id}/logs") ?? new(); } catch { }
+        try
+        {
+            var rows = await Http.GetFromJsonAsync<List<LogItem>>($"/api/workorders/{w.Id}/logs") ?? new();
+            if (detail?.Id == w.Id) logs = rows;
+        }
+        catch { }
 
         // شماره/عنوان مدرک آرشیوِ متصل را برای نمایش در بخش «منبع» می‌آوریم (بی‌صدا؛ فقط نمایشی).
         if (w.SourceModule == "Document" && w.SourceId is int docId && docId > 0 && !_docRefs.ContainsKey(w.Id))
@@ -3056,13 +3192,13 @@ else
         "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
         "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی",
         "Commented" => "ثبت کامنت", "Recurred" => "تکرار خودکار",
-        "Chained" => "ارجاع زنجیره‌ای", _ => a
+        "Chained" => "ارجاع زنجیره‌ای", "Scheduled" => "ثبت نوبت‌های تقویمی", "Deleted" => "حذف دستور کار", _ => a
     };
 
     // ================== مدل‌ها ==================
-    public class AccessInfo { public int UserId { get; set; } public bool CanView { get; set; } public bool CanCreate { get; set; } public bool CanAssignOthers { get; set; } }
+    public class AccessInfo { public int UserId { get; set; } public bool CanView { get; set; } public bool CanCreate { get; set; } public bool CanAssignOthers { get; set; } public bool CanDelete { get; set; } }
     public class TargetOpt { public int Id { get; set; } public string Username { get; set; } = ""; }
-    public class CreatedRes { public int Id { get; set; } public string Number { get; set; } = ""; }
+    public class CreatedRes { public int Id { get; set; } public string Number { get; set; } = ""; public int OccurrenceCount { get; set; } = 1; }
     public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string UploaderName { get; set; } = ""; public DateTime UploadedAt { get; set; } public long Size { get; set; } }
     public class LogItem { public int Id { get; set; } public string ActorName { get; set; } = ""; public string Action { get; set; } = ""; public string? Text { get; set; } public DateTime CreatedAt { get; set; } }
     public class CalItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public DateTime DueAt { get; set; } public string Status { get; set; } = ""; public string Kind { get; set; } = "Self"; public string Tone { get; set; } = "none"; }
@@ -3083,6 +3219,7 @@ else
         public int ExtensionCount { get; set; } public DateTime CreatedAt { get; set; }
         public int Priority { get; set; } = 1;
         public int Recurrence { get; set; }
+        public string? RecurrenceSeriesId { get; set; }
         public int ChecklistTotal { get; set; } public int ChecklistDone { get; set; }
         public int CommentCount { get; set; }
         public List<string> Tags { get; set; } = new();

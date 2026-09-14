@@ -44,7 +44,8 @@ public class AttachmentGuard : IAttachmentGuard
     private static readonly HashSet<string> Protected = new(StringComparer.OrdinalIgnoreCase)
     {
         "DocVersion",
-        "HrEmployee"
+        "HrEmployee",
+        "WorkOrders"
     };
 
     public bool IsProtected(string module) => Protected.Contains(module);
@@ -52,6 +53,22 @@ public class AttachmentGuard : IAttachmentGuard
     public async Task<AttachmentAccess> CheckAsync(string module, int refId, int userId, bool isAdmin)
     {
         if (userId <= 0) return AttachmentAccess.None;
+
+        // Deleted work orders must not expose or accept attachments via the shared endpoint.
+        if (string.Equals(module, "WorkOrders", StringComparison.OrdinalIgnoreCase))
+        {
+            var order = await _db.WorkOrders.AsNoTracking().FirstOrDefaultAsync(w => w.Id == refId);
+            if (order == null) return AttachmentAccess.None;
+            if (order.OwnerUserId == userId || await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == refId && a.UserId == userId))
+                return AttachmentAccess.Download;
+            var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == userId);
+            if (!hasRoles && isAdmin) return AttachmentAccess.Download;
+            var canView = await _db.UserRoles.Where(ur => ur.UserId == userId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
+                .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+                .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
+                .AnyAsync(p => p.Module == "WorkOrders" && p.Action == "View");
+            return canView ? AttachmentAccess.Download : AttachmentAccess.None;
+        }
 
         // ---------- پیوست ورژن مدرک در آرشیو اسناد ----------
         if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))

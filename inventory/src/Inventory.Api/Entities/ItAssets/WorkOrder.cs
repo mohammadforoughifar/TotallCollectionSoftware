@@ -21,7 +21,7 @@ public static class WorkOrderPriority
     };
 }
 
-/// <summary>الگوهای تکرار دستور کار — بعد از «بستن»، نوبت بعدی خودکار ساخته می‌شود.</summary>
+/// <summary>الگوهای تکرار دستور کار — نوبت‌ها هنگام ثبت، از پیش در تقویم ساخته می‌شوند.</summary>
 public static class WorkOrderRecurrence
 {
     public const int None = 0;
@@ -79,11 +79,19 @@ public class WorkOrder
     /// <summary>اولویت: 0=کم | 1=عادی | 2=بالا | 3=فوری (پیش‌فرض: عادی)</summary>
     public int Priority { get; set; } = WorkOrderPriority.Normal;
 
-    /// <summary>تکرار: 0=بدون تکرار | 1=روزانه | 2=هفتگی | 3=ماهانه — بعد از بستن، نوبت بعدی خودکار ساخته می‌شود.</summary>
+    /// <summary>تکرار: 0=بدون تکرار | 1=روزانه | 2=هفتگی | 3=ماهانه — روزانه تا آخر ماه، هفتگی/ماهانه تا آخر سال شمسی.</summary>
     public int Recurrence { get; set; } = WorkOrderRecurrence.None;
 
-    /// <summary>شناسه دستور والد در زنجیره تکرار (نوبت قبلی) — برای ردگیری سری.</summary>
+    /// <summary>شناسه نوبت مبدأ سری؛ در رکوردهای قدیمی اشاره به نوبت قبلی دارد.</summary>
     public int? RecurrenceParentId { get; set; }
+
+    /// <summary>شناسهٔ سری تقویمی؛ null برای رکوردهای قدیمی یا بدون تکرار.</summary>
+    [MaxLength(32)]
+    public string? RecurrenceSeriesId { get; set; }
+    /// <summary>تاریخ اولیه نوبت؛ با ویرایش یا تمدید تغییر نمی‌کند.</summary>
+    public DateTime? RecurrenceScheduledAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
+    public int? DeletedByUserId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 

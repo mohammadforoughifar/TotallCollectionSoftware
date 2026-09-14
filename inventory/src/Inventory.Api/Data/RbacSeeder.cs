@@ -12,6 +12,8 @@ public static class RbacSeeder
     // ماژول‌های جدید (داشبوردها/گزارش‌ها) به‌صورت خودکار به دیتابیس‌های موجود هم اضافه می‌شوند.
     private static readonly Dictionary<string, string[]> ModuleActions = new()
     {
+        // حذف دستور کار فقط با مجوز مستقل؛ به نقش‌های عادی خودکار اعطا نمی‌شود.
+        ["WorkOrders"] = new[] { "View", "Create", "AssignOthers", "Delete" },
         ["Products"] = CrudActions,
         ["Stock"] = CrudActions,
         // فروش: + دسترسی «مشاهده سود» — قابل مدیریت به ازای هر نقش
