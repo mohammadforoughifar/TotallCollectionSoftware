@@ -31,10 +31,10 @@ public class HrCoreController : RbacControllerBase
 
     [HttpGet("employees")]
     public async Task<IActionResult> SearchEmployees([FromQuery] string? q, [FromQuery] int? orgUnitId,
-        [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50)
+        [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, [FromQuery] int? hrMainNodeId = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var (items, total) = await _svc.SearchEmployeesAsync(q, orgUnitId, status, skip, take);
+        var (items, total) = await _svc.SearchEmployeesAsync(q, orgUnitId, status, skip, take, hrMainNodeId);
         return Ok(new { total, items });
     }
 

@@ -4,7 +4,7 @@ namespace Inventory.Client.Services;
 
 public interface IHrCoreService
 {
-    Task<HrEmployeeListResult> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take);
+    Task<HrEmployeeListResult> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null);
     Task<HrEmployeeDto> GetEmployeeAsync(int id);
     Task<HrEmployeeDto> SaveEmployeeAsync(int? id, HrEmployeeSaveDto dto);
     Task SetEmployeeActiveAsync(int id, bool active);
@@ -117,10 +117,11 @@ public class HrCoreService : IHrCoreService
 
     private const string Root = "api/hr-core";
 
-    public Task<HrEmployeeListResult> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take)
+    public Task<HrEmployeeListResult> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null)
     {
         var qs = $"?skip={skip}&take={take}";
         if (!string.IsNullOrWhiteSpace(q)) qs += $"&q={Uri.EscapeDataString(q)}";
+        if (hrMainNodeId is > 0) qs += $"&hrMainNodeId={hrMainNodeId}";
         if (orgUnitId is > 0) qs += $"&orgUnitId={orgUnitId}";
         if (status is >= 0) qs += $"&status={status}";
         return _api.GetAsync<HrEmployeeListResult>($"{Root}/employees{qs}");
