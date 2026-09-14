@@ -26,3 +26,6 @@ App_Data/
 TestResults/
 __pycache__/
 .pytest_cache/
+
+# خروجی پابلیش محلی
+inventory/publish/

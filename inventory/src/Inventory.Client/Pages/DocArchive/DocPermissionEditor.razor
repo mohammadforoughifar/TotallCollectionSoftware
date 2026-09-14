@@ -1,10 +1,12 @@
 @* ================== ویرایشگر دسترسی نفرات (پوشه یا مدرک) ==================
    نفر را با کمبوی سرچ‌دار اضافه کنید و سطح دسترسی و اجازه دانلود را تعیین کنید. *@
 
-<div class="border rounded-3 p-2">
-    <div class="row g-2 align-items-end mb-2">
-        <div class="col-md-2">
-            <label class="form-label fs-8">نوع دسترسی</label>
+<div class="border rounded-3 p-2 doc-perm-editor">
+    @* چیدمان عمودی و منظم — این کامپوننت هم در ستون کناری باریک و هم در مودال استفاده می‌شود؛
+       گرید col-md بوت‌استرپ به عرض صفحه نگاه می‌کند نه عرض کارت و در ستون باریک به‌هم می‌ریخت. *@
+    <div class="row g-2 mb-2">
+        <div class="col-12">
+            <label class="form-label fs-8 mb-1">نوع دسترسی</label>
             <div class="btn-group btn-group-sm w-100" role="group">
                 <button class="btn @(pickRole ? "btn-outline-primary" : "btn-primary")" type="button" @onclick="() => pickRole = false">
                     <i class="bi bi-person"></i> نفر
@@ -14,20 +16,20 @@
                 </button>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-12">
             @if (!pickRole)
             {
-                <label class="form-label fs-8">افزودن نفر</label>
+                <label class="form-label fs-8 mb-1">افزودن نفر</label>
                 <SearchSelect Items="AvailableUsers" @bind-Value="pickUserId" Placeholder="جستجوی نام کاربر…" />
             }
             else
             {
-                <label class="form-label fs-8">افزودن گروه/نقش <span class="text-muted">(نام‌کاربران/سمت‌های RBAC)</span></label>
+                <label class="form-label fs-8 mb-1">افزودن گروه/نقش <span class="text-muted">(نام‌کاربران/سمت‌های RBAC)</span></label>
                 <SearchSelect Items="AvailableRoles" @bind-Value="pickRoleId" Placeholder="جستجوی نام نقش یا سمت…" />
             }
         </div>
-        <div class="col-md-3">
-            <label class="form-label fs-8">سطح دسترسی</label>
+        <div class="col-6">
+            <label class="form-label fs-8 mb-1">سطح دسترسی</label>
             <select class="form-select form-select-sm" @bind="pickLevel">
                 <option value="1">مشاهده</option>
                 <option value="2">خواندن</option>
@@ -35,15 +37,15 @@
                 <option value="4">دسترسی کامل</option>
             </select>
         </div>
-        <div class="col-md-2">
+        <div class="col-3 d-flex align-items-end">
             <div class="form-check form-switch mb-1">
                 <input class="form-check-input" type="checkbox" id="pickDl" @bind="pickDownload" />
                 <label class="form-check-label fs-8" for="pickDl">دانلود</label>
             </div>
         </div>
-        <div class="col-md-1">
+        <div class="col-3 d-flex align-items-end">
             <button class="btn btn-sm btn-primary w-100" type="button" @onclick="Add" title="افزودن">
-                <i class="bi bi-plus-lg"></i>
+                <i class="bi bi-plus-lg"></i> افزودن
             </button>
         </div>
     </div>

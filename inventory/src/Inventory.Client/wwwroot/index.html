@@ -410,7 +410,25 @@
         })();
     </script>
     <script src="_framework/blazor.webassembly.js"></script>
-    <script>navigator.serviceWorker.register('service-worker.js');</script>
+    <script>
+        // ثبت سرویس‌ورکر + به‌روزرسانی خودکار بعد از هر پابلیش:
+        // وقتی نسخهٔ جدید فعال شد (controllerchange)، صفحه یک‌بار رفرش می‌شود تا
+        // کاربر بلافاصله نسخهٔ جدید را ببیند (قبلاً تا بستن همهٔ تب‌ها روی نسخهٔ قدیمی می‌ماند).
+        (function () {
+            if (!('serviceWorker' in navigator)) return;
+            navigator.serviceWorker.register('service-worker.js').then(function (reg) {
+                if (reg && reg.update) { try { reg.update(); } catch (e) { } }
+            });
+            var refreshed = false;
+            navigator.serviceWorker.addEventListener('controllerchange', function () {
+                // فقط وقتی از قبل کنترلر داشتیم (یعنی «تعویض نسخه» است، نه اولین نصب)
+                if (refreshed) return;
+                refreshed = true;
+                if (window.__swHadController) window.location.reload();
+            });
+            window.__swHadController = !!navigator.serviceWorker.controller;
+        })();
+    </script>
 </body>
 
 </html>

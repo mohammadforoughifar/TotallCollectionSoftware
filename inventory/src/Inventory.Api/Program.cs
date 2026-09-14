@@ -95,6 +95,7 @@ builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Ap
 builder.Services.AddScoped<Inventory.Api.Services.FaLms.IFaLmsService, Inventory.Api.Services.FaLms.FaLmsService>(); // FaLms — آموزش و توسعه
 builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayService, Inventory.Api.Services.FaPay.FaPayService>(); // FaPay — حقوق و دستمزد
 builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayExtraService, Inventory.Api.Services.FaPay.FaPayExtraService>(); // FaPay — افزونه‌های §۲
+
 // اعطای موقت «تایید مجدد رمز» برای فایل‌های مدارک محرمانه (در حافظه — ۱۵ دقیقه)
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocDownloadConfirmService, Inventory.Api.Services.DocArchive.DocDownloadConfirmService>();
@@ -115,6 +116,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Serv
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>()); // یادآوری تولد
 builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComPublishWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComPublishWatcher>()); // انتشار زمان‌بندی‌شده اطلاعیه‌ها
+
+// سرویس پس‌زمینه یادآور مهلت دستور کار (هر ۱۵ دقیقه — آستانه‌ها در appsettings قابل تنظیم)
+builder.Services.AddSingleton<Inventory.Api.Services.ItAssets.WorkOrderReminderService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.ItAssets.WorkOrderReminderService>());
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
