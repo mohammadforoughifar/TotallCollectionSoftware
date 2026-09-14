@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../../inventory/Directory.Build.props" />
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
+    <ProjectReference Include="../../inventory/src/Inventory.Api/Inventory.Api.csproj" />
+    <Compile Include="../../inventory/src/Inventory.Client/Services/HrNavigation.cs" Link="HrNavigation.cs" />
+    <None Update="original-routes.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

@@ -16,8 +16,8 @@
     <div class="page-head">
         <div>
             <h1><i class="bi bi-person-lines-fill"></i> @(Id is > 0 ? "ویرایش پرونده پرسنل" : "ثبت پرسنل جدید")</h1>
-            <p class="lead">فرم چندمرحله‌ای اطلاعات پرسنل — تاریخ‌ها شمسی هستند</p>
         </div>
+        <a class="btn btn-sm btn-outline-secondary ms-auto" href="@(empRead ? "hr-main/employees" : "hr-main")">بازگشت</a>
     </div>
 
     @if (!empCan)
@@ -29,6 +29,12 @@
     @if (wLoading)
     {
         <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+        return;
+    }
+
+    @if (wLoadFailed)
+    {
+        <div class="hr-error" role="alert"><span>پرونده پرسنل دریافت نشد.</span><button class="btn btn-sm btn-outline-secondary" @onclick="InitWizard">تلاش مجدد</button></div>
         return;
     }
 
@@ -102,6 +108,10 @@
             else if (step == 3)
             {
                 <h5 class="fw-bold mb-3"><i class="bi bi-diagram-3-fill"></i> گام ۳ — جایگاه سازمانی</h5>
+                @if (!nodesReady || !positionsReady || !managersReady)
+                {
+                    <div class="alert alert-light border small">انتخاب‌های در دسترس نمایش داده می‌شوند؛ مقادیر قبلی فیلدهای غیرفعال حفظ می‌شوند.</div>
+                }
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label">کد پرسنلی</label>
@@ -111,9 +121,13 @@
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">گره ساختار سازمانی</label>
-                        <select class="form-select" @bind="form.HrMainNodeId">
+                        <label class="form-label">واحد سازمانی</label>
+                        <select class="form-select" @bind="form.HrMainNodeId" disabled="@(!nodesReady)">
                             <option value="">—</option>
+                            @if (form.HrMainNodeId is > 0 && !nodes.Any(x => x.Id == form.HrMainNodeId))
+                            {
+                                <option value="@form.HrMainNodeId">@(savedNodeName ?? "مقدار ثبت‌شده")</option>
+                            }
                             @foreach (var n in nodes)
                             {
                                 <option value="@n.Id">@(new string('—', n.Level)) @n.Name (@HrMainUi.OrgLevel(n.Level))</option>
@@ -122,8 +136,12 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">پست سازمانی</label>
-                        <select class="form-select" @bind="form.HrMainPositionId">
+                        <select class="form-select" @bind="form.HrMainPositionId" disabled="@(!positionsReady)">
                             <option value="">—</option>
+                            @if (form.HrMainPositionId is > 0 && !NodePositions.Any(x => x.Id == form.HrMainPositionId))
+                            {
+                                <option value="@form.HrMainPositionId">@(savedPositionTitle ?? "مقدار ثبت‌شده")</option>
+                            }
                             @foreach (var p in NodePositions)
                             {
                                 <option value="@p.Id">@p.Title@(string.IsNullOrWhiteSpace(p.Grade) ? "" : $" ({p.Grade})")</option>
@@ -136,8 +154,12 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">مدیر مستقیم</label>
-                        <select class="form-select" @bind="form.ManagerId">
+                        <select class="form-select" @bind="form.ManagerId" disabled="@(!managersReady)">
                             <option value="">—</option>
+                            @if (form.ManagerId is > 0 && !managers.Any(x => x.Id == form.ManagerId))
+                            {
+                                <option value="@form.ManagerId">@(savedManagerName ?? "مقدار ثبت‌شده")</option>
+                            }
                             @foreach (var m in managers.Where(x => x.Id != Id))
                             {
                                 <option value="@m.Id">@m.FullName (@m.Code)</option>
@@ -247,7 +269,6 @@ else
     <div class="page-head">
         <div>
             <h1><i class="bi bi-people-fill"></i> پرسنل</h1>
-            <p class="lead">فهرست پرسنل — ثبت جدید با فرم چندمرحله‌ای</p>
         </div>
         @if (empCreate)
         {
@@ -271,8 +292,8 @@ else
                     <input class="form-control" @bind="q" @bind:event="oninput" @onkeyup="OnSearchKey" placeholder="تایپ کنید و Enter بزنید…" />
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label small text-muted">گره ساختار سازمانی (جدید)</label>
-                    <select class="form-select" @bind="fNode" @bind:after="ReloadFirst">
+                    <label class="form-label small text-muted">واحد سازمانی</label>
+                    <select class="form-select" @bind="fNode" @bind:after="ReloadFirst" disabled="@(!nodesReady)" aria-label="فیلتر واحد سازمانی">
                         <option value="0">همه</option>
                         @foreach (var n in nodes)
                         {
@@ -293,6 +314,10 @@ else
             {
                 <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
             }
+            else if (listError is not null)
+            {
+                <div class="hr-error" role="alert"><span>@listError</span><button class="btn btn-sm btn-outline-secondary" @onclick="Reload">تلاش مجدد</button></div>
+            }
             else if (items.Count == 0)
             {
                 <div class="empty-state"><i class="bi bi-inbox"></i><h5>موردی یافت نشد</h5></div>
@@ -302,7 +327,7 @@ else
                 <div class="table-responsive">
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="table-light">
-                            <tr><th></th><th>کد</th><th>نام و نام خانوادگی</th><th>گره سازمانی</th><th>پست</th><th>وضعیت</th><th style="width:120px"></th></tr>
+                            <tr><th></th><th>کد</th><th>نام و نام خانوادگی</th><th>واحد سازمانی</th><th>پست</th><th>وضعیت</th><th style="width:120px"></th></tr>
                         </thead>
                         <tbody>
                             @foreach (var e in items)
@@ -311,14 +336,14 @@ else
                                     <td><span class="hr-avatar" style="background:@HrCoreUi.AvatarColor(e.Code)">@HrCoreUi.Initials(e.FirstName, e.LastName)</span></td>
                                     <td class="num fw-bold">@e.Code</td>
                                     <td>
-                                        <a href="hr-core/employees/@e.Id" class="fw-bold text-decoration-none">@e.FullName</a>
+                                        <a href="hr-main/employees/@e.Id/profile" class="fw-bold text-decoration-none">@e.FullName</a>
                                         <div class="small text-muted num">@e.NationalCode</div>
                                     </td>
                                     <td>@(e.HrMainNodeName ?? "—")</td>
                                     <td>@(e.HrMainPositionTitle ?? e.PostTitle ?? "—")</td>
                                     <td><span class="badge @HrCoreUi.StatusBadge(e.Status)">@HrCoreUi.EmpStatus(e.Status)</span></td>
                                     <td class="text-end">
-                                            <a class="btn btn-sm btn-light" title="پرونده" href="hr-core/employees/@e.Id"><i class="bi bi-folder2-open text-primary"></i></a>
+                                            <a class="btn btn-sm btn-light" title="پرونده" href="hr-main/employees/@e.Id/profile"><i class="bi bi-folder2-open text-primary"></i></a>
                                             @if (empUpdate)
                                             {
                                                 <button class="btn btn-sm btn-light" title="ویرایش چندمرحله‌ای" @onclick="() => GoEdit(e.Id)"><i class="bi bi-pencil text-primary"></i></button>
@@ -371,7 +396,7 @@ else
     {
         get
         {
-            var p = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/').ToLowerInvariant();
+            var p = HrNavigation.Path(Nav.ToBaseRelativePath(Nav.Uri));
             return p == "hr-main/employees/new" || Id is > 0;
         }
     }
@@ -381,11 +406,15 @@ else
     private string? q;
     private int fNode;
     private int skip, take = 20, total;
+    private int listRequest;
+    private string? listError;
     private List<HrEmployeeDto> items = new();
     private List<HrMainOrgNodeDto> nodes = new();
 
     // ---------- ویزارد ----------
-    private bool wLoading = true, wSaving;
+    private bool wLoading = true, wSaving, wLoadFailed;
+    private bool nodesReady, positionsReady, managersReady;
+    private string? savedNodeName, savedPositionTitle, savedManagerName;
     private int step = 1, maxStep = 1;
     private string? wError;
     private HrEmployeeSaveDto form = new();
@@ -419,10 +448,10 @@ else
     };
 
     private string NodeName(int? id) =>
-        nodes.FirstOrDefault(n => n.Id == id)?.Name ?? "—";
+        nodes.FirstOrDefault(n => n.Id == id)?.Name ?? (id == form.HrMainNodeId ? savedNodeName : null) ?? "—";
 
     private string PositionTitle(int? id) =>
-        positions.FirstOrDefault(p => p.Id == id)?.Title ?? "—";
+        positions.FirstOrDefault(p => p.Id == id)?.Title ?? (id == form.HrMainPositionId ? savedPositionTitle : null) ?? "—";
 
     private string EmergencyReview =>
         string.IsNullOrWhiteSpace(form.EmergencyContactName) ? "—"
@@ -445,7 +474,7 @@ else
     private async Task InitList()
     {
         if (!empRead) { loading = false; return; }
-        try { nodes = await Svc.ListOrgNodesAsync(); } catch { }
+        if (canHrMain) { try { nodes = await Svc.ListOrgNodesAsync(); nodesReady = true; } catch { nodesReady = false; } }
         await Reload();
     }
 
@@ -458,15 +487,17 @@ else
 
     private async Task Reload()
     {
-        loading = true;
+        var request = ++listRequest;
+        loading = true; listError = null;
         try
         {
-            var r = await EmpSvc.SearchEmployeesAsync(q, null, null, skip, take);
-            items = fNode == 0 ? r.Items : r.Items.Where(e => e.HrMainNodeId == fNode).ToList();
-            total = fNode == 0 ? r.Total : items.Count;
+            var r = await EmpSvc.SearchEmployeesAsync(q, null, null, skip, take, fNode > 0 ? fNode : null);
+            if (request != listRequest) return;
+            items = r.Items;
+            total = r.Total;
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch { if (request == listRequest) listError = "فهرست پرسنل دریافت نشد."; }
+        finally { if (request == listRequest) loading = false; }
     }
 
     private async Task PrevPage() { skip = Math.Max(0, skip - take); await Reload(); }
@@ -478,18 +509,22 @@ else
 
     private async Task InitWizard()
     {
-        wLoading = true;
+        if (!empCan) { wLoading = false; return; }
+        wLoading = true; wLoadFailed = false;
+        nodesReady = positionsReady = managersReady = false;
+        savedNodeName = savedPositionTitle = savedManagerName = null;
         wError = null;
         step = 1; maxStep = 1;
         try
         {
-            try { nodes = await Svc.ListOrgNodesAsync(); } catch { }
-            try { positions = await Svc.ListPositionsAsync(); } catch { }
-            try { managers = (await EmpSvc.SearchEmployeesAsync(null, null, 0, 0, 200)).Items; } catch { }
+            if (canHrMain) { try { nodes = await Svc.ListOrgNodesAsync(); nodesReady = true; } catch { nodesReady = false; } }
+            if (canHrMain) { try { positions = await Svc.ListPositionsAsync(); positionsReady = true; } catch { positionsReady = false; } }
+            if (empRead) { try { managers = (await EmpSvc.SearchEmployeesAsync(null, null, 0, 0, 200)).Items; managersReady = true; } catch { managersReady = false; } }
 
             if (Id is > 0)
             {
                 var e = await EmpSvc.GetEmployeeAsync(Id.Value);
+                savedNodeName = e.HrMainNodeName; savedPositionTitle = e.HrMainPositionTitle; savedManagerName = e.ManagerName;
                 form = new HrEmployeeSaveDto
                 {
                     Code = e.Code, FirstName = e.FirstName, LastName = e.LastName, NationalCode = e.NationalCode,
@@ -516,6 +551,7 @@ else
         }
         catch (Exception ex)
         {
+            wLoadFailed = true;
             wError = ex.Message;
             Toast.Error(ex.Message);
         }
@@ -578,6 +614,7 @@ else
 
     private async Task Finish()
     {
+        if (!empCan || wLoading || wLoadFailed || wSaving) return;
         for (var s = 1; s <= 4; s++)
         {
             var err = ValidateStep(s);
@@ -590,7 +627,7 @@ else
             form.HireDate = hireDate ?? DateTime.Today;
             var saved = await EmpSvc.SaveEmployeeAsync(Id is > 0 ? Id : null, form);
             Toast.Success(Id is > 0 ? "تغییرات پرسنل ثبت شد." : "پرسنل جدید ثبت شد.");
-            Nav.NavigateTo($"hr-main/employees/{saved.Id}");
+            Nav.NavigateTo(empRead ? $"hr-main/employees/{saved.Id}/profile" : "hr-main");
         }
         catch (Exception ex)
         {

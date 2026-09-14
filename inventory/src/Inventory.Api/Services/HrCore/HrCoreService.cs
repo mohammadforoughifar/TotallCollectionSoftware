@@ -43,7 +43,7 @@ public static class HrCoreTexts
 public interface IHrCoreService
 {
     // پرسنل
-    Task<(List<HrEmployeeDto> Items, int Total)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take);
+    Task<(List<HrEmployeeDto> Items, int Total)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null);
     Task<HrEmployeeDto?> GetEmployeeAsync(int id);
     Task<HrEmployeeDto> CreateEmployeeAsync(HrEmployeeSaveDto dto);
     Task<HrEmployeeDto> UpdateEmployeeAsync(int id, HrEmployeeSaveDto dto);
@@ -135,11 +135,12 @@ public class HrCoreService : IHrCoreService
 
     // ==================== پرسنل ====================
 
-    public async Task<(List<HrEmployeeDto>, int)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take)
+    public async Task<(List<HrEmployeeDto>, int)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null)
     {
         take = Math.Clamp(take, 1, 200);
         var query = _db.HrEmployees.AsNoTracking().AsQueryable();
         if (orgUnitId is > 0) query = query.Where(e => e.OrgUnitId == orgUnitId.Value);
+        if (hrMainNodeId is > 0) query = query.Where(e => e.HrMainNodeId == hrMainNodeId.Value);
         if (status is >= 0) query = query.Where(e => (int)e.Status == status.Value);
         if (!string.IsNullOrWhiteSpace(q))
         {
@@ -148,7 +149,7 @@ public class HrCoreService : IHrCoreService
                 || e.Code.Contains(q) || e.NationalCode.Contains(q) || (e.PostTitle ?? "").Contains(q));
         }
         var total = await query.CountAsync();
-        var rows = await query.OrderBy(e => e.Code).Skip(skip).Take(take).ToListAsync();
+        var rows = await query.OrderBy(e => e.Code).ThenBy(e => e.Id).Skip(Math.Max(0, skip)).Take(take).ToListAsync();
         var items = new List<HrEmployeeDto>();
         foreach (var e in rows) items.Add(await MapEmployeeAsync(e));
         return (items, total);

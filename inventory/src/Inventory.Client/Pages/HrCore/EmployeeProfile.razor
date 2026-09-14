@@ -1,5 +1,6 @@
 @namespace Inventory.Client.Pages
 @page "/hr-core/employees/{Id:int}"
+@page "/hr-main/employees/{Id:int}/profile"
 @inject IHrCoreService Svc
 @inject IAuthState Auth
 @inject IToastService Toast
@@ -18,19 +19,23 @@
 {
     <div class="text-center text-muted py-5"><span class="spinner-border"></span></div>
 }
+else if (loadError)
+{
+    <div class="hr-error" role="alert"><span>پرونده پرسنل دریافت نشد.</span><button class="btn btn-sm btn-outline-secondary" @onclick="OnParametersSetAsync">تلاش مجدد</button><a href="@EmployeeListUrl">بازگشت به لیست</a></div>
+}
 else if (emp is null)
 {
-    <div class="alert alert-danger mt-4">پرسنل یافت نشد. <a href="hr-core/employees">بازگشت به لیست</a></div>
+    <div class="alert alert-danger mt-4">پرسنل یافت نشد. <a href="@EmployeeListUrl">بازگشت به لیست</a></div>
 }
 else
 {
-    <div class="d-flex align-items-center gap-2 mb-3 mt-1">
-        <a class="btn btn-sm btn-light" href="hr-core/employees"><i class="bi bi-arrow-right"></i> لیست پرسنل</a>
+    <div class="d-flex align-items-center justify-content-end flex-wrap gap-2 mb-3 mt-1">
+        <a class="btn btn-sm btn-light" href="@EmployeeListUrl"><i class="bi bi-arrow-right"></i> لیست پرسنل</a>
         <button class="btn btn-sm btn-outline-primary" @onclick="PrintDossier"><i class="bi bi-printer"></i> چاپ پرونده</button>
         <a class="btn btn-sm btn-outline-secondary" href="@($"hr-core/job-history/{emp!.Id}")"><i class="bi bi-clock-history"></i> سوابق شغلی</a>
         @if (canUpdate)
         {
-            <a class="btn btn-sm btn-outline-warning" href="hr-core/employees"><i class="bi bi-pencil"></i> ویرایش از لیست</a>
+            <a class="btn btn-sm btn-outline-warning" href="@(FromHrMain ? $"hr-main/employees/{Id}" : EmployeeListUrl)"><i class="bi bi-pencil"></i> @(FromHrMain ? "ویرایش پرسنل" : "ویرایش از لیست")</a>
         }
     </div>
 
@@ -682,6 +687,8 @@ else
 </style>
 
 @code {
+    private bool FromHrMain => HrNavigation.Path(Nav.ToBaseRelativePath(Nav.Uri)).StartsWith("hr-main/employees/");
+    private string EmployeeListUrl => FromHrMain ? "hr-main/employees" : "hr-core/employees";
     [Parameter] public int Id { get; set; }
 
     private bool canRead => Auth.Has("HrCore.Read") || Auth.IsAdmin;
@@ -689,7 +696,7 @@ else
     private bool canUpdate => Auth.Has("HrCore.Update") || Auth.IsAdmin;
     private bool canDelete => Auth.Has("HrCore.Delete") || Auth.IsAdmin;
 
-    private bool loading = true, saving;
+    private bool loading = true, saving, loadError;
     private HrEmployeeDto? emp;
     private List<HrContractDto> contracts = new();
     private List<HrDecreeDto> decrees = new();
@@ -720,7 +727,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         if (!canRead) return;
-        loading = true;
+        loading = true; loadError = false; emp = null;
         try
         {
             units = await Svc.GetOrgUnitsAsync();
@@ -736,7 +743,7 @@ else
             decrees = await Svc.GetEmployeeDecreesAsync(Id);
             await LoadPhoto();
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex) { loadError = true; Toast.Error(ex.Message); }
         finally { loading = false; }
     }
 

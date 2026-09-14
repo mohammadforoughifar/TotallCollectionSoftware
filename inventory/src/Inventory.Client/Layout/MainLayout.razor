@@ -66,7 +66,7 @@ else
                     <i class="bi bi-list"></i>
                 </button>
                 <div>
-                    <div class="topbar-title">@Layout.Title</div>
+                    <div class="topbar-title">@(HrNavigation.IsWorkspace(Nav.ToBaseRelativePath(Nav.Uri)) ? HrNavigation.Title(Nav.ToBaseRelativePath(Nav.Uri)) : Layout.Title)</div>
                     <div class="topbar-sub">مدیریت انبار، خرید و فروش</div>
                 </div>
                 <div class="topbar-date d-none d-md-flex">
@@ -205,7 +205,14 @@ else
             <main class="app-content">
                 @if (RouteAllowed(out var deniedTitle))
                 {
-                    @Body
+                    @if (HrNavigation.IsWorkspace(Nav.ToBaseRelativePath(Nav.Uri)))
+                    {
+                        <HrWorkspaceShell>@Body</HrWorkspaceShell>
+                    }
+                    else
+                    {
+                        @Body
+                    }
                 }
                 else
                 {
