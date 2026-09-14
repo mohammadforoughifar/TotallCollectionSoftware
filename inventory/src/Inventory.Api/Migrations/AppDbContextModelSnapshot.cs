@@ -22,6 +22,64 @@ namespace Inventory.Api.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            // DocEvolutionSchemaV1: additive archive evolution tables.
+            modelBuilder.Entity("Inventory.Api.Data.DocTemporaryGrant", b =>
+            {
+                b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                b.Property<int>("DocumentId").HasColumnType("int");
+                b.Property<int>("UserId").HasColumnType("int");
+                b.Property<bool>("CanDownload").HasColumnType("bit");
+                b.Property<DateTime>("ExpiresAtUtc").HasColumnType("datetime2");
+                b.Property<DateTime?>("RevokedAtUtc").HasColumnType("datetime2");
+                b.Property<int>("GrantedByUserId").HasColumnType("int");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                b.HasKey("Id");
+                b.HasIndex("DocumentId", "UserId").IsUnique();
+                b.HasIndex("UserId", "ExpiresAtUtc");
+                b.ToTable("DocTemporaryGrants");
+            });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocRenewalPolicy", b =>
+            {
+                b.Property<int>("DocumentId").HasColumnType("int");
+                b.Property<bool>("Enabled").HasColumnType("bit");
+                b.Property<int>("AssigneeUserId").HasColumnType("int");
+                b.Property<int>("LeadDays").HasColumnType("int");
+                b.Property<int>("OwnerUserId").HasColumnType("int");
+                b.HasKey("DocumentId");
+                b.ToTable("DocRenewalPolicies");
+            });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocRenewalRun", b =>
+            {
+                b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                b.Property<int>("DocumentId").HasColumnType("int");
+                b.Property<DateTime>("ExpiryDate").HasColumnType("datetime2");
+                b.Property<int>("WorkOrderId").HasColumnType("int");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                b.HasKey("Id");
+                b.HasIndex("DocumentId", "ExpiryDate").IsUnique();
+                b.ToTable("DocRenewalRuns");
+            });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocIndexJob", b =>
+            {
+                b.Property<int>("AttachmentId").HasColumnType("int");
+                b.Property<string>("Status").IsRequired().HasMaxLength(20).HasColumnType("nvarchar(20)");
+                b.Property<int>("Generation").HasColumnType("int");
+                b.Property<int>("Attempts").HasColumnType("int");
+                b.Property<DateTime>("NextAttemptAtUtc").HasColumnType("datetime2");
+                b.Property<DateTime?>("LeaseUntilUtc").HasColumnType("datetime2");
+                b.Property<string>("LeaseToken").HasMaxLength(32).HasColumnType("nvarchar(32)");
+                b.Property<string>("Error").HasMaxLength(500).HasColumnType("nvarchar(500)");
+                b.Property<DateTime>("UpdatedAtUtc").HasColumnType("datetime2");
+                b.HasKey("AttachmentId");
+                b.HasIndex("Status", "NextAttemptAtUtc");
+                b.ToTable("DocIndexJobs");
+            });
+
             modelBuilder.Entity("Inventory.Api.Data.AccAccount", b =>
                 {
                     b.Property<int>("Id")
@@ -7055,6 +7113,30 @@ namespace Inventory.Api.Migrations
                     b.ToTable("ProjectEntryExits");
                 });
 
+            modelBuilder.Entity("Inventory.Api.Data.PushDelivery", b =>
+            {
+                b.Property<int>("Id").ValueGeneratedOnAdd().HasColumnType("int");
+                SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+                b.Property<int>("SubscriptionId").HasColumnType("int");
+                b.Property<int>("UserId").HasColumnType("int");
+                b.Property<int>("Attempts").HasColumnType("int");
+                b.Property<string>("Tag").IsRequired().HasMaxLength(64).HasColumnType("nvarchar(64)");
+                b.Property<string>("Title").IsRequired().HasMaxLength(120).HasColumnType("nvarchar(120)");
+                b.Property<string>("Body").IsRequired().HasMaxLength(300).HasColumnType("nvarchar(300)");
+                b.Property<string>("Link").IsRequired().HasMaxLength(300).HasColumnType("nvarchar(300)");
+                b.Property<string>("Status").IsRequired().HasMaxLength(20).HasColumnType("nvarchar(20)");
+                b.Property<string>("LeaseToken").HasMaxLength(32).HasColumnType("nvarchar(32)");
+                b.Property<string>("ErrorCode").HasMaxLength(100).HasColumnType("nvarchar(100)");
+                b.Property<DateTime>("CreatedAtUtc").HasColumnType("datetime2");
+                b.Property<DateTime>("ExpiresAtUtc").HasColumnType("datetime2");
+                b.Property<DateTime>("NextAttemptAtUtc").HasColumnType("datetime2");
+                b.Property<DateTime?>("LeaseUntilUtc").HasColumnType("datetime2");
+                b.HasKey("Id");
+                b.HasIndex("Status", "NextAttemptAtUtc");
+                b.HasIndex("SubscriptionId", "Tag").IsUnique();
+                b.ToTable("PushDeliveries");
+            });
+
             modelBuilder.Entity("Inventory.Api.Data.PushSubscription", b =>
                 {
                     b.Property<int>("Id")
@@ -7092,6 +7174,7 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+                    b.HasIndex("Endpoint").IsUnique();
 
                     b.ToTable("PushSubscriptions");
                 });

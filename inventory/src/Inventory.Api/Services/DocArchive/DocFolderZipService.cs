@@ -157,18 +157,13 @@ public class DocFolderZipService : IDocFolderZipService
             .Where(a => a.Module == "DocVersion" && versionIds.Contains(a.RefId))
             .ToListAsync();
 
-        // بارگذاری تگ‌ها و لینک‌های ERP
+        // بارگذاری تگ‌ها
         var tags = await _db.DocumentTags.AsNoTracking()
             .Where(t => docIds.Contains(t.DocumentId))
             .Join(_db.DocTags, t => t.TagId, dt => dt.Id, (t, dt) => new { t.DocumentId, dt.Name, dt.Color })
             .ToListAsync();
 
-        var erpLinks = await _db.DocEntityLinks.AsNoTracking()
-            .Where(l => docIds.Contains(l.DocumentId))
-            .ToListAsync();
-
         var tagsGroup = tags.GroupBy(t => t.DocumentId).ToDictionary(g => g.Key, g => g.Select(x => x.Name).ToList());
-        var erpGroup = erpLinks.GroupBy(l => l.DocumentId).ToDictionary(g => g.Key, g => g.ToList());
         var versionsGroup = versions.GroupBy(v => v.DocumentId).ToDictionary(g => g.Key, g => g.ToList());
         var attachmentsGroup = attachments.GroupBy(a => a.RefId).ToDictionary(g => g.Key, g => g.ToList());
 
@@ -229,7 +224,6 @@ public class DocFolderZipService : IDocFolderZipService
                 }
 
                 var docTagsList = tagsGroup.TryGetValue(doc.Id, out var tlist) ? tlist : new List<string>();
-                var docErpList = erpGroup.TryGetValue(doc.Id, out var elist) ? elist : new List<DocEntityLink>();
 
                 manifestRows.Add(new ManifestItem
                 {
@@ -243,7 +237,6 @@ public class DocFolderZipService : IDocFolderZipService
                     ExpireDate = doc.ExpireDate.HasValue ? PersianDate.ToShort(doc.ExpireDate.Value) : "بدون انقضا",
                     IsExpired = doc.ExpireDate.HasValue && doc.ExpireDate.Value.Date < DateTime.Today,
                     Tags = string.Join("، ", docTagsList),
-                    ErpLinks = string.Join(" | ", docErpList.Select(e => $"{ModuleTitle(e.Module)}: {e.EntityTitle} ({e.EntityCode ?? e.EntityId.ToString()})")),
                     AttachmentCount = totalDocAttachments
                 });
             }
@@ -290,19 +283,19 @@ public class DocFolderZipService : IDocFolderZipService
         ws.Cell(1, 1).Style.Font.Bold = true;
         ws.Cell(1, 1).Style.Font.FontSize = 14;
         ws.Cell(1, 1).Style.Font.FontColor = XLColor.FromHtml("#1e3a8a");
-        ws.Range(1, 1, 1, 11).Merge();
+        ws.Range(1, 1, 1, 10).Merge();
         ws.Row(1).Height = 26;
 
         ws.Cell(2, 1).Value = $"تاریخ ایجاد بسته ZIP: {PersianDate.ToShort(DateTime.Now)} ساعت {DateTime.Now:HH:mm} | تعداد کل اسناد: {items.Count}";
         ws.Cell(2, 1).Style.Font.FontSize = 9;
         ws.Cell(2, 1).Style.Font.FontColor = XLColor.FromHtml("#64748b");
-        ws.Range(2, 1, 2, 11).Merge();
+        ws.Range(2, 1, 2, 10).Merge();
 
         // عناوین ستون‌ها
         var headers = new[]
         {
             "ردیف", "مسیر پوشه", "کد مدرک", "عنوان سند", "شماره مشتری",
-            "نسخه فعال", "تاریخ ثبت", "تاریخ انقضا", "برچسب‌ها (تگ‌ها)", "اتصالات ERP", "تعداد پیوست"
+            "نسخه فعال", "تاریخ ثبت", "تاریخ انقضا", "برچسب‌ها (تگ‌ها)", "تعداد پیوست"
         };
 
         for (int i = 0; i < headers.Length; i++)
@@ -352,12 +345,11 @@ public class DocFolderZipService : IDocFolderZipService
             }
 
             ws.Cell(row, 9).Value = item.Tags;
-            ws.Cell(row, 10).Value = item.ErpLinks;
 
-            ws.Cell(row, 11).Value = item.AttachmentCount;
-            ws.Cell(row, 11).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Cell(row, 10).Value = item.AttachmentCount;
+            ws.Cell(row, 10).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-            for (int col = 1; col <= 11; col++)
+            for (int col = 1; col <= 10; col++)
             {
                 var c = ws.Cell(row, col);
                 c.Style.Fill.BackgroundColor = bg;
@@ -369,8 +361,8 @@ public class DocFolderZipService : IDocFolderZipService
             row++;
         }
 
-        ws.Columns(1, 11).AdjustToContents();
-        ws.Range(4, 1, row - 1, 11).SetAutoFilter();
+        ws.Columns(1, 10).AdjustToContents();
+        ws.Range(4, 1, row - 1, 10).SetAutoFilter();
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
@@ -392,24 +384,12 @@ public class DocFolderZipService : IDocFolderZipService
         sb.AppendLine("راهنمای ساختار پوشه‌ها:");
         sb.AppendLine("1. ساختار پوشه‌ها بر اساس سلسله‌مراتب درختی تعریف‌شده در سیستم مرتب شده است.");
         sb.AppendLine("2. درون هر پوشه، مدارک به صورت «کد مدرک _ عنوان مدرک» قرار دارند.");
-        sb.AppendLine("3. فایل «_فهرست_شناسنامه_اسناد.xlsx» شامل مشخصات، تگ‌ها، انقضا و اتصالات ERP هر سند است.");
+        sb.AppendLine("3. فایل «_فهرست_شناسنامه_اسناد.xlsx» شامل مشخصات، تگ‌ها و تاریخ انقضای هر سند است.");
         sb.AppendLine("===============================================================================");
         return sb.ToString();
     }
 
-    private static string ModuleTitle(string m) => m.ToLowerInvariant() switch
-    {
-        "projects" => "پروژه",
-        "hr" => "پرسنلی",
-        "itassets" => "تجهیزات IT",
-        "invoicing" => "فاکتور",
-        "catalog" or "party" => "طرف‌حساب",
-        "repairs" => "تعمیرات",
-        "office" => "دبیرخانه",
-        "sales" => "فروش",
-        "warehousing" => "انبار",
-        _ => m
-    };
+
 
     private static string SanitizePathPart(string? name)
     {
@@ -446,7 +426,6 @@ public class DocFolderZipService : IDocFolderZipService
         public string ExpireDate { get; set; } = "";
         public bool IsExpired { get; set; }
         public string Tags { get; set; } = "";
-        public string ErpLinks { get; set; } = "";
         public int AttachmentCount { get; set; }
     }
 }

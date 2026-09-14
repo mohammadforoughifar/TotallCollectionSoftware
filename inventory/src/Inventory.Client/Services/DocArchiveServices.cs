@@ -8,6 +8,18 @@ namespace Inventory.Client.Services;
 
 public interface IDocArchiveService
 {
+    Task<DocSearchPageDto> SearchPageAsync(DocSearchFilterDto filter);
+    Task<DocArchiveStatsDto> GetStatsAsync();
+    Task<List<DocTemporaryGrantDto>> GetTemporaryGrantsAsync(int id);
+    Task SaveTemporaryGrantAsync(int id, DocTemporaryGrantDto dto);
+    Task RevokeTemporaryGrantAsync(int id, int grantId);
+    Task<DocRenewalPolicyDto> GetRenewalAsync(int id);
+    Task SaveRenewalAsync(int id, DocRenewalPolicyDto dto);
+    Task<DocIndexQueueDto> GetIndexQueueAsync();
+    Task RetryIndexAsync(int attachmentId);
+    Task<List<LookupItem>> GetCompareFilesAsync(int id, int versionId);
+    Task<DocContentCompareDto> CompareContentAsync(int id, DocContentCompareRequest dto);
+
     // پوشه‌ها
     Task<List<DocFolderDto>> GetFoldersAsync();
     Task<DocFolderDto> GetFolderAsync(int id);
@@ -105,15 +117,10 @@ public interface IDocArchiveService
     Task<DocOcrRunResultDto> RunOcrAsync(int attachmentId);
     Task<DocReindexResultDto> ReindexAllAsync();
 
-    // یکپارچه‌سازی با ماژول‌های سامانه ERP و دانلود درختی ZIP
+    // دانلود درختی ZIP
     string GetFolderZipExportUrl(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true);
     /// <summary>دانلود باینری بسته ZIP (با هدر احراز هویت) به‌همراه نام پیشنهادی سرور.</summary>
     Task<(byte[] Data, string FileName, string ContentType)> DownloadFolderZipAsync(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true);
-    Task<List<DocEntityLinkDto>> GetLinkedDocumentsAsync(string module, int entityId);
-    Task<int> AddEntityLinkAsync(DocEntityLinkSaveDto dto);
-    Task RemoveEntityLinkAsync(int linkId);
-    Task<List<DocEntityLookupItemDto>> SearchModuleEntitiesAsync(string module, string? q = null);
-    Task<(int documentId, int linkId)> QuickCreateLinkedDocAsync(DocQuickCreateLinkedDto dto);
 }
 
 public class DocArchiveService : IDocArchiveService
@@ -122,6 +129,18 @@ public class DocArchiveService : IDocArchiveService
     public DocArchiveService(IApiClient api) => _api = api;
 
     private const string Root = "api/doc-archive";
+
+    public Task<DocSearchPageDto> SearchPageAsync(DocSearchFilterDto filter) => _api.PostAsync<DocSearchPageDto>($"{Root}/search-page", filter);
+    public Task<DocArchiveStatsDto> GetStatsAsync() => _api.GetAsync<DocArchiveStatsDto>($"{Root}/stats");
+    public Task<List<DocTemporaryGrantDto>> GetTemporaryGrantsAsync(int id) => _api.GetAsync<List<DocTemporaryGrantDto>>($"{Root}/documents/{id}/temporary-grants");
+    public Task SaveTemporaryGrantAsync(int id, DocTemporaryGrantDto dto) => _api.PostAsync<object>($"{Root}/documents/{id}/temporary-grants", dto);
+    public Task RevokeTemporaryGrantAsync(int id, int grantId) => _api.DeleteAsync($"{Root}/documents/{id}/temporary-grants/{grantId}");
+    public Task<DocRenewalPolicyDto> GetRenewalAsync(int id) => _api.GetAsync<DocRenewalPolicyDto>($"{Root}/documents/{id}/renewal");
+    public Task SaveRenewalAsync(int id, DocRenewalPolicyDto dto) => _api.PutAsync<object>($"{Root}/documents/{id}/renewal", dto);
+    public Task<DocIndexQueueDto> GetIndexQueueAsync() => _api.GetAsync<DocIndexQueueDto>($"{Root}/index-queue");
+    public Task RetryIndexAsync(int attachmentId) => _api.PostAsync<object>($"{Root}/index-queue/{attachmentId}/retry", new {});
+    public Task<List<LookupItem>> GetCompareFilesAsync(int id, int versionId) => _api.GetAsync<List<LookupItem>>($"{Root}/documents/{id}/compare-files/{versionId}");
+    public Task<DocContentCompareDto> CompareContentAsync(int id, DocContentCompareRequest dto) => _api.PostAsync<DocContentCompareDto>($"{Root}/documents/{id}/compare-content", dto);
 
     // ---------- پوشه‌ها ----------
     public Task<List<DocFolderDto>> GetFoldersAsync()
@@ -303,7 +322,7 @@ public class DocArchiveService : IDocArchiveService
     public Task<DocReindexResultDto> ReindexAllAsync()
         => _api.PostAsync<DocReindexResultDto>($"{Root}/reindex", new { });
 
-    // ---------- یکپارچه‌سازی ERP و دانلود درختی ZIP ----------
+    // ---------- دانلود درختی ZIP ----------
     public string GetFolderZipExportUrl(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true)
     {
         if (folderId.HasValue && folderId.Value > 0)
@@ -316,24 +335,5 @@ public class DocArchiveService : IDocArchiveService
     public Task<(byte[] Data, string FileName, string ContentType)> DownloadFolderZipAsync(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true)
         => _api.GetFileAsync(GetFolderZipExportUrl(folderId, includeSubfolders, onlyActiveVersions, includeManifest));
 
-    public Task<List<DocEntityLinkDto>> GetLinkedDocumentsAsync(string module, int entityId)
-        => _api.GetAsync<List<DocEntityLinkDto>>($"{Root}/entity-links/{module}/{entityId}");
-
-    public async Task<int> AddEntityLinkAsync(DocEntityLinkSaveDto dto)
-        => (await _api.PostAsync<IdResponse>($"{Root}/entity-links", dto)).Id;
-
-    public Task RemoveEntityLinkAsync(int linkId)
-        => _api.DeleteAsync($"{Root}/entity-links/{linkId}");
-
-    public Task<List<DocEntityLookupItemDto>> SearchModuleEntitiesAsync(string module, string? q = null)
-        => _api.GetAsync<List<DocEntityLookupItemDto>>($"{Root}/entity-lookups/{module}?q={Uri.EscapeDataString(q ?? "")}");
-
-    public async Task<(int documentId, int linkId)> QuickCreateLinkedDocAsync(DocQuickCreateLinkedDto dto)
-    {
-        var res = await _api.PostAsync<QuickCreateResponse>($"{Root}/entity-links/quick-create", dto);
-        return (res.DocumentId, res.LinkId);
-    }
-
     private class IdResponse { public int Id { get; set; } }
-    private class QuickCreateResponse { public int DocumentId { get; set; } public int LinkId { get; set; } }
 }

@@ -11,7 +11,7 @@ public interface IDocIndexService
     Task<int> IndexVersionAsync(int versionId, bool force = false);
     Task<int> IndexDocumentAsync(int documentId, bool force = false);
     Task<DocReindexResultDto> ReindexAllAsync();
-    void QueueAttachmentIndexing(int attachmentId);
+    Task QueueAttachmentIndexingAsync(int attachmentId);
 }
 
 public class DocIndexService : IDocIndexService
@@ -25,21 +25,10 @@ public class DocIndexService : IDocIndexService
         _logger = logger;
     }
 
-    public void QueueAttachmentIndexing(int attachmentId)
+    public async Task QueueAttachmentIndexingAsync(int attachmentId)
     {
-        // Run in background without blocking caller response
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(200); // short wait to ensure DB transaction committed
-                await IndexAttachmentAsync(attachmentId, force: true);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "خطا در پس‌زمینه ایندکس پیوست {AttachmentId}", attachmentId);
-            }
-        });
+        using var scope = _services.CreateScope();
+        await DocIndexQueue.EnqueueAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>(), attachmentId);
     }
 
     public async Task<DocExtractionResult> IndexAttachmentAsync(int attachmentId, bool force = false)
@@ -162,29 +151,7 @@ public class DocIndexService : IDocIndexService
         var atts = await db.AppAttachments.Where(a => a.Module == "DocVersion")
             .Select(a => a.Id).ToListAsync();
 
-        var success = 0;
-        var failed = 0;
-
-        foreach (var id in atts)
-        {
-            try
-            {
-                var res = await IndexAttachmentAsync(id, force: true);
-                if (res.Success) success++;
-                else failed++;
-            }
-            catch
-            {
-                failed++;
-            }
-        }
-
-        return new DocReindexResultDto
-        {
-            ProcessedCount = atts.Count,
-            SucceededCount = success,
-            FailedCount = failed,
-            Message = $"فرآیند بازایندکس کامل شد: {success} موفق، {failed} ناموفق از مجموع {atts.Count} پیوست."
-        };
+        foreach (var id in atts) await DocIndexQueue.EnqueueAsync(db, id);
+        return new DocReindexResultDto { ProcessedCount = atts.Count, Message = $"{atts.Count} فایل در صف پردازش قرار گرفت." };
     }
 }

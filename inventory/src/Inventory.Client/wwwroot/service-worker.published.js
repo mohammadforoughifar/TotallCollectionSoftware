@@ -79,11 +79,18 @@ async function onFetch(event) {
         // unless that request is for an offline resource.
         // If you need some URLs to be server-rendered, edit the following check to exclude those URLs
         const shouldServeIndexHtml = event.request.mode === 'navigate'
+            && requestUrl.origin === self.location.origin
             // RADIS-HR یک SPA مستقل زیر همین Origin است؛ index اصلی نباید جای آن برگردد.
             && !new URL(event.request.url).pathname.startsWith('/radis-hr/')
             && !manifestUrlList.some(url => url === event.request.url);
 
-        const request = shouldServeIndexHtml ? 'index.html' : event.request;
+        // Cache-busting query strings must still resolve to this published version's static asset.
+        // APIs/tokens were excluded above; other-origin URLs never match this manifest.
+        const staticAsset = manifestUrlList.find(url => {
+            const asset = new URL(url);
+            return asset.origin === requestUrl.origin && asset.pathname === requestUrl.pathname;
+        });
+        const request = shouldServeIndexHtml ? 'index.html' : (staticAsset || event.request);
         const cache = await caches.open(cacheName);
         cachedResponse = await cache.match(request);
     }
@@ -91,43 +98,4 @@ async function onFetch(event) {
     return cachedResponse || fetch(event.request);
 }
 
-// ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
-// وقتی اعلان از سرور می‌رسد، مثل نوتیف گوشی از بالای صفحه نمایش داده می‌شود
-// و در نوار اعلان سیستم/مرورگر می‌ماند تا کاربر با آن تعامل کند.
-
-self.addEventListener('push', event => {
-    let data = {};
-    try { data = event.data ? event.data.json() : {}; } catch { /* payload غیر JSON */ }
-
-    const title = data.title || '📢 اعلان جدید';
-    const options = {
-        body: data.body || '',
-        icon: data.icon || 'icon-192.png',
-        badge: data.badge || 'icon-192.png',
-        data: { url: data.link || '/' },
-        dir: 'rtl',
-        lang: 'fa',
-        vibrate: [100, 50, 100],
-        tag: `inv-${Date.now()}`
-    };
-
-    event.waitUntil(self.registration.showNotification(title, options));
-});
-
-// کلیک روی نوتیف → باز کردن لینک مربوطه (یا صفحه اصلی)
-self.addEventListener('notificationclick', event => {
-    event.notification.close();
-    const url = (event.notification.data && event.notification.data.url) || '/';
-
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-            for (const client of clientList) {
-                if ('focus' in client) {
-                    client.navigate(url);
-                    return client.focus();
-                }
-            }
-            return clients.openWindow(url);
-        })
-    );
-});
+self.importScripts('./push-worker.js');

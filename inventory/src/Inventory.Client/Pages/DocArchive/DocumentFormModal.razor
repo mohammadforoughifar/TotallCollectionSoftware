@@ -2,206 +2,182 @@
 @inject IDocArchiveService Svc
 @inject IToastService Toast
 
-<Modal Visible="Visible" Title="@(EditId > 0 ? "ویرایش مدرک" : "ثبت مدرک جدید")" Size="modal-xl" OnClose="OnClose">
+<div class="da-document-form" dir="rtl">
+<Modal Visible="Visible" Title="@(EditId > 0 ? "ویرایش مدرک" : "مدرک جدید")" Size="modal-xl" OnClose="OnClose">
     <ChildContent>
         <div class="row g-3">
-            <div class="col-md-3">
-                <label class="form-label">
-                    کد مدرک
-                    @if (!(EditId == 0 && NumberingEnabled))
-                    {
-                        <span class="text-danger">*</span>
-                    }
-                </label>
-                <input class="form-control @((codeError || codeExists) ? "is-invalid" : "")" @bind="form.Code"
-                       placeholder="@(EditId == 0 && NumberingEnabled ? "خالی بماند تا خودکار تخصیص یابد" : "مثلاً: QP-001")"
-                       @onfocusout="CheckCodeLive" />
-                @if (codeExists)
-                {
-                    <div class="form-text fs-9 text-danger fw-700"><i class="bi bi-exclamation-triangle"></i> این کد قبلاً برای مدرک دیگری ثبت شده است — کد باید یکتا باشد.</div>
-                }
-                else if (EditId == 0 && NumberingEnabled)
-                {
-                    <div class="form-text fs-9">شماره‌گذار خودکار فعال است؛ با خالی‌گذاشتن، کد خودکار تخصیص می‌یابد. اگر دستی وارد کنید نباید تکراری باشد.</div>
-                }
-                else
-                {
-                    <div class="form-text fs-9">کد اجباری است و نباید تکراری باشد.</div>
-                }
+            <div class="col-md-6">
+                <label class="form-label" for="da-doc-title">عنوان مدرک <span class="text-danger">*</span></label>
+                <input id="da-doc-title" class="form-control" @bind="form.Title" />
             </div>
-            <div class="col-md-3">
-                <label class="form-label">شماره مدرک مشتری</label>
-                <input class="form-control" @bind="form.CustomerCode" placeholder="شماره مدرک نزد کارفرما" />
-                <div class="form-text fs-9">اختیاری — نیازی به یکتا بودن ندارد.</div>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">عنوان مدرک <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.Title" placeholder="عنوان کامل مدرک" />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label">تاریخ انقضا</label>
-                <DatePicker @bind-Value="form.ExpireDate" AllowClear="true" />
-            </div>
-
             <div class="col-md-6">
                 <label class="form-label">پوشه <span class="text-danger">*</span></label>
                 <SearchSelect Items="Folders" @bind-Value="form.FolderId" Placeholder="انتخاب پوشه…" />
             </div>
-            <div class="col-md-6">
-                <label class="form-label">توضیحات</label>
-                <input class="form-control" @bind="form.Description" />
-            </div>
-
-            <div class="col-12"><hr class="my-1" /></div>
-
-            @* ---------- سیاست ورژن ---------- *@
-            <div class="col-md-6">
-                <label class="form-label fw-700"><i class="bi bi-layers ms-1"></i> سیاست ورژن</label>
-                <div class="border rounded-3 p-2">
-                    <div class="form-check">
-                        <input class="form-check-input" type="radio" id="vOne" name="vpol"
-                               checked="@(!form.AllowMultipleActiveVersions)"
-                               @onchange="() => form.AllowMultipleActiveVersions = false" />
-                        <label class="form-check-label" for="vOne">
-                            فقط یک ورژن فعال باشد
-                            <span class="fs-9 text-muted d-block">با فعال شدن ورژن جدید، ورژن قبلی خودکار غیرفعال می‌شود.</span>
-                        </label>
-                    </div>
-                    <div class="form-check mt-1">
-                        <input class="form-check-input" type="radio" id="vMulti" name="vpol"
-                               checked="@form.AllowMultipleActiveVersions"
-                               @onchange="() => form.AllowMultipleActiveVersions = true" />
-                        <label class="form-check-label" for="vMulti">
-                            چند ورژن هم‌زمان فعال باشند
-                            <span class="fs-9 text-muted d-block">همه ورژن‌های تاییدشده می‌توانند هم‌زمان فعال بمانند.</span>
-                        </label>
-                    </div>
-                    @if (EditId == 0)
-                    {
-                        <div class="form-check form-switch mt-2 pt-2 border-top">
-                            <input class="form-check-input" type="checkbox" id="v1act" @bind="form.FirstVersionActive" />
-                            <label class="form-check-label fs-8" for="v1act">ورژن ۱ بلافاصله فعال باشد (در نبود گردش تایید)</label>
-                        </div>
-                    }
-                </div>
-            </div>
-
-            @* ---------- نمایش برای همه ---------- *@
-            <div class="col-md-6">
-                <label class="form-label fw-700"><i class="bi bi-globe2 ms-1"></i> مجوز عمومی</label>
-                <div class="border rounded-3 p-2">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="dPub" @bind="form.IsPublic" />
-                        <label class="form-check-label fw-700" for="dPub">نمایش برای همه</label>
-                        <span class="fs-9 text-muted d-block">همه کاربران سیستم می‌توانند این مدرک را بخوانند.</span>
-                    </div>
-                    <div class="form-check form-switch mt-1">
-                        <input class="form-check-input" type="checkbox" id="dPubDl" @bind="form.PublicCanDownload"
-                               disabled="@(!form.IsPublic)" />
-                        <label class="form-check-label" for="dPubDl">دانلود برای همه آزاد باشد</label>
-                    </div>
-                    <hr class="my-2" />
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="dConf" @bind="form.RequireDownloadConfirm" />
-                        <label class="form-check-label fw-700 text-danger" for="dConf"><i class="bi bi-shield-lock ms-1"></i> محرمانه — فایل‌ها با تایید مجدد رمز باز شوند</label>
-                        <span class="fs-9 text-muted d-block">برای دانلود یا مشاهده هر فایل این مدرک، کاربر باید رمز ورودش را دوباره وارد کند (۱۵ دقیقه اعتبار) — حتی کاربران دارای مجوز دانلود.</span>
-                    </div>
-                    <div class="form-check form-switch mt-1">
-                        <input class="form-check-input" type="checkbox" id="dWm" @bind="form.WatermarkPreview" />
-                        <label class="form-check-label fw-700" for="dWm"><i class="bi bi-droplet-half ms-1" style="color:#0284c7"></i> واترمارک پیش‌نمایش</label>
-                        <span class="fs-9 text-muted d-block">روی پیش‌نمایش داخل برنامه فایل‌های این مدرک (PDF/تصویر/متن)، نام کاربر بازدیدکننده و زمان مشاهده به‌صورت واترمارک نمایش داده می‌شود.</span>
-                    </div>
-                </div>
-            </div>
-
-            @* ---------- تگ‌ها و برچسب‌ها ---------- *@
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <label class="form-label fw-700 mb-0"><i class="bi bi-tags ms-1"></i> برچسب‌ها و تگ‌های مدرک</label>
-                    <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 fs-8" @onclick="() => showTagsModal = true">
-                        <i class="bi bi-plus-circle"></i> تعریف تگ جدید
-                    </button>
-                </div>
-                <div class="d-flex flex-wrap gap-2 p-2 border rounded-3 bg-light">
-                    @if (availableTags.Count == 0)
-                    {
-                        <span class="fs-8 text-muted">تگی تعریف نشده است.</span>
-                    }
-                    else
-                    {
-                        @foreach (var t in availableTags)
-                        {
-                            var isSelected = selectedTagIds.Contains(t.Id);
-                            <button type="button" class="btn btn-sm rounded-pill d-flex align-items-center gap-1 shadow-sm"
-                                    style="@(isSelected ? $"background-color:{t.Color};color:#fff;border:2px solid #000;" : $"background-color:#fff;color:#333;border:1px solid {t.Color};")"
-                                    @onclick="() => ToggleTag(t.Id)">
-                                <i class="bi @(isSelected ? "bi-check-circle-fill" : "bi-tag")"></i>
-                                @t.Name
-                            </button>
-                        }
-                    }
-                </div>
-            </div>
-
-            @* ---------- نفرات گردش ---------- *@
-            <div class="col-12">
-                <label class="form-label fw-700">
-                    <i class="bi bi-arrow-repeat ms-1"></i> نفرات گردش و تاییدیه مدرک
+            <div class="col-md-4">
+                <label class="form-label" for="da-doc-code">
+                    کد مدرک
+                    @if (!(EditId == 0 && NumberingEnabled)) { <span class="text-danger">*</span> }
                 </label>
-                <MultiSearchSelect Items="Users" Values="approverIds" ValuesChanged="v => approverIds = v"
-                                   Placeholder="نام نفر را تایپ کنید…"
-                                   EmptyText="نفری برای گردش انتخاب نشده — مدرک بدون گردش، مستقیم تایید می‌شود." />
-                <div class="form-text fs-9">
-                    اگر نفری انتخاب شود، هر ورژن پس از ثبت <b>فریز</b> می‌شود و در کارتابل این افراد می‌نشیند؛
-                    پس از تایید همه، ورژن به‌صورت خودکار فعال می‌گردد.
-                </div>
+                <input id="da-doc-code" class="form-control @((codeError || codeExists) ? "is-invalid" : "")" @bind="form.Code"
+                       placeholder="@(EditId == 0 && NumberingEnabled ? "خودکار" : "")" @onfocusout="CheckCodeLive" />
+                @if (codeExists)
+                {
+                    <div class="invalid-feedback d-block">این کد قبلاً ثبت شده است.</div>
+                }
             </div>
-
-            @* ---------- مدارک مرتبط (چندانتخابی سرچ‌دار) ---------- *@
+            <div class="col-md-4">
+                <label class="form-label" for="da-customer-code">شماره مدرک مشتری</label>
+                <input id="da-customer-code" class="form-control" @bind="form.CustomerCode" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">تاریخ انقضا</label>
+                <DatePicker @bind-Value="form.ExpireDate" AllowClear="true" Placeholder="----/--/--" />
+            </div>
             <div class="col-12">
-                <label class="form-label fw-700"><i class="bi bi-link-45deg ms-1"></i> مدارک مرتبط</label>
-                <MultiSearchSelect Items="LinkableDocs" Values="linkIds" ValuesChanged="v => linkIds = v"
-                                   Placeholder="کد یا عنوان مدرک را تایپ کنید…"
-                                   EmptyText="مدرک مرتبطی انتخاب نشده است." />
-                <div class="form-text fs-9">
-                    می‌توانید هم‌زمان چند مدرک انتخاب کنید. با ورژن خوردن این مدرک، در کارتابل صاحبان
-                    مدارک مرتبط کار «بررسی/به‌روزرسانی» ایجاد می‌شود. فقط مدارک <b>فعال</b> قابل لینک هستند.
-                </div>
+                <label class="form-label" for="da-doc-description">توضیحات</label>
+                <textarea id="da-doc-description" class="form-control" rows="2" @bind="form.Description"></textarea>
             </div>
 
+            <div class="col-12">
+                <details class="da-form-extra">
+                    <summary>نسخه و امنیت</summary>
+                    <div class="row g-3 da-extra-content">
+                        @* ---------- نسخه‌های فعال ---------- *@
+                        <div class="col-md-6">
+                            <label class="form-label fw-700"><i class="bi bi-layers ms-1"></i> نسخه‌های فعال</label>
+                            <div class="border rounded-3 p-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" id="vOne" name="vpol"
+                                           checked="@(!form.AllowMultipleActiveVersions)"
+                                           @onchange="() => form.AllowMultipleActiveVersions = false" />
+                                    <label class="form-check-label" for="vOne">
+                                        فقط یک نسخه فعال
+                                    </label>
+                                </div>
+                                <div class="form-check mt-1">
+                                    <input class="form-check-input" type="radio" id="vMulti" name="vpol"
+                                           checked="@form.AllowMultipleActiveVersions"
+                                           @onchange="() => form.AllowMultipleActiveVersions = true" />
+                                    <label class="form-check-label" for="vMulti">
+                                        چند نسخه هم‌زمان فعال
+                                    </label>
+                                </div>
+                                @if (EditId == 0)
+                                {
+                                    <div class="form-check form-switch mt-2 pt-2 border-top">
+                                        <input class="form-check-input" type="checkbox" id="v1act" @bind="form.FirstVersionActive" />
+                                        <label class="form-check-label fs-8" for="v1act">فعال‌سازی نسخه اول (بدون تأییدکننده)</label>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        @* ---------- نمایش برای همه ---------- *@
+                        <div class="col-md-6">
+                            <label class="form-label fw-700"><i class="bi bi-globe2 ms-1"></i> امنیت و نمایش</label>
+                            <div class="border rounded-3 p-2">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="dPub" @bind="form.IsPublic" />
+                                    <label class="form-check-label fw-700" for="dPub">نمایش برای همه کاربران</label>
+                                </div>
+                                <div class="form-check form-switch mt-1">
+                                    <input class="form-check-input" type="checkbox" id="dPubDl" @bind="form.PublicCanDownload"
+                                           disabled="@(!form.IsPublic)" />
+                                    <label class="form-check-label" for="dPubDl">دانلود برای همه کاربران</label>
+                                </div>
+                                <hr class="my-2" />
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="dConf" @bind="form.RequireDownloadConfirm" />
+                                    <label class="form-check-label fw-700 text-danger" for="dConf"><i class="bi bi-shield-lock ms-1"></i> تأیید رمز برای مشاهده و دانلود</label>
+                                </div>
+                                <div class="form-check form-switch mt-1">
+                                    <input class="form-check-input" type="checkbox" id="dWm" @bind="form.WatermarkPreview" />
+                                    <label class="form-check-label fw-700" for="dWm"><i class="bi bi-droplet-half ms-1" style="color:#0284c7"></i> واترمارک نام کاربر و زمان مشاهده</label>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </details>
+                <details class="da-form-extra">
+                    <summary>برچسب‌ها و ارتباطات</summary>
+                    <div class="row g-3 da-extra-content">
+                        @* ---------- تگ‌ها و برچسب‌ها ---------- *@
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fw-700 mb-0"><i class="bi bi-tags ms-1"></i> برچسب‌ها</label>
+                                <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 fs-8" @onclick="() => showTagsModal = true">
+                                    <i class="bi bi-plus-circle"></i> برچسب جدید
+                                </button>
+                            </div>
+                            <div class="d-flex flex-wrap gap-2 p-2 border rounded-3 bg-light">
+                                @if (availableTags.Count == 0)
+                                {
+                                    <span class="fs-8 text-muted">بدون برچسب</span>
+                                }
+                                else
+                                {
+                                    @foreach (var t in availableTags)
+                                    {
+                                        var isSelected = selectedTagIds.Contains(t.Id);
+                                        <button type="button" class="btn btn-sm rounded-pill d-flex align-items-center gap-1 shadow-sm"
+                                                style="@(isSelected ? $"background-color:{t.Color};color:#fff;border:2px solid #000;" : $"background-color:#fff;color:#333;border:1px solid {t.Color};")"
+                                                @onclick="() => ToggleTag(t.Id)">
+                                            <i class="bi @(isSelected ? "bi-check-circle-fill" : "bi-tag")"></i>
+                                            @t.Name
+                                        </button>
+                                    }
+                                }
+                            </div>
+                        </div>
+
+                        @* ---------- نفرات گردش ---------- *@
+                        <div class="col-12">
+                            <label class="form-label fw-700">
+                                <i class="bi bi-arrow-repeat ms-1"></i> تأییدکنندگان
+                            </label>
+                            <MultiSearchSelect Items="Users" Values="approverIds" ValuesChanged="v => approverIds = v"
+                                               Placeholder="انتخاب افراد…"
+                                               EmptyText="بدون تأییدکننده؛ تأیید مستقیم" />
+                        </div>
+
+                        @* ---------- مدارک مرتبط (چندانتخابی سرچ‌دار) ---------- *@
+                        <div class="col-12">
+                            <label class="form-label fw-700"><i class="bi bi-link-45deg ms-1"></i> مدارک مرتبط</label>
+                            <MultiSearchSelect Items="LinkableDocs" Values="linkIds" ValuesChanged="v => linkIds = v"
+                                               Placeholder="انتخاب مدرک…"
+                                               EmptyText="انتخاب نشده" />
+                        </div>
+
+                    </div>
+                </details>
+            </div>
             @* ---------- دسترسی نفرات ----------
                فقط دارندگان «دسترسی کامل» روی همین مدرک می‌توانند دسترسی دیگران را تعیین کنند؛
                برای بقیه این بخش اصلاً نمایش داده نمی‌شود (دسترسی از صفحهٔ خود مدرک مدیریت می‌شود). *@
             @if (CanManageAccess)
             {
                 <div class="col-12">
-                    <label class="form-label fw-700"><i class="bi bi-shield-lock ms-1"></i> دسترسی اختصاصی این مدرک</label>
-                    <div class="fs-9 text-muted mb-1">
-                        علاوه بر دسترسی ارث‌بری‌شده از پوشه. بالاترین سطح برنده است.
-                    </div>
-                    <DocPermissionEditor Users="Users" Roles="Roles" Items="perms" />
-                </div>
-            }
-            else
-            {
-                <div class="col-12">
-                    <div class="alert alert-secondary py-2 fs-9 mb-0">
-                        <i class="bi bi-info-circle ms-1"></i>
-                        تعیین دسترسی کاربران روی این مدرک فقط در <b>صفحهٔ خود مدرک</b> و توسط دارندگان
-                        <b>دسترسی کامل</b> روی همان مدرک انجام می‌شود.
-                    </div>
+                    <details class="da-form-extra">
+                        <summary>دسترسی اختصاصی</summary>
+                        <div class="da-extra-content">
+                            <DocPermissionEditor Users="Users" Roles="Roles" Items="perms" />
+                        </div>
+                    </details>
                 </div>
             }
         </div>
     </ChildContent>
     <Footer>
-        <button class="btn btn-light" @onclick="OnClose">انصراف (Esc)</button>
+        <button class="btn btn-light" @onclick="OnClose">انصراف</button>
         <button class="btn btn-primary" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            <i class="bi bi-check-lg ms-1"></i> ذخیره (F1)
+            <i class="bi bi-check-lg ms-1"></i> ذخیره
         </button>
     </Footer>
 </Modal>
+</div>
 
 <DocTagsModal Visible="showTagsModal" OnClose="() => showTagsModal = false" OnTagsChanged="LoadTags" />
 

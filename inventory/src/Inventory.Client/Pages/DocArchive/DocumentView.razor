@@ -81,6 +81,10 @@ else if (accessDenied)
 else
 {
 <div class="doc-archive-shell">
+@if (doc.MyLevel >= DocAccessLevelDto.Full)
+{
+    <DocManagementTools @key="Id" DocumentId="Id" Users="lookups.Users" />
+}
 <div class="card shadow-sm mb-3">
     <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2"
          style="background:linear-gradient(135deg,#6366f1,#0ea5e9);color:#fff;border-radius:14px 14px 0 0;">
@@ -465,52 +469,6 @@ else
                             فقط مدارک فعال قابل لینک هستند.
                         </div>
                     </div>
-                }
-            </div>
-        </div>
-
-        @* ------------------- ارتباط با ماژول‌های سامانه (ERP) ------------------- *@
-        <div class="card mb-3">
-            <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center">
-                <span><i class="bi bi-diagram-3-fill ms-1 text-primary"></i> اتصالات سامانه ERP</span>
-                <span class="badge bg-secondary">@doc.EntityLinks.Count.Num()</span>
-            </div>
-            <div class="card-body p-2">
-                @foreach (var el in doc.EntityLinks)
-                {
-                    <div class="d-flex justify-content-between align-items-center border-bottom py-1 fs-8">
-                        <div>
-                            <span class="badge bg-primary-subtle text-primary border border-primary-subtle me-1">@GetErpModuleTitle(el.Module)</span>
-                            <b>@el.EntityTitle</b>
-                            @if (!string.IsNullOrWhiteSpace(el.EntityCode))
-                            {
-                                <span class="fs-9 text-muted font-mono ms-1">(@el.EntityCode)</span>
-                            }
-                            @if (!string.IsNullOrWhiteSpace(el.Note))
-                            {
-                                <div class="fs-9 text-muted mt-0.5"><i class="bi bi-chat-left-text me-1"></i>@el.Note</div>
-                            }
-                        </div>
-                        <div class="d-flex align-items-center gap-1">
-                            @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive)
-                            {
-                                <button class="btn btn-sm btn-light p-1" title="حذف اتصال" @onclick="() => RemoveErpLink(el.Id)">
-                                    <i class="bi bi-x-lg text-danger"></i>
-                                </button>
-                            }
-                        </div>
-                    </div>
-                }
-                @if (doc.EntityLinks.Count == 0)
-                {
-                    <div class="fs-8 text-muted py-2">هنوز به هیچ موجودیتی در ERP متصل نشده است.</div>
-                }
-
-                @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive)
-                {
-                    <button class="btn btn-sm btn-outline-primary w-100 mt-2" @onclick="OpenAddErpLinkModal">
-                        <i class="bi bi-plus-lg"></i> اتصال به رکورد ERP (پروژه، پرسنل، ...)
-                    </button>
                 }
             </div>
         </div>
@@ -933,73 +891,6 @@ else
 </Modal>
 
 @* ==================== مودال ویرایش مدرک ==================== *@
-@* ==================== مودال اتصال به رکورد ERP ==================== *@
-<Modal Visible="showAddErpLink" Title="اتصال مدرک به ماژول‌های سامانه (ERP)" Size="modal-md" OnClose="() => showAddErpLink = false">
-    <ChildContent>
-        <div class="mb-3">
-            <label class="form-label fs-8 fw-bold">انتخاب ماژول سامانه:</label>
-            <select class="form-select form-select-sm" @bind="erpModule" @bind:after="OnErpModuleChanged">
-                <option value="Projects">پروژه‌ها و قراردادها</option>
-                <option value="Hr">پرسنلی و منابع انسانی</option>
-                <option value="ItAssets">اموال و تجهیزات IT</option>
-                <option value="Invoicing">فاکتورها و فروش</option>
-                <option value="KarFarma">کارفرمایان و طرف‌حساب‌ها</option>
-                <option value="Repairs">سفارشات تعمیرات</option>
-                <option value="Warehousing">اسناد انبارداری</option>
-            </select>
-        </div>
-
-        <div class="mb-3">
-            <label class="form-label fs-8 fw-bold">جستجو و انتخاب رکورد:</label>
-            <input type="text" class="form-control form-control-sm mb-2" placeholder="برای جستجو تایپ کنید…"
-                   @bind="erpSearchQuery" @bind:event="oninput" @onkeyup="SearchErpEntities" />
-
-            @if (erpLookupLoading)
-            {
-                <div class="text-center py-2"><span class="spinner-border spinner-border-sm text-primary"></span></div>
-            }
-            else if (erpLookupItems.Count > 0)
-            {
-                <div class="list-group list-group-flush border rounded" style="max-height: 180px; overflow-y: auto;">
-                    @foreach (var item in erpLookupItems)
-                    {
-                        <button type="button" class="list-group-item list-group-item-action p-2 d-flex justify-content-between align-items-center @(selectedErpItem?.Id == item.Id ? "active" : "")"
-                                @onclick="() => selectedErpItem = item">
-                            <div>
-                                <div class="fw-bold fs-8">@item.Title</div>
-                                @if (!string.IsNullOrWhiteSpace(item.Subtitle))
-                                {
-                                    <div class="fs-9 text-muted">@item.Subtitle</div>
-                                }
-                            </div>
-                            @if (selectedErpItem?.Id == item.Id)
-                            {
-                                <i class="bi bi-check-circle-fill text-primary"></i>
-                            }
-                        </button>
-                    }
-                </div>
-            }
-            else
-            {
-                <div class="text-muted fs-8 p-2 border rounded text-center">موردی یافت نشد.</div>
-            }
-        </div>
-
-        <div class="mb-3">
-            <label class="form-label fs-8">یادداشت اتصال (اختیاری):</label>
-            <input type="text" class="form-control form-control-sm" placeholder="مثلاً: مستند فنی تحویل پروژه" @bind="erpLinkNote" />
-        </div>
-    </ChildContent>
-    <Footer>
-        <button class="btn btn-light" @onclick="() => showAddErpLink = false">انصراف</button>
-        <button class="btn btn-primary" disabled="@(selectedErpItem == null || savingErpLink)" @onclick="SaveErpLink">
-            @if (savingErpLink) { <span class="spinner-border spinner-border-sm me-1"></span> }
-            ثبت اتصال
-        </button>
-    </Footer>
-</Modal>
-
 <VersionCompareModal @ref="compareModal" />
 
 <DocumentFormModal Visible="showEdit" EditId="Id" Folders="FolderLookup" Users="lookups.Users" Documents="lookups.Documents" Roles="lookups.Roles"
@@ -1028,13 +919,6 @@ else
     private List<DocExtractedTextDto> extractedTexts = new();
     private DocExtractedTextDto? selectedText;
 
-    // متغیرهای اتصال ERP
-    private bool showAddErpLink, savingErpLink, erpLookupLoading;
-    private string erpModule = "Projects";
-    private string erpSearchQuery = "";
-    private List<DocEntityLookupItemDto> erpLookupItems = new();
-    private DocEntityLookupItemDto? selectedErpItem;
-    private string erpLinkNote = "";
     private bool loading = true, loadingExtracted, saving, showTextModal;
 
     private bool showVersion, showApproval, showEdit;
@@ -1556,100 +1440,6 @@ else
         showEdit = false;
         await Load();
     }
-
-    // ---------- اتصالات ERP ----------
-    private async Task OpenAddErpLinkModal()
-    {
-        showAddErpLink = true;
-        selectedErpItem = null;
-        erpSearchQuery = "";
-        erpLinkNote = "";
-        await OnErpModuleChanged();
-    }
-
-    private async Task OnErpModuleChanged()
-    {
-        selectedErpItem = null;
-        await SearchErpEntities();
-    }
-
-    private async Task SearchErpEntities()
-    {
-        erpLookupLoading = true;
-        try
-        {
-            erpLookupItems = await Svc.SearchModuleEntitiesAsync(erpModule, erpSearchQuery);
-        }
-        catch (Exception ex)
-        {
-            Toast.Error($"خطا در دریافت لیست {GetErpModuleTitle(erpModule)}: {ex.Message}");
-            erpLookupItems = new();
-        }
-        finally
-        {
-            erpLookupLoading = false;
-        }
-    }
-
-    private async Task SaveErpLink()
-    {
-        if (selectedErpItem == null) return;
-        savingErpLink = true;
-        try
-        {
-            await Svc.AddEntityLinkAsync(new DocEntityLinkSaveDto
-            {
-                DocumentId = Id,
-                Module = erpModule,
-                EntityId = selectedErpItem.Id,
-                EntityCode = selectedErpItem.Code,
-                EntityTitle = selectedErpItem.Title,
-                Note = erpLinkNote
-            });
-            Toast.Success("اتصال مدرک به ماژول با موفقیت ثبت شد.");
-            showAddErpLink = false;
-            await Load();
-        }
-        catch (Exception ex)
-        {
-            Toast.Error($"خطا در ثبت اتصال: {ex.Message}");
-        }
-        finally
-        {
-            savingErpLink = false;
-        }
-    }
-
-    private async Task RemoveErpLink(int linkId)
-    {
-        var ok = await JS.InvokeAsync<bool>("confirm", "آیا از حذف این اتصال اطمینان دارید؟");
-        if (!ok) return;
-
-        try
-        {
-            await Svc.RemoveEntityLinkAsync(linkId);
-            Toast.Success("اتصال حذف شد.");
-            await Load();
-        }
-        catch (Exception ex)
-        {
-            Toast.Error($"خطا در حذف اتصال: {ex.Message}");
-        }
-    }
-
-    private static string GetErpModuleTitle(string module) => module.ToLowerInvariant() switch
-    {
-        "projects" => "پروژه",
-        "hr" or "personnel" => "پرسنلی",
-        "itassets" => "تجهیزات IT",
-        "invoicing" => "فاکتور",
-        "catalog" or "party" or "karfarma" => "کارفرما / طرف‌حساب",
-        "repairs" => "تعمیرات",
-        "office" => "دبیرخانه",
-        "sales" => "فروش",
-        "warehousing" => "انبار",
-        _ => module
-    };
 
     private static string LevelName(DocAccessLevelDto l) => l switch
     {

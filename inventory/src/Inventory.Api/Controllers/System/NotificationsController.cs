@@ -107,7 +107,7 @@ public class NotificationsController : ControllerBase
 
     /// <summary>کلید عمومی VAPID — برای ثبت اشتراک push در مرورگر/دستگاه.</summary>
     [HttpGet("push-vapid-key")]
-    public IActionResult VapidKey() => Ok(new { publicKey = _push.VapidPublicKey });
+    public IActionResult VapidKey() => Ok(new { publicKey = _push.VapidPublicKey, configured = _push.IsConfigured });
 
     /// <summary>ثبت اشتراک push این دستگاه برای کاربر جاری.</summary>
     [HttpPost("push-subscribe")]
@@ -117,6 +117,10 @@ public class NotificationsController : ControllerBase
         if (input == null || string.IsNullOrWhiteSpace(input.Endpoint))
             return BadRequest(new { message = "اندپوینت اشتراک ارسال نشده است." });
 
+        if (!_push.IsConfigured) return StatusCode(503, new { message = "کلیدهای اعلان روی سرور تنظیم نشده یا معتبر نیستند." });
+        if (!PushEndpointPolicy.ValidEndpoint(input.Endpoint) || !PushEndpointPolicy.ValidKeys(input.P256DH ?? "", input.Auth ?? ""))
+            return BadRequest(new { message = "اشتراک دستگاه معتبر نیست؛ مرورگر را به‌روز کنید." });
+        if (!await _db.Users.AnyAsync(u => u.Id == MyUserId && u.IsActive)) return Forbid();
         var ua = Request.Headers.UserAgent.ToString();
         await _push.SaveSubscriptionAsync(MyUserId, input.Endpoint, input.P256DH ?? "", input.Auth ?? "", ua);
         return Ok(new { ok = true, message = "اشتراک نوتیفیکیشن دستگاه ثبت شد." });
@@ -134,13 +138,31 @@ public class NotificationsController : ControllerBase
 
     /// <summary>ارسال پیام آزمایشی push به کاربر جاری (برای تست تنظیمات).</summary>
     [HttpPost("test-push")]
-    public async Task<IActionResult> TestPush()
+    public async Task<IActionResult> TestPush([FromBody] PushUnsubscribeInput? input)
     {
         if (MyUserId <= 0) return Unauthorized();
-        await _push.SendToUserAsync(MyUserId, "✅ آزمون نوتیفیکیشن",
-            "اگر این پیام بالای صفحه‌ی گوشی/تبلت شما آمد، Web Push فعال است.",
-            null);
-        return Ok(new { message = "نوتیفیکیشن آزمایشی ارسال شد." });
+        if (!_push.IsConfigured) return StatusCode(503, new { message = "کلیدهای اعلان روی سرور تنظیم نشده یا معتبر نیستند." });
+        var endpoint = input?.Endpoint ?? "";
+        var sub = await _db.PushSubscriptions.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == MyUserId && s.Endpoint == endpoint);
+        if (sub == null) return BadRequest(new { message = "ابتدا اعلان این دستگاه را فعال کنید." });
+        var recent = DateTime.UtcNow.AddSeconds(-30);
+        if (await _db.PushDeliveries.AnyAsync(j => j.UserId == MyUserId && j.Tag.StartsWith("test-") && j.CreatedAtUtc > recent))
+            return StatusCode(429, new { message = "برای آزمایش بعدی ۳۰ ثانیه صبر کنید." });
+        var now = DateTime.UtcNow;
+        _db.PushDeliveries.Add(new PushDelivery { UserId = MyUserId, SubscriptionId = sub.Id, Tag = "test-" + Guid.NewGuid().ToString("N"),
+            Title = "آزمایش اعلان گوشی", Body = "اعلان آزمایشی سامانه دریافت شد.", Link = "/", CreatedAtUtc = now, NextAttemptAtUtc = now, ExpiresAtUtc = now.AddMinutes(10) });
+        await _db.SaveChangesAsync();
+        return Accepted(new { message = "اعلان در صف ارسال قرار گرفت؛ دریافت آن را در نوار اعلان گوشی بررسی کنید." });
+    }
+
+    [HttpPost("push-status")]
+    public async Task<IActionResult> PushStatus([FromBody] PushUnsubscribeInput? input)
+    {
+        if (MyUserId <= 0) return Unauthorized();
+        var sub = await _db.PushSubscriptions.AsNoTracking().FirstOrDefaultAsync(s => s.UserId == MyUserId && s.Endpoint == (input == null ? "" : input.Endpoint));
+        var last = sub == null ? null : await _db.PushDeliveries.AsNoTracking().Where(j => j.UserId == MyUserId && j.SubscriptionId == sub.Id).OrderByDescending(j => j.Id)
+            .Select(j => new { status = j.Status, errorCode = j.ErrorCode, attempts = j.Attempts }).FirstOrDefaultAsync();
+        return Ok(new { configured = _push.IsConfigured, registered = sub != null, last });
     }
 
     public class PushSubscribeInput

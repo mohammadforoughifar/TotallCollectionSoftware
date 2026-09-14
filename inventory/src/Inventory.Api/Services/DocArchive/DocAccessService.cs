@@ -110,6 +110,9 @@ public class DocAccessService : IDocAccessService
             .ToListAsync();
         foreach (var p in dp) result = Max(result, (p.Level, p.CanDownload));
 
+        var now = DateTime.UtcNow;
+        var temporary = await _db.DocTemporaryGrants.AsNoTracking().Where(g => g.DocumentId == documentId && g.UserId == userId && g.RevokedAtUtc == null && g.ExpiresAtUtc > now).ToListAsync();
+        foreach (var g in temporary) result = Max(result, (DocAccessLevel.Read, g.CanDownload));
         var folderAccess = await FolderAccessAsync(userId, false, doc.FolderId);
         result = Max(result, folderAccess);
 

@@ -13,7 +13,7 @@ namespace Inventory.Client.Services;
 /// نحوه استفاده در هر صفحه:
 ///   Rt.DataChanged += OnChanged;  →  در Dispose:  Rt.DataChanged -= OnChanged;
 /// </summary>
-public class RealtimeService : IAsyncDisposable
+public class RealtimeService(IAuthState auth) : IAsyncDisposable
 {
     /// <summary>اعلان شخصی جدید برای کاربر جاری رسید.</summary>
     public event Action<RtNotification>? NotifyReceived;
@@ -35,14 +35,10 @@ public class RealtimeService : IAsyncDisposable
         await StopAsync();
         if (userId <= 0 || string.IsNullOrWhiteSpace(baseUrl)) return;
 
-        var hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/notify?userId={userId}";
-        if (!string.IsNullOrWhiteSpace(role))
-        {
-            hubUrl += $"&role={Uri.EscapeDataString(role)}";
-        }
+        var hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/notify";
 
         _hub = new HubConnectionBuilder()
-            .WithUrl(hubUrl)
+            .WithUrl(hubUrl, options => options.AccessTokenProvider = () => Task.FromResult<string?>(auth.Token))
             .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) })
             .Build();
 

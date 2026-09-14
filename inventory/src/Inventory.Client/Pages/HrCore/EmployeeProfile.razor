@@ -494,13 +494,6 @@ else
         <AttachmentBox Module="HrEmployee" RefId="Id" CanUpload="@canUpdate" />
     </div>
 
-    @* اتصال اپشنال به آرشیو مرکزی — فقط اگر شرکت/کاربر دسترسی ماژول DocArchive داشته باشد *@
-    @if (Auth.HasModule("DocArchive"))
-    {
-        <div class="mt-3">
-            <DocArchiveEntityPanel Module="HrCore" EntityId="Id" EntityTitle="@($"{emp?.FirstName} {emp?.LastName}".Trim())" EntityCode="@emp?.Code" CanManage="@canUpdate" />
-        </div>
-    }
 }
 
 <Modal Visible="showContract" Title="قرارداد" Size="modal-lg" OnClose="() => showContract = false">
