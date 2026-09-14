@@ -32,7 +32,7 @@
                     }
                     else if (a.CanDownload)
                     {
-                        <button class="attx-name attx-name-btn" title="دانلود" @onclick="() => Download(a)">
+                        <button class="attx-name attx-name-btn" type="button" title="دانلود" disabled="@downloading.Contains(a.Id)" @onclick="() => Download(a)">
                             @a.FileName
                         </button>
                     }
@@ -79,8 +79,8 @@
                     }
                     @if (a.CanDownload)
                     {
-                        <button class="btn btn-sm btn-light py-0" title="دانلود" @onclick="() => Download(a)">
-                            <i class="bi bi-download text-success"></i>
+                        <button class="btn btn-sm btn-light py-0" type="button" title="دانلود" disabled="@downloading.Contains(a.Id)" @onclick="() => Download(a)">
+                            <i class="@(downloading.Contains(a.Id) ? "spinner-border spinner-border-sm text-primary" : "bi bi-download text-success")"></i>
                         </button>
                     }
                     @if (Module == "DocVersion" && a.CanDownload && CanPrintOf(a))
@@ -138,7 +138,7 @@
     </div>
 </div>
 
-<FilePreviewModal @ref="previewModal" />
+<FilePreviewModal @ref="previewModal" DownloadRequested="DownloadFromPreview" />
 
 @* مودال تایید مجدد رمز برای فایل‌های مدرک محرمانه *@
 @if (Module == "DocVersion")
@@ -225,6 +225,7 @@
 
     private List<AttItem> items = new();
     private readonly List<string> pendingUploads = new();
+    private readonly HashSet<int> downloading = new();
     private FilePreviewModal? previewModal;
     private string apiBase = "";
     private bool dragOver, uploading;
@@ -300,7 +301,7 @@
     private bool CanPreviewOf(AttItem a) => a.CanPreview || IsOffice(a) || IsImage(a) || IsPdf(a);
 
     private string DownloadUrl(AttItem a) =>
-        $"{apiBase}/api/attachments/download/{a.Id}?access_token={Auth.Token}";
+        $"{apiBase}/api/attachments/download/{a.Id}";
 
     /// <summary>قابل چاپ با لاگ؟ فقط PDF و عکس (همان پوشش واترمارک سمت سرور).</summary>
     private static bool CanPrintOf(AttItem a) => IsPdf(a) || IsImage(a);
@@ -334,10 +335,42 @@
         }
     }
 
+    private async Task DownloadFromPreview(int id)
+    {
+        var item = items.FirstOrDefault(a => a.Id == id);
+        if (item is not null) await Download(item);
+        else Toast.Error("فایل در فهرست فعلی یافت نشد؛ صفحه را تازه کنید.");
+    }
+
+    private async Task RequestDownloadPassword(AttItem a)
+    {
+        confirmedDocs.Remove(a.DocumentId);
+        a.NeedsConfirm = true;
+        if (previewModal is not null) await previewModal.Close();
+        ShowConfirm(a, true);
+    }
+
     private async Task Download(AttItem a)
     {
-        if (NeedsConfirmNow(a)) { ShowConfirm(a, true); return; }
-        await JS.InvokeVoidAsync("open", DownloadUrl(a), "_blank");
+        if (!a.CanDownload || downloading.Contains(a.Id)) return;
+        if (NeedsConfirmNow(a)) { await RequestDownloadPassword(a); return; }
+        downloading.Add(a.Id);
+        try
+        {
+            var result = await JS.InvokeAsync<AttachmentDownloadResult>("filePreview.download", DownloadUrl(a), Auth.Token, a.FileName);
+            if (result.Code == "PASSWORD_CONFIRM_REQUIRED" && result.DocumentId > 0)
+            {
+                // Server confirmation may have expired while the page remained open.
+                a.DocumentId = result.DocumentId;
+                await RequestDownloadPassword(a);
+            }
+            else if (!result.Success) Toast.Error(result.Message ?? "دانلود فایل انجام نشد.");
+        }
+        catch (Exception)
+        {
+            Toast.Error("دانلود فایل انجام نشد؛ صفحه را تازه کنید و دوباره تلاش کنید.");
+        }
+        finally { downloading.Remove(a.Id); }
     }
 
     /// <summary>باز کردن نسخه چاپی (واترمارک‌دار با نام چاپ‌کننده + تاریخ) در تب جدید — چاپ در لاگ ثبت می‌شود.</summary>

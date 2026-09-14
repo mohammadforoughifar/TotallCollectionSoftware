@@ -42,7 +42,7 @@ public class DocumentsController : RbacControllerBase
         var manager = await IsManagerAsync();
         var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
 
-        var q = Db.Documents.AsNoTracking();
+        var q = await DocQuery.AccessibleAsync(Db, _access, MyUserId, manager);
 
         // فیلتر وضعیت — «مدارک غیرفعال» و «سطل بازیافت» زیرمنوی جداگانه دارند
         q = status?.ToLowerInvariant() switch
@@ -75,6 +75,8 @@ public class DocumentsController : RbacControllerBase
             .Where(p => ids.Contains(p.DocumentId) &&
                         (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
             .ToListAsync();
+        var utcNow = DateTime.UtcNow;
+        var grants = await Db.DocTemporaryGrants.AsNoTracking().Where(g => ids.Contains(g.DocumentId) && g.UserId == MyUserId && g.RevokedAtUtc == null && g.ExpiresAtUtc > utcNow).ToListAsync();
         var versions = await Db.DocumentVersions.AsNoTracking().Where(v => ids.Contains(v.DocumentId)).ToListAsync();
         var links = await Db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId))
             .GroupBy(l => l.DocumentId).Select(g => new { g.Key, C = g.Count() })
@@ -96,12 +98,6 @@ public class DocumentsController : RbacControllerBase
             .Select(e => e.DocumentId)
             .Distinct().ToListAsync()).ToHashSet();
 
-        var entityLinks = await Db.DocEntityLinks.AsNoTracking()
-            .Where(l => ids.Contains(l.DocumentId))
-            .ToListAsync();
-        var entityLinkMap = entityLinks.GroupBy(l => l.DocumentId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
         var result = new List<DocumentListDto>();
         foreach (var d in docs)
         {
@@ -116,6 +112,7 @@ public class DocumentsController : RbacControllerBase
                 if (folderMap.TryGetValue(d.FolderId, out var fa))
                 { if (fa.Level > level) level = fa.Level; dl |= fa.Download; }
             }
+            foreach (var g in grants.Where(g => g.DocumentId == d.Id)) { if (level < DocAccessLevel.Read) level = DocAccessLevel.Read; dl |= g.CanDownload; }
             if (level == DocAccessLevel.None) continue;
 
             var vs = versions.Where(v => v.DocumentId == d.Id).ToList();
@@ -165,8 +162,6 @@ public class DocumentsController : RbacControllerBase
                 MyCanDownload = dl,
                 Tags = docTagMap.TryGetValue(d.Id, out var tlist) ? tlist : new(),
                 HasIndexedContent = indexedDocIds.Contains(d.Id),
-                EntityLinkCount = entityLinkMap.TryGetValue(d.Id, out var elist) ? elist.Count : 0,
-                LinkedModules = entityLinkMap.TryGetValue(d.Id, out var elist2) ? elist2.Select(x => x.Module).Distinct().ToList() : new()
             });
         }
 
@@ -288,29 +283,6 @@ public class DocumentsController : RbacControllerBase
         dto.ExtractedTextCount = await Db.DocExtractedTexts.AsNoTracking()
             .CountAsync(e => e.DocumentId == id && e.Status == "Indexed");
 
-        dto.EntityLinks = await Db.DocEntityLinks.AsNoTracking()
-            .Where(l => l.DocumentId == id)
-            .OrderByDescending(l => l.Id)
-            .Select(l => new DocEntityLinkDto
-            {
-                Id = l.Id,
-                DocumentId = l.DocumentId,
-                DocumentCode = d.Code,
-                DocumentTitle = d.Title,
-                FolderId = d.FolderId,
-                FolderName = dto.FolderName,
-                Module = l.Module,
-                ModuleTitle = l.Module,
-                EntityId = l.EntityId,
-                EntityCode = l.EntityCode,
-                EntityTitle = l.EntityTitle,
-                Note = l.Note,
-                CreatedByName = l.CreatedByName,
-                CreatedAt = l.CreatedAt,
-                MyLevel = (DocAccessLevelDto)(int)level,
-                MyCanDownload = dl
-            }).ToListAsync();
-
         if (level >= DocAccessLevel.Full)
         {
             dto.Permissions = await Db.DocumentPermissions.AsNoTracking().Where(p => p.DocumentId == id)
@@ -344,7 +316,7 @@ public class DocumentsController : RbacControllerBase
         // (و مدیر آرشیو) نمایش داده می‌شوند.
         if (level < DocAccessLevel.Full)
         {
-            string[] hiddenActions = { "Permissions", "AccessRequest", "AccessRequestApproved", "AccessRequestRejected" };
+            string[] hiddenActions = { "Permissions", "AccessRequest", "AccessRequestApproved", "AccessRequestRejected", "TemporaryAccess", "TemporaryAccessRevoked", "RenewalPolicy" };
             dto.Logs = dto.Logs.Where(l => !hiddenActions.Contains(l.Action)).ToList();
         }
 
@@ -923,6 +895,8 @@ public class DocumentsController : RbacControllerBase
                 UserName = l.UserName, CreatedAt = l.CreatedAt, VersionId = l.VersionId
             }).ToListAsync();
 
+        if (lvl < DocAccessLevel.Full)
+            res.Between = res.Between.Where(l => l.Action != "Permissions" && !l.Action.StartsWith("AccessRequest") && !l.Action.StartsWith("TemporaryAccess") && l.Action != "RenewalPolicy").ToList();
         res.ChangeCount = res.Fields.Count(x => x.Kind != "same")
                         + res.Approvers.Count(x => x.Kind != "same")
                         + res.Attachments.Count(x => x.Kind != "same");
@@ -1033,6 +1007,10 @@ public class DocumentsController : RbacControllerBase
         // پیوست‌های ورژن‌ها
         var attaches = await Db.AppAttachments
             .Where(a => a.Module == "DocVersion" && versionIds.Contains(a.RefId)).ToListAsync();
+        var attachmentIds = attaches.Select(a => a.Id).ToArray();
+        Db.DocIndexJobs.RemoveRange(await Db.DocIndexJobs.Where(j => attachmentIds.Contains(j.AttachmentId)).ToListAsync());
+        Db.DocTemporaryGrants.RemoveRange(await Db.DocTemporaryGrants.Where(g => g.DocumentId == id).ToListAsync());
+        Db.DocRenewalPolicies.RemoveRange(await Db.DocRenewalPolicies.Where(p => p.DocumentId == id).ToListAsync());
         Db.AppAttachments.RemoveRange(attaches);
 
         Db.DocumentApprovers.RemoveRange(await Db.DocumentApprovers.Where(a => a.DocumentId == id).ToListAsync());

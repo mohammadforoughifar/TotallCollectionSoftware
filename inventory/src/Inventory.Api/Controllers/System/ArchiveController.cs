@@ -161,6 +161,14 @@ public class AttachmentsController : ControllerBase
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
     private bool IsAdmin => User.IsInRole("Admin");
 
+    private async Task<bool> CanWriteDocVersion(int versionId)
+    {
+        var version = await _db.DocumentVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == versionId && !v.IsFrozen);
+        if (version == null || !await _db.Documents.AnyAsync(d => d.Id == version.DocumentId && d.IsActive && !d.IsDeleted)) return false;
+        var level = await new Inventory.Api.Services.DocArchive.DocAccessService(_db).DocumentAccessAsync(MyUserId, IsAdmin, version.DocumentId);
+        return level.Item1 >= DocAccessLevel.Write;
+    }
+
     /// <summary>فرمت‌هایی که مرورگر به‌صورت native نمایش می‌دهد.</summary>
     private static readonly HashSet<string> InlineTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -316,6 +324,8 @@ public class AttachmentsController : ControllerBase
     [RequestSizeLimit(15 * 1024 * 1024)]
     public async Task<IActionResult> Upload(string module, int refId, IFormFile file)
     {
+        if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase) && !await CanWriteDocVersion(refId))
+            return StatusCode(403, new { message = "افزودن پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
         var access = await _guard.CheckAsync(module, refId, MyUserId, IsAdmin);
         if (access != AttachmentAccess.Download)
             return StatusCode(403, new { message = "شما اجازه افزودن پیوست به این مورد را ندارید." });
@@ -341,7 +351,7 @@ public class AttachmentsController : ControllerBase
 
         if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))
         {
-            _docIndex.QueueAttachmentIndexing(att.Id);
+            await _docIndex.QueueAttachmentIndexingAsync(att.Id);
         }
 
         return Ok();
@@ -501,6 +511,9 @@ public class AttachmentsController : ControllerBase
         if (access == AttachmentAccess.None)
             return StatusCode(403, new { message = "شما به این فایل دسترسی ندارید." });
 
+        var flags = await DocSecurityFlagsAsync(a.Module, a.RefId);
+        if (flags is { RequireConfirm: true } confidential && !_confirm.IsConfirmed(MyUserId, confidential.DocId))
+            return StatusCode(403, new { code = "PASSWORD_CONFIRM_REQUIRED", documentId = confidential.DocId, message = "برای مشاهده فایل محرمانه، تأیید رمز لازم است." });
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
 
@@ -519,6 +532,8 @@ public class AttachmentsController : ControllerBase
         var a = await _db.AppAttachments.FindAsync(id);
         if (a == null) return NotFound();
 
+        if (string.Equals(a.Module, "DocVersion", StringComparison.OrdinalIgnoreCase) && !await CanWriteDocVersion(a.RefId))
+            return StatusCode(403, new { message = "حذف پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
         var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
         if (access != AttachmentAccess.Download)
             return StatusCode(403, new { message = "شما اجازه حذف پیوست این مورد را ندارید." });
@@ -529,6 +544,7 @@ public class AttachmentsController : ControllerBase
         {
             var oldExtracted = await _db.DocExtractedTexts.Where(x => x.AttachmentId == a.Id).ToListAsync();
             _db.DocExtractedTexts.RemoveRange(oldExtracted);
+            _db.DocIndexJobs.RemoveRange(await _db.DocIndexJobs.Where(j => j.AttachmentId == a.Id).ToListAsync());
         }
         _db.AppAttachments.Remove(a);
         await _db.SaveChangesAsync();

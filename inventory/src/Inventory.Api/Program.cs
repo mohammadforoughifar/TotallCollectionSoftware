@@ -110,6 +110,9 @@ builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IOcrServiceClien
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocTextExtractorService, Inventory.Api.Services.DocArchive.DocTextExtractorService>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocIndexService, Inventory.Api.Services.DocArchive.DocIndexService>();
 // سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
+builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocIndexWorker>();
+builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocRenewalWorker>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.DocRenewalService>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
 builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
@@ -160,6 +163,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 var path = ctx.Request.Path.Value ?? "";
                 if (!string.IsNullOrEmpty(token) &&
                     (ctx.Request.Path.StartsWithSegments("/hubs/chat") ||
+                     ctx.Request.Path.StartsWithSegments("/hubs/notify") ||
                      path.Contains("/download", StringComparison.OrdinalIgnoreCase) ||
                      path.Contains("/preview", StringComparison.OrdinalIgnoreCase) ||
                      path.Contains("/export-zip", StringComparison.OrdinalIgnoreCase) ||
@@ -212,7 +216,11 @@ builder.Services.AddScoped<Inventory.Api.Hubs.INotifyService, Inventory.Api.Hubs
 builder.Services.AddScoped<Inventory.Api.Hubs.IChatRealtimeNotifier, Inventory.Api.Hubs.ChatRealtimeNotifier>();
 builder.Services.AddScoped<Inventory.Api.Services.Chat.IChatService, Inventory.Api.Services.Chat.ChatService>();
 builder.Services.AddScoped<Inventory.Api.Services.Chat.ChatAttachmentService>();
+builder.Services.AddSingleton<PushSettings>();
 builder.Services.AddScoped<IPushService, PushService>();
+builder.Services.AddHttpClient("WebPush").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IPushTransport, WebPushTransport>();
+builder.Services.AddHostedService<PushDeliveryWorker>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient("moadian", c => c.Timeout = TimeSpan.FromSeconds(30)); // سرویس مودیان (فاکتور الکترونیکی)
@@ -326,6 +334,19 @@ app.MapHub<Inventory.Api.Hubs.ChatHub>("/hubs/chat");
 
 // پوشه‌ی فایل‌های آپلودی داخل wwwroot (عکس‌های کاربران، پیوست‌ها) — با UseStaticFiles معمول سرو می‌شود
 Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "users"));
+
+// Archive sharing must never be bypassed through raw file URLs or cached API responses.
+app.Use(async (ctx, next) =>
+{
+    if (Inventory.Api.Services.DocArchive.DocStaticProtection.IsProtectedPath(ctx.Request.Path.Value ?? ""))
+    {
+        ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+    if (ctx.Request.Path.StartsWithSegments("/api/doc-archive") || ctx.Request.Path.StartsWithSegments("/api/attachments"))
+        ctx.Response.Headers.CacheControl = "no-store";
+    await next();
+});
 
 // سرو فایل‌های استاتیک کلاینت (استقرار تک‌سروره — در صورت وجود پوشه wwwroot)
 var clientRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");

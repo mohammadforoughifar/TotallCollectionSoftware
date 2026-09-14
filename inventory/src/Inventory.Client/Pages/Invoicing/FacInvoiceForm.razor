@@ -301,14 +301,6 @@ else
         </div>
     </div>
 
-    @if (doc.Id > 0 && Auth.HasModule("DocArchive"))
-    {
-        <div class="mt-3">
-            <DocArchiveEntityPanel @key="doc.Id" Module="Invoicing" EntityId="@doc.Id"
-                                    EntityTitle="@($"{doc.KindTitle} شماره {doc.Number}")"
-                                    EntityCode="@doc.Number.ToString()" />
-        </div>
-    }
 }
 
 @code {

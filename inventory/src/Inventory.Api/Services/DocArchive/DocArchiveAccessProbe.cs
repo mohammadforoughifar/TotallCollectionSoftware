@@ -40,6 +40,7 @@ public static class DocArchiveAccessProbe
         if (await db.DocumentPermissions.AnyAsync(p =>
                 p.UserId == userId || (p.RoleId != 0 && roleIds.Contains(p.RoleId)))) return true;
 
-        return false;
+        var now = DateTime.UtcNow;
+        return await db.DocTemporaryGrants.AnyAsync(g => g.UserId == userId && g.RevokedAtUtc == null && g.ExpiresAtUtc > now && db.Documents.Any(d => d.Id == g.DocumentId && !d.IsDeleted));
     }
 }

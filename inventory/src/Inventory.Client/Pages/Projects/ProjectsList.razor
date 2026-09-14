@@ -539,12 +539,7 @@
                 <i class="bi bi-images text-success"></i> تصاویر پروژه
             </button>
         }
-        @if (Auth.HasModule("DocArchive"))
-        {
-            <button class="row-menu-item" @onclick="() => OpenDocArchive(menuProject)">
-                <i class="bi bi-folder-check text-primary"></i> آرشیو اسناد و نقشه‌ها
-            </button>
-        }
+
         @if (Auth.Has("Projects.Export"))
         {
             <div class="row-menu-divider"></div>
@@ -1279,19 +1274,6 @@
     </Footer>
 </Modal>
 
-@* ======================= آرشیو اسناد و مدارک پروژه ======================= *@
-<Modal Visible="showDocArchive" Title="@("آرشیو اسناد و مدارک پروژه «" + (docArchiveProject?.ProjectName ?? "") + "»")" Size="modal-xl" OnClose="() => showDocArchive = false">
-    <ChildContent>
-        @if (docArchiveProject is not null)
-        {
-            <DocArchiveEntityPanel Module="Projects" EntityId="@docArchiveProject.Id" EntityTitle="@docArchiveProject.ProjectName" EntityCode="@docArchiveProject.CodeProject" />
-        }
-    </ChildContent>
-    <Footer>
-        <button class="btn btn-light" @onclick="() => showDocArchive = false">بستن</button>
-    </Footer>
-</Modal>
-
 @code {
     // ردیف‌های «همین صفحه» که از سرور خوانده شده‌اند (صفحه‌بندی سمت سرور)
     private List<ProjectEntryExitDto> items = new();
@@ -1435,8 +1417,8 @@
     private DateTime reportDate = DateTime.Today;
 
     // ---------- مستندات/تصاویر ----------
-    private bool showAttach, showImages, showDocArchive, imagesLoading, imageUploading;
-    private ProjectEntryExitDto? attachProject, imageProject, docArchiveProject;
+    private bool showAttach, showImages, imagesLoading, imageUploading;
+    private ProjectEntryExitDto? attachProject, imageProject;
     private List<AttachItem> imageItems = new();
 
     private sealed class AttachItem
@@ -1512,7 +1494,7 @@
     }
 
     private bool AnyModalOpen => showModal || showFactor || showDates || showResubmit
-                                 || showDetails || showProjectReportsList || showReport || showAttach || showImages || showDocArchive;
+                                 || showDetails || showProjectReportsList || showReport || showAttach || showImages;
 
     protected override async Task OnInitializedAsync()
     {
@@ -1981,13 +1963,6 @@
     }
 
     // ==================== مستندات / تصاویر و آرشیو ====================
-
-    private void OpenDocArchive(ProjectEntryExitDto p)
-    {
-        CloseMenu();
-        docArchiveProject = p;
-        showDocArchive = true;
-    }
 
     private void OpenAttach(ProjectEntryExitDto p)
     {

@@ -467,6 +467,9 @@ public class ChatService : IChatService
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(m => m.LastReadMessageId, m => m.LastReadMessageId < msg.Id ? msg.Id : m.LastReadMessageId)
                     .SetProperty(m => m.UnreadCount, 0));
+            var pushUsers = await _db.ChatMembers.AsNoTracking().Where(m => m.ConversationId == request.ConversationId && m.UserId != currentUserId && !m.IsMuted && !m.IsArchived).Select(m => m.UserId).ToListAsync();
+            await Inventory.Api.Services.PushQueue.StageAsync(_db, pushUsers, "پیام جدید از " + msg.SenderName, "برای مشاهده پیام، گفتگو را باز کنید.", "/chat/" + request.ConversationId);
+            await _db.SaveChangesAsync();
             await transaction.CommitAsync();
         }
 

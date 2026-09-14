@@ -8,6 +8,7 @@
 @inject IAuthState Auth
 @inject HttpClient Http
 @inject IJSRuntime JS
+@inject IToastService Toast
 
 @if (visible)
 {
@@ -29,9 +30,9 @@
                 <div class="d-flex align-items-center gap-1">
                     @if (canDownload)
                     {
-                        <a class="btn btn-sm btn-light" href="@DownloadUrl" target="_blank" title="دانلود فایل">
-                            <i class="bi bi-download text-primary"></i>
-                        </a>
+                        <button type="button" class="btn btn-sm btn-light" disabled="@downloading" @onclick="Download" title="دانلود فایل">
+                            <i class="@(downloading ? "spinner-border spinner-border-sm text-primary" : "bi bi-download text-primary")"></i>
+                        </button>
                     }
                     else
                     {
@@ -168,6 +169,8 @@
 </style>
 
 @code {
+    [Parameter] public EventCallback<int> DownloadRequested { get; set; }
+    private bool downloading;
     private bool visible, loading;
     private int attachmentId;
     private string fileName = "", kind = "other";
@@ -209,7 +212,24 @@
     private string ApiRoot => (Http.BaseAddress?.ToString() ?? "/").TrimEnd('/');
 
     private string DownloadUrl =>
-        $"{ApiRoot}/api/attachments/download/{attachmentId}?access_token={Auth.Token}";
+        $"{ApiRoot}/api/attachments/download/{attachmentId}";
+
+    private async Task Download()
+    {
+        if (!canDownload || downloading) return;
+        downloading = true;
+        try
+        {
+            if (DownloadRequested.HasDelegate) await DownloadRequested.InvokeAsync(attachmentId);
+            else
+            {
+                var result = await JS.InvokeAsync<AttachmentDownloadResult>("filePreview.download", DownloadUrl, Auth.Token, fileName);
+                if (!result.Success) Toast.Error(result.Message ?? "دانلود فایل انجام نشد.");
+            }
+        }
+        catch (Exception) { Toast.Error("دانلود فایل انجام نشد؛ صفحه را تازه کنید و دوباره تلاش کنید."); }
+        finally { downloading = false; }
+    }
 
     /// <summary>
     /// نمایش پیش‌نمایش یک پیوست.
@@ -342,7 +362,7 @@
         return "other";
     }
 
-    private async Task Close()
+    public async Task Close()
     {
         visible = false;
         await ReleaseAsync();

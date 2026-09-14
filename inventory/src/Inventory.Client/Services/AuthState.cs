@@ -89,6 +89,7 @@ public class AuthState : IAuthState
 
     public async Task SignOutAsync()
     {
+        try { await _js.InvokeVoidAsync("appPush.clearLocal"); } catch { }
         _session = null;
         _permCache = null;
         await _js.InvokeVoidAsync("localStorage.removeItem", "authSession");

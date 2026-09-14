@@ -1293,15 +1293,15 @@ public class FaAttService : IFaAttService
         return (mgr.SystemUserId!.Value, mgr.FirstName + " " + mgr.LastName);
     }
 
-    private Task NotifyAsync(int userId, string title, string body, string? link)
+    private async Task NotifyAsync(int userId, string title, string body, string? link)
     {
-        if (userId <= 0) return Task.CompletedTask;
+        if (userId <= 0) return;
         _db.AppNotifications.Add(new AppNotification
         {
             UserId = userId, Title = title, Body = body, Link = link,
             FromName = "حضور و غیاب فروغ آریا", FormName = "FaAtt"
         });
-        return Task.CompletedTask;
+        await Inventory.Api.Services.PushQueue.StageAsync(_db, new[] { userId }, title, body, link);
     }
 
     private async Task NotifyManagerNewRequestAsync(FaAttLeave l)

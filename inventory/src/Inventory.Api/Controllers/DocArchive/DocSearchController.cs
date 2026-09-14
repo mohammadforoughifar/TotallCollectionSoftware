@@ -39,163 +39,74 @@ public class DocSearchController : RbacControllerBase
     // =========================================================================
 
     [HttpPost("search")]
-    public async Task<IActionResult> AdvancedSearch([FromBody] DocSearchFilterDto filter)
+    public Task<IActionResult> AdvancedSearch([FromBody] DocSearchFilterDto filter) => SearchCore(filter, false);
+
+    [HttpPost("search-page")]
+    public Task<IActionResult> SearchPage([FromBody] DocSearchFilterDto filter) => SearchCore(filter, true);
+
+    private async Task<IActionResult> SearchCore(DocSearchFilterDto filter, bool paged)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
-
+        if (!string.IsNullOrWhiteSpace(filter.LinkedModule) || filter.LinkedEntityId.HasValue)
+            return StatusCode(410, new { code = "DOC_ARCHIVE_ERP_DISABLED", message = "اتصال آرشیو به سامانه ERP غیرفعال شده است." });
+        filter.TagIds ??= new(); filter.FileTypes ??= new();
+        if ((filter.Search?.Length ?? 0) > 500 || (filter.ContentSearch?.Length ?? 0) > 500 || filter.TagIds.Count > 100 || filter.FileTypes.Count > 20)
+            return BadRequest(new { message = "فیلتر جستجو بیش از حد طولانی است." });
+        if (filter.CreatedTo?.Year == 9999 || filter.ExpiryTo?.Year == 9999 || (filter.CreatedFrom > filter.CreatedTo) || (filter.ExpiryFrom > filter.ExpiryTo))
+            return BadRequest(new { message = "بازه تاریخ معتبر نیست." });
         var manager = await IsManagerAsync();
         var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
-
-        var q = Db.Documents.AsNoTracking();
-
-        // 1) فیلتر وضعیت مدرک
-        q = filter.Status?.ToLowerInvariant() switch
-        {
-            "deleted" => q.Where(d => d.IsDeleted),
-            "inactive" => q.Where(d => !d.IsDeleted && !d.IsActive),
-            "all" => q.Where(d => !d.IsDeleted),
-            _ => q.Where(d => !d.IsDeleted && d.IsActive)
-        };
-
-        // 2) فیلتر پوشه و زیرپوشه‌ها
+        var q = await DocQuery.AccessibleAsync(Db, _access, MyUserId, manager);
+        q = DocQuery.ApplyFilters(Db, q, filter, DocClock.Today);
         if (filter.FolderId is > 0)
         {
-            if (filter.IncludeSubfolders)
-            {
-                var targetFolderIds = await GetFolderAndDescendantIdsAsync(filter.FolderId.Value);
-                q = q.Where(d => targetFolderIds.Contains(d.FolderId));
-            }
-            else
-            {
-                q = q.Where(d => d.FolderId == filter.FolderId.Value);
-            }
+            var folderIds = filter.IncludeSubfolders ? await GetFolderAndDescendantIdsAsync(filter.FolderId.Value) : new HashSet<int> { filter.FolderId.Value };
+            q = q.Where(d => folderIds.Contains(d.FolderId));
         }
-
-        // 3) جستجوی هوشمند یکپارچه در عنوان، کد، توضیحات، محتوای فایل‌ها و نتایج OCR
-        Dictionary<int, (string Snippet, string FileName, string SourceType)> contentMatches = new();
-
+        var readable = await DocQuery.AccessibleAsync(Db, _access, MyUserId, manager, DocAccessLevel.Read);
+        // A metadata-only grant must not reveal content matches; confidential text requires a live password confirmation.
+        var confidentialIds = await readable.Where(d => d.RequireDownloadConfirm && !d.IsDeleted).Select(d => d.Id).ToListAsync();
+        var confirmedIds = confidentialIds.Where(id => _confirm.IsConfirmed(MyUserId, id)).ToArray();
+        var readableIds = readable.Where(d => !d.RequireDownloadConfirm || confirmedIds.Contains(d.Id)).Select(d => d.Id);
+        IQueryable<DocExtractedText> Matches(string term)
+        {
+            var normalized = _extractor.Normalize(term);
+            var query = Db.DocExtractedTexts.AsNoTracking().Where(e => e.Status == "Indexed" && readableIds.Contains(e.DocumentId));
+            var tokens = _extractor.Tokenize(term).Take(12).ToArray();
+            if (tokens.Length == 0) return query.Where(e => e.NormalizedText.Contains(normalized));
+            foreach (var token in tokens) query = query.Where(e => e.NormalizedText.Contains(token));
+            return query;
+        }
         var searchStr = filter.Search?.Trim();
         var contentSearchStr = filter.ContentSearch?.Trim();
-
-        // الف) اگر جستجوی اختصاصی محتوا (ContentSearch) مقدار دارد:
         if (!string.IsNullOrWhiteSpace(contentSearchStr))
         {
-            var rawTerm = contentSearchStr;
-            var normTerm = _extractor.Normalize(rawTerm);
-            var tokens = _extractor.Tokenize(rawTerm);
-
-            var extractedRows = await Db.DocExtractedTexts.AsNoTracking()
-                .Where(e => e.Status == "Indexed")
-                .Select(e => new { e.DocumentId, e.FileName, e.SourceType, e.ExtractedText, e.NormalizedText })
-                .ToListAsync();
-
-            var matchedDocIds = new HashSet<int>();
-            foreach (var r in extractedRows)
-            {
-                var isMatch = r.NormalizedText.Contains(normTerm, StringComparison.OrdinalIgnoreCase)
-                              || r.ExtractedText.Contains(rawTerm, StringComparison.OrdinalIgnoreCase)
-                              || (tokens.Count > 0 && tokens.All(t => r.NormalizedText.Contains(t, StringComparison.OrdinalIgnoreCase)));
-
-                if (isMatch)
-                {
-                    matchedDocIds.Add(r.DocumentId);
-                    if (!contentMatches.ContainsKey(r.DocumentId))
-                    {
-                        var snippet = _extractor.MakeSnippet(r.ExtractedText, rawTerm) ?? "";
-                        contentMatches[r.DocumentId] = (snippet, r.FileName, r.SourceType);
-                    }
-                }
-            }
-
-            q = q.Where(d => matchedDocIds.Contains(d.Id));
+            var matchingIds = Matches(contentSearchStr).Select(e => e.DocumentId);
+            q = q.Where(d => matchingIds.Contains(d.Id));
         }
-
-        // ب) اگر جستجوی عمومی (Search) در کادر جستجوی اصلی وارد شده است:
         if (!string.IsNullOrWhiteSpace(searchStr))
         {
-            var rawTerm = searchStr;
-            var normTerm = _extractor.Normalize(rawTerm);
-            var tokens = _extractor.Tokenize(rawTerm);
-
-            // جستجو در محتوای متنی فایل‌ها و OCR
-            var extractedRows = await Db.DocExtractedTexts.AsNoTracking()
-                .Where(e => e.Status == "Indexed")
-                .Select(e => new { e.DocumentId, e.FileName, e.SourceType, e.ExtractedText, e.NormalizedText })
-                .ToListAsync();
-
-            var matchedDocIdsFromContent = new HashSet<int>();
-            foreach (var r in extractedRows)
-            {
-                var isMatch = r.NormalizedText.Contains(normTerm, StringComparison.OrdinalIgnoreCase)
-                              || r.ExtractedText.Contains(rawTerm, StringComparison.OrdinalIgnoreCase)
-                              || (tokens.Count > 0 && tokens.All(t => r.NormalizedText.Contains(t, StringComparison.OrdinalIgnoreCase)));
-
-                if (isMatch)
-                {
-                    matchedDocIdsFromContent.Add(r.DocumentId);
-                    if (!contentMatches.ContainsKey(r.DocumentId))
-                    {
-                        var snippet = _extractor.MakeSnippet(r.ExtractedText, rawTerm) ?? "";
-                        contentMatches[r.DocumentId] = (snippet, r.FileName, r.SourceType);
-                    }
-                }
-            }
-
-            // ترکیب تطابق در متادیتا (عنوان، کد، مشتری، توضیحات) یا در محتوای فایل/OCR
-            q = q.Where(d => d.Title.Contains(rawTerm)
-                          || d.Code.Contains(rawTerm)
-                          || (d.CustomerCode != null && d.CustomerCode.Contains(rawTerm))
-                          || (d.Description != null && d.Description.Contains(rawTerm))
-                          || matchedDocIdsFromContent.Contains(d.Id));
+            var matchingIds = Matches(searchStr).Select(e => e.DocumentId);
+            q = q.Where(d => d.Title.Contains(searchStr) || d.Code.Contains(searchStr) || (d.CustomerCode ?? "").Contains(searchStr) || (d.Description ?? "").Contains(searchStr) || matchingIds.Contains(d.Id));
         }
-
-        // 10) فیلتر بر اساس نوع فایل (FileTypes: pdf, word, excel, image, text)
-        if (filter.FileTypes is { Count: > 0 })
+        var total = await q.CountAsync();
+        var size = Math.Clamp(filter.PageSize, 10, 100);
+        var page = Math.Clamp(filter.Page, 1, Math.Max(1, (total + size - 1) / size));
+        var ordered = q.OrderByDescending(d => d.Id);
+        var docs = await (paged ? ordered.Skip((page - 1) * size).Take(size) : ordered).ToListAsync();
+        Dictionary<int, (string Snippet, string FileName, string SourceType)> contentMatches = new();
+        var term = string.IsNullOrWhiteSpace(contentSearchStr) ? searchStr : contentSearchStr;
+        if (!string.IsNullOrWhiteSpace(term))
         {
-            var exts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var ft in filter.FileTypes)
-            {
-                switch (ft.ToLowerInvariant())
-                {
-                    case "pdf": exts.Add(".pdf"); break;
-                    case "word": exts.Add(".docx"); exts.Add(".doc"); break;
-                    case "excel": exts.Add(".xlsx"); exts.Add(".xls"); exts.Add(".csv"); break;
-                    case "image": exts.Add(".png"); exts.Add(".jpg"); exts.Add(".jpeg"); exts.Add(".webp"); exts.Add(".bmp"); break;
-                    case "text": exts.Add(".txt"); exts.Add(".json"); exts.Add(".xml"); exts.Add(".md"); break;
-                }
-            }
-
-            if (exts.Count > 0)
-            {
-                var allDocAtts = await (from att in Db.AppAttachments.AsNoTracking()
-                                        where att.Module == "DocVersion"
-                                        join v in Db.DocumentVersions.AsNoTracking() on att.RefId equals v.Id
-                                        select new { att.FileName, v.DocumentId }).ToListAsync();
-
-                var docIdsWithFileType = allDocAtts
-                    .Where(a => exts.Any(ext => a.FileName.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
-                    .Select(a => a.DocumentId)
-                    .Distinct()
-                    .ToList();
-
-                q = q.Where(d => docIdsWithFileType.Contains(d.Id));
-            }
+            var pageIds = docs.Select(d => d.Id).ToArray();
+            // One bounded excerpt per document in a single SQL projection.
+            var raw = term;
+            var matches = Matches(term).Where(e => pageIds.Contains(e.DocumentId));
+            var firstIds = matches.GroupBy(e => e.DocumentId).Select(g => g.Min(e => e.Id));
+            var excerpts = await Db.DocExtractedTexts.AsNoTracking().Where(e => firstIds.Contains(e.Id))
+                .Select(e => new { e.DocumentId, e.FileName, e.SourceType, Snippet = e.ExtractedText.Substring(e.ExtractedText.IndexOf(raw) >= 0 ? e.ExtractedText.IndexOf(raw) : 0, 240) }).ToListAsync();
+            foreach (var match in excerpts) contentMatches[match.DocumentId] = (match.Snippet, match.FileName, match.SourceType);
         }
-
-        // 11) فیلتر بر اساس ارتباط با ماژول ERP
-        if (!string.IsNullOrWhiteSpace(filter.LinkedModule))
-        {
-            var mod = filter.LinkedModule.Trim().ToLowerInvariant();
-            var eq = Db.DocEntityLinks.AsNoTracking().Where(l => l.Module.ToLower() == mod);
-            if (filter.LinkedEntityId is > 0)
-            {
-                eq = eq.Where(l => l.EntityId == filter.LinkedEntityId.Value);
-            }
-            var linkedDocIds = await eq.Select(l => l.DocumentId).Distinct().ToListAsync();
-            q = q.Where(d => linkedDocIds.Contains(d.Id));
-        }
-
-        var docs = await q.OrderByDescending(d => d.Id).Take(300).ToListAsync();
         var ids = docs.Select(d => d.Id).ToList();
 
         var folders = await Db.DocFolders.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
@@ -209,6 +120,8 @@ public class DocSearchController : RbacControllerBase
             .Where(p => ids.Contains(p.DocumentId) &&
                         (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
             .ToListAsync();
+        var utcNow = DateTime.UtcNow;
+        var grants = await Db.DocTemporaryGrants.AsNoTracking().Where(g => ids.Contains(g.DocumentId) && g.UserId == MyUserId && g.RevokedAtUtc == null && g.ExpiresAtUtc > utcNow).ToListAsync();
         var versions = await Db.DocumentVersions.AsNoTracking().Where(v => ids.Contains(v.DocumentId)).ToListAsync();
         var links = await Db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId))
             .GroupBy(l => l.DocumentId).Select(g => new { g.Key, C = g.Count() })
@@ -231,12 +144,6 @@ public class DocSearchController : RbacControllerBase
             .Select(e => e.DocumentId)
             .Distinct().ToListAsync()).ToHashSet();
 
-        var entityLinks = await Db.DocEntityLinks.AsNoTracking()
-            .Where(l => ids.Contains(l.DocumentId))
-            .ToListAsync();
-        var entityLinkMap = entityLinks.GroupBy(l => l.DocumentId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
         var result = new List<DocumentListDto>();
         foreach (var d in docs)
         {
@@ -251,13 +158,14 @@ public class DocSearchController : RbacControllerBase
                 if (folderMap.TryGetValue(d.FolderId, out var fa))
                 { if (fa.Level > level) level = fa.Level; dl |= fa.Download; }
             }
+            foreach (var g in grants.Where(g => g.DocumentId == d.Id)) { if (level < DocAccessLevel.Read) level = DocAccessLevel.Read; dl |= g.CanDownload; }
             if (level == DocAccessLevel.None) continue;
 
             var vs = versions.Where(v => v.DocumentId == d.Id).ToList();
             var last = vs.OrderByDescending(v => v.VersionNo).FirstOrDefault();
             var activeV = vs.Where(v => v.IsActive).OrderByDescending(v => v.VersionNo).FirstOrDefault();
-            var expired = d.ExpireDate.HasValue && d.ExpireDate.Value.Date < DateTime.Today;
-            int? daysLeft = d.ExpireDate.HasValue ? (d.ExpireDate.Value.Date - DateTime.Today).Days : null;
+            var expired = d.ExpireDate.HasValue && d.ExpireDate.Value.Date < DocClock.Today;
+            int? daysLeft = d.ExpireDate.HasValue ? (d.ExpireDate.Value.Date - DocClock.Today).Days : null;
             var expiringSoon = daysLeft is >= 0 && daysLeft <= 60;
 
             // ExpiryStatus filter
@@ -311,12 +219,10 @@ public class DocSearchController : RbacControllerBase
                 ContentSnippet = snippet,
                 MatchedAttachmentFileName = matchFileName,
                 MatchedSourceType = matchSource,
-                EntityLinkCount = entityLinkMap.TryGetValue(d.Id, out var elist) ? elist.Count : 0,
-                LinkedModules = entityLinkMap.TryGetValue(d.Id, out var elist2) ? elist2.Select(x => x.Module).Distinct().ToList() : new()
             });
         }
 
-        return Ok(result);
+        return paged ? Ok(new DocSearchPageDto { Items = result, Total = total, Page = page, PageSize = size }) : Ok(result);
     }
 
     // =========================================================================
@@ -333,6 +239,10 @@ public class DocSearchController : RbacControllerBase
         if (lvl < DocAccessLevel.Read)
             return StatusCode(403, new { message = "مشاهده محتوای استخراج‌شده نیازمند دسترسی خواندن است." });
 
+        var doc = await Db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted);
+        if (doc == null) return NotFound();
+        if (doc.RequireDownloadConfirm && !_confirm.IsConfirmed(MyUserId, id))
+            return StatusCode(403, new { message = "برای مشاهده متن، تأیید رمز لازم است.", code = "PASSWORD_CONFIRM_REQUIRED" });
         var texts = await Db.DocExtractedTexts.AsNoTracking()
             .Where(e => e.DocumentId == id)
             .OrderByDescending(e => e.IndexedAt)
@@ -376,18 +286,9 @@ public class DocSearchController : RbacControllerBase
         if (lvl < DocAccessLevel.Write)
             return StatusCode(403, new { message = "اجرای OCR نیازمند دسترسی نوشتن است." });
 
-        var res = await _indexService.IndexAttachmentAsync(attachmentId, force: true);
-
-        return Ok(new DocOcrRunResultDto
-        {
-            Success = res.Success,
-            Message = res.Success
-                ? $"استخراج متن و OCR با موفقیت انجام شد ({res.CharacterCount} کاراکتر)."
-                : $"خطا در استخراج متن: {res.ErrorMessage}",
-            CharacterCount = res.CharacterCount,
-            SourceType = res.SourceType,
-            ExtractedSnippet = res.ExtractedText.Length > 200 ? res.ExtractedText[..200] + "…" : res.ExtractedText
-        });
+        if (!await Db.Documents.AnyAsync(d => d.Id == version.DocumentId && !d.IsDeleted)) return NotFound();
+        await _indexService.QueueAttachmentIndexingAsync(attachmentId);
+        return Ok(new DocOcrRunResultDto { Success = true, Message = "فایل در صف پردازش قرار گرفت." });
     }
 
     // =========================================================================

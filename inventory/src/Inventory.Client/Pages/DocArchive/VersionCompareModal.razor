@@ -40,6 +40,10 @@
             </div>
         </div>
 
+        @if (visible && fromId != toId)
+        {
+            <DocContentCompare @key="(docId, OlderVersionId, NewerVersionId)" DocumentId="docId" FromVersionId="OlderVersionId" ToVersionId="NewerVersionId" />
+        }
         @if (loading)
         {
             <div class="text-center py-5">
@@ -117,6 +121,9 @@
 
 @code {
     private bool visible, loading, onlyDiff = true;
+    private int requestVersion;
+    private int OlderVersionId => options.Where(v => v.Id == fromId || v.Id == toId).OrderBy(v => v.VersionNo).FirstOrDefault()?.Id ?? 0;
+    private int NewerVersionId => options.Where(v => v.Id == fromId || v.Id == toId).OrderByDescending(v => v.VersionNo).FirstOrDefault()?.Id ?? 0;
     private int docId, fromId, toId;
     private string? error;
     private DocVersionCompareDto? result;
@@ -143,6 +150,7 @@
 
     private async Task Reload()
     {
+        var request = ++requestVersion;
         if (fromId == 0 || toId == 0) return;
         if (fromId == toId)
         {
@@ -157,17 +165,18 @@
         StateHasChanged();
         try
         {
-            result = await Svc.CompareVersionsAsync(docId, fromId, toId);
+            var data = await Svc.CompareVersionsAsync(docId, fromId, toId);
+            if (request == requestVersion && visible) result = data;
         }
         catch (Exception ex)
         {
+            if (request != requestVersion || !visible) return;
             error = ex.Message;
             result = null;
         }
         finally
         {
-            loading = false;
-            StateHasChanged();
+            if (request == requestVersion) { loading = false; StateHasChanged(); }
         }
     }
 
@@ -189,5 +198,5 @@
         return $"ورژن {v.VersionNo}{tag} — {v.CreatedByName}";
     }
 
-    private void Close() => visible = false;
+    private void Close() { visible = false; requestVersion++; }
 }

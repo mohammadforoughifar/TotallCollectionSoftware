@@ -7,6 +7,10 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    public DbSet<DocTemporaryGrant> DocTemporaryGrants => Set<DocTemporaryGrant>();
+    public DbSet<DocRenewalPolicy> DocRenewalPolicies => Set<DocRenewalPolicy>();
+    public DbSet<DocRenewalRun> DocRenewalRuns => Set<DocRenewalRun>();
+    public DbSet<DocIndexJob> DocIndexJobs => Set<DocIndexJob>();
     public DbSet<User> Users => Set<User>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<Referrer> Referrers => Set<Referrer>();
@@ -37,6 +41,7 @@ public class AppDbContext : DbContext
 
     // ================== اعلان‌ها (نوتیفیکیشن) ==================
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
+    public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     // ================== دستور کار ==================
@@ -339,6 +344,8 @@ public class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder mb)
     {
         base.OnModelCreating(mb);
+        DocEvolutionModel.Configure(mb);
+        PushDeliverySchema.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
         mb.Entity<ProductCategory>().HasIndex(c => c.Name).IsUnique();

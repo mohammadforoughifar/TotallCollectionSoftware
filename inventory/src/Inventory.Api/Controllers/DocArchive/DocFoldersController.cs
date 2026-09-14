@@ -298,7 +298,8 @@ public class DocFoldersController : RbacControllerBase
             }).ToListAsync();
 
         // فقط مدارک فعال قابل لینک شدن هستند
-        var docs = await Db.Documents.AsNoTracking().Where(d => d.IsActive && !d.IsDeleted)
+        var visibleDocs = await DocQuery.AccessibleAsync(Db, _access, MyUserId, await IsManagerAsync());
+        var docs = await visibleDocs.Where(d => d.IsActive && !d.IsDeleted)
             .OrderByDescending(d => d.Id)
             .Select(d => new LookupItem
             {

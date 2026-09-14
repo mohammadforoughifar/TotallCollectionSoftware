@@ -177,10 +177,10 @@ public class DocumentListDto
     /// <summary>نوع فایل منطبق‌شده: Pdf | PdfOcr | Word | Excel | ImageOcr | Text</summary>
     public string? MatchedSourceType { get; set; }
 
-    /// <summary>تعداد اتصالات به ماژول‌های ERP</summary>
+    /// <summary>سازگاری با نسخه قدیمی؛ اتصال ERP غیرفعال است و مقدار همیشه صفر است.</summary>
     public int EntityLinkCount { get; set; }
 
-    /// <summary>لیست نام ماژول‌های متصل‌شده</summary>
+    /// <summary>سازگاری با نسخه قدیمی؛ همیشه خالی است.</summary>
     public List<string> LinkedModules { get; set; } = new();
 }
 
@@ -555,6 +555,8 @@ public class DocExtractedTextDto
 /// <summary>فیلترهای ترکیبی و پیشرفته جستجوی مدارک</summary>
 public class DocSearchFilterDto
 {
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 25;
     /// <summary>جستجوی عمومی در عنوان، کد مدرک، کد مشتری و توضیحات</summary>
     public string? Search { get; set; }
 
@@ -588,7 +590,7 @@ public class DocSearchFilterDto
 
     public bool? HasAttachment { get; set; }
 
-    /// <summary>فیلتر بر اساس ارتباط با ماژول ERP</summary>
+    /// <summary>فیلتر بازنشسته ERP؛ مقدار غیرخالی یا LinkedEntityId پاسخ 410 می‌گیرد.</summary>
     public string? LinkedModule { get; set; }
     public int? LinkedEntityId { get; set; }
 }

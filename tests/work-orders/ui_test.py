@@ -12,6 +12,8 @@ class StaticClient(SimpleHTTPRequestHandler):
     extensions_map={**SimpleHTTPRequestHandler.extensions_map,'.wasm':'application/wasm','.js':'text/javascript'}
     def translate_path(self,path):
         rel=unquote(urlsplit(path).path).lstrip('/')
+        if rel == 'Inventory.Client.styles.css':
+            return str(CLIENT/'obj/Debug/net8.0/scopedcss/bundle/Inventory.Client.styles.css')
         if '..' not in Path(rel).parts:
             for root in [CLIENT/'bin/Debug/net8.0/wwwroot',CLIENT/'wwwroot']:
                 if (root/rel).is_file(): return str(root/rel)

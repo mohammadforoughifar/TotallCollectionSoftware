@@ -36,3 +36,9 @@ python3 run.py && python3 edge.py && python3 compare.py && python3 export.py
 > وابسته‌اند. `compare.py` و `export.py` مستقل و idempotent هستند.
 
 گزارش کامل آخرین اجرا: [`TEST-DOC-ARCHIVE.md`](../../TEST-DOC-ARCHIVE.md)
+
+## تست رابط کاربری
+
+تست دسکتاپ/موبایل آرشیو با کلاینت واقعی Blazor و API شبیه‌سازی‌شده: [راهنمای اجرا](UI-TEST.md).
+
+توسعهٔ مقایسه محتوا، دسترسی موقت، تمدید و صف: [تست‌های تکمیلی](../doc-archive-evolution/README.md).

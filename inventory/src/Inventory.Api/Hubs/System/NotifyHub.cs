@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Inventory.Api.Hubs;
 
 /// <summary>هاب اعلان‌های بلادرنگ — تفکیک و ایزولاسیون بر اساس شناسه کاربری (u{id}) و نقش (r_{role}).</summary>
+[Microsoft.AspNetCore.Authorization.Authorize]
 public class NotifyHub : Hub
 {
     public override async Task OnConnectedAsync()
@@ -17,13 +18,6 @@ public class NotifyHub : Hub
         {
             uid = id1;
             role = Context.User?.FindFirstValue(ClaimTypes.Role) ?? "";
-        }
-        else
-        {
-            var userIdStr = Context.GetHttpContext()?.Request.Query["userId"].ToString();
-            if (int.TryParse(userIdStr, out var id2) && id2 > 0)
-                uid = id2;
-            role = Context.GetHttpContext()?.Request.Query["role"].ToString() ?? "";
         }
 
         if (uid > 0)
@@ -78,6 +72,7 @@ public class NotifyService : INotifyService
             Link = link
         };
         _db.AppNotifications.Add(n);
+        await Inventory.Api.Services.PushQueue.StageAsync(_db, new[] { userId }, title, body, link);
         await _db.SaveChangesAsync();
 
         try
@@ -94,7 +89,7 @@ public class NotifyService : INotifyService
         try { await _messenger.SendToUserAsync(userId, title, body); } catch { }
 
         // ================== نوتیفیکیشن گوشی/تبلت (Web Push) ==================
-        try { await _push.SendToUserAsync(userId, title, body, link); } catch { }
+        // Durable delivery is staged in the same SaveChanges as the notification.
     }
 
     public async Task SendManyAsync(IEnumerable<int> userIds, string title, string? body, string fromName, string formName, string? link)
