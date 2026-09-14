@@ -48,6 +48,7 @@ builder.Services.AddScoped<IFaAttService, FaAttService>(); // FaAtt — حضور
 builder.Services.AddScoped<IFaComService, FaComService>(); // FaCom — ارتباطات داخلی
 builder.Services.AddScoped<IFaLmsService, FaLmsService>(); // FaLms — آموزش و توسعه
 builder.Services.AddScoped<IFaPayClientService, FaPayService>(); // FaPay — حقوق و دستمزد
+
 builder.Services.AddScoped<IChatClientService, ChatClientService>(); // ماژول پیام‌رسان سازمانی (Chat)
 
 // ---------- ماژول حسابداری ----------

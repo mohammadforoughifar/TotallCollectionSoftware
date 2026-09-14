@@ -587,6 +587,10 @@ a { text-decoration: none; }
     .table-responsive { font-size: .85rem; }
     .app-topbar { padding: 0 .75rem; gap: .5rem; }
     .topbar-date { display: none !important; }
+    /* موبایل: چون تاریخ (که margin-right:auto داشت) مخفی می‌شود،
+       دکمه‌های چت/زنگ/تغییر رمز/خروج به منتها الیه چپ هدر بروند.
+       (!important برای غلبه بر me-2 بوت‌استرپ لازم است) */
+    .app-topbar .topbar-actions { margin-right: auto !important; margin-left: 0 !important; }
 }
 
 /* ---------- قالب موبایل (اندروید / صفحات کوچک) ---------- */
@@ -1492,6 +1496,74 @@ button.nav-toggle:focus-visible{outline:none;}
 .doc-archive-shell .wo-archive-btn:hover { background: #0ea5e9; color: #fff; }
 .doc-archive-shell .wo-archive-ico { color: #0284c7; }
 
+/* ---------- نظم و فاصله‌گذاری آرشیو اسناد (Spacing rhythm) ---------- */
+/* کارت‌ها: فاصله عمودی یکنواخت + هدر و بدنه جادار */
+.doc-archive-shell .card {
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, .04);
+    margin-bottom: 1.1rem;
+}
+.doc-archive-shell .card .card-header {
+    padding: .7rem 1rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #eef2f7;
+}
+.doc-archive-shell .card > .card-body { padding: 1rem; }
+/* بدنه‌های فشرده (p-1/p-2) هم حداقل تنفس داشته باشند */
+.doc-archive-shell .card > .card-body.p-1 { padding: .55rem !important; }
+.doc-archive-shell .card > .card-body.p-2 { padding: .8rem !important; }
+
+/* ردیف‌های فهرستی (مدارک مرتبط، اتصالات ERP، دستورهای کار): فاصله و جداکننده منظم */
+.doc-archive-shell .card-body > .d-flex.border-bottom {
+    padding-top: .5rem !important;
+    padding-bottom: .5rem !important;
+    border-color: #eef2f7 !important;
+}
+.doc-archive-shell .card-body > .d-flex.border-bottom:last-of-type { border-bottom: 0 !important; }
+
+/* پیام‌های خالی («ثبت نشده است» و…): وسط‌چین با حاشیه یکنواخت */
+.doc-archive-shell .card-body .text-muted.py-2,
+.doc-archive-shell .card-body .text-muted.p-2 {
+    display: block;
+    text-align: center;
+    padding: 1rem .5rem !important;
+    color: #94a3b8 !important;
+}
+
+/* فرم داخل کارت‌ها: فاصله عمودی بین کنترل‌ها */
+.doc-archive-shell .card-body .form-label { margin-bottom: .35rem; font-weight: 700; }
+.doc-archive-shell .card-body .form-control + .btn,
+.doc-archive-shell .card-body .btn.w-100 { margin-top: .6rem !important; }
+.doc-archive-shell .card-body .form-text { margin-top: .5rem; line-height: 1.7; }
+.doc-archive-shell .card-body .border-top { border-color: #eef2f7 !important; padding-top: .8rem !important; margin-top: .8rem !important; }
+
+/* سوئیچ‌ها (نمایش برای همه، محرمانه، واترمارک): ارتفاع و فاصله یکسان
+   ⚠️ بوت‌استرپ LTR سوئیچ را با float:left و margin-left:-2.5em جا می‌اندازد که
+   در صفحه RTL روی متنِ برچسب می‌افتد — اینجا با فلکس کاملاً خنثی می‌شود. */
+.doc-archive-shell .form-check.form-switch {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    min-height: 2rem;
+    margin-bottom: .45rem;
+    padding-left: 0;
+    padding-right: 0;
+}
+.doc-archive-shell .form-check.form-switch .form-check-input {
+    float: none;
+    margin: 0;
+    flex-shrink: 0;
+}
+.doc-archive-shell .form-check.form-switch .form-check-label { line-height: 1.6; }
+.doc-archive-shell .form-check.form-switch.border { padding: .5rem .75rem !important; margin-top: .55rem !important; }
+
+/* جدول‌های گزارش (دانلود/چاپ): سلول‌ها جادارتر */
+.doc-archive-shell .table > :not(caption) > * > * { padding: .45rem .6rem; }
+
+/* بج‌ها کنار هم نچسبند */
+.doc-archive-shell .badge { margin-inline: .12rem; }
+
 /* زیرعنوان‌های داخل یک گروه (تعاریف پایه / عملیات انبار / گزارش‌ها) */
 .nav-subhead {
     font-size: .68rem;
@@ -2011,3 +2083,64 @@ button.nav-toggle:focus-visible{outline:none;}
 .bubble-video { display: block; max-width: 100%; width: 340px; max-height: 280px; border-radius: 10px; }
 .chat-connection-status { min-height: 1.1rem; }
 .chat-input-area .input-banner { gap: .35rem; }
+
+/* =========================================================================
+   قالب موبایل پیام‌رسان (نمایشگرهای کوچک‌تر از ۷۶۸ پیکسل)
+   یک ستون در هر لحظه: یا فهرست گفتگوها یا پنجره گفتگو (سبک تلگرام موبایل)
+   ========================================================================= */
+@media (max-width: 767.98px) {
+    .telegram-container {
+        /* تمام‌صفحه زیر نوار بالایی — dvh تا با باز شدن کیبورد موبایل خراب نشود */
+        height: calc(100dvh - 66px);
+        margin: -1rem;                 /* خنثی‌کردن padding یک‌رمی .app-content در موبایل */
+        border-radius: 0;
+        border: none;
+        box-shadow: none;
+    }
+
+    /* حالت اپ اندروید (نوار ناوبری ثابت پایین): ارتفاع منهای نوار پایین ۶۲px */
+    .app-shell.app-mobile .telegram-container {
+        height: calc(100dvh - 66px - 62px - env(safe-area-inset-bottom, 0px));
+        margin-bottom: -78px; /* خنثی‌کردن padding-bottom مخصوص نوار پایین */
+    }
+
+    /* هر دو ستون تمام‌عرض؛ نمایش/مخفی‌سازی را کلاس‌های d-none d-md-flex در Razor انجام می‌دهند */
+    .telegram-sidebar {
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+        border-left: none;
+    }
+    .telegram-main { width: 100%; }
+
+    /* هدر و لیست‌ها: لمس‌پذیرتر */
+    .sidebar-header { padding: .7rem .8rem .5rem .8rem; }
+    .dialog-item { padding: .65rem .8rem; }
+    .chat-header { height: 54px; padding: 0 .6rem; }
+    .chat-messages-scroll { padding: .8rem .6rem; }
+
+    /* حباب پیام پهن‌تر — عرض صفحه کم است */
+    .message-bubble { max-width: 86%; font-size: .9rem; }
+    .bubble-video { width: 100%; }
+
+    /* کارت خالی وسط صفحه در عرض کم */
+    .placeholder-card { padding: 1.6rem 1.2rem; margin: 0 1rem; }
+
+    /* نوار ورودی: چسبیده به پایین + احترام به ناحیه امن آیفون */
+    .chat-input-area { padding: .5rem .6rem calc(.5rem + env(safe-area-inset-bottom, 0px)) .6rem; }
+    .chat-textarea { font-size: 16px; }   /* جلوگیری از زوم خودکار iOS روی فوکوس */
+    .btn-send { width: 44px; height: 44px; }
+    .btn-attach { padding: .45rem .65rem; }
+
+    /* لایت‌باکس تصویر تمام‌صفحه */
+    .chat-lightbox-dialog { max-width: 100vw; margin: 0; }
+    .chat-lightbox-stage, .chat-lightbox-stage img { max-height: 88vh; border-radius: 0; }
+}
+
+/* دستگاه‌های لمسی (بدون hover): منوی اکشن پیام با «لمس روی حباب» باز می‌شود */
+@media (hover: none) {
+    .message-bubble:hover .bubble-actions-overlay { display: none; }
+    .message-bubble:focus-within .bubble-actions-overlay,
+    .message-bubble.actions-open .bubble-actions-overlay { display: flex; }
+    .bubble-actions-overlay .action-btn { font-size: .95rem; padding: 5px 8px; }
+}

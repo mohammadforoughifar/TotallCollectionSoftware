@@ -39,6 +39,8 @@ public static class DbInitializer
                     await DocPrintSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
+                    // دستور کار: ستون اولویت + جدول یادآور مهلت
+                    await WorkOrderSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
@@ -52,6 +54,8 @@ public static class DbInitializer
                     await DocPrintSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
+                    // دستور کار: ستون اولویت + جدول یادآور مهلت
+                    await WorkOrderSchemaV1.EnsureAsync(db);
                 }
 
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها

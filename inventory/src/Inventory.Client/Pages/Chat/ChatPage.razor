@@ -9,7 +9,8 @@
 
 <div class="telegram-container">
     @* ========================== ستون سمت راست: لیست گفتگوها (Sidebar) ========================== *@
-    <div class="telegram-sidebar @(activeConv != null && isMobileView ? "d-none d-md-flex" : "")">
+    @* نمایش/مخفی‌سازی ستون‌ها فقط با CSS (بدون وابستگی به JS): در موبایل یا فهرست یا گفتگو *@
+    <div class="telegram-sidebar @(activeConv != null ? "d-none d-md-flex" : "")">
         <div class="sidebar-header">
             <div class="d-flex align-items-center justify-content-between">
                 <div class="d-flex align-items-center gap-2">
@@ -190,7 +191,7 @@
     </div>
 
     @* ========================== ستون سمت چپ: پنجره فعال گفتگو (Chat Window) ========================== *@
-    <div class="telegram-main @(activeConv == null && isMobileView ? "d-none d-md-flex" : "")">
+    <div class="telegram-main @(activeConv == null ? "d-none d-md-flex" : "")">
         @if (activeConv == null)
         {
             <div class="chat-placeholder">
@@ -216,12 +217,13 @@
             @* هدر چت فعال *@
             <div class="chat-header">
                 <div class="d-flex align-items-center gap-2">
-                    @if (isMobileView)
-                    {
-                        <button class="btn btn-sm btn-icon me-1" @onclick="BackToSidebar">
-                            <i class="bi bi-arrow-right fs-6"></i>
-                        </button>
-                    }
+                    @* دکمه برگشت به فهرست گفتگوها — همیشه رندر می‌شود و فقط با CSS در دسکتاپ مخفی است.
+                       قبلاً به isMobileView (تشخیص JS) وابسته بود؛ اگر interop دیر می‌رسید یا خطا می‌داد،
+                       دکمه ظاهر نمی‌شد و کاربر داخل گفتگوی خصوصی گیر می‌کرد. *@
+                    <button class="btn btn-sm btn-icon me-1 d-md-none chat-back-btn" title="بازگشت به فهرست گفتگوها"
+                            aria-label="بازگشت به فهرست گفتگوها" @onclick="BackToSidebar">
+                        <i class="bi bi-arrow-right fs-6"></i>
+                    </button>
                     <div class="dialog-avatar-wrap">
                         @if (activeConv.Type == ChatTypeDto.Direct)
                         {
@@ -332,7 +334,8 @@
                         else
                         {
                             <div @key="msg.Id" class="message-row @(msg.IsOutgoing ? "outgoing" : "incoming")" id="msg-@msg.Id">
-                                <div class="message-bubble @(msg.IsOutgoing ? "bubble-out" : "bubble-in")">
+                                <div class="message-bubble @(msg.IsOutgoing ? "bubble-out" : "bubble-in") @(tappedActionsMsgId == msg.Id ? "actions-open" : "")"
+                                     @onclick="() => ToggleBubbleActions(msg.Id)">
                                     @* نام فرستنده در گروه‌ها برای پیام‌های دریافتی *@
                                     @if (!msg.IsOutgoing && activeConv.Type == ChatTypeDto.Group)
                                     {
@@ -811,6 +814,15 @@
     private DotNetObjectReference<ChatPage>? chatSelf;
     private int interopId;
     private bool isMobileView = false;
+    private bool initialized;
+    private int? lastRouteConversationId;
+
+    // موبایل/لمسی: باز و بسته کردن منوی اکشن پیام با لمس روی حباب (به‌جای hover)
+    // بدون وابستگی به isMobileView (JS) — کلاس actions-open فقط در CSSِ (hover: none) اثر دارد،
+    // پس روی دسکتاپ بی‌ضرر است و روی لمسی حتی بدون interop هم کار می‌کند.
+    private int? tappedActionsMsgId;
+    private void ToggleBubbleActions(int msgId)
+        => tappedActionsMsgId = tappedActionsMsgId == msgId ? null : msgId;
 
     private string searchQuery = "";
     private string currentTab = "all";
@@ -858,23 +870,62 @@
         _ = EnsureRealtimeSafelyAsync();
         await LoadConversations();
 
+        lastRouteConversationId = ConversationId;
+        initialized = true;
+
         if (ConversationId.HasValue && ConversationId.Value > 0)
+            await OpenConversationByIdAsync(ConversationId.Value);
+    }
+
+    /// <summary>
+    /// همگام‌سازی مسیر (URL) با وضعیت صفحه. وقتی کاربر داخل /chat/{id} است و روی
+    /// «پیام‌رسان» در منو می‌زند (مسیر /chat)، Blazor همان کامپوننت را نگه می‌دارد و
+    /// فقط پارامتر عوض می‌شود؛ قبلاً این تغییر هندل نمی‌شد و کاربر داخل پی‌وی گیر می‌کرد.
+    /// </summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!initialized || ConversationId == lastRouteConversationId) return;
+        lastRouteConversationId = ConversationId;
+
+        if (ConversationId is > 0)
         {
-            var target = conversations.FirstOrDefault(c => c.Id == ConversationId.Value);
-            if (target != null)
-            {
-                await SelectConversation(target);
-            }
-            else
-            {
-                try
-                {
-                    var c = await Chat.GetConversationAsync(ConversationId.Value);
-                    await SelectConversation(c);
-                }
-                catch { }
-            }
+            await OpenConversationByIdAsync(ConversationId.Value);
         }
+        else if (activeConv != null)
+        {
+            await CloseActiveConversationAsync();
+        }
+    }
+
+    private async Task OpenConversationByIdAsync(int id)
+    {
+        if (activeConv?.Id == id) return;
+        var target = conversations.FirstOrDefault(c => c.Id == id);
+        if (target != null)
+        {
+            await SelectConversation(target);
+        }
+        else
+        {
+            try
+            {
+                var c = await Chat.GetConversationAsync(id);
+                await SelectConversation(c);
+            }
+            catch { }
+        }
+    }
+
+    private async Task CloseActiveConversationAsync()
+    {
+        if (activeConv != null)
+        {
+            await Chat.SendTypingHubAsync(activeConv.Id, false);
+            await Chat.LeaveConversationHubAsync(activeConv.Id);
+        }
+        ++messageLoadVersion;
+        activeConv = null;
+        tappedActionsMsgId = null;
     }
 
     private async Task LoadConversations()
@@ -932,12 +983,20 @@
             initializingChatJs = true;
             try
             {
-                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js");
+                // ?v= کش‌شکن: بعد از هر انتشار، مرورگر/PWA نسخهٔ قدیمی ماژول را لود نکند
+                // (خطای «Could not find 'isMobileView'» از کش‌شدن نسخهٔ قدیمی همین فایل بود).
+                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js?v=2");
                 if (disposed) { await chatJs.DisposeAsync(); return; }
                 chatSelf = DotNetObjectReference.Create(this);
                 interopId = await chatJs.InvokeAsync<int>("initialize", chatSelf);
-                isMobileView = await chatJs.InvokeAsync<bool>("isMobileView");
-                await chatJs.InvokeVoidAsync("watchMobile", interopId);
+                // این دو فراخوانی «بهبود تجربه» هستند نه حیاتی — چیدمان موبایل کاملاً CSSمحور است.
+                // اگر نسخهٔ کش‌شدهٔ قدیمی interop این توابع را نداشت، کل صفحه نباید کرش کند.
+                try
+                {
+                    isMobileView = await chatJs.InvokeAsync<bool>("isMobileView");
+                    await chatJs.InvokeVoidAsync("watchMobile", interopId);
+                }
+                catch (JSException) { /* نسخهٔ قدیمی کش‌شده — با رفرش بعدی درست می‌شود */ }
             }
             finally { initializingChatJs = false; }
         }
@@ -958,6 +1017,14 @@
     {
         if (isUploading || isSending) { Toast.Info("لطفاً تا پایان بارگذاری یا ارسال صبر کنید."); return; }
         if (activeConv?.Id == c.Id) return;
+        // URL همیشه با گفتگوی باز هماهنگ باشد (/chat/{id}) تا:
+        //  - کلیک «پیام‌رسان» در منو (مسیر /chat) یعنی «برگرد به فهرست» و کاربر در پی‌وی گیر نکند
+        //  - دکمه Back گوشی/مرورگر گفتگو را ببندد نه اینکه از کل برنامه خارج شود
+        if (lastRouteConversationId != c.Id)
+        {
+            lastRouteConversationId = c.Id;
+            Nav.NavigateTo($"chat/{c.Id}");
+        }
         var previous = activeConv?.Id;
         if (previous.HasValue)
         {
@@ -970,6 +1037,7 @@
         messages = new();
         replyingTo = null;
         editingMsg = null;
+        tappedActionsMsgId = null;
         messageInput = "";
         RemovePendingAttachment();
         loadingMessages = true;
@@ -1290,13 +1358,13 @@
     private async Task BackToSidebar()
     {
         if (isSending || isUploading) return;
-        if (activeConv != null)
+        await CloseActiveConversationAsync();
+        // URL هم به /chat برگردد تا دکمه Back مرورگر/گوشی و منو درست رفتار کنند
+        if (ConversationId.HasValue)
         {
-            await Chat.SendTypingHubAsync(activeConv.Id, false);
-            await Chat.LeaveConversationHubAsync(activeConv.Id);
+            lastRouteConversationId = null;
+            Nav.NavigateTo("chat", replace: false);
         }
-        ++messageLoadVersion;
-        activeConv = null;
     }
 
     // ============================ مدیریت اعضا و مدال‌ها ============================

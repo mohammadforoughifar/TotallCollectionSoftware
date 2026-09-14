@@ -37,14 +37,141 @@
     <button class="wo-tab @(tab == "archive" ? "active" : "")" @onclick='() => SwitchTab("archive")'>
         <i class="bi bi-archive"></i> بایگانی <span class="wo-tab-badge">@archiveItems.Count</span>
     </button>
+    <button class="wo-tab @(tab == "kanban" ? "active" : "")" @onclick='() => SwitchTab("kanban")'>
+        <i class="bi bi-kanban"></i> کانبان
+    </button>
     <button class="wo-tab @(tab == "calendar" ? "active" : "")" @onclick='() => SwitchTab("calendar")'>
         <i class="bi bi-calendar3"></i> تقویم
     </button>
+    <button class="wo-tab @(tab == "perf" ? "active" : "")" @onclick='() => SwitchTab("perf")'>
+        <i class="bi bi-trophy"></i> عملکرد افراد
+    </button>
+    <button class="wo-tab @(tab == "stats" ? "active" : "")" @onclick='() => SwitchTab("stats")'>
+        <i class="bi bi-bar-chart"></i> داشبورد
+    </button>
 </div>
+
+@* ================== نوار جستجو و فیلتر ================== *@
+@if (!loading && tab != "calendar" && tab != "stats" && tab != "kanban" && tab != "perf")
+{
+    <div class="wo-filterbar mb-3">
+        <div class="wo-flt-search">
+            <i class="bi bi-search"></i>
+            <input class="form-control form-control-sm" placeholder="جستجو در شماره، عنوان یا دستوردهنده..."
+                   value="@fltQ" @oninput="OnSearchInput" />
+            @if (!string.IsNullOrWhiteSpace(fltQ))
+            {
+                <button class="wo-flt-clear" title="پاک کردن" @onclick="ClearSearch"><i class="bi bi-x-lg"></i></button>
+            }
+        </div>
+        <div class="wo-pr-group wo-flt-pr">
+            <button type="button" class="wo-pr-btn @(fltPriority == -1 ? "active" : "")"
+                    @onclick="() => SetPriorityFilter(-1)">همه</button>
+            @foreach (var (val, fa) in PriorityOpts)
+            {
+                var v2 = val;
+                <button type="button" class="wo-pr-btn wo-pr-@v2 @(fltPriority == v2 ? "active" : "")"
+                        @onclick="() => SetPriorityFilter(v2)">@fa</button>
+            }
+        </div>
+        @if (AllTabTags.Any())
+        {
+            <div class="d-flex gap-1 flex-wrap align-items-center">
+                <i class="bi bi-tags text-muted fs-8"></i>
+                @foreach (var t in AllTabTags.Take(10))
+                {
+                    var t2 = t;
+                    <button type="button" class="wo-tag-suggest @(fltTag == t2 ? "active" : "")"
+                            @onclick="() => SetTagFilter(fltTag == t2 ? null : t2)">@t2</button>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(fltQ) || fltPriority >= 0 || fltTag != null)
+        {
+            <span class="fs-8 text-muted">@FilteredItems.Count از @TabItems.Count مورد</span>
+        }
+        <div class="d-flex gap-1 ms-auto">
+            <button class="btn btn-sm btn-outline-success" title="خروجی اکسل (با فیلترهای جاری)" disabled="@exporting" @onclick='() => ExportList("xlsx")'>
+                @if (exporting) { <span class="spinner-border spinner-border-sm"></span> }
+                else { <i class="bi bi-file-earmark-excel"></i> }
+                <span class="d-none d-sm-inline">اکسل</span>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" title="خروجی PDF (با فیلترهای جاری)" disabled="@exporting" @onclick='() => ExportList("pdf")'>
+                <i class="bi bi-file-earmark-pdf"></i>
+                <span class="d-none d-sm-inline">PDF</span>
+            </button>
+        </div>
+    </div>
+}
 
 @if (loading)
 {
     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else if (tab == "kanban")
+{
+    @* ================== نمای کانبان — ستون‌بندی بر اساس اولویت، درگ‌اند‌دراپ برای تغییر اولویت ================== *@
+    <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+        <div class="wo-pr-group">
+            <button type="button" class="wo-pr-btn @(kanbanScope == "mine" ? "active" : "")" @onclick='() => kanbanScope = "mine"'>دستورهای من</button>
+            <button type="button" class="wo-pr-btn @(kanbanScope == "assigned" ? "active" : "")" @onclick='() => kanbanScope = "assigned"'>محول به من</button>
+        </div>
+        <span class="fs-9 text-muted"><i class="bi bi-info-circle"></i> کارت‌ها را بین ستون‌ها بکشید تا اولویت عوض شود (فقط دستورهای خودتان).</span>
+    </div>
+    <div class="wo-kanban">
+        @foreach (var (pv, pfa) in PriorityOpts.Reverse())
+        {
+            var col = pv;
+            var colItems = KanbanItems.Where(w => w.Priority == col).OrderBy(w => w.DueAt).ToList();
+            <div class="wo-kb-col @(kbDragOver == col ? "dragover" : "")"
+                 @ondragover:preventDefault @ondragenter="() => kbDragOver = col" @ondragleave="() => kbDragOver = -1"
+                 @ondrop="() => KanbanDrop(col)">
+                <div class="wo-kb-head wo-kb-head-@col">
+                    <span>@pfa</span>
+                    <span class="wo-kb-count num">@colItems.Count</span>
+                </div>
+                <div class="wo-kb-body">
+                    @if (colItems.Count == 0)
+                    {
+                        <div class="wo-kb-empty">—</div>
+                    }
+                    @foreach (var w in colItems)
+                    {
+                        var w2 = w;
+                        var draggable = w2.OwnerUserId == access.UserId;
+                        var overdue = w2.DueAt < DateTime.Now;
+                        <div class="wo-kb-card @(overdue ? "overdue" : "") @(draggable ? "draggable" : "")"
+                             draggable="@(draggable ? "true" : "false")"
+                             @ondragstart="() => kbDragId = w2.Id"
+                             @onclick="() => OpenDetail(w2)">
+                            <div class="d-flex justify-content-between align-items-start gap-1">
+                                <span class="fw-700 fs-8">@w2.Title</span>
+                                <span class="fs-9 text-muted num text-nowrap">@w2.Number</span>
+                            </div>
+                            <div class="fs-9 text-muted mt-1 d-flex align-items-center gap-2 flex-wrap">
+                                <span class="num @(overdue ? "text-danger fw-700" : "")"><i class="bi bi-clock"></i> @w2.DueAt.ToFa() @w2.DueAt.ToString("HH:mm")</span>
+                                @if (w2.ChecklistTotal > 0) { <span class="num">☑ @w2.ChecklistDone/@w2.ChecklistTotal</span> }
+                                @if (w2.CommentCount > 0) { <span class="num">💬 @w2.CommentCount</span> }
+                                @if (w2.Children.Count > 0) { <span class="num">🔗 @w2.Children.Count(c => c.Status == "Closed")/@w2.Children.Count</span> }
+                                @if (w2.Recurrence > 0) { <span>🔁</span> }
+                            </div>
+                            <div class="fs-9 text-muted mt-1 d-flex align-items-center gap-1">
+                                <i class="bi bi-people"></i>
+                                <span>@(kanbanScope == "mine" ? string.Join("، ", w2.Assignees.Select(a => a.Name)) : w2.OwnerName)</span>
+                                <span class="ms-auto num">@w2.Assignees.Count(a => a.RepliedAt != null)/@w2.Assignees.Count پاسخ</span>
+                            </div>
+                            @if (w2.Tags.Count > 0)
+                            {
+                                <div class="d-flex gap-1 flex-wrap mt-1">
+                                    @foreach (var t in w2.Tags) { <span class="wo-tag wo-tag-sm">@t</span> }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
 }
 else if (tab == "calendar")
 {
@@ -128,6 +255,228 @@ else if (tab == "calendar")
         </div>
     </div>
 }
+else if (tab == "perf")
+{
+    @* ================== گزارش عملکرد افراد (موج ۸) ================== *@
+    <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+        <span class="fs-8 text-muted"><i class="bi bi-info-circle"></i> عملکرد گیرندگانِ دستورهایی که <b>شما</b> داده‌اید — رتبه‌بندی بر اساس درصد انجام به‌موقع.</span>
+        <div class="wo-pr-group ms-auto">
+            @foreach (var (d, fa) in PerfPeriods)
+            {
+                var d2 = d;
+                <button type="button" class="wo-pr-btn @(perfDays == d2 ? "active" : "")"
+                        @onclick="() => SetPerfPeriod(d2)">@fa</button>
+            }
+        </div>
+        <button class="btn btn-sm btn-outline-success" disabled="@exporting" @onclick='() => ExportPerf("xlsx")'>
+            <i class="bi bi-file-earmark-excel"></i> اکسل
+        </button>
+        <button class="btn btn-sm btn-outline-danger" disabled="@exporting" @onclick='() => ExportPerf("pdf")'>
+            <i class="bi bi-file-earmark-pdf"></i> PDF
+        </button>
+    </div>
+
+    @if (perfLoading)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (perfRows.Count == 0)
+    {
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-trophy fs-1 d-block mb-2 opacity-50"></i>
+            در این بازه دستوری به دیگران نداده‌اید.
+        </div>
+    }
+    else
+    {
+        @* ---------- سکوی سه نفر برتر ---------- *@
+        @if (perfRows.Count >= 2)
+        {
+            <div class="wo-podium mb-3">
+                @foreach (var r in perfRows.Take(3))
+                {
+                    <div class="wo-podium-card wo-podium-@r.Rank">
+                        <div class="wo-podium-medal">@(r.Rank == 1 ? "🥇" : r.Rank == 2 ? "🥈" : "🥉")</div>
+                        <div class="fw-700">@r.Name</div>
+                        <div class="fs-8 text-muted num">@r.OnTime از @r.Total به‌موقع</div>
+                        <div class="wo-podium-pct num">@r.OnTimePercent٪</div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 wo-perf-table">
+                        <thead>
+                            <tr class="fs-8 text-muted">
+                                <th style="width:52px">رتبه</th>
+                                <th>نام</th>
+                                <th class="text-center">دریافتی</th>
+                                <th class="text-center">انجام‌شده</th>
+                                <th class="text-center">به‌موقع</th>
+                                <th class="text-center">با تاخیر</th>
+                                <th class="text-center">انجام نشد</th>
+                                <th class="text-center">در انتظار</th>
+                                <th class="text-center" title="در انتظار پاسخ و گذشته از مهلت">منقضی باز</th>
+                                <th class="text-center">میانگین تاخیر</th>
+                                <th style="width:170px">٪ به‌موقع</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in perfRows)
+                            {
+                                <tr>
+                                    <td><span class="wo-rank num @(r.Rank <= 3 ? $"wo-rank-{r.Rank}" : "")">@r.Rank</span></td>
+                                    <td class="fw-600">@r.Name</td>
+                                    <td class="text-center num">@r.Total</td>
+                                    <td class="text-center num">@r.Done</td>
+                                    <td class="text-center num text-success fw-700">@r.OnTime</td>
+                                    <td class="text-center num" style="color:#a855f7">@r.DoneLate</td>
+                                    <td class="text-center num text-danger">@r.NotDone</td>
+                                    <td class="text-center num">@r.Pending</td>
+                                    <td class="text-center num @(r.OverdueOpen > 0 ? "text-danger fw-700" : "")">@r.OverdueOpen</td>
+                                    <td class="text-center num fs-8">@(r.AvgDelayHours > 0 ? DelayFa(r.AvgDelayHours) : "—")</td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="wo-bar-track flex-grow-1">
+                                                <div class="wo-bar @(r.OnTimePercent >= 80 ? "wo-perf-good" : r.OnTimePercent >= 50 ? "wo-perf-mid" : "wo-perf-bad")"
+                                                     style="width:@(r.OnTimePercent)%"></div>
+                                            </div>
+                                            <span class="fs-8 fw-700 num" style="width:34px">@r.OnTimePercent٪</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="fs-9 text-muted mt-2">
+            <i class="bi bi-lightbulb"></i> «میانگین تاخیر» فقط روی انجام‌های دیرهنگام محاسبه می‌شود. «منقضی باز» یعنی هنوز پاسخ نداده و مهلت گذشته است.
+        </div>
+    }
+}
+else if (tab == "stats")
+{
+    @* ================== داشبورد آماری ================== *@
+    @if (stats == null)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else
+    {
+        <div class="wo-kpis mb-3">
+            <div class="wo-kpi"><div class="wo-kpi-num num">@stats.Cards.Total</div><div class="wo-kpi-lbl">کل دستورها</div></div>
+            <div class="wo-kpi k-open"><div class="wo-kpi-num num">@stats.Cards.Open</div><div class="wo-kpi-lbl">باز / در جریان</div></div>
+            <div class="wo-kpi k-late"><div class="wo-kpi-num num">@stats.Cards.Overdue</div><div class="wo-kpi-lbl">گذشته از مهلت</div></div>
+            <div class="wo-kpi k-today"><div class="wo-kpi-num num">@stats.Cards.DueToday</div><div class="wo-kpi-lbl">مهلت امروز</div></div>
+            <div class="wo-kpi k-ontime"><div class="wo-kpi-num num">@stats.Cards.DoneOnTime</div><div class="wo-kpi-lbl">انجام به‌موقع</div></div>
+            <div class="wo-kpi k-latedone"><div class="wo-kpi-num num">@stats.Cards.DoneLate</div><div class="wo-kpi-lbl">انجام با تاخیر</div></div>
+        </div>
+
+        <div class="row g-3">
+            @* ---------- توزیع اولویت دستورهای باز ---------- *@
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="fw-700 mb-3"><i class="bi bi-flag text-primary"></i> اولویت دستورهای باز</h6>
+                        @if (!stats.ByPriority.Any())
+                        {
+                            <div class="text-muted fs-8 text-center py-3">دستور بازی نیست</div>
+                        }
+                        @{ var prMax = Math.Max(1, stats.ByPriority.Any() ? stats.ByPriority.Max(x => x.Count) : 1); }
+                        @foreach (var p in stats.ByPriority)
+                        {
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="fs-8" style="width:44px">@PriorityFa(p.Priority)</span>
+                                <div class="wo-bar-track flex-grow-1">
+                                    <div class="wo-bar wo-bar-p@(p.Priority)" style="width:@(p.Count * 100 / prMax)%"></div>
+                                </div>
+                                <span class="fs-8 fw-700 num" style="width:24px">@p.Count</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* ---------- روند ۶ ماه اخیر ---------- *@
+            <div class="col-lg-8">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="fw-700 mb-3"><i class="bi bi-graph-up text-primary"></i> روند ۶ ماه اخیر</h6>
+                        @{ var moMax = Math.Max(1, stats.Months.Any() ? stats.Months.Max(m => m.Created) : 1); }
+                        <div class="wo-chart">
+                            @foreach (var m in stats.Months)
+                            {
+                                <div class="wo-chart-col">
+                                    <div class="wo-chart-bars">
+                                        <div class="wo-cb wo-cb-ontime" style="height:@(m.OnTime * 100 / moMax)%" title="به‌موقع: @m.OnTime"></div>
+                                        <div class="wo-cb wo-cb-late" style="height:@(m.Late * 100 / moMax)%" title="با تاخیر: @m.Late"></div>
+                                        <div class="wo-cb wo-cb-notdone" style="height:@(m.NotDone * 100 / moMax)%" title="انجام نشده: @m.NotDone"></div>
+                                        <div class="wo-cb wo-cb-created" style="height:@(m.Created * 100 / moMax)%" title="ایجادشده: @m.Created"></div>
+                                    </div>
+                                    <div class="fs-9 text-muted num">@MonthName(m.Month)</div>
+                                </div>
+                            }
+                        </div>
+                        <div class="d-flex gap-3 mt-2 fs-9 text-muted flex-wrap">
+                            <span><i class="wo-dot" style="background:#94a3b8"></i> ایجادشده</span>
+                            <span><i class="wo-dot" style="background:#22c55e"></i> به‌موقع</span>
+                            <span><i class="wo-dot" style="background:#a855f7"></i> با تاخیر</span>
+                            <span><i class="wo-dot" style="background:#ef4444"></i> انجام نشده</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @* ---------- عملکرد گیرندگان ---------- *@
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="p-3 pb-0"><h6 class="fw-700"><i class="bi bi-people text-primary"></i> عملکرد گیرندگان (دستورهایی که من داده‌ام)</h6></div>
+                        @if (!stats.PerAssignee.Any())
+                        {
+                            <div class="text-muted fs-8 text-center py-4">هنوز دستوری به دیگران نداده‌اید</div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr><th>گیرنده</th><th>کل</th><th>انجام شد</th><th>به‌موقع</th><th>انجام نشد</th><th>بی‌پاسخ</th><th style="min-width:140px">نرخ موفقیت</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var a in stats.PerAssignee)
+                                        {
+                                            var rate = a.Total == 0 ? 0 : a.Done * 100 / a.Total;
+                                            <tr>
+                                                <td class="fw-600"><span class="d-inline-flex align-items-center gap-1"><UserAvatar LoginUserId="a.UserId" Size="22" CssClass="user-avatar-sm" /> @a.Name</span></td>
+                                                <td class="num">@a.Total</td>
+                                                <td class="num text-success">@a.Done</td>
+                                                <td class="num text-primary">@a.OnTime</td>
+                                                <td class="num text-danger">@a.NotDone</td>
+                                                <td class="num text-warning">@a.Pending</td>
+                                                <td>
+                                                    <div class="d-flex align-items-center gap-2">
+                                                        <div class="wo-bar-track flex-grow-1"><div class="wo-bar" style="width:@rate%;background:@(rate >= 70 ? "#22c55e" : rate >= 40 ? "#f59e0b" : "#ef4444")"></div></div>
+                                                        <span class="fs-9 num">@rate%</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
 else if (!PagedItems.Any())
 {
     <div class="wo-empty"><i class="bi bi-clipboard-x"></i><h5>دستور کاری وجود ندارد</h5></div>
@@ -157,7 +506,34 @@ else
                                     </button>
                                 </td>
                                 <td class="num fw-700 text-primary">@w.Number</td>
-                                <td class="fw-600">@w.Title @SourceLink(w.SourceModule, w.SourceId)</td>
+                                <td class="fw-600">
+                                    @PriorityBadge(w.Priority) @w.Title @SourceLink(w.SourceModule, w.SourceId)
+                                    @if (w.Recurrence > 0)
+                                    {
+                                        <i class="bi bi-arrow-repeat text-info" title="تکرار @RecurrenceFa(w.Recurrence)"></i>
+                                    }
+                                    @if (w.ChecklistTotal > 0)
+                                    {
+                                        <span class="badge bg-light text-dark border fs-9 num" title="چک‌لیست">☑ @w.ChecklistDone/@w.ChecklistTotal</span>
+                                    }
+                                    @if (w.CommentCount > 0)
+                                    {
+                                        <span class="badge bg-light text-dark border fs-9 num" title="کامنت‌ها">💬 @w.CommentCount</span>
+                                    }
+                                    @if (w.ParentOrderId != null)
+                                    {
+                                        <span class="badge bg-light text-dark border fs-9" title="زیر-دستورِ @w.ParentNumber">🔗 زیر-دستور</span>
+                                    }
+                                    @if (w.Children.Count > 0)
+                                    {
+                                        <span class="badge bg-light text-dark border fs-9 num" title="زیر-دستورها (بسته از کل)">🔗 @w.Children.Count(c => c.Status == "Closed")/@w.Children.Count</span>
+                                    }
+                                    @foreach (var t in w.Tags)
+                                    {
+                                        var t2 = t;
+                                        <span class="wo-tag wo-tag-sm" title="فیلتر با این برچسب" @onclick="() => SetTagFilter(t2)" @onclick:stopPropagation="true">@t2</span>
+                                    }
+                                </td>
                                 <td>@w.OwnerName</td>
                                 <td class="num">@w.DueAt.ToFa() @w.DueAt.ToString("HH:mm")</td>
                                 <td>
@@ -248,7 +624,7 @@ else
             var tone = Tone(w);
             <div class="wo-mcard wo-tone-@tone" @onclick="() => OpenDetail(w)">
                 <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div class="fw-700">@w.Title</div>
+                    <div class="fw-700">@PriorityBadge(w.Priority) @w.Title</div>
                     @ToneBadge(w, tone)
                 </div>
                 <div class="fs-8 text-muted num">@w.Number — مهلت: @w.DueAt.ToFa() @w.DueAt.ToString("HH:mm") @SourceLink(w.SourceModule, w.SourceId)</div>
@@ -342,11 +718,17 @@ else
 @if (showNew)
 {
     <div class="modal fade show d-block" style="background:rgba(15,23,42,.55)">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content wo-modal">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+            <div class="modal-content wo-modal wo-form-modal">
                 <div class="modal-header">
                     <h5 class="modal-title d-flex align-items-center flex-wrap gap-1">
                         <i class="bi bi-list-task text-primary"></i> @(editingId > 0 ? "ویرایش دستور کار" : "دستور کار جدید")
+                        @if (chainParent != null)
+                        {
+                            <span class="badge bg-info-subtle text-info border ms-2" title="این دستور به‌صورت زیر-دستورِ متصل ساخته می‌شود">
+                                🔗 زیر-دستورِ @chainParent.Number — @chainParent.Title
+                            </span>
+                        }
                         @if (!string.IsNullOrWhiteSpace(_sourceLabel))
                         {
                             if (_sourceModule == "Document" && _sourceId is > 0)
@@ -374,12 +756,27 @@ else
                             }
                         }
                     </h5>
-                    <button type="button" class="btn-close" @onclick="() => showNew = false"></button>
+                    <button type="button" class="btn-close" @onclick="CloseNewForm"></button>
                 </div>
                 <div class="modal-body">
                     @if (!string.IsNullOrWhiteSpace(formError))
                     {
                         <div class="alert alert-danger py-2">@formError</div>
+                    }
+                    @* ---------- قالب‌های آماده (موج ۷) — پیش‌پُر کردن فرم با یک کلیک ---------- *@
+                    @if (editingId <= 0 && myTemplates.Count > 0)
+                    {
+                        <div class="wo-tpl-bar mb-3">
+                            <span class="fs-9 text-muted text-nowrap"><i class="bi bi-lightning-charge-fill text-warning"></i> قالب‌های آماده:</span>
+                            @foreach (var t in myTemplates)
+                            {
+                                var t2 = t;
+                                <span class="wo-tpl-chip @(appliedTplId == t2.Id ? "active" : "")" title="@($"عنوان: {t2.Title}")">
+                                    <span class="wo-tpl-name" @onclick="() => ApplyTemplate(t2)">@t2.Name</span>
+                                    <button type="button" class="wo-tpl-x" title="حذف قالب" @onclick:stopPropagation="true" @onclick="() => DeleteTemplate(t2.Id)"><i class="bi bi-x"></i></button>
+                                </span>
+                            }
+                        </div>
                     }
                     <div class="row g-3">
                         <div class="col-12">
@@ -425,13 +822,97 @@ else
                                 <div class="fs-8 text-muted mt-1">شما فقط مجاز به ثبت دستور کار برای خودتان هستید.</div>
                             }
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-sm-6 col-lg-4">
                             <label class="form-label">تاریخ مقرر (شمسی) <span class="text-danger">*</span></label>
                             <DatePicker @bind-Value="newDueDate" />
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-sm-6 col-lg-4">
                             <label class="form-label">ساعت مقرر</label>
                             <input type="time" class="form-control num" dir="ltr" @bind="newDueTime" />
+                        </div>
+                        <div class="col-12 col-lg-4">
+                            <label class="form-label">اولویت</label>
+                            <div class="wo-pr-group">
+                                @foreach (var (val, fa) in PriorityOpts)
+                                {
+                                    var v2 = val;
+                                    <button type="button" class="wo-pr-btn wo-pr-@v2 @(newPriority == v2 ? "active" : "")"
+                                            @onclick="() => newPriority = v2">@fa</button>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label"><i class="bi bi-arrow-repeat"></i> تکرار خودکار
+                                <span class="fs-9 text-muted">— بعد از «بستن»، نوبت بعدی با همان مشخصات ساخته می‌شود</span></label>
+                            <div class="wo-pr-group">
+                                @foreach (var (val, fa) in RecurrenceOpts)
+                                {
+                                    var v3 = val;
+                                    <button type="button" class="wo-pr-btn @(newRecurrence == v3 ? "active" : "")"
+                                            @onclick="() => newRecurrence = v3">@fa</button>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label"><i class="bi bi-tags"></i> برچسب‌ها (اختیاری)
+                                <span class="fs-9 text-muted">— حداکثر ۵ برچسب برای دسته‌بندی و فیلتر</span></label>
+                            <div class="d-flex gap-2 mb-2">
+                                <input class="form-control form-control-sm" placeholder="برچسب را بنویسید و Enter بزنید... (مثلاً: برق، کارگاه، فوری‌ها)"
+                                       maxlength="30" @bind="newTagText" @bind:event="oninput" @onkeydown="OnTagKeyDown" />
+                                <button type="button" class="btn btn-sm btn-outline-primary text-nowrap"
+                                        disabled="@(newTags.Count >= 5)" @onclick="AddTag">
+                                    <i class="bi bi-plus-lg"></i> افزودن
+                                </button>
+                            </div>
+                            @if (newTags.Count > 0)
+                            {
+                                <div class="d-flex gap-1 flex-wrap mb-1">
+                                    @for (var ti = 0; ti < newTags.Count; ti++)
+                                    {
+                                        var tidx = ti;
+                                        <span class="wo-tag">
+                                            <i class="bi bi-tag-fill"></i> @newTags[tidx]
+                                            <button type="button" class="wo-tag-x" title="حذف" @onclick="() => newTags.RemoveAt(tidx)"><i class="bi bi-x"></i></button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                            @if (myTags.Count > 0)
+                            {
+                                <div class="d-flex gap-1 flex-wrap align-items-center">
+                                    <span class="fs-9 text-muted">پیشنهاد:</span>
+                                    @foreach (var t in myTags.Where(t => !newTags.Contains(t)).Take(8))
+                                    {
+                                        var t2 = t;
+                                        <button type="button" class="wo-tag-suggest" @onclick="() => AddSuggestedTag(t2)">@t2</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label"><i class="bi bi-check2-square"></i> چک‌لیست زیرکار (اختیاری)</label>
+                            <div class="d-flex gap-2 mb-2">
+                                <input class="form-control form-control-sm" placeholder="گام بعدی را بنویسید و Enter بزنید..."
+                                       @bind="newClText" @bind:event="oninput" @onkeydown="OnClKeyDown" />
+                                <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" @onclick="AddChecklistItem">
+                                    <i class="bi bi-plus-lg"></i> افزودن
+                                </button>
+                            </div>
+                            @if (newChecklist.Count > 0)
+                            {
+                                <div class="wo-cl-editor">
+                                    @for (var ci = 0; ci < newChecklist.Count; ci++)
+                                    {
+                                        var idx = ci;
+                                        <div class="wo-cl-row">
+                                            <span class="wo-cl-num num">@(idx + 1)</span>
+                                            <span class="flex-grow-1">@newChecklist[idx]</span>
+                                            <button type="button" class="btn btn-sm btn-light text-danger" title="حذف"
+                                                    @onclick="() => RemoveChecklistItem(idx)"><i class="bi bi-x"></i></button>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                         <div class="col-12">
                             <label class="form-label">شرح (بند ۳ — ادیتور)</label>
@@ -444,12 +925,35 @@ else
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" @onclick="() => showNew = false">انصراف</button>
+                    @if (editingId <= 0)
+                    {
+                        <button type="button" class="btn btn-outline-warning wo-tpl-save-btn" title="ذخیرهٔ محتوای فرم به‌عنوان قالب برای استفادهٔ بعدی"
+                                disabled="@busy" @onclick="() => tplSaveOpen = !tplSaveOpen">
+                            <i class="bi bi-bookmark-plus"></i> ذخیره به‌عنوان قالب
+                        </button>
+                    }
+                    <button class="btn btn-secondary" @onclick="CloseNewForm">انصراف</button>
                     <button class="btn btn-primary px-4" disabled="@busy" @onclick="SubmitNew">
                         @if (busy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                         <i class="bi bi-send"></i> @(editingId > 0 ? "ذخیره تغییرات" : "ثبت دستور کار")
                     </button>
                 </div>
+                @if (tplSaveOpen && editingId <= 0)
+                {
+                    <div class="wo-tpl-save px-3 pb-3">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <input class="form-control form-control-sm wo-tpl-save-input" maxlength="100"
+                                   placeholder="نام قالب (مثلاً: سرویس ماهانه ژنراتور)"
+                                   @bind="tplName" @bind:event="oninput" />
+                            <button type="button" class="btn btn-sm btn-warning text-nowrap" disabled="@(string.IsNullOrWhiteSpace(tplName) || tplBusy)"
+                                    @onclick="SaveTemplate">
+                                @if (tplBusy) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                                <i class="bi bi-bookmark-check"></i> ذخیره قالب
+                            </button>
+                        </div>
+                        <div class="fs-9 text-muted mt-1">عنوان، شرح، گیرندگان، اولویت، تکرار، چک‌لیست و برچسب‌های فعلی فرم در قالب ذخیره می‌شود (تاریخ ذخیره نمی‌شود). نام تکراری = جایگزینی همان قالب.</div>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -468,6 +972,15 @@ else
                     <div>
                         <h5 class="modal-title mb-1">@detail.Title</h5>
                         <span class="badge bg-dark-subtle text-dark border num me-1">@detail.Number</span>
+                        @PriorityBadge(detail.Priority)
+                        @if (detail.Recurrence > 0)
+                        {
+                            <span class="badge bg-info-subtle text-info border">🔁 @RecurrenceFa(detail.Recurrence)</span>
+                        }
+                        @foreach (var t in detail.Tags)
+                        {
+                            <span class="wo-tag wo-tag-sm"><i class="bi bi-tag-fill"></i> @t</span>
+                        }
                         @ToneBadge(detail, tone)
                         @if (detail.ExtensionCount > 0)
                         {
@@ -475,6 +988,30 @@ else
                         }
                     </div>
                     <div class="d-flex align-items-center gap-2">
+                        @if (Auth.HasModule("Chat") && ChatTargets(detail).Any())
+                        {
+                            <div class="wo-chat-wrap">
+                                <button type="button" class="btn btn-sm btn-outline-info" title="گفتگو دربارهٔ این دستور در پیام‌رسان"
+                                        disabled="@chatBusy" @onclick="ToggleChatMenu">
+                                    @if (chatBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                    else { <i class="bi bi-chat-dots"></i> }
+                                    گفتگو
+                                </button>
+                                @if (chatMenuOpen)
+                                {
+                                    <div class="wo-chat-menu shadow">
+                                        @foreach (var t in ChatTargets(detail))
+                                        {
+                                            var t2 = t;
+                                            <button type="button" class="wo-chat-item" @onclick="() => StartChatAbout(t2.Id, t2.Name)">
+                                                <UserAvatar LoginUserId="t2.Id" Size="22" CssClass="user-avatar-sm" />
+                                                <span>@t2.Name</span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
                         <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenGardesh">
                             <i class="bi bi-diagram-3"></i> گردش کار
                         </button>
@@ -510,6 +1047,40 @@ else
                         <div class="wo-block mb-3">
                             <div class="wo-block-title"><i class="bi bi-card-text"></i> شرح</div>
                             <div class="wo-block-body">@((MarkupString)detail.Description)</div>
+                        </div>
+                    }
+
+                    @* ---------- چک‌لیست زیرکار + درصد پیشرفت ---------- *@
+                    @if (detailChecklist.Count > 0)
+                    {
+                        var clDone = detailChecklist.Count(c => c.IsDone);
+                        var clPct = clDone * 100 / detailChecklist.Count;
+                        <div class="wo-block mb-3">
+                            <div class="wo-block-title d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <span><i class="bi bi-check2-square"></i> چک‌لیست (@clDone از @detailChecklist.Count)</span>
+                                <div class="d-flex align-items-center gap-2" style="min-width:160px">
+                                    <div class="wo-bar-track flex-grow-1">
+                                        <div class="wo-bar" style="width:@clPct%;background:@(clPct == 100 ? "#22c55e" : "#3b82f6")"></div>
+                                    </div>
+                                    <span class="fs-9 num fw-700">@clPct%</span>
+                                </div>
+                            </div>
+                            <div class="wo-block-body">
+                                @foreach (var c in detailChecklist.OrderBy(x => x.SortOrder))
+                                {
+                                    var canTick = detail.Status == "Open" &&
+                                        (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
+                                    <div class="wo-cl-item @(c.IsDone ? "done" : "") @(canTick ? "tickable" : "")"
+                                         @onclick="async () => { if (canTick) await ToggleChecklist(c); }">
+                                        <i class="bi @(c.IsDone ? "bi-check-square-fill text-success" : "bi-square")"></i>
+                                        <span class="flex-grow-1">@c.Text</span>
+                                        @if (c.IsDone && !string.IsNullOrWhiteSpace(c.DoneByName))
+                                        {
+                                            <span class="fs-9 text-muted">@c.DoneByName@(c.DoneAt != null ? $" — {c.DoneAt.Value.ToFa()}" : "")</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
                         </div>
                     }
 
@@ -636,6 +1207,164 @@ else
                         </div>
                     }
 
+                    @* ---------- ارجاع زنجیره‌ای (والد / زیر-دستورها) ---------- *@
+                    @{
+                        var canChain = detail.Status == "Open" && access.CanCreate &&
+                            (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
+                    }
+                    @if (detail.ParentOrderId != null || detail.Children.Count > 0 || canChain)
+                    {
+                        <div class="wo-block mb-3">
+                            <div class="wo-block-title d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                <span><i class="bi bi-link-45deg"></i> زنجیرهٔ ارجاع</span>
+                                @if (canChain)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 fs-8" @onclick="OpenChainForm">
+                                        <i class="bi bi-diagram-2"></i> ارجاع بخشی از کار (زیر-دستور)
+                                    </button>
+                                }
+                            </div>
+                            <div class="wo-block-body">
+                                @if (detail.ParentOrderId != null)
+                                {
+                                    <div class="wo-chain-row">
+                                        <i class="bi bi-arrow-up-left-circle text-secondary"></i>
+                                        <span class="fs-8 text-muted">والد:</span>
+                                        <a class="wo-chain-link" @onclick="() => OpenById(detail.ParentOrderId.Value)" @onclick:preventDefault="true" href="">
+                                            @detail.ParentNumber — @detail.ParentTitle
+                                        </a>
+                                    </div>
+                                }
+                                @if (detail.Children.Count > 0)
+                                {
+                                    <div class="fs-8 text-muted mb-1 mt-1">
+                                        زیر-دستورها (@detail.Children.Count(c => c.Status == "Closed") از @detail.Children.Count بسته):
+                                    </div>
+                                    @foreach (var ch in detail.Children)
+                                    {
+                                        var ch2 = ch;
+                                        <div class="wo-chain-row">
+                                            <i class="bi @(ch2.Status == "Closed" ? "bi-check-circle-fill text-success" : "bi-circle text-warning")"></i>
+                                            <a class="wo-chain-link" @onclick="() => OpenById(ch2.Id)" @onclick:preventDefault="true" href="">
+                                                @ch2.Number — @ch2.Title
+                                            </a>
+                                            <span class="fs-9 text-muted">(@ch2.OwnerName)</span>
+                                            <span class="badge @(ch2.Status == "Closed" ? "bg-success-subtle text-success" : "bg-warning-subtle text-warning") border fs-9">
+                                                @(ch2.Status == "Closed" ? "بسته" : "باز")
+                                            </span>
+                                        </div>
+                                    }
+                                    @if (detail.Children.Any(c => c.Status == "Open") && isOwner)
+                                    {
+                                        <div class="fs-9 text-muted mt-1"><i class="bi bi-info-circle"></i> تا بسته‌شدن همهٔ زیر-دستورهای باز، این دستور قابل بستن نیست.</div>
+                                    }
+                                }
+                                else if (detail.ParentOrderId == null && canChain)
+                                {
+                                    <div class="fs-8 text-muted">می‌توانید بخشی از این کار را به‌صورت زیر-دستورِ متصل به نفر بعدی ارجاع دهید — پیشرفت آن همین‌جا دیده می‌شود.</div>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    @* ---------- رشتهٔ گفتگو (کامنت‌ها) ---------- *@
+                    @{
+                        var canComment = detail.Status == "Open" &&
+                            (isOwner || detail.Assignees.Any(a => a.UserId == access.UserId));
+                    }
+                    <div class="wo-block mb-3">
+                        <div class="wo-block-title"><i class="bi bi-chat-left-text"></i> گفتگو (@comments.Count(c => !c.IsDeleted))</div>
+                        <div class="wo-block-body">
+                            @if (comments.Count == 0)
+                            {
+                                <div class="fs-8 text-muted">هنوز کامنتی ثبت نشده است.</div>
+                            }
+                            @foreach (var cm in comments)
+                            {
+                                var mine = cm.AuthorUserId == access.UserId;
+                                <div class="wo-cm @(mine ? "mine" : "")" id="wo-cm-@cm.Id">
+                                    <UserAvatar LoginUserId="cm.AuthorUserId" Size="28" CssClass="user-avatar-sm" />
+                                    <div class="wo-cm-bubble">
+                                        <div class="wo-cm-head">
+                                            <span class="fw-700 fs-8">@cm.AuthorName</span>
+                                            <span class="fs-9 text-muted num">@cm.CreatedAt.ToFa() @cm.CreatedAt.ToString("HH:mm")</span>
+                                            @if (cm.EditedAt != null && !cm.IsDeleted)
+                                            {
+                                                <span class="fs-9 text-muted">(ویرایش‌شده)</span>
+                                            }
+                                        </div>
+                                        @if (cm.ReplyToId != null)
+                                        {
+                                            var parent = comments.FirstOrDefault(x => x.Id == cm.ReplyToId);
+                                            <div class="wo-cm-quote">
+                                                <i class="bi bi-reply-fill"></i>
+                                                @(parent == null || parent.IsDeleted ? "کامنت حذف‌شده" : $"{parent.AuthorName}: {Brief(parent.Text)}")
+                                            </div>
+                                        }
+                                        @if (cm.IsDeleted)
+                                        {
+                                            <div class="fs-8 text-muted fst-italic"><i class="bi bi-trash"></i> این کامنت حذف شده است.</div>
+                                        }
+                                        else if (editingCommentId == cm.Id)
+                                        {
+                                            <textarea class="form-control form-control-sm mb-1" rows="2" @bind="editingCommentText"></textarea>
+                                            <div class="d-flex gap-1">
+                                                <button class="btn btn-sm btn-primary py-0 fs-8" disabled="@cmBusy" @onclick="SubmitEditComment">ذخیره</button>
+                                                <button class="btn btn-sm btn-light py-0 fs-8" @onclick="CancelEditComment">انصراف</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="wo-cm-text">@cm.Text</div>
+                                            @if (canComment)
+                                            {
+                                                <div class="wo-cm-actions">
+                                                    <button class="wo-cm-link" @onclick="() => SetReplyTo(cm)"><i class="bi bi-reply"></i> پاسخ</button>
+                                                    @if (mine)
+                                                    {
+                                                        <button class="wo-cm-link" @onclick="() => StartEditComment(cm)"><i class="bi bi-pencil"></i> ویرایش</button>
+                                                    }
+                                                    @if (mine || isOwner)
+                                                    {
+                                                        <button class="wo-cm-link text-danger" @onclick="() => DeleteComment(cm)"><i class="bi bi-trash"></i> حذف</button>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+
+                            @if (canComment)
+                            {
+                                <div class="mt-2 pt-2 border-top">
+                                    @if (replyTo != null)
+                                    {
+                                        <div class="wo-cm-quote d-flex justify-content-between align-items-center mb-1">
+                                            <span><i class="bi bi-reply-fill"></i> پاسخ به @replyTo.AuthorName: @Brief(replyTo.Text)</span>
+                                            <button class="wo-cm-link" @onclick="() => replyTo = null"><i class="bi bi-x-lg"></i></button>
+                                        </div>
+                                    }
+                                    <div class="d-flex gap-2 align-items-start">
+                                        <textarea class="form-control form-control-sm" rows="2" maxlength="2000"
+                                                  placeholder="کامنت خود را بنویسید... (برای همهٔ طرف‌های دستور اعلان می‌رود)"
+                                                  @bind="newCommentText" @bind:event="oninput"></textarea>
+                                        <button class="btn btn-primary btn-sm" style="white-space:nowrap"
+                                                disabled="@(cmBusy || string.IsNullOrWhiteSpace(newCommentText))" @onclick="SubmitComment">
+                                            @if (cmBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                            else { <i class="bi bi-send"></i> }
+                                            ارسال
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                            else if (detail.Status == "Closed")
+                            {
+                                <div class="fs-9 text-muted mt-2"><i class="bi bi-lock"></i> دستور بسته شده — ثبت کامنت جدید ممکن نیست.</div>
+                            }
+                        </div>
+                    </div>
+
                     @* ---------- تاریخچه (بند ۱۷ و ۱۸) ---------- *@
                     @if (logs.Any())
                     {
@@ -674,6 +1403,64 @@ else
     .wo-tab.active { background: #2563eb; border-color: #2563eb; color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,.3); }
     .wo-tab-badge { background: rgba(0,0,0,.08); border-radius: 999px; padding: 0 .5rem; font-size: .75rem; }
     .wo-tab.active .wo-tab-badge { background: rgba(255,255,255,.25); }
+
+    /* ---------- نوار جستجو و فیلتر ---------- */
+    .wo-filterbar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+    .wo-flt-search { position: relative; flex: 1 1 240px; max-width: 380px; }
+    .wo-flt-search > i.bi-search { position: absolute; right: .65rem; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: .85rem; pointer-events: none; }
+    .wo-flt-search input { padding-right: 2rem; padding-left: 1.8rem; border-radius: 10px; }
+    .wo-flt-clear { position: absolute; left: .35rem; top: 50%; transform: translateY(-50%); border: 0; background: none; color: #94a3b8; padding: .15rem .3rem; }
+    .wo-flt-clear:hover { color: #ef4444; }
+
+    /* ---------- دکمه‌های اولویت (فرم + فیلتر) ---------- */
+    .wo-pr-group { display: inline-flex; gap: .35rem; flex-wrap: wrap; }
+    .wo-pr-btn { border: 1px solid var(--border, #e2e8f0); background: #fff; border-radius: 999px; padding: .3rem .8rem; font-size: .8rem; color: #475569; transition: all .15s; }
+    .wo-pr-btn:hover { border-color: #94a3b8; }
+    .wo-pr-btn.active { background: #1e293b; border-color: #1e293b; color: #fff; font-weight: 700; }
+    .wo-pr-btn.wo-pr-3.active { background: #dc2626; border-color: #dc2626; }
+    .wo-pr-btn.wo-pr-2.active { background: #ea580c; border-color: #ea580c; }
+    .wo-pr-btn.wo-pr-0.active { background: #64748b; border-color: #64748b; }
+
+    /* ---------- نشان اولویت در لیست/جزئیات ---------- */
+    .wo-prb-3 { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .wo-prb-2 { background: #fff7ed; color: #ea580c; border: 1px solid #fed7aa; }
+    .wo-prb-0 { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+    /* ---------- چک‌لیست زیرکار ---------- */
+    .wo-cl-editor { border: 1px solid var(--border, #e2e8f0); border-radius: 10px; overflow: hidden; }
+    .wo-cl-row { display: flex; align-items: center; gap: .5rem; padding: .35rem .6rem; border-bottom: 1px solid #f1f5f9; font-size: .85rem; }
+    .wo-cl-row:last-child { border-bottom: 0; }
+    .wo-cl-num { width: 22px; height: 22px; border-radius: 50%; background: #eef2ff; color: #4f46e5; display: inline-flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; flex-shrink: 0; }
+    .wo-cl-item { display: flex; align-items: center; gap: .55rem; padding: .4rem .5rem; border-radius: 8px; font-size: .88rem; }
+    .wo-cl-item.tickable { cursor: pointer; }
+    .wo-cl-item.tickable:hover { background: #f8fafc; }
+    .wo-cl-item.done > span.flex-grow-1 { text-decoration: line-through; color: #94a3b8; }
+    .wo-cl-item i.bi { font-size: 1.05rem; color: #94a3b8; }
+
+    /* ---------- داشبورد آماری ---------- */
+    .wo-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .75rem; }
+    .wo-kpi { background: #fff; border: 1px solid var(--border, #e2e8f0); border-radius: 14px; padding: .9rem 1rem; text-align: center; }
+    .wo-kpi-num { font-size: 1.6rem; font-weight: 800; line-height: 1.2; }
+    .wo-kpi-lbl { font-size: .75rem; color: #64748b; margin-top: .15rem; }
+    .wo-kpi.k-open .wo-kpi-num { color: #2563eb; }
+    .wo-kpi.k-late .wo-kpi-num { color: #ef4444; }
+    .wo-kpi.k-today .wo-kpi-num { color: #f59e0b; }
+    .wo-kpi.k-ontime .wo-kpi-num { color: #22c55e; }
+    .wo-kpi.k-latedone .wo-kpi-num { color: #a855f7; }
+    .wo-bar-track { height: 8px; background: #f1f5f9; border-radius: 999px; overflow: hidden; }
+    .wo-bar { height: 100%; border-radius: 999px; background: #3b82f6; transition: width .3s; }
+    .wo-bar-p3 { background: #dc2626; }
+    .wo-bar-p2 { background: #ea580c; }
+    .wo-bar-p1 { background: #3b82f6; }
+    .wo-bar-p0 { background: #94a3b8; }
+    .wo-chart { display: flex; gap: .5rem; align-items: stretch; height: 160px; }
+    .wo-chart-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: .25rem; }
+    .wo-chart-bars { flex: 1; width: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px; }
+    .wo-cb { width: 12px; border-radius: 4px 4px 0 0; min-height: 2px; }
+    .wo-cb-created { background: #94a3b8; }
+    .wo-cb-ontime { background: #22c55e; }
+    .wo-cb-late { background: #a855f7; }
+    .wo-cb-notdone { background: #ef4444; }
     .wo-empty { text-align: center; padding: 3.5rem 1rem; color: #94a3b8; }
     .wo-empty i { font-size: 3rem; display: block; margin-bottom: .5rem; }
 
@@ -839,6 +1626,16 @@ else
         .wo-tabs { position: sticky; top: 0; z-index: 5; background: var(--bs-body-bg, #f1f5f9); padding: .4rem 0; }
         .wo-tab { flex: 1; justify-content: center; padding: .5rem .4rem; font-size: .76rem; }
         .modal-dialog { margin: .5rem; }
+        /* فرم دستور کار جدید — رسپانسیو موبایل */
+        .modal-dialog.modal-fullscreen-sm-down { margin: 0; }
+        .wo-form-modal { border-radius: 0 !important; }
+        .wo-form-modal .wo-pr-group { display: flex; width: 100%; }
+        .wo-form-modal .wo-pr-btn { flex: 1 1 auto; min-width: 0; text-align: center; padding: .45rem .3rem; }
+        .wo-form-modal .modal-footer { flex-wrap: nowrap; gap: .5rem; }
+        .wo-form-modal .modal-footer .btn { flex: 1 1 auto; padding-block: .55rem; }
+        .wo-form-modal .modal-footer .btn.btn-primary { flex-grow: 2; }
+        .wo-form-modal .modal-title { font-size: .95rem; }
+        .wo-form-modal .form-label { font-size: .82rem; }
         .wo-cal2 { gap: .25rem; padding: .5rem; }
         .wo-cell2 { min-height: 56px; }
         .wo-chip-txt { display: none; }
@@ -846,6 +1643,124 @@ else
         .wo-day2 { font-size: .68rem; }
         .wo-today-tag { display: none; }
     }
+    /* ---------- گزارش عملکرد افراد (موج ۸) ---------- */
+    .wo-podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; max-width: 720px; }
+    .wo-podium-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: .9rem; text-align: center; position: relative; }
+    .wo-podium-1 { border-color: #fbbf24; background: linear-gradient(180deg, #fffbeb, #fff); order: 2; transform: translateY(-6px); box-shadow: 0 4px 14px rgba(251,191,36,.18); }
+    .wo-podium-2 { border-color: #cbd5e1; background: linear-gradient(180deg, #f8fafc, #fff); order: 1; }
+    .wo-podium-3 { border-color: #fdba74; background: linear-gradient(180deg, #fff7ed, #fff); order: 3; }
+    .wo-podium-medal { font-size: 1.6rem; line-height: 1; margin-bottom: .25rem; }
+    .wo-podium-pct { font-size: 1.25rem; font-weight: 800; color: #16a34a; margin-top: .15rem; }
+    .wo-rank { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #f1f5f9; color: #475569; font-size: .8rem; font-weight: 700; }
+    .wo-rank-1 { background: #fef3c7; color: #b45309; }
+    .wo-rank-2 { background: #f1f5f9; color: #475569; box-shadow: inset 0 0 0 1px #cbd5e1; }
+    .wo-rank-3 { background: #ffedd5; color: #c2410c; }
+    .wo-perf-good { background: #22c55e; }
+    .wo-perf-mid { background: #f59e0b; }
+    .wo-perf-bad { background: #ef4444; }
+    .wo-perf-table th, .wo-perf-table td { white-space: nowrap; }
+    @@media (max-width: 575.98px) {
+        .wo-podium { grid-template-columns: 1fr; max-width: 100%; }
+        .wo-podium-1 { transform: none; order: 1; }
+        .wo-podium-2 { order: 2; }
+        .wo-podium-3 { order: 3; }
+    }
+
+    /* ---------- قالب‌های آماده (موج ۷) ---------- */
+    .wo-tpl-bar { display: flex; align-items: center; gap: .4rem; flex-wrap: wrap; background: #fffbeb; border: 1px dashed #fcd34d; border-radius: 12px; padding: .5rem .75rem; }
+    .wo-tpl-chip { display: inline-flex; align-items: center; gap: .25rem; background: #fff; border: 1px solid #fcd34d; border-radius: 999px; padding: .18rem .3rem .18rem .55rem; font-size: .78rem; color: #92400e; transition: all .15s; }
+    .wo-tpl-chip:hover { border-color: #f59e0b; box-shadow: 0 1px 4px rgba(245,158,11,.25); }
+    .wo-tpl-chip.active { background: #f59e0b; border-color: #f59e0b; color: #fff; font-weight: 700; }
+    .wo-tpl-chip.active .wo-tpl-x { color: #fff; }
+    .wo-tpl-name { cursor: pointer; }
+    .wo-tpl-x { border: 0; background: transparent; color: #b45309; padding: 0 .15rem; line-height: 1; border-radius: 50%; }
+    .wo-tpl-x:hover { color: #dc2626; }
+    .wo-tpl-save { background: #fffbeb; border-top: 1px dashed #fcd34d; padding-top: .75rem; }
+    .wo-tpl-save-input { max-width: 320px; }
+    .wo-tpl-save-btn { margin-left: auto; }
+    @@media (max-width: 575.98px) {
+        .wo-tpl-save-btn { width: 100%; margin-left: 0; }
+        .wo-tpl-save-input { max-width: 100%; flex: 1 1 100%; }
+    }
+
+    /* ---------- نمای کانبان ---------- */
+    .wo-kanban { display: grid; grid-template-columns: repeat(4, 1fr); gap: .75rem; align-items: start; }
+    @@media (max-width: 992px) { .wo-kanban { grid-template-columns: repeat(2, 1fr); } }
+    @@media (max-width: 576px) { .wo-kanban { grid-template-columns: 1fr; } }
+    .wo-kb-col { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; min-height: 220px; transition: all .15s; }
+    .wo-kb-col.dragover { border-color: #7c3aed; background: #faf5ff; box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+    .wo-kb-head { display: flex; justify-content: space-between; align-items: center; padding: .55rem .8rem; font-weight: 700; font-size: .85rem; border-bottom: 2px solid; border-radius: 14px 14px 0 0; }
+    .wo-kb-head-3 { color: #dc2626; border-color: #dc2626; background: #fef2f2; }
+    .wo-kb-head-2 { color: #ea580c; border-color: #ea580c; background: #fff7ed; }
+    .wo-kb-head-1 { color: #2563eb; border-color: #2563eb; background: #eff6ff; }
+    .wo-kb-head-0 { color: #64748b; border-color: #94a3b8; background: #f1f5f9; }
+    .wo-kb-count { background: rgba(0,0,0,.07); border-radius: 999px; padding: 0 .5rem; font-size: .75rem; }
+    .wo-kb-body { padding: .5rem; display: flex; flex-direction: column; gap: .5rem; }
+    .wo-kb-empty { text-align: center; color: #cbd5e1; padding: 1rem 0; }
+    .wo-kb-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: .55rem .65rem; cursor: pointer; transition: all .12s; }
+    .wo-kb-card:hover { border-color: #93c5fd; box-shadow: 0 3px 10px rgba(37,99,235,.12); }
+    .wo-kb-card.draggable { cursor: grab; }
+    .wo-kb-card.overdue { border-inline-start: 3px solid #dc2626; }
+
+    /* ---------- ارجاع زنجیره‌ای ---------- */
+    .wo-chain-row { display: flex; align-items: center; gap: .5rem; padding: .25rem 0; flex-wrap: wrap; }
+    .wo-chain-link { color: #4f46e5; font-size: .82rem; cursor: pointer; text-decoration: none; }
+    .wo-chain-link:hover { text-decoration: underline; }
+
+    /* ---------- برچسب/دسته‌بندی ---------- */
+    .wo-tag {
+        display: inline-flex; align-items: center; gap: .25rem;
+        background: #f3e8ff; color: #7c3aed; border: 1px solid #e9d5ff;
+        border-radius: 2rem; padding: .1rem .55rem; font-size: .75rem;
+    }
+    .wo-tag-sm { font-size: .68rem; padding: .05rem .45rem; cursor: pointer; }
+    .wo-tag-sm:hover { background: #e9d5ff; }
+    .wo-tag-x {
+        border: 0; background: none; padding: 0; margin-inline-start: .1rem;
+        color: #a855f7; cursor: pointer; line-height: 1;
+    }
+    .wo-tag-x:hover { color: #dc2626; }
+    .wo-tag-suggest {
+        border: 1px dashed #c4b5fd; background: none; color: #7c3aed;
+        border-radius: 2rem; padding: .05rem .5rem; font-size: .72rem; cursor: pointer;
+    }
+    .wo-tag-suggest:hover { background: #f3e8ff; }
+    .wo-tag-suggest.active { background: #7c3aed; color: #fff; border-style: solid; }
+
+    /* ---------- رشتهٔ گفتگو (کامنت‌ها) ---------- */
+    .wo-cm { display: flex; gap: .5rem; align-items: flex-start; margin-bottom: .6rem; }
+    .wo-cm-bubble {
+        flex: 1; background: #f8f9fa; border: 1px solid #e9ecef;
+        border-radius: .6rem; padding: .45rem .65rem; min-width: 0;
+    }
+    .wo-cm.mine .wo-cm-bubble { background: #eef2ff; border-color: #dbe4ff; }
+    .wo-cm-head { display: flex; gap: .5rem; align-items: baseline; flex-wrap: wrap; }
+    .wo-cm-text { font-size: .85rem; white-space: pre-wrap; word-break: break-word; margin-top: .15rem; }
+    .wo-cm-quote {
+        font-size: .75rem; color: #6c757d; background: #fff;
+        border-inline-start: 3px solid #adb5bd; border-radius: .25rem;
+        padding: .2rem .5rem; margin: .25rem 0;
+    }
+    .wo-cm-actions { display: flex; gap: .75rem; margin-top: .25rem; }
+    .wo-cm-link {
+        border: 0; background: none; padding: 0; font-size: .72rem;
+        color: #6c757d; cursor: pointer;
+    }
+    .wo-cm-link:hover { color: #4f46e5; text-decoration: underline; }
+
+    /* منوی انتخاب طرف گفتگو در جزئیات دستور */
+    .wo-chat-wrap { position: relative; }
+    .wo-chat-menu {
+        position: absolute; top: calc(100% + 4px); inset-inline-start: 0; z-index: 1060;
+        min-width: 200px; max-height: 240px; overflow-y: auto;
+        background: #fff; border: 1px solid #dee2e6; border-radius: .5rem; padding: .25rem;
+    }
+    .wo-chat-item {
+        display: flex; align-items: center; gap: .5rem; width: 100%;
+        border: 0; background: none; text-align: start;
+        padding: .35rem .5rem; border-radius: .35rem; font-size: .85rem;
+    }
+    .wo-chat-item:hover { background: #f1f3f5; }
 </style>
 
 @* ================== گردش کار دستور — مشابه گردش نامه داخلی ================== *@
@@ -1048,8 +1963,283 @@ else
     private const int PageSize = 10;
     private int page = 1;
     private List<WoItem> TabItems => tab switch { "assigned" => assignedItems, "archive" => archiveItems, _ => mineItems };
-    private int TotalPages => Math.Max(1, (int)Math.Ceiling(TabItems.Count / (double)PageSize));
-    private IEnumerable<WoItem> PagedItems => TabItems.Skip((page - 1) * PageSize).Take(PageSize);
+
+    // ---- فیلتر و جستجو (روی داده لودشده — API هم همین فیلترها را با کوئری‌استرینگ می‌پذیرد) ----
+    private string fltQ = "";
+    private int fltPriority = -1; // -1 = همه
+    private List<WoItem> FilteredItems
+    {
+        get
+        {
+            IEnumerable<WoItem> it = TabItems;
+            if (!string.IsNullOrWhiteSpace(fltQ))
+            {
+                var t = fltQ.Trim();
+                it = it.Where(w => w.Title.Contains(t, StringComparison.OrdinalIgnoreCase)
+                                || w.Number.Contains(t, StringComparison.OrdinalIgnoreCase)
+                                || w.OwnerName.Contains(t, StringComparison.OrdinalIgnoreCase));
+            }
+            if (fltPriority >= 0) it = it.Where(w => w.Priority == fltPriority);
+            if (fltTag != null) it = it.Where(w => w.Tags.Contains(fltTag));
+            return it.ToList();
+        }
+    }
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredItems.Count / (double)PageSize));
+    private IEnumerable<WoItem> PagedItems => FilteredItems.Skip((page - 1) * PageSize).Take(PageSize);
+
+    private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; }
+    private void ClearSearch() { fltQ = ""; page = 1; }
+    private void SetPriorityFilter(int p) { fltPriority = p; page = 1; }
+
+    // ---- برچسب/دسته‌بندی ----
+    private List<string> newTags = new();   // فرم ایجاد/ویرایش
+    private string newTagText = "";
+    private List<string> myTags = new();    // پیشنهادهای پرکاربرد
+    private string? fltTag;                 // فیلتر برچسب فعال
+
+    /// <summary>برچسب‌های موجود در تب جاری — برای چیپ‌های فیلتر.</summary>
+    private List<string> AllTabTags => TabItems.SelectMany(w => w.Tags)
+        .GroupBy(t => t).OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
+        .Select(g => g.Key).ToList();
+
+    private void AddTag()
+    {
+        var t = newTagText.Trim().Replace(",", "،");
+        if (t.Length == 0 || newTags.Count >= 5 || newTags.Contains(t)) { newTagText = ""; return; }
+        newTags.Add(t.Length > 30 ? t[..30] : t);
+        newTagText = "";
+    }
+    private void AddSuggestedTag(string t) { if (newTags.Count < 5 && !newTags.Contains(t)) newTags.Add(t); }
+    private void OnTagKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddTag(); }
+    private void SetTagFilter(string? t) { fltTag = t; page = 1; }
+
+    private async Task LoadMyTags()
+    {
+        try { myTags = await Http.GetFromJsonAsync<List<string>>("/api/workorders/my-tags") ?? new(); }
+        catch { myTags = new(); }
+    }
+
+    // ---- قالب‌های آماده (موج ۷) ----
+    private List<TplItem> myTemplates = new();  // فهرست قالب‌های کاربر — پرکاربردها بالا
+    private bool tplSaveOpen, tplBusy;          // پنل ذخیرهٔ قالب باز است؟ / در حال ارسال
+    private string tplName = "";                // نام قالب هنگام ذخیره
+    private int appliedTplId;                   // قالبی که همین الان روی فرم اعمال شده (نمایش هایلایت)
+
+    private sealed class TplItem
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Description { get; set; } = "";
+        public int Priority { get; set; }
+        public int Recurrence { get; set; }
+        public int UsageCount { get; set; }
+        public List<int> AssigneeUserIds { get; set; } = new();
+        public List<string> ChecklistItems { get; set; } = new();
+        public List<string> Tags { get; set; } = new();
+    }
+
+    private async Task LoadTemplates()
+    {
+        try { myTemplates = await Http.GetFromJsonAsync<List<TplItem>>("/api/workorders/templates") ?? new(); }
+        catch { myTemplates = new(); }
+    }
+
+    /// <summary>اعمال قالب روی فرم — همه فیلدها به‌جز تاریخ/ساعت مقرر پیش‌پُر می‌شوند.</summary>
+    private async Task ApplyTemplate(TplItem t)
+    {
+        newTitle = t.Title;
+        newPriority = t.Priority;
+        newRecurrence = t.Recurrence;
+        newChecklist = t.ChecklistItems.ToList();
+        newTags = t.Tags.ToList();
+        // فقط گیرندگانی که هنوز در لیست مجاز هستند انتخاب می‌شوند
+        selTargets = t.AssigneeUserIds.Where(id => targets.Any(x => x.Id == id)).ToHashSet();
+        appliedTplId = t.Id;
+        if (rte != null) await rte.SetHtmlAsync(t.Description ?? "");
+        // شمارش استفاده — ناهمگام؛ خطا مهم نیست
+        _ = Http.PostAsync($"/api/workorders/templates/{t.Id}/used", null);
+        Toast.Success($"قالب «{t.Name}» روی فرم اعمال شد.");
+        StateHasChanged();
+    }
+
+    /// <summary>ذخیرهٔ محتوای فعلی فرم به‌عنوان قالب.</summary>
+    private async Task SaveTemplate()
+    {
+        if (string.IsNullOrWhiteSpace(tplName)) return;
+        if (string.IsNullOrWhiteSpace(newTitle)) { formError = "برای ذخیرهٔ قالب، عنوان دستور کار را وارد کنید."; return; }
+        tplBusy = true;
+        try
+        {
+            string desc = rte != null ? await rte.GetHtmlAsync() : "";
+            var payload = new
+            {
+                name = tplName.Trim(),
+                title = newTitle,
+                description = desc,
+                priority = newPriority,
+                recurrence = newRecurrence,
+                assigneeUserIds = selTargets.ToList(),
+                checklistItems = newChecklist,
+                tags = newTags
+            };
+            var resp = await Http.PostAsJsonAsync("/api/workorders/templates", payload);
+            if (!resp.IsSuccessStatusCode) { await ShowApiError(resp, "خطا در عملیات قالب"); return; }
+            Toast.Success($"قالب «{tplName.Trim()}» ذخیره شد.");
+            tplName = ""; tplSaveOpen = false;
+            await LoadTemplates();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { tplBusy = false; }
+    }
+
+    private async Task DeleteTemplate(int tplId)
+    {
+        try
+        {
+            var resp = await Http.DeleteAsync($"/api/workorders/templates/{tplId}");
+            if (!resp.IsSuccessStatusCode) { await ShowApiError(resp, "خطا در عملیات قالب"); return; }
+            myTemplates.RemoveAll(t => t.Id == tplId);
+            if (appliedTplId == tplId) appliedTplId = 0;
+            Toast.Success("قالب حذف شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ---- خروجی Excel / PDF ----
+    private bool exporting;
+
+    /// <summary>خروجی گرفتن از تب جاری با فیلترهای جاری — فایل از سرور ساخته و دانلود می‌شود.</summary>
+    private async Task ExportList(string format)
+    {
+        exporting = true;
+        try
+        {
+            var url = $"/api/workorders/export?tab={tab}&format={format}";
+            if (!string.IsNullOrWhiteSpace(fltQ)) url += $"&q={Uri.EscapeDataString(fltQ.Trim())}";
+            if (fltPriority >= 0) url += $"&priority={fltPriority}";
+            if (fltTag != null) url += $"&tag={Uri.EscapeDataString(fltTag)}";
+
+            var resp = await Http.GetAsync(url);
+            if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در تهیه خروجی"); return; }
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var name = resp.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? $"workorders-{tab}.{format}";
+            var mime = format == "pdf" ? "application/pdf"
+                       : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            await JS.InvokeVoidAsync("downloadBlob", name, mime, Convert.ToBase64String(bytes));
+        }
+        catch { Toast.Error("خطا در تهیه خروجی"); }
+        finally { exporting = false; }
+    }
+
+    // ---- نمای کانبان ----
+    private string kanbanScope = "mine";  // mine | assigned
+    private int kbDragId;                 // کارت در حال کشیدن
+    private int kbDragOver = -1;          // ستونی که کارت روی آن است
+
+    private List<WoItem> KanbanItems => kanbanScope == "assigned" ? assignedItems : mineItems;
+
+    /// <summary>رها کردن کارت روی ستون اولویت — فقط دستورهای خودم؛ سرور هم مالکیت را کنترل می‌کند.</summary>
+    private async Task KanbanDrop(int newPriority)
+    {
+        kbDragOver = -1;
+        var w = KanbanItems.FirstOrDefault(x => x.Id == kbDragId);
+        kbDragId = 0;
+        if (w == null || w.Priority == newPriority) return;
+        if (w.OwnerUserId != access.UserId)
+        {
+            Toast.Error("فقط اولویت دستورهای خودتان قابل تغییر است.");
+            return;
+        }
+        var old = w.Priority;
+        w.Priority = newPriority; // خوش‌بینانه — در خطا برمی‌گردد
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{w.Id}/priority", new { Priority = newPriority });
+            if (!resp.IsSuccessStatusCode)
+            {
+                w.Priority = old;
+                await ShowApiError(resp, "خطا در تغییر اولویت");
+            }
+        }
+        catch { w.Priority = old; Toast.Error("خطا در تغییر اولویت"); }
+        StateHasChanged();
+    }
+
+    // ---- ارجاع زنجیره‌ای (زیر-دستور) ----
+    private WoItem? chainParent;      // والدِ زیر-دستورِ در حال ساخت
+    private bool keepChainParent;     // پرچم: ریست فرم، والد را پاک نکند
+
+    /// <summary>بستن فرم ایجاد/ویرایش — والد زنجیره هم پاک می‌شود.</summary>
+    private void CloseNewForm() { showNew = false; chainParent = null; editingId = 0; }
+
+    /// <summary>باز کردن فرم «دستور کار جدید» به‌عنوان زیر-دستورِ دستور جاری — مهلت پیش‌فرض: مهلت والد.</summary>
+    private async Task OpenChainForm()
+    {
+        if (detail == null) return;
+        var parent = detail;
+        detail = null;
+        chainParent = parent;
+        keepChainParent = true;
+        await ShowNewFormAsync("", "");
+        // مهلت زیر-دستور نباید بعد از والد باشد → پیش‌فرض همان مهلت والد
+        newDueDate = parent.DueAt.Date;
+        newDueTime = TimeOnly.FromDateTime(parent.DueAt);
+        newPriority = parent.Priority;
+        newTags = parent.Tags.ToList();
+        StateHasChanged();
+    }
+
+    // ---- گفتگو دربارهٔ دستور (اتصال به پیام‌رسان) ----
+    private bool chatMenuOpen, chatBusy;
+
+    private void ToggleChatMenu() => chatMenuOpen = !chatMenuOpen;
+
+    /// <summary>طرف‌های ممکن گفتگو: اگر دستوردهنده‌ام → گیرندگان؛ اگر گیرنده‌ام → دستوردهنده.</summary>
+    private List<(int Id, string Name)> ChatTargets(WoItem? w)
+    {
+        if (w == null) return new();
+        var result = new List<(int, string)>();
+        if (w.OwnerUserId == access.UserId)
+            result.AddRange(w.Assignees.Where(a => a.UserId != access.UserId)
+                .Select(a => (a.UserId, a.Name)).Distinct());
+        else
+            result.Add((w.OwnerUserId, w.OwnerName));
+        return result;
+    }
+
+    /// <summary>ساخت/بازکردن گفتگوی خصوصی با طرف مقابل و رفتن به پیام‌رسان.</summary>
+    private async Task StartChatAbout(int targetUserId, string targetName)
+    {
+        if (chatBusy) return;
+        chatBusy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("/api/chat/conversations/direct", new { TargetUserId = targetUserId });
+            if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در بازکردن گفتگو"); return; }
+            var conv = await resp.Content.ReadFromJsonAsync<ChatConvRes>();
+            if (conv == null || conv.Id <= 0) { Toast.Error("خطا در بازکردن گفتگو"); return; }
+            Nav.NavigateTo($"/chat/{conv.Id}");
+        }
+        catch { Toast.Error("خطا در بازکردن گفتگو"); }
+        finally { chatBusy = false; chatMenuOpen = false; }
+    }
+
+    private class ChatConvRes { public int Id { get; set; } }
+
+    // ---- اولویت ----
+    private static readonly (int Val, string Fa)[] PriorityOpts = { (0, "کم"), (1, "عادی"), (2, "بالا"), (3, "فوری") };
+    private static string PriorityFa(int p) => p switch { 0 => "کم", 2 => "بالا", 3 => "فوری", _ => "عادی" };
+    private RenderFragment? PriorityBadge(int p) => p switch
+    {
+        3 => @<span class="badge wo-prb-3">🔴 فوری</span>,
+        2 => @<span class="badge wo-prb-2">🟠 بالا</span>,
+        0 => @<span class="badge wo-prb-0">⚪ کم</span>,
+        _ => null // «عادی» نشان نمی‌خواهد تا لیست شلوغ نشود
+    };
 
     // فرم جدید / ویرایش
     private bool showNew, tDropOpen;
@@ -1073,6 +2263,10 @@ else
         tDropOpen = true;
     }
     private string newTitle = "", tSearch = "";
+    private int newPriority = 1; // 0=کم 1=عادی 2=بالا 3=فوری
+    private int newRecurrence = 0; // 0=بدون تکرار 1=روزانه 2=هفتگی 3=ماهانه
+    private static readonly (int Val, string Fa)[] RecurrenceOpts = { (0, "بدون تکرار"), (1, "روزانه"), (2, "هفتگی"), (3, "ماهانه") };
+    private static string RecurrenceFa(int r) => r switch { 1 => "روزانه", 2 => "هفتگی", 3 => "ماهانه", _ => "بدون تکرار" };
     private DateTime? newDueDate;
     private TimeOnly newDueTime = new(14, 0);
     private HashSet<int> selTargets = new();
@@ -1219,8 +2413,217 @@ else
 
     private void SwitchTab(string t)
     {
-        tab = t; page = 1;
+        tab = t; page = 1; fltTag = null; // برچسب‌های هر تب متفاوت‌اند
         if (t == "calendar") _ = LoadCal();
+        if (t == "stats") _ = LoadStats();
+        if (t == "perf") _ = LoadPerf();
+    }
+
+    // ================== گزارش عملکرد افراد (موج ۸) ==================
+    private List<PerfItem> perfRows = new();
+    private bool perfLoading;
+    private int perfDays; // 0 = همه، 30/90/365 روز اخیر
+
+    private static readonly (int, string)[] PerfPeriods = { (0, "همه"), (30, "۳۰ روز"), (90, "۹۰ روز"), (365, "سال اخیر") };
+
+    private sealed class PerfItem
+    {
+        public int Rank { get; set; }
+        public int UserId { get; set; }
+        public string Name { get; set; } = "";
+        public int Total { get; set; }
+        public int Done { get; set; }
+        public int OnTime { get; set; }
+        public int DoneLate { get; set; }
+        public int NotDone { get; set; }
+        public int Pending { get; set; }
+        public int OverdueOpen { get; set; }
+        public double AvgDelayHours { get; set; }
+        public int OnTimePercent { get; set; }
+    }
+
+    private async Task LoadPerf()
+    {
+        perfLoading = true; StateHasChanged();
+        try { perfRows = await Http.GetFromJsonAsync<List<PerfItem>>($"/api/workorders/performance?days={perfDays}") ?? new(); }
+        catch { perfRows = new(); }
+        perfLoading = false; StateHasChanged();
+    }
+
+    private void SetPerfPeriod(int d) { perfDays = d; _ = LoadPerf(); }
+
+    /// <summary>نمایش میانگین تاخیر: زیر ۴۸ ساعت به ساعت، بالاتر به روز.</summary>
+    private static string DelayFa(double hours) =>
+        hours < 48 ? $"{hours:0.#} ساعت" : $"{hours / 24:0.#} روز";
+
+    private async Task ExportPerf(string format)
+    {
+        exporting = true;
+        try
+        {
+            var resp = await Http.GetAsync($"/api/workorders/performance/export?format={format}&days={perfDays}");
+            if (!resp.IsSuccessStatusCode) { Toast.Error("خطا در تهیه خروجی"); return; }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            var name = resp.Content.Headers.ContentDisposition?.FileNameStar
+                       ?? resp.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+                       ?? $"performance.{format}";
+            var mime = format == "pdf" ? "application/pdf"
+                       : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            await JS.InvokeVoidAsync("downloadBlob", name, mime, Convert.ToBase64String(bytes));
+        }
+        catch { Toast.Error("خطا در تهیه خروجی"); }
+        finally { exporting = false; }
+    }
+
+    // ================== داشبورد آماری ==================
+    private StatsDto? stats;
+    private async Task LoadStats()
+    {
+        try { stats = await Http.GetFromJsonAsync<StatsDto>("/api/workorders/stats"); } catch { stats = new(); }
+        StateHasChanged();
+    }
+
+    public class StatsDto
+    {
+        public StatsCards Cards { get; set; } = new();
+        public List<PriorityStat> ByPriority { get; set; } = new();
+        public List<AssigneeStat> PerAssignee { get; set; } = new();
+        public List<MonthStat> Months { get; set; } = new();
+    }
+    public class StatsCards { public int Total { get; set; } public int Open { get; set; } public int Overdue { get; set; } public int DueToday { get; set; } public int DoneOnTime { get; set; } public int DoneLate { get; set; } public int ClosedNoDone { get; set; } }
+    public class PriorityStat { public int Priority { get; set; } public int Count { get; set; } }
+    public class AssigneeStat { public int UserId { get; set; } public string Name { get; set; } = ""; public int Total { get; set; } public int Done { get; set; } public int OnTime { get; set; } public int NotDone { get; set; } public int Pending { get; set; } }
+    public class MonthStat { public int Year { get; set; } public int Month { get; set; } public int Created { get; set; } public int OnTime { get; set; } public int Late { get; set; } public int NotDone { get; set; } }
+
+    // ================== رشتهٔ گفتگو (کامنت‌ها) ==================
+    private List<CmItem> comments = new();
+    private string newCommentText = "";
+    private CmItem? replyTo;
+    private int editingCommentId;
+    private string editingCommentText = "";
+    private bool cmBusy;
+
+    public class CmItem
+    {
+        public int Id { get; set; } public int AuthorUserId { get; set; } public string AuthorName { get; set; } = "";
+        public string Text { get; set; } = ""; public int? ReplyToId { get; set; } public bool IsDeleted { get; set; }
+        public DateTime CreatedAt { get; set; } public DateTime? EditedAt { get; set; }
+    }
+
+    /// <summary>خلاصهٔ متن برای نمایش در نقل‌قول پاسخ.</summary>
+    private static string Brief(string t) => t.Length > 60 ? t[..60] + "…" : t;
+
+    private async Task LoadComments(int orderId)
+    {
+        try { comments = await Http.GetFromJsonAsync<List<CmItem>>($"/api/workorders/{orderId}/comments") ?? new(); }
+        catch { comments = new(); }
+    }
+
+    private void SetReplyTo(CmItem cm) { replyTo = cm; editingCommentId = 0; }
+
+    private async Task SubmitComment()
+    {
+        if (detail == null || string.IsNullOrWhiteSpace(newCommentText)) return;
+        cmBusy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/comments",
+                new { Text = newCommentText.Trim(), ReplyToId = replyTo?.Id });
+            if (resp.IsSuccessStatusCode)
+            {
+                var cm = await resp.Content.ReadFromJsonAsync<CmItem>();
+                if (cm != null) comments.Add(cm);
+                newCommentText = ""; replyTo = null;
+            }
+            else await ShowApiError(resp, "خطا در ثبت کامنت");
+        }
+        catch { Toast.Error("خطا در ثبت کامنت"); }
+        finally { cmBusy = false; }
+    }
+
+    private void StartEditComment(CmItem cm) { editingCommentId = cm.Id; editingCommentText = cm.Text; replyTo = null; }
+    private void CancelEditComment() { editingCommentId = 0; editingCommentText = ""; }
+
+    private async Task SubmitEditComment()
+    {
+        if (editingCommentId == 0 || string.IsNullOrWhiteSpace(editingCommentText)) return;
+        cmBusy = true;
+        try
+        {
+            var resp = await Http.PutAsJsonAsync($"/api/workorders/comments/{editingCommentId}",
+                new { Text = editingCommentText.Trim() });
+            if (resp.IsSuccessStatusCode)
+            {
+                var cm = comments.FirstOrDefault(c => c.Id == editingCommentId);
+                if (cm != null) { cm.Text = editingCommentText.Trim(); cm.EditedAt = DateTime.Now; }
+                CancelEditComment();
+            }
+            else await ShowApiError(resp, "خطا در ویرایش کامنت");
+        }
+        catch { Toast.Error("خطا در ویرایش کامنت"); }
+        finally { cmBusy = false; }
+    }
+
+    private async Task DeleteComment(CmItem cm)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "این کامنت حذف شود؟")) return;
+        try
+        {
+            var resp = await Http.DeleteAsync($"/api/workorders/comments/{cm.Id}");
+            if (resp.IsSuccessStatusCode) { cm.IsDeleted = true; cm.Text = ""; }
+            else await ShowApiError(resp, "خطا در حذف کامنت");
+        }
+        catch { Toast.Error("خطا در حذف کامنت"); }
+    }
+
+    /// <summary>نمایش پیام خطای برگشتی از API (message فارسی سرور) یا پیام پیش‌فرض.</summary>
+    private async Task ShowApiError(HttpResponseMessage resp, string fallback)
+    {
+        try
+        {
+            var err = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            Toast.Error(err != null && err.TryGetValue("message", out var m) && !string.IsNullOrWhiteSpace(m) ? m : fallback);
+        }
+        catch { Toast.Error(fallback); }
+    }
+
+    // ================== چک‌لیست زیرکار ==================
+    private List<string> newChecklist = new();   // فرم ایجاد/ویرایش
+    private string newClText = "";
+    private List<ClItem> detailChecklist = new(); // مودال جزئیات
+    public class ClItem { public int Id { get; set; } public string Text { get; set; } = ""; public int SortOrder { get; set; } public bool IsDone { get; set; } public string? DoneByName { get; set; } public DateTime? DoneAt { get; set; } }
+
+    private void AddChecklistItem()
+    {
+        var t = newClText.Trim();
+        if (string.IsNullOrWhiteSpace(t) || newChecklist.Count >= 50) return;
+        newChecklist.Add(t);
+        newClText = "";
+    }
+    private void RemoveChecklistItem(int idx) { if (idx >= 0 && idx < newChecklist.Count) newChecklist.RemoveAt(idx); }
+    private void OnClKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddChecklistItem(); }
+
+    private async Task LoadDetailChecklist(int orderId)
+    {
+        try { detailChecklist = await Http.GetFromJsonAsync<List<ClItem>>($"/api/workorders/{orderId}/checklist") ?? new(); }
+        catch { detailChecklist = new(); }
+    }
+
+    private async Task ToggleChecklist(ClItem item)
+    {
+        if (detail == null || detail.Status == "Closed") return;
+        var newVal = !item.IsDone;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync($"/api/workorders/{detail.Id}/checklist/{item.Id}/toggle", new { isDone = newVal });
+            if (resp.IsSuccessStatusCode)
+            {
+                item.IsDone = newVal;
+                item.DoneByName = newVal ? "من" : null;
+                item.DoneAt = newVal ? DateTime.Now : null;
+            }
+        }
+        catch { }
     }
 
     private void ToggleExpand(int id)
@@ -1295,10 +2698,24 @@ else
         var desc = detail.Description ?? "";
         var title = detail.Title;
         var due = detail.DueAt;
+        var pr = detail.Priority;
+        var rec = detail.Recurrence;
+        var detailId = detail.Id;
         var ids = detail.Assignees.Select(a => a.UserId).ToHashSet();
         var extra = detail.Assignees.Select(a => new TargetOpt { Id = a.UserId, Username = a.Name }).ToList();
+        var tags = detail.Tags.ToList();
         detail = null;
         await ShowNewFormAsync(title, desc);
+        newPriority = pr;
+        newRecurrence = rec;
+        newTags = tags;
+        // چک‌لیست موجود را برای ویرایش بیاور (متن‌ها؛ تیک‌خورده‌ها سمت سرور حفظ می‌شوند)
+        try
+        {
+            var cl = await Http.GetFromJsonAsync<List<ClItem>>($"/api/workorders/{detailId}/checklist") ?? new();
+            newChecklist = cl.OrderBy(c => c.SortOrder).Select(c => c.Text).ToList();
+        }
+        catch { newChecklist = new(); }
         newDueDate = due.Date;
         newDueTime = TimeOnly.FromDateTime(due);
         selTargets = ids;
@@ -1381,6 +2798,13 @@ else
     private async Task ShowNewFormAsync(string title, string desc)
     {
         formError = ""; newTitle = title; selTargets = new(); tDropOpen = false; tSearch = "";
+        newPriority = 1; newRecurrence = 0; newChecklist = new(); newClText = "";
+        newTags = new(); newTagText = "";
+        tplSaveOpen = false; tplBusy = false; tplName = ""; appliedTplId = 0;
+        if (!keepChainParent) chainParent = null;
+        keepChainParent = false;
+        _ = LoadMyTags().ContinueWith(_ => InvokeAsync(StateHasChanged));
+        _ = LoadTemplates().ContinueWith(_ => InvokeAsync(StateHasChanged));
         newDueDate = DateTime.Today.AddDays(1); newDueTime = new(14, 0);
         newFiles.Clear();
         try { targets = await Http.GetFromJsonAsync<List<TargetOpt>>("/api/workorders/targets") ?? new(); } catch { }
@@ -1425,7 +2849,12 @@ else
             {
                 title = newTitle, description = desc, dueAt = due,
                 assigneeUserIds = selTargets.ToList(),
-                sourceModule = _sourceModule, sourceId = _sourceId
+                priority = newPriority,
+                recurrence = newRecurrence,
+                checklistItems = newChecklist,
+                tags = newTags,
+                sourceModule = _sourceModule, sourceId = _sourceId,
+                parentOrderId = chainParent?.Id
             };
             var resp = editingId > 0
                 ? await Http.PutAsJsonAsync($"/api/workorders/{editingId}", payload)
@@ -1445,6 +2874,7 @@ else
             Toast.Success(editingId > 0 ? "دستور کار ویرایش شد." : $"دستور کار ثبت شد — {created?.Number}");
             editingId = 0;
             showNew = false;
+            chainParent = null;
             await LoadAll();
             // پاک‌سازی پارامترهای مبدأ (سورس) بعد از ثبت
             if (!string.IsNullOrWhiteSpace(_sourceModule))
@@ -1479,6 +2909,10 @@ else
         decideNotes = w.Assignees.ToDictionary(a => a.Id, a => "");
         extDate = w.DueAt.Date; extTime = TimeOnly.FromDateTime(w.DueAt);
         attachments = new(); logs = new();
+        detailChecklist = new();
+        comments = new(); newCommentText = ""; replyTo = null; editingCommentId = 0;
+        _ = LoadDetailChecklist(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
+        _ = LoadComments(w.Id).ContinueWith(_ => InvokeAsync(StateHasChanged));
 
         // ثبت رویت (بند ۸)
         if (w.Assignees.Any(a => a.UserId == access.UserId && a.SeenAt == null))
@@ -1620,7 +3054,9 @@ else
     {
         "Created" => "ثبت دستور کار", "Seen" => "رویت", "Reply" => "ثبت پاسخ",
         "Approved" => "تایید پاسخ", "Rejected" => "رد پاسخ",
-        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی", _ => a
+        "Extended" => "تمدید مهلت", "Edited" => "ویرایش", "Closed" => "بستن نهایی",
+        "Commented" => "ثبت کامنت", "Recurred" => "تکرار خودکار",
+        "Chained" => "ارجاع زنجیره‌ای", _ => a
     };
 
     // ================== مدل‌ها ==================
@@ -1630,6 +3066,7 @@ else
     public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string UploaderName { get; set; } = ""; public DateTime UploadedAt { get; set; } public long Size { get; set; } }
     public class LogItem { public int Id { get; set; } public string ActorName { get; set; } = ""; public string Action { get; set; } = ""; public string? Text { get; set; } public DateTime CreatedAt { get; set; } }
     public class CalItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public DateTime DueAt { get; set; } public string Status { get; set; } = ""; public string Kind { get; set; } = "Self"; public string Tone { get; set; } = "none"; }
+    public class ChildItem { public int Id { get; set; } public string Number { get; set; } = ""; public string Title { get; set; } = ""; public string Status { get; set; } = ""; public string OwnerName { get; set; } = ""; }
     public class AsgItem
     {
         public int Id { get; set; } public int UserId { get; set; } public string Name { get; set; } = "";
@@ -1644,6 +3081,15 @@ else
         public DateTime DueAt { get; set; } public string Status { get; set; } = "Open";
         public string? CloseNote { get; set; } public DateTime? ClosedAt { get; set; }
         public int ExtensionCount { get; set; } public DateTime CreatedAt { get; set; }
+        public int Priority { get; set; } = 1;
+        public int Recurrence { get; set; }
+        public int ChecklistTotal { get; set; } public int ChecklistDone { get; set; }
+        public int CommentCount { get; set; }
+        public List<string> Tags { get; set; } = new();
+        public int? ParentOrderId { get; set; }
+        public string? ParentNumber { get; set; }
+        public string? ParentTitle { get; set; }
+        public List<ChildItem> Children { get; set; } = new();
         public string? SourceModule { get; set; } public int? SourceId { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
     }

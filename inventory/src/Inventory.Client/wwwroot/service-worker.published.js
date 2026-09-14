@@ -2,7 +2,9 @@
 // offline support. See https://aka.ms/blazor-offline-considerations
 
 self.importScripts('./service-worker-assets.js');
-self.addEventListener('install', event => event.waitUntil(onInstall(event)));
+// ⚠️ بدون skipWaiting، نسخهٔ جدید بعد از هر پابلیش «در انتظار» می‌ماند و کاربر تا بستن کامل
+// همهٔ تب‌ها/PWA همچنان نسخهٔ قدیمیِ کش‌شده را می‌بیند (مثلاً تقویم کاری جدید لود نمی‌شد).
+self.addEventListener('install', event => { self.skipWaiting(); event.waitUntil(onInstall(event)); });
 self.addEventListener('activate', event => event.waitUntil(onActivate(event)));
 self.addEventListener('fetch', event => event.respondWith(onFetch(event)));
 
@@ -20,11 +22,27 @@ async function onInstall(event) {
     console.info('Service worker: Install');
 
     // Fetch and cache all matching items from the assets manifest
+    // ⚠️ قبلاً cache.addAll با integrity استفاده می‌شد؛ اگر حتی «یک» فایل هنگام پابلیش
+    // روی سرور کمی تغییر می‌کرد (فشرده‌سازی/CRLF) کل install بی‌صدا شکست می‌خورد و
+    // کاربران برای همیشه روی نسخهٔ قدیمی می‌ماندند. حالا هر فایل جداگانه و بدون
+    // شکستن کل نصب کش می‌شود.
     const assetsRequests = self.assetsManifest.assets
         .filter(asset => offlineAssetsInclude.some(pattern => pattern.test(asset.url)))
         .filter(asset => !offlineAssetsExclude.some(pattern => pattern.test(asset.url)))
         .map(asset => new Request(asset.url, { integrity: asset.hash, cache: 'no-cache' }));
-    await caches.open(cacheName).then(cache => cache.addAll(assetsRequests));
+    const cache = await caches.open(cacheName);
+    await Promise.all(assetsRequests.map(async request => {
+        try {
+            const response = await fetch(request);
+            if (response.ok) await cache.put(request.url, response);
+        } catch {
+            // فایل با integrity قابل دریافت نبود — بدون integrity تلاش مجدد
+            try {
+                const response = await fetch(new Request(request.url, { cache: 'no-cache' }));
+                if (response.ok) await cache.put(request.url, response);
+            } catch { /* آفلاین‌کش این فایل ممکن نشد؛ از شبکه سرو می‌شود */ }
+        }
+    }));
 }
 
 async function onActivate(event) {
@@ -35,6 +53,9 @@ async function onActivate(event) {
     await Promise.all(cacheKeys
         .filter(key => key.startsWith(cacheNamePrefix) && key !== cacheName)
         .map(key => caches.delete(key)));
+
+    // کنترل فوری همهٔ تب‌های باز — تا بعد از پابلیش، همان لحظه نسخهٔ جدید فعال شود
+    await self.clients.claim();
 }
 
 async function onFetch(event) {

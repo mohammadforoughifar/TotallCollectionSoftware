@@ -448,7 +448,72 @@
         </div>
     }
 
+    @* ============ زمان‌بندی و حقوق (ماژول جدید) ============ *@
+    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+    {
+        <div class="nav-group group-hrtime">
+            <button type="button" class="nav-section-title nav-toggle @(gHrTime ? "open" : "")" @onclick="() => gHrTime = !gHrTime">
+                <span>زمان‌بندی و حقوق</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gHrTime)
+            {
+                <div class="nav-group-items">
+                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="hr-time" @onclick="NotifyClose">
+                            <i class="bi bi-calendar2-week"></i><span>مدیریت زمان‌بندی</span>
+                        </NavLink>
+                    }
+                    @if (Auth.Has("HrPay.Read") || Auth.Has("HrPay.Manage") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="payroll" @onclick="NotifyClose">
+                            <i class="bi bi-cash-stack"></i><span>حقوق و دستمزد</span>
+                        </NavLink>
+                    }
+                    @if (Auth.Has("LeaveRequests.Approve") || Auth.Has("HrPay.Read") || Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="hr-performance" @onclick="NotifyClose">
+                            <i class="bi bi-graph-up-arrow"></i><span>ارزیابی عملکرد</span>
+                        </NavLink>
+                    }
+                </div>
+            }
+        </div>
+    }
+
     @* ============ آرشیو اسناد و مدارک ============ *@
+    @* ============ هسته پرسنلی (کارگزینی) ============ *@
+    @if (Auth.HasModule("HrCore"))
+    {
+        <div class="nav-group group-hrcore">
+            <button type="button" class="nav-section-title nav-toggle @(gHrCore ? "open" : "")" @onclick="() => gHrCore = !gHrCore">
+                <span><i class="bi bi-people-fill"></i> کارگزینی</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gHrCore)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="hr-core" @onclick="NotifyClose">
+                        <i class="bi bi-speedometer2"></i><span>داشبورد کارگزینی</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="hr-core/employees" @onclick="NotifyClose">
+                        <i class="bi bi-person-lines-fill"></i><span>پرسنل</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="hr-core/org" @onclick="NotifyClose">
+                        <i class="bi bi-diagram-3"></i><span>چارت سازمانی</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="hr-core/contracts" @onclick="NotifyClose">
+                        <i class="bi bi-file-earmark-text"></i><span>قراردادها</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="hr-core/decrees" @onclick="NotifyClose">
+                        <i class="bi bi-patch-check"></i><span>احکام</span>
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     @if (Auth.HasModule("DocArchive"))
     {
         <div class="nav-group group-docarchive">
@@ -1033,7 +1098,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gErp, gDocs, gChat, gHrMain, gFaAtt;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gErp, gDocs, gChat, gHrCore, gHrTime, gHrMain, gFaAtt;
 
     protected override void OnInitialized()
     {
