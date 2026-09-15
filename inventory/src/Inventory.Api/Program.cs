@@ -332,8 +332,28 @@ app.MapHub<DashboardHub>("/hubs/dashboard");
 app.MapHub<Inventory.Api.Hubs.NotifyHub>("/hubs/notify");
 app.MapHub<Inventory.Api.Hubs.ChatHub>("/hubs/chat");
 
-// پوشه‌ی فایل‌های آپلودی داخل wwwroot (عکس‌های کاربران، پیوست‌ها) — با UseStaticFiles معمول سرو می‌شود
-Directory.CreateDirectory(Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "users"));
+// ایجاد و یکدست‌سازی ساختار پوشه‌های آپلود بر اساس ماژول در wwwroot/uploads
+var uploadsRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads");
+foreach (var moduleFolder in new[]
+{
+    "users",
+    "office/innerletter",
+    "office/outgoingletter",
+    "office/email",
+    "projects",
+    "hr/employee/documents",
+    "hr/employee/photos",
+    "hr/logo",
+    "itassets/workorders",
+    "itassets/requests",
+    "cctv",
+    "catalog",
+    "chat",
+    "system/archive"
+})
+{
+    Directory.CreateDirectory(Path.Combine(uploadsRoot, moduleFolder));
+}
 
 // Archive sharing must never be bypassed through raw file URLs or cached API responses.
 app.Use(async (ctx, next) =>
@@ -356,18 +376,20 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
     // سرو نشوند — دسترسی به آن‌ها فقط از مسیر API (ProjectAttachController با RBAC) مجاز است.
     app.Use(async (ctx, next) =>
     {
-        if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase))
+        if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
+            ctx.Request.Path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
-        // پیوست نامه صادره (فایل های صادره) و پیوست ایمیل سازمانی (فایل های ایمیل)
-        // هرگز به‌صورت استاتیک و بدون احراز هویت سرو نمی‌شوند —
-        // دانلود فقط از مسیر API مجاز (OutgoingLetters / Email با RBAC) انجام می‌شود.
+        // پیوست نامه صادره و پیوست ایمیل سازمانی هرگز به‌صورت استاتیک سرو نمی‌شوند —
+        // دانلود فقط از مسیر API مجاز با کنترل دسترسی انجام می‌شود.
         if (ctx.Request.Path.StartsWithSegments("/فایل های صادره", StringComparison.OrdinalIgnoreCase) ||
             ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%B5%D8%A7%D8%AF%D8%B1%D9%87", StringComparison.OrdinalIgnoreCase) ||
+            ctx.Request.Path.StartsWithSegments("/uploads/office/outgoingletter", StringComparison.OrdinalIgnoreCase) ||
             ctx.Request.Path.StartsWithSegments("/فایل های ایمیل", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase))
+            ctx.Request.Path.StartsWithSegments("/%D9%81%D8%A7%DB%8C%D9%84%20%D9%87%D8%A7%DB%8C%20%D8%A7%DB%8C%D9%85%DB%8C%D9%84", StringComparison.OrdinalIgnoreCase) ||
+            ctx.Request.Path.StartsWithSegments("/uploads/office/email", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;

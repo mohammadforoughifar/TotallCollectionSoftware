@@ -55,8 +55,8 @@ public class EmailService : IEmailService
     private readonly ILogger<EmailService> _log;
     private readonly IOutgoingLetterPrintService _print;
 
-    /// <summary>پوشه ذخیره پیوست‌های ایمیل — مستقیم زیر wwwroot (درخواست کارفرما)</summary>
-    private const string AttachmentFolder = "فایل های ایمیل";
+    /// <summary>پوشه ذخیره پیوست‌های ایمیل تحت wwwroot/uploads/office/email</summary>
+    private const string AttachmentFolder = "uploads/office/email";
 
     public EmailService(AppDbContext db, IWebHostEnvironment env, ILogger<EmailService> log, IOutgoingLetterPrintService print)
     {
@@ -506,14 +506,44 @@ public class EmailService : IEmailService
         return sent.SentId;
     }
 
-    private byte[]? ReadDiskFile(string? relativePath)
+    private string? ResolveDiskPath(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..")) return null;
-        var full = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot", clean));
-        var root = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot"));
-        if (!full.StartsWith(root, StringComparison.Ordinal) || !File.Exists(full)) return null;
+
+        var wwwroot = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot"));
+
+        // 1. Direct path from wwwroot
+        var full = Path.GetFullPath(Path.Combine(wwwroot, clean));
+        if (full.StartsWith(wwwroot, StringComparison.Ordinal) && File.Exists(full))
+            return full;
+
+        // 2. Legacy conversion: "فایل های ایمیل/..." -> "uploads/office/email/..."
+        if (clean.StartsWith("فایل های ایمیل/", StringComparison.OrdinalIgnoreCase))
+        {
+            var converted = "uploads/office/email/" + clean["فایل های ایمیل/".Length..];
+            var altFull = Path.GetFullPath(Path.Combine(wwwroot, converted));
+            if (altFull.StartsWith(wwwroot, StringComparison.Ordinal) && File.Exists(altFull))
+                return altFull;
+        }
+
+        // 3. Reverse legacy conversion: "uploads/office/email/..." -> "فایل های ایمیل/..."
+        if (clean.StartsWith("uploads/office/email/", StringComparison.OrdinalIgnoreCase))
+        {
+            var converted = "فایل های ایمیل/" + clean["uploads/office/email/".Length..];
+            var altFull = Path.GetFullPath(Path.Combine(wwwroot, converted));
+            if (altFull.StartsWith(wwwroot, StringComparison.Ordinal) && File.Exists(altFull))
+                return altFull;
+        }
+
+        return full.StartsWith(wwwroot, StringComparison.Ordinal) ? full : null;
+    }
+
+    private byte[]? ReadDiskFile(string? relativePath)
+    {
+        var full = ResolveDiskPath(relativePath);
+        if (full is null || !File.Exists(full)) return null;
         try { return File.ReadAllBytes(full); } catch { return null; }
     }
 
@@ -748,12 +778,8 @@ public class EmailService : IEmailService
 
     private long DiskFileSize(string? relativePath)
     {
-        if (string.IsNullOrWhiteSpace(relativePath)) return 0;
-        var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return 0;
-        var full = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot", clean));
-        var root = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot"));
-        if (!full.StartsWith(root, StringComparison.Ordinal) || !File.Exists(full)) return 0;
+        var full = ResolveDiskPath(relativePath);
+        if (full is null || !File.Exists(full)) return 0;
         try { return new FileInfo(full).Length; } catch { return 0; }
     }
 
@@ -818,11 +844,8 @@ public class EmailService : IEmailService
         if (!allowed) throw new Exception("این پیوست متعلق به حساب شما نیست.");
 
         if (string.IsNullOrWhiteSpace(a.FilePath)) return null;
-        var clean = a.FilePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
-        var full = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot", clean));
-        var root = Path.GetFullPath(Path.Combine(_env.ContentRootPath, "wwwroot"));
-        if (!full.StartsWith(root, StringComparison.Ordinal) || !File.Exists(full)) return null;
+        var full = ResolveDiskPath(a.FilePath);
+        if (full is null || !File.Exists(full)) return null;
         return await File.ReadAllBytesAsync(full);
     }
 

@@ -698,7 +698,7 @@ public class ItRequestsController : ControllerBase
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
         ms.Position = 0;
-        var relPath = await _store.SaveAsync("it-requests", id, ms, file.FileName);
+        var relPath = await _store.SaveAsync("itassets/requests", id, ms, file.FileName);
 
         _db.ItRequestAttachments.Add(new ItRequestAttachment
         {

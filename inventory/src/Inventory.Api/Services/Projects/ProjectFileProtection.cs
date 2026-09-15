@@ -70,13 +70,13 @@ public class ProjectFileProtection : IProjectFileProtection
     public ProjectFileProtection(IConfiguration config, IWebHostEnvironment env)
     {
         var configuredRoot = config["Files:SecureRoot"];
-        // محل ذخیره‌سازی فایل‌ها: زیر wwwroot/SecureFiles (درخواست کاربر)
+        // محل ذخیره‌سازی یکپارچه پیوست‌های پروژه: زیر wwwroot/uploads/projects
         _root = string.IsNullOrWhiteSpace(configuredRoot)
-            ? Path.Combine(env.ContentRootPath, "wwwroot", "SecureFiles")
+            ? Path.Combine(env.ContentRootPath, "wwwroot", "uploads", "projects")
             : configuredRoot;
-        // مسیر قدیمی (در صورت وجود) — برای سازگاری با فایل‌های قبلی نگه‌داشته می‌شود
+        // مسیر قدیمی جهت سازگاری
         _rootLegacy = string.IsNullOrWhiteSpace(configuredRoot)
-            ? Path.Combine(env.ContentRootPath, "SecureFiles")
+            ? Path.Combine(env.ContentRootPath, "wwwroot", "SecureFiles")
             : configuredRoot;
         Directory.CreateDirectory(_root);
         MigrateLegacyFiles();

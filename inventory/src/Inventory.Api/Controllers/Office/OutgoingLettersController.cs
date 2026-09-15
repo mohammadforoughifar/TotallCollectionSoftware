@@ -25,8 +25,8 @@ public class OutgoingLettersController : RbacControllerBase
     private readonly IOutgoingLetterPrintService _print;
     private readonly FileStore _store;
 
-    /// <summary>پوشه پیوست‌های نامه صادره — مستقیم زیر wwwroot (درخواست کارفرما)</summary>
-    private const string SadereFolder = "فایل های صادره";
+    /// <summary>پوشه پیوست‌های نامه صادره در wwwroot/uploads/office/outgoingletter</summary>
+    private const string SadereFolder = "office/outgoingletter";
 
     public OutgoingLettersController(
         AppDbContext db,
