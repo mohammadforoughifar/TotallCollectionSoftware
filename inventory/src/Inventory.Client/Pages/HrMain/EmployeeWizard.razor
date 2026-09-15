@@ -7,6 +7,7 @@
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject NavigationManager Nav
+@implements IDisposable
 
 <PageTitle>پرسنل</PageTitle>
 
@@ -417,6 +418,7 @@ else
     private string? savedNodeName, savedPositionTitle, savedManagerName;
     private int step = 1, maxStep = 1;
     private string? wError;
+    private string? lastInitKey;
     private HrEmployeeSaveDto form = new();
     private DateTime? birthDate, hireDate = DateTime.Today;
     private List<HrMainPositionDto> positions = new();
@@ -463,8 +465,26 @@ else
         string.IsNullOrWhiteSpace(form.Degree) ? "—"
         : string.IsNullOrWhiteSpace(form.FieldOfStudy) ? form.Degree : $"{form.Degree} — {form.FieldOfStudy}";
 
-    protected override async Task OnParametersSetAsync()
+    protected override void OnInitialized() => Nav.LocationChanged += LocationChanged;
+
+    protected override async Task OnParametersSetAsync() => await InitForRoute();
+
+    public void Dispose() => Nav.LocationChanged -= LocationChanged;
+
+    private void LocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
+        // ناوبری داخلی فهرست ↔ ویزارد همین کامپوننت است و پارامتر عوض نمی‌شود؛
+        // پس تغییر مسیر را مستقیم گوش می‌دهیم تا فرم بدون F5 باز شود.
+        var p = HrNavigation.Path(Nav.ToBaseRelativePath(e.Location));
+        if (!p.StartsWith("hr-main/employees")) return;
+        _ = InvokeAsync(async () => { await InitForRoute(); StateHasChanged(); });
+    }
+
+    private async Task InitForRoute()
+    {
+        var key = IsWizard ? $"W{Id}" : "L";
+        if (key == lastInitKey) return;
+        lastInitKey = key;
         if (IsWizard) await InitWizard();
         else await InitList();
     }

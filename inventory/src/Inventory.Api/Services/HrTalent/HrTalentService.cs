@@ -523,6 +523,10 @@ public class HrTalentService : IHrTalentService
         // توجه: AppraisalId از روی شاخص خوانده می‌شود تا ناسازگاری رخ ندهد
         var kpi = await _db.HrAppraisalKpis.AsNoTracking().FirstOrDefaultAsync(k => k.Id == dto.KpiId)
             ?? throw new InvalidOperationException("شاخص یافت نشد.");
+        // نمره مدیر و خودارزیابی: بین صفر تا سقف نمره شاخص
+        if ((dto.ManagerScore ?? 0) < 0 || (dto.ManagerScore ?? 0) > kpi.MaxScore
+            || (dto.SelfScore ?? 0) < 0 || (dto.SelfScore ?? 0) > kpi.MaxScore)
+            throw new InvalidOperationException($"نمره شاخص «{kpi.Title}» باید بین ۰ تا {kpi.MaxScore} باشد.");
         var s = await _db.HrAppraisalScores.FirstOrDefaultAsync(x =>
             x.AppraisalId == kpi.AppraisalId && x.KpiId == dto.KpiId && x.EmployeeId == dto.EmployeeId);
         if (s == null)

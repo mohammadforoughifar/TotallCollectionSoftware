@@ -182,8 +182,8 @@ else
                     <tr>
                         <td>@k.Title <span class="small text-muted">(سقف @k.MaxScore)</span></td>
                         <td class="num">@k.Weight</td>
-                        <td><input type="number" step="0.5" class="form-control num" style="max-width:120px" @bind="mgrScores[k.Id]" /></td>
-                        <td><input type="number" step="0.5" class="form-control num" style="max-width:120px" @bind="selfScores[k.Id]" /></td>
+                        <td><input type="number" step="0.5" min="0" max="@k.MaxScore" class="form-control num" style="max-width:120px" @bind="mgrScores[k.Id]" /></td>
+                        <td><input type="number" step="0.5" min="0" max="@k.MaxScore" class="form-control num" style="max-width:120px" @bind="selfScores[k.Id]" /></td>
                     </tr>
                 }
             </tbody>
@@ -426,6 +426,17 @@ else
         saving = true;
         try
         {
+            foreach (var k in scoreKpis)
+            {
+                var m = mgrScores.GetValueOrDefault(k.Id) ?? 0;
+                var v = selfScores.GetValueOrDefault(k.Id) ?? 0;
+                if (m < 0 || m > k.MaxScore || v < 0 || v > k.MaxScore)
+                {
+                    Toast.Error($"نمره شاخص «{k.Title}» باید بین ۰ تا {k.MaxScore} باشد.");
+                    saving = false;
+                    return;
+                }
+            }
             foreach (var k in scoreKpis)
             {
                 await Svc.SaveScoreAsync(new HrAppraisalScoreSaveDto
