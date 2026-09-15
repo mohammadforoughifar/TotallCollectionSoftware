@@ -6,7 +6,7 @@
 {
     <div class="nav-group group-erp erp-navigation">
         <button type="button" class="nav-section-title nav-toggle @(open ? "open" : "")" aria-expanded="@open.ToString().ToLowerInvariant()" @onclick="() => open = !open">
-            <span>ERP</span>
+            <span><i class="bi bi-layers" aria-hidden="true"></i>ERP</span>
             <i class="bi bi-chevron-down nav-chevron" aria-hidden="true"></i>
         </button>
         @if (open)
