@@ -402,6 +402,13 @@ public class FaLmsController : RbacControllerBase
 
     // ------------------- تصحیح تشریحی -------------------
 
+    [HttpGet("grading/pending")]
+    public async Task<IActionResult> GradingPending()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _svc.GradingInboxAsync(MyUserId));
+    }
+
     [HttpGet("attempts/{id:int}/texts")]
     public async Task<IActionResult> AttemptTexts(int id)
     {

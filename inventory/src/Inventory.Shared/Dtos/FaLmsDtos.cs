@@ -576,3 +576,27 @@ public class FaLmsConflictDto
     public string Kind { get; set; } = "";
     public string Detail { get; set; } = "";
 }
+
+/// <summary>پاسخ‌نامه در انتظار تصحیح مدرس</summary>
+public class FaLmsPendingGradeDto
+{
+    public int AttemptId { get; set; }
+    public int CourseId { get; set; }
+    public string CourseTitle { get; set; } = "";
+    public int ExamId { get; set; }
+    public string ExamTitle { get; set; } = "";
+    public int EmployeeId { get; set; }
+    public string? EmployeeName { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public int QuestionCount { get; set; }
+    public int TextCount { get; set; }
+    public int? InstructorId { get; set; }
+    public string? InstructorName { get; set; }
+}
+
+/// <summary>کارتابل تصحیح + شناسه مدرسی کاربر جاری (اگر مدرس باشد)</summary>
+public class FaLmsGradingInboxDto
+{
+    public int? MyInstructorId { get; set; }
+    public List<FaLmsPendingGradeDto> Items { get; set; } = new();
+}

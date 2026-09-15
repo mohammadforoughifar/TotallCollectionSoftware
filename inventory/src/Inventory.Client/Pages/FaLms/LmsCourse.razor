@@ -870,6 +870,15 @@ else if (tab == 5 && faManage)
     private async Task SaveGrade()
     {
         if (gradeAtt == null) return;
+        foreach (var g in gradeTexts)
+        {
+            var v = gradeScores.GetValueOrDefault(g.QuestionId);
+            if (v < 0 || v > g.QuestionScore)
+            {
+                Toast.Error($"نمره باید بین ۰ تا {FaLmsUi.Num(g.QuestionScore)} باشد.");
+                return;
+            }
+        }
         try
         {
             var items = gradeScores.Select(kv => new FaLmsGradeItemDto { QuestionId = kv.Key, ManualScore = kv.Value }).ToList();
