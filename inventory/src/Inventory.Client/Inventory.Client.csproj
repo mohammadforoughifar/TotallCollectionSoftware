@@ -8,6 +8,9 @@
     <!-- حذف وابستگی به فایل‌های ICU (رفع مشکل بوت و حجم کمتر) -->
     <InvariantGlobalization>true</InvariantGlobalization>
     <BlazorWebAssemblyPreserveCollationData>false</BlazorWebAssemblyPreserveCollationData>
+    <!-- کاهش حجم پابلیش: بدون فایل دیباگ (pdb) در خروجی Release -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <NoWarn>CS0414</NoWarn>
   </PropertyGroup>
 

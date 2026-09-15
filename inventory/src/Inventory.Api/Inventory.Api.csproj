@@ -4,6 +4,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- کاهش حجم پابلیش: بدون فایل دیباگ (pdb) در خروجی Release -->
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
     <NoWarn>CS1998</NoWarn>
     <!-- کاهش حجم خروجی انتشار: باندل تک‌فایل فشرده (فقط روی publish اثر دارد) -->
     <PublishSingleFile>true</PublishSingleFile>
