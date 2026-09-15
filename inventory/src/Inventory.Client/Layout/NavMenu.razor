@@ -7,7 +7,7 @@
     {
         <div class="nav-group group-chat">
             <button type="button" class="nav-section-title nav-toggle @(gChat ? "open" : "")" @onclick="() => gChat = !gChat">
-                <span>پیام‌رسان سازمانی</span>
+                <span><i class="bi bi-chat-dots"></i>پیام‌رسان سازمانی</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gChat)
@@ -24,7 +24,7 @@
     @* ============ داشبوردها ============ *@
     <div class="nav-group group-dash">
         <button type="button" class="nav-section-title nav-toggle @(gDash ? "open" : "")" @onclick="() => gDash = !gDash">
-            <span>داشبوردها</span>
+            <span><i class="bi bi-grid-1x2"></i>داشبوردها</span>
             <i class="bi bi-chevron-down nav-chevron"></i>
         </button>
         @if (gDash)
@@ -85,7 +85,7 @@
     {
         <div class="nav-group group-bonhr">
             <button type="button" class="nav-section-title nav-toggle @(gBonHr ? "open" : "")" @onclick="() => gBonHr = !gBonHr">
-                <span>منابع انسانی بن‌سازه</span>
+                <span><i class="bi bi-people"></i>منابع انسانی بن‌سازه</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gBonHr)
@@ -138,7 +138,7 @@
     {
         <div class="nav-group group-letters">
             <button type="button" class="nav-section-title nav-toggle @(gLetters ? "open" : "")" @onclick="() => gLetters = !gLetters">
-                <span>اتوماسیون اداری</span>
+                <span><i class="bi bi-envelope-paper"></i>اتوماسیون اداری</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gLetters)
@@ -180,7 +180,7 @@
     @* ============ عملیات ============ *@
     <div class="nav-group group-ops">
         <button type="button" class="nav-section-title nav-toggle @(gOps ? "open" : "")" @onclick="() => gOps = !gOps">
-            <span>عملیات</span>
+            <span><i class="bi bi-box-seam"></i>عملیات</span>
             <i class="bi bi-chevron-down nav-chevron"></i>
         </button>
         @if (gOps)
@@ -224,7 +224,7 @@
     {
         <div class="nav-group group-projects">
             <button type="button" class="nav-section-title nav-toggle @(gProjects ? "open" : "")" @onclick="() => gProjects = !gProjects">
-                <span>مدیریت پروژه‌ها</span>
+                <span><i class="bi bi-kanban"></i>مدیریت پروژه‌ها</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
             @if (gProjects)
@@ -268,8 +268,7 @@
     @* ============ مدیریت سیستم ============ *@
     <div class="nav-group group-admin">
         <button type="button" class="nav-section-title nav-toggle @(gAdmin ? "open" : "")" @onclick="() => gAdmin = !gAdmin">
-            <span class="d-inline-flex align-items-center gap-1">
-                مدیریت سیستم
+            <span><i class="bi bi-pc-display"></i>مدیریت سیستم
                 @if (NewSystemsCount > 0)
                 {
                     <span class="nav-badge" title="سیستم جدید در انتظار تایید و/یا تغییرات سخت‌افزار گزارش‌شده">@NewSystemsCount.Num()</span>
@@ -330,8 +329,7 @@
     @* ============ گزارش‌ها ============ *@
     <div class="nav-group group-reports">
         <button type="button" class="nav-section-title nav-toggle @(gReports ? "open" : "")" @onclick="() => gReports = !gReports">
-            <span class="d-inline-flex align-items-center gap-1">
-                گزارش‌ها
+            <span><i class="bi bi-file-bar-graph"></i>گزارش‌ها
                 @if (ReorderCount > 0)
                 {
                     <span class="nav-badge">@ReorderCount.Num()</span>
@@ -365,7 +363,7 @@
     @* ============ اطلاعات پایه ============ *@
     <div class="nav-group group-base">
         <button type="button" class="nav-section-title nav-toggle @(gBase ? "open" : "")" @onclick="() => gBase = !gBase">
-            <span>اطلاعات پایه</span>
+            <span><i class="bi bi-database"></i>اطلاعات پایه</span>
             <i class="bi bi-chevron-down nav-chevron"></i>
         </button>
         @if (gBase)
@@ -426,7 +424,7 @@
     @* ============ سیستم ============ *@
     <div class="nav-group group-sys">
         <button type="button" class="nav-section-title nav-toggle @(gSys ? "open" : "")" @onclick="() => gSys = !gSys">
-            <span>سیستم</span>
+            <span><i class="bi bi-gear-fill"></i>سیستم</span>
             <i class="bi bi-chevron-down nav-chevron"></i>
         </button>
         @if (gSys)

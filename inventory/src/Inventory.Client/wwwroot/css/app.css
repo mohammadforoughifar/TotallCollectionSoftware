@@ -1303,6 +1303,9 @@ button.nav-toggle:focus-visible{outline:none;}
 .nav-toggle:hover .nav-chevron{opacity:1;color:#7dd3fc;}
 .nav-toggle.open .nav-chevron{transform:rotate(180deg);color:#7dd3fc;}
 .nav-toggle.open > span:first-child{color:#7dd3fc;}
+/* یکدست‌سازی سطر عنوان همه گروه‌ها: نقطه + آیکون ثابت + متن (+ بج) + شورون */
+button.nav-toggle > span:first-child { display: inline-flex; align-items: center; gap: .55rem; min-width: 0; }
+button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; font-size: .95rem; flex-shrink: 0; }
 .nav-group-items{overflow:hidden;border-inline-start:2px solid rgba(125,211,252,.18);margin-inline-start:.65rem;border-radius:2px;}
 .nav-group-items .nav-link{padding-inline-start:1.05rem;animation:navOpen .18s ease both;}
 @keyframes navOpen{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:none;}}

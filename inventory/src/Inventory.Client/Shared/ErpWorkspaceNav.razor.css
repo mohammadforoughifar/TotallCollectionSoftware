@@ -1,36 +1,17 @@
-/* Only ERP navigation. The application theme and all other menus stay unchanged. */
-.erp-navigation { --erp-nav-text: #cbd5e1; --erp-nav-muted: #98a7bb; --erp-nav-accent: #f5a8cd; }
-.erp-navigation .nav-toggle { padding: 10px 9px; min-height: 42px; gap: 8px; font-size: 13px; }
-.erp-navigation .nav-toggle > span:first-child { display: flex; align-items: center; gap: 9px; color: var(--erp-nav-accent); }
-.erp-navigation .nav-toggle .nav-chevron { color: var(--erp-nav-muted); font-size: 9px; }
-.erp-navigation .nav-toggle:hover { background: #ffffff07; }
-.erp-navigation .nav-group-items { margin: 3px 0 8px; padding: 4px 0; border: 0; }
-.erp-navigation .nav-link {
-    display: flex; align-items: center; gap: 9px;
-    min-height: 37px; margin: 2px 0; padding: 8px 11px;
-    color: var(--erp-nav-text); font-size: 12.5px; line-height: 1.65;
-    font-weight: 400; border: 0; border-radius: 7px;
-    background: transparent; box-shadow: none; animation: none; transform: none;
-    transition: background-color .12s ease;
-}
-.erp-navigation .nav-link i { color: var(--erp-nav-muted); width: 18px; font-size: 14px; }
-.erp-navigation .nav-link:hover { background: #ffffff09; color: #f1f5f9; transform: none; }
-.erp-navigation .nav-link.active { background: #f472b61c; color: #fbd3e8; font-weight: 600; box-shadow: none; }
-.erp-navigation .nav-link.active i { color: var(--erp-nav-accent) !important; }
-.erp-navigation .nav-link.active::before { content: ""; position: absolute; inset: 10px 0 10px auto; width: 3px; border-radius: 3px; background: #f472b6; box-shadow: none; }
+/* Only ERP navigation. Sub-section rows use the same metrics as the application theme. */
 .erp-nav-toggle {
-    display: flex; align-items: center; gap: 9px; width: 100%; min-height: 39px;
-    padding: 9px 10px; border: 0; border-radius: 7px;
-    background: transparent; color: var(--erp-nav-text); text-align: right;
-    font: inherit; font-size: 12.5px; cursor: pointer;
+    display: flex; align-items: center; gap: .75rem; width: 100%;
+    margin-bottom: 2px; padding: .55rem .75rem; padding-inline-start: 1.05rem;
+    border: 0; border-radius: 12px; background: transparent;
+    color: #a5b4c8; font: inherit; font-size: .92rem; font-weight: 600;
+    text-align: right; cursor: pointer;
+    transition: all .2s cubic-bezier(.4,0,.2,1);
 }
-.erp-nav-toggle span { flex: 1; }
-.erp-nav-toggle > i:first-child { color: var(--erp-nav-muted); font-size: 14px; width: 18px; text-align: center; }
-.erp-nav-toggle > i:last-child { color: #8594a9; font-size: 8px; }
-.erp-nav-toggle.current { color: var(--erp-nav-accent); font-weight: 600; }
+.erp-nav-toggle > i:first-child { width: 22px; font-size: 1.05rem; text-align: center; color: #f472b6; flex-shrink: 0; }
+.erp-nav-toggle > span { flex: 1; }
+.erp-nav-toggle > i:last-child { font-size: .68rem; opacity: .7; }
+.erp-nav-toggle:hover { background: rgba(255,255,255,.06); color: #e2e8f0; transform: translateX(-3px); }
+.erp-nav-toggle:hover > i:last-child { opacity: 1; }
+.erp-nav-toggle.current { color: #f472b6; }
 .erp-nav-toggle.current > i:first-child { color: inherit; }
-.erp-nav-toggle:hover { background: #ffffff07; }
-.erp-nav-children { border-inline-start: 1px solid #94a3b82b; margin: 2px 18px 8px 5px; padding-inline-start: 8px; }
-.erp-navigation a:focus-visible, .erp-navigation button:focus-visible { outline: 2px solid #f472b6; outline-offset: -2px; }
-@media (max-width: 1279.98px) { .erp-navigation .nav-toggle, .erp-navigation .nav-link, .erp-nav-toggle { min-height: 44px; } }
-@media (prefers-reduced-motion: reduce) { .erp-navigation .nav-link { transition: none; } }
+.erp-nav-children { margin-inline-start: .65rem; border-inline-start: 2px solid rgba(244,114,182,.28); border-radius: 2px; }
