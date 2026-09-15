@@ -62,6 +62,10 @@ public static class HrNavigation
             E("fa-lms/enrollments", "کارتابل ثبت‌نام", "bi-inbox", "FaLms.Manage"),
             E("fa-lms/budgets", "بودجه آموزش", "bi-wallet2", "FaLms.Manage"),
             E("hr-core/appraisals", "ارزیابی عملکرد", "bi-graph-up-arrow", "HrCore.Read")]),
+        new("com", "ارتباطات و اطلاع‌رسانی", "bi-chat-square-text", [
+            E("fa-com/announcements", "مدیریت اطلاعیه‌ها", "bi-megaphone", "FaCom.Manage"),
+            E("fa-com/tickets", "کارتابل تیکت‌ها", "bi-ticket-detailed", "FaCom.Manage"),
+            E("fa-com/suggestions", "کارتابل پیشنهادها", "bi-inbox", "FaCom.Manage")]),
         new("reports", "گزارش‌ها", "bi-bar-chart-line", [
             E("hr-core/insights", "داشبورد مدیر", "bi-speedometer2", "HrCore.Manage"),
             E("fa-att/reports", "گزارش حضور و غیاب", "bi-calendar2-check", "FaAtt.Manage"),
@@ -77,10 +81,7 @@ public static class HrNavigation
             E("fa-pay/items", "اقلام حقوقی", "bi-list-check", "FaPay.Manage"),
             E("fa-pay/settings", "تنظیمات حقوق و مالیات", "bi-gear", "FaPay.Manage"),
             E("fa-lms/instructors", "مدرس‌ها", "bi-person-video3", "FaLms.Read"),
-            E("fa-lms/banks", "بانک سؤال", "bi-collection", "FaLms.Manage"),
-            E("fa-com/announcements", "مدیریت اطلاعیه‌ها", "bi-megaphone", "FaCom.Manage"),
-            E("fa-com/tickets", "کارتابل تیکت‌ها", "bi-ticket-detailed", "FaCom.Manage"),
-            E("fa-com/suggestions", "کارتابل پیشنهادها", "bi-inbox", "FaCom.Manage")]),
+            E("fa-lms/banks", "بانک سؤال", "bi-collection", "FaLms.Manage")]),
         new("legacy", "سامانه‌های پیشین", "bi-clock-history", [
             E("attendance", "حضور من — پیشین", "bi-stopwatch", "Attendance.SelfCheckin"),
             E("leave", "مرخصی و مأموریت — پیشین", "bi-calendar2-check", "LeaveRequests.Request"),
