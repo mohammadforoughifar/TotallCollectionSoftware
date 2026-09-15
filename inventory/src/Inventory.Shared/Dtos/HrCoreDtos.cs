@@ -523,3 +523,19 @@ public class HrDecreeBulkDto
     /// <summary>اجرای خودکار احکام روی پرونده پرسنل بلافاصله پس از صدور</summary>
     public bool ApplyAfterCreate { get; set; }
 }
+
+/// <summary>خطای یک سطر در ورود اکسل پرسنل</summary>
+public class HrEmployeeImportErrorDto
+{
+    public int Row { get; set; }
+    public string Name { get; set; } = "";
+    public string Message { get; set; } = "";
+}
+
+/// <summary>نتیجه ورود اکسل پرسنل</summary>
+public class HrEmployeeImportResultDto
+{
+    public int Created { get; set; }
+    public int Failed { get; set; }
+    public List<HrEmployeeImportErrorDto> Errors { get; set; } = new();
+}

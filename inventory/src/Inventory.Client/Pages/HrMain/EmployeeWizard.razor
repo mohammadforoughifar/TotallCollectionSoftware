@@ -7,6 +7,7 @@
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>پرسنل</PageTitle>
@@ -275,6 +276,8 @@ else
         {
             <div class="ms-auto d-flex gap-2">
                 <button class="btn btn-primary" @onclick='() => Nav.NavigateTo("hr-main/employees/new")'><i class="bi bi-plus-lg"></i> پرسنل جدید</button>
+                <button class="btn btn-outline-primary" @onclick="() => showImport = true"><i class="bi bi-file-earmark-arrow-up"></i> ورود از اکسل</button>
+                <button class="btn btn-outline-success" @onclick="DownloadTemplate"><i class="bi bi-file-earmark-excel"></i> نمونه اکسل</button>
             </div>
         }
     </div>
@@ -383,6 +386,50 @@ else
     .wiz-review dt { font-weight: 700; color: #374151; }
     .wiz-review dd { margin-bottom: .4rem; }
 </style>
+
+<Modal Visible="showImport" Title="ورود گروهی پرسنل از اکسل" Size="modal-lg" OnClose="CloseImport">
+    <ChildContent>
+        <ol class="small text-muted mb-3">
+            <li>نمونه اکسل را دانلود کنید (دکمه «نمونه اکسل»).</li>
+            <li>سطر نمونه را پاک کنید و اطلاعات پرسنل را وارد کنید (ستون‌های * الزامی‌اند؛ تاریخ‌ها شمسی مثل 1404/01/01).</li>
+            <li>فایل را انتخاب و «شروع ورود» را بزنید.</li>
+        </ol>
+        <InputFile class="form-control" OnChange="OnImportFile" accept=".xlsx" />
+        @if (impFile is not null)
+        {
+            <div class="small mt-2">فایل انتخاب‌شده: <b>@impFile.Name</b> <span class="text-muted">(@(impFile.Size / 1024) کیلوبایت)</span></div>
+        }
+        @if (impSaving)
+        {
+            <div class="mt-3"><span class="spinner-border spinner-border-sm"></span> در حال ورود اطلاعات…</div>
+        }
+        @if (impResult is not null)
+        {
+            <div class="alert @(impResult.Failed == 0 ? "alert-success" : "alert-warning") mt-3 mb-2">
+                <span class="num">@impResult.Created.Num()</span> نفر ثبت شد@if (impResult.Failed > 0)
+                {<span>؛ <span class="num">@impResult.Failed.Num()</span> سطر خطا داشت.</span>}
+            </div>
+            @if (impResult.Errors.Count > 0)
+            {
+                <div class="border rounded" style="max-height:220px;overflow-y:auto">
+                    <table class="table table-sm mb-0">
+                        <thead class="table-light"><tr><th>سطر</th><th>نام</th><th>خطا</th></tr></thead>
+                        <tbody>
+                            @foreach (var er in impResult.Errors)
+                            {
+                                <tr><td class="num">@er.Row</td><td>@er.Name</td><td class="text-danger small">@er.Message</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="CloseImport">بستن</button>
+        <button class="btn btn-primary" disabled="@(impSaving || impFile is null)" @onclick="StartImport">شروع ورود</button>
+    </Footer>
+</Modal>
 
 @code {
     [Parameter] public int? Id { get; set; }
@@ -655,5 +702,48 @@ else
             Toast.Error(ex.Message);
         }
         finally { wSaving = false; }
+    }
+
+    // ==================== ورود اکسل ====================
+    private bool showImport, impSaving;
+    private IBrowserFile? impFile;
+    private HrEmployeeImportResultDto? impResult;
+
+    private async Task DownloadTemplate()
+    {
+        try
+        {
+            var f = await EmpSvc.GetEmployeeImportTemplateAsync();
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, Convert.ToBase64String(f.Data));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OnImportFile(InputFileChangeEventArgs e)
+    {
+        impFile = e.File;
+        impResult = null;
+    }
+
+    private void CloseImport()
+    {
+        showImport = false;
+        impFile = null;
+        impResult = null;
+    }
+
+    private async Task StartImport()
+    {
+        if (impFile is null) return;
+        impSaving = true;
+        impResult = null;
+        try
+        {
+            await using var s = impFile.OpenReadStream(20_000_000);
+            impResult = await EmpSvc.ImportEmployeesAsync(s, impFile.Name);
+            if (impResult.Created > 0) await ReloadFirst();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { impSaving = false; }
     }
 }
