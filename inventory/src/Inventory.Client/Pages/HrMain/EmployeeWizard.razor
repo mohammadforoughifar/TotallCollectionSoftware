@@ -77,6 +77,33 @@
             {
                 <h5 class="fw-bold mb-3"><i class="bi bi-person-fill"></i> گام ۱ — مشخصات فردی</h5>
                 <div class="row g-3">
+                    <div class="col-12">
+                        <div class="d-flex align-items-center gap-3 p-2 border rounded bg-light">
+                            @if (photoUrl is null)
+                            {
+                                <span class="d-inline-flex align-items-center justify-content-center rounded-circle bg-secondary text-white fw-bold" style="width:64px;height:64px;font-size:1.3rem;flex-shrink:0">@HrCoreUi.Initials(form.FirstName, form.LastName)</span>
+                            }
+                            else
+                            {
+                                <img src="@photoUrl" alt="عکس پرسنل" class="rounded-circle" style="width:64px;height:64px;object-fit:cover;flex-shrink:0" />
+                            }
+                            <div>
+                                <label class="btn btn-sm btn-outline-primary mb-1">
+                                    <i class="bi bi-camera"></i> انتخاب عکس
+                                    <InputFile OnChange="OnPhotoSelected" accept=".jpg,.jpeg,.png,.webp" style="display:none" />
+                                </label>
+                                @if (photoBytes is not null)
+                                {
+                                    <button type="button" class="btn btn-sm btn-light border ms-1 mb-1" @onclick="CancelPhoto">انصراف انتخاب</button>
+                                }
+                                else if (Id is > 0 && !string.IsNullOrWhiteSpace(savedPhotoPath) && !photoRemove)
+                                {
+                                    <button type="button" class="btn btn-sm btn-light border ms-1 mb-1" @onclick="() => photoRemove = true"><i class="bi bi-trash text-danger"></i> حذف عکس</button>
+                                }
+                                <div class="small text-muted">JPG ،PNG یا WebP تا ۵ مگابایت @if (photoRemove) { <span class="text-danger">(هنگام ثبت نهایی حذف می‌شود)</span> } </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="col-md-3"><label class="form-label">نام <span class="text-danger">*</span></label><input class="form-control" @bind="form.FirstName" /></div>
                     <div class="col-md-3"><label class="form-label">نام خانوادگی <span class="text-danger">*</span></label><input class="form-control" @bind="form.LastName" /></div>
                     <div class="col-md-3"><label class="form-label">کد ملی <span class="text-danger">*</span></label><input class="form-control num" maxlength="10" dir="ltr" @bind="form.NationalCode" placeholder="۱۰ رقم" /></div>
@@ -215,6 +242,7 @@
             {
                 <h5 class="fw-bold mb-3"><i class="bi bi-clipboard-check-fill"></i> گام ۵ — بازبینی و ثبت نهایی</h5>
                 <dl class="row wiz-review">
+                    <dt class="col-sm-3">عکس</dt><dd class="col-sm-9">@if (photoUrl is null) { <span>—</span> } else { <img src="@photoUrl" alt="عکس پرسنل" class="rounded-circle" style="width:48px;height:48px;object-fit:cover" /> }</dd>
                     <dt class="col-sm-3">نام و نام خانوادگی</dt><dd class="col-sm-9">@form.FirstName @form.LastName</dd>
                     <dt class="col-sm-3">کد ملی</dt><dd class="col-sm-9 num">@form.NationalCode</dd>
                     <dt class="col-sm-3">تاریخ تولد</dt><dd class="col-sm-9 num">@(birthDate.HasValue ? PersianDate.ToShortFa(birthDate.Value) : "—")</dd>
@@ -467,6 +495,9 @@ else
     private string? wError;
     private string? lastInitKey;
     private HrEmployeeSaveDto form = new();
+    private byte[]? photoBytes;
+    private string? photoContentType, photoFileName, photoUrl, savedPhotoUrl, savedPhotoPath;
+    private bool photoRemove;
     private DateTime? birthDate, hireDate = DateTime.Today;
     private List<HrMainPositionDto> positions = new();
     private List<HrEmployeeDto> managers = new();
@@ -608,12 +639,15 @@ else
                 birthDate = e.BirthDate;
                 hireDate = e.HireDate;
                 maxStep = 5;
+                savedPhotoPath = e.PhotoPath;
+                await LoadSavedPhoto();
             }
             else
             {
                 form = new HrEmployeeSaveDto { HireDate = DateTime.Today };
                 birthDate = null;
                 hireDate = DateTime.Today;
+                ResetPhoto();
             }
         }
         catch (Exception ex)
@@ -693,6 +727,20 @@ else
             form.BirthDate = birthDate;
             form.HireDate = hireDate ?? DateTime.Today;
             var saved = await EmpSvc.SaveEmployeeAsync(Id is > 0 ? Id : null, form);
+            if (photoBytes is not null)
+            {
+                try
+                {
+                    await using var ms = new MemoryStream(photoBytes);
+                    await EmpSvc.UploadEmployeePhotoAsync(saved.Id, ms, photoFileName ?? "photo.jpg", photoContentType);
+                }
+                catch (Exception ex) { Toast.Error("پرسنل ثبت شد ولی عکس ذخیره نشد: " + ex.Message); }
+            }
+            else if (photoRemove && saved.Id > 0)
+            {
+                try { await EmpSvc.DeleteEmployeePhotoAsync(saved.Id); }
+                catch (Exception ex) { Toast.Error("حذف عکس انجام نشد: " + ex.Message); }
+            }
             Toast.Success(Id is > 0 ? "تغییرات پرسنل ثبت شد." : "پرسنل جدید ثبت شد.");
             Nav.NavigateTo(empRead ? $"hr-main/employees/{saved.Id}/profile" : "hr-main");
         }
@@ -745,5 +793,57 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { impSaving = false; }
+    }
+
+    // ==================== عکس پرسنل ====================
+    private void ResetPhoto()
+    {
+        photoBytes = null;
+        photoContentType = photoFileName = null;
+        photoUrl = savedPhotoUrl = savedPhotoPath = null;
+        photoRemove = false;
+    }
+
+    private async Task LoadSavedPhoto()
+    {
+        photoBytes = null;
+        photoRemove = false;
+        savedPhotoUrl = null;
+        photoUrl = null;
+        if (Id is not > 0 || string.IsNullOrWhiteSpace(savedPhotoPath)) return;
+        try
+        {
+            var f = await EmpSvc.GetEmployeePhotoAsync(Id.Value);
+            savedPhotoUrl = $"data:{f.ContentType};base64,{Convert.ToBase64String(f.Data)}";
+            photoUrl = savedPhotoUrl;
+        }
+        catch { savedPhotoUrl = null; photoUrl = null; }
+    }
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 5 * 1024 * 1024) { Toast.Error("حداکثر حجم عکس ۵ مگابایت است."); return; }
+        try
+        {
+            await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            photoBytes = ms.ToArray();
+            photoContentType = file.ContentType;
+            photoFileName = file.Name;
+            photoRemove = false;
+            photoUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(photoBytes)}";
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void CancelPhoto()
+    {
+        photoBytes = null;
+        photoContentType = photoFileName = null;
+        photoRemove = false;
+        photoUrl = savedPhotoUrl;
     }
 }
