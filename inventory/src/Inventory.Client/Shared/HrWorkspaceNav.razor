@@ -26,7 +26,7 @@
                                 @foreach (var item in group.Items)
                                 {
                                     var active = selected?.Href == item.Href;
-                                    <a href="@item.Href" class="nav-link @(active ? "active" : "")" aria-current="@(active ? "page" : null)" @onclick="Navigate"><span>@item.Title</span></a>
+                                    <a href="@item.Href" class="nav-link @(active ? "active" : "")" aria-current="@(active ? "page" : null)" @onclick="Navigate"><i class="bi @item.Icon" aria-hidden="true"></i><span>@item.Title</span></a>
                                 }
                             </div>
                         }

@@ -13,5 +13,5 @@ else
 }
 @code {
     private HrNavigation.Entry[] items = [];
-    protected override void OnParametersSet() => items = HrNavigation.Visible(Auth.Has, Auth.IsAdmin).FirstOrDefault(s => s.Id == "setup")?.Items.Where(i => i.Href != "hr-main/settings").ToArray() ?? [];
+    protected override void OnParametersSet() => items = HrNavigation.Visible(Auth.Has, Auth.IsAdmin).Where(s => s.Id is "org" or "setup").SelectMany(s => s.Items).Where(i => i.Href != "hr-main/settings").ToArray();
 }
