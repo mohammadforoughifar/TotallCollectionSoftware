@@ -3,6 +3,7 @@ using Inventory.Api.Hubs;
 using Inventory.Api.Services.FaCom;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
+using Inventory.Shared.BonHr;
 using Microsoft.AspNetCore.Hosting;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -68,6 +69,8 @@ public interface IHrCoreService
     Task<int> RemindExpiringDocumentsAsync(int days);
     Task<byte[]> DossierPdfAsync(int employeeId);
     Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q);
+    Task<(byte[] Data, string FileName)> BuildEmployeeImportTemplateAsync();
+    Task<HrEmployeeImportResultDto> ImportEmployeesAsync(Stream stream);
     Task<(byte[] Data, string FileName)> ExportContractsExcelAsync();
     Task<(byte[] Data, string FileName)> ExportDecreesExcelAsync();
     Task<(byte[] Data, string FileName)> ExportOrgExcelAsync();
@@ -1598,6 +1601,198 @@ public class HrCoreService : IHrCoreService
         ws.Columns().AdjustToContents();
         return (WorkbookBytes(wb), "employees.xlsx");
     }
+
+    public async Task<(byte[] Data, string FileName)> BuildEmployeeImportTemplateAsync()
+    {
+        string[] heads =
+        {
+            "نام *", "نام خانوادگی *", "کد ملی *", "تاریخ تولد", "جنسیت", "وضعیت تأهل",
+            "موبایل", "تلفن ثابت", "ایمیل", "آدرس", "نام تماس اضطراری", "نسبت", "تلفن اضطراری",
+            "محل خدمت", "مدرک", "رشته", "تاریخ استخدام", "کد پرسنلی", "حقوق پایه (ریال)",
+            "کد واحد سازمانی", "عنوان پست", "شبا", "بانک", "شماره بیمه"
+        };
+        string[] sample =
+        {
+            "علی", "رضایی", "0012345678", "1370/01/15", "مرد", "متاهل",
+            "09123456789", "", "ali@example.com", "تهران، خیابان …", "مریم رضایی", "همسر", "09129876543",
+            "ستاد", "کارشناسی", "مدیریت", "1404/01/01", "", "150000000",
+            "", "کارشناس", "", "", ""
+        };
+        using var wb = NewWorkbook("پرسنل");
+        var ws = wb.Worksheet(1);
+        for (var i = 0; i < heads.Length; i++)
+        {
+            var c = ws.Cell(1, i + 1);
+            c.Value = heads[i];
+            c.Style.Font.Bold = true;
+        }
+        for (var i = 0; i < sample.Length; i++) ws.Cell(2, i + 1).Value = sample[i];
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(1);
+        var nodes = await _db.HrMainOrgNodes.AsNoTracking().OrderBy(n => n.Code).ToListAsync();
+        var ws2 = wb.Worksheets.Add("کد واحدها");
+        ws2.RightToLeft = true;
+        ws2.Cell(1, 1).Value = "کد واحد";
+        ws2.Cell(1, 2).Value = "نام واحد";
+        ws2.Range(1, 1, 1, 2).Style.Font.Bold = true;
+        var r = 2;
+        foreach (var n in nodes) { ws2.Cell(r, 1).Value = n.Code; ws2.Cell(r, 2).Value = n.Name; r++; }
+        ws2.Columns().AdjustToContents();
+        ws2.SheetView.FreezeRows(1);
+        return (WorkbookBytes(wb), "employee-import-template.xlsx");
+    }
+
+    private static string NormHead(string? h) =>
+        new((h ?? "").Replace("*", "").Where(char.IsLetterOrDigit).ToArray());
+
+    private static DateTime ParseImportDate(string text)
+    {
+        var t = PersianCalendarUtil.Digits(text).Replace('-', '/').Replace('.', '/').Trim();
+        var parts = t.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 3) throw new InvalidOperationException($"تاریخ «{text}» معتبر نیست (مثل 1404/01/01).");
+        if (!int.TryParse(parts[0], out var y) || !int.TryParse(parts[1], out var m) || !int.TryParse(parts[2], out var d))
+            throw new InvalidOperationException($"تاریخ «{text}» معتبر نیست.");
+        if (y is >= 1900 and <= 2100)
+        {
+            if (m is < 1 or > 12 || d is < 1 || d > DateTime.DaysInMonth(y, m))
+                throw new InvalidOperationException($"تاریخ «{text}» معتبر نیست.");
+            return new DateTime(y, m, d);
+        }
+        if (y is < 1300 or > 1500 || m is < 1 or > 12)
+            throw new InvalidOperationException($"تاریخ «{text}» معتبر نیست (مثل 1404/01/01).");
+        var dim = m <= 6 ? 31 : m <= 11 ? 30 : (PersianCalendarUtil.IsLeap(y) ? 30 : 29);
+        if (d < 1 || d > dim) throw new InvalidOperationException($"تاریخ «{text}» معتبر نیست.");
+        var (gy, gm, gd) = PersianCalendarUtil.ToGregorian(y, m, d);
+        return new DateTime(gy, gm, gd);
+    }
+
+    public async Task<HrEmployeeImportResultDto> ImportEmployeesAsync(Stream stream)
+    {
+        var result = new HrEmployeeImportResultDto();
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        ms.Position = 0;
+        using var wb = new XLWorkbook(ms);
+        var ws = wb.Worksheets.FirstOrDefault() ?? throw new InvalidOperationException("شیت اکسل یافت نشد.");
+        var colOf = new Dictionary<string, int>();
+        var lastCol = ws.LastColumnUsed()?.ColumnNumber() ?? 0;
+        for (var c = 1; c <= lastCol; c++)
+        {
+            var h = NormHead(ws.Cell(1, c).GetString());
+            if (h.Length > 0 && !colOf.ContainsKey(h)) colOf[h] = c;
+        }
+        string Get(int row, params string[] keys)
+        {
+            foreach (var k in keys)
+                if (colOf.TryGetValue(k, out var c)) return (ws.Cell(row, c).GetString() ?? "").Trim();
+            return "";
+        }
+        DateTime? GetDate(int row, params string[] keys)
+        {
+            foreach (var k in keys)
+            {
+                if (!colOf.TryGetValue(k, out var c)) continue;
+                var cell = ws.Cell(row, c);
+                if (cell.DataType == XLDataType.DateTime) return cell.GetDateTime().Date;
+                var t = (cell.GetString() ?? "").Trim();
+                if (t.Length == 0) return null;
+                return ParseImportDate(t);
+            }
+            return null;
+        }
+        foreach (var (key, label) in new[] { ("نام", "نام"), ("نامخانوادگی", "نام خانوادگی"), ("کدملی", "کد ملی") })
+            if (!colOf.ContainsKey(key))
+                throw new InvalidOperationException($"ستون «{label}» در فایل یافت نشد. از نمونه اکسل استفاده کنید.");
+        var lastRow = ws.LastRowUsed()?.RowNumber() ?? 1;
+        if (lastRow - 1 > 2000) throw new InvalidOperationException("حداکثر ۲۰۰۰ سطر در هر فایل.");
+        var existingNc = new HashSet<string>(await _db.HrEmployees.Select(e => e.NationalCode).ToListAsync());
+        var existingCodes = new HashSet<string>(await _db.HrEmployees.Select(e => e.Code).ToListAsync());
+        var nodeByCode = (await _db.HrMainOrgNodes.AsNoTracking().ToListAsync())
+            .Where(n => !string.IsNullOrWhiteSpace(n.Code))
+            .GroupBy(n => n.Code.Trim()).ToDictionary(g => g.Key, g => g.First().Id, StringComparer.OrdinalIgnoreCase);
+        var maxCode = 1000;
+        foreach (var c in existingCodes) if (int.TryParse(c, out var n) && n > maxCode) maxCode = n;
+        var seenNc = new HashSet<string>();
+        var seenCodes = new HashSet<string>(existingCodes);
+        var list = new List<HrEmployee>();
+        for (var row = 2; row <= lastRow; row++)
+        {
+            var first = Get(row, "نام");
+            var last = Get(row, "نامخانوادگی");
+            var ncRaw = Get(row, "کدملی");
+            if (first.Length == 0 && last.Length == 0 && ncRaw.Length == 0) continue;
+            var dispName = (first + " " + last).Trim();
+            if (dispName.Length == 0) dispName = $"سطر {row}";
+            try
+            {
+                if (first.Length == 0 || last.Length == 0)
+                    throw new InvalidOperationException("نام و نام خانوادگی الزامی است.");
+                var nc = PersianCalendarUtil.Digits(ncRaw);
+                ValidateNationalCode(nc);
+                if (existingNc.Contains(nc) || !seenNc.Add(nc))
+                    throw new InvalidOperationException($"کد ملی {nc} تکراری است.");
+                var code = PersianCalendarUtil.Digits(Get(row, "کدپرسنلی", "کد"));
+                if (code.Length == 0) { maxCode++; code = maxCode.ToString(); }
+                if (!seenCodes.Add(code)) throw new InvalidOperationException($"کد پرسنلی {code} تکراری است.");
+                var g = Get(row, "جنسیت");
+                var gender = (g.Contains("زن") || g.Contains("خانم") || g == "1") ? 1 : 0;
+                var mst = Get(row, "وضعیتتأهل", "وضعیتتاهل", "تأهل", "تاهل");
+                var marital = (mst.Contains("متاهل") || mst.Contains("متأهل") || mst == "1") ? 1 : 0;
+                var mob = PersianCalendarUtil.Digits(Get(row, "موبایل"));
+                if (mob.Length == 10 && mob.StartsWith("9")) mob = "0" + mob;
+                decimal salary = 0;
+                var salT = PersianCalendarUtil.Digits(Get(row, "حقوقپایهریال", "حقوقپایه", "حقوق")).Replace(",", "").Replace("٬", "");
+                if (salT.Length > 0 && (!decimal.TryParse(salT, out salary) || salary < 0))
+                    throw new InvalidOperationException($"حقوق پایه «{salT}» معتبر نیست.");
+                int? nodeId = null;
+                var nodeCode = Get(row, "کدواحدسازمانی", "کدواحد", "واحد");
+                if (nodeCode.Length > 0)
+                {
+                    if (!nodeByCode.TryGetValue(nodeCode.Trim(), out var nid))
+                        throw new InvalidOperationException($"کد واحد «{nodeCode}» یافت نشد (شیت کد واحدها).");
+                    nodeId = nid;
+                }
+                list.Add(new HrEmployee
+                {
+                    Code = code, FirstName = first, LastName = last, NationalCode = nc,
+                    BirthDate = GetDate(row, "تاریختولد", "تولد"),
+                    Gender = gender, MaritalStatus = marital,
+                    Mobile = mob.Length == 0 ? null : mob,
+                    Landline = Null(Get(row, "تلفنثابت", "تلفن")),
+                    Email = Null(Get(row, "ایمیل")),
+                    Address = Null(Get(row, "آدرس")),
+                    EmergencyContactName = Null(Get(row, "نامتماساضطراری", "تماساضطراری")),
+                    EmergencyContactRelation = Null(Get(row, "نسبت")),
+                    EmergencyContactPhone = Null(PersianCalendarUtil.Digits(Get(row, "تلفناضطراری"))),
+                    Workplace = Null(Get(row, "محلخدمت")),
+                    Degree = Null(Get(row, "مدرک")),
+                    FieldOfStudy = Null(Get(row, "رشته")),
+                    HireDate = GetDate(row, "تاریخاستخدام", "استخدام") ?? DateTime.Today,
+                    HrMainNodeId = nodeId,
+                    PostTitle = Null(Get(row, "عنوانپست", "پست")),
+                    EmploymentType = (HrEmploymentType)1, Status = HrEmployeeStatus.Active,
+                    BaseSalary = salary, IsActive = true,
+                    Sheba = HrSheba.Norm(Get(row, "شبا")),
+                    BankName = Null(Get(row, "بانک")),
+                    InsuranceNo = Null(Get(row, "شمارهبیمه", "بیمه"))
+                });
+            }
+            catch (Exception ex)
+            {
+                result.Failed++;
+                result.Errors.Add(new HrEmployeeImportErrorDto { Row = row, Name = dispName, Message = ex.Message });
+            }
+        }
+        if (list.Count > 0)
+        {
+            _db.HrEmployees.AddRange(list);
+            await _db.SaveChangesAsync();
+        }
+        result.Created = list.Count;
+        return result;
+    }
+
+    private static string? Null(string v) => v.Length == 0 ? null : v;
 
     public async Task<(byte[] Data, string FileName)> ExportContractsExcelAsync()
     {

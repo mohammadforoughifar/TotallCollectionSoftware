@@ -3,6 +3,7 @@ using Inventory.Api.Services;
 using Inventory.Api.Services.HrCore;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Http;
 
 namespace Inventory.Api.Controllers.HrCore;
 
@@ -58,6 +59,28 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
         return Ok(await _svc.ListEmployeeLiteAsync(onlyActive));
+    }
+
+    [HttpGet("employees/import-template")]
+    public async Task<IActionResult> EmployeeImportTemplate()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        var (data, name) = await _svc.BuildEmployeeImportTemplateAsync();
+        return File(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
+    }
+
+    [HttpPost("employees/import")]
+    [RequestSizeLimit(20_000_000)]
+    public async Task<IActionResult> ImportEmployees(IFormFile file)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        if (file == null || file.Length == 0) return BadRequest("فایلی انتخاب نشده است.");
+        try
+        {
+            await using var s = file.OpenReadStream();
+            return Ok(await _svc.ImportEmployeesAsync(s));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
     }
 
     [HttpPost("employees")]

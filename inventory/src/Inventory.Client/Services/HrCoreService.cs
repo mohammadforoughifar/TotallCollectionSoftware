@@ -6,6 +6,8 @@ public interface IHrCoreService
 {
     Task<HrEmployeeListResult> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null);
     Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive = true);
+    Task<(byte[] Data, string FileName, string ContentType)> GetEmployeeImportTemplateAsync();
+    Task<HrEmployeeImportResultDto> ImportEmployeesAsync(Stream stream, string fileName);
     Task<HrEmployeeDto> GetEmployeeAsync(int id);
     Task<HrEmployeeDto> SaveEmployeeAsync(int? id, HrEmployeeSaveDto dto);
     Task SetEmployeeActiveAsync(int id, bool active);
@@ -183,6 +185,12 @@ public class HrCoreService : IHrCoreService
 
     public Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive = true)
         => _api.GetAsync<List<HrEmployeeLiteDto>>($"{Root}/employees/lite?onlyActive={onlyActive}");
+
+    public Task<(byte[] Data, string FileName, string ContentType)> GetEmployeeImportTemplateAsync()
+        => _api.GetFileAsync($"{Root}/employees/import-template");
+
+    public Task<HrEmployeeImportResultDto> ImportEmployeesAsync(Stream stream, string fileName)
+        => _api.PostFileAsync<HrEmployeeImportResultDto>($"{Root}/employees/import", stream, fileName);
 
     public Task<HrContractDto> RenewContractAsync(int id, int months)
         => _api.PostAsync<HrContractDto>($"{Root}/contracts/{id}/renew?months={months}", null);
