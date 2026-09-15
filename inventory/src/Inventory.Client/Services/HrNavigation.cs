@@ -60,6 +60,7 @@ public static class HrNavigation
             E("fa-lms/certificates", "گواهی‌ها", "bi-award", "FaLms.Read"),
             E("fa-lms/needs", "نیازسنجی", "bi-clipboard-data", "FaLms.Manage"),
             E("fa-lms/enrollments", "کارتابل ثبت‌نام", "bi-inbox", "FaLms.Manage"),
+            E("fa-lms/grading", "کارتابل تصحیح", "bi-pencil-square", "FaLms.Manage"),
             E("fa-lms/budgets", "بودجه آموزش", "bi-wallet2", "FaLms.Manage"),
             E("hr-core/appraisals", "ارزیابی عملکرد", "bi-graph-up-arrow", "HrCore.Read")]),
         new("com", "ارتباطات و اطلاع‌رسانی", "bi-chat-square-text", [

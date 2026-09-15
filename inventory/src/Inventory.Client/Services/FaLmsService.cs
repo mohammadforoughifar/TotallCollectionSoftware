@@ -43,6 +43,7 @@ public interface IFaLmsService
     Task<FaLmsExamPlayDto> StartExamAsync(int examId);
     Task<FaLmsAttemptDto> SubmitExamAsync(int examId, int attemptId, List<FaLmsAnswerDto> answers, List<FaLmsTextDto>? texts = null);
     Task<List<FaLmsAttemptDto>> ListAttemptsAsync(int examId);
+    Task<FaLmsGradingInboxDto> GradingInboxAsync();
     Task<List<FaLmsBankDto>> ListBanksAsync();
     Task<FaLmsBankDto> SaveBankAsync(int? id, FaLmsBankSaveDto dto);
     Task DeleteBankAsync(int id);
@@ -201,6 +202,9 @@ public class FaLmsService : IFaLmsService
     public Task<FaLmsAttemptDto> SubmitExamAsync(int examId, int attemptId, List<FaLmsAnswerDto> answers, List<FaLmsTextDto>? texts = null)
         => _api.PostAsync<FaLmsAttemptDto>($"{Root}/exams/{examId}/submit",
             new FaLmsSubmitDto { AttemptId = attemptId, Answers = answers, TextAnswers = texts ?? new() });
+
+    public Task<FaLmsGradingInboxDto> GradingInboxAsync()
+        => _api.GetAsync<FaLmsGradingInboxDto>($"{Root}/grading/pending");
 
     public Task<List<FaLmsAttemptDto>> ListAttemptsAsync(int examId)
         => _api.GetAsync<List<FaLmsAttemptDto>>($"{Root}/exams/{examId}/attempts");

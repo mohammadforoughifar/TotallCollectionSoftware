@@ -58,6 +58,7 @@ public interface IFaLmsService
     Task<FaLmsExamPlayDto> StartAttemptAsync(int examId, int userId);
     Task<FaLmsAttemptDto> SubmitAttemptAsync(int examId, FaLmsSubmitDto dto, int userId);
     Task<List<FaLmsAttemptDto>> ListAttemptsAsync(int examId);
+    Task<FaLmsGradingInboxDto> GradingInboxAsync(int userId);
     Task<List<FaLmsBankDto>> ListBanksAsync();
     Task<FaLmsBankDto> SaveBankAsync(int? id, FaLmsBankSaveDto dto);
     Task DeleteBankAsync(int id);
@@ -925,6 +926,49 @@ public class FaLmsService : IFaLmsService
         if (en == null) return;
         if (en.FinalScore == null || score > en.FinalScore.Value) en.FinalScore = score;
         if (passed) en.Passed = true;
+    }
+
+    public async Task<FaLmsGradingInboxDto> GradingInboxAsync(int userId)
+    {
+        var result = new FaLmsGradingInboxDto();
+        var empId = await _db.HrEmployees.Where(e => e.SystemUserId == userId).Select(e => (int?)e.Id).FirstOrDefaultAsync();
+        if (empId is > 0)
+            result.MyInstructorId = await _db.FaLmsInstructors.Where(i => i.EmployeeId == empId && i.IsActive).Select(i => (int?)i.Id).FirstOrDefaultAsync();
+        var atts = await _db.FaLmsAttempts.AsNoTracking()
+            .Where(a => a.SubmittedAt != null && a.Score == null)
+            .OrderBy(a => a.SubmittedAt).ToListAsync();
+        if (atts.Count == 0) return result;
+        var examIds = atts.Select(a => a.ExamId).Distinct().ToList();
+        var exams = await _db.FaLmsExams.AsNoTracking().Where(e => examIds.Contains(e.Id)).ToListAsync();
+        var courseIds = exams.Select(e => e.CourseId).Distinct().ToList();
+        var courses = await _db.FaLmsCourses.AsNoTracking().Where(c => courseIds.Contains(c.Id)).ToListAsync();
+        var instructors = await _db.FaLmsInstructors.AsNoTracking().ToDictionaryAsync(i => i.Id, i => i.Name);
+        var qMap = (await _db.FaLmsQuestions.AsNoTracking().Where(q => examIds.Contains(q.ExamId))
+            .GroupBy(q => q.ExamId).Select(g => new { ExamId = g.Key, Total = g.Count(), Texts = g.Count(q => q.Type == 1) }).ToListAsync())
+            .ToDictionary(x => x.ExamId);
+        var names = await EmpNamesAsync();
+        foreach (var a in atts)
+        {
+            var e = exams.FirstOrDefault(x => x.Id == a.ExamId);
+            var c = e == null ? null : courses.FirstOrDefault(x => x.Id == e.CourseId);
+            qMap.TryGetValue(a.ExamId, out var qc);
+            result.Items.Add(new FaLmsPendingGradeDto
+            {
+                AttemptId = a.Id,
+                CourseId = c?.Id ?? 0,
+                CourseTitle = c?.Title ?? "—",
+                ExamId = a.ExamId,
+                ExamTitle = e?.Title ?? "—",
+                EmployeeId = a.EmployeeId,
+                EmployeeName = names.TryGetValue(a.EmployeeId, out var nm) ? nm : null,
+                SubmittedAt = a.SubmittedAt,
+                QuestionCount = qc?.Total ?? 0,
+                TextCount = qc?.Texts ?? 0,
+                InstructorId = c?.InstructorId,
+                InstructorName = c?.InstructorId is > 0 && instructors.TryGetValue(c.InstructorId.Value, out var inm) ? inm : null
+            });
+        }
+        return result;
     }
 
     public async Task<List<FaLmsTextAnswerDto>> ListTextAnswersAsync(int attemptId)
