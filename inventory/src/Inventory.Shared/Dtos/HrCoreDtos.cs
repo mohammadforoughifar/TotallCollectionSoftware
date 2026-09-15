@@ -489,3 +489,37 @@ public class HrAuditListResult
     public int Total { get; set; }
     public List<HrAuditLogDto> Items { get; set; } = new();
 }
+
+/// <summary>پرسنل سبک برای انتخاب گروهی (قرارداد/حکم گروهی)</summary>
+public class HrEmployeeLiteDto
+{
+    public int Id { get; set; }
+    public string Code { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public int? HrMainNodeId { get; set; }
+    public string? HrMainNodeName { get; set; }
+    public bool IsActive { get; set; }
+}
+
+/// <summary>نتیجه عملیات گروهی</summary>
+public class HrBulkResultDto
+{
+    public int Created { get; set; }
+    public List<int> CreatedIds { get; set; } = new();
+}
+
+/// <summary>صدور گروهی قرارداد: یک فرم برای چند پرسنل</summary>
+public class HrContractBulkDto
+{
+    public List<int> EmployeeIds { get; set; } = new();
+    public HrContractSaveDto Contract { get; set; } = new();
+}
+
+/// <summary>صدور گروهی حکم</summary>
+public class HrDecreeBulkDto
+{
+    public List<int> EmployeeIds { get; set; } = new();
+    public HrDecreeSaveDto Decree { get; set; } = new();
+    /// <summary>اجرای خودکار احکام روی پرونده پرسنل بلافاصله پس از صدور</summary>
+    public bool ApplyAfterCreate { get; set; }
+}
