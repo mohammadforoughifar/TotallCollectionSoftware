@@ -5,6 +5,7 @@ namespace Inventory.Client.Services;
 public interface IHrCoreService
 {
     Task<HrEmployeeListResult> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null);
+    Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive = true);
     Task<HrEmployeeDto> GetEmployeeAsync(int id);
     Task<HrEmployeeDto> SaveEmployeeAsync(int? id, HrEmployeeSaveDto dto);
     Task SetEmployeeActiveAsync(int id, bool active);
@@ -19,6 +20,7 @@ public interface IHrCoreService
     Task<List<HrContractDto>> GetExpiringContractsAsync(int days = 30);
     Task<List<HrContractDto>> GetEmployeeContractsAsync(int employeeId);
     Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto);
+    Task<HrBulkResultDto> SaveContractsBulkAsync(HrContractBulkDto dto);
     Task<HrContractDto> RenewContractAsync(int id, int months);
     Task<int> RemindExpiringDocumentsAsync(int days);
     Task<(byte[] Data, string FileName, string ContentType)> GetDossierPdfAsync(int employeeId);
@@ -53,6 +55,7 @@ public interface IHrCoreService
     Task<List<HrDecreeDto>> GetDecreesAsync(int? employeeId = null, bool? onlyPending = null);
     Task<List<HrDecreeDto>> GetEmployeeDecreesAsync(int employeeId);
     Task<HrDecreeDto> SaveDecreeAsync(int? id, HrDecreeSaveDto dto);
+    Task<HrBulkResultDto> SaveDecreesBulkAsync(HrDecreeBulkDto dto);
     Task<HrDecreeDto> ApplyDecreeAsync(int id);
     Task DeleteDecreeAsync(int id);
     Task<(byte[] Data, string FileName, string ContentType)> GetDecreePdfAsync(int id);
@@ -171,6 +174,15 @@ public class HrCoreService : IHrCoreService
         => id is > 0
             ? _api.PutAsync<HrContractDto>($"{Root}/contracts/{id}", dto)
             : _api.PostAsync<HrContractDto>($"{Root}/contracts", dto);
+
+    public Task<HrBulkResultDto> SaveContractsBulkAsync(HrContractBulkDto dto)
+        => _api.PostAsync<HrBulkResultDto>($"{Root}/contracts/bulk", dto);
+
+    public Task<HrBulkResultDto> SaveDecreesBulkAsync(HrDecreeBulkDto dto)
+        => _api.PostAsync<HrBulkResultDto>($"{Root}/decrees/bulk", dto);
+
+    public Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive = true)
+        => _api.GetAsync<List<HrEmployeeLiteDto>>($"{Root}/employees/lite?onlyActive={onlyActive}");
 
     public Task<HrContractDto> RenewContractAsync(int id, int months)
         => _api.PostAsync<HrContractDto>($"{Root}/contracts/{id}/renew?months={months}", null);

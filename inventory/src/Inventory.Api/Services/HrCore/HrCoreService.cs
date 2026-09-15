@@ -44,6 +44,7 @@ public interface IHrCoreService
 {
     // پرسنل
     Task<(List<HrEmployeeDto> Items, int Total)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null);
+    Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive);
     Task<HrEmployeeDto?> GetEmployeeAsync(int id);
     Task<HrEmployeeDto> CreateEmployeeAsync(HrEmployeeSaveDto dto);
     Task<HrEmployeeDto> UpdateEmployeeAsync(int id, HrEmployeeSaveDto dto);
@@ -61,6 +62,7 @@ public interface IHrCoreService
     Task<List<HrContractDto>> ListContractsAsync(bool? onlyActive);
     Task<List<HrContractDto>> ExpiringContractsAsync(int days);
     Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto, int byUserId, string byName);
+    Task<HrBulkResultDto> SaveContractsBulkAsync(HrContractBulkDto dto, int byUserId, string byName);
     Task DeleteContractAsync(int id);
     Task<HrContractDto> RenewContractAsync(int id, int months);
     Task<int> RemindExpiringDocumentsAsync(int days);
@@ -94,6 +96,7 @@ public interface IHrCoreService
     Task<List<HrDecreeDto>> EmployeeDecreesAsync(int employeeId);
     Task<List<HrDecreeDto>> ListDecreesAsync(int? employeeId, bool? onlyPending);
     Task<HrDecreeDto> SaveDecreeAsync(int? id, HrDecreeSaveDto dto, int byUserId, string byName);
+    Task<HrBulkResultDto> SaveDecreesBulkAsync(HrDecreeBulkDto dto, int byUserId, string byName);
     Task<HrDecreeDto> ApplyDecreeAsync(int id);
     Task<byte[]> DecreePdfAsync(int id);
     Task<byte[]> ContractPdfAsync(int id);
@@ -468,6 +471,27 @@ public class HrCoreService : IHrCoreService
         return list;
     }
 
+    public async Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive)
+    {
+        var emps = await _db.HrEmployees.AsNoTracking()
+            .Where(e => !onlyActive || e.IsActive)
+            .OrderBy(e => e.Code).ThenBy(e => e.Id)
+            .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.HrMainNodeId, e.IsActive })
+            .ToListAsync();
+        var nodeIds = emps.Where(e => e.HrMainNodeId is > 0).Select(e => e.HrMainNodeId!.Value).Distinct().ToList();
+        var names = await _db.HrMainOrgNodes.AsNoTracking()
+            .Where(n => nodeIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id, n => n.Name);
+        return emps.Select(e => new HrEmployeeLiteDto
+        {
+            Id = e.Id,
+            Code = e.Code,
+            FullName = (e.FirstName + " " + e.LastName).Trim(),
+            HrMainNodeId = e.HrMainNodeId,
+            HrMainNodeName = e.HrMainNodeId is > 0 && names.TryGetValue(e.HrMainNodeId.Value, out var nm) ? nm : null,
+            IsActive = e.IsActive
+        }).ToList();
+    }
+
     public async Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto, int byUserId, string byName)
     {
         if (!await _db.HrEmployees.AnyAsync(e => e.Id == dto.EmployeeId))
@@ -506,6 +530,38 @@ public class HrCoreService : IHrCoreService
         c.Description = dto.Description?.Trim(); c.IsActive = dto.IsActive; c.TemplateId = dto.TemplateId;
         await _db.SaveChangesAsync();
         return (await EmployeeContractsAsync(c.EmployeeId)).First(x => x.Id == c.Id);
+    }
+
+    public async Task<HrBulkResultDto> SaveContractsBulkAsync(HrContractBulkDto dto, int byUserId, string byName)
+    {
+        var ids = (dto.EmployeeIds ?? new()).Where(i => i > 0).Distinct().ToList();
+        if (ids.Count == 0) throw new InvalidOperationException("پرسنلی انتخاب نشده است.");
+        if (ids.Count > 2000) throw new InvalidOperationException("حداکثر ۲۰۰۰ نفر در هر صدور گروهی.");
+        var c = dto.Contract ?? throw new InvalidOperationException("اطلاعات قرارداد مشخص نیست.");
+        if (c.EndDate != null && c.EndDate < c.StartDate)
+            throw new InvalidOperationException("تاریخ پایان نمی‌تواند قبل از شروع باشد.");
+        if (c.OrgUnitId is > 0 && !await _db.HrOrgUnits.AnyAsync(u => u.Id == c.OrgUnitId.Value))
+            throw new InvalidOperationException("واحد سازمانی نامعتبر است.");
+        if (c.TemplateId is > 0 && !await _db.HrContractTemplates.AnyAsync(x => x.Id == c.TemplateId.Value))
+            throw new InvalidOperationException("قالب قرارداد نامعتبر است.");
+        var found = await _db.HrEmployees.Where(e => ids.Contains(e.Id)).Select(e => e.Id).ToListAsync();
+        var missing = ids.Except(found).ToList();
+        if (missing.Count > 0) throw new InvalidOperationException($"{missing.Count} پرسنل یافت نشد؛ هیچ قراردادی صادر نشد.");
+        var list = new List<HrContract>();
+        foreach (var empId in found)
+        {
+            var e = new HrContract
+            {
+                EmployeeId = empId, ContractNo = (c.ContractNo ?? "").Trim(),
+                Type = (HrEmploymentType)c.Type, StartDate = c.StartDate, EndDate = c.EndDate,
+                BaseSalary = c.BaseSalary, JobTitle = c.JobTitle?.Trim(), OrgUnitId = c.OrgUnitId,
+                Description = c.Description?.Trim(), IsActive = c.IsActive, TemplateId = c.TemplateId
+            };
+            list.Add(e);
+            _db.HrContracts.Add(e);
+        }
+        await _db.SaveChangesAsync();
+        return new HrBulkResultDto { Created = list.Count, CreatedIds = list.Select(x => x.Id).ToList() };
     }
 
     public async Task DeleteContractAsync(int id)
@@ -972,14 +1028,8 @@ public class HrCoreService : IHrCoreService
         return doc.GeneratePdf();
     }
 
-    public async Task<HrDecreeDto> ApplyDecreeAsync(int id)
+    private static void ApplyDecreeCore(HrDecree d, HrEmployee e)
     {
-        var d = await _db.HrDecrees.FirstOrDefaultAsync(x => x.Id == id)
-            ?? throw new InvalidOperationException("حکم یافت نشد.");
-        if (d.IsApplied) throw new InvalidOperationException("این حکم قبلاً اجرا شده است.");
-        var e = await _db.HrEmployees.FirstOrDefaultAsync(x => x.Id == d.EmployeeId)
-            ?? throw new InvalidOperationException("پرسنل حکم یافت نشد.");
-
         if (!string.IsNullOrWhiteSpace(d.NewPostTitle)) e.PostTitle = d.NewPostTitle;
         if (d.NewOrgUnitId is > 0) e.OrgUnitId = d.NewOrgUnitId;
         if (d.NewBaseSalary is > 0) e.BaseSalary = d.NewBaseSalary.Value;
@@ -993,9 +1043,48 @@ public class HrCoreService : IHrCoreService
         if (d.Type == HrDecreeType.GhatHamkari) { e.Status = HrEmployeeStatus.Terminated; e.IsActive = false; }
         if (d.Type == HrDecreeType.Bazneshastegi) { e.Status = HrEmployeeStatus.Retired; e.IsActive = false; }
         e.UpdatedAt = DateTime.Now;
-
         d.IsApplied = true;
         d.AppliedAt = DateTime.Now;
+    }
+
+    public async Task<HrBulkResultDto> SaveDecreesBulkAsync(HrDecreeBulkDto dto, int byUserId, string byName)
+    {
+        var ids = (dto.EmployeeIds ?? new()).Where(i => i > 0).Distinct().ToList();
+        if (ids.Count == 0) throw new InvalidOperationException("پرسنلی انتخاب نشده است.");
+        if (ids.Count > 2000) throw new InvalidOperationException("حداکثر ۲۰۰۰ نفر در هر صدور گروهی.");
+        var v = dto.Decree ?? throw new InvalidOperationException("اطلاعات حکم مشخص نیست.");
+        if (v.NewOrgUnitId is > 0 && !await _db.HrOrgUnits.AnyAsync(u => u.Id == v.NewOrgUnitId.Value))
+            throw new InvalidOperationException("واحد سازمانی نامعتبر است.");
+        var emps = await _db.HrEmployees.Where(e => ids.Contains(e.Id)).ToListAsync();
+        var missing = ids.Except(emps.Select(e => e.Id)).ToList();
+        if (missing.Count > 0) throw new InvalidOperationException($"{missing.Count} پرسنل یافت نشد؛ هیچ حکمی صادر نشد.");
+        var list = new List<HrDecree>();
+        foreach (var e in emps)
+        {
+            var d = new HrDecree { CreatedByUserId = byUserId, CreatedByName = byName };
+            d.EmployeeId = e.Id; d.DecreeNo = (v.DecreeNo ?? "").Trim();
+            d.Type = (HrDecreeType)v.Type; d.EffectiveDate = v.EffectiveDate;
+            d.NewPostTitle = v.NewPostTitle?.Trim(); d.NewOrgUnitId = v.NewOrgUnitId;
+            d.NewBaseSalary = v.NewBaseSalary;
+            d.NewStatus = v.NewStatus == null ? null : (HrEmployeeStatus)v.NewStatus.Value;
+            d.Description = v.Description?.Trim();
+            if (dto.ApplyAfterCreate) ApplyDecreeCore(d, e);
+            list.Add(d);
+            _db.HrDecrees.Add(d);
+        }
+        await _db.SaveChangesAsync();
+        return new HrBulkResultDto { Created = list.Count, CreatedIds = list.Select(x => x.Id).ToList() };
+    }
+
+    public async Task<HrDecreeDto> ApplyDecreeAsync(int id)
+    {
+        var d = await _db.HrDecrees.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("حکم یافت نشد.");
+        if (d.IsApplied) throw new InvalidOperationException("این حکم قبلاً اجرا شده است.");
+        var e = await _db.HrEmployees.FirstOrDefaultAsync(x => x.Id == d.EmployeeId)
+            ?? throw new InvalidOperationException("پرسنل حکم یافت نشد.");
+
+        ApplyDecreeCore(d, e);
         await _db.SaveChangesAsync();
         return (await EmployeeDecreesAsync(d.EmployeeId)).First(x => x.Id == d.Id);
     }

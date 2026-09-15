@@ -53,6 +53,13 @@ public class HrCoreController : RbacControllerBase
         return Ok(new { code = await _svc.NextEmployeeCodeAsync() });
     }
 
+    [HttpGet("employees/lite")]
+    public async Task<IActionResult> EmployeeLite([FromQuery] bool onlyActive = true)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListEmployeeLiteAsync(onlyActive));
+    }
+
     [HttpPost("employees")]
     public async Task<IActionResult> CreateEmployee([FromBody] HrEmployeeSaveDto dto)
     {
@@ -141,6 +148,13 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
         return Ok(await _svc.SaveContractAsync(null, dto, MyUserId, MyUsername));
+    }
+
+    [HttpPost("contracts/bulk")]
+    public async Task<IActionResult> CreateContractsBulk([FromBody] HrContractBulkDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveContractsBulkAsync(dto, MyUserId, MyUsername));
     }
 
     [HttpPut("contracts/{id:int}")]
@@ -335,6 +349,13 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
         return Ok(await _svc.SaveDecreeAsync(null, dto, MyUserId, MyUsername));
+    }
+
+    [HttpPost("decrees/bulk")]
+    public async Task<IActionResult> CreateDecreesBulk([FromBody] HrDecreeBulkDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Create") is { } f) return f;
+        return Ok(await _svc.SaveDecreesBulkAsync(dto, MyUserId, MyUsername));
     }
 
     [HttpPut("decrees/{id:int}")]
