@@ -1468,7 +1468,7 @@ public class WorkOrdersController : ControllerBase
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
         ms.Position = 0;
-        var relPath = await _store.SaveAsync("work-orders", id, ms, file.FileName);
+        var relPath = await _store.SaveAsync("itassets/workorders", id, ms, file.FileName);
         _db.WorkOrderAttachments.Add(new WorkOrderAttachment
         {
             OrderId = id,

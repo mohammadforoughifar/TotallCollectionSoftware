@@ -416,8 +416,8 @@ public class InnerLettersController : RbacControllerBase
         await file.CopyToAsync(ms);
         ms.Position = 0;
 
-        // فایل روی دیسک در wwwroot/uploads/innerletter/{letterId} ذخیره می‌شود
-        var relPath = await _store.SaveAsync("innerletter", id, ms, file.FileName);
+        // فایل روی دیسک در wwwroot/uploads/office/innerletter/{letterId} ذخیره می‌شود
+        var relPath = await _store.SaveAsync("office/innerletter", id, ms, file.FileName);
 
         var att = new AppAttachment
         {
@@ -502,8 +502,8 @@ public class InnerLettersController : RbacControllerBase
         await file.CopyToAsync(ms);
         ms.Position = 0;
 
-        // فایل پیش‌نویس زیر wwwroot/uploads/innerletter/pishnevis/{pishnevisId} ذخیره می‌شود
-        var relPath = await _store.SaveAsync("innerletter", id, ms, file.FileName, "pishnevis");
+        // فایل پیش‌نویس زیر wwwroot/uploads/office/innerletter/pishnevis/{pishnevisId} ذخیره می‌شود
+        var relPath = await _store.SaveAsync("office/innerletter", id, ms, file.FileName, "pishnevis");
 
         Db.AppAttachments.Add(new AppAttachment
         {

@@ -589,7 +589,7 @@ public class HrCoreController : RbacControllerBase
         if (doc is null) return NotFound(new { message = "سند یافت نشد." });
         _files.Delete(doc.FilePath);
         await using var stream = file.OpenReadStream();
-        var path = await _files.SaveAsync("hr-employee-documents", docId, stream, file.FileName);
+        var path = await _files.SaveAsync("hr/employee/documents", docId, stream, file.FileName);
         return Ok(await _svc.AttachDocumentFileAsync(docId, path, Path.GetFileName(file.FileName),
             string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType, file.Length));
     }
@@ -631,7 +631,7 @@ public class HrCoreController : RbacControllerBase
         if (e is null) return NotFound(new { message = "پرسنل یافت نشد." });
         _files.Delete(e.PhotoPath);
         await using var stream = file.OpenReadStream();
-        var path = await _files.SaveAsync("hr-employee-photos", id, stream, file.FileName);
+        var path = await _files.SaveAsync("hr/employee/photos", id, stream, file.FileName);
         return Ok(await _svc.SetEmployeePhotoAsync(id, path));
     }
 

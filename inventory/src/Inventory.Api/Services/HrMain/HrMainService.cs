@@ -92,7 +92,7 @@ public class HrMainService : IHrMainService
             throw new InvalidOperationException("حجم لوگو نباید بیشتر از ۲ مگابایت باشد.");
 
         var c = await GetOrCreateCompanyAsync();
-        var rel = await _files.SaveAsync("hr-main", 1, stream, fileName, "logo");
+        var rel = await _files.SaveAsync("hr/logo", 1, stream, fileName);
         // حذف لوگوی قبلی (در صورت خطا، ذخیره جدید حفظ می‌شود)
         if (!string.IsNullOrWhiteSpace(c.LogoPath) && c.LogoPath != rel)
         {

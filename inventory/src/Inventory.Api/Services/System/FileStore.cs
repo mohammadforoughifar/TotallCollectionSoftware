@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Http;
 namespace Inventory.Api.Services;
 
 /// <summary>
-/// ذخیره‌سازی فایل‌ها روی دیسک — همه‌ی فایل‌ها در پوشه‌ی uploads/ روت API قرار می‌گیرند
-/// و در دیتابیس فقط مسیر نسبی (اطلاعات) ثبت می‌شود.
-/// ساختار: uploads/{module}/{refId}/{guid}_{نام-اصلی}
+/// ذخیره‌سازی یکپارچه فایل‌ها روی دیسک — همه‌ی فایل‌ها بر اساس ماژول در پوشه‌ی wwwroot/uploads/{module}/ قرار می‌گیرند.
+/// در دیتابیس فقط مسیر نسبی (اطلاعات) ثبت می‌شود.
+/// ساختار: wwwroot/uploads/{module}/{refId}/{guid}_{نام-اصلی}
 /// </summary>
 public class FileStore
 {
@@ -15,83 +15,57 @@ public class FileStore
 
     public FileStore(IWebHostEnvironment env)
     {
-        // همه‌ی فایل‌های آپلودی در wwwroot/uploads ذخیره می‌شوند و با سرو استاتیک wwwroot در دسترس هستند
         _contentRoot = env.ContentRootPath;
-        _root = Path.Combine(env.ContentRootPath, "wwwroot", "uploads");
-        _webRoot = Path.Combine(env.ContentRootPath, "wwwroot");
+        _webRoot = env.WebRootPath ?? Path.Combine(env.ContentRootPath, "wwwroot");
+        _root = Path.Combine(_webRoot, "uploads");
         Directory.CreateDirectory(_root);
     }
 
     public string RootPath => _root;
-
-    // ==================== پوشه‌های اختصاصی مستقیم زیر wwwroot ====================
-    // مثال درخواست کارفرما: «wwwroot/فایل های صادره» برای پیوست نامه صادره و
-    // «wwwroot/فایل های ایمیل» برای پیوست‌های ایمیل سازمانی.
-    // دانلود این فایل‌ها فقط از مسیر API با احراز هویت انجام می‌شود (Program.cs سرو استاتیک
-    // این پوشه‌ها را می‌بندد) و FilePath در دیتابیس نسبیِ از جذر wwwroot ذخیره می‌شود.
-
-    /// <summary>ذخیره فایل در پوشه‌ای مستقیم زیر wwwroot — مثل («فایل های صادره», letterId)</summary>
-    public async Task<string> SaveWebRootAsync(string folder, int refId, Stream stream, string originalName)
-    {
-        var dir = WebRootDir(folder, refId);
-        Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, $"{Guid.NewGuid():N}_{SanitizeName(originalName)}");
-        await using (var fs = File.Create(file))
-        {
-            await stream.CopyToAsync(fs);
-        }
-        return ToWebRootRelative(file);
-    }
-
-    /// <summary>خواندن فایل از پوشه اختصاصی wwwroot — مسیر نسبی از جذر wwwroot. در صورت نبود null.</summary>
-    public byte[]? ReadWebRoot(string? relativePath)
-    {
-        var full = ToWebRootFull(relativePath);
-        if (full is null || !File.Exists(full)) return null;
-        try { return File.ReadAllBytes(full); }
-        catch { return null; }
-    }
-
-    /// <summary>حذف فایل از پوشه اختصاصی wwwroot (در صورت وجود)</summary>
-    public void DeleteWebRoot(string? relativePath)
-    {
-        var full = ToWebRootFull(relativePath);
-        if (full is not null && File.Exists(full))
-        {
-            try { File.Delete(full); } catch { }
-        }
-    }
-
-    /// <summary>حجم فایل اختصاصی wwwroot</summary>
-    public long SizeWebRoot(string? relativePath)
-    {
-        var full = ToWebRootFull(relativePath);
-        return full is not null && File.Exists(full) ? new FileInfo(full).Length : 0;
-    }
-
-    private string WebRootDir(string folder, int refId)
-    {
-        var clean = (folder ?? "").Replace('\\', '/').Trim('/').Replace("..", "");
-        if (string.IsNullOrWhiteSpace(clean)) clean = "misc";
-        return Path.Combine(_webRoot, clean, refId.ToString());
-    }
-
-    private string? ToWebRootFull(string? relativePath)
-    {
-        if (string.IsNullOrWhiteSpace(relativePath)) return null;
-        var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        if (clean.Contains("..")) return null;
-        var full = Path.GetFullPath(Path.Combine(_webRoot, clean));
-        if (!full.StartsWith(Path.GetFullPath(_webRoot), StringComparison.Ordinal)) return null;
-        return full;
-    }
-
-    private string ToWebRootRelative(string fullPath) =>
-        Path.GetRelativePath(_webRoot, fullPath).Replace('\\', '/');
+    public string WebRootPath => _webRoot;
+    public string ContentRootPath => _contentRoot;
 
     /// <summary>
-    /// فایل جدید را روی دیسک می‌نویسد و مسیر نسبی برمی‌گرداند.
-    /// subFolder برای ساخت مسیرهای واضح مثل innerletter/pishnevis/{refId} استفاده می‌شود.
+    /// ساخت امن مسیر ماژول با حفظ ساختار زيرپوشه‌ها (مانند office/innerletter یا hr/employee/documents)
+    /// و جلوگیری از Path Traversal.
+    /// </summary>
+    private static string SafeModule(string m)
+    {
+        if (string.IsNullOrWhiteSpace(m)) return "misc";
+        var parts = m.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var cleanParts = new List<string>();
+        foreach (var part in parts)
+        {
+            if (part == "." || part == "..") continue;
+            var sb = new System.Text.StringBuilder();
+            foreach (var ch in part)
+                if (char.IsLetterOrDigit(ch) || ch is '-' or '_') sb.Append(ch);
+            if (sb.Length > 0) cleanParts.Add(sb.ToString());
+        }
+        return cleanParts.Count > 0 ? string.Join('/', cleanParts) : "misc";
+    }
+
+    private static string SanitizeName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in Path.GetFileName(name ?? "file"))
+            sb.Append(invalid.Contains(ch) ? '_' : ch);
+        var s = sb.ToString();
+        return s.Length > 80 ? s[..80] : s;
+    }
+
+    private string BuildDirectory(string module, int refId, string? subFolder = null)
+    {
+        var parts = new List<string> { _root, SafeModule(module) };
+        if (!string.IsNullOrWhiteSpace(subFolder))
+            parts.Add(SafeModule(subFolder));
+        parts.Add(refId.ToString());
+        return Path.Combine(parts.ToArray());
+    }
+
+    /// <summary>
+    /// ذخیره فایل جدید زیر wwwroot/uploads/{module}/[subFolder/]{refId}/{guid}_{originalName}
     /// </summary>
     public async Task<string> SaveAsync(string module, int refId, Stream stream, string originalName, string? subFolder = null)
     {
@@ -107,8 +81,19 @@ public class FileStore
     }
 
     /// <summary>
-    /// فایل موجود (مثلاً پیوست پیش‌نویس) را به پوشه جدید منتقل می‌کند و مسیر نسبی جدید برمی‌گرداند.
-    /// اگر فایل موجود نباشد یا انتقال ناموفق باشد null برمی‌گرداند.
+    /// ذخیره بایت‌ها یا عکس خام زیر wwwroot/uploads/{module}/{ownerId|common}/{guid}.{ext}
+    /// </summary>
+    public async Task<string> SaveRawAsync(string module, byte[] data, string ext, int? ownerId = null)
+    {
+        var dir = Path.Combine(_root, SafeModule(module), ownerId?.ToString() ?? "common");
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, $"{Guid.NewGuid():N}{(ext.StartsWith('.') ? ext : "." + ext)}");
+        await File.WriteAllBytesAsync(file, data);
+        return ToRelative(file);
+    }
+
+    /// <summary>
+    /// انتقال فایل به پوشه/مسیر جدید زیر wwwroot/uploads
     /// </summary>
     public string? Move(string? relativePath, string module, int refId, string? subFolder = null)
     {
@@ -119,8 +104,7 @@ public class FileStore
         Directory.CreateDirectory(dir);
         var dest = Path.Combine(dir, Path.GetFileName(full));
 
-        // اگر فایل از قبل در مقصد است، کاری لازم نیست
-        if (Path.GetFullPath(dest) == Path.GetFullPath(full)) return relativePath;
+        if (Path.GetFullPath(dest) == Path.GetFullPath(full)) return ToRelative(dest);
 
         try
         {
@@ -134,17 +118,6 @@ public class FileStore
         return ToRelative(dest);
     }
 
-    /// <summary>ساخت مسیر کامل در پوشه uploads: uploads/{module}[/{subFolder}]/{refId}</summary>
-    private string BuildDirectory(string module, int refId, string? subFolder = null)
-    {
-        var parts = new List<string> { _root, SafeModule(module) };
-        if (!string.IsNullOrWhiteSpace(subFolder))
-            parts.Add(SafeModule(subFolder));
-        parts.Add(refId.ToString());
-        return Path.Combine(parts.ToArray());
-    }
-
-    /// <summary>خواندن فایل از دیسک. اگر موجود نباشد، null (صاحب‌کار به blob قدیمی در DB برمی‌گردد).</summary>
     public byte[]? ReadBytes(string? relativePath)
     {
         var full = ToFull(relativePath);
@@ -168,47 +141,56 @@ public class FileStore
         }
     }
 
-    /// <summary>فایل آپلودی را با نام امن روی دیسک ذخیره می‌کند (برای عکس‌ها و مشابه).</summary>
-    public async Task<string> SaveRawAsync(string module, byte[] data, string ext, int? ownerId = null)
-    {
-        var dir = Path.Combine(_root, SafeModule(module), ownerId?.ToString() ?? "common");
-        Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, $"{Guid.NewGuid():N}{(ext.StartsWith('.') ? ext : "." + ext)}");
-        await File.WriteAllBytesAsync(file, data);
-        return ToRelative(file);
-    }
-
-    private string? ToFull(string? relativePath)
+    /// <summary>
+    /// تبدیل مسیر نسبی به مسیر کامل دیسک با پشتیبانی از سازگاری عقب‌رو (Fallback) برای فایل‌های قدیمی
+    /// </summary>
+    public string? ToFull(string? relativePath)
     {
         if (string.IsNullOrWhiteSpace(relativePath)) return null;
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
-        var full = Path.GetFullPath(Path.Combine(_root, clean));
-        // مسیرهای عادی باید داخل uploads باشند (ضد path traversal)؛
-        // مسیرهای قدیمیِ «../../Module/...» هم فقط اگر داخل ContentRoot باشند پذیرفته می‌شوند.
-        var insideUploads = full.StartsWith(Path.GetFullPath(_root), StringComparison.Ordinal);
-        var insideContent = full.StartsWith(Path.GetFullPath(_contentRoot), StringComparison.Ordinal);
-        if (!insideUploads && !insideContent) return null;
-        return full;
+        if (clean.Contains("..")) return null;
+
+        // اگر مسیر با uploads/ شروع شده، آن را نرمال‌سازی می‌کنیم
+        var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+            ? clean["uploads/".Length..]
+            : clean;
+
+        // ۱) بررسی اول: وجود در uploads
+        var fullUploads = Path.GetFullPath(Path.Combine(_root, uploadClean));
+        var rootFull = Path.GetFullPath(_root);
+        if (fullUploads.StartsWith(rootFull, StringComparison.Ordinal) && File.Exists(fullUploads))
+            return fullUploads;
+
+        // ۲) بررسی دوم: وجود مستقیم در wwwroot (مسیرهای قدیمی مانند «فایل های صادره» یا «SecureFiles»)
+        var fullWebRoot = Path.GetFullPath(Path.Combine(_webRoot, clean));
+        var webRootFull = Path.GetFullPath(_webRoot);
+        if (fullWebRoot.StartsWith(webRootFull, StringComparison.Ordinal) && File.Exists(fullWebRoot))
+            return fullWebRoot;
+
+        // ۳) بررسی سوم: وجود مستقیم در ContentRoot
+        var fullContent = Path.GetFullPath(Path.Combine(_contentRoot, clean));
+        var contentFull = Path.GetFullPath(_contentRoot);
+        if (fullContent.StartsWith(contentFull, StringComparison.Ordinal) && File.Exists(fullContent))
+            return fullContent;
+
+        // در صورت عدم وجود فیزیکی فعلی، مسیر استاندارد مقصد تحت uploads بازگردانده می‌شود
+        return fullUploads.StartsWith(rootFull, StringComparison.Ordinal) ? fullUploads : null;
     }
 
-    private string ToRelative(string fullPath) =>
-        Path.GetRelativePath(_root, fullPath).Replace('\\', '/');
-
-    private static string SafeModule(string m)
+    public string ToRelative(string fullPath)
     {
-        var sb = new System.Text.StringBuilder();
-        foreach (var ch in m ?? "")
-            if (char.IsLetterOrDigit(ch) || ch is '-' or '_') sb.Append(ch);
-        return sb.Length > 0 ? sb.ToString() : "misc";
+        return Path.GetRelativePath(_root, fullPath).Replace('\\', '/');
     }
 
-    private static string SanitizeName(string name)
+    // ==================== روش‌های پشتیبانی و همگام‌سازی پوشه‌های قدیمی ====================
+
+    public async Task<string> SaveWebRootAsync(string folder, int refId, Stream stream, string originalName)
     {
-        var invalid = Path.GetInvalidFileNameChars();
-        var sb = new System.Text.StringBuilder();
-        foreach (var ch in Path.GetFileName(name ?? "file"))
-            sb.Append(invalid.Contains(ch) ? '_' : ch);
-        var s = sb.ToString();
-        return s.Length > 80 ? s[..80] : s;
+        // هدایت مستقیم کلیه ذخیره‌سازی‌ها به زیرساخت یکپارچه wwwroot/uploads/{folder}/{refId}
+        return await SaveAsync(folder, refId, stream, originalName);
     }
+
+    public byte[]? ReadWebRoot(string? relativePath) => ReadBytes(relativePath);
+    public void DeleteWebRoot(string? relativePath) => Delete(relativePath);
+    public long SizeWebRoot(string? relativePath) => Size(relativePath);
 }
