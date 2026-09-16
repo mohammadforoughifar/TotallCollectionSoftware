@@ -259,7 +259,7 @@
 @if (composeOpen)
 {
     <div class="ltx" style="animation:none;transform:none">
-        <div class="ov" @onclick="() => composeOpen = false"></div>
+        <div class="ov"></div>
         <div class="sheet" style="max-width:640px">
             <div class="sheet-h">
                 <b><i class="bi bi-pencil-square" style="color:var(--p2)"></i> @(composeReplyTo != null ? "پاسخ به ایمیل" : "ایمیل جدید")</b>
@@ -331,7 +331,7 @@
 @if (accOpen)
 {
     <div class="ltx" style="animation:none;transform:none">
-        <div class="ov" @onclick="() => accOpen = false"></div>
+        <div class="ov"></div>
         <div class="sheet" style="max-width:620px">
             <div class="sheet-h">
                 <b><i class="bi bi-envelope-at" style="color:var(--p2)"></i> @(accEditId > 0 ? "ویرایش حساب ایمیل" : "افزودن حساب ایمیل")</b>

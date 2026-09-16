@@ -1,10 +1,10 @@
 .hr-workspace{--hr-accent:#0f766e;--hr-ink:#182c40;max-width:1440px;margin:0 auto;min-width:0;color:var(--hr-ink)}
-.hr-context{margin-bottom:1.1rem;border-bottom:1px solid #e2e8f0;padding:0 0 .8rem}.hr-breadcrumb{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;font-size:.76rem;color:#738196}.hr-breadcrumb a{color:#526477;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem}.hr-breadcrumb a:hover{color:var(--hr-accent)}.hr-breadcrumb>i{font-size:.55rem}.hr-breadcrumb [aria-current]{color:var(--hr-ink)}
+.hr-context{margin-bottom:1.1rem;border-bottom:1px solid #e2e8f0;padding:0 0 .8rem}.hr-breadcrumb{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;font-size:.82rem;color:#738196}.hr-breadcrumb a{color:#526477;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem}.hr-breadcrumb a:hover{color:var(--hr-accent)}.hr-breadcrumb>i{font-size:.55rem}.hr-breadcrumb [aria-current]{color:var(--hr-ink)}
 .hr-workspace ::deep .page-head{display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap}
 .hr-workspace ::deep .page-head h1{font-size:1.2rem;line-height:1.7;color:var(--hr-ink);margin:0}.hr-workspace ::deep .page-head h1::before{display:none}
 .hr-workspace ::deep .page-head>.ms-auto{margin-right:auto!important;margin-left:0!important}.hr-workspace ::deep .page-head>.d-flex.justify-content-between{width:100%}
 .hr-workspace ::deep .page-head .btn{font-size:.78rem;border-radius:8px;min-height:36px}.hr-workspace ::deep .page-head .btn-primary{background:var(--hr-accent);border-color:var(--hr-accent)}
-.hr-workspace ::deep .page-head .lead{font-size:.76rem;color:#77869a}
+.hr-workspace ::deep .page-head .lead{font-size:.82rem;color:#55637a}
 .hr-workspace ::deep .card{border:1px solid #e2e8f0!important;border-radius:12px;box-shadow:none!important}.hr-workspace ::deep .card-header{border-bottom:1px solid #edf1f6;font-size:.86rem;padding:.8rem 1rem}
 .hr-workspace ::deep .form-label{font-size:.8rem;color:#526477}.hr-workspace ::deep .form-control,.hr-workspace ::deep .form-select{border-color:#dce3eb;border-radius:8px;font-size:.85rem}.hr-workspace ::deep .form-control:focus,.hr-workspace ::deep .form-select:focus{border-color:#5da89d;box-shadow:0 0 0 3px #0f766e12}
 .hr-workspace ::deep .table thead th{background:#f6f8fb;color:#607086;font-size:.75rem;font-weight:600;padding:.85rem .7rem;border-bottom:1px solid #e2e8f0}.hr-workspace ::deep .table tbody td{padding:.8rem .7rem;font-size:.83rem;vertical-align:middle}

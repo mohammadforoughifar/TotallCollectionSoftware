@@ -142,24 +142,24 @@
                 </div>
 
                 <div class="row g-2">
-                    <div class="col-6">
+                    <div class="col-12 col-sm-6">
                         <label class="form-label small fw-800">شروع</label>
                         <DatePicker Value="formStart" ValueChanged="v => formStart = v" CssClass="form-control-sm" DayClasses="calDayClasses" DayTitles="calDayTitles" />
                     </div>
                     @if (formType != "Hourly" && formType != "HourlyMission")
                     {
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">پایان</label>
                             <DatePicker Value="formEnd" ValueChanged="v => formEnd = v" CssClass="form-control-sm" DayClasses="calDayClasses" DayTitles="calDayTitles" />
                         </div>
                     }
                     @if (formType == "Hourly" || formType == "HourlyMission")
                     {
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">ساعت شروع <span class="text-danger">*</span></label>
                             <input type="time" class="form-control form-control-sm" dir="ltr" value="@formStartTime" @onchange='e => formStartTime = e.Value?.ToString()' />
                         </div>
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">ساعت پایان <span class="text-danger">*</span></label>
                             <input type="time" class="form-control form-control-sm" dir="ltr" value="@formEndTime" @onchange='e => formEndTime = e.Value?.ToString()' />
                         </div>
@@ -318,7 +318,7 @@
 .hr-admin-banner { background: linear-gradient(135deg, #1c2130, #2a3150); color: #fff; border-radius: 16px; padding: .9rem 1.2rem; box-shadow: 0 8px 20px rgba(28,33,48,.18); }
 .hr-admin-icon { width: 44px; height: 44px; border-radius: 12px; background: linear-gradient(135deg, #8e5cff, #4f8cff); display:flex; align-items:center; justify-content:center; font-size:1.25rem; }
 .hr-admin-btn { background:#fff; color:#1c2130; border:none; }
-.hr-admin-btn:hover { background:#efeaff; color:#6d4dff; }
+.hr-admin-btn:hover { background:#efeaff; color:#5b21b6; }
 .hr-admin-badge { background:#e0245e; color:#fff; font-size:.7rem; border-radius:999px; padding:.15rem .55rem; font-weight:800; margin-inline-start:.4rem; }
 .lv-bal-card { background:linear-gradient(160deg,#ffffff 60%,#f4f0ff 100%); border-radius:18px; border:1px solid #e8e2fb; align-self:start; }
 .lv-bal-card-year { border-radius:18px; border:1px solid #cfe3fb; background:linear-gradient(160deg,#f0f7ff 60%,#ffffff); }
@@ -326,7 +326,7 @@
 .lv-ring-wrap { display:inline-block; }
 .lv-ring { width:140px; height:140px; filter:drop-shadow(0 4px 10px rgba(142,92,255,.18)); }
 .lv-bal-legend { font-size:.75rem; color:#5f688a; }
-.lv-leg { display:inline-flex; align-items:center; gap:.35rem; font-weight:700; }
+.lv-leg { display:inline-flex; align-items:center; gap:.35rem; font-weight:700; font-size:.85rem; }
 .lv-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
 .lv-mission-badge { display:inline-flex; align-items:center; gap:.4rem; background:#eef6ff; border:1px solid #cfe4fb; color:#1d5fc2; font-size:.78rem; font-weight:700; border-radius:999px; padding:.3rem .8rem; }
 .lv-yearbar { height:14px; background:#eef0f7; border-radius:999px; overflow:hidden; display:flex; }
@@ -340,7 +340,7 @@
 .lv-type:hover { border-color:#b9a5f5; transform:translateY(-2px); box-shadow:0 6px 14px rgba(142,92,255,.15); }
 .lv-type.active { background:linear-gradient(135deg,#8e5cff,#4f8cff); border-color:transparent; box-shadow:0 8px 20px rgba(120,90,255,.35); }
 .lv-type.active i, .lv-type.active b { color:#fff; }
-.lv-days-chip { display:inline-flex; align-items:center; gap:.4rem; background:#efeaff; border:1px solid #ded2ff; color:#6d4dff; border-radius:999px; padding:.3rem .9rem; font-size:.85rem; font-weight:800; }
+.lv-days-chip { display:inline-flex; align-items:center; gap:.4rem; background:#efeaff; border:1px solid #ded2ff; color:#5b21b6; border-radius:999px; padding:.3rem .9rem; font-size:.85rem; font-weight:800; }
 .lv-submit { background:linear-gradient(135deg,#8e5cff,#4f8cff); border:none; color:#fff; box-shadow:0 6px 16px rgba(120,90,255,.3); }
 .lv-submit:hover:not(:disabled) { filter:brightness(1.07); color:#fff; }
 .lv-submit:disabled { opacity:.6; }
@@ -351,7 +351,7 @@
 .lv-mini-fill { height:100%; border-radius:999px; transition:width .3s; }
 .lv-table { font-size:.88rem; }
 .lv-thead th { font-size:.78rem; color:#5f688a; background:#f8f7fd; border-bottom:2px solid #e8e2fb; white-space:nowrap; }
-.lv-num { font-weight:800; color:#6d4dff; font-size:.8rem; white-space:nowrap; }
+.lv-num { font-weight:800; color:#5b21b6; font-size:.8rem; white-space:nowrap; }
 .lv-date { white-space:nowrap; font-weight:700; }
 .lv-reason { max-width:220px; font-size:.82rem; color:#5f688a; }
 .lv-cancel { width:32px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:8px; }
@@ -359,7 +359,7 @@
 .lv-badge-hourly { background:#fff6e6; color:#b06a00; font-weight:800; border:1px solid #f3d9a8; }
 .lv-badge-mission { background:#eef6ff; color:#0e8577; font-weight:800; border:1px solid #c4e5e0; }
 .lv-badge-hourlymission { background:#e8f7f5; color:#0b6e63; font-weight:800; border:1px solid #bfe3de; }
-.lv-time-range { font-size:.8rem; font-weight:800; color:#6d4dff; }
+.lv-time-range { font-size:.8rem; font-weight:800; color:#5b21b6; }
 .lv-st-approved { background:#e6f9ef; color:#0e8a55; font-weight:800; border:1px solid #b9e8cf; }
 .lv-st-rejected { background:#fdecef; color:#b21b4c; font-weight:800; border:1px solid #f3b9c8; }
 .lv-st-pending { background:#fff6e6; color:#b06a00; font-weight:800; border:1px solid #f3d9a8; }

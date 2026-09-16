@@ -75,7 +75,7 @@
     --card: #ffffff;
     --border: #e2e8f0;
     --text: #0f172a;
-    --text-muted: #64748b;
+    --text-muted: #5b6a80;   /* کنتراست ≥۵ روی --bg و سفید */
     --text-soft: #94a3b8;
     --success: #10b981;
     --danger: #ef4444;
@@ -105,7 +105,8 @@ a { text-decoration: none; }
 .text-muted { color: var(--text-muted) !important; }
 .text-primary { color: var(--primary) !important; }
 .fs-7 { font-size: .8rem !important; }
-.fs-8 { font-size: .72rem !important; }
+.fs-8 { font-size: .8rem !important; }
+.fs-9 { font-size: .78rem !important; }
 .fw-500 { font-weight: 500 !important; }
 .fw-700 { font-weight: 700 !important; }
 .cursor-pointer { cursor: pointer; }
@@ -186,7 +187,7 @@ a { text-decoration: none; }
 
 .sidebar-nav { padding: .8rem .75rem; overflow-y: auto; flex: 1; }
 .nav-section-title {
-    font-size: .68rem;
+    font-size: .78rem;
     color: #64748b;
     padding: .7rem .6rem .3rem;
     letter-spacing: .03em;
@@ -265,7 +266,7 @@ a { text-decoration: none; }
     margin-right: auto;
     background: var(--bg);
     border: 1px solid var(--border);
-    color: var(--text-muted);
+    color: #55637a;   /* کنتراست ۵.۵۵ روی --bg */
     border-radius: 20px;
     padding: .3rem .9rem;
     font-size: .8rem;
@@ -330,7 +331,7 @@ a { text-decoration: none; }
 /* ---------- جدول ---------- */
 .table { --bs-table-bg: transparent; margin: 0; }
 .table thead th {
-    font-size: .76rem;
+    font-size: .82rem;
     color: var(--text-muted);
     font-weight: 600;
     border-bottom: 1px solid var(--border);
@@ -356,7 +357,7 @@ a { text-decoration: none; }
 .badge-soft-success { background: #d1fae5; color: #065f46; }
 .badge-soft-warning { background: #fef3c7; color: #92400e; }
 .badge-soft-danger { background: #fee2e2; color: #991b1b; }
-.badge-soft-muted { background: #f1f5f9; color: #64748b; }
+.badge-soft-muted { background: #f1f5f9; color: #55637a; }   /* کنتراست ۵.۵۵ روی پس‌زمینهٔ خاکستری */
 
 /* ---------- کارت‌های آماری ---------- */
 .stat-card { padding: 1.1rem 1.2rem; }
@@ -622,7 +623,7 @@ a { text-decoration: none; }
 
     /* سربرگ صفحه فشرده */
     .page-head h1 { font-size: 1.15rem; }
-    .page-head .lead { font-size: .78rem; }
+    .page-head .lead { font-size: .8rem; }
     .app-content { padding: .75rem; }
     .app-topbar { height: 56px; }
     .topbar-sub { display: none; }
@@ -690,7 +691,7 @@ a { text-decoration: none; }
     gap: 2px;
     color: #64748b;
     text-decoration: none;
-    font-size: .68rem;
+    font-size: .79rem;   /* برچسب نوار پایین موبایل: خوانا در فارسی و جا در عرض ۷۸px */
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     transition: color .15s ease;
@@ -1287,7 +1288,7 @@ body {
 .m-card{background:#fff;border:1px solid #e2e6f1;border-right:4px solid #8e5cff;border-radius:14px;padding:.85rem .95rem;margin-bottom:.65rem;box-shadow:0 3px 12px rgba(45,55,110,.08);}
 .m-card .m-title{font-weight:800;font-size:.95rem;color:#1c2130;word-break:break-word;line-height:1.7;}
 .m-card .m-row{display:flex;justify-content:space-between;gap:.6rem;font-size:.82rem;color:#3c4358;padding:.16rem 0;}
-.m-card .m-label{color:#8a90a5;font-weight:700;flex-shrink:0;}
+.m-card .m-label{color:#64748b;font-weight:700;flex-shrink:0;}
 .m-card .m-val{font-weight:600;text-align:left;word-break:break-word;}
 .m-card .m-actions{display:flex;gap:.4rem;margin-top:.55rem;}
 .m-card .m-actions .btn{flex:1;}
@@ -1341,7 +1342,7 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
     font-weight: 800;
 }
-.brand-sub { color: #5b7a99; }
+.brand-sub { color: #7e97b5; }   /* روی سایدبار تیره: کنتراست ~۶.۲ */
 
 /* عناوین گروه‌ها: نقطه رنگی درخشان */
 .nav-section-title { display: flex; align-items: center; gap: .55rem; }
@@ -1496,8 +1497,8 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
     color: #0369a1;
     font-weight: 700;
 }
-.doc-archive-shell .wo-archive-btn:hover { background: #0ea5e9; color: #fff; }
-.doc-archive-shell .wo-archive-ico { color: #0284c7; }
+.doc-archive-shell .wo-archive-btn:hover { background: #0369a1; color: #fff; }
+.doc-archive-shell .wo-archive-ico { color: #0369a1; }
 
 /* ---------- نظم و فاصله‌گذاری آرشیو اسناد (Spacing rhythm) ---------- */
 /* کارت‌ها: فاصله عمودی یکنواخت + هدر و بدنه جادار */
@@ -1531,7 +1532,7 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
     display: block;
     text-align: center;
     padding: 1rem .5rem !important;
-    color: #94a3b8 !important;
+    color: #64748b !important;
 }
 
 /* فرم داخل کارت‌ها: فاصله عمودی بین کنترل‌ها */
@@ -1600,7 +1601,7 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 /* فوتر */
 .sidebar-footer {
     background: rgba(255,255,255,.02);
-    color: #5b7a99;
+    color: #7e97b5   /* ~۶.۲ روی تیره */;
 }
 
 /* ====== آواتار دایره‌ای کاربران (سراسری) ====== */
@@ -1713,7 +1714,7 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .tree-name { font-weight: 600; font-size: .9rem; }
 .tree-code { font-size: .7rem; color: var(--text-soft); }
 .tree-count {
-    font-size: .68rem; font-weight: 700; background: #f1f5f9; color: #64748b;
+    font-size: .8rem; font-weight: 700; background: #f1f5f9; color: #55637a;
     border-radius: 999px; padding: .05rem .5rem;
 }
 .tree-actions { margin-right: auto; display: flex; gap: .15rem; opacity: 0; transition: opacity .15s; }
@@ -2147,3 +2148,145 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
     .message-bubble.actions-open .bubble-actions-overlay { display: flex; }
     .bubble-actions-overlay .action-btn { font-size: .95rem; padding: 5px 8px; }
 }
+
+/* ======================================================================
+   الف) RTL — چیدمان درست چک‌باکس / رادیو / سوئیچ در همهٔ فرم‌ها
+   ----------------------------------------------------------------------
+   بوت‌استرپِ این پروژه نسخهٔ LTR (bootstrap.min.css 5.3.3) است و ورودی را با
+   float:left + padding-left:1.5em جا می‌اندازد. چون <html dir="rtl"> است،
+   ورودی به لبهٔ چپ می‌رود و از متنِ برچسب دور می‌افتد؛ نتیجه چیزی است که
+   کاربر «بهم‌ریختگی چیدمان فرم» می‌بیند (نمونهٔ بارز: فرم آرشیو اسناد و مدارک
+   که رادیوی «نسخه‌های فعال» و چند سوئیچ دارد).
+   راه‌حل: چیدمان فلکس — ورودی در آغاز سطر (سمت راست در RTL)، برچسب کنار آن.
+   ====================================================================== */
+.form-check {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    min-height: 1.5rem;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.form-check .form-check-input,
+.form-check.form-switch .form-check-input {
+    float: none;
+    flex-shrink: 0;
+    margin-left: 0;
+    margin-right: 0;
+    margin-top: .3em;
+}
+
+.form-check .form-check-label { line-height: 1.75; }
+
+/* سوئیچ: کلید بزرگ‌تر است، پس وسط‌چین و با فاصلهٔ بیشتر */
+.form-check.form-switch { align-items: center; gap: .6rem; min-height: 1.9rem; }
+.form-check.form-switch .form-check-input { margin-top: 0; }
+
+/* چک‌باکس‌های کنار هم (فیلترهای لیست) باید inline بمانند */
+.form-check.form-check-inline {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-end: 1rem;
+    margin-inline-start: 0;
+}
+.form-check.form-check-inline .form-check-input { margin-top: 0; }
+
+/* ======================================================================
+   ب) مودال بلند — بدنه اسکرول می‌شود؛ سربرگ و فوتر همیشه در دسترس‌اند
+   ----------------------------------------------------------------------
+   دو مشکل قبلی:
+   ۱) قاعدهٔ «.modal-body { overflow: visible }» (که برای بریده‌نشدن منوهای
+      absolute اضافه شده بود) قانون اسکرول بدنه در موبایل را خنثی می‌کرد؛
+      در نتیجه محتوای فرم‌های بلند از جعبهٔ مودال (با max-height:92vh)
+      بیرون می‌زد و چیدمان بهم می‌ریخت.
+   ۲) در دسکتاپ، فرم‌های بلندتر از ویوپورت (مثل «مدرک جدید» با سه بخش
+      بازشو) کل صفحهٔ مودال را اسکرول می‌کردند و فوتر (ذخیره/انصراف) از
+      دید خارج می‌شد.
+   راه‌حل: ارتفاع .modal-content به ویوپورت محدود و فقط .modal-body اسکرول
+   می‌شود؛ سربرگ و فوتر ثابت می‌مانند. منوهای شناورِ تقویم/کمبو
+   position:fixed با z-index ۴۵۰۰ هستند، پس بریده نمی‌شوند.
+   ====================================================================== */
+.modal-content { max-height: calc(100vh - 2rem); }
+.modal-body { overflow-y: auto; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
+.modal-header, .modal-footer { flex: 0 0 auto; }
+
+/* استثنا: مودال‌هایی که منوی شناورِ قدیمی position:absolute دارند
+   (کمبوی چندانتخابی، منوی ماشین‌های اداری، منوی گفتگوی دستور کار).
+   اگر بدنهٔ این‌ها اسکرول بگیرد آن منوها بریده می‌شوند؛ پس مثل قبل
+   بدون اسکرول می‌مانند و خودِ مودال اسکرول می‌شود. */
+.modal-content:has(.ms-combo-menu),
+.modal-content:has(.om-combo-menu),
+.modal-content:has(.wo-chat-menu),
+.modal-body:has(.ms-combo-menu),
+.modal-body:has(.om-combo-menu),
+.modal-body:has(.wo-chat-menu) {
+    max-height: none;
+    overflow: visible;
+}
+
+@media (max-width: 575.98px) {
+    /* قالب موبایل: مودال از پایین صفحه باز می‌شود (شبیه اپ اندروید) */
+    .modal-content { max-height: 92vh; }
+}
+
+/* ======================================================================
+   ج) ویرایشگر دسترسی نفرات — چیدمان بر اساس «عرض ظرف» نه عرض ویوپورت
+   ----------------------------------------------------------------------
+   این کامپوننت هم در ستون کناریِ باریک (~۳۲۰px) و هم در مودال عریض
+   استفاده می‌شود. گرید col-sm بوت‌استرپ به عرض «صفحه» نگاه می‌کند، پس در
+   ستون باریک سه سلول را آن‌قدر کوچک می‌کند که سوئیچ «دانلود» و دکمهٔ
+   «افزودن» به‌هم می‌ریزند. با flex-basis حداقلی، سلول‌ها بر اساس عرض
+   واقعیِ ظرف کنار هم یا زیر هم قرار می‌گیرند.
+   ====================================================================== */
+.doc-perm-editor > .row > [class*="col-"] {
+    width: auto;
+    max-width: none;
+    flex: 1 1 8.5rem;
+}
+
+.doc-perm-editor > .row > .col-12 { flex: 1 1 100%; }
+
+/* ======================================================================
+   د) موج دوم خوانایی — یافته‌های ممیزی در مرورگر واقعی (Chromium)
+   ----------------------------------------------------------------------
+   ۱) بج‌های بوت‌استرپ با font-size:.75em در فارسی ~۱۰px می‌شدند (برچسب‌های
+      آرشیو، شمارنده‌ها) — با اندازهٔ ثابت rem خوانا شدند.
+   ۲) ستارهٔ «فیلد الزامی» با قرمز روشن بوت‌استرپ روی پس‌زمینهٔ فرم ۴.۳ بود.
+   ۳) بج‌های bg-light/text-secondary (شمارش مدارک هر برچسب) ۴.۴۵ بودند.
+   ====================================================================== */
+.badge { font-size: .82rem; }
+
+/* فرم‌های آرشیو: برچسب‌ها و بج‌ها یک پله درشت‌تر از مقیاس سراسری (html=14px) */
+.doc-archive-shell .form-label { font-size: .92rem; }
+.doc-archive-shell .badge { font-size: .85rem; }
+
+/* متن‌های میکروی پوسته (برند/فوتر سایدبار/نوار بالا) */
+.brand-sub { font-size: .8rem; }
+.sidebar-footer { font-size: .82rem; }
+.topbar-sub, .topbar-date { font-size: .82rem; }
+.nav-badge { font-size: .8rem; }
+
+/* رنگ‌های مصرفی بوت‌استرپ !important هستند؛ پس با بازتعریف متغیر RGB همان کلاس،
+   رنگ مؤثر عوض می‌شود بدون جنگ اولویت‌ها. */
+.form-label .text-danger,
+.form-label.text-danger,
+label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ الزامی: کنتراست ~۶.۱ */
+
+.badge.bg-light.text-secondary { --bs-secondary-rgb: 73, 80, 87; }   /* شمارنده‌ها: کنتراست ~۷.۵ */
+
+/* ======================================================================
+   ه) موج سوم خوانایی — یافته‌های ممیزی مرورگری در «سایر ماژول‌ها»
+   ----------------------------------------------------------------------
+   - دکمهٔ outline-success روی پس‌زمینهٔ صفحه ۴.۱۴ بود.
+   - تب‌های nav-pills/nav-tabs در صفحه‌های روشن، رنگ روشنِ سایدبار تیره را
+     ارث می‌بردند (کنتراست ~۱.۹!).
+   ====================================================================== */
+.btn-outline-success {
+    color: #0f6b3f;
+    --bs-btn-hover-bg: #0f6b3f;
+    --bs-btn-hover-border-color: #0f6b3f;
+}
+
+.nav-pills .nav-link:not(.active),
+.nav-tabs .nav-link:not(.active) { color: #475569; }   /* رنگ روشن سایدبار روی پس‌زمینهٔ روشن ممنوع */
