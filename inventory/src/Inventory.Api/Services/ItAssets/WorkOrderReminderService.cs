@@ -151,7 +151,7 @@ public class WorkOrderReminderService : BackgroundService
 
     private static string ToFa(DateTime d)
     {
-        var pc = new System.Globalization.PersianCalendar();
+        var pc = new global::System.Globalization.PersianCalendar();
         return $"{pc.GetYear(d)}/{pc.GetMonth(d):00}/{pc.GetDayOfMonth(d):00} {d:HH:mm}";
     }
 }

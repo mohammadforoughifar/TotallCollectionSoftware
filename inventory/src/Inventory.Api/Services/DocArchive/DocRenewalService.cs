@@ -62,7 +62,7 @@ public class DocRenewalService(AppDbContext db, IDocAccessService access)
         };
         db.WorkOrders.Add(order);
         await db.SaveChangesAsync();
-        order.Number = $"WO/{new System.Globalization.PersianCalendar().GetYear(now)}/{order.Id}";
+        order.Number = $"WO/{new global::System.Globalization.PersianCalendar().GetYear(now)}/{order.Id}";
         db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = order.Id, UserId = assignee.Id, Name = assignee.Username });
         db.WorkOrderLogs.Add(new WorkOrderLog { OrderId = order.Id, ActorName = "سیستم", Action = "Created", Text = $"پیگیری خودکار تمدید مدرک {doc.Code}", CreatedAt = now });
         db.DocRenewalRuns.Add(new DocRenewalRun { DocumentId = doc.Id, ExpiryDate = expiry.Date, WorkOrderId = order.Id, CreatedAtUtc = DateTime.UtcNow });

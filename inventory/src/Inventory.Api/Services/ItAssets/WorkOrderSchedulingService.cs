@@ -33,7 +33,7 @@ public sealed class WorkOrderSchedulingService(AppDbContext db)
         }).ToList();
         db.WorkOrders.AddRange(orders);
         await db.SaveChangesAsync();
-        var pc = new System.Globalization.PersianCalendar();
+        var pc = new global::System.Globalization.PersianCalendar();
         foreach (var order in orders)
         {
             order.Number = $"WO/{pc.GetYear(order.CreatedAt)}/{order.Id}";
