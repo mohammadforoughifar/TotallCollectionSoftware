@@ -14,7 +14,7 @@
 @if (visible)
 {
 <div class="ltx" style="animation:none;transform:none">
-    <div class="ov" @onclick="Close"></div>
+    <div class="ov"></div>
     <div class="sheet" @onclick="CloseCombos">
         <div class="sheet-h">
             <b><i class="bi bi-send" style="color:var(--p2)"></i> @SheetTitle</b>
@@ -216,7 +216,7 @@
 
     @if (relOpen)
     {
-        <div class="gov" @onclick="CloseRelIfSelf">
+        <div class="gov">
             <div class="gmodal" style="width:min(640px,96vw)" @onclick:stopPropagation="true">
                 <div class="gm-h">
                     <div class="ttl"><b><i class="bi bi-link-45deg" style="color:var(--p2)"></i> ثبت نامه مرتبط</b><small>نوع رابطه و نامه‌ها را انتخاب کنید</small></div>
@@ -453,7 +453,6 @@
         relSel.Clear(); relSearch = ""; relOpen = true;
         await SearchRel();
     }
-    private void CloseRelIfSelf() => relOpen = false;
     private async Task SearchRel()
     {
         try

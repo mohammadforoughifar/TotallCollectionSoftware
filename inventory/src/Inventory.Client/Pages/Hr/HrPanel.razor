@@ -227,7 +227,7 @@
                         <label class="form-label small fw-800">عنوان / دلیل</label>
                         <input class="form-control form-control-sm" @bind="holName" placeholder="مثلاً: ایام عزاداری / نشست سازمانی" />
                     </div>
-                    <div class="col-2">
+                    <div class="col-12 col-sm-2">
                         <button class="btn btn-sm btn-primary w-100" @onclick="AddHoliday" disabled="@holBusy">
                             @if (holBusy)
                             {
@@ -460,8 +460,8 @@
 @* ================== مودال رد درخواست ================== *@
 @if (ShowReject)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)" @onclick="CloseReject">
-        <div class="modal-dialog modal-dialog-centered" @onclick="() => { }" @onclick:stopPropagation="true">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="bi bi-x-circle text-danger"></i> رد درخواست @if (rejectTarget != null) { <span dir="ltr">@rejectTarget.Number</span> }</h5>
@@ -502,13 +502,13 @@
 /* ====== تب‌ها ====== */
 .lv-tabs { border-bottom: 2px solid #e8e2fb; padding-bottom: .6rem; }
 .lv-tab { border: none; background: transparent; color: #5f688a; font-weight: 800; font-size: .9rem; border-radius: 10px; padding: .45rem 1rem; display: inline-flex; align-items: center; gap: .45rem; }
-.lv-tab:hover { background: #f1edfc; color: #6d4dff; }
-.lv-tab.active { background: #efeaff; color: #6d4dff; box-shadow: inset 0 -2px 0 #8e5cff; }
+.lv-tab:hover { background: #f1edfc; color: #5b21b6; }
+.lv-tab.active { background: #efeaff; color: #5b21b6; box-shadow: inset 0 -2px 0 #8e5cff; }
 .lv-tab-badge { background: #e0245e; color: #fff; font-size: .7rem; border-radius: 999px; padding: .1rem .5rem; font-weight: 800; }
 /* ====== جدول‌ها ====== */
 .lv-table { font-size: .88rem; }
 .lv-thead th { font-size: .78rem; color: #5f688a; background: #f8f7fd; border-bottom: 2px solid #e8e2fb; white-space: nowrap; }
-.lv-num { font-weight: 800; color: #6d4dff; font-size: .8rem; white-space: nowrap; }
+.lv-num { font-weight: 800; color: #5b21b6; font-size: .8rem; white-space: nowrap; }
 .lv-date { white-space: nowrap; font-weight: 700; }
 .lv-reason { max-width: 220px; font-size: .82rem; color: #5f688a; }
 .lv-pending-row { background: #fffbf2; }
@@ -522,7 +522,7 @@
 .lv-badge-hourly { background: #fff6e6; color: #b06a00; font-weight: 800; border: 1px solid #f3d9a8; }
 .lv-badge-mission { background: #eef6ff; color: #0e8577; font-weight: 800; border: 1px solid #c4e5e0; }
 .lv-badge-hourlymission { background: #e8f7f5; color: #0b6e63; font-weight: 800; border: 1px solid #bfe3de; }
-.lv-time-range { font-size: .8rem; font-weight: 800; color: #6d4dff; }
+.lv-time-range { font-size: .8rem; font-weight: 800; color: #5b21b6; }
 .lv-st-approved { background: #e6f9ef; color: #0e8a55; font-weight: 800; border: 1px solid #b9e8cf; }
 .lv-st-rejected { background: #fdecef; color: #b21b4c; font-weight: 800; border: 1px solid #f3b9c8; }
 .lv-st-pending { background: #fff6e6; color: #b06a00; font-weight: 800; border: 1px solid #f3d9a8; }

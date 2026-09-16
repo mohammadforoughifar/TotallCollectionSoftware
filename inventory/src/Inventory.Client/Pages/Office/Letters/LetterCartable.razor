@@ -386,7 +386,7 @@
     @* ---------- مودال پاسخ ---------- *@
     @if (replyOpen)
     {
-        <div class="gov" @onclick="() => replyOpen = false">
+        <div class="gov">
             <div class="gmodal" style="width:min(540px,96vw)" @onclick:stopPropagation="true">
                 <div class="gm-h">
                     <div class="ttl"><b><i class="bi bi-reply" style="color:var(--p2)"></i> ثبت پاسخ</b><small>@selected?.Title — # @(selected?.LetterNumber.FaDigits())</small></div>

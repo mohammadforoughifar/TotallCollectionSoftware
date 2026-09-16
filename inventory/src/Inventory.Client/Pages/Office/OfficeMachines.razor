@@ -93,8 +93,8 @@
 @* ---------- مودال فرم ماشین ---------- *@
 @if (ShowForm)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseForm">
-        <div class="modal-dialog modal-lg modal-dialog-centered" @onclick="() => { }" @onclick:stopPropagation="true">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content" style="overflow:visible;">
                 <div class="modal-header">
                     <h5 class="modal-title">@(editing ? "ویرایش ماشین" : "افزودن ماشین اداری")</h5>
@@ -220,8 +220,8 @@
 @* ---------- فرم نگهداری و تعمیرات ---------- *@
 @if (repairMachine != null)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)" @onclick="CloseRepairForm">
-        <div class="modal-dialog modal-lg modal-dialog-centered" @onclick="() => { }" @onclick:stopPropagation="true">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)">
+        <div class="modal-dialog modal-lg modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content" style="overflow:visible;">
                 <div class="modal-header" style="background:linear-gradient(135deg,#fff7e0,#ffeef3);border-radius:8px 8px 0 0;">
                     <h5 class="modal-title"><i class="bi bi-tools"></i> فرم نگهداری و تعمیرات — @repairMachine.Model</h5>

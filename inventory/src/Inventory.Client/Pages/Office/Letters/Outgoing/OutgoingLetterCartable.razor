@@ -451,7 +451,7 @@
 
     @if (replyOpen)
     {
-        <div class="gov" @onclick="() => replyOpen = false">
+        <div class="gov">
             <div class="gmodal" style="width:min(540px,96vw)" @onclick:stopPropagation="true">
                 <div class="gm-h">
                     <div class="ttl"><b><i class="bi bi-reply" style="color:var(--p2)"></i> ثبت پاسخ</b><small>@selected?.Title — # @(selected?.LetterNumber.FaDigits())</small></div>
@@ -476,7 +476,7 @@
 
     @if (signOpen)
     {
-        <div class="gov" @onclick="() => signOpen = false">
+        <div class="gov">
             <div class="gmodal" style="width:min(520px,96vw)" @onclick:stopPropagation="true">
                 <div class="gm-h">
                     <div class="ttl"><b><i class="bi bi-pen-fill" style="color:#16a34a"></i> امضای نامه صادره</b><small>@selected?.Title — # @(selected?.LetterNumber.FaDigits())</small></div>

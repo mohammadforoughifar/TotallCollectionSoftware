@@ -344,11 +344,11 @@
                             <input class="form-control" @bind="areaName" placeholder="مثلاً: دفتر مرکزی — تهران" />
                         </div>
                         <div class="row g-2 mb-3">
-                            <div class="col-6">
+                            <div class="col-12 col-sm-6">
                                 <label class="form-label small text-muted">عرض جغرافیایی (Latitude)</label>
                                 <input class="form-control" dir="ltr" @bind="areaLat" placeholder="35.6892" />
                             </div>
-                            <div class="col-6">
+                            <div class="col-12 col-sm-6">
                                 <label class="form-label small text-muted">طول جغرافیایی (Longitude)</label>
                                 <input class="form-control" dir="ltr" @bind="areaLng" placeholder="51.3890" />
                             </div>
@@ -449,7 +449,7 @@
 <!-- ==================== مودال شیفت ==================== -->
 @if (ShowShiftModal)
 {
-    <div class="modal fade show d-block" style="background:rgba(0,0,0,.5)" @onclick="() => ShowShiftModal = false">
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.5)">
         <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
             <div class="modal-content">
                 <div class="modal-header">
@@ -467,30 +467,30 @@
                         <input class="form-control form-control-sm" @bind="shiftForm.Description" />
                     </div>
                     <div class="row g-2">
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">ساعت شروع</label>
                             <input type="time" class="form-control form-control-sm" value="@shiftForm.StartTime" @onchange='e => shiftForm.StartTime = e.Value?.ToString() ?? ""' />
                         </div>
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">ساعت پایان</label>
                             <input type="time" class="form-control form-control-sm" value="@shiftForm.EndTime" @onchange='e => shiftForm.EndTime = e.Value?.ToString() ?? ""' />
                         </div>
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800 text-primary">شروع پنجره دوم <small class="text-muted fw-normal">(اختیاری)</small></label>
                             <input type="time" class="form-control form-control-sm" value="@shiftForm.StartTime2" @onchange='e => shiftForm.StartTime2 = e.Value?.ToString() ?? ""' />
                         </div>
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800 text-primary">پایان پنجره دوم <small class="text-muted fw-normal">(اختیاری)</small></label>
                             <input type="time" class="form-control form-control-sm" value="@shiftForm.EndTime2" @onchange='e => shiftForm.EndTime2 = e.Value?.ToString() ?? ""' />
                         </div>
                         <div class="col-12">
                             <div class="small text-muted"><i class="bi bi-info-circle"></i> <b>شیفت دوپاره:</b> اگر تیم شما دو بازه در روز کار می‌کند (مثلاً ۸ تا ۱۳ و ۱۷ تا ۲۱:۳۰)، پنجره‌ی دوم را هم پر کنید. حضور در فاصله‌ی بین دو پنجره نه کار حساب می‌شود نه تردد غیرمجاز.</div>
                         </div>
-                        <div class="col-6">
+                        <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">تاخیر مجاز (دقیقه)</label>
                             <input type="number" min="0" class="form-control form-control-sm" @bind="shiftForm.GraceMinutes" />
                         </div>
-                        <div class="col-6 d-flex align-items-end">
+                        <div class="col-12 col-sm-6 d-flex align-items-end">
                             <label class="form-check">
                                 <input type="checkbox" class="form-check-input" @bind="shiftForm.IncludeFriday" />
                                 <span class="form-check-label">شامل جمعه</span>
@@ -519,8 +519,8 @@
     .att-table { font-size:.88rem; }
     .att-table thead th { font-size:.78rem; background:#f8f7fd; color:#5f688a; font-weight:800; border-bottom:2px solid #e8e2fb; }
     .lv-tab { border:none; background:transparent; color:#5f688a; font-weight:800; font-size:.9rem; border-radius:10px; padding:.45rem 1rem; display:inline-flex; align-items:center; gap:.45rem; cursor:pointer; }
-    .lv-tab:hover { background:#f1edfc; color:#6d4dff; }
-    .lv-tab.active { background:#efeaff; color:#6d4dff; box-shadow:inset 0 -2px 0 #8e5cff; }
+    .lv-tab:hover { background:#f1edfc; color:#5b21b6; }
+    .lv-tab.active { background:#efeaff; color:#5b21b6; box-shadow:inset 0 -2px 0 #8e5cff; }
     .lv-tabs { border-bottom:2px solid #e8e2fb; padding-bottom:.6rem; }
 </style>
 
