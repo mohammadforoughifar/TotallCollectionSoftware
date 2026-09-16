@@ -148,7 +148,14 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         // ==================== قرار دادن روی سربرگ / لوگوی شرکت ====================
         var letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
-        letterheadPath ??= ResolveLetterheadPath(company?.LogoPath);
+        if (letterheadPath == null)
+        {
+            // اگر شرکت سربرگ ندارد: لوگوی سازمان (شرکت اصلی HR) به‌عنوان سربرگ استفاده می‌شود
+            var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
+                .Select(c => c.LogoPath)
+                .FirstOrDefaultAsync();
+            letterheadPath = ResolveLetterheadPath(hrLogoPath);
+        }
 
         if (letterheadPath == null)
         {
