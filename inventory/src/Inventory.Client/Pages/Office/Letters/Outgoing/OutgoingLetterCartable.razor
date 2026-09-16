@@ -571,7 +571,7 @@
         busy = true;
         try
         {
-            var count = await LetterSvc.BatchBayeganiAsync(selectedErjaIds.ToList(), batchBayeganiNote);
+            var count = await OutgoingSvc.BatchBayeganiAsync(selectedErjaIds.ToList(), batchBayeganiNote);
             Toast.Success($"{count.FaDigits()} نامه با موفقیت بایگانی شدند.");
             selectedErjaIds.Clear();
             batchBayeganiModalOpen = false;
