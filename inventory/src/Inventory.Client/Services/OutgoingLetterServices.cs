@@ -4,9 +4,9 @@ namespace Inventory.Client.Services;
 
 public interface IOutgoingLetterService
 {
-    Task<List<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null);
-    Task<List<OutgoingLetterListItemDto>> GetSentAsync(string? search = null);
-    Task<List<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<OutgoingLetterCartableStatsDto> GetStatsAsync();
     Task<OutgoingLetterDetailDto> GetDetailAsync(int letterId);
     Task<int> SendAsync(AddOutgoingLetterDto dto);
@@ -31,7 +31,7 @@ public interface IOutgoingLetterService
     Task<List<LetterReciverDto>> GetReciversAsync();
     Task EditAsync(int letterId, EditOutgoingLetterDto dto);
     Task<List<LetterGroupDto>> GetGroupsAsync();
-    Task<List<OutgoingLetterListItemDto>> GetSigningInboxAsync(string? search = null, bool? unsignedOnly = null);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSigningInboxAsync(string? search = null, bool? unsignedOnly = null, int page = 1, int pageSize = 15);
     Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId);
     Task SignAsync(int letterId, string? note = null);
     Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search = null);
@@ -69,22 +69,27 @@ public class OutgoingLetterService : IOutgoingLetterService
     private class NeshanResponse { public bool IsNeshan { get; set; } }
     private class BayeganiResponse { public bool IsBayegani { get; set; } }
 
-    public Task<List<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
     {
-        var qs = new List<string>();
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
-        var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/inbox{q}");
+        return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<List<OutgoingLetterListItemDto>> GetSentAsync(string? search = null) =>
-        ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api,
-            $"api/outgoing-letters/sent{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
+    {
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/sent?{string.Join("&", qs)}");
+    }
 
-    public Task<List<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null) =>
-        ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api,
-            $"api/outgoing-letters/archive{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15)
+    {
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/archive?{string.Join("&", qs)}");
+    }
 
     public Task<OutgoingLetterCartableStatsDto> GetStatsAsync() =>
         _api.GetAsync<OutgoingLetterCartableStatsDto>("api/outgoing-letters/stats");
@@ -157,13 +162,12 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task<List<LetterGroupDto>> GetGroupsAsync() =>
         ListOrPaged.GetAsync<LetterGroupDto>(_api, "api/outgoing-letters/groups?withMembers=true");
 
-    public Task<List<OutgoingLetterListItemDto>> GetSigningInboxAsync(string? search = null, bool? unsignedOnly = null)
+    public Task<PagedResult<OutgoingLetterListItemDto>> GetSigningInboxAsync(string? search = null, bool? unsignedOnly = null, int page = 1, int pageSize = 15)
     {
-        var qs = new List<string>();
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unsignedOnly == true) qs.Add("unsignedOnly=true");
-        var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/signing-inbox{q}");
+        return ListOrPaged.GetPagedAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/signing-inbox?{string.Join("&", qs)}");
     }
 
     public Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId) =>
@@ -219,8 +223,13 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task DeleteAttachmentAsync(int attachmentId) =>
         _api.DeleteAsync($"api/outgoing-letters/attachments/{attachmentId}");
 
-    public string AttachmentDownloadUrl(int attachmentId) =>
-        _api.BuildUrl($"api/outgoing-letters/attachments/{attachmentId}/download");
+    public string AttachmentDownloadUrl(int attachmentId)
+    {
+        var url = _api.BuildUrl($"api/outgoing-letters/attachments/{attachmentId}/download");
+        return string.IsNullOrWhiteSpace(_auth.Token)
+            ? url
+            : $"{url}?access_token={Uri.EscapeDataString(_auth.Token)}";
+    }
 
     // ==================== دبیرخانه نامه صادره ====================
 
