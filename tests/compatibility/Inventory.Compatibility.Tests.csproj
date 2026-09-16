@@ -15,5 +15,7 @@
     <ProjectReference Include="../../inventory/src/Inventory.Api/Inventory.Api.csproj" />
     <!-- Exercise the actual UI helper without starting a WebAssembly browser. -->
     <Compile Include="../../inventory/src/Inventory.Client/Extensions/Popover.cs" Link="Popover.cs" />
+    <!-- ابزار کنتراست رنگ (WCAG) — همان کدی که در UI استفاده می‌شود، اینجا هم تست می‌شود. -->
+    <Compile Include="../../inventory/src/Inventory.Client/Extensions/ColorContrast.cs" Link="ColorContrast.cs" />
   </ItemGroup>
 </Project>

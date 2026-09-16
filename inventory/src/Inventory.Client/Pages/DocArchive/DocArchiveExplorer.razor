@@ -253,7 +253,7 @@
                                     {
                                         var isSel = selectedTagIds.Contains(t.Id);
                                         <button type="button" class="btn btn-xs rounded-pill"
-                                                style="@(isSel ? $"background-color:{t.Color};color:#fff;border:2px solid #000;" : $"background-color:#fff;color:#333;border:1px solid {t.Color};")"
+                                                style="@(isSel ? $"{t.Color.ReadableBadgeStyle()};border:2px solid #101828;" : $"background-color:#fff;color:#1f2937;border:1.5px solid {t.Color};")"
                                                 @onclick="() => ToggleTagFilter(t.Id)">
                                             <i class="bi @(isSel ? "bi-check-circle-fill" : "bi-tag")"></i> @t.Name
                                         </button>
@@ -381,7 +381,7 @@
 
                                                 @foreach (var t in d.Tags)
                                                 {
-                                                    <span class="badge rounded-pill text-white" style="background-color:@t.Color;padding:3px 7px;">@t.Name</span>
+                                                    <span class="badge rounded-pill" style="@t.Color.ReadableBadgeStyle();padding:3px 7px;">@t.Name</span>
                                                 }
                                             </div>
                                             @if (!string.IsNullOrWhiteSpace(d.ContentSnippet))
@@ -482,7 +482,7 @@
 
                                                 @foreach (var t in d.Tags)
                                                 {
-                                                    <span class="badge rounded-pill text-white" style="background-color:@t.Color;padding:3px 7px;">
+                                                    <span class="badge rounded-pill" style="@t.Color.ReadableBadgeStyle();padding:3px 7px;">
                                                         @t.Name
                                                     </span>
                                                 }
@@ -720,15 +720,15 @@
                 <label class="form-check-label fw-700" for="csEn">شماره‌گذار خودکار کد مدرک فعال باشد</label>
             </div>
             <div class="row g-2">
-                <div class="col-4">
+                <div class="col-12 col-sm-4">
                     <label class="form-label fs-8">پیشوند کد</label>
                     <input class="form-control form-control-sm" @bind="codeSettings.Prefix" maxlength="10" />
                 </div>
-                <div class="col-4">
+                <div class="col-12 col-sm-4">
                     <label class="form-label fs-8">تعداد رقم</label>
                     <input class="form-control form-control-sm" type="number" min="3" max="10" @bind="codeSettings.Padding" />
                 </div>
-                <div class="col-4">
+                <div class="col-12 col-sm-4">
                     <label class="form-label fs-8">شماره بعدی</label>
                     <input class="form-control form-control-sm" type="number" min="1" @bind="codeSettings.NextNumber" />
                 </div>

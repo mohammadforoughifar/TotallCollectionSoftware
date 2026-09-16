@@ -258,16 +258,16 @@
                     {
                         <div class="card"><div class="card-body">
                             <div class="row g-2">
-                                <div class="col-4">
+                                <div class="col-12 col-sm-4">
                                     <label class="form-label small">نوع</label>
                                     <select class="form-select form-select-sm" @bind="aoKind"><option value="arrear">معوقه</option><option value="onacc">علی‌الحساب</option></select>
                                 </div>
-                                <div class="col-8">
+                                <div class="col-12 col-sm-8">
                                     <label class="form-label small">پرسنل</label>
                                     <select class="form-select form-select-sm" @bind="aoEmp"><option value="0">—</option>@foreach (var e in employees){<option value="@e.Id">@e.FirstName @e.LastName</option>}</select>
                                 </div>
-                                <div class="col-6"><label class="form-label small">مبلغ</label><input type="number" class="form-control form-control-sm" @bind="aoAmount" /></div>
-                                <div class="col-6"><label class="form-label small">عنوان (معوقه)</label><input class="form-control form-control-sm" @bind="aoTitle" /></div>
+                                <div class="col-12 col-sm-6"><label class="form-label small">مبلغ</label><input type="number" class="form-control form-control-sm" @bind="aoAmount" /></div>
+                                <div class="col-12 col-sm-6"><label class="form-label small">عنوان (معوقه)</label><input class="form-control form-control-sm" @bind="aoTitle" /></div>
                                 <div class="col-12"><button class="btn btn-sm btn-primary w-100" @onclick="SubmitArrear" disabled="@busy">ثبت</button></div>
                             </div>
                         </div></div>
@@ -572,14 +572,14 @@
 <Modal Visible="showItem" Title="آیتم حقوقی" Size="modal-lg" OnClose="() => showItem = false">
     <ChildContent>
     <div class="row g-2">
-        <div class="col-4"><label class="form-label small">کد (انگلیسی)</label><input class="form-control form-control-sm" dir="ltr" @bind="itCode" disabled="@(itId != 0)" /></div>
-        <div class="col-8"><label class="form-label small">عنوان</label><input class="form-control form-control-sm" @bind="itTitle" /></div>
-        <div class="col-4"><label class="form-label small">نوع</label><select class="form-select form-select-sm" @bind="itKind"><option value="Earning">مزایا</option><option value="Deduction">کسور</option></select></div>
-        <div class="col-4"><label class="form-label small">دسته</label><select class="form-select form-select-sm" @bind="itCat"><option value="Hokmi">حکمی</option><option value="Mazaya">مزایا</option><option value="Kosoor">کسور</option><option value="Other">سایر</option></select></div>
-        <div class="col-4"><label class="form-label small">ترتیب</label><input type="number" class="form-control form-control-sm" @bind="itSort" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">کد (انگلیسی)</label><input class="form-control form-control-sm" dir="ltr" @bind="itCode" disabled="@(itId != 0)" /></div>
+        <div class="col-12 col-sm-8"><label class="form-label small">عنوان</label><input class="form-control form-control-sm" @bind="itTitle" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">نوع</label><select class="form-select form-select-sm" @bind="itKind"><option value="Earning">مزایا</option><option value="Deduction">کسور</option></select></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">دسته</label><select class="form-select form-select-sm" @bind="itCat"><option value="Hokmi">حکمی</option><option value="Mazaya">مزایا</option><option value="Kosoor">کسور</option><option value="Other">سایر</option></select></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">ترتیب</label><input type="number" class="form-control form-control-sm" @bind="itSort" /></div>
         <div class="col-12"><label class="form-label small">فرمول (خالی = مبلغ ثابت)</label><input class="form-control form-control-sm" dir="ltr" @bind="itFormula" placeholder="OT_H*HOURLY_WAGE*OT_COEF_N" /></div>
-        <div class="col-6"><label class="form-label small">مبلغ ثابت</label><input type="number" class="form-control form-control-sm" @bind="itAmount" /></div>
-        <div class="col-6 d-flex gap-3 align-items-end pb-1">
+        <div class="col-12 col-sm-6"><label class="form-label small">مبلغ ثابت</label><input type="number" class="form-control form-control-sm" @bind="itAmount" /></div>
+        <div class="col-12 col-sm-6 d-flex gap-3 align-items-end pb-1">
             <div class="form-check"><input class="form-check-input" type="checkbox" @bind="itTax" id="it1" /><label class="form-check-label small" for="it1">مشمول مالیات</label></div>
             <div class="form-check"><input class="form-check-input" type="checkbox" @bind="itIns" id="it2" /><label class="form-check-label small" for="it2">مشمول بیمه</label></div>
             <div class="form-check"><input class="form-check-input" type="checkbox" @bind="itAcc" id="it3" /><label class="form-check-label small" for="it3">ذخیره</label></div>
@@ -600,12 +600,12 @@
     <ChildContent>
     <div class="row g-2">
         <div class="col-12"><label class="form-label small">پرسنل</label><select class="form-select form-select-sm" @bind="lnEmp"><option value="0">—</option>@foreach (var e in employees){<option value="@e.Id">@e.FirstName @e.LastName</option>}</select></div>
-        <div class="col-6"><label class="form-label small">نوع</label><select class="form-select form-select-sm" @bind="lnKind"><option value="Loan">وام</option><option value="Advance">مساعده</option></select></div>
-        <div class="col-6"><label class="form-label small">مبلغ</label><input type="number" class="form-control form-control-sm" @bind="lnAmount" /></div>
-        <div class="col-4"><label class="form-label small">تعداد اقساط</label><input type="number" class="form-control form-control-sm" @bind="lnN" /></div>
-        <div class="col-4"><label class="form-label small">مبلغ قسط (0=خودکار)</label><input type="number" class="form-control form-control-sm" @bind="lnMonthly" /></div>
-        <div class="col-2"><label class="form-label small">سال شروع</label><input type="number" class="form-control form-control-sm" @bind="lnY" /></div>
-        <div class="col-2"><label class="form-label small">ماه شروع</label><input type="number" class="form-control form-control-sm" @bind="lnM" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">نوع</label><select class="form-select form-select-sm" @bind="lnKind"><option value="Loan">وام</option><option value="Advance">مساعده</option></select></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">مبلغ</label><input type="number" class="form-control form-control-sm" @bind="lnAmount" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">تعداد اقساط</label><input type="number" class="form-control form-control-sm" @bind="lnN" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">مبلغ قسط (0=خودکار)</label><input type="number" class="form-control form-control-sm" @bind="lnMonthly" /></div>
+        <div class="col-12 col-sm-2"><label class="form-label small">سال شروع</label><input type="number" class="form-control form-control-sm" @bind="lnY" /></div>
+        <div class="col-12 col-sm-2"><label class="form-label small">ماه شروع</label><input type="number" class="form-control form-control-sm" @bind="lnM" /></div>
     </div>
     <div class="d-flex gap-2 mt-3">
         <button class="btn btn-sm btn-primary" @onclick="SubmitLoan" disabled="@busy">ثبت</button>
@@ -617,13 +617,13 @@
 <Modal Visible="showProfile" Title="پروفایل حقوقی" OnClose="() => showProfile = false">
     <ChildContent>
     <div class="row g-2">
-        <div class="col-4"><label class="form-label small">تعداد اولاد</label><input type="number" class="form-control form-control-sm" @bind="pfChildren" /></div>
-        <div class="col-8"><label class="form-label small">شماره بیمه</label><input class="form-control form-control-sm" @bind="pfIns" /></div>
-        <div class="col-4"><label class="form-label small">بانک</label><input class="form-control form-control-sm" @bind="pfBank" /></div>
-        <div class="col-8"><label class="form-label small">شبا</label><input class="form-control form-control-sm" dir="ltr" @bind="pfIban" /></div>
-        <div class="col-6"><label class="form-label small">شماره حساب</label><input type="number" class="form-control form-control-sm" @bind="pfAcc" /></div>
-        <div class="col-6"><label class="form-label small">معافیت مالیاتی اضافه</label><input type="number" class="form-control form-control-sm" @bind="pfExempt" /></div>
-        <div class="col-6 d-flex align-items-end"><div class="form-check"><input type="checkbox" class="form-check-input" id="pfHard" @bind="pfHard" /><label class="form-check-label small" for="pfHard">شغل سخت و زیان‌آور (۴٪ بیمه اضافه)</label></div></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">تعداد اولاد</label><input type="number" class="form-control form-control-sm" @bind="pfChildren" /></div>
+        <div class="col-12 col-sm-8"><label class="form-label small">شماره بیمه</label><input class="form-control form-control-sm" @bind="pfIns" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">بانک</label><input class="form-control form-control-sm" @bind="pfBank" /></div>
+        <div class="col-12 col-sm-8"><label class="form-label small">شبا</label><input class="form-control form-control-sm" dir="ltr" @bind="pfIban" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">شماره حساب</label><input type="number" class="form-control form-control-sm" @bind="pfAcc" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">معافیت مالیاتی اضافه</label><input type="number" class="form-control form-control-sm" @bind="pfExempt" /></div>
+        <div class="col-12 col-sm-6 d-flex align-items-end"><div class="form-check"><input type="checkbox" class="form-check-input" id="pfHard" @bind="pfHard" /><label class="form-check-label small" for="pfHard">شغل سخت و زیان‌آور (۴٪ بیمه اضافه)</label></div></div>
     </div>
     <div class="d-flex gap-2 mt-3">
         <button class="btn btn-sm btn-primary" @onclick="SubmitProfile" disabled="@busy">ذخیره</button>
@@ -636,8 +636,8 @@
     <ChildContent>
     <div class="row g-2">
         <div class="col-12"><label class="form-label small">پرسنل</label><select class="form-select form-select-sm" @bind="eiEmp"><option value="0">—</option>@foreach (var e in employees){<option value="@e.Id">@e.FirstName @e.LastName</option>}</select></div>
-        <div class="col-8"><label class="form-label small">آیتم</label><select class="form-select form-select-sm" @bind="eiItem"><option value="0">—</option>@foreach (var i in items){<option value="@i.Id">@i.Title (@i.Code)</option>}</select></div>
-        <div class="col-4"><label class="form-label small">مبلغ</label><input type="number" class="form-control form-control-sm" @bind="eiAmount" /></div>
+        <div class="col-12 col-sm-8"><label class="form-label small">آیتم</label><select class="form-select form-select-sm" @bind="eiItem"><option value="0">—</option>@foreach (var i in items){<option value="@i.Id">@i.Title (@i.Code)</option>}</select></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">مبلغ</label><input type="number" class="form-control form-control-sm" @bind="eiAmount" /></div>
     </div>
     <div class="d-flex gap-2 mt-3">
         <button class="btn btn-sm btn-primary" @onclick="SubmitEmpItem" disabled="@busy">ذخیره</button>
@@ -649,9 +649,9 @@
 <Modal Visible="showBracket" Title="پلکان مالیاتی" OnClose="() => showBracket = false">
     <ChildContent>
     <div class="row g-2">
-        <div class="col-4"><label class="form-label small">از</label><input type="number" class="form-control form-control-sm" @bind="brFrom" /></div>
-        <div class="col-4"><label class="form-label small">تا (0=∞)</label><input type="number" class="form-control form-control-sm" @bind="brTo" /></div>
-        <div class="col-4"><label class="form-label small">نرخ ٪</label><input type="number" step="0.1" class="form-control form-control-sm" @bind="brRate" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">از</label><input type="number" class="form-control form-control-sm" @bind="brFrom" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">تا (0=∞)</label><input type="number" class="form-control form-control-sm" @bind="brTo" /></div>
+        <div class="col-12 col-sm-4"><label class="form-label small">نرخ ٪</label><input type="number" step="0.1" class="form-control form-control-sm" @bind="brRate" /></div>
     </div>
     <div class="d-flex gap-2 mt-3">
         <button class="btn btn-sm btn-primary" @onclick="SubmitBracket" disabled="@busy">ذخیره</button>
@@ -664,8 +664,8 @@
     <ChildContent>
     <div class="row g-2">
         <div class="col-12"><label class="form-label small">پرسنل</label><select class="form-select form-select-sm" @bind="stEmp"><option value="0">—</option>@foreach (var e in employees){<option value="@e.Id">@e.FirstName @e.LastName</option>}</select></div>
-        <div class="col-6"><label class="form-label small">تاریخ خروج</label><input type="date" class="form-control form-control-sm" @bind="stDate" /></div>
-        <div class="col-6"><label class="form-label small">مرخصی استفاده‌نشده (خالی=خودکار)</label><input type="number" step="0.5" class="form-control form-control-sm" @bind="stUnused" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">تاریخ خروج</label><input type="date" class="form-control form-control-sm" @bind="stDate" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">مرخصی استفاده‌نشده (خالی=خودکار)</label><input type="number" step="0.5" class="form-control form-control-sm" @bind="stUnused" /></div>
     </div>
     <div class="d-flex gap-2 mt-3">
         <button class="btn btn-sm btn-primary" @onclick="SubmitSettle" disabled="@busy">محاسبه</button>

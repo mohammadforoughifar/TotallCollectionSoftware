@@ -11,8 +11,8 @@
     <ChildContent>
         <div class="row g-3">
             <div class="col-12"><label class="form-label">کاربر</label><SearchSelect Items="Users" @bind-Value="targetUser" /></div>
-            <div class="col-7"><label class="form-label">تاریخ پایان (تهران)</label><DatePicker @bind-Value="untilDate" AllowClear="true" /></div>
-            <div class="col-5"><label class="form-label" for="grant-time">ساعت پایان</label><input id="grant-time" type="time" class="form-control" value="@untilTime" @onchange="TimeChanged" /></div>
+            <div class="col-12 col-sm-7"><label class="form-label">تاریخ پایان (تهران)</label><DatePicker @bind-Value="untilDate" AllowClear="true" /></div>
+            <div class="col-12 col-sm-5"><label class="form-label" for="grant-time">ساعت پایان</label><input id="grant-time" type="time" class="form-control" value="@untilTime" @onchange="TimeChanged" /></div>
             <div class="col-12"><label><input type="checkbox" @bind="canDownload" /> اجازه دانلود</label></div>
         </div>
         <p class="small text-muted mt-3">فقط خواندن تا زمان تعیین‌شده؛ لغو این مجوز، دسترسی دائمی یا فایل قبلاً دریافت‌شده را حذف نمی‌کند.</p>

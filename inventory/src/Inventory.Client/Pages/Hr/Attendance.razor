@@ -133,19 +133,19 @@
                 @if (summary != null)
                 {
                     <div class="row g-3 text-center">
-                        <div class="col-4 col-sm">
+                        <div class="col-12 col-sm">
                             <div class="att-stat text-success"><i class="bi bi-check2-circle"></i><div>@Fa.Digits(summary.Present)</div><small>حاضر</small></div>
                         </div>
-                        <div class="col-4 col-sm">
+                        <div class="col-12 col-sm">
                             <div class="att-stat text-primary"><i class="bi bi-calendar2-check"></i><div>@D0(summary.Leave)</div><small>مرخصی</small></div>
                         </div>
-                        <div class="col-4 col-sm">
+                        <div class="col-12 col-sm">
                             <div class="att-stat text-danger"><i class="bi bi-x-circle"></i><div>@Fa.Digits(summary.Absent)</div><small>غایب</small></div>
                         </div>
-                        <div class="col-6 col-sm">
+                        <div class="col-12 col-sm">
                             <div class="att-stat text-warning"><i class="bi bi-clock"></i><div>@Fa.Digits(summary.Late)</div><small>با تاخیر</small></div>
                         </div>
-                        <div class="col-6 col-sm">
+                        <div class="col-12 col-sm">
                             <div class="att-stat text-info"><i class="bi bi-hourglass-split"></i><div>@Fa.Digits((int)Math.Round(summary.WorkMinutes / 60.0))<span class="small">ساعت</span></div><small>کل کارکرد</small></div>
                         </div>
                     </div>
@@ -355,15 +355,15 @@
                 </div>
             </div>
         </div>
-        <div class="col-4">
+        <div class="col-12 col-sm-4">
             <label class="form-label small fw-800">تاریخ</label>
             <DatePicker Value="leaveDate" ValueChanged="v => leaveDate = v" CssClass="form-control-sm" />
         </div>
-        <div class="col-4">
+        <div class="col-12 col-sm-4">
             <label class="form-label small fw-800">ساعت شروع</label>
             <input type="time" class="form-control form-control-sm" dir="ltr" value="@leaveStart" @onchange='e => leaveStart = e.Value?.ToString()' />
         </div>
-        <div class="col-4">
+        <div class="col-12 col-sm-4">
             <label class="form-label small fw-800">ساعت پایان</label>
             <input type="time" class="form-control form-control-sm" dir="ltr" value="@leaveEnd" @onchange='e => leaveEnd = e.Value?.ToString()' />
         </div>
@@ -404,7 +404,7 @@
 
 <style>
     .att-clock-card { background: linear-gradient(145deg, #f4f0ff 0%, #ffffff 50%, #eaf2ff 100%); border-radius: 20px; }
-    .att-date { color:#6d4dff; font-weight:800; font-size:1rem; }
+    .att-date { color:#5b21b6; font-weight:800; font-size:1rem; }
     .att-time { font-size: 3.2rem; font-weight: 900; color: #1c2130; letter-spacing: 2px; font-variant-numeric: tabular-nums; direction: ltr; }
     .att-btn { padding: .7rem 1.6rem; border-radius: 999px; font-weight:800; box-shadow:0 4px 12px rgba(0,0,0,.08); }
     .att-enter { background: linear-gradient(135deg,#2ec47e,#25a86b); color:#fff; }
@@ -416,7 +416,7 @@
     .att-status { background:#f8f7fd; padding:.8rem 1rem; border-radius:12px; display:inline-block; }
     .att-seg { padding:.35rem 0; border-bottom:1px dashed #e3ddf5; }
     .att-seg:last-of-type { border-bottom:none; }
-    .att-seg-num { min-width:26px; height:26px; border-radius:8px; background:#efeaff; color:#6d4dff; font-weight:800; font-size:.8rem; display:inline-flex; align-items:center; justify-content:center; }
+    .att-seg-num { min-width:26px; height:26px; border-radius:8px; background:#efeaff; color:#5b21b6; font-weight:800; font-size:.8rem; display:inline-flex; align-items:center; justify-content:center; }
     .att-seg-times { font-size:.9rem; font-variant-numeric: tabular-nums; }
     .att-now { color:#2ec47e; font-weight:800; font-size:.85rem; }
     .att-stat div { font-size: 1.4rem; font-weight: 900; }

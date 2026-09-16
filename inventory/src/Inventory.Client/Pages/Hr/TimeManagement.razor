@@ -171,7 +171,7 @@
                         <div class="card-header"><strong>ثبت درخواست مرخصی / ماموریت</strong></div>
                         <div class="card-body">
                             <div class="row g-2">
-                                <div class="col-6">
+                                <div class="col-12 col-sm-6">
                                     <label class="form-label small">نوع</label>
                                     <select class="form-select form-select-sm" @bind="lvType">
                                         <option value="Daily">مرخصی روزانه</option>
@@ -182,7 +182,7 @@
                                 </div>
                                 @if (lvType is "Daily" or "Hourly")
                                 {
-                                    <div class="col-6">
+                                    <div class="col-12 col-sm-6">
                                         <label class="form-label small">دسته</label>
                                         <select class="form-select form-select-sm" @bind="lvCat">
                                             <option value="Annual">استحقاقی</option>
@@ -197,7 +197,7 @@
                                 }
                                 else
                                 {
-                                    <div class="col-6">
+                                    <div class="col-12 col-sm-6">
                                         <label class="form-label small">ماموریت</label>
                                         <select class="form-select form-select-sm" @bind="lvKind">
                                             <option value="Inner">داخل شهر</option>
@@ -205,32 +205,32 @@
                                         </select>
                                     </div>
                                 }
-                                <div class="col-6">
+                                <div class="col-12 col-sm-6">
                                     <label class="form-label small">از تاریخ</label>
                                     <input type="date" class="form-control form-control-sm" @bind="lvFrom" />
                                 </div>
-                                <div class="col-6">
+                                <div class="col-12 col-sm-6">
                                     <label class="form-label small">تا تاریخ</label>
                                     <input type="date" class="form-control form-control-sm" @bind="lvTo" />
                                 </div>
                                 @if (lvType is "Hourly" or "HourlyMission")
                                 {
-                                    <div class="col-6">
+                                    <div class="col-12 col-sm-6">
                                         <label class="form-label small">از ساعت</label>
                                         <input class="form-control form-control-sm" dir="ltr" placeholder="08:00" @bind="lvStart" />
                                     </div>
-                                    <div class="col-6">
+                                    <div class="col-12 col-sm-6">
                                         <label class="form-label small">تا ساعت</label>
                                         <input class="form-control form-control-sm" dir="ltr" placeholder="10:00" @bind="lvEnd" />
                                     </div>
-                                    <div class="col-6">
+                                    <div class="col-12 col-sm-6">
                                         <label class="form-label small">ساعت</label>
                                         <input type="number" step="0.5" class="form-control form-control-sm" @bind="lvHours" />
                                     </div>
                                 }
                                 else
                                 {
-                                    <div class="col-6">
+                                    <div class="col-12 col-sm-6">
                                         <label class="form-label small">روز</label>
                                         <input type="number" step="0.5" class="form-control form-control-sm" @bind="lvDays" />
                                     </div>
@@ -328,8 +328,8 @@
                         <div class="card-header"><strong>اعمال ترددها</strong></div>
                         <div class="card-body">
                             <div class="row g-2">
-                                <div class="col-6"><label class="form-label small">از</label><input type="date" class="form-control form-control-sm" @bind="apFrom" /></div>
-                                <div class="col-6"><label class="form-label small">تا</label><input type="date" class="form-control form-control-sm" @bind="apTo" /></div>
+                                <div class="col-12 col-sm-6"><label class="form-label small">از</label><input type="date" class="form-control form-control-sm" @bind="apFrom" /></div>
+                                <div class="col-12 col-sm-6"><label class="form-label small">تا</label><input type="date" class="form-control form-control-sm" @bind="apTo" /></div>
                             </div>
                             <button class="btn btn-sm btn-success w-100 mt-2" @onclick="ApplyPunches" disabled="@busy">اعمال روی کارکرد</button>
                             @if (applyMsg != null){<div class="alert alert-info mt-2 small">@applyMsg</div>}
@@ -599,8 +599,8 @@
 <Modal Visible="showOt" Title="درخواست اضافه‌کاری" OnClose="() => showOt = false">
     <ChildContent>
     <div class="row g-2">
-        <div class="col-6"><label class="form-label small">تاریخ</label><input type="date" class="form-control form-control-sm" @bind="otDate" /></div>
-        <div class="col-6">
+        <div class="col-12 col-sm-6"><label class="form-label small">تاریخ</label><input type="date" class="form-control form-control-sm" @bind="otDate" /></div>
+        <div class="col-12 col-sm-6">
             <label class="form-label small">نوع</label>
             <select class="form-select form-select-sm" @bind="otType">
                 <option value="Normal">عادی</option>
@@ -608,8 +608,8 @@
                 <option value="Night">شب</option>
             </select>
         </div>
-        <div class="col-6"><label class="form-label small">از ساعت</label><input class="form-control form-control-sm" dir="ltr" placeholder="17:00" @bind="otStart" /></div>
-        <div class="col-6"><label class="form-label small">تا ساعت</label><input class="form-control form-control-sm" dir="ltr" placeholder="20:00" @bind="otEnd" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">از ساعت</label><input class="form-control form-control-sm" dir="ltr" placeholder="17:00" @bind="otStart" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">تا ساعت</label><input class="form-control form-control-sm" dir="ltr" placeholder="20:00" @bind="otEnd" /></div>
         <div class="col-12"><label class="form-label small">علت</label><input class="form-control form-control-sm" @bind="otReason" /></div>
     </div>
     <div class="d-flex gap-2 mt-3">
@@ -631,8 +631,8 @@
                 }
             </select>
         </div>
-        <div class="col-6"><label class="form-label small">از</label><input type="date" class="form-control form-control-sm" @bind="genFrom" /></div>
-        <div class="col-6"><label class="form-label small">تا</label><input type="date" class="form-control form-control-sm" @bind="genTo" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">از</label><input type="date" class="form-control form-control-sm" @bind="genFrom" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">تا</label><input type="date" class="form-control form-control-sm" @bind="genTo" /></div>
         <div class="col-12">
             <label class="form-label small">الگوی شیفت (شناسه‌ها با کاما — مثلاً 1,1,2,2)</label>
             <input class="form-control form-control-sm" dir="ltr" @bind="genPattern" />
@@ -649,8 +649,8 @@
 <Modal Visible="showMap" Title="نگاشت کد دستگاه" OnClose="() => showMap = false">
     <ChildContent>
     <div class="row g-2">
-        <div class="col-6"><label class="form-label small">کد دستگاه (خالی = همه)</label><input class="form-control form-control-sm" dir="ltr" @bind="mapDevice" /></div>
-        <div class="col-6"><label class="form-label small">کد پرسنلی دستگاه</label><input class="form-control form-control-sm" dir="ltr" @bind="mapCode" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">کد دستگاه (خالی = همه)</label><input class="form-control form-control-sm" dir="ltr" @bind="mapDevice" /></div>
+        <div class="col-12 col-sm-6"><label class="form-label small">کد پرسنلی دستگاه</label><input class="form-control form-control-sm" dir="ltr" @bind="mapCode" /></div>
         <div class="col-12">
             <label class="form-label small">کاربر سیستم</label>
             <select class="form-select form-select-sm" @bind="mapUserId">

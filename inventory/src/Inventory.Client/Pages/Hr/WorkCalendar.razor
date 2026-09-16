@@ -399,11 +399,11 @@ else
                         <div class="wc-panel h-100">
                             <div class="fw-800 mb-3"><i class="bi bi-clock-history text-primary"></i> ساعت کاری پیش‌فرض</div>
                             <div class="row g-2 mb-2">
-                                <div class="col-6">
+                                <div class="col-12 col-sm-6">
                                     <label class="wc-flabel">شروع</label>
                                     <input type="time" class="form-control form-control-sm" dir="ltr" value="@set.DefaultStart" @onchange='e => set.DefaultStart = e.Value?.ToString() ?? "08:00"' />
                                 </div>
-                                <div class="col-6">
+                                <div class="col-12 col-sm-6">
                                     <label class="wc-flabel">پایان</label>
                                     <input type="time" class="form-control form-control-sm" dir="ltr" value="@set.DefaultEnd" @onchange='e => set.DefaultEnd = e.Value?.ToString() ?? "16:30"' />
                                 </div>

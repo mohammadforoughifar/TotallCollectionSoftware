@@ -26,9 +26,9 @@
 .da-explorer ::deep .btn-xs { padding:.15rem .45rem; font-size:.75rem; }
 .da-toolbar { display:flex; align-items:center; gap:.6rem; }
 .da-search { position:relative; flex:1; min-width:120px; }
-.da-search > .bi { position:absolute; inset-inline-start:.8rem; top:50%; transform:translateY(-50%); color:#8b99ab; pointer-events:none; }
+.da-search > .bi { position:absolute; inset-inline-start:.8rem; top:50%; transform:translateY(-50%); color:#64748b; pointer-events:none; }
 .da-search .form-control { border-radius:9px; padding:.65rem 2.3rem; height:42px; font-size:1rem; border-color:#dfe5ed; background:#fff; }
-.da-search-clear { position:absolute; inset-inline-end:.45rem; top:50%; transform:translateY(-50%); border:0; background:transparent; color:#7e8da3; width:28px; height:28px; border-radius:6px; }
+.da-search-clear { position:absolute; inset-inline-end:.45rem; top:50%; transform:translateY(-50%); border:0; background:transparent; color:#5f6c80; width:28px; height:28px; border-radius:6px; }
 .da-filter-button { height:42px; white-space:nowrap; font-size:.95rem; }
 .da-view-actions { display:flex; align-items:center; gap:.5rem; margin-inline-start:auto; }
 .da-view-actions ::deep .btn { min-height:36px; }
@@ -36,23 +36,23 @@
 .da-location,.da-result-actions { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; min-width:0; }
 .da-location { flex:1; }
 .da-folder-name { overflow-wrap:anywhere; }
-.da-location > .bi { font-size:.6rem; color:#95a1b3; }
+.da-location > .bi { font-size:.6rem; color:#64748b; }
 .da-all-link { border:0; padding:0; background:none; color:#60718c; }
-.da-access { color:#7b8899; font-size:.75rem; }
-.da-result-count { white-space:nowrap; color:#7b8899; }
+.da-access { color:#5f6c80; font-size:.8rem; }
+.da-result-count { white-space:nowrap; color:#5f6c80; }
 .da-expiry-filter { display:inline-flex; align-items:center; gap:.25rem; border-radius:6px; padding:.1rem .45rem; background:#fff4da; color:#856526; }
 .da-expiry-filter button { background:none; border:0; color:inherit; padding:0; display:grid; place-items:center; font-size:1rem; }
 .da-explorer .da-filters { background:#f8fafc; border:1px solid #e1e7ef; }
 .da-filters .card-header { background:transparent; }
 .da-explorer .da-document-list > .card-body { padding:0; }
 .da-document-list .table { margin:0; }
-.da-document-list .table thead th { font-size:.9rem; font-weight:500; color:#7b8899; background:#f8fafc; padding:.8rem .7rem; border-bottom:1px solid #e6ebf1; }
+.da-document-list .table thead th { font-size:.9rem; font-weight:600; color:#5b6a80; background:#f8fafc; padding:.8rem .7rem; border-bottom:1px solid #e6ebf1; }
 .da-document-list .table tbody td { font-size:1rem; padding:.9rem .7rem; border-color:#edf1f5; }
 .da-document-list th:first-child { border-start-start-radius:12px; }
 .da-document-list th:last-child { border-start-end-radius:12px; }
 .da-document-title { color:#2c405c; font-weight:600; text-decoration:none; overflow-wrap:anywhere; }
 .da-document-title:hover { color:#315ec2; text-decoration:underline; }
-.da-document-folder,.da-customer-code { color:#8591a3; font-size:.85rem; font-weight:400; margin-top:.25rem; }
+.da-document-folder,.da-customer-code { color:#64748b; font-size:.87rem; font-weight:400; margin-top:.25rem; }
 .da-version-status { margin-top:.25rem; }
 .da-document-list ::deep .badge { font-weight:500; font-size:.85rem; }
 .doc-cards-wrap { padding:.75rem; background:#f8fafc; border-radius:12px; }

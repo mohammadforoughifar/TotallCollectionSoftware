@@ -282,11 +282,11 @@
 <Modal Visible="showCpc" Title='@(cpcEdit.Id == 0 ? "شناسه کالا/خدمت جدید" : "ویرایش شناسه")' OnClose="() => showCpc = false">
     <ChildContent>
     <div class="row g-3">
-        <div class="col-6">
+        <div class="col-12 col-sm-6">
             <label class="form-label small">کد CPC <span class="text-danger">*</span></label>
             <input class="form-control" dir="ltr" @bind="cpcEdit.Code" />
         </div>
-        <div class="col-6">
+        <div class="col-12 col-sm-6">
             <label class="form-label small">واحد</label>
             <input class="form-control" @bind="cpcEdit.Unit" placeholder="عدد / خدمت" />
         </div>
