@@ -12,6 +12,13 @@ namespace Inventory.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // اسکواش 8 مایگریشن در یک مایگریشن واحد — ترتیب اجرای اصلی حفظ شده است.
+            // هر مایگریشن داخل یک local function است تا return; و دامنهٔ متغیرهایش
+            // دقیقاً مثل قبل رفتار کند (مثلاً مسیر Sqlite ماژول چت).
+            // شناسهٔ قدیمی‌ترین مایگریشن نگه داشته شد تا دیتابیس‌های موجود چیزی pending نداشته باشند.
+            // ===== 20260911100108_SquashedInitial =====
+            void M_20260911100108_SquashedInitial()
+            {
             // اسکواش ۷۱ مایگریشن قبلی — ترتیب اجرای اصلی حفظ شده است.
 // ===== 20260814161634_InitialCreate.cs =====
             migrationBuilder.CreateTable(
@@ -5678,11 +5685,937 @@ IF OBJECT_ID(N'[StkSessions]', N'U') IS NOT NULL AND NOT EXISTS (SELECT 1 FROM s
                 table: "ProjectChangeRequests",
                 column: "Status");
         
+        
+            }
+
+            // ===== 20260911141302_AddHrCoreModule =====
+            void M_20260911141302_AddHrCoreModule()
+            {
+            migrationBuilder.CreateTable(
+                name: "HrContracts",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    ContractNo = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    Type = table.Column<int>(type: "int", nullable: false),
+                    StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    BaseSalary = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    JobTitle = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    OrgUnitId = table.Column<int>(type: "int", nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrContracts", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrDecrees",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    DecreeNo = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    Type = table.Column<int>(type: "int", nullable: false),
+                    EffectiveDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    NewPostTitle = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    NewOrgUnitId = table.Column<int>(type: "int", nullable: true),
+                    NewBaseSalary = table.Column<decimal>(type: "decimal(18,2)", nullable: true),
+                    NewStatus = table.Column<int>(type: "int", nullable: true),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    IsApplied = table.Column<bool>(type: "bit", nullable: false),
+                    AppliedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedByUserId = table.Column<int>(type: "int", nullable: true),
+                    CreatedByName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrDecrees", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrEmployees",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Code = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    FirstName = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    LastName = table.Column<string>(type: "nvarchar(80)", maxLength: 80, nullable: false),
+                    NationalCode = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    BirthDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Gender = table.Column<int>(type: "int", nullable: false),
+                    MaritalStatus = table.Column<int>(type: "int", nullable: false),
+                    Mobile = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: true),
+                    Email = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    Address = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
+                    HireDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    OrgUnitId = table.Column<int>(type: "int", nullable: true),
+                    PostTitle = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    ManagerId = table.Column<int>(type: "int", nullable: true),
+                    EmploymentType = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<int>(type: "int", nullable: false),
+                    SystemUserId = table.Column<int>(type: "int", nullable: true),
+                    BaseSalary = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrEmployees", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrOrgUnits",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    ParentId = table.Column<int>(type: "int", nullable: true),
+                    Type = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Name = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    ManagerEmployeeId = table.Column<int>(type: "int", nullable: true),
+                    Phone = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
+                    Address = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    SortOrder = table.Column<int>(type: "int", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrOrgUnits", x => x.Id);
+                });
+        
+            }
+
+            // ===== 20260911163445_AddHrTimePayModules =====
+            void M_20260911163445_AddHrTimePayModules()
+            {
+            migrationBuilder.CreateTable(
+                name: "HrDayExtras",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    WorkDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    OtNormalMinutes = table.Column<int>(type: "int", nullable: false),
+                    OtHolidayMinutes = table.Column<int>(type: "int", nullable: false),
+                    OtNightMinutes = table.Column<int>(type: "int", nullable: false),
+                    EnterLat = table.Column<double>(type: "float", nullable: true),
+                    EnterLng = table.Column<double>(type: "float", nullable: true),
+                    ExitLat = table.Column<double>(type: "float", nullable: true),
+                    ExitLng = table.Column<double>(type: "float", nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrDayExtras", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrDevicePunches",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DeviceCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    UserCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    PunchTime = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Direction = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    MappedUserId = table.Column<int>(type: "int", nullable: true),
+                    AppliedRecordId = table.Column<int>(type: "int", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrDevicePunches", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrDeviceUserMaps",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    DeviceCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: true),
+                    UserCode = table.Column<string>(type: "nvarchar(50)", maxLength: 50, nullable: false),
+                    SystemUserId = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrDeviceUserMaps", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrLeaveBalances",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    Year = table.Column<int>(type: "int", nullable: false),
+                    Category = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    TotalDays = table.Column<double>(type: "float", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrLeaveBalances", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrLeaveExtras",
+                columns: table => new
+                {
+                    LeaveRequestId = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Category = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    MissionKind = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: true),
+                    AllowanceAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrLeaveExtras", x => x.LeaveRequestId);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrOvertimeRequests",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Number = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    RequesterUserId = table.Column<int>(type: "int", nullable: false),
+                    RequesterName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    WorkDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    StartTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    EndTime = table.Column<TimeSpan>(type: "time", nullable: false),
+                    Minutes = table.Column<int>(type: "int", nullable: false),
+                    Type = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Reason = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    DecidedByUserId = table.Column<int>(type: "int", nullable: true),
+                    DecidedByName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    DecidedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrOvertimeRequests", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayArrears",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    Year = table.Column<int>(type: "int", nullable: false),
+                    Month = table.Column<int>(type: "int", nullable: false),
+                    Amount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    Title = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: true),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayArrears", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayEmployeeItems",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    ItemId = table.Column<int>(type: "int", nullable: false),
+                    Amount = table.Column<decimal>(type: "decimal(18,2)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayEmployeeItems", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayItems",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Code = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    Title = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    Kind = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Category = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Formula = table.Column<string>(type: "nvarchar(1000)", maxLength: 1000, nullable: true),
+                    DefaultAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    IsTaxable = table.Column<bool>(type: "bit", nullable: false),
+                    IsInsuranceable = table.Column<bool>(type: "bit", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    IsAccrual = table.Column<bool>(type: "bit", nullable: false),
+                    SortOrder = table.Column<int>(type: "int", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayItems", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayLoans",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Amount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    Installments = table.Column<int>(type: "int", nullable: false),
+                    MonthlyAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    PaidCount = table.Column<int>(type: "int", nullable: false),
+                    StartYear = table.Column<int>(type: "int", nullable: false),
+                    StartMonth = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayLoans", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayOnAccounts",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    Year = table.Column<int>(type: "int", nullable: false),
+                    Month = table.Column<int>(type: "int", nullable: false),
+                    Amount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    PaidDate = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayOnAccounts", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayProfiles",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    ChildrenCount = table.Column<int>(type: "int", nullable: false),
+                    InsuranceNo = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
+                    BankName = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: true),
+                    Iban = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
+                    AccountNo = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: true),
+                    ExtraTaxExempt = table.Column<decimal>(type: "decimal(18,2)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayProfiles", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayRuns",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Year = table.Column<int>(type: "int", nullable: false),
+                    Month = table.Column<int>(type: "int", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    SlipCount = table.Column<int>(type: "int", nullable: false),
+                    TotalGross = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalDeductions = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalNet = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalTax = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalInsuranceEmp = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalInsuranceEr = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    VoucherId = table.Column<int>(type: "int", nullable: true),
+                    CreatedBy = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LockedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayRuns", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPaySettlements",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    LeaveDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    YearsOfService = table.Column<double>(type: "float", nullable: false),
+                    LastBase = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    UnusedLeaveDays = table.Column<double>(type: "float", nullable: false),
+                    SeveranceAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    LeaveRefund = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    EydiProrata = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPaySettlements", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPaySlips",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    RunId = table.Column<int>(type: "int", nullable: false),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    UserId = table.Column<int>(type: "int", nullable: true),
+                    EmployeeName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    DaysPaid = table.Column<double>(type: "float", nullable: false),
+                    DaysWorked = table.Column<double>(type: "float", nullable: false),
+                    BaseAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    GrossEarnings = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TaxableAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    InsuranceableAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TaxAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    InsuranceAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    EmployerInsurance = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    OtherDeductions = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    NetPay = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    DetailsJson = table.Column<string>(type: "nvarchar(max)", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPaySlips", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPayTaxBrackets",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Year = table.Column<int>(type: "int", nullable: false),
+                    FromAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    ToAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    Rate = table.Column<decimal>(type: "decimal(18,2)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayTaxBrackets", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrRequestSteps",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    RequestType = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    RequestId = table.Column<int>(type: "int", nullable: false),
+                    StepNo = table.Column<int>(type: "int", nullable: false),
+                    Role = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    ApproverUserId = table.Column<int>(type: "int", nullable: true),
+                    ApproverName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    Note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    DecidedByUserId = table.Column<int>(type: "int", nullable: true),
+                    DecidedByName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    DecidedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrRequestSteps", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrShiftRosters",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    Date = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ShiftGroupId = table.Column<int>(type: "int", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrShiftRosters", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrTimeRules",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Key = table.Column<string>(type: "nvarchar(60)", maxLength: 60, nullable: false),
+                    Value = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Title = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrTimeRules", x => x.Id);
+                });
+        
+            }
+
+            // ===== 20260911173039_AddHrUserLink =====
+            void M_20260911173039_AddHrUserLink()
+            {
+            migrationBuilder.CreateTable(
+                name: "HrUserLinks",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrUserLinks", x => x.Id);
+                });
+        
+            }
+
+            // ===== 20260911183156_AddHrLegalPhase1 =====
+            void M_20260911183156_AddHrLegalPhase1()
+            {
+            migrationBuilder.AddColumn<string>(
+                name: "Kind",
+                table: "HrPayRuns",
+                type: "nvarchar(10)",
+                maxLength: 10,
+                nullable: false,
+                defaultValue: "");
+
+            migrationBuilder.AddColumn<bool>(
+                name: "IsHardJob",
+                table: "HrPayProfiles",
+                type: "bit",
+                nullable: false,
+                defaultValue: false);
+
+            migrationBuilder.CreateTable(
+                name: "HrMinWages",
+                columns: table => new
+                {
+                    Year = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    MonthlyWage = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    DailyWage = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    EffectiveDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Note = table.Column<string>(type: "nvarchar(300)", maxLength: 300, nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrMinWages", x => x.Year);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrNursingBreaks",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    ChildBirthDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    DailyHours = table.Column<double>(type: "float", nullable: false),
+                    StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrNursingBreaks", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrProbations",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Months = table.Column<int>(type: "int", nullable: false),
+                    SkillLevel = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    ResultNote = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    DecidedBy = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    DecidedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrProbations", x => x.Id);
+                });
+        
+            }
+
+            // ===== 20260911200116_AddHrAttendPhase2 =====
+            void M_20260911200116_AddHrAttendPhase2()
+            {
+            migrationBuilder.CreateTable(
+                name: "HrAttendCloses",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Year = table.Column<int>(type: "int", nullable: false),
+                    Month = table.Column<int>(type: "int", nullable: false),
+                    IsClosed = table.Column<bool>(type: "bit", nullable: false),
+                    ClosedBy = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    ClosedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrAttendCloses", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrOtApprovals",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    UserId = table.Column<int>(type: "int", nullable: false),
+                    WorkDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ReqNormalMin = table.Column<int>(type: "int", nullable: false),
+                    ReqHolidayMin = table.Column<int>(type: "int", nullable: false),
+                    ReqNightMin = table.Column<int>(type: "int", nullable: false),
+                    ApprNormalMin = table.Column<int>(type: "int", nullable: false),
+                    ApprHolidayMin = table.Column<int>(type: "int", nullable: false),
+                    ApprNightMin = table.Column<int>(type: "int", nullable: false),
+                    Source = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    OvertimeRequestId = table.Column<int>(type: "int", nullable: true),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    DecidedByUserId = table.Column<int>(type: "int", nullable: true),
+                    DecidedByName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    DecidedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrOtApprovals", x => x.Id);
+                });
+        
+            }
+
+            // ===== 20260911211508_AddHrPayFilingPhase3 =====
+            void M_20260911211508_AddHrPayFilingPhase3()
+            {
+            migrationBuilder.CreateTable(
+                name: "HrPayFilings",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    RunId = table.Column<int>(type: "int", nullable: false),
+                    Kind = table.Column<string>(type: "nvarchar(10)", maxLength: 10, nullable: false),
+                    FileName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    Sha256 = table.Column<string>(type: "nvarchar(64)", maxLength: 64, nullable: false),
+                    SlipCount = table.Column<int>(type: "int", nullable: false),
+                    TotalGross = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalTax = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalInsurance = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    TotalNet = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    Version = table.Column<int>(type: "int", nullable: false),
+                    FiledBy = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    FiledAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    ReceiptNo = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPayFilings", x => x.Id);
+                });
+        
+            }
+
+            // ===== 20260911213808_AddHrPerfPhase4 =====
+            void M_20260911213808_AddHrPerfPhase4()
+            {
+            migrationBuilder.CreateTable(
+                name: "HrPerfKpis",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PeriodId = table.Column<int>(type: "int", nullable: false),
+                    Code = table.Column<string>(type: "nvarchar(30)", maxLength: 30, nullable: false),
+                    Title = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
+                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    Weight = table.Column<double>(type: "float", nullable: false),
+                    MaxScore = table.Column<double>(type: "float", nullable: false),
+                    Category = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPerfKpis", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPerfPeriods",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    Title = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: false),
+                    Year = table.Column<int>(type: "int", nullable: false),
+                    StartDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    EndDate = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    BonusMonthSalary = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    MinScoreForBonus = table.Column<double>(type: "float", nullable: false),
+                    CreatedBy = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPerfPeriods", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPerfResults",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PeriodId = table.Column<int>(type: "int", nullable: false),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    TotalScore = table.Column<double>(type: "float", nullable: false),
+                    Grade = table.Column<string>(type: "nvarchar(5)", maxLength: 5, nullable: false),
+                    BonusAmount = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
+                    PayYear = table.Column<int>(type: "int", nullable: true),
+                    PayMonth = table.Column<int>(type: "int", nullable: true),
+                    Status = table.Column<string>(type: "nvarchar(20)", maxLength: 20, nullable: false),
+                    FinalizedBy = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    FinalizedAt = table.Column<DateTime>(type: "datetime2", nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPerfResults", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "HrPerfScores",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "int", nullable: false)
+                        .Annotation("SqlServer:Identity", "1, 1"),
+                    PeriodId = table.Column<int>(type: "int", nullable: false),
+                    EmployeeId = table.Column<int>(type: "int", nullable: false),
+                    KpiId = table.Column<int>(type: "int", nullable: false),
+                    Score = table.Column<double>(type: "float", nullable: false),
+                    ScoredByUserId = table.Column<int>(type: "int", nullable: false),
+                    ScoredByName = table.Column<string>(type: "nvarchar(150)", maxLength: 150, nullable: true),
+                    Note = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: true),
+                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_HrPerfScores", x => x.Id);
+                });
+        
+            }
+
+            M_20260911100108_SquashedInitial();
+            M_20260911141302_AddHrCoreModule();
+            M_20260911163445_AddHrTimePayModules();
+            M_20260911173039_AddHrUserLink();
+            M_20260911183156_AddHrLegalPhase1();
+            M_20260911200116_AddHrAttendPhase2();
+            M_20260911211508_AddHrPayFilingPhase3();
+            M_20260911213808_AddHrPerfPhase4();
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // معکوسِ ترتیب Up
+            // ===== 20260911213808_AddHrPerfPhase4 =====
+            void M_20260911213808_AddHrPerfPhase4()
+            {
+            migrationBuilder.DropTable(
+                name: "HrPerfKpis");
+
+            migrationBuilder.DropTable(
+                name: "HrPerfPeriods");
+
+            migrationBuilder.DropTable(
+                name: "HrPerfResults");
+
+            migrationBuilder.DropTable(
+                name: "HrPerfScores");
+        
+            }
+
+            // ===== 20260911211508_AddHrPayFilingPhase3 =====
+            void M_20260911211508_AddHrPayFilingPhase3()
+            {
+            migrationBuilder.DropTable(
+                name: "HrPayFilings");
+        
+            }
+
+            // ===== 20260911200116_AddHrAttendPhase2 =====
+            void M_20260911200116_AddHrAttendPhase2()
+            {
+            migrationBuilder.DropTable(
+                name: "HrAttendCloses");
+
+            migrationBuilder.DropTable(
+                name: "HrOtApprovals");
+        
+            }
+
+            // ===== 20260911183156_AddHrLegalPhase1 =====
+            void M_20260911183156_AddHrLegalPhase1()
+            {
+            migrationBuilder.DropTable(
+                name: "HrMinWages");
+
+            migrationBuilder.DropTable(
+                name: "HrNursingBreaks");
+
+            migrationBuilder.DropTable(
+                name: "HrProbations");
+
+            migrationBuilder.DropColumn(
+                name: "Kind",
+                table: "HrPayRuns");
+
+            migrationBuilder.DropColumn(
+                name: "IsHardJob",
+                table: "HrPayProfiles");
+        
+            }
+
+            // ===== 20260911173039_AddHrUserLink =====
+            void M_20260911173039_AddHrUserLink()
+            {
+            migrationBuilder.DropTable(
+                name: "HrUserLinks");
+        
+            }
+
+            // ===== 20260911163445_AddHrTimePayModules =====
+            void M_20260911163445_AddHrTimePayModules()
+            {
+            migrationBuilder.DropTable(
+                name: "HrDayExtras");
+
+            migrationBuilder.DropTable(
+                name: "HrDevicePunches");
+
+            migrationBuilder.DropTable(
+                name: "HrDeviceUserMaps");
+
+            migrationBuilder.DropTable(
+                name: "HrLeaveBalances");
+
+            migrationBuilder.DropTable(
+                name: "HrLeaveExtras");
+
+            migrationBuilder.DropTable(
+                name: "HrOvertimeRequests");
+
+            migrationBuilder.DropTable(
+                name: "HrPayArrears");
+
+            migrationBuilder.DropTable(
+                name: "HrPayEmployeeItems");
+
+            migrationBuilder.DropTable(
+                name: "HrPayItems");
+
+            migrationBuilder.DropTable(
+                name: "HrPayLoans");
+
+            migrationBuilder.DropTable(
+                name: "HrPayOnAccounts");
+
+            migrationBuilder.DropTable(
+                name: "HrPayProfiles");
+
+            migrationBuilder.DropTable(
+                name: "HrPayRuns");
+
+            migrationBuilder.DropTable(
+                name: "HrPaySettlements");
+
+            migrationBuilder.DropTable(
+                name: "HrPaySlips");
+
+            migrationBuilder.DropTable(
+                name: "HrPayTaxBrackets");
+
+            migrationBuilder.DropTable(
+                name: "HrRequestSteps");
+
+            migrationBuilder.DropTable(
+                name: "HrShiftRosters");
+
+            migrationBuilder.DropTable(
+                name: "HrTimeRules");
+        
+            }
+
+            // ===== 20260911141302_AddHrCoreModule =====
+            void M_20260911141302_AddHrCoreModule()
+            {
+            migrationBuilder.DropTable(
+                name: "HrContracts");
+
+            migrationBuilder.DropTable(
+                name: "HrDecrees");
+
+            migrationBuilder.DropTable(
+                name: "HrEmployees");
+
+            migrationBuilder.DropTable(
+                name: "HrOrgUnits");
+        
+            }
+
+            // ===== 20260911100108_SquashedInitial =====
+            void M_20260911100108_SquashedInitial()
+            {
             // برگرداندن اسکواش — ترتیب معکوس اجرای اصلی.
 // ===== 20260907090000_AddProjectChangeRequests.cs =====
             migrationBuilder.DropTable(
@@ -7125,6 +8058,17 @@ IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL
             migrationBuilder.DropTable(
                 name: "Transactions");
         
+        
+            }
+
+            M_20260911213808_AddHrPerfPhase4();
+            M_20260911211508_AddHrPayFilingPhase3();
+            M_20260911200116_AddHrAttendPhase2();
+            M_20260911183156_AddHrLegalPhase1();
+            M_20260911173039_AddHrUserLink();
+            M_20260911163445_AddHrTimePayModules();
+            M_20260911141302_AddHrCoreModule();
+            M_20260911100108_SquashedInitial();
         }
     }
 }
