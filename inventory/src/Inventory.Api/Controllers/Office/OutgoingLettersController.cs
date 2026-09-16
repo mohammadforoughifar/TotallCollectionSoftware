@@ -61,31 +61,31 @@ public class OutgoingLettersController : RbacControllerBase
     // ==================== کارتابل — دریافتی (شامل امضا) و ارسالی ====================
 
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
     }
 
     [HttpGet("signing-inbox")]
-    public async Task<IActionResult> SigningInbox([FromQuery] string? search, [FromQuery] bool? unsignedOnly)
+    public async Task<IActionResult> SigningInbox([FromQuery] string? search, [FromQuery] bool? unsignedOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSigningInboxAsync(MyUserId, search, unsignedOnly));
+        return Ok(await _letters.GetSigningInboxAsync(MyUserId, search, unsignedOnly, page, pageSize));
     }
 
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive([FromQuery] string? search)
+    public async Task<IActionResult> Archive([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetArchiveAsync(MyUserId, search));
+        return Ok(await _letters.GetArchiveAsync(MyUserId, search, page, pageSize));
     }
 
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
     }
 
     [HttpGet("stats")]
@@ -149,10 +149,10 @@ public class OutgoingLettersController : RbacControllerBase
     public class UpdateStatusDto { public int Status { get; set; } }
 
     [HttpGet("pick")]
-    public async Task<IActionResult> Pick([FromQuery] string? search)
+    public async Task<IActionResult> Pick([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.PickListAsync(MyUserId, search));
+        return Ok(await _letters.PickListAsync(MyUserId, search, page, pageSize));
     }
 
     // ==================== امضا کنندگان — بر اساس دسترسی OutgoingLetters.Sign ====================
@@ -302,6 +302,17 @@ public class OutgoingLettersController : RbacControllerBase
     {
         var isBayegani = await _erja.ToggleBayeganiAsync(erjaId, MyUserId);
         return Ok(new { isBayegani });
+    }
+
+    [HttpPost("erja/batch-bayegani")]
+    public async Task<IActionResult> BatchBayegani([FromBody] BatchBayeganiRequest dto)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (dto == null || dto.ErjaIds == null || dto.ErjaIds.Count == 0)
+            return BadRequest(new { message = "هیچ نامه‌ای برای بایگانی انتخاب نشده است." });
+
+        var count = await _erja.BatchBayeganiAsync(dto.ErjaIds, MyUserId, dto.Description);
+        return Ok(new { count, message = $"{count} نامه با موفقیت بایگانی شدند." });
     }
 
     [HttpGet("amalgars")]

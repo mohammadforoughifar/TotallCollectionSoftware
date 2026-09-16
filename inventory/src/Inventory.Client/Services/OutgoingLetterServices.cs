@@ -22,6 +22,7 @@ public interface IOutgoingLetterService
     /// <summary>نشان‌کردن (ستاره) نامه صادره ارسالی توسط فرستنده — روی خود نامه</summary>
     Task<bool> ToggleLetterNeshanAsync(int letterId);
     Task<bool> ToggleBayeganiAsync(int erjaId);
+    Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
     Task<List<OutgoingPishnevisDto>> GetPishnevisListAsync(string? search = null);
     Task<OutgoingPishnevisDto> GetPishnevisAsync(int id);
@@ -123,6 +124,14 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public async Task<bool> ToggleBayeganiAsync(int erjaId) =>
         (await _api.PostAsync<BayeganiResponse>($"api/outgoing-letters/erja/{erjaId}/bayegani")).IsBayegani;
+
+    public async Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null)
+    {
+        var res = await _api.PostAsync<BatchBayeganiRes>("api/outgoing-letters/erja/batch-bayegani", new { erjaIds, description });
+        return res?.Count ?? erjaIds.Count;
+    }
+
+    private class BatchBayeganiRes { public int Count { get; set; } }
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         _api.GetAsync<List<AmalgarDto>>("api/outgoing-letters/amalgars");

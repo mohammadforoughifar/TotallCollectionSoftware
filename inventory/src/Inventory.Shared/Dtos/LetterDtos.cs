@@ -8,6 +8,12 @@ namespace Inventory.Shared.Dtos;
 //  با تطبیق کاربر به int UserId (ساختار فعلی پروژه)
 // ============================================================
 
+public class BatchBayeganiRequest
+{
+    public List<int> ErjaIds { get; set; } = new();
+    public string? Description { get; set; }
+}
+
 /// <summary>گیرنده‌ی نامه/ارجاع — معادل SematUserFullName (فعلاً بر پایه کاربر)</summary>
 public class LetterReciverDto
 {
