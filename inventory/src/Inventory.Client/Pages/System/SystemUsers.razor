@@ -101,8 +101,8 @@
 
 @if (ShowForm)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @onclick="CloseForm">
-        <div class="modal-dialog modal-dialog-centered" @onclick="() => { }" @onclick:stopPropagation="true">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">@(editingUser ? "ویرایش کاربر" : "افزودن کاربر جدید")</h5>
@@ -214,8 +214,8 @@
 @* ---------- مودال تغییر عکس کاربر ---------- *@
 @if (ShowChangePhoto)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)" @onclick="CloseChangePhoto">
-        <div class="modal-dialog modal-dialog-centered" @onclick="() => { }" @onclick:stopPropagation="true">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="bi bi-camera-fill text-info"></i> تغییر عکس — @(changePhotoUser != null ? changePhotoUser.FirstName + " " + changePhotoUser.LastName : "")</h5>

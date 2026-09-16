@@ -771,8 +771,8 @@ else
 @* ================== مودال تحویل دیجیتال ================== *@
 @if (ShowHandoverModal)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)" @onclick="CloseHandover">
-        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" @onclick="() => { }" @onclick:stopPropagation="true">
+    <div class="modal fade show d-block" tabindex="-1" style="background:rgba(0,0,0,.55)">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title"><i class="bi bi-box-seam-fill text-success"></i> چک‌لیست تحویل دیجیتال — سیستم #@Id</h5>
@@ -867,12 +867,12 @@ else
 .detail-box p{margin:0;color:#c8c9d8;font-size:.95rem;}
 .hw-card{display:flex;gap:.9rem;align-items:flex-start;background:#ffffff;border:1px solid #e2e6f1;border-left:4px solid #8e5cff;border-radius:14px;padding:1rem 1.1rem;height:100%;transition:all .18s ease;box-shadow:0 4px 16px rgba(45,55,110,.12);font-family:'Vazirmatn','Vazir',Tahoma,'Segoe UI',sans-serif;margin-bottom:.65rem;}
 .hw-card:hover{border-color:#8e5cff;box-shadow:0 8px 22px rgba(120,90,255,.16);transform:translateY(-2px);}
-.hw-icon{font-size:1.4rem;color:#6d4dff;background:#efeaff;border:1px solid #ded2ff;border-radius:12px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.hw-icon{font-size:1.4rem;color:#5b21b6;background:#efeaff;border:1px solid #ded2ff;border-radius:12px;width:52px;height:52px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .hw-title{font-size:.78rem;color:#5f688a;margin-bottom:.3rem;font-weight:800;letter-spacing:.2px;}
 .hw-value{font-weight:800;font-size:1rem;color:#1c2130;word-break:break-word;line-height:1.7;}
 .hw-sub{font-size:.85rem;color:#3c4358;margin-top:.3rem;font-weight:600;}
 .hw-disk{display:flex;align-items:center;gap:.7rem;background:#f5f6fb;border:1px solid #e3e7f2;border-radius:10px;padding:.55rem .8rem;margin-top:.45rem;font-size:.9rem;color:#252a3a;font-weight:600;}
-.hw-disk .bi{color:#6d4dff;}
+.hw-disk .bi{color:#5b21b6;}
 .ram-bar{display:flex;height:26px;border-radius:9px;overflow:hidden;border:1px solid #d5d9e6;background:#eef0f7;}
 .ram-seg{display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:#ffffff;min-width:46px;text-shadow:0 1px 2px rgba(0,0,0,.35);transition:filter .15s;}
 .ram-seg:hover{filter:brightness(1.12);}
@@ -913,7 +913,7 @@ else
 .hc-list{display:flex;flex-direction:column;gap:.55rem;}
 .hc-row{display:flex;align-items:center;gap:.7rem;background:#f8f9fd;border:1px solid #edf0f8;border-radius:12px;padding:.5rem .8rem;transition:all .15s ease;}
 .hc-row:hover{border-color:#c9b8ff;box-shadow:0 3px 10px rgba(120,90,255,.12);}
-.hc-icon{width:38px;height:38px;border-radius:11px;background:#efeaff;border:1px solid #ded2ff;color:#6d4dff;display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex-shrink:0;}
+.hc-icon{width:38px;height:38px;border-radius:11px;background:#efeaff;border:1px solid #ded2ff;color:#5b21b6;display:flex;align-items:center;justify-content:center;font-size:1.05rem;flex-shrink:0;}
 .hc-info{flex:1;min-width:0;}
 .hc-lbl{font-size:.85rem;color:#1c2130;margin-bottom:.3rem;display:flex;flex-wrap:wrap;align-items:baseline;gap:.45rem;}
 .hc-note{font-size:.73rem;color:#8a90a5;font-weight:600;}
@@ -953,7 +953,7 @@ else
 .uh-list{display:flex;flex-direction:column;gap:.5rem;}
 .uh-item{display:flex;align-items:center;gap:.8rem;background:#f8f9fd;border:1px solid #edf0f8;border-radius:12px;padding:.6rem .9rem;flex-wrap:wrap;}
 .uh-current{background:linear-gradient(135deg,#f0fbf4,#eef6ff);border-color:#b9e8cf;}
-.uh-avatar{width:40px;height:40px;border-radius:50%;background:#efeaff;border:1px solid #ded2ff;color:#6d4dff;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;}
+.uh-avatar{width:40px;height:40px;border-radius:50%;background:#efeaff;border:1px solid #ded2ff;color:#5b21b6;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;}
 .uh-info{flex:1;min-width:160px;}
 .uh-staff{font-size:.75rem;color:#8a90a5;background:#fff;border:1px solid #dfe3ee;border-radius:6px;padding:.1rem .45rem;margin-inline-start:.4rem;}
 .uh-dates{font-size:.78rem;color:#5f688a;font-weight:700;white-space:nowrap;}
@@ -977,7 +977,7 @@ else
 .rc-item{display:flex;align-items:center;gap:.8rem;background:#f8f9fd;border:1px solid #edf0f8;border-radius:11px;padding:.55rem .85rem;}
 .rc-completed{background:#f0fbf4;border-color:#b9e8cf;}
 .rc-failed{background:#fdecef;border-color:#f3b9c8;}
-.rc-icon{width:36px;height:36px;border-radius:10px;background:#fff;border:1px solid #e3e7f2;color:#6d4dff;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;}
+.rc-icon{width:36px;height:36px;border-radius:10px;background:#fff;border:1px solid #e3e7f2;color:#5b21b6;display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;}
 .rc-info{flex:1;min-width:140px;}
 /* ====== PDF ====== */
 .pdf-btn:hover:not(:disabled){background:#e0245e;color:#fff;}

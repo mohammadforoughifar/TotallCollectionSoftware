@@ -15,7 +15,7 @@
 {
 @* استایل inline: انیمیشن/ترنسفورم والد را خنثی می‌کند تا position:fixed نسبت به ویوپورت بماند *@
 <div class="ltx" style="animation:none;transform:none">
-    <div class="ov" @onclick="Close"></div>
+    <div class="ov"></div>
     <div class="sheet" @onclick="CloseCombos">
         <div class="sheet-h">
             <b><i class="bi bi-envelope-plus" style="color:var(--p2)"></i> @SheetTitle</b>
@@ -140,7 +140,7 @@
     @* ---------- مودال انتخاب نامه مرتبط ---------- *@
     @if (relOpen)
     {
-        <div class="gov" @onclick="CloseRelIfSelf">
+        <div class="gov">
             <div class="gmodal" style="width:min(640px,96vw)" @onclick:stopPropagation="true">
                 <div class="gm-h">
                     <div class="ttl"><b><i class="bi bi-link-45deg" style="color:var(--p2)"></i> ثبت نامه مرتبط</b><small>نوع رابطه را انتخاب و نامه‌ها را علامت بزنید</small></div>
@@ -375,7 +375,6 @@
         await SearchRel();
     }
 
-    private void CloseRelIfSelf() => relOpen = false;
 
     private async Task SearchRel()
     {

@@ -1,6 +1,11 @@
+@* ================== مودال مشترک سامانه ==================
+   قرارداد بستن مودال: فقط «دکمهٔ ×»، دکمهٔ «بستن» یا «انصراف» (و کلید Esc که همان × را کلیک می‌کند).
+   کلیک روی پس‌زمینهٔ تیره، مودال را نمی‌بندد — تا دادهٔ واردشدهٔ کاربر تصادفی از دست نرود.
+   این قرارداد در همهٔ ماژول‌ها الزامی است و با تست tests/compatibility/ModalDismissTests.cs محافظت می‌شود.
+   ========================================================== *@
 @if (Visible)
 {
-    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(15,23,42,.5)" @onclick="Close">
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(15,23,42,.5)">
         <div class="modal-dialog modal-dialog-centered @SizeClass" @onclick:stopPropagation="true">
             <div class="modal-content">
                 <div class="modal-header">
