@@ -89,15 +89,15 @@ public class LetterService : ILetterService
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
         var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return _api.GetAsync<List<InnerLetterListItemDto>>($"api/letters/inbox{q}");
+        return ListOrPaged.GetAsync<InnerLetterListItemDto>(_api, $"api/letters/inbox{q}");
     }
 
     public Task<List<InnerLetterListItemDto>> GetSentAsync(string? search = null) =>
-        _api.GetAsync<List<InnerLetterListItemDto>>(
+        ListOrPaged.GetAsync<InnerLetterListItemDto>(_api,
             $"api/letters/sent{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
 
     public Task<List<InnerLetterListItemDto>> GetArchiveAsync(string? search = null) =>
-        _api.GetAsync<List<InnerLetterListItemDto>>(
+        ListOrPaged.GetAsync<InnerLetterListItemDto>(_api,
             $"api/letters/archive{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
 
     public Task<LetterCartableStatsDto> GetStatsAsync() =>

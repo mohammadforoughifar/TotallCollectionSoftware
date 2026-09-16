@@ -75,15 +75,15 @@ public class OutgoingLetterService : IOutgoingLetterService
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
         var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return _api.GetAsync<List<OutgoingLetterListItemDto>>($"api/outgoing-letters/inbox{q}");
+        return ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/inbox{q}");
     }
 
     public Task<List<OutgoingLetterListItemDto>> GetSentAsync(string? search = null) =>
-        _api.GetAsync<List<OutgoingLetterListItemDto>>(
+        ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api,
             $"api/outgoing-letters/sent{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
 
     public Task<List<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null) =>
-        _api.GetAsync<List<OutgoingLetterListItemDto>>(
+        ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api,
             $"api/outgoing-letters/archive{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
 
     public Task<OutgoingLetterCartableStatsDto> GetStatsAsync() =>
@@ -163,7 +163,7 @@ public class OutgoingLetterService : IOutgoingLetterService
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unsignedOnly == true) qs.Add("unsignedOnly=true");
         var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return _api.GetAsync<List<OutgoingLetterListItemDto>>($"api/outgoing-letters/signing-inbox{q}");
+        return ListOrPaged.GetAsync<OutgoingLetterListItemDto>(_api, $"api/outgoing-letters/signing-inbox{q}");
     }
 
     public Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId) =>

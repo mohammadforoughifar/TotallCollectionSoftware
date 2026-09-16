@@ -312,9 +312,10 @@ public class ErjaService : IErjaService
                     LetterId = erja.SourceId,
                     UserId = userId,
                     IsFolder = false,
-                    Name = string.IsNullOrWhiteSpace(description) ? "بایگانی گروهی" : description.Trim(),
-                    TypeBayegani = 1,
-                    CreatedAt = DateTime.Now
+                    // موجودیت LetterBayegani ستون «Title» دارد (نه Name) و CreatedAt ندارد؛
+                    // برای جلوگیری از تغییر اسکیمای دیتابیس، همان Title پر می‌شود.
+                    Title = string.IsNullOrWhiteSpace(description) ? "بایگانی گروهی" : description.Trim(),
+                    TypeBayegani = 1
                 });
             }
         }

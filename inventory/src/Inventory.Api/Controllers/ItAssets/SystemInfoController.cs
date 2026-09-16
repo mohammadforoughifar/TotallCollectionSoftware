@@ -682,27 +682,27 @@ public class SystemInfoController : ControllerBase
         _db.SystemVolumes.RemoveRange(_db.SystemVolumes.Where(x => x.SystemInfoId == systemInfoId));
     }
 
-    private static string RootStr(System.Text.Json.JsonElement root, string prop)
-        => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? (v.GetString() ?? "") : "";
+    private static string RootStr(JsonElement root, string prop)
+        => root.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
 
-    private static IEnumerable<System.Text.Json.JsonElement> EnumArray(System.Text.Json.JsonElement root, string prop)
+    private static IEnumerable<JsonElement> EnumArray(JsonElement root, string prop)
     {
-        if (root.TryGetProperty(prop, out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+        if (root.TryGetProperty(prop, out var arr) && arr.ValueKind == JsonValueKind.Array)
             foreach (var e in arr.EnumerateArray())
                 yield return e;
     }
 
-    private static string Str(System.Text.Json.JsonElement e, string prop)
-        => e.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? (v.GetString() ?? "") : "";
+    private static string Str(JsonElement e, string prop)
+        => e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
 
-    private static int Int(System.Text.Json.JsonElement e, string prop)
-        => e.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
+    private static int Int(JsonElement e, string prop)
+        => e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
 
-    private static double Dbl(System.Text.Json.JsonElement e, string prop)
-        => e.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number && v.TryGetDouble(out var d) ? d : 0;
+    private static double Dbl(JsonElement e, string prop)
+        => e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var d) ? d : 0;
 
-    private static bool Bool(System.Text.Json.JsonElement e, string prop)
-        => e.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
+    private static bool Bool(JsonElement e, string prop)
+        => e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.True;
 
     // ================= موتور مقایسه =================
 
