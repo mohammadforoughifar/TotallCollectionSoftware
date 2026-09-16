@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using Inventory.Api.Data;
@@ -677,7 +678,7 @@ public class LeaveRequestsController : ControllerBase
     }
 
     private static string FormatDays(double d) =>
-        d == (long)d ? Fa.Digits((long)d) : Fa.Digits(Math.Round(d, 1).ToString("0.0", global::System.Globalization.CultureInfo.InvariantCulture));
+        d == (long)d ? Fa.Digits((long)d) : Fa.Digits(Math.Round(d, 1).ToString("0.0", CultureInfo.InvariantCulture));
 
     private static LeaveRequestDto ToDto(LeaveRequest l) => new()
     {

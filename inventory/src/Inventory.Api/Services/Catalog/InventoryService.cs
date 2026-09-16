@@ -1,3 +1,4 @@
+using System.Globalization;
 using Db = Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -710,8 +711,8 @@ public class InventoryService : IInventoryService
         if (cell.IsEmpty()) return 0;
         if (cell.TryGetValue<decimal>(out var v)) return v;
         var s = Fa.ToEn(cell.GetString()).Replace(",", "").Trim();
-        return decimal.TryParse(s, global::System.Globalization.NumberStyles.Number,
-            global::System.Globalization.CultureInfo.InvariantCulture, out var d)
+        return decimal.TryParse(s, NumberStyles.Number,
+            CultureInfo.InvariantCulture, out var d)
             ? d
             : throw new InvalidOperationException($"مقدار «{cell.GetString()}» عدد معتبری نیست.");
     }
