@@ -139,9 +139,12 @@
                         <div class="mail @(folder == "inbox" && !ll.IsRead ? "unread" : "") @(ll.IsNeshan ? "starred" : "") @(selected?.LetterId == ll.LetterId ? "sel" : "")"
                              @onclick="() => OpenLetter(ll)"
                              @oncontextmenu="() => ToggleMenu(ll.LetterId)" @oncontextmenu:preventDefault="true">
-                            <div class="me-2 d-flex align-items-center" @onclick:stopPropagation="true">
-                                <input type="checkbox" checked="@(selectedErjaIds.Contains(ll.ErjaId))" @onchange="() => ToggleSelectErja(ll.ErjaId)" style="width:16px;height:16px;cursor:pointer;" />
-                            </div>
+                            @if (ll.ErjaId.HasValue && ll.ErjaId.Value > 0)
+                            {
+                                <div class="me-2 d-flex align-items-center" @onclick:stopPropagation="true">
+                                    <input type="checkbox" checked="@(selectedErjaIds.Contains(ll.ErjaId.Value))" @onchange="() => ToggleSelectErja(ll.ErjaId)" style="width:16px;height:16px;cursor:pointer;" />
+                                </div>
+                            }
                             @{ var rowIsSent = FolderIsSent || string.IsNullOrEmpty(ll.Sender); }
                             <div class="avt">@AvatarText(rowIsSent ? ll.Reciver : ll.Sender)</div>
                             <div class="mail-b">
@@ -454,11 +457,12 @@
     private bool batchBayeganiModalOpen;
     private string batchBayeganiNote = "";
 
-    private void ToggleSelectErja(int erjaId)
+    private void ToggleSelectErja(int? erjaId)
     {
-        if (erjaId <= 0) return;
-        if (selectedErjaIds.Contains(erjaId)) selectedErjaIds.Remove(erjaId);
-        else selectedErjaIds.Add(erjaId);
+        if (!erjaId.HasValue || erjaId.Value <= 0) return;
+        var id = erjaId.Value;
+        if (selectedErjaIds.Contains(id)) selectedErjaIds.Remove(id);
+        else selectedErjaIds.Add(id);
     }
 
     private void OpenBatchBayeganiModal()
