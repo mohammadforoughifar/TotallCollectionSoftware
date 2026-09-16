@@ -1,23 +1,45 @@
-.da-document-form ::deep .modal-dialog { max-width:900px; }
-.da-document-form ::deep .modal-content { border:1px solid #e0e6ee; border-radius:16px; }
-.da-document-form ::deep .modal-header { padding:1rem 1.25rem; background:#fff; border-bottom:1px solid #e7ecf3; border-radius:16px 16px 0 0; }
-.da-document-form ::deep .modal-title { font-size:1.1rem; }
-.da-document-form ::deep .modal-header .btn-close { margin-inline-start:auto; margin-inline-end:0; }
-.da-document-form ::deep .modal-body { padding:1.25rem; }
-.da-document-form ::deep .modal-footer { justify-content:flex-end; padding:.85rem 1.25rem; gap:.4rem; background:#fafbfd; }
-.da-document-form ::deep .form-label { color:#526079; font-size:1rem; font-weight:500; margin-bottom:.4rem; }
-.da-document-form ::deep .form-control { border-color:#dce3ec; border-radius:8px; }
-.da-document-form ::deep .form-check-label { font-size:.95rem; font-weight:400 !important; line-height:1.65; }
-.da-document-form ::deep .form-check.form-switch { min-height:1.6rem; }
-.da-document-form ::deep .da-form-extra { border-top:1px solid #e8edf3; }
-.da-document-form ::deep .da-form-extra summary { cursor:pointer; padding:.9rem .15rem; color:#3c506d; font-weight:500; font-size:1rem; }
-.da-document-form ::deep .da-form-extra summary::marker { color:#64748b; font-size:.85rem; }
-.da-document-form ::deep .da-extra-content { padding:.25rem .25rem 1rem; }
-.da-document-form ::deep .da-extra-content .border { border-color:#e7ecf2 !important; }
-@media (max-width:575.98px) {
-    .da-document-form ::deep .modal-dialog { margin:.5rem; }
-    .da-document-form ::deep .modal-body { padding:1rem; }
-    .da-document-form ::deep .modal-footer .btn { min-height:40px; }
-}
+/* ================== فرم ثبت / ویرایش مدرک ==================
+   چیدمان رسپانسیو و هم‌تراز. این استایل‌ها فقط به همین فرم اعمال می‌شوند.
+   ------------------------------------------------------------ */
 
-.da-document-form ::deep .form-control { font-size:1rem; }
+/* عرض مودال روی دسکتاپ؛ روی موبایل width:auto باعث می‌شود حاشیهٔ دو طرف
+   واقعاً اعمال شود و دیالوگ از لبه‌های صفحه بیرون نزند. */
+.da-document-form ::deep .modal-dialog { max-width: 900px; width: auto; }
+.da-document-form ::deep .modal-content { border: 1px solid #e0e6ee; border-radius: 16px; }
+.da-document-form ::deep .modal-header { padding: 1rem 1.25rem; background: #fff; border-bottom: 1px solid #e7ecf3; border-radius: 16px 16px 0 0; }
+.da-document-form ::deep .modal-title { font-size: 1.1rem; }
+.da-document-form ::deep .modal-header .btn-close { margin-inline-start: auto; margin-inline-end: 0; }
+.da-document-form ::deep .modal-body { padding: 1.25rem; }
+.da-document-form ::deep .modal-footer { justify-content: flex-end; padding: .85rem 1.25rem; gap: .4rem; background: #fafbfd; }
+
+/* برچسب‌ها و کنترل‌ها */
+.da-document-form ::deep .form-label { color: #526079; font-size: 1rem; font-weight: 500; margin-bottom: .4rem; }
+.da-document-form ::deep .form-control,
+.da-document-form ::deep .form-select { border-color: #dce3ec; border-radius: 8px; font-size: 1rem; }
+.da-document-form ::deep .form-check-label { font-size: .95rem; font-weight: 400 !important; line-height: 1.65; }
+.da-document-form ::deep .form-check.form-switch { min-height: 1.6rem; }
+
+/* هم‌اندازه‌سازی «تاریخ انقضا» با سایر کنترل‌های ردیف (input-group-sm کوتاه‌تر بود) */
+.da-document-form ::deep .date-picker .input-group { flex-wrap: nowrap; }
+.da-document-form ::deep .date-picker .input-group > .form-control,
+.da-document-form ::deep .date-picker .input-group > .btn { padding: .375rem .75rem; height: auto; font-size: 1rem; }
+
+/* بخش‌های تاشو */
+.da-document-form ::deep .da-form-extra { border-top: 1px solid #e8edf3; }
+.da-document-form ::deep .da-form-extra summary { cursor: pointer; padding: .9rem .15rem; color: #3c506d; font-weight: 500; font-size: 1rem; }
+.da-document-form ::deep .da-form-extra summary::marker { color: #64748b; font-size: .85rem; }
+
+/* محتوای تاشو: بدون پدینگ افقی اضافه تا ستون‌های داخلی دقیقاً هم‌تراز
+   با کنترل‌های بیرون بمانند (پدینگ قبلی چند پیکسل جابه‌جایی می‌ساخت). */
+.da-document-form ::deep .da-extra-content { padding: .75rem 0 1rem; }
+.da-document-form ::deep .da-extra-content .border { border-color: #e7ecf2 !important; }
+
+/* هم‌ارتفاع‌سازی دو جعبهٔ «نسخه‌های فعال» و «امنیت و نمایش» در یک ردیف */
+.da-document-form ::deep .da-extra-content > [class*="col-"] { display: flex; flex-direction: column; }
+.da-document-form ::deep .da-extra-content > [class*="col-"] > .border { flex: 1 1 auto; width: 100%; }
+
+@media (max-width: 575.98px) {
+    .da-document-form ::deep .modal-dialog { margin: .75rem; }
+    .da-document-form ::deep .modal-body { padding: 1rem; }
+    .da-document-form ::deep .modal-footer .btn { min-height: 40px; }
+}
