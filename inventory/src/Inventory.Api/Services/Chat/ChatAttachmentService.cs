@@ -37,7 +37,7 @@ public sealed class ChatAttachmentService
         var legacyRoot = config["Files:ChatLegacyRoot"];
         _configuredChatRoot = string.IsNullOrWhiteSpace(chatRoot) ? null : chatRoot;
         _configuredLegacyRoot = string.IsNullOrWhiteSpace(legacyRoot) ? null : legacyRoot;
-        _root = Path.GetFullPath(string.IsNullOrWhiteSpace(chatRoot) ? Path.Combine(_contentRoot, "App_Data", "chat") : chatRoot!);
+        _root = Path.GetFullPath(string.IsNullOrWhiteSpace(chatRoot) ? Path.Combine(_webRoot, "uploads", "chat") : chatRoot!);
         _legacyRoot = Path.GetFullPath(string.IsNullOrWhiteSpace(legacyRoot) ? Path.Combine(_webRoot, "uploads", "chat") : legacyRoot!);
         ProbeRoot();
     }

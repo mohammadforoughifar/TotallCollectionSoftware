@@ -63,20 +63,29 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     // ==================== سربرگ (PDF از مسیر روت API) ====================
 
-    /// <summary>یافتن فایل سربرگ شرکت در مسیر روت API — اول ContentRoot بعد BaseDirectory</summary>
+    /// <summary>یافتن فایل سربرگ یا لوگوی شرکت از مسیر wwwroot/uploads/ یا روت API</summary>
     private string? ResolveLetterheadPath(string? fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName)) return null;
 
-        // فقط نام فایل — جلوگیری از Path Traversal
-        var safe = Path.GetFileName(fileName.Trim());
-        if (string.IsNullOrWhiteSpace(safe)) return null;
+        var clean = fileName.Replace('\\', '/').TrimStart('/');
+        if (clean.Contains("..")) return null;
+
+        var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
+        var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
+            ? clean["uploads/".Length..]
+            : clean;
 
         var candidates = new[]
         {
-            Path.Combine(_env.ContentRootPath, safe),          // روت پروژه API (توسعه)
-            Path.Combine(AppContext.BaseDirectory, safe)       // کنار فایل اجرایی (انتشار)
+            Path.Combine(webRoot, "uploads", uploadClean),
+            Path.Combine(webRoot, clean),
+            Path.Combine(_env.ContentRootPath, clean),
+            Path.Combine(_env.ContentRootPath, Path.GetFileName(clean)),
+            Path.Combine(AppContext.BaseDirectory, clean),
+            Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
         };
+
         return candidates.FirstOrDefault(File.Exists);
     }
 
@@ -137,8 +146,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5);
 
-        // ==================== قرار دادن روی سربرگ ====================
+        // ==================== قرار دادن روی سربرگ / لوگوی شرکت ====================
         var letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
+        letterheadPath ??= ResolveLetterheadPath(company?.LogoPath);
+
+        if (letterheadPath == null)
+        {
+            var logoDir = Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), "uploads", "hr", "logo", "1");
+            if (Directory.Exists(logoDir))
+            {
+                letterheadPath = Directory.EnumerateFiles(logoDir).FirstOrDefault();
+            }
+        }
+
         if (letterheadPath == null)
             return contentPdf; // سربرگ موجود نیست — خود نامه برگردانده می‌شود
 
@@ -281,7 +301,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         return doc.GeneratePdf();
     }
 
-    /// <summary>قرار دادن صفحات نامه روی صفحه اول PDF سربرگ (PDFsharp Overlay)</summary>
+    /// <summary>قرار دادن صفحات نامه روی سربرگ یا لوگوی شرکت (PDF یا تصویر)</summary>
     private static byte[] OverlayOnLetterhead(byte[] contentPdf, string letterheadPath)
     {
         using var contentStream = new MemoryStream(contentPdf);
@@ -289,8 +309,10 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         using var output = new PdfDocument();
 
-        // فرم‌های قابل ترسیم
-        using var letterheadForm = XPdfForm.FromFile(letterheadPath);
+        var isPdf = letterheadPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        using var letterheadForm = isPdf ? XPdfForm.FromFile(letterheadPath) : null;
+        using var letterheadImg = !isPdf ? XImage.FromFile(letterheadPath) : null;
+
         using var contentFormStream = new MemoryStream(contentPdf);
         using var contentForm = XPdfForm.FromStream(contentFormStream);
 
@@ -304,9 +326,16 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             using var gfx = XGraphics.FromPdfPage(page);
             var rect = new XRect(0, 0, page.Width.Point, page.Height.Point);
 
-            // 1) سربرگ به‌عنوان پس‌زمینه (کشیده تا کل صفحه)
-            letterheadForm.PageNumber = 1;
-            gfx.DrawImage(letterheadForm, rect);
+            // 1) سربرگ یا لوگوی شرکت به‌عنوان پس‌زمینه
+            if (isPdf && letterheadForm != null)
+            {
+                letterheadForm.PageNumber = 1;
+                gfx.DrawImage(letterheadForm, rect);
+            }
+            else if (letterheadImg != null)
+            {
+                gfx.DrawImage(letterheadImg, rect);
+            }
 
             // 2) متن نامه روی سربرگ
             contentForm.PageNumber = i + 1;

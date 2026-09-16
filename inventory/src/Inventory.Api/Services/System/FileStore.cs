@@ -142,7 +142,7 @@ public class FileStore
     }
 
     /// <summary>
-    /// تبدیل مسیر نسبی به مسیر کامل دیسک با پشتیبانی از سازگاری عقب‌رو (Fallback) برای فایل‌های قدیمی
+    /// تبدیل مسیر نسبی به مسیر کامل دیسک با پشتیبانی از سازگاری عقب‌رو (Fallback) برای فایل‌های قدیمی و نام‌های مستعار
     /// </summary>
     public string? ToFull(string? relativePath)
     {
@@ -150,31 +150,62 @@ public class FileStore
         var clean = relativePath.Replace('\\', '/').TrimStart('/');
         if (clean.Contains("..")) return null;
 
-        // اگر مسیر با uploads/ شروع شده، آن را نرمال‌سازی می‌کنیم
+        // نرمال‌سازی prefix uploads/
         var uploadClean = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase)
             ? clean["uploads/".Length..]
             : clean;
 
-        // ۱) بررسی اول: وجود در uploads
-        var fullUploads = Path.GetFullPath(Path.Combine(_root, uploadClean));
+        // لیست جفت‌مسیرهای معادل جهت پشتیبانی کامل از فایل‌های قبلی دیتابیس
+        var aliases = new List<string> { uploadClean, clean };
+        if (uploadClean.StartsWith("فایل های صادره/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("office/outgoingletter/" + uploadClean["فایل های صادره/".Length..]);
+        else if (uploadClean.StartsWith("office/outgoingletter/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("فایل های صادره/" + uploadClean["office/outgoingletter/".Length..]);
+
+        if (uploadClean.StartsWith("فایل های ایمیل/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("office/email/" + uploadClean["فایل های ایمیل/".Length..]);
+        else if (uploadClean.StartsWith("office/email/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("فایل های ایمیل/" + uploadClean["office/email/".Length..]);
+
+        if (uploadClean.StartsWith("innerletter/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("office/innerletter/" + uploadClean["innerletter/".Length..]);
+        else if (uploadClean.StartsWith("office/innerletter/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("innerletter/" + uploadClean["office/innerletter/".Length..]);
+
+        if (uploadClean.StartsWith("work-orders/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("itassets/workorders/" + uploadClean["work-orders/".Length..]);
+        else if (uploadClean.StartsWith("itassets/workorders/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("work-orders/" + uploadClean["itassets/workorders/".Length..]);
+
+        if (uploadClean.StartsWith("it-requests/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("itassets/requests/" + uploadClean["it-requests/".Length..]);
+        else if (uploadClean.StartsWith("itassets/requests/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("it-requests/" + uploadClean["itassets/requests/".Length..]);
+
+        if (uploadClean.StartsWith("SecureFiles/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("projects/" + uploadClean["SecureFiles/".Length..]);
+        else if (uploadClean.StartsWith("projects/", StringComparison.OrdinalIgnoreCase))
+            aliases.Add("SecureFiles/" + uploadClean["projects/".Length..]);
+
         var rootFull = Path.GetFullPath(_root);
-        if (fullUploads.StartsWith(rootFull, StringComparison.Ordinal) && File.Exists(fullUploads))
-            return fullUploads;
-
-        // ۲) بررسی دوم: وجود مستقیم در wwwroot (مسیرهای قدیمی مانند «فایل های صادره» یا «SecureFiles»)
-        var fullWebRoot = Path.GetFullPath(Path.Combine(_webRoot, clean));
         var webRootFull = Path.GetFullPath(_webRoot);
-        if (fullWebRoot.StartsWith(webRootFull, StringComparison.Ordinal) && File.Exists(fullWebRoot))
-            return fullWebRoot;
-
-        // ۳) بررسی سوم: وجود مستقیم در ContentRoot
-        var fullContent = Path.GetFullPath(Path.Combine(_contentRoot, clean));
         var contentFull = Path.GetFullPath(_contentRoot);
-        if (fullContent.StartsWith(contentFull, StringComparison.Ordinal) && File.Exists(fullContent))
-            return fullContent;
 
-        // در صورت عدم وجود فیزیکی فعلی، مسیر استاندارد مقصد تحت uploads بازگردانده می‌شود
-        return fullUploads.StartsWith(rootFull, StringComparison.Ordinal) ? fullUploads : null;
+        foreach (var candidate in aliases.Distinct())
+        {
+            var p1 = Path.GetFullPath(Path.Combine(_root, candidate));
+            if (p1.StartsWith(rootFull, StringComparison.Ordinal) && File.Exists(p1)) return p1;
+
+            var p2 = Path.GetFullPath(Path.Combine(_webRoot, candidate));
+            if (p2.StartsWith(webRootFull, StringComparison.Ordinal) && File.Exists(p2)) return p2;
+
+            var p3 = Path.GetFullPath(Path.Combine(_contentRoot, candidate));
+            if (p3.StartsWith(contentFull, StringComparison.Ordinal) && File.Exists(p3)) return p3;
+        }
+
+        // در صورت نبود فیزیکی، مسیر پیش‌فرض در uploads بازگردانده می‌شود
+        var defaultPath = Path.GetFullPath(Path.Combine(_root, uploadClean));
+        return defaultPath.StartsWith(rootFull, StringComparison.Ordinal) ? defaultPath : null;
     }
 
     public string ToRelative(string fullPath)
@@ -186,7 +217,6 @@ public class FileStore
 
     public async Task<string> SaveWebRootAsync(string folder, int refId, Stream stream, string originalName)
     {
-        // هدایت مستقیم کلیه ذخیره‌سازی‌ها به زیرساخت یکپارچه wwwroot/uploads/{folder}/{refId}
         return await SaveAsync(folder, refId, stream, originalName);
     }
 
