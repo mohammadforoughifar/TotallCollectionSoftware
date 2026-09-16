@@ -10,8 +10,13 @@ namespace Inventory.Api.Controllers;
 public class ProductsController : ApiControllerBase
 {
     private readonly IInventoryService _service;
+    private readonly FileStore _store;
 
-    public ProductsController(IInventoryService service) => _service = service;
+    public ProductsController(IInventoryService service, FileStore store)
+    {
+        _service = service;
+        _store = store;
+    }
 
     /// <summary>فهرست کالاها با جستجو، فیلتر انبار و صفحه‌بندی.</summary>
     [HttpGet]
@@ -60,8 +65,15 @@ public class ProductsController : ApiControllerBase
         if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "فقط فایل با فرمت xlsx پشتیبانی می‌شود." });
 
-        await using var stream = file.OpenReadStream();
-        return Ok(await _service.ImportProductsAsync(stream));
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        ms.Position = 0;
+
+        // ذخیره‌سازی فایل اکسل ورودی در wwwroot/uploads/catalog/imports/
+        await _store.SaveAsync("catalog", 0, ms, file.FileName, "imports");
+        ms.Position = 0;
+
+        return Ok(await _service.ImportProductsAsync(ms));
     }
 
     /// <summary>

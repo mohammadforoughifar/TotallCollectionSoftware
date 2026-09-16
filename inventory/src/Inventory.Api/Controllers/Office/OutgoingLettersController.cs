@@ -450,17 +450,24 @@ public class OutgoingLettersController : RbacControllerBase
         var a = await Db.AppAttachments.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == attId && (x.Module == AttachmentModule || x.Module == PishnevisAttachmentModule));
         if (a == null) return NotFound();
+
         if (a.Module == PishnevisAttachmentModule)
         {
             var owns = await Db.OutgoingPishnevisLetters.AnyAsync(p => p.PishnevisId == a.RefId && p.UserId == MyUserId);
             if (!owns && !await IsAdminAsync())
                 return StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." });
         }
-        else if (!await InFlowAsync(a.RefId) && !await IsAdminAsync())
-            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        else
+        {
+            var hasReadPerm = await ForbiddenUnlessAsync(Module, "Read") == null;
+            var canAccess = hasReadPerm || await InFlowAsync(a.RefId) || await IsAdminAsync() || await HasDabirkhaneAsync();
+            if (!canAccess)
+                return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        }
 
-        // فایل‌های جدید روی دیسک (فایل های صادره) — رکوردهای قدیمی از خود دیتابیس
-        var bytes = a.FilePath is not null ? _store.ReadWebRoot(a.FilePath) : null;
+        // فایل از دیسک خوانده می‌شود (پشتیبانی کامل از هر دو مسیر جدید wwwroot/uploads و قدیمی)
+        var bytes = a.FilePath is not null ? _store.ReadBytes(a.FilePath) : null;
+        bytes ??= a.FilePath is not null ? _store.ReadWebRoot(a.FilePath) : null;
         bytes ??= a.Data is { Length: > 0 } ? a.Data : null;
         if (bytes == null) return NotFound(new { message = "فایل پیوست پیدا نشد." });
         return File(bytes, a.ContentType, a.FileName);

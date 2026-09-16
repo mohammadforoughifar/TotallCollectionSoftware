@@ -2,6 +2,7 @@ using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
+using Inventory.Api.Services;
 
 namespace Inventory.Api.Controllers;
 
@@ -14,10 +15,13 @@ public class CctvCamerasController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly Hubs.DashboardBroadcaster _dash;
-    public CctvCamerasController(AppDbContext db, Hubs.DashboardBroadcaster dash)
+    private readonly FileStore _store;
+
+    public CctvCamerasController(AppDbContext db, Hubs.DashboardBroadcaster dash, FileStore store)
     {
         _db = db;
         _dash = dash;
+        _store = store;
     }
 
     [HttpGet]
@@ -182,10 +186,18 @@ public class CctvCamerasController : ControllerBase
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "فایلی ارسال نشد." });
 
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        ms.Position = 0;
+
+        // ذخیره‌سازی فایل اکسل ورودی در wwwroot/uploads/cctv/imports/
+        await _store.SaveAsync("cctv", 0, ms, file.FileName, "imports");
+        ms.Position = 0;
+
         ImportResult result = new();
         try
         {
-            using var wb = new XLWorkbook(file.OpenReadStream());
+            using var wb = new XLWorkbook(ms);
             var ws = wb.Worksheets.First();
 
             // نقشه‌ی ستون‌ها از روی سطر عنوان
