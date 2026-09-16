@@ -67,6 +67,12 @@
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
                         <button class="chip @(filter == "deadline" ? "on" : "")" @onclick='() => SetFilter("deadline")'><i class="bi bi-clock" style="font-size:10px"></i> مهلت‌دار</button>
                         <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
+                        @if (selectedErjaIds.Count > 0)
+                        {
+                            <button class="chip on" style="background:#f59e0b;color:#fff;border-color:#d97706;" @onclick="OpenBatchBayeganiModal">
+                                <i class="bi bi-archive-fill me-1"></i> بایگانی گروهی (@selectedErjaIds.Count.FaDigits())
+                            </button>
+                        }
                     }
                 </div>
                 }
@@ -133,6 +139,9 @@
                         <div class="mail @(folder == "inbox" && !ll.IsRead ? "unread" : "") @(ll.IsNeshan ? "starred" : "") @(selected?.LetterId == ll.LetterId ? "sel" : "")"
                              @onclick="() => OpenLetter(ll)"
                              @oncontextmenu="() => ToggleMenu(ll.LetterId)" @oncontextmenu:preventDefault="true">
+                            <div class="me-2 d-flex align-items-center" @onclick:stopPropagation="true">
+                                <input type="checkbox" checked="@(selectedErjaIds.Contains(ll.ErjaId))" @onchange="() => ToggleSelectErja(ll.ErjaId)" style="width:16px;height:16px;cursor:pointer;" />
+                            </div>
                             @{ var rowIsSent = FolderIsSent || string.IsNullOrEmpty(ll.Sender); }
                             <div class="avt">@AvatarText(rowIsSent ? ll.Reciver : ll.Sender)</div>
                             <div class="mail-b">
@@ -408,6 +417,27 @@
             </div>
         </div>
     }
+    @if (batchBayeganiModalOpen)
+    {
+        <div class="gov" @onclick="() => batchBayeganiModalOpen = false">
+            <div class="gmodal" style="width:min(480px,96vw)" @onclick:stopPropagation="true">
+                <div class="gm-h">
+                    <div class="ttl"><b><i class="bi bi-archive" style="color:var(--p2)"></i> بایگانی گروهی نامه‌ها</b><small>@selectedErjaIds.Count.FaDigits() نامه انتخاب شده است</small></div>
+                    <button class="x" @onclick="() => batchBayeganiModalOpen = false"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div class="gm-b">
+                    <div class="fcard" style="box-shadow:none">
+                        <label>توضیحات بایگانی گروهی <FormHelp Text="یادداشت یا عنوان دسته‌بندی برای بایگانی این نامه‌ها (اختیاری)" /></label>
+                        <input class="tin" placeholder="مثلاً: بایگانی گروهی اسناد…" @bind="batchBayeganiNote" />
+                    </div>
+                </div>
+                <div class="gm-f">
+                    <button class="lbtn ghost" @onclick="() => batchBayeganiModalOpen = false">انصراف</button>
+                    <button class="lbtn pri" disabled="@busy" @onclick="SubmitBatchBayegani"><i class="bi bi-check-lg"></i> تایید بایگانی گروهی</button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 <ComposeLetterModal @ref="compose" OnSent="OnComposed" />
@@ -419,6 +449,46 @@
 
 @code {
     [Parameter] public string? Tab { get; set; }
+
+    private HashSet<int> selectedErjaIds = new();
+    private bool batchBayeganiModalOpen;
+    private string batchBayeganiNote = "";
+
+    private void ToggleSelectErja(int erjaId)
+    {
+        if (erjaId <= 0) return;
+        if (selectedErjaIds.Contains(erjaId)) selectedErjaIds.Remove(erjaId);
+        else selectedErjaIds.Add(erjaId);
+    }
+
+    private void OpenBatchBayeganiModal()
+    {
+        if (selectedErjaIds.Count == 0) return;
+        batchBayeganiNote = "";
+        batchBayeganiModalOpen = true;
+    }
+
+    private async Task SubmitBatchBayegani()
+    {
+        if (selectedErjaIds.Count == 0) return;
+        busy = true;
+        try
+        {
+            var count = await LetterSvc.BatchBayeganiAsync(selectedErjaIds.ToList(), batchBayeganiNote);
+            Toast.Success($"{count.FaDigits()} نامه با موفقیت بایگانی شدند.");
+            selectedErjaIds.Clear();
+            batchBayeganiModalOpen = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
 
     private string folder = "inbox";
     private string filter = "all";

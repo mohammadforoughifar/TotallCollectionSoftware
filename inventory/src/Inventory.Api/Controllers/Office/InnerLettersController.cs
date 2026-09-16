@@ -50,26 +50,26 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>صندوق وارده کاربر جاری</summary>
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
     }
 
     /// <summary>پوشه بایگانی کاربر جاری</summary>
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive([FromQuery] string? search)
+    public async Task<IActionResult> Archive([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetArchiveAsync(MyUserId, search));
+        return Ok(await _letters.GetArchiveAsync(MyUserId, search, page, pageSize));
     }
 
     /// <summary>نامه‌های ارسالی کاربر جاری</summary>
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
     }
 
     /// <summary>آمار کارتابل (شمارنده نخوانده‌ها و…)</summary>
@@ -124,10 +124,10 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست انتخاب نامه برای عطف/پیرو</summary>
     [HttpGet("pick")]
-    public async Task<IActionResult> Pick([FromQuery] string? search)
+    public async Task<IActionResult> Pick([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.PickListAsync(MyUserId, search));
+        return Ok(await _letters.PickListAsync(MyUserId, search, page, pageSize));
     }
 
     // ==================== گردش / ارجاع ====================
@@ -188,6 +188,18 @@ public class InnerLettersController : RbacControllerBase
     {
         var isBayegani = await _erja.ToggleBayeganiAsync(erjaId, MyUserId);
         return Ok(new { isBayegani });
+    }
+
+    /// <summary>بایگانی گروهی نامه‌های دریافتی</summary>
+    [HttpPost("erja/batch-bayegani")]
+    public async Task<IActionResult> BatchBayegani([FromBody] BatchBayeganiRequest dto)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (dto == null || dto.ErjaIds == null || dto.ErjaIds.Count == 0)
+            return BadRequest(new { message = "هیچ نامه‌ای برای بایگانی انتخاب نشده است." });
+
+        var count = await _erja.BatchBayeganiAsync(dto.ErjaIds, MyUserId, dto.Description);
+        return Ok(new { count, message = $"{count} نامه با موفقیت بایگانی شدند." });
     }
 
     // ==================== بایگانی درختی ====================

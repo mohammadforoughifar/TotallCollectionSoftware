@@ -328,7 +328,7 @@ public class LeaveRequestsController : ControllerBase
             .OrderByDescending(l => l.CreatedAt)
             .Take(200)
             .ToListAsync();
-        return Ok(list.Select(ToDto).ToList());
+        return Ok(await PopulateUserNamesAndToDtoAsync(list));
     }
 
     // ================== همه‌ی درخواست‌ها (مدیر) ==================
@@ -346,7 +346,7 @@ public class LeaveRequestsController : ControllerBase
             q = q.Where(l => l.StartDate >= s && l.StartDate < e);
         }
         var list = await q.OrderByDescending(l => l.CreatedAt).Take(300).ToListAsync();
-        return Ok(list.Select(ToDto).ToList());
+        return Ok(await PopulateUserNamesAndToDtoAsync(list));
     }
 
     // ================== ثبت درخواست ==================
@@ -418,13 +418,14 @@ public class LeaveRequestsController : ControllerBase
 
         var (reqJy, reqJm) = PersianYM(input.StartDate);
         var serial = await _db.LeaveRequests.CountAsync(l => l.Number.StartsWith($"LR/{reqJy}/")) + 1;
+        var reqName = await GetUserFullNameAsync(MyUserId);
 
         var req = new LeaveRequest
         {
             Number = $"LR/{reqJy}/{serial}",
             Type = input.Type,
             RequesterUserId = MyUserId,
-            RequesterName = MyName,
+            RequesterName = reqName,
             StartDate = input.StartDate.Date,
             EndDate = input.EndDate.Date,
             StartTime = TimeSpan.TryParse(input.StartTime, out var rst) ? rst : null,
@@ -468,9 +469,10 @@ public class LeaveRequestsController : ControllerBase
                 return BadRequest(new { message = $"موجودی مرخصی سالانه «{req.RequesterName}» کافی نیست — لطفاً رد کنید." });
         }
 
+        var myFullName = await GetUserFullNameAsync(MyUserId);
         req.Status = "Approved";
         req.ApprovedByUserId = MyUserId;
-        req.ApprovedByName = MyName;
+        req.ApprovedByName = myFullName;
         req.ApprovedAt = DateTime.Now;
         await _db.SaveChangesAsync();
 
@@ -492,8 +494,8 @@ public class LeaveRequestsController : ControllerBase
         var typeFa = req.Type switch { "Hourly" => "مرخصی ساعتی", "HourlyMission" => "ماموریت ساعتی", "Mission" => "ماموریت", _ => "مرخصی روزانه" };
         await _notify.SendAsync(req.RequesterUserId,
             $"{typeFa} شما تایید شد",
-            $"{req.Number} توسط {MyName} تایید شد.",
-            MyName, "مرخصی و ماموریت", "/leave");
+            $"{req.Number} توسط {myFullName} تایید شد.",
+            myFullName, "مرخصی و ماموریت", "/leave");
         await _notify.BroadcastChangedAsync(RtScope);
 
         return Ok(new { ok = true });
@@ -507,15 +509,16 @@ public class LeaveRequestsController : ControllerBase
         if (req == null) return NotFound(new { message = "درخواست پیدا نشد." });
         if (req.Status != "Pending") return BadRequest(new { message = "این درخواست قبلاً بررسی شده است." });
 
+        var myFullName = await GetUserFullNameAsync(MyUserId);
         req.Status = "Rejected";
         req.ApprovedByUserId = MyUserId;
-        req.ApprovedByName = MyName;
+        req.ApprovedByName = myFullName;
         req.ApprovedAt = DateTime.Now;
         req.ApproveNote = input?.Note;
         await _db.SaveChangesAsync();
 
         var typeFa = req.Type switch { "Hourly" => "مرخصی ساعتی", "HourlyMission" => "ماموریت ساعتی", "Mission" => "ماموریت", _ => "مرخصی روزانه" };
-        var body = $"{req.Number} توسط {MyName} رد شد.";
+        var body = $"{req.Number} توسط {myFullName} رد شد.";
         if (!string.IsNullOrWhiteSpace(input?.Note)) body += $" «{input.Note}»";
         await _notify.SendAsync(req.RequesterUserId,
             $"{typeFa} شما رد شد", body, MyName, "مرخصی و ماموریت", "/leave");
@@ -632,6 +635,47 @@ public class LeaveRequestsController : ControllerBase
 
     // ================== کمک‌ها ==================
 
+    private async Task<Dictionary<int, string>> GetFullNamesAsync(IEnumerable<int> userIds)
+    {
+        var ids = userIds.Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<int, string>();
+
+        var users = await _db.Users.AsNoTracking()
+            .Where(u => ids.Contains(u.Id))
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Username })
+            .ToListAsync();
+
+        return users.ToDictionary(
+            u => u.Id,
+            u => {
+                var fn = $"{u.FirstName} {u.LastName}".Trim();
+                return string.IsNullOrWhiteSpace(fn) ? u.Username : fn;
+            });
+    }
+
+    private async Task<string> GetUserFullNameAsync(int userId)
+    {
+        var dict = await GetFullNamesAsync(new[] { userId });
+        return dict.TryGetValue(userId, out var name) ? name : "کاربر نامشخص";
+    }
+
+    private async Task<List<LeaveRequestDto>> PopulateUserNamesAndToDtoAsync(List<LeaveRequest> list)
+    {
+        var userIds = list.Select(x => x.RequesterUserId)
+            .Union(list.Where(x => x.ApprovedByUserId.HasValue).Select(x => x.ApprovedByUserId!.Value));
+
+        var names = await GetFullNamesAsync(userIds);
+
+        return list.Select(l => {
+            var dto = ToDto(l);
+            if (names.TryGetValue(l.RequesterUserId, out var rName) && !string.IsNullOrWhiteSpace(rName))
+                dto.RequesterName = rName;
+            if (l.ApprovedByUserId.HasValue && names.TryGetValue(l.ApprovedByUserId.Value, out var aName) && !string.IsNullOrWhiteSpace(aName))
+                dto.ApprovedByName = aName;
+            return dto;
+        }).ToList();
+    }
+
     private static string FormatDays(double d) =>
         d == (long)d ? Fa.Digits((long)d) : Fa.Digits(Math.Round(d, 1).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
 
@@ -650,13 +694,13 @@ public class LeaveRequestsController : ControllerBase
         Hours = l.Hours,
         Destination = l.Destination,
         Reason = l.Reason,
-            Status = l.Status,
-            ApprovedByName = l.ApprovedByName,
-            ApprovedAt = l.ApprovedAt,
-            ApproveNote = l.ApproveNote,
-            AdminCreated = l.AdminCreated,
-            CreatedAt = l.CreatedAt
-        };
+        Status = l.Status,
+        ApprovedByName = l.ApprovedByName,
+        ApprovedAt = l.ApprovedAt,
+        ApproveNote = l.ApproveNote,
+        AdminCreated = l.AdminCreated,
+        CreatedAt = l.CreatedAt
+    };
 
     // ================== تعطیلات شرکتی (اعمال گروهی برای کل پرسنل) ==================
 

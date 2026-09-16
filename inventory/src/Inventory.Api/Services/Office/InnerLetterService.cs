@@ -18,12 +18,12 @@ namespace Inventory.Api.Services;
 public interface IInnerLetterService
 {
     Task<int> AddInnerLetterAsync(AddInnerLetterDto dto, int creatorUserId, string creatorName);
-    Task<List<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly);
-    Task<List<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search);
-    Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search);
+    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20);
+    Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20);
+    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20);
     Task<InnerLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<LetterCartableStatsDto> GetStatsAsync(int userId);
-    Task<List<LetterPickDto>> PickListAsync(int userId, string? search);
+    Task<PagedResult<LetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20);
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditInnerLetterDto dto, int userId, bool isAdmin);
 
@@ -247,8 +247,11 @@ public class InnerLetterService : IInnerLetterService
         return source.Id;
     }
 
-    public async Task<List<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
@@ -265,8 +268,12 @@ public class InnerLetterService : IInnerLetterService
                              || e.UserSender!.Username.Contains(s));
         }
 
-        return await q
+        var totalCount = await q.CountAsync();
+
+        var items = await q
             .OrderByDescending(e => e.ErjaId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(e => new InnerLetterListItemDto
             {
                 LetterId = e.SourceId,
@@ -291,6 +298,14 @@ public class InnerLetterService : IInnerLetterService
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
             })
             .ToListAsync();
+
+        return new PagedResult<InnerLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     /// <summary>پوشه بایگانی — ارجاع‌های کاربر که IsBayegani=true دارند</summary>
@@ -337,8 +352,11 @@ public class InnerLetterService : IInnerLetterService
             .ToListAsync();
     }
 
-    public async Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         var q = _db.InnerLetters.AsNoTracking()
             .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete
                         // نامه‌های ارسالیِ بایگانی‌شده توسط فرستنده در پوشه بایگانی نمایش داده می‌شوند
@@ -350,8 +368,12 @@ public class InnerLetterService : IInnerLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s));
         }
 
-        return await q
+        var totalCount = await q.CountAsync();
+
+        var items = await q
             .OrderByDescending(l => l.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(l => new InnerLetterListItemDto
             {
                 LetterId = l.Id,
@@ -380,6 +402,14 @@ public class InnerLetterService : IInnerLetterService
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == l.Id)
             })
             .ToListAsync();
+
+        return new PagedResult<InnerLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task<InnerLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin)
@@ -496,8 +526,11 @@ public class InnerLetterService : IInnerLetterService
         };
     }
 
-    public async Task<List<LetterPickDto>> PickListAsync(int userId, string? search)
+    public async Task<PagedResult<LetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         // نامه‌هایی که کاربر فرستنده یا گیرنده‌ی آن‌ها بوده — برای انتخاب عطف/پیرو
         var q = _db.InnerLetters.AsNoTracking()
             .Where(l => !l.IsDelete &&
@@ -510,8 +543,11 @@ public class InnerLetterService : IInnerLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s));
         }
 
-        return await q.OrderByDescending(l => l.Id)
-            .Take(30)
+        var totalCount = await q.CountAsync();
+
+        var items = await q.OrderByDescending(l => l.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(l => new LetterPickDto
             {
                 LetterId = l.Id,
@@ -521,6 +557,14 @@ public class InnerLetterService : IInnerLetterService
                 IsSent = l.CreatorUserId == userId
             })
             .ToListAsync();
+
+        return new PagedResult<LetterPickDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task<bool> ToggleLetterNeshanAsync(int letterId, int userId)

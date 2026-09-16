@@ -111,6 +111,36 @@
             document.execCommand("styleWithCSS", false, true);
             document.execCommand("createLink", false, url);
         };
+        // درج جدول
+        window.rteTable = function (id, rows, cols) {
+            var el = document.getElementById(id); if (!el) return;
+            window.rteRestoreSelection(id); el.focus();
+            rows = parseInt(rows) || 2; cols = parseInt(cols) || 2;
+            var html = '<table class="table table-bordered my-2" style="width:100%; border-collapse:collapse; border:1px solid #cbd5e1;"><tbody>';
+            for (var r = 0; r < rows; r++) {
+                html += '<tr>';
+                for (var c = 0; c < cols; c++) {
+                    html += '<td style="border:1px solid #cbd5e1; padding:8px;">&nbsp;</td>';
+                }
+                html += '</tr>';
+            }
+            html += '</tbody></table><p><br></p>';
+            document.execCommand("insertHTML", false, html);
+        };
+        // درج محتوای HTML سفارشی
+        window.rteInsertHtml = function (id, html) {
+            var el = document.getElementById(id); if (!el) return;
+            window.rteRestoreSelection(id); el.focus();
+            document.execCommand("insertHTML", false, html);
+        };
+        // تغییر جهت متن (RTL / LTR)
+        window.rteToggleDir = function (id) {
+            var el = document.getElementById(id); if (!el) return;
+            var current = el.getAttribute("dir") || "rtl";
+            var next = current === "rtl" ? "ltr" : "rtl";
+            el.setAttribute("dir", next);
+            el.style.textAlign = next === "rtl" ? "right" : "left";
+        };
         // چاپ نامه (اتوماسیون اداری)
         window.ltxPrint = function () { window.print(); };
         // باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی base64

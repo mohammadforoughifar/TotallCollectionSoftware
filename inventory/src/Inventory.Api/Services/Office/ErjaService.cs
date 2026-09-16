@@ -21,6 +21,7 @@ public interface IErjaService
     Task MarkReadAsync(int erjaId, int userId);
     Task<bool> ToggleNeshanAsync(int erjaId, int userId);
     Task<bool> ToggleBayeganiAsync(int erjaId, int userId);
+    Task<int> BatchBayeganiAsync(List<int> erjaIds, int userId, string? description = null);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
 }
 
@@ -285,6 +286,42 @@ public class ErjaService : IErjaService
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("letters");
         return erja.IsBayegani == true;
+    }
+
+    /// <summary>بایگانی گروهی چند نامه دریافتی</summary>
+    public async Task<int> BatchBayeganiAsync(List<int> erjaIds, int userId, string? description = null)
+    {
+        if (erjaIds == null || erjaIds.Count == 0) return 0;
+
+        var erjas = await _db.Erjas
+            .Where(e => erjaIds.Contains(e.ErjaId) && e.ReciverUserId == userId && !e.IsDelete)
+            .ToListAsync();
+
+        foreach (var erja in erjas)
+        {
+            erja.IsBayegani = true;
+
+            var exists = await _db.LetterBayeganis
+                .AnyAsync(b => b.ErjaId == erja.ErjaId && b.UserId == userId && !b.IsDelete);
+
+            if (!exists)
+            {
+                _db.LetterBayeganis.Add(new LetterBayegani
+                {
+                    ErjaId = erja.ErjaId,
+                    LetterId = erja.SourceId,
+                    UserId = userId,
+                    IsFolder = false,
+                    Name = string.IsNullOrWhiteSpace(description) ? "بایگانی گروهی" : description.Trim(),
+                    TypeBayegani = 1,
+                    CreatedAt = DateTime.Now
+                });
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("letters");
+        return erjas.Count;
     }
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>

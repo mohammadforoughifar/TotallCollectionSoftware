@@ -20,13 +20,13 @@ namespace Inventory.Api.Services.Office.Outgoing;
 public interface IOutgoingLetterService
 {
     Task<int> AddOutgoingLetterAsync(AddOutgoingLetterDto dto, int creatorUserId, string creatorName);
-    Task<List<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly);
-    Task<List<OutgoingLetterListItemDto>> GetArchiveAsync(int userId, string? search);
-    Task<List<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search);
-    Task<List<OutgoingLetterListItemDto>> GetSigningInboxAsync(int userId, string? search, bool? unsignedOnly);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20);
+    Task<PagedResult<OutgoingLetterListItemDto>> GetSigningInboxAsync(int userId, string? search, bool? unsignedOnly, int page = 1, int pageSize = 20);
     Task<OutgoingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<OutgoingLetterCartableStatsDto> GetStatsAsync(int userId);
-    Task<List<OutgoingLetterPickDto>> PickListAsync(int userId, string? search);
+    Task<PagedResult<OutgoingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20);
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditOutgoingLetterDto dto, int userId, bool isAdmin);
     Task UpdateStatusAsync(int letterId, int newStatus, int userId, bool isAdmin);
@@ -309,7 +309,7 @@ public class OutgoingLetterService : IOutgoingLetterService
     }
 
     // ---------- Inbox: شامل ارجاعات + امضا ----------
-    public async Task<List<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 20)
     {
         // بخش 1: ارجاعات
         var qErja = _db.Erjas.AsNoTracking()
@@ -448,11 +448,26 @@ public class OutgoingLetterService : IOutgoingLetterService
             }
         }
 
-        return dict.Values.OrderByDescending(x => x.Date).ThenByDescending(x => x.LetterId).ToList();
+        var combined = dict.Values.OrderByDescending(x => x.Date).ThenByDescending(x => x.LetterId).ToList();
+        var totalCount = combined.Count;
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+        var items = combined.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return new PagedResult<OutgoingLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
-    public async Task<List<OutgoingLetterListItemDto>> GetSigningInboxAsync(int userId, string? search, bool? unsignedOnly)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetSigningInboxAsync(int userId, string? search, bool? unsignedOnly, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         var q = _db.OutgoingLetterSigners.AsNoTracking()
             .Where(s => s.UserId == userId && !s.IsDelete && !s.Source.IsDelete
                         && s.Source.OutgoingLetter != null && !s.Source.OutgoingLetter.IsDelete);
@@ -467,7 +482,11 @@ public class OutgoingLetterService : IOutgoingLetterService
                            || sg.Source.OutgoingLetter!.ReceiverOrganization.Contains(s));
         }
 
-        return await q.OrderByDescending(s => s.Id)
+        var totalCount = await q.CountAsync();
+
+        var items = await q.OrderByDescending(s => s.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(s => new OutgoingLetterListItemDto
             {
                 LetterId = s.SourceId,
@@ -500,10 +519,21 @@ public class OutgoingLetterService : IOutgoingLetterService
                 SignersTotal = s.Source.OutgoingSigners.Count(x => !x.IsDelete),
                 SignersSigned = s.Source.OutgoingSigners.Count(x => !x.IsDelete && x.IsSigned)
             }).ToListAsync();
+
+        return new PagedResult<OutgoingLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
-    public async Task<List<OutgoingLetterListItemDto>> GetArchiveAsync(int userId, string? search)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.OutgoingLetter != null && !e.Source.OutgoingLetter.IsDelete
@@ -517,7 +547,11 @@ public class OutgoingLetterService : IOutgoingLetterService
                              || e.Source.OutgoingLetter!.ReceiverOrganization.Contains(s));
         }
 
-        return await q.OrderByDescending(e => e.ErjaId)
+        var totalCount = await q.CountAsync();
+
+        var items = await q.OrderByDescending(e => e.ErjaId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(e => new OutgoingLetterListItemDto
             {
                 LetterId = e.SourceId,
@@ -548,10 +582,21 @@ public class OutgoingLetterService : IOutgoingLetterService
                 SignersTotal = e.Source.OutgoingSigners.Count(x => !x.IsDelete),
                 SignersSigned = e.Source.OutgoingSigners.Count(x => !x.IsDelete && x.IsSigned)
             }).ToListAsync();
+
+        return new PagedResult<OutgoingLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
-    public async Task<List<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search)
+    public async Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         var q = _db.OutgoingLetters.AsNoTracking()
             .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete);
 
@@ -561,7 +606,11 @@ public class OutgoingLetterService : IOutgoingLetterService
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.ReceiverOrganization.Contains(s) || (l.SadereNumber ?? "").Contains(s));
         }
 
-        return await q.OrderByDescending(l => l.Id)
+        var totalCount = await q.CountAsync();
+
+        var items = await q.OrderByDescending(l => l.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(l => new OutgoingLetterListItemDto
             {
                 LetterId = l.Id,
@@ -578,6 +627,22 @@ public class OutgoingLetterService : IOutgoingLetterService
                 IsRead = l.Source.Erjas.Where(e => !e.IsDelete && e.ParentErjaId == null).All(e => e.IsRead),
                 HasAnswer = l.Source.Erjas.Any(e => !e.IsDelete && e.Answer != ""),
                 ReciverCount = l.Source.Erjas.Count(e => !e.IsDelete && e.ParentErjaId == null),
+                HasAttachment = _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id),
+                Status = l.Status,
+                SadereNumber = l.SadereNumber,
+                DateSadere = l.DateSadere,
+                SignersTotal = l.Source.OutgoingSigners.Count(x => !x.IsDelete),
+                SignersSigned = l.Source.OutgoingSigners.Count(x => !x.IsDelete && x.IsSigned)
+            }).ToListAsync();
+
+        return new PagedResult<OutgoingLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+    }
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id),
                 Status = l.Status,
                 SadereNumber = l.SadereNumber,
@@ -772,8 +837,11 @@ public class OutgoingLetterService : IOutgoingLetterService
         };
     }
 
-    public async Task<List<OutgoingLetterPickDto>> PickListAsync(int userId, string? search)
+    public async Task<PagedResult<OutgoingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         var q = _db.LetterSources.AsNoTracking()
             .Where(s => !s.IsDelete &&
                         ((s.InnerLetter != null && !s.InnerLetter.IsDelete &&
@@ -789,7 +857,11 @@ public class OutgoingLetterService : IOutgoingLetterService
                 (src.OutgoingLetter != null && (src.OutgoingLetter.Title.Contains(s) || (src.OutgoingLetter.LetterNumber ?? "").Contains(s) || src.OutgoingLetter.ReceiverOrganization.Contains(s) || (src.OutgoingLetter.SadereNumber ?? "").Contains(s))));
         }
 
-        return await q.OrderByDescending(s => s.Id).Take(30)
+        var totalCount = await q.CountAsync();
+
+        var items = await q.OrderByDescending(s => s.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(s => new OutgoingLetterPickDto
             {
                 LetterId = s.Id,
@@ -799,6 +871,14 @@ public class OutgoingLetterService : IOutgoingLetterService
                 IsSent = s.InnerLetter != null ? s.InnerLetter.CreatorUserId == userId : s.OutgoingLetter!.CreatorUserId == userId,
                 SourceType = s.SourceType
             }).ToListAsync();
+
+        return new PagedResult<OutgoingLetterPickDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task DeleteAsync(int letterId, int userId, bool isAdmin)

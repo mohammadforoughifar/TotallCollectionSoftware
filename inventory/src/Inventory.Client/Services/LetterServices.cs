@@ -26,6 +26,7 @@ public interface ILetterService
     Task<bool> ToggleNeshanAsync(int erjaId);
     Task<bool> ToggleLetterNeshanAsync(int letterId);
     Task<bool> ToggleBayeganiAsync(int erjaId);
+    Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null);
 
     // بایگانی درختی
     Task<List<BayeganiNodeDto>> GetBayeganiTreeAsync();
@@ -135,6 +136,14 @@ public class LetterService : ILetterService
 
     public async Task<bool> ToggleBayeganiAsync(int erjaId) =>
         (await _api.PostAsync<BayeganiResponse>($"api/letters/erja/{erjaId}/bayegani")).IsBayegani;
+
+    public async Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null)
+    {
+        var res = await _api.PostAsync<BatchBayeganiRes>("api/letters/erja/batch-bayegani", new { erjaIds, description });
+        return res?.Count ?? erjaIds.Count;
+    }
+
+    private class BatchBayeganiRes { public int Count { get; set; } }
 
     // ==================== بایگانی درختی ====================
 
