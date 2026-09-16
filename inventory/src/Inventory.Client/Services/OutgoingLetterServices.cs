@@ -101,11 +101,11 @@ public class OutgoingLetterService : IOutgoingLetterService
         _api.PostAsync<object>($"api/outgoing-letters/{letterId}/status", new { status });
 
     public Task<List<OutgoingLetterPickDto>> PickAsync(string? search = null) =>
-        _api.GetAsync<List<OutgoingLetterPickDto>>(
+        ListOrPaged.GetAsync<OutgoingLetterPickDto>(_api,
             $"api/outgoing-letters/pick{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
 
     public Task<List<ErjaTreeNodeDto>> GetGardeshAsync(int letterId) =>
-        _api.GetAsync<List<ErjaTreeNodeDto>>($"api/outgoing-letters/{letterId}/gardesh");
+        ListOrPaged.GetAsync<ErjaTreeNodeDto>(_api, $"api/outgoing-letters/{letterId}/gardesh");
 
     public Task AddErjaAsync(AddErjaDto dto) => _api.PostAsync<object>("api/outgoing-letters/erja", dto);
 
@@ -134,10 +134,10 @@ public class OutgoingLetterService : IOutgoingLetterService
     private class BatchBayeganiRes { public int Count { get; set; } }
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
-        _api.GetAsync<List<AmalgarDto>>("api/outgoing-letters/amalgars");
+        ListOrPaged.GetAsync<AmalgarDto>(_api, "api/outgoing-letters/amalgars");
 
     public Task<List<OutgoingPishnevisDto>> GetPishnevisListAsync(string? search = null) =>
-        _api.GetAsync<List<OutgoingPishnevisDto>>(
+        ListOrPaged.GetAsync<OutgoingPishnevisDto>(_api,
             $"api/outgoing-letters/pishnevis{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
 
     public Task<OutgoingPishnevisDto> GetPishnevisAsync(int id) =>
@@ -149,13 +149,13 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task DeletePishnevisAsync(int id) => _api.DeleteAsync($"api/outgoing-letters/pishnevis/{id}");
 
     public Task<List<LetterReciverDto>> GetReciversAsync() =>
-        _api.GetAsync<List<LetterReciverDto>>("api/outgoing-letters/recivers");
+        ListOrPaged.GetAsync<LetterReciverDto>(_api, "api/outgoing-letters/recivers");
 
     public Task EditAsync(int letterId, EditOutgoingLetterDto dto) =>
         _api.PutAsync<object>($"api/outgoing-letters/{letterId}", dto);
 
     public Task<List<LetterGroupDto>> GetGroupsAsync() =>
-        _api.GetAsync<List<LetterGroupDto>>("api/outgoing-letters/groups?withMembers=true");
+        ListOrPaged.GetAsync<LetterGroupDto>(_api, "api/outgoing-letters/groups?withMembers=true");
 
     public Task<List<OutgoingLetterListItemDto>> GetSigningInboxAsync(string? search = null, bool? unsignedOnly = null)
     {
@@ -167,23 +167,23 @@ public class OutgoingLetterService : IOutgoingLetterService
     }
 
     public Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId) =>
-        _api.GetAsync<List<OutgoingSignerDto>>($"api/outgoing-letters/{letterId}/signers");
+        ListOrPaged.GetAsync<OutgoingSignerDto>(_api, $"api/outgoing-letters/{letterId}/signers");
 
     public Task SignAsync(int letterId, string? note = null) =>
         _api.PostAsync<object>($"api/outgoing-letters/{letterId}/sign", new { signNote = note });
 
     public Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search = null) =>
-        _api.GetAsync<List<LetterReciverDto>>(
+        ListOrPaged.GetAsync<LetterReciverDto>(_api,
             $"api/outgoing-letters/available-signers{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
 
     public Task<List<LetterAttachmentDto>> GetAttachmentsAsync(int letterId) =>
-        _api.GetAsync<List<LetterAttachmentDto>>($"api/outgoing-letters/{letterId}/attachments");
+        ListOrPaged.GetAsync<LetterAttachmentDto>(_api, $"api/outgoing-letters/{letterId}/attachments");
 
     public Task UploadAttachmentAsync(int letterId, Stream stream, string fileName, string contentType) =>
         UploadCoreAsync($"api/outgoing-letters/{letterId}/attachments", stream, fileName, contentType);
 
     public Task<List<LetterAttachmentDto>> GetPishnevisAttachmentsAsync(int pishnevisId) =>
-        _api.GetAsync<List<LetterAttachmentDto>>($"api/outgoing-letters/pishnevis/{pishnevisId}/attachments");
+        ListOrPaged.GetAsync<LetterAttachmentDto>(_api, $"api/outgoing-letters/pishnevis/{pishnevisId}/attachments");
 
     public Task UploadPishnevisAttachmentAsync(int pishnevisId, Stream stream, string fileName, string contentType) =>
         UploadCoreAsync($"api/outgoing-letters/pishnevis/{pishnevisId}/attachments", stream, fileName, contentType);
@@ -230,7 +230,7 @@ public class OutgoingLetterService : IOutgoingLetterService
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (registeredOnly != null) qs.Add($"registeredOnly={(registeredOnly == true ? "true" : "false")}");
         var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return _api.GetAsync<List<DabirkhaneListItemDto>>($"api/outgoing-letters/dabirkhane{q}");
+        return ListOrPaged.GetAsync<DabirkhaneListItemDto>(_api, $"api/outgoing-letters/dabirkhane{q}");
     }
 
     public Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync() =>
@@ -240,7 +240,7 @@ public class OutgoingLetterService : IOutgoingLetterService
         _api.PostAsync<object>($"api/outgoing-letters/{letterId}/dabirkhane", dto);
 
     public Task<List<LetterCompanyDto>> GetCompaniesAsync() =>
-        _api.GetAsync<List<LetterCompanyDto>>("api/outgoing-letters/companies");
+        ListOrPaged.GetAsync<LetterCompanyDto>(_api, "api/outgoing-letters/companies");
 
     /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود</summary>
     public async Task<byte[]> GetPrintPdfAsync(int letterId, string size)

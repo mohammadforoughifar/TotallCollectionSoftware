@@ -13,11 +13,18 @@ public static class ListOrPaged
 
     public static async Task<List<T>> GetAsync<T>(IApiClient api, string path)
     {
-        var el = await api.GetAsync<JsonElement>(path);
-        return Normalize<T>(el);
+        try
+        {
+            var el = await api.GetAsync<JsonElement>(path);
+            return Normalize<T>(el);
+        }
+        catch
+        {
+            return new List<T>();
+        }
     }
 
-    /// <summary>آرایه → همان آرایه؛ آبجکت دارای items → items؛ در غیر این صورت فهرست خالی.</summary>
+    /// <summary>آرایه → همان آرایه؛ آبجکت دارای items/Items → items؛ در غیر این صورت فهرست خالی.</summary>
     public static List<T> Normalize<T>(JsonElement el)
     {
         switch (el.ValueKind)
@@ -26,8 +33,13 @@ public static class ListOrPaged
                 return el.Deserialize<List<T>>(Opts) ?? new List<T>();
 
             case JsonValueKind.Object:
-                if (el.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
-                    return items.Deserialize<List<T>>(Opts) ?? new List<T>();
+                foreach (var prop in el.EnumerateObject())
+                {
+                    if (string.Equals(prop.Name, "items", StringComparison.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        return prop.Value.Deserialize<List<T>>(Opts) ?? new List<T>();
+                    }
+                }
                 return new List<T>();
 
             default:
