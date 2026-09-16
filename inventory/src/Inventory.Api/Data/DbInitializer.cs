@@ -359,7 +359,7 @@ public static class DbInitializer
                         var defaultOrg = db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive && o.IsDefault)
                                          ?? db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive);
                         var unit = defaultOrg?.NameUniq ?? config?["Letters:UnitCode"] ?? "MQ";
-                        var pc = new System.Globalization.PersianCalendar();
+                        var pc = new global::System.Globalization.PersianCalendar();
                         var toFix = db.InnerLetters.Where(l => !l.IsDelete).ToList();
                         int fixedCount = 0;
                         foreach (var l in toFix)

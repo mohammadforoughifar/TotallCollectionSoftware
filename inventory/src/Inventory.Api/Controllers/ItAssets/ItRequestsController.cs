@@ -169,7 +169,7 @@ public class ItRequestsController : ControllerBase
         await _db.SaveChangesAsync();
 
         // شماره منحصربه‌فرد: IT/سال شمسی/سریال — سریال هر سال از ۱ شروع می‌شود
-        var pc = new System.Globalization.PersianCalendar();
+        var pc = new global::System.Globalization.PersianCalendar();
         var py = pc.GetYear(DateTime.Now);
         var prefix = $"IT/{py}/";
         var serial = await _db.ItRequests.CountAsync(r => r.Number.StartsWith(prefix)) + 1;
@@ -538,7 +538,7 @@ public class ItRequestsController : ControllerBase
         _db.ItRequests.Add(req);
         await _db.SaveChangesAsync();
 
-        var pcx = new System.Globalization.PersianCalendar();
+        var pcx = new global::System.Globalization.PersianCalendar();
         var pyx = pcx.GetYear(DateTime.Now);
         var prefixx = $"IT/{pyx}/";
         var serialx = await _db.ItRequests.CountAsync(r => r.Number.StartsWith(prefixx)) + 1;

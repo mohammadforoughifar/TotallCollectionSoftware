@@ -1919,7 +1919,7 @@ public class HrCoreService : IHrCoreService
 
     public async Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year)
     {
-        var pc = new System.Globalization.PersianCalendar();
+        var pc = new global::System.Globalization.PersianCalendar();
         if (year is < 1300 or > 1500) year = pc.GetYear(DateTime.Today);
         var from = pc.ToDateTime(year, 1, 1, 0, 0, 0, 0);
         var to = pc.ToDateTime(year + 1, 1, 1, 0, 0, 0, 0);
