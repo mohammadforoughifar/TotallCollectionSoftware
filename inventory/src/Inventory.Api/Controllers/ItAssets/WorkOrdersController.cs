@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
@@ -260,7 +261,7 @@ public class WorkOrdersController : ControllerBase
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
         // The database identity prevents number reuse after a deletion and count-based races.
-        wo.Number = $"WO/{new global::System.Globalization.PersianCalendar().GetYear(wo.CreatedAt)}/{wo.Id}";
+        wo.Number = $"WO/{new PersianCalendar().GetYear(wo.CreatedAt)}/{wo.Id}";
         foreach (var u in users)
             _db.WorkOrderAssignees.Add(new WorkOrderAssignee { OrderId = wo.Id, UserId = u.Id, Name = UserDisplay.Name(u) });
         var clOrder = 0;
@@ -391,7 +392,7 @@ public class WorkOrdersController : ControllerBase
 
     private static string ToFa(DateTime d)
     {
-        var pc = new global::System.Globalization.PersianCalendar();
+        var pc = new PersianCalendar();
         return $"{pc.GetYear(d)}/{pc.GetMonth(d):00}/{pc.GetDayOfMonth(d):00} {d:HH:mm}";
     }
 
@@ -914,7 +915,7 @@ public class WorkOrdersController : ControllerBase
             .OrderByDescending(x => x.Total).Take(15).ToList();
 
         // روند ۶ ماه اخیر شمسی — تعداد ایجادشده / انجام به‌موقع / انجام با تاخیر
-        var pc = new global::System.Globalization.PersianCalendar();
+        var pc = new PersianCalendar();
         var months = new List<object>();
         for (var i = 5; i >= 0; i--)
         {

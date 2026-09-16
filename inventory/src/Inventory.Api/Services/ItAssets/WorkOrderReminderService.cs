@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Microsoft.EntityFrameworkCore;
@@ -151,7 +152,7 @@ public class WorkOrderReminderService : BackgroundService
 
     private static string ToFa(DateTime d)
     {
-        var pc = new global::System.Globalization.PersianCalendar();
+        var pc = new PersianCalendar();
         return $"{pc.GetYear(d)}/{pc.GetMonth(d):00}/{pc.GetDayOfMonth(d):00} {d:HH:mm}";
     }
 }

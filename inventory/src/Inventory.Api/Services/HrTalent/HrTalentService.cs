@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -462,7 +463,7 @@ public class HrTalentService : IHrTalentService
         }
         else { x = new HrAppraisal(); _db.HrAppraisals.Add(x); }
         x.Title = dto.Title.Trim();
-        x.Year = dto.Year is >= 1300 and <= 1500 ? dto.Year : new global::System.Globalization.PersianCalendar().GetYear(DateTime.Today);
+        x.Year = dto.Year is >= 1300 and <= 1500 ? dto.Year : new PersianCalendar().GetYear(DateTime.Today);
         x.Period = (HrAppraisalPeriod)Math.Clamp(dto.Period, 0, 3);
         await _db.SaveChangesAsync();
         return await GetAppraisalAsync(x.Id);

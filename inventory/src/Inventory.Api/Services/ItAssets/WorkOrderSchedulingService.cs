@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Shared;
 using Microsoft.EntityFrameworkCore;
@@ -33,7 +34,7 @@ public sealed class WorkOrderSchedulingService(AppDbContext db)
         }).ToList();
         db.WorkOrders.AddRange(orders);
         await db.SaveChangesAsync();
-        var pc = new global::System.Globalization.PersianCalendar();
+        var pc = new PersianCalendar();
         foreach (var order in orders)
         {
             order.Number = $"WO/{pc.GetYear(order.CreatedAt)}/{order.Id}";

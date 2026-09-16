@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Api.Services;
 using Inventory.Shared;
 using Microsoft.Data.SqlClient;
@@ -359,7 +360,7 @@ public static class DbInitializer
                         var defaultOrg = db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive && o.IsDefault)
                                          ?? db.Organizations.FirstOrDefault(o => !o.IsDelete && o.IsActive);
                         var unit = defaultOrg?.NameUniq ?? config?["Letters:UnitCode"] ?? "MQ";
-                        var pc = new global::System.Globalization.PersianCalendar();
+                        var pc = new PersianCalendar();
                         var toFix = db.InnerLetters.Where(l => !l.IsDelete).ToList();
                         int fixedCount = 0;
                         foreach (var l in toFix)
