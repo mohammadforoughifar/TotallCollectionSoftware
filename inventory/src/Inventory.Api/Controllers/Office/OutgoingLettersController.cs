@@ -477,7 +477,7 @@ public class OutgoingLettersController : RbacControllerBase
         }
 
         // فایل از دیسک خوانده می‌شود (پشتیبانی کامل از هر دو مسیر جدید wwwroot/uploads و قدیمی)
-        var bytes = a.FilePath is not null ? _store.ReadBytes(a.FilePath) : null;
+        var bytes = (a.FilePath is not null ? _store.ReadBytes(a.FilePath) : null) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         bytes ??= a.FilePath is not null ? _store.ReadWebRoot(a.FilePath) : null;
         bytes ??= a.Data is { Length: > 0 } ? a.Data : null;
         if (bytes == null) return NotFound(new { message = "فایل پیوست پیدا نشد." });

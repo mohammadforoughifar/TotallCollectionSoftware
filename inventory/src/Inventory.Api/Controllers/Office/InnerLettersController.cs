@@ -462,7 +462,11 @@ public class InnerLettersController : RbacControllerBase
                 return StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." });
         }
         else if (!await InFlowAsync(a.RefId) && !await IsAdminAsync())
-            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        {
+            var hasReadPerm = await ForbiddenUnlessAsync(Module, "Read") == null;
+            if (!hasReadPerm)
+                return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        }
 
         // اول از دیسک خوانده می‌شود؛ در صورت نبود، به blob قدیمی در DB برمی‌گردد
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);

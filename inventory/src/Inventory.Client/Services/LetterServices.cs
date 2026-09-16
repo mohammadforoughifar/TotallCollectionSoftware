@@ -9,9 +9,9 @@ namespace Inventory.Client.Services;
 public interface ILetterService
 {
     // کارتابل
-    Task<List<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null);
-    Task<List<InnerLetterListItemDto>> GetSentAsync(string? search = null);
-    Task<List<InnerLetterListItemDto>> GetArchiveAsync(string? search = null);
+    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
+    Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<LetterCartableStatsDto> GetStatsAsync();
     Task<InnerLetterDetailDto> GetDetailAsync(int letterId);
     Task<int> SendAsync(AddInnerLetterDto dto);
@@ -83,22 +83,27 @@ public class LetterService : ILetterService
     private class IdResponse { public int Id { get; set; } }
     private class NeshanResponse { public bool IsNeshan { get; set; } }
 
-    public Task<List<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null)
+    public Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
     {
-        var qs = new List<string>();
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
-        var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return ListOrPaged.GetAsync<InnerLetterListItemDto>(_api, $"api/letters/inbox{q}");
+        return ListOrPaged.GetPagedAsync<InnerLetterListItemDto>(_api, $"api/letters/inbox?{string.Join("&", qs)}");
     }
 
-    public Task<List<InnerLetterListItemDto>> GetSentAsync(string? search = null) =>
-        ListOrPaged.GetAsync<InnerLetterListItemDto>(_api,
-            $"api/letters/sent{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    public Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15)
+    {
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        return ListOrPaged.GetPagedAsync<InnerLetterListItemDto>(_api, $"api/letters/sent?{string.Join("&", qs)}");
+    }
 
-    public Task<List<InnerLetterListItemDto>> GetArchiveAsync(string? search = null) =>
-        ListOrPaged.GetAsync<InnerLetterListItemDto>(_api,
-            $"api/letters/archive{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    public Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15)
+    {
+        var qs = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
+        return ListOrPaged.GetPagedAsync<InnerLetterListItemDto>(_api, $"api/letters/archive?{string.Join("&", qs)}");
+    }
 
     public Task<LetterCartableStatsDto> GetStatsAsync() =>
         _api.GetAsync<LetterCartableStatsDto>("api/letters/stats");
