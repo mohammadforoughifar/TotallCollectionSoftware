@@ -1,0 +1,1669 @@
+@namespace Inventory.Client.Pages
+@page "/report-builder"
+@inject IAuthState Auth
+@inject IReportClient Api
+@inject IDashboardClient Dash
+@inject IToastService Toast
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* =====================================================================
+     گزارش‌ساز شخصی
+     ۱) انتخاب دیتاست (فقط دیتاست‌هایی که کاربر مجوز ماژولشان را دارد)
+     ۲) تنظیم خروجی (جدول / شاخص / نمودار) + ستون‌ها + سنجه‌ها + فیلتر + مرتب‌سازی
+     ۳) پیش‌نمایش زنده
+     ۴) ذخیره و اشتراک با نقش‌ها → تبدیل به ویجت داشبورد («rep:{id}»)
+   ===================================================================== *@
+
+<PageTitle>گزارش‌ساز</PageTitle>
+
+@if (!Auth.CanSee("ReportBuilder"))
+{
+    <div class="alert alert-warning mt-3">
+        <i class="bi bi-shield-exclamation"></i>
+        شما به «گزارش‌ساز» دسترسی ندارید. برای دریافت دسترسی با مدیر سیستم تماس بگیرید.
+    </div>
+}
+else if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+}
+else
+{
+    <div class="page-head rb-head">
+        <div>
+            <h1><i class="bi bi-clipboard-data-fill"></i> گزارش‌ساز</h1>
+            <p class="lead mb-0">دیتاست و ستون‌ها را انتخاب کن، فیلتر بگذار و نتیجه را به ویجت داشبورد تبدیل کن.</p>
+        </div>
+        <div class="rb-head-actions">
+            <button class="btn btn-outline-secondary btn-sm" @onclick="NewReport">
+                <i class="bi bi-file-earmark-plus"></i> گزارش جدید
+            </button>
+            <button class="btn btn-outline-primary btn-sm" disabled="@(running || ds is null)" @onclick="RunAsync">
+                <i class="bi bi-play-fill"></i> اجرا
+            </button>
+            @if (canDesign)
+            {
+                <button class="btn btn-primary btn-sm" disabled="@(ds is null)" @onclick="OpenSave">
+                    <i class="bi bi-save"></i> @(editingId > 0 ? "به‌روزرسانی گزارش" : "ذخیرهٔ گزارش")
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (!canDesign)
+    {
+        <div class="alert alert-light border rb-note">
+            <i class="bi bi-info-circle"></i>
+            مجوز «طراحی گزارش» نداری؛ می‌توانی گزارش‌های اشتراک‌شده با نقش‌هایت را اجرا کنی.
+        </div>
+    }
+
+    <div class="rb-wrap">
+        @* ================= ستون تنظیمات ================= *@
+        <div class="rb-side">
+
+            @* ---------- ۱) دیتاست ---------- *@
+            <section class="rb-box">
+                <header class="rb-box-head">
+                    <span><i class="bi bi-database"></i> ۱) دیتاست</span>
+                    <em class="rb-badge">@Fa.Digits(datasets.Count)</em>
+                </header>
+                <div class="rb-box-body">
+                    @if (datasets.Count == 0)
+                    {
+                        <div class="rb-empty">
+                            <i class="bi bi-shield-lock"></i>
+                            <span>دیتاستی که مجوز دیدن داده‌اش را داشته باشی پیدا نشد. دسترسی ماژول‌ها را از مدیر بخواه.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <input class="form-control form-control-sm mb-2" placeholder="جستجوی دیتاست..."
+                               @bind="dsQuery" @bind:event="oninput" />
+                        <div class="rb-ds-list">
+                            @foreach (var grp in DatasetGroups)
+                            {
+                                <div class="rb-ds-cat">@grp.Key</div>
+                                @foreach (var d in grp)
+                                {
+                                    var dd = d;
+                                    <button type="button" class="rb-ds @(dd.Key == dsKey ? "active" : "")"
+                                            title="@dd.Description" @onclick="() => SelectDataset(dd.Key)">
+                                        <i class="bi @dd.Icon"></i>
+                                        <span>@dd.Title</span>
+                                        <em>@Fa.Digits(dd.Columns.Count) ستون</em>
+                                    </button>
+                                }
+                            }
+                            @if (DatasetGroups.Sum(g => g.Count()) == 0)
+                            {
+                                <div class="rb-empty"><i class="bi bi-search"></i> <span>دیتاستی با این جستجو پیدا نشد.</span></div>
+                            }
+                        </div>
+                        @if (ds is not null)
+                        {
+                            <div class="rb-hint mt-2">
+                                <i class="bi bi-info-circle"></i> @ds.Description
+                                <span class="rb-tag">ماژول: @ds.Module</span>
+                            </div>
+                        }
+                    }
+                </div>
+            </section>
+
+            @if (ds is not null)
+            {
+                @* ---------- ۲) خروجی ---------- *@
+                <section class="rb-box">
+                    <header class="rb-box-head"><span><i class="bi bi-sliders"></i> ۲) نوع خروجی</span></header>
+                    <div class="rb-box-body">
+                        <div class="rb-seg">
+                            <button type="button" class="@(output == ReportOutput.Table ? "on" : "")" @onclick="() => SetOutput(ReportOutput.Table)">
+                                <i class="bi bi-table"></i> جدول
+                            </button>
+                            <button type="button" class="@(output == ReportOutput.Kpi ? "on" : "")" @onclick="() => SetOutput(ReportOutput.Kpi)">
+                                <i class="bi bi-123"></i> شاخص
+                            </button>
+                            <button type="button" class="@(output == ReportOutput.Chart ? "on" : "")" @onclick="() => SetOutput(ReportOutput.Chart)">
+                                <i class="bi bi-bar-chart"></i> نمودار
+                            </button>
+                        </div>
+
+                        <label class="rb-check @(output != ReportOutput.Table ? "disabled" : "")">
+                            <input type="checkbox" @bind="aggregate" @bind:after="OnAggregateChanged"
+                                   disabled="@(output != ReportOutput.Table)" />
+                            <span>گروه‌بندی و تجمیع</span>
+                        </label>
+                        @if (output == ReportOutput.Table && !aggregate)
+                        {
+                            <div class="rb-hint">حالت ریز: هر ردیف یک رکورد است (بدون جمع).</div>
+                        }
+                        @if (output == ReportOutput.Chart)
+                        {
+                            <label class="rb-field">
+                                <span>نوع نمودار</span>
+                                <select class="form-select form-select-sm" value="@((int)chartType)"
+                                        @onchange="e => SetChartType(e.Value?.ToString())">
+                                    <option value="0">میله‌ای</option>
+                                    <option value="1">خطی</option>
+                                    <option value="2">دایره‌ای</option>
+                                    <option value="3">حلقه‌ای</option>
+                                </select>
+                            </label>
+                            <div class="rb-hint">برای نمودار: دقیقاً یک ستون گروه‌بندی + دست‌کم یک سنجه.</div>
+                        }
+
+                        @if (dateCols.Count > 0)
+                        {
+                            <label class="rb-field">
+                                <span>ستون تاریخ (بازهٔ زمانی)</span>
+                                <select class="form-select form-select-sm" value="@(dateField ?? "")"
+                                        @onchange="e => SetDateField(e.Value?.ToString())">
+                                    <option value="">— بدون بازهٔ زمانی —</option>
+                                    @foreach (var c in dateCols)
+                                    {
+                                        <option value="@c.Key">@c.Label</option>
+                                    }
+                                </select>
+                            </label>
+
+                            @if (output == ReportOutput.Kpi)
+                            {
+                                <label class="rb-check">
+                                    <input type="checkbox" @bind="comparePrev" @bind:after="OnConfigChanged" />
+                                    <span>مقایسه با بازهٔ قبل</span>
+                                </label>
+                                <div class="rb-hint">نیاز به یک فیلتر تاریخ با «بازهٔ آماده» دارد (مثلاً این ماه).</div>
+                            }
+                        }
+
+                        <label class="rb-field">
+                            <span>حداکثر ردیف نتیجه</span>
+                            <input type="number" min="1" max="500" class="form-control form-control-sm num"
+                                   @bind="take" @bind:after="OnConfigChanged" />
+                        </label>
+                    </div>
+                </section>
+
+                @* ---------- ۳) ستون‌ها ---------- *@
+                <section class="rb-box">
+                    <header class="rb-box-head">
+                        <span>
+                            <i class="bi bi-list-columns"></i>
+                            ۳) @(aggregate ? "ستون‌های گروه‌بندی" : "ستون‌های گزارش")
+                        </span>
+                        <em class="rb-badge">@Fa.Digits(cols.Count)</em>
+                    </header>
+                    <div class="rb-box-body">
+                        @if (cols.Count > 0)
+                        {
+                            <div class="rb-chips">
+                                @for (var i = 0; i < cols.Count; i++)
+                                {
+                                    var idx = i;
+                                    var key = cols[i];
+                                    <span class="rb-chip">
+                                        <em>@Fa.Digits(idx + 1)</em>
+                                        <i class="bi @ColIcon(key)"></i> @ColLabel(key)
+                                        <button type="button" class="rb-chip-b" disabled="@(idx == 0)" title="یک قدم جلو"
+                                                @onclick="() => MoveCol(idx, -1)"><i class="bi bi-arrow-up"></i></button>
+                                        <button type="button" class="rb-chip-b" disabled="@(idx == cols.Count - 1)" title="یک قدم عقب"
+                                                @onclick="() => MoveCol(idx, 1)"><i class="bi bi-arrow-down"></i></button>
+                                        <button type="button" class="rb-chip-x" title="حذف"
+                                                @onclick="() => ToggleCol(key, false)"><i class="bi bi-x-lg"></i></button>
+                                    </span>
+                                }
+                            </div>
+                        }
+
+                        <div class="rb-col-list">
+                            @foreach (var c in SelectableCols)
+                            {
+                                var cc = c;
+                                <label class="rb-check" title="@cc.Hint">
+                                    <input type="checkbox" checked="@cols.Contains(cc.Key)"
+                                           @onchange="e => ToggleCol(cc.Key, e.Value is bool b && b)" />
+                                    <span>@cc.Label</span>
+                                    <em>@TypeName(cc)</em>
+                                </label>
+                            }
+                        </div>
+                    </div>
+                </section>
+
+                @* ---------- ۴) سنجه‌ها ---------- *@
+                <section class="rb-box">
+                    <header class="rb-box-head">
+                        <span><i class="bi bi-calculator"></i> ۴) سنجه‌ها</span>
+                        <em class="rb-badge">@Fa.Digits(measures.Count)</em>
+                        <button type="button" class="rb-head-btn" title="افزودن سنجه" disabled="@(!aggregate)" @onclick="AddMeasure">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </header>
+                    <div class="rb-box-body">
+                        @if (!aggregate)
+                        {
+                            <div class="rb-hint">سنجه فقط در حالت «گروه‌بندی و تجمیع» استفاده می‌شود.</div>
+                        }
+                        @for (var i = 0; i < measures.Count; i++)
+                        {
+                            var idx = i;
+                            var m = measures[i];
+                            <div class="rb-row">
+                                <select class="form-select form-select-sm" value="@m.Field" title="ستون"
+                                        @onchange="e => SetMeasureField(idx, e.Value?.ToString())">
+                                    <option value="">— ستون —</option>
+                                    @foreach (var c in MeasureCandidates)
+                                    {
+                                        <option value="@c.Key">@c.Label</option>
+                                    }
+                                </select>
+                                <select class="form-select form-select-sm" value="@((int)m.Agg)" title="نوع تجمیع"
+                                        @onchange="e => SetMeasureAgg(idx, e.Value?.ToString())">
+                                    @foreach (var a in AggsFor(m.Field))
+                                    {
+                                        <option value="@((int)a)">@AggName(a)</option>
+                                    }
+                                </select>
+                                <input class="form-control form-control-sm" placeholder="عنوان ستون" value="@m.Label"
+                                       @onchange="e => SetMeasureLabel(idx, e.Value?.ToString())" />
+                                <button type="button" class="rb-x" title="حذف سنجه" @onclick="() => RemoveMeasure(idx)">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                @* ---------- ۵) فیلترها ---------- *@
+                <section class="rb-box">
+                    <header class="rb-box-head">
+                        <span><i class="bi bi-funnel"></i> ۵) فیلترها</span>
+                        <em class="rb-badge">@Fa.Digits(filters.Count)</em>
+                        <button type="button" class="rb-head-btn" title="افزودن فیلتر" @onclick="AddFilter">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </header>
+                    <div class="rb-box-body">
+                        @for (var i = 0; i < filters.Count; i++)
+                        {
+                            var idx = i;
+                            var f = filters[i];
+                            var fc = Col(f.Field);
+                            <div class="rb-filter">
+                                <div class="rb-row">
+                                    <select class="form-select form-select-sm" value="@f.Field" title="ستون"
+                                            @onchange="e => SetFilterField(idx, e.Value?.ToString())">
+                                        <option value="">— ستون —</option>
+                                        @foreach (var c in ds.Columns)
+                                        {
+                                            <option value="@c.Key">@c.Label</option>
+                                        }
+                                    </select>
+                                    <select class="form-select form-select-sm" value="@((int)f.Op)" title="عملگر"
+                                            @onchange="e => SetFilterOp(idx, e.Value?.ToString())">
+                                        @foreach (var op in OpsFor(fc))
+                                        {
+                                            <option value="@((int)op)">@OpName(op)</option>
+                                        }
+                                    </select>
+                                    <button type="button" class="rb-x" title="حذف فیلتر" @onclick="() => RemoveFilter(idx)">
+                                        <i class="bi bi-x-lg"></i>
+                                    </button>
+                                </div>
+
+                                @if (fc is not null && NeedsValue(f.Op))
+                                {
+                                    @if (fc.DataType == ReportDataType.Date)
+                                    {
+                                        <div class="rb-row">
+                                            <select class="form-select form-select-sm" value="@((int)f.Preset)" title="بازهٔ آماده"
+                                                    @onchange="e => SetFilterPreset(idx, e.Value?.ToString())">
+                                                @foreach (var p in Presets)
+                                                {
+                                                    <option value="@((int)p.Key)">@p.Value</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        @if (f.Preset == ReportDatePreset.None)
+                                        {
+                                            <div class="rb-row">
+                                                <input class="form-control form-control-sm num" placeholder="از: ۱۴۰۴/۰۶/۰۱"
+                                                       value="@f.Value" @onchange="e => SetFilterValue(idx, e.Value?.ToString())" />
+                                                @if (f.Op == ReportOp.Between)
+                                                {
+                                                    <input class="form-control form-control-sm num" placeholder="تا: ۱۴۰۴/۰۶/۳۱"
+                                                           value="@f.Value2" @onchange="e => SetFilterValue2(idx, e.Value?.ToString())" />
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                    else if (fc.Labels is { Count: > 0 })
+                                    {
+                                        @if (f.Op == ReportOp.In)
+                                        {
+                                            <div class="rb-multi">
+                                                @foreach (var kv in fc.Labels)
+                                                {
+                                                    var k = kv.Key;
+                                                    var on = InList(f.Value).Contains(k);
+                                                    <button type="button" class="rb-pick @(on ? "on" : "")"
+                                                            @onclick="() => ToggleIn(idx, k)">
+                                                        @kv.Value
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="rb-row">
+                                                <select class="form-select form-select-sm" value="@(f.Value ?? "")"
+                                                        @onchange="e => SetFilterValue(idx, e.Value?.ToString())">
+                                                    <option value="">— انتخاب —</option>
+                                                    @foreach (var kv in fc.Labels)
+                                                    {
+                                                        <option value="@kv.Key">@kv.Value</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        }
+                                    }
+                                    else if (f.Op == ReportOp.In)
+                                    {
+                                        <div class="rb-row">
+                                            <input class="form-control form-control-sm" placeholder="چند مقدار با «,» جدا شود"
+                                                   value="@f.Value" @onchange="e => SetFilterValue(idx, e.Value?.ToString())" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="rb-row">
+                                            <input class="form-control form-control-sm @(fc.DataType == ReportDataType.Number ? "num" : "")"
+                                                   placeholder="@ValueHint(fc)" value="@f.Value"
+                                                   @onchange="e => SetFilterValue(idx, e.Value?.ToString())" />
+                                            @if (f.Op == ReportOp.Between)
+                                            {
+                                                <input class="form-control form-control-sm num" placeholder="تا"
+                                                       value="@f.Value2" @onchange="e => SetFilterValue2(idx, e.Value?.ToString())" />
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                        @if (filters.Count == 0)
+                        {
+                            <div class="rb-hint">بدون فیلتر، همهٔ ردیف‌ها (تا سقف ۲۰٬۰۰۰) خوانده می‌شود.</div>
+                        }
+                    </div>
+                </section>
+
+                @* ---------- ۶) مرتب‌سازی ---------- *@
+                <section class="rb-box">
+                    <header class="rb-box-head">
+                        <span><i class="bi bi-sort-down"></i> ۶) مرتب‌سازی</span>
+                        <em class="rb-badge">@Fa.Digits(sorts.Count)</em>
+                        <button type="button" class="rb-head-btn" title="افزودن مرتب‌سازی" disabled="@(!aggregate && sorts.Count > 0)" @onclick="AddSort">
+                            <i class="bi bi-plus-lg"></i>
+                        </button>
+                    </header>
+                    <div class="rb-box-body">
+                        @for (var i = 0; i < sorts.Count; i++)
+                        {
+                            var idx = i;
+                            var s = sorts[i];
+                            <div class="rb-row">
+                                <select class="form-select form-select-sm" value="@s.Field"
+                                        @onchange="e => SetSortField(idx, e.Value?.ToString())">
+                                    <option value="">— ستون —</option>
+                                    @foreach (var k in SortFields)
+                                    {
+                                        <option value="@k.Key">@k.Value</option>
+                                    }
+                                </select>
+                                <select class="form-select form-select-sm rb-dir" value="@(s.Desc ? "1" : "0")"
+                                        @onchange="e => SetSortDesc(idx, e.Value?.ToString())">
+                                    <option value="0">صعودی</option>
+                                    <option value="1">نزولی</option>
+                                </select>
+                                <button type="button" class="rb-x" title="حذف" @onclick="() => RemoveSort(idx)">
+                                    <i class="bi bi-x-lg"></i>
+                                </button>
+                            </div>
+                        }
+                        @if (sorts.Count == 0)
+                        {
+                            <div class="rb-hint">بدون مرتب‌سازی، نتیجه به ترتیب پیش‌فرض دیتاست است.</div>
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+
+        @* ================= ستون نتیجه ================= *@
+        <div class="rb-main">
+
+            <section class="rb-box">
+                <header class="rb-box-head">
+                    <span><i class="bi bi-eye"></i> پیش‌نمایش</span>
+                    @if (result is not null)
+                    {
+                        <span class="rb-stats">
+                            <span title="زمان اجرا"><i class="bi bi-stopwatch"></i> @Fa.Digits(result.ElapsedMs) م.ث</span>
+                            <span title="ردیف‌های خوانده‌شده از دیتابیس"><i class="bi bi-database"></i> @Fa.Digits(result.ScannedRows)</span>
+                            <span title="ردیف/گروه نتیجه"><i class="bi bi-list-ol"></i> @Fa.Digits(result.ResultRows)</span>
+                        </span>
+                    }
+                    <label class="rb-check rb-auto" title="با هر تغییر، گزارش دوباره اجرا شود">
+                        <input type="checkbox" @bind="autoRun" />
+                        <span>اجرای خودکار</span>
+                    </label>
+                </header>
+                <div class="rb-box-body rb-result">
+                    @if (running)
+                    {
+                        <div class="rb-loading"><div class="spinner-border spinner-border-sm text-primary"></div> در حال اجرای گزارش...</div>
+                    }
+                    else if (runError is not null)
+                    {
+                        <div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle"></i> @runError</div>
+                    }
+                    else if (result is null)
+                    {
+                        <div class="rb-empty">
+                            <i class="bi bi-play-circle"></i>
+                            <span>دیتاست و ستون‌ها را انتخاب کن و «اجرا» را بزن.</span>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(result.Data.Error))
+                    {
+                        <div class="alert alert-danger mb-0"><i class="bi bi-exclamation-triangle"></i> @result.Data.Error</div>
+                    }
+                    else
+                    {
+                        @switch (result.Data.Kind)
+                        {
+                            case DashWidgetKind.Kpi:
+                                <div class="rb-kpi">
+                                    <div class="rb-kpi-value num">
+                                        @FormatNumber(result.Data.Value ?? 0)
+                                        <span class="rb-kpi-unit">@result.Data.Unit</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(result.Data.DeltaText))
+                                    {
+                                        <div class="rb-kpi-delta @(result.Data.DeltaUp == true ? "up" : "down")">
+                                            <i class="bi @(result.Data.DeltaUp == true ? "bi-arrow-up-short" : "bi-arrow-down-short")"></i>
+                                            @result.Data.DeltaText
+                                        </div>
+                                    }
+                                    @if (result.Data.SubValue is not null && !string.IsNullOrEmpty(result.Data.SubLabel))
+                                    {
+                                        <div class="rb-kpi-sub">
+                                            <span class="num">@FormatNumber(result.Data.SubValue.Value)</span> @result.Data.SubLabel
+                                        </div>
+                                    }
+                                </div>
+                                break;
+
+                            case DashWidgetKind.Chart:
+                                <div class="rb-chart"><canvas id="rb-chart-canvas"></canvas></div>
+                                break;
+
+                            default:
+                                @if (result.Data.Rows.Count == 0)
+                                {
+                                    <div class="rb-empty"><i class="bi bi-inbox"></i> <span>ردیفی با این فیلترها پیدا نشد.</span></div>
+                                }
+                                else
+                                {
+                                    <div class="rb-table-wrap">
+                                        <table class="table table-sm rb-table mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th class="rb-idx">#</th>
+                                                    @foreach (var c in result.Data.Columns)
+                                                    {
+                                                        <th>@c</th>
+                                                    }
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @{ var n = 0; }
+                                                @foreach (var r in result.Data.Rows)
+                                                {
+                                                    n++;
+                                                    <tr class="@(r.Tone is null ? "" : "tone-" + r.Tone)">
+                                                        <td class="rb-idx num">@Fa.Digits(n)</td>
+                                                        @foreach (var cell in r.Cells)
+                                                        {
+                                                            <td>@cell</td>
+                                                        }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                                break;
+                        }
+
+                        @if (result.Truncated)
+                        {
+                            <div class="alert alert-warning rb-trunc mb-0">
+                                <i class="bi bi-exclamation-circle"></i>
+                                به سقف خواندن ردیف رسیدی (@Fa.Digits(result.ScannedRows) ردیف)؛ نتیجه ممکن است ناقص باشد.
+                                یک فیلتر تاریخ یا فیلتر محدودکننده اضافه کن.
+                            </div>
+                        }
+                    }
+                </div>
+            </section>
+
+            @* ---------- گزارش‌های ذخیره‌شده ---------- *@
+            <section class="rb-box">
+                <header class="rb-box-head">
+                    <span><i class="bi bi-folder2-open"></i> گزارش‌های ذخیره‌شده</span>
+                    <em class="rb-badge">@Fa.Digits(reports.Count)</em>
+                    <button type="button" class="rb-head-btn" title="به‌روزرسانی فهرست" @onclick="LoadReportsAsync">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </header>
+                <div class="rb-box-body">
+                    @if (reports.Count == 0)
+                    {
+                        <div class="rb-empty">
+                            <i class="bi bi-file-earmark-text"></i>
+                            <span>هنوز گزارشی ذخیره نکرده‌ای. گزارش ذخیره‌شده را می‌توانی به ویجت داشبورد تبدیل کنی.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var r in reports)
+                        {
+                            var rr = r;
+                            <div class="rb-saved @(rr.Id == editingId ? "active" : "")">
+                                <div class="rb-saved-main">
+                                    <button type="button" class="rb-saved-name" title="بازکردن در ویرایشگر" @onclick="() => OpenReport(rr)">
+                                        <i class="bi @OutputIcon(rr.Query.Output)"></i> @rr.Name
+                                    </button>
+                                    <div class="rb-saved-meta">
+                                        <span class="rb-tag"><i class="bi bi-database"></i> @rr.DatasetTitle</span>
+                                        @if (!rr.IsMine)
+                                        {
+                                            <span class="rb-tag"><i class="bi bi-person"></i> @rr.OwnerName</span>
+                                        }
+                                        @if (rr.Visibility == ReportVisibility.RoleShared)
+                                        {
+                                            <span class="rb-tag">
+                                                <i class="bi bi-people"></i>
+                                                @(rr.SharedRoleNames.Count > 0 ? string.Join("، ", rr.SharedRoleNames) : "اشتراکی")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="rb-tag"><i class="bi bi-lock"></i> خصوصی</span>
+                                        }
+                                    </div>
+                                </div>
+                                <div class="rb-saved-acts">
+                                    <button type="button" title="اجرا" @onclick="() => RunSavedAsync(rr)"><i class="bi bi-play-fill"></i></button>
+                                    <button type="button" title="افزودن به داشبورد" @onclick="() => OpenPin(rr)"><i class="bi bi-grid-1x2"></i></button>
+                                    @if (rr.IsMine && canDesign)
+                                    {
+                                        <button type="button" title="ویرایش" @onclick="() => OpenReport(rr)"><i class="bi bi-pencil"></i></button>
+                                        <button type="button" class="danger" title="حذف" @onclick="() => DeleteReportAsync(rr)"><i class="bi bi-trash"></i></button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+            </section>
+        </div>
+    </div>
+
+    @* ================= مودال ذخیره ================= *@
+    <Modal Visible="showSave" Title="@(editingId > 0 ? "ویرایش گزارش" : "ذخیرهٔ گزارش")" OnClose="CloseSave">
+        <ChildContent>
+            <div class="mb-3">
+                <label class="form-label">نام گزارش <span class="text-danger">*</span></label>
+                <input class="form-control" @bind="saveName" placeholder="مثلاً: فروش این ماه به تفکیک مشتری" />
+            </div>
+
+            <div class="mb-2">
+                <label class="form-label">دسترسی</label>
+                <div class="rb-seg">
+                    <button type="button" class="@(saveVisibility == ReportVisibility.Private ? "on" : "")"
+                            @onclick="() => saveVisibility = ReportVisibility.Private">
+                        <i class="bi bi-lock"></i> فقط خودم
+                    </button>
+                    <button type="button" class="@(saveVisibility == ReportVisibility.RoleShared ? "on" : "")"
+                            @onclick="() => saveVisibility = ReportVisibility.RoleShared">
+                        <i class="bi bi-people"></i> اشتراک با نقش‌ها
+                    </button>
+                </div>
+            </div>
+
+            @if (saveVisibility == ReportVisibility.RoleShared)
+            {
+                <div class="rb-roles">
+                    @foreach (var role in roles)
+                    {
+                        var ro = role;
+                        <label class="rb-check">
+                            <input type="checkbox" checked="@saveRoles.Contains(ro.Id)"
+                                   @onchange="e => ToggleRole(ro.Id, e.Value is bool b && b)" />
+                            <span>@ro.Name</span>
+                        </label>
+                    }
+                </div>
+                <div class="rb-hint">
+                    <i class="bi bi-shield-check"></i>
+                    کاربران آن نقش‌ها گزارش را در فهرست و در کاتالوگ ویجت داشبورد می‌بینند؛ دیدن خودِ داده همچنان
+                    به مجوز ماژول «@(ds?.Module)» نیاز دارد.
+                </div>
+            }
+
+            <div class="alert alert-light border rb-summary mb-0">@SummaryText()</div>
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="CloseSave">انصراف</button>
+            <button class="btn btn-primary btn-sm" disabled="@saving" @onclick="SaveAsync">
+                @if (saving) { <span class="spinner-border spinner-border-sm"></span> }
+                <i class="bi bi-save"></i> ذخیره
+            </button>
+        </Footer>
+    </Modal>
+
+    @* ================= مودال افزودن به داشبورد ================= *@
+    <Modal Visible="showPin" Title="افزودن به داشبورد" OnClose="ClosePin">
+        <ChildContent>
+            <p class="mb-2">
+                گزارش «<strong>@(pinReport?.Name)</strong>» به‌عنوان ویجت به یکی از داشبوردهایت اضافه می‌شود.
+            </p>
+            @if (dashboards.Count == 0)
+            {
+                <div class="alert alert-warning mb-0">
+                    <i class="bi bi-info-circle"></i> داشبوردی نداری؛ اول در صفحهٔ «داشبورد من» یک داشبورد بساز.
+                </div>
+            }
+            else
+            {
+                <div class="rb-dash-list">
+                    @foreach (var d in dashboards)
+                    {
+                        var dd = d;
+                        <label class="rb-check">
+                            <input type="radio" name="rb-dash" checked="@(pinDashId == dd.Id)"
+                                   @onchange="() => pinDashId = dd.Id" />
+                            <span>
+                                @dd.Name
+                                @if (dd.IsDefault) { <em class="rb-tag">پیش‌فرض</em> }
+                                <em class="rb-tag">@Fa.Digits(dd.Widgets.Count) ویجت</em>
+                            </span>
+                        </label>
+                    }
+                </div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="ClosePin">انصراف</button>
+            <button class="btn btn-primary btn-sm" disabled="@(pinning || pinDashId == 0)" @onclick="PinAsync">
+                @if (pinning) { <span class="spinner-border spinner-border-sm"></span> }
+                <i class="bi bi-grid-1x2"></i> افزودن ویجت
+            </button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    // ================= وضعیت =================
+    private bool loading = true;
+    private bool canDesign;
+    private List<ReportDatasetDto> datasets = new();
+    private List<ReportRoleDto> roles = new();
+    private List<UserReportDto> reports = new();
+
+    private string dsKey = "";
+    private string dsQuery = "";
+
+    private ReportOutput output = ReportOutput.Table;
+    private bool aggregate = true;
+    private DashChartType chartType = DashChartType.Bar;
+    private bool comparePrev;
+    private string? dateField;
+    private int take = 50;
+
+    private List<string> cols = new();
+    private List<ReportMeasureDto> measures = new();
+    private List<ReportFilterDto> filters = new();
+    private List<ReportSortDto> sorts = new();
+
+    private ReportRunResultDto? result;
+    private string? runError;
+    private bool running;
+    private bool autoRun = true;
+
+    private int editingId;                 // >0 یعنی در حال ویرایش یک گزارش ذخیره‌شده
+    private bool showSave, saving;
+    private string saveName = "";
+    private ReportVisibility saveVisibility = ReportVisibility.Private;
+    private HashSet<int> saveRoles = new();
+
+    private bool showPin, pinning;
+    private UserReportDto? pinReport;
+    private List<UserDashboardDto> dashboards = new();
+    private int pinDashId;
+
+    private string? lastChartSig;
+
+    private ReportDatasetDto? ds => datasets.FirstOrDefault(d => d.Key == dsKey);
+
+    // ================= بارگذاری =================
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Auth.CanSee("ReportBuilder")) { loading = false; return; }
+        try
+        {
+            var res = await Api.GetDatasetsAsync();
+            datasets = res.Datasets;
+            canDesign = res.CanDesign;
+            try { roles = await Api.GetRolesAsync(); } catch { roles = new(); }
+            try { reports = await Api.GetReportsAsync(); } catch { reports = new(); }
+
+            if (datasets.Count > 0) await SelectDataset(datasets[0].Key, run: true);
+        }
+        catch (Exception ex)
+        {
+            runError = ex.Message;
+            Toast.Error(ex.Message);
+        }
+        finally { loading = false; }
+    }
+
+    private async Task LoadReportsAsync()
+    {
+        try { reports = await Api.GetReportsAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ================= دادهٔ کمکی =================
+    private IEnumerable<IGrouping<string, ReportDatasetDto>> DatasetGroups
+    {
+        get
+        {
+            var q = (dsQuery ?? "").Trim();
+            var list = string.IsNullOrEmpty(q)
+                ? datasets
+                : datasets.Where(d => d.Title.Contains(q) || d.Category.Contains(q) || d.Description.Contains(q)).ToList();
+            return list.GroupBy(d => d.Category).OrderBy(g => g.Key);
+        }
+    }
+
+    private List<ReportColumnDefDto> dateCols => ds?.Columns.Where(c => c.DataType == ReportDataType.Date).ToList() ?? new();
+
+    /// <summary>ستون‌هایی که قابل انتخاب‌اند: در حالت تجمیع فقط بُعدی‌ها، در حالت ریز همه.</summary>
+    private List<ReportColumnDefDto> SelectableCols =>
+        ds?.Columns.Where(c => !aggregate || c.Kind == ReportColKind.Dimension).ToList() ?? new();
+
+    /// <summary>سنجه‌ها: ستون‌های عددی + هر ستونی که تجمیع مجاز دارد.</summary>
+    private List<ReportColumnDefDto> MeasureCandidates =>
+        ds?.Columns.Where(c => c.Aggs is { Count: > 0 } && c.Aggs.Any(a => a != ReportAgg.CountDistinct)).ToList() ?? new();
+
+    private ReportColumnDefDto? Col(string? key) =>
+        string.IsNullOrEmpty(key) ? null : ds?.Columns.FirstOrDefault(c => c.Key == key);
+
+    private string ColLabel(string key) => Col(key)?.Label ?? key;
+
+    private string ColIcon(string key) => Col(key) switch
+    {
+        { DataType: ReportDataType.Date } => "bi-calendar3",
+        { DataType: ReportDataType.Number } => "bi-hash",
+        { DataType: ReportDataType.Bool } => "bi-check2-square",
+        { DataType: ReportDataType.Enum } => "bi-tag",
+        _ => "bi-fonts"
+    };
+
+    private string TypeName(ReportColumnDefDto c) => c.DataType switch
+    {
+        ReportDataType.Date => "تاریخ",
+        ReportDataType.Number => "عدد",
+        ReportDataType.Bool => "بله/خیر",
+        ReportDataType.Enum => "انتخابی",
+        _ => "متن"
+    };
+
+    private List<KeyValuePair<ReportDatePreset, string>> Presets => new()
+    {
+        new(ReportDatePreset.None, "— بدون بازهٔ آماده —"),
+        new(ReportDatePreset.Today, "امروز"),
+        new(ReportDatePreset.Yesterday, "دیروز"),
+        new(ReportDatePreset.ThisWeek, "این هفته"),
+        new(ReportDatePreset.LastWeek, "هفتهٔ قبل"),
+        new(ReportDatePreset.ThisMonth, "این ماه"),
+        new(ReportDatePreset.LastMonth, "ماه قبل"),
+        new(ReportDatePreset.ThisYear, "امسال"),
+        new(ReportDatePreset.LastYear, "سال قبل"),
+        new(ReportDatePreset.Last7Days, "۷ روز اخیر"),
+        new(ReportDatePreset.Last30Days, "۳۰ روز اخیر"),
+        new(ReportDatePreset.Last90Days, "۹۰ روز اخیر"),
+        new(ReportDatePreset.Last12Months, "۱۲ ماه اخیر")
+    };
+
+    private List<ReportOp> OpsFor(ReportColumnDefDto? c) => c?.DataType switch
+    {
+        ReportDataType.Bool => new() { ReportOp.True, ReportOp.False },
+        ReportDataType.Text => new()
+        {
+            ReportOp.Eq, ReportOp.Ne, ReportOp.Contains, ReportOp.StartsWith,
+            ReportOp.In, ReportOp.IsNull, ReportOp.NotNull
+        },
+        ReportDataType.Enum => new() { ReportOp.Eq, ReportOp.Ne, ReportOp.In, ReportOp.IsNull, ReportOp.NotNull },
+        _ => new()
+        {
+            ReportOp.Eq, ReportOp.Ne, ReportOp.Gt, ReportOp.Gte, ReportOp.Lt, ReportOp.Lte,
+            ReportOp.Between, ReportOp.In, ReportOp.IsNull, ReportOp.NotNull
+        }
+    };
+
+    private static string OpName(ReportOp op) => op switch
+    {
+        ReportOp.Eq => "مساوی",
+        ReportOp.Ne => "مخالف",
+        ReportOp.Contains => "شامل",
+        ReportOp.StartsWith => "شروع با",
+        ReportOp.Gt => "بزرگ‌تر از",
+        ReportOp.Gte => "بزرگ‌تر یا مساوی",
+        ReportOp.Lt => "کوچک‌تر از",
+        ReportOp.Lte => "کوچک‌تر یا مساوی",
+        ReportOp.Between => "بین",
+        ReportOp.In => "یکی از",
+        ReportOp.IsNull => "خالی باشد",
+        ReportOp.NotNull => "خالی نباشد",
+        ReportOp.True => "بله",
+        ReportOp.False => "خیر",
+        _ => op.ToString()
+    };
+
+    private static bool NeedsValue(ReportOp op) =>
+        op is not (ReportOp.IsNull or ReportOp.NotNull or ReportOp.True or ReportOp.False);
+
+    private List<ReportAgg> AggsFor(string field)
+    {
+        var c = Col(field);
+        if (c is null) return new() { ReportAgg.Count };
+        return c.Aggs is { Count: > 0 } ? c.Aggs : new() { ReportAgg.Count };
+    }
+
+    private static string AggName(ReportAgg a) => a switch
+    {
+        ReportAgg.Sum => "جمع",
+        ReportAgg.Count => "تعداد",
+        ReportAgg.Avg => "میانگین",
+        ReportAgg.Min => "کمینه",
+        ReportAgg.Max => "بیشینه",
+        ReportAgg.CountDistinct => "تعداد یکتا",
+        _ => a.ToString()
+    };
+
+    /// <summary>گزینه‌های مرتب‌سازی: ستون‌های انتخاب‌شده + سنجه‌ها («m:0»).</summary>
+    private List<KeyValuePair<string, string>> SortFields
+    {
+        get
+        {
+            var list = cols.Select(k => new KeyValuePair<string, string>(k, ColLabel(k))).ToList();
+            if (aggregate)
+                for (var i = 0; i < measures.Count; i++)
+                    list.Add(new($"m:{i}", MeasureTitle(measures[i])));
+            return list;
+        }
+    }
+
+    private string MeasureTitle(ReportMeasureDto m)
+    {
+        var t = string.IsNullOrWhiteSpace(m.Label) ? $"{AggName(m.Agg)} {ColLabel(m.Field)}" : m.Label!;
+        return t;
+    }
+
+    private static string OutputIcon(ReportOutput o) => o switch
+    {
+        ReportOutput.Chart => "bi-bar-chart",
+        ReportOutput.Kpi => "bi-123",
+        _ => "bi-table"
+    };
+
+    private static List<string> InList(string? v) =>
+        (v ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    private static string ValueHint(ReportColumnDefDto c) => c.DataType switch
+    {
+        ReportDataType.Number => c.Unit is null ? "عدد" : $"عدد ({c.Unit})",
+        _ => "مقدار"
+    };
+
+    private static string FormatNumber(decimal v) =>
+        Fa.Digits(v.ToString(Math.Abs(v) >= 1000 ? "N0" : "N2"));
+
+    // ================= انتخاب دیتاست =================
+    private async Task SelectDataset(string key, bool run = true)
+    {
+        if (dsKey == key && run) { await MaybeRunAsync(); return; }
+        dsKey = key;
+        var d = ds;
+        if (d is null) return;
+
+        cols = d.Columns.Where(c => c.IsDefault && c.Kind == ReportColKind.Dimension).Select(c => c.Key).Take(4).ToList();
+        if (cols.Count == 0)
+            cols = d.Columns.Where(c => c.Kind == ReportColKind.Dimension).Select(c => c.Key).Take(2).ToList();
+
+        measures = new();
+        var defM = d.Columns.FirstOrDefault(c => c.Key == d.DefaultMeasure)
+                   ?? d.Columns.FirstOrDefault(c => c.Kind == ReportColKind.Measure && c.Aggs.Contains(ReportAgg.Sum));
+        if (defM is not null)
+            measures.Add(new ReportMeasureDto { Field = defM.Key, Agg = ReportAgg.Sum });
+
+        filters = new();
+        sorts = new();
+        dateField = d.DateField;
+        output = ReportOutput.Table;
+        aggregate = true;
+        chartType = DashChartType.Bar;
+        comparePrev = false;
+        take = 50;
+        editingId = 0;
+        result = null;
+        runError = null;
+
+        if (run) await MaybeRunAsync();
+    }
+
+    private async Task NewReport()
+    {
+        editingId = 0;
+        result = null;
+        runError = null;
+        saveName = "";
+        saveVisibility = ReportVisibility.Private;
+        saveRoles = new();
+        var key = dsKey;
+        if (ds is not null) await SelectDataset(key, run: false);
+        Toast.Info("ویرایشگر برای گزارش جدید پاک شد.");
+    }
+
+    // ================= تغییرات پیکربندی =================
+    private async Task SetOutput(ReportOutput o)
+    {
+        output = o;
+        if (o != ReportOutput.Table)
+        {
+            aggregate = true;
+            if (o == ReportOutput.Kpi) { cols = new(); }
+            else if (o == ReportOutput.Chart && cols.Count > 1) { cols = cols.Take(1).ToList(); }
+            if (o == ReportOutput.Chart && measures.Count == 0) AddDefaultMeasure();
+            if (o == ReportOutput.Kpi && measures.Count == 0) AddDefaultMeasure();
+        }
+        else if (cols.Count == 0)
+        {
+            cols = (ds?.Columns.Where(c => c.IsDefault && c.Kind == ReportColKind.Dimension)
+                    ?? Enumerable.Empty<ReportColumnDefDto>()).Select(c => c.Key).Take(4).ToList();
+        }
+        await MaybeRunAsync();
+    }
+
+    private async Task SetChartType(string? v)
+    {
+        if (int.TryParse(v, out var n)) chartType = (DashChartType)n;
+        await MaybeRunAsync();
+    }
+
+    private async Task SetDateField(string? v)
+    {
+        dateField = string.IsNullOrEmpty(v) ? null : v;
+        await MaybeRunAsync();
+    }
+
+    private async Task ToggleCol(string key, bool on)
+    {
+        if (on) { if (!cols.Contains(key)) cols.Add(key); }
+        else cols.Remove(key);
+
+        if (output == ReportOutput.Chart && cols.Count > 1) cols = cols.Take(1).ToList();
+        if (output == ReportOutput.Kpi) cols = new();
+        sorts = sorts.Where(s => !s.Field.StartsWith("m:") || aggregate).ToList();
+        await MaybeRunAsync();
+    }
+
+    private async Task MoveCol(int idx, int delta)
+    {
+        var t = idx + delta;
+        if (t < 0 || t >= cols.Count) return;
+        (cols[idx], cols[t]) = (cols[t], cols[idx]);
+        await MaybeRunAsync();
+    }
+
+    private void AddDefaultMeasure()
+    {
+        var d = ds;
+        if (d is null) return;
+        var m = d.Columns.FirstOrDefault(c => c.Key == d.DefaultMeasure)
+                ?? d.Columns.FirstOrDefault(c => c.Kind == ReportColKind.Measure);
+        if (m is not null && measures.All(x => x.Field != m.Key))
+            measures.Add(new ReportMeasureDto { Field = m.Key, Agg = m.Aggs.Contains(ReportAgg.Sum) ? ReportAgg.Sum : m.Aggs.FirstOrDefault() });
+    }
+
+    private async Task AddMeasure()
+    {
+        if (measures.Count >= 6) { Toast.Info("حداکثر ۶ سنجه می‌توانی داشته باشی."); return; }
+        var next = MeasureCandidates.FirstOrDefault(c => measures.All(m => m.Field != c.Key));
+        measures.Add(new ReportMeasureDto
+        {
+            Field = next?.Key ?? "",
+            Agg = next is not null && next.Aggs.Contains(ReportAgg.Sum) ? ReportAgg.Sum : ReportAgg.Count
+        });
+        await MaybeRunAsync();
+    }
+
+    private async Task SetMeasureField(int idx, string? v)
+    {
+        if (idx < 0 || idx >= measures.Count) return;
+        measures[idx].Field = v ?? "";
+        var allowed = AggsFor(measures[idx].Field);
+        if (!allowed.Contains(measures[idx].Agg)) measures[idx].Agg = allowed.FirstOrDefault();
+        await MaybeRunAsync();
+    }
+
+    private async Task SetMeasureAgg(int idx, string? v)
+    {
+        if (idx < 0 || idx >= measures.Count) return;
+        if (int.TryParse(v, out var n)) measures[idx].Agg = (ReportAgg)n;
+        await MaybeRunAsync();
+    }
+
+    private async Task SetMeasureLabel(int idx, string? v)
+    {
+        if (idx < 0 || idx >= measures.Count) return;
+        measures[idx].Label = string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        await MaybeRunAsync();
+    }
+
+    private async Task RemoveMeasure(int idx)
+    {
+        if (idx < 0 || idx >= measures.Count) return;
+        measures.RemoveAt(idx);
+        await MaybeRunAsync();
+    }
+
+    private async Task AddFilter()
+    {
+        if (filters.Count >= 20) { Toast.Info("حداکثر ۲۰ فیلتر می‌توانی داشته باشی."); return; }
+        var d = ds;
+        // اگر ستون تاریخ انتخاب شده و هنوز فیلتر تاریخ نداریم، با بازهٔ «این ماه» شروع کن
+        var anchor = dateField is not null ? Col(dateField) : null;
+        if (anchor is not null && filters.All(f => f.Field != anchor.Key))
+        {
+            filters.Add(new ReportFilterDto { Field = anchor.Key, Op = ReportOp.Gte, Preset = ReportDatePreset.ThisMonth });
+        }
+        else
+        {
+            var first = d?.Columns.FirstOrDefault(c => c.IsDefault) ?? d?.Columns.FirstOrDefault();
+            filters.Add(new ReportFilterDto
+            {
+                Field = first?.Key ?? "",
+                Op = first?.DataType == ReportDataType.Date ? ReportOp.Gte : ReportOp.Contains
+            });
+        }
+        await MaybeRunAsync();
+    }
+
+    private async Task SetFilterField(int idx, string? v)
+    {
+        if (idx < 0 || idx >= filters.Count) return;
+        var f = filters[idx];
+        f.Field = v ?? "";
+        var c = Col(f.Field);
+        f.Preset = ReportDatePreset.None;
+        f.Value = null;
+        f.Value2 = null;
+        if (c is not null && !OpsFor(c).Contains(f.Op)) f.Op = OpsFor(c).First();
+        await MaybeRunAsync();
+    }
+
+    private async Task SetFilterOp(int idx, string? v)
+    {
+        if (idx < 0 || idx >= filters.Count) return;
+        if (int.TryParse(v, out var n)) filters[idx].Op = (ReportOp)n;
+        await MaybeRunAsync();
+    }
+
+    private async Task SetFilterPreset(int idx, string? v)
+    {
+        if (idx < 0 || idx >= filters.Count) return;
+        if (int.TryParse(v, out var n))
+        {
+            filters[idx].Preset = (ReportDatePreset)n;
+            if (filters[idx].Preset != ReportDatePreset.None)
+            {
+                filters[idx].Op = ReportOp.Gte;   // سرور بازهٔ آماده را خودش محاسبه می‌کند
+                filters[idx].Value = null;
+                filters[idx].Value2 = null;
+            }
+        }
+        await MaybeRunAsync();
+    }
+
+    private async Task SetFilterValue(int idx, string? v)
+    {
+        if (idx < 0 || idx >= filters.Count) return;
+        filters[idx].Value = string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        await MaybeRunAsync();
+    }
+
+    private async Task SetFilterValue2(int idx, string? v)
+    {
+        if (idx < 0 || idx >= filters.Count) return;
+        filters[idx].Value2 = string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+        await MaybeRunAsync();
+    }
+
+    private async Task ToggleIn(int idx, string key)
+    {
+        if (idx < 0 || idx >= filters.Count) return;
+        var list = InList(filters[idx].Value);
+        if (!list.Remove(key)) list.Add(key);
+        filters[idx].Value = list.Count == 0 ? null : string.Join(",", list);
+        await MaybeRunAsync();
+    }
+
+    private async Task RemoveFilter(int idx)
+    {
+        if (idx < 0 || idx >= filters.Count) return;
+        filters.RemoveAt(idx);
+        await MaybeRunAsync();
+    }
+
+    private async Task AddSort()
+    {
+        if (sorts.Count >= 4) { Toast.Info("حداکثر ۴ مرتب‌سازی می‌توانی داشته باشی."); return; }
+        sorts.Add(new ReportSortDto { Field = SortFields.FirstOrDefault().Key ?? "", Desc = aggregate });
+        await MaybeRunAsync();
+    }
+
+    private async Task SetSortField(int idx, string? v)
+    {
+        if (idx < 0 || idx >= sorts.Count) return;
+        sorts[idx].Field = v ?? "";
+        await MaybeRunAsync();
+    }
+
+    private async Task SetSortDesc(int idx, string? v)
+    {
+        if (idx < 0 || idx >= sorts.Count) return;
+        sorts[idx].Desc = v == "1";
+        await MaybeRunAsync();
+    }
+
+    private async Task RemoveSort(int idx)
+    {
+        if (idx < 0 || idx >= sorts.Count) return;
+        sorts.RemoveAt(idx);
+        await MaybeRunAsync();
+    }
+
+    private async Task OnConfigChanged() => await MaybeRunAsync();
+
+    /// <summary>تغییر حالت «گروه‌بندی و تجمیع»: سنجه/مرتب‌سازی سنجه و ستون‌ها را با حالت جدید سازگار می‌کند.</summary>
+    private async Task OnAggregateChanged()
+    {
+        if (aggregate)
+        {
+            if (measures.Count == 0) AddDefaultMeasure();
+        }
+        else
+        {
+            sorts = sorts.Where(x => !x.Field.StartsWith("m:")).ToList();
+            if (cols.Count == 0)
+                cols = (ds?.Columns.Where(c => c.Kind == ReportColKind.Dimension && c.IsDefault)
+                        ?? Enumerable.Empty<ReportColumnDefDto>()).Select(c => c.Key).Take(4).ToList();
+        }
+        await MaybeRunAsync();
+    }
+
+    // ================= ساخت کوئری و اجرا =================
+    private ReportQueryDto BuildQuery()
+    {
+        var d = ds;
+        return new ReportQueryDto
+        {
+            DatasetKey = dsKey,
+            Columns = cols.Where(k => Col(k) is not null).ToList(),
+            Aggregate = aggregate,
+            Measures = measures.Where(m => !string.IsNullOrEmpty(m.Field)).ToList(),
+            Filters = filters.Where(f => !string.IsNullOrEmpty(f.Field)).ToList(),
+            Sorts = sorts.Where(s => !string.IsNullOrEmpty(s.Field)).ToList(),
+            Take = take <= 0 ? 50 : take,
+            Output = output,
+            ChartType = chartType,
+            ComparePrev = comparePrev && output == ReportOutput.Kpi,
+            DateField = dateField,
+            Title = string.IsNullOrWhiteSpace(saveName) ? null : saveName.Trim()
+        };
+    }
+
+    private string? Validate()
+    {
+        if (ds is null) return "اول یک دیتاست انتخاب کن.";
+        if (output == ReportOutput.Chart)
+        {
+            if (cols.Count != 1) return "برای نمودار دقیقاً یک ستون گروه‌بندی لازم است.";
+            if (measures.Count == 0) return "برای نمودار دست‌کم یک سنجه لازم است.";
+        }
+        if (output == ReportOutput.Kpi && measures.Count == 0) return "برای شاخص (KPI) یک سنجه لازم است.";
+        if (aggregate && cols.Count == 0 && measures.Count == 0) return "دست‌کم یک ستون یا یک سنجه انتخاب کن.";
+        if (!aggregate && cols.Count == 0) return "در حالت ریز، دست‌کم یک ستون انتخاب کن.";
+        if (comparePrev && output == ReportOutput.Kpi && !filters.Any(f => Col(f.Field)?.DataType == ReportDataType.Date && f.Preset != ReportDatePreset.None))
+            return "برای مقایسه با بازهٔ قبل، یک فیلتر تاریخ با «بازهٔ آماده» اضافه کن.";
+        return null;
+    }
+
+    private async Task MaybeRunAsync()
+    {
+        if (!autoRun) { StateHasChanged(); return; }
+        await RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        if (ds is null) return;
+        var err = Validate();
+        if (err is not null)
+        {
+            result = null;
+            runError = err;
+            StateHasChanged();
+            return;
+        }
+
+        running = true;
+        runError = null;
+        StateHasChanged();
+        try
+        {
+            result = await Api.PreviewAsync(BuildQuery());
+            lastChartSig = null;
+        }
+        catch (Exception ex)
+        {
+            result = null;
+            runError = ex.Message;
+        }
+        finally
+        {
+            running = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunSavedAsync(UserReportDto r)
+    {
+        running = true;
+        runError = null;
+        StateHasChanged();
+        try
+        {
+            result = await Api.RunAsync(r.Id);
+            lastChartSig = null;
+        }
+        catch (Exception ex)
+        {
+            result = null;
+            runError = ex.Message;
+        }
+        finally
+        {
+            running = false;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (result?.Data.Kind != DashWidgetKind.Chart || !string.IsNullOrEmpty(result.Data.Error)) return;
+
+        var sig = string.Join("|", result.Data.Series.Select(s => s.Name + ":" + string.Join(",", s.Values)))
+                  + "#" + (int)result.Data.ChartType;
+        if (!firstRender && sig == lastChartSig) return;
+        lastChartSig = sig;
+
+        try
+        {
+            await JS.InvokeVoidAsync("appDash.renderChart", "rb-chart-canvas", ChartJsType(result.Data.ChartType),
+                result.Data.Series.FirstOrDefault()?.Labels ?? new List<string>(),
+                result.Data.Series.Select(s => new { name = s.Name, values = s.Values }).ToArray());
+        }
+        catch { /* Chart.js در دسترس نبود */ }
+    }
+
+    private static string ChartJsType(DashChartType t) => t switch
+    {
+        DashChartType.Line => "line",
+        DashChartType.Pie => "pie",
+        DashChartType.Doughnut => "doughnut",
+        _ => "bar"
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("appDash.destroyChart", "rb-chart-canvas"); } catch { }
+    }
+
+    // ================= بازکردن گزارش ذخیره‌شده =================
+    private async Task OpenReport(UserReportDto r)
+    {
+        var d = datasets.FirstOrDefault(x => x.Key == r.DatasetKey);
+        if (d is null)
+        {
+            Toast.Error("دیتاست این گزارش دیگر در دسترس تو نیست.");
+            return;
+        }
+
+        dsKey = d.Key;
+        var q = r.Query;
+        output = q.Output;
+        aggregate = q.Output == ReportOutput.Table ? q.Aggregate : true;
+        chartType = q.ChartType;
+        comparePrev = q.ComparePrev;
+        dateField = q.DateField ?? d.DateField;
+        take = q.Take <= 0 ? 50 : q.Take;
+        cols = (q.Columns ?? new()).Where(k => d.Columns.Any(c => c.Key == k)).ToList();
+        measures = (q.Measures ?? new()).Where(m => d.Columns.Any(c => c.Key == m.Field))
+            .Select(m => new ReportMeasureDto { Field = m.Field, Agg = m.Agg, Label = m.Label }).ToList();
+        filters = (q.Filters ?? new()).Where(f => d.Columns.Any(c => c.Key == f.Field))
+            .Select(f => new ReportFilterDto
+            { Field = f.Field, Op = f.Op, Value = f.Value, Value2 = f.Value2, Preset = f.Preset }).ToList();
+        sorts = (q.Sorts ?? new()).Select(s => new ReportSortDto { Field = s.Field, Desc = s.Desc }).ToList();
+
+        editingId = r.IsMine ? r.Id : 0;
+        saveName = r.Name;
+        saveVisibility = r.Visibility;
+        saveRoles = new HashSet<int>(r.SharedRoleIds);
+        result = null;
+        runError = null;
+        await RunAsync();
+    }
+
+    // ================= ذخیره =================
+    private void OpenSave()
+    {
+        var err = Validate();
+        if (err is not null) { Toast.Error(err); return; }
+        if (string.IsNullOrWhiteSpace(saveName))
+            saveName = editingId > 0 ? saveName : SuggestName();
+        showSave = true;
+    }
+
+    private void CloseSave() => showSave = false;
+
+    private string SuggestName()
+    {
+        var d = ds;
+        if (d is null) return "گزارش";
+        var what = measures.Count > 0 ? string.Join(" و ", measures.Take(2).Select(MeasureTitle)) : "فهرست";
+        var by = cols.Count > 0 ? " به تفکیک " + string.Join(" و ", cols.Take(2).Select(ColLabel)) : "";
+        return $"{what}{by} — {d.Title}";
+    }
+
+    private string SummaryText()
+    {
+        var d = ds;
+        if (d is null) return "";
+        var parts = new List<string>
+        {
+            $"دیتاست: {d.Title}",
+            $"خروجی: {(output == ReportOutput.Chart ? "نمودار" : output == ReportOutput.Kpi ? "شاخص" : aggregate ? "جدول تجمیعی" : "جدول ریز")}"
+        };
+        if (cols.Count > 0) parts.Add("ستون‌ها: " + string.Join("، ", cols.Select(ColLabel)));
+        if (measures.Count > 0) parts.Add("سنجه‌ها: " + string.Join("، ", measures.Select(MeasureTitle)));
+        if (filters.Count > 0) parts.Add($"{Fa.Digits(filters.Count)} فیلتر");
+        parts.Add($"حداکثر {Fa.Digits(take)} ردیف");
+        return string.Join(" | ", parts);
+    }
+
+    private void ToggleRole(int id, bool on)
+    {
+        if (on) saveRoles.Add(id); else saveRoles.Remove(id);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (ds is null) return;
+        var err = Validate();
+        if (err is not null) { Toast.Error(err); return; }
+        if (string.IsNullOrWhiteSpace(saveName)) { Toast.Error("نام گزارش را وارد کن."); return; }
+
+        var dto = new ReportSaveDto
+        {
+            Name = saveName.Trim(),
+            DatasetKey = dsKey,
+            Visibility = saveVisibility,
+            RoleIds = saveRoles.ToList(),
+            Query = BuildQuery()
+        };
+
+        saving = true;
+        try
+        {
+            if (editingId > 0)
+            {
+                await Api.UpdateAsync(editingId, dto);
+                Toast.Success("گزارش به‌روزرسانی شد.");
+            }
+            else
+            {
+                editingId = await Api.CreateAsync(dto);
+                Toast.Success("گزارش ذخیره شد؛ حالا می‌توانی به ویجت داشبورد تبدیلش کنی.");
+            }
+            showSave = false;
+            await LoadReportsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task DeleteReportAsync(UserReportDto r)
+    {
+        var okDelete = await JS.InvokeAsync<bool>("confirm", $"گزارش «{r.Name}» حذف شود؟");
+        if (!okDelete) return;
+        try
+        {
+            await Api.DeleteAsync(r.Id);
+            if (editingId == r.Id) editingId = 0;
+            Toast.Success("گزارش حذف شد.");
+            await LoadReportsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ================= افزودن به داشبورد =================
+    private async Task OpenPin(UserReportDto r)
+    {
+        pinReport = r;
+        pinDashId = 0;
+        try
+        {
+            dashboards = await Dash.GetDashboardsAsync();
+            pinDashId = dashboards.FirstOrDefault(d => d.IsDefault)?.Id ?? dashboards.FirstOrDefault()?.Id ?? 0;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); dashboards = new(); }
+        showPin = true;
+    }
+
+    private void ClosePin() => showPin = false;
+
+    private async Task PinAsync()
+    {
+        if (pinReport is null || pinDashId == 0) return;
+        var d = dashboards.FirstOrDefault(x => x.Id == pinDashId);
+        if (d is null) return;
+
+        var key = pinReport.WidgetKey;
+        if (d.Widgets.Any(w => w.WidgetKey == key))
+        {
+            Toast.Info("این گزارش قبلاً در این داشبورد اضافه شده.");
+            showPin = false;
+            return;
+        }
+
+        var last = d.Widgets.Count == 0 ? 0 : d.Widgets.Max(w => w.Row + w.H);
+        d.Widgets.Add(new UserDashWidgetDto
+        {
+            WidgetKey = key,
+            Title = pinReport.Name,
+            Row = last,
+            Col = 0,
+            W = pinReport.Query.Output == ReportOutput.Table ? 9 : pinReport.Query.Output == ReportOutput.Chart ? 6 : 3,
+            H = pinReport.Query.Output == ReportOutput.Table ? 3 : pinReport.Query.Output == ReportOutput.Kpi ? 2 : 3,
+            SortOrder = d.Widgets.Count,
+            Range = DashRange.All
+        });
+
+        pinning = true;
+        try
+        {
+            await Dash.SaveAsync(d);
+            Toast.Success("ویجت گزارش به داشبورد اضافه شد.");
+            showPin = false;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { pinning = false; }
+    }
+}
+
+<style>
+    /* ============ چیدمان کلی ============ */
+    .rb-head { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; direction:rtl; }
+    .rb-head h1 { margin:0; font-size:1.25rem; }
+    .rb-head-actions { margin-right:auto; display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+    .rb-note { direction:rtl; font-size:.85rem; }
+
+    .rb-wrap { display:grid; grid-template-columns:minmax(320px, 400px) 1fr; gap:1rem; align-items:start; direction:rtl; }
+    .rb-side, .rb-main { display:flex; flex-direction:column; gap:1rem; min-width:0; }
+    @@media (max-width: 1100px) { .rb-wrap { grid-template-columns:1fr; } }
+
+    /* ============ جعبه‌ها ============ */
+    .rb-box { background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 1px 2px rgba(15,23,42,.05); overflow:hidden; }
+    .rb-box-head { display:flex; align-items:center; gap:.5rem; padding:.6rem .8rem; background:#f8fafc;
+                   border-bottom:1px solid #e2e8f0; font-size:.88rem; font-weight:700; color:#334155; }
+    .rb-box-head > span { display:inline-flex; align-items:center; gap:.4rem; }
+    .rb-box-head i { color:#4f46e5; }
+    .rb-badge { background:#e0e7ff; color:#3730a3; border-radius:999px; padding:0 .45rem; font-size:.72rem; font-style:normal; }
+    .rb-head-btn { margin-right:auto; border:1px solid #cbd5e1; background:#fff; border-radius:8px; width:26px; height:26px;
+                   display:inline-flex; align-items:center; justify-content:center; color:#475569; cursor:pointer; }
+    .rb-head-btn:hover:not(:disabled) { border-color:#4f46e5; color:#4f46e5; }
+    .rb-head-btn:disabled { opacity:.45; cursor:not-allowed; }
+    .rb-box-body { padding:.75rem .8rem; }
+    .rb-hint { font-size:.76rem; color:#64748b; margin-top:.35rem; line-height:1.7; }
+    .rb-tag { display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:999px;
+              padding:0 .45rem; font-size:.7rem; color:#475569; margin-inline-start:.25rem; }
+
+    /* ============ فهرست دیتاست ============ */
+    .rb-ds-list { max-height:290px; overflow:auto; display:flex; flex-direction:column; gap:.15rem; }
+    .rb-ds-cat { font-size:.72rem; font-weight:700; color:#94a3b8; padding:.45rem .2rem .2rem; position:sticky; top:0; background:#fff; }
+    .rb-ds { display:flex; align-items:center; gap:.45rem; border:1px solid transparent; background:#fff; border-radius:9px;
+             padding:.35rem .5rem; font-size:.83rem; color:#334155; cursor:pointer; text-align:right; width:100%; }
+    .rb-ds i { color:#64748b; }
+    .rb-ds span { flex:1; }
+    .rb-ds em { font-size:.68rem; color:#94a3b8; font-style:normal; }
+    .rb-ds:hover { background:#f8fafc; border-color:#e2e8f0; }
+    .rb-ds.active { background:#eef2ff; border-color:#c7d2fe; color:#3730a3; font-weight:600; }
+    .rb-ds.active i { color:#4f46e5; }
+
+    /* ============ انتخابگر چندتکه ============ */
+    .rb-seg { display:flex; gap:.35rem; background:#f1f5f9; border-radius:10px; padding:.25rem; margin-bottom:.6rem; flex-wrap:wrap; }
+    .rb-seg button { flex:1; border:0; background:transparent; border-radius:8px; padding:.35rem .5rem; font-size:.82rem;
+                     font-weight:600; color:#475569; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:.35rem; }
+    .rb-seg button.on { background:#fff; color:#3730a3; box-shadow:0 1px 2px rgba(15,23,42,.12); }
+
+    /* ============ چک‌باکس و فیلد ============ */
+    .rb-check { display:flex; align-items:center; gap:.4rem; font-size:.83rem; color:#334155; padding:.2rem 0; cursor:pointer; }
+    .rb-check input { margin:0; }
+    .rb-check.disabled { opacity:.5; cursor:not-allowed; }
+    .rb-check em { font-size:.68rem; color:#94a3b8; font-style:normal; margin-inline-start:auto; }
+    .rb-field { display:block; margin-top:.5rem; }
+    .rb-field > span { display:block; font-size:.75rem; color:#64748b; margin-bottom:.2rem; }
+
+    /* ============ ستون‌های انتخاب‌شده ============ */
+    .rb-col-list { max-height:250px; overflow:auto; border-top:1px dashed #e2e8f0; margin-top:.4rem; padding-top:.3rem; }
+    .rb-chips { display:flex; flex-wrap:wrap; gap:.35rem; margin-bottom:.4rem; }
+    .rb-chip { display:inline-flex; align-items:center; gap:.3rem; background:#eef2ff; border:1px solid #c7d2fe;
+               border-radius:999px; padding:.15rem .35rem .15rem .5rem; font-size:.78rem; color:#3730a3; }
+    .rb-chip em { background:#4f46e5; color:#fff; border-radius:999px; width:17px; height:17px; font-size:.66rem;
+                  display:inline-flex; align-items:center; justify-content:center; font-style:normal; }
+    .rb-chip-b, .rb-chip-x { border:0; background:transparent; color:#6366f1; cursor:pointer; padding:0 .1rem; font-size:.72rem; line-height:1; }
+    .rb-chip-b:disabled { opacity:.3; cursor:not-allowed; }
+    .rb-chip-x { color:#ef4444; }
+
+    /* ============ ردیف‌های سنجه/فیلتر/مرتب‌سازی ============ */
+    .rb-row { display:flex; gap:.35rem; align-items:center; margin-bottom:.4rem; }
+    .rb-row select, .rb-row input { min-width:0; }
+    .rb-row .rb-dir { max-width:96px; }
+    .rb-x { border:1px solid #fecaca; background:#fff; color:#ef4444; border-radius:8px; width:28px; height:28px; flex:0 0 28px;
+            display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+    .rb-x:hover { background:#fef2f2; }
+    .rb-filter { border:1px dashed #e2e8f0; border-radius:10px; padding:.45rem; margin-bottom:.5rem; background:#fcfdff; }
+    .rb-multi { display:flex; flex-wrap:wrap; gap:.3rem; margin-top:.35rem; }
+    .rb-pick { border:1px solid #e2e8f0; background:#fff; border-radius:999px; padding:.15rem .55rem; font-size:.76rem;
+               color:#475569; cursor:pointer; }
+    .rb-pick.on { background:#4f46e5; border-color:#4f46e5; color:#fff; }
+
+    /* ============ نتیجه ============ */
+    .rb-stats { display:flex; gap:.6rem; margin-right:auto; font-size:.72rem; color:#64748b; font-weight:500; flex-wrap:wrap; }
+    .rb-stats i { color:#94a3b8; }
+    .rb-auto { margin-right:.5rem; font-size:.76rem; }
+    .rb-result { min-height:220px; }
+    .rb-loading { display:flex; align-items:center; gap:.5rem; justify-content:center; padding:2rem 0; color:#64748b; font-size:.85rem; }
+    .rb-empty { text-align:center; padding:2rem 1rem; color:#94a3b8; font-size:.86rem; display:flex; flex-direction:column; gap:.5rem; align-items:center; }
+    .rb-empty i { font-size:1.7rem; }
+    .rb-trunc { margin-top:.75rem; font-size:.78rem; }
+
+    .rb-table-wrap { max-height:520px; overflow:auto; border:1px solid #e2e8f0; border-radius:10px; }
+    .rb-table { font-size:.82rem; margin:0; }
+    .rb-table thead th { position:sticky; top:0; background:#f8fafc; z-index:1; border-bottom:1px solid #e2e8f0;
+                         font-size:.78rem; color:#475569; white-space:nowrap; }
+    .rb-table td, .rb-table th { padding:.4rem .55rem; }
+    .rb-table tbody tr:hover { background:#f8fafc; }
+    .rb-idx { width:38px; color:#94a3b8; text-align:center; }
+    .rb-table .tone-success td { background:#ecfdf5; }
+    .rb-table .tone-warning td { background:#fffbeb; }
+    .rb-table .tone-danger td { background:#fef2f2; }
+
+    .rb-kpi { text-align:center; padding:1.5rem 1rem; }
+    .rb-kpi-value { font-size:2.1rem; font-weight:800; color:#0f172a; line-height:1.2; }
+    .rb-kpi-unit { font-size:.85rem; color:#64748b; font-weight:600; margin-inline-start:.3rem; }
+    .rb-kpi-delta { display:inline-flex; align-items:center; gap:.2rem; margin-top:.4rem; font-size:.82rem; font-weight:700;
+                    border-radius:999px; padding:.15rem .6rem; }
+    .rb-kpi-delta.up { background:#ecfdf5; color:#047857; }
+    .rb-kpi-delta.down { background:#fef2f2; color:#b91c1c; }
+    .rb-kpi-sub { margin-top:.4rem; font-size:.78rem; color:#64748b; }
+    .rb-chart { position:relative; height:340px; padding:.5rem; }
+
+    /* ============ گزارش‌های ذخیره‌شده ============ */
+    .rb-saved { display:flex; align-items:center; gap:.6rem; border:1px solid #e2e8f0; border-radius:11px;
+                padding:.5rem .6rem; margin-bottom:.45rem; background:#fff; }
+    .rb-saved.active { border-color:#c7d2fe; background:#f5f7ff; }
+    .rb-saved-main { flex:1; min-width:0; }
+    .rb-saved-name { border:0; background:transparent; padding:0; font-size:.86rem; font-weight:700; color:#1e293b;
+                     cursor:pointer; text-align:right; display:inline-flex; align-items:center; gap:.35rem; }
+    .rb-saved-name:hover { color:#4f46e5; }
+    .rb-saved-meta { display:flex; gap:.3rem; flex-wrap:wrap; margin-top:.25rem; }
+    .rb-saved-acts { display:flex; gap:.25rem; flex-wrap:wrap; }
+    .rb-saved-acts button { border:1px solid #e2e8f0; background:#fff; border-radius:8px; width:28px; height:28px;
+                            display:inline-flex; align-items:center; justify-content:center; color:#475569; cursor:pointer; }
+    .rb-saved-acts button:hover { border-color:#4f46e5; color:#4f46e5; }
+    .rb-saved-acts button.danger:hover { border-color:#ef4444; color:#ef4444; }
+
+    /* ============ مودال ============ */
+    .rb-roles { display:flex; flex-wrap:wrap; gap:.4rem 1rem; border:1px dashed #e2e8f0; border-radius:10px; padding:.5rem .7rem; }
+    .rb-summary { font-size:.78rem; color:#475569; line-height:1.9; }
+    .rb-dash-list { display:flex; flex-direction:column; gap:.25rem; }
+</style>

@@ -51,7 +51,7 @@
     private void Refresh()
     {
         var path = ErpNavigation.Path(Nav.ToBaseRelativePath(Nav.Uri));
-        groups = ErpNavigation.Visible(Auth.HasModule);
+        groups = ErpNavigation.Visible(Auth.CanSee);   // ملاک نمایش، مجوز «مشاهده» هر ماژول است
         selected = ErpNavigation.Find(path);
         activeGroup = ErpNavigation.SectionId(path);
         expandedId = activeGroup;

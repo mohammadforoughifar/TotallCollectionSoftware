@@ -36,15 +36,24 @@ else
                     <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="OnNavigate">
                         <i class="bi bi-speedometer2"></i><span>داشبورد من</span>
                     </NavLink>
-                    <NavLink class="nav-link" href="my-wallet" @onclick="OnNavigate">
-                        <i class="bi bi-wallet2"></i><span>کیف پول من</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="my-products" @onclick="OnNavigate">
-                        <i class="bi bi-box-seam"></i><span>کالاهای موجود</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="my-card" @onclick="OnNavigate">
-                        <i class="bi bi-person-vcard"></i><span>کارت ویزیت من</span>
-                    </NavLink>
+                    @if (Auth.Has("ReferrerPanel.MyWallet"))
+                    {
+                        <NavLink class="nav-link" href="my-wallet" @onclick="OnNavigate">
+                            <i class="bi bi-wallet2"></i><span>کیف پول من</span>
+                        </NavLink>
+                    }
+                    @if (Auth.Has("ReferrerPanel.MyProducts"))
+                    {
+                        <NavLink class="nav-link" href="my-products" @onclick="OnNavigate">
+                            <i class="bi bi-box-seam"></i><span>کالاهای موجود</span>
+                        </NavLink>
+                    }
+                    @if (Auth.Has("ReferrerPanel.MyCard"))
+                    {
+                        <NavLink class="nav-link" href="my-card" @onclick="OnNavigate">
+                            <i class="bi bi-person-vcard"></i><span>کارت ویزیت من</span>
+                        </NavLink>
+                    }
                     <a class="nav-link" style="cursor:pointer" @onclick="OpenPwFromMenu">
                         <i class="bi bi-key"></i><span>تغییر رمز عبور</span>
                     </a>
@@ -75,7 +84,7 @@ else
                 </div>
                 <div class="topbar-actions d-flex align-items-center gap-2 me-2">
                     @* ================== دکمه پیام‌رسان سازمانی (Chat) ================== *@
-                    @if (Auth.HasModule("Chat"))
+                    @if (Auth.CanSee("Chat"))
                     {
                         <a href="chat" class="btn btn-sm btn-light ntf-bell" title="پیام‌رسان سازمانی">
                             <i class="bi bi-chat-dots-fill text-primary"></i>
@@ -236,15 +245,24 @@ else
                     <NavLink class="bottom-nav-item" href="" Match="NavLinkMatch.All">
                         <i class="bi bi-speedometer2"></i><span>داشبورد</span>
                     </NavLink>
-                    <NavLink class="bottom-nav-item" href="my-wallet">
-                        <i class="bi bi-wallet2"></i><span>کیف پول</span>
-                    </NavLink>
-                    <NavLink class="bottom-nav-item" href="my-products">
-                        <i class="bi bi-box-seam"></i><span>کالاها</span>
-                    </NavLink>
-                    <NavLink class="bottom-nav-item" href="my-card">
-                        <i class="bi bi-person-vcard"></i><span>کارت من</span>
-                    </NavLink>
+                    @if (Auth.Has("ReferrerPanel.MyWallet"))
+                    {
+                        <NavLink class="bottom-nav-item" href="my-wallet">
+                            <i class="bi bi-wallet2"></i><span>کیف پول</span>
+                        </NavLink>
+                    }
+                    @if (Auth.Has("ReferrerPanel.MyProducts"))
+                    {
+                        <NavLink class="bottom-nav-item" href="my-products">
+                            <i class="bi bi-box-seam"></i><span>کالاها</span>
+                        </NavLink>
+                    }
+                    @if (Auth.Has("ReferrerPanel.MyCard"))
+                    {
+                        <NavLink class="bottom-nav-item" href="my-card">
+                            <i class="bi bi-person-vcard"></i><span>کارت من</span>
+                        </NavLink>
+                    }
                     <a class="bottom-nav-item" @onclick="Logout">
                         <i class="bi bi-box-arrow-left"></i><span>خروج</span>
                     </a>
@@ -254,15 +272,21 @@ else
                     <NavLink class="bottom-nav-item" href="" Match="NavLinkMatch.All">
                         <i class="bi bi-speedometer2"></i><span>داشبورد</span>
                     </NavLink>
-                    <NavLink class="bottom-nav-item" href="orders/purchase">
-                        <i class="bi bi-bag-plus"></i><span>خرید</span>
-                    </NavLink>
-                    <NavLink class="bottom-nav-item" href="orders/sale">
-                        <i class="bi bi-cart3"></i><span>فروش</span>
-                    </NavLink>
-                    <NavLink class="bottom-nav-item" href="repairs">
-                        <i class="bi bi-tools"></i><span>تعمیرات</span>
-                    </NavLink>
+                    @if (Auth.CanSee("Orders"))
+                    {
+                        <NavLink class="bottom-nav-item" href="orders/purchase">
+                            <i class="bi bi-bag-plus"></i><span>خرید</span>
+                        </NavLink>
+                        <NavLink class="bottom-nav-item" href="orders/sale">
+                            <i class="bi bi-cart3"></i><span>فروش</span>
+                        </NavLink>
+                    }
+                    @if (Auth.CanSee("Repairs"))
+                    {
+                        <NavLink class="bottom-nav-item" href="repairs">
+                            <i class="bi bi-tools"></i><span>تعمیرات</span>
+                        </NavLink>
+                    }
                     <a class="bottom-nav-item" @onclick="OpenMobileMenu">
                         <i class="bi bi-grid-3x3-gap"></i><span>منو</span>
                     </a>
@@ -762,6 +786,9 @@ else
     // هر مسیر به پرمیشن لازم نگاشت می‌شود؛ "Module." یعنی داشتن حداقل یک دسترسی از آن ماژول کافی است.
     private static readonly (string Prefix, string Perm, string Title)[] RouteGuards =
     {
+        ("cartable",            "MyCartable.View",         "کارتابل من"),
+        ("my-archive",          "MyArchive.View",          "بایگانی شخصی"),
+        ("my-dashboards",       "MyDashboards.View",       "داشبورد من"),
         ("dashboard-cctv",      "Dashboards.Management",   "داشبورد مدیریت"),
         ("dashboard-hardware",  "Dashboards.Hardware",     "داشبورد سخت‌افزار"),
         ("orders",              "Orders.",                 "خرید و فروش"),

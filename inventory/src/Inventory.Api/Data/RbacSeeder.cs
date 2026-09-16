@@ -12,8 +12,6 @@ public static class RbacSeeder
     // ماژول‌های جدید (داشبوردها/گزارش‌ها) به‌صورت خودکار به دیتابیس‌های موجود هم اضافه می‌شوند.
     private static readonly Dictionary<string, string[]> ModuleActions = new()
     {
-        // حذف دستور کار فقط با مجوز مستقل؛ به نقش‌های عادی خودکار اعطا نمی‌شود.
-        ["WorkOrders"] = new[] { "View", "Create", "AssignOthers", "Delete" },
         ["Products"] = CrudActions,
         ["Stock"] = CrudActions,
         // فروش: + دسترسی «مشاهده سود» — قابل مدیریت به ازای هر نقش
@@ -27,7 +25,122 @@ public static class RbacSeeder
         ["SystemUsers"] = CrudActions,
         ["SystemCompanies"] = CrudActions,   // کمپانی‌ها
         ["SystemDepartments"] = CrudActions, // واحدها (دپارتمان‌ها)
-        // ================== درخواست خدمت آی‌تی ===========        // ================== پیام‌رسان سازمانی ==================
+        // ================== درخواست خدمت آی‌تی ==================
+        // Create: ثبت درخواست | ViewCompany: دیدن سیستم‌های کل شرکت | ViewDepartment: دیدن سیستم‌های واحد خود
+        // Expert: کارشناس آی‌تی (دریافت ارجاع) | Manage: مدیر آی‌تی (ارجاع و تایید)
+        ["ItRequests"] = new[] { "Create", "ViewCompany", "ViewDepartment", "Expert", "Manage" },
+        // ================== دستور کار ==================
+        // View: مشاهده ماژول (مبنای نمایش در منو) | Create: ساخت دستور کار (حداقل برای خود)
+        // AssignOthers: دستور کار به دیگران | Delete: حذف — فقط با مجوز مستقل، به نقش‌های عادی خودکار اعطا نمی‌شود
+        ["WorkOrders"] = new[] { "View", "Create", "AssignOthers", "Delete" },
+        ["Settings"] = CrudActions,
+        ["Warehouses"] = CrudActions,
+        // ================== ماژول انبارداری ==================
+        // InvDocs: اسناد رسید و حواله — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["InvDocs"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // InvDocTypes: مدیریت انواع رسید/حواله و ماهیت آن‌ها
+        ["InvDocTypes"] = CrudActions,
+        // ================== ماژول حسابداری ==================
+        // AccAccounts: کدینگ حساب‌ها، سال مالی و قواعد سند خودکار
+        ["AccAccounts"] = CrudActions,
+        // AccVouchers: اسناد حسابداری — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["AccVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // AccDimensions: ابعاد تحلیلی (مراکز هزینه / شعبه) و مقادیر آن‌ها
+        ["AccDimensions"] = CrudActions,
+        // FixedAssets: دارایی ثابت — Confirm: ارسال استهلاک به حسابداری
+        ["FixedAssets"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // Budgets: بودجه و کنترل بودجه
+        ["Budgets"] = CrudActions,
+        // Moadian: سامانه مودیان — Send: ارسال/ابطال/برگشت فاکتورها
+        ["Moadian"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Send" },
+        // FiscalPrinter: چاپگر مالی — Print: چاپ رسید
+        ["FiscalPrinter"] = new[] { "Create", "Read", "Update", "Delete", "Print" },
+        // ================== ماژول فاکتور ==================
+        // FacInvoices: فاکتور خرید/فروش — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["FacInvoices"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // ================== ماژول خزانه‌داری ==================
+        // TrsAccounts: صندوق، بانک، کارتخوان، تنخواه و تنظیمات خزانه
+        ["TrsAccounts"] = CrudActions,
+        // TrsVouchers: اسناد دریافت/پرداخت/انتقال — Confirm: قطعی‌سازی | Cancel: ابطال
+        ["TrsVouchers"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
+        // TrsCheques: چک‌ها — Confirm: اجرای عملیات چک (واگذاری، وصول، برگشت)
+        ["TrsCheques"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
+        // ================== ماژول انبارگردانی و بارکد ==================
+        // StkSessions: دوره‌های انبارگردانی — Apply: صدور اسناد اصلاح | Cancel: لغو دوره
+        ["StkSessions"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Apply", "Cancel" },
+        // StkBarcodes: بارکدهای کالا، تولید گروهی و چاپ برچسب
+        ["StkBarcodes"] = CrudActions,
+        // ================== بخش معرف ==================
+        ["Referrers"] = CrudActions,                                     // مدیریت معرف‌ها
+        ["ReferrerWallets"] = new[] { "Read", "Update", "Export" },      // کیف پول معرف‌ها
+        ["ReferrerPanel"] = new[] { "MyDashboard", "MyProducts", "MyWallet", "MyCard" }, // پنل معرف (هر بخش جدا)
+        // ================== منابع انسانی: مرخصی و ماموریت ==================
+        // Request: ثبت درخواست شخصی | Approve: تایید/رد درخواست دیگران | Report: گزارش ماهانه
+        ["LeaveRequests"] = new[] { "Request", "Approve", "Report" },
+        // ================== حضور و غیاب ==================
+        // SelfCheckin: زدن ورود/خروج برای خود
+        // ViewAll: مشاهده لاگ همه پرسنل | ManageShifts: مدیریت شیفت‌ها و اصلاح رکوردها | Report: گزارش ماهانه
+        ["Attendance"] = new[] { "SelfCheckin", "ViewAll", "ManageShifts", "Report" },
+        // ================== سامانه کامل RADIS-HR V019 ==================
+        // Access: ورود به کل ماژول؛ مجوز روی تمام کنترلرهای واردشده نیز در Host اعمال می‌شود.
+        ["RadisHr"] = new[] { "Access", "Dashboard", "Employees", "EmployeeEntry", "Attendance", "Payroll", "StatutoryRules", "OrgStructure", "OrgSettings", "Hse", "Finance", "Accounting", "ProductionDaily", "Notices" /* دسترسی تفکیکی هر لینک بن‌سازه */ },
+        // ================== دسترسی به ازای هر داشبورد ==================
+        ["Dashboards"] = new[] { "Financial", "Management", "Hardware" },
+        // ================== دسترسی به ازای هر گزارش ==================
+        ["ReportPages"] = new[] { "Kardex", "Reorder" },
+        // ================== مدیریت پروژه‌ها ==================
+        // ViewFactor: رویت ستون‌های شماره/نوع فاکتور در لیست و جزئیات و اکسل (حساس مالی)
+        ["Projects"] = new[] { "Create", "Read", "Update", "Delete", "Export", "ViewFactor" }, // ورود و خروج پروژه‌ها
+        ["ReportWorks"] = CrudActions,                         // گزارش‌های کار
+        ["Karfarmas"] = CrudActions,                           // کارفرماها
+        ["TypeFactors"] = CrudActions,                         // انواع فاکتور
+        ["ProjectAttach"] = new[] { "Create", "Read", "Delete" }, // پیوست‌های پروژه
+        ["ProjectCartable"] = new[] { "Read", "Manager", "Expert" }, // کارتابل پروژه — Read=مشاهده، Manager=تایید/رد مدیر، Expert=اتمام کارشناسی
+        // ================== اتوماسیون اداری — نامه داخلی ==================
+        // Create: ثبت و ارسال نامه (و مدیریت پیش‌نویس‌ها/گروه‌های گیرندگان)
+        // Read: کارتابل، مشاهده نامه و پیوست‌ها | Erja: ارجاع نامه به دیگران
+        // Delete: حذف نامه/گروه (مدیرانه)
+        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
+        // ================== آرشیو اسناد و مدارک ==================
+        ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage", "Export" },
+        // ================== هسته پرسنلی (کارگزینی) ==================
+        // Read: مشاهده پرونده/چارت/قرارداد/احکام | Create: ثبت جدید | Update: ویرایش + اجرای حکم
+        // Delete: حذف/غیرفعال‌سازی | Manage: داشبورد مدیریتی و گزارش‌ها
+        ["HrCore"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Contracts", "ContractTemplates", "Decrees", "Recruitment" /* دسترسی تفکیکی هر لینک */ },
+        // حقوق و دستمزد: Read=مشاهده فیش و گزارش‌ها | Manage=تعریف آیتم، محاسبه، قفل دوره
+        ["HrPay"] = new[] { "Read", "Manage" },
+        // ================== منابع انسانی اصلی — مدیریت پایه سازمانی ==================
+        // Read: مشاهده شرکت/چارت/پست‌ها/شعب/تقویم/قوانین | Create: ثبت جدید | Update: ویرایش
+        // Delete: حذف | Manage: داشبورد مدیریتی و گزارش‌ها
+        ["HrMain"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Overview", "Company", "Org", "Positions", "Branches", "Employees", "Calendar", "Rules", "Settings" /* دسترسی تفکیکی هر لینک */ },
+        // ================== حضور و غیاب فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده شیفت/وضعیت روزانه/گزارش‌ها | Create: وب‌کلاک و ثبت تردد
+        // Update: ویرایش + محاسبه مجدد + تأیید ماموریت/مرخصی | Delete: حذف | Manage: داشبورد مدیریتی
+        ["FaAtt"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Clock", "Daily", "Shifts", "LeaveTypes", "Missions", "Approvals", "Leaves", "MyLeaves", "Balances", "Devices", "Reports" /* دسترسی تفکیکی هر لینک */ },
+        // ================== حقوق و دستمزد فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده فیش خود و گزارش‌ها | Manage: تنظیمات، محاسبه، نهایی‌سازی و پرداخت
+        ["FaPay"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Runs", "My", "Adjustments", "Items", "Settings", "Reports" /* دسترسی تفکیکی هر لینک */ },
+        // ================== آموزش و توسعه فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده دوره‌ها | Create: ثبت‌نام و ثبت نیاز | Manage: مدیریت کامل LMS
+        ["FaLms"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Courses", "Calendar", "Enrollments", "Needs", "Budgets", "Certificates", "My", "Reports" /* دسترسی تفکیکی هر لینک */ },
+        // ================== ارتباطات داخلی فروغ آریا (ماژول جدید و مستقل) ==================
+        // Read: مشاهده اطلاعیه‌ها و تیکت خود | Create: ثبت تیکت | Manage: مدیریت اطلاعیه‌ها و پاسخ تیکت‌ها
+        ["FaCom"] = new[] { "Read", "Create", "Update", "Delete", "Manage", "Dashboard", "Announcements", "Tickets", "My" /* دسترسی تفکیکی هر لینک */ },
+        // ================== صفحات شخصی هر کاربر ==================
+        // View: نمایش آیتم در منوی «داشبوردها» و ورود به صفحهٔ کارتابل من / بایگانی شخصی
+        ["MyCartable"] = new[] { "View" },
+        ["MyArchive"] = new[] { "View" },
+        // ================== داشبورد شخصی (طراحی‌شده توسط خود کاربر) ==================
+        // View: دیدن «داشبورد من» و ویجت‌ها | Design: ساخت/ویرایش/حذف داشبورد و چیدمان ویجت‌ها
+        // دادهٔ هر ویجت جداگانه با مجوز مشاهدهٔ ماژول خودش کنترل می‌شود.
+        ["MyDashboards"] = new[] { "View", "Design" },
+        // ================== گزارش‌ساز شخصی (دیتاست‌های از پیش join‌شده) ==================
+        // View: دیدن دیتاست‌ها، اجرا/پیش‌نمایش و استفاده از گزارش‌های اشتراک‌گذاشته‌شده
+        // Design: ساخت/ویرایش/حذف گزارش و اشتراک‌گذاری آن با نقش‌ها
+        // نکته: دسترسی به «دادهٔ» هر دیتاست جداگانه با ماژول RBAC همان دیتاست کنترل می‌شود،
+        // پس داشتن ReportBuilder به معنی دیدن همهٔ داده‌ها نیست.
+        ["ReportBuilder"] = new[] { "View", "Design" },
+        // ================== پیام‌رسان سازمانی ==================
         // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
         ["Chat"] = new[] { "View", "Send", "Manage" },
         // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
@@ -218,6 +331,29 @@ public static class RbacSeeder
             Console.WriteLine("[RBAC] دسترسی پیش‌فرض پیام‌رسان (View/Send) به نقش‌های فعال داده شد.");
         }
 
+        // ============ کارتابل من / بایگانی شخصی / داشبورد من / گزارش‌ساز — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ============
+        // این صفحه‌ها شخصی هر کاربر هستند؛ برای اینکه بعد از ارتقا از منوی کسی حذف نشوند،
+        // مجوز مشاهده‌شان به همهٔ نقش‌های فعال داده می‌شود. مدیر می‌تواند بعداً از
+        // «تنظیمات ← نقش‌ها و دسترسی‌ها» برای هر نقش بردارد تا آیتم از منو پنهان شود.
+        var personalPerms = await db.Permissions
+            .Where(p => (p.Module == "MyCartable" || p.Module == "MyArchive") && p.Action == "View")
+            .Concat(db.Permissions.Where(p => p.Module == "MyDashboards"))
+            .Concat(db.Permissions.Where(p => p.Module == "ReportBuilder"))
+            .ToListAsync();
+        if (personalPerms.Count > 0)
+        {
+            var activeRolesForPersonal = await db.Roles.Where(r => r.IsActive).ToListAsync();
+            foreach (var role in activeRolesForPersonal)
+            {
+                var roleHas = await db.RolePermissions.Where(rp => rp.RoleId == role.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                foreach (var perm in personalPerms.Where(p => !roleHas.Contains(p.Id)))
+                    db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
+            }
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] دسترسی «کارتابل من / بایگانی شخصی / داشبورد من / گزارش‌ساز» به نقش‌های فعال داده شد.");
+        }
+
         if (firstSeed)
         {
             var allPermissions = await db.Permissions.ToListAsync();
@@ -232,17 +368,26 @@ public static class RbacSeeder
                 db.RolePermissions.Add(new RolePermission { RoleId = adminRole.Id, PermissionId = perm.Id });
 
             // Operator: عملیات روزمره + داشبوردها و گزارش‌ها
+            // نکته: بلوک‌های بالاتر (دسترسی پیش‌فرض منابع انسانی / پیام‌رسان / صفحات شخصی)
+            // ممکن است قبلاً به این نقش پرمیشن داده باشند؛ بدون این چک، EF به دلیل
+            // «کلید تکراری RolePermission» استثنا می‌دهد.
+            var operatorHas = await db.RolePermissions.Where(rp => rp.RoleId == operatorRole.Id)
+                .Select(rp => rp.PermissionId).ToListAsync();
             var operatorPerms = allPermissions
-                .Where(p => (p.Action is "Read" or "Create" or "Update" && p.Module is not "SystemUsers" and not "Settings")
-                            || p.Module is "Dashboards" or "ReportPages")
+                .Where(p => !operatorHas.Contains(p.Id)
+                            && ((p.Action is "Read" or "Create" or "Update" && p.Module is not "SystemUsers" and not "Settings")
+                                || p.Module is "Dashboards" or "ReportPages"))
                 .ToList();
             foreach (var perm in operatorPerms)
                 db.RolePermissions.Add(new RolePermission { RoleId = operatorRole.Id, PermissionId = perm.Id });
 
             // Accountant: مالی و گزارشات + داشبورد مالی
+            var accountantHas = await db.RolePermissions.Where(rp => rp.RoleId == accountantRole.Id)
+                .Select(rp => rp.PermissionId).ToListAsync();
             var accountantPerms = allPermissions
-                .Where(p => p.Module is "Reports" or "Expenses" or "Parties" or "Orders" or "ReportPages"
-                            || (p.Module == "Dashboards" && p.Action == "Financial"))
+                .Where(p => !accountantHas.Contains(p.Id)
+                            && (p.Module is "Reports" or "Expenses" or "Parties" or "Orders" or "ReportPages"
+                                || (p.Module == "Dashboards" && p.Action == "Financial")))
                 .ToList();
             foreach (var perm in accountantPerms)
                 db.RolePermissions.Add(new RolePermission { RoleId = accountantRole.Id, PermissionId = perm.Id });
