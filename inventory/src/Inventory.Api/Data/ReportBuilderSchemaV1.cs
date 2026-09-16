@@ -93,6 +93,10 @@ END");
     }
 
     // ==================== SQLite ====================
+    // توجه: در اسکریپت SQLite برای QueryJson مقدار پیش‌فرض آکولادیِ خالی نگذارید؛
+    // پارسر Microsoft.Data.Sqlite روی آن خطای «Expected an ASCII digit» می‌دهد و CREATE TABLE اجرا نمی‌شود
+    // (در نتیجه جدول ساخته نمی‌شود و ذخیرهٔ گزارش با خطای «no such table: UserReports» می‌افتد).
+    // مقدار پیش‌فرض QueryJson لازم نیست چون EF همیشه آن را ارسال می‌کند.
     private static async Task EnsureSqliteAsync(AppDbContext db)
     {
         await SafeAsync(db, @"
@@ -103,7 +107,7 @@ CREATE TABLE IF NOT EXISTS UserReports (
     DatasetKey TEXT NOT NULL,
     Module TEXT NOT NULL DEFAULT '',
     Visibility INTEGER NOT NULL DEFAULT 0,
-    QueryJson TEXT NOT NULL DEFAULT '{}',
+    QueryJson TEXT NOT NULL DEFAULT '',
     CreatedAt TEXT NOT NULL,
     UpdatedAt TEXT NOT NULL
 );");
