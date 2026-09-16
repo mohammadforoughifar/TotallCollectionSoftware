@@ -309,8 +309,11 @@ public class InnerLetterService : IInnerLetterService
     }
 
     /// <summary>پوشه بایگانی — ارجاع‌های کاربر که IsBayegani=true دارند</summary>
-    public async Task<List<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search, int page = 1, int pageSize = 20)
     {
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
                         && e.Source.InnerLetter != null && !e.Source.InnerLetter.IsDelete
@@ -324,8 +327,12 @@ public class InnerLetterService : IInnerLetterService
                              || (e.UserSender!.FirstName + " " + e.UserSender.LastName).Contains(s));
         }
 
-        return await q
+        var totalCount = await q.CountAsync();
+
+        var items = await q
             .OrderByDescending(e => e.ErjaId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(e => new InnerLetterListItemDto
             {
                 LetterId = e.SourceId,
@@ -350,6 +357,14 @@ public class InnerLetterService : IInnerLetterService
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
             })
             .ToListAsync();
+
+        return new PagedResult<InnerLetterListItemDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, int page = 1, int pageSize = 20)

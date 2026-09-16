@@ -3,7 +3,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
 
-namespace Inventory.Api.Controllers.System;
+// نکته: این فایل پیش‌تر «namespace Inventory.Api.Controllers.System» داشت که باعث می‌شد
+// نام «System» برای همهٔ فایل‌های داخل فضای نام Inventory.Api.Controllers سایه بیفتد
+// (System.Text / System.Collections / System.Numerics و… پیدا نمی‌شدند → ۲۶ خطای کامپایل).
+// مثل سایر فایل‌های همین پوشه، فضای نام روی Inventory.Api.Controllers تنظیم شد.
+namespace Inventory.Api.Controllers;
 
 [ApiController]
 [Route("api/files")]
