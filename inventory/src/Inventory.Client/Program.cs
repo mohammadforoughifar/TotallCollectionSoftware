@@ -23,6 +23,8 @@ builder.Services.AddScoped<IAuthApi, AuthApi>();
 builder.Services.AddScoped<IApiClient, ApiClient>();
 builder.Services.AddScoped<BonHrApi>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<IDashboardClient, DashboardClient>(); // داشبورد شخصی کاربر
+builder.Services.AddScoped<IReportClient, ReportClient>();       // گزارش‌ساز شخصی
 builder.Services.AddScoped<IReferrerService, ReferrerService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IUnitService, UnitService>();

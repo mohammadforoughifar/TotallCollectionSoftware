@@ -26,6 +26,13 @@ public interface IAuthState
 
     /// <summary>آیا کاربر حداقل یک دسترسی از این ماژول دارد؟</summary>
     bool HasModule(string module);
+
+    /// <summary>
+    /// آیا کاربر مجوز «مشاهده» این ماژول را دارد؟ مبنای نمایش آیتم در منوی کناری.
+    /// اگر مدیر در «تنظیمات ← نقش‌ها و دسترسی‌ها» تیک مشاهدهٔ ماژول را بردارد،
+    /// آن آیتم (و گروه منوی مربوطه در صورت خالی‌شدن) اصلاً رندر نمی‌شود.
+    /// </summary>
+    bool CanSee(string module);
     event Action? Changed;
 
     Task InitializeAsync();
@@ -61,6 +68,8 @@ public class AuthState : IAuthState
 
     public bool HasModule(string module) =>
         Perms.Any(p => p.StartsWith(module + ".", StringComparison.OrdinalIgnoreCase));
+
+    public bool CanSee(string module) => ModuleAccess.CanSee(this, module);
 
     public event Action? Changed;
 

@@ -954,7 +954,7 @@ else
                         <span class="badge bg-dark-subtle text-dark border num me-1">@detail.Number</span>
                     </div>
                     <div class="wo-header-actions">
-                        @if (Auth.HasModule("Chat") && ChatTargets(detail).Any())
+                        @if (Auth.CanSee("Chat") && ChatTargets(detail).Any())
                         {
                             <div class="wo-chat-wrap">
                                 <button type="button" class="btn btn-sm btn-outline-info" title="گفتگو دربارهٔ این دستور در پیام‌رسان"
@@ -1736,7 +1736,9 @@ else
     .wo-page-head { display:flex; align-items:center; gap:1rem; direction:rtl; }
     .wo-page-head h1 { margin:0; }
     .wo-page-action, .wo-filter-actions { margin-right:auto !important; margin-left:0 !important; }
-    .wo-tabs { justify-content:flex-end; }
+    /* تب‌های دستور کار (دستورهای من / محول به من / بایگانی / کانبان / تقویم / عملکرد افراد / داشبورد)
+       در چیدمان RTL سمت راست صفحه می‌نشینند. */
+    .wo-tabs { direction:rtl; justify-content:flex-start; }
     .wo-dialog-backdrop { background:rgba(15,23,42,.48); }
     .wo-form-dialog { max-width:1060px; }
     .wo-detail-dialog { max-width:1100px; }

@@ -850,7 +850,7 @@
     protected override async Task OnInitializedAsync()
     {
         // کنترل دسترسی: فقط کاربرانی که مجوز پیام‌رسان دارند وارد می‌شوند
-        if (!Auth.HasModule("Chat"))
+        if (!Auth.CanSee("Chat"))
         {
             Nav.NavigateTo("");
             return;

@@ -61,6 +61,20 @@ public static class DbInitializer
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
+
+                // داشبورد شخصی کاربر — جدول داشبوردها و ویجت‌های چیده‌شده
+                await DashboardSchemaV1.EnsureAsync(db);
+
+                // گزارش‌ساز شخصی — گزارش‌های ذخیره‌شده و اشتراک آن‌ها با نقش‌ها
+                await ReportBuilderSchemaV1.EnsureAsync(db);
+
+                // راستی‌آزمایی: اگر جدول‌ها ساخته نشده باشند، کاربر در صفحه خطای مبهم می‌بیند؛
+                // اینجا صریح در لاگِ شروع برنامه گزارش می‌شود.
+                if (!await ReportBuilderSchemaV1.TablesExistAsync(db))
+                    Console.WriteLine("[DB] ⚠ جدول‌های گزارش‌ساز (UserReports/UserReportRoleShares) در دیتابیس وجود ندارند! " +
+                                      (ReportBuilderSchemaV1.LastError ?? ""));
+                else
+                    Console.WriteLine("[DB] ✔ جدول‌های گزارش‌ساز آماده‌اند.");
                 await new Inventory.Api.Services.ItAssets.WorkOrderSchedulingService(db).UpgradeLegacyAsync(DateTime.Now);
 
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها

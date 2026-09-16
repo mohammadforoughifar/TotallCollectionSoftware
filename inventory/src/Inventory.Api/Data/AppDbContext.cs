@@ -13,6 +13,14 @@ public class AppDbContext : DbContext
     public DbSet<DocIndexJob> DocIndexJobs => Set<DocIndexJob>();
     public DbSet<User> Users => Set<User>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+
+    // ==================== داشبورد شخصی کاربر ====================
+    public DbSet<UserDashboard> UserDashboards => Set<UserDashboard>();
+    public DbSet<UserDashWidget> UserDashWidgets => Set<UserDashWidget>();
+
+    // ==================== گزارش‌ساز شخصی ====================
+    public DbSet<UserReport> UserReports => Set<UserReport>();
+    public DbSet<UserReportRoleShare> UserReportRoleShares => Set<UserReportRoleShare>();
     public DbSet<Referrer> Referrers => Set<Referrer>();
     public DbSet<ReferrerPayment> ReferrerPayments => Set<ReferrerPayment>();
     public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();

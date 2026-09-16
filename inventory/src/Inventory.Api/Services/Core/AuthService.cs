@@ -108,7 +108,13 @@ public class AuthService : IAuthService
                                 || (p.Module == "LeaveRequests" && p.Action == "Request")
                                 || (p.Module == "Attendance" && p.Action == "SelfCheckin"))
                     .Select(p => p.Module + "." + p.Action).ToListAsync(),
+                // سایر نقش‌های قدیمی: پنل معرف + کارتابل شخصی منابع انسانی
+                // + صفحه‌های شخصی (کارتابل من / بایگانی شخصی / داشبورد من) که برای همهٔ کاربران است
                 _ => await _db.Permissions.Where(p => p.Module == "ReferrerPanel"
+                                                      || p.Module == "MyCartable"
+                                                      || p.Module == "MyArchive"
+                                                      || p.Module == "MyDashboards"
+                                                      || p.Module == "ReportBuilder"
                                                       || (p.Module == "LeaveRequests" && p.Action == "Request")
                                                       || (p.Module == "Attendance" && p.Action == "SelfCheckin"))
                     .Select(p => p.Module + "." + p.Action).ToListAsync()
