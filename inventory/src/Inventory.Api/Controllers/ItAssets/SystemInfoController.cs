@@ -625,7 +625,7 @@ public class SystemInfoController : ControllerBase
         if (string.IsNullOrWhiteSpace(item.DetailsJson)) return;
         try
         {
-            using var doc = System.Text.Json.JsonDocument.Parse(item.DetailsJson);
+            using var doc = global::System.Text.Json.JsonDocument.Parse(item.DetailsJson);
             var root = doc.RootElement;
 
             var boardName = RootStr(root, "board");
