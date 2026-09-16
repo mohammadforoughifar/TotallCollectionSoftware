@@ -643,14 +643,6 @@ public class OutgoingLetterService : IOutgoingLetterService
             PageSize = pageSize
         };
     }
-                HasAttachment = _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id),
-                Status = l.Status,
-                SadereNumber = l.SadereNumber,
-                DateSadere = l.DateSadere,
-                SignersTotal = l.Source.OutgoingSigners.Count(s => !s.IsDelete),
-                SignersSigned = l.Source.OutgoingSigners.Count(s => !s.IsDelete && s.IsSigned)
-            }).ToListAsync();
-    }
 
     public async Task<OutgoingLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin)
     {
