@@ -53,7 +53,7 @@ public class EmailController : RbacControllerBase
     public async Task<IActionResult> SaveAccount([FromBody] SaveEmailAccountDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
-        var id = await _email.SaveAccountAsync(dto, MyUserId);
+        var id = await _email.SaveAccountAsync(dto, MyUserId, await IsDabirkhaneAsync());
         return Ok(new { id, message = "حساب ایمیل ذخیره شد." });
     }
 

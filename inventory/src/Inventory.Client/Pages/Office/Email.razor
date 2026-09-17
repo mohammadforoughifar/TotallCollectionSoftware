@@ -3,6 +3,8 @@
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject LayoutState Layout
+@using Inventory.Client.Pages.Office.Letters
+@using Microsoft.AspNetCore.Components.Forms
 @implements IDisposable
 
 @* ============================================================
@@ -15,7 +17,46 @@
 <PageTitle>ایمیل سازمانی</PageTitle>
 
 <div class="ltx" style="animation:none;transform:none">
-    <div style="max-width:1280px;margin:0 auto;padding:14px">
+    <div class="shell" style="grid-template-columns:72px 1fr">
+        <nav class="rail">
+                <div class="logo"><i class="bi bi-envelope-at"></i></div>
+
+                @if (Auth.Has("Email.Create"))
+                {
+                    <button class="compose" title="ایمیل جدید" @onclick="OpenCompose"><i class="bi bi-plus-lg"></i></button>
+                    <div style="height:8px"></div>
+                }
+
+                <button class="@(tab == "inbox" ? "on" : "")" title="دریافتی" @onclick='() => SetTab("inbox")'>
+                    <i class="bi bi-inbox-fill"></i>
+                    @if (unreadCount > 0) { <span class="rbadge">@unreadCount.FaDigits()</span> }
+                </button>
+                <span class="rlbl">دریافتی</span>
+
+                <button class="@(tab == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetTab("sent")'>
+                    <i class="bi bi-send"></i>
+                </button>
+                <span class="rlbl">ارسالی</span>
+
+                <button class="@(tab == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetTab("starred")'>
+                    <i class="bi bi-star"></i>
+                </button>
+                <span class="rlbl">نشان</span>
+
+                <button class="@(tab == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetTab("archive")'>
+                    <i class="bi bi-archive"></i>
+                </button>
+                <span class="rlbl">بایگانی</span>
+
+                <button class="@(tab == "accounts" ? "on" : "")" title="حساب‌ها" @onclick='() => SetTab("accounts")'>
+                    <i class="bi bi-gear"></i>
+                </button>
+                <span class="rlbl">حساب‌ها</span>
+
+                <div class="grow"></div>
+        </nav>
+        <section class="pane" style="overflow:auto">
+        <div style="max-width:1280px;margin:0 auto;padding:14px">
 
         <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
             <span class="t"><i class="bi bi-envelope-at" style="color:var(--p2)"></i> ایمیل سازمانی</span>
@@ -215,6 +256,12 @@
                                     {
                                         <button class="icb" title="پاسخ" @onclick="ReplyTo"><i class="bi bi-reply"></i></button>
                                     }
+                                    @if (openMsg.Box == "Inbox")
+                                    {
+                                        <button class="icb" title="تبدیل به نامه داخلی" disabled="@converting" @onclick="ConvertToLetterAsync">
+                                            <i class="bi @(converting ? "bi-arrow-repeat bi-spin" : "bi-file-earmark-arrow-up")"></i>
+                                        </button>
+                                    }
                                     <button class="icb" title="بایگانی" @onclick="() => archOpen = !archOpen"><i class="bi bi-archive"></i></button>
                                 </div>
                             </div>
@@ -252,6 +299,8 @@
                 </div>
             </div>
         }
+    </div>
+        </section>
     </div>
 </div>
 
@@ -438,6 +487,9 @@
     </div>
 }
 
+@* ==================== فرم ایجاد نامه داخلی (تبدیل ایمیل به نامه) ==================== *@
+<ComposeLetterModal @ref="letterCompose" />
+
 @code {
     private bool loading = true;
     private bool syncing;
@@ -451,6 +503,32 @@
     private int openId;
     private string openBox = "";
     private int unreadCount;
+
+    private ComposeLetterModal? letterCompose;
+    private bool converting;
+
+    /// <summary>
+    /// تبدیل ایمیل شخصی به نامه داخلی — فرم ایجاد نامه با عنوان و متنِ ایمیل
+    /// و پیوست‌های آن باز می‌شود؛ کاربر بقیهٔ موارد را خودش پر می‌کند.
+    /// </summary>
+    private async Task ConvertToLetterAsync()
+    {
+        if (openMsg == null) return;
+        converting = true;
+        try
+        {
+            var files = new List<IBrowserFile>();
+            foreach (var a in openMsg.Attachments)
+            {
+                var (data, name) = await EmailSvc.DownloadAttachmentAsync(a.AttachmentId);
+                if (data != null && data.Length > 0)
+                    files.Add(new MemoryBrowserFile(name, "application/octet-stream", data));
+            }
+            letterCompose?.Open(openMsg.Subject, openMsg.Body, null, files);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { converting = false; }
+    }
 
     private bool CanManageDabirkhane => Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Email.Delete");
 
