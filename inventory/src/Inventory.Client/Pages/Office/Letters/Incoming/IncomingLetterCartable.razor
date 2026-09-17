@@ -1,0 +1,475 @@
+@page "/incoming-letters"
+@page "/office/incoming-letters"
+@inject IIncomingLetterService IncomingSvc
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>کارتابل نامه وارده — اتوماسیون اداری</PageTitle>
+
+<div class="container-fluid py-3 dir-rtl text-right">
+
+    @* ---------- هدر و آمار کارتابل ---------- *@
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+            <h4 class="fw-bold mb-1 text-primary">
+                <i class="bi bi-inbox-fill me-2"></i>کارتابل نامه وارده
+            </h4>
+            <span class="text-muted small">مدیریت، ثبت، ارجاع و بایگانی نامه‌های دریافت شده از خارج سازمان</span>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary" @onclick="ReloadDataAsync" title="بروزرسانی">
+                <i class="bi bi-arrow-clockwise"></i>
+            </button>
+            <button class="btn btn-outline-primary" @onclick="OpenReservationManager">
+                <i class="bi bi-hash"></i> رزرو شماره اندیکاتور
+            </button>
+            <button class="btn btn-primary" @onclick="OpenComposeNew">
+                <i class="bi bi-plus-lg me-1"></i> ثبت نامه وارده جدید
+            </button>
+        </div>
+    </div>
+
+    @* ---------- کارت‌های خلاصه آمار ---------- *@
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 text-center bg-white rounded-3">
+                <div class="text-muted small mb-1">خوانده‌نشده کارتابل</div>
+                <div class="fs-4 fw-bold text-danger">@stats.InboxUnread.FaDigits()</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 text-center bg-white rounded-3">
+                <div class="text-muted small mb-1">کل دریافتی در کارتابل</div>
+                <div class="fs-4 fw-bold text-primary">@stats.InboxTotal.FaDigits()</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 text-center bg-white rounded-3">
+                <div class="text-muted small mb-1">ثبت شده توسط شما</div>
+                <div class="fs-4 fw-bold text-success">@stats.SentTotal.FaDigits()</div>
+            </div>
+        </div>
+        <div class="col-6 col-md-3">
+            <div class="card border-0 shadow-sm p-3 text-center bg-white rounded-3">
+                <div class="text-muted small mb-1">بایگانی شده</div>
+                <div class="fs-4 fw-bold text-secondary">@stats.ArchiveTotal.FaDigits()</div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- نوار تب‌ها و جستجو ---------- *@
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body p-2">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <ul class="nav nav-pills gap-1">
+                    <li class="nav-item">
+                        <button class="nav-link @(currentTab == "inbox" ? "active" : "")" @onclick='() => ChangeTabAsync("inbox")'>
+                            <i class="bi bi-inbox me-1"></i> دریافتی (کارتابل)
+                            @if (stats.InboxUnread > 0)
+                            {
+                                <span class="badge bg-danger rounded-pill ms-1">@stats.InboxUnread.FaDigits()</span>
+                            }
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link @(currentTab == "sent" ? "active" : "")" @onclick='() => ChangeTabAsync("sent")'>
+                            <i class="bi bi-send me-1"></i> ثبت شده‌ها
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link @(currentTab == "archive" ? "active" : "")" @onclick='() => ChangeTabAsync("archive")'>
+                            <i class="bi bi-archive me-1"></i> بایگانی
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="d-flex align-items-center gap-2" style="min-width:280px">
+                    @if (currentTab == "inbox")
+                    {
+                        <div class="form-check form-switch mb-0 me-2" style="font-size:13px">
+                            <input class="form-check-input" type="checkbox" id="unreadCheck" @bind="unreadOnly" @bind:after="ReloadDataAsync" />
+                            <label class="form-check-label" for="unreadCheck">فقط خوانده نشده‌ها</label>
+                        </div>
+                    }
+
+                    @if (selectedErjaIds.Count > 0 && currentTab == "inbox")
+                    {
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="BatchBayeganiAsync">
+                            <i class="bi bi-archive me-1"></i> بایگانی دسته‌ای (@selectedErjaIds.Count.FaDigits())
+                        </button>
+                    }
+
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white border-end-0"><i class="bi bi-search text-muted"></i></span>
+                        <input type="text" class="form-control border-start-0" placeholder="جستجو بر اساس موضوع، شماره ثبت، فرستنده…" @bind="searchTerm" @bind:event="oninput" @bind:after="ReloadDataAsync" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* ---------- جدول لیست نامه‌ها ---------- *@
+    <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+            @if (loading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary"></div>
+                    <div class="mt-2 text-muted small">در حال دریافت نامه‌های وارده…</div>
+                </div>
+            }
+            else if (letters.Count == 0)
+            {
+                <div class="text-center py-5 text-muted">
+                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                    نامه‌ای در این بخش یافت نشد.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light text-muted small">
+                            <tr>
+                                @if (currentTab == "inbox")
+                                {
+                                    <th style="width:36px" class="text-center">
+                                        <input type="checkbox" class="form-check-input" checked="@IsAllSelected()" @onchange="ToggleSelectAll" />
+                                    </th>
+                                }
+                                <th style="width:36px"></th>
+                                <th>شماره ثبت (اندیکاتور)</th>
+                                <th>موضوع / فرستنده</th>
+                                <th>شماره و تاریخ مبدأ</th>
+                                <th>تاریخ ورود</th>
+                                <th>وضعیت</th>
+                                <th class="text-end">عملیات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var item in letters)
+                            {
+                                var l = item;
+                                var isUnread = !l.IsRead && currentTab == "inbox";
+                                <tr class="@(isUnread ? "fw-bold bg-light" : "")" style="cursor:pointer" @onclick="() => ViewLetter(l.LetterId)">
+                                    @if (currentTab == "inbox")
+                                    {
+                                        <td class="text-center" @onclick:stopPropagation="true">
+                                            @if (l.ErjaId.HasValue)
+                                            {
+                                                <input type="checkbox" class="form-check-input" checked="@selectedErjaIds.Contains(l.ErjaId.Value)" @onchange="() => ToggleSelectErja(l.ErjaId.Value)" />
+                                            }
+                                        </td>
+                                    }
+                                    <td class="text-center" @onclick:stopPropagation="true">
+                                        <button class="btn btn-sm p-0 text-warning" @onclick="() => ToggleNeshanAsync(l)" title="نشان کردن">
+                                            <i class="bi @(l.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1 fs-6">
+                                            # @l.NumberSabt.FaDigits()
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-column">
+                                            <span class="text-dark">@l.Title</span>
+                                            <small class="text-muted"><i class="bi bi-building me-1"></i>فرستنده: @l.Ferestande</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-column small">
+                                            <span>@(string.IsNullOrWhiteSpace(l.NumberLetterVarede) ? "-" : l.NumberLetterVarede)</span>
+                                            <span class="text-muted">@l.Date.ToFaDate()</span>
+                                        </div>
+                                    </td>
+                                    <td class="small text-muted">
+                                        @l.DateErsal.ToFaDate()
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-1">
+                                            @if (l.Mahramanegi > 0)
+                                            {
+                                                <span class="badge bg-danger">@MahramanegiTitle(l.Mahramanegi)</span>
+                                            }
+                                            @if (l.Foriat > 0)
+                                            {
+                                                <span class="badge bg-warning text-dark">@ForiatTitle(l.Foriat)</span>
+                                            }
+                                            @if (l.AttachmentCount > 0)
+                                            {
+                                                <span class="badge bg-info text-dark"><i class="bi bi-paperclip"></i> @l.AttachmentCount.FaDigits()</span>
+                                            }
+                                            @if (l.IsBayegani)
+                                            {
+                                                <span class="badge bg-secondary"><i class="bi bi-archive"></i> بایگانی</span>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td class="text-end" @onclick:stopPropagation="true">
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="مشاهده نامه" @onclick="() => ViewLetter(l.LetterId)">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <button class="btn btn-outline-info" title="گردش نامه" @onclick="() => OpenGardesh(l)">
+                                                <i class="bi bi-diagram-3"></i>
+                                            </button>
+                                            <button class="btn btn-outline-success" title="ارجاع نامه" @onclick="() => OpenErja(l.LetterId, l.NumberSabt)">
+                                                <i class="bi bi-send"></i>
+                                            </button>
+                                            @if (l.ErjaId.HasValue && !l.IsBayegani)
+                                            {
+                                                <button class="btn btn-outline-secondary" title="بایگانی" @onclick="() => ToggleBayeganiAsync(l)">
+                                                    <i class="bi bi-archive"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @* ---------- صفحه‌بندی ---------- *@
+                @if (totalPages > 1)
+                {
+                    <div class="d-flex justify-content-between align-items-center p-3 border-top">
+                        <small class="text-muted">
+                            نمایش صفحه @currentPage.FaDigits() از @totalPages.FaDigits() (کل نامه‌ها: @totalItems.FaDigits())
+                        </small>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary" disabled="@(currentPage <= 1)" @onclick="() => GoPageAsync(currentPage - 1)">
+                                قبلی
+                            </button>
+                            @for (int p = 1; p <= totalPages; p++)
+                            {
+                                int pageNum = p;
+                                <button class="btn @(pageNum == currentPage ? "btn-primary" : "btn-outline-secondary")" @onclick="() => GoPageAsync(pageNum)">
+                                    @pageNum.FaDigits()
+                                </button>
+                            }
+                            <button class="btn btn-outline-secondary" disabled="@(currentPage >= totalPages)" @onclick="() => GoPageAsync(currentPage + 1)">
+                                بعدی
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@* ---------- مدال‌ها ---------- *@
+<ComposeIncomingModal @ref="composeModal" OnSaved="ReloadDataAsync" />
+<IncomingLetterViewModal @ref="viewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
+<IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadDataAsync" />
+<IncomingGardeshModal @ref="gardeshModal" />
+<IncomingReservationManager @ref="reservationManager" />
+
+@code {
+    private string currentTab = "inbox";
+    private string searchTerm = "";
+    private bool unreadOnly = false;
+
+    private bool loading = true;
+    private int currentPage = 1;
+    private int pageSize = 15;
+    private int totalPages = 1;
+    private int totalItems = 0;
+
+    private List<IncomingLetterListItemDto> letters = new();
+    private IncomingLetterCartableStatsDto stats = new();
+    private List<int> selectedErjaIds = new();
+
+    private ComposeIncomingModal? composeModal;
+    private IncomingLetterViewModal? viewModal;
+    private IncomingErjaSheet? erjaSheet;
+    private IncomingGardeshModal? gardeshModal;
+    private IncomingReservationManager? reservationManager;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadDataAsync();
+    }
+
+    private async Task ChangeTabAsync(string tab)
+    {
+        currentTab = tab;
+        currentPage = 1;
+        selectedErjaIds.Clear();
+        await ReloadDataAsync();
+    }
+
+    private async Task GoPageAsync(int page)
+    {
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        await ReloadDataAsync();
+    }
+
+    private async Task ReloadDataAsync()
+    {
+        loading = true;
+        try
+        {
+            stats = await IncomingSvc.GetStatsAsync();
+
+            PagedResult<IncomingLetterListItemDto> result;
+            if (currentTab == "sent")
+            {
+                result = await IncomingSvc.GetSentAsync(searchTerm, currentPage, pageSize);
+            }
+            else if (currentTab == "archive")
+            {
+                result = await IncomingSvc.GetArchiveAsync(searchTerm, currentPage, pageSize);
+            }
+            else
+            {
+                result = await IncomingSvc.GetInboxAsync(searchTerm, unreadOnly, currentPage, pageSize);
+            }
+
+            letters = result.Items;
+            totalItems = result.TotalCount;
+            totalPages = result.TotalPages > 0 ? result.TotalPages : 1;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenComposeNew() => composeModal?.OpenCreate();
+    private void OpenReservationManager() => reservationManager?.Open();
+
+    private void ViewLetter(int letterId)
+    {
+        viewModal?.Open(letterId);
+    }
+
+    private void OpenErja(int letterId, int numberSabt)
+    {
+        erjaSheet?.OpenErja(letterId, numberSabt);
+    }
+
+    private void OpenGardesh(IncomingLetterListItemDto letter)
+    {
+        gardeshModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal);
+    }
+
+    private async Task ToggleNeshanAsync(IncomingLetterListItemDto item)
+    {
+        try
+        {
+            if (item.ErjaId.HasValue)
+            {
+                item.IsNeshan = await IncomingSvc.ToggleNeshanAsync(item.ErjaId.Value);
+            }
+            else
+            {
+                item.IsNeshan = await IncomingSvc.ToggleLetterNeshanAsync(item.LetterId);
+            }
+            Toast.Success(item.IsNeshan ? "نامه نشان شد." : "نشان نامه برداشت شد.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private async Task ToggleBayeganiAsync(IncomingLetterListItemDto item)
+    {
+        if (!item.ErjaId.HasValue) return;
+        try
+        {
+            item.IsBayegani = await IncomingSvc.ToggleBayeganiAsync(item.ErjaId.Value);
+            Toast.Success(item.IsBayegani ? "نامه به بایگانی منتقل شد." : "نامه از بایگانی خارج شد.");
+            await ReloadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private bool IsAllSelected() => letters.Count > 0 && letters.Where(l => l.ErjaId.HasValue).All(l => selectedErjaIds.Contains(l.ErjaId!.Value));
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        bool isChecked = e.Value is bool b && b;
+        selectedErjaIds.Clear();
+        if (isChecked)
+        {
+            selectedErjaIds.AddRange(letters.Where(l => l.ErjaId.HasValue).Select(l => l.ErjaId!.Value));
+        }
+    }
+
+    private void ToggleSelectErja(int erjaId)
+    {
+        if (selectedErjaIds.Contains(erjaId)) selectedErjaIds.Remove(erjaId);
+        else selectedErjaIds.Add(erjaId);
+    }
+
+    private async Task BatchBayeganiAsync()
+    {
+        if (selectedErjaIds.Count == 0) return;
+        try
+        {
+            int count = await IncomingSvc.BatchBayeganiAsync(selectedErjaIds);
+            Toast.Success($"{count.FaDigits()} نامه با موفقیت بایگانی گردید.");
+            selectedErjaIds.Clear();
+            await ReloadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void HandleErjaFromView((int LetterId, int SabtNumber) args)
+    {
+        erjaSheet?.OpenErja(args.LetterId, args.SabtNumber);
+    }
+
+    private void HandleAnswerFromView((int ErjaId, int SabtNumber) args)
+    {
+        erjaSheet?.OpenAnswer(args.ErjaId, args.SabtNumber);
+    }
+
+    private void HandleEditFromView(IncomingLetterDetailDto letter)
+    {
+        composeModal?.OpenEdit(letter);
+    }
+
+    private void HandleGardeshFromView(int letterId)
+    {
+        var letter = letters.FirstOrDefault(l => l.LetterId == letterId);
+        if (letter != null)
+        {
+            gardeshModal?.Open(letter.LetterId, letter.Title, letter.Ferestande, letter.NumberSabt, letter.DateErsal);
+        }
+    }
+
+    private string MahramanegiTitle(int m) => m switch
+    {
+        1 => "محرمانه",
+        2 => "خیلی محرمانه",
+        3 => "سرّی",
+        _ => "عادی"
+    };
+
+    private string ForiatTitle(int f) => f switch
+    {
+        1 => "فوری",
+        2 => "خیلی فوری",
+        3 => "آنی",
+        _ => "عادی"
+    };
+}

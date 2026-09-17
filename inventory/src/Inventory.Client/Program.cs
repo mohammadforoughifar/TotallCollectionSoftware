@@ -96,6 +96,7 @@ builder.Services.AddScoped<IReportWorkService, ReportWorkService>();
 // ---------- ماژول اتوماسیون اداری (نامه داخلی + صادره) ----------
 builder.Services.AddScoped<ILetterService, LetterService>();
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();
+builder.Services.AddScoped<IIncomingLetterService, IncomingLetterService>();
 builder.Services.AddScoped<IEmailClientService, EmailClientService>(); // ایمیل سازمانی (پست الکترونیک)
 // تنظیمات ساختار شماره نامه (سازمان‌ها — جزء «واحد»)
 builder.Services.AddScoped<ILetterStructureService, LetterStructureService>();

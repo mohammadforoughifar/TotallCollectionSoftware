@@ -1,0 +1,193 @@
+@inject IIncomingLetterService IncomingSvc
+@inject IAuthState Auth
+@inject IToastService Toast
+
+@* ============================================================
+   شیت ارجاع و پاسخ به نامه وارده
+   ============================================================ *@
+
+@if (visible)
+{
+<div class="ltx" style="animation:none;transform:none">
+    <div class="ov"></div>
+    <div class="sheet" style="width:min(580px,96vw)" @onclick="() => combo?.Close()">
+        <div class="sheet-h">
+            <b><i class="bi bi-arrow-left-right" style="color:var(--p)"></i> @(isAnswer ? "ثبت پاسخ به ارجاع" : "ارجاع نامه وارده")</b>
+            <span class="dt num">ثبت: # @sabtNumber.FaDigits()</span>
+            <button class="x" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="sheet-b">
+            @if (isAnswer)
+            {
+                <div class="fcard">
+                    <label>پاسخ / توضیحات اقدام انجام‌شده</label>
+                    <textarea class="tin" placeholder="نتیجه اقدام یا توضیحات پاسخ به ارجاع…" @bind="matn" style="min-height:100px"></textarea>
+                </div>
+            }
+            else
+            {
+                <LetterPickCombo @ref="combo" Label="گیرندگان ارجاع" Icon="bi-person-plus" Required="true"
+                                 Users="users" Groups="groups"
+                                 SelectedUsers="selUsers" SelectedGroups="selGroups"
+                                 HasError="errRcv" Changed="OnRcvChanged" />
+
+                <div class="fcard">
+                    <label>دستور / متن ارجاع (پاراف)</label>
+                    <textarea class="tin" placeholder="دستور، راهنمایی یا توضیحات ارجاع…" @bind="matn" style="min-height:90px"></textarea>
+                </div>
+
+                <div class="fcard">
+                    <label>مهلت پاسخ <span class="opt">اختیاری</span></label>
+                    <input type="date" class="tin" @bind="mohlatPasokh" />
+                </div>
+            }
+        </div>
+
+        <div class="sheet-f">
+            <button class="btn-sec" @onclick="Close">انصراف</button>
+            <button class="btn-main" disabled="@saving" @onclick="SubmitAsync">
+                @if (saving)
+                {
+                    <span class="spinner-border spinner-border-sm"></span> <span>در حال ثبت…</span>
+                }
+                else
+                {
+                    <i class="bi bi-send-fill"></i> <span>@(isAnswer ? "ثبت پاسخ" : "ارسال ارجاع")</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+}
+
+@code {
+    [Parameter] public EventCallback OnSubmitted { get; set; }
+
+    private bool visible = false;
+    private bool saving = false;
+    private bool isAnswer = false;
+
+    private int letterId = 0;
+    private int erjaId = 0;
+    private int sabtNumber = 0;
+
+    private LetterPickCombo? combo;
+    private List<UserDto> users = new();
+    private List<UserGroupDto> groups = new();
+    private List<int> selUsers = new();
+    private List<int> selGroups = new();
+
+    private string matn = "";
+    private DateTime? mohlatPasokh;
+    private bool errRcv = false;
+
+    public async Task OpenErja(int letterId, int sabtNumber)
+    {
+        this.letterId = letterId;
+        this.erjaId = 0;
+        this.sabtNumber = sabtNumber;
+        this.isAnswer = false;
+        this.matn = "";
+        this.mohlatPasokh = null;
+        this.selUsers.Clear();
+        this.selGroups.Clear();
+        this.errRcv = false;
+
+        visible = true;
+        await LoadLookups();
+        StateHasChanged();
+    }
+
+    public async Task OpenAnswer(int erjaId, int sabtNumber)
+    {
+        this.letterId = 0;
+        this.erjaId = erjaId;
+        this.sabtNumber = sabtNumber;
+        this.isAnswer = true;
+        this.matn = "";
+        this.mohlatPasokh = null;
+        this.selUsers.Clear();
+        this.selGroups.Clear();
+        this.errRcv = false;
+
+        visible = true;
+        StateHasChanged();
+    }
+
+    private async Task LoadLookups()
+    {
+        try
+        {
+            users = await Auth.GetUsersAsync();
+            groups = await Auth.GetUserGroupsAsync();
+        }
+        catch { }
+    }
+
+    private void OnRcvChanged() => errRcv = false;
+
+    private async Task SubmitAsync()
+    {
+        if (!isAnswer)
+        {
+            var receiverIds = combo?.GetSelectedUserIds(users) ?? new List<int>();
+            if (receiverIds.Count == 0)
+            {
+                errRcv = true;
+                Toast.Error("لطفاً حداقل یک گیرنده انتخاب کنید.");
+                return;
+            }
+
+            saving = true;
+            try
+            {
+                var dto = new AddErjaDto
+                {
+                    LetterId = letterId,
+                    ReceiverUserIds = receiverIds,
+                    MatnErja = matn.Trim(),
+                    MohlatPasokh = mohlatPasokh
+                };
+                await IncomingSvc.AddErjaAsync(dto);
+                Toast.Success("نامه وارده با موفقیت ارجاع شد.");
+                visible = false;
+                await OnSubmitted.InvokeAsync();
+            }
+            catch (Exception ex)
+            {
+                Toast.Error(ex.Message);
+            }
+            finally
+            {
+                saving = false;
+                StateHasChanged();
+            }
+        }
+        else
+        {
+            saving = true;
+            try
+            {
+                var dto = new AnswerErjaDto
+                {
+                    MatnPasokh = matn.Trim()
+                };
+                await IncomingSvc.AnswerAsync(erjaId, dto);
+                Toast.Success("پاسخ به ارجاع ثبت گردید.");
+                visible = false;
+                await OnSubmitted.InvokeAsync();
+            }
+            catch (Exception ex)
+            {
+                Toast.Error(ex.Message);
+            }
+            finally
+            {
+                saving = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void Close() => visible = false;
+}
