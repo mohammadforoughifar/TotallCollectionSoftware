@@ -17,8 +17,8 @@
 <PageTitle>ایمیل سازمانی</PageTitle>
 
 <div class="ltx" style="animation:none;transform:none">
-    <div class="shell" style="grid-template-columns:72px 1fr">
-        <nav class="rail">
+    <div style="display:flex;height:calc(100vh - 130px);min-height:540px;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden">
+        <nav class="rail" style="flex:0 0 72px;overflow-y:auto">
                 <div class="logo"><i class="bi bi-envelope-at"></i></div>
 
                 @if (Auth.Has("Email.Create"))
@@ -55,7 +55,7 @@
 
                 <div class="grow"></div>
         </nav>
-        <section class="pane" style="overflow:auto">
+        <section style="flex:1;min-width:0;min-height:0;overflow:auto">
         <div style="padding:14px;width:100%;box-sizing:border-box">
 
         <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
@@ -596,7 +596,28 @@
         tab = t; openMsg = null; openId = 0; openBox = ""; archOpen = false;
         if (t == "accounts") await LoadAccountsAsync();
         if (t == "archive" && folders.Count == 0) { try { folders = await EmailSvc.GetFoldersAsync(); } catch { } }
+        // دریافتی/ارسالی: ابتدا فقط پیام‌های تازه از سرور گرفته و در بانک ذخیره می‌شوند،
+        // سپس فهرستِ کامل از بانک خوانده می‌شود.
+        if (t is "inbox" or "sent") await SyncFolderAsync(t);
         await ReloadAsync();
+    }
+
+    /// <summary>
+    /// همگام‌سازیِ افزایشی: بارِ اول همه‌ی پیام‌ها را در بانک می‌نشاند؛
+    /// در دفعات بعد فقط پیام‌های جدیدتر از آخرین نوبت را می‌گیرد.
+    /// </summary>
+    private async Task SyncFolderAsync(string box)
+    {
+        syncing = true;
+        StateHasChanged();
+        try
+        {
+            var r = box == "sent" ? await EmailSvc.SyncSentAsync() : await EmailSvc.SyncInboxAsync();
+            // فقط هنگام رسیدنِ پیام تازه یا بروز خطا اطلاع می‌دهیم تا هر بار کلیک مزاحم نشود
+            if (r.NewCount > 0) Toast.Success(r.Message);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { syncing = false; StateHasChanged(); }
     }
 
     private async Task LoadAccountsAsync()

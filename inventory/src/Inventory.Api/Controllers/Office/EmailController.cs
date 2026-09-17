@@ -113,6 +113,23 @@ public class EmailController : RbacControllerBase
         return Ok(r);
     }
 
+    /// <summary>همگام‌سازیِ افزایشیِ صندوقِ دریافتیِ همه‌ی حساب‌های کاربر.
+    /// بارِ اول همه‌ی پیام‌ها را در بانک می‌نشاند و از بارِ دوم فقط پیام‌های جدید را می‌گیرد.</summary>
+    [HttpPost("sync-inbox")]
+    public async Task<IActionResult> SyncInbox()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _email.SyncInboxAsync(MyUserId, await IsDabirkhaneAsync()));
+    }
+
+    /// <summary>همگام‌سازیِ افزایشیِ صندوقِ ارسالیِ همه‌ی حساب‌های کاربر</summary>
+    [HttpPost("sync-sent")]
+    public async Task<IActionResult> SyncSent()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _email.SyncSentAsync(MyUserId, await IsDabirkhaneAsync()));
+    }
+
     [HttpGet("inbox")]
     public async Task<IActionResult> Inbox([FromQuery] int? emailId, [FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int? folderId)
     {

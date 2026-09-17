@@ -34,6 +34,12 @@ public interface IEmailService
 
     // ---------- دریافت ----------
     Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin);
+
+    /// <summary>همگام‌سازیِ افزایشیِ صندوقِ دریافتیِ همه‌ی حساب‌های کاربر</summary>
+    Task<EmailSyncResultDto> SyncInboxAsync(int userId, bool isDabirkhaneAdmin);
+
+    /// <summary>همگام‌سازیِ افزایشیِ صندوقِ ارسالیِ همه‌ی حساب‌های کاربر</summary>
+    Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin);
     Task<List<EmailMessageListItemDto>> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly, bool isDabirkhaneAdmin);
     Task<List<EmailMessageListItemDto>> GetSentAsync(int userId, int? emailId, string? search, bool isDabirkhaneAdmin);
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id, int userId, bool markRead, bool isDabirkhaneAdmin);
@@ -57,6 +63,10 @@ public class EmailService : IEmailService
 
     /// <summary>پوشه ذخیره پیوست‌های ایمیل تحت wwwroot/uploads/office/email</summary>
     private const string AttachmentFolder = "uploads/office/email";
+
+    /// <summary>بیشینه پیام‌های خوانده‌شده از یک حساب در هر نوبت.
+    /// برای جلوگیری از قطع‌شدن درخواست؛ نوبتِ بعدی از همان شناسه ادامه می‌دهد.</summary>
+    private const int MaxMessagesPerAccountPerSync = 700;
 
     public EmailService(AppDbContext db, IWebHostEnvironment env, ILogger<EmailService> log, IOutgoingLetterPrintService print)
     {
@@ -553,92 +563,263 @@ public class EmailService : IEmailService
 
     // ==================== دریافت ایمیل (IMAP) ====================
 
+    /// <summary>
+    /// همگام‌سازیِ افزایشیِ صندوقِ دریافتیِ همه‌ی حساب‌های کاربر.
+    /// بارِ اول همه‌ی پیام‌ها را می‌گیرد و در بانک می‌نشاند؛ از بارِ دوم،
+    /// به‌کمک Last_Inbox_Uid فقط پیام‌های جدیدتر از آخرین نوبت خوانده می‌شوند.
+    /// </summary>
+    public async Task<EmailSyncResultDto> SyncInboxAsync(int userId, bool isDabirkhaneAdmin)
+        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Inbox");
+
+    /// <summary>مانند SyncInboxAsync ولی برای صندوقِ ارسالی (پیشرفت در Last_Sent_Uid)</summary>
+    public async Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin)
+        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Sent");
+
+    /// <summary>همگام‌سازیِ دستیِ یک حساب (دکمه‌ی «دریافت» در فهرست حساب‌ها)</summary>
     public async Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin)
     {
         var acc = await AccessibleAccountAsync(emailId, userId, isDabirkhaneAdmin)
             ?? throw new Exception("حساب ایمیل پیدا نشد یا به شما تعلق ندارد.");
         if (!acc.IsActive) throw new Exception("حساب ایمیل غیرفعال است.");
+
+        var (added, total) = await SyncAccountFolderAsync(acc, "Inbox");
+        return new EmailSyncResultDto
+        {
+            NewCount = added,
+            TotalCount = total,
+            AccountCount = 1,
+            Message = added > 0 ? $"{added} ایمیل جدید دریافت شد." : "ایمیل جدیدی نبود."
+        };
+    }
+
+    private async Task<EmailSyncResultDto> SyncAllAccountsAsync(int userId, bool isDabirkhaneAdmin, string box)
+    {
+        var result = new EmailSyncResultDto();
+        var accIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin);
+        if (accIds.Count == 0)
+        {
+            result.Message = "هیچ حساب ایمیلی برای شما تعریف نشده است.";
+            return result;
+        }
+
+        var accounts = await _db.OtoEmails
+            .Where(e => accIds.Contains(e.EmailId) && e.IsActive)
+            .ToListAsync();
+
+        var errors = new List<string>();
+        foreach (var acc in accounts)
+        {
+            try
+            {
+                var (added, total) = await SyncAccountFolderAsync(acc, box);
+                result.NewCount += added;
+                result.TotalCount += total;
+                result.AccountCount++;
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "همگام‌سازی {Box} برای حساب {Account} ناموفق بود", box, acc.EmailAddress);
+                errors.Add($"{acc.EmailAddress}: {ex.Message}");
+            }
+        }
+
+        var boxName = box == "Sent" ? "ارسالی" : "دریافتی";
+        if (errors.Count == 0)
+        {
+            result.Message = result.NewCount > 0
+                ? $"{result.NewCount} ایمیل جدید از صندوق {boxName} دریافت شد."
+                : $"ایمیل جدیدی در صندوق {boxName} نبود.";
+        }
+        else
+        {
+            result.Message = string.Join(" | ", errors);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// هسته‌ی همگام‌سازیِ یک حساب و یک صندوق. خروجی: (تعدادِ جدید ذخیره‌شده، تعدادِ کلِ پیام‌های صندوق)
+    /// </summary>
+    private async Task<(int Added, int Total)> SyncAccountFolderAsync(OtoEmail acc, string box)
+    {
         if (string.IsNullOrWhiteSpace(acc.Imap))
             throw new Exception("سرور IMAP این حساب تنظیم نشده است — از تنظیمات ایمیل تکمیل کنید.");
 
-        var result = new EmailSyncResultDto();
         using var client = new ImapClient { Timeout = 30000 };
-        await client.ConnectAsync(acc.Imap, acc.ImapPort, acc.ImapSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.None);
+        await client.ConnectAsync(acc.Imap, acc.ImapPort,
+            acc.ImapSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.None);
         await client.AuthenticateAsync(acc.EmailAddress, acc.Password);
-        await client.Inbox.OpenAsync(FolderAccess.ReadOnly);
 
-        var total = client.Inbox.Count;
-        result.TotalCount = total;
+        var folder = OpenFolder(client, box)
+            ?? throw new Exception($"پوشه‌ی {(box == "Sent" ? "ارسالی" : "دریافتی")} در این حساب یافت نشد.");
+        await folder.OpenAsync(FolderAccess.ReadOnly);
 
-        // آخرین ۵۰ پیام بررسی می‌شود — پیام‌های تکراری با UId رد می‌شوند
-        var start = Math.Max(0, total - 50);
-        var existing = await _db.OtoInboxEmails.Where(i => i.EmailId == emailId).Select(i => i.UId).ToListAsync();
-        var existingSet = new HashSet<string>(existing);
+        var total = folder.Count;
+        long lastUid = box == "Sent" ? acc.LastSentUid : acc.LastInboxUid;
 
-        for (int i = total - 1; i >= start; i--)
+        // همه‌ی شناسه‌های صندوق؛ فقط آن‌هایی که از آخرین نوبت جدیدترند انتخاب می‌شوند.
+        // مرتب‌سازی صعودی باعث می‌شود اگر در نوبتی به سقف برسیم، نوبتِ بعد دقیقاً از همان‌جا ادامه یابد.
+        var summaries = await folder.FetchAsync(0, -1, MessageSummaryItems.UniqueId);
+        var pending = summaries
+            .Select(x => x.UniqueId)
+            .Where(u => lastUid <= 0 || u.Id > (uint)lastUid)
+            .OrderBy(u => u.Id)
+            .Take(MaxMessagesPerAccountPerSync)
+            .ToList();
+
+        var existingSet = box == "Sent"
+            ? new HashSet<string>(await _db.OtoSentEmails.AsNoTracking()
+                .Where(x => x.EmailId == acc.EmailId).Select(x => x.UId).ToListAsync())
+            : new HashSet<string>(await _db.OtoInboxEmails.AsNoTracking()
+                .Where(x => x.EmailId == acc.EmailId).Select(x => x.UId).ToListAsync());
+
+        int added = 0;
+        long maxUid = lastUid;
+
+        foreach (var uid in pending)
         {
             MimeMessage msg;
-            try { msg = await client.Inbox.GetMessageAsync(i); }
-            catch { continue; }
-
-            var uid = !string.IsNullOrWhiteSpace(msg.MessageId) ? msg.MessageId : $"idx-{emailId}-{i}";
-            if (existingSet.Contains(uid)) continue;
-
-            var body = msg.HtmlBody ?? (msg.TextBody != null ? "<pre style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(msg.TextBody) + "</pre>" : "");
-
-            var inbox = new OtoInboxEmail
+            try { msg = await folder.GetMessageAsync(uid); }
+            catch
             {
-                EmailId = emailId,
-                UId = uid,
-                Subject = msg.Subject ?? "",
-                Date = msg.Date == default ? DateTime.Now : msg.Date.LocalDateTime,
-                IsRead = false,
-                Body = body,
-                FromAddress = ExtractAddress(msg.From.ToString()) ?? "",
-                IsAttachment = msg.Attachments.Any()
-            };
-            _db.OtoInboxEmails.Add(inbox);
-            await _db.SaveChangesAsync();
-
-            // پیوست‌ها
-            var dir = Path.Combine(AttachmentRoot, $"Inbox_{inbox.InboxId}");
-            foreach (var entity in msg.Attachments)
-            {
-                if (entity is not MimePart part) continue;
-                try
-                {
-                    var name = string.IsNullOrWhiteSpace(part.FileName) ? "attachment" : part.FileName;
-                    using var ms = new MemoryStream();
-                    await part.Content.DecodeToAsync(ms);
-                    Directory.CreateDirectory(dir);
-                    var saved = $"{Guid.NewGuid():N}_{SafeName(name)}";
-                    await File.WriteAllBytesAsync(Path.Combine(dir, saved), ms.ToArray());
-                    _db.OtoEmailAttachments.Add(new OtoEmailAttachment
-                    {
-                        EmailId = inbox.InboxId,
-                        UId = uid,
-                        Type = "Inbox",
-                        AttachmentRealName = name,
-                        AttachmentSavedName = saved,
-                        FilePath = $"{AttachmentFolder}/Inbox_{inbox.InboxId}/{saved}"
-                    });
-                }
-                catch (Exception ex) { _log.LogWarning(ex, "ذخیره پیوست ایمیل دریافتی ناموفق بود"); }
+                // پیامِ ناقص/حذف‌شده: شناسه را رد می‌کنیم تا نوبت‌های بعد دوباره امتحان نشود
+                if (uid.Id > maxUid) maxUid = uid.Id;
+                continue;
             }
-            await _db.SaveChangesAsync();
-            existingSet.Add(uid);
-            result.NewCount++;
+
+            var key = !string.IsNullOrWhiteSpace(msg.MessageId)
+                ? msg.MessageId
+                : $"uid-{acc.EmailId}-{uid.Id}";
+            if (key.Length > 300) key = key[^300..];
+
+            if (!existingSet.Contains(key))
+            {
+                var body = msg.HtmlBody
+                    ?? (msg.TextBody != null
+                        ? "<pre style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(msg.TextBody) + "</pre>"
+                        : "");
+                var date = msg.Date == default ? DateTime.Now : msg.Date.LocalDateTime;
+                var hasAttach = msg.Attachments.Any();
+
+                if (box == "Sent")
+                {
+                    var sent = new OtoSentEmail
+                    {
+                        EmailId = acc.EmailId,
+                        UId = key,
+                        Subject = Trunc(msg.Subject ?? "", 500),
+                        Date = date,
+                        Body = body,
+                        ToDisplay = RecipientsOf(msg),
+                        IsAttachment = hasAttach
+                    };
+                    _db.OtoSentEmails.Add(sent);
+                    await _db.SaveChangesAsync();
+                    await SaveAttachmentsAsync(msg, "Sent", sent.SentId, key);
+                }
+                else
+                {
+                    var inbox = new OtoInboxEmail
+                    {
+                        EmailId = acc.EmailId,
+                        UId = key,
+                        Subject = Trunc(msg.Subject ?? "", 500),
+                        Date = date,
+                        IsRead = false,
+                        Body = body,
+                        FromAddress = Trunc(ExtractAddress(msg.From.ToString()) ?? "", 250),
+                        IsAttachment = hasAttach
+                    };
+                    _db.OtoInboxEmails.Add(inbox);
+                    await _db.SaveChangesAsync();
+                    await SaveAttachmentsAsync(msg, "Inbox", inbox.InboxId, key);
+                }
+
+                existingSet.Add(key);
+                added++;
+            }
+
+            if (uid.Id > maxUid) maxUid = uid.Id;
         }
 
         await client.DisconnectAsync(true);
 
         acc.LastSync = DateTime.Now;
+        if (box == "Sent") acc.LastSentUid = maxUid; else acc.LastInboxUid = maxUid;
         await _db.SaveChangesAsync();
-        result.Message = result.NewCount > 0
-            ? $"{result.NewCount} ایمیل جدید دریافت شد."
-            : "ایمیل جدیدی نبود.";
-        return result;
+
+        return (added, total);
     }
+
+    /// <summary>یافتنِ پوشه‌ی درخواستی: دریافتی همان Inbox است؛ ارسالی با نشانِ استاندارد یا نام‌های متداول پیدا می‌شود</summary>
+    private static IMailFolder? OpenFolder(ImapClient client, string box)
+    {
+        if (box != "Sent") return client.Inbox;
+
+        // ۱) پوشه‌ای که نشانِ استاندارد «ارسالی» را دارد
+        try
+        {
+            var personal = client.GetFolder(client.PersonalNamespaces[0]);
+            foreach (var f in personal.GetSubfolders(false))
+                if ((f.Attributes & FolderAttributes.Sent) != 0) return f;
+        }
+        catch { }
+
+        // ۲) نام‌های متداول در سرورهای مختلف (Gmail، Outlook، هاست‌های cPanel و…)
+        foreach (var name in new[] { "Sent", "Sent Items", "Sent Mail", "INBOX.Sent", "INBOX/Sent", "[Gmail]/Sent Mail" })
+        {
+            try { return client.GetFolder(name); }
+            catch { }
+        }
+        return null;
+    }
+
+    private async Task SaveAttachmentsAsync(MimeMessage msg, string box, int messageId, string uid)
+    {
+        if (!msg.Attachments.Any()) return;
+
+        var dir = Path.Combine(AttachmentRoot, $"{box}_{messageId}");
+        foreach (var entity in msg.Attachments)
+        {
+            if (entity is not MimePart part) continue;
+            try
+            {
+                var name = string.IsNullOrWhiteSpace(part.FileName) ? "attachment" : part.FileName;
+                using var ms = new MemoryStream();
+                await part.Content.DecodeToAsync(ms);
+                Directory.CreateDirectory(dir);
+                var saved = $"{Guid.NewGuid():N}_{SafeName(name)}";
+                await File.WriteAllBytesAsync(Path.Combine(dir, saved), ms.ToArray());
+                _db.OtoEmailAttachments.Add(new OtoEmailAttachment
+                {
+                    EmailId = messageId,
+                    UId = uid,
+                    Type = box,
+                    AttachmentRealName = name,
+                    AttachmentSavedName = saved,
+                    FilePath = $"{AttachmentFolder}/{box}_{messageId}/{saved}"
+                });
+            }
+            catch (Exception ex) { _log.LogWarning(ex, "ذخیره پیوست ایمیل ناموفق بود"); }
+        }
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>نمایشِ گیرنده‌ها برای صندوقِ ارسالی — نام اگر داشت، وگرنه نشانی</summary>
+    private static string RecipientsOf(MimeMessage msg)
+    {
+        try
+        {
+            var s = string.Join(", ", msg.To.Mailboxes
+                .Select(m => string.IsNullOrWhiteSpace(m.Name) ? m.Address : m.Name));
+            if (string.IsNullOrWhiteSpace(s)) s = msg.To.ToString();
+            return Trunc(s, 1000);
+        }
+        catch { return ""; }
+    }
+
+    private static string Trunc(string v, int max)
+        => string.IsNullOrEmpty(v) || v.Length <= max ? v : v[..max];
 
     // ==================== لیست‌ها / جزئیات ====================
 
@@ -742,7 +923,7 @@ public class EmailService : IEmailService
         {
             var s = await _db.OtoSentEmails.AsNoTracking().Include(x => x.Email)
                 .FirstOrDefaultAsync(x => x.SentId == id && (x.Email!.UserId == userId || (isDabirkhaneAdmin && x.Email!.IsDabirkhane)))
-                ?? throw new Exception("ایمیل پیدا نشد.");
+                ?? throw new Exception($"ایمیل پیدا نشد (ارسالی، شناسه {id}). اگر تازه ارسال شده، «دریافت» را بزنید.");
             return new EmailMessageDetailDto
             {
                 Id = s.SentId, Box = "Sent", EmailId = s.EmailId,
@@ -755,7 +936,7 @@ public class EmailService : IEmailService
 
         var i = await _db.OtoInboxEmails.Include(x => x.Email)
             .FirstOrDefaultAsync(x => x.InboxId == id && (x.Email!.UserId == userId || (isDabirkhaneAdmin && x.Email!.IsDabirkhane)))
-            ?? throw new Exception("ایمیل پیدا نشد.");
+            ?? throw new Exception($"ایمیل پیدا نشد (دریافتی، شناسه {id}). اگر تازه رسیده، «دریافت» را بزنید.");
         if (markRead && !i.IsRead) { i.IsRead = true; await _db.SaveChangesAsync(); }
         return new EmailMessageDetailDto
         {
