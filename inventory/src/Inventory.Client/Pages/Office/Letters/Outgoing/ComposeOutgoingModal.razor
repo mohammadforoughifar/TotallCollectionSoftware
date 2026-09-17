@@ -53,9 +53,64 @@
                 <input class="tin" placeholder="آدرس یا توضیحات…" @bind="receiverAddress" />
             </div>
 
+            @* رونوشت‌گیرندگان — هر گیرنده یک ردیف مستقل در جدول OutgoingLetterCopyToes.
+               کاربر آن‌ها را یکی‌یکی با دکمهٔ «افزودن رونوشت» می‌سازد و چاپِ
+               «با رونوشت» مستقیماً از همین جدول می‌خواند. *@
             <div class="fcard">
-                <label>رونوشت (Copy To) <span class="opt">اختیاری — متن آزاد</span></label>
-                <input class="tin" placeholder="مثلاً: واحد مالی - جهت اطلاع…" @bind="copyTo" />
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                    <label style="margin:0">رونوشت‌گیرندگان <span class="opt">اختیاری</span></label>
+                    <span style="flex:1"></span>
+                    <button type="button" class="lbtn ghost" style="padding:4px 10px;font-size:12px" @onclick="AddCopyRow">
+                        <i class="bi bi-plus-lg"></i> افزودن رونوشت
+                    </button>
+                </div>
+
+                @if (copyRows.Count == 0)
+                {
+                    <div style="color:#64748b;font-size:12.5px;padding:6px 0">
+                        رونوشتی ثبت نشده است — با دکمهٔ «افزودن رونوشت» گیرندگان را یکی‌یکی اضافه کنید.
+                    </div>
+                }
+                else
+                {
+                    <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+                        <thead>
+                            <tr style="background:#f8fafc">
+                                <th style="padding:6px 8px;border:1px solid #e2e8f0;width:34px">#</th>
+                                <th style="padding:6px 8px;border:1px solid #e2e8f0">نام رونوشت‌گیرنده <span class="req">*</span></th>
+                                <th style="padding:6px 8px;border:1px solid #e2e8f0">توضیح/سمت <span class="opt">اختیاری</span></th>
+                                <th style="padding:6px 8px;border:1px solid #e2e8f0;width:130px">شماره مرجع <span class="opt">اختیاری</span></th>
+                                <th style="padding:6px 8px;border:1px solid #e2e8f0;width:38px"></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (var i = 0; i < copyRows.Count; i++)
+                            {
+                                var idx = i;
+                                var row = copyRows[idx];
+                                <tr>
+                                    <td class="num" style="padding:4px 8px;border:1px solid #e2e8f0;text-align:center;color:#64748b">@((idx + 1).FaDigits())</td>
+                                    <td style="padding:4px;border:1px solid #e2e8f0">
+                                        <input class="tin" style="width:100%" placeholder="مثلاً: واحد مالی" @bind="row.Name" />
+                                    </td>
+                                    <td style="padding:4px;border:1px solid #e2e8f0">
+                                        <input class="tin" style="width:100%" placeholder="مثلاً: جهت اطلاع" @bind="row.Desc" />
+                                    </td>
+                                    <td style="padding:4px;border:1px solid #e2e8f0">
+                                        <input class="tin num" style="width:100%" placeholder="اختیاری" @bind="row.RefNo" />
+                                    </td>
+                                    <td style="padding:4px;border:1px solid #e2e8f0;text-align:center">
+                                        <i class="bi bi-x-lg" style="cursor:pointer;color:#dc2626" title="حذف این رونوشت"
+                                           @onclick="() => copyRows.RemoveAt(idx)"></i>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    <div style="font-size:11.5px;color:#64748b;margin-top:5px">
+                        <i class="bi bi-info-circle"></i> در نسخهٔ چاپ «با رونوشت»، هر گیرنده در یک سطر جداگانه درج می‌شود.
+                    </div>
+                }
             </div>
 
             @* ---------- گردش داخلی جهت تایید + امضا کنندگان ---------- *@
@@ -269,7 +324,24 @@
     private string? receiverName;
     private string? receiverTitle;
     private string? receiverAddress;
-    private string? copyTo;
+    /// <summary>رونوشت‌گیرندگان — هر ردیف یک گیرنده (جدول مستقل OutgoingLetterCopyToes)</summary>
+    private List<SaveOutgoingLetterCopyToDto> copyRows = new();
+
+    /// <summary>افزودن یک ردیف رونوشت خالی — کاربر آن را یکی‌یکی پر می‌کند</summary>
+    private void AddCopyRow() => copyRows.Add(new SaveOutgoingLetterCopyToDto { Name = "" });
+
+    /// <summary>ردیف‌های آماده برای ارسال — فقط موارد دارای نام، با چینشِ فعلی جدول</summary>
+    private List<SaveOutgoingLetterCopyToDto> CopyRowsForSave() =>
+        copyRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name))
+            .Select(r => new SaveOutgoingLetterCopyToDto
+            {
+                Id = r.Id,
+                Name = r.Name.Trim(),
+                Desc = string.IsNullOrWhiteSpace(r.Desc) ? null : r.Desc.Trim(),
+                RefNo = string.IsNullOrWhiteSpace(r.RefNo) ? null : r.RefNo.Trim()
+            })
+            .ToList();
     private string? externalRef;
     private string foriat = "عادی";
     private string mahram = "عادی";
@@ -328,7 +400,12 @@
         receiverName = letter.ReceiverName;
         receiverTitle = letter.ReceiverTitle;
         receiverAddress = letter.ReceiverAddress;
-        copyTo = letter.CopyTo;
+        copyRows = (letter.CopyTos ?? new())
+            .Select(c => new SaveOutgoingLetterCopyToDto
+            {
+                Id = c.Id, Name = c.Name, Desc = c.Desc, RefNo = c.RefNo
+            })
+            .ToList();
         externalRef = letter.ExternalRefNumber;
         companyId = letter.CompanyId ?? 0;
 
@@ -361,7 +438,7 @@
     private void ResetAll()
     {
         isEditLetter = false; editLetterId = 0; draftId = null;
-        title = ""; receiverOrg = ""; receiverName = null; receiverTitle = null; receiverAddress = null; copyTo = null; externalRef = null;
+        title = ""; receiverOrg = ""; receiverName = null; receiverTitle = null; receiverAddress = null; copyRows = new(); externalRef = null;
         foriat = "عادی"; mahram = "عادی"; pendingBody = ""; companyId = 0;
         errTitle = errReceiverOrg = errSigners = false; fileErr = "";
         rcvUsers.Clear(); rcvGroups.Clear();
@@ -520,7 +597,8 @@
                 ReceiverName = receiverName?.Trim(),
                 ReceiverTitle = receiverTitle?.Trim(),
                 ReceiverAddress = receiverAddress?.Trim(),
-                CopyTo = copyTo?.Trim(),
+                CopyTo = null,
+                CopyTos = CopyRowsForSave(),
                 ExternalRefNumber = externalRef?.Trim(),
                 CompanyId = companyId > 0 ? companyId : null,
                 ReciversGirande = rcvUsers.ToList(),
@@ -584,7 +662,8 @@
                 ReceiverName = receiverName?.Trim(),
                 ReceiverTitle = receiverTitle?.Trim(),
                 ReceiverAddress = receiverAddress?.Trim(),
-                CopyTo = copyTo?.Trim(),
+                CopyTo = null,
+                CopyTos = CopyRowsForSave(),
                 ExternalRefNumber = externalRef?.Trim(),
                 CompanyId = companyId > 0 ? companyId : null,
                 ReciversGirande = rcvUsers.ToList(),
@@ -597,6 +676,8 @@
                 SignerGroupIds = signerSelGroups.ToList(),
                 RelatedLetters = related
             });
+            // رونوشت‌گیرندگان پس از ویرایشِ خودِ نامه جایگزین می‌شوند (جدول مستقل)
+            await OutgoingSvc.ReplaceCopyTosAsync(editLetterId, CopyRowsForSave());
             await UploadPendingAsync(x => OutgoingSvc.UploadAttachmentAsync(editLetterId, x.stream, x.name, x.type));
             Toast.Success("نامه صادره ویرایش شد.");
             visible = false;
