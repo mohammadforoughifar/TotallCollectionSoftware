@@ -23,7 +23,37 @@
 <PageTitle>دبیرخانه نامه صادره</PageTitle>
 
 <div class="ltx" style="animation:none;transform:none">
-    <div style="max-width:1200px;margin:0 auto;padding:14px">
+    <div class="shell" style="grid-template-columns:72px 1fr">
+        <nav class="rail">
+                <div class="logo"><i class="bi bi-mailbox"></i></div>
+
+                <button class="@(tab == "pending" ? "on" : "")" title="در انتظار ثبت" @onclick='() => SetTab("pending")'>
+                    <i class="bi bi-hourglass-split"></i>
+                </button>
+                <span class="rlbl">انتظار</span>
+
+                <button class="@(tab == "registered" ? "on" : "")" title="ثبت شده" @onclick='() => SetTab("registered")'>
+                    <i class="bi bi-check2-circle"></i>
+                </button>
+                <span class="rlbl">ثبت شده</span>
+
+                <button class="@(tab == "archived" ? "on" : "")" title="بایگانی‌شده" @onclick='() => SetTab("archived")'>
+                    <i class="bi bi-archive"></i>
+                </button>
+                <span class="rlbl">بایگانی</span>
+
+                <button class="@(tab == "all" ? "on" : "")" title="همه نامه‌ها" @onclick='() => SetTab("all")'>
+                    <i class="bi bi-collection"></i>
+                </button>
+                <span class="rlbl">همه</span>
+
+                <div class="grow"></div>
+
+                <button title="بروزرسانی فهرست" @onclick="ReloadAsync"><i class="bi bi-arrow-clockwise"></i></button>
+                <span class="rlbl">بروزرسانی</span>
+        </nav>
+        <section class="pane" style="overflow:auto">
+        <div style="max-width:1200px;margin:0 auto;padding:14px">
 
         <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
             <span class="t"><i class="bi bi-mailbox" style="color:var(--p2)"></i> دبیرخانه نامه صادره</span>
@@ -261,6 +291,8 @@
                 </div>
             }
         }
+    </div>
+        </section>
     </div>
 </div>
 

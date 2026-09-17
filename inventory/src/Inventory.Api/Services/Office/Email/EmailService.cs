@@ -24,7 +24,7 @@ public interface IEmailService
     // ---------- حساب‌ها ----------
     Task<List<EmailAccountDto>> GetMyAccountsAsync(int userId, bool isDabirkhaneAdmin);
     Task<List<EmailAccountDto>> GetDabirkhaneAccountsAsync();
-    Task<int> SaveAccountAsync(SaveEmailAccountDto dto, int userId);
+    Task<int> SaveAccountAsync(SaveEmailAccountDto dto, int userId, bool isDabirkhaneAdmin);
     Task DeleteAccountAsync(int emailId, int userId);
     Task<EmailTestResultDto> TestAccountAsync(SaveEmailAccountDto dto);
 
@@ -192,7 +192,7 @@ public class EmailService : IEmailService
             }).ToListAsync();
     }
 
-    public async Task<int> SaveAccountAsync(SaveEmailAccountDto dto, int userId)
+    public async Task<int> SaveAccountAsync(SaveEmailAccountDto dto, int userId, bool isDabirkhaneAdmin)
     {
         if (string.IsNullOrWhiteSpace(dto.EmailAddress)) throw new Exception("آدرس ایمیل الزامی است.");
         if (string.IsNullOrWhiteSpace(dto.Password) && dto.EmailId == 0)
@@ -226,7 +226,11 @@ public class EmailService : IEmailService
         acc.ImapSsl = dto.ImapSsl;
         acc.DisplayName = dto.DisplayName?.Trim();
         acc.IsActive = dto.IsActive;
-        acc.IsDabirkhane = dto.IsDabirkhane;
+        // تفکیکِ ایمیل سازمانیِ دبیرخانه از ایمیل شخصی:
+        // نشانِ «حساب رسمی دبیرخانه» تنها زمانی پذیرفته می‌شود که کاربر واقعاً
+        // دسترسیِ دبیرخانه را داشته باشد؛ در غیر این صورت حساب شخصیِ او می‌ماند
+        // و هرگز در فهرستِ حساب‌های رسمیِ دبیرخانه ظاهر نمی‌شود.
+        acc.IsDabirkhane = isDabirkhaneAdmin && dto.IsDabirkhane;
         acc.ActivationCode = Guid.NewGuid().ToString("N")[..16];
 
         await _db.SaveChangesAsync();
