@@ -363,6 +363,20 @@ public class BayeganiNodeDto
     public string? Mahramanegi { get; set; }
     public bool HasAttachment { get; set; }
 
+    // ==================== ویژهٔ بایگانی دبیرخانه (نامه صادره) ====================
+
+    /// <summary>1 = نامه داخلی، 2 = نامه صادره (بایگانی دبیرخانه)</summary>
+    public int SourceType { get; set; } = 1;
+
+    /// <summary>سازمان/شرکت مقصد نامه صادره</summary>
+    public string? ReceiverOrganization { get; set; }
+
+    /// <summary>شماره صادره رسمی (بعد از امضا)</summary>
+    public string? SadereNumber { get; set; }
+
+    /// <summary>روش ارسال ثبت‌شده توسط دبیرخانه</summary>
+    public string? SendMethod { get; set; }
+
     public List<BayeganiNodeDto> Children { get; set; } = new();
 }
 

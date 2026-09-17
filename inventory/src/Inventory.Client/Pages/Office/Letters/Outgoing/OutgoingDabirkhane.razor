@@ -1,4 +1,5 @@
 @page "/outgoing-letters/dabirkhane"
+@using Inventory.Shared.Dtos
 @inject IOutgoingLetterService OutgoingSvc
 @inject IEmailClientService EmailSvc
 @inject IToastService Toast
@@ -10,10 +11,13 @@
 
 @* ============================================================
    دبیرخانه نامه صادره
-   • فقط نامه‌های امضا شده (SadereNumber دار) اینجا نمایش داده می‌شوند
-   • ثبت «شماره ثبت مقصد» + «روش ارسال» + توضیح
-   • چاپ نامه در سایز A4 / A5 روی سربرگ شرکت
-   • نمایش نامه
+   • فقط نامه‌های امضا شده (دارای شماره صادره) اینجا نمایش داده می‌شوند
+   • ۱) افزودن نامه به بایگانی دبیرخانه (درخت پوشه‌ها)
+   • ۲) چاپ در دو نسخه: «با رونوشت» و «بدون رونوشت» (هر کدام A4/A5)
+   • ۳) فیلدهای وابسته به روش ارسال: ایمیل → کدوم ایمیل،
+        پست پیشتاز → نام تحویل گیرنده، فکس → شماره فکس، ECE → شماره ثبت
+   • ۴) نمایش گردش نامه
+   • ۶) جستجوی پیشرفته بین نامه‌ها
    ============================================================ *@
 
 <PageTitle>دبیرخانه نامه صادره</PageTitle>
@@ -27,7 +31,7 @@
         </div>
 
         @* ---------- کارت‌های آمار ---------- *@
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
             <div class="scard" style="text-align:center">
                 <div style="font-size:26px;font-weight:800;color:#d97706">@stats.Pending.FaDigits()</div>
                 <div style="font-size:13px;color:#64748b"><i class="bi bi-clock-history"></i> در انتظار ثبت و ارسال</div>
@@ -37,28 +41,132 @@
                 <div style="font-size:13px;color:#64748b"><i class="bi bi-patch-check"></i> ثبت و ارسال شده</div>
             </div>
             <div class="scard" style="text-align:center">
+                <div style="font-size:26px;font-weight:800;color:#7c3aed">@stats.Archived.FaDigits()</div>
+                <div style="font-size:13px;color:#64748b"><i class="bi bi-archive"></i> بایگانی شده</div>
+            </div>
+            <div class="scard" style="text-align:center">
                 <div style="font-size:26px;font-weight:800;color:var(--p2)">@stats.Total.FaDigits()</div>
                 <div style="font-size:13px;color:#64748b"><i class="bi bi-envelope-paper"></i> کل نامه‌های امضا شده</div>
             </div>
         </div>
 
-        @* ---------- فیلتر و جستجو ---------- *@
+        @* ---------- تب‌ها و جستجو ---------- *@
         <div class="scard" style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
             <div class="chips" style="margin:0">
                 <button class="chip @(tab == "pending" ? "on" : "")" @onclick='() => SetTab("pending")'>در انتظار ثبت</button>
                 <button class="chip @(tab == "registered" ? "on" : "")" @onclick='() => SetTab("registered")'>ثبت شده</button>
+                <button class="chip @(tab == "archived" ? "on" : "")" @onclick='() => SetTab("archived")'>
+                    <i class="bi bi-archive"></i> بایگانی‌شده
+                </button>
                 <button class="chip @(tab == "all" ? "on" : "")" @onclick='() => SetTab("all")'>همه</button>
             </div>
             <div class="search" style="flex:1;min-width:220px">
                 <i class="bi bi-search"></i>
-                <input placeholder="جستجو: شماره صادره، عنوان، سازمان مقصد، شماره ثبت مقصد…" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
+                <input placeholder="جستجو: شماره صادره، عنوان، سازمان مقصد، نام تحویل گیرنده، کد رهگیری…"
+                       @bind="fText" @bind:event="oninput" @bind:after="ReloadAsync" />
             </div>
+            <button class="lbtn ghost" @onclick="() => showFilters = !showFilters">
+                <i class="bi bi-funnel@(showFilters ? "-fill" : "")"></i> جستجوی پیشرفته
+                @if (ActiveFilterCount > 0) { <span class="tg" style="background:var(--p2);color:#fff">@ActiveFilterCount.FaDigits()</span> }
+            </button>
         </div>
 
-        @* ---------- لیست ---------- *@
+        @* ---------- پنل جستجوی پیشرفته ---------- *@
+        @if (showFilters)
+        {
+            <div class="scard" style="margin-bottom:12px;border:1px solid #c7d2fe;background:#f8fafc">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+                    <div>
+                        <label style="font-size:12px;color:#64748b">روش ارسال</label>
+                        <select class="tin" @bind="fMethod" @bind:after="ReloadAsync">
+                            <option value="">— همه روش‌ها —</option>
+                            @foreach (var m in LetterSendMethods.All)
+                            {
+                                <option value="@m">@m</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">فرستنده (ثبت‌کننده)</label>
+                        <select class="tin" @bind="fCreatorId" @bind:after="ReloadAsync">
+                            <option value="0">— همه —</option>
+                            @foreach (var u in creators)
+                            {
+                                <option value="@u.UserId">@u.FullName</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">شرکت (سربرگ)</label>
+                        <select class="tin" @bind="fCompanyId" @bind:after="ReloadAsync">
+                            <option value="0">— همه —</option>
+                            @foreach (var c in companies)
+                            {
+                                <option value="@c.Id">@c.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">سازمان مقصد</label>
+                        <input class="tin" placeholder="بخشی از نام سازمان…" @bind="fOrg" @bind:event="oninput" @bind:after="ReloadAsync" />
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">محرمانگی</label>
+                        <select class="tin" @bind="fMahramanegi" @bind:after="ReloadAsync">
+                            <option value="">— همه —</option>
+                            <option value="عادی">عادی</option>
+                            <option value="محرمانه">محرمانه</option>
+                            <option value="سری">سری</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">فوریت</label>
+                        <select class="tin" @bind="fForiat" @bind:after="ReloadAsync">
+                            <option value="">— همه —</option>
+                            <option value="عادی">عادی</option>
+                            <option value="فوری">فوری</option>
+                            <option value="آنی">آنی</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">از تاریخ صدور</label>
+                        <input type="date" class="tin" @bind="fFrom" @bind:after="ReloadAsync" />
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">تا تاریخ صدور</label>
+                        <input type="date" class="tin" @bind="fTo" @bind:after="ReloadAsync" />
+                    </div>
+                    <div>
+                        <label style="font-size:12px;color:#64748b">پیوست</label>
+                        <select class="tin" @bind="fAttachment" @bind:after="ReloadAsync">
+                            <option value="">— فرقی ندارد —</option>
+                            <option value="true">فقط پیوست‌دار</option>
+                            <option value="false">بدون پیوست</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-top:10px">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;color:#4338ca">
+                        <input type="checkbox" @bind="searchAllScopes" @bind:after="ReloadAsync" />
+                        <i class="bi bi-globe2"></i> جستجو در همه نامه‌ها (صرف‌نظر از تب جاری)
+                    </label>
+                    <button class="lbtn ghost" @onclick="ClearFilters"><i class="bi bi-x-circle"></i> پاک کردن فیلترها</button>
+                </div>
+            </div>
+        }
+
+        @* ---------- لیست / درخت بایگانی ---------- *@
         @if (loading)
         {
             <div class="empty" style="padding:50px"><i class="bi bi-hourglass-split"></i> در حال بارگذاری…</div>
+        }
+        else if (tab == "archived" && !searchAllScopes)
+        {
+            <DabirkhaneArchiveTree Tree="archiveTree"
+                                   OnOpen="View"
+                                   OnUnarchive="UnarchiveByIdAsync"
+                                   OnMove="MoveArchivedAsync"
+                                   OnRefresh="ReloadAsync" />
         }
         else if (items.Count == 0)
         {
@@ -70,12 +178,13 @@
             {
                 var ll = l;
                 <div class="scard" style="margin-bottom:10px">
-                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+                    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start">
                         <div style="flex:1;min-width:230px">
                             <div style="font-weight:700;font-size:14px">
                                 <i class="bi bi-envelope-paper" style="color:var(--p2)"></i> @ll.Title
                                 @if (ll.Mahramanegi != "عادی") { <span class="tg" style="background:#fee2e2;color:#b91c1c">@ll.Mahramanegi</span> }
                                 @if (ll.Foriat != "عادی") { <span class="tg" style="background:#ffedd5;color:#c2410c">@ll.Foriat</span> }
+                                @if (ll.IsArchived) { <span class="tg" style="background:#ede9fe;color:#6d28d9"><i class="bi bi-archive"></i> بایگانی شده</span> }
                             </div>
                             <div style="font-size:12.5px;color:#64748b;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px">
                                 <span><b>شماره صادره:</b> <span class="num" style="color:#16a34a;font-weight:700">@(ll.SadereNumber ?? "—")</span></span>
@@ -85,13 +194,18 @@
                                 @if (!string.IsNullOrWhiteSpace(ll.CompanyName)) { <span><b>سربرگ:</b> @ll.CompanyName</span> }
                                 @if (ll.HasAttachment) { <span><i class="bi bi-paperclip"></i> پیوست‌دار</span> }
                             </div>
+
+                            @* ---------- اطلاعات ثبت دبیرخانه ---------- *@
                             @if (ll.DabirkhaneSabt)
                             {
                                 <div style="font-size:12.5px;margin-top:6px;display:flex;flex-wrap:wrap;gap:10px">
                                     <span class="tg green"><i class="bi bi-patch-check-fill"></i> ثبت شده</span>
                                     @if (!string.IsNullOrWhiteSpace(ll.SendMethod)) { <span><b>روش ارسال:</b> @ll.SendMethod</span> }
                                     @if (!string.IsNullOrWhiteSpace(ll.DestRegNumber)) { <span><b>شماره ثبت مقصد:</b> <span class="num">@ll.DestRegNumber.FaDigits()</span></span> }
-                                    @if (!string.IsNullOrWhiteSpace(ll.DestEmail)) { <span><b>ارسال با ایمیل به:</b> @ll.DestEmail</span> }
+                                    @if (!string.IsNullOrWhiteSpace(ll.DelivererName)) { <span><b>تحویل گیرنده:</b> @ll.DelivererName</span> }
+                                    @if (!string.IsNullOrWhiteSpace(ll.TrackingCode)) { <span><b>کد رهگیری:</b> <span class="num">@ll.TrackingCode.FaDigits()</span></span> }
+                                    @if (!string.IsNullOrWhiteSpace(ll.DestEmail)) { <span><b>ایمیل مقصد:</b> @ll.DestEmail</span> }
+                                    @if (!string.IsNullOrWhiteSpace(ll.DestFax)) { <span><b>فکس مقصد:</b> <span class="num">@ll.DestFax.FaDigits()</span></span> }
                                     @if (ll.DateDabirkhane is { } dd) { <span><b>تاریخ ثبت:</b> @dd.ToFaDateTime()</span> }
                                     @if (!string.IsNullOrWhiteSpace(ll.DabirkhaneUserName)) { <span><b>توسط:</b> @ll.DabirkhaneUserName</span> }
                                 </div>
@@ -100,11 +214,38 @@
                             {
                                 <div style="font-size:12.5px;margin-top:6px"><span class="tg" style="background:#fef3c7;color:#b45309"><i class="bi bi-clock-history"></i> در انتظار ثبت و ارسال</span></div>
                             }
+
+                            @if (ll.IsArchived && !string.IsNullOrWhiteSpace(ll.ArchiveFolderTitle))
+                            {
+                                <div style="font-size:12px;color:#7c3aed;margin-top:4px">
+                                    <i class="bi bi-folder-check"></i> پوشه بایگانی: @ll.ArchiveFolderTitle
+                                </div>
+                            }
                         </div>
+
+                        @* ---------- دکمه‌های عملیات ---------- *@
                         <div style="display:flex;flex-wrap:wrap;gap:6px">
                             <button class="lbtn ghost" title="نمایش نامه" @onclick="() => View(ll.LetterId)"><i class="bi bi-eye"></i> نمایش</button>
-                            <button class="lbtn ghost" disabled="@(printingId == ll.LetterId)" @onclick='() => PrintPdf(ll, "A4")'><i class="bi bi-printer"></i> A4</button>
-                            <button class="lbtn ghost" disabled="@(printingId == ll.LetterId)" @onclick='() => PrintPdf(ll, "A5")'><i class="bi bi-printer-fill"></i> A5</button>
+                            <button class="lbtn ghost" title="نمایش گردش نامه" @onclick="() => OpenGardesh(ll)">
+                                <i class="bi bi-diagram-3"></i> گردش
+                            </button>
+                            <button class="lbtn ghost" title="چاپ نامه" @onclick="() => OpenPrint(ll)">
+                                <i class="bi bi-printer"></i> چاپ
+                            </button>
+
+                            @if (ll.IsArchived)
+                            {
+                                <button class="lbtn ghost" title="خروج از بایگانی دبیرخانه" @onclick="() => UnarchiveAsync(ll)">
+                                    <i class="bi bi-box-arrow-up"></i> خروج از بایگانی
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="lbtn ghost" title="افزودن به بایگانی دبیرخانه" @onclick="() => ArchiveAsync(ll)">
+                                    <i class="bi bi-archive"></i> بایگانی
+                                </button>
+                            }
+
                             @if (!ll.DabirkhaneSabt)
                             {
                                 <button class="lbtn pri" @onclick="() => OpenRegister(ll)"><i class="bi bi-send-check"></i> ثبت و ارسال</button>
@@ -125,8 +266,9 @@
 @if (regOpen && regItem != null)
 {
     <div class="ltx" style="animation:none;transform:none">
+        @* قرارداد مودال: بسته‌شدن فقط با × / انصراف — کلیک روی پس‌زمینه فرم را نمی‌بندد *@
         <div class="ov"></div>
-        <div class="sheet" style="max-width:520px">
+        <div class="sheet" style="max-width:560px">
             <div class="sheet-h">
                 <b><i class="bi bi-mailbox" style="color:var(--p2)"></i> ثبت دبیرخانه — @regItem.SadereNumber</b>
                 <button class="x" @onclick="CloseRegister"><i class="bi bi-x-lg"></i></button>
@@ -152,51 +294,134 @@
                     }
                 </div>
 
-                <div class="fcard">
-                    <label>شماره ثبت مقصد <span class="opt">شماره‌ای که دبیرخانه سازمان مقصد به نامه داده</span></label>
+                @* ---------- فیلدهای پویا بر اساس روش ارسال ---------- *@
+                @if (spec.NeedsDelivererName)
+                {
+                    <div class="fcard @(errDeliverer ? "err" : "")" style="border-color:#a5b4fc;background:#eef2ff">
+                        <label>
+                            <i class="bi bi-person-check" style="color:var(--p2)"></i>
+                            نام تحویل گیرنده <span class="req">*</span>
+                        </label>
+                        <input class="tin" placeholder="@DelivererPlaceholder" @bind="regDelivererName" />
+                        @if (errDeliverer)
+                        {
+                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> نام تحویل گیرنده را بنویسید.</div>
+                        }
+                    </div>
+                }
+
+                @if (spec.NeedsTrackingCode)
+                {
+                    <div class="fcard" style="border-color:#a5b4fc;background:#eef2ff">
+                        <label><i class="bi bi-upc-scan"></i> کد رهگیری مرسوله <span class="opt">اختیاری</span></label>
+                        <input class="tin" placeholder="مثلاً ۲۳۵۱۷۰۰۰۰۰۰۰۰۰" @bind="regTrackingCode" />
+                    </div>
+                }
+
+                @if (spec.NeedsFax)
+                {
+                    <div class="fcard @(errFax ? "err" : "")" style="border-color:#a5b4fc;background:#eef2ff">
+                        <label><i class="bi bi-printer"></i> شماره فکس مقصد <span class="req">*</span></label>
+                        <input class="tin num" placeholder="مثلاً ۰۲۱-۸۸۰۰۰۰۰۰" @bind="regFax" />
+                        @if (errFax)
+                        {
+                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> شماره فکس مقصد را وارد کنید.</div>
+                        }
+                    </div>
+                }
+
+                <div class="fcard @(errDestNumber ? "err" : "")">
+                    <label>
+                        شماره ثبت مقصد
+                        <span class="opt">@(spec.NeedsDestRegNumber ? "الزامی برای اتوماسیون (ECE)" : "شماره‌ای که دبیرخانه سازمان مقصد به نامه داده")</span>
+                    </label>
                     <input class="tin" placeholder="مثلاً 1404/د-321…" @bind="regDestNumber" />
+                    @if (errDestNumber)
+                    {
+                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> شماره ثبت مقصد را وارد کنید.</div>
+                    }
                 </div>
 
                 @* ---------- ارسال با پست الکترونیک ---------- *@
-                <div class="fcard" style="background:#f8fafc;border:1px dashed #cbd5e1">
-                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-                        <input type="checkbox" @bind="regSendByEmail" />
-                        <b><i class="bi bi-envelope-at" style="color:var(--p2)"></i> ارسال نامه با پست الکترونیک</b>
-                    </label>
-                    @if (regSendByEmail)
-                    {
-                        <div style="margin-top:10px;display:grid;gap:10px">
-                            <div>
-                                <label>آدرس ایمیل مقصد <span class="req">*</span></label>
-                                <input class="tin @(regEmailError ? "err" : "")" placeholder="مثلا office@target-org.ir…" @bind="regDestEmail" />
-                                @if (regEmailError)
-                                {
-                                    <div class="ferr"><i class="bi bi-exclamation-circle"></i> آدرس ایمیل مقصد الزامی است</div>
-                                }
-                            </div>
-                            <div>
-                                <label>حساب ایمیل دبیرخانه <span class="opt">ایمیل رسمی دبیرخانه — جدا از ایمیل شخصی</span></label>
-                                <select class="tin" @bind="regEmailAccountId">
-                                    @if (dabirAccounts.Count == 0)
-                                    {
-                                        <option value="0">— هیچ حساب دبیرخانه‌ای ثبت نشده —</option>
-                                    }
-                                    @foreach (var a in dabirAccounts)
-                                    {
-                                        <option value="@a.EmailId">@a.EmailAddress @(string.IsNullOrWhiteSpace(a.DisplayName) ? "" : $"({a.DisplayName})")</option>
-                                    }
-                                </select>
+                @if (spec.NeedsDestEmail)
+                {
+                    <div class="fcard @(regEmailError ? "err" : "")" style="border-color:#a5b4fc;background:#eef2ff">
+                        <label>
+                            <i class="bi bi-envelope-at" style="color:var(--p2)"></i>
+                            ارسال به کدوم ایمیل؟ <span class="req">*</span>
+                        </label>
+                        <input class="tin" dir="ltr" placeholder="مثلا office@target-org.ir…" @bind="regDestEmail" />
+                        @if (regEmailError)
+                        {
+                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> آدرس ایمیل مقصد الزامی است</div>
+                        }
+
+                        <div style="margin-top:10px">
+                            <label>حساب ایمیل دبیرخانه <span class="opt">ایمیل رسمی دبیرخانه — جدا از ایمیل شخصی</span></label>
+                            <select class="tin" @bind="regEmailAccountId">
                                 @if (dabirAccounts.Count == 0)
                                 {
-                                    <div class="ferr"><i class="bi bi-info-circle"></i> ابتدا از بخش «ایمیل سازمانی ← حساب دبیرخانه» یک حساب رسمی اضافه کنید.</div>
+                                    <option value="0">— هیچ حساب دبیرخانه‌ای ثبت نشده —</option>
                                 }
-                                <div style="font-size:12px;color:#64748b;margin-top:6px">
-                                    <i class="bi bi-info-circle"></i> PDF نامه روی سربرگ شرکت به‌همراه پیوست‌های نامه ایمیل می‌شود.
-                                </div>
+                                @foreach (var a in dabirAccounts)
+                                {
+                                    <option value="@a.EmailId">@a.EmailAddress @(string.IsNullOrWhiteSpace(a.DisplayName) ? "" : $"({a.DisplayName})")</option>
+                                }
+                            </select>
+                            @if (dabirAccounts.Count == 0)
+                            {
+                                <div class="ferr"><i class="bi bi-info-circle"></i> ابتدا از بخش «ایمیل سازمانی ← حساب دبیرخانه» یک حساب رسمی اضافه کنید.</div>
+                            }
+                            <div style="font-size:12px;color:#64748b;margin-top:6px">
+                                <i class="bi bi-info-circle"></i> PDF نامه روی سربرگ شرکت به‌همراه پیوست‌های نامه ایمیل می‌شود.
                             </div>
                         </div>
-                    }
-                </div>
+                    </div>
+                }
+
+                @* برای روش‌های غیرایمیلی: امکان ارسال همزمان با پست الکترونیک *@
+                @if (!spec.NeedsDestEmail && !string.IsNullOrWhiteSpace(regMethod))
+                {
+                    <div class="fcard" style="background:#f8fafc;border:1px dashed #cbd5e1">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                            <input type="checkbox" @bind="regSendByEmail" />
+                            <b><i class="bi bi-envelope-at" style="color:var(--p2)"></i> ارسال همزمان با پست الکترونیک</b>
+                        </label>
+                        @if (regSendByEmail)
+                        {
+                            <div style="margin-top:10px;display:grid;gap:10px">
+                                <div class="@(regEmailError ? "err" : "")">
+                                    <label>ارسال به کدوم ایمیل؟ <span class="req">*</span></label>
+                                    <input class="tin" dir="ltr" placeholder="مثلا office@target-org.ir…" @bind="regDestEmail" />
+                                    @if (regEmailError)
+                                    {
+                                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> آدرس ایمیل مقصد الزامی است</div>
+                                    }
+                                </div>
+                                <div>
+                                    <label>حساب ایمیل دبیرخانه <span class="opt">ایمیل رسمی دبیرخانه</span></label>
+                                    <select class="tin" @bind="regEmailAccountId">
+                                        @if (dabirAccounts.Count == 0)
+                                        {
+                                            <option value="0">— هیچ حساب دبیرخانه‌ای ثبت نشده —</option>
+                                        }
+                                        @foreach (var a in dabirAccounts)
+                                        {
+                                            <option value="@a.EmailId">@a.EmailAddress @(string.IsNullOrWhiteSpace(a.DisplayName) ? "" : $"({a.DisplayName})")</option>
+                                        }
+                                    </select>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(spec.Hint))
+                {
+                    <div style="font-size:12.5px;color:#4338ca;background:#eef2ff;border-radius:8px;padding:8px 10px;margin-bottom:10px">
+                        <i class="bi bi-lightbulb"></i> @spec.Hint
+                    </div>
+                }
 
                 <div class="fcard">
                     <label>توضیحات <span class="opt">اختیاری</span></label>
@@ -214,33 +439,154 @@
     </div>
 }
 
+@* ---------- مودال چاپ (دو نسخه) ---------- *@
+@if (printOpen && printItem != null)
+{
+    <div class="ltx" style="animation:none;transform:none">
+        @* قرارداد مودال: بسته‌شدن فقط با × / انصراف *@
+        <div class="ov"></div>
+        <div class="sheet" style="max-width:440px">
+            <div class="sheet-h">
+                <b><i class="bi bi-printer" style="color:var(--p2)"></i> چاپ نامه — @printItem.SadereNumber</b>
+                <button class="x" @onclick="() => printOpen = false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="sheet-b">
+                <div style="font-size:13px;color:#475569;margin-bottom:10px">@printItem.Title</div>
+
+                <div class="fcard">
+                    <label>سایز کاغذ</label>
+                    <div style="display:flex;gap:8px">
+                        <button class="lbtn @(printSize == "A4" ? "pri" : "ghost")" style="flex:1" @onclick='() => printSize = "A4"'>A4</button>
+                        <button class="lbtn @(printSize == "A5" ? "pri" : "ghost")" style="flex:1" @onclick='() => printSize = "A5"'>A5</button>
+                    </div>
+                </div>
+
+                <div class="fcard">
+                    <label>نسخهٔ چاپ</label>
+                    <div style="display:grid;gap:8px">
+                        <button class="lbtn @(printWithCopy ? "pri" : "ghost")" style="text-align:start"
+                                @onclick="() => printWithCopy = true">
+                            <i class="bi bi-files"></i>
+                            <span>
+                                <b>با رونوشت</b>
+                                <small style="display:block;font-size:11.5px;opacity:.75">
+                                    رونوشت‌گیرندگان در انتهای نامه درج می‌شود — نسخهٔ بایگانی دبیرخانه
+                                </small>
+                            </span>
+                        </button>
+                        <button class="lbtn @(!printWithCopy ? "pri" : "ghost")" style="text-align:start"
+                                @onclick="() => printWithCopy = false">
+                            <i class="bi bi-file-earmark"></i>
+                            <span>
+                                <b>بدون رونوشت</b>
+                                <small style="display:block;font-size:11.5px;opacity:.75">
+                                    رونوشت حذف می‌شود — نسخه‌ای که تحویل سازمان مقصد می‌شود
+                                </small>
+                            </span>
+                        </button>
+                    </div>
+                    @if (printWithCopy && !printItem.HasCopyTo)
+                    {
+                        <div class="ferr"><i class="bi bi-info-circle"></i> این نامه رونوشت ندارد؛ هر دو نسخه یکسان چاپ می‌شوند.</div>
+                    }
+                </div>
+
+                <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+                    <button class="lbtn ghost" @onclick="() => printOpen = false">انصراف</button>
+                    <button class="lbtn pri" disabled="@printing" @onclick="DoPrint">
+                        <i class="bi bi-printer"></i> @(printing ? "در حال آماده‌سازی…" : "چاپ PDF")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<OutgoingGardeshModal @ref="gardesh" />
+<DabirkhaneArchivePicker @ref="archivePicker" />
+
 @code {
     private List<DabirkhaneListItemDto> items = new();
+    private List<BayeganiNodeDto> archiveTree = new();
     private DabirkhaneStatsDto stats = new();
     private bool loading = true;
     private string tab = "pending";
-    private string search = "";
-    private int printingId;
+    private bool showFilters;
 
-    // مودال ثبت
+    // ---------- فیلترهای جستجوی پیشرفته ----------
+    private string fText = "";
+    private string fMethod = "";
+    private int fCreatorId;
+    private int fCompanyId;
+    private string fOrg = "";
+    private string fMahramanegi = "";
+    private string fForiat = "";
+    private string fAttachment = "";
+    private DateTime? fFrom;
+    private DateTime? fTo;
+    private bool searchAllScopes;
+    private List<LetterReciverDto> creators = new();
+    private List<LetterCompanyDto> companies = new();
+
+    private int ActiveFilterCount
+    {
+        get
+        {
+            var n = 0;
+            if (!string.IsNullOrWhiteSpace(fMethod)) n++;
+            if (fCreatorId > 0) n++;
+            if (fCompanyId > 0) n++;
+            if (!string.IsNullOrWhiteSpace(fOrg)) n++;
+            if (!string.IsNullOrWhiteSpace(fMahramanegi)) n++;
+            if (!string.IsNullOrWhiteSpace(fForiat)) n++;
+            if (!string.IsNullOrWhiteSpace(fAttachment)) n++;
+            if (fFrom != null) n++;
+            if (fTo != null) n++;
+            return n;
+        }
+    }
+
+    // ---------- مودال ثبت ----------
     private bool regOpen;
     private DabirkhaneListItemDto? regItem;
     private string regMethod = "";
     private string? regDestNumber;
     private string? regNote;
-    private bool errMethod, busy;
+    private bool errMethod, errDestNumber, errDeliverer, errFax, busy;
 
-    // ارسال با پست الکترونیک
-    private bool regSendByEmail;
+    // فیلدهای پویا بر اساس روش ارسال
+    private SendMethodSpec spec = new();
+    private string? regDelivererName;
+    private string? regTrackingCode;
+    private string? regFax;
+    private bool regEmailError;
     private string? regDestEmail;
     private int regEmailAccountId;
-    private bool regEmailError;
+    private bool regSendByEmail;   // ارسال همزمان با ایمیل برای روش‌های غیرایمیلی
     private List<EmailAccountDto> dabirAccounts = new();
+
+    // ---------- مودال چاپ ----------
+    private bool printOpen;
+    private DabirkhaneListItemDto? printItem;
+    private string printSize = "A4";
+    private bool printWithCopy = true;
+    private bool printing;
+
+    private OutgoingGardeshModal? gardesh;
+    private DabirkhaneArchivePicker? archivePicker;
+
+    private string DelivererPlaceholder => regMethod switch
+    {
+        "پیک" => "نام شخصی که مرسوله را از پیک تحویل می‌گیرد…",
+        "تحویل حضوری" => "نام شخصی که نامه را حضوری تحویل می‌گیرد…",
+        _ => "نام و نام خانوادگی تحویل گیرنده…"
+    };
 
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("دبیرخانه نامه صادره");
         Rt.DataChanged += OnDataChanged;
+        await LoadLookupsAsync();
         await ReloadAsync();
     }
 
@@ -252,41 +598,157 @@
         _ = InvokeAsync(async () => { await ReloadAsync(); StateHasChanged(); });
     }
 
+    private async Task LoadLookupsAsync()
+    {
+        try { creators = await OutgoingSvc.GetDabirkhaneCreatorsAsync(); } catch { creators = new(); }
+        try { companies = await OutgoingSvc.GetCompaniesAsync(); } catch { companies = new(); }
+    }
+
     private async Task SetTab(string t)
     {
         tab = t;
         await ReloadAsync();
     }
 
+    private DabirkhaneSearchDto BuildFilter() => new()
+    {
+        Text = string.IsNullOrWhiteSpace(fText) ? null : fText.Trim(),
+        // با فعال‌بودن «جستجو در همه نامه‌ها» محدودیت تب جاری نادیده گرفته می‌شود
+        RegisteredOnly = searchAllScopes ? null : tab switch { "pending" => false, "registered" => true, _ => null },
+        ArchivedOnly = searchAllScopes ? null : tab == "archived" ? true : null,
+        SendMethod = string.IsNullOrWhiteSpace(fMethod) ? null : fMethod,
+        CreatorUserId = fCreatorId > 0 ? fCreatorId : null,
+        CompanyId = fCompanyId > 0 ? fCompanyId : null,
+        ReceiverOrganization = string.IsNullOrWhiteSpace(fOrg) ? null : fOrg.Trim(),
+        Mahramanegi = string.IsNullOrWhiteSpace(fMahramanegi) ? null : fMahramanegi,
+        Foriat = string.IsNullOrWhiteSpace(fForiat) ? null : fForiat,
+        HasAttachment = string.IsNullOrWhiteSpace(fAttachment) ? null : fAttachment == "true",
+        FromDate = fFrom,
+        ToDate = fTo?.Date.AddDays(1).AddSeconds(-1)   // تا پایان همان روز
+    };
+
     private async Task ReloadAsync()
     {
         loading = true;
         try
         {
-            bool? registeredOnly = tab switch { "pending" => false, "registered" => true, _ => null };
-            var s = string.IsNullOrWhiteSpace(search) ? null : search;
-            items = await OutgoingSvc.GetDabirkhaneAsync(s, registeredOnly);
+            items = await OutgoingSvc.GetDabirkhaneAsync(BuildFilter());
             stats = await OutgoingSvc.GetDabirkhaneStatsAsync();
+            if (tab == "archived" && !searchAllScopes)
+            {
+                try { archiveTree = await OutgoingSvc.GetDabirkhaneBayeganiTreeAsync(); }
+                catch { archiveTree = new(); }
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
     }
 
+    private async Task ClearFilters()
+    {
+        fMethod = ""; fCreatorId = 0; fCompanyId = 0; fOrg = "";
+        fMahramanegi = ""; fForiat = ""; fAttachment = ""; fFrom = null; fTo = null;
+        await ReloadAsync();
+    }
+
     private void View(int letterId) => Nav.NavigateTo($"outgoing-letters/view/{letterId}");
 
-    /// <summary>چاپ نامه روی سربرگ شرکت — A4 یا A5</summary>
-    private async Task PrintPdf(DabirkhaneListItemDto l, string size)
+    // ==================== ۴) نمایش گردش نامه ====================
+
+    private void OpenGardesh(DabirkhaneListItemDto l) =>
+        _ = gardesh?.Open(l.LetterId, l.Title, l.SadereNumber ?? l.LetterNumber,
+                          l.CreatorName, l.DateSadere ?? l.DateSabt);
+
+    // ==================== ۲) چاپ در دو نسخه ====================
+
+    private void OpenPrint(DabirkhaneListItemDto l)
     {
-        printingId = l.LetterId;
+        printItem = l;
+        printSize = "A4";
+        printWithCopy = l.HasCopyTo;   // پیش‌فرض: اگر رونوشت دارد نسخهٔ با رونوشت
+        printOpen = true;
+    }
+
+    private async Task DoPrint()
+    {
+        if (printItem == null) return;
+        printing = true;
         try
         {
-            var bytes = await OutgoingSvc.GetPrintPdfAsync(l.LetterId, size);
-            var name = $"letter-{(l.SadereNumber ?? l.LetterNumber).Replace('/', '-')}-{size}.pdf";
-            await JS.InvokeVoidAsync("ltxOpenPdf", Convert.ToBase64String(bytes), name);
+            var bytes = await OutgoingSvc.GetPrintPdfAsync(printItem.LetterId, printSize, printWithCopy);
+            var number = (printItem.SadereNumber ?? printItem.LetterNumber).Replace('/', '-');
+            var version = printWithCopy ? "با-رونوشت" : "بدون-رونوشت";
+            await JS.InvokeVoidAsync("ltxOpenPdf", Convert.ToBase64String(bytes), $"letter-{number}-{printSize}-{version}.pdf");
+            printOpen = false;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { printingId = 0; }
+        finally { printing = false; }
     }
+
+    // ==================== ۱) افزودن نامه به بایگانی ====================
+
+    private async Task ArchiveAsync(DabirkhaneListItemDto l)
+    {
+        if (archivePicker == null) return;
+
+        var folderId = await archivePicker.PickAsync(
+            "افزودن نامه به بایگانی دبیرخانه",
+            $"نامه «{l.Title}» در پوشه انتخاب‌شده بایگانی می‌شود.");
+
+        if (folderId == null) return;   // انصراف
+
+        try
+        {
+            await OutgoingSvc.ArchiveDabirkhaneLettersAsync(new ArchiveOutgoingLettersDto
+            {
+                FolderId = folderId.Value,
+                LetterIds = new List<int> { l.LetterId }
+            });
+            Toast.Success("نامه به بایگانی دبیرخانه اضافه شد.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task UnarchiveAsync(DabirkhaneListItemDto l) => await UnarchiveByIdAsync(l.LetterId);
+
+    /// <summary>خروج نامه از بایگانی بر اساس شناسه نامه (مسیر درخت بایگانی)</summary>
+    private async Task UnarchiveByIdAsync(int letterId)
+    {
+        if (letterId <= 0) return;
+        try
+        {
+            await OutgoingSvc.UnarchiveDabirkhaneLetterAsync(letterId);
+            Toast.Success("نامه از بایگانی دبیرخانه خارج شد.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task MoveArchivedAsync(int bayeganiId)
+    {
+        if (archivePicker == null) return;
+
+        var folderId = await archivePicker.PickAsync(
+            "انتقال نامه به پوشه دیگر",
+            "پوشه مقصد را انتخاب کنید.");
+
+        if (folderId == null) return;
+
+        try
+        {
+            await OutgoingSvc.MoveDabirkhaneLetterAsync(new MoveArchivedLetterDto
+            {
+                BayeganiId = bayeganiId,
+                NewParentId = folderId.Value
+            });
+            Toast.Success("نامه به پوشه مقصد منتقل شد.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ==================== ثبت دبیرخانه ====================
 
     private void OpenRegister(DabirkhaneListItemDto l)
     {
@@ -294,13 +756,17 @@
         regMethod = l.SendMethod ?? "";
         regDestNumber = l.DestRegNumber;
         regNote = l.DabirkhaneNote;
-        errMethod = false;
+        errMethod = errDestNumber = errDeliverer = errFax = false;
 
-        // پیش‌فرض‌های ارسال با پست الکترونیک
-        regSendByEmail = string.Equals(regMethod, "ایمیل", StringComparison.OrdinalIgnoreCase);
+        // فیلدهای وابسته به روش ارسال
+        spec = LetterSendMethods.Spec(regMethod);
+        regDelivererName = l.DelivererName;
+        regTrackingCode = l.TrackingCode;
+        regFax = l.DestFax;
         regDestEmail = l.DestEmail;
         regEmailError = false;
         regEmailAccountId = 0;
+        regSendByEmail = false;
         regOpen = true;
         _ = LoadDabirkhaneAccountsAsync();
     }
@@ -317,14 +783,17 @@
         catch { dabirAccounts = new(); }
     }
 
-    /// <summary>انتخاب «ایمیل» در روش ارسال، بخش ارسال با پست الکترونیک را خودکار فعال می‌کند</summary>
+    /// <summary>با تغییر روش ارسال، فیلدهای موردنیاز همان روش نمایش داده می‌شود</summary>
     private void OnMethodChanged()
     {
-        if (string.Equals(regMethod, "ایمیل", StringComparison.OrdinalIgnoreCase))
-        {
-            regSendByEmail = true;
-            StateHasChanged();
-        }
+        spec = LetterSendMethods.Spec(regMethod);
+
+        // فیلدهای نامرتبط پاک می‌شوند تا دادهٔ بی‌ربط ذخیره نشود
+        if (!spec.NeedsDelivererName) { regDelivererName = null; errDeliverer = false; }
+        if (!spec.NeedsTrackingCode) regTrackingCode = null;
+        if (!spec.NeedsFax) { regFax = null; errFax = false; }
+        if (spec.NeedsDestEmail) regSendByEmail = false;
+        StateHasChanged();
     }
 
     private void CloseRegister() { regOpen = false; regItem = null; }
@@ -332,13 +801,24 @@
     private async Task SubmitRegister()
     {
         if (regItem == null) return;
+
         errMethod = string.IsNullOrWhiteSpace(regMethod);
         if (errMethod) { Toast.Error("روش ارسال نامه را انتخاب کنید."); return; }
 
-        // اگر روش ارسال «ایمیل» است، ارسال با پست الکترونیک اجباری و ایمیل مقصد الزامی است
-        bool byEmail = regSendByEmail || string.Equals(regMethod, "ایمیل", StringComparison.OrdinalIgnoreCase);
+        // اعتبارسنجی فیلدهای پویا
+        errDeliverer = spec.NeedsDelivererName && string.IsNullOrWhiteSpace(regDelivererName);
+        if (errDeliverer) { Toast.Error("نام تحویل گیرنده را بنویسید."); return; }
+
+        errFax = spec.NeedsFax && string.IsNullOrWhiteSpace(regFax);
+        if (errFax) { Toast.Error("شماره فکس مقصد را وارد کنید."); return; }
+
+        errDestNumber = spec.NeedsDestRegNumber && string.IsNullOrWhiteSpace(regDestNumber);
+        if (errDestNumber) { Toast.Error("شماره ثبت مقصد (ECE) را وارد کنید."); return; }
+
+        // روش ارسال «ایمیل» (یا ارسال همزمان با ایمیل) → باید مشخص شود به کدوم ایمیل ارسال شود
+        var byEmail = spec.NeedsDestEmail || regSendByEmail;
         regEmailError = byEmail && string.IsNullOrWhiteSpace(regDestEmail);
-        if (regEmailError) { Toast.Error("آدرس ایمیل مقصد را وارد کنید."); return; }
+        if (regEmailError) { Toast.Error("مشخص کنید نامه به کدوم ایمیل ارسال شود."); return; }
         if (byEmail && regEmailAccountId == 0)
         {
             Toast.Error("حساب ایمیل دبیرخانه ثبت نشده است — از بخش «ایمیل سازمانی» حساب رسمی دبیرخانه را اضافه کنید.");
@@ -355,8 +835,12 @@
                 Note = regNote?.Trim(),
                 SendByEmail = byEmail,
                 DestEmail = byEmail ? regDestEmail?.Trim() : null,
-                EmailAccountId = byEmail && regEmailAccountId > 0 ? regEmailAccountId : null
+                EmailAccountId = byEmail && regEmailAccountId > 0 ? regEmailAccountId : null,
+                DelivererName = spec.NeedsDelivererName ? regDelivererName?.Trim() : null,
+                TrackingCode = spec.NeedsTrackingCode ? regTrackingCode?.Trim() : null,
+                DestFax = spec.NeedsFax ? regFax?.Trim() : null
             });
+
             Toast.Success(byEmail ? "نامه در دبیرخانه ثبت و با ایمیل ارسال شد." : "نامه در دبیرخانه ثبت شد.");
             regOpen = false;
             regItem = null;

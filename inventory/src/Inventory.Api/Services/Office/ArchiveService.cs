@@ -41,6 +41,37 @@ public interface IArchiveService
 
     /// <summary>خروج نامه از بایگانی بر اساس شناسه ارجاع (برای دکمه بایگانی در نمایش نامه)</summary>
     Task UnarchiveByErjaAsync(int erjaId, int userId);
+
+    // ==================== بایگانی دبیرخانه (نامه صادره — TypeBayegani=2) ====================
+    // بایگانی دبیرخانه درخت پوشه‌های مستقل خودش را دارد تا با بایگانی شخصی
+    // نامه‌های داخلی قاطی نشود.
+
+    /// <summary>درخت بایگانی دبیرخانه (پوشه‌ها + نامه‌های صادرهٔ بایگانی‌شده)</summary>
+    Task<List<BayeganiNodeDto>> GetOutgoingTreeAsync(int userId);
+
+    /// <summary>ایجاد دسته اصلی در ریشهٔ بایگانی دبیرخانه</summary>
+    Task<BayeganiNodeDto> AddOutgoingMainCategoryAsync(int userId, SaveBayeganiFolderDto dto);
+
+    /// <summary>ایجاد زیرپوشه در بایگانی دبیرخانه</summary>
+    Task<BayeganiNodeDto> AddOutgoingSubCategoryAsync(int userId, SaveBayeganiFolderDto dto);
+
+    /// <summary>ویرایش عنوان پوشهٔ بایگانی دبیرخانه</summary>
+    Task<BayeganiNodeDto> EditOutgoingFolderAsync(int bayeganiId, int userId, SaveBayeganiFolderDto dto);
+
+    /// <summary>جابجایی پوشه در بایگانی دبیرخانه</summary>
+    Task<BayeganiNodeDto> MoveOutgoingFolderAsync(int bayeganiId, int newParentId, int userId);
+
+    /// <summary>حذف پوشه/نامه از بایگانی دبیرخانه</summary>
+    Task DeleteOutgoingAsync(int bayeganiId, int userId);
+
+    /// <summary>بایگانی یک یا چند نامه صادره در پوشهٔ انتخابی</summary>
+    Task ArchiveOutgoingLettersAsync(int userId, ArchiveOutgoingLettersDto dto);
+
+    /// <summary>خروج نامه صادره از بایگانی دبیرخانه</summary>
+    Task UnarchiveOutgoingLetterAsync(int letterId, int userId);
+
+    /// <summary>جابجایی نامه صادرهٔ بایگانی‌شده به پوشه‌ای دیگر</summary>
+    Task<BayeganiNodeDto> MoveArchivedLetterAsync(MoveArchivedLetterDto dto, int userId);
 }
 
 public class ArchiveService : IArchiveService
@@ -75,12 +106,20 @@ public class ArchiveService : IArchiveService
         return entity;
     }
 
-    private async Task<bool> FolderExistsAsync(int folderId, int userId) =>
+    /// <summary>نوع بایگانی شخصی نامه‌های داخلی</summary>
+    private const int TypeInner = 1;
+
+    /// <summary>نوع بایگانی دبیرخانه (نامه صادره)</summary>
+    private const int TypeOutgoing = 2;
+
+    /// <summary>بررسی وجود پوشه — type جداکنندهٔ بایگانی شخصی از بایگانی دبیرخانه است</summary>
+    private async Task<bool> FolderExistsAsync(int folderId, int userId, int type = TypeInner) =>
         await _db.LetterBayeganis.AsNoTracking()
-            .AnyAsync(x => x.BayeganiId == folderId && x.IsFolder && !x.IsDelete && x.UserId == userId);
+            .AnyAsync(x => x.BayeganiId == folderId && x.IsFolder && !x.IsDelete
+                        && x.UserId == userId && x.TypeBayegani == type);
 
     /// <summary>جلوگیری از قرارگرفتن پوشه داخل زیرپوشه‌های خودش</summary>
-    private async Task<bool> IsDescendantAsync(int folderId, int targetParentId)
+    private async Task<bool> IsDescendantAsync(int folderId, int targetParentId, int type = TypeInner)
     {
         var currentParentId = targetParentId;
         var guard = 0;
@@ -90,7 +129,7 @@ public class ArchiveService : IArchiveService
             if (currentParentId == folderId) return true;
 
             currentParentId = await _db.LetterBayeganis
-                .Where(x => x.BayeganiId == currentParentId && x.IsFolder && !x.IsDelete)
+                .Where(x => x.BayeganiId == currentParentId && x.IsFolder && !x.IsDelete && x.TypeBayegani == type)
                 .Select(x => x.ParentId)
                 .FirstOrDefaultAsync();
         }
@@ -106,7 +145,8 @@ public class ArchiveService : IArchiveService
         TypeBayegani = e.TypeBayegani,
         IsFolder = e.IsFolder,
         ErjaId = e.ErjaId,
-        LetterId = e.LetterId
+        LetterId = e.LetterId,
+        SourceType = e.TypeBayegani == TypeOutgoing ? 2 : 1
     };
 
     // ==================== درخت ====================
@@ -137,8 +177,10 @@ public class ArchiveService : IArchiveService
             await _db.SaveChangesAsync();
         }
 
+        // فقط بایگانی شخصی (نامه‌های داخلی) — نامه‌های صادرهٔ بایگانی‌شده در
+        // درخت جداگانهٔ دبیرخانه (TypeBayegani=2) نمایش داده می‌شوند.
         var rows = await _db.LetterBayeganis.AsNoTracking()
-            .Where(b => b.UserId == userId && !b.IsDelete)
+            .Where(b => b.UserId == userId && !b.IsDelete && b.TypeBayegani != TypeOutgoing)
             .OrderBy(b => b.BayeganiId)
             .ToListAsync();
 
@@ -298,6 +340,10 @@ public class ArchiveService : IArchiveService
         if (!entity.IsFolder)
             throw new Exception("رکورد انتخاب‌شده پوشه نیست.");
 
+        // پوشه‌های بایگانی دبیرخانه فقط با متدهای مخصوص خودشان ویرایش می‌شوند
+        if (entity.TypeBayegani == TypeOutgoing)
+            throw new Exception("این پوشه متعلق به بایگانی دبیرخانه است.");
+
         // فقط مشخصات تغییر می‌کند — ParentId فقط توسط MoveFolder تغییر می‌کند.
         entity.Title = title;
         await _db.SaveChangesAsync();
@@ -313,6 +359,8 @@ public class ArchiveService : IArchiveService
         var entity = await GetOwnedAsync(bayeganiId, userId);
         if (!entity.IsFolder)
             throw new Exception("رکورد انتخاب‌شده پوشه نیست.");
+        if (entity.TypeBayegani == TypeOutgoing)
+            throw new Exception("این پوشه متعلق به بایگانی دبیرخانه است.");
 
         if (newParentId != 0)
         {
@@ -451,6 +499,8 @@ public class ArchiveService : IArchiveService
         var entity = await GetOwnedAsync(bayeganiId, userId);
         if (entity.IsFolder)
             throw new Exception("رکورد انتخاب‌شده نامه نیست.");
+        if (entity.TypeBayegani == TypeOutgoing)
+            throw new Exception("این نامه متعلق به بایگانی دبیرخانه است.");
 
         if (!await FolderExistsAsync(newParentId, userId))
             throw new Exception("پوشه مقصد یافت نشد.");
@@ -466,6 +516,13 @@ public class ArchiveService : IArchiveService
     public async Task DeleteAsync(int bayeganiId, int userId)
     {
         var entity = await GetOwnedAsync(bayeganiId, userId);
+
+        // گره‌های بایگانی دبیرخانه مسیر حذف خودشان را دارند (آزاد کردن پرچم IsArchived)
+        if (entity.TypeBayegani == TypeOutgoing)
+        {
+            await DeleteOutgoingAsync(bayeganiId, userId);
+            return;
+        }
 
         if (entity.IsFolder)
         {
@@ -510,5 +567,325 @@ public class ArchiveService : IArchiveService
         erja.IsBayegani = false;
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("letters");
+    }
+
+    // ============================================================
+    //  بایگانی دبیرخانه — نامه‌های صادره (TypeBayegani = 2)
+    //  درخت پوشه‌ها مستقل از بایگانی شخصی نامه‌های داخلی است تا
+    //  دبیرخانه بتواند نامه‌های ارسال‌شده را دسته‌بندی کند.
+    // ============================================================
+
+    private static BayeganiNodeDto MapOutgoing(LetterBayegani e) => new()
+    {
+        BayeganiId = e.BayeganiId,
+        Title = e.Title,
+        ParentId = e.ParentId,
+        TypeBayegani = e.TypeBayegani,
+        IsFolder = e.IsFolder,
+        ErjaId = e.ErjaId,
+        LetterId = e.LetterId,
+        SourceType = 2
+    };
+
+    public async Task<List<BayeganiNodeDto>> GetOutgoingTreeAsync(int userId)
+    {
+        var rows = await _db.LetterBayeganis.AsNoTracking()
+            .Where(b => b.UserId == userId && !b.IsDelete && b.TypeBayegani == TypeOutgoing)
+            .OrderBy(b => b.BayeganiId)
+            .ToListAsync();
+
+        // اطلاعات نامه‌های صادرهٔ بایگانی‌شده
+        var letterIds = rows.Where(r => r.LetterId.HasValue).Select(r => r.LetterId!.Value).Distinct().ToList();
+
+        var info = new Dictionary<int, BayeganiNodeDto>();
+        if (letterIds.Count > 0)
+        {
+            var letters = await _db.OutgoingLetters.AsNoTracking()
+                .Where(l => letterIds.Contains(l.Id))
+                .Select(l => new
+                {
+                    l.Id,
+                    l.Title,
+                    l.LetterNumber,
+                    l.SadereNumber,
+                    l.ReceiverOrganization,
+                    l.DateSabt,
+                    l.DateSadere,
+                    l.Foriat,
+                    l.Mahramanegi,
+                    l.SendMethod,
+                    Sender = l.Creator != null
+                        ? (string.IsNullOrEmpty(l.Creator.FirstName + l.Creator.LastName)
+                            ? l.Creator.Username
+                            : (l.Creator.FirstName + " " + l.Creator.LastName).Trim())
+                        : "",
+                    HasAttachment = _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id)
+                })
+                .ToListAsync();
+
+            foreach (var l in letters)
+            {
+                info[l.Id] = new BayeganiNodeDto
+                {
+                    LetterId = l.Id,
+                    LetterNumber = l.SadereNumber ?? l.LetterNumber ?? "",
+                    Title = l.Title,
+                    Sender = l.Sender,
+                    Date = l.DateSadere ?? l.DateSabt,
+                    Foriat = l.Foriat,
+                    Mahramanegi = l.Mahramanegi,
+                    HasAttachment = l.HasAttachment,
+                    ReceiverOrganization = l.ReceiverOrganization,
+                    SadereNumber = l.SadereNumber,
+                    SendMethod = l.SendMethod,
+                    SourceType = 2
+                };
+            }
+        }
+
+        var nodes = new Dictionary<int, BayeganiNodeDto>();
+        foreach (var r in rows)
+        {
+            var n = MapOutgoing(r);
+            if (r.LetterId is { } lid && info.TryGetValue(lid, out var li))
+            {
+                n.LetterNumber = li.LetterNumber;
+                n.Title = li.Title;                 // عنوان زندهٔ نامه
+                n.Sender = li.Sender;
+                n.Date = li.Date;
+                n.Foriat = li.Foriat;
+                n.Mahramanegi = li.Mahramanegi;
+                n.HasAttachment = li.HasAttachment;
+                n.ReceiverOrganization = li.ReceiverOrganization;
+                n.SadereNumber = li.SadereNumber;
+                n.SendMethod = li.SendMethod;
+            }
+            nodes[n.BayeganiId] = n;
+        }
+
+        var roots = new List<BayeganiNodeDto>();
+        foreach (var n in nodes.Values)
+        {
+            if (n.ParentId != 0 && nodes.TryGetValue(n.ParentId, out var parent) && parent.IsFolder)
+                parent.Children.Add(n);
+            else
+                roots.Add(n);
+        }
+
+        SortTree(roots);
+        return roots;
+    }
+
+    public async Task<BayeganiNodeDto> AddOutgoingMainCategoryAsync(int userId, SaveBayeganiFolderDto dto)
+    {
+        var title = ValidateTitle(dto.Title);
+        if (dto.ParentId != 0)
+            throw new Exception("دسته اصلی باید در ریشه ساخته شود.");
+
+        var entity = new LetterBayegani
+        {
+            Title = title,
+            ErjaId = null,
+            LetterId = null,
+            IsFolder = true,
+            UserId = userId,
+            ParentId = 0,
+            TypeBayegani = TypeOutgoing,
+            IsDelete = false
+        };
+
+        _db.LetterBayeganis.Add(entity);
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+        return MapOutgoing(entity);
+    }
+
+    public async Task<BayeganiNodeDto> AddOutgoingSubCategoryAsync(int userId, SaveBayeganiFolderDto dto)
+    {
+        var title = ValidateTitle(dto.Title);
+        if (dto.ParentId <= 0)
+            throw new Exception("شناسه پوشه والد نامعتبر است.");
+        if (!await FolderExistsAsync(dto.ParentId, userId, TypeOutgoing))
+            throw new Exception("پوشه والد یافت نشد.");
+
+        var entity = new LetterBayegani
+        {
+            Title = title,
+            ErjaId = null,
+            LetterId = null,
+            IsFolder = true,
+            UserId = userId,
+            ParentId = dto.ParentId,
+            TypeBayegani = TypeOutgoing,
+            IsDelete = false
+        };
+
+        _db.LetterBayeganis.Add(entity);
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+        return MapOutgoing(entity);
+    }
+
+    public async Task<BayeganiNodeDto> EditOutgoingFolderAsync(int bayeganiId, int userId, SaveBayeganiFolderDto dto)
+    {
+        var title = ValidateTitle(dto.Title);
+        var entity = await GetOwnedAsync(bayeganiId, userId);
+
+        if (!entity.IsFolder) throw new Exception("رکورد انتخاب‌شده پوشه نیست.");
+        if (entity.TypeBayegani != TypeOutgoing) throw new Exception("این پوشه متعلق به بایگانی دبیرخانه نیست.");
+
+        entity.Title = title;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+        return MapOutgoing(entity);
+    }
+
+    public async Task<BayeganiNodeDto> MoveOutgoingFolderAsync(int bayeganiId, int newParentId, int userId)
+    {
+        if (bayeganiId == newParentId)
+            throw new Exception("پوشه نمی‌تواند داخل خودش قرار بگیرد.");
+
+        var entity = await GetOwnedAsync(bayeganiId, userId);
+        if (!entity.IsFolder) throw new Exception("رکورد انتخاب‌شده پوشه نیست.");
+        if (entity.TypeBayegani != TypeOutgoing) throw new Exception("این پوشه متعلق به بایگانی دبیرخانه نیست.");
+
+        if (newParentId != 0)
+        {
+            if (!await FolderExistsAsync(newParentId, userId, TypeOutgoing))
+                throw new Exception("پوشه مقصد یافت نشد.");
+            if (await IsDescendantAsync(bayeganiId, newParentId, TypeOutgoing))
+                throw new Exception("پوشه نمی‌تواند داخل یکی از زیرپوشه‌های خودش قرار بگیرد.");
+        }
+
+        entity.ParentId = newParentId;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+        return MapOutgoing(entity);
+    }
+
+    /// <summary>بایگانی یک یا چند نامه صادره در پوشهٔ انتخابی دبیرخانه</summary>
+    public async Task ArchiveOutgoingLettersAsync(int userId, ArchiveOutgoingLettersDto dto)
+    {
+        var letterIds = (dto.LetterIds ?? new()).Where(x => x > 0).Distinct().ToList();
+        if (letterIds.Count == 0)
+            throw new Exception("حداقل یک نامه برای بایگانی انتخاب کنید.");
+
+        // پوشه مقصد — FolderId=0 یعنی ریشهٔ بایگانی دبیرخانه
+        if (dto.FolderId != 0 && !await FolderExistsAsync(dto.FolderId, userId, TypeOutgoing))
+            throw new Exception("پوشه مقصد یافت نشد.");
+
+        var already = await _db.LetterBayeganis
+            .Where(x => x.LetterId.HasValue && letterIds.Contains(x.LetterId.Value)
+                        && x.UserId == userId && x.TypeBayegani == TypeOutgoing && !x.IsDelete)
+            .Select(x => x.LetterId!.Value)
+            .ToListAsync();
+
+        if (already.Count > 0)
+            throw new Exception("برخی از نامه‌ها قبلاً بایگانی شده‌اند.");
+
+        var letters = await _db.OutgoingLetters
+            .Where(l => letterIds.Contains(l.Id) && !l.IsDelete)
+            .ToListAsync();
+
+        if (letters.Count != letterIds.Count)
+            throw new Exception("برخی از نامه‌ها یافت نشدند.");
+
+        // نامه صادره فقط بعد از امضا (دارا بودن شماره صادره) بایگانی می‌شود
+        var notSigned = letters.Where(l => string.IsNullOrWhiteSpace(l.SadereNumber)).ToList();
+        if (notSigned.Count > 0)
+            throw new Exception("فقط نامه‌های امضا شده (دارای شماره صادره) قابل بایگانی در دبیرخانه هستند.");
+
+        foreach (var letter in letters)
+        {
+            var title = string.IsNullOrWhiteSpace(dto.Title) ? letter.Title : dto.Title.Trim();
+
+            _db.LetterBayeganis.Add(new LetterBayegani
+            {
+                Title = title.Length > 200 ? title[..200] : title,
+                ErjaId = null,
+                LetterId = letter.Id,
+                IsFolder = false,
+                UserId = userId,
+                ParentId = dto.FolderId,
+                TypeBayegani = TypeOutgoing,
+                IsDelete = false
+            });
+
+            letter.IsArchived = true;
+            letter.ArchivedAt = DateTime.Now;
+            letter.ArchivedByUserId = userId;
+        }
+
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+    }
+
+    public async Task UnarchiveOutgoingLetterAsync(int letterId, int userId)
+    {
+        var node = await _db.LetterBayeganis
+            .FirstOrDefaultAsync(x => x.LetterId == letterId && x.UserId == userId
+                                   && x.TypeBayegani == TypeOutgoing && !x.IsDelete)
+            ?? throw new Exception("این نامه در بایگانی دبیرخانه شما نیست.");
+
+        node.IsDelete = true;
+
+        var letter = await _db.OutgoingLetters.FirstOrDefaultAsync(l => l.Id == letterId);
+        if (letter != null)
+        {
+            letter.IsArchived = false;
+            letter.ArchivedAt = null;
+            letter.ArchivedByUserId = null;
+        }
+
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+    }
+
+    public async Task<BayeganiNodeDto> MoveArchivedLetterAsync(MoveArchivedLetterDto dto, int userId)
+    {
+        var entity = await GetOwnedAsync(dto.BayeganiId, userId);
+        if (entity.IsFolder) throw new Exception("رکورد انتخاب‌شده نامه نیست.");
+        if (entity.TypeBayegani != TypeOutgoing) throw new Exception("این نامه متعلق به بایگانی دبیرخانه نیست.");
+        if (!await FolderExistsAsync(dto.NewParentId, userId, TypeOutgoing))
+            throw new Exception("پوشه مقصد یافت نشد.");
+
+        entity.ParentId = dto.NewParentId;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+        return MapOutgoing(entity);
+    }
+
+    /// <summary>
+    /// حذف از بایگانی دبیرخانه — پوشهٔ خالی حذف می‌شود؛ نامه از بایگانی خارج
+    /// می‌شود (Soft Delete روی گره + آزاد شدن پرچم IsArchived روی نامه)
+    /// </summary>
+    public async Task DeleteOutgoingAsync(int bayeganiId, int userId)
+    {
+        var entity = await GetOwnedAsync(bayeganiId, userId);
+        if (entity.TypeBayegani != TypeOutgoing)
+            throw new Exception("این مورد متعلق به بایگانی دبیرخانه نیست.");
+
+        if (entity.IsFolder)
+        {
+            var hasChildren = await _db.LetterBayeganis
+                .AnyAsync(x => x.ParentId == bayeganiId && !x.IsDelete);
+
+            if (hasChildren)
+                throw new Exception("این پوشه دارای محتوا یا زیرپوشه است. ابتدا محتویات پوشه را حذف یا منتقل کنید.");
+        }
+        else if (entity.LetterId is { } lid)
+        {
+            var letter = await _db.OutgoingLetters.FirstOrDefaultAsync(l => l.Id == lid);
+            if (letter != null)
+            {
+                letter.IsArchived = false;
+                letter.ArchivedAt = null;
+                letter.ArchivedByUserId = null;
+            }
+        }
+
+        entity.IsDelete = true;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
     }
 }
