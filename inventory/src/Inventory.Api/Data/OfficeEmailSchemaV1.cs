@@ -62,6 +62,18 @@ BEGIN
     ALTER TABLE dbo.Oto_TBL_Email ADD Last_Sync datetime2 NULL;
 END");
 
+        // پیشرفتِ همگام‌سازیِ افزایشی: آخرین شناسه‌ی IMAP که برای هر صندوق خوانده شده.
+        // با این دو ستون، بار اول همه‌ی پیام‌ها گرفته می‌شود و از بار دوم فقط پیام‌های جدید.
+        await SafeAsync(db, @"
+IF COL_LENGTH(N'dbo.Oto_TBL_Email', N'Last_Inbox_Uid') IS NULL
+BEGIN
+    ALTER TABLE dbo.Oto_TBL_Email ADD Last_Inbox_Uid bigint NOT NULL DEFAULT(0);
+END
+IF COL_LENGTH(N'dbo.Oto_TBL_Email', N'Last_Sent_Uid') IS NULL
+BEGIN
+    ALTER TABLE dbo.Oto_TBL_Email ADD Last_Sent_Uid bigint NOT NULL DEFAULT(0);
+END");
+
         // ---------- ایمیل‌های ارسالی ----------
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.Oto_TBL_Sent', N'U') IS NULL

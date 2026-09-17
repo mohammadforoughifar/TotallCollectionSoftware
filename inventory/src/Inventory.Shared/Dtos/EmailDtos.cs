@@ -169,6 +169,10 @@ public class EmailSyncResultDto
 {
     public int NewCount { get; set; }
     public int TotalCount { get; set; }
+
+    /// <summary>تعداد حساب‌هایی که با موفقیت همگام شدند</summary>
+    public int AccountCount { get; set; }
+
     public string Message { get; set; } = "";
 }
 
