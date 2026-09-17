@@ -36,9 +36,13 @@ public interface IOutgoingLetterService
     Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search);
 
     // ==================== دبیرخانه نامه صادره ====================
-    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search, bool? registeredOnly);
+    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto filter);
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
     Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName);
+
+    /// <summary>فهرست ثبت‌کنندگان نامه (برای فیلتر جستجوی پیشرفتهٔ دبیرخانه)</summary>
+    Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
+
     Task<List<LetterCompanyDto>> GetCompaniesAsync();
 }
 
@@ -113,6 +117,30 @@ public class OutgoingLetterService : IOutgoingLetterService
         IsDelete = false,
         ParentErjaId = parentErjaId
     };
+
+    /// <summary>تبدیل ارقام لاتین به فارسی — برای جستجوی شماره‌ها با ارقام فارسی</summary>
+    private static string ToFaDigits(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var map = new[] { '۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹' };
+        var chars = s.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+            if (chars[i] >= '0' && chars[i] <= '9') chars[i] = map[chars[i] - '0'];
+        return new string(chars);
+    }
+
+    /// <summary>تبدیل ارقام فارسی/عربی به لاتین — برای جستجوی یکسان شماره‌ها</summary>
+    private static string ToEnDigits(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var chars = s.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+        {
+            if (chars[i] >= '۰' && chars[i] <= '۹') chars[i] = (char)(chars[i] - '۰' + '0');
+            else if (chars[i] >= '٠' && chars[i] <= '٩') chars[i] = (char)(chars[i] - '٠' + '0');
+        }
+        return new string(chars);
+    }
 
     // ---------- بررسی دسترسی Sign برای لیست کاربران ----------
     private async Task<HashSet<int>> GetUsersWithSignPermissionAsync()
@@ -1202,25 +1230,77 @@ public class OutgoingLetterService : IOutgoingLetterService
     //  • دبیرخانه: ثبت «شماره ثبت مقصد» + «روش ارسال» + توضیح
     // ============================================================
 
-    /// <summary>لیست دبیرخانه — نامه‌های امضا شده (SadereNumber دار)</summary>
-    public async Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search, bool? registeredOnly)
+    /// <summary>
+    /// لیست دبیرخانه — نامه‌های امضا شده (SadereNumber دار) با جستجوی پیشرفته.
+    /// </summary>
+    public async Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto filter)
     {
+        filter ??= new DabirkhaneSearchDto();
+
         // شرط ورود به دبیرخانه: SadereNumber مقدار گرفته باشد (نامه امضا شده)
         var q = _db.OutgoingLetters.AsNoTracking()
             .Where(l => !l.IsDelete && !l.Source.IsDelete && l.SadereNumber != null && l.SadereNumber != "");
 
-        if (registeredOnly == true) q = q.Where(l => l.DabirkhaneSabt);
-        else if (registeredOnly == false) q = q.Where(l => !l.DabirkhaneSabt);
+        // ---------- وضعیت ثبت دبیرخانه ----------
+        if (filter.RegisteredOnly == true) q = q.Where(l => l.DabirkhaneSabt);
+        else if (filter.RegisteredOnly == false) q = q.Where(l => !l.DabirkhaneSabt);
 
-        if (!string.IsNullOrWhiteSpace(search))
+        // ---------- وضعیت بایگانی ----------
+        if (filter.ArchivedOnly == true) q = q.Where(l => l.IsArchived);
+        else if (filter.ArchivedOnly == false) q = q.Where(l => !l.IsArchived);
+
+        // ---------- فیلترهای مشخص ----------
+        if (!string.IsNullOrWhiteSpace(filter.SendMethod))
+            q = q.Where(l => l.SendMethod == filter.SendMethod.Trim());
+
+        if (filter.CreatorUserId is > 0)
+            q = q.Where(l => l.CreatorUserId == filter.CreatorUserId.Value);
+
+        if (filter.CompanyId is > 0)
+            q = q.Where(l => l.CompanyId == filter.CompanyId.Value);
+
+        if (!string.IsNullOrWhiteSpace(filter.ReceiverOrganization))
         {
-            var s = search.Trim();
+            var org = filter.ReceiverOrganization.Trim();
+            q = q.Where(l => l.ReceiverOrganization.Contains(org));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Mahramanegi))
+            q = q.Where(l => l.Mahramanegi == filter.Mahramanegi.Trim());
+
+        if (!string.IsNullOrWhiteSpace(filter.Foriat))
+            q = q.Where(l => l.Foriat == filter.Foriat.Trim());
+
+        if (filter.HasAttachment == true)
+            q = q.Where(l => _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id));
+        else if (filter.HasAttachment == false)
+            q = q.Where(l => !_db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id));
+
+        // ---------- بازهٔ تاریخ صدور ----------
+        if (filter.FromDate is { } from) q = q.Where(l => (l.DateSadere ?? l.DateSabt) >= from);
+        if (filter.ToDate is { } to) q = q.Where(l => (l.DateSadere ?? l.DateSabt) <= to);
+
+        // ---------- جستجوی متنی ----------
+        // نوشتهٔ شماره‌ها با ارقام فارسی هم پشتیبانی می‌شود (جستجوی ۱۴۰۴/ص-۱۲ با 1404/ص-12)
+        if (!string.IsNullOrWhiteSpace(filter.Text))
+        {
+            var s = filter.Text.Trim();
+            var sFa = ToFaDigits(s);
+            var sEn = ToEnDigits(s);
+
             q = q.Where(l => l.Title.Contains(s)
-                          || (l.LetterNumber ?? "").Contains(s)
-                          || (l.SadereNumber ?? "").Contains(s)
+                          || (l.LetterNumber ?? "").Contains(s) || (l.LetterNumber ?? "").Contains(sFa) || (l.LetterNumber ?? "").Contains(sEn)
+                          || (l.SadereNumber ?? "").Contains(s) || (l.SadereNumber ?? "").Contains(sFa) || (l.SadereNumber ?? "").Contains(sEn)
                           || l.ReceiverOrganization.Contains(s)
-                          || (l.DestRegNumber ?? "").Contains(s)
-                          || (l.SendMethod ?? "").Contains(s));
+                          || (l.ReceiverName ?? "").Contains(s)
+                          || (l.DestRegNumber ?? "").Contains(s) || (l.DestRegNumber ?? "").Contains(sFa) || (l.DestRegNumber ?? "").Contains(sEn)
+                          || (l.SendMethod ?? "").Contains(s)
+                          || (l.DelivererName ?? "").Contains(s)
+                          || (l.TrackingCode ?? "").Contains(s) || (l.TrackingCode ?? "").Contains(sFa) || (l.TrackingCode ?? "").Contains(sEn)
+                          || (l.DestFax ?? "").Contains(s) || (l.DestFax ?? "").Contains(sFa) || (l.DestFax ?? "").Contains(sEn)
+                          || (l.DestEmail ?? "").Contains(s)
+                          || (l.CopyTo ?? "").Contains(s)
+                          || (l.DabirkhaneNote ?? "").Contains(s));
         }
 
         var list = await q
@@ -1253,9 +1333,49 @@ public class OutgoingLetterService : IOutgoingLetterService
                 DestRegNumber = l.DestRegNumber,
                 SendMethod = l.SendMethod,
                 DabirkhaneNote = l.DabirkhaneNote,
-                DestEmail = l.DestEmail
+                DestEmail = l.DestEmail,
+
+                // فیلدهای وابسته به روش ارسال
+                DelivererName = l.DelivererName,
+                TrackingCode = l.TrackingCode,
+                DestFax = l.DestFax,
+
+                // بایگانی دبیرخانه
+                IsArchived = l.IsArchived,
+                ArchivedAt = l.ArchivedAt,
+
+                // چاپ دو نسخه
+                CopyTo = l.CopyTo,
+                HasCopyTo = l.CopyTo != null && l.CopyTo != ""
             })
             .ToListAsync();
+
+        // شناسه گره بایگانی + عنوان پوشه (جدا از کوئری اصلی برای سادگی ترجمهٔ EF)
+        var archivedIds = list.Where(x => x.IsArchived).Select(x => x.LetterId).ToList();
+        if (archivedIds.Count > 0)
+        {
+            var nodes = await _db.LetterBayeganis.AsNoTracking()
+                .Where(b => b.LetterId.HasValue && archivedIds.Contains(b.LetterId.Value)
+                         && b.TypeBayegani == 2 && !b.IsDelete)
+                .Select(b => new { b.BayeganiId, b.LetterId, b.ParentId })
+                .ToListAsync();
+
+            var folderIds = nodes.Select(n => n.ParentId).Where(p => p > 0).Distinct().ToList();
+            var folderTitles = folderIds.Count > 0
+                ? await _db.LetterBayeganis.AsNoTracking()
+                    .Where(b => folderIds.Contains(b.BayeganiId))
+                    .ToDictionaryAsync(b => b.BayeganiId, b => b.Title)
+                : new Dictionary<int, string>();
+
+            var byLetter = nodes.ToDictionary(n => n.LetterId!.Value);
+            foreach (var item in list)
+            {
+                if (!byLetter.TryGetValue(item.LetterId, out var node)) continue;
+                item.BayeganiId = node.BayeganiId;
+                if (node.ParentId > 0 && folderTitles.TryGetValue(node.ParentId, out var ft))
+                    item.ArchiveFolderTitle = ft;
+            }
+        }
 
         // نام شرکت و نام کاربر دبیرخانه (جدا برای سادگی کوئری)
         var companyIds = list.Where(x => x.CompanyId is > 0).Select(x => x.CompanyId!.Value).Distinct().ToList();
@@ -1287,6 +1407,27 @@ public class OutgoingLetterService : IOutgoingLetterService
                     item.DabirkhaneUserName = uname;
         }
 
+        // نام کاربر دبیرخانه‌ای که نامه را بایگانی کرده است
+        var archLetterIds = list.Where(x => x.ArchivedByUserName == null && x.IsArchived).Select(x => x.LetterId).ToList();
+        if (archLetterIds.Count > 0)
+        {
+            var archRows = await _db.OutgoingLetters.AsNoTracking()
+                .Where(l => archLetterIds.Contains(l.Id) && l.ArchivedByUserId != null)
+                .Select(l => new { l.Id, l.ArchivedByUserId })
+                .ToListAsync();
+
+            var archUids = archRows.Select(x => x.ArchivedByUserId!.Value).Distinct().ToList();
+            var archUsers = await _db.Users.AsNoTracking()
+                .Where(u => archUids.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id,
+                    u => string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? "")) ? u.Username : $"{u.FirstName} {u.LastName}".Trim());
+
+            var archByLetter = archRows.ToDictionary(x => x.Id, x => x.ArchivedByUserId!.Value);
+            foreach (var item in list)
+                if (archByLetter.TryGetValue(item.LetterId, out var uid) && archUsers.TryGetValue(uid, out var uname))
+                    item.ArchivedByUserName = uname;
+        }
+
         return list;
     }
 
@@ -1297,8 +1438,33 @@ public class OutgoingLetterService : IOutgoingLetterService
         return new DabirkhaneStatsDto
         {
             Pending = await q.CountAsync(l => !l.DabirkhaneSabt),
-            Registered = await q.CountAsync(l => l.DabirkhaneSabt)
+            Registered = await q.CountAsync(l => l.DabirkhaneSabt),
+            Archived = await q.CountAsync(l => l.IsArchived)
         };
+    }
+
+    /// <summary>فهرست ثبت‌کنندگان نامه‌های صادره — برای فیلتر جستجوی پیشرفتهٔ دبیرخانه</summary>
+    public async Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync()
+    {
+        var ids = await _db.OutgoingLetters.AsNoTracking()
+            .Where(l => !l.IsDelete && !l.Source.IsDelete)
+            .Select(l => l.CreatorUserId)
+            .Distinct()
+            .ToListAsync();
+
+        if (ids.Count == 0) return new List<LetterReciverDto>();
+
+        return await _db.Users.AsNoTracking()
+            .Where(u => ids.Contains(u.Id))
+            .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
+            .Select(u => new LetterReciverDto
+            {
+                UserId = u.Id,
+                FullName = string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? ""))
+                    ? u.Username
+                    : $"{u.FirstName} {u.LastName}".Trim()
+            })
+            .ToListAsync();
     }
 
     /// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال — فقط برای نامه‌های امضا شده</summary>
@@ -1314,16 +1480,54 @@ public class OutgoingLetterService : IOutgoingLetterService
         if (string.IsNullOrWhiteSpace(dto.SendMethod))
             throw new Exception("روش ارسال نامه الزامی است.");
 
-        bool byEmail = dto.SendByEmail || string.Equals(dto.SendMethod?.Trim(), "ایمیل", StringComparison.OrdinalIgnoreCase);
+        var method = dto.SendMethod.Trim();
+
+        // ==================== اعتبارسنجی فیلدهای وابسته به روش ارسال ====================
+        // هر روش ارسال اطلاعات متفاوتی لازم دارد:
+        //   • ایمیل            → کدوم ایمیل (آدرس ایمیل مقصد)
+        //   • پست / پست پیشتاز  → نام تحویل گیرنده (+ کد رهگیری)
+        //   • پیک / تحویل حضوری → نام تحویل گیرنده
+        //   • فکس              → شماره فکس مقصد
+        //   • اتوماسیون (ECE)  → شماره ثبت مقصد
+        var spec = LetterSendMethods.Spec(method);
+
+        bool byEmail = dto.SendByEmail || spec.NeedsDestEmail;
         string? destEmail = dto.DestEmail?.Trim();
+        string? delivererName = dto.DelivererName?.Trim();
+        string? trackingCode = dto.TrackingCode?.Trim();
+        string? destFax = dto.DestFax?.Trim();
+        string? destRegNumber = dto.DestRegNumber?.Trim();
+
+        if (byEmail && string.IsNullOrWhiteSpace(destEmail))
+            throw new Exception("آدرس ایمیل مقصد را وارد کنید (مشخص کنید نامه به کدوم ایمیل ارسال شود).");
+
+        if (byEmail && !string.IsNullOrWhiteSpace(destEmail) && !destEmail.Contains('@'))
+            throw new Exception("آدرس ایمیل مقصد معتبر نیست.");
+
+        if (spec.NeedsDelivererName && string.IsNullOrWhiteSpace(delivererName))
+            throw new Exception("نام تحویل گیرنده را وارد کنید.");
+
+        if (spec.TrackingCodeRequired && string.IsNullOrWhiteSpace(trackingCode))
+            throw new Exception("کد رهگیری مرسوله را وارد کنید.");
+
+        if (spec.NeedsFax && string.IsNullOrWhiteSpace(destFax))
+            throw new Exception("شماره فکس مقصد را وارد کنید.");
+
+        if (spec.NeedsDestRegNumber && string.IsNullOrWhiteSpace(destRegNumber))
+            throw new Exception("شماره ثبت مقصد (ECE) را وارد کنید.");
 
         letter.DabirkhaneSabt = true;
         letter.DabirkhaneUserId = userId;
         letter.DateDabirkhane ??= DateTime.Now;
-        letter.DestRegNumber = dto.DestRegNumber?.Trim();
-        letter.SendMethod = dto.SendMethod.Trim();
+        letter.DestRegNumber = destRegNumber;
+        letter.SendMethod = method;
         letter.DabirkhaneNote = dto.Note?.Trim();
         if (byEmail) letter.DestEmail = destEmail;
+
+        // فیلدهای وابسته به روش ارسال — فقط مقادیر مرتبط با روش انتخابی ذخیره می‌شوند
+        letter.DelivererName = spec.NeedsDelivererName ? delivererName : null;
+        letter.TrackingCode = spec.NeedsTrackingCode ? trackingCode : null;
+        letter.DestFax = spec.NeedsFax ? destFax : null;
 
         await _db.SaveChangesAsync();
 

@@ -24,8 +24,17 @@ namespace Inventory.Api.Services.Office.Outgoing;
 
 public interface IOutgoingLetterPrintService
 {
-    /// <summary>تولید PDF نامه صادره روی سربرگ شرکت — size: "A4" یا "A5"</summary>
-    Task<byte[]?> GeneratePdfAsync(int letterId, string size);
+    /// <summary>
+    /// تولید PDF نامه صادره روی سربرگ شرکت
+    /// </summary>
+    /// <param name="letterId">شناسه نامه صادره</param>
+    /// <param name="size">"A4" یا "A5"</param>
+    /// <param name="withCopy">
+    /// نسخهٔ چاپ: true = «با رونوشت» (بلوک رونوشت چاپ می‌شود)،
+    /// false = «بدون رونوشت» (بلوک رونوشت حذف می‌شود — برای نسخه‌ای که به
+    /// سازمان مقصد تحویل داده می‌شود و نیازی به اطلاع رونوشت‌گیرندگان ندارد)
+    /// </param>
+    Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true);
 }
 
 public class OutgoingLetterPrintService : IOutgoingLetterPrintService
@@ -116,7 +125,12 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     // ==================== تولید PDF ====================
 
-    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size)
+    /// <summary>
+    /// تولید PDF نامه صادره — در دو نسخهٔ «با رونوشت» و «بدون رونوشت».
+    /// نسخهٔ بدون رونوشت برای تحویل به سازمان مقصد است؛ نسخهٔ با رونوشت
+    /// در پروندهٔ دبیرخانه باقی می‌ماند.
+    /// </summary>
+    public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
     {
         var letter = await _db.OutgoingLetters.AsNoTracking()
             .Include(l => l.Creator)
@@ -144,7 +158,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
-        var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5);
+        var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy);
 
         // ==================== قرار دادن روی سربرگ / لوگوی شرکت ====================
         var letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
@@ -181,7 +195,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     }
 
     /// <summary>ساخت PDF متن نامه (بدون پس‌زمینه) — راست‌به‌چپ با فونت وزیرمتن</summary>
-    private static byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5)
+    /// <param name="withCopy">false = نسخهٔ بدون رونوشت (بلوک «رونوشت» چاپ نمی‌شود)</param>
+    private static byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true)
     {
         EnsureFonts();
 
@@ -284,10 +299,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                         });
                     }
 
-                    // رونوشت
-                    if (!string.IsNullOrWhiteSpace(letter.CopyTo))
+                    // رونوشت — فقط در نسخهٔ «با رونوشت» چاپ می‌شود.
+                    // نسخهٔ «بدون رونوشت» مخصوص تحویل به سازمان مقصد است و
+                    // اطلاعِ رونوشت‌گیرندگان داخلی در آن درج نمی‌شود.
+                    if (withCopy && !string.IsNullOrWhiteSpace(letter.CopyTo))
                     {
-                        col.Item().PaddingTop(isA5 ? 8 : 14).Text(t =>
+                        col.Item().PaddingTop(isA5 ? 8 : 14).LineHorizontal(0.5f).LineColor("#cbd5e1");
+                        col.Item().PaddingTop(isA5 ? 4 : 6).Text(t =>
                         {
                             t.Span("رونوشت: ").FontFamily("Vazirmatn-Bold").FontSize(fsSmall);
                             t.Span(letter.CopyTo!).FontSize(fsSmall);
@@ -295,12 +313,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     }
                 });
 
-                page.Footer().AlignCenter().Text(t =>
+                page.Footer().Column(f =>
                 {
-                    t.Span($"شماره صادره: {number}   ").FontSize(fsSmall - 1).FontColor("#777777");
-                    t.CurrentPageNumber().FontSize(fsSmall - 1).FontColor("#777777");
-                    t.Span(" از ").FontSize(fsSmall - 1).FontColor("#777777");
-                    t.TotalPages().FontSize(fsSmall - 1).FontColor("#777777");
+                    // نشانهٔ نسخهٔ چاپ — دبیرخانه باید بتواند دو نسخه را از هم تشخیص دهد
+                    f.Item().AlignLeft().Text(withCopy ? "نسخه: با رونوشت" : "نسخه: بدون رونوشت")
+                        .FontSize(fsSmall - 2).FontColor("#9ca3af");
+
+                    f.Item().AlignCenter().Text(t =>
+                    {
+                        t.Span($"شماره صادره: {number}   ").FontSize(fsSmall - 1).FontColor("#777777");
+                        t.CurrentPageNumber().FontSize(fsSmall - 1).FontColor("#777777");
+                        t.Span(" از ").FontSize(fsSmall - 1).FontColor("#777777");
+                        t.TotalPages().FontSize(fsSmall - 1).FontColor("#777777");
+                    });
                 });
             });
         });

@@ -287,16 +287,113 @@ public class OutgoingLetterPickDto
 /// <summary>روش‌های ارسال نامه از دبیرخانه</summary>
 public static class LetterSendMethods
 {
+    public const string Post = "پست";
+    public const string PostPishTaz = "پست پیشتاز";
+    public const string Peyk = "پیک";
+    public const string Email = "ایمیل";
+    public const string Fax = "فکس";
+    public const string Hozoori = "تحویل حضوری";
+    public const string Ece = "اتوماسیون (ECE)";
+
     public static readonly string[] All =
     {
-        "پست",
-        "پست پیشتاز",
-        "پیک",
-        "ایمیل",
-        "فکس",
-        "تحویل حضوری",
-        "اتوماسیون (ECE)"
+        Post, PostPishTaz, Peyk, Email, Fax, Hozoori, Ece
     };
+
+    /// <summary>
+    /// مشخصات فیلدهای موردنیاز هر روش ارسال.
+    /// دبیرخانه با انتخاب هر روش، فقط فیلدهای مرتبط با همان روش را از کاربر می‌پرسد:
+    /// • ایمیل            → «کدوم ایمیل» (آدرس ایمیل مقصد + حساب ارسال‌کننده)
+    /// • پست / پست پیشتاز  → «نام تحویل گیرنده» (+ کد رهگیری مرسوله)
+    /// • پیک / تحویل حضوری → «نام تحویل گیرنده»
+    /// • فکس              → «شماره فکس مقصد»
+    /// • اتوماسیون (ECE)  → «شماره ثبت مقصد»
+    /// </summary>
+    public static SendMethodSpec Spec(string? method)
+    {
+        if (string.IsNullOrWhiteSpace(method)) return new SendMethodSpec { Method = "" };
+
+        var m = method.Trim();
+
+        if (m == Email)
+            return new SendMethodSpec
+            {
+                Method = m,
+                NeedsDestEmail = true,
+                NeedsEmailAccount = true,
+                Hint = "نامه به‌صورت PDF روی سربرگ شرکت، به ایمیل مقصد ارسال می‌شود."
+            };
+
+        if (m == Post || m == PostPishTaz)
+            return new SendMethodSpec
+            {
+                Method = m,
+                NeedsDelivererName = true,
+                NeedsTrackingCode = true,
+                TrackingCodeRequired = false,
+                Hint = m == PostPishTaz
+                    ? "برای پست پیشتاز، نام کامل تحویل گیرنده و کد رهگیری مرسوله را ثبت کنید."
+                    : "نام تحویل گیرنده را بنویسید؛ کد رهگیری در صورت وجود ثبت شود."
+            };
+
+        if (m == Peyk || m == Hozoori)
+            return new SendMethodSpec
+            {
+                Method = m,
+                NeedsDelivererName = true,
+                Hint = m == Peyk
+                    ? "نام شخصی که مرسوله را از پیک تحویل می‌گیرد بنویسید."
+                    : "نام شخصی که نامه را حضوری تحویل می‌گیرد بنویسید."
+            };
+
+        if (m == Fax)
+            return new SendMethodSpec
+            {
+                Method = m,
+                NeedsFax = true,
+                Hint = "شماره فکس مقصد را با پیش‌شماره وارد کنید."
+            };
+
+        if (m == Ece)
+            return new SendMethodSpec
+            {
+                Method = m,
+                NeedsDestRegNumber = true,
+                Hint = "شماره ثبت اتوماسیون سازمان مقصد (ECE) را وارد کنید."
+            };
+
+        return new SendMethodSpec { Method = m };
+    }
+}
+
+/// <summary>فیلدهایی که برای یک روش ارسال باید از دبیرخانه پرسیده شود</summary>
+public class SendMethodSpec
+{
+    public string Method { get; set; } = "";
+
+    /// <summary>آدرس ایمیل مقصد لازم است؟ (روش ارسال = ایمیل)</summary>
+    public bool NeedsDestEmail { get; set; }
+
+    /// <summary>انتخاب حساب ایمیل دبیرخانه (ارسال‌کننده) لازم است؟</summary>
+    public bool NeedsEmailAccount { get; set; }
+
+    /// <summary>نام تحویل گیرنده لازم است؟ (پست/پست پیشتاز/پیک/تحویل حضوری)</summary>
+    public bool NeedsDelivererName { get; set; }
+
+    /// <summary>کد رهگیری مرسوله نمایش داده شود؟</summary>
+    public bool NeedsTrackingCode { get; set; }
+
+    /// <summary>کد رهگیری اجباری است؟</summary>
+    public bool TrackingCodeRequired { get; set; }
+
+    /// <summary>شماره فکس مقصد لازم است؟</summary>
+    public bool NeedsFax { get; set; }
+
+    /// <summary>شماره ثبت مقصد (ECE) اجباری است؟</summary>
+    public bool NeedsDestRegNumber { get; set; }
+
+    /// <summary>راهنمای نمایش‌داده‌شده زیر فیلدها</summary>
+    public string Hint { get; set; } = "";
 }
 
 /// <summary>سطر لیست دبیرخانه نامه صادره</summary>
@@ -331,6 +428,42 @@ public class DabirkhaneListItemDto
 
     /// <summary>ایمیل مقصد — وقتی با پست الکترونیک ارسال شده پر می‌شود</summary>
     public string? DestEmail { get; set; }
+
+    // ==================== فیلدهای وابسته به روش ارسال ====================
+
+    /// <summary>نام تحویل گیرنده — پست / پست پیشتاز / پیک / تحویل حضوری</summary>
+    public string? DelivererName { get; set; }
+
+    /// <summary>کد رهگیری مرسوله پستی</summary>
+    public string? TrackingCode { get; set; }
+
+    /// <summary>شماره فکس مقصد</summary>
+    public string? DestFax { get; set; }
+
+    // ==================== بایگانی دبیرخانه ====================
+
+    /// <summary>آیا نامه در بایگانی دبیرخانه ثبت شده است؟</summary>
+    public bool IsArchived { get; set; }
+
+    /// <summary>زمان بایگانی شدن</summary>
+    public DateTime? ArchivedAt { get; set; }
+
+    /// <summary>نام کاربر دبیرخانه‌ای که نامه را بایگانی کرده است</summary>
+    public string? ArchivedByUserName { get; set; }
+
+    /// <summary>عنوان پوشه‌ای که نامه در آن بایگانی شده است</summary>
+    public string? ArchiveFolderTitle { get; set; }
+
+    /// <summary>شناسه گره بایگانی (برای خروج از بایگانی / جابجایی)</summary>
+    public int? BayeganiId { get; set; }
+
+    // ==================== چاپ ====================
+
+    /// <summary>آیا نامه رونوشت دارد؟ (برای فعال‌بودن نسخهٔ چاپ «با رونوشت»)</summary>
+    public bool HasCopyTo { get; set; }
+
+    /// <summary>متن رونوشت — برای پیش‌نمایش در دبیرخانه</summary>
+    public string? CopyTo { get; set; }
 }
 
 /// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال + توضیح (+ ارسال با پست الکترونیک)</summary>
@@ -355,6 +488,100 @@ public class DabirkhaneRegisterDto
 
     /// <summary>شناسه حساب ایمیل دبیرخانه (Oto_TBL_Email با IsDabirkhane=true) — خالی = اولین حساب فعال دبیرخانه</summary>
     public int? EmailAccountId { get; set; }
+
+    // ==================== فیلدهای وابسته به روش ارسال ====================
+
+    /// <summary>نام تحویل گیرنده — الزامی برای پست، پست پیشتاز، پیک و تحویل حضوری</summary>
+    public string? DelivererName { get; set; }
+
+    /// <summary>کد رهگیری مرسوله پستی — پست و پست پیشتاز</summary>
+    public string? TrackingCode { get; set; }
+
+    /// <summary>شماره فکس مقصد — الزامی برای روش ارسال «فکس»</summary>
+    public string? DestFax { get; set; }
+}
+
+// ============================================================
+//  جستجوی پیشرفتهٔ دبیرخانه — فیلتر روی نامه‌های امضا شده
+// ============================================================
+
+/// <summary>فیلترهای جستجوی پیشرفتهٔ دبیرخانه نامه صادره</summary>
+public class DabirkhaneSearchDto
+{
+    /// <summary>عبارت جستجو — عنوان، شماره صادره، اندیکاتور، سازمان مقصد، نام تحویل گیرنده، کد رهگیری، شماره ثبت مقصد</summary>
+    public string? Text { get; set; }
+
+    /// <summary>فقط نامه‌های ثبت‌شده در دبیرخانه / فقط در انتظار ثبت</summary>
+    public bool? RegisteredOnly { get; set; }
+
+    /// <summary>فقط نامه‌های بایگانی‌شده / بایگانی‌نشده</summary>
+    public bool? ArchivedOnly { get; set; }
+
+    /// <summary>فیلتر بر اساس روش ارسال</summary>
+    public string? SendMethod { get; set; }
+
+    /// <summary>فیلتر بر اساس ثبت‌کننده (فرستنده)</summary>
+    public int? CreatorUserId { get; set; }
+
+    /// <summary>فیلتر بر اساس شرکت صادرکننده (سربرگ)</summary>
+    public int? CompanyId { get; set; }
+
+    /// <summary>فیلتر بر اساس نام سازمان مقصد</summary>
+    public string? ReceiverOrganization { get; set; }
+
+    /// <summary>فیلتر بر اساس محرمانگی</summary>
+    public string? Mahramanegi { get; set; }
+
+    /// <summary>فیلتر بر اساس فوریت</summary>
+    public string? Foriat { get; set; }
+
+    /// <summary>فقط نامه‌های پیوست‌دار</summary>
+    public bool? HasAttachment { get; set; }
+
+    /// <summary>از تاریخ صدور (شمسی/میلادی — میلادی ارسال می‌شود)</summary>
+    public DateTime? FromDate { get; set; }
+
+    /// <summary>تا تاریخ صدور</summary>
+    public DateTime? ToDate { get; set; }
+
+    /// <summary>آیا هیچ فیلتری اعمال شده است؟</summary>
+    public bool HasAnyFilter =>
+        !string.IsNullOrWhiteSpace(Text) ||
+        RegisteredOnly != null || ArchivedOnly != null ||
+        !string.IsNullOrWhiteSpace(SendMethod) ||
+        CreatorUserId != null || CompanyId != null ||
+        !string.IsNullOrWhiteSpace(ReceiverOrganization) ||
+        !string.IsNullOrWhiteSpace(Mahramanegi) ||
+        !string.IsNullOrWhiteSpace(Foriat) ||
+        HasAttachment != null ||
+        FromDate != null || ToDate != null;
+}
+
+// ============================================================
+//  بایگانی دبیرخانه — نامه‌های صادره در درخت پوشه‌ها
+// ============================================================
+
+/// <summary>بایگانی کردن یک یا چند نامه صادره در پوشهٔ انتخابی</summary>
+public class ArchiveOutgoingLettersDto
+{
+    /// <summary>شناسه پوشه مقصد (0 = ریشه بایگانی دبیرخانه)</summary>
+    public int FolderId { get; set; }
+
+    /// <summary>شناسه نامه‌های صادره (همان LetterSource.Id)</summary>
+    public List<int> LetterIds { get; set; } = new();
+
+    /// <summary>عنوان اختیاری — خالی باشد عنوان خود نامه استفاده می‌شود</summary>
+    public string? Title { get; set; }
+}
+
+/// <summary>جابجایی نامه بایگانی‌شده به پوشه‌ای دیگر</summary>
+public class MoveArchivedLetterDto
+{
+    /// <summary>شناسه گره بایگانی (LetterBayegani.BayeganiId)</summary>
+    public int BayeganiId { get; set; }
+
+    /// <summary>شناسه پوشه مقصد</summary>
+    public int NewParentId { get; set; }
 }
 
 /// <summary>آمار دبیرخانه صادره</summary>
@@ -365,6 +592,9 @@ public class DabirkhaneStatsDto
 
     /// <summary>ثبت و ارسال شده</summary>
     public int Registered { get; set; }
+
+    /// <summary>بایگانی شده در بایگانی دبیرخانه</summary>
+    public int Archived { get; set; }
 
     public int Total => Pending + Registered;
 }
