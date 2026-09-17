@@ -196,6 +196,44 @@ public class OutgoingLettersController : RbacControllerBase
         return Ok(new { message = "نامه با موفقیت امضا شد و شماره صادره تخصیص یافت." });
     }
 
+    // ==================== رونوشت‌گیرندگان (جدول مستقل) ====================
+
+    /// <summary>فهرست رونوشت‌گیرندگان نامه — منبع اصلی برای فرم و چاپ «با رونوشت»</summary>
+    [HttpGet("{id:int}/copy-tos")]
+    public async Task<IActionResult> GetCopyTos(int id)
+    {
+        var isAdmin = await IsAdminAsync();
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        try
+        {
+            return Ok(await _letters.GetCopyTosAsync(id, MyUserId, isAdmin));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// جایگزینی کامل فهرست رونوشت‌ها — کاربر در فرم آن‌ها را یکی‌یکی با دکمهٔ + می‌سازد
+    /// و اینجا کل فهرست یکجا ذخیره می‌شود (افزوده/ویرایش/حذف بر اساس شناسه تشخیص داده می‌شود).
+    /// </summary>
+    [HttpPut("{id:int}/copy-tos")]
+    public async Task<IActionResult> ReplaceCopyTos(int id, [FromBody] ReplaceOutgoingLetterCopyTosDto? dto)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        try
+        {
+            var items = await _letters.ReplaceCopyTosAsync(
+                id, dto?.Items ?? new List<SaveOutgoingLetterCopyToDto>(), MyUserId, await IsAdminAsync());
+            return Ok(new { items, message = "رونوشت‌گیرندگان ذخیره شدند." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("available-signers")]
     public async Task<IActionResult> AvailableSigners([FromQuery] string? search)
     {

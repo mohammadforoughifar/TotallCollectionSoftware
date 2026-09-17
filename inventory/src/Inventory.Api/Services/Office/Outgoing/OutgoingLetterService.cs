@@ -44,6 +44,15 @@ public interface IOutgoingLetterService
     Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
 
     Task<List<LetterCompanyDto>> GetCompaniesAsync();
+
+    // ==================== رونوشت‌گیرندگان (جدول مستقل) ====================
+
+    /// <summary>فهرست رونوشت‌گیرندگان یک نامه صادره</summary>
+    Task<List<OutgoingLetterCopyToDto>> GetCopyTosAsync(int letterId, int userId, bool isAdmin);
+
+    /// <summary>جایگزینی کامل فهرست رونوشت‌های یک نامه</summary>
+    Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(
+        int letterId, List<SaveOutgoingLetterCopyToDto> items, int userId, bool isAdmin);
 }
 
 public class OutgoingLetterService : IOutgoingLetterService
@@ -721,6 +730,20 @@ public class OutgoingLetterService : IOutgoingLetterService
             ReceiverTitle = letter.ReceiverTitle,
             ReceiverAddress = letter.ReceiverAddress,
             CopyTo = letter.CopyTo,
+            // رونوشت‌گیرندگان از جدول مستقل (منبع اصلی) — ستون قدیمی CopyTo فقط برای نامه‌های قدیمی
+            CopyTos = await _db.OutgoingLetterCopyToes.AsNoTracking()
+                .Where(c => c.OutgoingLetterId == letter.Id && !c.IsDelete)
+                .OrderBy(c => c.RowNo).ThenBy(c => c.Id)
+                .Select(c => new OutgoingLetterCopyToDto
+                {
+                    Id = c.Id,
+                    OutgoingLetterId = c.OutgoingLetterId,
+                    RowNo = c.RowNo,
+                    Name = c.Name,
+                    Desc = c.Desc,
+                    RefNo = c.RefNo
+                })
+                .ToListAsync(),
             ExternalRefNumber = letter.ExternalRefNumber,
             Status = letter.Status,
             SadereNumber = letter.SadereNumber,
@@ -1576,4 +1599,90 @@ public class OutgoingLetterService : IOutgoingLetterService
                 HasLetterhead = c.LetterheadFileName != null && c.LetterheadFileName != ""
             }).ToListAsync();
     }
+
+    // ==================== رونوشت‌گیرندگان (جدول مستقل) ====================
+
+    /// <summary>فهرست رونوشت‌گیرندگان یک نامه صادره</summary>
+    public async Task<List<OutgoingLetterCopyToDto>> GetCopyTosAsync(int letterId, int userId, bool isAdmin)
+    {
+        var letter = await _db.OutgoingLetters.AsNoTracking()
+            .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+        if (letter == null) throw new Exception("نامه پیدا نشد.");
+        if (!isAdmin && letter.CreatorUserId != userId)
+            throw new Exception("فقط ثبت‌کنندهٔ نامه می‌تواند رونوشت‌ها را ببیند.");
+
+        return await _db.OutgoingLetterCopyToes.AsNoTracking()
+            .Where(c => c.OutgoingLetterId == letterId && !c.IsDelete)
+            .OrderBy(c => c.RowNo).ThenBy(c => c.Id)
+            .Select(c => new OutgoingLetterCopyToDto
+            {
+                Id = c.Id,
+                OutgoingLetterId = c.OutgoingLetterId,
+                RowNo = c.RowNo,
+                Name = c.Name,
+                Desc = c.Desc,
+                RefNo = c.RefNo
+            }).ToListAsync();
+    }
+
+    /// <summary>
+    /// جایگزینی کامل فهرست رونوشت‌های یک نامه.
+    /// ردیف‌های حذف‌شده به‌صورت نرم (IsDelete) حذف می‌شوند تا سابقه بماند؛
+    /// ستون قدیمی CopyTo هم با متن یکپارچه به‌روزرسانی می‌شود تا جستجو و
+    /// خروجی‌های قدیمی همچنان کار کنند.
+    /// </summary>
+    public async Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(
+        int letterId, List<SaveOutgoingLetterCopyToDto> items, int userId, bool isAdmin)
+    {
+        var letter = await _db.OutgoingLetters.FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
+        if (letter == null) throw new Exception("نامه پیدا نشد.");
+        if (!isAdmin && letter.CreatorUserId != userId)
+            throw new Exception("فقط ثبت‌کنندهٔ نامه می‌تواند رونوشت‌ها را تغییر دهد.");
+
+        items ??= new List<SaveOutgoingLetterCopyToDto>();
+        var keep = items.Where(x => !string.IsNullOrWhiteSpace(x.Name)).ToList();
+        var keepIds = keep.Where(x => x.Id > 0).Select(x => x.Id).ToHashSet();
+
+        var existing = await _db.OutgoingLetterCopyToes
+            .Where(c => c.OutgoingLetterId == letterId && !c.IsDelete)
+            .ToListAsync();
+
+        // حذف نرمِ ردیف‌هایی که دیگر در فهرست نیستند
+        foreach (var old in existing.Where(e => !keepIds.Contains(e.Id)))
+            old.IsDelete = true;
+
+        var rowNo = 1;
+        foreach (var it in keep)
+        {
+            var clean = it.Name.Trim();
+            if (clean.Length > 300) clean = clean[..300];
+
+            var row = it.Id > 0 ? existing.FirstOrDefault(e => e.Id == it.Id) : null;
+            if (row == null)
+            {
+                row = new OutgoingLetterCopyTo
+                {
+                    OutgoingLetterId = letterId,
+                    CreatorUserId = userId,
+                    CreatedAt = DateTime.Now
+                };
+                _db.OutgoingLetterCopyToes.Add(row);
+            }
+
+            row.RowNo = rowNo++;
+            row.Name = clean;
+            row.Desc = string.IsNullOrWhiteSpace(it.Desc) ? null : it.Desc.Trim();
+            row.RefNo = string.IsNullOrWhiteSpace(it.RefNo) ? null : it.RefNo.Trim();
+            row.IsDelete = false;
+        }
+
+        // همگام‌سازی ستون قدیمی — برای جستجو و چاپ‌های پیشین
+        letter.CopyTo = keep.Count == 0 ? null : string.Join("، ", keep.Select(x => x.Name.Trim()));
+
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("outgoing-letters");
+
+        return await GetCopyTosAsync(letterId, userId, true);
+    }
+
 }

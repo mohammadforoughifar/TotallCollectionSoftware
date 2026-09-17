@@ -63,6 +63,8 @@ public static class DbInitializer
                 // دبیرخانه نامه صادره: فیلدهای وابسته به روش ارسال (نام تحویل‌گیرنده،
                 // کد رهگیری، شماره فکس) + وضعیت بایگانی دبیرخانه
                 await DabirkhaneSchemaV1.EnsureAsync(db);
+                // رونوشت‌گیرندگان نامه صادره — جدول مستقل (هر گیرنده یک ردیف)
+                await OutgoingCopyToSchemaV1.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
 
