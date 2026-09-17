@@ -73,6 +73,7 @@
 .ltx .tg.gray { background:#f1f5f9; color:#475569; }
 .ltx .tg.amber { background:#fef3c7; color:#b45309; }
 .ltx .tg.green { background:#d1fae5; color:#047857; }
+.ltx .tg.blue { background:#dbeafe; color:#1d4ed8; }
 .ltx .empty { text-align:center; padding:48px 10px; color:var(--sub); font-size:12.5px; }
 .ltx .empty i { display:block; font-size:34px; margin-bottom:8px; opacity:.4; }
 
@@ -567,3 +568,22 @@
 .ltx .fcwrap .fdot.r { background:#ef4444; }
 .wo-gd-station { border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; margin-bottom:8px; background:#fff; }
 .wo-gd-station.done { background:#f0fdf4; border-color:#86efac; }
+
+
+/* ---------- ایمیل سازمانی: لیست + صفحه خواندن ----------
+   هم‌طراز با کارتابل نامه داخلی (همان کلاس‌های mail/paper)، با نام‌گذاریِ مستقل
+   تا قواعدِ واکنش‌گرای کارتابل (پنهان‌کردنِ ستون خواندن در صفحه‌های کوچک)
+   روی این صفحه اثر نگذارد. */
+.ltx .eml-wrap { display:flex; gap:12px; align-items:stretch; flex:1; min-height:0; margin-top:12px; }
+.ltx .eml-list { flex:0 0 clamp(300px,32%,400px); display:flex; flex-direction:column; min-width:0; min-height:0;
+                 background:var(--card,#fff); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+.ltx .eml-reader { flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; }
+.ltx .eml-scroll { flex:1; overflow:auto; padding:8px; }
+.ltx .eml-reader .eml-scroll { padding:0; }
+.ltx .eml-reader .paper { min-height:100%; }
+.ltx .eml-reader .paper-body { min-height:220px; }
+
+@media (max-width: 900px) {
+    .ltx .eml-wrap { flex-direction:column; }
+    .ltx .eml-list { flex:0 0 auto; max-height:42%; }
+}
