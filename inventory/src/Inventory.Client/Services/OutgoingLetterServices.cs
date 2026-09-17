@@ -4,6 +4,8 @@ namespace Inventory.Client.Services;
 
 public interface IOutgoingLetterService
 {
+    /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
+    Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items);
     Task<List<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null);
     Task<List<OutgoingLetterListItemDto>> GetSentAsync(string? search = null);
     Task<List<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null);
@@ -83,6 +85,12 @@ public class OutgoingLetterService : IOutgoingLetterService
     private class IdResponse { public int Id { get; set; } }
     private class NeshanResponse { public bool IsNeshan { get; set; } }
     private class BayeganiResponse { public bool IsBayegani { get; set; } }
+
+    /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
+    public Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items) =>
+        _api.PutAsync<List<OutgoingLetterCopyToDto>>(
+            $"api/outgoing-letters/{letterId}/copy-tos",
+            new ReplaceOutgoingLetterCopyTosDto { Items = items ?? new List<SaveOutgoingLetterCopyToDto>() });
 
     public Task<List<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null)
     {

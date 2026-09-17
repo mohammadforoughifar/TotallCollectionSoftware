@@ -37,7 +37,7 @@ public class AddOutgoingLetterDto
     public string? CopyTo { get; set; }
 
     /// <summary>رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای فرم و چاپ</summary>
-    public List<OutgoingLetterCopyToDto> CopyTos { get; set; } = new();
+    public List<SaveOutgoingLetterCopyToDto> CopyTos { get; set; } = new();
 
     public string? ExternalRefNumber { get; set; }
 
@@ -91,7 +91,7 @@ public class EditOutgoingLetterDto
     public string? CopyTo { get; set; }
 
     /// <summary>رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای فرم و چاپ</summary>
-    public List<OutgoingLetterCopyToDto> CopyTos { get; set; } = new();
+    public List<SaveOutgoingLetterCopyToDto> CopyTos { get; set; } = new();
     public string? ExternalRefNumber { get; set; }
 
     /// <summary>شرکت صادرکننده (سربرگ چاپ)</summary>

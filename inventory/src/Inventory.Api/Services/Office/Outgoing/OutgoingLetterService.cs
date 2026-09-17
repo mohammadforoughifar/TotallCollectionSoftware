@@ -312,6 +312,33 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         await _db.SaveChangesAsync();
 
+        // رونوشت‌گیرندگان — هر گیرنده یک ردیف مستقل در جدول OutgoingLetterCopyToes.
+        // ستون قدیمی CopyTo نیز یکپارچه می‌شود تا جستجو و چاپ‌های پیشین همچنان کار کنند.
+        if (dto.CopyTos != null && dto.CopyTos.Count > 0)
+        {
+            var validCopies = dto.CopyTos.Where(x => !string.IsNullOrWhiteSpace(x.Name)).ToList();
+            var rowNo = 1;
+            foreach (var ct in validCopies)
+            {
+                _db.OutgoingLetterCopyToes.Add(new OutgoingLetterCopyTo
+                {
+                    OutgoingLetterId = source.Id,
+                    RowNo = rowNo++,
+                    Name = ct.Name.Trim(),
+                    Desc = string.IsNullOrWhiteSpace(ct.Desc) ? null : ct.Desc.Trim(),
+                    RefNo = string.IsNullOrWhiteSpace(ct.RefNo) ? null : ct.RefNo.Trim(),
+                    CreatorUserId = creatorUserId,
+                    CreatedAt = DateTime.Now,
+                    IsDelete = false
+                });
+            }
+            letter.CopyTo = validCopies.Count == 0
+                ? null
+                : string.Join("، ", validCopies.Select(x => x.Name.Trim()));
+            await _db.SaveChangesAsync();
+        }
+
+
         if (dto.FromPishnevisId is > 0)
         {
             var pish = await _db.OutgoingPishnevisLetters.FirstOrDefaultAsync(p => p.PishnevisId == dto.FromPishnevisId && p.UserId == creatorUserId && !p.IsDelete);
