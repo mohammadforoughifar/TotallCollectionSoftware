@@ -135,6 +135,9 @@ public class AppDbContext : DbContext
     public DbSet<OutgoingPishnevisLetter> OutgoingPishnevisLetters => Set<OutgoingPishnevisLetter>();
     public DbSet<OutgoingLetterSigner> OutgoingLetterSigners => Set<OutgoingLetterSigner>();
 
+    /// <summary>رونوشت‌گیرندگان نامه صادره (هر گیرنده یک ردیف)</summary>
+    public DbSet<OutgoingLetterCopyTo> OutgoingLetterCopyToes => Set<OutgoingLetterCopyTo>();
+
     // ==================== ایمیل سازمانی (پست الکترونیک) — جداول Oto_* دیتابیس Otomasion ====================
     public DbSet<OtoEmail> OtoEmails => Set<OtoEmail>();
     public DbSet<OtoSentEmail> OtoSentEmails => Set<OtoSentEmail>();
@@ -603,6 +606,11 @@ public class AppDbContext : DbContext
             .HasForeignKey(s => s.UserId)
             .OnDelete(DeleteBehavior.Restrict);
         mb.Entity<OutgoingLetterSigner>().HasIndex(s => s.SourceId);
+
+        // رونوشت‌گیرندگان نامه صادره — نام جدول صریحاً تعیین می‌شود
+        // تا با اسکیمای خودتعمیر (OutgoingCopyToSchemaV1) دقیقاً یکسان باشد
+        mb.Entity<OutgoingLetterCopyTo>().ToTable("OutgoingLetterCopyToes");
+        mb.Entity<OutgoingLetterCopyTo>().HasIndex(c => c.OutgoingLetterId);
         mb.Entity<OutgoingLetterSigner>().HasIndex(s => s.UserId);
         mb.Entity<OutgoingLetterSigner>().HasIndex(s => new { s.SourceId, s.UserId }).IsUnique();
         mb.Entity<OutgoingLetterSigner>().HasIndex(s => new { s.UserId, s.IsSigned });

@@ -33,7 +33,11 @@ public class AddOutgoingLetterDto
     public string? ReceiverAddress { get; set; }
 
     /// <summary>رونوشت‌ها — متن آزاد</summary>
+    /// <summary>رونوشت‌ها — متن آزاد (ستون قدیمی؛ برای نامه‌های پیش از این)</summary>
     public string? CopyTo { get; set; }
+
+    /// <summary>رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای فرم و چاپ</summary>
+    public List<OutgoingLetterCopyToDto> CopyTos { get; set; } = new();
 
     public string? ExternalRefNumber { get; set; }
 
@@ -85,6 +89,9 @@ public class EditOutgoingLetterDto
     public string? ReceiverTitle { get; set; }
     public string? ReceiverAddress { get; set; }
     public string? CopyTo { get; set; }
+
+    /// <summary>رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای فرم و چاپ</summary>
+    public List<OutgoingLetterCopyToDto> CopyTos { get; set; } = new();
     public string? ExternalRefNumber { get; set; }
 
     /// <summary>شرکت صادرکننده (سربرگ چاپ)</summary>
@@ -204,6 +211,9 @@ public class OutgoingLetterDetailDto
     public string? ReceiverTitle { get; set; }
     public string? ReceiverAddress { get; set; }
     public string? CopyTo { get; set; }
+
+    /// <summary>رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای فرم و چاپ</summary>
+    public List<OutgoingLetterCopyToDto> CopyTos { get; set; } = new();
     public string? ExternalRefNumber { get; set; }
     public int Status { get; set; }
 
@@ -464,6 +474,9 @@ public class DabirkhaneListItemDto
 
     /// <summary>متن رونوشت — برای پیش‌نمایش در دبیرخانه</summary>
     public string? CopyTo { get; set; }
+
+    /// <summary>رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای فرم و چاپ</summary>
+    public List<OutgoingLetterCopyToDto> CopyTos { get; set; } = new();
 }
 
 /// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال + توضیح (+ ارسال با پست الکترونیک)</summary>
@@ -606,4 +619,50 @@ public class LetterCompanyDto
     public string Name { get; set; } = "";
     public string? LetterheadFileName { get; set; }
     public bool HasLetterhead { get; set; }
+}
+
+// ============================================================
+//  رونوشت‌گیرندگان نامه صادره — جدول مستقل
+//  هر ردیف یک رونوشت‌گیرنده است تا کاربر در فرم ایجاد نامه
+//  آن‌ها را یکی‌یکی بیفزاید و چاپ «با رونوشت» از همین جدول بخواند.
+// ============================================================
+
+/// <summary>یک ردیف رونوشت‌گیرنده</summary>
+public class OutgoingLetterCopyToDto
+{
+    public int Id { get; set; }
+    public int OutgoingLetterId { get; set; }
+
+    /// <summary>ترتیب نمایش (از ۱)</summary>
+    public int RowNo { get; set; }
+
+    /// <summary>نام رونوشت‌گیرنده — سازمان یا شخص</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>توضیح/سمت (اختیاری)</summary>
+    public string? Desc { get; set; }
+
+    /// <summary>شماره/کد داخلی مقصد (اختیاری)</summary>
+    public string? RefNo { get; set; }
+}
+
+/// <summary>ذخیره یک ردیف رونوشت — Id=0 یعنی ایجاد جدید</summary>
+public class SaveOutgoingLetterCopyToDto
+{
+    /// <summary>0 = جدید، غیرصفر = ویرایش همان ردیف</summary>
+    public int Id { get; set; }
+
+    [Required(ErrorMessage = "نام رونوشت‌گیرنده الزامی است")]
+    [MaxLength(300, ErrorMessage = "نام رونوشت‌گیرنده حداکثر ۳۰۰ کاراکتر است")]
+    public string Name { get; set; } = "";
+
+    public string? Desc { get; set; }
+
+    public string? RefNo { get; set; }
+}
+
+/// <summary>جایگزینی کامل فهرست رونوشت‌های یک نامه (ذخیرهٔ دسته‌ای از فرم)</summary>
+public class ReplaceOutgoingLetterCopyTosDto
+{
+    public List<SaveOutgoingLetterCopyToDto> Items { get; set; } = new();
 }

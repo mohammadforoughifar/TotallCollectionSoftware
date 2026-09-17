@@ -130,11 +130,13 @@
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">از تاریخ صدور</label>
-                        <input type="date" class="tin" @bind="fFrom" @bind:after="ReloadAsync" />
+                        @* تقویم شمسی — همسان با سایر بخش‌ها (جایگزین type="date" میلادی) *@
+                        <DatePicker @bind-Value="fFrom" @bind:after="ReloadAsync" AllowClear="true" CssClass="tin" />
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">تا تاریخ صدور</label>
-                        <input type="date" class="tin" @bind="fTo" @bind:after="ReloadAsync" />
+                        @* تقویم شمسی — همسان با سایر بخش‌ها (جایگزین type="date" میلادی) *@
+                        <DatePicker @bind-Value="fTo" @bind:after="ReloadAsync" AllowClear="true" CssClass="tin" />
                     </div>
                     <div>
                         <label style="font-size:12px;color:#64748b">پیوست</label>

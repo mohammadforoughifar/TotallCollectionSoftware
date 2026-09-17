@@ -143,6 +143,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             .OrderBy(s => s.Order).ThenBy(s => s.Id)
             .ToListAsync();
 
+        // رونوشت‌گیرندگان از جدول مستقل — منبع اصلی برای چاپ «با رونوشت».
+        // برای نامه‌های قدیمی که ردیفی در این جدول ندارند، ستون متنی CopyTo به کار می‌رود.
+        var copyTos = await _db.OutgoingLetterCopyToes.AsNoTracking()
+            .Where(c => c.OutgoingLetterId == letterId && !c.IsDelete)
+            .OrderBy(c => c.RowNo).ThenBy(c => c.Id)
+            .ToListAsync();
+
         var hasAttachment = await _db.AppAttachments.AsNoTracking()
             .AnyAsync(a => a.Module == "OutgoingLetters" && a.RefId == letterId);
 
@@ -158,7 +165,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         bool isA5 = string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase);
 
-        var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy);
+        var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy, copyTos);
 
         // ==================== قرار دادن روی سربرگ / لوگوی شرکت ====================
         var letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
@@ -196,7 +203,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     /// <summary>ساخت PDF متن نامه (بدون پس‌زمینه) — راست‌به‌چپ با فونت وزیرمتن</summary>
     /// <param name="withCopy">false = نسخهٔ بدون رونوشت (بلوک «رونوشت» چاپ نمی‌شود)</param>
-    private static byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true)
+    private static byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null)
     {
         EnsureFonts();
 
@@ -302,14 +309,41 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     // رونوشت — فقط در نسخهٔ «با رونوشت» چاپ می‌شود.
                     // نسخهٔ «بدون رونوشت» مخصوص تحویل به سازمان مقصد است و
                     // اطلاعِ رونوشت‌گیرندگان داخلی در آن درج نمی‌شود.
-                    if (withCopy && !string.IsNullOrWhiteSpace(letter.CopyTo))
+                    var hasCopyRows = copyTos != null && copyTos.Count > 0;
+                    if (withCopy && (hasCopyRows || !string.IsNullOrWhiteSpace(letter.CopyTo)))
                     {
                         col.Item().PaddingTop(isA5 ? 8 : 14).LineHorizontal(0.5f).LineColor("#cbd5e1");
                         col.Item().PaddingTop(isA5 ? 4 : 6).Text(t =>
                         {
                             t.Span("رونوشت: ").FontFamily("Vazirmatn-Bold").FontSize(fsSmall);
-                            t.Span(letter.CopyTo!).FontSize(fsSmall);
                         });
+
+                        if (hasCopyRows)
+                        {
+                            // هر رونوشت‌گیرنده در یک سطر جداگانه — خواناتر از یک رشتهٔ خام
+                            foreach (var ct in copyTos)
+                            {
+                                var parts = new[] { ct.Desc, ct.RefNo }
+                                    .Where(x => !string.IsNullOrWhiteSpace(x)).ToArray();
+                                var extra = parts.Length == 0 ? "" : string.Join(" — ", parts);
+
+                                col.Item().PaddingTop(2).Text(t =>
+                                {
+                                    t.Span("• ").FontSize(fsSmall);
+                                    t.Span(ct.Name).FontSize(fsSmall);
+                                    if (extra != "")
+                                        t.Span($"  ({extra})").FontSize(fsSmall).FontColor("#555555");
+                                });
+                            }
+                        }
+                        else
+                        {
+                            // نامهٔ قدیمی: هنوز ردیفی در جدول ندارد — متن آزادِ ستون CopyTo
+                            col.Item().PaddingTop(2).Text(t =>
+                            {
+                                t.Span(letter.CopyTo!).FontSize(fsSmall);
+                            });
+                        }
                     }
                 });
 
