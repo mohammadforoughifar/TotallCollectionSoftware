@@ -70,12 +70,15 @@ public class DashboardsController : ControllerBase
     private async Task<IActionResult?> EnsureDashDbAsync()
     {
         await DashboardSchemaV1.EnsureOnceAsync(_db);
+        // ویجت‌های اتوماسیون اداری به جدول IncomingLetters نیاز دارند و این جدول
+        // در مایگریشن SquashedInitial ساخته نشده؛ اینجا خودتعمیر می‌شود.
+        await IncomingLetterSchemaV1.EnsureOnceAsync(_db);
         try
         {
             _ = await _db.UserDashboards.AsNoTracking().Select(d => d.Id).FirstOrDefaultAsync();
             return null;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             var why = DashboardSchemaV1.LastError is { Length: > 0 } e ? " خطای دیتابیس: " + e : "";
             return StatusCode(500, new

@@ -24,6 +24,14 @@ public static class EnumFa
     public static readonly Dictionary<int, string> DocStatus = new()
     { [0] = "پیش‌نویس", [1] = "قطعی", [2] = "باطل‌شده" };
 
+    /// <summary>نوع نامه بر اساس LetterSource.SourceType</summary>
+    public static readonly Dictionary<int, string> LetterSourceType = new()
+    { [1] = "داخلی", [2] = "صادره", [3] = "وارده" };
+
+    /// <summary>وضعیت تایید ارجاع (Erja.TypeTaeed)</summary>
+    public static readonly Dictionary<int, string> ErjaTaeed = new()
+    { [0] = "بدون اقدام", [1] = "تایید", [2] = "رد" };
+
     public static readonly Dictionary<int, string> Settlement = new()
     { [0] = "نسیه", [1] = "نقدی" };
 

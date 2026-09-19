@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Microsoft.EntityFrameworkCore;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Inventory.Shared.Entities;
@@ -66,7 +67,10 @@ public sealed class ReportDatasetProvider : IReportDatasetProvider
         Employees(), AttDaily(), AttRecords(), Leaves(), PaySlips(),
 
         // ================================================== اسناد و مکاتبات و پروژه
-        ArchiveDocs(), InnerLetters(), OutLetters(), ProjectWorks()
+        ArchiveDocs(), InnerLetters(), OutLetters(), ProjectWorks(),
+
+        // ============================= مکاتبات — دیتاست‌های ترکیبی (join)
+        LetterFlow(), InnerLetterFlow(), CartableSummary(), LettersAll()
     };
 
     // =====================================================================
@@ -1022,4 +1026,395 @@ public sealed class ReportDatasetProvider : IReportDatasetProvider
                 .Text("op", "اپراتور", r => r.Operator)
                 .Text("desc", "شرح کار", r => r.Description, def: true),
             "bi-diagram-3", "گزارش‌های کار روزانهٔ پروژه‌ها.", "date", null);
+
+    // =====================================================================
+    //  مکاتبات اداری — دیتاست‌های ترکیبی (چند جدول join شده)
+    //
+    //  چرا؟ دیتاست‌های تک‌جدولی فقط «لیست» می‌دهند. برای گزارش‌های
+    //  مدیریتی (خوانده‌نشده، بی‌پاسخ، تاییدنشده، معوق) باید نامه با
+    //  ارجاع‌ها، کاربران و عملگر join شود.
+    // =====================================================================
+
+    /// <summary>گردش نامه — هر ردیف یک ارجاع + مشخصات نامه و طرفین.</summary>
+    private IReportDataset LetterFlow() =>
+        new ReportDataset<LetterFlowRow>("letter-flow", "گردش نامه‌ها (ارجاع‌ها)",
+            "اسناد و مکاتبات", "InnerLetters",
+            o =>
+            {
+                var db = Db(o);
+                var now = DateTime.Now;
+                return db.Erjas
+                    .Where(e => !e.IsDelete && e.Source != null && !e.Source.IsDelete)
+                    .Select(e => new LetterFlowRow
+                    {
+                        // ---- نامه (بسته به نوع، از یکی از سه جدول) ----
+                        LetterDate =
+                            e.Source.InnerLetter != null ? e.Source.InnerLetter.DateSabt :
+                            e.Source.IncomingLetter != null ? e.Source.IncomingLetter.Date :
+                            e.Source.OutgoingLetter != null ? e.Source.OutgoingLetter.DateSabt :
+                            e.Date,
+                        LetterNumber =
+                            e.Source.InnerLetter != null ? e.Source.InnerLetter.LetterNumber :
+                            e.Source.IncomingLetter != null ? e.Source.IncomingLetter.LetterNumber :
+                            null,
+                        Title =
+                            e.Source.InnerLetter != null ? e.Source.InnerLetter.Title :
+                            e.Source.IncomingLetter != null ? e.Source.IncomingLetter.Title :
+                            null,
+                        SourceType = e.Source.SourceType,
+                        Confidentiality =
+                            e.Source.InnerLetter != null ? e.Source.InnerLetter.Mahramanegi : null,
+                        Urgency =
+                            e.Source.InnerLetter != null ? e.Source.InnerLetter.Foriat : null,
+                        Sender = e.Source.InnerLetter != null && e.Source.InnerLetter.Creator != null
+                            ? (e.Source.InnerLetter.Creator.FirstName + " " + e.Source.InnerLetter.Creator.LastName).Trim()
+                            : null,
+
+                        // ---- ارجاع ----
+                        ErjaDate = e.Date,
+                        ErjaFrom = e.UserSender != null
+                            ? (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim()
+                            : null,
+                        ErjaTo = e.UserReciver != null
+                            ? (e.UserReciver.FirstName + " " + e.UserReciver.LastName).Trim()
+                            : null,
+                        ErjaType = e.Type,
+                        Amalgar = e.Amalgar != null ? e.Amalgar.Title : null,
+                        MatnErja = e.MatnErja,
+
+                        // ---- وضعیت‌ها ----
+                        IsRead = e.IsRead,
+                        IsUnread = !e.IsRead,
+                        HasAnswer = e.Answer != "",
+                        NoAnswer = e.Answer == "",
+                        TypeTaeed = e.TypeTaeed,
+                        IsApproved = e.TypeTaeed == 1,
+                        IsRejected = e.TypeTaeed == 2,
+                        IsNotApproved = e.TypeTaeed == 0,
+                        IsBayegani = e.IsBayegani == true,
+                        IsNeshan = e.IsNeshan,
+
+                        // ---- مهلت ----
+                        Deadline = e.MohlatPasokh,
+                        IsOverdue = e.MohlatPasokh != null
+                                    && e.MohlatPasokh < now
+                                    && e.Answer == "",
+                        ReadDate = e.DateRead,
+                        AnswerDate = e.DateAnswer,
+
+                        // ---- سنجه‌ها ----
+                        Count1 = 1,
+                        UnreadCount = e.IsRead ? 0 : 1,
+                        NoAnswerCount = e.Answer == "" ? 1 : 0,
+                        PendingApprovalCount = e.TypeTaeed == 0 ? 1 : 0,
+                        OverdueCount = (e.MohlatPasokh != null && e.MohlatPasokh < now && e.Answer == "") ? 1 : 0,
+                        HoursToRead = e.DateRead != null
+                            ? (e.DateRead.Value - e.Date).TotalHours : 0,
+                        HoursToAnswer = e.DateAnswer != null
+                            ? (e.DateAnswer.Value - e.Date).TotalHours : 0
+                    });
+            },
+            new ColumnSet<LetterFlowRow>()
+                .Date("ldate", "تاریخ نامه", r => r.LetterDate, anchor: true, def: true)
+                .Text("lno", "شماره نامه", r => r.LetterNumber, def: true)
+                .Text("title", "موضوع", r => r.Title, def: true)
+                .Enum("stype", "نوع نامه", r => r.SourceType, EnumFa.LetterSourceType, def: true)
+                .Text("conf", "محرمانگی", r => r.Confidentiality)
+                .Text("urg", "فوریت", r => r.Urgency)
+                .Text("sender", "ثبت‌کننده نامه", r => r.Sender)
+                .Date("edate", "تاریخ ارجاع", r => r.ErjaDate)
+                .Text("from", "ارجاع‌دهنده", r => r.ErjaFrom, def: true)
+                .Text("to", "گیرنده", r => r.ErjaTo, def: true)
+                .Text("etype", "نوع ارجاع", r => r.ErjaType, def: true, hint: "گیرنده / ارجاع / هامش")
+                .Text("amal", "عملگر", r => r.Amalgar, hint: "جهت اقدام / جهت اطلاع / ...")
+                .Text("matn", "متن ارجاع", r => r.MatnErja)
+                .Bool("read", "خوانده شده", r => r.IsRead, def: true)
+                .Bool("unread", "خوانده نشده", r => r.IsUnread, hint: "برای فیلتر سریع نامه‌های خوانده‌نشده")
+                .Bool("answered", "پاسخ داده شده", r => r.HasAnswer, def: true)
+                .Bool("noanswer", "بی‌پاسخ", r => r.NoAnswer, hint: "هنوز پاسخی ثبت نشده")
+                .Enum("taeed", "وضعیت تایید", r => r.TypeTaeed, EnumFa.ErjaTaeed, def: true)
+                .Bool("approved", "تایید شده", r => r.IsApproved)
+                .Bool("rejected", "رد شده", r => r.IsRejected)
+                .Bool("notapproved", "تایید نشده", r => r.IsNotApproved, hint: "هنوز تایید یا رد نشده")
+                .Bool("bayegani", "بایگانی شده", r => r.IsBayegani)
+                .Bool("star", "نشان‌دار", r => r.IsNeshan)
+                .DateN("deadline", "مهلت پاسخ", r => r.Deadline)
+                .Bool("overdue", "معوق", r => r.IsOverdue, hint: "مهلت گذشته و هنوز بی‌پاسخ")
+                .DateN("rdate", "تاریخ خواندن", r => r.ReadDate)
+                .DateN("adate", "تاریخ پاسخ", r => r.AnswerDate)
+                .IntM("cnt", "تعداد ارجاع", r => r.Count1, "مورد", def: true)
+                .IntM("cunread", "تعداد خوانده‌نشده", r => r.UnreadCount, "مورد")
+                .IntM("cnoans", "تعداد بی‌پاسخ", r => r.NoAnswerCount, "مورد")
+                .IntM("cpend", "تعداد تاییدنشده", r => r.PendingApprovalCount, "مورد")
+                .IntM("covd", "تعداد معوق", r => r.OverdueCount, "مورد")
+                .RealM("h2read", "ساعت تا خواندن", r => r.HoursToRead, 1, "ساعت")
+                .RealM("h2ans", "ساعت تا پاسخ", r => r.HoursToAnswer, 1, "ساعت"),
+            "bi-arrow-left-right",
+            "ترکیب نامه + ارجاع + فرستنده/گیرنده + عملگر. برای گزارش خوانده‌نشده، بی‌پاسخ، تاییدنشده و معوق. " +
+            "مثال: گروه‌بندی روی «گیرنده» با سنجه «تعداد خوانده‌نشده».",
+            "ldate", "cnt");
+
+    /// <summary>نامه داخلی + آمار ارجاع‌هایش — یک ردیف به ازای هر نامه.</summary>
+    private IReportDataset InnerLetterFlow() =>
+        new ReportDataset<InnerLetterFlowRow>("inner-letter-flow", "نامه داخلی + وضعیت ارجاع‌ها",
+            "اسناد و مکاتبات", "InnerLetters",
+            o =>
+            {
+                var db = Db(o);
+                var now = DateTime.Now;
+                return db.InnerLetters.Where(l => !l.IsDelete).Select(l => new InnerLetterFlowRow
+                {
+                    DateSabt = l.DateSabt,
+                    LetterNumber = l.LetterNumber,
+                    Title = l.Title,
+                    Creator = l.Creator != null
+                        ? (l.Creator.FirstName + " " + l.Creator.LastName).Trim()
+                        : null,
+                    Confidentiality = l.Mahramanegi,
+                    Urgency = l.Foriat,
+                    IsNeshan = l.IsNeshan,
+
+                    ErjaCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete),
+                    ReceiverCount = db.Erjas
+                        .Where(e => e.SourceId == l.Id && !e.IsDelete)
+                        .Select(e => e.ReciverUserId).Distinct().Count(),
+                    ReadCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.IsRead),
+                    UnreadCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && !e.IsRead),
+                    AnsweredCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.Answer != ""),
+                    NoAnswerCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.Answer == ""),
+                    ApprovedCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.TypeTaeed == 1),
+                    RejectedCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.TypeTaeed == 2),
+                    PendingApprovalCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.TypeTaeed == 0),
+                    OverdueCount = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete
+                        && e.MohlatPasokh != null && e.MohlatPasokh < now && e.Answer == ""),
+
+                    FullyRead = !db.Erjas.Any(e => e.SourceId == l.Id && !e.IsDelete && !e.IsRead),
+                    FullyAnswered = !db.Erjas.Any(e => e.SourceId == l.Id && !e.IsDelete && e.Answer == ""),
+                    HasOverdue = db.Erjas.Any(e => e.SourceId == l.Id && !e.IsDelete
+                        && e.MohlatPasokh != null && e.MohlatPasokh < now && e.Answer == ""),
+
+                    ReadPercent = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete) == 0 ? 0
+                        : db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.IsRead) * 100.0
+                          / db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete),
+                    AnswerPercent = db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete) == 0 ? 0
+                        : db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete && e.Answer != "") * 100.0
+                          / db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete)
+                });
+            },
+            new ColumnSet<InnerLetterFlowRow>()
+                .Date("date", "تاریخ ثبت", r => r.DateSabt, anchor: true, def: true)
+                .Text("no", "شماره نامه", r => r.LetterNumber, def: true)
+                .Text("title", "موضوع", r => r.Title, def: true)
+                .Text("creator", "ایجادکننده", r => r.Creator, def: true)
+                .Text("conf", "محرمانگی", r => r.Confidentiality)
+                .Text("urg", "فوریت", r => r.Urgency)
+                .Bool("star", "نشان‌دار", r => r.IsNeshan)
+                .Bool("fullread", "همه خوانده‌اند", r => r.FullyRead, def: true)
+                .Bool("fullans", "همه پاسخ داده‌اند", r => r.FullyAnswered, def: true)
+                .Bool("hasovd", "دارای معوق", r => r.HasOverdue)
+                .IntM("erjas", "تعداد ارجاع", r => r.ErjaCount, "مورد", def: true)
+                .IntM("recv", "تعداد گیرنده", r => r.ReceiverCount, "نفر")
+                .IntM("read", "خوانده‌شده", r => r.ReadCount, "مورد")
+                .IntM("unread", "خوانده‌نشده", r => r.UnreadCount, "مورد", def: true)
+                .IntM("ans", "پاسخ‌داده", r => r.AnsweredCount, "مورد")
+                .IntM("noans", "بی‌پاسخ", r => r.NoAnswerCount, "مورد", def: true)
+                .IntM("apr", "تاییدشده", r => r.ApprovedCount, "مورد")
+                .IntM("rej", "ردشده", r => r.RejectedCount, "مورد")
+                .IntM("pend", "تاییدنشده", r => r.PendingApprovalCount, "مورد")
+                .IntM("ovd", "معوق", r => r.OverdueCount, "مورد")
+                .RealM("readp", "درصد خوانده‌شده", r => r.ReadPercent, 0, "%")
+                .RealM("ansp", "درصد پاسخ‌داده", r => r.AnswerPercent, 0, "%"),
+            "bi-envelope-check",
+            "هر ردیف یک نامه داخلی به‌همراه آمار ارجاع‌هایش: چند نفر خوانده‌اند، چند نفر پاسخ داده‌اند، " +
+            "چند مورد معوق است. برای پیگیری نامه‌های بی‌پاسخ.",
+            "date", "erjas");
+
+    /// <summary>کارتابل کاربران — یک ردیف به ازای هر کاربر با شمارش وضعیت‌ها.</summary>
+    private IReportDataset CartableSummary() =>
+        new ReportDataset<CartableSummaryRow>("cartable-summary", "کارتابل کاربران (خلاصه وضعیت)",
+            "اسناد و مکاتبات", "InnerLetters",
+            o =>
+            {
+                var db = Db(o);
+                var now = DateTime.Now;
+                return db.Users.Where(u => u.IsActive).Select(u => new CartableSummaryRow
+                {
+                    User = u.Username,
+                    FullName = (u.FirstName + " " + u.LastName).Trim() != ""
+                        ? (u.FirstName + " " + u.LastName).Trim()
+                        : u.Username,
+                    Total = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete),
+                    Unread = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete && !e.IsRead),
+                    NoAnswer = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete && e.Answer == ""),
+                    Answered = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete && e.Answer != ""),
+                    Approved = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete && e.TypeTaeed == 1),
+                    Rejected = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete && e.TypeTaeed == 2),
+                    PendingApproval = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete && e.TypeTaeed == 0),
+                    Overdue = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete
+                        && e.MohlatPasokh != null && e.MohlatPasokh < now && e.Answer == ""),
+                    Bayegani = db.Erjas.Count(e => e.ReciverUserId == u.Id && !e.IsDelete && e.IsBayegani == true),
+                    AvgHoursToRead = db.Erjas
+                        .Where(e => e.ReciverUserId == u.Id && !e.IsDelete && e.DateRead != null)
+                        .Average(e => (double?)(e.DateRead!.Value - e.Date).TotalHours) ?? 0,
+                    AvgHoursToAnswer = db.Erjas
+                        .Where(e => e.ReciverUserId == u.Id && !e.IsDelete && e.DateAnswer != null)
+                        .Average(e => (double?)(e.DateAnswer!.Value - e.Date).TotalHours) ?? 0
+                });
+            },
+            new ColumnSet<CartableSummaryRow>()
+                .Text("user", "نام کاربری", r => r.User)
+                .Text("name", "نام کاربر", r => r.FullName, def: true)
+                .IntM("total", "کل کارتابل", r => r.Total, "مورد", def: true)
+                .IntM("unread", "خوانده‌نشده", r => r.Unread, "مورد", def: true)
+                .IntM("noans", "بی‌پاسخ", r => r.NoAnswer, "مورد", def: true)
+                .IntM("ans", "پاسخ‌داده", r => r.Answered, "مورد")
+                .IntM("apr", "تاییدشده", r => r.Approved, "مورد")
+                .IntM("rej", "ردشده", r => r.Rejected, "مورد")
+                .IntM("pend", "تاییدنشده", r => r.PendingApproval, "مورد", def: true)
+                .IntM("ovd", "معوق", r => r.Overdue, "مورد", def: true)
+                .IntM("bay", "بایگانی‌شده", r => r.Bayegani, "مورد")
+                .RealM("avgread", "میانگین زمان خواندن", r => r.AvgHoursToRead, 1, "ساعت")
+                .RealM("avgans", "میانگین زمان پاسخ", r => r.AvgHoursToAnswer, 1, "ساعت"),
+            "bi-person-lines-fill",
+            "یک ردیف به ازای هر کاربر: کل کارتابل، خوانده‌نشده، بی‌پاسخ، تاییدنشده، معوق و میانگین زمان پاسخ. " +
+            "برای مقایسه عملکرد کاربران در رسیدگی به مکاتبات.",
+            null, "total");
+
+    /// <summary>
+    /// همه نامه‌ها (داخلی + صادره + وارده) در یک دیتاست — مخصوص نمودار.
+    /// سه جدول با Concat یکی می‌شوند تا بتوان نمودار مقایسه‌ای بین انواع نامه کشید.
+    /// </summary>
+    private IReportDataset LettersAll() =>
+        new ReportDataset<LetterAllRow>("letters-all", "همه نامه‌ها (داخلی + صادره + وارده)",
+            "اسناد و مکاتبات", "InnerLetters",
+            o =>
+            {
+                var db = Db(o);
+                var now = DateTime.Now;
+
+                // یک کوئری واحد روی LetterSources — سه نوع نامه از طریق
+                // navigation های یک‌به‌یک خوانده می‌شوند. (Concat بعد از Select
+                // توسط EF Core ترجمه نمی‌شود، برای همین از این روش استفاده شده.)
+                return db.LetterSources
+                    .Where(x => !x.IsDelete
+                        && (x.InnerLetter != null || x.OutgoingLetter != null || x.IncomingLetter != null))
+                    .Select(x => new LetterAllRow
+                    {
+                        Date =
+                            x.InnerLetter != null ? x.InnerLetter.DateSabt :
+                            x.OutgoingLetter != null ? x.OutgoingLetter.DateSabt :
+                            x.IncomingLetter!.DateErsal,
+                        DateClosed =
+                            x.OutgoingLetter != null ? x.OutgoingLetter.DateSadere :
+                            x.IncomingLetter != null ? (DateTime?)x.IncomingLetter.Date : null,
+                        LetterNumber =
+                            x.InnerLetter != null ? x.InnerLetter.LetterNumber :
+                            x.OutgoingLetter != null
+                                ? (x.OutgoingLetter.SadereNumber ?? x.OutgoingLetter.LetterNumber)
+                                : x.IncomingLetter!.LetterNumber,
+                        Title =
+                            x.InnerLetter != null ? x.InnerLetter.Title :
+                            x.OutgoingLetter != null ? x.OutgoingLetter.Title :
+                            x.IncomingLetter!.Title,
+                        SourceType = x.SourceType,
+                        TypeName =
+                            x.InnerLetter != null ? "داخلی" :
+                            x.OutgoingLetter != null ? "صادره" : "وارده",
+                        Creator =
+                            x.InnerLetter != null
+                                ? db.Users.Where(u => u.Id == x.InnerLetter.CreatorUserId)
+                                    .Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefault()
+                            : x.OutgoingLetter != null
+                                ? db.Users.Where(u => u.Id == x.OutgoingLetter.CreatorUserId)
+                                    .Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefault()
+                            : db.Users.Where(u => u.Id == x.IncomingLetter!.CreateUserId)
+                                    .Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefault(),
+                        Confidentiality =
+                            x.InnerLetter != null ? x.InnerLetter.Mahramanegi :
+                            x.OutgoingLetter != null ? x.OutgoingLetter.Mahramanegi :
+                            x.IncomingLetter!.Mahramanegi == 0 ? "عادی" :
+                            x.IncomingLetter!.Mahramanegi == 1 ? "محرمانه" :
+                            x.IncomingLetter!.Mahramanegi == 2 ? "خیلی محرمانه" : "سرّی",
+                        Urgency =
+                            x.InnerLetter != null ? x.InnerLetter.Foriat :
+                            x.OutgoingLetter != null ? x.OutgoingLetter.Foriat :
+                            x.IncomingLetter!.Foriat == 0 ? "عادی" :
+                            x.IncomingLetter!.Foriat == 1 ? "فوری" :
+                            x.IncomingLetter!.Foriat == 2 ? "خیلی فوری" : "آنی",
+                        Counterparty =
+                            x.OutgoingLetter != null ? x.OutgoingLetter.ReceiverOrganization :
+                            x.IncomingLetter != null ? x.IncomingLetter.Ferestande : null,
+                        Status =
+                            x.InnerLetter != null ? "ثبت‌شده" :
+                            x.OutgoingLetter != null
+                                ? (x.OutgoingLetter.Status == 0 ? "پیش‌نویس" :
+                                   x.OutgoingLetter.Status == 1 ? "در گردش تایید" :
+                                   x.OutgoingLetter.Status == 2 ? "تایید شده" :
+                                   x.OutgoingLetter.Status == 3 ? "صادر شده" : "نامشخص")
+                                : (x.IncomingLetter!.IsBayegani ? "بایگانی‌شده" : "در جریان"),
+                        SendMethod =
+                            x.InnerLetter != null ? "اتوماسیون" :
+                            x.OutgoingLetter != null ? x.OutgoingLetter.SendMethod :
+                            x.IncomingLetter!.TypeErsal,
+                        IsNeshan =
+                            x.InnerLetter != null ? x.InnerLetter.IsNeshan :
+                            x.OutgoingLetter != null ? x.OutgoingLetter.IsNeshan :
+                            x.IncomingLetter!.IsNeshan,
+                        IsBayegani = x.IncomingLetter != null && x.IncomingLetter.IsBayegani,
+
+                        ErjaCount = x.Erjas.Count(e => !e.IsDelete),
+                        UnreadCount = x.Erjas.Count(e => !e.IsDelete && !e.IsRead),
+                        NoAnswerCount = x.Erjas.Count(e => !e.IsDelete && e.Answer == ""),
+                        OverdueCount = x.Erjas.Count(e => !e.IsDelete
+                            && e.MohlatPasokh != null && e.MohlatPasokh < now && e.Answer == ""),
+                        HasUnread = x.Erjas.Any(e => !e.IsDelete && !e.IsRead),
+                        HasNoAnswer = x.Erjas.Any(e => !e.IsDelete && e.Answer == ""),
+                        HasOverdue = x.Erjas.Any(e => !e.IsDelete
+                            && e.MohlatPasokh != null && e.MohlatPasokh < now && e.Answer == ""),
+
+                        Count1 = 1,
+                        AttachmentCount = db.AppAttachments.Count(a => a.RefId == x.Id
+                            && (a.Module == "InnerLetters" || a.Module == "OutgoingLetters"
+                                || a.Module == "IncomingLetters")),
+                        DaysOpen =
+                            x.OutgoingLetter != null && x.OutgoingLetter.DateSadere != null
+                                ? (x.OutgoingLetter.DateSadere.Value - x.OutgoingLetter.DateSabt).TotalDays
+                            : x.InnerLetter != null
+                                ? (now - x.InnerLetter.DateSabt).TotalDays
+                            : x.OutgoingLetter != null
+                                ? (now - x.OutgoingLetter.DateSabt).TotalDays
+                                : (now - x.IncomingLetter!.DateErsal).TotalDays
+                    });
+            },
+            new ColumnSet<LetterAllRow>()
+                .Date("date", "تاریخ ثبت", r => r.Date, anchor: true, def: true)
+                .DateN("dclose", "تاریخ صدور/نامه", r => r.DateClosed)
+                .Text("type", "نوع نامه", r => r.TypeName, def: true,
+                      hint: "داخلی / صادره / وارده — بهترین بعد برای نمودار دایره‌ای")
+                .Enum("stype", "کد نوع", r => r.SourceType, EnumFa.LetterSourceType)
+                .Text("no", "شماره نامه", r => r.LetterNumber, def: true)
+                .Text("title", "موضوع", r => r.Title, def: true)
+                .Text("creator", "ثبت‌کننده", r => r.Creator)
+                .Text("status", "وضعیت", r => r.Status, def: true)
+                .Text("conf", "محرمانگی", r => r.Confidentiality)
+                .Text("urg", "فوریت", r => r.Urgency)
+                .Text("party", "طرف مقابل", r => r.Counterparty,
+                      hint: "گیرنده بیرونی (صادره) یا فرستنده بیرونی (وارده)")
+                .Text("method", "روش ارسال", r => r.SendMethod)
+                .Bool("star", "نشان‌دار", r => r.IsNeshan)
+                .Bool("bay", "بایگانی‌شده", r => r.IsBayegani)
+                .Bool("hunread", "دارای خوانده‌نشده", r => r.HasUnread)
+                .Bool("hnoans", "دارای بی‌پاسخ", r => r.HasNoAnswer)
+                .Bool("hovd", "دارای معوق", r => r.HasOverdue)
+                .IntM("cnt", "تعداد نامه", r => r.Count1, "نامه", def: true)
+                .IntM("erjas", "تعداد ارجاع", r => r.ErjaCount, "مورد")
+                .IntM("unread", "خوانده‌نشده", r => r.UnreadCount, "مورد")
+                .IntM("noans", "بی‌پاسخ", r => r.NoAnswerCount, "مورد")
+                .IntM("ovd", "معوق", r => r.OverdueCount, "مورد")
+                .IntM("att", "تعداد پیوست", r => r.AttachmentCount, "فایل")
+                .RealM("days", "روزهای باز", r => r.DaysOpen, 1, "روز"),
+            "bi-pie-chart-fill",
+            "هر سه نوع نامه (داخلی، صادره، وارده) در یک جدول. برای نمودار: بعد = «نوع نامه»، " +
+            "سنجه = «تعداد نامه». یا بعد = «تاریخ ثبت» با گروه‌بندی ماه برای نمودار خطی روند.",
+            "date", "cnt");
 }

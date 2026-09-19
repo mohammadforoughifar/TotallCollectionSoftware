@@ -437,3 +437,144 @@ public class ReportWorkRow
     public string? Operator { get; set; }
     public string? Description { get; set; }
 }
+
+// =====================================================================
+//  ردیف‌های ترکیبی (join) مکاتبات اداری
+//  هر ردیف = یک «ارجاع» که با نامه، فرستنده، گیرنده و عملگر join شده
+//  تا بتوان گزارش‌های وضعیتی داد: خوانده‌نشده، بی‌پاسخ، تاییدنشده، معوق
+// =====================================================================
+
+/// <summary>گردش نامه — هر ردیف یک ارجاع به‌همراه مشخصات نامه و طرفین.</summary>
+public class LetterFlowRow
+{
+    // --- مشخصات نامه (از LetterSource + InnerLetter/Incoming/Outgoing) ---
+    public DateTime LetterDate { get; set; }
+    public string? LetterNumber { get; set; }
+    public string? Title { get; set; }
+    public int SourceType { get; set; }            // 1=داخلی 2=صادره 3=وارده
+    public string? Confidentiality { get; set; }
+    public string? Urgency { get; set; }
+    public string? Sender { get; set; }            // ثبت‌کننده نامه
+
+    // --- مشخصات ارجاع (Erja) ---
+    public DateTime ErjaDate { get; set; }
+    public string? ErjaFrom { get; set; }          // ارجاع‌دهنده
+    public string? ErjaTo { get; set; }            // گیرنده ارجاع
+    public string? ErjaType { get; set; }          // گیرنده / ارجاع / هامش
+    public string? Amalgar { get; set; }           // جهت اقدام / جهت اطلاع / ...
+    public string? MatnErja { get; set; }
+
+    // --- وضعیت‌ها (همان چیزی که برای گزارش لازم است) ---
+    public bool IsRead { get; set; }
+    public bool IsUnread { get; set; }             // معکوس IsRead — برای شمارش مستقیم
+    public bool HasAnswer { get; set; }
+    public bool NoAnswer { get; set; }             // بی‌پاسخ
+    public int TypeTaeed { get; set; }             // 0=بدون اقدام 1=تایید 2=رد
+    public bool IsApproved { get; set; }
+    public bool IsRejected { get; set; }
+    public bool IsNotApproved { get; set; }        // هنوز تایید/رد نشده
+    public bool IsBayegani { get; set; }
+    public bool IsNeshan { get; set; }
+
+    // --- مهلت و تاخیر ---
+    public DateTime? Deadline { get; set; }
+    public bool IsOverdue { get; set; }            // مهلت گذشته و هنوز پاسخ نداده
+    public DateTime? ReadDate { get; set; }
+    public DateTime? AnswerDate { get; set; }
+
+    // --- سنجه‌های عددی (برای میانگین/جمع) ---
+    public int Count1 { get; set; }                // همیشه ۱ — برای شمارش
+    public int UnreadCount { get; set; }
+    public int NoAnswerCount { get; set; }
+    public int PendingApprovalCount { get; set; }
+    public int OverdueCount { get; set; }
+    public double HoursToRead { get; set; }        // ساعت تا خواندن
+    public double HoursToAnswer { get; set; }      // ساعت تا پاسخ
+}
+
+/// <summary>کارتابل کاربران — یک ردیف به ازای هر کاربر با شمارش وضعیت‌ها.</summary>
+public class CartableSummaryRow
+{
+    public string? User { get; set; }
+    public string? FullName { get; set; }
+    public int Total { get; set; }
+    public int Unread { get; set; }
+    public int NoAnswer { get; set; }
+    public int Answered { get; set; }
+    public int Approved { get; set; }
+    public int Rejected { get; set; }
+    public int PendingApproval { get; set; }
+    public int Overdue { get; set; }
+    public int Bayegani { get; set; }
+    public double AvgHoursToRead { get; set; }
+    public double AvgHoursToAnswer { get; set; }
+}
+
+/// <summary>نامه داخلی + آمار ارجاع‌هایش (یک ردیف به ازای هر نامه).</summary>
+public class InnerLetterFlowRow
+{
+    public DateTime DateSabt { get; set; }
+    public string? LetterNumber { get; set; }
+    public string? Title { get; set; }
+    public string? Creator { get; set; }
+    public string? Confidentiality { get; set; }
+    public string? Urgency { get; set; }
+    public bool IsNeshan { get; set; }
+
+    // --- آمار ارجاع‌ها (subquery روی Erjas) ---
+    public int ErjaCount { get; set; }
+    public int ReceiverCount { get; set; }
+    public int ReadCount { get; set; }
+    public int UnreadCount { get; set; }
+    public int AnsweredCount { get; set; }
+    public int NoAnswerCount { get; set; }
+    public int ApprovedCount { get; set; }
+    public int RejectedCount { get; set; }
+    public int PendingApprovalCount { get; set; }
+    public int OverdueCount { get; set; }
+
+    // --- وضعیت کلی نامه ---
+    public bool FullyRead { get; set; }            // همه گیرندگان خوانده‌اند
+    public bool FullyAnswered { get; set; }        // همه پاسخ داده‌اند
+    public bool HasOverdue { get; set; }
+    public double ReadPercent { get; set; }        // درصد خوانده‌شده
+    public double AnswerPercent { get; set; }
+}
+
+/// <summary>
+/// همه نامه‌ها (داخلی + صادره + وارده) در یک دیتاست واحد — مخصوص نمودار.
+/// هر ردیف = یک نامه، با بعدهای مشترک (نوع، وضعیت، محرمانگی، فوریت) و
+/// آمار ارجاع‌ها. برای نمودار میله‌ای/دایره‌ای بر اساس نوع نامه.
+/// </summary>
+public class LetterAllRow
+{
+    // --- بعدهای مشترک ---
+    public DateTime Date { get; set; }             // تاریخ ثبت
+    public DateTime? DateClosed { get; set; }      // صدور (صادره) یا ورود (وارده)
+    public string? LetterNumber { get; set; }
+    public string? Title { get; set; }
+    public int SourceType { get; set; }            // 1=داخلی 2=صادره 3=وارده
+    public string? TypeName { get; set; }          // «داخلی» / «صادره» / «وارده»
+    public string? Creator { get; set; }
+    public string? Confidentiality { get; set; }   // یکسان‌سازی‌شده به متن
+    public string? Urgency { get; set; }
+    public string? Counterparty { get; set; }      // گیرنده بیرونی (صادره) یا فرستنده بیرونی (وارده)
+    public string? Status { get; set; }            // وضعیت یکسان‌سازی‌شده
+    public string? SendMethod { get; set; }        // روش ارسال/دریافت
+    public bool IsNeshan { get; set; }
+    public bool IsBayegani { get; set; }
+
+    // --- آمار ارجاع ---
+    public int ErjaCount { get; set; }
+    public int UnreadCount { get; set; }
+    public int NoAnswerCount { get; set; }
+    public int OverdueCount { get; set; }
+    public bool HasUnread { get; set; }
+    public bool HasNoAnswer { get; set; }
+    public bool HasOverdue { get; set; }
+
+    // --- سنجه‌ها ---
+    public int Count1 { get; set; }                // همیشه ۱ — شمارش نامه
+    public int AttachmentCount { get; set; }
+    public double DaysOpen { get; set; }           // روزهای باز بودن
+}

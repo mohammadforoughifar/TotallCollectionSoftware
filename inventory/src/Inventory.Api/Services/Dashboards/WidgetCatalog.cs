@@ -120,6 +120,68 @@ public static class WidgetCatalog
               DashWidgetKind.Chart, 4, 3, false, "عدد", "work-orders?tab=stats", "توزیع وضعیت دستورهای کار",
               DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
 
+            // ==================== اتوماسیون اداری ====================
+            W("off-letters-count", "نامه‌های ثبت‌شده", "اتوماسیون اداری", "bi-envelope-paper", "InnerLetters",
+              DashWidgetKind.Kpi, 3, 2, true, "نامه", "letters", "تعداد کل نامه‌های داخلی، صادره و واردهٔ ثبت‌شده در بازه"),
+            W("off-letters-by-type", "نامه‌ها به تفکیک نوع", "اتوماسیون اداری", "bi-pie-chart-fill", "InnerLetters",
+              DashWidgetKind.Chart, 4, 3, true, "نامه", "letters", "سهم نامه‌های داخلی، صادره و وارده از کل نامه‌های بازه",
+              DashChartType.Pie, DashChartType.Doughnut, DashChartType.Bar),
+            W("off-letters-trend", "روند نامه‌ها", "اتوماسیون اداری", "bi-graph-up-arrow", "InnerLetters",
+              DashWidgetKind.Chart, 6, 3, true, "نامه", "letters", "تعداد نامه به تفکیک ماه و نوع (داخلی/صادره/وارده) در ۱۲ ماه اخیر",
+              DashChartType.Line, DashChartType.Bar),
+            W("off-letters-by-status", "وضعیت نامه‌ها", "اتوماسیون اداری", "bi-kanban", "InnerLetters",
+              DashWidgetKind.Chart, 4, 3, true, "نامه", "letters", "توزیع وضعیت نامه‌ها (پیش‌نویس، در گردش، صادر شده، در جریان، بایگانی‌شده)",
+              DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+            W("off-letters-by-urgency", "فوریت نامه‌ها", "اتوماسیون اداری", "bi-alarm", "InnerLetters",
+              DashWidgetKind.Chart, 4, 3, true, "نامه", "letters", "توزیع فوریت نامه‌ها به تفکیک عادی/فوری/خیلی فوری/آنی",
+              DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+            W("off-erja-unread", "ارجاع‌های خوانده‌نشده", "اتوماسیون اداری", "bi-envelope-exclamation", "InnerLetters",
+              DashWidgetKind.Kpi, 3, 2, false, "مورد", "letters/inbox", "ارجاع‌هایی که هنوز خوانده نشده‌اند"),
+
+            // ---------- نامه صادره ----------
+            W("off-out-count", "نامه‌های صادره", "اتوماسیون اداری", "bi-envelope-arrow-up", "InnerLetters",
+              DashWidgetKind.Kpi, 3, 2, true, "نامه", "letters/outgoing", "تعداد نامه‌های صادرهٔ ثبت‌شده در بازه"),
+            W("off-out-by-status", "وضعیت نامه‌های صادره", "اتوماسیون اداری", "bi-send-check", "InnerLetters",
+              DashWidgetKind.Chart, 4, 3, true, "نامه", "letters/outgoing",
+              "توزیع وضعیت نامه‌های صادره: پیش‌نویس، در گردش تایید، تایید شده، صادر شده",
+              DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+            W("off-out-by-method", "روش ارسال صادره", "اتوماسیون اداری", "bi-truck", "InnerLetters",
+              DashWidgetKind.Chart, 4, 3, true, "نامه", "letters/outgoing",
+              "سهم هر روش ارسال (پست، ایمیل، پیک، نمابر و ...) در نامه‌های صادره",
+              DashChartType.Pie, DashChartType.Doughnut, DashChartType.Bar),
+            W("off-out-trend", "روند نامه‌های صادره", "اتوماسیون اداری", "bi-graph-up", "InnerLetters",
+              DashWidgetKind.Chart, 6, 3, true, "نامه", "letters/outgoing",
+              "مقایسهٔ ماهانهٔ نامه‌های ثبت‌شده و نامه‌های واقعاً صادرشده (۱۲ ماه اخیر)",
+              DashChartType.Line, DashChartType.Bar),
+            W("off-out-top-receivers", "گیرندگان پرمکاتبه", "اتوماسیون اداری", "bi-building-up", "InnerLetters",
+              DashWidgetKind.Table, 6, 3, true, "", "letters/outgoing",
+              "سازمان‌هایی که بیشترین نامهٔ صادره برایشان ارسال شده"),
+            W("off-out-pending", "صادره در انتظار صدور", "اتوماسیون اداری", "bi-hourglass-split", "InnerLetters",
+              DashWidgetKind.Kpi, 3, 2, false, "نامه", "letters/outgoing",
+              "نامه‌های صادره‌ای که هنوز صادر نشده‌اند (پیش‌نویس یا در گردش تایید)"),
+
+            // ---------- نامه داخلی ----------
+            W("off-inner-count", "نامه‌های داخلی", "اتوماسیون اداری", "bi-envelope-paper-heart", "InnerLetters",
+              DashWidgetKind.Kpi, 3, 2, true, "نامه", "letters", "تعداد نامه‌های داخلی ثبت‌شده در بازه"),
+            W("off-inner-by-urgency", "فوریت نامه‌های داخلی", "اتوماسیون اداری", "bi-lightning-charge", "InnerLetters",
+              DashWidgetKind.Chart, 4, 3, true, "نامه", "letters",
+              "توزیع فوریت نامه‌های داخلی (عادی، فوری، آنی)",
+              DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+            W("off-inner-by-conf", "محرمانگی نامه‌های داخلی", "اتوماسیون اداری", "bi-shield-lock", "InnerLetters",
+              DashWidgetKind.Chart, 4, 3, true, "نامه", "letters",
+              "توزیع سطح محرمانگی نامه‌های داخلی (عادی، محرمانه، سری)",
+              DashChartType.Doughnut, DashChartType.Pie, DashChartType.Bar),
+            W("off-inner-trend", "روند نامه‌های داخلی", "اتوماسیون اداری", "bi-activity", "InnerLetters",
+              DashWidgetKind.Chart, 6, 3, true, "نامه", "letters",
+              "تعداد نامه‌های داخلی به تفکیک ماه (۱۲ ماه اخیر)",
+              DashChartType.Line, DashChartType.Bar),
+            W("off-inner-top-senders", "پرمکاتبه‌ترین ثبت‌کنندگان", "اتوماسیون اداری", "bi-person-lines-fill", "InnerLetters",
+              DashWidgetKind.Table, 6, 3, true, "", "letters",
+              "کاربرانی که بیشترین نامهٔ داخلی را ثبت کرده‌اند"),
+            W("off-inner-overdue", "نامه‌های داخلی معوق", "اتوماسیون اداری", "bi-clock-history", "InnerLetters",
+              DashWidgetKind.Kpi, 3, 2, false, "نامه", "letters/inbox",
+              "نامه‌های داخلی که مهلت پاسخ ارجاعشان گذشته و هنوز بی‌پاسخ‌اند"),
+
             // ==================== سایر ماژول‌ها ====================
             W("it-open", "درخواست‌های IT باز", "مدیریت سیستم", "bi-headset", "ItRequests",
               DashWidgetKind.Kpi, 3, 2, false, "عدد", "it-requests", "درخواست‌های خدمت IT که هنوز بسته نشده‌اند"),
@@ -132,7 +194,8 @@ public static class WidgetCatalog
         };
 
         // گزینه‌های اختصاصی
-        foreach (var k in new[] { "fac-top-parties", "fac-top-products", "prod-reorder-list", "trs-cheques-due", "doc-expiring" })
+        foreach (var k in new[] { "fac-top-parties", "fac-top-products", "prod-reorder-list", "trs-cheques-due", "doc-expiring",
+                                  "off-out-top-receivers", "off-inner-top-senders" })
             list.First(x => x.Key == k).Options.Add(Limit(k == "trs-cheques-due" || k == "doc-expiring" ? 8 : 5));
 
         return list.ToArray();
