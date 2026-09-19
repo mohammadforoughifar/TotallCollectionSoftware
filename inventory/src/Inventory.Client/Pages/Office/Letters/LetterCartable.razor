@@ -570,12 +570,12 @@
 
     private const int PageSize = 15;
     private int page = 1;
+    private int totalServerCount = 0;
 
-    private int TotalCount => folder == "draft" ? FilteredDrafts.Count : Filtered.Count;
+    private int TotalCount => folder == "draft" ? FilteredDrafts.Count : totalServerCount;
     private int PageCount => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
 
-    private List<InnerLetterListItemDto> Paged =>
-        Filtered.Skip((page - 1) * PageSize).Take(PageSize).ToList();
+    private List<InnerLetterListItemDto> Paged => Filtered;
 
     private List<PishnevisDto> PagedDrafts =>
         FilteredDrafts.Skip((page - 1) * PageSize).Take(PageSize).ToList();
@@ -593,6 +593,7 @@
     {
         if (p < 1 || p > PageCount || p == page) return;
         page = p;
+        _ = InvokeAsync(async () => { await ReloadAsync(keepSelection: true, resetPage: false); StateHasChanged(); });
     }
 
     protected override async Task OnInitializedAsync()
@@ -630,27 +631,40 @@
         _ = InvokeAsync(async () => { await ReloadAsync(keepSelection: true); StateHasChanged(); });
     }
 
-    private async Task ReloadAsync() { page = 1; await ReloadAsync(false); }
+    private async Task ReloadAsync() { await ReloadAsync(false, true); }
 
-    private async Task ReloadAsync(bool keepSelection)
+    private async Task ReloadAsync(bool keepSelection, bool resetPage = true)
     {
+        if (resetPage) page = 1;
         loading = true;
         try
         {
             var s = string.IsNullOrWhiteSpace(search) ? null : search;
-            switch (folder)
+            var unread = filter == "unread" ? (bool?)true : null;
+            if (folder == "draft")
             {
-                case "sent": items = await LetterSvc.GetSentAsync(s); break;
-                case "draft": drafts = await LetterSvc.GetPishnevisListAsync(s); break;
-                case "archive": items = await LetterSvc.GetArchiveAsync(s); break;
-                case "starred":
-                    // نشان‌شده‌ها = دریافتی‌های نشان‌شده + ارسالی‌های نشان‌شده
-                    var inboxStar = await LetterSvc.GetInboxAsync(s);
-                    var sentStar = await LetterSvc.GetSentAsync(s);
-                    items = inboxStar.Concat(sentStar.Where(x => inboxStar.All(i => i.LetterId != x.LetterId)))
-                                     .OrderByDescending(x => x.Date).ToList();
-                    break;
-                default: items = await LetterSvc.GetInboxAsync(s); break;
+                drafts = await LetterSvc.GetPishnevisListAsync(s);
+            }
+            else
+            {
+                PagedResult<InnerLetterListItemDto> res;
+                switch (folder)
+                {
+                    case "sent":
+                        res = await LetterSvc.GetSentAsync(s, page, PageSize);
+                        break;
+                    case "archive":
+                        res = await LetterSvc.GetArchiveAsync(s, page, PageSize);
+                        break;
+                    case "starred":
+                        res = await LetterSvc.GetInboxAsync(s, unread, page, PageSize);
+                        break;
+                    default:
+                        res = await LetterSvc.GetInboxAsync(s, unread, page, PageSize);
+                        break;
+                }
+                items = res.Items;
+                totalServerCount = res.TotalCount;
             }
             stats = await LetterSvc.GetStatsAsync();
             if (keepSelection && selected != null)
@@ -675,7 +689,7 @@
         await ReloadAsync();
     }
 
-    private void SetFilter(string f) { filter = f; page = 1; }
+    private void SetFilter(string f) { filter = f; page = 1; _ = ReloadAsync(); }
 
     private void ToggleMenu(int id) => openMenuId = openMenuId == id ? 0 : id;
     private void CloseMenus() => openMenuId = 0;

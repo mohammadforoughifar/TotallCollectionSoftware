@@ -175,6 +175,12 @@
                             }
                         </NavLink>
                     }
+                    @if (Auth.CanSee("IncomingLetters"))
+                    {
+                        <NavLink class="nav-link" href="incoming-letters" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                            <i class="bi bi-inbox-fill"></i><span>کارتابل نامه وارده</span>
+                        </NavLink>
+                    }
                     @if (Auth.CanSee("OutgoingLetters"))
                     {
                         <NavLink class="nav-link" href="outgoing-letters" Match="NavLinkMatch.All" @onclick="NotifyClose">

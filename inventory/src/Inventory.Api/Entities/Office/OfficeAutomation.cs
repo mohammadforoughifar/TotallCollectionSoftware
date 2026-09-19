@@ -27,6 +27,7 @@ public class LetterSource
 
     public InnerLetter? InnerLetter { get; set; }
     public OutgoingLetter? OutgoingLetter { get; set; }
+    public IncomingLetter? IncomingLetter { get; set; }
     public ICollection<Erja> Erjas { get; set; } = new List<Erja>();
     public ICollection<OutgoingLetterSigner> OutgoingSigners { get; set; } = new List<OutgoingLetterSigner>();
 

@@ -152,8 +152,13 @@ public class EmailClientService : IEmailClientService
     public Task ArchiveAsync(string box, int id, int folderId) =>
         _api.PostAsync<MsgResponse>("api/email/archive", new EmailArchiveDto { Box = box, Id = id, FolderId = folderId });
 
-    public string AttachmentDownloadUrl(int attachmentId) =>
-        _api.BuildUrl($"api/email/attachments/{attachmentId}/download");
+    public string AttachmentDownloadUrl(int attachmentId)
+    {
+        var url = _api.BuildUrl($"api/email/attachments/{attachmentId}/download");
+        return string.IsNullOrWhiteSpace(_auth.Token)
+            ? url
+            : $"{url}?access_token={Uri.EscapeDataString(_auth.Token)}";
+    }
 
     public async Task<(byte[] Data, string FileName)> DownloadAttachmentAsync(int attachmentId)
     {
