@@ -19,6 +19,12 @@ public interface IEmailClientService
 
     // ---------- پیام‌ها ----------
     Task<EmailSyncResultDto> SyncAsync(int emailId);
+
+    /// <summary>همگام‌سازیِ افزایشیِ صندوق دریافتیِ همه‌ی حساب‌ها</summary>
+    Task<EmailSyncResultDto> SyncInboxAsync();
+
+    /// <summary>همگام‌سازیِ افزایشیِ صندوق ارسالیِ همه‌ی حساب‌ها</summary>
+    Task<EmailSyncResultDto> SyncSentAsync();
     Task<List<EmailMessageListItemDto>> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null, int? folderId = null);
     Task<List<EmailMessageListItemDto>> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null);
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id);
@@ -111,6 +117,12 @@ public class EmailClientService : IEmailClientService
 
     public Task<EmailSyncResultDto> SyncAsync(int emailId) =>
         _api.PostAsync<EmailSyncResultDto>($"api/email/accounts/{emailId}/sync");
+
+    public Task<EmailSyncResultDto> SyncInboxAsync() =>
+        _api.PostAsync<EmailSyncResultDto>("api/email/sync-inbox");
+
+    public Task<EmailSyncResultDto> SyncSentAsync() =>
+        _api.PostAsync<EmailSyncResultDto>("api/email/sync-sent");
 
     public Task<List<EmailMessageListItemDto>> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null, int? folderId = null)
     {

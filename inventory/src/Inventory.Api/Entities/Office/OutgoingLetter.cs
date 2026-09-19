@@ -105,6 +105,34 @@ public class OutgoingLetter
     /// <summary>ایمیل مقصد — وقتی دبیرخانه نامه را با «پست الکترونیک» ارسال می‌کند پر می‌شود</summary>
     [MaxLength(250)] public string? DestEmail { get; set; }
 
+    // ==================== فیلدهای وابسته به «روش ارسال» ====================
+    // هر روش ارسال اطلاعات متفاوتی نیاز دارد:
+    //   • ایمیل            → آدرس ایمیل مقصد (+ حساب ارسال‌کننده)
+    //   • پست / پست پیشتاز  → نام تحویل گیرنده + کد رهگیری مرسوله
+    //   • پیک / تحویل حضوری → نام تحویل گیرنده
+    //   • فکس              → شماره فکس مقصد
+    // این فیلدها در زمان «ثبت و ارسال» در دبیرخانه و بر اساس روش انتخابی پر می‌شوند.
+
+    /// <summary>نام شخص تحویل‌گیرنده — برای پست، پست پیشتاز، پیک و تحویل حضوری</summary>
+    [MaxLength(250)] public string? DelivererName { get; set; }
+
+    /// <summary>کد رهگیری / شماره مرسوله پستی — برای پست و پست پیشتاز</summary>
+    [MaxLength(100)] public string? TrackingCode { get; set; }
+
+    /// <summary>شماره فکس مقصد — برای روش ارسال «فکس»</summary>
+    [MaxLength(50)] public string? DestFax { get; set; }
+
+    // ==================== بایگانی دبیرخانه ====================
+
+    /// <summary>آیا این نامه در بایگانی دبیرخانه (درخت پوشه‌ها) ثبت شده است؟</summary>
+    public bool IsArchived { get; set; }
+
+    /// <summary>تاریخ بایگانی شدن نامه توسط دبیرخانه</summary>
+    public DateTime? ArchivedAt { get; set; }
+
+    /// <summary>کاربر دبیرخانه‌ای که نامه را بایگانی کرده است</summary>
+    public int? ArchivedByUserId { get; set; }
+
     public bool IsDelete { get; set; }
 
     [ForeignKey(nameof(Id))] public LetterSource Source { get; set; } = null!;

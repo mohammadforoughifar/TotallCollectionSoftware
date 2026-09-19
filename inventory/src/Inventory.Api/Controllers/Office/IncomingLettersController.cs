@@ -14,6 +14,19 @@ namespace Inventory.Api.Controllers;
 public class IncomingLettersController : RbacControllerBase
 {
     private const string Module = "IncomingLetters";
+
+    private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
+
+    private async Task<string> MyDisplayNameAsync()
+    {
+        var u = await Db.Users.AsNoTracking()
+            .Where(x => x.Id == MyUserId)
+            .Select(x => new { x.FirstName, x.LastName, x.Username })
+            .FirstOrDefaultAsync();
+        if (u == null) return MyUsername;
+        var full = $"{u.FirstName} {u.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(full) ? u.Username : full;
+    }
     private readonly IIncomingLetterService _letters;
     private readonly IErjaService _erja;
     private readonly FileStore _store;
@@ -109,7 +122,7 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Erja([FromBody] AddErjaDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Erja") is { } forbid) return forbid;
-        await _erja.AddErjaAsync(dto, MyUserId);
+        await _erja.AddErjaAsync(dto, MyUserId, await MyDisplayNameAsync());
         return Ok(new { message = "ارجاع نامه انجام شد." });
     }
 
@@ -117,14 +130,14 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Gardesh(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _erja.GetGardeshTreeAsync(id));
+        return Ok(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()));
     }
 
     [HttpPost("erja/{erjaId:int}/answer")]
     public async Task<IActionResult> AnswerErja(int erjaId, [FromBody] AnswerErjaDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        await _erja.AnswerErjaAsync(erjaId, dto, MyUserId);
+        await _erja.AnswerAsync(erjaId, dto, MyUserId, await MyDisplayNameAsync());
         return Ok(new { message = "پاسخ ارجاع ثبت شد." });
     }
 

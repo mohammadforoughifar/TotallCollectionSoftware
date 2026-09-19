@@ -4,6 +4,8 @@ namespace Inventory.Client.Services;
 
 public interface IOutgoingLetterService
 {
+    /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
+    Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items);
     Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15);
     Task<PagedResult<OutgoingLetterListItemDto>> GetSentAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<PagedResult<OutgoingLetterListItemDto>> GetArchiveAsync(string? search = null, int page = 1, int pageSize = 15);
@@ -43,13 +45,28 @@ public interface IOutgoingLetterService
     string AttachmentDownloadUrl(int attachmentId);
 
     // ==================== دبیرخانه نامه صادره ====================
-    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search = null, bool? registeredOnly = null);
+    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto? filter = null);
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
     Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto);
     Task<List<LetterCompanyDto>> GetCompaniesAsync();
+    Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
 
-    /// <summary>دریافت PDF چاپ نامه روی سربرگ — size: A4 یا A5</summary>
-    Task<byte[]> GetPrintPdfAsync(int letterId, string size);
+    // ==================== بایگانی دبیرخانه ====================
+    Task<List<BayeganiNodeDto>> GetDabirkhaneBayeganiTreeAsync();
+    Task<BayeganiNodeDto> AddDabirkhaneMainCategoryAsync(SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> AddDabirkhaneSubCategoryAsync(SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> EditDabirkhaneFolderAsync(int id, SaveBayeganiFolderDto dto);
+    Task<BayeganiNodeDto> MoveDabirkhaneFolderAsync(int id, int newParentId);
+    Task DeleteDabirkhaneBayeganiAsync(int id);
+    Task ArchiveDabirkhaneLettersAsync(ArchiveOutgoingLettersDto dto);
+    Task UnarchiveDabirkhaneLetterAsync(int letterId);
+    Task<BayeganiNodeDto> MoveDabirkhaneLetterAsync(MoveArchivedLetterDto dto);
+
+    /// <summary>
+    /// دریافت PDF چاپ نامه روی سربرگ — size: A4 یا A5
+    /// withCopy: true = نسخهٔ «با رونوشت»، false = نسخهٔ «بدون رونوشت»
+    /// </summary>
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true);
 }
 
 public class OutgoingLetterService : IOutgoingLetterService
@@ -68,6 +85,12 @@ public class OutgoingLetterService : IOutgoingLetterService
     private class IdResponse { public int Id { get; set; } }
     private class NeshanResponse { public bool IsNeshan { get; set; } }
     private class BayeganiResponse { public bool IsBayegani { get; set; } }
+
+    /// <summary>جایگزینی کامل فهرست رونوشت‌گیرندگان نامه صادره</summary>
+    public Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(int letterId, List<SaveOutgoingLetterCopyToDto> items) =>
+        _api.PutAsync<List<OutgoingLetterCopyToDto>>(
+            $"api/outgoing-letters/{letterId}/copy-tos",
+            new ReplaceOutgoingLetterCopyTosDto { Items = items ?? new List<SaveOutgoingLetterCopyToDto>() });
 
     public Task<PagedResult<OutgoingLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null, int page = 1, int pageSize = 15)
     {
@@ -233,11 +256,38 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     // ==================== دبیرخانه نامه صادره ====================
 
-    public Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(string? search = null, bool? registeredOnly = null)
+    /// <summary>لیست دبیرخانه با جستجوی پیشرفته — فیلترها به‌صورت پارامتر کوئری ارسال می‌شوند</summary>
+    public Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto? filter = null)
     {
         var qs = new List<string>();
-        if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
-        if (registeredOnly != null) qs.Add($"registeredOnly={(registeredOnly == true ? "true" : "false")}");
+        if (filter != null)
+        {
+            if (!string.IsNullOrWhiteSpace(filter.Text))
+                qs.Add($"search={Uri.EscapeDataString(filter.Text)}");
+            if (filter.RegisteredOnly != null)
+                qs.Add($"registeredOnly={(filter.RegisteredOnly == true ? "true" : "false")}");
+            if (filter.ArchivedOnly != null)
+                qs.Add($"archivedOnly={(filter.ArchivedOnly == true ? "true" : "false")}");
+            if (!string.IsNullOrWhiteSpace(filter.SendMethod))
+                qs.Add($"sendMethod={Uri.EscapeDataString(filter.SendMethod)}");
+            if (filter.CreatorUserId is > 0)
+                qs.Add($"creatorUserId={filter.CreatorUserId.Value}");
+            if (filter.CompanyId is > 0)
+                qs.Add($"companyId={filter.CompanyId.Value}");
+            if (!string.IsNullOrWhiteSpace(filter.ReceiverOrganization))
+                qs.Add($"receiverOrganization={Uri.EscapeDataString(filter.ReceiverOrganization)}");
+            if (!string.IsNullOrWhiteSpace(filter.Mahramanegi))
+                qs.Add($"mahramanegi={Uri.EscapeDataString(filter.Mahramanegi)}");
+            if (!string.IsNullOrWhiteSpace(filter.Foriat))
+                qs.Add($"foriat={Uri.EscapeDataString(filter.Foriat)}");
+            if (filter.HasAttachment != null)
+                qs.Add($"hasAttachment={(filter.HasAttachment == true ? "true" : "false")}");
+            if (filter.FromDate != null)
+                qs.Add($"fromDate={Uri.EscapeDataString(filter.FromDate.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
+            if (filter.ToDate != null)
+                qs.Add($"toDate={Uri.EscapeDataString(filter.ToDate.Value.ToString("yyyy-MM-ddTHH:mm:ss"))}");
+        }
+
         var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
         return ListOrPaged.GetAsync<DabirkhaneListItemDto>(_api, $"api/outgoing-letters/dabirkhane{q}");
     }
@@ -251,11 +301,43 @@ public class OutgoingLetterService : IOutgoingLetterService
     public Task<List<LetterCompanyDto>> GetCompaniesAsync() =>
         ListOrPaged.GetAsync<LetterCompanyDto>(_api, "api/outgoing-letters/companies");
 
-    /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود</summary>
-    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size)
+    public Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync() =>
+        _api.GetAsync<List<LetterReciverDto>>("api/outgoing-letters/dabirkhane/creators");
+
+    // ==================== بایگانی دبیرخانه ====================
+
+    public Task<List<BayeganiNodeDto>> GetDabirkhaneBayeganiTreeAsync() =>
+        _api.GetAsync<List<BayeganiNodeDto>>("api/outgoing-letters/dabirkhane/bayegani/tree");
+
+    public Task<BayeganiNodeDto> AddDabirkhaneMainCategoryAsync(SaveBayeganiFolderDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/outgoing-letters/dabirkhane/bayegani/main-category", dto);
+
+    public Task<BayeganiNodeDto> AddDabirkhaneSubCategoryAsync(SaveBayeganiFolderDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/outgoing-letters/dabirkhane/bayegani/sub-category", dto);
+
+    public Task<BayeganiNodeDto> EditDabirkhaneFolderAsync(int id, SaveBayeganiFolderDto dto) =>
+        _api.PutAsync<BayeganiNodeDto>($"api/outgoing-letters/dabirkhane/bayegani/folder/{id}", dto);
+
+    public Task<BayeganiNodeDto> MoveDabirkhaneFolderAsync(int id, int newParentId) =>
+        _api.PostAsync<BayeganiNodeDto>($"api/outgoing-letters/dabirkhane/bayegani/folder/{id}/move?newParentId={newParentId}");
+
+    public Task DeleteDabirkhaneBayeganiAsync(int id) =>
+        _api.DeleteAsync($"api/outgoing-letters/dabirkhane/bayegani/{id}");
+
+    public Task ArchiveDabirkhaneLettersAsync(ArchiveOutgoingLettersDto dto) =>
+        _api.PostAsync<object>("api/outgoing-letters/dabirkhane/bayegani/letters", dto);
+
+    public Task UnarchiveDabirkhaneLetterAsync(int letterId) =>
+        _api.DeleteAsync($"api/outgoing-letters/dabirkhane/bayegani/letter/{letterId}");
+
+    public Task<BayeganiNodeDto> MoveDabirkhaneLetterAsync(MoveArchivedLetterDto dto) =>
+        _api.PostAsync<BayeganiNodeDto>("api/outgoing-letters/dabirkhane/bayegani/move-letter", dto);
+
+    /// <summary>دریافت PDF چاپ نامه روی سربرگ شرکت (A4/A5) — با توکن ورود و نسخهٔ چاپ</summary>
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size, bool withCopy = true)
     {
-        var req = new HttpRequestMessage(HttpMethod.Get,
-            _api.BuildUrl($"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}"));
+        var url = $"api/outgoing-letters/{letterId}/print?size={Uri.EscapeDataString(size)}&withCopy={(withCopy ? "true" : "false")}";
+        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl(url));
         if (!string.IsNullOrWhiteSpace(_auth.Token))
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
 

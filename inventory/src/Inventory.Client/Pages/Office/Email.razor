@@ -3,6 +3,8 @@
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject LayoutState Layout
+@using Inventory.Client.Pages.Office.Letters
+@using Microsoft.AspNetCore.Components.Forms
 @implements IDisposable
 
 @* ============================================================
@@ -15,7 +17,46 @@
 <PageTitle>ایمیل سازمانی</PageTitle>
 
 <div class="ltx" style="animation:none;transform:none">
-    <div style="max-width:1280px;margin:0 auto;padding:14px">
+    <div style="display:flex;height:calc(100vh - 130px);min-height:540px;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden">
+        <nav class="rail" style="flex:0 0 72px;overflow-y:auto">
+                <div class="logo"><i class="bi bi-envelope-at"></i></div>
+
+                @if (Auth.Has("Email.Create"))
+                {
+                    <button class="compose" title="ایمیل جدید" @onclick="OpenCompose"><i class="bi bi-plus-lg"></i></button>
+                    <div style="height:8px"></div>
+                }
+
+                <button class="@(tab == "inbox" ? "on" : "")" title="دریافتی" @onclick='() => SetTab("inbox")'>
+                    <i class="bi bi-inbox-fill"></i>
+                    @if (unreadCount > 0) { <span class="rbadge">@unreadCount.FaDigits()</span> }
+                </button>
+                <span class="rlbl">دریافتی</span>
+
+                <button class="@(tab == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetTab("sent")'>
+                    <i class="bi bi-send"></i>
+                </button>
+                <span class="rlbl">ارسالی</span>
+
+                <button class="@(tab == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetTab("starred")'>
+                    <i class="bi bi-star"></i>
+                </button>
+                <span class="rlbl">نشان</span>
+
+                <button class="@(tab == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetTab("archive")'>
+                    <i class="bi bi-archive"></i>
+                </button>
+                <span class="rlbl">بایگانی</span>
+
+                <button class="@(tab == "accounts" ? "on" : "")" title="حساب‌ها" @onclick='() => SetTab("accounts")'>
+                    <i class="bi bi-gear"></i>
+                </button>
+                <span class="rlbl">حساب‌ها</span>
+
+                <div class="grow"></div>
+        </nav>
+        <section style="flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden">
+        <div style="padding:14px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;min-height:0;flex:1">
 
         <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
             <span class="t"><i class="bi bi-envelope-at" style="color:var(--p2)"></i> ایمیل سازمانی</span>
@@ -146,112 +187,130 @@
         else
         {
             @* ==================== دو ستون لیست + خواندن ==================== *@
-            <div style="display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:12px;align-items:start">
-                <div>
-                    @if (loading)
-                    {
-                        <div class="empty" style="padding:40px"><div class="spinner-border text-primary"></div></div>
-                    }
-                    else if (messages.Count == 0)
-                    {
-                        <div class="empty" style="padding:40px">
-                            <i class="bi bi-inbox"></i>
-                            @(accFilter > 0 ? "ایمیلی نیست — دکمه «دریافت ایمیل‌ها» را بزنید." : "ایمیلی نیست — یک حساب انتخاب کنید و دریافت بزنید.")
-                        </div>
-                    }
-                    else
-                    {
-                        @foreach (var m in messages)
+            <div class="eml-wrap">
+                @* ---------- لیست ایمیل‌ها ---------- *@
+                <div class="eml-list">
+                    <div class="eml-scroll">
+                        @if (loading)
                         {
-                            var mm = m;
-                            <div class="mail @(mm.IsRead || mm.Box == "Sent" ? "" : "unread") @(openId == mm.Id && openBox == mm.Box ? "sel" : "")"
-                                 style="cursor:pointer;background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;margin-bottom:8px"
-                                 @onclick="() => OpenMessage(mm)">
-                                <div style="display:flex;align-items:center;gap:8px">
-                                    <span class="who" style="font-weight:700;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                                        @if (mm.Box == "Sent")
-                                        {
-                                            <span><i class="bi bi-arrow-right-short"></i> به: @mm.FromOrTo</span>
-                                        }
-                                        else
-                                        {
-                                            <span>@mm.FromOrTo</span>
-                                        }
-                                        @if (mm.IsNeshan) { <i class="bi bi-star-fill" style="color:#eab308;font-size:11px"></i> }
-                                    </span>
-                                    <span class="tm num" style="font-size:11.5px;color:#64748b">@mm.Date.ToFaDateTime()</span>
-                                </div>
-                                <div style="font-size:13px;margin-top:3px;@(mm.IsRead || mm.Box == "Sent" ? "" : "font-weight:800")">@mm.Subject</div>
-                                <div style="display:flex;gap:6px;margin-top:5px;flex-wrap:wrap">
-                                    <span class="tg gray" style="font-size:11px">@mm.AccountAddress</span>
-                                    @if (mm.IsAttachment) { <span class="tg gray" style="font-size:11px"><i class="bi bi-paperclip"></i></span> }
-                                    @if (!string.IsNullOrEmpty(mm.FolderTitle)) { <span class="tg purple" style="font-size:11px"><i class="bi bi-folder"></i> @mm.FolderTitle</span> }
-                                    @if (!mm.IsRead && mm.Box == "Inbox") { <span class="tg blue" style="font-size:11px">جدید</span> }
-                                </div>
+                            <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+                        }
+                        else if (messages.Count == 0)
+                        {
+                            <div class="empty">
+                                <i class="bi bi-inbox"></i>
+                                @(accFilter > 0 ? "ایمیلی نیست — «دریافت ایمیل‌ها» را بزنید." : "ایمیلی نیست — یک حساب انتخاب کنید و دریافت بزنید.")
                             </div>
                         }
-                    }
+                        else
+                        {
+                            string lastDay = "";
+                            @foreach (var m in messages)
+                            {
+                                var mm = m;
+                                var day = mm.Date.ToFaDate();
+                                @if (day != lastDay) { lastDay = day; <div class="day">@day</div> }
+                                <div class="mail @(mm.IsRead || mm.Box == "Sent" ? "" : "unread") @(mm.IsNeshan ? "starred" : "") @(openId == mm.Id && openBox == mm.Box ? "sel" : "")"
+                                     @onclick="() => OpenMessage(mm)">
+                                    <div class="avt">@AvatarText(mm)</div>
+                                    <div class="mail-b">
+                                        <div class="mail-r1">
+                                            <span class="who">
+                                                @(mm.Box == "Sent" ? mm.FromOrTo : mm.FromOrTo)
+                                                <i class="bi bi-star-fill star-ico"></i>
+                                            </span>
+                                            <span class="tm num">@mm.Date.ToFaDateTime()</span>
+                                        </div>
+                                        <div class="mail-tt">@mm.Subject</div>
+                                        <div class="mail-pv">@(mm.Box == "Sent" ? "به: " : "از: ")@PreviewName(mm)</div>
+                                        <div class="tags">
+                                            <span class="tg gray">@mm.AccountAddress</span>
+                                            @if (mm.IsAttachment) { <span class="tg gray"><i class="bi bi-paperclip"></i> پیوست</span> }
+                                            @if (!string.IsNullOrEmpty(mm.FolderTitle)) { <span class="tg purple"><i class="bi bi-folder"></i> @mm.FolderTitle</span> }
+                                            @if (!mm.IsRead && mm.Box == "Inbox") { <span class="tg blue">جدید</span> }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
                 </div>
 
-                <div>
+                @* ---------- صفحه خواندن ---------- *@
+                <div class="eml-reader">
                     @if (openMsg == null)
                     {
-                        <div class="empty" style="padding:60px"><i class="bi bi-envelope-open"></i> ایمیلی برای نمایش انتخاب نشده است</div>
+                        <div class="empty" style="margin:auto">
+                            <i class="bi bi-envelope-open"></i>
+                            ایمیلی برای نمایش انتخاب نشده است
+                        </div>
                     }
                     else
                     {
-                        <div class="paper">
-                            <div class="paper-h">
-                                <div class="avt"><i class="bi @(openMsg.Box == "Sent" ? "bi-send" : "bi-envelope")"></i></div>
-                                <div class="ph-meta">
-                                    <div class="n1">@(openMsg.Box == "Sent" ? "به: " + openMsg.FromOrTo : openMsg.FromOrTo)</div>
-                                    <div class="n2">از حساب @openMsg.AccountAddress — @openMsg.Date.ToFaDateTime()</div>
-                                </div>
-                                <div class="ind" style="display:flex;gap:6px">
-                                    <button class="icb @(openMsg.IsNeshan ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStar">
-                                        <i class="bi @(openMsg.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
-                                    </button>
-                                    @if (openMsg.Box == "Inbox" && Auth.Has("Email.Create"))
+                        <div class="rd-top">
+                            <span class="t">@openMsg.Subject</span>
+                            <span style="flex:1"></span>
+                            <button class="icb @(openMsg.IsNeshan ? "gold" : "")" title="نشان‌کردن" @onclick="ToggleStar">
+                                <i class="bi @(openMsg.IsNeshan ? "bi-star-fill" : "bi-star")"></i>
+                            </button>
+                            @if (openMsg.Box == "Inbox" && Auth.Has("Email.Create"))
+                            {
+                                <button class="icb" title="پاسخ" @onclick="ReplyTo"><i class="bi bi-reply"></i></button>
+                            }
+                            @if (openMsg.Box == "Inbox")
+                            {
+                                <button class="icb" title="تبدیل به نامه داخلی" disabled="@converting" @onclick="ConvertToLetterAsync">
+                                    <i class="bi @(converting ? "bi-arrow-repeat bi-spin" : "bi-file-earmark-arrow-up")"></i>
+                                </button>
+                            }
+                            <button class="icb" title="بایگانی" @onclick="() => archOpen = !archOpen"><i class="bi bi-archive"></i></button>
+                        </div>
+
+                        <div class="eml-scroll">
+                            <div class="paper">
+                                <div class="paper-h">
+                                    <div class="avt"><i class="bi @(openMsg.Box == "Sent" ? "bi-send" : "bi-envelope")"></i></div>
+                                    <div class="ph-meta">
+                                        <div class="n1">@(openMsg.Box == "Sent" ? "به: " + openMsg.FromOrTo : openMsg.FromOrTo)</div>
+                                        <div class="n2">از حساب @openMsg.AccountAddress — @openMsg.Date.ToFaDateTime()</div>
+                                    </div>
+                                    @if (archOpen)
                                     {
-                                        <button class="icb" title="پاسخ" @onclick="ReplyTo"><i class="bi bi-reply"></i></button>
+                                        <div class="ind" style="display:flex;gap:6px;align-items:center">
+                                            <select class="tin" style="max-width:200px" @bind="archFolderId">
+                                                <option value="0">— خروج از بایگانی —</option>
+                                                @foreach (var f in folders.Where(f => f.TypeEmail == (openMsg.Box == "Sent" ? 1 : 0)))
+                                                {
+                                                    <option value="@f.EmailFolderId">@f.Title</option>
+                                                }
+                                            </select>
+                                            <button class="lbtn ghost" @onclick="ArchiveCurrent"><i class="bi bi-check-lg"></i> ثبت</button>
+                                        </div>
                                     }
-                                    <button class="icb" title="بایگانی" @onclick="() => archOpen = !archOpen"><i class="bi bi-archive"></i></button>
                                 </div>
-                            </div>
-                            <div style="padding:8px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                                <b style="font-size:13.5px">@openMsg.Subject</b>
-                                @if (archOpen)
+
+                                <div class="paper-body">@((MarkupString)(openMsg.Body ?? "—"))</div>
+
+                                @if (openMsg.Attachments.Count > 0)
                                 {
-                                    <span style="flex:1"></span>
-                                    <select class="tin" style="max-width:220px" @bind="archFolderId">
-                                        <option value="0">— خروج از بایگانی —</option>
-                                        @foreach (var f in folders.Where(f => f.TypeEmail == (openMsg.Box == "Sent" ? 1 : 0)))
+                                    <div class="paper-foot">
+                                        @foreach (var a in openMsg.Attachments)
                                         {
-                                            <option value="@f.EmailFolderId">@f.Title</option>
+                                            var att = a;
+                                            <a class="att" href="@EmailSvc.AttachmentDownloadUrl(att.AttachmentId)" target="_blank">
+                                                <div class="ic"><i class="bi bi-paperclip"></i></div>
+                                                <div>@att.RealName<small>@FmtSize(att.Size)</small></div>
+                                            </a>
                                         }
-                                    </select>
-                                    <button class="lbtn ghost" @onclick="ArchiveCurrent"><i class="bi bi-check-lg"></i> ثبت</button>
+                                    </div>
                                 }
                             </div>
-                            <div class="paper-body" style="min-height:180px">@((MarkupString)(openMsg.Body ?? "—"))</div>
-                            @if (openMsg.Attachments.Count > 0)
-                            {
-                                <div class="paper-foot">
-                                    @foreach (var a in openMsg.Attachments)
-                                    {
-                                        var att = a;
-                                        <a class="att" href="@EmailSvc.AttachmentDownloadUrl(att.AttachmentId)" target="_blank">
-                                            <div class="ic"><i class="bi bi-paperclip"></i></div>
-                                            <div>@att.RealName<small>@FmtSize(att.Size)</small></div>
-                                        </a>
-                                    }
-                                </div>
-                            }
                         </div>
                     }
                 </div>
-            </div>
-        }
+            </div>        }
+    </div>
+        </section>
     </div>
 </div>
 
@@ -438,6 +497,9 @@
     </div>
 }
 
+@* ==================== فرم ایجاد نامه داخلی (تبدیل ایمیل به نامه) ==================== *@
+<ComposeLetterModal @ref="letterCompose" />
+
 @code {
     private bool loading = true;
     private bool syncing;
@@ -451,6 +513,32 @@
     private int openId;
     private string openBox = "";
     private int unreadCount;
+
+    private ComposeLetterModal? letterCompose;
+    private bool converting;
+
+    /// <summary>
+    /// تبدیل ایمیل شخصی به نامه داخلی — فرم ایجاد نامه با عنوان و متنِ ایمیل
+    /// و پیوست‌های آن باز می‌شود؛ کاربر بقیهٔ موارد را خودش پر می‌کند.
+    /// </summary>
+    private async Task ConvertToLetterAsync()
+    {
+        if (openMsg == null) return;
+        converting = true;
+        try
+        {
+            var files = new List<IBrowserFile>();
+            foreach (var a in openMsg.Attachments)
+            {
+                var (data, name) = await EmailSvc.DownloadAttachmentAsync(a.AttachmentId);
+                if (data != null && data.Length > 0)
+                    files.Add(new MemoryBrowserFile(name, "application/octet-stream", data));
+            }
+            letterCompose?.Open(openMsg.Subject, openMsg.Body, null, files);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { converting = false; }
+    }
 
     private bool CanManageDabirkhane => Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Email.Delete");
 
@@ -518,7 +606,28 @@
         tab = t; openMsg = null; openId = 0; openBox = ""; archOpen = false;
         if (t == "accounts") await LoadAccountsAsync();
         if (t == "archive" && folders.Count == 0) { try { folders = await EmailSvc.GetFoldersAsync(); } catch { } }
+        // دریافتی/ارسالی: ابتدا فقط پیام‌های تازه از سرور گرفته و در بانک ذخیره می‌شوند،
+        // سپس فهرستِ کامل از بانک خوانده می‌شود.
+        if (t is "inbox" or "sent") await SyncFolderAsync(t);
         await ReloadAsync();
+    }
+
+    /// <summary>
+    /// همگام‌سازیِ افزایشی: بارِ اول همه‌ی پیام‌ها را در بانک می‌نشاند؛
+    /// در دفعات بعد فقط پیام‌های جدیدتر از آخرین نوبت را می‌گیرد.
+    /// </summary>
+    private async Task SyncFolderAsync(string box)
+    {
+        syncing = true;
+        StateHasChanged();
+        try
+        {
+            var r = box == "sent" ? await EmailSvc.SyncSentAsync() : await EmailSvc.SyncInboxAsync();
+            // فقط هنگام رسیدنِ پیام تازه یا بروز خطا اطلاع می‌دهیم تا هر بار کلیک مزاحم نشود
+            if (r.NewCount > 0) Toast.Success(r.Message);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { syncing = false; StateHasChanged(); }
     }
 
     private async Task LoadAccountsAsync()
@@ -575,6 +684,28 @@
     }
 
     // ==================== پیام‌ها ====================
+
+    /// <summary>حروفِ آواتارِ ردیف — هم‌طراز با کارتابل نامه داخلی</summary>
+    private static string AvatarText(EmailMessageListItemDto m)
+    {
+        var s = (m.FromOrTo ?? "").Trim();
+        if (s.StartsWith("به:")) s = s[3..].Trim();
+        var at = s.IndexOf('@');
+        if (at > 0) s = s[..at];
+        s = s.Trim(' ', '<', '>', '"', '\'');
+        if (string.IsNullOrEmpty(s)) return "\u2709";
+        var parts = s.Split(new[] { ' ', '.', '_', '-' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2) return (parts[0][..1] + parts[1][..1]).ToUpperInvariant();
+        return s.Length >= 2 ? s[..2] : s.ToUpperInvariant();
+    }
+
+    /// <summary>پیش‌نمایشِ زیرِ عنوان در فهرست</summary>
+    private static string PreviewName(EmailMessageListItemDto m)
+    {
+        var s = (m.FromOrTo ?? "").Trim();
+        if (string.IsNullOrEmpty(s)) return m.AccountAddress ?? "";
+        return s.Length > 60 ? s[..60] + "\u2026" : s;
+    }
 
     private async Task OpenMessage(EmailMessageListItemDto m)
     {
