@@ -60,13 +60,17 @@ public static class DbInitializer
                 }
 
                 await WorkOrderSchemaV2.EnsureAsync(db);
-                // دبیرخانه نامه صادره: فیلدهای وابسته به روش ارسال (نام تحویل‌گیرنده،
-                // کد رهگیری، شماره فکس) + وضعیت بایگانی دبیرخانه
-                await DabirkhaneSchemaV1.EnsureAsync(db);
-                // رونوشت‌گیرندگان نامه صادره — جدول مستقل (هر گیرنده یک ردیف)
-                await OutgoingCopyToSchemaV1.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
+
+                // نامه وارده — جدول IncomingLetters در مایگریشن SquashedInitial نیست؛
+                // بدون این، SQL Server خطای «Invalid object name 'IncomingLetters'» می‌دهد.
+                await IncomingLetterSchemaV1.EnsureAsync(db);
+                if (!await IncomingLetterSchemaV1.TableExistsAsync(db))
+                    Console.WriteLine("[DB] ⚠ جدول IncomingLetters در دیتابیس وجود ندارد! " +
+                        "کارتابل نامه وارده و چارت‌های اتوماسیون اداری کار نخواهند کرد.");
+                else
+                    Console.WriteLine("[DB] ✔ جدول نامه وارده (IncomingLetters) آماده است.");
 
                 // داشبورد شخصی کاربر — جدول داشبوردها و ویجت‌های چیده‌شده
                 await DashboardSchemaV1.EnsureAsync(db);
