@@ -587,3 +587,18 @@
     .ltx .eml-wrap { flex-direction:column; }
     .ltx .eml-list { flex:0 0 auto; max-height:42%; }
 }
+
+/* ---------- نوار پیشرفت هنگام دریافت ایمیل ---------- */
+.eml-prog-wrap { display:flex; align-items:center; gap:9px; margin-top:10px; padding:0 2px; }
+.eml-prog { flex:1; height:5px; background:#e2e8f0; border-radius:99px; overflow:hidden; position:relative; }
+.eml-prog .bar { position:absolute; top:0; bottom:0; width:35%; border-radius:99px;
+                 background:linear-gradient(90deg,#6366f1,#8b5cf6,#6366f1);
+                 animation:eml-slide 1.15s linear infinite; }
+@keyframes eml-slide { from { transform:translateX(-110%); } to { transform:translateX(320%); } }
+.eml-prog-t { font-size:11px; color:var(--sub,#64748b); white-space:nowrap; display:inline-flex;
+              align-items:center; gap:5px; }
+.eml-prog-t .sp { width:11px; height:11px; border:2px solid #c7d2fe; border-top-color:#4338ca;
+                  border-radius:50%; animation:eml-spin .7s linear infinite; }
+@keyframes eml-spin { to { transform:rotate(360deg); } }
+.ltx .rail button:disabled { opacity:.4; cursor:not-allowed; }
+.ltx .rail button:disabled:hover { background:transparent; }
