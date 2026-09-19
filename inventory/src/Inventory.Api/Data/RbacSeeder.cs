@@ -134,12 +134,6 @@ public static class RbacSeeder
         // View: دیدن «داشبورد من» و ویجت‌ها | Design: ساخت/ویرایش/حذف داشبورد و چیدمان ویجت‌ها
         // دادهٔ هر ویجت جداگانه با مجوز مشاهدهٔ ماژول خودش کنترل می‌شود.
         ["MyDashboards"] = new[] { "View", "Design" },
-        // ================== گزارش‌ساز شخصی (دیتاست‌های از پیش join‌شده) ==================
-        // View: دیدن دیتاست‌ها، اجرا/پیش‌نمایش و استفاده از گزارش‌های اشتراک‌گذاشته‌شده
-        // Design: ساخت/ویرایش/حذف گزارش و اشتراک‌گذاری آن با نقش‌ها
-        // نکته: دسترسی به «دادهٔ» هر دیتاست جداگانه با ماژول RBAC همان دیتاست کنترل می‌شود،
-        // پس داشتن ReportBuilder به معنی دیدن همهٔ داده‌ها نیست.
-        ["ReportBuilder"] = new[] { "View", "Design" },
         // ================== پیام‌رسان سازمانی ==================
         // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
         ["Chat"] = new[] { "View", "Send", "Manage" },
@@ -331,14 +325,13 @@ public static class RbacSeeder
             Console.WriteLine("[RBAC] دسترسی پیش‌فرض پیام‌رسان (View/Send) به نقش‌های فعال داده شد.");
         }
 
-        // ============ کارتابل من / بایگانی شخصی / داشبورد من / گزارش‌ساز — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ============
+        // ============ کارتابل من / بایگانی شخصی / داشبورد من — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ============
         // این صفحه‌ها شخصی هر کاربر هستند؛ برای اینکه بعد از ارتقا از منوی کسی حذف نشوند،
         // مجوز مشاهده‌شان به همهٔ نقش‌های فعال داده می‌شود. مدیر می‌تواند بعداً از
         // «تنظیمات ← نقش‌ها و دسترسی‌ها» برای هر نقش بردارد تا آیتم از منو پنهان شود.
         var personalPerms = await db.Permissions
             .Where(p => (p.Module == "MyCartable" || p.Module == "MyArchive") && p.Action == "View")
             .Concat(db.Permissions.Where(p => p.Module == "MyDashboards"))
-            .Concat(db.Permissions.Where(p => p.Module == "ReportBuilder"))
             .ToListAsync();
         if (personalPerms.Count > 0)
         {
@@ -351,7 +344,7 @@ public static class RbacSeeder
                     db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
             }
             await db.SaveChangesAsync();
-            Console.WriteLine("[RBAC] دسترسی «کارتابل من / بایگانی شخصی / داشبورد من / گزارش‌ساز» به نقش‌های فعال داده شد.");
+            Console.WriteLine("[RBAC] دسترسی «کارتابل من / بایگانی شخصی / داشبورد من» به نقش‌های فعال داده شد.");
         }
 
         if (firstSeed)

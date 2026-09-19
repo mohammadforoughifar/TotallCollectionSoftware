@@ -4,7 +4,7 @@
    چه زمانی لازم است؟
    اگر در صفحهٔ «گزارش‌ساز» هنگام ذخیره خطا دیدید، یا صفحهٔ «داشبورد من»
    خالی بود و در لاگِ شروع API یکی از این پیام‌ها آمده بود:
-       [DB] ⚠ جدول‌های گزارش‌ساز (UserReports/UserReportRoleShares) ...
+       [DB] ⚠ جدول‌های داشبورد شخصی (UserDashboards/UserDashWidgets) ...
        [DB] DashboardSchemaV1: ...
    یعنی کاربرِ رشتهٔ اتصال، مجوز ساخت جدول (DDL) نداشته است.
 
@@ -60,47 +60,11 @@ END
 ELSE PRINT 'UserDashWidgets از قبل وجود دارد.';
 GO
 
-/* ---------- گزارش‌ساز شخصی ---------- */
-IF OBJECT_ID(N'dbo.UserReports', N'U') IS NULL
-BEGIN
-    CREATE TABLE [dbo].[UserReports](
-        [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
-        [UserId] int NOT NULL,
-        [Name] nvarchar(140) NOT NULL DEFAULT(N'گزارش بدون نام'),
-        [DatasetKey] nvarchar(60) NOT NULL,
-        [Module] nvarchar(60) NOT NULL DEFAULT(''),
-        [Visibility] int NOT NULL DEFAULT(0),
-        [QueryJson] nvarchar(max) NOT NULL DEFAULT('{}'),
-        [CreatedAt] datetime2 NOT NULL DEFAULT(SYSDATETIME()),
-        [UpdatedAt] datetime2 NOT NULL DEFAULT(SYSDATETIME())
-    );
-    CREATE INDEX [IX_UserReports_UserId] ON [dbo].[UserReports] ([UserId]);
-    PRINT 'UserReports ساخته شد.';
-END
-ELSE PRINT 'UserReports از قبل وجود دارد.';
-GO
-
-IF OBJECT_ID(N'dbo.UserReportRoleShares', N'U') IS NULL
-BEGIN
-    CREATE TABLE [dbo].[UserReportRoleShares](
-        [Id] int NOT NULL IDENTITY(1,1) PRIMARY KEY,
-        [ReportId] int NOT NULL,
-        [RoleId] int NOT NULL,
-        [CreatedAt] datetime2 NOT NULL DEFAULT(SYSDATETIME()),
-        CONSTRAINT [FK_UserReportRoleShares_UserReports] FOREIGN KEY ([ReportId])
-            REFERENCES [dbo].[UserReports] ([Id]) ON DELETE CASCADE
-    );
-    CREATE INDEX [IX_UserReportRoleShares_ReportId] ON [dbo].[UserReportRoleShares] ([ReportId]);
-    CREATE UNIQUE INDEX [UX_UserReportRoleShares] ON [dbo].[UserReportRoleShares] ([ReportId], [RoleId]);
-    PRINT 'UserReportRoleShares ساخته شد.';
-END
-ELSE PRINT 'UserReportRoleShares از قبل وجود دارد.';
-GO
 
 /* ---------- راستی‌آزمایی ---------- */
 SELECT t.name AS TableName, p.rows AS RowCounts
 FROM sys.tables t
 JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0,1)
-WHERE t.name IN ('UserDashboards','UserDashWidgets','UserReports','UserReportRoleShares')
+WHERE t.name IN ('UserDashboards','UserDashWidgets')
 ORDER BY t.name;
 GO

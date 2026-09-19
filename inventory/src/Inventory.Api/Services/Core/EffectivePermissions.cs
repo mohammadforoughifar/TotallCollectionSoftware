@@ -67,8 +67,7 @@ public sealed class EffectivePermissions : IEffectivePermissions
                     .Select(p => p.Module + "." + p.Action).ToListAsync(),
                 _ => await _db.Permissions
                     .Where(p => p.Module == "ReferrerPanel" || p.Module == "MyCartable"
-                                || p.Module == "MyArchive" || p.Module == "MyDashboards"
-                                || p.Module == "ReportBuilder")
+                                || p.Module == "MyArchive" || p.Module == "MyDashboards")
                     .Select(p => p.Module + "." + p.Action).ToListAsync()
             };
         }

@@ -133,7 +133,7 @@ CREATE INDEX IF NOT EXISTS IX_UserDashWidgets_DashboardId ON UserDashWidgets (Da
             Console.WriteLine($"[DB] DashboardSchemaV1: {m}");
             Console.WriteLine("جدول‌های UserDashboards / UserDashWidgets ساخته نشدند؛");
             Console.WriteLine("صفحهٔ «داشبورد من» کار نخواهد کرد. اسکریپت آماده در مسیر زیر را با یک کاربر دارای");
-            Console.WriteLine("مجوز DDL در SSMS اجرا کنید:  inventory/sql/UserDashboards-UserReports.sql");
+            Console.WriteLine("مجوز DDL در SSMS اجرا کنید:  inventory/sql/UserDashboards.sql");
             Console.WriteLine("==================================================================");
             Console.WriteLine();
         }
