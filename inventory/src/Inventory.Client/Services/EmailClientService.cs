@@ -25,10 +25,26 @@ public interface IEmailClientService
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوق ارسالیِ همه‌ی حساب‌ها</summary>
     Task<EmailSyncResultDto> SyncSentAsync();
-    Task<List<EmailMessageListItemDto>> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null, int? folderId = null);
-    Task<List<EmailMessageListItemDto>> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null);
+    /// <summary>همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk/Spam) روی سرورِ IMAP</summary>
+    Task<EmailSyncResultDto> SyncJunkAsync();
+
+    /// <summary>صندوقِ دریافتی — صفحه‌بندی کاملاً سمت سرور</summary>
+    Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
+        int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false);
+
+    /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
+    Task<EmailListPageDto> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null,
+        int page = 1, int pageSize = 25, bool starred = false, bool personal = false);
+
+    /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
+    Task<EmailListPageDto> GetArchiveAsync(int? emailId = null, string? search = null,
+        int page = 1, int pageSize = 25, bool personal = false);
+
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id);
     Task<bool> ToggleNeshanAsync(string box, int id);
+
+    /// <summary>نشان‌کردنِ ایمیل به‌عنوان هرزنامه / یا بازگرداندن به صندوقِ دریافتی</summary>
+    Task<bool> MarkSpamAsync(string box, int id, bool spam);
     Task ArchiveAsync(string box, int id, int folderId);
     Task SendAsync(int emailAccountId, string to, string? cc, string subject, string body, List<EmailOutAttachment> attachments);
     string AttachmentDownloadUrl(int attachmentId);
@@ -95,6 +111,7 @@ public class EmailClientService : IEmailClientService
     private class IdResponse { public int Id { get; set; } }
     private class MsgResponse { public string? Message { get; set; } }
     private class NeshanResponse { public bool IsNeshan { get; set; } }
+    private class SpamResponse { public bool IsSpam { get; set; } }
 
     // ==================== حساب‌ها ====================
 
@@ -124,23 +141,43 @@ public class EmailClientService : IEmailClientService
     public Task<EmailSyncResultDto> SyncSentAsync() =>
         _api.PostAsync<EmailSyncResultDto>("api/email/sync-sent");
 
-    public Task<List<EmailMessageListItemDto>> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null, int? folderId = null)
+    public Task<EmailSyncResultDto> SyncJunkAsync() =>
+        _api.PostAsync<EmailSyncResultDto>("api/email/sync-junk");
+
+    public Task<EmailListPageDto> GetInboxAsync(int? emailId = null, string? search = null, bool? unreadOnly = null,
+        int? folderId = null, int page = 1, int pageSize = 25, bool spam = false, bool starred = false, bool personal = false)
     {
-        var q = new List<string>();
+        var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
         if (!string.IsNullOrWhiteSpace(search)) q.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) q.Add("unreadOnly=true");
         if (folderId != null) q.Add($"folderId={folderId.Value}"); // 0=بایگانی‌نشده، -1=بایگانی‌شده، n=پوشه n
-        return _api.GetAsync<List<EmailMessageListItemDto>>($"api/email/inbox?{string.Join("&", q)}");
+        if (spam) q.Add("spam=true");
+        if (starred) q.Add("starred=true");
+        if (personal) q.Add("personal=true");
+        return _api.GetAsync<EmailListPageDto>($"api/email/inbox?{string.Join("&", q)}");
     }
 
-    public Task<List<EmailMessageListItemDto>> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null)
+    public Task<EmailListPageDto> GetSentAsync(int? emailId = null, string? search = null, int? folderId = null,
+        int page = 1, int pageSize = 25, bool starred = false, bool personal = false)
     {
-        var q = new List<string>();
+        var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (emailId is > 0) q.Add($"emailId={emailId}");
         if (!string.IsNullOrWhiteSpace(search)) q.Add($"search={Uri.EscapeDataString(search)}");
         if (folderId != null) q.Add($"folderId={folderId.Value}"); // 0=بایگانی‌نشده، -1=بایگانی‌شده، n=پوشه n
-        return _api.GetAsync<List<EmailMessageListItemDto>>($"api/email/sent?{string.Join("&", q)}");
+        if (starred) q.Add("starred=true");
+        if (personal) q.Add("personal=true");
+        return _api.GetAsync<EmailListPageDto>($"api/email/sent?{string.Join("&", q)}");
+    }
+
+    public Task<EmailListPageDto> GetArchiveAsync(int? emailId = null, string? search = null,
+        int page = 1, int pageSize = 25, bool personal = false)
+    {
+        var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
+        if (emailId is > 0) q.Add($"emailId={emailId}");
+        if (!string.IsNullOrWhiteSpace(search)) q.Add($"search={Uri.EscapeDataString(search)}");
+        if (personal) q.Add("personal=true");
+        return _api.GetAsync<EmailListPageDto>($"api/email/archive?{string.Join("&", q)}");
     }
 
     public Task<EmailMessageDetailDto> GetMessageAsync(string box, int id) =>
@@ -148,6 +185,10 @@ public class EmailClientService : IEmailClientService
 
     public async Task<bool> ToggleNeshanAsync(string box, int id) =>
         (await _api.PostAsync<NeshanResponse>($"api/email/message/{box}/{id}/neshan")).IsNeshan;
+
+    public async Task<bool> MarkSpamAsync(string box, int id, bool spam) =>
+        (await _api.PostAsync<SpamResponse>($"api/email/message/{box}/{id}/spam",
+            new EmailSpamDto { Spam = spam })).IsSpam;
 
     public Task ArchiveAsync(string box, int id, int folderId) =>
         _api.PostAsync<MsgResponse>("api/email/archive", new EmailArchiveDto { Box = box, Id = id, FolderId = folderId });
