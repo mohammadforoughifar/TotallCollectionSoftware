@@ -85,6 +85,23 @@ public class EmailMessageListItemDto
     public bool IsAttachment { get; set; }
     public int IsInFolder { get; set; }
     public string? FolderTitle { get; set; }
+
+    /// <summary>true = هرزنامه (اسپم) — فقط در بخش اسپم نمایش داده می‌شود</summary>
+    public bool IsSpam { get; set; }
+}
+
+/// <summary>
+/// یک صفحه از فهرست ایمیل‌ها + شمارش‌های کناری.
+/// صفحه‌بندی کاملاً سمت سرور انجام می‌شود (Skip/Take روی بانک) و هرگز
+/// همه‌ی پیام‌ها به کلاینت فرستاده نمی‌شود.
+/// </summary>
+public class EmailListPageDto : PagedResult<EmailMessageListItemDto>
+{
+    /// <summary>تعدادِ کلِ خوانده‌نشده‌ها در این بخش (نه فقط همین صفحه)</summary>
+    public int UnreadCount { get; set; }
+
+    /// <summary>تعدادِ کلِ هرزنامه‌ها (برای نمایش نشان روی تبِ اسپم)</summary>
+    public int SpamCount { get; set; }
 }
 
 /// <summary>جزئیات کامل یک ایمیل</summary>
@@ -101,6 +118,10 @@ public class EmailMessageDetailDto
     public bool IsNeshan { get; set; }
     public string Body { get; set; } = "";
     public int IsInFolder { get; set; }
+
+    /// <summary>true = هرزنامه (اسپم)</summary>
+    public bool IsSpam { get; set; }
+
     public List<EmailAttachmentDto> Attachments { get; set; } = new();
 }
 
@@ -154,6 +175,13 @@ public class SaveEmailFolderDto
 
     /// <summary>0=دریافتی، 1=ارسالی</summary>
     public int TypeEmail { get; set; }
+}
+
+/// <summary>نشان‌کردن یک ایمیل به‌عنوان هرزنامه / یا خروج از هرزنامه</summary>
+public class EmailSpamDto
+{
+    /// <summary>true = انتقال به هرزنامه | false = بازگشت به صندوقِ دریافتی</summary>
+    public bool Spam { get; set; } = true;
 }
 
 /// <summary>نتیجه تست اتصال حساب ایمیل</summary>

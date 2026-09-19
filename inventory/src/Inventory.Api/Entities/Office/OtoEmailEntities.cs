@@ -102,6 +102,10 @@ public class OtoEmail
     [Column("Last_Sent_Uid")]
     public long LastSentUid { get; set; }
 
+    /// <summary>آخرین شناسه‌ی IMAP همگام‌شده از پوشه‌ی هرزنامه (اسپم) — ۰ یعنی هنوز همگام نشده</summary>
+    [Column("Last_Junk_Uid")]
+    public long LastJunkUid { get; set; }
+
     [ForeignKey(nameof(UserId))] public User? User { get; set; }
 
     public ICollection<OtoInboxEmail> InboxEmails { get; set; } = new List<OtoInboxEmail>();
@@ -209,6 +213,14 @@ public class OtoInboxEmail
     /// <summary>شناسه پوشه بایگانی (Oto_TBl_EmailFolder) — 0 یعنی بدون پوشه</summary>
     [Column("IsInFolder")]
     public int IsInFolder { get; set; }
+
+    /// <summary>
+    /// true = هرزنامه (اسپم). پیام‌های اسپم در صندوقِ دریافتی نمایش داده نمی‌شوند
+    /// و فقط در بخش «اسپم» دیده می‌شوند. دو راه دارند: همگام‌سازیِ پوشه‌ی
+    /// Junk/Spam روی سرورِ IMAP، یا نشان‌کردنِ دستی توسط کاربر.
+    /// </summary>
+    [Column("Is_Spam")]
+    public bool IsSpam { get; set; }
 
     [ForeignKey(nameof(EmailId))] public OtoEmail? Email { get; set; }
     public ICollection<OtoEmailAttachment> Attachments { get; set; } = new List<OtoEmailAttachment>();

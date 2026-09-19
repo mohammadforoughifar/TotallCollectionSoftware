@@ -602,3 +602,15 @@
 @keyframes eml-spin { to { transform:rotate(360deg); } }
 .ltx .rail button:disabled { opacity:.4; cursor:not-allowed; }
 .ltx .rail button:disabled:hover { background:transparent; }
+
+/* ==================== صفحه‌بندیِ ایمیل (سمت سرور) ==================== */
+.ltx .eml-pager { flex:none; display:flex; align-items:center; gap:4px; padding:6px 8px;
+    border-top:1px solid var(--line); background:#fbfcfe; flex-wrap:wrap; }
+.ltx .eml-pager .pg-info { font-size:11.5px; color:#64748b; white-space:nowrap; }
+.ltx .eml-pager .pg { min-width:28px; height:28px; padding:0 6px; border:1px solid var(--line);
+    background:#fff; color:#334155; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; transition:.15s; }
+.ltx .eml-pager .pg:hover:not(:disabled) { background:#eef2ff; border-color:#c7d2fe; color:#4338ca; }
+.ltx .eml-pager .pg.on { background:var(--p2); border-color:var(--p2); color:#fff; }
+.ltx .eml-pager .pg:disabled { opacity:.4; cursor:default; }
+.ltx .eml-pager .pg-gap { color:#94a3b8; font-size:12px; padding:0 2px; }

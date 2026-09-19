@@ -1,20 +1,24 @@
 @page "/office/email"
+@page "/office/personal-email"
 @inject IEmailClientService EmailSvc
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject LayoutState Layout
+@inject NavigationManager Nav
 @using Inventory.Client.Pages.Office.Letters
 @using Microsoft.AspNetCore.Components.Forms
 @implements IDisposable
 
 @* ============================================================
-   ایمیل سازمانی (پست الکترونیک)
-   • حساب‌های شخصی هر کاربر + حساب‌های رسمی دبیرخانه (جدا از شخصی)
+   پست الکترونیک — دو مسیر با یک چیدمان:
+     /office/email           → ایمیل سازمانی (حساب‌های شخصی + رسمیِ دبیرخانه)
+     /office/personal-email  → ایمیل شخصی (فقط حساب‌های شخصیِ خود کاربر)
    • پشتیبانی Gmail / Yahoo / Outlook / وب‌میل هاست / سفارشی
-   • دریافت با IMAP، ارسال با SMTP، پیوست، نشان‌کردن، بایگانی پوشه‌ای
+   • دریافت با IMAP، ارسال با SMTP، پیوست، نشان‌کردن، اسپم، بایگانی پوشه‌ای
+   • فهرست‌ها با صفحه‌بندیِ کاملاً سمت سرور خوانده می‌شوند
    ============================================================ *@
 
-<PageTitle>ایمیل سازمانی</PageTitle>
+<PageTitle>@(personalMode ? "ایمیل شخصی" : "ایمیل سازمانی")</PageTitle>
 
 <div class="ltx" style="animation:none;transform:none">
     <div style="display:flex;height:calc(100vh - 130px);min-height:540px;background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden">
@@ -43,6 +47,12 @@
                 </button>
                 <span class="rlbl">نشان</span>
 
+                <button class="@(tab == "spam" ? "on" : "")" title="اسپم (هرزنامه)" @onclick='() => SetTab("spam")' disabled="@busy">
+                    <i class="bi bi-shield-slash"></i>
+                    @if (spamCount > 0) { <span class="rbadge">@spamCount.FaDigits()</span> }
+                </button>
+                <span class="rlbl">اسپم</span>
+
                 <button class="@(tab == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetTab("archive")' disabled="@busy">
                     <i class="bi bi-archive"></i>
                 </button>
@@ -59,7 +69,7 @@
         <div style="padding:14px;width:100%;box-sizing:border-box;display:flex;flex-direction:column;min-height:0;flex:1">
 
         <div class="rd-top" style="border-radius:12px;margin-bottom:12px">
-            <span class="t"><i class="bi bi-envelope-at" style="color:var(--p2)"></i> ایمیل سازمانی</span>
+            <span class="t"><i class="bi @(personalMode ? "bi-person-badge" : "bi-envelope-at")" style="color:var(--p2)"></i> @(personalMode ? "ایمیل شخصی" : "ایمیل سازمانی")</span>
             <span class="spacer" style="flex:1"></span>
             @if (Auth.Has("Email.Create"))
             {
@@ -79,6 +89,9 @@
                 <button class="chip @(tab == "starred" ? "on" : "")" @onclick='() => SetTab("starred")'>
                     <i class="bi bi-star"></i> نشان‌شده
                 </button>
+                <button class="chip @(tab == "spam" ? "on" : "")" @onclick='() => SetTab("spam")'>
+                    <i class="bi bi-shield-slash"></i> اسپم @if (spamCount > 0) { <span class="n">@spamCount.FaDigits()</span> }
+                </button>
                 <button class="chip @(tab == "archive" ? "on" : "")" @onclick='() => SetTab("archive")'>
                     <i class="bi bi-archive"></i> بایگانی
                 </button>
@@ -89,9 +102,9 @@
 
             @if (tab != "accounts")
             {
-                <select class="tin" style="max-width:270px" @bind="accFilter" @bind:after="ReloadAsync">
+                <select class="tin" style="max-width:270px" @bind="accFilter" @bind:after="OnFilterChanged">
                     <option value="0">— همه حساب‌ها —</option>
-                    @foreach (var a in accounts)
+                    @foreach (var a in VisibleAccounts)
                     {
                         <option value="@a.EmailId">
                             @(a.IsDabirkhane ? "📮 " : "")@a.EmailAddress @(a.IsMine ? "" : "(دبیرخانه)")
@@ -101,14 +114,20 @@
 
                 <div class="search" style="flex:1;min-width:180px">
                     <i class="bi bi-search"></i>
-                    <input placeholder="جستجو در موضوع، آدرس، متن…" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
+                    <input placeholder="جستجو در موضوع، آدرس، متن…" @bind="search" @bind:event="oninput" @bind:after="OnSearchChanged" />
                 </div>
+
+                <select class="tin" style="max-width:120px" @bind="pageSize" @bind:after="OnFilterChanged" title="تعداد ایمیل در هر صفحه">
+                    <option value="25">۲۵ در صفحه</option>
+                    <option value="50">۵۰ در صفحه</option>
+                    <option value="100">۱۰۰ در صفحه</option>
+                </select>
 
                 @if (accFilter > 0)
                 {
                     <button class="lbtn ghost" disabled="@syncing" @onclick="SyncNow">
                         <i class="bi @(syncing ? "bi-arrow-repeat bi-spin" : "bi-cloud-arrow-down")"></i>
-                        @(syncing ? "در حال دریافت…" : "دریافت ایمیل‌ها")
+                        @(syncing ? "در حال دریافت…" : tab == "spam" ? "دریافت هرزنامه‌ها" : "دریافت ایمیل‌ها")
                     </button>
                 }
             }
@@ -160,8 +179,8 @@
                 </div>
             }
 
-            @* ----- حساب‌های دبیرخانه ----- *@
-            @if (CanManageDabirkhane)
+            @* ----- حساب‌های دبیرخانه (در بخشِ ایمیلِ شخصی نمایش داده نمی‌شود) ----- *@
+            @if (CanManageDabirkhane && !personalMode)
             {
                 <div class="scard" style="margin-bottom:12px">
                     <h3><i class="bi bi-mailbox" style="color:var(--p2)"></i> حساب‌های رسمی دبیرخانه <span class="opt">— جدا از ایمیل شخصی؛ برای ارسال نامه صادره</span></h3>
@@ -181,12 +200,16 @@
 
             @* ----- حساب‌های شخصی ----- *@
             <div class="scard">
-                <h3><i class="bi bi-person"></i> حساب‌های شخصی من</h3>
-                @if (!accounts.Any(a => !a.IsDabirkhane))
+                <h3><i class="bi bi-person"></i> @(personalMode ? "حساب‌های ایمیل شخصی من" : "حساب‌های شخصی من")
+                    @if (personalMode) { <span class="opt">— فقط ایمیل‌های شخصیِ شما؛ ایمیل‌های رسمیِ دبیرخانه در «ایمیل سازمانی» است</span> }
+                </h3>
+                @if (!VisibleAccounts.Any())
                 {
-                    <div style="color:#64748b;font-size:13px;padding:6px 0">حساب شخصی ثبت نکرده‌اید.</div>
+                    <div style="color:#64748b;font-size:13px;padding:6px 0">
+                        حساب شخصی ثبت نکرده‌اید — «افزودن حساب ایمیل» را بزنید و تیکِ «دبیرخانه» را برندارید.
+                    </div>
                 }
-                @foreach (var a in accounts.Where(x => !x.IsDabirkhane))
+                @foreach (var a in VisibleAccounts)
                 {
                     var aa = a;
                     @AccountRow(aa)
@@ -207,8 +230,19 @@
                         else if (messages.Count == 0)
                         {
                             <div class="empty">
-                                <i class="bi bi-inbox"></i>
-                                @(accFilter > 0 ? "ایمیلی نیست — «دریافت ایمیل‌ها» را بزنید." : "ایمیلی نیست — یک حساب انتخاب کنید و دریافت بزنید.")
+                                <i class="bi @(tab == "spam" ? "bi-shield-check" : "bi-inbox")"></i>
+                                @if (tab == "spam")
+                                {
+                                    @("هرزنامه‌ای نیست — «دریافت هرزنامه‌ها» را بزنید یا یک ایمیل را دستی اسپم کنید.")
+                                }
+                                else if (!string.IsNullOrWhiteSpace(search))
+                                {
+                                    @("نتیجه‌ای برای این جستجو پیدا نشد.")
+                                }
+                                else
+                                {
+                                    @(accFilter > 0 ? "ایمیلی نیست — «دریافت ایمیل‌ها» را بزنید." : "ایمیلی نیست — یک حساب انتخاب کنید و دریافت بزنید.")
+                                }
                             </div>
                         }
                         else
@@ -234,6 +268,7 @@
                                         <div class="mail-pv">@(mm.Box == "Sent" ? "به: " : "از: ")@PreviewName(mm)</div>
                                         <div class="tags">
                                             <span class="tg gray">@mm.AccountAddress</span>
+                                            @if (mm.IsSpam) { <span class="tg red"><i class="bi bi-shield-slash"></i> اسپم</span> }
                                             @if (mm.IsAttachment) { <span class="tg gray"><i class="bi bi-paperclip"></i> پیوست</span> }
                                             @if (!string.IsNullOrEmpty(mm.FolderTitle)) { <span class="tg purple"><i class="bi bi-folder"></i> @mm.FolderTitle</span> }
                                             @if (!mm.IsRead && mm.Box == "Inbox") { <span class="tg blue">جدید</span> }
@@ -243,6 +278,40 @@
                             }
                         }
                     </div>
+
+                    @* ---------- صفحه‌بندی (سمت سرور) ---------- *@
+                    @if (!loading && totalItems > 0)
+                    {
+                        <div class="eml-pager">
+                            <span class="pg-info">
+                                صفحه @curPage.FaDigits() از @totalPages.FaDigits()
+                                — @totalItems.FaDigits() ایمیل
+                            </span>
+                            <span style="flex:1"></span>
+                            @if (totalPages > 1)
+                            {
+                                <button class="pg" disabled="@(curPage <= 1)" @onclick="() => GoPageAsync(1)" title="صفحه‌ی اول">
+                                    <i class="bi bi-chevron-double-right"></i>
+                                </button>
+                                <button class="pg" disabled="@(curPage <= 1)" @onclick="() => GoPageAsync(curPage - 1)">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                                @if (PageButtons().First() > 1) { <span class="pg-gap">…</span> }
+                                @foreach (var p in PageButtons())
+                                {
+                                    var pp = p;
+                                    <button class="pg @(pp == curPage ? "on" : "")" @onclick="() => GoPageAsync(pp)">@pp.FaDigits()</button>
+                                }
+                                @if (PageButtons().Last() < totalPages) { <span class="pg-gap">…</span> }
+                                <button class="pg" disabled="@(curPage >= totalPages)" @onclick="() => GoPageAsync(curPage + 1)">
+                                    <i class="bi bi-chevron-left"></i>
+                                </button>
+                                <button class="pg" disabled="@(curPage >= totalPages)" @onclick="() => GoPageAsync(totalPages)" title="صفحه‌ی آخر">
+                                    <i class="bi bi-chevron-double-left"></i>
+                                </button>
+                            }
+                        </div>
+                    }
                 </div>
 
                 @* ---------- صفحه خواندن ---------- *@
@@ -268,6 +337,12 @@
                             }
                             @if (openMsg.Box == "Inbox")
                             {
+                                @* اسپم: انتقال به هرزنامه / بازگشت به صندوقِ دریافتی *@
+                                <button class="icb @(openMsg.IsSpam ? "gold" : "")"
+                                        title="@(openMsg.IsSpam ? "خارج کردن از هرزنامه" : "نشان‌کردن به‌عنوان هرزنامه")"
+                                        @onclick="() => ToggleSpamAsync(!openMsg.IsSpam)">
+                                    <i class="bi bi-shield-slash"></i>
+                                </button>
                                 <button class="icb" title="تبدیل به نامه داخلی" disabled="@converting" @onclick="ConvertToLetterAsync">
                                     <i class="bi @(converting ? "bi-arrow-repeat bi-spin" : "bi-file-earmark-arrow-up")"></i>
                                 </button>
@@ -337,7 +412,7 @@
                 <div class="fcard">
                     <label>از حساب <span class="req">*</span></label>
                     <select class="tin" @bind="cpAccountId">
-                        @foreach (var a in accounts.Where(x => x.IsActive))
+                        @foreach (var a in VisibleAccounts.Where(x => x.IsActive))
                         {
                             <option value="@a.EmailId">@(a.IsDabirkhane ? "📮 دبیرخانه — " : "")@a.EmailAddress</option>
                         }
@@ -522,12 +597,26 @@
     private string search = "";
     private int accFilter;
 
+    /// <summary>true وقتی کاربر از مسیر «ایمیل شخصی» آمده — فقط حساب‌های شخصیِ خودش</summary>
+    private bool personalMode;
+
+    // ---------- صفحه‌بندیِ سمت سرور ----------
+    private int curPage = 1;
+    private int pageSize = 25;
+    private int totalItems;
+    private int totalPages = 1;
+    private int spamCount;
+
     private List<EmailAccountDto> accounts = new();
     private List<EmailMessageListItemDto> messages = new();
     private EmailMessageDetailDto? openMsg;
     private int openId;
     private string openBox = "";
     private int unreadCount;
+
+    /// <summary>حساب‌هایی که در این صفحه دیده می‌شوند — در حالت شخصی فقط حساب‌های خودِ کاربر</summary>
+    private List<EmailAccountDto> VisibleAccounts =>
+        personalMode ? accounts.Where(a => a.IsMine && !a.IsDabirkhane).ToList() : accounts;
 
     private ComposeLetterModal? letterCompose;
     private bool converting;
@@ -549,7 +638,23 @@
                 if (data != null && data.Length > 0)
                     files.Add(new MemoryBrowserFile(name, "application/octet-stream", data));
             }
-            letterCompose?.Open(openMsg.Subject, openMsg.Body, null, files);
+
+            // عنوانِ نامه نباید خالی باشد — ایمیل‌های بدون موضوع جایگزین می‌شوند
+            var title = string.IsNullOrWhiteSpace(openMsg.Subject) ? "(بدون موضوع)" : openMsg.Subject.Trim();
+
+            // سربرگِ «منبعِ نامه» تا گیرنده بداند این نامه برگرفته از یک ایمیل است
+            var boxName = openMsg.Box == "Sent" ? "ارسالی" : "دریافتی";
+            var from = openMsg.Box == "Sent" ? "به: " + openMsg.FromOrTo : "از: " + openMsg.FromOrTo;
+            var header = "<div style=\"margin:0 0 12px;padding:8px 10px;border-inline-start:3px solid #c7d2fe;"
+                       + "background:#f8fafc;border-radius:8px;font-family:Tahoma;font-size:12px;color:#475569;direction:rtl\">"
+                       + "<b>برگرفته از ایمیل " + boxName + "</b><br/>"
+                       + System.Net.WebUtility.HtmlEncode(from) + "<br/>"
+                       + "موضوع: " + System.Net.WebUtility.HtmlEncode(title) + "<br/>"
+                       + "حساب: " + System.Net.WebUtility.HtmlEncode(openMsg.AccountAddress)
+                       + " — تاریخ: " + openMsg.Date.ToFaDateTime()
+                       + "</div>";
+
+            letterCompose?.Open(title, header + (openMsg.Body ?? ""), null, files);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { converting = false; }
@@ -609,21 +714,23 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Layout.SetTitle("ایمیل سازمانی");
+        // مسیرِ «ایمیل شخصی» همان صفحه است با پالایشِ حساب‌های شخصی
+        personalMode = Nav.Uri.Contains("personal-email", StringComparison.OrdinalIgnoreCase);
+        Layout.SetTitle(personalMode ? "ایمیل شخصی" : "ایمیل سازمانی");
         await LoadAccountsAsync();
         await ReloadAsync();
     }
 
-    public void Dispose() { }
+    public void Dispose() { _searchTimer?.Dispose(); }
 
     private async Task SetTab(string t)
     {
-        tab = t; openMsg = null; openId = 0; openBox = ""; archOpen = false;
+        tab = t; openMsg = null; openId = 0; openBox = ""; archOpen = false; curPage = 1;
         if (t == "accounts") await LoadAccountsAsync();
         if (t == "archive" && folders.Count == 0) { try { folders = await EmailSvc.GetFoldersAsync(); } catch { } }
-        // دریافتی/ارسالی: ابتدا فقط پیام‌های تازه از سرور گرفته و در بانک ذخیره می‌شوند،
-        // سپس فهرستِ کامل از بانک خوانده می‌شود.
-        if (t is "inbox" or "sent") await SyncFolderAsync(t);
+        // دریافتی/ارسالی/اسپم: ابتدا فقط پیام‌های تازه از سرور گرفته و در بانک ذخیره می‌شوند،
+        // سپس فهرستِ صفحه‌بندی‌شده از بانک خوانده می‌شود.
+        if (t is "inbox" or "sent" or "spam") await SyncFolderAsync(t);
         await ReloadAsync();
     }
 
@@ -637,8 +744,13 @@
         StateHasChanged();
         try
         {
-            var r = box == "sent" ? await EmailSvc.SyncSentAsync() : await EmailSvc.SyncInboxAsync();
-            // فقط هنگام رسیدنِ پیام تازه یا بروز خطا اطلاع می‌دهیم تا هر بار کلیک مزاحم نشود
+            var r = box switch
+            {
+                "sent" => await EmailSvc.SyncSentAsync(),
+                "spam" => await EmailSvc.SyncJunkAsync(),
+                _ => await EmailSvc.SyncInboxAsync()
+            };
+            // فقط هنگام رسیدنِ پیام تازه اطلاع می‌دهیم تا هر بار کلیک مزاحم نشود
             if (r.NewCount > 0) Toast.Success(r.Message);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -650,38 +762,99 @@
         try
         {
             accounts = await EmailSvc.GetAccountsAsync();
-            if (cpAccountId == 0 && accounts.Any(x => x.IsActive))
-                cpAccountId = accounts.First(x => x.IsActive).EmailId;
+            var pool = VisibleAccounts;
+            if (cpAccountId == 0 && pool.Any(x => x.IsActive))
+                cpAccountId = pool.First(x => x.IsActive).EmailId;
             if (accFilter > 0 && accounts.All(x => x.EmailId != accFilter)) accFilter = 0;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    /// <summary>
+    /// خواندنِ یک صفحه از فهرست. همه‌ی پالایش‌ها (جستجو، پوشه، اسپم، نشان،
+    /// حساب) و برشِ صفحه در بانک انجام می‌شود و فقط همین صفحه به کلاینت می‌آید.
+    /// </summary>
     private async Task ReloadAsync()
     {
         loading = true;
         try
         {
-                if (tab == "archive")
-            {
-                // همه ایمیل‌های بایگانی‌شده (دریافتی + ارسالی در پوشه‌ها)
-                var inbox = await EmailSvc.GetInboxAsync(accFilter, null, null, -1);
-                var sent = await EmailSvc.GetSentAsync(accFilter, null, -1);
-                messages = inbox.Concat(sent).OrderByDescending(x => x.Date).ToList();
-            }
+            int? fid = accFilter > 0 ? accFilter : null;
+            var term = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+
+            EmailListPageDto res;
+            if (tab == "archive")
+                res = await EmailSvc.GetArchiveAsync(fid, term, curPage, pageSize, personalMode);
             else if (tab == "sent")
-            {
-                messages = await EmailSvc.GetSentAsync(accFilter, search);
-            }
+                res = await EmailSvc.GetSentAsync(fid, term, null, curPage, pageSize, false, personalMode);
+            else if (tab == "starred")
+                res = await EmailSvc.GetInboxAsync(fid, term, null, null, curPage, pageSize, false, true, personalMode);
+            else if (tab == "spam")
+                res = await EmailSvc.GetInboxAsync(fid, term, null, null, curPage, pageSize, true, false, personalMode);
             else
-            {
-                var list = await EmailSvc.GetInboxAsync(accFilter, search);
-                messages = tab == "starred" ? list.Where(x => x.IsNeshan).ToList() : list;
-                unreadCount = list.Count(x => !x.IsRead);
-            }
+                res = await EmailSvc.GetInboxAsync(fid, term, null, null, curPage, pageSize, false, false, personalMode);
+
+            messages = res.Items;
+            totalItems = res.TotalCount;
+            totalPages = res.PageCount;
+            spamCount = res.SpamCount;
+            if (curPage > totalPages) curPage = totalPages;
+            if (tab == "inbox") unreadCount = res.UnreadCount;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+    }
+
+    /// <summary>رفتن به یک صفحه — همیشه از سرور خوانده می‌شود</summary>
+    private async Task GoPageAsync(int p)
+    {
+        if (p < 1 || p > totalPages || p == curPage) return;
+        curPage = p;
+        await ReloadAsync();
+    }
+
+    /// <summary>شماره‌های صفحه برای نمایش — پنجره‌ای تا هفت دکمه</summary>
+    private List<int> PageButtons()
+    {
+        const int win = 7;
+        if (totalPages <= win) return Enumerable.Range(1, totalPages).ToList();
+        var start = Math.Max(1, Math.Min(curPage - win / 2, totalPages - win + 1));
+        return Enumerable.Range(start, win).ToList();
+    }
+
+    // ---------- جستجو با تأخیر (جلوگیری از یک درخواست به‌ازای هر کلید) ----------
+    private System.Threading.Timer? _searchTimer;
+
+    private void OnSearchChanged()
+    {
+        _searchTimer?.Dispose();
+        _searchTimer = new System.Threading.Timer(_ => _ = InvokeAsync(async () =>
+        {
+            curPage = 1;
+            await ReloadAsync();
+            StateHasChanged();
+        }), null, 400, Timeout.Infinite);
+    }
+
+    private async Task OnFilterChanged()
+    {
+        curPage = 1;
+        await ReloadAsync();
+    }
+
+    /// <summary>نشان‌کردن / خارج‌کردنِ یک ایمیل از هرزنامه</summary>
+    private async Task ToggleSpamAsync(bool spam)
+    {
+        if (openMsg == null) return;
+        try
+        {
+            await EmailSvc.MarkSpamAsync(openMsg.Box, openMsg.Id, spam);
+            openMsg.IsSpam = spam;
+            Toast.Success(spam ? "به هرزنامه منتقل شد." : "به صندوقِ دریافتی بازگشت.");
+            openMsg = null; openId = 0; openBox = "";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private async Task SyncNow()
@@ -690,8 +863,11 @@
         syncing = true;
         try
         {
-            var r = await EmailSvc.SyncAsync(accFilter);
-            Toast.Success(r.Message);
+            // در تبِ اسپم پوشه‌ی هرزنامه (Junk) روی سرورِ IMAP خوانده می‌شود
+            var r = tab == "spam"
+                ? await EmailSvc.SyncJunkAsync()
+                : await EmailSvc.SyncAsync(accFilter);
+            if (r.NewCount > 0) Toast.Success(r.Message);
             await ReloadAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -773,7 +949,8 @@
         cpErrTo = cpErrSubject = false;
         cpFiles.Clear();
         _pendingBrowser.Clear();
-        if (accounts.Any(x => x.IsActive)) cpAccountId = accounts.First(x => x.IsActive).EmailId;
+        var pool = VisibleAccounts;
+        if (pool.Any(x => x.IsActive)) cpAccountId = pool.First(x => x.IsActive).EmailId;
         composeOpen = true;
     }
 
