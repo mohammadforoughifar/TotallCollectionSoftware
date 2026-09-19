@@ -50,12 +50,6 @@
                     <i class="bi bi-grid-1x2-fill"></i><span>داشبورد من</span>
                 </NavLink>
                 }
-                @if (CanSeeReportBuilder)
-                {
-                <NavLink class="nav-link" href="report-builder" @onclick="NotifyClose">
-                    <i class="bi bi-clipboard-data-fill"></i><span>گزارش‌ساز</span>
-                </NavLink>
-                }
                 @if (Auth.Has("Dashboards.Financial"))
                 {
                     <NavLink class="nav-link" href="" Match="NavLinkMatch.All" @onclick="NotifyClose">
@@ -512,13 +506,12 @@
     private bool CanSeeCartable => Auth.CanSee("MyCartable");
     private bool CanSeeMyArchive => Auth.CanSee("MyArchive");
     private bool CanSeeMyDashboards => Auth.CanSee("MyDashboards");
-    private bool CanSeeReportBuilder => Auth.CanSee("ReportBuilder");
     private bool CanSeeAnyDashboard => Auth.Has("Dashboards.Financial")
                                     || Auth.Has("Dashboards.Management")
                                     || Auth.Has("Dashboards.Hardware");
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
-                                  || CanSeeReportBuilder || CanSeeAnyDashboard;
+                                  || CanSeeAnyDashboard;
     private bool ShowOpsGroup => ModuleAccess.CanSeeAny(Auth, "Orders", "Stock", "Repairs", "Expenses");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
@@ -536,7 +529,7 @@
         var p = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
 
         gChat = p.StartsWith("chat");
-        gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-builder");
+        gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards");
         gWo = p.StartsWith("work-orders");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gLetters = p.StartsWith("letters");
