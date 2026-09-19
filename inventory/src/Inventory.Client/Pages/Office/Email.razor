@@ -27,28 +27,28 @@
                     <div style="height:8px"></div>
                 }
 
-                <button class="@(tab == "inbox" ? "on" : "")" title="دریافتی" @onclick='() => SetTab("inbox")'>
+                <button class="@(tab == "inbox" ? "on" : "")" title="دریافتی" @onclick='() => SetTab("inbox")' disabled="@busy">
                     <i class="bi bi-inbox-fill"></i>
                     @if (unreadCount > 0) { <span class="rbadge">@unreadCount.FaDigits()</span> }
                 </button>
                 <span class="rlbl">دریافتی</span>
 
-                <button class="@(tab == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetTab("sent")'>
+                <button class="@(tab == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetTab("sent")' disabled="@busy">
                     <i class="bi bi-send"></i>
                 </button>
                 <span class="rlbl">ارسالی</span>
 
-                <button class="@(tab == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetTab("starred")'>
+                <button class="@(tab == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetTab("starred")' disabled="@busy">
                     <i class="bi bi-star"></i>
                 </button>
                 <span class="rlbl">نشان</span>
 
-                <button class="@(tab == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetTab("archive")'>
+                <button class="@(tab == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetTab("archive")' disabled="@busy">
                     <i class="bi bi-archive"></i>
                 </button>
                 <span class="rlbl">بایگانی</span>
 
-                <button class="@(tab == "accounts" ? "on" : "")" title="حساب‌ها" @onclick='() => SetTab("accounts")'>
+                <button class="@(tab == "accounts" ? "on" : "")" title="حساب‌ها" @onclick='() => SetTab("accounts")' disabled="@busy">
                     <i class="bi bi-gear"></i>
                 </button>
                 <span class="rlbl">حساب‌ها</span>
@@ -138,6 +138,15 @@
                     <option value="1">ارسالی</option>
                 </select>
                 <button class="lbtn pri" @onclick="AddFolder"><i class="bi bi-plus-lg"></i> افزودن</button>
+            </div>
+        }
+
+        @* ---------- نوار پیشرفت هنگام دریافت/بارگذاری ---------- *@
+        @if (busy)
+        {
+            <div class="eml-prog-wrap">
+                <div class="eml-prog"><div class="bar"></div></div>
+                <span class="eml-prog-t"><span class="sp"></span>@busyText</span>
             </div>
         }
 
@@ -503,6 +512,12 @@
 @code {
     private bool loading = true;
     private bool syncing;
+
+    /// <summary>در حال کار: همگام‌سازی با سرور یا بارگذاریِ فهرست.
+    /// تا زمانی که درست است، تغییرِ بخش مجاز نیست تا کاربر وسطِ کار جابه‌جا نشود.</summary>
+    private bool busy => syncing || loading;
+
+    private string busyText => syncing ? "در حال دریافت ایمیل‌ها از سرور…" : "در حال بارگذاری…";
     private string tab = "inbox";
     private string search = "";
     private int accFilter;
