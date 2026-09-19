@@ -56,6 +56,10 @@ builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingServic
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
 builder.Services.AddScoped<Inventory.Api.Services.Dashboards.IWidgetDataService, Inventory.Api.Services.Dashboards.WidgetDataService>(); // داشبورد شخصی کاربر — تولید دادهٔ ویجت‌ها
 builder.Services.AddScoped<Inventory.Api.Services.Core.IEffectivePermissions, Inventory.Api.Services.Core.EffectivePermissions>(); // دسترسی‌های مؤثر کاربر (مشترک بین داشبورد و گزارش‌ساز)
+// گزارش‌ساز حرفه‌ای — کاتالوگ، اجرا و کنترل دسترسی
+builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsRowSource, Inventory.Api.Services.ReportStudio.RsRowSource>();
+builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsExecutor, Inventory.Api.Services.ReportStudio.RsExecutor>();
+builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsAccessService, Inventory.Api.Services.ReportStudio.RsAccessService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AttendanceRecalcService>();
 builder.Services.AddScoped<HrTimeService>(); // ماژول زمان‌بندی

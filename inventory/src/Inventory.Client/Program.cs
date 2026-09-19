@@ -24,6 +24,7 @@ builder.Services.AddScoped<IApiClient, ApiClient>();
 builder.Services.AddScoped<BonHrApi>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
 builder.Services.AddScoped<IDashboardClient, DashboardClient>(); // داشبورد شخصی کاربر
+builder.Services.AddScoped<IReportStudioClient, ReportStudioClient>(); // گزارش‌ساز حرفه‌ای
 builder.Services.AddScoped<IReferrerService, ReferrerService>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IUnitService, UnitService>();
