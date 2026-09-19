@@ -794,12 +794,21 @@
             else
                 res = await EmailSvc.GetInboxAsync(fid, term, null, null, curPage, pageSize, false, false, personalMode);
 
-            messages = res.Items;
             totalItems = res.TotalCount;
             totalPages = res.PageCount;
             spamCount = res.SpamCount;
-            if (curPage > totalPages) curPage = totalPages;
             if (tab == "inbox") unreadCount = res.UnreadCount;
+
+            // اگر بعد از حذف/اسپم/تغییرِ فیلتر، شماره‌ی صفحه از محدوده بیرون رفته باشد
+            // (مثلاً آخرین آیتمِ آخرین صفحه حذف شده)، یک‌بار با صفحه‌ی معتبر بازخوانی می‌شود
+            if (curPage > totalPages && totalPages >= 1)
+            {
+                curPage = totalPages;
+                await ReloadAsync();
+                return;
+            }
+
+            messages = res.Items;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
