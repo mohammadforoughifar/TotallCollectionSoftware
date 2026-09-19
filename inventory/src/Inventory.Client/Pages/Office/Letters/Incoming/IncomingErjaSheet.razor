@@ -1,4 +1,5 @@
 @inject IIncomingLetterService IncomingSvc
+@inject ILetterService LetterSvc
 @inject IAuthState Auth
 @inject IToastService Toast
 
@@ -72,10 +73,9 @@
     private int sabtNumber = 0;
 
     private LetterPickCombo? combo;
-    private List<UserDto> users = new();
-    private List<UserGroupDto> groups = new();
-    private List<int> selUsers = new();
-    private List<int> selGroups = new();
+    private List<LetterReciverDto> users = new();
+    private List<LetterGroupDto> groups = new();
+    private HashSet<int> selUsers = new(), selGroups = new();
 
     private string matn = "";
     private DateTime? mohlatPasokh;
@@ -118,8 +118,8 @@
     {
         try
         {
-            users = await Auth.GetUsersAsync();
-            groups = await Auth.GetUserGroupsAsync();
+            users = await LetterSvc.GetReciversAsync();
+            groups = await LetterSvc.GetGroupsAsync();
         }
         catch { }
     }
@@ -130,7 +130,7 @@
     {
         if (!isAnswer)
         {
-            var receiverIds = combo?.GetSelectedUserIds(users) ?? new List<int>();
+            var receiverIds = combo?.SelectedUsers?.ToList() ?? new List<int>();
             if (receiverIds.Count == 0)
             {
                 errRcv = true;

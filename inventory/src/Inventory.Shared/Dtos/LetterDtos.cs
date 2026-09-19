@@ -163,6 +163,12 @@ public class ErjaDto
     public string Answer { get; set; } = "";
     public bool IsRead { get; set; }
     public DateTime? MohlatPasokh { get; set; }
+
+    // نام‌های مستعار — رابط گردش نامه از این نام‌ها استفاده می‌کند
+    public string ReceiverName { get => ReciverName; set => ReciverName = value; }
+    public DateTime DateErja { get => Date; set => Date = value; }
+    public string MatnPasokh { get => Answer; set => Answer = value; }
+    public DateTime? DatePasokh { get => DateAnswer; set => DateAnswer = value; }
     public string MatnErja { get; set; } = "";
     public int AmalgarId { get; set; }
     public string? AmalgarTitle { get; set; }
@@ -200,12 +206,20 @@ public class AddErjaDto
 
     /// <summary>گروه‌های هامش (معادل Reciver_GroupsHamesh)</summary>
     public List<int> GroupsHamesh { get; set; } = new();
+
+    // نام‌های مستعار — رابط ارجاع نامه وارده از این نام‌ها استفاده می‌کند
+    public List<int> ReceiverUserIds { get => ReciversGirandegan; set => ReciversGirandegan = value ?? new List<int>(); }
+    public string MatnErja { get => TextErja; set => TextErja = value ?? ""; }
+    public DateTime? MohlatPasokh { get => DeadlineAnswer; set => DeadlineAnswer = value; }
 }
 
 /// <summary>پاسخ به ارجاع — معادل AnswerRequest</summary>
 public class AnswerErjaDto
 {
     public string Answer { get; set; } = "";
+
+    /// <summary>نام مستعارِ Answer — متن پاسخ</summary>
+    public string MatnPasokh { get => Answer; set => Answer = value ?? ""; }
     public bool ShowForAll { get; set; }
 
     /// <summary>0=بدون اقدام، 1=تایید، 2=رد</summary>
@@ -232,6 +246,17 @@ public class ErjaTreeNodeDto
     public DateTime? MohlatPasokh { get; set; }
     public bool ShowForAll { get; set; }
     public List<ErjaTreeNodeDto> Children { get; set; } = new();
+
+    // نام‌های مستعار — رابط گردش از این نام‌ها استفاده می‌کند
+    public string SenderName { get => Sender; set => Sender = value; }
+    public string ReceiverName { get => Reciver; set => Reciver = value; }
+    public DateTime DateErja { get => Date; set => Date = value; }
+
+    /// <summary>متن پاسخ — همان Answer</summary>
+    public string MatnPasokh { get => Answer; set => Answer = value; }
+
+    /// <summary>زمان ثبت پاسخ — همان DateAnswer</summary>
+    public DateTime? DatePasokh { get => DateAnswer; set => DateAnswer = value; }
 }
 
 /// <summary>پیش‌نویس — معادل VMPishNavisName</summary>
@@ -336,6 +361,11 @@ public class LetterAttachmentDto
     public string UploaderName { get; set; } = "";
     public int UploaderUserId { get; set; }
     public DateTime UploadedAt { get; set; }
+
+    // نام‌های مستعار — رابط نمایش نامه از این نام‌ها استفاده می‌کند
+    public int AttachmentId { get => Id; set => Id = value; }
+    public long FileSize { get => Size; set => Size = value; }
+    public DateTime UploadDate { get => UploadedAt; set => UploadedAt = value; }
 }
 
 // ==================== بایگانی درختی ====================
@@ -362,6 +392,20 @@ public class BayeganiNodeDto
     public string? Foriat { get; set; }
     public string? Mahramanegi { get; set; }
     public bool HasAttachment { get; set; }
+
+    // ==================== ویژهٔ بایگانی دبیرخانه (نامه صادره) ====================
+
+    /// <summary>1 = نامه داخلی، 2 = نامه صادره (بایگانی دبیرخانه)</summary>
+    public int SourceType { get; set; } = 1;
+
+    /// <summary>سازمان/شرکت مقصد نامه صادره</summary>
+    public string? ReceiverOrganization { get; set; }
+
+    /// <summary>شماره صادره رسمی (بعد از امضا)</summary>
+    public string? SadereNumber { get; set; }
+
+    /// <summary>روش ارسال ثبت‌شده توسط دبیرخانه</summary>
+    public string? SendMethod { get; set; }
 
     public List<BayeganiNodeDto> Children { get; set; } = new();
 }

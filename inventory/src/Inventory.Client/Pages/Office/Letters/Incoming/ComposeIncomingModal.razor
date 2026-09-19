@@ -1,4 +1,5 @@
 @inject IIncomingLetterService IncomingSvc
+@inject IAuthApi AuthApi
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject IJSRuntime JS
@@ -269,7 +270,7 @@
     {
         try
         {
-            users = await Auth.GetUsersAsync();
+            users = await AuthApi.GetUsersAsync();
             reservations = await IncomingSvc.GetReservationsAsync(3);
         }
         catch { }

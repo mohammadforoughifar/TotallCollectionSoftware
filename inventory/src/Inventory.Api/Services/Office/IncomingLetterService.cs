@@ -4,7 +4,7 @@ using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
-namespace Inventory.Api.Services.Office;
+namespace Inventory.Api.Services;
 
 public interface IIncomingLetterService
 {
@@ -267,7 +267,7 @@ public class IncomingLetterService : IIncomingLetterService
             if (!e.IsRead)
             {
                 e.IsRead = true;
-                e.ReadDate = DateTime.Now;
+                e.DateRead = DateTime.Now;
             }
         }
         if (myErjas.Any(e => !e.IsRead)) await _db.SaveChangesAsync();
@@ -296,9 +296,9 @@ public class IncomingLetterService : IIncomingLetterService
                 MatnErja = e.MatnErja,
                 MohlatPasokh = e.MohlatPasokh,
                 IsRead = e.IsRead,
-                ReadDate = e.ReadDate,
+                DateRead = e.DateRead,
                 Answer = e.Answer,
-                AnswerDate = e.AnswerDate
+                DateAnswer = e.DateAnswer
             })
             .ToListAsync();
 
@@ -404,11 +404,11 @@ public class IncomingLetterService : IIncomingLetterService
                 SenderUserId = userId,
                 ReciverUserId = rId,
                 Date = DateTime.Now,
-                Type = 1,
+                Type = "گیرنده",
                 MatnErja = string.IsNullOrWhiteSpace(dto.InitialMatnErja) ? "ثبت نامه وارده" : dto.InitialMatnErja.Trim(),
                 MohlatPasokh = dto.InitialMohlatPasokh,
                 IsRead = rId == userId,
-                ReadDate = rId == userId ? DateTime.Now : null
+                DateRead = rId == userId ? DateTime.Now : null
             });
         }
 

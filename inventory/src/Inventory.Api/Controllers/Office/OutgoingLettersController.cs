@@ -23,6 +23,7 @@ public class OutgoingLettersController : RbacControllerBase
     private readonly IErjaService _erja;
     private readonly ILetterGroupService _groups;
     private readonly IOutgoingLetterPrintService _print;
+    private readonly IArchiveService _archive;
     private readonly FileStore _store;
 
     /// <summary>پوشه پیوست‌های نامه صادره در wwwroot/uploads/office/outgoingletter</summary>
@@ -35,6 +36,7 @@ public class OutgoingLettersController : RbacControllerBase
         IErjaService erja,
         ILetterGroupService groups,
         IOutgoingLetterPrintService print,
+        IArchiveService archive,
         FileStore store) : base(db)
     {
         _letters = letters;
@@ -42,6 +44,7 @@ public class OutgoingLettersController : RbacControllerBase
         _erja = erja;
         _groups = groups;
         _print = print;
+        _archive = archive;
         _store = store;
     }
 
@@ -98,8 +101,14 @@ public class OutgoingLettersController : RbacControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Detail(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var dto = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
+        var isAdmin = await IsAdminAsync();
+        var hasDabirkhane = await HasDabirkhaneAsync();
+
+        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+            return forbid;
+
+        // کاربر دبیرخانه مجاز به مشاهدهٔ نامه است حتی اگر در گردش آن نباشد
+        var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin || hasDabirkhane);
         return dto is null
             ? NotFound(new { message = "نامه پیدا نشد یا شما در گردش آن نیستید." })
             : Ok(dto);
@@ -160,8 +169,14 @@ public class OutgoingLettersController : RbacControllerBase
     [HttpGet("{id:int}/signers")]
     public async Task<IActionResult> Signers(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        if (!await InFlowAsync(id) && !await IsAdminAsync())
+        var isAdmin = await IsAdminAsync();
+        var hasDabirkhane = await HasDabirkhaneAsync();
+
+        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+            return forbid;
+
+        // دبیرخانه برای مشاهدهٔ گردش نامه باید امضا کنندگان را هم ببیند
+        if (!hasDabirkhane && !isAdmin && !await InFlowAsync(id))
         {
             var isSigner = await Db.OutgoingLetterSigners.AnyAsync(s => s.SourceId == id && s.UserId == MyUserId && !s.IsDelete);
             if (!isSigner) return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
@@ -181,6 +196,44 @@ public class OutgoingLettersController : RbacControllerBase
         return Ok(new { message = "نامه با موفقیت امضا شد و شماره صادره تخصیص یافت." });
     }
 
+    // ==================== رونوشت‌گیرندگان (جدول مستقل) ====================
+
+    /// <summary>فهرست رونوشت‌گیرندگان نامه — منبع اصلی برای فرم و چاپ «با رونوشت»</summary>
+    [HttpGet("{id:int}/copy-tos")]
+    public async Task<IActionResult> GetCopyTos(int id)
+    {
+        var isAdmin = await IsAdminAsync();
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        try
+        {
+            return Ok(await _letters.GetCopyTosAsync(id, MyUserId, isAdmin));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// جایگزینی کامل فهرست رونوشت‌ها — کاربر در فرم آن‌ها را یکی‌یکی با دکمهٔ + می‌سازد
+    /// و اینجا کل فهرست یکجا ذخیره می‌شود (افزوده/ویرایش/حذف بر اساس شناسه تشخیص داده می‌شود).
+    /// </summary>
+    [HttpPut("{id:int}/copy-tos")]
+    public async Task<IActionResult> ReplaceCopyTos(int id, [FromBody] ReplaceOutgoingLetterCopyTosDto? dto)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        try
+        {
+            var items = await _letters.ReplaceCopyTosAsync(
+                id, dto?.Items ?? new List<SaveOutgoingLetterCopyToDto>(), MyUserId, await IsAdminAsync());
+            return Ok(new { items, message = "رونوشت‌گیرندگان ذخیره شدند." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     [HttpGet("available-signers")]
     public async Task<IActionResult> AvailableSigners([FromQuery] string? search)
     {
@@ -194,12 +247,142 @@ public class OutgoingLettersController : RbacControllerBase
     private async Task<bool> HasDabirkhaneAsync() =>
         await HasAsync(Module, "Dabirkhane") || await IsAdminAsync();
 
+    /// <summary>
+    /// لیست دبیرخانه با جستجوی پیشرفته — عبارت متنی + فیلترهای وضعیت،
+    /// روش ارسال، فرستنده، شرکت، مقصد، بازهٔ تاریخ و پیوست.
+    /// </summary>
     [HttpGet("dabirkhane")]
-    public async Task<IActionResult> Dabirkhane([FromQuery] string? search, [FromQuery] bool? registeredOnly)
+    public async Task<IActionResult> Dabirkhane(
+        [FromQuery] string? search,
+        [FromQuery] bool? registeredOnly,
+        [FromQuery] bool? archivedOnly,
+        [FromQuery] string? sendMethod,
+        [FromQuery] int? creatorUserId,
+        [FromQuery] int? companyId,
+        [FromQuery] string? receiverOrganization,
+        [FromQuery] string? mahramanegi,
+        [FromQuery] string? foriat,
+        [FromQuery] bool? hasAttachment,
+        [FromQuery] DateTime? fromDate,
+        [FromQuery] DateTime? toDate)
     {
         if (!await HasDabirkhaneAsync())
             return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
-        return Ok(await _letters.GetDabirkhaneAsync(search, registeredOnly));
+
+        var filter = new DabirkhaneSearchDto
+        {
+            Text = string.IsNullOrWhiteSpace(search) ? null : search.Trim(),
+            RegisteredOnly = registeredOnly,
+            ArchivedOnly = archivedOnly,
+            SendMethod = string.IsNullOrWhiteSpace(sendMethod) ? null : sendMethod.Trim(),
+            CreatorUserId = creatorUserId,
+            CompanyId = companyId,
+            ReceiverOrganization = string.IsNullOrWhiteSpace(receiverOrganization) ? null : receiverOrganization.Trim(),
+            Mahramanegi = string.IsNullOrWhiteSpace(mahramanegi) ? null : mahramanegi.Trim(),
+            Foriat = string.IsNullOrWhiteSpace(foriat) ? null : foriat.Trim(),
+            HasAttachment = hasAttachment,
+            FromDate = fromDate,
+            ToDate = toDate
+        };
+
+        return Ok(await _letters.GetDabirkhaneAsync(filter));
+    }
+
+    /// <summary>فهرست ثبت‌کنندگان نامه — برای فیلتر «فرستنده» در جستجوی پیشرفته</summary>
+    [HttpGet("dabirkhane/creators")]
+    public async Task<IActionResult> DabirkhaneCreators()
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _letters.GetDabirkhaneCreatorsAsync());
+    }
+
+    // ==================== بایگانی دبیرخانه (نامه صادره) ====================
+    // درخت پوشه‌های مستقل از بایگانی شخصی نامه‌های داخلی.
+
+    /// <summary>درخت بایگانی دبیرخانه — پوشه‌ها + نامه‌های صادرهٔ بایگانی‌شده</summary>
+    [HttpGet("dabirkhane/bayegani/tree")]
+    public async Task<IActionResult> DabirkhaneBayeganiTree()
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _archive.GetOutgoingTreeAsync(MyUserId));
+    }
+
+    /// <summary>ایجاد دسته اصلی در ریشهٔ بایگانی دبیرخانه</summary>
+    [HttpPost("dabirkhane/bayegani/main-category")]
+    public async Task<IActionResult> AddDabirkhaneMainCategory([FromBody] SaveBayeganiFolderDto dto)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _archive.AddOutgoingMainCategoryAsync(MyUserId, dto));
+    }
+
+    /// <summary>ایجاد زیرپوشه در بایگانی دبیرخانه</summary>
+    [HttpPost("dabirkhane/bayegani/sub-category")]
+    public async Task<IActionResult> AddDabirkhaneSubCategory([FromBody] SaveBayeganiFolderDto dto)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _archive.AddOutgoingSubCategoryAsync(MyUserId, dto));
+    }
+
+    /// <summary>ویرایش عنوان پوشهٔ بایگانی دبیرخانه</summary>
+    [HttpPut("dabirkhane/bayegani/folder/{id:int}")]
+    public async Task<IActionResult> EditDabirkhaneFolder(int id, [FromBody] SaveBayeganiFolderDto dto)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _archive.EditOutgoingFolderAsync(id, MyUserId, dto));
+    }
+
+    /// <summary>جابجایی پوشه در بایگانی دبیرخانه</summary>
+    [HttpPost("dabirkhane/bayegani/folder/{id:int}/move")]
+    public async Task<IActionResult> MoveDabirkhaneFolder(int id, [FromQuery] int newParentId)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _archive.MoveOutgoingFolderAsync(id, newParentId, MyUserId));
+    }
+
+    /// <summary>حذف پوشه/نامه از بایگانی دبیرخانه</summary>
+    [HttpDelete("dabirkhane/bayegani/{id:int}")]
+    public async Task<IActionResult> DeleteDabirkhaneBayegani(int id)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        await _archive.DeleteOutgoingAsync(id, MyUserId);
+        return Ok(new { message = "از بایگانی دبیرخانه حذف شد." });
+    }
+
+    /// <summary>افزودن یک یا چند نامه صادره به بایگانی دبیرخانه</summary>
+    [HttpPost("dabirkhane/bayegani/letters")]
+    public async Task<IActionResult> ArchiveDabirkhaneLetters([FromBody] ArchiveOutgoingLettersDto dto)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+
+        await _archive.ArchiveOutgoingLettersAsync(MyUserId, dto);
+        return Ok(new { message = dto.LetterIds.Count > 1 ? "نامه‌ها به بایگانی دبیرخانه اضافه شدند." : "نامه به بایگانی دبیرخانه اضافه شد." });
+    }
+
+    /// <summary>خروج نامه صادره از بایگانی دبیرخانه</summary>
+    [HttpDelete("dabirkhane/bayegani/letter/{letterId:int}")]
+    public async Task<IActionResult> UnarchiveDabirkhaneLetter(int letterId)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        await _archive.UnarchiveOutgoingLetterAsync(letterId, MyUserId);
+        return Ok(new { message = "نامه از بایگانی دبیرخانه خارج شد." });
+    }
+
+    /// <summary>جابجایی نامه بایگانی‌شده به پوشه‌ای دیگر</summary>
+    [HttpPost("dabirkhane/bayegani/move-letter")]
+    public async Task<IActionResult> MoveDabirkhaneLetter([FromBody] MoveArchivedLetterDto dto)
+    {
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
+        return Ok(await _archive.MoveArchivedLetterAsync(dto, MyUserId));
     }
 
     [HttpGet("dabirkhane/stats")]
@@ -229,9 +412,14 @@ public class OutgoingLettersController : RbacControllerBase
 
     // ==================== چاپ نامه روی سربرگ شرکت (A4 / A5) ====================
 
-    /// <summary>چاپ نامه صادره — خروجی PDF روی سربرگ شرکت (فایل سربرگ از مسیر روت API)</summary>
+    /// <summary>
+    /// چاپ نامه صادره — خروجی PDF روی سربرگ شرکت (فایل سربرگ از مسیر روت API)
+    /// در دو نسخه قابل چاپ است:
+    /// • withCopy=true  → «با رونوشت» (بلوک رونوشت در انتهای نامه چاپ می‌شود)
+    /// • withCopy=false → «بدون رونوشت» (نسخه‌ای که تحویل سازمان مقصد می‌شود)
+    /// </summary>
     [HttpGet("{id:int}/print")]
-    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4")
+    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync() && !await HasDabirkhaneAsync())
@@ -241,22 +429,32 @@ public class OutgoingLettersController : RbacControllerBase
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
 
-        var pdf = await _print.GeneratePdfAsync(id, size);
+        var pdf = await _print.GeneratePdfAsync(id, size, withCopy);
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 
         var letter = await Db.OutgoingLetters.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
         var number = letter?.SadereNumber ?? letter?.LetterNumber ?? id.ToString();
-        var fileName = $"letter-{number.Replace('/', '-')}-{size.ToUpper()}.pdf";
+        var version = withCopy ? "با-رونوشت" : "بدون-رونوشت";
+        var fileName = $"letter-{number.Replace('/', '-')}-{size.ToUpper()}-{version}.pdf";
         return File(pdf, "application/pdf", fileName);
     }
 
     // ==================== گردش / ارجاع ====================
 
+    /// <summary>
+    /// گردش نامه صادره (درخت ارجاع‌ها) — علاوه بر افراد در گردش،
+    /// کاربران دبیرخانه هم می‌توانند گردش نامه را ببینند.
+    /// </summary>
     [HttpGet("{id:int}/gardesh")]
     public async Task<IActionResult> Gardesh(int id)
     {
-        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()));
+        var isAdmin = await IsAdminAsync();
+        var hasDabirkhane = await HasDabirkhaneAsync();
+
+        if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
+            return forbid;
+
+        return Ok(await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane));
     }
 
     [HttpPost("erja")]

@@ -222,12 +222,18 @@
     // ==================== باز کردن ====================
 
     /// <summary>نامه جدید — یا از روی پیش‌نویس (title/text/pishnevisId)</summary>
-    public void Open(string? prefTitle = null, string? prefText = null, int? pishnevisId = null)
+    /// <summary>
+    /// باز کردن فرم — با قابلیت پیش‌پرکردن عنوان، متن و پیوست‌ها.
+    /// پیش‌پرکردن برای «تبدیل ایمیل شخصی به نامه داخلی» به کار می‌رود.
+    /// </summary>
+    public void Open(string? prefTitle = null, string? prefText = null, int? pishnevisId = null,
+                     List<Microsoft.AspNetCore.Components.Forms.IBrowserFile>? prefFiles = null)
     {
         ResetAll();
         title = prefTitle ?? "";
         pendingBody = prefText ?? "";
         draftId = pishnevisId;
+        if (prefFiles != null && prefFiles.Count > 0) pendingFiles.AddRange(prefFiles);
         visible = true;
         _ = LoadListsAsync();
         if (pishnevisId is > 0) _ = LoadDraftAttsAsync(pishnevisId.Value);

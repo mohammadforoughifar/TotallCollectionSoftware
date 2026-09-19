@@ -271,6 +271,9 @@ public class PagedResult<T>
     /// <summary>تعداد صفحه‌ها (محاسبه‌شده)</summary>
     public int PageCount => PageSize <= 0 ? 1 : Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
 
+    /// <summary>نام مستعارِ PageCount — تعداد صفحه‌ها</summary>
+    public int TotalPages => PageCount;
+
     /// <summary>
     /// جمع کل (تیک) روی «همهٔ» ردیف‌های منطبق با فیلتر — نه فقط صفحهٔ جاری.
     /// در لیست گزارش‌های کار برای نمایش «جمع ساعت» استفاده می‌شود.

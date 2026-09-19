@@ -94,6 +94,14 @@ public class OtoEmail
     [Column("Last_Sync")]
     public DateTime? LastSync { get; set; }
 
+    /// <summary>آخرین شناسه‌ی IMAP همگام‌شده از صندوق دریافتی — ۰ یعنی هنوز همگام نشده</summary>
+    [Column("Last_Inbox_Uid")]
+    public long LastInboxUid { get; set; }
+
+    /// <summary>آخرین شناسه‌ی IMAP همگام‌شده از صندوق ارسالی — ۰ یعنی هنوز همگام نشده</summary>
+    [Column("Last_Sent_Uid")]
+    public long LastSentUid { get; set; }
+
     [ForeignKey(nameof(UserId))] public User? User { get; set; }
 
     public ICollection<OtoInboxEmail> InboxEmails { get; set; } = new List<OtoInboxEmail>();
