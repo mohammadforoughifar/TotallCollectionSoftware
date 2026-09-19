@@ -138,6 +138,10 @@ public class AppDbContext : DbContext
     /// <summary>رونوشت‌گیرندگان نامه صادره (هر گیرنده یک ردیف)</summary>
     public DbSet<OutgoingLetterCopyTo> OutgoingLetterCopyToes => Set<OutgoingLetterCopyTo>();
 
+    // ==================== اتوماسیون اداری — نامه وارده (Oto_TBL_VaredeLetter و TBL_RezervationNumberLetter) ====================
+    public DbSet<IncomingLetter> IncomingLetters => Set<IncomingLetter>();
+    public DbSet<LetterNumberReservation> LetterNumberReservations => Set<LetterNumberReservation>();
+
     // ==================== ایمیل سازمانی (پست الکترونیک) — جداول Oto_* دیتابیس Otomasion ====================
     public DbSet<OtoEmail> OtoEmails => Set<OtoEmail>();
     public DbSet<OtoSentEmail> OtoSentEmails => Set<OtoSentEmail>();
@@ -576,23 +580,21 @@ public class AppDbContext : DbContext
         mb.Entity<InnerLetter>().HasIndex(l => l.DateSabt);
         mb.Entity<InnerLetter>().HasIndex(l => l.CreatorUserId);
 
-        // OutgoingLetter — همان الگوی کلید مشترک با SourceType=2
-        mb.Entity<OutgoingLetter>()
+        // IncomingLetter — الگوی کلید مشترک با SourceType=3 (نامه وارده)
+        mb.Entity<IncomingLetter>()
             .HasOne(l => l.Source)
-            .WithOne(s => s.OutgoingLetter!)
-            .HasForeignKey<OutgoingLetter>(l => l.Id)
+            .WithOne(s => s.IncomingLetter!)
+            .HasForeignKey<IncomingLetter>(l => l.Id)
             .OnDelete(DeleteBehavior.Cascade);
-        mb.Entity<OutgoingLetter>()
-            .HasOne(l => l.Creator)
-            .WithMany()
-            .HasForeignKey(l => l.CreatorUserId)
-            .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<OutgoingLetter>().HasIndex(l => l.Number);
-        mb.Entity<OutgoingLetter>().HasIndex(l => l.DateSabt);
-        mb.Entity<OutgoingLetter>().HasIndex(l => l.CreatorUserId);
-        mb.Entity<OutgoingLetter>().HasIndex(l => l.ReceiverOrganization);
-        mb.Entity<OutgoingLetter>().HasIndex(l => l.SadereNumber);
-        mb.Entity<OutgoingPishnevisLetter>().HasIndex(p => p.UserId);
+        mb.Entity<IncomingLetter>().HasIndex(l => l.Number);
+        mb.Entity<IncomingLetter>().HasIndex(l => l.NumberSabt);
+        mb.Entity<IncomingLetter>().HasIndex(l => l.DateErsal);
+        mb.Entity<IncomingLetter>().HasIndex(l => l.CreateUserId);
+        mb.Entity<IncomingLetter>().HasIndex(l => l.Ferestande);
+
+        // رزرو شماره نامه
+        mb.Entity<LetterNumberReservation>().HasIndex(r => new { r.TypeForm, r.NumberSabt });
+        mb.Entity<LetterNumberReservation>().HasIndex(r => r.UserId);
 
         // امضا کنندگان نامه صادره
         mb.Entity<OutgoingLetterSigner>()

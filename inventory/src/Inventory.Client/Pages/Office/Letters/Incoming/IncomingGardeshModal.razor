@@ -1,0 +1,142 @@
+@inject IIncomingLetterService IncomingSvc
+@inject IToastService Toast
+
+@* ============================================================
+   مدال گردش نامه وارده — نمای لیستی، درختواره و فلوچارتی
+   ============================================================ *@
+
+@if (visible)
+{
+<div class="ltx" style="animation:none;transform:none">
+    <div class="gov">
+        <div class="gmodal" @onclick:stopPropagation="true">
+            <div class="gm-h">
+                <div class="avt" style="width:38px;height:38px"><i class="bi bi-diagram-3"></i></div>
+                <div class="ttl">
+                    <b>گردش نامه وارده — @title</b>
+                    <small class="num">ثبت: # @sabtNumber.FaDigits() · @CountAll().FaDigits() ایستگاه ارجاع</small>
+                </div>
+                <button class="x" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="gm-seg">
+                <button class="@(view == 0 ? "on" : "")" @onclick="() => view = 0"><i class="bi bi-list-ul"></i> لیستی</button>
+                <button class="@(view == 1 ? "on" : "")" @onclick="() => view = 1"><i class="bi bi-diagram-2"></i> درختواره</button>
+            </div>
+            <div class="gm-b">
+                @if (loading)
+                {
+                    <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+                }
+                else if (roots.Count == 0)
+                {
+                    <div class="empty"><i class="bi bi-diagram-3"></i> هنوز ارجاعی برای این نامه ثبت نشده است</div>
+                }
+                else if (view == 0)
+                {
+                    <div class="tl">
+                        <div class="tl-i start">
+                            <div class="tl-t">@ferestande (مبدأ)</div>
+                            <div class="tl-s">نامه وارده · ورود به سیستم: @dateErsal.ToFaDate()</div>
+                        </div>
+
+                        @foreach (var r in FlatList(roots))
+                        {
+                            var item = r;
+                            <div class="tl-i">
+                                <div class="tl-t">@item.SenderName <i class="bi bi-arrow-left"></i> @item.ReceiverName</div>
+                                <div class="tl-s">
+                                    ارسال: @item.DateErja.ToFaDateTime()
+                                    @if (!string.IsNullOrWhiteSpace(item.MatnErja))
+                                    {
+                                        <span> · دستور: <b>@item.MatnErja</b></span>
+                                    }
+                                    @if (item.IsRead)
+                                    {
+                                        <span class="text-success ms-2"><i class="bi bi-check2-all"></i> رویت شد (@item.DateRead?.ToFaDateTime())</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted ms-2"><i class="bi bi-check2"></i> رویت نشده</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(item.MatnPasokh))
+                                    {
+                                        <div class="mt-1 text-primary">پاسخ/اقدام: @item.MatnPasokh (@item.DatePasokh?.ToFaDateTime())</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="padding:10px">
+                        @foreach (var node in roots)
+                        {
+                            <RenderTreeNode Node="node" Depth="0" />
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+}
+
+@code {
+    private bool visible = false;
+    private bool loading = false;
+    private int view = 0; // 0=List, 1=Tree
+
+    private string title = "";
+    private string ferestande = "";
+    private int sabtNumber = 0;
+    private DateTime dateErsal = DateTime.Now;
+
+    private List<ErjaTreeNodeDto> roots = new();
+
+    public async Task Open(int letterId, string title, string ferestande, int sabtNumber, DateTime dateErsal)
+    {
+        this.title = title;
+        this.ferestande = ferestande;
+        this.sabtNumber = sabtNumber;
+        this.dateErsal = dateErsal;
+        visible = true;
+        loading = true;
+        roots.Clear();
+
+        try
+        {
+            roots = await IncomingSvc.GetGardeshAsync(letterId);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Close() => visible = false;
+
+    private int CountAll() => CountNodes(roots);
+    private int CountNodes(List<ErjaTreeNodeDto> nodes)
+    {
+        int c = nodes.Count;
+        foreach (var n in nodes) c += CountNodes(n.Children);
+        return c;
+    }
+
+    private List<ErjaTreeNodeDto> FlatList(List<ErjaTreeNodeDto> nodes)
+    {
+        var list = new List<ErjaTreeNodeDto>();
+        foreach (var n in nodes)
+        {
+            list.Add(n);
+            list.AddRange(FlatList(n.Children));
+        }
+        return list;
+    }
+}

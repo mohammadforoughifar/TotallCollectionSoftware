@@ -1,0 +1,387 @@
+@inject IIncomingLetterService IncomingSvc
+@inject IAuthApi AuthApi
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+@* ============================================================
+   مدال ایجاد / ویرایش نامه وارده — شبیه سایر بخش‌های اتوماسیون اداری
+   • فرستنده خارج از سازمان (Ferestande)
+   • شماره و تاریخ نامه مبدأ (NumberLetterVarede, Date)
+   • شماره و تاریخ اندیکاتور ثبت سیستم (NumberSabt, DateErsal)
+   • روش ارسال و تحویل‌گیرنده (TypeErsal, DeliveryName)
+   • ادیتور توضیحات/خلاصه متن (RichTextEditor)
+   • پیوست و ارجاع اولیه
+   ============================================================ *@
+
+@if (visible)
+{
+<div class="ltx" style="animation:none;transform:none">
+    <div class="ov"></div>
+    <div class="sheet" @onclick="CloseCombos">
+        <div class="sheet-h">
+            <b><i class="bi bi-inbox-fill" style="color:var(--p)"></i> @SheetTitle</b>
+            <span class="dt"><i class="bi bi-calendar3"></i> @DateTime.Now.ToFa()</span>
+            <button class="x" @onclick="Close"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="sheet-b">
+
+            @* ---------- عنوان و فرستنده ---------- *@
+            <div class="row2">
+                <div class="fcard @(errTitle ? "err" : "")">
+                    <label>موضوع / عنوان نامه <span class="req">*</span></label>
+                    <input class="tin" placeholder="عنوان یا موضوع نامه وارده…" @bind="title" @bind:event="oninput" />
+                    @if (errTitle)
+                    {
+                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> موضوع نامه الزامی است</div>
+                    }
+                </div>
+                <div class="fcard @(errFerestande ? "err" : "")">
+                    <label>فرستنده (سازمان / شخص مبدأ) <span class="req">*</span></label>
+                    <input class="tin" placeholder="نام شرکت، اداره یا شخص فرستنده…" @bind="ferestande" @bind:event="oninput" />
+                    @if (errFerestande)
+                    {
+                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> فرستنده نامه الزامی است</div>
+                    }
+                </div>
+            </div>
+
+            @* ---------- مشخصات نامه مبدأ ---------- *@
+            <div class="row3">
+                <div class="fcard">
+                    <label>شماره نامه مبدأ <span class="opt">اختیاری</span></label>
+                    <input class="tin" placeholder="شماره روی نامه وارده…" @bind="numberLetterVarede" />
+                </div>
+                <div class="fcard">
+                    <label>تاریخ نامه مبدأ</label>
+                    <input type="date" class="tin" @bind="date" />
+                </div>
+                <div class="fcard">
+                    <label>تاریخ ورود / ثبت</label>
+                    <input type="date" class="tin" @bind="dateErsal" />
+                </div>
+            </div>
+
+            @* ---------- روش ارسال و تحویل ---------- *@
+            <div class="row3">
+                <div class="fcard">
+                    <label>روش ارسال</label>
+                    <select class="tin" @bind="typeErsal">
+                        <option value="دستی / پیک">دستی / پیک</option>
+                        <option value="پست">پست پیشتاز / سفارشی</option>
+                        <option value="ایمیل">پست الکترونیک (ایمیل)</option>
+                        <option value="نمابر">نمابر (فکس)</option>
+                        <option value="ایتا / پیام‌رسان">پیام‌رسان (ایتا/بله)</option>
+                        <option value="سیستم اتوماسیون">اتوماسیون اداری</option>
+                    </select>
+                </div>
+                <div class="fcard">
+                    <label>تحویل‌گیرنده / تحویل‌دهنده</label>
+                    <input class="tin" placeholder="نام شخص تحویل‌دهنده یا گیرنده…" @bind="deliveryName" />
+                </div>
+                <div class="fcard">
+                    <label>شماره اندیکاتور ثبت</label>
+
+                    @if (reservations.Count > 0)
+                    {
+                        <select class="tin" @bind="selectedSabt">
+                            <option value="0">خودکار (اولین شماره آزاد)</option>
+                            @foreach (var r in reservations)
+                            {
+                                <option value="@r.NumberSabt">شماره رزرو شده: @r.NumberSabt (@r.UserName)</option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input class="tin" type="number" placeholder="خودکار" @bind="selectedSabt" />
+                    }
+                </div>
+            </div>
+
+            @* ---------- محرمانگی و فوریت ---------- *@
+            <div class="row2">
+                <div class="fcard">
+                    <label>سطح محرمانگی</label>
+                    <select class="tin" @bind="mahramanegi">
+                        <option value="0">عادی</option>
+                        <option value="1">محرمانه</option>
+                        <option value="2">خیلی محرمانه</option>
+                        <option value="3">سرّی</option>
+                    </select>
+                </div>
+                <div class="fcard">
+                    <label>سطح فوریت</label>
+                    <select class="tin" @bind="foriat">
+                        <option value="0">عادی</option>
+                        <option value="1">فوری</option>
+                        <option value="2">خیلی فوری</option>
+                        <option value="3">آنی</option>
+                    </select>
+                </div>
+            </div>
+
+            @* ---------- متن / توضیحات نامه ---------- *@
+            <div class="fcard">
+                <label>توضیحات / خلاصه متن نامه</label>
+                <RichTextEditor @bind-Value="description" Placeholder="خلاصه متن یا توضیحات نامه وارده را وارد کنید…" Height="220px" ModuleName="IncomingLetters" />
+            </div>
+
+            @* ---------- ارجاع اولیه ---------- *@
+            @if (editLetterId == 0)
+            {
+                <div class="fcard" style="background:#f8fafc; padding:12px; border-radius:12px; margin-top:8px">
+                    <label><i class="bi bi-node-plus-fill" style="color:var(--p)"></i> ارجاع اولیه نامه به کارتابل همکاران <span class="opt">اختیاری</span></label>
+                    <div style="display:flex; gap:10px; margin-top:8px; flex-wrap:wrap">
+                        @foreach (var u in users)
+                        {
+                            var uid = u.Id;
+                            var checkedOn = initialRecivers.Contains(uid);
+                            <label style="display:inline-flex; align-items:center; gap:6px; background:#fff; padding:5px 10px; border-radius:8px; border:1px solid #e2e8f0; font-size:12px; cursor:pointer">
+                                <input type="checkbox" checked="@checkedOn" @onchange="() => ToggleInitialReciver(uid)" />
+                                @UserDisplayName(u)
+                            </label>
+                        }
+                    </div>
+                    @if (initialRecivers.Count > 0)
+                    {
+                        <div style="margin-top:10px">
+                            <input class="tin" placeholder="دستور یا متن ارجاع اولیه (مثلاً: جهت بررسی و اقدام لازم)…" @bind="initialMatnErja" />
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ---------- پیوست‌ها ---------- *@
+            <div class="fcard" style="margin-top:8px">
+                <label><i class="bi bi-paperclip"></i> فایل‌های پیوست نامه <span class="opt">حداکثر ۲۰ مگابایت</span></label>
+
+                @if (pendingFiles.Count > 0)
+                {
+                    <div class="att-list" style="margin-top:6px; display:flex; flex-direction:column; gap:6px">
+                        @foreach (var f in pendingFiles)
+                        {
+                            var ff = f;
+                            <div style="display:flex; align-items:center; justify-content:space-between; background:#f1f5f9; padding:6px 12px; border-radius:8px; font-size:12px">
+                                <div><i class="bi bi-file-earmark"></i> <b>@ff.Name</b> <small>@FmtSize(ff.Size)</small></div>
+                                <button class="btn btn-sm text-danger" @onclick="() => pendingFiles.Remove(ff)"><i class="bi bi-trash"></i></button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                <label class="att att-add" style="margin-top:8px; cursor:pointer; display:inline-flex; align-items:center; gap:8px; background:#eef2ff; border:1px dashed var(--p); padding:8px 14px; border-radius:10px; font-size:12px; color:var(--p)">
+                    <i class="bi bi-upload"></i> انتخاب و بارگذاری فایل پیوست
+                    <InputFile OnChange="OnFilesSelected" multiple style="display:none" />
+                </label>
+            </div>
+
+        </div>
+
+        <div class="sheet-f">
+            <button class="btn-sec" @onclick="Close">انصراف</button>
+
+            <button class="btn-main" disabled="@saving" @onclick="SaveAsync">
+                @if (saving)
+                {
+                    <span class="spinner-border spinner-border-sm"></span> <span>در حال ثبت…</span>
+                }
+                else
+                {
+                    <i class="bi bi-check-lg"></i> <span>@SubmitText</span>
+                }
+            </button>
+        </div>
+    </div>
+</div>
+}
+
+@code {
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private bool visible = false;
+    private bool saving = false;
+    private int editLetterId = 0;
+
+    private string SheetTitle => editLetterId > 0 ? "ویرایش نامه وارده" : "ثبت نامه وارده جدید";
+    private string SubmitText => editLetterId > 0 ? "ذخیره تغییرات" : "ثبت نامه وارده";
+
+    private string title = "";
+    private string ferestande = "";
+    private string numberLetterVarede = "";
+    private DateTime date = DateTime.Now;
+    private DateTime dateErsal = DateTime.Now;
+    private string typeErsal = "دستی / پیک";
+    private string deliveryName = "";
+    private int selectedSabt = 0;
+    private int mahramanegi = 0;
+    private int foriat = 0;
+    private string description = "";
+
+    private List<int> initialRecivers = new();
+    private string initialMatnErja = "";
+
+    private bool errTitle = false;
+    private bool errFerestande = false;
+
+    private List<UserDto> users = new();
+    private List<LetterNumberReservationDto> reservations = new();
+    private List<IBrowserFile> pendingFiles = new();
+
+    public async Task OpenCreate()
+    {
+        editLetterId = 0;
+        title = ""; ferestande = ""; numberLetterVarede = "";
+        date = DateTime.Now; dateErsal = DateTime.Now;
+        typeErsal = "دستی / پیک"; deliveryName = ""; selectedSabt = 0;
+        mahramanegi = 0; foriat = 0; description = "";
+        initialRecivers.Clear(); initialMatnErja = "";
+        pendingFiles.Clear();
+        errTitle = false; errFerestande = false;
+        visible = true;
+
+        await LoadLookups();
+        StateHasChanged();
+    }
+
+    public async Task OpenEdit(IncomingLetterDetailDto letter)
+    {
+        editLetterId = letter.LetterId;
+        title = letter.Title;
+        ferestande = letter.Ferestande;
+        numberLetterVarede = letter.NumberLetterVarede;
+        date = letter.Date;
+        dateErsal = letter.DateErsal;
+        typeErsal = string.IsNullOrWhiteSpace(letter.TypeErsal) ? "دستی / پیک" : letter.TypeErsal;
+        deliveryName = letter.DeliveryName;
+        selectedSabt = letter.NumberSabt;
+        mahramanegi = letter.Mahramanegi;
+        foriat = letter.Foriat;
+        description = letter.Description ?? "";
+        pendingFiles.Clear();
+        errTitle = false; errFerestande = false;
+        visible = true;
+
+        await LoadLookups();
+        StateHasChanged();
+    }
+
+    private async Task LoadLookups()
+    {
+        try
+        {
+            users = await AuthApi.GetUsersAsync();
+            reservations = await IncomingSvc.GetReservationsAsync(3);
+        }
+        catch { }
+    }
+
+    private void ToggleInitialReciver(int uid)
+    {
+        if (initialRecivers.Contains(uid)) initialRecivers.Remove(uid);
+        else initialRecivers.Add(uid);
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            if (file.Size > 20 * 1024 * 1024)
+            {
+                Toast.Error($"فایل {file.Name} بیش از ۲۰ مگابایت است.");
+                continue;
+            }
+            pendingFiles.Add(file);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        errTitle = string.IsNullOrWhiteSpace(title);
+        errFerestande = string.IsNullOrWhiteSpace(ferestande);
+
+        if (errTitle || errFerestande) return;
+
+        saving = true;
+        try
+        {
+            int letterId = editLetterId;
+
+            if (editLetterId == 0)
+            {
+                var dto = new AddIncomingLetterDto
+                {
+                    Title = title.Trim(),
+                    Ferestande = ferestande.Trim(),
+                    NumberLetterVarede = numberLetterVarede.Trim(),
+                    NumberSabt = selectedSabt > 0 ? selectedSabt : null,
+                    Date = date,
+                    DateErsal = dateErsal,
+                    TypeErsal = typeErsal,
+                    DeliveryName = deliveryName.Trim(),
+                    Mahramanegi = mahramanegi,
+                    Foriat = foriat,
+                    Description = description,
+                    InitialReciverUserIds = initialRecivers,
+                    InitialMatnErja = initialMatnErja
+                };
+                letterId = await IncomingSvc.AddAsync(dto);
+                Toast.Success("نامه وارده با موفقیت ثبت شد.");
+            }
+            else
+            {
+                var dto = new EditIncomingLetterDto
+                {
+                    Title = title.Trim(),
+                    Ferestande = ferestande.Trim(),
+                    NumberLetterVarede = numberLetterVarede.Trim(),
+                    Date = date,
+                    DateErsal = dateErsal,
+                    TypeErsal = typeErsal,
+                    DeliveryName = deliveryName.Trim(),
+                    Mahramanegi = mahramanegi,
+                    Foriat = foriat,
+                    Description = description
+                };
+                await IncomingSvc.EditAsync(editLetterId, dto);
+                Toast.Success("تغییرات نامه وارده ذخیره شد.");
+            }
+
+            // آپلود پیوست‌ها
+            if (pendingFiles.Count > 0 && letterId > 0)
+            {
+                foreach (var f in pendingFiles)
+                {
+                    using var stream = f.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+                    await IncomingSvc.UploadAttachmentAsync(letterId, stream, f.Name, f.ContentType);
+                }
+            }
+
+            visible = false;
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            saving = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Close() => visible = false;
+    private void CloseCombos() { }
+
+    private string UserDisplayName(UserDto u) =>
+        string.IsNullOrEmpty(u.FirstName + u.LastName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim();
+
+    private string FmtSize(long sz) =>
+        sz switch
+        {
+            >= 1024 * 1024 => $"{sz / (1024.0 * 1024.0):0.#} MB",
+            >= 1024 => $"{sz / 1024.0:0.#} KB",
+            _ => $"{sz} B"
+        };
+}

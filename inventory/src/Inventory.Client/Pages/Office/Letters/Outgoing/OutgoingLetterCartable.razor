@@ -655,9 +655,10 @@
 
     private const int PageSize = 15;
     private int page = 1;
-    private int TotalCount => folder == "draft" ? FilteredDrafts.Count : Filtered.Count;
+    private int totalServerCount = 0;
+    private int TotalCount => folder == "draft" ? FilteredDrafts.Count : totalServerCount;
     private int PageCount => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
-    private List<OutgoingLetterListItemDto> Paged => Filtered.Skip((page - 1) * PageSize).Take(PageSize).ToList();
+    private List<OutgoingLetterListItemDto> Paged => Filtered;
     private List<OutgoingPishnevisDto> PagedDrafts => FilteredDrafts.Skip((page - 1) * PageSize).Take(PageSize).ToList();
     private IEnumerable<int> PageNumbers
     {
@@ -667,7 +668,12 @@
             for (int i = start; i <= end; i++) yield return i;
         }
     }
-    private void GoPage(int p) { if (p < 1 || p > PageCount || p == page) return; page = p; }
+    private void GoPage(int p)
+    {
+        if (p < 1 || p > PageCount || p == page) return;
+        page = p;
+        _ = InvokeAsync(async () => { await ReloadAsync(keepSelection: true, resetPage: false); StateHasChanged(); });
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -699,33 +705,49 @@
         _ = InvokeAsync(async () => { await ReloadAsync(keepSelection: true); StateHasChanged(); });
     }
 
-    private async Task ReloadAsync() { page = 1; await ReloadAsync(false); }
+    private async Task ReloadAsync() { await ReloadAsync(false, true); }
 
-    private async Task ReloadAsync(bool keepSelection)
+    private async Task ReloadAsync(bool keepSelection, bool resetPage = true)
     {
+        if (resetPage) page = 1;
         loading = true;
         try
         {
             var s = string.IsNullOrWhiteSpace(search) ? null : search;
-            switch (folder)
+            var unread = filter == "unread" ? (bool?)true : null;
+            if (folder == "draft")
             {
-                case "sent": items = await OutgoingSvc.GetSentAsync(s); break;
-                case "draft": drafts = await OutgoingSvc.GetPishnevisListAsync(s); break;
-                case "archive": items = await OutgoingSvc.GetArchiveAsync(s); break;
-                case "signing": items = await OutgoingSvc.GetSigningInboxAsync(s, null); break;
-                case "starred":
-                    // نشان‌شده‌ها = ستاره گیرنده (روی ارجاع) + ستاره فرستنده (روی خود نامه صادره)
-                    var inboxItems = await OutgoingSvc.GetInboxAsync(s);
-                    var sentItems = await OutgoingSvc.GetSentAsync(s);
-                    items = inboxItems.Concat(sentItems).GroupBy(x => x.LetterId).Select(g => g.First()).ToList();
-                    break;
-                default: items = await OutgoingSvc.GetInboxAsync(s); break;
+                drafts = await OutgoingSvc.GetPishnevisListAsync(s);
+            }
+            else
+            {
+                PagedResult<OutgoingLetterListItemDto> res;
+                switch (folder)
+                {
+                    case "sent":
+                        res = await OutgoingSvc.GetSentAsync(s, page, PageSize);
+                        break;
+                    case "archive":
+                        res = await OutgoingSvc.GetArchiveAsync(s, page, PageSize);
+                        break;
+                    case "signing":
+                        res = await OutgoingSvc.GetSigningInboxAsync(s, null, page, PageSize);
+                        break;
+                    case "starred":
+                        res = await OutgoingSvc.GetInboxAsync(s, unread, page, PageSize);
+                        break;
+                    default:
+                        res = await OutgoingSvc.GetInboxAsync(s, unread, page, PageSize);
+                        break;
+                }
+                items = res.Items;
+                totalServerCount = res.TotalCount;
             }
             stats = await OutgoingSvc.GetStatsAsync();
             try
             {
-                var signingList = await OutgoingSvc.GetSigningInboxAsync(null, true);
-                signingUnsigned = signingList.Count;
+                var signingList = await OutgoingSvc.GetSigningInboxAsync(null, true, 1, 1);
+                signingUnsigned = signingList.TotalCount;
             }
             catch { }
             if (keepSelection && selected != null)
@@ -742,7 +764,7 @@
         await ReloadAsync();
     }
 
-    private void SetFilter(string f) { filter = f; page = 1; }
+    private void SetFilter(string f) { filter = f; page = 1; _ = ReloadAsync(); }
     private void ToggleMenu(int id) => openMenuId = openMenuId == id ? 0 : id;
     private void CloseMenus() => openMenuId = 0;
 
