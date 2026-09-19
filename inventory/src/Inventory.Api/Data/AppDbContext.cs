@@ -12,6 +12,11 @@ public class AppDbContext : DbContext
     public DbSet<DocRenewalRun> DocRenewalRuns => Set<DocRenewalRun>();
     public DbSet<DocIndexJob> DocIndexJobs => Set<DocIndexJob>();
     public DbSet<User> Users => Set<User>();
+
+    // ---------- گزارش‌ساز حرفه‌ای ----------
+    public DbSet<RsReport> RsReports => Set<RsReport>();
+    public DbSet<RsReportUserShare> RsReportUserShares => Set<RsReportUserShare>();
+    public DbSet<RsReportRoleShare> RsReportRoleShares => Set<RsReportRoleShare>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     // ==================== داشبورد شخصی کاربر ====================

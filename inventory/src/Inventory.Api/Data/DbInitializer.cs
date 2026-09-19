@@ -77,6 +77,14 @@ public static class DbInitializer
 
                 // گزارش‌ساز قدیمی حذف شده و از نو طراحی می‌شود — جدول‌های باقی‌مانده پاک می‌شوند
                 await ReportBuilderCleanupV1.RunAsync(db);
+
+                // گزارش‌ساز حرفه‌ای — گزارش‌ها و اشتراک با کاربران/نقش‌ها
+                await ReportStudioSchemaV1.EnsureAsync(db);
+                if (!await ReportStudioSchemaV1.TablesExistAsync(db))
+                    Console.WriteLine("[DB] ⚠ جدول‌های گزارش‌ساز (RsReports/...) ساخته نشدند! " +
+                                      (ReportStudioSchemaV1.LastError ?? ""));
+                else
+                    Console.WriteLine("[DB] ✔ جدول‌های گزارش‌ساز حرفه‌ای آماده‌اند.");
                 await new Inventory.Api.Services.ItAssets.WorkOrderSchedulingService(db).UpgradeLegacyAsync(DateTime.Now);
 
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها

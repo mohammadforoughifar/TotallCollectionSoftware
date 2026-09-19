@@ -134,6 +134,12 @@ public static class RbacSeeder
         // View: دیدن «داشبورد من» و ویجت‌ها | Design: ساخت/ویرایش/حذف داشبورد و چیدمان ویجت‌ها
         // دادهٔ هر ویجت جداگانه با مجوز مشاهدهٔ ماژول خودش کنترل می‌شود.
         ["MyDashboards"] = new[] { "View", "Design" },
+        // ================== گزارش‌ساز حرفه‌ای ==================
+        // View: دیدن و اجرای گزارش‌های خود/اشتراکی | Design: ساخت و ویرایش گزارش
+        // Share: اشتراک‌گذاری گزارش با کاربران و نقش‌ها
+        // نکته: دسترسی به «دادهٔ» هر جدول جداگانه با RBAC همان ماژول کنترل می‌شود،
+        // پس اشتراک‌گذاری هرگز مجوز داده را دور نمی‌زند.
+        ["ReportStudio"] = new[] { "View", "Design", "Share" },
         // ================== پیام‌رسان سازمانی ==================
         // View: مشاهده گفتگوها و پیام‌ها | Send: ارسال پیام | Manage: مدیریت (حذف پیام/گروه)
         ["Chat"] = new[] { "View", "Send", "Manage" },
@@ -332,6 +338,7 @@ public static class RbacSeeder
         var personalPerms = await db.Permissions
             .Where(p => (p.Module == "MyCartable" || p.Module == "MyArchive") && p.Action == "View")
             .Concat(db.Permissions.Where(p => p.Module == "MyDashboards"))
+            .Concat(db.Permissions.Where(p => p.Module == "ReportStudio" && p.Action == "View"))
             .ToListAsync();
         if (personalPerms.Count > 0)
         {
