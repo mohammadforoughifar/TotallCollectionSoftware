@@ -58,19 +58,23 @@ public class ErjaService : IErjaService
         if (girandegan.Count == 0 && hameshIds.Count == 0)
             throw new Exception("حداقل یک گیرنده باید انتخاب شود.");
 
-        // پشتیبانی از هر دو نوع نامه: داخلی و صادره (باگ قبلی: فقط داخلی چک می‌شد)
+        // پشتیبانی از هر سه نوع نامه: داخلی، صادره و وارده
         var source = await _db.LetterSources.AsNoTracking()
             .Include(s => s.InnerLetter)
             .Include(s => s.OutgoingLetter)
+            .Include(s => s.IncomingLetter)
             .FirstOrDefaultAsync(s => s.Id == dto.LetterId && !s.IsDelete)
             ?? throw new Exception("نامه پیدا نشد.");
 
         bool isInner = source.InnerLetter != null && !source.InnerLetter.IsDelete;
         bool isOutgoing = source.OutgoingLetter != null && !source.OutgoingLetter.IsDelete;
-        if (!isInner && !isOutgoing)
+        bool isIncoming = source.IncomingLetter != null && !source.IncomingLetter.IsDelete;
+        if (!isInner && !isOutgoing && !isIncoming)
             throw new Exception("نامه پیدا نشد یا حذف شده است.");
 
-        int creatorUserId = isInner ? source.InnerLetter!.CreatorUserId : source.OutgoingLetter!.CreatorUserId;
+        int creatorUserId = isInner ? source.InnerLetter!.CreatorUserId
+                          : isOutgoing ? source.OutgoingLetter!.CreatorUserId
+                          : source.IncomingLetter!.CreateUserId;
 
         // فرستنده باید خودش گیرنده نامه یا فرستنده اصلی باشد
         bool allowed = creatorUserId == senderUserId ||
@@ -137,15 +141,26 @@ public class ErjaService : IErjaService
         await _db.SaveChangesAsync();
 
         // عنوان و شماره نامه از منبع بارگذاری‌شده استخراج می‌شود
-        var letterTitle = isInner ? source.InnerLetter!.Title : source.OutgoingLetter!.Title;
-        var letterNumber = isInner ? source.InnerLetter!.LetterNumber : source.OutgoingLetter!.LetterNumber;
+        var letterTitle = isInner ? source.InnerLetter!.Title
+                        : isOutgoing ? source.OutgoingLetter!.Title
+                        : source.IncomingLetter!.Title;
+        var letterNumber = isInner ? source.InnerLetter!.LetterNumber
+                         : isOutgoing ? source.OutgoingLetter!.LetterNumber
+                         : source.IncomingLetter!.LetterNumber;
 
-        var link = $"letters/view/{dto.LetterId}";
+        // هر ماژول مسیر نمایش و کانال بروزرسانی خودش را دارد
+        var (routeBase, moduleTitle, channel) = isInner
+            ? ("letters", "ارجاع نامه داخلی", "letters")
+            : isOutgoing
+                ? ("outgoing-letters", "ارجاع نامه صادره", "outgoing-letters")
+                : ("incoming-letters", "ارجاع نامه وارده", "incoming-letters");
+
+        var link = $"{routeBase}/view/{dto.LetterId}";
         await _notify.SendManyAsync(seen,
             $"ارجاع نامه: {letterTitle}",
             string.IsNullOrWhiteSpace(dto.TextErja) ? $"شماره {letterNumber}" : dto.TextErja,
-            senderName, "ارجاع نامه داخلی", link);
-        await _notify.BroadcastChangedAsync("letters");
+            senderName, moduleTitle, link);
+        await _notify.BroadcastChangedAsync(channel);
     }
 
     public async Task AnswerAsync(int erjaId, AnswerErjaDto dto, int userId, string userName)
@@ -153,6 +168,7 @@ public class ErjaService : IErjaService
         var erja = await _db.Erjas
             .Include(e => e.Source).ThenInclude(s => s.InnerLetter)
             .Include(e => e.Source).ThenInclude(s => s.OutgoingLetter)
+            .Include(e => e.Source).ThenInclude(s => s.IncomingLetter)
             .FirstOrDefaultAsync(e => e.ErjaId == erjaId && !e.IsDelete)
             ?? throw new Exception("ارجاع پیدا نشد.");
 
@@ -170,16 +186,24 @@ public class ErjaService : IErjaService
         if (!erja.IsRead) { erja.IsRead = true; erja.DateRead = now; }
         await _db.SaveChangesAsync();
 
-        var title = erja.Source.InnerLetter?.Title ?? erja.Source.OutgoingLetter?.Title ?? "";
+        var title = erja.Source.InnerLetter?.Title
+                 ?? erja.Source.OutgoingLetter?.Title
+                 ?? erja.Source.IncomingLetter?.Title
+                 ?? "";
         var isOutgoing = erja.Source.OutgoingLetter != null;
+        var isIncoming = erja.Source.IncomingLetter != null;
         var taeedText = dto.TypeTaeed switch { 1 => " (تایید شد ✅)", 2 => " (رد شد ❌)", _ => "" };
-        var link = isOutgoing ? $"outgoing-letters/view/{erja.SourceId}" : $"letters/view/{erja.SourceId}";
-        var module = isOutgoing ? "نامه صادره" : "نامه داخلی";
+        var (answerRoute, answerModule) = isOutgoing
+            ? ("outgoing-letters", "نامه صادره")
+            : isIncoming
+                ? ("incoming-letters", "نامه وارده")
+                : ("letters", "نامه داخلی");
+        var link = $"{answerRoute}/view/{erja.SourceId}";
         await _notify.SendAsync(erja.SenderUserId,
-            $"پاسخ به ارجاع {module}: {title}{taeedText}",
+            $"پاسخ به ارجاع {answerModule}: {title}{taeedText}",
             erja.Answer,
             userName, "پاسخ ارجاع", link);
-        await _notify.BroadcastChangedAsync(isOutgoing ? "outgoing-letters" : "letters");
+        await _notify.BroadcastChangedAsync(answerRoute);
     }
 
     public async Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin)
@@ -187,15 +211,19 @@ public class ErjaService : IErjaService
         var source = await _db.LetterSources.AsNoTracking()
             .Include(s => s.InnerLetter)
             .Include(s => s.OutgoingLetter)
+            .Include(s => s.IncomingLetter)
             .FirstOrDefaultAsync(s => s.Id == sourceId && !s.IsDelete)
             ?? throw new Exception("نامه پیدا نشد.");
 
         bool isInner = source.InnerLetter != null && !source.InnerLetter.IsDelete;
         bool isOutgoing = source.OutgoingLetter != null && !source.OutgoingLetter.IsDelete;
-        if (!isInner && !isOutgoing)
+        bool isIncoming = source.IncomingLetter != null && !source.IncomingLetter.IsDelete;
+        if (!isInner && !isOutgoing && !isIncoming)
             throw new Exception("نامه پیدا نشد یا حذف شده است.");
 
-        int creatorUserId = isInner ? source.InnerLetter!.CreatorUserId : source.OutgoingLetter!.CreatorUserId;
+        int creatorUserId = isInner ? source.InnerLetter!.CreatorUserId
+                          : isOutgoing ? source.OutgoingLetter!.CreatorUserId
+                          : source.IncomingLetter!.CreateUserId;
 
         bool inFlow = creatorUserId == userId ||
                       await _db.Erjas.AnyAsync(e => e.SourceId == sourceId && e.ReciverUserId == userId && !e.IsDelete);
