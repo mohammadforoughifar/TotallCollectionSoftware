@@ -78,12 +78,14 @@
         return node && node.closest ? node.closest("[data-wid]") : null;
     }
 
+    // برمی‌گرداند: آیا گرید پیدا شد و رویدادها بسته شدند؟
+    // (گرید تا وقتی ویجتی در داشبورد نباشد رندر نمی‌شود، پس Blazor باید دوباره تلاش کند.)
     function bind(rootId, dotNetRef) {
         const root = document.getElementById(rootId);
-        if (!root) return;
+        if (!root) return false;
         state.ref = dotNetRef;
         state.root = root;
-        if (root.dataset.bound === "1") return;
+        if (root.dataset.bound === "1") return true;
         root.dataset.bound = "1";
 
         root.addEventListener("dragstart", function (e) {
@@ -171,6 +173,8 @@
             window.addEventListener("pointermove", move);
             window.addEventListener("pointerup", up);
         });
+
+        return true;
     }
 
     window.appDash = {

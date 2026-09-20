@@ -60,27 +60,31 @@ public static class DbInitializer
                 }
 
                 await WorkOrderSchemaV2.EnsureAsync(db);
-                // دبیرخانه نامه صادره: فیلدهای وابسته به روش ارسال (نام تحویل‌گیرنده،
-                // کد رهگیری، شماره فکس) + وضعیت بایگانی دبیرخانه
-                await DabirkhaneSchemaV1.EnsureAsync(db);
-                // رونوشت‌گیرندگان نامه صادره — جدول مستقل (هر گیرنده یک ردیف)
-                await OutgoingCopyToSchemaV1.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
+
+                // نامه وارده — جدول IncomingLetters در مایگریشن SquashedInitial نیست؛
+                // بدون این، SQL Server خطای «Invalid object name 'IncomingLetters'» می‌دهد.
+                await IncomingLetterSchemaV1.EnsureAsync(db);
+                if (!await IncomingLetterSchemaV1.TableExistsAsync(db))
+                    Console.WriteLine("[DB] ⚠ جدول IncomingLetters در دیتابیس وجود ندارد! " +
+                        "کارتابل نامه وارده و چارت‌های اتوماسیون اداری کار نخواهند کرد.");
+                else
+                    Console.WriteLine("[DB] ✔ جدول نامه وارده (IncomingLetters) آماده است.");
 
                 // داشبورد شخصی کاربر — جدول داشبوردها و ویجت‌های چیده‌شده
                 await DashboardSchemaV1.EnsureAsync(db);
 
-                // گزارش‌ساز شخصی — گزارش‌های ذخیره‌شده و اشتراک آن‌ها با نقش‌ها
-                await ReportBuilderSchemaV1.EnsureAsync(db);
+                // گزارش‌ساز قدیمی حذف شده و از نو طراحی می‌شود — جدول‌های باقی‌مانده پاک می‌شوند
+                await ReportBuilderCleanupV1.RunAsync(db);
 
-                // راستی‌آزمایی: اگر جدول‌ها ساخته نشده باشند، کاربر در صفحه خطای مبهم می‌بیند؛
-                // اینجا صریح در لاگِ شروع برنامه گزارش می‌شود.
-                if (!await ReportBuilderSchemaV1.TablesExistAsync(db))
-                    Console.WriteLine("[DB] ⚠ جدول‌های گزارش‌ساز (UserReports/UserReportRoleShares) در دیتابیس وجود ندارند! " +
-                                      (ReportBuilderSchemaV1.LastError ?? ""));
+                // گزارش‌ساز حرفه‌ای — گزارش‌ها و اشتراک با کاربران/نقش‌ها
+                await ReportStudioSchemaV1.EnsureAsync(db);
+                if (!await ReportStudioSchemaV1.TablesExistAsync(db))
+                    Console.WriteLine("[DB] ⚠ جدول‌های گزارش‌ساز (RsReports/...) ساخته نشدند! " +
+                                      (ReportStudioSchemaV1.LastError ?? ""));
                 else
-                    Console.WriteLine("[DB] ✔ جدول‌های گزارش‌ساز آماده‌اند.");
+                    Console.WriteLine("[DB] ✔ جدول‌های گزارش‌ساز حرفه‌ای آماده‌اند.");
                 await new Inventory.Api.Services.ItAssets.WorkOrderSchedulingService(db).UpgradeLegacyAsync(DateTime.Now);
 
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها

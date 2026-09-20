@@ -114,7 +114,6 @@ public class AuthService : IAuthService
                                                       || p.Module == "MyCartable"
                                                       || p.Module == "MyArchive"
                                                       || p.Module == "MyDashboards"
-                                                      || p.Module == "ReportBuilder"
                                                       || (p.Module == "LeaveRequests" && p.Action == "Request")
                                                       || (p.Module == "Attendance" && p.Action == "SelfCheckin"))
                     .Select(p => p.Module + "." + p.Action).ToListAsync()

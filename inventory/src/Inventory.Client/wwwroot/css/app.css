@@ -1265,7 +1265,12 @@ body {
 .app-content > *:not(.modal):has(.dp-popover),
 .app-content > *:not(.modal):has(.ss-menu),
 .app-content > *:not(.modal):has(.ms-combo-menu),
-.app-content > *:not(.modal):has(.om-combo-menu) {
+.app-content > *:not(.modal):has(.om-combo-menu),
+/* صفحاتِ داخل تب‌ها یک لایه عمیق‌ترند (main.app-content > .tabpane > صفحه) */
+.tabpane > *:not(.modal):has(.dp-popover),
+.tabpane > *:not(.modal):has(.ss-menu),
+.tabpane > *:not(.modal):has(.ms-combo-menu),
+.tabpane > *:not(.modal):has(.om-combo-menu) {
     position: relative;
     z-index: 10;
 }
@@ -2290,3 +2295,266 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
 
 .nav-pills .nav-link:not(.active),
 .nav-tabs .nav-link:not(.active) { color: #475569; }   /* رنگ روشن سایدبار روی پس‌زمینهٔ روشن ممنوع */
+
+/* ============================================================
+   نوار تب‌های کاری (TabBar)
+   ============================================================ */
+.tabbar {
+    position: sticky;
+    top: 66px;                 /* دقیقاً زیرِ نوار بالا */
+    z-index: 1024;
+    display: flex;
+    align-items: stretch;
+    gap: 2px;
+    height: 42px;
+    padding: 0 6px;
+    background: rgba(255, 255, 255, .94);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, .04);
+}
+
+/* ---------- دکمه‌های پیمایش افقی ---------- */
+.tabbar .tabnav {
+    flex: none;
+    width: 26px;
+    border: 0;
+    background: transparent;
+    color: var(--text-soft);
+    cursor: pointer;
+    border-radius: 8px;
+    font-size: .8rem;
+    transition: .15s;
+}
+.tabbar .tabnav:hover { background: var(--bg); color: var(--primary); }
+
+/* ---------- ردیف تب‌ها ---------- */
+.tabbar .tabstrip {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    padding: 5px 2px;
+}
+.tabbar .tabstrip::-webkit-scrollbar { height: 0; }
+
+/* ---------- یک تب ---------- */
+.tabbar .tab {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 220px;
+    padding: 0 8px 0 6px;
+    border: 1px solid transparent;
+    border-radius: 10px 10px 0 0;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: .78rem;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    position: relative;
+    transition: background .15s, color .15s, border-color .15s;
+    border-bottom: 2px solid transparent;
+}
+.tabbar .tab:hover { background: var(--bg); color: var(--text); }
+.tabbar .tab.on {
+    background: var(--primary-50);
+    color: var(--primary-600);
+    border-color: var(--border) var(--border) transparent;
+    border-bottom: 2px solid var(--primary);
+}
+.tabbar .tab.pinned { padding-left: 10px; }
+.tabbar .tab .tab-ico { font-size: .85rem; opacity: .85; flex: none; }
+.tabbar .tab.on .tab-ico { opacity: 1; color: var(--primary); }
+.tabbar .tab .tab-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    direction: rtl;
+    text-align: right;
+}
+.tabbar .tab .tab-pin { font-size: .66rem; color: var(--primary); opacity: .75; flex: none; }
+
+.tabbar .tab.dragging { opacity: .45; }
+.tabbar .tab.dragover { border-right: 2px solid var(--primary); }
+.tabbar .tab.dragover::after {
+    content: "";
+    position: absolute;
+    inset-inline-end: -3px;
+    top: 15%;
+    height: 70%;
+    width: 2px;
+    background: var(--primary);
+    border-radius: 2px;
+}
+.tabbar .tab .tab-x {
+    flex: none;
+    width: 17px;
+    height: 17px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--text-soft);
+    font-size: .7rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: .13s;
+}
+.tabbar .tab .tab-x:hover { background: var(--danger); color: #fff; }
+
+/* ---------- ابزارهای سمت چپ نوار ---------- */
+.tabbar .tabtools { flex: none; display: flex; align-items: center; gap: 2px; padding-right: 2px; }
+.tabbar .tabtool {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: .82rem;
+    cursor: pointer;
+    transition: .15s;
+}
+.tabbar .tabtool:hover:not(:disabled) { background: var(--bg); color: var(--primary); }
+.tabbar .tabtool:disabled { opacity: .35; cursor: default; }
+.tabbar .tabtool .tabcnt {
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: #fff;
+    font-size: .55rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px #fff;
+}
+
+/* ---------- فهرستِ سرریز ---------- */
+.tabbar .tabmenu-wrap { position: relative; }
+.tabbar .tabmenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 1060;
+    width: 300px;
+    max-width: 88vw;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    animation: tabmenuIn .14s ease-out;
+}
+@@keyframes tabmenuIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+.tabbar .tabmenu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .5rem .7rem;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+    font-size: .74rem;
+    font-weight: 700;
+    color: var(--text-muted);
+}
+.tabbar .tabmenu-act {
+    border: 0;
+    background: transparent;
+    color: var(--danger);
+    font-size: .72rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+.tabbar .tabmenu-act:hover { text-decoration: underline; }
+.tabbar .tabmenu-body { max-height: 320px; overflow-y: auto; }
+.tabbar .tabmenu-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: .42rem .7rem;
+    font-size: .76rem;
+    color: var(--text);
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+}
+.tabbar .tabmenu-row:hover { background: var(--primary-50); }
+.tabbar .tabmenu-row.on { background: var(--primary-50); color: var(--primary-600); font-weight: 700; }
+.tabbar .tabmenu-row .grow { flex: 1; }
+.tabbar .tabmenu-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+
+/* ---------- منوی راست‌کلیک ---------- */
+.tabctx-backdrop { position: fixed; inset: 0; z-index: 1070; }
+.tabctx {
+    position: fixed;
+    z-index: 1071;
+    min-width: 178px;
+    padding: .25rem;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    animation: tabmenuIn .12s ease-out;
+}
+.tabctx-i {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: .4rem .6rem;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font-size: .76rem;
+    font-weight: 600;
+    text-align: right;
+    cursor: pointer;
+}
+.tabctx-i:hover:not(:disabled) { background: var(--primary-50); color: var(--primary-600); }
+.tabctx-i:disabled { opacity: .4; cursor: default; }
+.tabctx-i.danger { color: var(--danger); }
+.tabctx-i.danger:hover:not(:disabled) { background: #fee2e2; color: var(--danger); }
+.tabctx-sep { height: 1px; margin: .25rem .4rem; background: var(--border); }
+
+/* ============================================================
+   نگه‌دارنده‌ی صفحاتِ تب‌ها — تبِ غیرفعال فقط مخفی می‌شود
+   ============================================================ */
+.tabpane { display: none; }
+.tabpane.on { display: block; animation: tabpaneIn .16s ease-out; }
+@@keyframes tabpaneIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.tabpane-wait {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: 2.5rem 1rem;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: .8rem;
+}
+
+/* ---------- موبایل ---------- */
+@@media (max-width: 991.98px) {
+    .tabbar { top: 60px; height: 40px; }
+    .tabbar .tab { max-width: 150px; font-size: .72rem; }
+    .tabbar .tabnav { display: none; }
+}

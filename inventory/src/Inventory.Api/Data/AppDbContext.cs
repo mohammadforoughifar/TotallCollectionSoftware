@@ -12,6 +12,11 @@ public class AppDbContext : DbContext
     public DbSet<DocRenewalRun> DocRenewalRuns => Set<DocRenewalRun>();
     public DbSet<DocIndexJob> DocIndexJobs => Set<DocIndexJob>();
     public DbSet<User> Users => Set<User>();
+
+    // ---------- گزارش‌ساز حرفه‌ای ----------
+    public DbSet<RsReport> RsReports => Set<RsReport>();
+    public DbSet<RsReportUserShare> RsReportUserShares => Set<RsReportUserShare>();
+    public DbSet<RsReportRoleShare> RsReportRoleShares => Set<RsReportRoleShare>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     // ==================== داشبورد شخصی کاربر ====================
@@ -19,8 +24,6 @@ public class AppDbContext : DbContext
     public DbSet<UserDashWidget> UserDashWidgets => Set<UserDashWidget>();
 
     // ==================== گزارش‌ساز شخصی ====================
-    public DbSet<UserReport> UserReports => Set<UserReport>();
-    public DbSet<UserReportRoleShare> UserReportRoleShares => Set<UserReportRoleShare>();
     public DbSet<Referrer> Referrers => Set<Referrer>();
     public DbSet<ReferrerPayment> ReferrerPayments => Set<ReferrerPayment>();
     public DbSet<ProductCategory> ProductCategories => Set<ProductCategory>();
@@ -1158,5 +1161,18 @@ public class AppDbContext : DbContext
           .HasOne(s => s.Session).WithMany()
           .HasForeignKey(s => s.SessionId)
           .OnDelete(DeleteBehavior.Cascade);
+
+        // ---------- ایمیل سازمانی ----------
+        // جدولِ قدیمیِ پیوست‌ها (Oto_TBL_EmailAttachments) پیوست را با دو ستون
+        // Type (Inbox/Sent) و Email_id (شناسه پیام) به نامه وصل می‌کند و ستونِ
+        // کلیدِ خارجیِ جداگانه‌ای ندارد.
+        // مجموعه‌های پیمایشیِ Attachments روی دریافتی/ارسالی بی‌کلید هستند، پس EF برای
+        // آن‌ها کلیدِ پنهان می‌تراشد (OtoInboxEmailInboxId / OtoSentEmailSentId) که در
+        // پایگاه‌داده وجود ندارد و هر بار خواندنِ پیوست با «Invalid column name» شکست
+        // می‌خورد — در نتیجه باز کردنِ نامه خطای ۴۰۰ می‌داد.
+        // پیوست‌ها در سرویس با همین دو ستون واکشی می‌شوند، پس این مجموعه‌ها نادیده
+        // گرفته می‌شوند تا مدل با پایگاه‌داده‌ی موجود هم‌خوان بماند.
+        mb.Entity<OtoInboxEmail>().Ignore(e => e.Attachments);
+        mb.Entity<OtoSentEmail>().Ignore(e => e.Attachments);
     }
 }

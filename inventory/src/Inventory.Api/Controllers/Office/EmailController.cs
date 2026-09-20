@@ -130,28 +130,48 @@ public class EmailController : RbacControllerBase
         return Ok(await _email.SyncSentAsync(MyUserId, await IsDabirkhaneAsync()));
     }
 
-    [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] int? emailId, [FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int? folderId)
+    /// <summary>همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk/Spam) روی سرورِ IMAP</summary>
+    [HttpPost("sync-junk")]
+    public async Task<IActionResult> SyncJunk()
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var list = await _email.GetInboxAsync(MyUserId, emailId, search, unreadOnly, await IsDabirkhaneAsync());
-        // folderId = 0 → بایگانی‌نشده | -1 → بایگانی‌شده در هر پوشه‌ای | n → پوشه n | خالی → همه
-        if (folderId is > 0) list = list.Where(x => x.IsInFolder == folderId.Value).ToList();
-        else if (folderId == 0) list = list.Where(x => x.IsInFolder == 0).ToList();
-        else if (folderId == -1) list = list.Where(x => x.IsInFolder > 0).ToList();
-        else if (folderId == -1) list = list.Where(x => x.IsInFolder > 0).ToList();
-        return Ok(list);
+        return Ok(await _email.SyncJunkAsync(MyUserId, await IsDabirkhaneAsync()));
     }
 
-    [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] int? emailId, [FromQuery] string? search, [FromQuery] int? folderId)
+    /// <summary>
+    /// صندوقِ دریافتی — صفحه‌بندی کاملاً سمت سرور (Skip/Take روی بانک).
+    /// folderId = 0 → بایگانی‌نشده | -1 → بایگانی‌شده در هر پوشه‌ای | n → پوشه n | خالی → همه
+    /// spam=true → فقط هرزنامه‌ها | starred=true → فقط نشان‌شده‌ها | personal=true → فقط حساب‌های شخصی
+    /// </summary>
+    [HttpGet("inbox")]
+    public async Task<IActionResult> Inbox([FromQuery] int? emailId, [FromQuery] string? search, [FromQuery] bool? unreadOnly,
+        [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
+        [FromQuery] bool spam = false, [FromQuery] bool starred = false, [FromQuery] bool personal = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var list = await _email.GetSentAsync(MyUserId, emailId, search, await IsDabirkhaneAsync());
-        if (folderId is > 0) list = list.Where(x => x.IsInFolder == folderId.Value).ToList();
-        else if (folderId == 0) list = list.Where(x => x.IsInFolder == 0).ToList();
-        else if (folderId == -1) list = list.Where(x => x.IsInFolder > 0).ToList();
-        return Ok(list);
+        return Ok(await _email.GetInboxAsync(MyUserId, emailId, search, unreadOnly, await IsDabirkhaneAsync(),
+            personal, page, pageSize, folderId, spam, starred));
+    }
+
+    /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
+    [HttpGet("sent")]
+    public async Task<IActionResult> Sent([FromQuery] int? emailId, [FromQuery] string? search,
+        [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
+        [FromQuery] bool starred = false, [FromQuery] bool personal = false)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _email.GetSentAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
+            personal, page, pageSize, folderId, starred));
+    }
+
+    /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
+    [HttpGet("archive")]
+    public async Task<IActionResult> Archive([FromQuery] int? emailId, [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool personal = false)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _email.GetArchiveAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
+            personal, page, pageSize));
     }
 
     /// <summary>جزئیات ایمیل — box: Inbox یا Sent (دریافتی خودکار خوانده‌شده می‌شود)</summary>
@@ -175,6 +195,14 @@ public class EmailController : RbacControllerBase
     {
         var isNeshan = await _email.ToggleNeshanAsync(box, id, MyUserId, await IsDabirkhaneAsync());
         return Ok(new { isNeshan });
+    }
+
+    /// <summary>نشان‌کردنِ ایمیل به‌عنوان هرزنامه — body: {"spam": true|false}</summary>
+    [HttpPost("message/{box}/{id:int}/spam")]
+    public async Task<IActionResult> MarkSpam(string box, int id, [FromBody] EmailSpamDto dto)
+    {
+        var isSpam = await _email.MarkSpamAsync(box, id, MyUserId, await IsDabirkhaneAsync(), dto?.Spam ?? true);
+        return Ok(new { isSpam });
     }
 
     /// <summary>بایگانی ایمیل در پوشه — FolderId=0 یعنی خروج از بایگانی</summary>

@@ -40,11 +40,32 @@ public interface IEmailService
 
     /// <summary>همگام‌سازیِ افزایشیِ صندوقِ ارسالیِ همه‌ی حساب‌های کاربر</summary>
     Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin);
-    Task<List<EmailMessageListItemDto>> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly, bool isDabirkhaneAdmin);
-    Task<List<EmailMessageListItemDto>> GetSentAsync(int userId, int? emailId, string? search, bool isDabirkhaneAdmin);
+
+    /// <summary>همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk / Spam) همه‌ی حساب‌های کاربر</summary>
+    Task<EmailSyncResultDto> SyncJunkAsync(int userId, bool isDabirkhaneAdmin);
+
+    /// <summary>صندوقِ دریافتی — صفحه‌بندی کاملاً سمت سرور.
+    /// personalOnly: فقط حساب‌های شخصیِ خود کاربر (بدون حساب‌های رسمی دبیرخانه)</summary>
+    Task<EmailListPageDto> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly,
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
+        int? folderId = null, bool spamOnly = false, bool starredOnly = false);
+
+    /// <summary>صندوقِ ارسالی — صفحه‌بندی کاملاً سمت سرور</summary>
+    Task<EmailListPageDto> GetSentAsync(int userId, int? emailId, string? search,
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
+        int? folderId = null, bool starredOnly = false);
+
+    /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه) — صفحه‌بندی سمت سرور</summary>
+    Task<EmailListPageDto> GetArchiveAsync(int userId, int? emailId, string? search,
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25);
+
     Task<EmailMessageDetailDto> GetMessageAsync(string box, int id, int userId, bool markRead, bool isDabirkhaneAdmin);
     Task MarkReadAsync(string box, int id, int userId, bool isDabirkhaneAdmin);
     Task<bool> ToggleNeshanAsync(string box, int id, int userId, bool isDabirkhaneAdmin);
+
+    /// <summary>نشان‌کردنِ یک ایمیل به‌عنوان هرزنامه / یا خروج از هرزنامه</summary>
+    Task<bool> MarkSpamAsync(string box, int id, int userId, bool isDabirkhaneAdmin, bool spam);
+
     Task ArchiveAsync(EmailArchiveDto dto, int userId, bool isDabirkhaneAdmin);
     Task<byte[]?> ReadAttachmentAsync(int attachmentId, int userId, bool isDabirkhaneAdmin);
 
@@ -575,6 +596,14 @@ public class EmailService : IEmailService
     public async Task<EmailSyncResultDto> SyncSentAsync(int userId, bool isDabirkhaneAdmin)
         => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Sent");
 
+    /// <summary>
+    /// همگام‌سازیِ افزایشیِ پوشه‌ی هرزنامه (Junk / Spam) همه‌ی حساب‌های کاربر.
+    /// پیام‌ها در همان جدولِ دریافتی و با نشانِ Is_Spam ذخیره می‌شوند تا بشود
+    /// آن‌ها را در بخش «اسپم» دید و در صورت اشتباه به صندوقِ دریافتی برگرداند.
+    /// </summary>
+    public async Task<EmailSyncResultDto> SyncJunkAsync(int userId, bool isDabirkhaneAdmin)
+        => await SyncAllAccountsAsync(userId, isDabirkhaneAdmin, "Junk");
+
     /// <summary>همگام‌سازیِ دستیِ یک حساب (دکمه‌ی «دریافت» در فهرست حساب‌ها)</summary>
     public async Task<EmailSyncResultDto> SyncAsync(int emailId, int userId, bool isDabirkhaneAdmin)
     {
@@ -606,12 +635,15 @@ public class EmailService : IEmailService
             .Where(e => accIds.Contains(e.EmailId) && e.IsActive)
             .ToListAsync();
 
+        // پوشه‌ی هرزنامه در خیلی از سرورها اصلاً وجود ندارد — نبودنش خطا نیست
+        var tolerateMissing = box == "Junk";
+
         var errors = new List<string>();
         foreach (var acc in accounts)
         {
             try
             {
-                var (added, total) = await SyncAccountFolderAsync(acc, box);
+                var (added, total) = await SyncAccountFolderAsync(acc, box, tolerateMissing);
                 result.NewCount += added;
                 result.TotalCount += total;
                 result.AccountCount++;
@@ -623,7 +655,7 @@ public class EmailService : IEmailService
             }
         }
 
-        var boxName = box == "Sent" ? "ارسالی" : "دریافتی";
+        var boxName = box == "Sent" ? "ارسالی" : box == "Junk" ? "هرزنامه" : "دریافتی";
         if (errors.Count == 0)
         {
             result.Message = result.NewCount > 0
@@ -639,8 +671,9 @@ public class EmailService : IEmailService
 
     /// <summary>
     /// هسته‌ی همگام‌سازیِ یک حساب و یک صندوق. خروجی: (تعدادِ جدید ذخیره‌شده، تعدادِ کلِ پیام‌های صندوق)
+    /// box: Inbox | Sent | Junk (هرزنامه — در جدولِ دریافتی با نشانِ Is_Spam ذخیره می‌شود)
     /// </summary>
-    private async Task<(int Added, int Total)> SyncAccountFolderAsync(OtoEmail acc, string box)
+    private async Task<(int Added, int Total)> SyncAccountFolderAsync(OtoEmail acc, string box, bool tolerateMissing = false)
     {
         if (string.IsNullOrWhiteSpace(acc.Imap))
             throw new Exception("سرور IMAP این حساب تنظیم نشده است — از تنظیمات ایمیل تکمیل کنید.");
@@ -650,12 +683,16 @@ public class EmailService : IEmailService
             acc.ImapSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.None);
         await client.AuthenticateAsync(acc.EmailAddress, acc.Password);
 
-        var folder = OpenFolder(client, box)
-            ?? throw new Exception($"پوشه‌ی {(box == "Sent" ? "ارسالی" : "دریافتی")} در این حساب یافت نشد.");
+        var folder = OpenFolder(client, box);
+        if (folder == null)
+        {
+            if (tolerateMissing) { await client.DisconnectAsync(true); return (0, 0); }
+            throw new Exception($"پوشه‌ی {BoxTitle(box)} در این حساب یافت نشد.");
+        }
         await folder.OpenAsync(FolderAccess.ReadOnly);
 
         var total = folder.Count;
-        long lastUid = box == "Sent" ? acc.LastSentUid : acc.LastInboxUid;
+        long lastUid = box == "Sent" ? acc.LastSentUid : box == "Junk" ? acc.LastJunkUid : acc.LastInboxUid;
 
         // همه‌ی شناسه‌های صندوق؛ فقط آن‌هایی که از آخرین نوبت جدیدترند انتخاب می‌شوند.
         // مرتب‌سازی صعودی باعث می‌شود اگر در نوبتی به سقف برسیم، نوبتِ بعد دقیقاً از همان‌جا ادامه یابد.
@@ -687,9 +724,12 @@ public class EmailService : IEmailService
                 continue;
             }
 
+            // شناسه‌ی یکتا برای جلوگیری از دریافتِ تکراری.
+            // پیشوندِ junk- مخصوصِ پوشه‌ی هرزنامه است تا شماره‌های UID دو پوشه
+            // (که مستقل از هم‌اند) با هم تداخل نکنند.
             var key = !string.IsNullOrWhiteSpace(msg.MessageId)
                 ? msg.MessageId
-                : $"uid-{acc.EmailId}-{uid.Id}";
+                : box == "Junk" ? $"junk-uid-{acc.EmailId}-{uid.Id}" : $"uid-{acc.EmailId}-{uid.Id}";
             if (key.Length > 300) key = key[^300..];
 
             if (!existingSet.Contains(key))
@@ -728,7 +768,9 @@ public class EmailService : IEmailService
                         IsRead = false,
                         Body = body,
                         FromAddress = Trunc(ExtractAddress(msg.From.ToString()) ?? "", 250),
-                        IsAttachment = hasAttach
+                        IsAttachment = hasAttach,
+                        // پیام‌های پوشه‌ی هرزنامه با نشانِ اسپم ذخیره می‌شوند
+                        IsSpam = box == "Junk"
                     };
                     _db.OtoInboxEmails.Add(inbox);
                     await _db.SaveChangesAsync();
@@ -745,28 +787,57 @@ public class EmailService : IEmailService
         await client.DisconnectAsync(true);
 
         acc.LastSync = DateTime.Now;
-        if (box == "Sent") acc.LastSentUid = maxUid; else acc.LastInboxUid = maxUid;
+        if (box == "Sent") acc.LastSentUid = maxUid;
+        else if (box == "Junk") acc.LastJunkUid = maxUid;
+        else acc.LastInboxUid = maxUid;
         await _db.SaveChangesAsync();
 
         return (added, total);
     }
 
-    /// <summary>یافتنِ پوشه‌ی درخواستی: دریافتی همان Inbox است؛ ارسالی با نشانِ استاندارد یا نام‌های متداول پیدا می‌شود</summary>
+    /// <summary>عنوان فارسیِ صندوق — برای پیام‌های خطا</summary>
+    private static string BoxTitle(string box) => box switch
+    {
+        "Sent" => "ارسالی",
+        "Junk" => "هرزنامه",
+        _ => "دریافتی"
+    };
+
+    /// <summary>
+    /// یافتنِ پوشه‌ی درخواستی:
+    /// • دریافتی همان Inbox است
+    /// • ارسالی با نشانِ استاندارد \Sent یا نام‌های متداول پیدا می‌شود
+    /// • هرزنامه با نشانِ استاندارد \Junk یا نام‌های متداول (Spam / Junk / Bulk…)
+    /// </summary>
     private static IMailFolder? OpenFolder(ImapClient client, string box)
     {
-        if (box != "Sent") return client.Inbox;
+        if (box is not ("Sent" or "Junk")) return client.Inbox;
 
-        // ۱) پوشه‌ای که نشانِ استاندارد «ارسالی» را دارد
+        var wanted = box == "Sent" ? FolderAttributes.Sent : FolderAttributes.Junk;
+
+        // ۱) پوشه‌ای که نشانِ استاندارد را دارد (\Sent یا \Junk)
         try
         {
             var personal = client.GetFolder(client.PersonalNamespaces[0]);
             foreach (var f in personal.GetSubfolders(false))
-                if ((f.Attributes & FolderAttributes.Sent) != 0) return f;
+                if ((f.Attributes & wanted) != 0) return f;
         }
         catch { }
 
-        // ۲) نام‌های متداول در سرورهای مختلف (Gmail، Outlook، هاست‌های cPanel و…)
-        foreach (var name in new[] { "Sent", "Sent Items", "Sent Mail", "INBOX.Sent", "INBOX/Sent", "[Gmail]/Sent Mail" })
+        // ۲) نشانِ استانداردِ پیش‌فرضِ کتابخانه (مثل All → Junk)
+        try
+        {
+            var special = box == "Sent" ? client.GetFolder(SpecialFolder.Sent) : client.GetFolder(SpecialFolder.Junk);
+            if (special != null) return special;
+        }
+        catch { }
+
+        // ۳) نام‌های متداول در سرورهای مختلف (Gmail، Outlook، هاست‌های cPanel و…)
+        var names = box == "Sent"
+            ? new[] { "Sent", "Sent Items", "Sent Mail", "INBOX.Sent", "INBOX/Sent", "[Gmail]/Sent Mail" }
+            : new[] { "Junk", "Junk E-mail", "Junk Email", "Spam", "INBOX.Spam", "INBOX.Junk", "INBOX/Junk",
+                      "Bulk Mail", "[Gmail]/Spam" };
+        foreach (var name in names)
         {
             try { return client.GetFolder(name); }
             catch { }
@@ -823,23 +894,54 @@ public class EmailService : IEmailService
 
     // ==================== لیست‌ها / جزئیات ====================
 
-    public async Task<List<EmailMessageListItemDto>> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly, bool isDabirkhaneAdmin)
+    /// <summary>بیشینه‌ی تعداد سطرهای یک صفحه — جلوگیری از درخواست‌های سنگین</summary>
+    private const int MaxPageSize = 100;
+
+    /// <summary>نرمال‌سازیِ شماره‌ی صفحه و اندازه‌ی صفحه</summary>
+    private static (int Page, int Size) Norm(int page, int pageSize)
+        => (Math.Max(1, page), pageSize <= 0 ? 25 : Math.Min(pageSize, MaxPageSize));
+
+    public async Task<EmailListPageDto> GetInboxAsync(int userId, int? emailId, string? search, bool? unreadOnly,
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
+        int? folderId = null, bool spamOnly = false, bool starredOnly = false)
     {
-        var myIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin);
-        if (myIds.Count == 0) return new();
+        var (pg, size) = Norm(page, pageSize);
+        var result = new EmailListPageDto { Page = pg, PageSize = size };
+
+        var myIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin, personalOnly);
+        if (myIds.Count == 0) return result;
         var ids = emailId is > 0 && myIds.Contains(emailId.Value) ? new List<int> { emailId.Value } : myIds;
 
         var q = _db.OtoInboxEmails.AsNoTracking()
             .Include(i => i.Email)
             .Where(i => ids.Contains(i.EmailId));
+
+        // هرزنامه‌ها پیش‌فرض در صندوقِ دریافتی دیده نمی‌شوند و فقط در بخش «اسپم» می‌آیند
+        q = spamOnly ? q.Where(i => i.IsSpam) : q.Where(i => !i.IsSpam);
+
         if (unreadOnly == true) q = q.Where(i => !i.IsRead);
+        if (starredOnly) q = q.Where(i => i.IsNeshan);
+
+        // folderId = 0 → بایگانی‌نشده | -1 → بایگانی‌شده در هر پوشه‌ای | n → پوشه n | خالی → همه
+        if (folderId is > 0) q = q.Where(i => i.IsInFolder == folderId.Value);
+        else if (folderId == 0) q = q.Where(i => i.IsInFolder == 0);
+        else if (folderId == -1) q = q.Where(i => i.IsInFolder > 0);
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
             q = q.Where(i => i.Subject.Contains(s) || i.FromAddress.Contains(s) || i.Body.Contains(s));
         }
 
-        var rows = await q.OrderByDescending(i => i.Date).Take(200)
+        result.TotalCount = await q.CountAsync();
+        result.UnreadCount = await q.CountAsync(i => !i.IsRead);
+
+        // شمارشِ هرزنامه‌ها همیشه روی «همه‌ی پیام‌های غیراسپم/اسپمِ همین حساب‌ها» حساب می‌شود
+        result.SpamCount = await _db.OtoInboxEmails.AsNoTracking()
+            .CountAsync(i => ids.Contains(i.EmailId) && i.IsSpam);
+
+        var rows = await q.OrderByDescending(i => i.Date)
+            .Skip((pg - 1) * size).Take(size)
             .Select(i => new EmailMessageListItemDto
             {
                 Id = i.InboxId,
@@ -852,28 +954,48 @@ public class EmailService : IEmailService
                 IsRead = i.IsRead,
                 IsNeshan = i.IsNeshan,
                 IsAttachment = i.IsAttachment,
-                IsInFolder = i.IsInFolder
+                IsInFolder = i.IsInFolder,
+                IsSpam = i.IsSpam
             }).ToListAsync();
+
         await FillFolderTitlesAsync(rows);
-        return rows;
+        result.Items = rows;
+        return result;
     }
 
-    public async Task<List<EmailMessageListItemDto>> GetSentAsync(int userId, int? emailId, string? search, bool isDabirkhaneAdmin)
+    public async Task<EmailListPageDto> GetSentAsync(int userId, int? emailId, string? search,
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25,
+        int? folderId = null, bool starredOnly = false)
     {
-        var myIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin);
-        if (myIds.Count == 0) return new();
+        var (pg, size) = Norm(page, pageSize);
+        var result = new EmailListPageDto { Page = pg, PageSize = size };
+
+        var myIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin, personalOnly);
+        if (myIds.Count == 0) return result;
         var ids = emailId is > 0 && myIds.Contains(emailId.Value) ? new List<int> { emailId.Value } : myIds;
 
         var q = _db.OtoSentEmails.AsNoTracking()
             .Include(s => s.Email)
             .Where(s => ids.Contains(s.EmailId));
+
+        if (starredOnly) q = q.Where(x => x.IsNeshan);
+
+        if (folderId is > 0) q = q.Where(x => x.IsInFolder == folderId.Value);
+        else if (folderId == 0) q = q.Where(x => x.IsInFolder == 0);
+        else if (folderId == -1) q = q.Where(x => x.IsInFolder > 0);
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
             q = q.Where(x => x.Subject.Contains(s) || x.ToDisplay.Contains(s) || x.Body.Contains(s));
         }
 
-        var rows = await q.OrderByDescending(x => x.Date).Take(200)
+        result.TotalCount = await q.CountAsync();
+        result.SpamCount = await _db.OtoInboxEmails.AsNoTracking()
+            .CountAsync(i => ids.Contains(i.EmailId) && i.IsSpam);
+
+        var rows = await q.OrderByDescending(x => x.Date)
+            .Skip((pg - 1) * size).Take(size)
             .Select(x => new EmailMessageListItemDto
             {
                 Id = x.SentId,
@@ -886,15 +1008,93 @@ public class EmailService : IEmailService
                 IsRead = true,
                 IsNeshan = x.IsNeshan,
                 IsAttachment = x.IsAttachment,
-                IsInFolder = x.IsInFolder
+                IsInFolder = x.IsInFolder,
+                IsSpam = false
             }).ToListAsync();
+
         await FillFolderTitlesAsync(rows);
-        return rows;
+        result.Items = rows;
+        return result;
     }
 
-    /// <summary>حساب‌های قابل مشاهده کاربر: حساب‌های شخصی + (برای دبیرخانه) حساب‌های رسمی دبیرخانه</summary>
-    private async Task<List<int>> MyAccountIdsAsync(int userId, bool isDabirkhaneAdmin)
+    /// <summary>
+    /// بایگانی: مجموعِ ایمیل‌های دریافتی و ارسالی که در یک پوشه قرار دارند.
+    /// چون دو جدولِ متفاوت در میان است، ادغام به‌صورتِ پنجره‌ای انجام می‌شود:
+    /// از هر جدول به اندازه‌ی «تا انتهای صفحه‌ی جاری» سطر خوانده و بعد از
+    /// ادغام و مرتب‌سازی در حافظه، تنها سطرهای همین صفحه برگردانده می‌شود.
+    /// حجمِ خوانده‌شده همواره در حدِ page × pageSize می‌ماند.
+    /// </summary>
+    public async Task<EmailListPageDto> GetArchiveAsync(int userId, int? emailId, string? search,
+        bool isDabirkhaneAdmin, bool personalOnly, int page = 1, int pageSize = 25)
     {
+        var (pg, size) = Norm(page, pageSize);
+        var result = new EmailListPageDto { Page = pg, PageSize = size };
+
+        var myIds = await MyAccountIdsAsync(userId, isDabirkhaneAdmin, personalOnly);
+        if (myIds.Count == 0) return result;
+        var ids = emailId is > 0 && myIds.Contains(emailId.Value) ? new List<int> { emailId.Value } : myIds;
+
+        var s = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        var take = pg * size; // پنجره‌ی مورد نیاز برای رسیدن به صفحه‌ی جاری
+
+        var inQ = _db.OtoInboxEmails.AsNoTracking().Include(i => i.Email)
+            .Where(i => ids.Contains(i.EmailId) && i.IsInFolder > 0 && !i.IsSpam);
+        var outQ = _db.OtoSentEmails.AsNoTracking().Include(x => x.Email)
+            .Where(x => ids.Contains(x.EmailId) && x.IsInFolder > 0);
+        if (s != null)
+        {
+            inQ = inQ.Where(i => i.Subject.Contains(s) || i.FromAddress.Contains(s) || i.Body.Contains(s));
+            outQ = outQ.Where(x => x.Subject.Contains(s) || x.ToDisplay.Contains(s) || x.Body.Contains(s));
+        }
+
+        result.TotalCount = await inQ.CountAsync() + await outQ.CountAsync();
+        result.SpamCount = await _db.OtoInboxEmails.AsNoTracking()
+            .CountAsync(i => ids.Contains(i.EmailId) && i.IsSpam);
+
+        var inboxRows = await inQ.OrderByDescending(i => i.Date).Take(take)
+            .Select(i => new EmailMessageListItemDto
+            {
+                Id = i.InboxId, Box = "Inbox", EmailId = i.EmailId,
+                AccountAddress = i.Email != null ? i.Email.EmailAddress : "",
+                FromOrTo = i.FromAddress, Subject = i.Subject, Date = i.Date,
+                IsRead = i.IsRead, IsNeshan = i.IsNeshan, IsAttachment = i.IsAttachment,
+                IsInFolder = i.IsInFolder, IsSpam = i.IsSpam
+            }).ToListAsync();
+
+        var sentRows = await outQ.OrderByDescending(x => x.Date).Take(take)
+            .Select(x => new EmailMessageListItemDto
+            {
+                Id = x.SentId, Box = "Sent", EmailId = x.EmailId,
+                AccountAddress = x.Email != null ? x.Email.EmailAddress : "",
+                FromOrTo = x.ToDisplay, Subject = x.Subject, Date = x.Date,
+                IsRead = true, IsNeshan = x.IsNeshan, IsAttachment = x.IsAttachment,
+                IsInFolder = x.IsInFolder, IsSpam = false
+            }).ToListAsync();
+
+        var rows = inboxRows.Concat(sentRows)
+            .OrderByDescending(x => x.Date)
+            .Skip((pg - 1) * size).Take(size)
+            .ToList();
+
+        await FillFolderTitlesAsync(rows);
+        result.Items = rows;
+        return result;
+    }
+
+    /// <summary>
+    /// حساب‌های قابل مشاهده کاربر: حساب‌های شخصی + (برای دبیرخانه) حساب‌های رسمی دبیرخانه
+    /// personalOnly=true → فقط حساب‌هایی که خودِ کاربر ساخته و رسمیِ دبیرخانه نیستند
+    /// (صفحه‌ی «ایمیل شخصی»)
+    /// </summary>
+    private async Task<List<int>> MyAccountIdsAsync(int userId, bool isDabirkhaneAdmin, bool personalOnly = false)
+    {
+        if (personalOnly)
+        {
+            return await _db.OtoEmails.AsNoTracking()
+                .Where(e => e.UserId == userId && !e.IsDabirkhane)
+                .Select(e => e.EmailId).ToListAsync();
+        }
+
         var ids = await _db.OtoEmails.AsNoTracking()
             .Where(e => e.UserId == userId).Select(e => e.EmailId).ToListAsync();
         if (isDabirkhaneAdmin)
@@ -929,7 +1129,7 @@ public class EmailService : IEmailService
                 Id = s.SentId, Box = "Sent", EmailId = s.EmailId,
                 AccountAddress = s.Email?.EmailAddress ?? "",
                 FromOrTo = s.ToDisplay, Subject = s.Subject, Date = s.Date,
-                IsRead = true, IsNeshan = s.IsNeshan, Body = s.Body, IsInFolder = s.IsInFolder,
+                IsRead = true, IsNeshan = s.IsNeshan, Body = s.Body, IsInFolder = s.IsInFolder, IsSpam = false,
                 Attachments = await AttachmentDtosAsync("Sent", s.SentId)
             };
         }
@@ -943,9 +1143,24 @@ public class EmailService : IEmailService
             Id = i.InboxId, Box = "Inbox", EmailId = i.EmailId,
             AccountAddress = i.Email?.EmailAddress ?? "",
             FromOrTo = i.FromAddress, Subject = i.Subject, Date = i.Date,
-            IsRead = true, IsNeshan = i.IsNeshan, Body = i.Body, IsInFolder = i.IsInFolder,
+            IsRead = true, IsNeshan = i.IsNeshan, Body = i.Body, IsInFolder = i.IsInFolder, IsSpam = i.IsSpam,
             Attachments = await AttachmentDtosAsync("Inbox", i.InboxId)
         };
+    }
+
+    /// <summary>نشان‌کردنِ یک ایمیل به‌عنوان هرزنامه / یا خروج از هرزنامه (فقط صندوقِ دریافتی)</summary>
+    public async Task<bool> MarkSpamAsync(string box, int id, int userId, bool isDabirkhaneAdmin, bool spam)
+    {
+        if (!string.Equals(box, "Inbox", StringComparison.OrdinalIgnoreCase))
+            throw new Exception("تنها ایمیل‌های دریافتی را می‌توان هرزنامه نشان کرد.");
+
+        var i = await _db.OtoInboxEmails
+            .FirstOrDefaultAsync(x => x.InboxId == id && (x.Email!.UserId == userId || (isDabirkhaneAdmin && x.Email!.IsDabirkhane)))
+            ?? throw new Exception("ایمیل پیدا نشد یا به شما تعلق ندارد.");
+
+        i.IsSpam = spam;
+        await _db.SaveChangesAsync();
+        return spam;
     }
 
     private async Task<List<EmailAttachmentDto>> AttachmentDtosAsync(string box, int messageId)

@@ -587,3 +587,30 @@
     .ltx .eml-wrap { flex-direction:column; }
     .ltx .eml-list { flex:0 0 auto; max-height:42%; }
 }
+
+/* ---------- نوار پیشرفت هنگام دریافت ایمیل ---------- */
+.eml-prog-wrap { display:flex; align-items:center; gap:9px; margin-top:10px; padding:0 2px; }
+.eml-prog { flex:1; height:5px; background:#e2e8f0; border-radius:99px; overflow:hidden; position:relative; }
+.eml-prog .bar { position:absolute; top:0; bottom:0; width:35%; border-radius:99px;
+                 background:linear-gradient(90deg,#6366f1,#8b5cf6,#6366f1);
+                 animation:eml-slide 1.15s linear infinite; }
+@keyframes eml-slide { from { transform:translateX(-110%); } to { transform:translateX(320%); } }
+.eml-prog-t { font-size:11px; color:var(--sub,#64748b); white-space:nowrap; display:inline-flex;
+              align-items:center; gap:5px; }
+.eml-prog-t .sp { width:11px; height:11px; border:2px solid #c7d2fe; border-top-color:#4338ca;
+                  border-radius:50%; animation:eml-spin .7s linear infinite; }
+@keyframes eml-spin { to { transform:rotate(360deg); } }
+.ltx .rail button:disabled { opacity:.4; cursor:not-allowed; }
+.ltx .rail button:disabled:hover { background:transparent; }
+
+/* ==================== صفحه‌بندیِ ایمیل (سمت سرور) ==================== */
+.ltx .eml-pager { flex:none; display:flex; align-items:center; gap:4px; padding:6px 8px;
+    border-top:1px solid var(--line); background:#fbfcfe; flex-wrap:wrap; }
+.ltx .eml-pager .pg-info { font-size:11.5px; color:#64748b; white-space:nowrap; }
+.ltx .eml-pager .pg { min-width:28px; height:28px; padding:0 6px; border:1px solid var(--line);
+    background:#fff; color:#334155; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer;
+    display:inline-flex; align-items:center; justify-content:center; transition:.15s; }
+.ltx .eml-pager .pg:hover:not(:disabled) { background:#eef2ff; border-color:#c7d2fe; color:#4338ca; }
+.ltx .eml-pager .pg.on { background:var(--p2); border-color:var(--p2); color:#fff; }
+.ltx .eml-pager .pg:disabled { opacity:.4; cursor:default; }
+.ltx .eml-pager .pg-gap { color:#94a3b8; font-size:12px; padding:0 2px; }

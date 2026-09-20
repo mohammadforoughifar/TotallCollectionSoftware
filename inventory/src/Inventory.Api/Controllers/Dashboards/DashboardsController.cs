@@ -3,7 +3,6 @@ using System.Text.Json;
 using Inventory.Api.Data;
 using Inventory.Api.Services.Core;
 using Inventory.Api.Services.Dashboards;
-using Inventory.Api.Services.Reports;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,24 +34,13 @@ public class DashboardsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly IWidgetDataService _widgets;
     private readonly IEffectivePermissions _perms;
-    private readonly IReportDatasetProvider _reports;
 
     public DashboardsController(AppDbContext db, IWidgetDataService widgets,
-        IEffectivePermissions perms, IReportDatasetProvider reports)
+        IEffectivePermissions perms)
     {
         _db = db;
         _widgets = widgets;
         _perms = perms;
-        _reports = reports;
-    }
-
-    /// <summary>QueryJson گزارش‌ها با camelCase ذخیره می‌شود؛ خواندن باید بدون حساسیت به بزرگی/کوچکی باشد.</summary>
-    private static readonly JsonSerializerOptions ReportJsonOpts = new() { PropertyNameCaseInsensitive = true };
-
-    private static ReportQueryDto ParseReportQuery(string json)
-    {
-        try { return JsonSerializer.Deserialize<ReportQueryDto>(json, ReportJsonOpts) ?? new ReportQueryDto(); }
-        catch { return new ReportQueryDto(); }
     }
 
     private int MyUserId =>
@@ -70,18 +58,21 @@ public class DashboardsController : ControllerBase
     private async Task<IActionResult?> EnsureDashDbAsync()
     {
         await DashboardSchemaV1.EnsureOnceAsync(_db);
+        // ویجت‌های اتوماسیون اداری به جدول IncomingLetters نیاز دارند و این جدول
+        // در مایگریشن SquashedInitial ساخته نشده؛ اینجا خودتعمیر می‌شود.
+        await IncomingLetterSchemaV1.EnsureOnceAsync(_db);
         try
         {
             _ = await _db.UserDashboards.AsNoTracking().Select(d => d.Id).FirstOrDefaultAsync();
             return null;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             var why = DashboardSchemaV1.LastError is { Length: > 0 } e ? " خطای دیتابیس: " + e : "";
             return StatusCode(500, new
             {
                 message = "جدول‌های داشبورد شخصی (UserDashboards / UserDashWidgets) در دیتابیس در دسترس نیستند." + why +
-                          " — راه‌حل: اسکریپت inventory/sql/UserDashboards-UserReports.sql را در SSMS اجرا کنید " +
+                          " — راه‌حل: اسکریپت inventory/sql/UserDashboards.sql را در SSMS اجرا کنید " +
                           "یا مجوز CREATE TABLE کاربرِ رشتهٔ اتصال را بررسی کنید؛ سپس API را ری‌استارت کنید."
             });
         }
@@ -116,19 +107,6 @@ public class DashboardsController : ControllerBase
             .OrderBy(w => w.Category).ThenBy(w => w.Title)
             .ToList();
 
-        // گزارش‌های شخصیِ ساخته‌شده با گزارش‌ساز — به‌عنوان ویجت قابل افزودن
-        // اگر جدول UserReports مشکل داشت (مثلاً در دیتابیس ساخته نشده بود)، فقط همان بخش
-        // حذف می‌شود تا کاربر ویجت‌های دیگر داشبورد را از دست ندهد.
-        try
-        {
-            await ReportBuilderSchemaV1.EnsureOnceAsync(_db);
-            list.AddRange(await ReportWidgetsAsync(perms, isAdmin));
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Dashboards] ویجت‌های گزارش‌ساز در کاتالوگ نادیده گرفته شدند: {ex.Message}");
-        }
-
         return Ok(new { canDesign = isAdmin || perms.Contains($"{Module}.Design"), widgets = list });
     }
 
@@ -143,12 +121,18 @@ public class DashboardsController : ControllerBase
     {
         if (await ForbiddenUnlessAsync("View") is ObjectResult fb) return fb;
 
-        // ویجت گزارش شخصی (ساختهٔ کاربر در گزارش‌ساز)
+        // ویجت گزارش شخصی — گزارش‌ساز در حال بازطراحی است.
+        // ویجت‌های قدیمیِ «rep:{id}» تا آماده شدن نسخهٔ جدید پیام راهنما نشان می‌دهند.
         if (key.StartsWith("rep:", StringComparison.OrdinalIgnoreCase))
         {
-            return int.TryParse(key[4..], out var reportId)
-                ? await RunReportAsync(reportId)
-                : NotFound(new { message = "ویجت پیدا نشد." });
+            return Ok(new WidgetDataDto
+            {
+                Key = key,
+                Kind = DashWidgetKind.Table,
+                Title = "گزارش شخصی",
+                Error = ReportBuilderRetiredMessage,
+                GeneratedAt = DateTime.Now
+            });
         }
 
         var def = WidgetCatalog.Find(key);
@@ -177,105 +161,9 @@ public class DashboardsController : ControllerBase
         return Ok(data);
     }
 
-    // ================== گزارش‌های شخصی به‌عنوان ویجت ==================
-
-    /// <summary>ویجت گزارش‌هایی که کاربر مالک آن است یا با نقش‌هایش اشتراک گذاشته شده.</summary>
-    private async Task<List<WidgetDefDto>> ReportWidgetsAsync(HashSet<string> perms, bool isAdmin)
-    {
-        if (!perms.Contains("ReportBuilder.View") && !isAdmin) return new List<WidgetDefDto>();
-
-        var roleIds = await _perms.MyRoleIdsAsync(MyUserId);
-        var rows = await _db.UserReports
-            .Include(r => r.RoleShares)
-            .Where(r => r.UserId == MyUserId
-                        || (r.Visibility == 1 && r.RoleShares.Any(s => roleIds.Contains(s.RoleId))))
-            .OrderByDescending(r => r.UpdatedAt)
-            .ToListAsync();
-
-        var list = new List<WidgetDefDto>();
-        foreach (var r in rows)
-        {
-            var ds = _reports.Find(r.DatasetKey);
-            var module = ds?.Module ?? r.Module;
-            if (!isAdmin && !CanSeeModule(perms, module)) continue;
-
-            var q = ParseReportQuery(r.QueryJson);
-
-            var kind = q.Output switch
-            {
-                ReportOutput.Kpi => DashWidgetKind.Kpi,
-                ReportOutput.Chart => DashWidgetKind.Chart,
-                _ => DashWidgetKind.Table
-            };
-            list.Add(new WidgetDefDto
-            {
-                Key = "rep:" + r.Id,
-                Title = r.Name,
-                Description = $"گزارش شخصی روی دیتاست «{ds?.Title ?? r.DatasetKey}»",
-                Category = "گزارش‌های من",
-                Icon = kind == DashWidgetKind.Chart ? "bi-bar-chart-line" :
-                       kind == DashWidgetKind.Kpi ? "bi-123" : "bi-table",
-                Module = module,
-                Kind = kind,
-                ChartTypes = kind == DashWidgetKind.Chart
-                    ? new List<DashChartType> { DashChartType.Bar, DashChartType.Line, DashChartType.Pie, DashChartType.Doughnut }
-                    : new List<DashChartType>(),
-                HasRange = false,
-                DefaultW = kind == DashWidgetKind.Table ? 9 : kind == DashWidgetKind.Chart ? 6 : 3,
-                DefaultH = kind == DashWidgetKind.Table ? 3 : kind == DashWidgetKind.Chart ? 3 : 2,
-                Drilldown = "reports"
-            });
-        }
-        return list;
-    }
-
-    /// <summary>اجرای یک گزارش ذخیره‌شده با کنترل کامل دسترسی.</summary>
-    private async Task<IActionResult> RunReportAsync(int id)
-    {
-        UserReport? report;
-        try
-        {
-            await ReportBuilderSchemaV1.EnsureOnceAsync(_db);
-            report = await _db.UserReports.Include(r => r.RoleShares).FirstOrDefaultAsync(r => r.Id == id);
-        }
-        catch (Exception ex)
-        {
-            return Ok(new WidgetDataDto
-            {
-                Key = "rep:" + id,
-                Title = "گزارش",
-                Error = "جدول گزارش‌های ذخیره‌شده در دیتابیس در دسترس نیست: " + ex.Message
-            });
-        }
-        if (report is null) return NotFound(new { message = "گزارش پیدا نشد." });
-
-        var isAdmin = await _perms.IsLegacyAdminAsync(User);
-        var mine = report.UserId == MyUserId;
-        if (!mine && report.Visibility != 1) return NotFound(new { message = "گزارش پیدا نشد." });
-        if (!mine)
-        {
-            var roleIds = await _perms.MyRoleIdsAsync(MyUserId);
-            if (!report.RoleShares.Any(s => roleIds.Contains(s.RoleId)))
-                return NotFound(new { message = "گزارش پیدا نشد." });
-        }
-
-        var ds = _reports.Find(report.DatasetKey);
-        if (ds is null)
-            return Ok(new WidgetDataDto
-            { Key = "rep:" + id, Title = report.Name, Error = "دیتاست این گزارش دیگر در دسترس نیست." });
-
-        if (!isAdmin && !CanSeeModule(await MyPermissionsAsync(), ds.Module))
-            return StatusCode(403, new { message = $"شما به دادهٔ این گزارش ({ds.Title}) دسترسی ندارید." });
-
-        var q = ParseReportQuery(report.QueryJson);
-        q.DatasetKey = ds.Key;
-
-        if (string.IsNullOrWhiteSpace(q.Title)) q.Title = report.Name;
-        var res = await ds.RunAsync(_db, q);
-        res.Data.Key = "rep:" + id;
-        if (string.IsNullOrWhiteSpace(res.Data.Title)) res.Data.Title = report.Name;
-        return Ok(res.Data);
-    }
+    /// <summary>پیام یکسان برای ویجت‌های گزارش‌سازِ بازنشسته.</summary>
+    private const string ReportBuilderRetiredMessage =
+        "گزارش‌ساز در حال بازطراحی است؛ این ویجت موقتاً غیرفعال است.";
 
     // ================== داشبوردهای من ==================
 
@@ -463,8 +351,8 @@ public class DashboardsController : ControllerBase
 
     /// <summary>
     /// اعتبارسنجی کلید ویجت هنگام ذخیرهٔ چیدمان.
-    /// برای «rep:{id}» مالکیت/اشتراک با نقش‌ها و مجوز ماژول داده بررسی می‌شود تا
-    /// کاربر نتواند با دستکاری چیدمان به گزارش دیگران یا دادهٔ بدون مجوز برسد.
+    /// ویجت‌های قدیمی «rep:{id}» (گزارش‌سازِ بازنشسته) حفظ می‌شوند تا چیدمان کاربر
+    /// خراب نشود، ولی هنگام نمایش پیام «در حال بازطراحی» می‌گیرند.
     /// </summary>
     private async Task<(string Key, string? Title, DashWidgetKind Kind)?> ResolveWidgetAsync(
         string key, HashSet<string> perms, bool isAdmin)
@@ -474,38 +362,7 @@ public class DashboardsController : ControllerBase
         if (key.StartsWith("rep:", StringComparison.OrdinalIgnoreCase))
         {
             if (!int.TryParse(key.AsSpan(4), out var rid)) return null;
-            UserReport? report;
-            try
-            {
-                report = await _db.UserReports.Include(r => r.RoleShares)
-                    .FirstOrDefaultAsync(r => r.Id == rid);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Dashboards] بررسی ویجت گزارش rep:{rid} ناموفق بود: {ex.Message}");
-                return null;
-            }
-            if (report is null) return null;
-
-            if (report.UserId != MyUserId)
-            {
-                if (report.Visibility != 1) return null;
-                var roleIds = await _perms.MyRoleIdsAsync(MyUserId);
-                if (!report.RoleShares.Any(s => roleIds.Contains(s.RoleId))) return null;
-            }
-
-            var rds = _reports.Find(report.DatasetKey);
-            var module = rds?.Module ?? report.Module;
-            if (!isAdmin && !CanSeeModule(perms, module)) return null;
-
-            var rq = ParseReportQuery(report.QueryJson);
-            var rkind = rq.Output switch
-            {
-                ReportOutput.Kpi => DashWidgetKind.Kpi,
-                ReportOutput.Chart => DashWidgetKind.Chart,
-                _ => DashWidgetKind.Table
-            };
-            return ("rep:" + rid, report.Name, rkind);
+            return ("rep:" + rid, "گزارش شخصی", DashWidgetKind.Table);
         }
 
         var def = WidgetCatalog.Find(key);

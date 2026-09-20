@@ -24,7 +24,11 @@ public static class OfficeEmailSchemaV1
 IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'IsNeshan') IS NULL
     ALTER TABLE dbo.OutgoingLetters ADD IsNeshan bit NOT NULL DEFAULT(0);
 IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'DestEmail') IS NULL
-    ALTER TABLE dbo.OutgoingLetters ADD DestEmail nvarchar(250) NULL;");
+    ALTER TABLE dbo.OutgoingLetters ADD DestEmail nvarchar(250) NULL;
+IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'DelivererName') IS NULL
+    ALTER TABLE dbo.OutgoingLetters ADD DelivererName nvarchar(250) NULL;
+IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'TrackingCode') IS NULL
+    ALTER TABLE dbo.OutgoingLetters ADD TrackingCode nvarchar(100) NULL;");
 
         // ---------- حساب‌های ایمیل ----------
         await SafeAsync(db, @"
@@ -72,6 +76,18 @@ END
 IF COL_LENGTH(N'dbo.Oto_TBL_Email', N'Last_Sent_Uid') IS NULL
 BEGIN
     ALTER TABLE dbo.Oto_TBL_Email ADD Last_Sent_Uid bigint NOT NULL DEFAULT(0);
+END
+IF COL_LENGTH(N'dbo.Oto_TBL_Email', N'Last_Junk_Uid') IS NULL
+BEGIN
+    ALTER TABLE dbo.Oto_TBL_Email ADD Last_Junk_Uid bigint NOT NULL DEFAULT(0);
+END");
+
+        // ---------- نشانِ هرزنامه (اسپم) روی ایمیل‌های دریافتی ----------
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.Oto_TBL_Inbox', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Oto_TBL_Inbox', N'Is_Spam') IS NULL
+BEGIN
+    ALTER TABLE dbo.Oto_TBL_Inbox ADD Is_Spam bit NOT NULL DEFAULT(0);
+    CREATE INDEX [IX_Oto_TBL_Inbox_IsSpam] ON [dbo].[Oto_TBL_Inbox] ([Is_Spam]);
 END");
 
         // ---------- ایمیل‌های ارسالی ----------
@@ -111,10 +127,12 @@ BEGIN
         [Body] nvarchar(max) NOT NULL DEFAULT(N''),
         [Is_Attachment] bit NOT NULL DEFAULT(0),
         [From_Address] nvarchar(300) NOT NULL DEFAULT(N''),
-        [IsInFolder] int NOT NULL DEFAULT(0)
+        [IsInFolder] int NOT NULL DEFAULT(0),
+        [Is_Spam] bit NOT NULL DEFAULT(0)
     );
     CREATE INDEX [IX_Oto_TBL_Inbox_Email_UId] ON [dbo].[Oto_TBL_Inbox] ([Email_Id], [UId]);
     CREATE INDEX [IX_Oto_TBL_Inbox_IsRead] ON [dbo].[Oto_TBL_Inbox] ([Is_Read]);
+    CREATE INDEX [IX_Oto_TBL_Inbox_IsSpam] ON [dbo].[Oto_TBL_Inbox] ([Is_Spam]);
 END");
 
         // ---------- پوشه‌های بایگانی ایمیل ----------
@@ -163,6 +181,8 @@ ELSE IF COL_LENGTH(N'dbo.Oto_TBL_EmailAttachments', N'Attachment_FilePath') IS N
     private static async Task EnsureSqliteAsync(AppDbContext db)
     {
         await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN IsNeshan INTEGER NOT NULL DEFAULT 0;");
+        await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN DelivererName TEXT NULL;");
+        await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN TrackingCode TEXT NULL;");
         await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN DestEmail TEXT NULL;");
 
         await SafeAsync(db, @"CREATE TABLE IF NOT EXISTS Oto_TBL_Email (
@@ -182,8 +202,16 @@ ELSE IF COL_LENGTH(N'dbo.Oto_TBL_EmailAttachments', N'Attachment_FilePath') IS N
     ImapPort INTEGER NOT NULL DEFAULT 993,
     ImapSsl INTEGER NOT NULL DEFAULT 1,
     Display_Name TEXT NULL,
-    Last_Sync TEXT NULL);");
+    Last_Sync TEXT NULL,
+    Last_Inbox_Uid INTEGER NOT NULL DEFAULT 0,
+    Last_Sent_Uid INTEGER NOT NULL DEFAULT 0,
+    Last_Junk_Uid INTEGER NOT NULL DEFAULT 0);");
         await SafeAsync(db, @"CREATE INDEX IF NOT EXISTS IX_Oto_TBL_Email_User_Id ON Oto_TBL_Email (User_Id);");
+
+        // دیتابیس‌های SQLiteِ قدیمی‌تر این ستون‌ها را ندارند — خطای «ستون تکراری» پذیرفته می‌شود
+        await SafeAsync(db, @"ALTER TABLE Oto_TBL_Email ADD COLUMN Last_Inbox_Uid INTEGER NOT NULL DEFAULT 0;");
+        await SafeAsync(db, @"ALTER TABLE Oto_TBL_Email ADD COLUMN Last_Sent_Uid INTEGER NOT NULL DEFAULT 0;");
+        await SafeAsync(db, @"ALTER TABLE Oto_TBL_Email ADD COLUMN Last_Junk_Uid INTEGER NOT NULL DEFAULT 0;");
 
         await SafeAsync(db, @"CREATE TABLE IF NOT EXISTS Oto_TBL_Sent (
     Sent_Id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -210,8 +238,10 @@ ELSE IF COL_LENGTH(N'dbo.Oto_TBL_EmailAttachments', N'Attachment_FilePath') IS N
     Body TEXT NOT NULL DEFAULT '',
     Is_Attachment INTEGER NOT NULL DEFAULT 0,
     From_Address TEXT NOT NULL DEFAULT '',
-    IsInFolder INTEGER NOT NULL DEFAULT 0);");
+    IsInFolder INTEGER NOT NULL DEFAULT 0,
+    Is_Spam INTEGER NOT NULL DEFAULT 0);");
         await SafeAsync(db, @"CREATE INDEX IF NOT EXISTS IX_Oto_TBL_Inbox_Email_UId ON Oto_TBL_Inbox (Email_Id, UId);");
+        await SafeAsync(db, @"ALTER TABLE Oto_TBL_Inbox ADD COLUMN Is_Spam INTEGER NOT NULL DEFAULT 0;");
 
         await SafeAsync(db, @"CREATE TABLE IF NOT EXISTS Oto_TBl_EmailFolder (
     EmailFolderId INTEGER PRIMARY KEY AUTOINCREMENT,
