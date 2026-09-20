@@ -1,7 +1,5 @@
 @inject IIncomingLetterService IncomingSvc
-@inject IAuthState Auth
 @inject IToastService Toast
-@inject IJSRuntime JS
 
 @* ============================================================
    فرم ثبت / ویرایش نامه وارده — طرح یکپارچه اتوماسیون اداری
@@ -123,7 +121,7 @@
             @* ---------- متن / توضیحات نامه (ادیتور پیشرفته) ---------- *@
             <div class="fcard">
                 <label>توضیحات / خلاصه متن نامه</label>
-                <RichTextEditor @bind-Value="description" Placeholder="خلاصه متن یا توضیحات نامه وارده را وارد کنید…" Height="220px" ModuleName="IncomingLetters" />
+                <RichTextEditor @bind-Value="description" Placeholder="خلاصه متن یا توضیحات نامه وارده را وارد کنید…" Height="220" Module="IncomingLetters" />
             </div>
 
             @* ---------- ارجاع اولیه انفرادی و گروهی ---------- *@
@@ -242,10 +240,10 @@
     private string description = "";
 
     private LetterPickCombo? combo;
-    private List<UserDto> users = new();
-    private List<UserGroupDto> groups = new();
-    private List<int> selUsers = new();
-    private List<int> selGroups = new();
+    private List<LetterReciverDto> users = new();
+    private List<LetterGroupDto> groups = new();
+    private HashSet<int> selUsers = new();
+    private HashSet<int> selGroups = new();
     private string initialMatnErja = "";
 
     private bool errTitle = false;
@@ -292,13 +290,22 @@
         StateHasChanged();
     }
 
-    public async Task OpenFromEmail(EmailDto email)
+    /// <summary>
+    /// باز کردن فرم ثبت نامه وارده از روی یک ایمیل دریافتی
+    /// (دکمهٔ «تبدیل به نامه وارده» در پست الکترونیک سازمانی).
+    /// </summary>
+    public async Task OpenFromEmail(EmailMessageDetailDto email)
     {
         await OpenCreate();
-        title = string.IsNullOrWhiteSpace(email.Subject) ? "نامه وارد شده از ایمیل" : email.Subject;
-        ferestande = string.IsNullOrWhiteSpace(email.FromName) ? email.FromEmail : $"{email.FromName} ({email.FromEmail})";
+        title = string.IsNullOrWhiteSpace(email.Subject) ? "نامه وارد شده از ایمیل" : email.Subject.Trim();
+        ferestande = string.IsNullOrWhiteSpace(email.FromOrTo) ? email.AccountAddress : email.FromOrTo.Trim();
         typeErsal = "پست الکترونیک (ایمیل)";
-        description = $"<p><b>ایمیل دریافتی:</b></p><blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>{email.Body}</blockquote>";
+        shamsiDate = email.Date.ToFa();
+        description = "<p><b>برگرفته از ایمیل دریافتی</b> — حساب: "
+                    + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
+                    + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
+                    + "<blockquote style='border-right:3px solid #2563eb; padding-right:10px; color:#334155'>"
+                    + (email.Body ?? "") + "</blockquote>";
         StateHasChanged();
     }
 
@@ -306,11 +313,11 @@
     {
         try
         {
-            users = await Auth.GetUsersAsync();
-            groups = await Auth.GetUserGroupsAsync();
+            if (users.Count == 0) users = await IncomingSvc.GetReciversAsync();
+            groups = await IncomingSvc.GetGroupsAsync();
             reservations = await IncomingSvc.GetReservationsAsync(3);
         }
-        catch { }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     private void TriggerScanModal() => showScanModal = true;
@@ -336,11 +343,23 @@
 
         if (errTitle || errFerestande) return;
 
+        // تاریخ‌های شمسی فرم باید معتبر باشند — قبلاً نادیده گرفته می‌شدند و
+        // همیشه DateTime.Now به سرور می‌رفت.
+        var dateVal = PersianDate.TryParse(shamsiDate);
+        var dateErsalVal = PersianDate.TryParse(shamsiDateErsal);
+        if (dateVal is null) { Toast.Error("تاریخ نامه مبدأ معتبر نیست (نمونه: 1403/06/15)."); return; }
+        if (dateErsalVal is null) { Toast.Error("تاریخ ورود / ثبت معتبر نیست (نمونه: 1403/06/15)."); return; }
+
         saving = true;
         try
         {
             int letterId = editLetterId;
-            var recUserIds = combo?.GetSelectedUserIds(users) ?? new List<int>();
+            // گروه‌های انتخاب‌شده سمت کلاینت به اعضا باز می‌شوند؛ ثبت نامه وارده
+            // فقط فهرست کاربران گیرنده اولیه را می‌پذیرد.
+            var recUserIds = selUsers
+                .Concat(groups.Where(g => selGroups.Contains(g.GroupId)).SelectMany(g => g.Members).Select(m => m.UserId))
+                .Distinct()
+                .ToList();
 
             if (editLetterId == 0)
             {
@@ -350,8 +369,8 @@
                     Ferestande = ferestande.Trim(),
                     NumberLetterVarede = numberLetterVarede.Trim(),
                     NumberSabt = selectedSabt > 0 ? selectedSabt : null,
-                    Date = DateTime.Now,
-                    DateErsal = DateTime.Now,
+                    Date = dateVal.Value,
+                    DateErsal = dateErsalVal.Value,
                     TypeErsal = typeErsal,
                     DeliveryName = deliveryName.Trim(),
                     Mahramanegi = mahramanegi,
@@ -370,8 +389,8 @@
                     Title = title.Trim(),
                     Ferestande = ferestande.Trim(),
                     NumberLetterVarede = numberLetterVarede.Trim(),
-                    Date = DateTime.Now,
-                    DateErsal = DateTime.Now,
+                    Date = dateVal.Value,
+                    DateErsal = dateErsalVal.Value,
                     TypeErsal = typeErsal,
                     DeliveryName = deliveryName.Trim(),
                     Mahramanegi = mahramanegi,

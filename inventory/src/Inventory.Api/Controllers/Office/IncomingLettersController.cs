@@ -32,13 +32,15 @@ public class IncomingLettersController : RbacControllerBase
     }
     private readonly IIncomingLetterService _letters;
     private readonly IErjaService _erja;
+    private readonly ILetterGroupService _groups;
     private readonly FileStore _store;
 
-    public IncomingLettersController(IIncomingLetterService letters, IErjaService erja, FileStore store, AppDbContext db)
+    public IncomingLettersController(IIncomingLetterService letters, IErjaService erja, ILetterGroupService groups, FileStore store, AppDbContext db)
         : base(db)
     {
         _letters = letters;
         _erja = erja;
+        _groups = groups;
         _store = store;
     }
 
@@ -185,6 +187,42 @@ public class IncomingLettersController : RbacControllerBase
         var count = await _erja.BatchBayeganiAsync(dto.ErjaIds, MyUserId, dto.Description);
         return Ok(new { count, message = $"{count} نامه با موفقیت بایگانی شد." });
     }
+
+    // ==================== گیرندگان، گروه‌ها و عملگرهای ارجاع ====================
+    // فرم‌های «ثبت نامه وارده» و «ارجاع نامه وارده» همان کمبوی مشترک
+    // (LetterPickCombo) نامه داخلی/صادره را به کار می‌برند و به این سه
+    // سرویس نیاز دارند؛ نبودشان باعث خطای کامپایل سمت کلاینت شده بود.
+
+    /// <summary>لیست کاربران فعال برای انتخاب گیرنده ارجاع</summary>
+    [HttpGet("recivers")]
+    public async Task<IActionResult> Recivers()
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        var users = await Db.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Id != MyUserId)
+            .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
+            .Select(u => new LetterReciverDto
+            {
+                UserId = u.Id,
+                FullName = string.IsNullOrEmpty(u.FirstName + u.LastName)
+                    ? u.Username
+                    : (u.FirstName + " " + u.LastName).Trim()
+            })
+            .ToListAsync();
+        return Ok(users);
+    }
+
+    /// <summary>گروه‌های گیرندگان فعال — برای انتخاب گروهی در ارجاع</summary>
+    [HttpGet("groups")]
+    public async Task<IActionResult> Groups([FromQuery] bool withMembers = true)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        return Ok(await _groups.GetAllAsync(withMembers));
+    }
+
+    /// <summary>عملگرهای ارجاع (جهت اقدام، جهت اطلاع و …)</summary>
+    [HttpGet("amalgars")]
+    public async Task<IActionResult> Amalgars() => Ok(await _erja.GetAmalgarsAsync());
 
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id)
