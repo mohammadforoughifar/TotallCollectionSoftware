@@ -307,6 +307,157 @@ public static class RsSchemaCatalog
                 F("product.count", "تعداد کالا", RsFieldType.Number,
                   group: false, agg: true, unit: "قلم")
             }
+        },
+
+        // ---------------------------------------------------------------------
+        //  انبار و موجودی
+        // ---------------------------------------------------------------------
+        new()
+        {
+            Key = "stock",
+            Title = "موجودی انبار",
+            Category = "انبار و موجودی",
+            Icon = "bi-boxes",
+            Module = "Stock",
+            Description = "موجودیِ کالا به تفکیک انبار — برای گزارشِ کالاهای موجود، ارزشِ ریالیِ موجودی و کالاهای رو به اتمام.",
+            Fields = new()
+            {
+                Num("stock.id", "شناسه"),
+                Text("stock.product", "نام کالا"),
+                Text("stock.code", "کد کالا"),
+                Text("stock.warehouse", "انبار"),
+                F("stock.quantity", "مقدار موجود", RsFieldType.Number,
+                  group: false, agg: true, unit: "عدد"),
+                Money("stock.avg_cost", "میانگین قیمت تمام‌شده"),
+                Money("stock.value", "ارزش موجودی")
+            }
+        },
+
+        // ---------------------------------------------------------------------
+        //  آرشیو اسناد و مدارک
+        // ---------------------------------------------------------------------
+        new()
+        {
+            Key = "document",
+            Title = "مدارک آرشیو",
+            Category = "آرشیو اسناد",
+            Icon = "bi-archive",
+            Module = "DocArchive",
+            Description = "فهرست مدارکِ آرشیو به همراه پوشه و تاریخ انقضا — برای گزارشِ مدارکِ منقضی‌شده و در آستانه انقضا.",
+            Fields = new()
+            {
+                Num("document.id", "شناسه"),
+                Text("document.code", "کد مدرک"),
+                Text("document.title", "عنوان مدرک"),
+                Text("document.folder", "پوشه"),
+                Text("document.customer_code", "کد مشتری"),
+                Date("document.expire_date", "تاریخ انقضا"),
+                Bool("document.is_public", "عمومی"),
+                Bool("document.require_confirm", "محرمانه"),
+                F("document.count", "تعداد مدارک", RsFieldType.Number,
+                  group: false, agg: true, unit: "فقره")
+            }
+        },
+
+        // ---------------------------------------------------------------------
+        //  تعمیرات
+        // ---------------------------------------------------------------------
+        new()
+        {
+            Key = "repair",
+            Title = "دستورهای تعمیر",
+            Category = "تعمیرات",
+            Icon = "bi-wrench",
+            Module = "Repairs",
+            Description = "دستگاه‌های پذیرش‌شده برای تعمیر، وضعیت و مبلغ اعلامی.",
+            Fields = new()
+            {
+                Num("repair.id", "شناسه"),
+                Text("repair.number", "شماره پذیرش"),
+                Text("repair.party", "مشتری"),
+                Text("repair.device_type", "نوع دستگاه"),
+                Text("repair.device_model", "مدل دستگاه"),
+                Text("repair.technician", "تکنسین"),
+                Text("repair.status", "وضعیت"),
+                Date("repair.received_at", "تاریخ پذیرش"),
+                Date("repair.delivered_at", "تاریخ تحویل"),
+                Money("repair.quoted_price", "مبلغ اعلامی"),
+                F("repair.count", "تعداد دستورها", RsFieldType.Number,
+                  group: false, agg: true, unit: "مورد")
+            }
+        },
+
+        // ---------------------------------------------------------------------
+        //  پروژه‌ها
+        // ---------------------------------------------------------------------
+        new()
+        {
+            Key = "project",
+            Title = "پروژه‌ها",
+            Category = "پروژه‌ها",
+            Icon = "bi-kanban",
+            Module = "Projects",
+            Description = "پروژه‌های ثبت‌شده با کد، نام، تحویل‌گیرنده و تاریخ‌های خروج/ورود.",
+            Fields = new()
+            {
+                Num("project.id", "شناسه"),
+                Text("project.code", "کد پروژه"),
+                Text("project.name", "نام پروژه"),
+                Text("project.receiver", "تحویل‌گیرنده"),
+                Text("project.serial", "شماره سریال"),
+                Date("project.exit_date", "تاریخ خروج"),
+                Date("project.entry_date", "تاریخ ورود"),
+                F("project.count", "تعداد پروژه‌ها", RsFieldType.Number,
+                  group: false, agg: true, unit: "پروژه")
+            }
+        },
+
+        // ---------------------------------------------------------------------
+        //  مالی و خزانه‌داری
+        // ---------------------------------------------------------------------
+        new()
+        {
+            Key = "transaction",
+            Title = "تراکنش‌های مالی",
+            Category = "مالی و خزانه",
+            Icon = "bi-cash-coin",
+            Module = "Transactions",
+            Description = "دریافت‌ها و پرداخت‌ها به همراه مبلغ، روش پرداخت و مبلغ تسویه‌شده.",
+            Fields = new()
+            {
+                Num("transaction.id", "شناسه"),
+                Text("transaction.number", "شماره"),
+                Text("transaction.type", "نوع تراکنش"),
+                Date("transaction.date", "تاریخ"),
+                Text("transaction.party", "طرف حساب"),
+                Text("transaction.payment_method", "روش پرداخت"),
+                Money("transaction.amount", "مبلغ"),
+                Money("transaction.settled_amount", "مبلغ تسویه‌شده"),
+                Date("transaction.due_date", "تاریخ سررسید"),
+                F("transaction.count", "تعداد تراکنش‌ها", RsFieldType.Number,
+                  group: false, agg: true, unit: "فقره")
+            }
+        },
+        new()
+        {
+            Key = "expense",
+            Title = "هزینه‌ها",
+            Category = "مالی و خزانه",
+            Icon = "bi-receipt",
+            Module = "Expenses",
+            Description = "هزینه‌های ثبت‌شده به تفکیک دسته‌بندی و گیرنده.",
+            Fields = new()
+            {
+                Num("expense.id", "شناسه"),
+                Text("expense.number", "شماره"),
+                Text("expense.category", "دسته‌بندی هزینه"),
+                Text("expense.payee", "گیرنده"),
+                Text("expense.pay_type", "نوع پرداخت"),
+                Date("expense.date", "تاریخ"),
+                Money("expense.amount", "مبلغ"),
+                F("expense.count", "تعداد هزینه‌ها", RsFieldType.Number,
+                  group: false, agg: true, unit: "فقره")
+            }
         }
     };
 
