@@ -2477,7 +2477,7 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     overflow: hidden;
     animation: tabmenuIn .14s ease-out;
 }
-@@keyframes tabmenuIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+@keyframes tabmenuIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
 .tabbar .tabmenu-head {
     display: flex;
     align-items: center;
@@ -2553,7 +2553,7 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
    ============================================================ */
 .tabpane { display: none; }
 .tabpane.on { display: block; animation: tabpaneIn .16s ease-out; }
-@@keyframes tabpaneIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@keyframes tabpaneIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 .tabpane-wait {
     display: flex;
     align-items: center;
@@ -2565,9 +2565,12 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
 }
 
 /* ---------- موبایل ---------- */
-@@media (max-width: 991.98px) {
-    .tabbar { top: 60px; height: 40px; }
-    .tabbar .tab { max-width: 150px; font-size: .72rem; }
+@media (max-width: 991.98px) {
+    /* ارتفاعِ نوار بالا در این بازه هنوز ۶۶px است — نوار تب دقیقاً زیرش می‌چسبد
+       (مقدارِ اشتباهِ ۶۰px باعث می‌شد تب‌ها زیرِ نوارِ بالا پنهان شوند) */
+    .tabbar { top: 66px; height: 40px; }
+    .tabbar .tab { max-width: 150px; font-size: .74rem; padding: 0 6px 0 5px; }
+    .tabbar .tab .tab-ico { font-size: .8rem; }
     .tabbar .tabnav { display: none; }
 }
 
@@ -2577,4 +2580,12 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
   body:has(.wo-detail-modal) .wo-detail-modal, body:has(.wo-detail-modal) .wo-detail-modal * { visibility: visible !important; }
   body:has(.wo-detail-modal) .wo-detail-modal { position: absolute !important; inset: 0 !important; width: 100% !important; max-width: none !important; border: 0 !important; box-shadow: none !important; }
   body:has(.wo-detail-modal) .no-print, body:has(.wo-detail-modal) .wo-header-actions { display: none !important; }
+
+@media (max-width: 575.98px) {
+    /* در گوشی، نوار بالا ۵۶px است */
+    .tabbar { top: 56px; height: 38px; padding: 0 4px; }
+    .tabbar .tab { max-width: 132px; font-size: .72rem; }
+    .tabbar .tab .tab-title { max-width: 82px; }
+    .tabbar .tab .tab-x { width: 19px; height: 19px; font-size: .72rem; }
+    .tabbar .tabtool { width: 26px; height: 26px; }
 }
