@@ -309,6 +309,20 @@ public class ProjectsController : RbacControllerBase
         return string.IsNullOrWhiteSpace(t) ? null : t;
     }
 
+    // ================== فیلتر «پروژه‌های بدون داده» ==================
+    // کاربر با تایپ «-» (یا واژه‌های خل / خالی / null / empty) در فیلتر ستون‌های تاریخِ اختیاری
+    // (و شماره فاکتور / نوع فاکتور / کارشناسی) پروژه‌هایی را می‌بیند که آن مقدار در آن‌ها
+    // ثبت نشده است — مثلاً «تاریخ خروج ندارند» یعنی هنوز از مجموعه خارج نشده‌اند.
+    private static readonly string[] EmptyFilterTokens = { "-", "خل", "خالی", "null", "empty" };
+
+    /// <summary>آیا متنِ تایپ‌شده در فیلتر ستون به معنی «رکوردهای بدون مقدار» است؟</summary>
+    private static bool IsEmptyFilter(string? text)
+    {
+        var t = NormFilter(text);
+        if (t is null) return false;
+        return EmptyFilterTokens.Contains(t.Trim().ToLowerInvariant());
+    }
+
     /// <summary>
     /// تبدیل متن (بخشی از) تاریخ شمسی به بازهٔ میلادی — «۱۴۰۵» یک سال، «۱۴۰۵/۰۶» یک ماه و «۱۴۰۵/۰۶/۲۵» یک روز.
     /// اگر متن قابل تفسیر نباشد null برمی‌گردد (فیلتر نادیده گرفته می‌شود).
@@ -396,39 +410,95 @@ public class ProjectsController : RbacControllerBase
 
         if (showFactor)
         {
-            var fFactor = NormFilter(q.FFactor);
-            if (fFactor is not null) query = query.Where(p => p.FactorNumber != null && p.FactorNumber.Contains(fFactor));
+            // «-» در فیلتر شماره فاکتور = فقط پروژه‌هایی که هنوز فاکتور ندارند
+            if (IsEmptyFilter(q.FFactor))
+            {
+                query = query.Where(p => p.FactorNumber == null || p.FactorNumber == "");
+            }
+            else
+            {
+                var fFactor = NormFilter(q.FFactor);
+                if (fFactor is not null) query = query.Where(p => p.FactorNumber != null && p.FactorNumber.Contains(fFactor));
+            }
 
-            var fFactorType = NormFilter(q.FFactorType);
-            if (fFactorType is not null) query = query.Where(p => p.TypeFactor != null && p.TypeFactor.Name.Contains(fFactorType));
+            // «-» در فیلتر نوع فاکتور = فقط پروژه‌هایی که نوع فاکتور برایشان تعیین نشده
+            if (IsEmptyFilter(q.FFactorType))
+            {
+                query = query.Where(p => p.FactorTypeId == null);
+            }
+            else
+            {
+                var fFactorType = NormFilter(q.FFactorType);
+                if (fFactorType is not null) query = query.Where(p => p.TypeFactor != null && p.TypeFactor.Name.Contains(fFactorType));
+            }
         }
 
-        var fKarshenasi = NormFilter(q.FKarshenasi);
-        if (fKarshenasi is not null) query = query.Where(p => p.KarshenasiAvalie != null && p.KarshenasiAvalie.Contains(fKarshenasi));
+        // «-» در فیلتر کارشناسی اولیه = فقط پروژه‌هایی که کارشناسی ثبت نشده دارد
+        if (IsEmptyFilter(q.FKarshenasi))
+        {
+            query = query.Where(p => p.KarshenasiAvalie == null || p.KarshenasiAvalie == "");
+        }
+        else
+        {
+            var fKarshenasi = NormFilter(q.FKarshenasi);
+            if (fKarshenasi is not null) query = query.Where(p => p.KarshenasiAvalie != null && p.KarshenasiAvalie.Contains(fKarshenasi));
+        }
 
-        var rEntry = JalaliRange(q.FEntry);
-        if (rEntry is not null)
+        // ----- تاریخ‌های اختیاری: تایپ «-» یعنی فقط پروژه‌هایی که این تاریخ را ندارند -----
+        if (IsEmptyFilter(q.FEntry))
         {
-            var f = rEntry.Value.From; var t = rEntry.Value.To;
-            query = query.Where(p => p.EntryDate >= f && p.EntryDate < t);
+            query = query.Where(p => p.EntryDate == null);
         }
-        var rExit = JalaliRange(q.FExit);
-        if (rExit is not null)
+        else
         {
-            var f = rExit.Value.From; var t = rExit.Value.To;
-            query = query.Where(p => p.ExitDate >= f && p.ExitDate < t);
+            var rEntry = JalaliRange(q.FEntry);
+            if (rEntry is not null)
+            {
+                var f = rEntry.Value.From; var t = rEntry.Value.To;
+                query = query.Where(p => p.EntryDate >= f && p.EntryDate < t);
+            }
         }
-        var rSabt = JalaliRange(q.FSabt);
-        if (rSabt is not null)
+
+        if (IsEmptyFilter(q.FExit))
         {
-            var f = rSabt.Value.From; var t = rSabt.Value.To;
-            query = query.Where(p => p.ProjectRegistrationDate >= f && p.ProjectRegistrationDate < t);
+            query = query.Where(p => p.ExitDate == null);
         }
-        var rNeed = JalaliRange(q.FNeed);
-        if (rNeed is not null)
+        else
         {
-            var f = rNeed.Value.From; var t = rNeed.Value.To;
-            query = query.Where(p => p.CustomerRequiredDate >= f && p.CustomerRequiredDate < t);
+            var rExit = JalaliRange(q.FExit);
+            if (rExit is not null)
+            {
+                var f = rExit.Value.From; var t = rExit.Value.To;
+                query = query.Where(p => p.ExitDate >= f && p.ExitDate < t);
+            }
+        }
+
+        if (IsEmptyFilter(q.FSabt))
+        {
+            query = query.Where(p => p.ProjectRegistrationDate == null);
+        }
+        else
+        {
+            var rSabt = JalaliRange(q.FSabt);
+            if (rSabt is not null)
+            {
+                var f = rSabt.Value.From; var t = rSabt.Value.To;
+                query = query.Where(p => p.ProjectRegistrationDate >= f && p.ProjectRegistrationDate < t);
+            }
+        }
+
+        if (IsEmptyFilter(q.FNeed))
+        {
+            query = query.Where(p => p.CustomerRequiredDate == null);
+        }
+        else
+        {
+            var rNeed = JalaliRange(q.FNeed);
+            if (rNeed is not null)
+            {
+                var f = rNeed.Value.From; var t = rNeed.Value.To;
+                query = query.Where(p => p.CustomerRequiredDate >= f && p.CustomerRequiredDate < t);
+            }
         }
 
         var rSpent = SpanRange(q.FSpent);

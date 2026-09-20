@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>ایمنی و حوادث</PageTitle>
+<BonHrGuard Section="Hse">
 <BonHrShell Title="ایمنی و حوادث" Sub="HSE بن‌سازه" />
 
 @using System.Text
@@ -497,6 +498,7 @@
     </Modal>
 
 
+</BonHrGuard>
 @code {
     private static readonly Dictionary<string, string> Tabs = new()
     {
@@ -542,7 +544,7 @@
     private bool _showIncident, _showPpe, _showEquip, _showExt;
     private int _reportYear = PersianCalendarUtil.Today().Jy;
 
-    private bool CanApprove => Auth.IsAdmin || Auth.Has("RadisHr.Access");
+    private bool CanApprove => Auth.IsAdmin || Auth.Has("RadisHr.Access") || Auth.Has("RadisHr.Hse");
 
     private Employee? SelectedPpeEmployee =>
         _employees.FirstOrDefault(e => e.Code == _ppe.EmployeeCode);

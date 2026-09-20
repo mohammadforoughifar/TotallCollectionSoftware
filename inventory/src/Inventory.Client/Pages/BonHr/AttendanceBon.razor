@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>حضور و غیاب بن‌سازه</PageTitle>
+<BonHrGuard Section="Attendance">
 <BonHrShell Title="حضور و غیاب بن‌سازه" Sub="ورود فایل دستگاه و کارکرد ماهانه">
     <Actions>
         <button class="btn btn-light" type="button" @onclick="() => _showCycle = true">چرخه نگهبان</button>
@@ -360,6 +361,7 @@
     }
 
 
+</BonHrGuard>
 @code {
     private List<Employee> _employees = new();
     private List<string> _months = new();

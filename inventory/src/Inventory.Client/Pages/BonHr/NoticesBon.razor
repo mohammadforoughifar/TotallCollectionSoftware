@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>اطلاعیه‌ها</PageTitle>
+<BonHrGuard Section="Notices">
 <BonHrShell Title="اطلاعیه‌ها" Sub="اعلان‌ها و تغییرات مهم">
     <Actions>
         @if (Auth.IsAdmin || Auth.Has("RadisHr.Access"))
@@ -175,6 +176,7 @@
     </div>
 
 
+</BonHrGuard>
 @code {
     private static readonly Dictionary<string, string> Roles = new()
     {

@@ -188,10 +188,18 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization(options =>
 {
+    // دسترسی به APIهای منابع انسانی بن‌سازه:
+    // - مدیر سیستم، یا
+    // - دارای مجوز کل ماژول (RadisHr.Access)، یا
+    // - دارای مجوز «حداقل یک بخش» (RadisHr.Dashboard / RadisHr.Employees / ...)
+    //   — کاربر بخش‌محور فقط باید به دادهٔ همان بخش دسترسی داشته باشد؛
+    //     عملیات مدیریتیِ حساس خودش در کنترلرها با نقش‌های ماژول کنترل می‌شود.
     options.AddPolicy("RadisHrAccess", policy =>
         policy.RequireAuthenticatedUser()
               .RequireAssertion(ctx => ctx.User.IsInRole("Admin")
-                  || ctx.User.HasClaim("permission", "RadisHr.Access")));
+                  || ctx.User.HasClaim("permission", "RadisHr.Access")
+                  || ctx.User.Claims.Any(c => c.Type == "permission"
+                                              && c.Value.StartsWith("RadisHr.", StringComparison.OrdinalIgnoreCase))));
 });
 
 // CORS برای کلاینت Blazor WASM (در محیط توسعه)
