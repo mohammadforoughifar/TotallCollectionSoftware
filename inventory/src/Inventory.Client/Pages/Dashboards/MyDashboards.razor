@@ -355,13 +355,26 @@ else
         await LoadAllAsync();
     }
 
+    private bool gridBound;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && Auth.CanSee("MyDashboards"))
+        if (!Auth.CanSee("MyDashboards")) return;
+
+        // گرید «dashGrid» فقط وقتی رندر می‌شود که حداقل یک ویجت وجود داشته باشد،
+        // پس در firstRender معمولاً هنوز در DOM نیست و bind بی‌اثر می‌ماند.
+        // تا وقتی گرید واقعاً بایند نشده، در هر رندر دوباره تلاش می‌کنیم.
+        // اگر همهٔ ویجت‌ها حذف شوند، Blazor خودِ عنصر گرید را از DOM برمی‌دارد؛
+        // عنصر بعدی تازه است و باید دوباره بایند شود.
+        if (widgets.Count == 0) { gridBound = false; return; }
+        if (gridBound) return;
+
+        selfRef ??= DotNetObjectReference.Create(this);
+        try
         {
-            selfRef = DotNetObjectReference.Create(this);
-            try { await JS.InvokeVoidAsync("appDash.bind", "dashGrid", selfRef); } catch { }
+            gridBound = await JS.InvokeAsync<bool>("appDash.bind", "dashGrid", selfRef);
         }
+        catch { gridBound = false; }
     }
 
     private async Task LoadAllAsync()

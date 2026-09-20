@@ -211,17 +211,14 @@ else
                 }
             </div>
 
+            <TabBar />
+
             <main class="app-content">
                 @if (RouteAllowed(out var deniedTitle))
                 {
-                    @if (HrNavigation.IsWorkspace(Nav.ToBaseRelativePath(Nav.Uri)))
-                    {
-                        <HrWorkspaceShell>@Body</HrWorkspaceShell>
-                    }
-                    else
-                    {
-                        @Body
-                    }
+                    @* هر تب صفحه‌ی خود را نگه می‌دارد؛ پوسته‌ی فضای کاریِ منابع انسانی
+                       درون خودِ هر تب اعمال می‌شود (TabPages) تا تب‌های دیگر دربر گرفته نشوند *@
+                    @Body
                 }
                 else
                 {

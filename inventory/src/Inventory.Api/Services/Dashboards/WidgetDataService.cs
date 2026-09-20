@@ -409,6 +409,273 @@ public class WidgetDataService : IWidgetDataService
                     break;
                 }
 
+                // ==================== اتوماسیون اداری ====================
+                case "off-letters-count":
+                {
+                    var cnt = await LettersIn(from, to).CountAsync();
+                    var prev = await LettersIn(pFrom, pTo).CountAsync();
+                    FillKpi(res, cnt, null, Prev(prev), "نسبت به بازهٔ قبل");
+                    res.Unit = "نامه";
+                    break;
+                }
+                case "off-letters-by-type":
+                {
+                    var rows = await LettersIn(from, to)
+                        .GroupBy(x => x.SourceType)
+                        .Select(g => new { Type = g.Key, Cnt = g.Count() })
+                        .ToListAsync();
+                    var ser = new DashSeriesDto { Name = "تعداد نامه" };
+                    foreach (var t in new[] { 1, 2, 3 })
+                    {
+                        ser.Labels.Add(LetterTypeFa(t));
+                        ser.Values.Add(rows.FirstOrDefault(r => r.Type == t)?.Cnt ?? 0);
+                    }
+                    res.Series.Add(ser);
+                    break;
+                }
+                case "off-letters-trend":
+                {
+                    var months = LastMonths(12);
+                    var mFrom = months[0].From;
+                    var mTo = months[months.Count - 1].To;
+                    var rows = await LettersIn(mFrom, mTo)
+                        .Select(x => new
+                        {
+                            x.SourceType,
+                            D = x.InnerLetter != null ? x.InnerLetter.DateSabt
+                              : x.OutgoingLetter != null ? x.OutgoingLetter.DateSabt
+                              : x.IncomingLetter!.DateErsal
+                        })
+                        .GroupBy(x => new { x.SourceType, x.D.Year, x.D.Month, x.D.Day })
+                        .Select(g => new { g.Key.SourceType, g.Key.Year, g.Key.Month, g.Key.Day, Cnt = g.Count() })
+                        .ToListAsync();
+                    foreach (var t in new[] { 1, 2, 3 })
+                        res.Series.Add(MonthSeries(LetterTypeFa(t), months,
+                            rows.Where(r => r.SourceType == t)
+                                .Select(r => JalaliRow(r.Year, r.Month, r.Day, r.Cnt)).ToList()));
+                    break;
+                }
+                case "off-letters-by-status":
+                {
+                    var rows = await LettersIn(from, to)
+                        .Select(x => new
+                        {
+                            x.SourceType,
+                            OutStatus = x.OutgoingLetter != null ? x.OutgoingLetter.Status : -1,
+                            InBay = x.IncomingLetter != null && x.IncomingLetter.IsBayegani
+                        })
+                        .ToListAsync();
+                    var buckets = rows
+                        .GroupBy(r => r.SourceType == 1 ? "ثبت‌شده"
+                                    : r.SourceType == 2 ? OutStatusFa(r.OutStatus)
+                                    : (r.InBay ? "بایگانی‌شده" : "در جریان"))
+                        .Select(g => new { Label = g.Key, Cnt = g.Count() })
+                        .OrderByDescending(g => g.Cnt)
+                        .ToList();
+                    var ser = new DashSeriesDto { Name = "تعداد نامه" };
+                    ser.Labels = buckets.Select(b => b.Label).ToList();
+                    ser.Values = buckets.Select(b => (decimal)b.Cnt).ToList();
+                    res.Series.Add(ser);
+                    break;
+                }
+                case "off-letters-by-urgency":
+                {
+                    var rows = await LettersIn(from, to)
+                        .Select(x => new
+                        {
+                            InnerU = x.InnerLetter != null ? x.InnerLetter.Foriat : null,
+                            OutU = x.OutgoingLetter != null ? x.OutgoingLetter.Foriat : null,
+                            IncU = x.IncomingLetter != null ? (int?)x.IncomingLetter.Foriat : null
+                        })
+                        .ToListAsync();
+                    var buckets = rows
+                        .GroupBy(r => UrgencyFa(r.InnerU ?? r.OutU, r.IncU))
+                        .Select(g => new { Label = g.Key, Cnt = g.Count() })
+                        .OrderByDescending(g => g.Cnt)
+                        .ToList();
+                    var ser = new DashSeriesDto { Name = "تعداد نامه" };
+                    ser.Labels = buckets.Select(b => b.Label).ToList();
+                    ser.Values = buckets.Select(b => (decimal)b.Cnt).ToList();
+                    res.Series.Add(ser);
+                    break;
+                }
+                case "off-erja-unread":
+                {
+                    var cnt = await _db.Erjas
+                        .CountAsync(e => !e.IsDelete && !e.IsRead && e.ReciverUserId == userId);
+                    FillKpi(res, cnt, null, null, null);
+                    res.Unit = "مورد";
+                    break;
+                }
+
+                // ---------- نامه صادره ----------
+                case "off-out-count":
+                {
+                    var cnt = await OutLettersIn(from, to).CountAsync();
+                    var prev = await OutLettersIn(pFrom, pTo).CountAsync();
+                    FillKpi(res, cnt, null, Prev(prev), "نسبت به بازهٔ قبل");
+                    res.Unit = "نامه";
+                    break;
+                }
+                case "off-out-pending":
+                {
+                    var cnt = await OutLettersIn(DateTime.MinValue, DateTime.MaxValue)
+                        .CountAsync(o => o.Status == 0 || o.Status == 1);
+                    FillKpi(res, cnt, null, null, null);
+                    res.Unit = "نامه";
+                    break;
+                }
+                case "off-out-by-status":
+                {
+                    var rows = await OutLettersIn(from, to)
+                        .GroupBy(o => o.Status)
+                        .Select(g => new { Status = g.Key, Cnt = g.Count() })
+                        .ToListAsync();
+                    var ser = new DashSeriesDto { Name = "نامه صادره" };
+                    foreach (var s in new[] { 0, 1, 2, 3 })
+                    {
+                        ser.Labels.Add(OutStatusFa(s));
+                        ser.Values.Add(rows.FirstOrDefault(r => r.Status == s)?.Cnt ?? 0);
+                    }
+                    res.Series.Add(ser);
+                    break;
+                }
+                case "off-out-by-method":
+                {
+                    var rows = await OutLettersIn(from, to)
+                        .GroupBy(o => o.SendMethod)
+                        .Select(g => new { Method = g.Key, Cnt = g.Count() })
+                        .ToListAsync();
+                    var buckets = rows
+                        .GroupBy(r => string.IsNullOrWhiteSpace(r.Method) ? "نامشخص" : r.Method!.Trim())
+                        .Select(g => new { Label = g.Key, Cnt = g.Sum(x => x.Cnt) })
+                        .OrderByDescending(g => g.Cnt)
+                        .ToList();
+                    var ser = new DashSeriesDto { Name = "نامه صادره" };
+                    ser.Labels = buckets.Select(b => b.Label).ToList();
+                    ser.Values = buckets.Select(b => (decimal)b.Cnt).ToList();
+                    res.Series.Add(ser);
+                    break;
+                }
+                case "off-out-trend":
+                {
+                    var months = LastMonths(12);
+                    var mFrom = months[0].From;
+                    var mTo = months[months.Count - 1].To;
+
+                    var reg = await OutLettersIn(mFrom, mTo)
+                        .GroupBy(o => new { o.DateSabt.Year, o.DateSabt.Month, o.DateSabt.Day })
+                        .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Cnt = g.Count() })
+                        .ToListAsync();
+                    res.Series.Add(MonthSeries("ثبت‌شده", months,
+                        reg.Select(r => JalaliRow(r.Year, r.Month, r.Day, r.Cnt)).ToList()));
+
+                    var issued = await OutLetters()
+                        .Where(o => o.DateSadere != null && o.DateSadere >= mFrom && o.DateSadere < mTo)
+                        .GroupBy(o => new { o.DateSadere!.Value.Year, o.DateSadere!.Value.Month, o.DateSadere!.Value.Day })
+                        .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Cnt = g.Count() })
+                        .ToListAsync();
+                    res.Series.Add(MonthSeries("صادرشده", months,
+                        issued.Select(r => JalaliRow(r.Year, r.Month, r.Day, r.Cnt)).ToList()));
+                    break;
+                }
+                case "off-out-top-receivers":
+                {
+                    var rows = await OutLettersIn(from, to)
+                        .GroupBy(o => o.ReceiverOrganization)
+                        .Select(g => new { Org = g.Key, Cnt = g.Count() })
+                        .OrderByDescending(x => x.Cnt)
+                        .Take(limit)
+                        .ToListAsync();
+                    res.Columns = new List<string> { "سازمان گیرنده", "تعداد نامه" };
+                    res.Rows = rows.Select(r => new DashRowDto
+                    {
+                        Cells = new List<string>
+                        {
+                            string.IsNullOrWhiteSpace(r.Org) ? "—" : r.Org,
+                            Fa.Digits(r.Cnt.ToString())
+                        }
+                    }).ToList();
+                    break;
+                }
+
+                // ---------- نامه داخلی ----------
+                case "off-inner-count":
+                {
+                    var cnt = await InnerLettersIn(from, to).CountAsync();
+                    var prev = await InnerLettersIn(pFrom, pTo).CountAsync();
+                    FillKpi(res, cnt, null, Prev(prev), "نسبت به بازهٔ قبل");
+                    res.Unit = "نامه";
+                    break;
+                }
+                case "off-inner-overdue":
+                {
+                    var now = DateTime.Now;
+                    var cnt = await _db.LetterSources
+                        .Where(x => !x.IsDelete && x.InnerLetter != null
+                            && x.Erjas.Any(e => !e.IsDelete && e.Answer == ""
+                                && e.MohlatPasokh != null && e.MohlatPasokh < now))
+                        .CountAsync();
+                    FillKpi(res, cnt, null, null, null);
+                    res.Unit = "نامه";
+                    break;
+                }
+                case "off-inner-by-urgency":
+                case "off-inner-by-conf":
+                {
+                    var isUrg = def.Key == "off-inner-by-urgency";
+                    var rows = await InnerLettersIn(from, to)
+                        .Select(i => isUrg ? i.Foriat : i.Mahramanegi)
+                        .ToListAsync();
+                    var buckets = rows
+                        .GroupBy(v => string.IsNullOrWhiteSpace(v) ? "عادی" : v.Trim())
+                        .Select(g => new { Label = g.Key, Cnt = g.Count() })
+                        .OrderByDescending(g => g.Cnt)
+                        .ToList();
+                    var ser = new DashSeriesDto { Name = "نامه داخلی" };
+                    ser.Labels = buckets.Select(b => b.Label).ToList();
+                    ser.Values = buckets.Select(b => (decimal)b.Cnt).ToList();
+                    res.Series.Add(ser);
+                    break;
+                }
+                case "off-inner-trend":
+                {
+                    var months = LastMonths(12);
+                    var mFrom = months[0].From;
+                    var mTo = months[months.Count - 1].To;
+                    var rows = await InnerLettersIn(mFrom, mTo)
+                        .GroupBy(i => new { i.DateSabt.Year, i.DateSabt.Month, i.DateSabt.Day })
+                        .Select(g => new { g.Key.Year, g.Key.Month, g.Key.Day, Cnt = g.Count() })
+                        .ToListAsync();
+                    res.Series.Add(MonthSeries("نامه داخلی", months,
+                        rows.Select(r => JalaliRow(r.Year, r.Month, r.Day, r.Cnt)).ToList()));
+                    break;
+                }
+                case "off-inner-top-senders":
+                {
+                    var rows = await InnerLettersIn(from, to)
+                        .GroupBy(i => i.CreatorUserId)
+                        .Select(g => new { UserId = g.Key, Cnt = g.Count() })
+                        .OrderByDescending(x => x.Cnt)
+                        .Take(limit)
+                        .ToListAsync();
+                    var ids = rows.Select(r => r.UserId).ToList();
+                    var names = await _db.Users.Where(u => ids.Contains(u.Id))
+                        .Select(u => new { u.Id, Name = (u.FirstName + " " + u.LastName).Trim() })
+                        .ToDictionaryAsync(u => u.Id, u => u.Name);
+                    res.Columns = new List<string> { "ثبت‌کننده", "تعداد نامه" };
+                    res.Rows = rows.Select(r => new DashRowDto
+                    {
+                        Cells = new List<string>
+                        {
+                            names.TryGetValue(r.UserId, out var n) && !string.IsNullOrWhiteSpace(n)
+                                ? n : "کاربر " + Fa.Digits(r.UserId.ToString()),
+                            Fa.Digits(r.Cnt.ToString())
+                        }
+                    }).ToList();
+                    break;
+                }
+
                 // ==================== سایر ماژول‌ها ====================
                 case "it-open":
                 {
@@ -470,7 +737,13 @@ public class WidgetDataService : IWidgetDataService
         }
         catch (Exception ex)
         {
-            res.Error = "خطا در محاسبهٔ ویجت: " + ex.Message;
+            var msg = ex.Message ?? "";
+            // جدول نامه وارده در مایگریشن قدیمی وجود ندارد — پیام راهنما به‌جای خطای خام SQL
+            res.Error = msg.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase)
+                     || msg.Contains("no such table", StringComparison.OrdinalIgnoreCase)
+                ? "جدول‌های ماژول نامه در دیتابیس ساخته نشده‌اند (مثل IncomingLetters). " +
+                  "سرویس را یک‌بار ری‌استارت کنید تا خودتعمیری اسکیما اجرا شود. جزئیات: " + msg
+                : "خطا در محاسبهٔ ویجت: " + msg;
         }
 
         res.GeneratedAt = DateTime.Now;
@@ -486,6 +759,54 @@ public class WidgetDataService : IWidgetDataService
         _db.WorkOrders.Where(w => w.DeletedAt == null
             && (w.OwnerUserId == userId
                 || _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.UserId == userId)));
+
+    /// <summary>همهٔ نامه‌ها (داخلی/صادره/وارده) که تاریخ ثبتشان در بازه است.</summary>
+    private IQueryable<LetterSource> LettersIn(DateTime from, DateTime to) =>
+        _db.LetterSources.Where(x => !x.IsDelete
+            && ((x.InnerLetter != null && x.InnerLetter.DateSabt >= from && x.InnerLetter.DateSabt < to)
+             || (x.OutgoingLetter != null && x.OutgoingLetter.DateSabt >= from && x.OutgoingLetter.DateSabt < to)
+             || (x.IncomingLetter != null && x.IncomingLetter.DateErsal >= from && x.IncomingLetter.DateErsal < to)));
+
+    /// <summary>نامه‌های صادرهٔ حذف‌نشده (از مسیر LetterSource تا حذف منطقی رعایت شود).</summary>
+    private IQueryable<OutgoingLetter> OutLetters() =>
+        _db.LetterSources.Where(x => !x.IsDelete && x.OutgoingLetter != null)
+                         .Select(x => x.OutgoingLetter!);
+
+    private IQueryable<OutgoingLetter> OutLettersIn(DateTime from, DateTime to) =>
+        OutLetters().Where(o => o.DateSabt >= from && o.DateSabt < to);
+
+    /// <summary>نامه‌های داخلی حذف‌نشده.</summary>
+    private IQueryable<InnerLetter> InnerLetters() =>
+        _db.LetterSources.Where(x => !x.IsDelete && x.InnerLetter != null)
+                         .Select(x => x.InnerLetter!);
+
+    private IQueryable<InnerLetter> InnerLettersIn(DateTime from, DateTime to) =>
+        InnerLetters().Where(i => i.DateSabt >= from && i.DateSabt < to);
+
+    private static string LetterTypeFa(int t) => t switch
+    {
+        1 => "داخلی",
+        2 => "صادره",
+        3 => "وارده",
+        _ => "نامشخص"
+    };
+
+    private static string OutStatusFa(int s) => s switch
+    {
+        0 => "پیش‌نویس",
+        1 => "در گردش تایید",
+        2 => "تایید شده",
+        3 => "صادر شده",
+        _ => "نامشخص"
+    };
+
+    /// <summary>فوریت: داخلی/صادره رشته‌ای، وارده عددی — هر دو به متن یکسان.</summary>
+    private static string UrgencyFa(string? text, int? code)
+    {
+        if (code is not null)
+            return code switch { 0 => "عادی", 1 => "فوری", 2 => "خیلی فوری", 3 => "آنی", _ => "عادی" };
+        return string.IsNullOrWhiteSpace(text) ? "عادی" : text.Trim();
+    }
 
     private async Task<decimal> SaleSum(DateTime from, DateTime to) =>
         (decimal)(await _db.FacInvoices
