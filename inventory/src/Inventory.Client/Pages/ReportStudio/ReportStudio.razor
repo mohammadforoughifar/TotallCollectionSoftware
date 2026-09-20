@@ -123,20 +123,42 @@ else
                     @if (query.Tables.Count == 0)
                     {
                         <div class="rs-empty-sm mb-2">جدول اصلی را انتخاب کنید:</div>
-                        <div class="rs-chip-wrap">
-                            @foreach (var cat in catalog.Tables.GroupBy(t => t.Category))
+
+                        @* جست‌وجو در منابع — با زیاد شدنِ ماژول‌ها، پیدا کردنِ منبع سخت می‌شود *@
+                        <div class="rs-src-search">
+                            <i class="bi bi-search"></i>
+                            <input type="text" class="rs-src-input" placeholder="جست‌وجو در منابع داده…"
+                                   @bind="srcQuery" @bind:event="oninput" />
+                            @if (!string.IsNullOrWhiteSpace(srcQuery))
+                            {
+                                <button type="button" class="rs-src-clear" title="پاک کردن"
+                                        @onclick='() => srcQuery = ""'><i class="bi bi-x"></i></button>
+                            }
+                        </div>
+
+                        <div class="rs-cats">
+                            @foreach (var cat in FilteredCatalog)
                             {
                                 <div class="rs-cat">
-                                    <div class="rs-cat-title">@cat.Key</div>
+                                    <div class="rs-cat-title">
+                                        <i class="bi @CatIcon(cat.Key)"></i>
+                                        <span>@cat.Key</span>
+                                        <span class="rs-cat-count">@cat.Count()</span>
+                                    </div>
                                     <div class="rs-chip-wrap">
                                         @foreach (var t in cat)
                                         {
-                                            <button class="rs-chip" @onclick="() => AddTable(t.Key, null)">
+                                            <button class="rs-chip" title="@t.Description"
+                                                    @onclick="() => AddTable(t.Key, null)">
                                                 <i class="bi @t.Icon"></i> @t.Title
                                             </button>
                                         }
                                     </div>
                                 </div>
+                            }
+                            @if (!FilteredCatalog.Any())
+                            {
+                                <div class="rs-empty-sm">منبعی با این عبارت پیدا نشد.</div>
                             }
                         </div>
                     }
@@ -648,8 +670,23 @@ else
     .rs-field { display:flex; flex-direction:column; gap:.2rem; }
     .rs-field > span { font-size:.75rem; color:#64748b; }
 
-    .rs-cat { margin-bottom:.6rem; }
-    .rs-cat-title { font-size:.76rem; font-weight:700; color:#2563eb; margin-bottom:.3rem; }
+    .rs-src-search { display:flex; align-items:center; gap:.4rem; border:1px solid #e2e8f0;
+                     border-radius:999px; padding:.25rem .6rem; background:#fff; margin-bottom:.6rem; }
+    .rs-src-search > i { color:#94a3b8; font-size:.8rem; }
+    .rs-src-input { border:none; outline:none; flex:1; font-size:.82rem; background:transparent; color:#334155; }
+    .rs-src-input::placeholder { color:#a8b4c4; }
+    .rs-src-clear { border:none; background:#f1f5f9; color:#64748b; border-radius:50%;
+                    width:18px; height:18px; line-height:1; display:inline-flex;
+                    align-items:center; justify-content:center; cursor:pointer; font-size:.7rem; }
+    .rs-src-clear:hover { background:#e2e8f0; color:#334155; }
+
+    .rs-cats { display:flex; flex-direction:column; gap:.55rem; }
+    .rs-cat { margin-bottom:0; border-right:3px solid #bfdbfe; padding-right:.55rem; }
+    .rs-cat-title { font-size:.76rem; font-weight:700; color:#1d4ed8; margin-bottom:.35rem;
+                    display:flex; align-items:center; gap:.3rem; }
+    .rs-cat-title > i { font-size:.85rem; }
+    .rs-cat-count { background:#dbeafe; color:#1e40af; border-radius:999px;
+                    padding:0 .4rem; font-size:.68rem; font-weight:700; }
     .rs-chip-wrap { display:flex; flex-wrap:wrap; gap:.35rem; }
     .rs-chip { border:1px solid #e2e8f0; background:#fff; border-radius:999px; padding:.28rem .7rem;
                font-size:.8rem; cursor:pointer; color:#334155; display:inline-flex; align-items:center; gap:.3rem; }
@@ -719,6 +756,52 @@ else
 </style>
 
 @code {
+    // =====================================================================
+    //  انتخابِ منبع: جست‌وجو و گروه‌بندی بر اساس دسته‌ی ماژول
+    // =====================================================================
+
+    /// <summary>عبارت جست‌وجو در فهرست منابعِ قابل انتخاب.</summary>
+    private string srcQuery = "";
+
+    /// <summary>
+    /// منابعِ کاتالوگ، گروه‌بندی‌شده بر اساس دسته.
+    /// فیلترِ دسترسیِ ماژول سرور انجام شده؛ اینجا فقط جست‌وجوی متنی اعمال می‌شود.
+    /// </summary>
+    private List<IGrouping<string, RsTableDto>> FilteredCatalog
+    {
+        get
+        {
+            var q = (srcQuery ?? "").Trim();
+            var src = catalog.Tables.AsEnumerable();
+            if (q.Length > 0)
+            {
+                src = src.Where(t =>
+                    t.Title.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || t.Category.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || t.Module.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || (t.Description ?? "").Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+            return src.GroupBy(t => t.Category)
+                      .OrderBy(g => g.Key, StringComparer.Ordinal)
+                      .ToList();
+        }
+    }
+
+    /// <summary>آیکون هر دسته — برای تشخیص سریع‌تر ماژول.</summary>
+    private static string CatIcon(string cat) => cat switch
+    {
+        "اتوماسیون اداری" => "bi-envelope-paper",
+        "فروش و خرید" => "bi-receipt",
+        "اطلاعات پایه" => "bi-database",
+        "انبار و موجودی" => "bi-boxes",
+        "آرشیو اسناد" => "bi-archive",
+        "تعمیرات" => "bi-wrench",
+        "پروژه‌ها" => "bi-kanban",
+        "مالی و خزانه" => "bi-cash-coin",
+        _ => "bi-grid"
+    };
+
+
     [Parameter] public int? ReportId { get; set; }
 
     private RsCatalogDto catalog = new();

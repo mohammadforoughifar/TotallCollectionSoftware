@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
@@ -67,6 +68,12 @@ public sealed class RsRowSource : IRsRowSource
             "invoice+invoice_line+party+product" => await InvoiceFullAsync(leftJoin, hardLimit, ct),
             "party" => await PartiesAsync(hardLimit, ct),
             "product" => await ProductsAsync(hardLimit, ct),
+            "stock" => await StocksAsync(hardLimit, ct),
+            "document" => await DocumentsAsync(hardLimit, ct),
+            "repair" => await RepairsAsync(hardLimit, ct),
+            "project" => await ProjectsAsync(hardLimit, ct),
+            "transaction" => await TransactionsAsync(hardLimit, ct),
+            "expense" => await ExpensesAsync(hardLimit, ct),
             _ => throw new RsUnsupportedShapeException(tables)
         };
     }
@@ -788,6 +795,250 @@ public sealed class RsRowSource : IRsRowSource
             rows.Add(r);
         }
         return rows;
+    }
+
+    // =====================================================================
+    //  انبار و موجودی
+    // =====================================================================
+    private async Task<List<RsRow>> StocksAsync(int limit, CancellationToken ct)
+    {
+        var raw = await _db.Stocks
+            .OrderBy(x => x.WarehouseId).ThenBy(x => x.ProductId)
+            .Take(limit)
+            .Select(x => new { x.Id, x.ProductId, x.WarehouseId, x.Quantity, x.AvgCost })
+            .ToListAsync(ct);
+
+        var prodIds = raw.Select(x => x.ProductId).Distinct().ToList();
+        var whIds = raw.Select(x => x.WarehouseId).Distinct().ToList();
+
+        var prods = prodIds.Count == 0
+            ? new Dictionary<int, Inventory.Api.Data.Product>()
+            : await _db.Products.Where(p => prodIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var whs = whIds.Count == 0
+            ? new Dictionary<int, Inventory.Api.Data.Warehouse>()
+            : await _db.Warehouses.Where(w => whIds.Contains(w.Id)).ToDictionaryAsync(w => w.Id, ct);
+
+        return raw.Select(x =>
+        {
+            var prod = prods.GetValueOrDefault(x.ProductId);
+            var r = new RsRow();
+            r.V["stock.id"] = x.Id;
+            r.V["stock.product"] = prod?.Name ?? "";
+            r.V["stock.code"] = prod?.Code ?? "";
+            r.V["stock.warehouse"] = whs.GetValueOrDefault(x.WarehouseId)?.Name ?? "";
+            r.V["stock.quantity"] = x.Quantity;
+            r.V["stock.avg_cost"] = x.AvgCost;
+            r.V["stock.value"] = x.Quantity * x.AvgCost;
+            r.V["stock.count"] = 1;
+            return r;
+        }).ToList();
+    }
+
+    // =====================================================================
+    //  آرشیو اسناد و مدارک
+    // =====================================================================
+    private async Task<List<RsRow>> DocumentsAsync(int limit, CancellationToken ct)
+    {
+        var raw = await _db.Documents
+            .Where(d => !d.IsDeleted)
+            .OrderBy(d => d.Code)
+            .Take(limit)
+            .Select(d => new
+            {
+                d.Id, d.Code, d.Title, d.FolderId, d.CustomerCode,
+                d.ExpireDate, d.IsPublic, d.RequireDownloadConfirm
+            })
+            .ToListAsync(ct);
+
+        var folderIds = raw.Select(x => x.FolderId).Distinct().ToList();
+        var folders = folderIds.Count == 0
+            ? new Dictionary<int, DocFolder>()
+            : await _db.DocFolders.Where(f => folderIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+
+        return raw.Select(x =>
+        {
+            var r = new RsRow();
+            r.V["document.id"] = x.Id;
+            r.V["document.code"] = x.Code;
+            r.V["document.title"] = x.Title;
+            r.V["document.folder"] = folders.GetValueOrDefault(x.FolderId)?.Name ?? "";
+            r.V["document.customer_code"] = x.CustomerCode ?? "";
+            r.V["document.expire_date"] = x.ExpireDate;
+            r.V["document.is_public"] = x.IsPublic;
+            r.V["document.require_confirm"] = x.RequireDownloadConfirm;
+            r.V["document.count"] = 1;
+            return r;
+        }).ToList();
+    }
+
+    // =====================================================================
+    //  تعمیرات
+    // =====================================================================
+    private static string RepairStatusFa(RepairStatus s) => s switch
+    {
+        RepairStatus.Received => "پذیرش شده",
+        RepairStatus.InProgress => "در حال تعمیر",
+        RepairStatus.Ready => "آماده تحویل",
+        RepairStatus.Delivered => "تحویل شده",
+        RepairStatus.Cancelled => "لغو شده",
+        _ => "نامشخص"
+    };
+
+    private async Task<List<RsRow>> RepairsAsync(int limit, CancellationToken ct)
+    {
+        var raw = await _db.RepairOrders
+            .OrderByDescending(x => x.ReceivedAt)
+            .Take(limit)
+            .Select(x => new
+            {
+                x.Id, x.Number, x.PartyId, x.TechnicianId, x.DeviceType,
+                x.DeviceModel, x.Status, x.ReceivedAt, x.DeliveredAt, x.QuotedPrice
+            })
+            .ToListAsync(ct);
+
+        var partyIds = raw.Select(x => x.PartyId).Distinct().ToList();
+        var techIds = raw.Where(x => x.TechnicianId != null)
+                         .Select(x => x.TechnicianId!.Value).Distinct().ToList();
+
+        var parties = partyIds.Count == 0
+            ? new Dictionary<int, Inventory.Api.Data.Party>()
+            : await _db.Parties.Where(p => partyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+        var techs = techIds.Count == 0
+            ? new Dictionary<int, Inventory.Api.Data.Technician>()
+            : await _db.Technicians.Where(t => techIds.Contains(t.Id)).ToDictionaryAsync(t => t.Id, ct);
+
+        return raw.Select(x =>
+        {
+            var r = new RsRow();
+            r.V["repair.id"] = x.Id;
+            r.V["repair.number"] = x.Number;
+            r.V["repair.party"] = parties.GetValueOrDefault(x.PartyId)?.Name ?? "";
+            r.V["repair.device_type"] = x.DeviceType;
+            r.V["repair.device_model"] = x.DeviceModel ?? "";
+            r.V["repair.technician"] = x.TechnicianId != null
+                ? techs.GetValueOrDefault(x.TechnicianId.Value)?.Name ?? "" : "";
+            r.V["repair.status"] = RepairStatusFa(x.Status);
+            r.V["repair.received_at"] = x.ReceivedAt;
+            r.V["repair.delivered_at"] = x.DeliveredAt;
+            r.V["repair.quoted_price"] = x.QuotedPrice;
+            r.V["repair.count"] = 1;
+            return r;
+        }).ToList();
+    }
+
+    // =====================================================================
+    //  پروژه‌ها
+    // =====================================================================
+    private async Task<List<RsRow>> ProjectsAsync(int limit, CancellationToken ct)
+    {
+        var raw = await _db.ProjectEntryExits
+            .OrderByDescending(x => x.Id)
+            .Take(limit)
+            .Select(x => new
+            {
+                x.Id, x.CodeProject, x.ProjectName, x.ProjectReceiver,
+                x.SerialNumber, x.ExitDate, x.EntryDate
+            })
+            .ToListAsync(ct);
+
+        return raw.Select(x =>
+        {
+            var r = new RsRow();
+            r.V["project.id"] = x.Id;
+            r.V["project.code"] = x.CodeProject;
+            r.V["project.name"] = x.ProjectName;
+            r.V["project.receiver"] = x.ProjectReceiver;
+            r.V["project.serial"] = x.SerialNumber;
+            r.V["project.exit_date"] = x.ExitDate;
+            r.V["project.entry_date"] = x.EntryDate;
+            r.V["project.count"] = 1;
+            return r;
+        }).ToList();
+    }
+
+    // =====================================================================
+    //  مالی و خزانه‌داری
+    // =====================================================================
+    private static string TransactionTypeFa(TransactionType t) => t switch
+    {
+        TransactionType.Initial => "موجودی اول دوره",
+        TransactionType.Purchase => "رسید خرید",
+        TransactionType.Sale => "حواله فروش",
+        TransactionType.Adjustment => "تعدیل",
+        _ => "نامشخص"
+    };
+
+    private static string PaymentMethodFa(PaymentMethod m) => m switch
+    {
+        PaymentMethod.Cash => "نقدی",
+        PaymentMethod.Credit => "نسیه",
+        PaymentMethod.Cheque => "چک",
+        PaymentMethod.Installment => "اقساطی",
+        _ => "نامشخص"
+    };
+
+    private async Task<List<RsRow>> TransactionsAsync(int limit, CancellationToken ct)
+    {
+        var raw = await _db.Transactions
+            .OrderByDescending(x => x.Date)
+            .Take(limit)
+            .Select(x => new
+            {
+                x.Id, x.Number, x.Type, x.Date, x.PartyId,
+                x.Amount, x.SettledAmount, x.PaymentMethod, x.DueDate
+            })
+            .ToListAsync(ct);
+
+        var partyIds = raw.Where(x => x.PartyId != null)
+                          .Select(x => x.PartyId!.Value).Distinct().ToList();
+        var parties = partyIds.Count == 0
+            ? new Dictionary<int, Inventory.Api.Data.Party>()
+            : await _db.Parties.Where(p => partyIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
+
+        return raw.Select(x =>
+        {
+            var r = new RsRow();
+            r.V["transaction.id"] = x.Id;
+            r.V["transaction.number"] = x.Number;
+            r.V["transaction.type"] = TransactionTypeFa(x.Type);
+            r.V["transaction.date"] = x.Date;
+            r.V["transaction.party"] = x.PartyId != null
+                ? parties.GetValueOrDefault(x.PartyId.Value)?.Name ?? "" : "";
+            r.V["transaction.payment_method"] = PaymentMethodFa(x.PaymentMethod);
+            r.V["transaction.amount"] = x.Amount;
+            r.V["transaction.settled_amount"] = x.SettledAmount;
+            r.V["transaction.due_date"] = x.DueDate;
+            r.V["transaction.count"] = 1;
+            return r;
+        }).ToList();
+    }
+
+    private async Task<List<RsRow>> ExpensesAsync(int limit, CancellationToken ct)
+    {
+        var raw = await _db.Expenses
+            .OrderByDescending(x => x.Date)
+            .Take(limit)
+            .Select(x => new { x.Id, x.Number, x.CategoryId, x.Amount, x.Date, x.Payee, x.PayType })
+            .ToListAsync(ct);
+
+        var catIds = raw.Select(x => x.CategoryId).Distinct().ToList();
+        var cats = catIds.Count == 0
+            ? new Dictionary<int, ExpenseCategory>()
+            : await _db.ExpenseCategories.Where(c => catIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id, ct);
+
+        return raw.Select(x =>
+        {
+            var r = new RsRow();
+            r.V["expense.id"] = x.Id;
+            r.V["expense.number"] = x.Number;
+            r.V["expense.category"] = cats.GetValueOrDefault(x.CategoryId)?.Name ?? "";
+            r.V["expense.payee"] = x.Payee ?? "";
+            r.V["expense.pay_type"] = x.PayType == CashType.Cash ? "نقد" : "غیرنقد";
+            r.V["expense.date"] = x.Date;
+            r.V["expense.amount"] = x.Amount;
+            r.V["expense.count"] = 1;
+            return r;
+        }).ToList();
     }
 }
 

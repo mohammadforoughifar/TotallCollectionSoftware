@@ -54,10 +54,17 @@ else
                    value="@search" @oninput="e => search = e.Value?.ToString()" />
         </div>
 
-        <div class="rh-grid">
-            @foreach (var r in Filtered)
-            {
-                var rep = r;
+        @foreach (var grp in GroupedReports)
+        {
+            <div class="rh-group">
+                <div class="rh-group-head">
+                    <i class="bi @(string.IsNullOrWhiteSpace(grp.Key) ? "bi-folder" : "bi-folder2-open")"></i>
+                    <span>@(string.IsNullOrWhiteSpace(grp.Key) ? "بدون پوشه" : grp.Key)</span>
+                    <span class="rh-group-count">@Fa.Digits(grp.Count().ToString())</span>
+                </div>
+                <div class="rh-grid">
+                    @foreach (var rep in grp)
+                    {
                 <div class="rh-card @(rep.Id == openId ? "active" : "")" @onclick="() => OpenAsync(rep.Id)">
                     <div class="rh-card-top">
                         <i class="bi @rep.Icon rh-icon"></i>
@@ -81,8 +88,10 @@ else
                         <span class="rh-badge rh-access">@AccessFa(rep.MyAccess)</span>
                     </div>
                 </div>
-            }
-        </div>
+                    }
+                </div>
+            </div>
+        }
 
         @if (openId > 0)
         {
@@ -227,6 +236,12 @@ else
     .rh-kpi-value { font-size:2.6rem; font-weight:800; color:#2563eb; }
     .rh-kpi-unit { font-size:.85rem; color:#64748b; }
 
+    .rh-group { margin-bottom:1.1rem; }
+    .rh-group-head { display:flex; align-items:center; gap:.4rem; margin-bottom:.5rem;
+                     font-size:.82rem; font-weight:700; color:#1d4ed8; }
+    .rh-group-head > i { font-size:.95rem; }
+    .rh-group-count { background:#dbeafe; color:#1e40af; border-radius:999px;
+                      padding:0 .45rem; font-size:.68rem; font-weight:700; }
     .rs-panel { background:#fff; border:1px solid #e5eaf0; border-radius:14px; overflow:hidden; direction:rtl; }
     .rs-panel-head { display:flex; align-items:center; gap:.5rem; padding:.6rem .9rem; background:#f8fafc;
                      border-bottom:1px solid #eef2f7; font-weight:700; font-size:.88rem; color:#334155; }
@@ -267,6 +282,17 @@ else
             return q;
         }
     }
+
+    /// <summary>
+    /// گزارش‌ها گروه‌بندی‌شده بر اساس پوشه.
+    /// پوشه‌ها را خودِ کاربر هنگام ساخت گزارش تعیین می‌کند، بنابراین
+    /// تفکیکِ گزارش‌ها دقیقاً مطابقِ نظمِ ذهنیِ اوست.
+    /// </summary>
+    private List<IGrouping<string, RsReportDto>> GroupedReports =>
+        Filtered.GroupBy(r => r.Folder ?? "")
+                .OrderBy(g => string.IsNullOrWhiteSpace(g.Key) ? 1 : 0)
+                .ThenBy(g => g.Key, StringComparer.Ordinal)
+                .ToList();
 
     protected override async Task OnInitializedAsync()
     {
