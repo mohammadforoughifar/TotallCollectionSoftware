@@ -199,8 +199,8 @@ else
     private DateTime? fFrom, fTo;
 
     private bool comparing;
-    private DateTime cmpFrom = DateTime.Today.AddMonths(-1);
-    private DateTime cmpTo = DateTime.Today;
+    private DateTime? cmpFrom = DateTime.Today.AddMonths(-1);
+    private DateTime? cmpTo = DateTime.Today;
     private HrMainCompareResultDto? compareResult;
 
     protected override async Task OnInitializedAsync()
@@ -234,7 +234,7 @@ else
     private async Task RunCompare()
     {
         comparing = true;
-        try { compareResult = await Svc.CompareStructureAsync(cmpFrom, cmpTo); }
+        try { compareResult = await Svc.CompareStructureAsync(cmpFrom ?? DateTime.Today.AddMonths(-1), cmpTo ?? DateTime.Today); }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { comparing = false; }
     }
