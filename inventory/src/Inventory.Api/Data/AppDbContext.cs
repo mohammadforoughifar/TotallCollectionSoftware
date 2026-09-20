@@ -201,6 +201,7 @@ public class AppDbContext : DbContext
     public DbSet<HrMainPosition> HrMainPositions => Set<HrMainPosition>();
     public DbSet<HrMainLocale> HrMainLocales => Set<HrMainLocale>();
     public DbSet<HrMainRules> HrMainRules => Set<HrMainRules>();
+    public DbSet<HrMainChangeLog> HrMainChangeLogs => Set<HrMainChangeLog>();
 
     /// <summary>پرونده کارمندان — اسکیما با HrEmployeeDossierSchemaV1</summary>
     public DbSet<HrEmployeeDependent> HrEmployeeDependents => Set<HrEmployeeDependent>();

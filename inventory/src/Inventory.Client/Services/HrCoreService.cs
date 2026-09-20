@@ -26,6 +26,7 @@ public interface IHrCoreService
     Task<HrContractDto> RenewContractAsync(int id, int months);
     Task<int> RemindExpiringDocumentsAsync(int days);
     Task<(byte[] Data, string FileName, string ContentType)> GetDossierPdfAsync(int employeeId);
+    Task<(byte[] Data, string FileName, string ContentType)> GetEmploymentCertificateAsync(int employeeId, string? purpose);
     Task<(byte[] Data, string FileName, string ContentType)> ExportEmployeesExcelAsync(string? q);
     Task<(byte[] Data, string FileName, string ContentType)> ExportContractsExcelAsync();
     Task<(byte[] Data, string FileName, string ContentType)> ExportDecreesExcelAsync();
@@ -34,6 +35,7 @@ public interface IHrCoreService
         DateTime? from, DateTime? to, int skip, int take);
     Task<HrAuditLogDto> GetHrAuditAsync(long id);
     Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year);
+    Task<HrDataQualityReportDto> GetDataQualityReportAsync();
     Task<List<HrReportColumnDto>> GetReportMetaAsync(string entity);
     Task<HrReportResultDto> RunReportAsync(HrReportRunDto dto);
     Task<List<HrReportTemplateDto>> ListReportTemplatesAsync();
@@ -204,6 +206,9 @@ public class HrCoreService : IHrCoreService
     public Task<(byte[] Data, string FileName, string ContentType)> GetDossierPdfAsync(int employeeId)
         => _api.GetFileAsync($"{Root}/employees/{employeeId}/dossier-pdf");
 
+    public Task<(byte[] Data, string FileName, string ContentType)> GetEmploymentCertificateAsync(int employeeId, string? purpose)
+        => _api.GetFileAsync($"{Root}/employees/{employeeId}/employment-certificate?purpose={Uri.EscapeDataString(purpose ?? "")}");
+
     public Task<(byte[] Data, string FileName, string ContentType)> ExportEmployeesExcelAsync(string? q)
         => _api.GetFileAsync($"{Root}/employees/export?q={Uri.EscapeDataString(q ?? "")}");
 
@@ -227,6 +232,9 @@ public class HrCoreService : IHrCoreService
 
     public Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year)
         => _api.GetAsync<HrManagerDashboardDto>($"{Root}/insights?year={year}");
+
+    public Task<HrDataQualityReportDto> GetDataQualityReportAsync()
+        => _api.GetAsync<HrDataQualityReportDto>($"{Root}/data-quality");
 
     public Task<List<HrReportColumnDto>> GetReportMetaAsync(string entity)
         => _api.GetAsync<List<HrReportColumnDto>>($"{Root}/reports/meta?entity={entity}");

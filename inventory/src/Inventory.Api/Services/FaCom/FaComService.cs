@@ -41,6 +41,7 @@ public interface IFaComService
     Task<int> NotifyManyAsync(IEnumerable<int> userIds, string title, string? body, string? link,
         bool email, bool push, bool sms, int byUserId);
     Task<int> CheckBirthdaysAsync();
+    Task<int> CheckWorkAnniversariesAsync();
 
     // صندوق پیشنهادها
     Task<List<FaComSuggestionDto>> MySuggestionsAsync(int userId);
@@ -696,6 +697,31 @@ public class FaComService : IFaComService
         {
             var names = string.Join("، ", emps.Select(e => e.FirstName + " " + e.LastName));
             await _notify.SendToRoleAsync("HrManager", "تولدهای امروز 🎂", names, FromName, FormName, null);
+        }
+        return emps.Count;
+    }
+
+    /// <summary>سالگرد استخدام (سنوات) — روزی که HireDate ماه/روزش با امروز یکی است و حداقل یک سال گذشته باشد.</summary>
+    public async Task<int> CheckWorkAnniversariesAsync()
+    {
+        var today = DateTime.Today;
+        var emps = await _db.HrEmployees.AsNoTracking()
+            .Where(e => e.IsActive
+                && e.HireDate.Month == today.Month && e.HireDate.Day == today.Day
+                && e.HireDate.Year < today.Year)
+            .ToListAsync();
+        foreach (var e in emps.Where(x => x.SystemUserId is > 0))
+        {
+            var years = today.Year - e.HireDate.Year;
+            var yearsFa = Inventory.Shared.Fa.Digits(years.ToString());
+            await _notify.SendAsync(e.SystemUserId!.Value, "سالگرد همکاری 🎊",
+                $"{e.FirstName} عزیز، امروز {yearsFa} سال از همکاری شما با مجموعه می‌گذرد. از همراهی‌تان سپاسگزاریم. 🌟", FromName, FormName, null);
+        }
+        if (emps.Count > 0)
+        {
+            var names = string.Join("، ", emps.Select(e =>
+                $"{e.FirstName} {e.LastName} ({Inventory.Shared.Fa.Digits((today.Year - e.HireDate.Year).ToString())} سال)"));
+            await _notify.SendToRoleAsync("HrManager", "سالگردهای همکاری امروز 🎊", names, FromName, FormName, null);
         }
         return emps.Count;
     }

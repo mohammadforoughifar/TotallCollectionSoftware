@@ -287,6 +287,15 @@ public class HrCoreController : RbacControllerBase
         catch (InvalidOperationException) { return NotFound(); }
     }
 
+    /// <summary>صدور خودکار گواهی اشتغال به کار — با یک کلیک، بدون تایپ دستی</summary>
+    [HttpGet("employees/{id:int}/employment-certificate")]
+    public async Task<IActionResult> EmploymentCertificate(int id, [FromQuery] string? purpose)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        try { return File(await _svc.EmploymentCertificatePdfAsync(id, purpose), "application/pdf", $"EmploymentCertificate-{id}.pdf"); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
+
     [HttpGet("employees/export")]
     public async Task<IActionResult> ExportEmployees([FromQuery] string? q)
     {
@@ -690,6 +699,15 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         return Ok(await _svc.GetManagerDashboardAsync(year));
+    }
+
+    // ------------------- گزارش کیفیت داده پرسنل -------------------
+
+    [HttpGet("data-quality")]
+    public async Task<IActionResult> DataQuality()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(await _svc.GetDataQualityReportAsync());
     }
 
     // ------------------- گزارش‌ساز سفارشی (§۶) -------------------

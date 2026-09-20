@@ -34,6 +34,9 @@ public interface IHrMainService
     Task<List<HrMainHolidayDto>> ListHolidaysAsync(int? jalaliYear = null);
     Task<HrMainHolidayDto> SaveHolidayAsync(HrMainHolidaySaveDto dto);
     Task DeleteHolidayAsync(int id);
+
+    Task<HrMainChangeLogListResult> SearchChangeLogAsync(string? entity, string? q, DateTime? from, DateTime? to, int skip, int take);
+    Task<HrMainCompareResultDto> CompareStructureAsync(DateTime from, DateTime to);
 }
 
 public class HrMainService : IHrMainService
@@ -116,4 +119,17 @@ public class HrMainService : IHrMainService
 
     public Task DeleteHolidayAsync(int id)
         => _api.DeleteAsync($"{Root}/holidays/{id}");
+
+    public Task<HrMainChangeLogListResult> SearchChangeLogAsync(string? entity, string? q, DateTime? from, DateTime? to, int skip, int take)
+    {
+        var qs = new List<string> { $"skip={skip}", $"take={take}" };
+        if (!string.IsNullOrWhiteSpace(entity)) qs.Add($"entity={Uri.EscapeDataString(entity)}");
+        if (!string.IsNullOrWhiteSpace(q)) qs.Add($"q={Uri.EscapeDataString(q)}");
+        if (from != null) qs.Add($"from={from:yyyy-MM-dd}");
+        if (to != null) qs.Add($"to={to:yyyy-MM-dd}");
+        return _api.GetAsync<HrMainChangeLogListResult>($"{Root}/org/change-log?{string.Join("&", qs)}");
+    }
+
+    public Task<HrMainCompareResultDto> CompareStructureAsync(DateTime from, DateTime to)
+        => _api.GetAsync<HrMainCompareResultDto>($"{Root}/org/compare?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
 }

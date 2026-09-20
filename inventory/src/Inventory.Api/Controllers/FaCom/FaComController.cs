@@ -257,4 +257,13 @@ public class FaComController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         return Ok(new { count = await _svc.CheckBirthdaysAsync() });
     }
+
+    // ------------------- سالگرد همکاری -------------------
+
+    [HttpPost("anniversaries/check")]
+    public async Task<IActionResult> CheckAnniversaries()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
+        return Ok(new { count = await _svc.CheckWorkAnniversariesAsync() });
+    }
 }

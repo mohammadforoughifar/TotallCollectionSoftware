@@ -14,6 +14,19 @@
         {
             <div class="org-box-branch">@Node.BranchName</div>
         }
+        @if (Node.EmployeeCount > 0 || Node.PositionCount > 0)
+        {
+            <div class="org-box-counts">
+                @if (Node.EmployeeCount > 0)
+                {
+                    <span title="پرسنل فعال این واحد"><i class="bi bi-people-fill"></i> @Node.EmployeeCount.Num()</span>
+                }
+                @if (Node.PositionCount > 0)
+                {
+                    <span title="پست‌های سازمانی این واحد"><i class="bi bi-person-badge"></i> @Node.PositionCount.Num()</span>
+                }
+            </div>
+        }
     </div>
     @if (Node.Children.Count > 0)
     {

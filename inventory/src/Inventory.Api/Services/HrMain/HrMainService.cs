@@ -22,13 +22,19 @@ public interface IHrMainService
     // ساختار سازمانی
     Task<List<HrMainOrgNodeDto>> GetTreeAsync();
     Task<List<HrMainOrgNodeDto>> ListNodesAsync();
-    Task<HrMainOrgNodeDto> SaveNodeAsync(int? id, HrMainOrgNodeSaveDto dto);
-    Task DeleteNodeAsync(int id);
+    Task<HrMainOrgNodeDto> SaveNodeAsync(int? id, HrMainOrgNodeSaveDto dto, int? byUserId = null, string? byUsername = null);
+    Task DeleteNodeAsync(int id, int? byUserId = null, string? byUsername = null);
 
     // پست‌های سازمانی
     Task<List<HrMainPositionDto>> ListPositionsAsync(int? orgNodeId);
-    Task<HrMainPositionDto> SavePositionAsync(int? id, HrMainPositionSaveDto dto);
-    Task DeletePositionAsync(int id);
+    Task<HrMainPositionDto> SavePositionAsync(int? id, HrMainPositionSaveDto dto, int? byUserId = null, string? byUsername = null);
+    Task DeletePositionAsync(int id, int? byUserId = null, string? byUsername = null);
+
+    // تاریخچه تغییرات ساختار سازمانی (گره‌ها و پست‌ها)
+    Task<HrMainChangeLogListResult> SearchChangeLogAsync(string? entity, string? q, DateTime? from, DateTime? to, int skip, int take);
+
+    // مقایسه ساختار سازمانی بین دو تاریخ
+    Task<HrMainCompareResultDto> CompareStructureAsync(DateTime from, DateTime to);
 
     // زبان و تقویم
     Task<HrMainLocaleDto> GetLocaleAsync();
@@ -219,6 +225,11 @@ public class HrMainService : IHrMainService
             .GroupBy(p => p.OrgNodeId!.Value)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count);
+        var empCounts = await _db.HrEmployees.AsNoTracking()
+            .Where(e => e.IsActive && e.HrMainNodeId != null)
+            .GroupBy(e => e.HrMainNodeId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Key, x => x.Count);
         return rows.Select(n => new HrMainOrgNodeDto
         {
             Id = n.Id, ParentId = n.ParentId, Level = (int)n.Level,
@@ -228,11 +239,12 @@ public class HrMainService : IHrMainService
             BranchName = n.BranchId is > 0 && branches.TryGetValue(n.BranchId.Value, out var bn) ? bn : null,
             ManagerTitle = n.ManagerTitle, Phone = n.Phone, Description = n.Description,
             SortOrder = n.SortOrder, IsActive = n.IsActive,
-            PositionCount = posCounts.TryGetValue(n.Id, out var c) ? c : 0
+            PositionCount = posCounts.TryGetValue(n.Id, out var c) ? c : 0,
+            EmployeeCount = empCounts.TryGetValue(n.Id, out var ec) ? ec : 0
         }).ToList();
     }
 
-    public async Task<HrMainOrgNodeDto> SaveNodeAsync(int? id, HrMainOrgNodeSaveDto dto)
+    public async Task<HrMainOrgNodeDto> SaveNodeAsync(int? id, HrMainOrgNodeSaveDto dto, int? byUserId = null, string? byUsername = null)
     {
         if (string.IsNullOrWhiteSpace(dto.Name))
             throw new InvalidOperationException("نام گره سازمانی الزامی است.");
@@ -264,11 +276,19 @@ public class HrMainService : IHrMainService
             throw new InvalidOperationException("گره بدون والد (ریشه) باید در سطح «شرکت» باشد.");
         }
 
+        var isNew = id is not > 0;
         HrMainOrgNode n;
-        if (id is > 0)
+        HrMainOrgNode? before = null;
+        if (!isNew)
         {
-            n = await _db.HrMainOrgNodes.FirstOrDefaultAsync(x => x.Id == id.Value)
+            n = await _db.HrMainOrgNodes.FirstOrDefaultAsync(x => x.Id == id!.Value)
                 ?? throw new InvalidOperationException("گره سازمانی یافت نشد.");
+            before = new HrMainOrgNode
+            {
+                ParentId = n.ParentId, Level = n.Level, Code = n.Code, Name = n.Name,
+                BranchId = n.BranchId, ManagerTitle = n.ManagerTitle, Phone = n.Phone,
+                Description = n.Description, SortOrder = n.SortOrder, IsActive = n.IsActive
+            };
         }
         else
         {
@@ -281,10 +301,33 @@ public class HrMainService : IHrMainService
         n.Phone = dto.Phone?.Trim(); n.Description = dto.Description?.Trim();
         n.SortOrder = dto.SortOrder; n.IsActive = dto.IsActive;
         await _db.SaveChangesAsync();
+
+        var branchName = n.BranchId is > 0 ? await _db.HrMainBranches.AsNoTracking()
+            .Where(b => b.Id == n.BranchId.Value).Select(b => b.Name).FirstOrDefaultAsync() : null;
+        if (isNew)
+        {
+            await LogChangeAsync(HrMainChangeEntity.OrgNode, HrMainChangeAction.Create, n.Id, n.Name, null, null, null, byUserId, byUsername);
+        }
+        else
+        {
+            var beforeParentName = before!.ParentId is > 0
+                ? await _db.HrMainOrgNodes.AsNoTracking().Where(x => x.Id == before.ParentId!.Value).Select(x => x.Name).FirstOrDefaultAsync()
+                : null;
+            var afterParentName = n.ParentId is > 0
+                ? await _db.HrMainOrgNodes.AsNoTracking().Where(x => x.Id == n.ParentId!.Value).Select(x => x.Name).FirstOrDefaultAsync()
+                : null;
+            await LogFieldChangeAsync(HrMainChangeEntity.OrgNode, n.Id, n.Name, "والد", beforeParentName ?? "— (ریشه)", afterParentName ?? "— (ریشه)", byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.OrgNode, n.Id, n.Name, "سطح", LevelName((int)before.Level), LevelName((int)n.Level), byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.OrgNode, n.Id, n.Name, "نام", before.Name, n.Name, byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.OrgNode, n.Id, n.Name, "کد", before.Code, n.Code, byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.OrgNode, n.Id, n.Name, "شعبه", before.BranchId is > 0 ? null : "—", branchName ?? "—", byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.OrgNode, n.Id, n.Name, "عنوان مدیر", before.ManagerTitle, n.ManagerTitle, byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.OrgNode, n.Id, n.Name, "وضعیت فعال", before.IsActive ? "فعال" : "غیرفعال", n.IsActive ? "فعال" : "غیرفعال", byUserId, byUsername);
+        }
         return (await ListNodesAsync()).First(x => x.Id == n.Id);
     }
 
-    public async Task DeleteNodeAsync(int id)
+    public async Task DeleteNodeAsync(int id, int? byUserId = null, string? byUsername = null)
     {
         var n = await _db.HrMainOrgNodes.FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("گره سازمانی یافت نشد.");
@@ -296,6 +339,7 @@ public class HrMainService : IHrMainService
             throw new InvalidOperationException("پرسنلی به این گره منتسب است و قابل حذف نیست.");
         _db.HrMainOrgNodes.Remove(n);
         await _db.SaveChangesAsync();
+        await LogChangeAsync(HrMainChangeEntity.OrgNode, HrMainChangeAction.Delete, n.Id, n.Name, null, null, null, byUserId, byUsername);
     }
 
     /// <summary>آیا candidateId از نوادگان nodeId است؟ (پیمایش والدها به سمت بالا)</summary>
@@ -318,6 +362,96 @@ public class HrMainService : IHrMainService
         0 => "شرکت", 1 => "واحد", 2 => "دپارتمان", 3 => "تیم", _ => "نامشخص"
     };
 
+    // ==================== تاریخچه تغییرات (گره‌ها و پست‌ها) ====================
+
+    /// <summary>ثبت یک ردیف تاریخچه (ایجاد/حذف کل رکورد، یا تغییر یک فیلد مشخص)</summary>
+    private async Task LogChangeAsync(HrMainChangeEntity entity, HrMainChangeAction action, int entityId, string entityName,
+        string? field, string? oldValue, string? newValue, int? byUserId, string? byUsername)
+    {
+        _db.HrMainChangeLogs.Add(new HrMainChangeLog
+        {
+            At = DateTime.Now, Entity = entity, Action = action, EntityId = entityId,
+            EntityName = entityName, FieldName = field, OldValue = oldValue, NewValue = newValue,
+            ByUserId = byUserId, ByUsername = byUsername ?? ""
+        });
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>ثبت تغییر یک فیلد فقط در صورتی که مقدار واقعاً عوض شده باشد</summary>
+    private async Task LogFieldChangeAsync(HrMainChangeEntity entity, int entityId, string entityName,
+        string field, string? oldValue, string? newValue, int? byUserId, string? byUsername)
+    {
+        if (string.Equals(oldValue ?? "", newValue ?? "", StringComparison.Ordinal)) return;
+        await LogChangeAsync(entity, HrMainChangeAction.Update, entityId, entityName, field, oldValue, newValue, byUserId, byUsername);
+    }
+
+    public async Task<HrMainChangeLogListResult> SearchChangeLogAsync(string? entity, string? q, DateTime? from, DateTime? to, int skip, int take)
+    {
+        take = Math.Clamp(take, 1, 200);
+        var query = _db.HrMainChangeLogs.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(entity) && Enum.TryParse<HrMainChangeEntity>(entity, true, out var ent))
+            query = query.Where(l => l.Entity == ent);
+        if (from != null) query = query.Where(l => l.At >= from.Value.Date);
+        if (to != null) query = query.Where(l => l.At < to.Value.Date.AddDays(1));
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            query = query.Where(l =>
+                l.EntityName.Contains(term) ||
+                (l.ByUsername != null && l.ByUsername.Contains(term)) ||
+                (l.FieldName != null && l.FieldName.Contains(term)));
+        }
+        var total = await query.CountAsync();
+        var items = await query.OrderByDescending(l => l.At).ThenByDescending(l => l.Id)
+            .Skip(Math.Max(0, skip)).Take(take)
+            .Select(l => new HrMainChangeLogDto
+            {
+                Id = l.Id, At = l.At, Entity = l.Entity.ToString(), Action = l.Action.ToString(),
+                EntityId = l.EntityId, EntityName = l.EntityName, FieldName = l.FieldName,
+                OldValue = l.OldValue, NewValue = l.NewValue, ByUsername = l.ByUsername
+            }).ToListAsync();
+        return new HrMainChangeLogListResult { Total = total, Items = items };
+    }
+
+    // ==================== مقایسه ساختار سازمانی بین دو تاریخ ====================
+
+    /// <summary>
+    /// خلاصه و فهرست همه‌ی تغییرات ساختار سازمانی (گره‌ها و پست‌ها) که بین دو تاریخ رخ داده‌اند —
+    /// دقیقاً بر پایه‌ی همان تاریخچه‌ی ثبت‌شده (نه عکس‌گیری کامل از ساختار، که سنگین و پرریسک است).
+    /// </summary>
+    public async Task<HrMainCompareResultDto> CompareStructureAsync(DateTime from, DateTime to)
+    {
+        if (to < from) (from, to) = (to, from);
+        var rows = await _db.HrMainChangeLogs.AsNoTracking()
+            .Where(l => l.At >= from.Date && l.At < to.Date.AddDays(1))
+            .OrderBy(l => l.At)
+            .ToListAsync();
+
+        var result = new HrMainCompareResultDto { From = from.Date, To = to.Date };
+        foreach (var l in rows)
+        {
+            result.Items.Add(new HrMainCompareItemDto
+            {
+                Entity = l.Entity.ToString(), Action = l.Action.ToString(), EntityId = l.EntityId,
+                EntityName = l.EntityName, FieldName = l.FieldName, OldValue = l.OldValue,
+                NewValue = l.NewValue, At = l.At, ByUsername = l.ByUsername
+            });
+            if (l.Entity == HrMainChangeEntity.OrgNode)
+            {
+                if (l.Action == HrMainChangeAction.Create) result.NodesCreated++;
+                else if (l.Action == HrMainChangeAction.Delete) result.NodesDeleted++;
+                else if (l.FieldName != null) result.NodesUpdated++;
+            }
+            else
+            {
+                if (l.Action == HrMainChangeAction.Create) result.PositionsCreated++;
+                else if (l.Action == HrMainChangeAction.Delete) result.PositionsDeleted++;
+                else if (l.FieldName != null) result.PositionsUpdated++;
+            }
+        }
+        return result;
+    }
+
     // ==================== پست‌های سازمانی ====================
 
     public async Task<List<HrMainPositionDto>> ListPositionsAsync(int? orgNodeId)
@@ -327,27 +461,41 @@ public class HrMainService : IHrMainService
         var rows = await q.OrderBy(p => p.Title).ToListAsync();
         var nodeNames = await _db.HrMainOrgNodes.AsNoTracking()
             .ToDictionaryAsync(n => n.Id, n => n.Name);
+        // تعداد پرسنل فعالِ منصوب‌شده به هر پست — برای محاسبه ظرفیت خالی (Vacancy)
+        var assignedCounts = await _db.HrEmployees.AsNoTracking()
+            .Where(e => e.IsActive && e.HrMainPositionId != null)
+            .GroupBy(e => e.HrMainPositionId!.Value)
+            .Select(g => new { PositionId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.PositionId, x => x.Count);
         return rows.Select(p => new HrMainPositionDto
         {
             Id = p.Id, Code = p.Code, Title = p.Title, OrgNodeId = p.OrgNodeId,
             OrgNodeName = p.OrgNodeId is > 0 && nodeNames.TryGetValue(p.OrgNodeId.Value, out var nm) ? nm : null,
             Grade = p.Grade, JobDescription = p.JobDescription, Requirements = p.Requirements,
-            HeadCount = p.HeadCount, IsActive = p.IsActive
+            HeadCount = p.HeadCount, IsActive = p.IsActive,
+            AssignedCount = assignedCounts.TryGetValue(p.Id, out var cnt) ? cnt : 0
         }).ToList();
     }
 
-    public async Task<HrMainPositionDto> SavePositionAsync(int? id, HrMainPositionSaveDto dto)
+    public async Task<HrMainPositionDto> SavePositionAsync(int? id, HrMainPositionSaveDto dto, int? byUserId = null, string? byUsername = null)
     {
         if (string.IsNullOrWhiteSpace(dto.Title))
             throw new InvalidOperationException("عنوان پست سازمانی الزامی است.");
         if (dto.OrgNodeId is > 0 && !await _db.HrMainOrgNodes.AnyAsync(n => n.Id == dto.OrgNodeId.Value))
             throw new InvalidOperationException("گره سازمانی نامعتبر است.");
 
+        var isNew = id is not > 0;
         HrMainPosition p;
-        if (id is > 0)
+        HrMainPosition? before = null;
+        if (!isNew)
         {
-            p = await _db.HrMainPositions.FirstOrDefaultAsync(x => x.Id == id.Value)
+            p = await _db.HrMainPositions.FirstOrDefaultAsync(x => x.Id == id!.Value)
                 ?? throw new InvalidOperationException("پست سازمانی یافت نشد.");
+            before = new HrMainPosition
+            {
+                Code = p.Code, Title = p.Title, OrgNodeId = p.OrgNodeId, Grade = p.Grade,
+                HeadCount = p.HeadCount, IsActive = p.IsActive
+            };
         }
         else
         {
@@ -360,10 +508,29 @@ public class HrMainService : IHrMainService
         p.Requirements = dto.Requirements?.Trim();
         p.HeadCount = Math.Max(1, dto.HeadCount); p.IsActive = dto.IsActive;
         await _db.SaveChangesAsync();
+
+        if (isNew)
+        {
+            await LogChangeAsync(HrMainChangeEntity.Position, HrMainChangeAction.Create, p.Id, p.Title, null, null, null, byUserId, byUsername);
+        }
+        else
+        {
+            var beforeNodeName = before!.OrgNodeId is > 0
+                ? await _db.HrMainOrgNodes.AsNoTracking().Where(x => x.Id == before.OrgNodeId!.Value).Select(x => x.Name).FirstOrDefaultAsync()
+                : null;
+            var afterNodeName = p.OrgNodeId is > 0
+                ? await _db.HrMainOrgNodes.AsNoTracking().Where(x => x.Id == p.OrgNodeId!.Value).Select(x => x.Name).FirstOrDefaultAsync()
+                : null;
+            await LogFieldChangeAsync(HrMainChangeEntity.Position, p.Id, p.Title, "عنوان", before.Title, p.Title, byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.Position, p.Id, p.Title, "گره سازمانی", beforeNodeName ?? "—", afterNodeName ?? "—", byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.Position, p.Id, p.Title, "رتبه/گرید", before.Grade, p.Grade, byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.Position, p.Id, p.Title, "تعداد مصوب", before.HeadCount.ToString(), p.HeadCount.ToString(), byUserId, byUsername);
+            await LogFieldChangeAsync(HrMainChangeEntity.Position, p.Id, p.Title, "وضعیت فعال", before.IsActive ? "فعال" : "غیرفعال", p.IsActive ? "فعال" : "غیرفعال", byUserId, byUsername);
+        }
         return (await ListPositionsAsync(null)).First(x => x.Id == p.Id);
     }
 
-    public async Task DeletePositionAsync(int id)
+    public async Task DeletePositionAsync(int id, int? byUserId = null, string? byUsername = null)
     {
         var p = await _db.HrMainPositions.FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("پست سازمانی یافت نشد.");
@@ -371,6 +538,7 @@ public class HrMainService : IHrMainService
             throw new InvalidOperationException("پرسنلی به این پست منتسب است و قابل حذف نیست.");
         _db.HrMainPositions.Remove(p);
         await _db.SaveChangesAsync();
+        await LogChangeAsync(HrMainChangeEntity.Position, HrMainChangeAction.Delete, p.Id, p.Title, null, null, null, byUserId, byUsername);
     }
 
     // ==================== زبان و تقویم ====================
@@ -430,6 +598,14 @@ public class HrMainService : IHrMainService
             throw new InvalidOperationException("سقف اضافه‌کاری ماهانه نامعتبر است.");
         if (dto.ContractAlertDays is < 1 or > 365)
             throw new InvalidOperationException("آستانه هشدار انقضای قرارداد باید بین ۱ تا ۳۶۵ روز باشد.");
+        if (dto.DefaultWorkStartTime == dto.DefaultWorkEndTime)
+            throw new InvalidOperationException("ساعت شروع و پایان کار پیش‌فرض نمی‌توانند یکسان باشند.");
+        if (!string.IsNullOrWhiteSpace(dto.DefaultWeeklyOffDays))
+        {
+            var parts = dto.DefaultWeeklyOffDays.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (parts.Any(p => !int.TryParse(p, out var d) || d is < 0 or > 6))
+                throw new InvalidOperationException("روزهای تعطیل هفتگی نامعتبر است (اعداد ۰ تا ۶ با کاما).");
+        }
 
         var r = await _db.HrMainRules.FirstOrDefaultAsync();
         if (r is null) { r = new HrMainRules(); _db.HrMainRules.Add(r); }
@@ -447,6 +623,9 @@ public class HrMainService : IHrMainService
         r.MaxMonthlyOvertimeHours = dto.MaxMonthlyOvertimeHours;
         r.OvertimeNeedsApproval = dto.OvertimeNeedsApproval;
         r.ContractAlertDays = dto.ContractAlertDays;
+        r.DefaultWorkStartTime = dto.DefaultWorkStartTime;
+        r.DefaultWorkEndTime = dto.DefaultWorkEndTime;
+        r.DefaultWeeklyOffDays = dto.DefaultWeeklyOffDays?.Trim();
         r.UpdatedAt = DateTime.Now;
         await _db.SaveChangesAsync();
         return MapRules(r);
@@ -462,7 +641,10 @@ public class HrMainService : IHrMainService
         UnexcusedAbsenceWarningAfter = r.UnexcusedAbsenceWarningAfter,
         OvertimeFactor = r.OvertimeFactor, MaxMonthlyOvertimeHours = r.MaxMonthlyOvertimeHours,
         OvertimeNeedsApproval = r.OvertimeNeedsApproval,
-        ContractAlertDays = r.ContractAlertDays
+        ContractAlertDays = r.ContractAlertDays,
+        DefaultWorkStartTime = r.DefaultWorkStartTime,
+        DefaultWorkEndTime = r.DefaultWorkEndTime,
+        DefaultWeeklyOffDays = r.DefaultWeeklyOffDays
     };
 
     // ==================== تعطیلات (جدول موجود CompanyHoliday) ====================
@@ -523,6 +705,18 @@ public class HrMainService : IHrMainService
         var jy = PersianDate.FromGregorian(DateTime.Today).Year;
         var holidays = await ListHolidaysAsync(jy);
         var c = await _db.HrMainCompanies.AsNoTracking().FirstOrDefaultAsync();
+
+        // مجموع ظرفیت خالی پست‌های فعال (مصوب منهای منصوب، هرگز منفی نیست)
+        var activePositions = await _db.HrMainPositions.AsNoTracking()
+            .Where(p => p.IsActive).Select(p => new { p.Id, p.HeadCount }).ToListAsync();
+        var assignedCounts = await _db.HrEmployees.AsNoTracking()
+            .Where(e => e.IsActive && e.HrMainPositionId != null)
+            .GroupBy(e => e.HrMainPositionId!.Value)
+            .Select(g => new { PositionId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.PositionId, x => x.Count);
+        var vacantTotal = activePositions.Sum(p =>
+            Math.Max(0, p.HeadCount - (assignedCounts.TryGetValue(p.Id, out var cnt) ? cnt : 0)));
+
         return new HrMainOverviewDto
         {
             CompanyName = string.IsNullOrWhiteSpace(c?.Name) ? null : c!.Name,
@@ -531,6 +725,7 @@ public class HrMainService : IHrMainService
             ActiveNodes = await _db.HrMainOrgNodes.CountAsync(n => n.IsActive),
             ActivePositions = await _db.HrMainPositions.CountAsync(p => p.IsActive),
             ActiveEmployees = await _db.HrEmployees.CountAsync(e => e.IsActive),
+            VacantPositions = vacantTotal,
             HolidaysThisYear = holidays.Count,
             CurrentJalaliYear = jy
         };

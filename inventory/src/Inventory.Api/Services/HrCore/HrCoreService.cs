@@ -79,6 +79,7 @@ public interface IHrCoreService
         DateTime? from, DateTime? to, int skip, int take);
     Task<HrAuditLogDto?> GetHrAuditAsync(long id);
     Task<HrManagerDashboardDto> GetManagerDashboardAsync(int year);
+    Task<HrDataQualityReportDto> GetDataQualityReportAsync();
 
     // قالب‌های قرارداد (§۹)
     Task<List<HrContractTemplateDto>> ListTemplatesAsync();
@@ -105,6 +106,9 @@ public interface IHrCoreService
     Task<byte[]> DecreePdfAsync(int id);
     Task<byte[]> ContractPdfAsync(int id);
     Task DeleteDecreeAsync(int id);
+
+    /// <summary>صدور خودکار «گواهی اشتغال به کار» فارسی برای یک پرسنل فعال (PDF)</summary>
+    Task<byte[]> EmploymentCertificatePdfAsync(int employeeId, string? purpose);
 
     // پرونده کارمندان — تحت‌تکفل، دوره‌ها، مهارت‌ها، زبان‌ها، اسناد، عکس
     Task<HrEmployeeDossierDto> GetDossierAsync(int employeeId, int expiringDays = 30);
@@ -929,6 +933,129 @@ public class HrCoreService : IHrCoreService
             });
         });
         return doc.GeneratePdf();
+    }
+
+    /// <summary>
+    /// گواهی اشتغال به کار — سند رسمی و متداول HR (برای بانک/سفارت/دانشگاه و ...)
+    /// که به‌صورت خودکار از روی پرونده فعلی پرسنل (بدون نیاز به تایپ دستی) ساخته می‌شود.
+    /// فقط برای پرسنل فعال صادر می‌شود.
+    /// </summary>
+    public async Task<byte[]> EmploymentCertificatePdfAsync(int employeeId, string? purpose)
+    {
+        var e = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(x => x.Id == employeeId)
+            ?? throw new InvalidOperationException("پرسنل یافت نشد.");
+        if (!e.IsActive || e.Status != HrEmployeeStatus.Active)
+            throw new InvalidOperationException("گواهی اشتغال به کار فقط برای پرسنل شاغلِ فعال صادر می‌شود.");
+
+        var co = await _db.HrMainCompanies.AsNoTracking().FirstOrDefaultAsync();
+        var orgUnitName = e.HrMainNodeId is > 0
+            ? await _db.HrMainOrgNodes.AsNoTracking().Where(n => n.Id == e.HrMainNodeId).Select(n => n.Name).FirstOrDefaultAsync()
+            : (e.OrgUnitId is > 0 ? await _db.HrOrgUnits.AsNoTracking().Where(o => o.Id == e.OrgUnitId).Select(o => o.Name).FirstOrDefaultAsync() : null);
+        var positionTitle = e.HrMainPositionId is > 0
+            ? await _db.HrMainPositions.AsNoTracking().Where(p => p.Id == e.HrMainPositionId).Select(p => p.Title).FirstOrDefaultAsync()
+            : e.PostTitle;
+        var activeContract = await _db.HrContracts.AsNoTracking()
+            .Where(c => c.EmployeeId == employeeId && c.IsActive)
+            .OrderByDescending(c => c.StartDate).FirstOrDefaultAsync();
+        var employmentTypeName = HrCoreTexts.EmploymentType((int)e.EmploymentType);
+
+        HrPdf.EnsureFonts();
+        var logo = await HrPdf.TryLoadLogoAsync(_env.WebRootPath, co?.LogoPath);
+        var coLine = string.Join(" • ", new[] { co?.Address, co?.Phone }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        var certNo = $"EC-{DateTime.Now:yyyyMMdd}-{e.Code}";
+        var today = PersianDate.ToShortFa(DateTime.Now);
+        var hireDate = PersianDate.ToShortFa(e.HireDate);
+        var tenureText = TenureText(e.HireDate, DateTime.Now);
+        var purposeText = string.IsNullOrWhiteSpace(purpose) ? "ارائه به هر مرجع ذی‌صلاح" : purpose!.Trim();
+
+        var bodyLines = new List<string>
+        {
+            $"بدین‌وسیله گواهی می‌شود سرکار خانم/جناب آقای «{e.FirstName} {e.LastName}» به کد ملی {Fa.Digits(e.NationalCode)} و کد پرسنلی {Fa.Digits(e.Code)}،",
+            $"از تاریخ {hireDate} ({tenureText}) با نوع همکاری «{employmentTypeName}» در سمت «{positionTitle ?? "—"}»"
+                + (string.IsNullOrWhiteSpace(orgUnitName) ? "" : $" در واحد «{orgUnitName}»")
+                + $" مشغول به کار می‌باشد و همکاری ایشان با این مجموعه تاکنون ادامه دارد.",
+        };
+        if (activeContract is not null)
+        {
+            var contractEnd = activeContract.EndDate is null ? "دائمی" : PersianDate.ToShortFa(activeContract.EndDate.Value);
+            bodyLines.Add($"آخرین قرارداد همکاری ایشان با شماره {Fa.Digits(activeContract.ContractNo)} از {PersianDate.ToShortFa(activeContract.StartDate)} تا {contractEnd} معتبر است.");
+        }
+        bodyLines.Add($"این گواهی صرفاً به منظور «{purposeText}» صادر شده و فاقد بار مالی و تعهد استخدامی برای طرفین بیش از رابطه کاری موجود می‌باشد.");
+
+        var doc = Document.Create(c =>
+        {
+            c.Page(pg =>
+            {
+                pg.Size(PageSizes.A4);
+                pg.Margin(32);
+                pg.ContentFromRightToLeft();
+                pg.DefaultTextStyle(x => x.FontFamily(HrPdf.Font).FontSize(11));
+                pg.Header().Column(col =>
+                {
+                    if (logo != null)
+                    {
+                        col.Item().Row(r =>
+                        {
+                            r.RelativeItem().Column(c2 =>
+                            {
+                                c2.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(16).AlignCenter();
+                                if (!string.IsNullOrWhiteSpace(coLine))
+                                    c2.Item().Text(coLine).FontSize(8).FontColor(Colors.Grey.Darken1).AlignCenter();
+                            });
+                            r.ConstantItem(60).AlignMiddle().Image(logo).FitWidth();
+                        });
+                    }
+                    else
+                    {
+                        col.Item().Text(co?.Name ?? "").FontFamily(HrPdf.FontBold).FontSize(16).AlignCenter();
+                        if (!string.IsNullOrWhiteSpace(coLine))
+                            col.Item().Text(coLine).FontSize(8).FontColor(Colors.Grey.Darken1).AlignCenter();
+                    }
+                    col.Item().PaddingTop(4).LineHorizontal(1);
+                    col.Item().PaddingTop(8).Text("گواهی اشتغال به کار").FontFamily(HrPdf.FontBold).FontSize(20).AlignCenter();
+                    col.Item().PaddingTop(2).Text($"شماره: {Fa.Digits(certNo)} • تاریخ صدور: {today}").FontSize(9).AlignCenter();
+                    col.Item().PaddingTop(4).LineHorizontal(1);
+                });
+                pg.Content().PaddingTop(20).Column(col =>
+                {
+                    foreach (var line in bodyLines)
+                        col.Item().PaddingBottom(10).Text(line).FontSize(11).LineHeight(1.7f).Justify();
+
+                    col.Item().PaddingTop(30).Row(r =>
+                    {
+                        r.RelativeItem();
+                        r.RelativeItem(1.2f).Column(c2 =>
+                        {
+                            c2.Item().Text("مهر و امضای مدیریت منابع انسانی").FontSize(9).AlignCenter();
+                            c2.Item().PaddingTop(45).LineHorizontal(0.5f);
+                            if (!string.IsNullOrWhiteSpace(co?.ManagerName))
+                                c2.Item().Text(co!.ManagerName!).FontSize(9).AlignCenter();
+                        });
+                    });
+                });
+                pg.Footer().Column(col =>
+                {
+                    col.Item().LineHorizontal(1);
+                    col.Item().Text("این گواهی به‌صورت سیستمی و بر اساس اطلاعات پرونده پرسنلی صادر شده است.")
+                        .FontSize(8).FontColor(Colors.Grey.Darken1).AlignCenter();
+                });
+            });
+        });
+        return doc.GeneratePdf();
+    }
+
+    /// <summary>متن سنوات به فارسی — مثلاً «۲ سال و ۳ ماه»</summary>
+    private static string TenureText(DateTime hireDate, DateTime now)
+    {
+        if (hireDate > now) return "کمتر از یک ماه سابقه";
+        var months = ((now.Year - hireDate.Year) * 12) + now.Month - hireDate.Month - (now.Day < hireDate.Day ? 1 : 0);
+        if (months < 0) months = 0;
+        var years = months / 12;
+        var rem = months % 12;
+        if (years == 0 && rem == 0) return "کمتر از یک ماه سابقه";
+        if (years == 0) return $"{Fa.Digits(rem.ToString())} ماه سابقه";
+        if (rem == 0) return $"{Fa.Digits(years.ToString())} سال سابقه";
+        return $"{Fa.Digits(years.ToString())} سال و {Fa.Digits(rem.ToString())} ماه سابقه";
     }
 
     public async Task<byte[]> DecreePdfAsync(int id)
@@ -1872,7 +1999,7 @@ public class HrCoreService : IHrCoreService
 
     // ==================== تاریخچه عملیات HR (خواندن از لاگ سراسری) ====================
 
-    private static readonly string[] HrModules = { "HrCore", "HrTalent", "FaAtt", "FaPay", "FaLms", "FaCom" };
+    private static readonly string[] HrModules = { "HrMain", "HrCore", "HrTalent", "FaAtt", "FaPay", "FaLms", "FaCom" };
 
     public async Task<HrAuditListResult> SearchHrAuditAsync(string? module, string? action, string? q,
         DateTime? from, DateTime? to, int skip, int take)
@@ -2000,5 +2127,74 @@ public class HrCoreService : IHrCoreService
                 { Month = m, Value = Math.Round(ms.Sum(s => s.GrossEarnings)) });
         }
         return dto;
+    }
+
+    // ==================== گزارش کیفیت داده پرسنل ====================
+
+    /// <summary>یک ردیف: چک یک فیلد روی یک پرسنل (نام فیلد فارسی + خالی بودن یا نبودن)</summary>
+    private static bool IsMissing(string? s) => string.IsNullOrWhiteSpace(s);
+
+    public async Task<HrDataQualityReportDto> GetDataQualityReportAsync()
+    {
+        var emps = await _db.HrEmployees.AsNoTracking()
+            .Where(e => e.IsActive)
+            .ToListAsync();
+        var unitIds = emps.Where(e => e.OrgUnitId is > 0).Select(e => e.OrgUnitId!.Value).Distinct().ToList();
+        var unitNames = await _db.HrOrgUnits.AsNoTracking()
+            .Where(u => unitIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name);
+
+        // نام فیلد فارسی -> تابع تشخیص نقص برای هر کارمند
+        var checks = new (string Label, Func<HrEmployee, bool> Missing)[]
+        {
+            ("کد ملی", e => IsMissing(e.NationalCode) || e.NationalCode.Length != 10),
+            ("تاریخ تولد", e => e.BirthDate == null),
+            ("موبایل", e => IsMissing(e.Mobile)),
+            ("آدرس", e => IsMissing(e.Address)),
+            ("شماره شبا", e => IsMissing(e.Sheba)),
+            ("نام بانک", e => IsMissing(e.BankName)),
+            ("شماره بیمه", e => IsMissing(e.InsuranceNo)),
+            ("تماس اضطراری - نام", e => IsMissing(e.EmergencyContactName)),
+            ("تماس اضطراری - شماره", e => IsMissing(e.EmergencyContactPhone)),
+            ("واحد سازمانی", e => e.OrgUnitId is not (> 0)),
+            ("پست سازمانی", e => IsMissing(e.PostTitle) && e.HrMainPositionId is not (> 0)),
+        };
+
+        var rows = new List<HrDataQualityRowDto>();
+        var missingCounts = new Dictionary<string, int>();
+        foreach (var lbl in checks.Select(c => c.Label)) missingCounts[lbl] = 0;
+
+        foreach (var e in emps)
+        {
+            var missing = new List<string>();
+            foreach (var (label, fn) in checks)
+            {
+                if (fn(e))
+                {
+                    missing.Add(label);
+                    missingCounts[label]++;
+                }
+            }
+            if (missing.Count > 0)
+            {
+                rows.Add(new HrDataQualityRowDto
+                {
+                    EmployeeId = e.Id,
+                    Code = e.Code,
+                    FullName = $"{e.FirstName} {e.LastName}",
+                    OrgUnitName = e.OrgUnitId is > 0 && unitNames.TryGetValue(e.OrgUnitId.Value, out var un) ? un : null,
+                    MissingFields = missing
+                });
+            }
+        }
+
+        return new HrDataQualityReportDto
+        {
+            TotalActiveEmployees = emps.Count,
+            EmployeesWithIssues = rows.Count,
+            MissingByField = missingCounts.Where(kv => kv.Value > 0)
+                .Select(kv => new HrNameValueDto { Name = kv.Key, Value = kv.Value })
+                .OrderByDescending(x => x.Value).ToList(),
+            Rows = rows.OrderByDescending(r => r.MissingFields.Count).ThenBy(r => r.FullName).ToList()
+        };
     }
 }

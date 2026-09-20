@@ -242,5 +242,73 @@ public class HrMainRules
     /// <summary>آستانه پیش‌فرض هشدار انقضای قرارداد (روز)</summary>
     public int ContractAlertDays { get; set; } = 30;
 
+    // ---------- ساعت کاری پیش‌فرض ----------
+    // این مقادیر فقط پیش‌فرض سازمانی‌اند (برای پست/گره‌ای که شیفت اختصاصی FaAtt ندارد)؛
+    // شیفت‌های تعریف‌شده در ماژول حضور و غیاب (FaAttShift) در محاسبه واقعی اولویت دارند.
+    /// <summary>ساعت شروع کار پیش‌فرض</summary>
+    public TimeSpan DefaultWorkStartTime { get; set; } = new(8, 0, 0);
+
+    /// <summary>ساعت پایان کار پیش‌فرض</summary>
+    public TimeSpan DefaultWorkEndTime { get; set; } = new(17, 0, 0);
+
+    /// <summary>روزهای تعطیل هفتگی پیش‌فرض با کاما — اعداد DayOfWeek (پیش‌فرض 5=جمعه)</summary>
+    [MaxLength(20)]
+    public string? DefaultWeeklyOffDays { get; set; } = "5";
+
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>نوع موجودیتِ تغییریافته — برای تاریخچه تغییرات ساختار سازمانی</summary>
+public enum HrMainChangeEntity
+{
+    OrgNode = 0,
+    Position = 1
+}
+
+/// <summary>نوع عملیات ثبت‌شده در تاریخچه</summary>
+public enum HrMainChangeAction
+{
+    Create = 0,
+    Update = 1,
+    Delete = 2
+}
+
+/// <summary>
+/// تاریخچه تغییرات ساختار سازمانی (گره‌ها و پست‌ها) — «چه کسی، کِی، چه فیلدی را از چه مقداری
+/// به چه مقداری تغییر داد». مستقل از AuditLog سراسری است چون این یکی فیلد‌به‌فیلد و
+/// خوانا برای گزارش «تاریخچه» و «مقایسه دو تاریخ» طراحی شده، نه صرفاً بدنه JSON خام.
+/// </summary>
+public class HrMainChangeLog
+{
+    public long Id { get; set; }
+
+    public DateTime At { get; set; } = DateTime.Now;
+
+    public HrMainChangeEntity Entity { get; set; }
+
+    public HrMainChangeAction Action { get; set; }
+
+    /// <summary>شناسه رکورد تغییریافته (گره یا پست)</summary>
+    public int EntityId { get; set; }
+
+    /// <summary>نام/عنوان رکورد در لحظه ثبت (برای نمایش حتی پس از حذف)</summary>
+    [MaxLength(150)]
+    public string EntityName { get; set; } = "";
+
+    /// <summary>نام فیلد تغییریافته — خالی یعنی کل رکورد ایجاد/حذف شده</summary>
+    [MaxLength(60)]
+    public string? FieldName { get; set; }
+
+    /// <summary>مقدار قبلی (متن خوانا)</summary>
+    [MaxLength(300)]
+    public string? OldValue { get; set; }
+
+    /// <summary>مقدار جدید (متن خوانا)</summary>
+    [MaxLength(300)]
+    public string? NewValue { get; set; }
+
+    public int? ByUserId { get; set; }
+
+    [MaxLength(100)]
+    public string ByUsername { get; set; } = "";
 }

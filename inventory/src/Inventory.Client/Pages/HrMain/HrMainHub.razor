@@ -45,6 +45,10 @@ else
             <a href="hr-main/org"><i class="bi bi-diagram-3" aria-hidden="true"></i><strong>@overview.ActiveNodes.Num()</strong><span>واحد سازمانی فعال</span></a>
             <a href="hr-main/positions"><i class="bi bi-person-badge" aria-hidden="true"></i><strong>@overview.ActivePositions.Num()</strong><span>پست فعال</span></a>
             <a href="hr-main/branches"><i class="bi bi-building" aria-hidden="true"></i><strong>@overview.ActiveBranches.Num()</strong><span>شعبه و دفتر فعال</span></a>
+            @if (overview.VacantPositions > 0)
+            {
+                <a href="hr-main/positions" class="hr-stat-warning"><i class="bi bi-person-fill-exclamation" aria-hidden="true"></i><strong>@overview.VacantPositions.Num()</strong><span>ظرفیت خالی پست</span></a>
+            }
         </div>
         @if (SetupSteps.Any(s => !s.Done) && (Can("HrMain.Create") || Can("HrMain.Update")))
         {
