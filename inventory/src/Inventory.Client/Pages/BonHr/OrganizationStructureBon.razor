@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>واحدها و ماتریس پرسنل</PageTitle>
+<BonHrGuard Section="OrgStructure">
 <BonHrShell Title="واحدها و ماتریس پرسنل" Sub="ساختار سازمانی بن‌سازه">
     <Actions>
         <button class="btn btn-light" type="button" @onclick="ExportMatrixAsync">خروجی ماتریس</button>
@@ -180,6 +181,7 @@
     </article>
 
 
+</BonHrGuard>
 @code {
     private List<Department> _departments = new();
     private List<MatrixUnitDto> _matrix = new();

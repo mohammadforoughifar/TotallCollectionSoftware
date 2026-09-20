@@ -108,10 +108,19 @@
                 <div class="col-md-3"><SearchSelect Items="lookups.Projects" @bind-Value="filterProject" @bind-Value:after="OnFilterChanged" Placeholder="همه پروژه‌ها" /></div>
                 <div class="col-md-2"><SearchSelect Items="lookups.Users" @bind-Value="filterUser" @bind-Value:after="OnFilterChanged" Placeholder="همه کاربران" /></div>
                 <div class="col-md-2"><SearchSelect Items="lookups.Operators" @bind-Value="filterOperator" @bind-Value:after="OnFilterChanged" Placeholder="همه اپراتورها" /></div>
-                <div class="col-md-2"><DatePicker @bind-Value="filterFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
-                <div class="col-md-2"><DatePicker @bind-Value="filterTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                <div class="col-md-2"><DatePicker @bind-Value="filterFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" AllowClear /></div>
+                <div class="col-md-2"><DatePicker @bind-Value="filterTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" AllowClear /></div>
                 <div class="col-md-1">
-                    <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
+                    <div class="btn-group w-100" role="group">
+                        <button class="btn btn-light" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
+                        @if (HasAnyFilter)
+                        {
+                            <button class="btn btn-light" title="پاک کردن همهٔ فیلترهای بالای صفحه و جستجوی سرستون‌ها"
+                                    @onclick="ClearAllFilters">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        }
+                    </div>
                 </div>
                 <div class="col-md-2 text-end fs-8 text-muted" title="جمع ساعت خالص همهٔ ردیف‌های فیلترشده">جمع: @Fmt(SumSpent())</div>
             </div>
@@ -377,6 +386,16 @@
 
     private async Task ClearColFilters()
     {
+        fDate = fCode = fProject = fUser = fOperator = fStart = fEnd = fRest = fSpent = fDesc = "";
+        page = 1;
+        await Load();
+    }
+
+    /// <summary>پاک کردن همهٔ فیلترها — هم کمبوها و تاریخ‌های بالای صفحه، هم جستجوی سرستون‌ها</summary>
+    private async Task ClearAllFilters()
+    {
+        filterProject = filterUser = filterOperator = 0;
+        filterFrom = filterTo = null;
         fDate = fCode = fProject = fUser = fOperator = fStart = fEnd = fRest = fSpent = fDesc = "";
         page = 1;
         await Load();
@@ -674,6 +693,7 @@
                 {
                     $"تاریخ گزارش: {r.ReportDate.ToFaDate()}",
                     $"ثبت‌کننده: {r.UserName}",
+                    $"اپراتور: {(string.IsNullOrWhiteSpace(r.OperatorName) ? "—" : r.OperatorName)}",
                     $"ساعت شروع: {r.StartTime.TimeFa()}",
                     $"ساعت پایان: {r.EndTime.TimeFa()}",
                     $"استراحت: {FmtRest(r)}",
@@ -686,6 +706,7 @@
                     new() { "کد پروژه", r.CodeProject ?? "—" },
                     new() { "نام پروژه", r.ProjectName ?? "—" },
                     new() { "ثبت‌کننده / کاربر", r.UserName ?? "—" },
+                    new() { "اپراتور (انجام‌دهندهٔ کار)", string.IsNullOrWhiteSpace(r.OperatorName) ? "—" : r.OperatorName! },
                     new() { "ساعت شروع", r.StartTime.TimeFa() },
                     new() { "ساعت پایان", r.EndTime.TimeFa() },
                     new() { "مدت استراحت (صبحانه/ناهار)", FmtRest(r) },

@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>مالی بن‌سازه</PageTitle>
+<BonHrGuard Section="Finance">
 <BonHrShell Title="مالی بن‌سازه" Sub="مساعده و پرداخت حقوق">
     <Actions>
         <button class="btn btn-primary" type="button" @onclick="() => _showForm = true">
@@ -136,6 +137,7 @@
     </article>
 
 
+</BonHrGuard>
 @code {
     private List<Advance> _advances = new();
     private List<Employee> _employees = new();

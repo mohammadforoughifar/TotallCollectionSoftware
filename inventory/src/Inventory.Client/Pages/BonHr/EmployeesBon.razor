@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>پرسنل بن‌سازه</PageTitle>
+<BonHrGuard Section="Employees">
 <BonHrShell Title="پرسنل بن‌سازه" Sub="فهرست و پرونده پرسنل">
     <Actions>
         <button class="btn btn-light" type="button" @onclick="ExportAsync">خروجی Excel</button>
@@ -198,6 +199,7 @@
     </Footer>
 </Modal>
 
+</BonHrGuard>
 @code {
     private List<Employee> _employees = new();
     private List<Employee> _filtered = new();

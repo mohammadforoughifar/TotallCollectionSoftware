@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>حسابداری حقوق بن‌سازه</PageTitle>
+<BonHrGuard Section="Accounting">
 <BonHrShell Title="حسابداری حقوق بن‌سازه" Sub="کنترل و تأیید ماهانه">
     <Actions>
         <button class="btn btn-light" type="button" @onclick="ExportArchiveAsync">خروجی بایگانی</button>
@@ -226,6 +227,7 @@
     </article>
 
 
+</BonHrGuard>
 @code {
     private List<string> _months = new();
     private List<AccountingArchive> _archives = new();
