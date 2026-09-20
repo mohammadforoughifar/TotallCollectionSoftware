@@ -32,6 +32,10 @@ else
     <div class="d-flex align-items-center justify-content-end flex-wrap gap-2 mb-3 mt-1">
         <a class="btn btn-sm btn-light" href="@EmployeeListUrl"><i class="bi bi-arrow-right"></i> لیست پرسنل</a>
         <button class="btn btn-sm btn-outline-primary" @onclick="PrintDossier"><i class="bi bi-printer"></i> چاپ پرونده</button>
+        @if (emp!.IsActive)
+        {
+            <button class="btn btn-sm btn-outline-success" @onclick="() => showCertModal = true"><i class="bi bi-file-earmark-medical"></i> گواهی اشتغال به کار</button>
+        }
         <a class="btn btn-sm btn-outline-secondary" href="@($"hr-core/job-history/{emp!.Id}")"><i class="bi bi-clock-history"></i> سوابق شغلی</a>
         @if (canUpdate)
         {
@@ -583,6 +587,24 @@ else
     </Footer>
 </Modal>
 
+<Modal Visible="showCertModal" Title="صدور گواهی اشتغال به کار" OnClose="() => showCertModal = false">
+    <ChildContent>
+        <label class="form-label">مورد استفاده گواهی</label>
+        <input class="form-control" @bind="certPurpose" placeholder="مثلاً: ارائه به بانک، سفارت، دانشگاه…" />
+        <div class="form-text">در صورت خالی گذاشتن، عبارت «ارائه به هر مرجع ذی‌صلاح» درج می‌شود.</div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="() => showCertModal = false">انصراف</button>
+        <button class="btn btn-success" disabled="@certGenerating" @onclick="GenerateCertificate">
+            @if (certGenerating)
+            {
+                <span class="spinner-border spinner-border-sm"></span>
+            }
+            <i class="bi bi-file-earmark-medical"></i> صدور و دانلود
+        </button>
+    </Footer>
+</Modal>
+
 <Modal Visible="showDependent" Title="فرد تحت‌تکفل" OnClose="() => showDependent = false">
     <ChildContent>
         <div class="row g-2">
@@ -854,6 +876,23 @@ else
             await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private bool showCertModal, certGenerating;
+    private string? certPurpose;
+
+    private async Task GenerateCertificate()
+    {
+        certGenerating = true;
+        try
+        {
+            var f = await Svc.GetEmploymentCertificateAsync(emp!.Id, certPurpose);
+            await JS.InvokeVoidAsync("saveAsFile", f.FileName, System.Convert.ToBase64String(f.Data));
+            showCertModal = false;
+            Toast.Success("گواهی اشتغال به کار صادر شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { certGenerating = false; }
     }
 
     private async Task RemindDocs()

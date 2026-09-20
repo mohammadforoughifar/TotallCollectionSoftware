@@ -146,11 +146,37 @@ public static class HrMainSchemaV1
                 MaxMonthlyOvertimeHours INTEGER NOT NULL DEFAULT 60,
                 OvertimeNeedsApproval INTEGER NOT NULL DEFAULT 1,
                 ContractAlertDays INTEGER NOT NULL DEFAULT 30,
+                DefaultWorkStartTime TEXT NOT NULL DEFAULT '08:00:00',
+                DefaultWorkEndTime TEXT NOT NULL DEFAULT '17:00:00',
+                DefaultWeeklyOffDays TEXT NULL DEFAULT '5',
                 UpdatedAt TEXT NOT NULL
             );");
 
             if (!HasColumn("HrMainRules", "ContractAlertDays"))
                 Exec("ALTER TABLE HrMainRules ADD COLUMN ContractAlertDays INTEGER NOT NULL DEFAULT 30;");
+            if (!HasColumn("HrMainRules", "DefaultWorkStartTime"))
+                Exec("ALTER TABLE HrMainRules ADD COLUMN DefaultWorkStartTime TEXT NOT NULL DEFAULT '08:00:00';");
+            if (!HasColumn("HrMainRules", "DefaultWorkEndTime"))
+                Exec("ALTER TABLE HrMainRules ADD COLUMN DefaultWorkEndTime TEXT NOT NULL DEFAULT '17:00:00';");
+            if (!HasColumn("HrMainRules", "DefaultWeeklyOffDays"))
+                Exec("ALTER TABLE HrMainRules ADD COLUMN DefaultWeeklyOffDays TEXT NULL DEFAULT '5';");
+
+        Exec(@"
+            CREATE TABLE IF NOT EXISTS HrMainChangeLogs (
+                Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                At TEXT NOT NULL,
+                Entity INTEGER NOT NULL,
+                Action INTEGER NOT NULL,
+                EntityId INTEGER NOT NULL,
+                EntityName TEXT NOT NULL,
+                FieldName TEXT NULL,
+                OldValue TEXT NULL,
+                NewValue TEXT NULL,
+                ByUserId INTEGER NULL,
+                ByUsername TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS IX_HrMainChangeLogs_At ON HrMainChangeLogs (At);
+            CREATE INDEX IF NOT EXISTS IX_HrMainChangeLogs_Entity ON HrMainChangeLogs (Entity, EntityId);");
 
         // پیوند پرسنل به ساختار سازمانی جدید (دیتابیس‌های موجود این ستون‌ها را ندارند)
         if (!HasColumn("HrEmployees", "HrMainNodeId"))
@@ -289,6 +315,9 @@ public static class HrMainSchemaV1
                     [MaxMonthlyOvertimeHours] int NOT NULL CONSTRAINT [DF_HrMainRules_MaxMonthlyOvertimeHours] DEFAULT(60),
                     [OvertimeNeedsApproval] bit NOT NULL CONSTRAINT [DF_HrMainRules_OvertimeNeedsApproval] DEFAULT(1),
                     [ContractAlertDays] int NOT NULL CONSTRAINT [DF_HrMainRules_ContractAlertDays] DEFAULT(30),
+                    [DefaultWorkStartTime] time NOT NULL CONSTRAINT [DF_HrMainRules_DefaultWorkStartTime] DEFAULT('08:00:00'),
+                    [DefaultWorkEndTime] time NOT NULL CONSTRAINT [DF_HrMainRules_DefaultWorkEndTime] DEFAULT('17:00:00'),
+                    [DefaultWeeklyOffDays] nvarchar(20) NULL CONSTRAINT [DF_HrMainRules_DefaultWeeklyOffDays] DEFAULT(N'5'),
                     [UpdatedAt] datetime2 NOT NULL
                 );
             END");
@@ -297,6 +326,38 @@ public static class HrMainSchemaV1
             IF OBJECT_ID(N'dbo.HrMainRules', N'U') IS NOT NULL
             AND COL_LENGTH(N'dbo.HrMainRules', N'ContractAlertDays') IS NULL
                 ALTER TABLE dbo.HrMainRules ADD [ContractAlertDays] int NOT NULL CONSTRAINT [DF_HrMainRules_ContractAlertDays] DEFAULT(30);");
+
+        await ExecAsync(@"
+            IF OBJECT_ID(N'dbo.HrMainRules', N'U') IS NOT NULL
+            AND COL_LENGTH(N'dbo.HrMainRules', N'DefaultWorkStartTime') IS NULL
+                ALTER TABLE dbo.HrMainRules ADD [DefaultWorkStartTime] time NOT NULL CONSTRAINT [DF_HrMainRules_DefaultWorkStartTime] DEFAULT('08:00:00');
+            IF OBJECT_ID(N'dbo.HrMainRules', N'U') IS NOT NULL
+            AND COL_LENGTH(N'dbo.HrMainRules', N'DefaultWorkEndTime') IS NULL
+                ALTER TABLE dbo.HrMainRules ADD [DefaultWorkEndTime] time NOT NULL CONSTRAINT [DF_HrMainRules_DefaultWorkEndTime] DEFAULT('17:00:00');
+            IF OBJECT_ID(N'dbo.HrMainRules', N'U') IS NOT NULL
+            AND COL_LENGTH(N'dbo.HrMainRules', N'DefaultWeeklyOffDays') IS NULL
+                ALTER TABLE dbo.HrMainRules ADD [DefaultWeeklyOffDays] nvarchar(20) NULL CONSTRAINT [DF_HrMainRules_DefaultWeeklyOffDays] DEFAULT(N'5');");
+
+        // ---------- HrMainChangeLogs ----------
+        await ExecAsync(@"
+            IF OBJECT_ID(N'dbo.HrMainChangeLogs', N'U') IS NULL
+            BEGIN
+                CREATE TABLE [HrMainChangeLogs] (
+                    [Id] bigint NOT NULL IDENTITY PRIMARY KEY,
+                    [At] datetime2 NOT NULL,
+                    [Entity] int NOT NULL,
+                    [Action] int NOT NULL,
+                    [EntityId] int NOT NULL,
+                    [EntityName] nvarchar(150) NOT NULL,
+                    [FieldName] nvarchar(60) NULL,
+                    [OldValue] nvarchar(300) NULL,
+                    [NewValue] nvarchar(300) NULL,
+                    [ByUserId] int NULL,
+                    [ByUsername] nvarchar(100) NOT NULL CONSTRAINT [DF_HrMainChangeLogs_ByUsername] DEFAULT('')
+                );
+                CREATE INDEX [IX_HrMainChangeLogs_At] ON [HrMainChangeLogs] ([At]);
+                CREATE INDEX [IX_HrMainChangeLogs_Entity] ON [HrMainChangeLogs] ([Entity], [EntityId]);
+            END");
 
         // پیوند پرسنل به ساختار سازمانی جدید (دیتابیس‌های موجود این ستون‌ها را ندارند)
         await ExecAsync(@"

@@ -119,8 +119,12 @@ builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocRenewalWo
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.DocRenewalService>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
 builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>();
+builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComAnniversaryWatcher>();
+builder.Services.AddSingleton<Inventory.Api.Services.HrCore.HrOpsDailyWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.DocArchive.DocExpiryWatcher>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComBirthdayWatcher>()); // یادآوری تولد
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComAnniversaryWatcher>()); // یادآوری سالگرد همکاری
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.HrCore.HrOpsDailyWatcher>()); // هشدار انقضای قرارداد + دوره آزمایشی خودکار
 builder.Services.AddSingleton<Inventory.Api.Services.FaCom.FaComPublishWatcher>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Services.FaCom.FaComPublishWatcher>()); // انتشار زمان‌بندی‌شده اطلاعیه‌ها
 

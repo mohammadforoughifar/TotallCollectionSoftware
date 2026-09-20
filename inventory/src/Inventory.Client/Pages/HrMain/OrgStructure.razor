@@ -3,6 +3,7 @@
 @inject IHrMainService Svc
 @inject IAuthState Auth
 @inject IToastService Toast
+@inject IJSRuntime JS
 
 <PageTitle>ساختار سازمانی</PageTitle>
 
@@ -10,12 +11,13 @@
     <div>
         <h1><i class="bi bi-diagram-3-fill"></i> ساختار سازمانی</h1>
     </div>
-    @if (canCreate)
-    {
-        <div class="ms-auto d-flex gap-2">
+    <div class="ms-auto d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="hr-main/org/change-log"><i class="bi bi-clock-history"></i> تاریخچه و مقایسه</a>
+        @if (canCreate)
+        {
             <button class="btn btn-primary" @onclick="() => OpenEdit(null, null)"><i class="bi bi-plus-lg"></i> گره ریشه (شرکت)</button>
-        </div>
-    }
+        }
+    </div>
 </div>
 
 @if (!canRead)
@@ -24,10 +26,14 @@
     return;
 }
 
-<div class="mtabs mb-3">
-    <button class="mtab @(tab == 0 ? "active" : "")" @onclick="() => tab = 0"><i class="bi bi-list-nested"></i> درخت مدیریتی</button>
-    <button class="mtab @(tab == 1 ? "active" : "")" @onclick="() => tab = 1"><i class="bi bi-diagram-3"></i> چارت بصری</button>
-</div>
+    <div class="mtabs mb-3 d-flex align-items-center flex-wrap gap-2">
+        <button class="mtab @(tab == 0 ? "active" : "")" @onclick="() => tab = 0"><i class="bi bi-list-nested"></i> درخت مدیریتی</button>
+        <button class="mtab @(tab == 1 ? "active" : "")" @onclick="() => tab = 1"><i class="bi bi-diagram-3"></i> چارت بصری</button>
+        @if (tab == 1 && tree.Count > 0)
+        {
+            <button class="btn btn-sm btn-outline-secondary ms-auto no-print" @onclick="PrintChart"><i class="bi bi-printer"></i> چاپ / خروجی PDF چارت</button>
+        }
+    </div>
 
 @if (loading)
 {
@@ -174,7 +180,14 @@ else
     .org-box-code { font-size: .72rem; color: #9ca3af; }
     .org-box-mgr { font-size: .75rem; color: #7c3aed; margin-top: .2rem; }
     .org-box-branch { font-size: .72rem; color: #6b7280; }
+    .org-box-counts { display: flex; justify-content: center; gap: .6rem; margin-top: .3rem; padding-top: .3rem; border-top: 1px dashed #e9d5ff; font-size: .72rem; color: #7c3aed; font-weight: 700; }
     .org-off { opacity: .45; filter: grayscale(1); }
+
+    @@media print {
+        .page-head, .mtabs .mtab, .no-print { display: none !important; }
+        .card { box-shadow: none !important; border: none !important; }
+        .org-chart { transform: scale(.9); transform-origin: top center; }
+    }
 </style>
 
 @code {
@@ -200,6 +213,8 @@ else
         try { branches = await Svc.ListBranchesAsync(); } catch { }
         await Reload();
     }
+
+    private async Task PrintChart() => await JS.InvokeVoidAsync("window.print");
 
     private async Task Reload()
     {

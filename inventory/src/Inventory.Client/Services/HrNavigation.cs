@@ -36,6 +36,7 @@ public static class HrNavigation
             E("hr-main/company", "اطلاعات شرکت", "bi-building", "HrMain.Read"),
             E("hr-main/branches", "شعب و دفاتر", "bi-shop", "HrMain.Read"),
             E("hr-main/org", "ساختار سازمانی", "bi-diagram-3", "HrMain.Read"),
+            E("hr-main/org/change-log", "تاریخچه و مقایسه ساختار", "bi-clock-history", "HrMain.Read"),
             E("hr-main/positions", "پست‌های سازمانی", "bi-person-badge", "HrMain.Read"),
             E("hr-main/calendar", "تقویم و تعطیلات", "bi-calendar3", "HrMain.Read"),
             E("hr-main/rules", "قوانین پیش‌فرض", "bi-sliders", "HrMain.Read")]),
@@ -69,6 +70,7 @@ public static class HrNavigation
             E("fa-com/suggestions", "کارتابل پیشنهادها", "bi-inbox", "FaCom.Manage")]),
         new("reports", "گزارش‌ها", "bi-bar-chart-line", [
             E("hr-core/insights", "داشبورد مدیر", "bi-speedometer2", "HrCore.Manage"),
+            E("hr-core/data-quality", "کیفیت داده پرسنل", "bi-clipboard2-x", "HrCore.Manage"),
             E("fa-att/reports", "گزارش حضور و غیاب", "bi-calendar2-check", "FaAtt.Manage"),
             E("fa-pay/reports", "گزارش‌های حقوق", "bi-cash-stack", "FaPay.Read", "FaPay.Manage"),
             E("fa-lms/reports", "اثربخشی آموزش", "bi-mortarboard", "FaLms.Manage"),

@@ -60,7 +60,7 @@
             <div class="table-responsive">
                 <table class="table table-hover mb-0 align-middle">
                     <thead class="table-light">
-                        <tr><th>عنوان پست</th><th>کد</th><th>گره سازمانی</th><th>گرید</th><th>تعداد مصوب</th><th>شرح وظایف</th><th>وضعیت</th><th style="width:140px"></th></tr>
+                        <tr><th>عنوان پست</th><th>کد</th><th>گره سازمانی</th><th>گرید</th><th>تعداد مصوب</th><th>ظرفیت خالی</th><th>شرح وظایف</th><th>وضعیت</th><th style="width:140px"></th></tr>
                     </thead>
                     <tbody>
                         @foreach (var p in Filtered)
@@ -71,6 +71,16 @@
                                 <td>@(p.OrgNodeName ?? "—")</td>
                                 <td>@(p.Grade ?? "—")</td>
                                 <td class="num">@p.HeadCount.Num()</td>
+                                <td class="num">
+                                    @if (p.VacantCount > 0)
+                                    {
+                                        <span class="badge text-bg-warning" title="@p.AssignedCount.Num() نفر از @p.HeadCount.Num() نفر منصوب شده">@p.VacantCount.Num() نفر خالی</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge text-bg-light border text-muted">تکمیل</span>
+                                    }
+                                </td>
                                 <td>
                                     @if (string.IsNullOrWhiteSpace(p.JobDescription))
                                     {

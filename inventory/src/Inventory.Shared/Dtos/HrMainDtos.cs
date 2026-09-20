@@ -76,6 +76,8 @@ public class HrMainOrgNodeDto
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
     public int PositionCount { get; set; }
+    /// <summary>تعداد پرسنل فعال شاغل مستقیم در این گره (برای چارت سازمانی تصویری)</summary>
+    public int EmployeeCount { get; set; }
     public List<HrMainOrgNodeDto> Children { get; set; } = new();
 }
 
@@ -105,6 +107,12 @@ public class HrMainPositionDto
     public string? Requirements { get; set; }
     public int HeadCount { get; set; }
     public bool IsActive { get; set; }
+
+    /// <summary>تعداد پرسنل فعالی که هم‌اکنون روی این پست منصوب هستند</summary>
+    public int AssignedCount { get; set; }
+
+    /// <summary>ظرفیت خالی = تعداد مصوب − تعداد منصوب (هرگز منفی نیست)</summary>
+    public int VacantCount => Math.Max(0, HeadCount - AssignedCount);
 }
 
 public class HrMainPositionSaveDto
@@ -141,6 +149,12 @@ public class HrMainRulesDto
     public int MaxMonthlyOvertimeHours { get; set; } = 60;
     public bool OvertimeNeedsApproval { get; set; } = true;
     public int ContractAlertDays { get; set; } = 30;
+
+    // ---------- ساعت کاری پیش‌فرض ----------
+    public TimeSpan DefaultWorkStartTime { get; set; } = new(8, 0, 0);
+    public TimeSpan DefaultWorkEndTime { get; set; } = new(17, 0, 0);
+    /// <summary>روزهای تعطیل هفتگی با کاما — اعداد DayOfWeek (پیش‌فرض "5" = جمعه)</summary>
+    public string? DefaultWeeklyOffDays { get; set; } = "5";
 }
 
 /// <summary>تعطیلات رسمی/شرکتی — نگاشت روی جدول موجود CompanyHoliday</summary>
@@ -169,6 +183,61 @@ public class HrMainOverviewDto
     public int ActiveNodes { get; set; }
     public int ActivePositions { get; set; }
     public int ActiveEmployees { get; set; }
+
+    /// <summary>مجموع ظرفیت خالی پست‌های فعال (تعداد مصوب منهای پرسنل فعال منصوب)</summary>
+    public int VacantPositions { get; set; }
     public int HolidaysThisYear { get; set; }
     public int CurrentJalaliYear { get; set; }
+}
+
+/// <summary>یک ردیف تاریخچه تغییرات ساختار سازمانی (گره/پست)</summary>
+public class HrMainChangeLogDto
+{
+    public long Id { get; set; }
+    public DateTime At { get; set; }
+    /// <summary>OrgNode یا Position</summary>
+    public string Entity { get; set; } = "";
+    /// <summary>Create، Update یا Delete</summary>
+    public string Action { get; set; } = "";
+    public int EntityId { get; set; }
+    public string EntityName { get; set; } = "";
+    public string? FieldName { get; set; }
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
+    public string ByUsername { get; set; } = "";
+}
+
+/// <summary>نتیجه صفحه‌بندی‌شده تاریخچه تغییرات</summary>
+public class HrMainChangeLogListResult
+{
+    public int Total { get; set; }
+    public List<HrMainChangeLogDto> Items { get; set; } = new();
+}
+
+/// <summary>یک آیتم تفاوت بین دو تاریخ برای مقایسه ساختار سازمانی</summary>
+public class HrMainCompareItemDto
+{
+    public string Entity { get; set; } = "";
+    public string Action { get; set; } = "";
+    public int EntityId { get; set; }
+    public string EntityName { get; set; } = "";
+    public string? FieldName { get; set; }
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
+    public DateTime At { get; set; }
+    public string ByUsername { get; set; } = "";
+}
+
+/// <summary>نتیجه مقایسه ساختار سازمانی بین دو تاریخ</summary>
+public class HrMainCompareResultDto
+{
+    public DateTime From { get; set; }
+    public DateTime To { get; set; }
+    public int NodesCreated { get; set; }
+    public int NodesUpdated { get; set; }
+    public int NodesDeleted { get; set; }
+    public int PositionsCreated { get; set; }
+    public int PositionsUpdated { get; set; }
+    public int PositionsDeleted { get; set; }
+    public List<HrMainCompareItemDto> Items { get; set; } = new();
 }

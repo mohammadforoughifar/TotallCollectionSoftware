@@ -143,7 +143,7 @@ public static class HrCoreUi
 
     public static string HrModule(string m) => m switch
     {
-        "HrCore" => "کارگزینی", "HrTalent" => "استعداد و ارزیابی", "FaAtt" => "حضور و مرخصی",
+        "HrMain" => "منابع انسانی اصلی", "HrCore" => "کارگزینی", "HrTalent" => "استعداد و ارزیابی", "FaAtt" => "حضور و مرخصی",
         "FaPay" => "حقوق و دستمزد", "FaLms" => "آموزش", "FaCom" => "ارتباطات", _ => m
     };
 

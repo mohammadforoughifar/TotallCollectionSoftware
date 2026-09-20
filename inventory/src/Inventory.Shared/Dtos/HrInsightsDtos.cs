@@ -40,3 +40,26 @@ public class HrManagerDashboardDto
     public List<HrNameValueDto> LeaveByType { get; set; } = new();
     public List<HrNameValueDto> HeadcountByUnit { get; set; } = new();
 }
+
+// ==================== گزارش کیفیت داده پرسنل ====================
+
+/// <summary>یک پرسنل با یک یا چند فیلد مهم ناقص</summary>
+public class HrDataQualityRowDto
+{
+    public int EmployeeId { get; set; }
+    public string Code { get; set; } = "";
+    public string FullName { get; set; } = "";
+    public string? OrgUnitName { get; set; }
+    /// <summary>نام‌های فارسی فیلدهای ناقص — مثلاً «کد ملی»، «شماره شبا»</summary>
+    public List<string> MissingFields { get; set; } = new();
+}
+
+/// <summary>خلاصه گزارش کیفیت داده پرسنل — چند نفر کدام فیلد را ناقص دارند + فهرست کامل</summary>
+public class HrDataQualityReportDto
+{
+    public int TotalActiveEmployees { get; set; }
+    public int EmployeesWithIssues { get; set; }
+    /// <summary>تعداد نفراتی که هر فیلد مشخص را ناقص دارند — برای نمودار/خلاصه</summary>
+    public List<HrNameValueDto> MissingByField { get; set; } = new();
+    public List<HrDataQualityRowDto> Rows { get; set; } = new();
+}
