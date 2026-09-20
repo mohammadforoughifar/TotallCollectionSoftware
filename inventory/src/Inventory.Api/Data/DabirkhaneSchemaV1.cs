@@ -27,6 +27,8 @@ public static class DabirkhaneSchemaV1
         ("IsArchived",       "bit NOT NULL DEFAULT(0)", "INTEGER NOT NULL DEFAULT 0"),
         ("ArchivedAt",       "datetime2 NULL",     "TEXT NULL"),
         ("ArchivedByUserId", "int NULL",           "INTEGER NULL"),
+        ("CreatorUserId",    "int NOT NULL DEFAULT(0)", "INTEGER NOT NULL DEFAULT 0"),
+        ("CreatorId",        "int NOT NULL DEFAULT(0)", "INTEGER NOT NULL DEFAULT 0"),
     };
 
     public static Task EnsureAsync(AppDbContext db) =>

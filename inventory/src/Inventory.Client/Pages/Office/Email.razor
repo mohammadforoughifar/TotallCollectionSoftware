@@ -346,6 +346,9 @@
                                 <button class="icb" title="تبدیل به نامه داخلی" disabled="@converting" @onclick="ConvertToLetterAsync">
                                     <i class="bi @(converting ? "bi-arrow-repeat bi-spin" : "bi-file-earmark-arrow-up")"></i>
                                 </button>
+                                <button class="icb text-primary" title="تبدیل به نامه وارده" disabled="@converting" @onclick="ConvertToIncomingLetterAsync">
+                                    <i class="bi bi-inbox-fill"></i>
+                                </button>
                             }
                             <button class="icb" title="بایگانی" @onclick="() => archOpen = !archOpen"><i class="bi bi-archive"></i></button>
                         </div>
@@ -583,6 +586,7 @@
 
 @* ==================== فرم ایجاد نامه داخلی (تبدیل ایمیل به نامه) ==================== *@
 <ComposeLetterModal @ref="letterCompose" />
+<ComposeIncomingModal @ref="composeIncomingModal" OnSaved="() => StateHasChanged()" />
 
 @code {
     private bool loading = true;
@@ -655,6 +659,30 @@
                        + "</div>";
 
             letterCompose?.Open(title, header + (openMsg.Body ?? ""), null, files);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { converting = false; }
+    }
+
+    private ComposeIncomingModal? composeIncomingModal;
+
+    private async Task ConvertToIncomingLetterAsync()
+    {
+        if (openMsg == null) return;
+        converting = true;
+        try
+        {
+            var title = string.IsNullOrWhiteSpace(openMsg.Subject) ? "(بدون موضوع)" : openMsg.Subject.Trim();
+            var from = openMsg.FromOrTo;
+            composeIncomingModal?.OpenFromEmail(new EmailDto
+            {
+                EmailId = openMsg.EmailId,
+                Subject = title,
+                FromEmail = openMsg.AccountAddress,
+                FromName = from,
+                Body = openMsg.Body ?? "",
+                Date = openMsg.Date
+            });
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { converting = false; }

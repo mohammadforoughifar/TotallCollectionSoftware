@@ -87,6 +87,24 @@ BEGIN
     CREATE INDEX [IX_IncomingLetters_CreateUserId] ON [dbo].[IncomingLetters] ([CreateUserId]);
 END");
 
+        // جدول رزرو شماره اندیکاتور/نامه (TBL_RezervationNumberLetter)
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.LetterNumberReservations', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[LetterNumberReservations](
+        [Id] int IDENTITY(1,1) NOT NULL CONSTRAINT [PK_LetterNumberReservations] PRIMARY KEY,
+        [TypeForm] int NOT NULL DEFAULT(3),
+        [NumberSabt] int NOT NULL DEFAULT(0),
+        [DateRezerv] datetime2 NOT NULL DEFAULT(GETDATE()),
+        [SematId] int NULL,
+        [UserId] int NOT NULL DEFAULT(0),
+        [IsUsed] bit NOT NULL DEFAULT(0),
+        [IsDelete] bit NOT NULL DEFAULT(0)
+    );
+    CREATE INDEX [IX_LetterNumberReservations_TypeForm_NumberSabt] ON [dbo].[LetterNumberReservations] ([TypeForm], [NumberSabt]);
+    CREATE INDEX [IX_LetterNumberReservations_UserId] ON [dbo].[LetterNumberReservations] ([UserId]);
+END");
+
         // ستون‌هایی که ممکن است در نصب‌های نیمه‌کاره جا مانده باشند
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.IncomingLetters', N'U') IS NOT NULL
@@ -133,11 +151,23 @@ CREATE TABLE IF NOT EXISTS IncomingLetters (
     CONSTRAINT FK_IncomingLetters_LetterSources_Id FOREIGN KEY (Id)
         REFERENCES LetterSources (Id) ON DELETE CASCADE
 );");
+        await SafeAsync(db, @"
+CREATE TABLE IF NOT EXISTS LetterNumberReservations (
+    Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    TypeForm INTEGER NOT NULL DEFAULT 3,
+    NumberSabt INTEGER NOT NULL DEFAULT 0,
+    DateRezerv TEXT NOT NULL,
+    SematId INTEGER NULL,
+    UserId INTEGER NOT NULL DEFAULT 0,
+    IsUsed INTEGER NOT NULL DEFAULT 0,
+    IsDelete INTEGER NOT NULL DEFAULT 0
+);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_DateErsal ON IncomingLetters (DateErsal);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_Number ON IncomingLetters (Number);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_NumberSabt ON IncomingLetters (NumberSabt);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_Ferestande ON IncomingLetters (Ferestande);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_CreateUserId ON IncomingLetters (CreateUserId);");
+        await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_LetterNumberReservations_TypeForm_NumberSabt ON LetterNumberReservations (TypeForm, NumberSabt);");
     }
 
     /// <summary>اجرای امن — خطای «شیء تکراری/موجود» راه‌اندازی برنامه را متوقف نکند.</summary>
