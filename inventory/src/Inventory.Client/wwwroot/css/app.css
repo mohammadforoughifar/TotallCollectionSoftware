@@ -1508,6 +1508,23 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .doc-archive-shell .table thead th { font-size: .9rem; font-weight: 700; }
 .doc-archive-shell .table tbody td { font-size: 1rem; }
 .doc-archive-shell .ftree-item { font-size: 1rem; font-weight: 600; }
+/* ---------- نشان‌های ویژگیِ مدرک: سبز با متن سفید ---------- */
+/* در نمای کارتی (و جدولی) روی پس‌زمینه‌ی سفیدِ کارت، نشان‌های روشن
+   (bg-light/text-dark) کم‌رنگ و ناخوانا بودند. همه‌ی نشان‌های این ردیف
+   یکدست سبز تیره با متن سفید می‌شوند تا خوانا باشند.
+   از سبزِ هم‌خانواده‌ی --success ولی تیره‌تر (#047857) استفاده شده چون
+   --success (#10b981) با متن سفید کنتراستِ کافی ندارد (~2.3:1)؛
+   این تناژ کنتراست حدود 4.9:1 دارد و استاندارد را می‌گذراند.
+   !important برای غلبه بر رنگِ درون‌خطیِ تگ‌ها لازم است.
+   نشان‌های وضعیت (فعال/غیرفعال، وضعیت ورژن) دست‌نخورده می‌مانند
+   چون فقط این ردیف هدف گرفته شده است. */
+.da-feature-badges .badge {
+    background: #047857 !important;
+    color: #fff !important;
+    border: 1px solid #047857 !important;
+}
+.da-feature-badges .badge i { color: #fff !important; }
+
 .doc-archive-shell .wo-archive-btn {
     background: #e0f2fe;
     border: 1px solid #0ea5e9;
