@@ -15,6 +15,7 @@ builder.Services.AddScoped(sp =>
     var baseUrl = string.IsNullOrWhiteSpace(opts.BaseUrl) ? "http://localhost:5100" : opts.BaseUrl;
     return new HttpClient { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
 });
+builder.Services.AddScoped<TabService>(); // تب‌های کاری (نگه‌داری صفحاتِ باز)
 builder.Services.AddSingleton<ApiOptions>();
 builder.Services.AddSingleton<IAuthState, AuthState>();
 builder.Services.AddScoped<IAuthApi, AuthApi>();
