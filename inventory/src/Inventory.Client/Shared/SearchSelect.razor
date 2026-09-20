@@ -15,6 +15,15 @@
            @oninput="OnInput"
            @onfocusout="OnBlur" />
 
+    @if (AllowClear && Value > 0)
+    {
+        @* دکمه پاک کردن انتخاب — در فیلترهای بالا و فرم‌ها، انتخاب اشتباه سریع قابل حذف است *@
+        <button type="button" class="ss-clear" title="پاک کردن انتخاب" tabindex="-1"
+                @onclick="ClearSelection" @onclick:stopPropagation="true">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    }
+
     @if (open)
     {
         @* پوشش نامرئی تمام‌صفحه — کلیک بیرون منو را می‌بندد؛ منوی fixed هیچ‌گاه زیر کارت‌ها نمی‌رود *@
@@ -48,8 +57,23 @@
     [Parameter] public string Placeholder { get; set; } = "انتخاب کنید…";
     [Parameter] public string CssClass { get; set; } = "";
 
+    /// <summary>نمایش دکمه «پاک کردن» وقتی مقداری انتخاب شده است (پیش‌فرض: فعال)</summary>
+    [Parameter] public bool AllowClear { get; set; } = true;
+
     private string query = "";
     private bool open;
+
+    /// <summary>پاک کردن انتخاب فعلی — مقدار صفر (هیچ) به والد برمی‌گردد</summary>
+    private async Task ClearSelection()
+    {
+        query = "";
+        open = false;
+        if (Value != 0)
+        {
+            Value = 0;
+            await ValueChanged.InvokeAsync(0);
+        }
+    }
 
     private ElementReference _input;
     private double _mTop, _mLeft, _mWidth;

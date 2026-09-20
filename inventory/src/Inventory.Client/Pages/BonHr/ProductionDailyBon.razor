@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>گزارش روزانه حضور</PageTitle>
+<BonHrGuard Section="ProductionDaily">
 <BonHrShell Title="گزارش روزانه حضور" Sub="کارکرد روز و تجمیع ماه" />
 
 @using System.Text
@@ -70,6 +71,7 @@
     </article>
 
 
+</BonHrGuard>
 @code {
     private List<DailyReportRow> _rows = new();
     private string _date = PersianCalendarUtil.TodayKey();

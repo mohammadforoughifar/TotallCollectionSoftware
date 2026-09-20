@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>ورود اطلاعات پرسنل</PageTitle>
+<BonHrGuard Section="EmployeeEntry">
 <BonHrShell Title="ورود اطلاعات پرسنل" Sub="ثبت و ویرایش پرونده پرسنلی">
     <Actions>
         <button class="btn btn-primary" type="button" @onclick="OpenForm">
@@ -205,6 +206,7 @@
     </Modal>
 
 
+</BonHrGuard>
 @code {
     [SupplyParameterFromQuery(Name = "id")] public int? EmployeeId { get; set; }
 

@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 
 <PageTitle>تقویم و ساعات کاری</PageTitle>
+<BonHrGuard Section="OrgSettings">
 <BonHrShell Title="تقویم و ساعات کاری" Sub="تعطیلات و برنامه واحدها">
     <Actions>
         <button class="btn btn-light" type="button" @onclick="ExportSettingsAsync">خروجی تنظیمات</button>
@@ -151,6 +152,7 @@
     </div>
 
 
+</BonHrGuard>
 @code {
     private CalendarMonthDto _calendar = new();
     private List<Holiday> _holidays = new();
