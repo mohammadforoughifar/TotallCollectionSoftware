@@ -6,6 +6,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Services;
 
+/// <summary>
+/// پیاده‌سازی سرویس اصلی مدیریت نامه‌های وارده (Incoming Letters Service)
+/// </summary>
 public interface IIncomingLetterService
 {
     Task<PagedResult<IncomingLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, int page = 1, int pageSize = 15);

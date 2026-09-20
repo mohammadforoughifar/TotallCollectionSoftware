@@ -8,6 +8,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Controllers;
 
+/// <summary>
+/// کنترلر مدیریت کامل نامه‌های وارده (Incoming Letters Subsystem)
+/// </summary>
 [ApiController]
 [Route("api/incoming-letters")]
 [Authorize]
