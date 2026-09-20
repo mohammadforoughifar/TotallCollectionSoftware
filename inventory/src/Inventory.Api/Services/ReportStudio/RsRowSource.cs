@@ -27,7 +27,8 @@ public sealed class RsRow
 public interface IRsRowSource
 {
     /// <summary>سطرهای خام را بر اساس ترکیب جدول‌های انتخابی می‌سازد.</summary>
-    Task<List<RsRow>> FetchAsync(RsQueryDto q, int hardLimit, CancellationToken ct = default);
+    Task<List<RsRow>> FetchAsync(RsQueryDto q, int hardLimit, RsRowScope scope,
+        CancellationToken ct = default);
 }
 
 public sealed class RsRowSource : IRsRowSource
@@ -35,11 +36,16 @@ public sealed class RsRowSource : IRsRowSource
     private readonly AppDbContext _db;
     public RsRowSource(AppDbContext db) => _db = db;
 
+    /// <summary>محدودهٔ دید کاربر جاری — در هر واکشی نامه اعمال می‌شود.</summary>
+    private RsRowScope _scope = RsRowScope.All(0);
+
     private static string Key(IEnumerable<string> tables) =>
         string.Join("+", tables.Select(t => t.ToLowerInvariant()).OrderBy(t => t));
 
-    public async Task<List<RsRow>> FetchAsync(RsQueryDto q, int hardLimit, CancellationToken ct = default)
+    public async Task<List<RsRow>> FetchAsync(RsQueryDto q, int hardLimit, RsRowScope scope,
+        CancellationToken ct = default)
     {
+        _scope = scope ?? RsRowScope.All(0);
         var tables = q.Tables.Select(t => t.TableKey).ToList();
         var shape = Key(tables);
         var leftJoin = q.Tables.Skip(1).All(t => t.JoinKind == RsJoinKind.Left);
@@ -49,6 +55,10 @@ public sealed class RsRowSource : IRsRowSource
             "letter" => await LettersAsync(hardLimit, ct),
             "erja" => await ErjasAsync(hardLimit, ct),
             "erja+letter" => await LetterErjaAsync(leftJoin, hardLimit, ct),
+            "outgoing" => await OutgoingAsync(hardLimit, ct),
+            "incoming" => await IncomingAsync(hardLimit, ct),
+            "erja+outgoing" => await OutgoingErjaAsync(leftJoin, hardLimit, ct),
+            "erja+incoming" => await IncomingErjaAsync(leftJoin, hardLimit, ct),
             "invoice" => await InvoicesAsync(hardLimit, ct),
             "invoice+invoice_line" => await InvoiceLinesAsync(leftJoin, hardLimit, ct),
             "invoice+party" => await InvoicePartyAsync(leftJoin, hardLimit, ct),
@@ -69,9 +79,21 @@ public sealed class RsRowSource : IRsRowSource
     private IQueryable<LetterProj> LetterBase()
     {
         var now = DateTime.Now;
+        var uid = _scope.UserId;
+        var all = _scope.Unrestricted;
+
         return _db.LetterSources
             .Where(x => !x.IsDelete
                 && (x.InnerLetter != null || x.OutgoingLetter != null || x.IncomingLetter != null))
+            // ---------- امنیت سطح سطر ----------
+            // بدون مجوز ViewAll، کاربر فقط نامه‌هایی را می‌بیند که ساخته
+            // یا در گردش آن‌ها (فرستنده/گیرندهٔ ارجاع) نقش داشته است.
+            .Where(x => all
+                || (x.InnerLetter != null && x.InnerLetter.CreatorUserId == uid)
+                || (x.OutgoingLetter != null && x.OutgoingLetter.CreatorUserId == uid)
+                || (x.IncomingLetter != null && x.IncomingLetter.CreateUserId == uid)
+                || x.Erjas.Any(e => !e.IsDelete
+                        && (e.ReciverUserId == uid || e.SenderUserId == uid)))
             .Select(x => new LetterProj
             {
                 Id = x.Id,
@@ -188,8 +210,15 @@ public sealed class RsRowSource : IRsRowSource
         public bool IsRead; public string Answer = ""; public DateTime? Deadline; public string Note = "";
     }
 
-    private IQueryable<ErjaProj> ErjaBase() =>
-        _db.Erjas.Where(e => !e.IsDelete).Select(e => new ErjaProj
+    private IQueryable<ErjaProj> ErjaBase()
+    {
+        var uid = _scope.UserId;
+        var all = _scope.Unrestricted;
+        return _db.Erjas
+            .Where(e => !e.IsDelete)
+            // ارجاع‌های دیگران دیده نمی‌شود مگر با مجوز ViewAll
+            .Where(e => all || e.ReciverUserId == uid || e.SenderUserId == uid)
+            .Select(e => new ErjaProj
         {
             Id = e.ErjaId,
             SourceId = e.SourceId,
@@ -203,6 +232,7 @@ public sealed class RsRowSource : IRsRowSource
             Deadline = e.MohlatPasokh,
             Note = e.MatnErja
         });
+    }
 
     private static void FillErja(RsRow r, ErjaProj e, Dictionary<int, string> users, DateTime now)
     {
@@ -264,6 +294,223 @@ public sealed class RsRowSource : IRsRowSource
         }
         return rows;
     }
+
+    // ---------------- نامه صادره ----------------
+    private sealed class OutProj
+    {
+        public int Id; public string? No; public string? SadereNo; public int Number;
+        public string? Title; public DateTime DateSabt; public DateTime? DateSadere;
+        public int CreatorId; public int Status; public string? RecvOrg; public string? RecvName;
+        public string? RecvTitle; public string? Method; public string? Tracking; public string? Deliverer;
+        public string? DestReg; public string? DestEmail; public string? ExtRef; public string? CopyTo;
+        public string? Conf; public string? Urg; public bool Dabir; public DateTime? DateDabir;
+        public bool Starred; public int SourceId;
+    }
+
+    private IQueryable<OutProj> OutgoingBase()
+    {
+        var uid = _scope.UserId; var all = _scope.Unrestricted;
+        return _db.LetterSources
+            .Where(x => !x.IsDelete && x.OutgoingLetter != null)
+            .Where(x => all || x.OutgoingLetter!.CreatorUserId == uid
+                || x.Erjas.Any(e => !e.IsDelete && (e.ReciverUserId == uid || e.SenderUserId == uid)))
+            .Select(x => new OutProj
+            {
+                Id = x.OutgoingLetter!.Id,
+                SourceId = x.Id,
+                No = x.OutgoingLetter.LetterNumber,
+                SadereNo = x.OutgoingLetter.SadereNumber,
+                Number = x.OutgoingLetter.Number,
+                Title = x.OutgoingLetter.Title,
+                DateSabt = x.OutgoingLetter.DateSabt,
+                DateSadere = x.OutgoingLetter.DateSadere,
+                CreatorId = x.OutgoingLetter.CreatorUserId,
+                Status = x.OutgoingLetter.Status,
+                RecvOrg = x.OutgoingLetter.ReceiverOrganization,
+                RecvName = x.OutgoingLetter.ReceiverName,
+                RecvTitle = x.OutgoingLetter.ReceiverTitle,
+                Method = x.OutgoingLetter.SendMethod,
+                Tracking = x.OutgoingLetter.TrackingCode,
+                Deliverer = x.OutgoingLetter.DelivererName,
+                DestReg = x.OutgoingLetter.DestRegNumber,
+                DestEmail = x.OutgoingLetter.DestEmail,
+                ExtRef = x.OutgoingLetter.ExternalRefNumber,
+                CopyTo = x.OutgoingLetter.CopyTo,
+                Conf = x.OutgoingLetter.Mahramanegi,
+                Urg = x.OutgoingLetter.Foriat,
+                Dabir = x.OutgoingLetter.DabirkhaneSabt,
+                DateDabir = x.OutgoingLetter.DateDabirkhane,
+                Starred = x.OutgoingLetter.IsNeshan
+            });
+    }
+
+    private static void FillOutgoing(RsRow r, OutProj o, Dictionary<int, string> users)
+    {
+        r.V["outgoing.id"] = o.Id;
+        r.V["outgoing.no"] = o.No;
+        r.V["outgoing.sadere_no"] = o.SadereNo;
+        r.V["outgoing.number"] = o.Number;
+        r.V["outgoing.title"] = o.Title;
+        r.V["outgoing.date_sabt"] = o.DateSabt;
+        r.V["outgoing.date_sadere"] = o.DateSadere;
+        r.V["outgoing.creator"] = users.GetValueOrDefault(o.CreatorId);
+        r.V["outgoing.status"] = o.Status;
+        r.V["outgoing.receiver_org"] = o.RecvOrg;
+        r.V["outgoing.receiver_name"] = o.RecvName;
+        r.V["outgoing.receiver_title"] = o.RecvTitle;
+        r.V["outgoing.method"] = o.Method;
+        r.V["outgoing.tracking"] = o.Tracking;
+        r.V["outgoing.deliverer"] = o.Deliverer;
+        r.V["outgoing.dest_reg_no"] = o.DestReg;
+        r.V["outgoing.dest_email"] = o.DestEmail;
+        r.V["outgoing.ext_ref"] = o.ExtRef;
+        r.V["outgoing.copy_to"] = o.CopyTo;
+        r.V["outgoing.conf"] = string.IsNullOrWhiteSpace(o.Conf) ? "عادی" : o.Conf;
+        r.V["outgoing.urg"] = string.IsNullOrWhiteSpace(o.Urg) ? "عادی" : o.Urg;
+        r.V["outgoing.dabirkhane"] = o.Dabir;
+        r.V["outgoing.date_dabirkhane"] = o.DateDabir;
+        r.V["outgoing.starred"] = o.Starred;
+        r.V["outgoing.days_to_issue"] = o.DateSadere is null
+            ? null : (object)Math.Round((o.DateSadere.Value - o.DateSabt).TotalDays, 1);
+        r.V["outgoing.count"] = 1;
+    }
+
+    private async Task<List<RsRow>> OutgoingAsync(int limit, CancellationToken ct)
+    {
+        var raw = await OutgoingBase().Take(limit).ToListAsync(ct);
+        var users = await UserNamesAsync(raw.Select(x => x.CreatorId), ct);
+        return raw.Select(o => { var r = new RsRow(); FillOutgoing(r, o, users); return r; }).ToList();
+    }
+
+    private async Task<List<RsRow>> OutgoingErjaAsync(bool left, int limit, CancellationToken ct)
+    {
+        var now = DateTime.Now;
+        var outs = await OutgoingBase().Take(limit).ToListAsync(ct);
+        var ids = outs.Select(o => o.SourceId).ToList();
+        var erjas = await ErjaBase().Where(e => ids.Contains(e.SourceId)).ToListAsync(ct);
+        var users = await UserNamesAsync(outs.Select(o => o.CreatorId)
+            .Concat(erjas.SelectMany(e => new[] { e.SenderId, e.ReceiverId })), ct);
+        var byId = erjas.GroupBy(e => e.SourceId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var rows = new List<RsRow>();
+        foreach (var o in outs)
+        {
+            var mine = byId.GetValueOrDefault(o.SourceId);
+            if (mine is null || mine.Count == 0)
+            {
+                if (!left) continue;
+                var r0 = new RsRow(); FillOutgoing(r0, o, users); rows.Add(r0); continue;
+            }
+            foreach (var e in mine)
+            {
+                var r = new RsRow(); FillOutgoing(r, o, users); FillErja(r, e, users, now);
+                rows.Add(r);
+                if (rows.Count >= limit) return rows;
+            }
+        }
+        return rows;
+    }
+
+    // ---------------- نامه وارده ----------------
+    private sealed class IncProj
+    {
+        public int Id; public string? No; public int NumberSabt; public string? NumberVarede;
+        public string? Title; public DateTime Date; public DateTime DateErsal; public int CreatorId;
+        public string? Sender; public string? Method; public string? DeliveryName;
+        public int Conf; public int Urg; public bool Archived; public bool Starred;
+        public string? Description; public int SourceId;
+    }
+
+    private IQueryable<IncProj> IncomingBase()
+    {
+        var uid = _scope.UserId; var all = _scope.Unrestricted;
+        return _db.LetterSources
+            .Where(x => !x.IsDelete && x.IncomingLetter != null)
+            .Where(x => all || x.IncomingLetter!.CreateUserId == uid
+                || x.Erjas.Any(e => !e.IsDelete && (e.ReciverUserId == uid || e.SenderUserId == uid)))
+            .Select(x => new IncProj
+            {
+                Id = x.IncomingLetter!.Id,
+                SourceId = x.Id,
+                No = x.IncomingLetter.LetterNumber,
+                NumberSabt = x.IncomingLetter.NumberSabt,
+                NumberVarede = x.IncomingLetter.NumberLetterVarede,
+                Title = x.IncomingLetter.Title,
+                Date = x.IncomingLetter.Date,
+                DateErsal = x.IncomingLetter.DateErsal,
+                CreatorId = x.IncomingLetter.CreateUserId,
+                Sender = x.IncomingLetter.Ferestande,
+                Method = x.IncomingLetter.TypeErsal,
+                DeliveryName = x.IncomingLetter.DeliveryName,
+                Conf = x.IncomingLetter.Mahramanegi,
+                Urg = x.IncomingLetter.Foriat,
+                Archived = x.IncomingLetter.IsBayegani,
+                Starred = x.IncomingLetter.IsNeshan,
+                Description = x.IncomingLetter.Description
+            });
+    }
+
+    private static void FillIncoming(RsRow r, IncProj i, Dictionary<int, string> users, DateTime now)
+    {
+        r.V["incoming.id"] = i.Id;
+        r.V["incoming.no"] = i.No;
+        r.V["incoming.number_sabt"] = i.NumberSabt;
+        r.V["incoming.number_varede"] = i.NumberVarede;
+        r.V["incoming.title"] = i.Title;
+        r.V["incoming.date"] = i.Date;
+        r.V["incoming.date_ersal"] = i.DateErsal;
+        r.V["incoming.creator"] = users.GetValueOrDefault(i.CreatorId);
+        r.V["incoming.sender"] = i.Sender;
+        r.V["incoming.method"] = i.Method;
+        r.V["incoming.delivery_name"] = i.DeliveryName;
+        r.V["incoming.conf"] = i.Conf;
+        r.V["incoming.urg"] = i.Urg;
+        r.V["incoming.archived"] = i.Archived;
+        r.V["incoming.starred"] = i.Starred;
+        r.V["incoming.description"] = i.Description;
+        r.V["incoming.days_open"] = Math.Round((now - i.DateErsal).TotalDays, 1);
+        r.V["incoming.count"] = 1;
+    }
+
+    private async Task<List<RsRow>> IncomingAsync(int limit, CancellationToken ct)
+    {
+        var now = DateTime.Now;
+        var raw = await IncomingBase().Take(limit).ToListAsync(ct);
+        var users = await UserNamesAsync(raw.Select(x => x.CreatorId), ct);
+        return raw.Select(i => { var r = new RsRow(); FillIncoming(r, i, users, now); return r; }).ToList();
+    }
+
+    private async Task<List<RsRow>> IncomingErjaAsync(bool left, int limit, CancellationToken ct)
+    {
+        var now = DateTime.Now;
+        var incs = await IncomingBase().Take(limit).ToListAsync(ct);
+        var ids = incs.Select(i => i.SourceId).ToList();
+        var erjas = await ErjaBase().Where(e => ids.Contains(e.SourceId)).ToListAsync(ct);
+        var users = await UserNamesAsync(incs.Select(i => i.CreatorId)
+            .Concat(erjas.SelectMany(e => new[] { e.SenderId, e.ReceiverId })), ct);
+        var byId = erjas.GroupBy(e => e.SourceId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var rows = new List<RsRow>();
+        foreach (var i in incs)
+        {
+            var mine = byId.GetValueOrDefault(i.SourceId);
+            if (mine is null || mine.Count == 0)
+            {
+                if (!left) continue;
+                var r0 = new RsRow(); FillIncoming(r0, i, users, now); rows.Add(r0); continue;
+            }
+            foreach (var e in mine)
+            {
+                var r = new RsRow(); FillIncoming(r, i, users, now); FillErja(r, e, users, now);
+                rows.Add(r);
+                if (rows.Count >= limit) return rows;
+            }
+        }
+        return rows;
+    }
+
+    // ---------------- فروش و خرید ----------------
+
 
     // =====================================================================
     //  فروش و خرید

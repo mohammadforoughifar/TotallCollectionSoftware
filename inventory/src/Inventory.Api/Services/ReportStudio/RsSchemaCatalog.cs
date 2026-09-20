@@ -145,6 +145,77 @@ public static class RsSchemaCatalog
             }
         },
 
+        new()
+        {
+            Key = "outgoing",
+            Title = "نامه‌های صادره",
+            Category = "اتوماسیون اداری",
+            Icon = "bi-envelope-arrow-up",
+            Module = "OutgoingLetters",
+            Description = "جزئیات کامل نامه‌های صادره: گیرنده، دبیرخانه، روش ارسال و رهگیری.",
+            Fields = new()
+            {
+                Num("outgoing.id", "شناسه"),
+                Text("outgoing.no", "شماره نامه"),
+                Text("outgoing.sadere_no", "شماره صادره"),
+                Num("outgoing.number", "شماره ترتیبی"),
+                Text("outgoing.title", "موضوع"),
+                Date("outgoing.date_sabt", "تاریخ ثبت"),
+                Date("outgoing.date_sadere", "تاریخ صدور"),
+                Text("outgoing.creator", "ثبت‌کننده"),
+                Enum("outgoing.status", "وضعیت", OutStatusMap),
+                Text("outgoing.receiver_org", "سازمان گیرنده"),
+                Text("outgoing.receiver_name", "نام گیرنده"),
+                Text("outgoing.receiver_title", "سمت گیرنده"),
+                Text("outgoing.method", "روش ارسال"),
+                Text("outgoing.tracking", "کد رهگیری"),
+                Text("outgoing.deliverer", "تحویل‌گیرنده"),
+                Text("outgoing.dest_reg_no", "شماره ثبت مقصد"),
+                Text("outgoing.dest_email", "ایمیل مقصد"),
+                Text("outgoing.ext_ref", "شماره عطف خارجی"),
+                Text("outgoing.copy_to", "رونوشت"),
+                Text("outgoing.conf", "محرمانگی"),
+                Text("outgoing.urg", "فوریت"),
+                Bool("outgoing.dabirkhane", "ثبت دبیرخانه"),
+                Date("outgoing.date_dabirkhane", "تاریخ دبیرخانه"),
+                Bool("outgoing.starred", "نشان‌دار"),
+                Num("outgoing.days_to_issue", "روز تا صدور", "روز"),
+                F("outgoing.count", "تعداد نامه صادره", RsFieldType.Number,
+                  group: false, agg: true, unit: "نامه")
+            }
+        },
+        new()
+        {
+            Key = "incoming",
+            Title = "نامه‌های وارده",
+            Category = "اتوماسیون اداری",
+            Icon = "bi-envelope-arrow-down",
+            Module = "IncomingLetters",
+            Description = "جزئیات کامل نامه‌های وارده: فرستنده، شماره ثبت و وضعیت بایگانی.",
+            Fields = new()
+            {
+                Num("incoming.id", "شناسه"),
+                Text("incoming.no", "شماره نامه"),
+                Num("incoming.number_sabt", "شماره ثبت"),
+                Text("incoming.number_varede", "شماره نامهٔ فرستنده"),
+                Text("incoming.title", "موضوع"),
+                Date("incoming.date", "تاریخ نامه"),
+                Date("incoming.date_ersal", "تاریخ دریافت"),
+                Text("incoming.creator", "ثبت‌کننده"),
+                Text("incoming.sender", "فرستنده"),
+                Text("incoming.method", "نحوهٔ ارسال"),
+                Text("incoming.delivery_name", "تحویل‌دهنده"),
+                Enum("incoming.conf", "محرمانگی", LevelMap),
+                Enum("incoming.urg", "فوریت", UrgencyMap),
+                Bool("incoming.archived", "بایگانی‌شده"),
+                Bool("incoming.starred", "نشان‌دار"),
+                Text("incoming.description", "توضیحات"),
+                Num("incoming.days_open", "روزهای باز", "روز"),
+                F("incoming.count", "تعداد نامه وارده", RsFieldType.Number,
+                  group: false, agg: true, unit: "نامه")
+            }
+        },
+
         // ---------------- فروش و خرید ----------------
         new()
         {
@@ -254,6 +325,24 @@ public static class RsSchemaCatalog
             ToTable = "erja",
             Title = "نامه ← ارجاع‌های آن",
             Description = "هر نامه می‌تواند چند ارجاع داشته باشد؛ سطرهای نامه به تعداد ارجاع‌ها تکرار می‌شوند.",
+            Multiplies = true
+        },
+        new()
+        {
+            Key = "outgoing->erja",
+            FromTable = "outgoing",
+            ToTable = "erja",
+            Title = "نامه صادره ← ارجاع‌های آن",
+            Description = "گردش تایید و ارجاع نامه‌های صادره.",
+            Multiplies = true
+        },
+        new()
+        {
+            Key = "incoming->erja",
+            FromTable = "incoming",
+            ToTable = "erja",
+            Title = "نامه وارده ← ارجاع‌های آن",
+            Description = "ارجاع نامه‌های وارده به کاربران.",
             Multiplies = true
         },
         new()

@@ -43,14 +43,16 @@ public class ReportStudioController : ControllerBase
     private readonly IEffectivePermissions _perms;
     private readonly IRsAccessService _access;
     private readonly IRsExecutor _exec;
+    private readonly IRsRowSecurity _rowSec;
 
     public ReportStudioController(AppDbContext db, IEffectivePermissions perms,
-        IRsAccessService access, IRsExecutor exec)
+        IRsAccessService access, IRsExecutor exec, IRsRowSecurity rowSec)
     {
         _db = db;
         _perms = perms;
         _access = access;
         _exec = exec;
+        _rowSec = rowSec;
     }
 
     private int MyUserId =>
@@ -122,8 +124,9 @@ public class ReportStudioController : ControllerBase
                 Error = $"برای دیدن دادهٔ جدول‌های انتخابی به مجوز ماژول «{missing}» نیاز دارید."
             });
 
+        var scope = await _rowSec.GetScopeAsync(User);
         var res = await _exec.RunAsync(req.Query, "پیش‌نمایش", req.Prompts,
-            req.Page, req.PageSize, HttpContext.RequestAborted);
+            req.Page, req.PageSize, scope, HttpContext.RequestAborted);
         return Ok(res);
     }
 
@@ -282,9 +285,12 @@ public class ReportStudioController : ControllerBase
         if (!acc.CanView)
             return Ok(new RsResultDto { Ok = false, Error = acc.Reason });
 
+        // نکتهٔ امنیتی: محدودهٔ سطر همیشه از کاربرِ *اجراکننده* گرفته می‌شود،
+        // نه سازندهٔ گزارش. پس اشتراک گزارش هرگز دادهٔ دیگران را فاش نمی‌کند.
+        var scope = await _rowSec.GetScopeAsync(User);
         var q = ParseQuery(e.QueryJson);
         var res = await _exec.RunAsync(q, e.Name, req?.Prompts ?? new(),
-            req?.Page ?? 1, req?.PageSize ?? 100, HttpContext.RequestAborted);
+            req?.Page ?? 1, req?.PageSize ?? 100, scope, HttpContext.RequestAborted);
         return Ok(res);
     }
 
@@ -303,8 +309,9 @@ public class ReportStudioController : ControllerBase
 
         var q = ParseQuery(e.QueryJson);
         q.Take = Math.Min(q.Take <= 0 ? 5000 : q.Take, RsValidator.MaxTake);
+        var scope = await _rowSec.GetScopeAsync(User);
         var res = await _exec.RunAsync(q, e.Name, new List<RsPromptValueDto>(),
-            1, RsValidator.MaxTake, HttpContext.RequestAborted);
+            1, RsValidator.MaxTake, scope, HttpContext.RequestAborted);
 
         if (!res.Ok) return BadRequest(new { message = res.Error });
 

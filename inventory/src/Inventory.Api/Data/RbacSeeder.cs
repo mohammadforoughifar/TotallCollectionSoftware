@@ -100,7 +100,7 @@ public static class RbacSeeder
         // Create: ثبت و ارسال نامه (و مدیریت پیش‌نویس‌ها/گروه‌های گیرندگان)
         // Read: کارتابل، مشاهده نامه و پیوست‌ها | Erja: ارجاع نامه به دیگران
         // Delete: حذف نامه/گروه (مدیرانه)
-        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete" },
+        ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete", "ViewAll" },
         // ================== آرشیو اسناد و مدارک ==================
         ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage", "Export" },
         // ================== هسته پرسنلی (کارگزینی) ==================
@@ -146,7 +146,10 @@ public static class RbacSeeder
         // ================== اتوماسیون اداری — نامه صادره (فاز دوم + امضا + دبیرخانه) ==================
         // همان دسترسی‌های داخلی اما برای ماژول صادره + Sign (امضا کننده بودن)
         // Dabirkhane: دبیرخانه نامه صادره — ثبت شماره مقصد و روش ارسال نامه‌های امضا شده
-        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane" },
+        ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane", "ViewAll" },
+        // ================== اتوماسیون اداری — نامه وارده ==================
+        // ViewAll: استثنای «دیدن نامه‌های دیگران» (پیش‌فرض هر کس فقط نامه‌های خودش را می‌بیند)
+        ["IncomingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "ViewAll" },
         // ================== ایمیل سازمانی (پست الکترونیک) ==================
         // Read: صندوق ایمیل و حساب‌های من | Create: ارسال ایمیل و افزودن حساب
         // Update: ویرایش حساب/نشان/خوانده‌شده | Delete: حذف حساب/پیام
