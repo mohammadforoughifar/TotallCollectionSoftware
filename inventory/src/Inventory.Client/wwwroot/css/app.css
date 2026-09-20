@@ -1508,20 +1508,40 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .doc-archive-shell .table thead th { font-size: .9rem; font-weight: 700; }
 .doc-archive-shell .table tbody td { font-size: 1rem; }
 .doc-archive-shell .ftree-item { font-size: 1rem; font-weight: 600; }
-/* ---------- نشان‌های ویژگیِ مدرک: سبز با متن سفید ---------- */
-/* در نمای کارتی (و جدولی) روی پس‌زمینه‌ی سفیدِ کارت، نشان‌های روشن
-   (bg-light/text-dark) کم‌رنگ و ناخوانا بودند. همه‌ی نشان‌های این ردیف
-   یکدست سبز تیره با متن سفید می‌شوند تا خوانا باشند.
-   از سبزِ هم‌خانواده‌ی --success ولی تیره‌تر (#047857) استفاده شده چون
-   --success (#10b981) با متن سفید کنتراستِ کافی ندارد (~2.3:1)؛
-   این تناژ کنتراست حدود 4.9:1 دارد و استاندارد را می‌گذراند.
-   !important برای غلبه بر رنگِ درون‌خطیِ تگ‌ها لازم است.
-   نشان‌های وضعیت (فعال/غیرفعال، وضعیت ورژن) دست‌نخورده می‌مانند
-   چون فقط این ردیف هدف گرفته شده است. */
+/* ---------- نشان‌های کارت‌ویو آرشیو اسناد: سبز با متن سفید و اندازه‌ی خوانا ----------
+   دو مشکلِ هم‌زمان وجود داشت:
+   ۱) اندازه: اندازه‌ی نشان در بوت‌استرپ 0.75em است، یعنی از والد ارث می‌برد.
+      نشان‌های داخلِ .m-card-row (font-size: .82rem = 11.5px) می‌شدند 8.6px —
+      عملاً ناخوانا روی موبایل. نشان‌های بیرونِ ردیف‌ها 12px بودند.
+      با اندازه‌ی ثابتِ .85rem (= 11.9px) همه یکدست و خوانا می‌شوند.
+   ۲) رنگ: پس‌زمینه‌ی سبز تیره با متن سفید.
+      از --success (#10b981) استفاده نشده چون با متن سفید کنتراستِ کافی
+      ندارد (~2.3:1)؛ تناژِ تیره‌ترِ هم‌خانواده (#047857) حدود 4.9:1 دارد
+      و استاندارد WCAG AA را می‌گذراند.
+   !important برای غلبه بر رنگِ درون‌خطیِ تگ‌ها (ReadableBadgeStyle) لازم است.
+   تمایزِ نشان‌ها از طریقِ متنِ خودشان حفظ می‌شود (فعال / غیرفعال / پیش‌نویس ...). */
+.doc-cards-wrap .badge {
+    background: #047857 !important;
+    color: #fff !important;
+    border: 1px solid #047857 !important;
+    font-size: .85rem !important;
+    line-height: 1.7 !important;
+    padding: .3em .7em !important;
+    font-weight: 600 !important;
+}
+.doc-cards-wrap .badge i { color: #fff !important; }
+
+/* متنِ ردیف‌های کارت هم در این ماژول (پایه 16px) بیش از حد ریز بود */
+.doc-cards-wrap .m-card-row { font-size: .95rem; line-height: 1.9; }
+.doc-cards-wrap .m-card-row span { color: #475569; font-weight: 600; }
+
+/* همان نشان‌های ویژگی در نمای جدولی */
 .da-feature-badges .badge {
     background: #047857 !important;
     color: #fff !important;
     border: 1px solid #047857 !important;
+    font-size: .85rem !important;
+    line-height: 1.7 !important;
 }
 .da-feature-badges .badge i { color: #fff !important; }
 
