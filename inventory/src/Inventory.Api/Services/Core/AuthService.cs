@@ -153,6 +153,21 @@ public class AuthService : IAuthService
             foreach (var radisRole in new[] { "hr", "ceo", "guard", "hse", "warehouse", "production", "finance", "accounting" })
                 claims.Add(new Claim(ClaimTypes.Role, radisRole));
         }
+        else
+        {
+            // دسترسی بخش‌محور (تنظیمات ← نقش‌ها و دسترسی‌ها ← منابع انسانی بن‌سازه):
+            // دارندهٔ مجوز هر بخش، فقط نقش‌های legacy همان بخش را می‌گیرد تا عملیات
+            // روزمرهٔ بخش خودش را انجام دهد؛ نقش‌های مدیریتی «hr» و «ceo» (پرسنل،
+            // ساختار سازمانی، حقوق، الزامات و اطلاعیه‌ها) همچنان مخصوص مجوز کل ماژول است.
+            if (permissions.Contains("RadisHr.Attendance", StringComparer.OrdinalIgnoreCase))
+                claims.Add(new Claim(ClaimTypes.Role, "guard"));
+            if (permissions.Contains("RadisHr.Hse", StringComparer.OrdinalIgnoreCase))
+                claims.Add(new Claim(ClaimTypes.Role, "hse"));
+            if (permissions.Contains("RadisHr.Finance", StringComparer.OrdinalIgnoreCase))
+                claims.Add(new Claim(ClaimTypes.Role, "finance"));
+            if (permissions.Contains("RadisHr.Accounting", StringComparer.OrdinalIgnoreCase))
+                claims.Add(new Claim(ClaimTypes.Role, "accounting"));
+        }
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(JwtKey));
         var token = new JwtSecurityToken(

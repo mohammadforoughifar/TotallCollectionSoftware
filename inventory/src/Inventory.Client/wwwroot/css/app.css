@@ -484,6 +484,18 @@ a { text-decoration: none; }
 .ss-item.selected { background: var(--primary); color: #fff; }
 .ss-empty { padding: .9rem; color: var(--text-muted); font-size: .85rem; text-align: center; }
 
+/* دکمه پاک کردن انتخاب جستجوی انتخاب (کمبوباکس) */
+.ss-clear {
+    position: absolute; left: 7px; top: 50%; transform: translateY(-50%);
+    width: 22px; height: 22px; line-height: 1;
+    border: 0; border-radius: 7px; cursor: pointer; z-index: 5;
+    background: #fff1f2; color: #e11d48; font-size: .68rem;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0;
+}
+.ss-clear:hover { background: #ffe4e6; color: #be123c; }
+.ss-clear:focus-visible { outline: 2px solid #fda4af; outline-offset: 1px; }
+
 /* ---------- حالت خالی ---------- */
 .empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); }
 .empty-state i { font-size: 2.8rem; color: #cbd5e1; }
