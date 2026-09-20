@@ -507,33 +507,47 @@ public class IncomingLetterService : IIncomingLetterService
 
     public async Task<List<LetterNumberReservationDto>> GetReservationsAsync(int userId, int typeForm = 3)
     {
-        var list = await _db.LetterNumberReservations.AsNoTracking()
-            .Where(r => r.TypeForm == typeForm && !r.IsUsed && !r.IsDelete)
-            .OrderByDescending(r => r.NumberSabt)
-            .Take(50)
-            .ToListAsync();
-
-        var userIds = list.Select(r => r.UserId).Distinct().ToList();
-        var users = await _db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id);
-
-        return list.Select(r => new LetterNumberReservationDto
+        try
         {
-            Id = r.Id,
-            TypeForm = r.TypeForm,
-            NumberSabt = r.NumberSabt,
-            DateRezerv = r.DateRezerv,
-            UserId = r.UserId,
-            UserName = users.TryGetValue(r.UserId, out var u) ? (string.IsNullOrEmpty(u.FirstName + u.LastName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim()) : "سیستم",
-            IsUsed = r.IsUsed
-        }).ToList();
+            await IncomingLetterSchemaV1.EnsureOnceAsync(_db);
+
+            var list = await _db.LetterNumberReservations.AsNoTracking()
+                .Where(r => r.TypeForm == typeForm && !r.IsUsed && !r.IsDelete)
+                .OrderByDescending(r => r.NumberSabt)
+                .Take(50)
+                .ToListAsync();
+
+            var userIds = list.Select(r => r.UserId).Distinct().ToList();
+            var users = await _db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id);
+
+            return list.Select(r => new LetterNumberReservationDto
+            {
+                Id = r.Id,
+                TypeForm = r.TypeForm,
+                NumberSabt = r.NumberSabt,
+                DateRezerv = r.DateRezerv,
+                UserId = r.UserId,
+                UserName = users.TryGetValue(r.UserId, out var u) ? (string.IsNullOrEmpty(u.FirstName + u.LastName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim()) : "سیستم",
+                IsUsed = r.IsUsed
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[IncomingLetterService] GetReservations error: {ex.Message}");
+            return new List<LetterNumberReservationDto>();
+        }
     }
 
     public async Task<List<LetterNumberReservationDto>> ReserveNumberAsync(int userId, int typeForm = 3, int count = 1)
     {
         count = Math.Clamp(count, 1, 20);
+        await IncomingLetterSchemaV1.EnsureOnceAsync(_db);
 
-        var lastUsedSabt = await _db.IncomingLetters.MaxAsync(l => (int?)l.NumberSabt) ?? 0;
-        var lastResSabt = await _db.LetterNumberReservations.Where(r => r.TypeForm == typeForm).MaxAsync(r => (int?)r.NumberSabt) ?? 0;
+        int lastUsedSabt = 0;
+        int lastResSabt = 0;
+
+        try { lastUsedSabt = await _db.IncomingLetters.MaxAsync(l => (int?)l.NumberSabt) ?? 0; } catch { }
+        try { lastResSabt = await _db.LetterNumberReservations.Where(r => r.TypeForm == typeForm).MaxAsync(r => (int?)r.NumberSabt) ?? 0; } catch { }
 
         var startSabt = Math.Max(lastUsedSabt, lastResSabt) + 1;
         var created = new List<LetterNumberReservation>();
@@ -549,6 +563,13 @@ public class IncomingLetterService : IIncomingLetterService
                 IsUsed = false,
                 IsDelete = false
             };
+            _db.LetterNumberReservations.Add(res);
+            created.Add(res);
+        }
+
+        await _db.SaveChangesAsync();
+        return await GetReservationsAsync(userId, typeForm);
+    }            };
             _db.LetterNumberReservations.Add(res);
             created.Add(res);
         }

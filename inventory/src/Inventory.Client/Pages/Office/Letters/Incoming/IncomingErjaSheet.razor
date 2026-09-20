@@ -1,17 +1,18 @@
 @inject IIncomingLetterService IncomingSvc
-@inject ILetterService LetterSvc
 @inject IAuthState Auth
 @inject IToastService Toast
 
 @* ============================================================
    شیت ارجاع و پاسخ به نامه وارده
+   • ارجاع انفرادی و گروهی (LetterPickCombo)
+   • انتخاب عملگر اقدام (Amalgar)
    ============================================================ *@
 
 @if (visible)
 {
 <div class="ltx" style="animation:none;transform:none">
-    <div class="ov"></div>
-    <div class="sheet" style="width:min(580px,96vw)" @onclick="() => combo?.Close()">
+    <div class="ov" @onclick="Close"></div>
+    <div class="sheet" style="width:min(580px,96vw)" @onclick:stopPropagation="true">
         <div class="sheet-h">
             <b><i class="bi bi-arrow-left-right" style="color:var(--p)"></i> @(isAnswer ? "ثبت پاسخ به ارجاع" : "ارجاع نامه وارده")</b>
             <span class="dt num">ثبت: # @sabtNumber.FaDigits()</span>
@@ -27,10 +28,20 @@
             }
             else
             {
-                <LetterPickCombo @ref="combo" Label="گیرندگان ارجاع" Icon="bi-person-plus" Required="true"
+                <LetterPickCombo @ref="combo" Label="گیرندگان ارجاع (انفرادی / گروهی)" Icon="bi-person-plus" Required="true"
                                  Users="users" Groups="groups"
                                  SelectedUsers="selUsers" SelectedGroups="selGroups"
                                  HasError="errRcv" Changed="OnRcvChanged" />
+
+                <div class="fcard">
+                    <label>عملگر اقدام (نحوه پیگیری)</label>
+                    <select class="tin" @bind="amalgarId">
+                        <option value="0">جهت بررسی و اقدام لازم</option>
+                        <option value="1">جهت استحضار و دستور</option>
+                        <option value="2">جهت اقدام عاجل</option>
+                        <option value="3">جهت بایگانی و سوابق</option>
+                    </select>
+                </div>
 
                 <div class="fcard">
                     <label>دستور / متن ارجاع (پاراف)</label>
@@ -71,11 +82,13 @@
     private int letterId = 0;
     private int erjaId = 0;
     private int sabtNumber = 0;
+    private int amalgarId = 0;
 
     private LetterPickCombo? combo;
-    private List<LetterReciverDto> users = new();
-    private List<LetterGroupDto> groups = new();
-    private HashSet<int> selUsers = new(), selGroups = new();
+    private List<UserDto> users = new();
+    private List<UserGroupDto> groups = new();
+    private List<int> selUsers = new();
+    private List<int> selGroups = new();
 
     private string matn = "";
     private DateTime? mohlatPasokh;
@@ -88,6 +101,7 @@
         this.sabtNumber = sabtNumber;
         this.isAnswer = false;
         this.matn = "";
+        this.amalgarId = 0;
         this.mohlatPasokh = null;
         this.selUsers.Clear();
         this.selGroups.Clear();
@@ -118,8 +132,8 @@
     {
         try
         {
-            users = await LetterSvc.GetReciversAsync();
-            groups = await LetterSvc.GetGroupsAsync();
+            users = await Auth.GetUsersAsync();
+            groups = await Auth.GetUserGroupsAsync();
         }
         catch { }
     }
@@ -130,7 +144,7 @@
     {
         if (!isAnswer)
         {
-            var receiverIds = combo?.SelectedUsers?.ToList() ?? new List<int>();
+            var receiverIds = combo?.GetSelectedUserIds(users) ?? new List<int>();
             if (receiverIds.Count == 0)
             {
                 errRcv = true;
@@ -149,7 +163,7 @@
                     MohlatPasokh = mohlatPasokh
                 };
                 await IncomingSvc.AddErjaAsync(dto);
-                Toast.Success("نامه وارده با موفقیت ارجاع شد.");
+                Toast.Success("نامه وارده با موفقیت ارجاع گردید.");
                 visible = false;
                 await OnSubmitted.InvokeAsync();
             }
