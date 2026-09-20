@@ -375,8 +375,23 @@
                                                     }
                                                 </b>
                                             </div>
+                                            <div class="m-card-row">
+                                                <span>ثبت‌کننده</span>
+                                                <b>
+                                                    @(string.IsNullOrWhiteSpace(d.CreatedByName) ? "—" : d.CreatedByName)
+                                                    <span class="fs-9 text-muted num d-block">@d.CreatedAt.ToFa()</span>
+                                                </b>
+                                            </div>
+                                            <div class="m-card-row">
+                                                <span>دسترسی من</span>
+                                                <b><span class="badge @LevelBadge(d.MyLevel)">@LevelName(d.MyLevel)</span></b>
+                                            </div>
                                             <div class="d-flex flex-wrap gap-1 mt-2">
                                                 @if (d.IsPublic) { <span class="badge bg-info">عمومی</span> }
+                                                @if (d.RequireDownloadConfirm) { <span class="badge bg-danger"><i class="bi bi-shield-lock-fill"></i> محرمانه</span> }
+                                                @if (d.WatermarkPreview) { <span class="badge bg-secondary"><i class="bi bi-water"></i> واترمارک</span> }
+                                                @if (d.HasIndexedContent) { <span class="badge bg-light text-dark border"><i class="bi bi-file-earmark-font"></i> OCR</span> }
+                                                @if (d.AllowMultipleActiveVersions) { <span class="badge bg-light text-dark border"><i class="bi bi-layers"></i> چندنسخه‌ای</span> }
                                                 @if (d.LinkCount > 0) { <span class="badge bg-light text-dark border"><i class="bi bi-link-45deg"></i> @d.LinkCount.Num()</span> }
 
                                                 @foreach (var t in d.Tags)
@@ -445,6 +460,8 @@
                                     <th>مدرک</th>
                                     <th class="text-center">نسخه</th>
                                     <th class="text-center">وضعیت</th>
+                                    <th>ثبت‌کننده</th>
+                                    <th class="text-center">دسترسی من</th>
                                     <th>@(statusFilter == "deleted" ? "حذف شده در" : "انقضا")</th>
                                     <th class="text-end">عملیات</th>
                                 </tr>
@@ -478,6 +495,10 @@
                                             <div class="da-document-folder"><i class="bi bi-folder2"></i> @d.FolderName</div>
                                             <div class="d-flex flex-wrap gap-1 mt-1">
                                                 @if (d.IsPublic) { <span class="badge bg-info">عمومی</span> }
+                                                @if (d.RequireDownloadConfirm) { <span class="badge bg-danger" title="محرمانه — دانلود با تایید مجدد رمز"><i class="bi bi-shield-lock-fill"></i> محرمانه</span> }
+                                                @if (d.WatermarkPreview) { <span class="badge bg-secondary" title="واترمارک در پیش‌نمایش"><i class="bi bi-water"></i> واترمارک</span> }
+                                                @if (d.HasIndexedContent) { <span class="badge bg-light text-dark" title="دارای متن استخراج‌شده / OCR"><i class="bi bi-file-earmark-font"></i> OCR</span> }
+                                                @if (d.AllowMultipleActiveVersions) { <span class="badge bg-light text-dark" title="چند نسخه فعال همزمان مجاز است"><i class="bi bi-layers"></i> چندنسخه‌ای</span> }
                                                 @if (d.LinkCount > 0) { <span class="badge bg-light text-dark"><i class="bi bi-link-45deg"></i> @d.LinkCount.Num()</span> }
 
                                                 @foreach (var t in d.Tags)
@@ -516,6 +537,17 @@
                                             else
                                             {
                                                 <span class="badge bg-secondary" title="@d.DeactivateReason">غیرفعال</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="da-creator">@(string.IsNullOrWhiteSpace(d.CreatedByName) ? "—" : d.CreatedByName)</div>
+                                            <div class="fs-9 text-muted num">@d.CreatedAt.ToFa()</div>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge @LevelBadge(d.MyLevel)" title="سطح دسترسی شما به این مدرک">@LevelName(d.MyLevel)</span>
+                                            @if (!d.MyCanDownload && d.MyLevel > DocAccessLevelDto.None)
+                                            {
+                                                <div class="fs-9 text-muted" title="دانلود برای شما مجاز نیست">بدون دانلود</div>
                                             }
                                         </td>
                                         @if (statusFilter == "deleted")
@@ -1546,6 +1578,16 @@
         disposed = true; searchRequest++; searchDelay?.Cancel();
         try { selfRef?.Dispose(); } catch { }
     }
+
+    /// <summary>رنگِ نشانِ سطح دسترسی در ستون «دسترسی من»</summary>
+    private static string LevelBadge(DocAccessLevelDto l) => l switch
+    {
+        DocAccessLevelDto.Full => "bg-success",
+        DocAccessLevelDto.Write => "bg-primary",
+        DocAccessLevelDto.Read => "bg-info",
+        DocAccessLevelDto.View => "bg-warning text-dark",
+        _ => "bg-secondary"
+    };
 
     private static string LevelName(DocAccessLevelDto l) => l switch
     {
