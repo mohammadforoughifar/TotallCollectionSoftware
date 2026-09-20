@@ -60,6 +60,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Core.IEffectivePermissions, In
 builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsRowSource, Inventory.Api.Services.ReportStudio.RsRowSource>();
 builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsExecutor, Inventory.Api.Services.ReportStudio.RsExecutor>();
 builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsAccessService, Inventory.Api.Services.ReportStudio.RsAccessService>();
+builder.Services.AddScoped<Inventory.Api.Services.ReportStudio.IRsRowSecurity, Inventory.Api.Services.ReportStudio.RsRowSecurity>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<AttendanceRecalcService>();
 builder.Services.AddScoped<HrTimeService>(); // ماژول زمان‌بندی

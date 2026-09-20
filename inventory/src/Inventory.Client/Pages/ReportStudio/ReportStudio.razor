@@ -7,6 +7,8 @@
 @inject IReportStudioClient Api
 @inject IToastService Toast
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>گزارش‌ساز</PageTitle>
 
@@ -563,30 +565,8 @@ else
                             }
                             else if (result.Output == RsOutput.Chart && result.Series.Count > 0)
                             {
-                                <div class="rs-chart-legend">
-                                    @foreach (var s in result.Series)
-                                    {
-                                        <div class="rs-series">
-                                            <div class="rs-series-name">@s.Name</div>
-                                            <div class="rs-bars">
-                                                @{
-                                                    var max = s.Values.Count > 0 ? s.Values.Max() : 1;
-                                                    if (max <= 0) { max = 1; }
-                                                }
-                                                @for (var bi = 0; bi < s.Labels.Count; bi++)
-                                                {
-                                                    var pct = (double)(s.Values[bi] / max) * 100;
-                                                    <div class="rs-bar-row">
-                                                        <span class="rs-bar-label">@s.Labels[bi]</span>
-                                                        <div class="rs-bar-track">
-                                                            <div class="rs-bar-fill" style="width:@pct.ToString("F1")%"></div>
-                                                        </div>
-                                                        <span class="rs-bar-val">@Fa.Digits(s.Values[bi].ToString("N0"))</span>
-                                                    </div>
-                                                }
-                                            </div>
-                                        </div>
-                                    }
+                                <div class="rs-chart-box">
+                                    <canvas id="@ChartId"></canvas>
                                 </div>
                             }
                             else if (result.Rows.Count == 0)
@@ -728,6 +708,7 @@ else
     .rs-kpi-value { font-size:2.6rem; font-weight:800; color:#2563eb; }
     .rs-kpi-unit { font-size:.85rem; color:#64748b; }
 
+    .rs-chart-box { height:340px; position:relative; }
     .rs-series { margin-bottom:.9rem; }
     .rs-series-name { font-size:.8rem; font-weight:700; color:#334155; margin-bottom:.3rem; }
     .rs-bar-row { display:flex; align-items:center; gap:.5rem; margin-bottom:.25rem; }
@@ -755,7 +736,43 @@ else
     private string? userSearch;
 
     private bool loading = true, running, saving, dirty;
+    private readonly string ChartId = "rsChart_" + Guid.NewGuid().ToString("N")[..8];
+    private bool chartPending;
     private bool canDesign => catalog.CanDesign;
+
+    /// <summary>نمودار باید بعد از رندر شدن canvas ساخته شود.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!chartPending) return;
+        chartPending = false;
+
+        if (result is null || !result.Ok || result.Output != RsOutput.Chart || result.Series.Count == 0)
+            return;
+
+        try
+        {
+            var type = result.Chart switch
+            {
+                RsChart.Line => "line",
+                RsChart.Pie => "pie",
+                RsChart.Doughnut => "doughnut",
+                RsChart.Area => "line",
+                _ => "bar"
+            };
+            var labels = result.Series[0].Labels;
+            var datasets = result.Series
+                .Select(x => new { name = x.Name, values = x.Values })
+                .Cast<object>().ToArray();
+
+            await JS.InvokeVoidAsync("appDash.renderChart", ChartId, type, labels, datasets);
+        }
+        catch { /* نبودن Chart.js نباید صفحه را بشکند */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("appDash.destroyChart", ChartId); } catch { }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -1052,6 +1069,7 @@ else
             result = reportId > 0 && !dirty
                 ? await Api.RunAsync(reportId)
                 : await Api.PreviewAsync(query);
+            chartPending = result is { Ok: true, Output: RsOutput.Chart };
         }
         catch (Exception ex)
         {

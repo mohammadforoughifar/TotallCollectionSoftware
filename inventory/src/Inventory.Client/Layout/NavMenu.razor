@@ -52,6 +52,9 @@
                 }
                 @if (CanSeeReportStudio)
                 {
+                <NavLink class="nav-link" href="reports-hub" @onclick="NotifyClose">
+                    <i class="bi bi-journal-text"></i><span>گزارش‌ها</span>
+                </NavLink>
                 <NavLink class="nav-link" href="report-studio" @onclick="NotifyClose">
                     <i class="bi bi-clipboard-data-fill"></i><span>گزارش‌ساز</span>
                 </NavLink>
@@ -539,7 +542,7 @@
         var p = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
 
         gChat = p.StartsWith("chat");
-        gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio");
+        gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
         gWo = p.StartsWith("work-orders");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gLetters = p.StartsWith("letters");

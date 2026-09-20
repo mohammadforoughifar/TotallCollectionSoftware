@@ -24,7 +24,11 @@ public static class OfficeEmailSchemaV1
 IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'IsNeshan') IS NULL
     ALTER TABLE dbo.OutgoingLetters ADD IsNeshan bit NOT NULL DEFAULT(0);
 IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'DestEmail') IS NULL
-    ALTER TABLE dbo.OutgoingLetters ADD DestEmail nvarchar(250) NULL;");
+    ALTER TABLE dbo.OutgoingLetters ADD DestEmail nvarchar(250) NULL;
+IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'DelivererName') IS NULL
+    ALTER TABLE dbo.OutgoingLetters ADD DelivererName nvarchar(250) NULL;
+IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.OutgoingLetters', N'TrackingCode') IS NULL
+    ALTER TABLE dbo.OutgoingLetters ADD TrackingCode nvarchar(100) NULL;");
 
         // ---------- حساب‌های ایمیل ----------
         await SafeAsync(db, @"
@@ -177,6 +181,8 @@ ELSE IF COL_LENGTH(N'dbo.Oto_TBL_EmailAttachments', N'Attachment_FilePath') IS N
     private static async Task EnsureSqliteAsync(AppDbContext db)
     {
         await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN IsNeshan INTEGER NOT NULL DEFAULT 0;");
+        await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN DelivererName TEXT NULL;");
+        await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN TrackingCode TEXT NULL;");
         await SafeAsync(db, @"ALTER TABLE OutgoingLetters ADD COLUMN DestEmail TEXT NULL;");
 
         await SafeAsync(db, @"CREATE TABLE IF NOT EXISTS Oto_TBL_Email (

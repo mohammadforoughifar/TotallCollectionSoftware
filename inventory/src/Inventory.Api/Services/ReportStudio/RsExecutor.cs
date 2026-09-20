@@ -8,7 +8,8 @@ namespace Inventory.Api.Services.ReportStudio;
 public interface IRsExecutor
 {
     Task<RsResultDto> RunAsync(RsQueryDto query, string title,
-        IReadOnlyList<RsPromptValueDto> prompts, int page, int pageSize, CancellationToken ct = default);
+        IReadOnlyList<RsPromptValueDto> prompts, int page, int pageSize,
+        RsRowScope scope, CancellationToken ct = default);
 }
 
 // =====================================================================
@@ -29,7 +30,8 @@ public sealed class RsExecutor : IRsExecutor
     public RsExecutor(IRsRowSource source) => _source = source;
 
     public async Task<RsResultDto> RunAsync(RsQueryDto query, string title,
-        IReadOnlyList<RsPromptValueDto> prompts, int page, int pageSize, CancellationToken ct = default)
+        IReadOnlyList<RsPromptValueDto> prompts, int page, int pageSize,
+        RsRowScope scope, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
         var res = new RsResultDto
@@ -52,8 +54,14 @@ public sealed class RsExecutor : IRsExecutor
             }
             res.Warnings.AddRange(v.Warnings);
 
+            // کاربر باید بداند که نتیجه فقط شامل دادهٔ خودش است
+            if (!scope.Unrestricted && v.Modules.Any(m =>
+                    m is "InnerLetters" or "OutgoingLetters" or "IncomingLetters"))
+                res.Warnings.Add("این گزارش فقط نامه‌های شما را نشان می‌دهد. " +
+                    "برای دیدن نامه‌های همه، مجوز «مشاهدهٔ نامه‌های دیگران» لازم است.");
+
             // ۱) واکشی
-            var rows = await _source.FetchAsync(query, ScanLimit, ct);
+            var rows = await _source.FetchAsync(query, ScanLimit, scope, ct);
 
             // ۲) فیلتر
             rows = ApplyFilters(rows, query.Filters, prompts);
