@@ -1425,6 +1425,7 @@
 
     // ---------- لیست گزارش‌های کار پروژه و فرم ثبت جدید ----------
     private bool showProjectReportsList;
+    private readonly Dictionary<int, List<ReportWorkDto>> reportPrintCache = new();
     private ProjectEntryExitDto? reportsProject;
     private List<ReportWorkDto> projectReportItems = new();
     private bool projectReportsLoading;
@@ -1565,12 +1566,18 @@
     private string MenuStyle => System.FormattableString.Invariant(
         $"top:{menuY + 6:0}px;left:{Math.Max(8, menuX - 190):0}px;");
 
-    private void ToggleMenu(ProjectEntryExitDto p, Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    private async Task ToggleMenu(ProjectEntryExitDto p, Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
     {
         if (menuProject?.Id == p.Id) { CloseMenu(); return; }
         menuProject = p;
         menuX = e.ClientX;
         menuY = e.ClientY;
+        // گزارش‌ها هنگام باز شدن منوی عملیات در پس‌زمینه خوانده می‌شوند تا چاپ فوری باشد.
+        if (!reportPrintCache.ContainsKey(p.Id))
+        {
+            try { reportPrintCache[p.Id] = await ReportSvc.GetAllAsync(projectId: p.Id); }
+            catch { reportPrintCache[p.Id] = new(); }
+        }
     }
 
     private void CloseMenu() => menuProject = null;
@@ -2127,7 +2134,11 @@
         printingId = p.Id;
         try
         {
-            var reports = await ReportSvc.GetAllAsync(projectId: p.Id);
+            if (!reportPrintCache.TryGetValue(p.Id, out var reports))
+            {
+                reports = await ReportSvc.GetAllAsync(projectId: p.Id);
+                reportPrintCache[p.Id] = reports;
+            }
             if (reports.Count == 0)
             {
                 Toast.Error("برای این پروژه هنوز گزارش کاری ثبت نشده است.");
