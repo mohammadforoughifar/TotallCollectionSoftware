@@ -69,11 +69,19 @@
                 }
                 else
                 {
-                    <div style="padding:10px">
-                        @foreach (var node in roots)
-                        {
-                            <RenderTreeNode Node="node" Depth="0" />
-                        }
+                    <div class="gtree">
+                        <ul>
+                            <li>
+                                <div class="tnode">
+                                    <span class="mini"><i class="bi bi-box-arrow-in-left"></i></span>
+                                    <div><b>@ferestande</b><small> — مبدأ نامه وارده · @dateErsal.ToFaDateTime()</small></div>
+                                    <span class="tst p">ورود به دبیرخانه</span>
+                                </div>
+                                <ul>
+                                    @foreach (var n in roots) { @TreeNode(n) }
+                                </ul>
+                            </li>
+                        </ul>
                     </div>
                 }
             </div>
@@ -139,4 +147,41 @@
         }
         return list;
     }
+
+    private static bool IsDone(ErjaTreeNodeDto n) =>
+        n.IsRead || n.TypeTaeed != 0 || !string.IsNullOrWhiteSpace(n.Answer);
+
+    private static string StLabel(ErjaTreeNodeDto n) =>
+        !string.IsNullOrWhiteSpace(n.Answer) ? "پاسخ داده شد"
+        : n.IsRead ? "رویت شد"
+        : "در انتظار رویت";
+
+    private static string NodeSub(ErjaTreeNodeDto n)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(n.AmalgarTitle)) parts.Add(n.AmalgarTitle!);
+        parts.Add($"ارجاع از {n.Sender}");
+        parts.Add(n.Date.ToFaDateTime());
+        if (n.MohlatPasokh.HasValue) parts.Add($"مهلت: {n.MohlatPasokh.Value.ToFaDate()}");
+        return string.Join(" · ", parts);
+    }
+
+    // گرهٔ بازگشتی درختواره — معادل الگوی GardeshModal نامه داخلی/صادره
+    private RenderFragment TreeNode(ErjaTreeNodeDto n) => @<li>
+        <div class="tnode">
+            <span class="mini"><i class="bi bi-person"></i></span>
+            <div><b>@n.Reciver</b><small> — @NodeSub(n)</small></div>
+            <span class="tst @(IsDone(n) ? "g" : "w")">@StLabel(n)</span>
+        </div>
+        @if (!string.IsNullOrWhiteSpace(n.Answer))
+        {
+            <div class="tans"><i class="bi bi-reply"></i> @n.Answer</div>
+        }
+        @if (n.Children.Count > 0)
+        {
+            <ul>
+                @foreach (var k in n.Children) { @TreeNode(k) }
+            </ul>
+        }
+    </li>;
 }

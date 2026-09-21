@@ -23,6 +23,15 @@ public interface IIncomingLetterService
     Task<PagedResult<IncomingLetterPickDto>> PickAsync(string? search = null, int page = 1, int pageSize = 15);
     Task<List<LetterNumberReservationDto>> GetReservationsAsync(int typeForm = 3);
     Task<List<LetterNumberReservationDto>> ReserveNumberAsync(int typeForm = 3, int count = 1);
+
+    /// <summary>کاربران فعال برای انتخاب گیرنده ارجاع (کمبوی مشترک اتوماسیون)</summary>
+    Task<List<LetterReciverDto>> GetReciversAsync();
+
+    /// <summary>گروه‌های گیرندگان فعال (انتخاب گروهی در ارجاع)</summary>
+    Task<List<LetterGroupDto>> GetGroupsAsync();
+
+    /// <summary>عملگرهای ارجاع</summary>
+    Task<List<AmalgarDto>> GetAmalgarsAsync();
     Task<List<LetterAttachmentDto>> GetAttachmentsAsync(int letterId);
     Task UploadAttachmentAsync(int letterId, Stream stream, string fileName, string contentType);
     Task DeleteAttachmentAsync(int attachmentId);
@@ -123,6 +132,15 @@ public class IncomingLetterService : IIncomingLetterService
 
     public Task<List<LetterNumberReservationDto>> ReserveNumberAsync(int typeForm = 3, int count = 1) =>
         _api.PostAsync<List<LetterNumberReservationDto>>("api/incoming-letters/reserve-number", new { typeForm, count });
+
+    public Task<List<LetterReciverDto>> GetReciversAsync() =>
+        ListOrPaged.GetAsync<LetterReciverDto>(_api, "api/incoming-letters/recivers");
+
+    public Task<List<LetterGroupDto>> GetGroupsAsync() =>
+        ListOrPaged.GetAsync<LetterGroupDto>(_api, "api/incoming-letters/groups?withMembers=true");
+
+    public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
+        ListOrPaged.GetAsync<AmalgarDto>(_api, "api/incoming-letters/amalgars");
 
     public Task<List<LetterAttachmentDto>> GetAttachmentsAsync(int letterId) =>
         ListOrPaged.GetAsync<LetterAttachmentDto>(_api, $"api/incoming-letters/{letterId}/attachments");

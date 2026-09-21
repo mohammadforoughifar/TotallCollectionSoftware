@@ -6,6 +6,7 @@
 @inject LayoutState Layout
 @inject NavigationManager Nav
 @using Inventory.Client.Pages.Office.Letters
+@using Inventory.Client.Pages.Office.Letters.Incoming
 @using Microsoft.AspNetCore.Components.Forms
 @implements IDisposable
 
@@ -666,23 +667,14 @@
 
     private ComposeIncomingModal? composeIncomingModal;
 
+    /// <summary>تبدیل ایمیل دریافتی به نامه وارده — فرم ثبت با اطلاعات ایمیل پر می‌شود.</summary>
     private async Task ConvertToIncomingLetterAsync()
     {
-        if (openMsg == null) return;
+        if (openMsg == null || composeIncomingModal == null) return;
         converting = true;
         try
         {
-            var title = string.IsNullOrWhiteSpace(openMsg.Subject) ? "(بدون موضوع)" : openMsg.Subject.Trim();
-            var from = openMsg.FromOrTo;
-            composeIncomingModal?.OpenFromEmail(new EmailDto
-            {
-                EmailId = openMsg.EmailId,
-                Subject = title,
-                FromEmail = openMsg.AccountAddress,
-                FromName = from,
-                Body = openMsg.Body ?? "",
-                Date = openMsg.Date
-            });
+            await composeIncomingModal.OpenFromEmail(openMsg);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { converting = false; }
