@@ -107,8 +107,6 @@ public class LetterStratureService : ILetterStratureService
             throw new Exception($"ساختار نمی‌تواند بیشتر از {ValidParts.Length} جزء داشته باشد.");
         if (parts.Any(p => !ValidParts.Contains(p)))
             throw new Exception($"جزء نامعتبر است — اجزای مجاز: {string.Join("، ", ValidParts)}.");
-        if (parts.Distinct().Count() != parts.Count)
-            throw new Exception("اجزای ساختار نباید تکراری باشند.");
         if (!parts.Contains("شماره"))
             throw new Exception("جزء «شماره» در ساختار الزامی است.");
         if (parts.Count < 2)

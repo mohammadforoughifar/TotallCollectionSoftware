@@ -14,6 +14,13 @@ public class InnerLettersController : RbacControllerBase
 {
     private const string Module = "InnerLetters";
 
+    private static string PersianError(Exception ex, string fallback)
+    {
+        var message = ex.GetBaseException().Message?.Trim();
+        return !string.IsNullOrWhiteSpace(message) && message.Any(c => c >= 0x0600 && c <= 0x06FF)
+            ? message : fallback;
+    }
+
     private readonly IInnerLetterService _letters;
     private readonly IErjaService _erja;
     private readonly IPishnevisService _pishnevis;
@@ -85,10 +92,14 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Detail(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var dto = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
-        return dto is null
-            ? NotFound(new { message = "نامه پیدا نشد یا شما در گردش آن نیستید." })
-            : Ok(dto);
+        try
+        {
+            var dto = await _letters.GetDetailAsync(id, MyUserId, await IsAdminAsync());
+            return dto is null
+                ? NotFound(new { message = "نامه پیدا نشد یا شما در گردش آن نیستید." })
+                : Ok(dto);
+        }
+        catch (Exception ex) { return BadRequest(new { message = PersianError(ex, "جزئیات نامه قابل دریافت نیست.") }); }
     }
 
     /// <summary>ثبت و ارسال نامه داخلی جدید</summary>
@@ -96,8 +107,17 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Create([FromBody] AddInnerLetterDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
-        var id = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
-        return Ok(new { id, message = "نامه با موفقیت ارسال شد." });
+        try
+        {
+            var id = await _letters.AddInnerLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
+            return Ok(new { id, message = "نامه با موفقیت ارسال شد." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return BadRequest(new { message = PersianError(ex, "ثبت نامه انجام نشد؛ اطلاعات واردشده را بررسی کنید.") });
+        }
     }
 
     /// <summary>ویرایش نامه — فرستنده تا قبل از خوانده‌شدن توسط هر گیرنده (مدیر: همیشه)</summary>
@@ -107,8 +127,12 @@ public class InnerLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         if (!isAdmin && !await HasAsync(Module, "Create"))
             return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
-        await _letters.EditAsync(id, dto, MyUserId, isAdmin);
-        return Ok(new { message = "نامه ویرایش شد." });
+        try
+        {
+            await _letters.EditAsync(id, dto, MyUserId, isAdmin);
+            return Ok(new { message = "نامه ویرایش شد." });
+        }
+        catch (Exception ex) { return BadRequest(new { message = PersianError(ex, "ویرایش نامه انجام نشد؛ اطلاعات واردشده را بررسی کنید.") }); }
     }
 
     /// <summary>حذف نرم نامه — فرستنده (تا قبل از خوانده‌شدن) یا مدیر</summary>
@@ -118,8 +142,12 @@ public class InnerLettersController : RbacControllerBase
         var isAdmin = await IsAdminAsync();
         if (!isAdmin && !await HasAsync(Module, "Create"))
             return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
-        await _letters.DeleteAsync(id, MyUserId, isAdmin);
-        return Ok(new { message = "نامه حذف شد." });
+        try
+        {
+            await _letters.DeleteAsync(id, MyUserId, isAdmin);
+            return Ok(new { message = "نامه حذف شد." });
+        }
+        catch (Exception ex) { return BadRequest(new { message = PersianError(ex, "حذف نامه انجام نشد؛ نامه یا دسترسی خود را بررسی کنید.") }); }
     }
 
     /// <summary>لیست انتخاب نامه برای عطف/پیرو</summary>
@@ -137,7 +165,8 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Gardesh(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()));
+        try { return Ok(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync())); }
+        catch (Exception ex) { return BadRequest(new { message = PersianError(ex, "گردش نامه قابل دریافت نیست.") }); }
     }
 
     /// <summary>ارجاع نامه به کاربر(ان) دیگر</summary>
@@ -358,6 +387,24 @@ public class InnerLettersController : RbacControllerBase
         return Ok(new { message = "گروه حذف شد." });
     }
 
+    private static readonly HashSet<string> AllowedAttachmentExtensions = new(StringComparer.OrdinalIgnoreCase)
+        { ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".txt", ".rtf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".zip" };
+
+    private static bool HasValidSignature(byte[] bytes, string extension)
+    {
+        if (bytes.Length == 0) return false;
+        if (extension is ".txt" or ".rtf") return true;
+        if (extension == ".pdf") return bytes.AsSpan().StartsWith("%PDF"u8);
+        if (extension is ".png") return bytes.AsSpan().StartsWith(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 });
+        if (extension is ".jpg" or ".jpeg") return bytes.AsSpan().StartsWith(new byte[] { 255, 216, 255 });
+        if (extension == ".gif") return bytes.AsSpan().StartsWith("GIF"u8);
+        if (extension == ".webp") return bytes.Length >= 12 && bytes.AsSpan(0, 4).SequenceEqual("RIFF"u8) && bytes.AsSpan(8, 4).SequenceEqual("WEBP"u8);
+        if (extension == ".bmp") return bytes.AsSpan().StartsWith("BM"u8);
+        if (extension is ".doc" or ".xls" or ".ppt") return bytes.AsSpan().StartsWith(new byte[] { 208, 207, 17, 224, 161, 177, 26, 225 });
+        if (extension is ".docx" or ".xlsx" or ".pptx" or ".zip") return bytes.AsSpan().StartsWith(new byte[] { 80, 75, 3, 4 });
+        return false;
+    }
+
     // ==================== پیوست‌ها (AppAttachment، Module="InnerLetters") ====================
 
     private async Task<bool> InFlowAsync(int letterId)
@@ -423,9 +470,15 @@ public class InnerLettersController : RbacControllerBase
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
         if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
+        var extension = Path.GetExtension(file.FileName);
+        if (!AllowedAttachmentExtensions.Contains(extension))
+            return BadRequest(new { message = "پسوند فایل مجاز نیست. فایل PDF، تصویر یا سند اداری انتخاب کنید." });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
+        var content = ms.ToArray();
+        if (!HasValidSignature(content, extension))
+            return BadRequest(new { message = "محتوای فایل با پسوند آن سازگار نیست یا فایل خراب است." });
         ms.Position = 0;
 
         // فایل روی دیسک در wwwroot/uploads/office/innerletter/{letterId} ذخیره می‌شود
@@ -513,9 +566,15 @@ public class InnerLettersController : RbacControllerBase
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
         if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
+        var extension = Path.GetExtension(file.FileName);
+        if (!AllowedAttachmentExtensions.Contains(extension))
+            return BadRequest(new { message = "پسوند فایل مجاز نیست. فایل PDF، تصویر یا سند اداری انتخاب کنید." });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
+        var content = ms.ToArray();
+        if (!HasValidSignature(content, extension))
+            return BadRequest(new { message = "محتوای فایل با پسوند آن سازگار نیست یا فایل خراب است." });
         ms.Position = 0;
 
         // فایل پیش‌نویس زیر wwwroot/uploads/office/innerletter/pishnevis/{pishnevisId} ذخیره می‌شود
