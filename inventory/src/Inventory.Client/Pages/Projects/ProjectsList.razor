@@ -265,6 +265,7 @@
             <details class="mt-3">
                 <summary class="fw-700 text-primary" style="cursor:pointer"><i class="bi bi-funnel ms-1"></i> جستجوی پیشرفته — پروژه‌های بدون داده</summary>
                 <div class="d-flex flex-wrap gap-3 mt-2 p-2 rounded" style="background:#f8fafc">
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptySerial" @bind:after="OnFilterChanged" /> شماره سریال ثبت نشده</label>
                     <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyEntry" @bind:after="OnFilterChanged" /> تاریخ ورود ثبت نشده</label>
                     <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyExit" @bind:after="OnFilterChanged" /> تاریخ خروج ثبت نشده</label>
                     <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyRegistration" @bind:after="OnFilterChanged" /> تاریخ ثبت پروژه ثبت نشده</label>
@@ -1298,7 +1299,7 @@
     private string search = "";
     private int filterKarfarma, filterTypeFactor, filterUser;
     private bool filterReturned;
-    private bool emptyEntry, emptyExit, emptyFactor, emptyFactorType, emptyKarshenasi, emptyRegistration, emptyCustomerNeed;
+    private bool emptySerial, emptyEntry, emptyExit, emptyFactor, emptyFactorType, emptyKarshenasi, emptyRegistration, emptyCustomerNeed;
 
     /// <summary>رویت ستون‌های شماره/نوع فاکتور — مجوز جدا (Projects.ViewFactor)</summary>
     private bool canViewFactor => Auth.Has("Projects.ViewFactor");
@@ -1323,13 +1324,13 @@
     /// <summary>آیا هیچ فیلتری (بالای صفحه یا سرستون) فعال است؟</summary>
     private bool HasAnyFilter => HasColFilter || !string.IsNullOrWhiteSpace(search)
         || filterKarfarma > 0 || filterTypeFactor > 0 || filterUser > 0 || filterReturned
-        || emptyEntry || emptyExit || emptyFactor || emptyFactorType || emptyKarshenasi || emptyRegistration || emptyCustomerNeed;
+        || emptySerial || emptyEntry || emptyExit || emptyFactor || emptyFactorType || emptyKarshenasi || emptyRegistration || emptyCustomerNeed;
 
     private async Task ClearColFilters()
     {
         fNum = fName = fSerial = fKarfarma = fEntry = fExit = fFactor = fFactorType = "";
         fKarshenasi = fSabt = fNeed = fSpent = fFolder = fStatus = "";
-        emptyEntry = emptyExit = emptyFactor = emptyFactorType = emptyKarshenasi = emptyRegistration = emptyCustomerNeed = false;
+        emptySerial = emptyEntry = emptyExit = emptyFactor = emptyFactorType = emptyKarshenasi = emptyRegistration = emptyCustomerNeed = false;
         page = 1;
         await Load();
     }
@@ -1474,7 +1475,7 @@
         TypeFactorId = filterTypeFactor > 0 ? filterTypeFactor : null,
         UserId = filterUser > 0 ? filterUser : null,
         Returned = filterReturned ? true : null,
-        EmptyEntry = emptyEntry, EmptyExit = emptyExit, EmptyFactor = emptyFactor,
+        EmptySerial = emptySerial, EmptyEntry = emptyEntry, EmptyExit = emptyExit, EmptyFactor = emptyFactor,
         EmptyFactorType = emptyFactorType, EmptyKarshenasi = emptyKarshenasi,
         EmptyRegistration = emptyRegistration, EmptyCustomerNeed = emptyCustomerNeed,
         FCode = fNum,
