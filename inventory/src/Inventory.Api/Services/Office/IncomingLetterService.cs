@@ -264,16 +264,20 @@ public class IncomingLetterService : IIncomingLetterService
 
         if (letter == null) return null;
 
+        // علامت‌گذاری «رویت شد» برای ارجاع‌های همین کاربر
+        // (باگ قبلی: شرط ذخیره پس از تغییر IsRead بررسی می‌شد و هرگز درست نبود)
         var myErjas = await _db.Erjas.Where(e => e.SourceId == letterId && e.ReciverUserId == userId && !e.IsDelete).ToListAsync();
+        var hadUnread = false;
         foreach (var e in myErjas)
         {
             if (!e.IsRead)
             {
                 e.IsRead = true;
                 e.DateRead = DateTime.Now;
+                hadUnread = true;
             }
         }
-        if (myErjas.Any(e => !e.IsRead)) await _db.SaveChangesAsync();
+        if (hadUnread) await _db.SaveChangesAsync();
 
         var creator = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == letter.CreateUserId);
         var creatorName = creator != null
@@ -563,13 +567,6 @@ public class IncomingLetterService : IIncomingLetterService
                 IsUsed = false,
                 IsDelete = false
             };
-            _db.LetterNumberReservations.Add(res);
-            created.Add(res);
-        }
-
-        await _db.SaveChangesAsync();
-        return await GetReservationsAsync(userId, typeForm);
-    }            };
             _db.LetterNumberReservations.Add(res);
             created.Add(res);
         }

@@ -1,5 +1,6 @@
 @page "/outgoing-letters/dabirkhane"
 @using Inventory.Shared.Dtos
+@using Inventory.Client.Pages.Office.Letters.Incoming
 @inject IOutgoingLetterService OutgoingSvc
 @inject IEmailClientService EmailSvc
 @inject IToastService Toast
@@ -310,6 +311,7 @@
                 </div>
             }
         }
+        } @* ---------- پایان بخش «نامه‌های صادره» ---------- *@
     </div>
         </section>
     </div>

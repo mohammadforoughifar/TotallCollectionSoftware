@@ -1,5 +1,4 @@
 @inject IIncomingLetterService IncomingSvc
-@inject IAuthState Auth
 @inject IToastService Toast
 
 @* ============================================================
@@ -33,14 +32,19 @@
                                  SelectedUsers="selUsers" SelectedGroups="selGroups"
                                  HasError="errRcv" Changed="OnRcvChanged" />
 
-                <div class="fcard">
-                    <label>عملگر اقدام (نحوه پیگیری)</label>
+                <div class="fcard @(errAmal ? "err" : "")">
+                    <label>عملگر اقدام (نحوه پیگیری) <span class="req">*</span></label>
                     <select class="tin" @bind="amalgarId">
-                        <option value="0">جهت بررسی و اقدام لازم</option>
-                        <option value="1">جهت استحضار و دستور</option>
-                        <option value="2">جهت اقدام عاجل</option>
-                        <option value="3">جهت بایگانی و سوابق</option>
+                        <option value="0">— انتخاب عملگر —</option>
+                        @foreach (var a in amalgars)
+                        {
+                            <option value="@a.AmalgarId">@a.Title</option>
+                        }
                     </select>
+                    @if (errAmal)
+                    {
+                        <div class="ferr"><i class="bi bi-exclamation-circle"></i> انتخاب عملگر الزامی است</div>
+                    }
                 </div>
 
                 <div class="fcard">
@@ -85,14 +89,16 @@
     private int amalgarId = 0;
 
     private LetterPickCombo? combo;
-    private List<UserDto> users = new();
-    private List<UserGroupDto> groups = new();
-    private List<int> selUsers = new();
-    private List<int> selGroups = new();
+    private List<LetterReciverDto> users = new();
+    private List<LetterGroupDto> groups = new();
+    private List<AmalgarDto> amalgars = new();
+    private HashSet<int> selUsers = new();
+    private HashSet<int> selGroups = new();
 
     private string matn = "";
     private DateTime? mohlatPasokh;
     private bool errRcv = false;
+    private bool errAmal = false;
 
     public async Task OpenErja(int letterId, int sabtNumber)
     {
@@ -106,6 +112,7 @@
         this.selUsers.Clear();
         this.selGroups.Clear();
         this.errRcv = false;
+        this.errAmal = false;
 
         visible = true;
         await LoadLookups();
@@ -132,33 +139,41 @@
     {
         try
         {
-            users = await Auth.GetUsersAsync();
-            groups = await Auth.GetUserGroupsAsync();
+            if (users.Count == 0) users = await IncomingSvc.GetReciversAsync();
+            groups = await IncomingSvc.GetGroupsAsync();
+            if (amalgars.Count == 0) amalgars = await IncomingSvc.GetAmalgarsAsync();
+            if (amalgarId == 0) amalgarId = amalgars.FirstOrDefault()?.AmalgarId ?? 0;
         }
-        catch { }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private void OnRcvChanged() => errRcv = false;
+    private void OnRcvChanged()
+    {
+        if (selUsers.Count + selGroups.Count > 0) errRcv = false;
+    }
 
     private async Task SubmitAsync()
     {
         if (!isAnswer)
         {
-            var receiverIds = combo?.GetSelectedUserIds(users) ?? new List<int>();
-            if (receiverIds.Count == 0)
+            errRcv = selUsers.Count + selGroups.Count == 0;
+            errAmal = amalgarId <= 0;
+            if (errRcv || errAmal)
             {
-                errRcv = true;
-                Toast.Error("لطفاً حداقل یک گیرنده انتخاب کنید.");
+                Toast.Error(errRcv ? "لطفاً حداقل یک گیرنده انتخاب کنید." : "لطفاً عملگر اقدام را انتخاب کنید.");
                 return;
             }
 
             saving = true;
             try
             {
+                // گروه‌ها در سمت سرور به اعضایشان باز می‌شوند (ExpandToUserIdsAsync)
                 var dto = new AddErjaDto
                 {
                     LetterId = letterId,
-                    ReceiverUserIds = receiverIds,
+                    ReciversGirandegan = selUsers.ToList(),
+                    GroupsGirandegan = selGroups.ToList(),
+                    AmalgarId = amalgarId,
                     MatnErja = matn.Trim(),
                     MohlatPasokh = mohlatPasokh
                 };
