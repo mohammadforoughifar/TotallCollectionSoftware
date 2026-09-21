@@ -313,7 +313,8 @@ public class ProjectsController : RbacControllerBase
     // کاربر با تایپ «-» (یا واژه‌های خل / خالی / null / empty) در فیلتر ستون‌های تاریخِ اختیاری
     // (و شماره فاکتور / نوع فاکتور / کارشناسی) پروژه‌هایی را می‌بیند که آن مقدار در آن‌ها
     // ثبت نشده است — مثلاً «تاریخ خروج ندارند» یعنی هنوز از مجموعه خارج نشده‌اند.
-    private static readonly string[] EmptyFilterTokens = { "-", "خل", "خالی", "null", "empty" };
+    private static readonly string[] EmptyFilterTokens =
+    { "-", "—", "خل", "خالی", "بدون مقدار", "بدون داده", "فاقد", "ندارد", "null", "empty" };
 
     /// <summary>آیا متنِ تایپ‌شده در فیلتر ستون به معنی «رکوردهای بدون مقدار» است؟</summary>
     private static bool IsEmptyFilter(string? text)

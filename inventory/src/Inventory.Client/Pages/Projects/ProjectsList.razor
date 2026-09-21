@@ -308,16 +308,16 @@
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fName" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fSerial" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fKarfarma" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
-                            <th><DateFilterInput @bind-Text="fEntry" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «-» برای خالی‌ها" /></th>
-                            <th><DateFilterInput @bind-Text="fExit" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «-» برای خالی‌ها" /></th>
+                            <th><DateFilterInput @bind-Text="fEntry" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
+                            <th><DateFilterInput @bind-Text="fExit" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
                             @if (canViewFactor)
                             {
                                 <th><input class="col-filter-input" placeholder="🔍 جستجو — «-» یعنی خالی" @bind="fFactor" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                                 <th><input class="col-filter-input" placeholder="🔍 جستجو — «-» یعنی خالی" @bind="fFactorType" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             }
                             <th><input class="col-filter-input" placeholder="🔍 جستجو — «-» یعنی خالی" @bind="fKarshenasi" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
-                            <th><DateFilterInput @bind-Text="fSabt" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «-» برای خالی‌ها" /></th>
-                            <th><DateFilterInput @bind-Text="fNeed" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «-» برای خالی‌ها" /></th>
+                            <th><DateFilterInput @bind-Text="fSabt" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
+                            <th><DateFilterInput @bind-Text="fNeed" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
                             <th>
                                 <input class="col-filter-input" placeholder="ساعت — مثلا 2:" @bind="fSpent" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" />
                             </th>
