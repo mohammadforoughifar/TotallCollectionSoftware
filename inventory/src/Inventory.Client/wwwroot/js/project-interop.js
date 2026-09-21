@@ -137,7 +137,7 @@
         frame.style.top = '0';
         frame.style.width = '100vw';
         frame.style.height = '100vh';
-        frame.style.opacity = '0';
+        frame.style.opacity = '1';
         frame.style.pointerEvents = 'none';
         document.body.appendChild(frame);
 
