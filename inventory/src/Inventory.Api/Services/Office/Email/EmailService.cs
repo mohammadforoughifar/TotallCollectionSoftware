@@ -1243,8 +1243,13 @@ public class EmailService : IEmailService
             allowed = await _db.OtoInboxEmails.AnyAsync(i => i.InboxId == a.EmailId && (i.Email!.UserId == userId || (isDabirkhaneAdmin && i.Email!.IsDabirkhane)));
         if (!allowed) throw new Exception("این پیوست متعلق به حساب شما نیست.");
 
-        if (string.IsNullOrWhiteSpace(a.FilePath)) return null;
         var full = ResolveDiskPath(a.FilePath);
+        // سازگاری با رکوردهای قدیمی که FilePath نداشتند اما نام فایل ذخیره‌شده داشتند.
+        if ((full is null || !File.Exists(full)) && !string.IsNullOrWhiteSpace(a.AttachmentSavedName))
+        {
+            var legacyRelative = $"{AttachmentFolder}/{a.Type}_{a.EmailId}/{a.AttachmentSavedName}";
+            full = ResolveDiskPath(legacyRelative);
+        }
         if (full is null || !File.Exists(full)) return null;
         return await File.ReadAllBytesAsync(full);
     }
