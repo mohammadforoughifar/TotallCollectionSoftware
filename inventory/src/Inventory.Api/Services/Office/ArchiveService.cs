@@ -240,6 +240,20 @@ public class ArchiveService : IArchiveService
             })
             .ToListAsync();
         var infoByLetter = sentInfo.ToDictionary(x => x.Id);
+        var outgoingPersonalInfo = await _db.OutgoingLetters.AsNoTracking()
+            .Where(l => sentIds.Contains(l.Id))
+            .Select(l => new
+            {
+                l.Id,
+                LetterNumber = l.LetterNumber ?? "",
+                LetterTitle = l.Title,
+                l.DateSabt,
+                l.Foriat,
+                l.Mahramanegi,
+                HasAttachment = _db.AppAttachments.Any(a => a.Module == "OutgoingLetters" && a.RefId == l.Id),
+                Recivers = l.Source.Erjas.Where(e => !e.IsDelete).Select(e => e.UserReciver!.Username).ToList()
+            }).ToListAsync();
+        var infoByOutgoing = outgoingPersonalInfo.ToDictionary(x => x.Id);
 
         var nodes = new Dictionary<int, BayeganiNodeDto>();
         foreach (var r in rows)
@@ -278,6 +292,17 @@ public class ArchiveService : IArchiveService
                 n.Foriat = si.Foriat;
                 n.Mahramanegi = si.Mahramanegi;
                 n.HasAttachment = si.HasAttachment;
+            }
+            else if (r.LetterId is { } outgoingId && infoByOutgoing.TryGetValue(outgoingId, out var oi))
+            {
+                n.LetterId = outgoingId;
+                n.LetterNumber = oi.LetterNumber;
+                n.Title = oi.LetterTitle;
+                n.Sender = "به: " + string.Join("، ", oi.Recivers.Take(2)) + (oi.Recivers.Count > 2 ? " و…" : "");
+                n.Date = oi.DateSabt;
+                n.Foriat = oi.Foriat;
+                n.Mahramanegi = oi.Mahramanegi;
+                n.HasAttachment = oi.HasAttachment;
             }
             nodes[n.BayeganiId] = n;
         }
@@ -410,8 +435,9 @@ public class ArchiveService : IArchiveService
     {
         var erjaIds = (dto.ErjaIds ?? new()).Where(x => x > 0).Distinct().ToList();
         var letterIds = (dto.LetterIds ?? new()).Where(x => x > 0).Distinct().ToList();
+        var outgoingLetterIds = (dto.OutgoingLetterIds ?? new()).Where(x => x > 0).Distinct().ToList();
 
-        if (erjaIds.Count == 0 && letterIds.Count == 0)
+        if (erjaIds.Count == 0 && letterIds.Count == 0 && outgoingLetterIds.Count == 0)
             throw new Exception("حداقل یک نامه برای بایگانی انتخاب کنید.");
 
         if (!await FolderExistsAsync(dto.FolderId, userId))
@@ -503,6 +529,35 @@ public class ArchiveService : IArchiveService
                     ParentId = dto.FolderId,
                     TypeBayegani = 1,
                     IsDelete = false
+                });
+            }
+        }
+
+        if (outgoingLetterIds.Count > 0)
+        {
+            var alreadyOutgoing = await _db.LetterBayeganis
+                .Where(x => x.LetterId.HasValue && outgoingLetterIds.Contains(x.LetterId.Value)
+                            && x.UserId == userId && x.TypeBayegani == TypeInner && !x.IsDelete)
+                .Select(x => x.LetterId!.Value).ToListAsync();
+            if (alreadyOutgoing.Count > 0)
+                throw new Exception("برخی از نامه‌های صادره قبلاً در بایگانی داخلی هستند.");
+
+            var outgoingLetters = await _db.OutgoingLetters
+                .Where(x => outgoingLetterIds.Contains(x.Id) && !x.IsDelete && !x.Source.IsDelete)
+                .ToListAsync();
+            if (outgoingLetters.Count != outgoingLetterIds.Count)
+                throw new Exception("برخی از نامه‌های صادره یافت نشدند.");
+            if (outgoingLetters.Any(x => x.CreatorUserId != userId))
+                throw new Exception("فقط فرستنده می‌تواند نامه صادره خود را در بایگانی داخلی ذخیره کند.");
+
+            foreach (var letter in outgoingLetters)
+            {
+                var title = string.IsNullOrWhiteSpace(dto.Title) ? letter.Title : dto.Title.Trim();
+                _db.LetterBayeganis.Add(new LetterBayegani
+                {
+                    Title = title.Length > 200 ? title[..200] : title,
+                    LetterId = letter.Id, ParentId = dto.FolderId, UserId = userId,
+                    TypeBayegani = TypeInner, IsFolder = false, IsDelete = false
                 });
             }
         }
