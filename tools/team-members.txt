@@ -1,0 +1,24 @@
+# =============================================================================
+#  اعضای تیم — منبع حقیقت برای attribution
+#
+#  قالب هر خط:   نام کامل <ایمیل>   @هندل-گیت‌هاب
+#  خط‌های با # و خط‌های خالی نادیده گرفته می‌شوند.
+#
+#  ⚠️ ایمیل باید «دقیقاً» همان باشد که در git config user.email عضو تیم هست،
+#     وگرنه قلاب commit-msg او را نمی‌شناسد.
+#
+#  ⚠️ ستون owner_github در tools/ownership-map.csv باید از همین هندل‌ها باشد.
+#
+#  فهرست زیر از نام برنچ‌های موجود در مخزن حدس زده شده است.
+#  نام واقعی، ایمیل واقعی و هندل گیت‌هاب هر نفر را جایگزین کنید.
+# =============================================================================
+
+# --- حدس از برنچ‌های موجود: Abbac, Foroughifar, Hemmati-Otomation, Lak,
+#     Salehian, he, lakzaei ---
+
+Mohammad Foroughifar <foroughifar@example.com>   @mohammadforoughifar
+Ali Lak <lak@example.com>                        @CHANGE-ME-lak
+Salehian <salehian@example.com>                  @CHANGE-ME-salehian
+Abbac <abbac@example.com>                        @CHANGE-ME-abbac
+Hemmati <hemmati@example.com>                    @CHANGE-ME-hemmati
+Lakzaei <lakzaei@example.com>                    @CHANGE-ME-lakzaei

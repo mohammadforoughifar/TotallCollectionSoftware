@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  .githooks/pre-push — push مستقیم به main را می‌بندد
+#
+#  چرا: در این مخزن همه مستقیم به main push کرده‌اند. نتیجه‌اش ۲۹ جفت commit
+#  تکراری، ۴۴ برنچ موقت رهاشده، و یک فایل ممیزی دستی ۶.۶ کیلوبایتی
+#  (BRANCH-AUDIT-2026-09-20.md) بود تا بفهمید کار یک نفر به main رسیده یا نه.
+#
+#  با PR اجباری، «چه آیتمی در حال انجام است» خودش از وضعیت PR خوانده می‌شود.
+# =============================================================================
+set -uo pipefail
+
+PROTECTED='^(refs/heads/)?(main|master)$'
+remote="${1:-origin}"
+
+blocked=""
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" =~ $PROTECTED ]]; then
+    blocked="$blocked\n    $local_ref -> $remote:$remote_ref"
+  fi
+done
+
+if [ -n "$blocked" ]; then
+  cat <<EOF
+
+┌─────────────────────────────────────────────────────────────┐
+│  ❌ push مستقیم به برنچ محافظت‌شده بسته است                  │
+└─────────────────────────────────────────────────────────────┘
+  تلاش برای push به:$blocked
+
+  روش درست — کار را با Pull Request به main ببرید:
+
+      1) برنچ کاری بسازید (اگر روی main هستید):
+             git switch -c hr/HR-42-payroll-overtime
+      2) push کنید:
+             git push -u origin hr/HR-42-payroll-overtime
+      3) PR باز کنید:
+             gh pr create --title "HR-42: اضافه‌کردن اضافه‌کاری حقوق" \\
+                          --label "module:Hr" --fill
+
+  اگر واقعاً نیاز به push مستقیم دارید (مثلاً hotfix اضطراری و شما مالک مخزنید):
+      ALLOW_DIRECT_MAIN=1 git push ...
+EOF
+  [ "${ALLOW_DIRECT_MAIN:-0}" = "1" ] || exit 1
+  echo "⚠️  push مستقیم با ALLOW_DIRECT_MAIN=1 انجام می‌شود."
+fi
+
+exit 0
