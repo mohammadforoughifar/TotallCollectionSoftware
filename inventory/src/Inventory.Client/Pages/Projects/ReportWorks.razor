@@ -115,7 +115,7 @@
                         <button class="btn btn-light" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
                         @if (HasAnyFilter)
                         {
-                            <button class="btn btn-light" title="پاک کردن همهٔ فیلترهای بالای صفحه و جستجوی سرستون‌ها"
+                            <button class="btn btn-light" title="پاک کردن متن‌های جستجو و همهٔ فیلترهای بالای صفحه"
                                     @onclick="ClearAllFilters">
                                 <i class="bi bi-x-lg"></i>
                             </button>
@@ -172,7 +172,7 @@
                             <th class="text-end">
                                 @if (HasColFilter)
                                 {
-                                    <button class="col-filter-clear" title="پاک کردن جستجوی ستون‌ها" @onclick="ClearColFilters">
+                                    <button class="col-filter-clear" title="پاک کردن متن‌های جستجوی ستون‌ها" @onclick="ClearColFilters">
                                         <i class="bi bi-x-lg"></i> پاک کردن
                                     </button>
                                 }
