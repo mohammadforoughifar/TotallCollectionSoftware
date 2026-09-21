@@ -102,7 +102,7 @@ public class AuthService : IAuthService
             {
                 "Admin" => await _db.Permissions.Select(p => p.Module + "." + p.Action).ToListAsync(),
                 "Operator" or "Accountant" => await _db.Permissions
-                    .Where(p => (p.Module != "SystemUsers" && p.Module != "Settings" && p.Module != "ItRequests")
+                    .Where(p => (p.Module != "SystemUsers" && p.Module != "Settings" && p.Module != "DocArchive" && p.Module != "ItRequests")
                                 || p.Module == "Dashboards" || p.Module == "ReportPages"
                                 || (p.Module == "ItRequests" && (p.Action == "Create" || p.Action == "ViewDepartment"))
                                 || (p.Module == "LeaveRequests" && p.Action == "Request")
