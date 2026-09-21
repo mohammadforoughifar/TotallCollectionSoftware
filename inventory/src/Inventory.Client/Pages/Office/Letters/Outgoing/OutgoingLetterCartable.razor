@@ -61,10 +61,10 @@
                         }
                         <button class="chip @(filter == "starred" ? "on" : "")" @onclick='() => SetFilter("starred")'><i class="bi bi-star-fill" style="font-size:10px;color:#eab308"></i> نشان‌شده</button>
                         <button class="chip @(filter == "attach" ? "on" : "")" @onclick='() => SetFilter("attach")'><i class="bi bi-paperclip" style="font-size:10px"></i> پیوست‌دار</button>
-                        @if (selectedErjaIds.Count > 0)
+                        @if (selectedLetterIds.Count > 0)
                         {
                             <button class="chip on" style="background:#f59e0b;color:#fff;border-color:#d97706;" @onclick="OpenBatchBayeganiModal">
-                                <i class="bi bi-archive-fill me-1"></i> بایگانی گروهی (@selectedErjaIds.Count.FaDigits())
+                                <i class="bi bi-archive-fill me-1"></i> بایگانی گروهی (@selectedLetterIds.Count.FaDigits())
                             </button>
                         }
                     }
@@ -126,10 +126,10 @@
                         }
                         <div class="mail @( (folder=="inbox"||folder=="signing") && (!ll.IsRead && !ll.IsSigned) ? "unread" : "") @(ll.IsNeshan ? "starred" : "") @(selected?.LetterId == ll.LetterId ? "sel" : "")"
                              @onclick="() => OpenLetter(ll)">
-                            @if (ll.ErjaId.HasValue && ll.ErjaId.Value > 0)
+                            @if (ll.ErjaId.HasValue && ll.LetterId > 0)
                             {
                                 <div class="me-2 d-flex align-items-center" @onclick:stopPropagation="true">
-                                    <input type="checkbox" checked="@(selectedErjaIds.Contains(ll.ErjaId.Value))" @onchange="() => ToggleSelectErja(ll.ErjaId)" style="width:16px;height:16px;cursor:pointer;" />
+                                    <input type="checkbox" checked="@(selectedLetterIds.Contains(ll.LetterId))" @onchange="() => ToggleSelectLetter(ll.LetterId)" style="width:16px;height:16px;cursor:pointer;" />
                                 </div>
                             }
                             <div class="avt">@AvatarText(FolderIsSent ? ll.ReceiverOrganization : ll.Sender)</div>
@@ -521,7 +521,7 @@
         <div class="gov" @onclick="() => batchBayeganiModalOpen = false">
             <div class="gmodal" style="width:min(480px,96vw)" @onclick:stopPropagation="true">
                 <div class="gm-h">
-                    <div class="ttl"><b><i class="bi bi-archive" style="color:var(--p2)"></i> بایگانی گروهی نامه‌های صادره</b><small>@selectedErjaIds.Count.FaDigits() نامه انتخاب شده است</small></div>
+                    <div class="ttl"><b><i class="bi bi-archive" style="color:var(--p2)"></i> بایگانی گروهی نامه‌های صادره</b><small>@selectedLetterIds.Count.FaDigits() نامه انتخاب شده است</small></div>
                     <button class="x" @onclick="() => batchBayeganiModalOpen = false"><i class="bi bi-x-lg"></i></button>
                 </div>
                 <div class="gm-b">
@@ -532,12 +532,14 @@
                 </div>
                 <div class="gm-f">
                     <button class="lbtn ghost" @onclick="() => batchBayeganiModalOpen = false">انصراف</button>
-                    <button class="lbtn pri" disabled="@busy" @onclick="SubmitBatchBayegani"><i class="bi bi-check-lg"></i> تایید بایگانی گروهی</button>
+                    <button class="lbtn pri" disabled="@busy" @onclick="SubmitBatchBayegani"><i class="bi bi-folder2-open"></i> انتخاب پوشه و بایگانی</button>
                 </div>
             </div>
         </div>
     }
 </div>
+
+<DabirkhaneArchivePicker @ref="archivePicker" />
 
 <ComposeOutgoingModal @ref="compose" OnSent="OnComposed" />
 <OutgoingErjaSheet @ref="erjaSheet" OnSubmitted="OnErjaSubmitted" />
@@ -546,34 +548,43 @@
 @code {
     [Parameter] public string? Tab { get; set; }
 
-    private HashSet<int> selectedErjaIds = new();
+    private HashSet<int> selectedLetterIds = new();
     private bool batchBayeganiModalOpen;
     private string batchBayeganiNote = "";
+    private DabirkhaneArchivePicker? archivePicker;
 
-    private void ToggleSelectErja(int? erjaId)
+    private void ToggleSelectLetter(int letterId)
     {
-        if (!erjaId.HasValue || erjaId.Value <= 0) return;
-        var id = erjaId.Value;
-        if (selectedErjaIds.Contains(id)) selectedErjaIds.Remove(id);
-        else selectedErjaIds.Add(id);
+        if (letterId <= 0) return;
+        var id = letterId;
+        if (selectedLetterIds.Contains(id)) selectedLetterIds.Remove(id);
+        else selectedLetterIds.Add(id);
     }
 
     private void OpenBatchBayeganiModal()
     {
-        if (selectedErjaIds.Count == 0) return;
+        if (selectedLetterIds.Count == 0) return;
         batchBayeganiNote = "";
         batchBayeganiModalOpen = true;
     }
 
     private async Task SubmitBatchBayegani()
     {
-        if (selectedErjaIds.Count == 0) return;
+        if (selectedLetterIds.Count == 0) return;
         busy = true;
         try
         {
-            var count = await OutgoingSvc.BatchBayeganiAsync(selectedErjaIds.ToList(), batchBayeganiNote);
-            Toast.Success($"{count.FaDigits()} نامه با موفقیت بایگانی شدند.");
-            selectedErjaIds.Clear();
+            if (archivePicker == null) return;
+            var destination = await archivePicker.PickAsync("انتخاب پوشه برای بایگانی گروهی");
+            if (destination is not { } folderId || folderId <= 0) return;
+            await OutgoingSvc.ArchiveDabirkhaneLettersAsync(new ArchiveOutgoingLettersDto
+            {
+                FolderId = folderId,
+                LetterIds = selectedLetterIds.ToList(),
+                Title = string.IsNullOrWhiteSpace(batchBayeganiNote) ? null : batchBayeganiNote.Trim()
+            });
+            Toast.Success($"{selectedLetterIds.Count.FaDigits()} نامه با موفقیت بایگانی شدند.");
+            selectedLetterIds.Clear();
             batchBayeganiModalOpen = false;
             await ReloadAsync();
         }

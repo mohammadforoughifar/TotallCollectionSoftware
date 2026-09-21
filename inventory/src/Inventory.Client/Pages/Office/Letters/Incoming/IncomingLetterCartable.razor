@@ -1,6 +1,7 @@
 @page "/incoming-letters"
 @page "/office/incoming-letters"
 @inject IIncomingLetterService IncomingSvc
+@inject ILetterService LetterSvc
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject NavigationManager Nav
@@ -243,6 +244,7 @@
 <IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadDataAsync" />
 <IncomingGardeshModal @ref="gardeshModal" />
 <IncomingReservationManager @ref="reservationManager" />
+<BayeganiFolderPickerModal @ref="folderPicker" />
 
 @code {
     private string folder = "inbox";
@@ -270,6 +272,7 @@
     private IncomingErjaSheet? erjaSheet;
     private IncomingGardeshModal? gardeshModal;
     private IncomingReservationManager? reservationManager;
+    private BayeganiFolderPickerModal? folderPicker;
 
     private string FolderTitle => folder switch
     {
@@ -426,8 +429,15 @@
         if (selectedErjaIds.Count == 0) return;
         try
         {
-            int count = await IncomingSvc.BatchBayeganiAsync(selectedErjaIds);
-            Toast.Success($"{count.FaDigits()} نامه بایگانی گردید.");
+            if (folderPicker == null) return;
+            var destination = await folderPicker.PickAsync("انتخاب پوشه برای بایگانی گروهی");
+            if (destination is not { } folderId || folderId <= 0) return;
+            await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto
+            {
+                FolderId = folderId,
+                ErjaIds = selectedErjaIds.ToList()
+            });
+            Toast.Success($"{selectedErjaIds.Count.FaDigits()} نامه بایگانی گردید.");
             selectedErjaIds.Clear();
             await ReloadDataAsync();
         }

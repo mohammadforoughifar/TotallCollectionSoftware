@@ -187,7 +187,7 @@ public class ArchiveService : IArchiveService
         // اطلاعات نامه برای برگ‌ها
         var erjaIds = rows.Where(r => r.ErjaId.HasValue).Select(r => r.ErjaId!.Value).ToList();
         var letterInfo = await _db.Erjas.AsNoTracking()
-            .Where(e => erjaIds.Contains(e.ErjaId))
+            .Where(e => erjaIds.Contains(e.ErjaId) && e.Source.InnerLetter != null)
             .Select(e => new
             {
                 e.ErjaId,
@@ -204,6 +204,21 @@ public class ArchiveService : IArchiveService
             })
             .ToListAsync();
         var infoByErja = letterInfo.ToDictionary(x => x.ErjaId);
+        var incomingInfo = await _db.Erjas.AsNoTracking()
+            .Where(e => erjaIds.Contains(e.ErjaId) && e.Source.IncomingLetter != null)
+            .Select(e => new
+            {
+                e.ErjaId,
+                LetterId = e.SourceId,
+                LetterNumber = e.Source.IncomingLetter!.LetterNumber ?? "",
+                LetterTitle = e.Source.IncomingLetter!.Title,
+                Sender = e.Source.IncomingLetter!.Ferestande,
+                e.Source.IncomingLetter!.Date,
+                e.Source.IncomingLetter!.Foriat,
+                e.Source.IncomingLetter!.Mahramanegi,
+                HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId)
+            }).ToListAsync();
+        var infoByIncomingErja = incomingInfo.ToDictionary(x => x.ErjaId);
 
         // اطلاعات نامه‌های ارسالی بایگانی‌شده (مسیر فرستنده)
         var sentIds = rows.Where(r => r.LetterId.HasValue).Select(r => r.LetterId!.Value).ToList();
@@ -240,6 +255,17 @@ public class ArchiveService : IArchiveService
                 n.Foriat = li.Foriat;
                 n.Mahramanegi = li.Mahramanegi;
                 n.HasAttachment = li.HasAttachment;
+            }
+            else if (r.ErjaId is { } incomingErjaId && infoByIncomingErja.TryGetValue(incomingErjaId, out var ii))
+            {
+                n.LetterId = ii.LetterId;
+                n.LetterNumber = ii.LetterNumber;
+                n.Title = ii.LetterTitle;
+                n.Sender = ii.Sender;
+                n.Date = ii.Date;
+                n.Foriat = ii.Foriat;
+                n.Mahramanegi = ii.Mahramanegi;
+                n.HasAttachment = ii.HasAttachment;
             }
             else if (r.LetterId is { } lid && infoByLetter.TryGetValue(lid, out var si))
             {
@@ -405,6 +431,7 @@ public class ArchiveService : IArchiveService
             // دریافت ارجاع‌ها — فقط گیرنده می‌تواند نامه خودش را بایگانی کند
             var erjas = await _db.Erjas
                 .Include(e => e.Source).ThenInclude(s => s!.InnerLetter)
+                .Include(e => e.Source).ThenInclude(s => s!.IncomingLetter)
                 .Where(x => erjaIds.Contains(x.ErjaId) && !x.IsDelete)
                 .ToListAsync();
 
@@ -418,7 +445,7 @@ public class ArchiveService : IArchiveService
             foreach (var erja in erjas)
             {
                 var title = string.IsNullOrWhiteSpace(dto.Title)
-                    ? (erja.Source?.InnerLetter?.Title ?? "نامه")
+                    ? (erja.Source?.InnerLetter?.Title ?? erja.Source?.IncomingLetter?.Title ?? "نامه")
                     : dto.Title.Trim();
 
                 _db.LetterBayeganis.Add(new LetterBayegani

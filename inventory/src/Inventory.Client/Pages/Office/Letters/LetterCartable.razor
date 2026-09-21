@@ -32,7 +32,7 @@
                 @if (stats.InboxUnread > 0) { <span class="rbadge">@stats.InboxUnread.FaDigits()</span> }
             </button>
             <span class="rlbl">دریافتی</span>
-            <button class="@(folder == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetFolder("sent")'><i class="bi bi-send"></i></button>
+            <button class="@(folder == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetFolder("sent")'><i class="bi bi-send"></i>@if (stats.SentTotal > 0) { <span class="rbadge">@stats.SentTotal.FaDigits()</span> }</button>
             <span class="rlbl">ارسالی</span>
             <button class="@(folder == "draft" ? "on" : "")" title="پیش‌نویس" @onclick='() => SetFolder("draft")'><i class="bi bi-pencil-square"></i></button>
             <span class="rlbl">پیش‌نویس</span>
@@ -436,7 +436,7 @@
                 </div>
                 <div class="gm-f">
                     <button class="lbtn ghost" @onclick="() => batchBayeganiModalOpen = false">انصراف</button>
-                    <button class="lbtn pri" disabled="@busy" @onclick="SubmitBatchBayegani"><i class="bi bi-check-lg"></i> تایید بایگانی گروهی</button>
+                    <button class="lbtn pri" disabled="@busy" @onclick="SubmitBatchBayegani"><i class="bi bi-folder2-open"></i> انتخاب پوشه و بایگانی</button>
                 </div>
             </div>
         </div>
@@ -478,8 +478,16 @@
         busy = true;
         try
         {
-            var count = await LetterSvc.BatchBayeganiAsync(selectedErjaIds.ToList(), batchBayeganiNote);
-            Toast.Success($"{count.FaDigits()} نامه با موفقیت بایگانی شدند.");
+            if (folderPicker == null) return;
+            var destination = await folderPicker.PickAsync("انتخاب پوشه برای بایگانی گروهی");
+            if (destination is not { } folderId || folderId <= 0) return;
+            await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto
+            {
+                FolderId = folderId,
+                ErjaIds = selectedErjaIds.ToList(),
+                Title = string.IsNullOrWhiteSpace(batchBayeganiNote) ? null : batchBayeganiNote.Trim()
+            });
+            Toast.Success($"{selectedErjaIds.Count.FaDigits()} نامه با موفقیت بایگانی شدند.");
             selectedErjaIds.Clear();
             batchBayeganiModalOpen = false;
             await ReloadAsync();
