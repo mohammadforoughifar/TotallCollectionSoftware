@@ -26,6 +26,21 @@
 <div class="ltx" style="animation:none;transform:none">
     <div class="shell" style="grid-template-columns:72px 1fr">
         <nav class="rail">
+            @if (dabirType == "varede")
+            {
+                <div class="logo"><i class="bi bi-inbox-fill"></i></div>
+                <button class="on" title="نامه‌های ثبت‌شده" @onclick='() => incomingPanel?.SetViewFromNavigation("registered")'><i class="bi bi-check2-circle"></i></button>
+                <span class="rlbl">ثبت‌شده</span>
+                <button title="نامه‌های بایگانی‌شده" @onclick='() => incomingPanel?.SetViewFromNavigation("archived")'><i class="bi bi-archive"></i></button>
+                <span class="rlbl">بایگانی</span>
+                <div class="grow"></div>
+                <button title="ثبت نامه وارده جدید" @onclick="() => incomingPanel?.OpenCreateFromNavigation()"><i class="bi bi-plus-lg"></i></button>
+                <span class="rlbl">ثبت نامه</span>
+                <button title="بروزرسانی" @onclick="ReloadAsync"><i class="bi bi-arrow-clockwise"></i></button>
+                <span class="rlbl">بروزرسانی</span>
+            }
+            else
+            {
                 <div class="logo"><i class="bi bi-mailbox"></i></div>
 
                 <button class="@(tab == "pending" ? "on" : "")" title="در انتظار ثبت" @onclick='() => SetTab("pending")'>
@@ -52,6 +67,7 @@
 
                 <button title="بروزرسانی فهرست" @onclick="ReloadAsync"><i class="bi bi-arrow-clockwise"></i></button>
                 <span class="rlbl">بروزرسانی</span>
+            }
         </nav>
         <section class="pane" style="overflow:auto">
         <div style="padding:14px;width:100%;box-sizing:border-box">
@@ -73,7 +89,7 @@
 
         @if (dabirType == "varede")
         {
-            <IntegratedIncomingPanel />
+            <IntegratedIncomingPanel @ref="incomingPanel" />
         }
         else
         {
@@ -564,6 +580,7 @@
     private bool loading = true;
     private string tab = "pending";
     private string dabirType = "sadere";
+    private IntegratedIncomingPanel? incomingPanel;
     private bool showFilters;
 
     // ---------- فیلترهای جستجوی پیشرفته ----------

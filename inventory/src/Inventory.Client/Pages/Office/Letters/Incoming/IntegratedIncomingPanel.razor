@@ -2,6 +2,7 @@
 @inject IIncomingLetterService IncomingSvc
 @inject IAuthState Auth
 @inject IToastService Toast
+@inject IJSRuntime JS
 
 <div class="integrated-incoming-panel" dir="rtl">
     <style>
@@ -19,8 +20,8 @@
         <div class="iin-top">
             <div><div class="iin-title"><i class="bi bi-inbox-fill"></i> نامه‌های وارده</div><div class="iin-sub">دبیرخانه یکپارچه اتوماسیون اداری</div></div>
             <div class="iin-actions">
-                <button class="iin-btn @(view == "registered" ? "active" : "")" @onclick='() => SetView("registered")'><i class="bi bi-check2-circle"></i>ثبت‌شده‌ها</button>
-                <button class="iin-btn @(view == "archived" ? "active" : "")" @onclick='() => SetView("archived")'><i class="bi bi-archive"></i>بایگانی‌شده‌ها</button>
+                <button class="iin-btn @(view == "registered" ? "active" : "")" @onclick='() => SetViewFromNavigation("registered")'><i class="bi bi-check2-circle"></i>ثبت‌شده‌ها</button>
+                <button class="iin-btn @(view == "archived" ? "active" : "")" @onclick='() => SetViewFromNavigation("archived")'><i class="bi bi-archive"></i>بایگانی‌شده‌ها</button>
                 @if (CanRegister) { <button class="iin-btn primary" @onclick="OpenCreate"><i class="bi bi-plus-lg"></i>ثبت نامه وارده جدید</button> }
             </div>
         </div>
@@ -45,21 +46,43 @@
                         <div class="iin-r1"><span class="iin-num">@l.NumberSabt.FaDigits()</span><strong title="@l.Title">@l.Title</strong><span class="iin-badge @(view == "archived" ? "arc" : "ok")">@(view == "archived" ? "بایگانی‌شده" : "ثبت و ارسال شده")</span></div>
                         <div class="iin-meta"><span><b>فرستنده:</b> @l.Ferestande</span><span><b>تاریخ صدور:</b> @l.Date.ToFaDate()</span><span><b>تاریخ ورود:</b> @l.DateErsal.ToFaDate()</span>@if (!string.IsNullOrWhiteSpace(l.NumberLetterVarede)){<span><b>شماره مبدأ:</b> @l.NumberLetterVarede</span>}</div>
                     </div>
-                    <div class="iin-row-actions"><button class="iin-mini"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini"><i class="bi bi-printer"></i> چاپ</button><button class="iin-mini"><i class="bi bi-diagram-3"></i> گردش</button></div>
+                    <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => Print(l)"><i class="bi bi-printer"></i> چاپ</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> بایگانی</button></div>
                 </div>
             }
         }
     </div>
 </div>
 <ComposeIncomingModal @ref="compose" OnSaved="ReloadAsync" />
+<IncomingLetterViewModal @ref="viewModal" />
+<IncomingGardeshModal @ref="flowModal" />
 @code {
     private string view = "registered", search = "";
     private bool loading; private List<IncomingLetterListItemDto> items = new();
     private int registeredTotal, archivedTotal; private ComposeIncomingModal? compose;
+    private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal;
     private bool CanRegister => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
     protected override async Task OnInitializedAsync() => await ReloadAsync();
+    public void OpenCreateFromNavigation() => compose?.OpenCreate();
     private void OpenCreate() => compose?.OpenCreate();
-    private async Task SetView(string value) { view = value; await ReloadAsync(); }
+    public async Task SetViewFromNavigation(string value) { view = value; await ReloadAsync(); }
+    private async Task Show(IncomingLetterListItemDto l) => await viewModal!.Open(l.LetterId);
+    private async Task OpenFlow(IncomingLetterListItemDto l) => await flowModal!.Open(l.LetterId, l.Title, l.Ferestande, l.NumberSabt, l.DateErsal);
+    private async Task Archive(IncomingLetterListItemDto l)
+    {
+        try
+        {
+            if (l.ErjaId is { } erjaId) await IncomingSvc.ToggleBayeganiAsync(erjaId);
+            else await IncomingSvc.ToggleLetterBayeganiAsync(l.LetterId);
+            Toast.Success(view == "archived" ? "نامه از بایگانی خارج شد." : "نامه بایگانی شد.");
+            await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task Print(IncomingLetterListItemDto l)
+    {
+        await JS.InvokeVoidAsync("window.print");
+    }
+
     private async Task ReloadAsync()
     {
         loading = true;
