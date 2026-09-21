@@ -750,7 +750,11 @@
         if (t == "archive" && folders.Count == 0) { try { folders = await EmailSvc.GetFoldersAsync(); } catch { } }
         // دریافتی/ارسالی/اسپم: ابتدا فقط پیام‌های تازه از سرور گرفته و در بانک ذخیره می‌شوند،
         // سپس فهرستِ صفحه‌بندی‌شده از بانک خوانده می‌شود.
-        if (t is "inbox" or "sent" or "spam") await SyncFolderAsync(t);
+        if (t is "inbox" or "sent" or "spam")
+        {
+            if (VisibleAccounts.Any(a => a.IsActive)) await SyncFolderAsync(t);
+            else { messages = new(); totalItems = 0; totalPages = 1; unreadCount = 0; spamCount = 0; }
+        }
         await ReloadAsync();
     }
 
@@ -799,6 +803,13 @@
         loading = true;
         try
         {
+            // نبود حساب ایمیل یک وضعیت عادی است، نه خطای احراز هویت؛
+            // در این حالت صندوق‌ها خالی نمایش داده می‌شوند تا کاربر حساب بسازد.
+            if (tab != "accounts" && !VisibleAccounts.Any(a => a.IsActive))
+            {
+                messages = new(); totalItems = 0; totalPages = 1; unreadCount = 0; spamCount = 0;
+                return;
+            }
             int? fid = accFilter > 0 ? accFilter : null;
             var term = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
 

@@ -52,11 +52,11 @@
                 </div>
                 <div class="fcard">
                     <label>تاریخ نامه مبدأ (شمسی)</label>
-                    <input class="tin" placeholder="مثال: 1403/06/15" @bind="shamsiDate" />
+                    <DatePicker @bind-Value="sourceDate" AllowClear="false" CssClass="tin" Placeholder="انتخاب تاریخ شمسی…" />
                 </div>
                 <div class="fcard">
                     <label>تاریخ ورود / ثبت سیستم (شمسی)</label>
-                    <input class="tin" placeholder="مثال: 1403/06/15" @bind="shamsiDateErsal" />
+                    <DatePicker @bind-Value="entryDate" AllowClear="false" CssClass="tin" Placeholder="انتخاب تاریخ شمسی…" />
                 </div>
             </div>
 
@@ -146,7 +146,7 @@
                     <label><i class="bi bi-paperclip"></i> پیوست‌های نامه وارده <span class="opt">حداکثر ۲۰ مگابایت</span></label>
                     <div style="display:flex; gap:6px">
                         <button class="btn btn-sm btn-outline-primary" type="button" @onclick="TriggerScanModal">
-                            <i class="bi bi-camera-fill me-1"></i> اسکن / عکس‌برداری مستقیم
+                            <i class="bi bi-camera-fill me-1"></i> اسکن از اسکنر / دوربین سیستم
                         </button>
                     </div>
                 </div>
@@ -204,7 +204,7 @@
                 <h6>دوربین / اسکنر آماده به‌کار است</h6>
                 <p class="text-muted small">تصویر مدرک اسکن‌شده به لیست پیوست‌های نامه افزوده خواهد شد.</p>
                 <label class="btn btn-primary mt-2">
-                    <i class="bi bi-camera me-1"></i> گرفتن عکس / بارگذاری اسکن
+                    <i class="bi bi-camera me-1"></i> دریافت فایل از اسکنر یا دوربین
                     <InputFile OnChange="OnFilesSelected" capture="environment" style="display:none" />
                 </label>
             </div>
@@ -232,6 +232,8 @@
     private string numberLetterVarede = "";
     private string shamsiDate = DateTime.Now.ToFa();
     private string shamsiDateErsal = DateTime.Now.ToFa();
+    private DateTime? sourceDate = DateTime.Today;
+    private DateTime? entryDate = DateTime.Today;
     private string typeErsal = "دستی / پیک";
     private string deliveryName = "";
     private int selectedSabt = 0;
@@ -257,6 +259,7 @@
         editLetterId = 0;
         title = ""; ferestande = ""; numberLetterVarede = "";
         shamsiDate = DateTime.Now.ToFa(); shamsiDateErsal = DateTime.Now.ToFa();
+        sourceDate = DateTime.Today; entryDate = DateTime.Today;
         typeErsal = "دستی / پیک"; deliveryName = ""; selectedSabt = 0;
         mahramanegi = 0; foriat = 0; description = "";
         selUsers.Clear(); selGroups.Clear(); initialMatnErja = "";
@@ -276,6 +279,7 @@
         numberLetterVarede = letter.NumberLetterVarede;
         shamsiDate = letter.Date.ToFa();
         shamsiDateErsal = letter.DateErsal.ToFa();
+        sourceDate = letter.Date; entryDate = letter.DateErsal;
         typeErsal = string.IsNullOrWhiteSpace(letter.TypeErsal) ? "دستی / پیک" : letter.TypeErsal;
         deliveryName = letter.DeliveryName;
         selectedSabt = letter.NumberSabt;
@@ -301,6 +305,7 @@
         ferestande = string.IsNullOrWhiteSpace(email.FromOrTo) ? email.AccountAddress : email.FromOrTo.Trim();
         typeErsal = "پست الکترونیک (ایمیل)";
         shamsiDate = email.Date.ToFa();
+        sourceDate = email.Date; entryDate = email.Date;
         description = "<p><b>برگرفته از ایمیل دریافتی</b> — حساب: "
                     + System.Net.WebUtility.HtmlEncode(email.AccountAddress)
                     + $" — تاریخ: {email.Date.ToFaDateTime()}</p>"
@@ -345,8 +350,8 @@
 
         // تاریخ‌های شمسی فرم باید معتبر باشند — قبلاً نادیده گرفته می‌شدند و
         // همیشه DateTime.Now به سرور می‌رفت.
-        var dateVal = PersianDate.TryParse(shamsiDate);
-        var dateErsalVal = PersianDate.TryParse(shamsiDateErsal);
+        var dateVal = sourceDate;
+        var dateErsalVal = entryDate;
         if (dateVal is null) { Toast.Error("تاریخ نامه مبدأ معتبر نیست (نمونه: 1403/06/15)."); return; }
         if (dateErsalVal is null) { Toast.Error("تاریخ ورود / ثبت معتبر نیست (نمونه: 1403/06/15)."); return; }
 

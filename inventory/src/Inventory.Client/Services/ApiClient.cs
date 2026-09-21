@@ -164,6 +164,10 @@ public class ApiClient : IApiClient
 
         if (!resp.IsSuccessStatusCode)
         {
+            if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                throw new ApiException("نشست شما معتبر نیست یا منقضی شده است؛ لطفاً دوباره وارد سامانه شوید.");
+            if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                throw new ApiException("شما مجوز انجام این عملیات را ندارید.");
             string msg;
             try
             {

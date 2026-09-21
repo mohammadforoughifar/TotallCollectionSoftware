@@ -209,8 +209,13 @@ public class EmailController : RbacControllerBase
     [HttpPost("archive")]
     public async Task<IActionResult> Archive([FromBody] EmailArchiveDto dto)
     {
-        await _email.ArchiveAsync(dto, MyUserId, await IsDabirkhaneAsync());
-        return Ok(new { message = dto.FolderId > 0 ? "ایمیل بایگانی شد." : "از بایگانی خارج شد." });
+        try
+        {
+            await _email.ArchiveAsync(dto, MyUserId, await IsDabirkhaneAsync());
+            return Ok(new { message = dto.FolderId > 0 ? "ایمیل بایگانی شد." : "از بایگانی خارج شد." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (Exception) { return BadRequest(new { message = "بایگانی ایمیل انجام نشد؛ ایمیل یا پوشه انتخابی را بررسی کنید." }); }
     }
 
     /// <summary>دانلود پیوست ایمیل — فقط صاحب حساب (یا دبیرخانه برای حساب رسمی)</summary>

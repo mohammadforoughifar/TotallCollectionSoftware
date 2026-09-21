@@ -362,8 +362,13 @@ public class OutgoingLettersController : RbacControllerBase
         if (!await HasDabirkhaneAsync())
             return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
 
-        await _archive.ArchiveOutgoingLettersAsync(MyUserId, dto);
-        return Ok(new { message = dto.LetterIds.Count > 1 ? "نامه‌ها به بایگانی دبیرخانه اضافه شدند." : "نامه به بایگانی دبیرخانه اضافه شد." });
+        try
+        {
+            await _archive.ArchiveOutgoingLettersAsync(MyUserId, dto);
+            return Ok(new { message = dto.LetterIds.Count > 1 ? "نامه‌ها به بایگانی دبیرخانه اضافه شدند." : "نامه به بایگانی دبیرخانه اضافه شد." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (Exception) { return BadRequest(new { message = "بایگانی نامه صادره انجام نشد؛ نامه یا پوشه انتخابی را بررسی کنید." }); }
     }
 
     /// <summary>خروج نامه صادره از بایگانی دبیرخانه</summary>
