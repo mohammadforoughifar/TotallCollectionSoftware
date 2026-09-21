@@ -288,7 +288,7 @@
                                     @foreach (var a in attachments)
                                     {
                                         var aa = a;
-                                        <a class="att" href="@LetterSvc.AttachmentDownloadUrl(aa.Id)" target="_blank">
+                                        <button type="button" class="att text-start" @onclick="() => DownloadAttachmentAsync(aa)">
                                             <div class="ic"><i class="bi @FileIcon(aa.FileName)"></i></div>
                                             <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
                                             @if (selected.IsMine || Auth.IsAdmin)
@@ -296,7 +296,7 @@
                                                 <i class="bi bi-x-circle-fill arm" title="حذف پیوست"
                                                    @onclick="() => DeleteAttachment(aa)" @onclick:preventDefault="true" @onclick:stopPropagation="true"></i>
                                             }
-                                        </a>
+                                        </button>
                                     }
                                     @if (selected.IsMine)
                                     {
@@ -826,6 +826,7 @@
     private async Task DeleteDraft(PishnevisDto d)
     {
         openMenuId = 0;
+        if (!await JS.InvokeAsync<bool>("confirm", $"پیش‌نویس «{d.Title}» حذف شود؟")) return;
         try
         {
             await LetterSvc.DeletePishnevisAsync(d.PishnevisId);
@@ -1058,6 +1059,16 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { attUploading = false; }
+    }
+
+    private async Task DownloadAttachmentAsync(LetterAttachmentDto a)
+    {
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync(LetterSvc.AttachmentDownloadUrl(a.Id));
+            await JS.InvokeVoidAsync("downloadBlob", a.FileName, a.ContentType ?? "application/octet-stream", Convert.ToBase64String(bytes));
+        }
+        catch (Exception ex) { Toast.Error($"دانلود پیوست انجام نشد: {ex.Message}"); }
     }
 
     /// <summary>حذف پیوست از نامه باز در ریدر</summary>

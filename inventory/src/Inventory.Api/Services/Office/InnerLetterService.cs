@@ -48,6 +48,9 @@ public class InnerLetterService : IInnerLetterService
         _store = store;
     }
 
+    private static string NormalizeSearch(string value) => value.Trim()
+        .Replace('ي', 'ی').Replace('ى', 'ی').Replace('ك', 'ک').Replace('ۀ', 'ه');
+
     // ---------- شماره‌گذاری بر اساس سال شمسی — نسخه اصلاح‌شده ----------
     // باگ قبلی: فقط آخرین نامه (بر اساس Id) بررسی می‌شد و فیلتر IsDelete نداشت.
     // نسخه جدید: بیشترین شماره در سال شمسی جاری بین نامه‌های غیرحذفی محاسبه می‌شود.
@@ -115,6 +118,8 @@ public class InnerLetterService : IInnerLetterService
     {
         if (string.IsNullOrWhiteSpace(dto.Title))
             throw new Exception("عنوان نامه الزامی است.");
+        if (dto.Title.Trim().Length > 300)
+            throw new Exception("طول عنوان نامه نباید بیشتر از ۳۰۰ نویسه باشد.");
 
         // ---------- باز کردن گروه‌ها به کاربران (منطق Reciver_Groups کارفرما) ----------
         var allGroupIds = dto.GroupsGirande.Concat(dto.GroupsErja).Concat(dto.GroupsHamesh).Distinct().ToList();
@@ -261,7 +266,7 @@ public class InnerLetterService : IInnerLetterService
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
+            var s = NormalizeSearch(search);
             q = q.Where(e => e.Source.InnerLetter!.Title.Contains(s)
                              || (e.Source.InnerLetter!.LetterNumber ?? "").Contains(s)
                              || (e.UserSender!.FirstName + " " + e.UserSender.LastName).Contains(s)
@@ -321,7 +326,7 @@ public class InnerLetterService : IInnerLetterService
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
+            var s = NormalizeSearch(search);
             q = q.Where(e => e.Source.InnerLetter!.Title.Contains(s)
                              || (e.Source.InnerLetter!.LetterNumber ?? "").Contains(s)
                              || (e.UserSender!.FirstName + " " + e.UserSender.LastName).Contains(s));
@@ -379,7 +384,7 @@ public class InnerLetterService : IInnerLetterService
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
+            var s = NormalizeSearch(search);
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s));
         }
 
@@ -554,7 +559,7 @@ public class InnerLetterService : IInnerLetterService
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
+            var s = NormalizeSearch(search);
             q = q.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s));
         }
 
@@ -627,6 +632,8 @@ public class InnerLetterService : IInnerLetterService
     {
         if (string.IsNullOrWhiteSpace(dto.Title))
             throw new Exception("عنوان نامه الزامی است.");
+        if (dto.Title.Trim().Length > 300)
+            throw new Exception("طول عنوان نامه نباید بیشتر از ۳۰۰ نویسه باشد.");
 
         var letter = await _db.InnerLetters
             .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete)
