@@ -63,7 +63,7 @@ public sealed class EffectivePermissions : IEffectivePermissions
                 "Admin" => await _db.Permissions.Select(p => p.Module + "." + p.Action).ToListAsync(),
                 "Operator" or "Accountant" => await _db.Permissions
                     .Where(p => (p.Action == "Read" || p.Action == "View" || p.Action == "Create")
-                                && p.Module != "SystemUsers" && p.Module != "Settings")
+                                && p.Module != "SystemUsers" && p.Module != "Settings" && p.Module != "DocArchive")
                     .Select(p => p.Module + "." + p.Action).ToListAsync(),
                 _ => await _db.Permissions
                     .Where(p => p.Module == "ReferrerPanel" || p.Module == "MyCartable"
