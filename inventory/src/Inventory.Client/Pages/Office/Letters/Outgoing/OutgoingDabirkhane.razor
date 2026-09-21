@@ -21,7 +21,7 @@
    • ۶) جستجوی پیشرفته بین نامه‌ها
    ============================================================ *@
 
-<PageTitle>دبیرخانه نامه صادره</PageTitle>
+<PageTitle>دبیرخانه یکپارچه</PageTitle>
 
 <div class="ltx" style="animation:none;transform:none">
     <div class="shell" style="grid-template-columns:72px 1fr">
@@ -60,14 +60,23 @@
             <div style="display:flex;align-items:center;gap:12px">
                 <span class="t"><i class="bi bi-mailbox" style="color:var(--p2)"></i> دبیرخانه یکپارچه اتوماسیون اداری</span>
                 <div class="btn-group btn-group-sm">
-                    <button class="btn btn-primary">
+                    <button class="btn @(dabirType == "sadere" ? "btn-primary" : "btn-outline-primary")" @onclick='() => dabirType = "sadere"'>
                         <i class="bi bi-send-fill me-1"></i> نامه‌های صادره
+                    </button>
+                    <button class="btn @(dabirType == "varede" ? "btn-primary" : "btn-outline-primary")" @onclick='() => dabirType = "varede"'>
+                        <i class="bi bi-inbox-fill me-1"></i> نامه‌های وارده
                     </button>
                 </div>
             </div>
             <span class="sync"><span class="dot"></span> بروزرسانی زنده</span>
         </div>
 
+        @if (dabirType == "varede")
+        {
+            <IncomingLetterCartable Tab="sent" />
+        }
+        else
+        {
         @* ---------- کارت‌های آمار ---------- *@
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
             <div class="scard" style="text-align:center">
@@ -299,7 +308,7 @@
                 </div>
             }
         }
-        @* ---------- پایان بخش «نامه‌های صادره» ---------- *@
+        } @* ---------- پایان بخش «نامه‌های صادره» ---------- *@
     </div>
         </section>
     </div>
@@ -554,6 +563,7 @@
     private DabirkhaneStatsDto stats = new();
     private bool loading = true;
     private string tab = "pending";
+    private string dabirType = "sadere";
     private bool showFilters;
 
     // ---------- فیلترهای جستجوی پیشرفته ----------
