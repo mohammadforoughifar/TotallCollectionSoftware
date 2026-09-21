@@ -15,6 +15,7 @@ public interface IIncomingLetterService
     Task<bool> ToggleLetterNeshanAsync(int letterId);
     Task<bool> ToggleNeshanAsync(int erjaId);
     Task<bool> ToggleBayeganiAsync(int erjaId);
+    Task<bool> ToggleLetterBayeganiAsync(int letterId);
     Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null);
     Task AddErjaAsync(AddErjaDto dto);
     Task AnswerAsync(int erjaId, AnswerErjaDto dto);
@@ -101,6 +102,9 @@ public class IncomingLetterService : IIncomingLetterService
 
     public async Task<bool> ToggleBayeganiAsync(int erjaId) =>
         (await _api.PostAsync<BayeganiResponse>($"api/incoming-letters/erja/{erjaId}/bayegani")).IsBayegani;
+
+    public async Task<bool> ToggleLetterBayeganiAsync(int letterId) =>
+        (await _api.PostAsync<BayeganiResponse>($"api/incoming-letters/{letterId}/bayegani")).IsBayegani;
 
     public async Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null)
     {
