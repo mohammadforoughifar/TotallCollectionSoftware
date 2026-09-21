@@ -63,6 +63,10 @@ public static class DbInitializer
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
 
+                // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt
+                // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.
+                await DabirkhaneSchemaV1.EnsureAsync(db);
+
                 // نامه وارده — جدول IncomingLetters در مایگریشن SquashedInitial نیست؛
                 // بدون این، SQL Server خطای «Invalid object name 'IncomingLetters'» می‌دهد.
                 await IncomingLetterSchemaV1.EnsureAsync(db);
