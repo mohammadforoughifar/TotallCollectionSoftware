@@ -65,6 +65,7 @@ BEGIN
         [Title] nvarchar(200) NOT NULL DEFAULT(N''),
         [TypeErsal] nvarchar(100) NULL,
         [Creator] int NOT NULL DEFAULT(0),
+        [CreatorId] int NOT NULL DEFAULT(0),
         [CreateUserId] int NOT NULL DEFAULT(0),
         [Ferestande] nvarchar(200) NOT NULL DEFAULT(N''),
         [NumberLetterVarede] nvarchar(100) NULL,
@@ -86,6 +87,11 @@ BEGIN
     CREATE INDEX [IX_IncomingLetters_Ferestande] ON [dbo].[IncomingLetters] ([Ferestande]);
     CREATE INDEX [IX_IncomingLetters_CreateUserId] ON [dbo].[IncomingLetters] ([CreateUserId]);
 END");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.IncomingLetters', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.IncomingLetters', N'CreatorId') IS NULL
+    ALTER TABLE [dbo].[IncomingLetters] ADD [CreatorId] int NOT NULL CONSTRAINT [DF_IncomingLetters_CreatorId] DEFAULT(0);");
 
         // جدول رزرو شماره اندیکاتور/نامه (TBL_RezervationNumberLetter)
         await SafeAsync(db, @"
@@ -136,6 +142,7 @@ CREATE TABLE IF NOT EXISTS IncomingLetters (
     Title TEXT NOT NULL DEFAULT '',
     TypeErsal TEXT NULL,
     Creator INTEGER NOT NULL DEFAULT 0,
+    CreatorId INTEGER NOT NULL DEFAULT 0,
     CreateUserId INTEGER NOT NULL DEFAULT 0,
     Ferestande TEXT NOT NULL DEFAULT '',
     NumberLetterVarede TEXT NULL,
@@ -166,6 +173,7 @@ CREATE TABLE IF NOT EXISTS LetterNumberReservations (
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_Number ON IncomingLetters (Number);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_NumberSabt ON IncomingLetters (NumberSabt);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_Ferestande ON IncomingLetters (Ferestande);");
+        await SafeAsync(db, "ALTER TABLE IncomingLetters ADD COLUMN CreatorId INTEGER NOT NULL DEFAULT 0;");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_IncomingLetters_CreateUserId ON IncomingLetters (CreateUserId);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_LetterNumberReservations_TypeForm_NumberSabt ON LetterNumberReservations (TypeForm, NumberSabt);");
     }
