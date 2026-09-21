@@ -412,41 +412,23 @@ public class ProjectsController : RbacControllerBase
         if (showFactor)
         {
             // «-» در فیلتر شماره فاکتور = فقط پروژه‌هایی که هنوز فاکتور ندارند
-            if (IsEmptyFilter(q.FFactor))
-            {
-                query = query.Where(p => p.FactorNumber == null || p.FactorNumber == "");
-            }
-            else
-            {
-                var fFactor = NormFilter(q.FFactor);
-                if (fFactor is not null) query = query.Where(p => p.FactorNumber != null && p.FactorNumber.Contains(fFactor));
-            }
+            var fFactor = NormFilter(q.FFactor);
+            if (fFactor is not null) query = query.Where(p => p.FactorNumber != null && p.FactorNumber.Contains(fFactor));
 
             // «-» در فیلتر نوع فاکتور = فقط پروژه‌هایی که نوع فاکتور برایشان تعیین نشده
-            if (IsEmptyFilter(q.FFactorType))
-            {
-                query = query.Where(p => p.FactorTypeId == null);
-            }
-            else
-            {
-                var fFactorType = NormFilter(q.FFactorType);
-                if (fFactorType is not null) query = query.Where(p => p.TypeFactor != null && p.TypeFactor.Name.Contains(fFactorType));
-            }
+            var fFactorType = NormFilter(q.FFactorType);
+            if (fFactorType is not null) query = query.Where(p => p.TypeFactor != null && p.TypeFactor.Name.Contains(fFactorType));
         }
+
+        if (q.EmptyFactor) query = query.Where(p => p.FactorNumber == null || p.FactorNumber == "");
+        if (q.EmptyFactorType) query = query.Where(p => p.FactorTypeId == null);
 
         // «-» در فیلتر کارشناسی اولیه = فقط پروژه‌هایی که کارشناسی ثبت نشده دارد
-        if (IsEmptyFilter(q.FKarshenasi))
-        {
-            query = query.Where(p => p.KarshenasiAvalie == null || p.KarshenasiAvalie == "");
-        }
-        else
-        {
-            var fKarshenasi = NormFilter(q.FKarshenasi);
-            if (fKarshenasi is not null) query = query.Where(p => p.KarshenasiAvalie != null && p.KarshenasiAvalie.Contains(fKarshenasi));
-        }
+        var fKarshenasi = NormFilter(q.FKarshenasi);
+        if (fKarshenasi is not null) query = query.Where(p => p.KarshenasiAvalie != null && p.KarshenasiAvalie.Contains(fKarshenasi));
 
         // ----- تاریخ‌های اختیاری: تایپ «-» یعنی فقط پروژه‌هایی که این تاریخ را ندارند -----
-        if (IsEmptyFilter(q.FEntry))
+        if (q.EmptyEntry)
         {
             query = query.Where(p => p.EntryDate == null);
         }
@@ -460,7 +442,7 @@ public class ProjectsController : RbacControllerBase
             }
         }
 
-        if (IsEmptyFilter(q.FExit))
+        if (q.EmptyExit)
         {
             query = query.Where(p => p.ExitDate == null);
         }
@@ -474,7 +456,7 @@ public class ProjectsController : RbacControllerBase
             }
         }
 
-        if (IsEmptyFilter(q.FSabt))
+        if (q.EmptyRegistration)
         {
             query = query.Where(p => p.ProjectRegistrationDate == null);
         }
@@ -488,7 +470,7 @@ public class ProjectsController : RbacControllerBase
             }
         }
 
-        if (IsEmptyFilter(q.FNeed))
+        if (q.EmptyCustomerNeed)
         {
             query = query.Where(p => p.CustomerRequiredDate == null);
         }

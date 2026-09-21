@@ -247,6 +247,15 @@ public class ProjectListQuery
     public int? UserId { get; set; }
     public bool? Returned { get; set; }
 
+    // ---------- فیلتر پیشرفته «بدون داده» ----------
+    public bool EmptyEntry { get; set; }
+    public bool EmptyExit { get; set; }
+    public bool EmptyFactor { get; set; }
+    public bool EmptyFactorType { get; set; }
+    public bool EmptyKarshenasi { get; set; }
+    public bool EmptyRegistration { get; set; }
+    public bool EmptyCustomerNeed { get; set; }
+
     // ---------- جستجوی سرستون‌ها ----------
     public string? FCode { get; set; }
     public string? FName { get; set; }
@@ -288,6 +297,13 @@ public class ProjectListQuery
         if (TypeFactorId is > 0) Add("typeFactorId", TypeFactorId.ToString());
         if (UserId is > 0) Add("userId", UserId.ToString());
         if (Returned is true) Add("returned", "true");
+        if (EmptyEntry) Add("emptyEntry", "true");
+        if (EmptyExit) Add("emptyExit", "true");
+        if (EmptyFactor) Add("emptyFactor", "true");
+        if (EmptyFactorType) Add("emptyFactorType", "true");
+        if (EmptyKarshenasi) Add("emptyKarshenasi", "true");
+        if (EmptyRegistration) Add("emptyRegistration", "true");
+        if (EmptyCustomerNeed) Add("emptyCustomerNeed", "true");
         Add("fCode", FCode);
         Add("fName", FName);
         Add("fSerial", FSerial);

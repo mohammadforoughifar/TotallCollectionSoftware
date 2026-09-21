@@ -262,6 +262,18 @@
                     <button class="btn btn-light w-100" title="اعمال فیلتر" @onclick="Load"><i class="bi bi-funnel"></i></button>
                 </div>
             </div>
+            <details class="mt-3">
+                <summary class="fw-700 text-primary" style="cursor:pointer"><i class="bi bi-funnel ms-1"></i> جستجوی پیشرفته — پروژه‌های بدون داده</summary>
+                <div class="d-flex flex-wrap gap-3 mt-2 p-2 rounded" style="background:#f8fafc">
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyEntry" @bind:after="OnFilterChanged" /> تاریخ ورود ثبت نشده</label>
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyExit" @bind:after="OnFilterChanged" /> تاریخ خروج ثبت نشده</label>
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyRegistration" @bind:after="OnFilterChanged" /> تاریخ ثبت پروژه ثبت نشده</label>
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyCustomerNeed" @bind:after="OnFilterChanged" /> تاریخ نیاز مشتری ثبت نشده</label>
+                    @if (canViewFactor) { <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFactor" @bind:after="OnFilterChanged" /> شماره فاکتور ثبت نشده</label> }
+                    @if (canViewFactor) { <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFactorType" @bind:after="OnFilterChanged" /> نوع فاکتور ثبت نشده</label> }
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyKarshenasi" @bind:after="OnFilterChanged" /> کارشناسی اولیه ثبت نشده</label>
+                </div>
+            </details>
         </div>
     </div>
 </div>
@@ -308,16 +320,16 @@
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fName" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fSerial" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fKarfarma" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
-                            <th><DateFilterInput @bind-Text="fEntry" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
-                            <th><DateFilterInput @bind-Text="fExit" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
+                            <th><DateFilterInput @bind-Text="fEntry" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
+                            <th><DateFilterInput @bind-Text="fExit" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
                             @if (canViewFactor)
                             {
-                                <th><input class="col-filter-input" placeholder="🔍 جستجو — «-» یعنی خالی" @bind="fFactor" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
-                                <th><input class="col-filter-input" placeholder="🔍 جستجو — «-» یعنی خالی" @bind="fFactorType" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                                <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fFactor" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                                <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fFactorType" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             }
-                            <th><input class="col-filter-input" placeholder="🔍 جستجو — «-» یعنی خالی" @bind="fKarshenasi" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
-                            <th><DateFilterInput @bind-Text="fSabt" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
-                            <th><DateFilterInput @bind-Text="fNeed" @bind-Text:after="OnFilterChanged" Placeholder="تاریخ یا «- / خالی» برای موارد بدون داده" /></th>
+                            <th><input class="col-filter-input" placeholder="🔍 جستجو" @bind="fKarshenasi" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
+                            <th><DateFilterInput @bind-Text="fSabt" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
+                            <th><DateFilterInput @bind-Text="fNeed" @bind-Text:after="OnFilterChanged" Placeholder="جستجوی تاریخ" /></th>
                             <th>
                                 <input class="col-filter-input" placeholder="ساعت — مثلا 2:" @bind="fSpent" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" />
                             </th>
@@ -1242,6 +1254,7 @@
                                 <th>ردیف</th>
                                 <th>تاریخ</th>
                                 <th>ثبت‌کننده</th>
+                                <th>اپراتور</th>
                                 <th>شروع</th>
                                 <th>پایان</th>
                                 <th>استراحت</th>
@@ -1256,6 +1269,7 @@
                                     <td class="num">@idx.FaDigits()</td>
                                     <td class="num fw-700">@r.ReportDate.ToFaDate()</td>
                                     <td><i class="bi bi-person text-muted ms-1"></i>@r.UserName</td>
+                                    <td>@(string.IsNullOrWhiteSpace(r.OperatorName) ? "—" : r.OperatorName)</td>
                                     <td class="num">@r.StartTime.TimeFa()</td>
                                     <td class="num">@r.EndTime.TimeFa()</td>
                                     <td class="num fs-8 text-muted">@((r.BreakfastTime.ToTimeSpan() + r.LunchTime.ToTimeSpan()).HoursFa())</td>
@@ -1284,6 +1298,7 @@
     private string search = "";
     private int filterKarfarma, filterTypeFactor, filterUser;
     private bool filterReturned;
+    private bool emptyEntry, emptyExit, emptyFactor, emptyFactorType, emptyKarshenasi, emptyRegistration, emptyCustomerNeed;
 
     /// <summary>رویت ستون‌های شماره/نوع فاکتور — مجوز جدا (Projects.ViewFactor)</summary>
     private bool canViewFactor => Auth.Has("Projects.ViewFactor");
@@ -1307,12 +1322,14 @@
 
     /// <summary>آیا هیچ فیلتری (بالای صفحه یا سرستون) فعال است؟</summary>
     private bool HasAnyFilter => HasColFilter || !string.IsNullOrWhiteSpace(search)
-        || filterKarfarma > 0 || filterTypeFactor > 0 || filterUser > 0 || filterReturned;
+        || filterKarfarma > 0 || filterTypeFactor > 0 || filterUser > 0 || filterReturned
+        || emptyEntry || emptyExit || emptyFactor || emptyFactorType || emptyKarshenasi || emptyRegistration || emptyCustomerNeed;
 
     private async Task ClearColFilters()
     {
         fNum = fName = fSerial = fKarfarma = fEntry = fExit = fFactor = fFactorType = "";
         fKarshenasi = fSabt = fNeed = fSpent = fFolder = fStatus = "";
+        emptyEntry = emptyExit = emptyFactor = emptyFactorType = emptyKarshenasi = emptyRegistration = emptyCustomerNeed = false;
         page = 1;
         await Load();
     }
@@ -1457,6 +1474,9 @@
         TypeFactorId = filterTypeFactor > 0 ? filterTypeFactor : null,
         UserId = filterUser > 0 ? filterUser : null,
         Returned = filterReturned ? true : null,
+        EmptyEntry = emptyEntry, EmptyExit = emptyExit, EmptyFactor = emptyFactor,
+        EmptyFactorType = emptyFactorType, EmptyKarshenasi = emptyKarshenasi,
+        EmptyRegistration = emptyRegistration, EmptyCustomerNeed = emptyCustomerNeed,
         FCode = fNum,
         FName = fName,
         FSerial = fSerial,
@@ -2126,12 +2146,13 @@
                     $"تاریخ خروج: {(p.ExitDate?.ToFaDate() ?? "—")}",
                     $"تعداد گزارش‌ها: {reports.Count.FaDigits()}"
                 },
-                Headers = new List<string> { "ردیف", "تاریخ", "کاربر", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
+                Headers = new List<string> { "ردیف", "تاریخ", "کاربر", "اپراتور", "شروع", "پایان", "استراحت", "ساعت خالص", "شرح کار" },
                 Rows = reports.OrderBy(r => r.ReportDate).Select((r, i) => new List<string>
                 {
                     (i + 1).FaDigits(),
                     r.ReportDate.ToFaDate(),
                     r.UserName ?? "",
+                    string.IsNullOrWhiteSpace(r.OperatorName) ? "—" : r.OperatorName!,
                     r.StartTime.TimeFa(),
                     r.EndTime.TimeFa(),
                     (r.BreakfastTime.ToTimeSpan() + r.LunchTime.ToTimeSpan()).HoursFa(),
