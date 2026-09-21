@@ -304,6 +304,9 @@ public class WorkOrdersController : ControllerBase
         if (wo.OwnerUserId != MyUserId) return Forbid();
         if (wo.Status == "Closed")
             return BadRequest(new { message = "دستور کار بسته شده و قابل ویرایش نیست." });
+        // بعد از اولین پاسخ، محتوای دستور برای دستوردهنده نیز قفل می‌شود.
+        if (await _db.WorkOrderAssignees.AnyAsync(a => a.OrderId == id && (a.SeenAt != null || a.RepliedAt != null)))
+            return BadRequest(new { message = "یکی از گیرندگان دستور کار را رویت یا پاسخ داده است؛ این دستور کار دیگر قابل ویرایش نیست." });
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "عنوان دستور کار را وارد کنید." });
         if (dto.AssigneeUserIds.Count == 0)
@@ -339,9 +342,9 @@ public class WorkOrdersController : ControllerBase
             }
         }
 
-        var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id)).ToListAsync();
+        var users = await _db.Users.Where(u => dto.AssigneeUserIds.Contains(u.Id) && u.IsActive).ToListAsync();
         if (users.Count != dto.AssigneeUserIds.Distinct().Count())
-            return BadRequest(new { message = "برخی گیرندگان وجود ندارند." });
+            return BadRequest(new { message = "برخی گیرندگان وجود ندارند یا غیرفعال شده‌اند؛ فقط کاربران فعال را انتخاب کنید." });
         var noName = users.Where(u => string.IsNullOrWhiteSpace(u.FirstName) || string.IsNullOrWhiteSpace(u.LastName))
             .Select(u => u.Username).ToList();
         if (noName.Count > 0)
@@ -349,13 +352,15 @@ public class WorkOrdersController : ControllerBase
 
         var existing = await _db.WorkOrderAssignees.Where(a => a.OrderId == id).ToListAsync();
         var keep = dto.AssigneeUserIds.Distinct().ToHashSet();
+        var removedUserIds = existing.Where(a => !keep.Contains(a.UserId)).Select(a => a.UserId).ToList();
+        var addedUserIds = keep.Where(uid => !existing.Any(a => a.UserId == uid)).ToList();
         foreach (var a in existing.Where(a => !keep.Contains(a.UserId)).ToList())
         {
             if (a.RepliedAt != null)
                 return BadRequest(new { message = $"نمی‌توان «{a.Name}» را حذف کرد چون پاسخ ثبت کرده است." });
             _db.WorkOrderAssignees.Remove(a);
         }
-        foreach (var uid in keep.Where(uid => !existing.Any(a => a.UserId == uid)))
+        foreach (var uid in addedUserIds)
         {
             var u = users.FirstOrDefault(x => x.Id == uid);
             if (u == null) continue;
@@ -384,6 +389,10 @@ public class WorkOrdersController : ControllerBase
 
         Log(wo.Id, "Edited", $"ویرایش دستور کار — مهلت: {ToFa(wo.DueAt)} — گیرندگان: {string.Join("، ", users.Select(UserDisplay.Name))}");
         await _db.SaveChangesAsync();
+        foreach (var uid in addedUserIds)
+            await _notify.SendAsync(uid, "به دستور کار اضافه شدید", $"شما به دستور کار «{wo.Title}» ({wo.Number}) اضافه شدید.", wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
+        foreach (var uid in removedUserIds)
+            await _notify.SendAsync(uid, "از دستور کار حذف شدید", $"شما از دستور کار «{wo.Title}» ({wo.Number}) حذف شدید.", wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
         var added = await new WorkOrderSchedulingService(_db).MaterializeAsync(wo);
         await tx.CommitAsync();
         await _notify.BroadcastChangedAsync("workorders");
@@ -738,6 +747,10 @@ public class WorkOrdersController : ControllerBase
         if (wo == null) return NotFound();
         if (await _db.WorkOrders.AnyAsync(w => w.ParentOrderId == id))
             return BadRequest(new { message = "این دستور زیر‌دستور دارد؛ ابتدا زیر‌دستورها را بررسی و حذف کنید. حذف آبشاری انجام نمی‌شود." });
+        // حذف واقعی پیوست‌ها از دیسک؛ رکوردهای قدیمیِ دیتابیسی نیز پاک می‌شوند.
+        var attachments = await _db.WorkOrderAttachments.Where(a => a.OrderId == id).ToListAsync();
+        foreach (var attachment in attachments) _store.Delete(attachment.FilePath);
+        _db.WorkOrderAttachments.RemoveRange(attachments);
         wo.DeletedAt = DateTime.Now;
         wo.DeletedByUserId = MyUserId;
         Log(id, "Deleted", $"حذف نوبت {wo.Number} توسط {await MyDisplayNameAsync()} (شناسه کاربر {MyUserId})؛ سوابق محفوظ است.");
@@ -745,6 +758,41 @@ public class WorkOrdersController : ControllerBase
         await tx.CommitAsync();
         await _notify.BroadcastChangedAsync("workorders");
         return NoContent();
+    }
+
+    public class BulkOrdersDto { public List<int> Ids { get; set; } = new(); public string Action { get; set; } = "archive"; }
+
+    /// <summary>عملیات گروهی امن روی دستورهای انتخاب‌شده.</summary>
+    [HttpPost("bulk")]
+    public async Task<IActionResult> Bulk([FromBody] BulkOrdersDto dto)
+    {
+        if (dto.Ids == null || dto.Ids.Count == 0)
+            return BadRequest(new { message = "حداقل یک دستور کار را انتخاب کنید." });
+        var orders = await _db.WorkOrders.Where(w => dto.Ids.Distinct().Contains(w.Id)).ToListAsync();
+        if (orders.Count != dto.Ids.Distinct().Count())
+            return BadRequest(new { message = "برخی دستورهای انتخاب‌شده یافت نشدند." });
+        if (orders.Any(w => w.OwnerUserId != MyUserId))
+            return Forbid();
+        if (dto.Action == "delete")
+        {
+            foreach (var wo in orders)
+            {
+                var attachments = await _db.WorkOrderAttachments.Where(a => a.OrderId == wo.Id).ToListAsync();
+                foreach (var a in attachments) _store.Delete(a.FilePath);
+                _db.WorkOrderAttachments.RemoveRange(attachments);
+                wo.DeletedAt = DateTime.Now; wo.DeletedByUserId = MyUserId;
+                Log(wo.Id, "Deleted", "حذف گروهی دستور کار");
+            }
+        }
+        else if (dto.Action == "archive")
+        {
+            foreach (var wo in orders.Where(w => w.Status == "Open"))
+            { wo.Status = "Closed"; wo.ClosedAt = DateTime.Now; Log(wo.Id, "Closed", "بایگانی گروهی دستور کار"); }
+        }
+        else return BadRequest(new { message = "نوع عملیات گروهی نامعتبر است." });
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("workorders");
+        return Ok();
     }
 
     // ================== چک‌لیست زیرکار ==================
@@ -799,6 +847,12 @@ public class WorkOrdersController : ControllerBase
 
         var item = await _db.WorkOrderChecklistItems.FirstOrDefaultAsync(c => c.Id == itemId && c.OrderId == id);
         if (item == null) return NotFound(new { message = "آیتم پیدا نشد." });
+        // گیرنده فقط می‌تواند آیتمِ انجام‌نشده را تیک بزند؛ برداشتن تیک یا تغییر
+        // آیتمی که گیرنده دیگری انجام داده، از سمت API ممنوع است.
+        if (isAssignee && !isOwner && !dto.IsDone)
+            return BadRequest(new { message = "گیرنده نمی‌تواند تیک ثبت‌شده را بردارد." });
+        if (item.IsDone && dto.IsDone && item.DoneByUserId != MyUserId && !isOwner)
+            return BadRequest(new { message = "این آیتم قبلاً توسط گیرنده دیگری انجام شده و قابل تغییر نیست." });
 
         item.IsDone = dto.IsDone;
         if (dto.IsDone)
@@ -1333,6 +1387,11 @@ public class WorkOrdersController : ControllerBase
         cm.IsDeleted = true;
         cm.Text = "";
         await _db.SaveChangesAsync();
+        var recipients = await _db.WorkOrderAssignees.Where(a => a.OrderId == cm.OrderId && a.UserId != MyUserId)
+            .Select(a => a.UserId).Distinct().ToListAsync();
+        if (wo.OwnerUserId != MyUserId) recipients.Add(wo.OwnerUserId);
+        foreach (var uid in recipients.Distinct())
+            await _notify.SendAsync(uid, "کامنت حذف شد", $"{wo.Number} — کامنتی که در اعلان دیده‌اید حذف شده و قابل مشاهده نیست.", MyUsername, "دستور کار", $"/work-orders?open={wo.Id}");
         await _notify.BroadcastChangedAsync("workorders");
         return Ok();
     }

@@ -102,6 +102,15 @@
         </div>
     </div>
 }
+@if ((tab == "mine" || tab == "assigned") && selectedOrders.Count > 0)
+{
+    <div class="alert alert-primary d-flex align-items-center gap-2 py-2 no-print">
+        <b>@selectedOrders.Count مورد انتخاب شده</b>
+        <button class="btn btn-sm btn-outline-primary" @onclick='() => BulkOrders("archive")'><i class="bi bi-archive"></i> بایگانی گروهی</button>
+        <button class="btn btn-sm btn-outline-danger" @onclick='() => BulkOrders("delete")'><i class="bi bi-trash"></i> حذف گروهی</button>
+        <button class="btn btn-sm btn-link" @onclick="() => selectedOrders.Clear()">انصراف</button>
+    </div>
+}
 
 @if (loading)
 {
@@ -214,7 +223,7 @@ else if (tab == "calendar")
                 var isToday = g.Date == DateTime.Today;
                 var isFriday = g.DayOfWeek == DayOfWeek.Friday;
                 var dayOrders = calItems.Where(c => c.DueAt.Date == g.Date).ToList();
-                <div class="wo-cell2 @(isToday ? "today" : "") @(isFriday ? "friday" : "") @(dayOrders.Any() ? "has-items" : "")">
+                <div class="wo-cell2 @(isToday ? "today" : "") @(isFriday ? "friday" : "") @(dayOrders.Any() ? "has-items" : "")" @onclick="() => OpenDayModal(g)">
                     <div class="wo-day2">
                         <span class="num">@d2</span>
                         @if (isToday)
@@ -225,7 +234,7 @@ else if (tab == "calendar")
                     @foreach (var o in dayOrders.Take(3))
                     {
                         <div class="wo-chip2 wo-k-@o.Kind.ToLower() @(o.Status == "Closed" && o.Tone is not ("ontime" or "latedone") ? "closed" : "")"
-                             title="@o.Number — @o.Title" @onclick="() => OpenById(o.Id)">
+                             title="@o.Number — @o.Title" @onclick="() => OpenById(o.Id)" @onclick:stopPropagation="true">
                             @* تیک / ضربدر وضعیت — تشخیص در یک نگاه *@
                             @if (o.Tone == "ontime")
                             {
@@ -491,6 +500,7 @@ else
                     <thead class="table-light">
                         <tr>
                             <th style="width:44px"></th>
+                            <th style="width:36px"><input type="checkbox" title="انتخاب همه" @onclick="ToggleSelectAll" /></th>
                             <th>شماره</th><th>عنوان</th><th>دستوردهنده</th>
                             <th>مهلت</th><th>گیرندگان</th><th>دستورهای مرتبط</th><th>وضعیت</th><th class="text-end">عملیات</th>
                         </tr>
@@ -500,6 +510,7 @@ else
                         {
                             var tone = Tone(w);
                             <tr class="wo-row wo-tone-@tone">
+                                <td><input type="checkbox" checked="@selectedOrders.Contains(w.Id)" @onclick:stopPropagation="true" @onchange="() => ToggleSelected(w.Id)" /></td>
                                 <td>
                                     <button class="wo-expander" @onclick="() => ToggleExpand(w.Id)">
                                         <i class="bi @(expanded.Contains(w.Id) ? "bi-dash-lg" : "bi-plus-lg")"></i>
@@ -981,12 +992,13 @@ else
                         <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenGardesh">
                             <i class="bi bi-diagram-3"></i> گردش کار
                         </button>
-                        @if (isOwner && detail.Status == "Open")
+                        @if (isOwner && detail.Status == "Open" && !detail.Assignees.Any(a => a.SeenAt != null || a.RepliedAt != null))
                         {
                             <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenEditFromDetail">
                                 <i class="bi bi-pencil"></i> ویرایش
                             </button>
                         }
+                        <button type="button" class="btn btn-sm btn-outline-secondary no-print" title="چاپ (Ctrl+P)" @onclick="PrintDetail"><i class="bi bi-printer"></i> چاپ</button>
                         <button type="button" class="btn-close" aria-label="بستن" @onclick="CloseDetail"></button>
                     </div>
                 </div>
@@ -2034,6 +2046,17 @@ else
     // صفحه‌بندی
     private const int PageSize = 10;
     private int page = 1;
+    private HashSet<int> selectedOrders = new();
+    private void ToggleSelected(int id) { if (!selectedOrders.Add(id)) selectedOrders.Remove(id); }
+    private void ToggleSelectAll() { var ids = PagedItems.Where(w => w.OwnerUserId == access.UserId).Select(w => w.Id).ToList(); if (ids.All(selectedOrders.Contains)) foreach (var id in ids) selectedOrders.Remove(id); else foreach (var id in ids) selectedOrders.Add(id); }
+    private async Task BulkOrders(string action)
+    {
+        if (selectedOrders.Count == 0) return;
+        if (!await JS.InvokeAsync<bool>("confirm", action == "delete" ? "دستورهای انتخاب‌شده حذف شوند؟" : "دستورهای انتخاب‌شده بایگانی شوند؟")) return;
+        var resp = await Http.PostAsJsonAsync("/api/workorders/bulk", new { ids = selectedOrders.ToList(), action });
+        if (resp.IsSuccessStatusCode) { selectedOrders.Clear(); Toast.Success("عملیات گروهی با موفقیت انجام شد."); await LoadAll(); }
+        else await ShowApiError(resp, "عملیات گروهی انجام نشد.");
+    }
     private List<WoItem> TabItems => tab switch { "assigned" => assignedItems, "archive" => archiveItems, _ => mineItems };
 
     // ---- فیلتر و جستجو (روی داده لودشده — API هم همین فیلترها را با کوئری‌استرینگ می‌پذیرد) ----
@@ -2779,6 +2802,7 @@ else
 
     private string detailTab = "overview";
     private void CloseDetail() { detail = null; gardeshOpen = false; chatMenuOpen = false; }
+    private async Task PrintDetail() => await JS.InvokeVoidAsync("printWorkOrderDetail");
 
     private bool editingSeries;
     private async Task DeleteOrder(WoItem? order)
@@ -2804,7 +2828,7 @@ else
         finally { busy = false; }
     }
 
-    private bool CanEdit(WoItem w) => w.Status == "Open" && w.OwnerUserId == access.UserId;
+    private bool CanEdit(WoItem w) => w.Status == "Open" && w.OwnerUserId == access.UserId && !w.Assignees.Any(a => a.SeenAt != null || a.RepliedAt != null);
 
     private async Task OpenEditFromList(WoItem w)
     {
@@ -2954,7 +2978,7 @@ else
     }
 
     private void OnFilesSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
-        => newFiles = e.GetMultipleFiles(5).ToList();
+        => newFiles = e.GetMultipleFiles(int.MaxValue).ToList();
 
     private async Task SubmitNew()
     {
