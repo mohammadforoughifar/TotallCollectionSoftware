@@ -95,6 +95,7 @@
 @code {
     [Parameter] public string? Filter { get; set; }
     [Parameter] public EventCallback<BayeganiNodeDto> OnOpenLetter { get; set; }
+    [Parameter] public bool IncomingOnly { get; set; }
     [Parameter] public EventCallback OnChanged { get; set; }
 
     /// <summary>وقتی نامه‌ای از بایگانی خارج شد (برای بستن ریدر اگر همان نامه باز است)</summary>
@@ -126,7 +127,11 @@
     public async Task ReloadAsync()
     {
         loading = true; StateHasChanged();
-        try { roots = await LetterSvc.GetBayeganiTreeAsync(); }
+        try
+        {
+            roots = await LetterSvc.GetBayeganiTreeAsync();
+            if (IncomingOnly) roots = KeepIncomingNodes(roots);
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; StateHasChanged(); }
     }
@@ -151,9 +156,31 @@
             TypeBayegani = n.TypeBayegani, IsFolder = n.IsFolder, ErjaId = n.ErjaId,
             LetterId = n.LetterId, LetterNumber = n.LetterNumber, Sender = n.Sender,
             Date = n.Date, Foriat = n.Foriat, Mahramanegi = n.Mahramanegi,
-            HasAttachment = n.HasAttachment,
+            HasAttachment = n.HasAttachment, SourceType = n.SourceType,
             Children = kids.Count > 0 ? kids : n.Children.Where(c => selfMatch).ToList()
         };
+    }
+
+    private static List<BayeganiNodeDto> KeepIncomingNodes(List<BayeganiNodeDto> source)
+    {
+        var result = new List<BayeganiNodeDto>();
+        foreach (var node in source)
+        {
+            if (!node.IsFolder)
+            {
+                if (node.SourceType == 3) result.Add(node);
+                continue;
+            }
+            var children = KeepIncomingNodes(node.Children);
+            if (children.Count == 0) continue;
+            result.Add(new BayeganiNodeDto
+            {
+                BayeganiId = node.BayeganiId, Title = node.Title, ParentId = node.ParentId,
+                TypeBayegani = node.TypeBayegani, IsFolder = true, SourceType = node.SourceType,
+                Children = children
+            });
+        }
+        return result;
     }
 
     private bool IsOpen(BayeganiNodeDto n) => expanded.Contains(n.BayeganiId) || !string.IsNullOrWhiteSpace(Filter);

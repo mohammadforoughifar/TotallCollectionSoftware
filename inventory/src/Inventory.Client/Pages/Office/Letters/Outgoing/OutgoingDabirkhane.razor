@@ -60,25 +60,13 @@
             <div style="display:flex;align-items:center;gap:12px">
                 <span class="t"><i class="bi bi-mailbox" style="color:var(--p2)"></i> دبیرخانه یکپارچه اتوماسیون اداری</span>
                 <div class="btn-group btn-group-sm">
-                    <button class="btn @(dabirType == "sadere" ? "btn-primary" : "btn-outline-primary")" @onclick='() => dabirType = "sadere"'>
+                    <button class="btn btn-primary">
                         <i class="bi bi-send-fill me-1"></i> نامه‌های صادره
-                    </button>
-                    <button class="btn @(dabirType == "varede" ? "btn-primary" : "btn-outline-primary")" @onclick='() => dabirType = "varede"'>
-                        <i class="bi bi-inbox-fill me-1"></i> نامه‌های وارده
                     </button>
                 </div>
             </div>
             <span class="sync"><span class="dot"></span> بروزرسانی زنده</span>
         </div>
-
-        @if (dabirType == "varede")
-        {
-            <div class="p-2">
-                <IncomingLetterCartable />
-            </div>
-        }
-        else
-        {
 
         @* ---------- کارت‌های آمار ---------- *@
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:12px">
@@ -311,7 +299,7 @@
                 </div>
             }
         }
-        } @* ---------- پایان بخش «نامه‌های صادره» ---------- *@
+        @* ---------- پایان بخش «نامه‌های صادره» ---------- *@
     </div>
         </section>
     </div>
@@ -561,7 +549,6 @@
 <DabirkhaneArchivePicker @ref="archivePicker" />
 
 @code {
-    private string dabirType = "sadere";
     private List<DabirkhaneListItemDto> items = new();
     private List<BayeganiNodeDto> archiveTree = new();
     private DabirkhaneStatsDto stats = new();
