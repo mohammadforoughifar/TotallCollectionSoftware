@@ -258,6 +258,7 @@ public class ArchiveService : IArchiveService
             }
             else if (r.ErjaId is { } incomingErjaId && infoByIncomingErja.TryGetValue(incomingErjaId, out var ii))
             {
+                n.SourceType = 3;
                 n.LetterId = ii.LetterId;
                 n.LetterNumber = ii.LetterNumber;
                 n.Title = ii.LetterTitle;

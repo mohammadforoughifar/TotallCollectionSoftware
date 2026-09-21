@@ -93,6 +93,10 @@
                 {
                     <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
                 }
+                else if (folder == "archive")
+                {
+                    <BayeganiTree @ref="bayeganiTree" IncomingOnly="true" Filter="@searchTerm" OnOpenLetter="OpenArchivedLetter" OnChanged="OnArchiveChanged" OnLetterUnarchived="OnLetterUnarchived" />
+                }
                 else if (letters.Count == 0)
                 {
                     <div class="empty"><i class="bi bi-inbox fs-1 d-block mb-2"></i> نامه‌ای در این بخش یافت نشد.</div>
@@ -245,6 +249,7 @@
 <IncomingGardeshModal @ref="gardeshModal" />
 <IncomingReservationManager @ref="reservationManager" />
 <BayeganiFolderPickerModal @ref="folderPicker" />
+<IncomingLetterViewModal @ref="archiveViewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
 
 @code {
     private string folder = "inbox";
@@ -273,6 +278,8 @@
     private IncomingGardeshModal? gardeshModal;
     private IncomingReservationManager? reservationManager;
     private BayeganiFolderPickerModal? folderPicker;
+    private BayeganiTree? bayeganiTree;
+    private IncomingLetterViewModal? archiveViewModal;
 
     private string FolderTitle => folder switch
     {
@@ -364,6 +371,30 @@
         {
             Toast.Error(ex.Message);
         }
+    }
+
+    private async Task OpenArchivedLetter(BayeganiNodeDto node)
+    {
+        if (node.LetterId is not { } letterId) return;
+        try
+        {
+            activeDetail = await IncomingSvc.GetDetailAsync(letterId);
+            activeLetter = letters.FirstOrDefault(x => x.LetterId == letterId);
+            readerOpen = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task OnArchiveChanged()
+    {
+        await ReloadDataAsync();
+        if (bayeganiTree != null) await bayeganiTree.ReloadAsync();
+    }
+
+    private async Task OnLetterUnarchived(BayeganiNodeDto node)
+    {
+        if (node.ErjaId is { } erjaId) await IncomingSvc.ToggleBayeganiAsync(erjaId);
+        await ReloadDataAsync();
     }
 
     private void CloseReader()
