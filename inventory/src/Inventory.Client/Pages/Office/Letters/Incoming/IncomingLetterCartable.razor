@@ -19,7 +19,10 @@
         @* ---------- ریل پوشه‌ها (Folder Rail) ---------- *@
         <nav class="rail">
             <div class="logo" title="اتوماسیون اداری — نامه وارده"><i class="bi bi-inbox-fill"></i></div>
-            <button class="compose" title="ثبت نامه وارده جدید" @onclick="OpenComposeNew"><i class="bi bi-plus-lg"></i></button>
+            @if (CanDabirkhane)
+            {
+                <button class="compose" title="ثبت نامه وارده جدید" @onclick="OpenComposeNew"><i class="bi bi-plus-lg"></i></button>
+            }
             <div style="height:8px"></div>
 
             <button class="@(folder == "inbox" ? "on" : "")" title="دریافتی (کارتابل جاری)" @onclick='() => SetFolder("inbox")'>
@@ -44,8 +47,11 @@
             <span class="rlbl">بایگانی</span>
 
             <div class="grow"></div>
-            <button title="رزرو شماره اندیکاتور" @onclick="OpenReservationManager"><i class="bi bi-hash"></i></button>
-            <span class="rlbl">رزرو شماره</span>
+            @if (CanDabirkhane)
+            {
+                <button title="رزرو شماره اندیکاتور" @onclick="OpenReservationManager"><i class="bi bi-hash"></i></button>
+                <span class="rlbl">رزرو شماره</span>
+            }
             <button title="بروزرسانی" @onclick="ReloadDataAsync"><i class="bi bi-arrow-clockwise"></i></button>
             <span class="rlbl">بروزرسانی</span>
         </nav>
@@ -256,6 +262,7 @@
 
     private List<IncomingLetterListItemDto> letters = new();
     private IncomingLetterCartableStatsDto stats = new();
+    private bool CanDabirkhane => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
     private List<int> selectedErjaIds = new();
 
     private ComposeIncomingModal? composeModal;

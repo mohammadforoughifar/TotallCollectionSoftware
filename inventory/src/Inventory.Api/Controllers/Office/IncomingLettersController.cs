@@ -20,6 +20,10 @@ public class IncomingLettersController : RbacControllerBase
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
 
+    // ثبت نامه وارده و رزرو شماره فقط از مسیر دبیرخانه انجام می‌شود.
+    private async Task<bool> HasDabirkhaneAsync() =>
+        await HasAsync(Module, "Dabirkhane") || await HasAsync("OutgoingLetters", "Dabirkhane") || await IsAdminAsync();
+
     private async Task<string> MyDisplayNameAsync()
     {
         var u = await Db.Users.AsNoTracking()
@@ -84,7 +88,7 @@ public class IncomingLettersController : RbacControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AddIncomingLetterDto dto)
     {
-        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "ثبت نامه وارده فقط از طریق دبیرخانه مجاز است." });
         var id = await _letters.AddAsync(dto, MyUserId);
         return Ok(new { id, message = "نامه وارده با موفقیت ثبت شد." });
     }
@@ -251,7 +255,7 @@ public class IncomingLettersController : RbacControllerBase
     [RequestSizeLimit(25 * 1024 * 1024)]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
-        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "افزودن پیوست نامه وارده فقط از طریق دبیرخانه مجاز است." });
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است." });
         if (file.Length > 20 * 1024 * 1024)
@@ -323,7 +327,7 @@ public class IncomingLettersController : RbacControllerBase
     [HttpPost("reserve-number")]
     public async Task<IActionResult> ReserveNumber([FromBody] ReserveNumberRequestDto dto)
     {
-        if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
+        if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "رزرو شماره نامه فقط برای دبیرخانه مجاز است." });
         var list = await _letters.ReserveNumberAsync(MyUserId, dto.TypeForm, dto.Count);
         return Ok(list);
     }

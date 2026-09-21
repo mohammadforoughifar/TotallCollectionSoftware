@@ -159,7 +159,7 @@ public static class RbacSeeder
         ["OutgoingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Sign", "Dabirkhane", "ViewAll" },
         // ================== اتوماسیون اداری — نامه وارده ==================
         // ViewAll: استثنای «دیدن نامه‌های دیگران» (پیش‌فرض هر کس فقط نامه‌های خودش را می‌بیند)
-        ["IncomingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "ViewAll" },
+        ["IncomingLetters"] = new[] { "Create", "Read", "Erja", "Delete", "Dabirkhane", "ViewAll" },
         // ================== ایمیل سازمانی (پست الکترونیک) ==================
         // Read: صندوق ایمیل و حساب‌های من | Create: ارسال ایمیل و افزودن حساب
         // Update: ویرایش حساب/نشان/خوانده‌شده | Delete: حذف حساب/پیام
