@@ -405,6 +405,7 @@ public class ProjectsController : RbacControllerBase
 
         var fSerial = NormFilter(q.FSerial);
         if (fSerial is not null) query = query.Where(p => p.SerialNumber.Contains(fSerial));
+        if (q.EmptySerial) query = query.Where(p => p.SerialNumber == null || p.SerialNumber == "");
 
         var fKarfarma = NormFilter(q.FKarfarma);
         if (fKarfarma is not null) query = query.Where(p => p.KarFarma != null && p.KarFarma.Name.Contains(fKarfarma));

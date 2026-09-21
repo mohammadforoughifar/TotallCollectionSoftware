@@ -248,6 +248,7 @@ public class ProjectListQuery
     public bool? Returned { get; set; }
 
     // ---------- فیلتر پیشرفته «بدون داده» ----------
+    public bool EmptySerial { get; set; }
     public bool EmptyEntry { get; set; }
     public bool EmptyExit { get; set; }
     public bool EmptyFactor { get; set; }
@@ -297,6 +298,7 @@ public class ProjectListQuery
         if (TypeFactorId is > 0) Add("typeFactorId", TypeFactorId.ToString());
         if (UserId is > 0) Add("userId", UserId.ToString());
         if (Returned is true) Add("returned", "true");
+        if (EmptySerial) Add("emptySerial", "true");
         if (EmptyEntry) Add("emptyEntry", "true");
         if (EmptyExit) Add("emptyExit", "true");
         if (EmptyFactor) Add("emptyFactor", "true");
