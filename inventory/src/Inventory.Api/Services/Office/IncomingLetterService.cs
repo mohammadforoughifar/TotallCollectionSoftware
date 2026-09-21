@@ -392,6 +392,7 @@ public class IncomingLetterService : IIncomingLetterService
             Foriat = dto.Foriat,
             CreateUserId = userId,
             Creator = 1,
+            CreatorId = userId,
             IsNeshan = false,
             IsBayegani = false,
             IsDelete = false

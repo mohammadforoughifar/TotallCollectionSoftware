@@ -31,6 +31,9 @@ public class IncomingLetter
     /// <summary>سازنده / مکان یا واحد (Creator)</summary>
     public int Creator { get; set; }
 
+    /// <summary>سازندهٔ نامه در ساختارهای قدیمی دبیرخانه (CreatorId).</summary>
+    public int CreatorId { get; set; }
+
     /// <summary>کاربر ثبت‌کننده نامه وارده در سیستم</summary>
     public int CreateUserId { get; set; }
 
