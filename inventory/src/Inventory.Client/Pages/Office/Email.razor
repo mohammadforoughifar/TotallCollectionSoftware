@@ -5,6 +5,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @using Inventory.Client.Pages.Office.Letters
 @using Inventory.Client.Pages.Office.Letters.Incoming
 @using Microsoft.AspNetCore.Components.Forms
@@ -385,10 +386,10 @@
                                         @foreach (var a in openMsg.Attachments)
                                         {
                                             var att = a;
-                                            <a class="att" href="@EmailSvc.AttachmentDownloadUrl(att.AttachmentId)" target="_blank">
+                                            <button type="button" class="att text-start" @onclick="() => DownloadAttachmentAsync(att)">
                                                 <div class="ic"><i class="bi bi-paperclip"></i></div>
                                                 <div>@att.RealName<small>@FmtSize(att.Size)</small></div>
-                                            </a>
+                                            </button>
                                         }
                                     </div>
                                 }
@@ -630,6 +631,18 @@
     /// تبدیل ایمیل شخصی به نامه داخلی — فرم ایجاد نامه با عنوان و متنِ ایمیل
     /// و پیوست‌های آن باز می‌شود؛ کاربر بقیهٔ موارد را خودش پر می‌کند.
     /// </summary>
+    private async Task DownloadAttachmentAsync(EmailAttachmentDto att)
+    {
+        try
+        {
+            var (data, name) = await EmailSvc.DownloadAttachmentAsync(att.AttachmentId);
+            if (data is null || data.Length == 0) { Toast.Error("فایل پیوست پیدا نشد یا خالی است."); return; }
+            await JS.InvokeVoidAsync("downloadBlob", string.IsNullOrWhiteSpace(name) ? att.RealName : name,
+                "application/octet-stream", Convert.ToBase64String(data));
+        }
+        catch (Exception ex) { Toast.Error($"دانلود پیوست انجام نشد: {ex.Message}"); }
+    }
+
     private async Task ConvertToLetterAsync()
     {
         if (openMsg == null) return;
