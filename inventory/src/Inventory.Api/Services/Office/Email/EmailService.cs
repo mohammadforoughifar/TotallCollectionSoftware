@@ -1247,8 +1247,22 @@ public class EmailService : IEmailService
         // سازگاری با رکوردهای قدیمی که FilePath نداشتند اما نام فایل ذخیره‌شده داشتند.
         if ((full is null || !File.Exists(full)) && !string.IsNullOrWhiteSpace(a.AttachmentSavedName))
         {
-            var legacyRelative = $"{AttachmentFolder}/{a.Type}_{a.EmailId}/{a.AttachmentSavedName}";
-            full = ResolveDiskPath(legacyRelative);
+            var candidates = new[] { a.Type, "Inbox", "Sent", "Junk", "Received" }
+                .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase);
+            foreach (var type in candidates)
+            {
+                var legacyRelative = $"{AttachmentFolder}/{type}_{a.EmailId}/{SafeName(a.AttachmentSavedName)}";
+                full = ResolveDiskPath(legacyRelative);
+                if (full is not null && File.Exists(full)) break;
+            }
+        }
+        // در نسخه‌های قدیمی ممکن است FilePath یا نام پوشه با حروف متفاوت ذخیره شده باشد؛
+        // فقط داخل ریشهٔ امن پیوست‌ها جستجو می‌کنیم.
+        if ((full is null || !File.Exists(full)) && !string.IsNullOrWhiteSpace(a.AttachmentSavedName)
+            && Directory.Exists(AttachmentRoot))
+        {
+            var safe = SafeName(a.AttachmentSavedName);
+            full = Directory.EnumerateFiles(AttachmentRoot, safe, SearchOption.AllDirectories).FirstOrDefault();
         }
         if (full is null || !File.Exists(full)) return null;
         return await File.ReadAllBytesAsync(full);
