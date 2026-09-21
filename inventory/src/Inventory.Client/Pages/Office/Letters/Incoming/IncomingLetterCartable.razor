@@ -252,6 +252,8 @@
 <IncomingLetterViewModal @ref="archiveViewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
 
 @code {
+    [Parameter] public string? Tab { get; set; }
+
     private string folder = "inbox";
     private string filter = "all";
     private string searchTerm = "";
@@ -299,6 +301,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (Tab is "inbox" or "sent" or "starred" or "archive") folder = Tab;
         await ReloadDataAsync();
     }
 
