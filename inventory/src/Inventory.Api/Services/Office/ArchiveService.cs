@@ -263,8 +263,8 @@ public class ArchiveService : IArchiveService
                 n.Title = ii.LetterTitle;
                 n.Sender = ii.Sender;
                 n.Date = ii.Date;
-                n.Foriat = ii.Foriat;
-                n.Mahramanegi = ii.Mahramanegi;
+                n.Foriat = ii.Foriat.ToString();
+                n.Mahramanegi = ii.Mahramanegi.ToString();
                 n.HasAttachment = ii.HasAttachment;
             }
             else if (r.LetterId is { } lid && infoByLetter.TryGetValue(lid, out var si))
