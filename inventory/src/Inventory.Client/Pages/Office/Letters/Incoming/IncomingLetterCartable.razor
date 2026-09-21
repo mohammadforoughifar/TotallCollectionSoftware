@@ -12,9 +12,8 @@
    ============================================================ *@
 
 <PageTitle>کارتابل نامه وارده — اتوماسیون اداری</PageTitle>
-<style>.incoming-no-rail > .shell > .rail { display:none !important; } .incoming-no-rail > .shell > .pane { width:100%; flex:1 1 100%; }</style>
 
-<div class="ltx incoming-no-rail @(readerOpen ? "rd-open" : "")" style="animation:none;transform:none">
+<div class="ltx @(readerOpen ? "rd-open" : "")" style="animation:none;transform:none">
     <div class="shell" @onclick="CloseMenus">
 
         @* ---------- ریل پوشه‌ها (Folder Rail) ---------- *@

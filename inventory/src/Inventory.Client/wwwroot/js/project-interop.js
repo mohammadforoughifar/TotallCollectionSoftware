@@ -131,7 +131,14 @@
         frame.style.width = '0';
         frame.style.height = '0';
         frame.style.border = '0';
-        frame.style.visibility = 'hidden';
+        // iframe نباید hidden باشد؛ Chrome/Edge در این حالت پنجرهٔ Print Preview را باز نمی‌کنند.
+        // آن را خارج از دید کاربر نگه می‌داریم اما برای موتور چاپ قابل مشاهده می‌ماند.
+        frame.style.left = '-10000px';
+        frame.style.top = '0';
+        frame.style.width = '100vw';
+        frame.style.height = '100vh';
+        frame.style.opacity = '0';
+        frame.style.pointerEvents = 'none';
         document.body.appendChild(frame);
 
         var doc = frame.contentWindow || frame.contentDocument;
@@ -151,7 +158,10 @@
             }, 1000);
         }
 
+        var printStarted = false;
         function doPrint() {
+            if (printStarted) return;
+            printStarted = true;
             try {
                 var win = frame.contentWindow;
                 win.focus();
