@@ -665,7 +665,14 @@
                         res = await LetterSvc.GetArchiveAsync(s, page, PageSize);
                         break;
                     case "starred":
-                        res = await LetterSvc.GetInboxAsync(s, unread, page, PageSize);
+                        var starredInbox = await LetterSvc.GetInboxAsync(s, null, page, PageSize);
+                        var starredSent = await LetterSvc.GetSentAsync(s, page, PageSize);
+                        res = new PagedResult<InnerLetterListItemDto>
+                        {
+                            Items = starredInbox.Items.Concat(starredSent.Items).Where(x => x.IsNeshan).ToList(),
+                            TotalCount = starredInbox.Items.Count(x => x.IsNeshan) + starredSent.Items.Count(x => x.IsNeshan),
+                            Page = page, PageSize = PageSize
+                        };
                         break;
                     default:
                         res = await LetterSvc.GetInboxAsync(s, unread, page, PageSize);

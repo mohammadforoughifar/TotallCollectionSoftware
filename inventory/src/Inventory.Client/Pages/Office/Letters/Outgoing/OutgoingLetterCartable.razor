@@ -1,6 +1,7 @@
 @page "/outgoing-letters"
 @page "/outgoing-letters/{Tab}"
 @inject IOutgoingLetterService OutgoingSvc
+@inject ILetterService LetterSvc
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject NavigationManager Nav
@@ -541,6 +542,7 @@
 
 <DabirkhaneArchivePicker @ref="archivePicker" />
 
+<BayeganiFolderPickerModal @ref="personalArchivePicker" />
 <ComposeOutgoingModal @ref="compose" OnSent="OnComposed" />
 <OutgoingErjaSheet @ref="erjaSheet" OnSubmitted="OnErjaSubmitted" />
 <OutgoingGardeshModal @ref="gardesh" />
@@ -551,6 +553,7 @@
     private HashSet<int> selectedLetterIds = new();
     private bool batchBayeganiModalOpen;
     private string batchBayeganiNote = "";
+    private BayeganiFolderPickerModal? personalArchivePicker;
     private DabirkhaneArchivePicker? archivePicker;
 
     private void ToggleSelectLetter(int letterId)
@@ -745,7 +748,14 @@
                         res = await OutgoingSvc.GetSigningInboxAsync(s, null, page, PageSize);
                         break;
                     case "starred":
-                        res = await OutgoingSvc.GetInboxAsync(s, unread, page, PageSize);
+                        var starredInbox = await OutgoingSvc.GetInboxAsync(s, null, page, PageSize);
+                        var starredSent = await OutgoingSvc.GetSentAsync(s, page, PageSize);
+                        res = new PagedResult<OutgoingLetterListItemDto>
+                        {
+                            Items = starredInbox.Items.Concat(starredSent.Items).Where(x => x.IsNeshan).ToList(),
+                            TotalCount = starredInbox.Items.Count(x => x.IsNeshan) + starredSent.Items.Count(x => x.IsNeshan),
+                            Page = page, PageSize = PageSize
+                        };
                         break;
                     default:
                         res = await OutgoingSvc.GetInboxAsync(s, unread, page, PageSize);
@@ -971,9 +981,18 @@
     private async Task ToggleArchive(OutgoingLetterListItemDto l)
     {
         openMenuId = 0;
-        if (l.ErjaId is not { } eid) return;
         try
         {
+            if (l.ErjaId is not { } eid)
+            {
+                if (personalArchivePicker == null) return;
+                var folderId = await personalArchivePicker.PickAsync($"بایگانی نامه «{l.Title}»");
+                if (folderId is not { } destination || destination <= 0) return;
+                await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto { FolderId = destination, OutgoingLetterIds = new() { l.LetterId } });
+                Toast.Success("نامه صادره در بایگانی داخلی ذخیره شد.");
+                await ReloadAsync();
+                return;
+            }
             var isArch = await OutgoingSvc.ToggleBayeganiAsync(eid);
             Toast.Success(isArch ? "بایگانی شد" : "از بایگانی خارج شد");
             if (selected?.LetterId == l.LetterId) { selected = null; selectedItem = null; }

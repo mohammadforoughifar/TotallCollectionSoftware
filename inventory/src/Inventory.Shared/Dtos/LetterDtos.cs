@@ -430,6 +430,8 @@ public class ArchiveLettersDto
 
     /// <summary>شناسه نامه‌های ارسالی (فرستنده — بدون ارجاع)</summary>
     public List<int> LetterIds { get; set; } = new();
+    /// <summary>شناسه نامه‌های صادره برای بایگانی شخصی (TypeBayegani=1)</summary>
+    public List<int> OutgoingLetterIds { get; set; } = new();
 
     /// <summary>عنوان اختیاری — خالی باشد عنوان نامه استفاده می‌شود</summary>
     public string? Title { get; set; }
