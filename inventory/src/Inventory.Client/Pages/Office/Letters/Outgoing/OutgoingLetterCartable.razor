@@ -540,8 +540,6 @@
     }
 </div>
 
-<DabirkhaneArchivePicker @ref="archivePicker" />
-
 <BayeganiFolderPickerModal @ref="personalArchivePicker" />
 <ComposeOutgoingModal @ref="compose" OnSent="OnComposed" />
 <OutgoingErjaSheet @ref="erjaSheet" OnSubmitted="OnErjaSubmitted" />
@@ -554,7 +552,6 @@
     private bool batchBayeganiModalOpen;
     private string batchBayeganiNote = "";
     private BayeganiFolderPickerModal? personalArchivePicker;
-    private DabirkhaneArchivePicker? archivePicker;
 
     private void ToggleSelectLetter(int letterId)
     {
@@ -577,13 +574,13 @@
         busy = true;
         try
         {
-            if (archivePicker == null) return;
-            var destination = await archivePicker.PickAsync("انتخاب پوشه برای بایگانی گروهی");
+            if (personalArchivePicker == null) return;
+            var destination = await personalArchivePicker.PickAsync("انتخاب پوشه برای بایگانی گروهی نامه‌های صادره");
             if (destination is not { } folderId || folderId <= 0) return;
-            await OutgoingSvc.ArchiveDabirkhaneLettersAsync(new ArchiveOutgoingLettersDto
+            await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto
             {
                 FolderId = folderId,
-                LetterIds = selectedLetterIds.ToList(),
+                OutgoingLetterIds = selectedLetterIds.ToList(),
                 Title = string.IsNullOrWhiteSpace(batchBayeganiNote) ? null : batchBayeganiNote.Trim()
             });
             Toast.Success($"{selectedLetterIds.Count.FaDigits()} نامه با موفقیت بایگانی شدند.");
