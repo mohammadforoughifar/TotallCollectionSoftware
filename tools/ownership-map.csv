@@ -6,6 +6,7 @@ Cctv,,inventory/src/Inventory.Api/Controllers/Cctv,inventory/src/Inventory.Api/E
 Chat,inventory/src/Inventory.Api/Services/Chat,,inventory/src/Inventory.Api/Entities/Chat,inventory/src/Inventory.Client/Pages/Chat,1473,1,
 Core,inventory/src/Inventory.Api/Services/Core,inventory/src/Inventory.Api/Controllers/Core,inventory/src/Inventory.Api/Entities/Core,,770,0,
 Dashboards,inventory/src/Inventory.Api/Services/Dashboards,inventory/src/Inventory.Api/Controllers/Dashboards,inventory/src/Inventory.Api/Entities/Dashboards,inventory/src/Inventory.Client/Pages/Dashboards,1623,1,
+DevTeam,inventory/src/Inventory.Api/Services/DevTeam,inventory/src/Inventory.Api/Controllers/DevTeam,inventory/src/Inventory.Api/Entities/DevTeam,inventory/src/Inventory.Client/Pages/DevTeam,939,4,
 DocArchive,inventory/src/Inventory.Api/Services/DocArchive,inventory/src/Inventory.Api/Controllers/DocArchive,inventory/src/Inventory.Api/Entities/DocArchive,inventory/src/Inventory.Client/Pages/DocArchive,6832,11,
 Export,inventory/src/Inventory.Api/Services/Export,inventory/src/Inventory.Api/Controllers/Export,,inventory/src/Inventory.Client/Pages/Export,2469,1,
 FaAtt,inventory/src/Inventory.Api/Services/FaAtt,inventory/src/Inventory.Api/Controllers/FaAtt,,inventory/src/Inventory.Client/Pages/FaAtt,2109,12,

@@ -24,6 +24,13 @@
   <ItemGroup>
     <!-- فونت‌های فارسی برای PDF شناسنامه سیستم -->
     <Content Include="Resources/fonts/**/*" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- نقشهٔ مالکیت ماژول‌ها از ریشهٔ مخزن؛ ماژول «مدیریت برنامه‌نویسان» با آن فهرست
+         ماژول‌ها را هم‌زمان می‌کند. Condition گذاشته شده تا اگر فایل جابه‌جا شد،
+         build نشکند (سرویس در آن حالت پیام راهنما برمی‌گرداند). -->
+    <Content Include="..\..\..\tools\ownership-map.csv" Link="tools\ownership-map.csv"
+             CopyToOutputDirectory="PreserveNewest"
+             Condition="Exists('..\..\..\tools\ownership-map.csv')" />
     <!-- appsettings.Development فقط برای توسعه است؛ در انتشار منتشر نشود -->
     <Content Update="appsettings.Development.json" CopyToPublishDirectory="Never" />
   </ItemGroup>

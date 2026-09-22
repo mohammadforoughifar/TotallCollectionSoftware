@@ -89,6 +89,17 @@ public static class DbInitializer
                                       (ReportStudioSchemaV1.LastError ?? ""));
                 else
                     Console.WriteLine("[DB] ✔ جدول‌های گزارش‌ساز حرفه‌ای آماده‌اند.");
+
+                // مدیریت برنامه‌نویسان (DevTeam) — اعضای تیم، مالکیت ماژول‌ها،
+                // آیتم‌های کاری و تاریخچهٔ «کی روی چی کار کرد». جدول‌هایش در
+                // مایگریشن SquashedInitial نیستند، پس مثل نامه وارده و داشبورد شخصی
+                // اینجا خودتعمیری ساخته می‌شوند (هم SQLite هم SQL Server).
+                await DevTeamSchemaV1.EnsureAsync(db);
+                if (DevTeamSchemaV1.LastError is not null)
+                    Console.WriteLine("[DB] ⚠ جدول‌های مدیریت برنامه‌نویسان (DevMembers/DevModules/DevTasks/DevTaskLogs) ساخته نشدند! " +
+                                      DevTeamSchemaV1.LastError);
+                else
+                    Console.WriteLine("[DB] ✔ جدول‌های مدیریت برنامه‌نویسان آماده‌اند.");
                 await new Inventory.Api.Services.ItAssets.WorkOrderSchedulingService(db).UpgradeLegacyAsync(DateTime.Now);
 
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها

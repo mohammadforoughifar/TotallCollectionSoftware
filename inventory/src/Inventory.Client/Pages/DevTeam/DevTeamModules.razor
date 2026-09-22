@@ -1,0 +1,377 @@
+@namespace Inventory.Client.Pages
+@page "/dev-team/modules"
+@inject IDevTeamService DevTeam
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject LayoutState Layout
+
+<PageTitle>ماژول‌ها و مالکیت</PageTitle>
+
+@if (!Auth.CanSee("DevTeam"))
+{
+    <div class="alert alert-warning mt-3">
+        <i class="bi bi-shield-lock"></i> شما مجوز مشاهدهٔ ماژول «مدیریت برنامه‌نویسان» را ندارید.
+    </div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>ماژول‌ها و مالکیت</h1>
+            <p class="lead">هر ماژول یک مالک دارد؛ همین جدول بعداً منبع ساخت CODEOWNERS است</p>
+        </div>
+        <div class="d-flex gap-2 me-auto">
+            <a class="btn btn-outline-secondary" href="dev-team"><i class="bi bi-kanban"></i> بورد</a>
+            @if (canManage)
+            {
+                <button class="btn btn-outline-primary" @onclick="SyncFromRepo" disabled="@busy">
+                    <i class="bi bi-arrow-repeat"></i> هم‌زمان‌سازی با مخزن
+                </button>
+                <button class="btn btn-primary" @onclick="NewModule"><i class="bi bi-plus-lg"></i> ماژول جدید</button>
+            }
+        </div>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-lg-@(editing ? "8" : "12")">
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <strong><i class="bi bi-diagram-3"></i> ماژول‌های نرم‌افزار</strong>
+                    <label class="form-check form-switch ms-auto mb-0">
+                        <input class="form-check-input" type="checkbox" checked="@activeOnly" @onchange="ToggleActiveOnly" />
+                        <span class="form-check-label small">فقط فعال</span>
+                    </label>
+                </div>
+                <div class="card-body p-0">
+                    @if (modules is null)
+                    {
+                        <div class="p-4 text-center text-muted"><div class="spinner-border"></div></div>
+                    }
+                    else if (modules.Count == 0)
+                    {
+                        <div class="p-4 text-center">
+                            <p class="text-muted mb-2">
+                                هنوز ماژولی ثبت نشده است. سریع‌ترین راه، وارد کردن فهرست از
+                                <code>tools/ownership-map.csv</code> است.
+                            </p>
+                            @if (canManage)
+                            {
+                                <button class="btn btn-primary btn-sm" @onclick="SyncFromRepo" disabled="@busy">
+                                    <i class="bi bi-arrow-repeat"></i> هم‌زمان‌سازی با مخزن
+                                </button>
+                                <button class="btn btn-outline-primary btn-sm" @onclick="NewModule">افزودن دستی</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover mb-0 dt-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:26%">ماژول</th>
+                                    <th style="width:18%">مالک</th>
+                                    <th class="text-center">آیتم باز</th>
+                                    <th class="text-center">در حال انجام</th>
+                                    <th class="text-center">صف</th>
+                                    <th class="text-end">خط کد</th>
+                                    <th>مسیر در مخزن</th>
+                                    @if (canManage)
+                                    {
+                                        <th class="text-center" style="width:90px">عملیات</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var m in modules)
+                                {
+                                    <tr class="@(m.IsActive ? "" : "table-secondary text-muted")">
+                                        <td>
+                                            <span class="dt-dot" style="background:@m.ColorHex"></span>
+                                            <strong>@m.Title</strong>
+                                            <small class="text-muted d-block">کلید: <code>@m.Key</code></small>
+                                            @if (m.Note is not null)
+                                            {
+                                                <small class="text-muted">@m.Note</small>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (m.OwnerName is null)
+                                            {
+                                                <span class="badge bg-warning text-dark">بی‌مالک</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@m.OwnerName</span>
+                                                @if (m.OwnerRoleTitle is not null)
+                                                {
+                                                    <small class="text-muted d-block">@m.OwnerRoleTitle</small>
+                                                }
+                                            }
+                                        </td>
+                                        <td class="text-center">@m.OpenTasks</td>
+                                        <td class="text-center">
+                                            @if (m.InProgress > 0)
+                                            {
+                                                <span class="badge bg-warning text-dark">@m.InProgress</span>
+                                            }
+                                            else
+                                            {
+                                                <span>0</span>
+                                            }
+                                            @if (m.Blocked > 0)
+                                            {
+                                                <span class="badge bg-danger ms-1" title="مسدود">@m.Blocked</span>
+                                            }
+                                        </td>
+                                        <td class="text-center">@m.Backlog</td>
+                                        <td class="text-end"><small>@m.ServiceLines.ToString("N0")</small></td>
+                                        <td>
+                                            <small class="text-muted d-block">@m.RepoPaths</small>
+                                            <small class="text-muted">@m.PageCount صفحه</small>
+                                        </td>
+                                        @if (canManage)
+                                        {
+                                            <td class="text-center">
+                                                <button class="btn btn-sm btn-link" title="ویرایش" @onclick="() => Edit(m)">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-link text-danger" title="حذف" @onclick="() => Remove(m)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            <div class="row g-2 mt-1">
+                <div class="col-md-4">
+                    <div class="card h-100"><div class="card-body py-2 px-3">
+                        <div class="dt-kpi">@modules?.Count(m => m.OwnerId is not null)</div>
+                        <div class="dt-kpi-label">ماژول دارای مالک</div>
+                    </div></div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100"><div class="card-body py-2 px-3">
+                        <div class="dt-kpi text-warning">@modules?.Count(m => m.OwnerId is null)</div>
+                        <div class="dt-kpi-label">بی‌مالک — ریسک انباشت</div>
+                    </div></div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100"><div class="card-body py-2 px-3">
+                        <div class="dt-kpi text-danger">@modules?.Count(m => m.Blocked > 0)</div>
+                        <div class="dt-kpi-label">ماژول با آیتم مسدود</div>
+                    </div></div>
+                </div>
+            </div>
+
+            <div class="alert alert-light border mt-3 small mb-0">
+                <strong><i class="bi bi-info-circle"></i> مالکیت یعنی مسئول بازبینی، نه تنها نویسنده.</strong>
+                مالک یک ماژول کسی است که تغییرات آن بخش را بازبینی می‌کند. برای ماژول‌های بزرگ می‌توانید
+                دو مالک تعیین کنید: یک نفر حساب شخصی و یک نفر حساب اشتراکی تیم.
+                پس از تکمیل این جدول، اسکریپت <code>tools/gen-codeowners.sh</code> فایل CODEOWNERS را می‌سازد.
+            </div>
+        </div>
+
+        @if (editing && form is not null)
+        {
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <strong>@(form.Id > 0 ? "ویرایش ماژول" : "ماژول جدید")</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label class="form-label small">کلید (لاتین، یکتا) <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="form.Key" placeholder="HrCore" dir="ltr" />
+                            <div class="form-text small">همان نام پوشهٔ ماژول؛ در CODEOWNERS و شمارهٔ آیتم‌ها استفاده می‌شود.</div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">عنوان فارسی <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="form.Title" placeholder="منابع انسانی" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">مالک</label>
+                            <select class="form-select" value="@(form.OwnerId?.ToString() ?? "")" @onchange="OnOwnerChange">
+                                <option value="">— بی‌مالک —</option>
+                                @foreach (var mem in members.Where(x => x.IsActive))
+                                {
+                                    <option value="@mem.Id">@mem.FullName (@mem.RoleTitle)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">آیکون</label>
+                            <input class="form-control" @bind="form.Icon" placeholder="bi-people" dir="ltr" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">رنگ</label>
+                            <input class="form-control form-control-color" type="color" @bind="form.ColorHex" />
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label small">خط کد سرویس</label>
+                                <input class="form-control" type="number" @bind="form.ServiceLines" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">تعداد صفحه</label>
+                                <input class="form-control" type="number" @bind="form.PageCount" />
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">مسیرها در مخزن</label>
+                            <input class="form-control" @bind="form.RepoPaths" dir="ltr" />
+                            <div class="form-text small">با <code>|</code> جدا کنید.</div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">ترتیب نمایش</label>
+                            <input class="form-control" type="number" @bind="form.SortOrder" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">یادداشت</label>
+                            <input class="form-control" @bind="form.Note" />
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="modActive" @bind="form.IsActive" />
+                            <label class="form-check-label small" for="modActive">فعال</label>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary" @onclick="Save" disabled="@busy">
+                                <i class="bi bi-check-lg"></i> ذخیره
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="Cancel">انصراف</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<DevModuleDto>? modules;
+    private List<DevMemberDto> members = new();
+    private DevModuleDto? form;
+    private bool editing;
+    private bool activeOnly;
+    private bool busy;
+    private string? error;
+
+    private bool canManage => Auth.IsAdmin || Auth.Has("DevTeam.Manage") || Auth.Has("DevTeam.Create") || Auth.Has("DevTeam.Update");
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("ماژول‌ها و مالکیت");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            modules = await DevTeam.GetModulesAsync(activeOnly);
+            members = await DevTeam.GetMembersAsync(true);
+        }
+        catch (Exception ex) { error = "بارگذاری ماژول‌ها ناموفق بود: " + ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task ToggleActiveOnly(ChangeEventArgs e)
+    {
+        activeOnly = e.Value is bool b && b;
+        await LoadAsync();
+    }
+
+    private void NewModule()
+    {
+        form = new DevModuleDto { IsActive = true, ColorHex = "#0d6efd" };
+        editing = true;
+    }
+
+    private void Edit(DevModuleDto m)
+    {
+        form = new DevModuleDto
+        {
+            Id = m.Id, Key = m.Key, Title = m.Title, OwnerId = m.OwnerId, Icon = m.Icon,
+            ColorHex = m.ColorHex, SortOrder = m.SortOrder, IsActive = m.IsActive,
+            RepoPaths = m.RepoPaths, ServiceLines = m.ServiceLines, PageCount = m.PageCount, Note = m.Note
+        };
+        editing = true;
+    }
+
+    private void OnOwnerChange(ChangeEventArgs e)
+    {
+        if (form is null) return;
+        form.OwnerId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+    }
+
+    private void Cancel() { editing = false; form = null; }
+
+    private async Task Save()
+    {
+        if (form is null) return;
+        if (string.IsNullOrWhiteSpace(form.Key) || string.IsNullOrWhiteSpace(form.Title))
+        {
+            Toast.Error("کلید و عنوان ماژول الزامی است.");
+            return;
+        }
+        busy = true;
+        try
+        {
+            var saved = await DevTeam.SaveModuleAsync(form);
+            Toast.Success($"ماژول «{saved.Title}» ذخیره شد.");
+            Cancel();
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task Remove(DevModuleDto m)
+    {
+        busy = true;
+        try
+        {
+            await DevTeam.DeleteModuleAsync(m.Id);
+            Toast.Success($"ماژول «{m.Title}» حذف شد.");
+            await LoadAsync();
+        }
+        // ماژول دارای آیتم کاری حذف نمی‌شود تا آمار و تاریخچه از بین نرود
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task SyncFromRepo()
+    {
+        busy = true;
+        try
+        {
+            var added = await DevTeam.SyncModulesFromRepoAsync();
+            Toast.Success(added > 0
+                ? $"{added} ماژول تازه از مخزن اضافه شد. حالا برای هرکدام مالک تعیین کنید."
+                : "فهرست ماژول‌ها به‌روز بود.");
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+}
+
+<style>
+    .dt-table th { font-size:.76rem; color:#6c757d; font-weight:600; white-space:nowrap; }
+    .dt-table td { font-size:.85rem; vertical-align:middle; }
+    .dt-dot { display:inline-block; width:.6rem; height:.6rem; border-radius:50%; margin-inline-end:.4rem; }
+    .dt-kpi { font-size:1.4rem; font-weight:700; line-height:1.2; }
+    .dt-kpi-label { font-size:.75rem; color:#6c757d; }
+</style>

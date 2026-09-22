@@ -1444,6 +1444,13 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .group-wo .nav-group-items { border-inline-start-color: rgba(56,189,248,.35); }
 .group-wo .nav-toggle.open > span:first-child, .group-wo .nav-toggle:hover .nav-chevron { color: #38bdf8; }
 
+/* مدیریت برنامه‌نویسان — نیلی، متمایز از آبی «دستور کار» و بنفش «بن‌سازه» */
+.group-devteam .nav-section-title { color: #818cf8; }
+.group-devteam .nav-link i { color: #818cf8; }
+.group-devteam .nav-link.active { background: linear-gradient(135deg, #6366f1, #4338ca); box-shadow: 0 8px 22px rgba(99,102,241,.45); }
+.group-devteam .nav-group-items { border-inline-start-color: rgba(129,140,248,.35); }
+.group-devteam .nav-toggle.open > span:first-child, .group-devteam .nav-toggle:hover .nav-chevron { color: #818cf8; }
+
 .group-hr .nav-section-title { color: #67e8f9; }
 .group-hr .nav-link i { color: #67e8f9; }
 .group-hr .nav-link.active { background: linear-gradient(135deg, #22d3ee, #0e7490); box-shadow: 0 8px 22px rgba(6,182,212,.42); }

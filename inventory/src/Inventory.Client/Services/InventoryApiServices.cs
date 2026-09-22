@@ -328,3 +328,86 @@ public class ExpenseService : IExpenseService
     public Task DeleteExpenseAsync(int id)
         => _api.DeleteAsync($"api/expenses/{id}");
 }
+
+/// <summary>پیاده‌سازی سرویس مدیریت برنامه‌نویسان.</summary>
+public class DevTeamService : IDevTeamService
+{
+    private readonly IApiClient _api;
+    public DevTeamService(IApiClient api) => _api = api;
+
+    public Task<DevBoardDto> GetBoardAsync(int? moduleId = null, int? assigneeId = null)
+    {
+        var url = "api/devteam/board?";
+        if (moduleId is > 0) url += $"&moduleId={moduleId}";
+        if (assigneeId is > 0) url += $"&assigneeId={assigneeId}";
+        return _api.GetAsync<DevBoardDto>(url);
+    }
+
+    public Task<List<DevTaskLogDto>> GetActivityAsync(int days = 14, int take = 200)
+        => _api.GetAsync<List<DevTaskLogDto>>($"api/devteam/activity?days={days}&take={take}");
+
+    public Task<List<DevMemberDto>> GetMembersAsync(bool activeOnly = false)
+        => _api.GetAsync<List<DevMemberDto>>($"api/devteam/members?activeOnly={activeOnly}");
+
+    public Task<DevMemberDto> SaveMemberAsync(DevMemberDto dto)
+        => _api.PostAsync<DevMemberDto>("api/devteam/members", dto);
+
+    public Task DeleteMemberAsync(int id)
+        => _api.DeleteAsync($"api/devteam/members/{id}");
+
+    public Task<List<DevModuleDto>> GetModulesAsync(bool activeOnly = false)
+        => _api.GetAsync<List<DevModuleDto>>($"api/devteam/modules?activeOnly={activeOnly}");
+
+    public Task<DevModuleDto> SaveModuleAsync(DevModuleDto dto)
+        => _api.PostAsync<DevModuleDto>("api/devteam/modules", dto);
+
+    public Task DeleteModuleAsync(int id)
+        => _api.DeleteAsync($"api/devteam/modules/{id}");
+
+    public Task<DevModuleDto> SetModuleOwnerAsync(int moduleId, int? ownerId)
+        => _api.PostAsync<DevModuleDto>($"api/devteam/modules/{moduleId}/owner", new { ownerId });
+
+    public async Task<int> SyncModulesFromRepoAsync()
+    {
+        var r = await _api.PostAsync<SyncResult>("api/devteam/modules/sync-from-repo");
+        return r?.Added ?? 0;
+    }
+
+    public Task<PagedResult<DevTaskDto>> GetTasksAsync(string? search, DevTaskStatus? status, int? moduleId, int? assigneeId, int page, int pageSize)
+    {
+        var url = $"api/devteam/tasks?search={Uri.EscapeDataString(search ?? "")}&page={page}&pageSize={pageSize}";
+        if (status.HasValue) url += $"&status={(int)status.Value}";
+        if (moduleId is > 0) url += $"&moduleId={moduleId}";
+        if (assigneeId is > 0) url += $"&assigneeId={assigneeId}";
+        return _api.GetAsync<PagedResult<DevTaskDto>>(url);
+    }
+
+    public Task<DevTaskDto?> GetTaskAsync(int id)
+        => _api.GetAsync<DevTaskDto?>($"api/devteam/tasks/{id}");
+
+    public Task<DevTaskDto> SaveTaskAsync(DevTaskDto dto)
+        => _api.PostAsync<DevTaskDto>("api/devteam/tasks", dto);
+
+    public Task DeleteTaskAsync(int id)
+        => _api.DeleteAsync($"api/devteam/tasks/{id}");
+
+    public Task<DevTaskDto> SetStatusAsync(int id, DevTaskStatusRequest request)
+        => _api.PostAsync<DevTaskDto>($"api/devteam/tasks/{id}/status", request);
+
+    public Task<DevTaskDto> AssignAsync(int id, int? memberId, string? note = null)
+        => _api.PostAsync<DevTaskDto>($"api/devteam/tasks/{id}/assign", new { memberId, note });
+
+    public Task<List<DevTaskLogDto>> GetTaskLogsAsync(int taskId)
+        => _api.GetAsync<List<DevTaskLogDto>>($"api/devteam/tasks/{taskId}/logs");
+
+    public Task<DevTaskLogDto> AddLogAsync(int taskId, DevTaskLogRequest request)
+        => _api.PostAsync<DevTaskLogDto>($"api/devteam/tasks/{taskId}/logs", request);
+
+    /// <summary>شکل پاسخ هم‌زمان‌سازی ماژول‌ها از مخزن.</summary>
+    private class SyncResult
+    {
+        public bool Ok { get; set; }
+        public int Added { get; set; }
+        public string? Source { get; set; }
+    }
+}

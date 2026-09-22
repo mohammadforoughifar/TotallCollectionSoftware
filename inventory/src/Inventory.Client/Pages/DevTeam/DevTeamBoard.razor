@@ -1,0 +1,610 @@
+@namespace Inventory.Client.Pages
+@page "/dev-team"
+@inject IDevTeamService DevTeam
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject LayoutState Layout
+@inject NavigationManager Nav
+
+<PageTitle>مدیریت برنامه‌نویسان</PageTitle>
+
+@if (!Auth.CanSee("DevTeam"))
+{
+    <div class="alert alert-warning mt-3">
+        <i class="bi bi-shield-lock"></i>
+        شما مجوز مشاهدهٔ ماژول «مدیریت برنامه‌نویسان» را ندارید.
+        از «تنظیمات ← نقش‌ها و دسترسی‌ها» دسترسی <code>DevTeam.Read</code> را دریافت کنید.
+    </div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>مدیریت برنامه‌نویسان</h1>
+            <p class="lead">
+                چه کسی روی چه ماژولی کار می‌کند، کدام آیتم در جریان است، و مالک هر بخش کیست
+            </p>
+        </div>
+        <div class="d-flex gap-2 me-auto">
+            @if (canManage)
+            {
+                <button class="btn btn-outline-secondary" @onclick="SyncFromRepo" disabled="@busy">
+                    <i class="bi bi-arrow-repeat"></i> هم‌زمان‌سازی ماژول‌ها با مخزن
+                </button>
+            }
+            <a class="btn btn-outline-primary" href="dev-team/modules">
+                <i class="bi bi-diagram-3"></i> مالکیت ماژول‌ها
+            </a>
+            <a class="btn btn-outline-primary" href="dev-team/members">
+                <i class="bi bi-people"></i> اعضای تیم
+            </a>
+            @if (canEdit)
+            {
+                <a class="btn btn-primary" href="dev-team/tasks?new=1">
+                    <i class="bi bi-plus-lg"></i> آیتم جدید
+                </a>
+            }
+        </div>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (board is null && error is null)
+    {
+        <div class="text-center text-muted py-5"><div class="spinner-border"></div></div>
+    }
+    else if (board is not null)
+    {
+        @* ================== شاخص‌های کلیدی ================== *@
+        <div class="row g-2 mb-3">
+            <StatCard Icon="bi-people" Label="اعضای فعال" Value="@board.Stats.ActiveMembers.ToString()" Color="#2f6fed" />
+            <StatCard Icon="bi-diagram-3" Label="ماژول با مالک" Value="$"{board.Stats.ModulesWithOwner}/{board.Stats.TotalModules}"" Color="#198754" />
+            <StatCard Icon="bi-play-circle" Label="در حال انجام" Value="@board.Stats.InProgress.ToString()" Color="#fd7e14" />
+            <StatCard Icon="bi-eye" Label="در بازبینی" Value="@board.Stats.InReview.ToString()" Color="#6f42c1" />
+            <StatCard Icon="bi-exclamation-octagon" Label="مسدود" Value="@board.Stats.Blocked.ToString()" Color="#dc3545" />
+            <StatCard Icon="bi-calendar-x" Label="عقب‌افتاده" Value="@board.Stats.Overdue.ToString()" Color="#b02a37" />
+            <StatCard Icon="bi-check2-circle" Label="انجام‌شده این هفته" Value="@board.Stats.DoneThisWeek.ToString()" Color="#20c997" />
+            <StatCard Icon="bi-robot" Label="سهم ایجنت AI" Value="$"{board.Stats.AgentAssistedShare}٪"" Color="#6c757d" />
+        </div>
+
+        @* ================== ستون‌های بورد ================== *@
+        <div class="card mb-3">
+            <div class="card-header d-flex align-items-center">
+                <strong><i class="bi bi-kanban"></i> بورد کار</strong>
+                <div class="ms-auto d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" style="width:auto" @onchange="OnModuleFilter">
+                        <option value="0">— همهٔ ماژول‌ها —</option>
+                        @foreach (var m in board.ModuleLoad)
+                        {
+                            <option value="@m.ModuleId" selected="@(m.ModuleId == moduleId)">@m.Title</option>
+                        }
+                    </select>
+                    <select class="form-select form-select-sm" style="width:auto" @onchange="OnAssigneeFilter">
+                        <option value="0">— همهٔ افراد —</option>
+                        @foreach (var w in board.Workload)
+                        {
+                            <option value="@w.MemberId" selected="@(w.MemberId == assigneeId)">@w.FullName</option>
+                        }
+                    </select>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="LoadAsync" title="بارگذاری مجدد">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row g-2">
+                    @foreach (var col in board.Columns)
+                    {
+                        <div class="col">
+                            <div class="dt-col dt-col-@col.Status.ToString().ToLowerInvariant()">
+                                <div class="dt-col-head">
+                                    <span>@col.Title</span>
+                                    <span class="badge rounded-pill">@col.Tasks.Count</span>
+                                </div>
+                                <div class="dt-col-body">
+                                    @if (col.Tasks.Count == 0)
+                                    {
+                                        <div class="dt-empty">خالی</div>
+                                    }
+                                    @foreach (var t in col.Tasks)
+                                    {
+                                        <div class="dt-card" @onclick="() => OpenTask(t)">
+                                            <div class="dt-card-top">
+                                                <span class="dt-mod" style="background:@t.ModuleColorHex">@t.ModuleKey</span>
+                                                <span class="dt-num">@t.Number</span>
+                                            </div>
+                                            <div class="dt-card-title">@t.Title</div>
+                                            <div class="dt-card-bottom">
+                                                @if (t.AssigneeName is not null)
+                                                {
+                                                    <span class="dt-who" style="border-color:@t.AssigneeColorHex" title="@t.AssigneeName">
+                                                        <i class="bi bi-person-circle" style="color:@t.AssigneeColorHex"></i>
+                                                        @t.AssigneeName
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="dt-who dt-unassigned" title="هنوز به کسی واگذار نشده">
+                                                        <i class="bi bi-person-dash"></i> بی‌مسئول
+                                                    </span>
+                                                }
+                                                <span class="dt-flags">
+                                                    @if (t.AgentAssisted)
+                                                    {
+                                                        <i class="bi bi-robot" title="با کمک ایجنت AI — بازبینی دقیق‌تر لازم دارد"></i>
+                                                    }
+                                                    @if (t.DaysToDue is < 0)
+                                                    {
+                                                        <span class="dt-overdue" title="@(-t.DaysToDue!.Value) روز عقب‌افتاده">
+                                                            <i class="bi bi-clock-history"></i>@(-t.DaysToDue!.Value)
+                                                        </span>
+                                                    }
+                                                    <i class="bi bi-flag-fill dt-prio-@t.Priority.ToString().ToLowerInvariant()" title="اولویت: @DevTeamLabels.Priority(t.Priority)"></i>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            @* ================== بار کاری اعضا ================== *@
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header"><strong><i class="bi bi-bar-chart-steps"></i> بار کاری اعضا</strong></div>
+                    <div class="card-body p-0">
+                        @if (board.Workload.Count == 0)
+                        {
+                            <div class="p-3 text-muted">
+                                هنوز عضوی ثبت نشده. از
+                                <a href="dev-team/members">اعضای تیم</a>
+                                افراد را اضافه کنید.
+                            </div>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0 dt-table">
+                                <thead>
+                                    <tr>
+                                        <th>عضو</th>
+                                        <th class="text-center">ماژول</th>
+                                        <th class="text-center">در حال انجام</th>
+                                        <th class="text-center">بازبینی</th>
+                                        <th class="text-center">مسدود</th>
+                                        <th class="text-center">صف</th>
+                                        <th style="width:34%">توزیع</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var w in board.Workload)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <i class="bi bi-circle-fill" style="font-size:.55rem;color:@w.ColorHex"></i>
+                                                @w.FullName
+                                                <small class="text-muted d-block">@w.RoleTitle</small>
+                                            </td>
+                                            <td class="text-center">@w.OwnedModules</td>
+                                            <td class="text-center">@w.InProgress</td>
+                                            <td class="text-center">@w.InReview</td>
+                                            <td class="text-center">
+                                                @if (w.Blocked > 0)
+                                                {
+                                                    <span class="badge bg-danger">@w.Blocked</span>
+                                                }
+                                                else
+                                                {
+                                                    @w.Blocked
+                                                }
+                                            </td>
+                                            <td class="text-center">@w.Backlog</td>
+                                            <td>
+                                                <div class="dt-bar">
+                                                    @if (w.Total > 0)
+                                                    {
+                                                        <span style="width:@(100.0 * w.InProgress / w.Total)%;" class="bg-warning" title="در حال انجام: @w.InProgress"></span>
+                                                        <span style="width:@(100.0 * w.InReview / w.Total)%;" class="bg-info" title="در بازبینی: @w.InReview"></span>
+                                                        <span style="width:@(100.0 * w.Blocked / w.Total)%;" class="bg-danger" title="مسدود: @w.Blocked"></span>
+                                                        <span style="width:@(100.0 * w.Backlog / w.Total)%;" class="bg-secondary" title="در صف: @w.Backlog"></span>
+                                                        <span style="width:@(100.0 * w.Done / w.Total)%;" class="bg-success" title="انجام‌شده: @w.Done"></span>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            @* ================== بار ماژول‌ها ================== *@
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header"><strong><i class="bi bi-diagram-3"></i> ماژول‌ها و مالکانشان</strong></div>
+                    <div class="card-body p-0" style="max-height:420px;overflow:auto">
+                        @if (board.ModuleLoad.Count == 0)
+                        {
+                            <div class="p-3 text-muted">
+                                ماژولی ثبت نشده. دکمهٔ «هم‌زمان‌سازی ماژول‌ها با مخزن» را بزنید تا فهرست
+                                از <code>tools/ownership-map.csv</code> وارد شود.
+                            </div>
+                        }
+                        else
+                        {
+                            <table class="table table-sm mb-0 dt-table">
+                                <thead>
+                                    <tr>
+                                        <th>ماژول</th>
+                                        <th>مالک</th>
+                                        <th class="text-center">باز</th>
+                                        <th class="text-center">جاری</th>
+                                        <th class="text-end">خط کد</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var m in board.ModuleLoad.OrderByDescending(x => x.OpenTasks).ThenByDescending(x => x.ServiceLines))
+                                    {
+                                        <tr>
+                                            <td>
+                                                <span class="dt-dot" style="background:@m.ColorHex"></span>
+                                                @m.Title
+                                                <small class="text-muted">(@m.Key)</small>
+                                            </td>
+                                            <td>
+                                                @if (m.OwnerName is null)
+                                                {
+                                                    <span class="badge bg-warning text-dark">بی‌مالک</span>
+                                                }
+                                                else
+                                                {
+                                                    @m.OwnerName
+                                                }
+                                            </td>
+                                            <td class="text-center">@m.OpenTasks</td>
+                                            <td class="text-center">
+                                                @m.InProgress
+                                                @if (m.Blocked > 0)
+                                                {
+                                                    <span class="badge bg-danger ms-1">@m.Blocked</span>
+                                                }
+                                            </td>
+                                            <td class="text-end"><small>@m.ServiceLines.ToString("N0")</small></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ================== فعالیت اخیر — پاسخ «کی روی چی کار کرده» ================== *@
+        <div class="card mt-3">
+            <div class="card-header d-flex align-items-center">
+                <strong><i class="bi bi-clock-history"></i> فعالیت اخیر تیم</strong>
+                <select class="form-select form-select-sm ms-auto" style="width:auto" @onchange="OnDaysChange">
+                    <option value="7" selected="@(activityDays == 7)">۷ روز اخیر</option>
+                    <option value="14" selected="@(activityDays == 14)">۱۴ روز اخیر</option>
+                    <option value="30" selected="@(activityDays == 30)">۳۰ روز اخیر</option>
+                </select>
+            </div>
+            <div class="card-body p-0">
+                @if (activity is null)
+                {
+                    <div class="p-3 text-muted">در حال بارگذاری…</div>
+                }
+                else if (activity.Count == 0)
+                {
+                    <div class="p-3 text-muted">
+                        در این بازه رویدادی ثبت نشده است.
+                    </div>
+                }
+                else
+                {
+                    <ul class="list-group list-group-flush dt-activity">
+                        @foreach (var log in activity)
+                        {
+                            <li class="list-group-item d-flex gap-2 align-items-baseline">
+                                <small class="text-muted dt-when">@log.At.ToString("MM-dd HH:mm")</small>
+                                <strong class="dt-actor">@(log.MemberName ?? "سامانه")</strong>
+                                <span class="dt-act">@DevTeamLabels.Action(log.Action)</span>
+                                @if (log.TaskNumber is not null)
+                                {
+                                    <a class="dt-task" href="dev-team/tasks?id=@log.TaskId">@log.TaskNumber</a>
+                                }
+                                @if (log.Note is not null)
+                                {
+                                    <span class="text-muted dt-note">@log.Note</span>
+                                }
+                                @if (log.CommitSha is not null)
+                                {
+                                    <code class="dt-sha">@log.CommitSha</code>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    }
+}
+
+@* ================== جزئیات آیتم ================== *@
+@if (selected is not null)
+{
+    <div class="dt-modal-backdrop" @onclick="CloseTask"></div>
+    <div class="dt-modal">
+        <div class="dt-modal-head">
+            <span class="dt-mod" style="background:@selected.ModuleColorHex">@selected.ModuleKey</span>
+            <strong>@selected.Number</strong>
+            <span>@selected.Title</span>
+            <button class="btn btn-sm btn-link ms-auto" @onclick="CloseTask"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="dt-modal-body">
+            <div class="mb-2">
+                <span class="badge bg-secondary">@DevTeamLabels.Status(selected.Status)</span>
+                <span class="badge bg-light text-dark">اولویت: @DevTeamLabels.Priority(selected.Priority)</span>
+                <span class="badge bg-light text-dark">اندازه: @DevTeamLabels.Size(selected.Size)</span>
+                @if (selected.AgentAssisted)
+                {
+                    <span class="badge bg-warning text-dark"><i class="bi bi-robot"></i> با کمک ایجنت AI</span>
+                }
+            </div>
+
+            @if (selected.Description is not null)
+            {
+                <p class="text-muted small">@selected.Description</p>
+            }
+
+            <table class="table table-sm small mb-3">
+                <tbody>
+                    <tr><th style="width:34%">مسئول</th><td>@(selected.AssigneeName ?? "— تعیین نشده —")</td></tr>
+                    <tr><th>ماژول</th><td>@selected.ModuleTitle</td></tr>
+                    <tr><th>برنچ</th><td>@(selected.BranchName is null ? "—" : selected.BranchName)</td></tr>
+                    <tr>
+                        <th>PR</th>
+                        <td>
+                            @if (selected.PullRequestUrl is not null)
+                            {
+                                <a href="@selected.PullRequestUrl" target="_blank" rel="noopener">@selected.PullRequestUrl</a>
+                            }
+                            else
+                            {
+                                <span>—</span>
+                            }
+                        </td>
+                    </tr>
+                    <tr><th>شروع</th><td>@(selected.StartedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td></tr>
+                    <tr><th>سررسید</th><td>@(selected.DueDate?.ToString("yyyy-MM-dd") ?? "—")</td></tr>
+                    <tr><th>پایان</th><td>@(selected.CompletedAt?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td></tr>
+                    <tr><th>آخرین تغییر</th><td>@selected.UpdatedAt.ToString("yyyy-MM-dd HH:mm")</td></tr>
+                </tbody>
+            </table>
+
+            @if (canEdit)
+            {
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                    @foreach (var s in DevTeamLabels.BoardOrder)
+                    {
+                        if (s != selected.Status)
+                        {
+                            <button class="btn btn-sm btn-outline-primary" @onclick="() => MoveAsync(s)">
+                                <i class="bi bi-arrow-left-right"></i> انتقال به «@DevTeamLabels.Status(s)»
+                            </button>
+                        }
+                    }
+                    <a class="btn btn-sm btn-outline-secondary" href="dev-team/tasks?id=@selected.Id">
+                        <i class="bi bi-pencil"></i> ویرایش کامل
+                    </a>
+                </div>
+            }
+
+            <h6><i class="bi bi-clock-history"></i> تاریخچهٔ این آیتم</h6>
+            @if (logs is null)
+            {
+                <div class="text-muted small">در حال بارگذاری…</div>
+            }
+            else if (logs.Count == 0)
+            {
+                <div class="text-muted small">رویدادی ثبت نشده.</div>
+            }
+            else
+            {
+                <ul class="list-group list-group-flush small">
+                    @foreach (var l in logs)
+                    {
+                        <li class="list-group-item px-0">
+                            <strong>@(l.MemberName ?? "سامانه")</strong>
+                            @DevTeamLabels.Action(l.Action)
+                            @if (l.Note is not null)
+                            {
+                                <span class="text-muted">— @l.Note</span>
+                            }
+                            <small class="text-muted float-start">@l.At.ToString("yyyy-MM-dd HH:mm")</small>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private DevBoardDto? board;
+    private List<DevTaskLogDto>? activity;
+    private List<DevTaskLogDto>? logs;
+    private DevTaskDto? selected;
+    private string? error;
+    private bool busy;
+    private int moduleId;
+    private int assigneeId;
+    private int activityDays = 14;
+
+    private bool canManage => Auth.IsAdmin || Auth.Has("DevTeam.Manage");
+    private bool canEdit => Auth.IsAdmin || Auth.Has("DevTeam.Update") || Auth.Has("DevTeam.Create");
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("مدیریت برنامه‌نویسان");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            board = await DevTeam.GetBoardAsync(
+                moduleId > 0 ? moduleId : null,
+                assigneeId > 0 ? assigneeId : null);
+            activity = await DevTeam.GetActivityAsync(activityDays, 60);
+        }
+        catch (Exception ex)
+        {
+            error = "بارگذاری بورد ناموفق بود: " + ex.Message;
+        }
+        finally { busy = false; }
+    }
+
+    private async Task OnModuleFilter(ChangeEventArgs e)
+    {
+        moduleId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        await LoadAsync();
+    }
+
+    private async Task OnAssigneeFilter(ChangeEventArgs e)
+    {
+        assigneeId = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
+        await LoadAsync();
+    }
+
+    private async Task OnDaysChange(ChangeEventArgs e)
+    {
+        activityDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 14;
+        try { activity = await DevTeam.GetActivityAsync(activityDays, 60); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task OpenTask(DevTaskDto t)
+    {
+        selected = t;
+        logs = null;
+        try { logs = await DevTeam.GetTaskLogsAsync(t.Id); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void CloseTask()
+    {
+        selected = null;
+        logs = null;
+    }
+
+    private async Task MoveAsync(DevTaskStatus to)
+    {
+        if (selected is null) return;
+        try
+        {
+            selected = await DevTeam.SetStatusAsync(selected.Id, new DevTaskStatusRequest { Status = to });
+            Toast.Success($"{selected.Number} به «{DevTeamLabels.Status(to)}» منتقل شد.");
+            logs = await DevTeam.GetTaskLogsAsync(selected.Id);
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SyncFromRepo()
+    {
+        busy = true;
+        try
+        {
+            var added = await DevTeam.SyncModulesFromRepoAsync();
+            Toast.Success(added > 0 ? $"{added} ماژول تازه از مخزن اضافه شد." : "فهرست ماژول‌ها به‌روز بود.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            // پیام سرور راهنماست: نبودِ فایل csv کنار سرویس API
+            Toast.Error(ex.Message);
+        }
+        finally { busy = false; }
+    }
+
+    /// <summary>کارت شاخص — محلی تعریف شده تا صفحه به کامپوننت جدید وابسته نشود.</summary>
+    private RenderFragment StatCard(string icon, string label, string value, string color) => __builder =>
+    {
+        <div class="col-6 col-md-3 col-xl">
+            <div class="card dt-stat h-100" style="border-inline-start:3px solid @color">
+                <div class="card-body py-2 px-3">
+                    <div class="dt-stat-value" style="color:@color">@value</div>
+                    <div class="dt-stat-label"><i class="bi @icon"></i> @label</div>
+                </div>
+            </div>
+        </div>
+    };
+}
+
+<style>
+    .dt-col { border: 1px solid #e3e6ea; border-radius: .5rem; background: #fbfcfd; min-height: 180px; }
+    .dt-col-head { display:flex; align-items:center; justify-content:space-between; padding:.5rem .65rem;
+                   font-weight:600; font-size:.9rem; border-bottom:1px solid #eef0f3; }
+    .dt-col-head .badge { background:#e9ecef; color:#495057; }
+    .dt-col-body { padding:.5rem; display:flex; flex-direction:column; gap:.5rem; max-height:520px; overflow:auto; }
+    .dt-col-inprogress .dt-col-head { border-top:3px solid #fd7e14; border-radius:.5rem .5rem 0 0; }
+    .dt-col-inreview   .dt-col-head { border-top:3px solid #6f42c1; border-radius:.5rem .5rem 0 0; }
+    .dt-col-blocked    .dt-col-head { border-top:3px solid #dc3545; border-radius:.5rem .5rem 0 0; }
+    .dt-col-backlog    .dt-col-head { border-top:3px solid #adb5bd; border-radius:.5rem .5rem 0 0; }
+    .dt-col-done       .dt-col-head { border-top:3px solid #20c997; border-radius:.5rem .5rem 0 0; }
+
+    .dt-card { background:#fff; border:1px solid #e3e6ea; border-radius:.45rem; padding:.5rem .6rem; cursor:pointer; }
+    .dt-card:hover { border-color:#9ec5fe; box-shadow:0 1px 4px rgba(13,110,253,.12); }
+    .dt-card-top { display:flex; align-items:center; gap:.4rem; margin-bottom:.25rem; }
+    .dt-mod { font-size:.66rem; font-weight:700; color:#fff; padding:.05rem .35rem; border-radius:.3rem; letter-spacing:.02em; }
+    .dt-num { font-size:.72rem; color:#6c757d; font-family:ui-monospace,monospace; }
+    .dt-card-title { font-size:.86rem; line-height:1.5; }
+    .dt-card-bottom { display:flex; align-items:center; justify-content:space-between; margin-top:.35rem; gap:.3rem; }
+    .dt-who { font-size:.72rem; color:#495057; border-bottom:2px solid transparent; }
+    .dt-unassigned { color:#b02a37; }
+    .dt-flags { display:flex; gap:.35rem; align-items:center; font-size:.75rem; }
+    .dt-overdue { color:#b02a37; font-weight:600; }
+    .dt-prio-urgent { color:#dc3545; }
+    .dt-prio-high { color:#fd7e14; }
+    .dt-prio-normal { color:#adb5bd; }
+    .dt-prio-low { color:#dee2e6; }
+    .dt-empty { color:#adb5bd; font-size:.78rem; text-align:center; padding:1rem 0; }
+
+    .dt-stat .dt-stat-value { font-size:1.25rem; font-weight:700; line-height:1.2; }
+    .dt-stat .dt-stat-label { font-size:.74rem; color:#6c757d; }
+
+    .dt-table th { font-size:.76rem; color:#6c757d; font-weight:600; white-space:nowrap; }
+    .dt-table td { font-size:.84rem; vertical-align:middle; }
+    .dt-bar { display:flex; height:.6rem; border-radius:.3rem; overflow:hidden; background:#f1f3f5; }
+    .dt-bar span { display:block; height:100%; }
+    .dt-dot { display:inline-block; width:.55rem; height:.55rem; border-radius:50%; margin-inline-end:.35rem; }
+
+    .dt-activity li { font-size:.83rem; }
+    .dt-when { color:#adb5bd; font-family:ui-monospace,monospace; min-width:5.5rem; }
+    .dt-actor { min-width:6rem; }
+    .dt-act { color:#495057; }
+    .dt-task { font-family:ui-monospace,monospace; font-size:.78rem; }
+    .dt-note { font-size:.8rem; }
+    .dt-sha { font-size:.72rem; color:#6f42c1; }
+
+    .dt-modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:1050; }
+    .dt-modal { position:fixed; top:50%; inset-inline-start:50%; transform:translate(-50%,-50%);
+                width:min(720px,94vw); max-height:88vh; overflow:auto; background:#fff;
+                border-radius:.6rem; box-shadow:0 12px 40px rgba(0,0,0,.25); z-index:1051; }
+    .dt-modal-head { display:flex; align-items:center; gap:.5rem; padding:.7rem 1rem; border-bottom:1px solid #eef0f3; }
+    .dt-modal-body { padding:1rem; }
+</style>

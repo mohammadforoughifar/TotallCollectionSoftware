@@ -68,6 +68,13 @@
 # /inventory/src/Inventory.Api/Entities/Dashboards/   @TODO-Dashboards
 # /inventory/src/Inventory.Client/Pages/Dashboards/   @TODO-Dashboards
 
+# ⏳ ماژول DevTeam  (939 خط، 4 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/DevTeam/   @TODO-DevTeam
+# /inventory/src/Inventory.Api/Controllers/DevTeam/   @TODO-DevTeam
+# /inventory/src/Inventory.Api/Entities/DevTeam/   @TODO-DevTeam
+# /inventory/src/Inventory.Client/Pages/DevTeam/   @TODO-DevTeam
+
 # ⏳ ماژول DocArchive  (6832 خط، 11 صفحه) — مالک تعیین نشده.
 #    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
 # /inventory/src/Inventory.Api/Services/DocArchive/   @TODO-DocArchive
