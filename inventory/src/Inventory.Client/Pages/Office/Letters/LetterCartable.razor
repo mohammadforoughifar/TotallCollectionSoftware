@@ -234,6 +234,7 @@
                     }
                     <button class="icb" title="@(folder == "archive" ? "خروج از بایگانی (Ctrl+Shift+B)" : "بایگانی (Ctrl+Shift+B)")" data-hotkey="ctrl+shift+b" @onclick="ArchiveCurrent"><i class="bi bi-archive"></i></button>
                     <button class="icb" title="چاپ" @onclick="Print"><i class="bi bi-printer"></i></button>
+                    <button class="icb" title="کپی نامه" @onclick="CopyLetter"><i class="bi bi-files"></i></button>
                     @if (selected.CanEdit)
                     {
                         <button class="icb" title="ویرایش" @onclick="() => EditLetter(selected.LetterId)"><i class="bi bi-pencil-square"></i></button>
@@ -856,6 +857,13 @@
         await ReloadAsync(keepSelection: true);
         if (selected != null) await LoadDetailAsync(selected.LetterId);
         StateHasChanged();
+    }
+
+    private void CopyLetter()
+    {
+        if (selected == null) return;
+        compose?.Open($"کپی - {selected.Title}", selected.Text);
+        Toast.Success("فرم ثبت نامه با اطلاعات نامه اصلی باز شد؛ گیرندگان را انتخاب و ارسال کنید.");
     }
 
     private async Task EditLetter(int letterId)
