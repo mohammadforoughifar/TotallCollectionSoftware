@@ -1,4 +1,5 @@
 @inject ILetterService LetterSvc
+@inject IJSRuntime JS
 @inject IToastService Toast
 
 @* ============================================================
@@ -314,7 +315,12 @@
         catch { }
     }
 
-    private void Close() => visible = false;
+    private async Task Close()
+    {
+        if (visible && (!string.IsNullOrWhiteSpace(title) || !string.IsNullOrWhiteSpace(pendingBody)) &&
+            !await JS.InvokeAsync<bool>("confirm", "اطلاعات فرم وارد شده است. فرم بسته شود؟")) return;
+        visible = false;
+    }
 
     private void CloseCombos()
     {

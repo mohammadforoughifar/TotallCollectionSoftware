@@ -54,6 +54,11 @@
                     <i class="bi bi-search"></i>
                     <input placeholder="@(folder == "archive" ? "جستجو بر اساس موضوع و شماره نامه…" : "جستجو در عنوان، شماره، فرستنده…")" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
                 </div>
+                <select class="tin" style="max-width:170px" @bind="sortKey" @bind:after="ApplySort">
+                    <option value="date-desc">جدیدترین</option><option value="date-asc">قدیمی‌ترین</option>
+                    <option value="title-asc">عنوان صعودی</option><option value="title-desc">عنوان نزولی</option>
+                    <option value="number-asc">شماره صعودی</option><option value="number-desc">شماره نزولی</option>
+                </select>
                 @if (folder != "archive")
                 {
                 <div class="chips">
@@ -289,7 +294,7 @@
                                     @foreach (var a in attachments)
                                     {
                                         var aa = a;
-                                        <button type="button" class="att text-start" @onclick="() => DownloadAttachmentAsync(aa)">
+                                        <button type="button" class="att text-start" @onclick="() => PreviewOrDownloadAttachmentAsync(aa)">
                                             <div class="ic"><i class="bi @FileIcon(aa.FileName)"></i></div>
                                             <div>@aa.FileName<small>@FmtSize(aa.Size) — @aa.UploaderName</small></div>
                                             @if (selected.IsMine || Auth.IsAdmin)
@@ -506,6 +511,7 @@
     private string folder = "inbox";
     private string filter = "all";
     private string search = "";
+    private string sortKey = "date-desc";
     private bool loading = true;
     private bool busy;
     private bool readerOpen;
@@ -681,6 +687,7 @@
                 }
                 items = res.Items;
                 totalServerCount = res.TotalCount;
+                ApplySort();
             }
             stats = await LetterSvc.GetStatsAsync();
             if (keepSelection && selected != null)
@@ -696,6 +703,19 @@
     private void CloseReader()
     {
         readerOpen = false;
+    }
+
+    private void ApplySort()
+    {
+        items = sortKey switch
+        {
+            "date-asc" => items.OrderBy(x => x.Date).ToList(),
+            "title-asc" => items.OrderBy(x => x.Title).ToList(),
+            "title-desc" => items.OrderByDescending(x => x.Title).ToList(),
+            "number-asc" => items.OrderBy(x => x.LetterNumber).ToList(),
+            "number-desc" => items.OrderByDescending(x => x.LetterNumber).ToList(),
+            _ => items.OrderByDescending(x => x.Date).ToList()
+        };
     }
 
     private async Task SetFolder(string f)
@@ -1082,6 +1102,19 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { attUploading = false; }
+    }
+
+    private async Task PreviewOrDownloadAttachmentAsync(LetterAttachmentDto a)
+    {
+        var previewable = (a.ContentType ?? "").StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+                          || a.ContentType is "application/pdf" or "text/plain";
+        if (!previewable) { await DownloadAttachmentAsync(a); return; }
+        try
+        {
+            var bytes = await Http.GetByteArrayAsync(LetterSvc.AttachmentDownloadUrl(a.Id));
+            await JS.InvokeVoidAsync("openBlob", a.ContentType ?? "application/octet-stream", Convert.ToBase64String(bytes));
+        }
+        catch { await DownloadAttachmentAsync(a); }
     }
 
     private async Task DownloadAttachmentAsync(LetterAttachmentDto a)
