@@ -127,7 +127,7 @@
                         }
                         <div class="mail @( (folder=="inbox"||folder=="signing") && (!ll.IsRead && !ll.IsSigned) ? "unread" : "") @(ll.IsNeshan ? "starred" : "") @(selected?.LetterId == ll.LetterId ? "sel" : "")"
                              @onclick="() => OpenLetter(ll)">
-                            @if (ll.ErjaId.HasValue && ll.LetterId > 0)
+                            @if (ll.LetterId > 0 && (ll.ErjaId.HasValue || FolderIsSent))
                             {
                                 <div class="me-2 d-flex align-items-center" @onclick:stopPropagation="true">
                                     <input type="checkbox" checked="@(selectedLetterIds.Contains(ll.LetterId))" @onchange="() => ToggleSelectLetter(ll.LetterId)" style="width:16px;height:16px;cursor:pointer;" />

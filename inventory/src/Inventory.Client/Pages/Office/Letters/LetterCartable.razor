@@ -52,7 +52,7 @@
                 </div>
                 <div class="search">
                     <i class="bi bi-search"></i>
-                    <input placeholder="@(folder == "archive" ? "جستجو بر اساس موضوع و شماره نامه…" : "جستجو در عنوان، شماره، فرستنده…")" @bind="search" @bind:event="oninput" @bind:after="ReloadAsync" />
+                    <input placeholder="@(folder == "archive" ? "جستجو بر اساس موضوع و شماره نامه…" : "جستجو در عنوان، شماره، فرستنده…")" @bind="search" @bind:event="oninput" @bind:after="OnSearchChanged" />
                 </div>
                 <select class="tin" style="max-width:170px" @bind="sortKey" @bind:after="ApplySort">
                     <option value="date-desc">جدیدترین</option><option value="date-asc">قدیمی‌ترین</option>
@@ -512,6 +512,7 @@
     private string filter = "all";
     private string search = "";
     private string sortKey = "date-desc";
+    private CancellationTokenSource? searchCts;
     private bool loading = true;
     private bool busy;
     private bool readerOpen;
@@ -703,6 +704,19 @@
     private void CloseReader()
     {
         readerOpen = false;
+    }
+
+    private async Task OnSearchChanged()
+    {
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+        searchCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(300, searchCts.Token);
+            await ReloadAsync();
+        }
+        catch (OperationCanceledException) { }
     }
 
     private void ApplySort()

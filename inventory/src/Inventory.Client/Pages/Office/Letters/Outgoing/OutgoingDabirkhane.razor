@@ -11,7 +11,7 @@
 @implements IDisposable
 
 @* ============================================================
-   دبیرخانه نامه صادره
+   دبیرخانه یکپارچه اتوماسیون اداری
    • فقط نامه‌های امضا شده (دارای شماره صادره) اینجا نمایش داده می‌شوند
    • ۱) افزودن نامه به بایگانی دبیرخانه (درخت پوشه‌ها)
    • ۲) چاپ در دو نسخه: «با رونوشت» و «بدون رونوشت» (هر کدام A4/A5)
@@ -654,7 +654,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Layout.SetTitle("دبیرخانه نامه صادره");
+        Layout.SetTitle("دبیرخانه یکپارچه اتوماسیون اداری");
         Rt.DataChanged += OnDataChanged;
         await LoadLookupsAsync();
         await ReloadAsync();
