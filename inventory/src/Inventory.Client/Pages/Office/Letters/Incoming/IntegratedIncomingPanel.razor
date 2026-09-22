@@ -46,7 +46,7 @@
                         <div class="iin-r1"><span class="iin-num">@l.NumberSabt.FaDigits()</span><strong title="@l.Title">@l.Title</strong><span class="iin-badge @(view == "archived" ? "arc" : "ok")">@(view == "archived" ? "بایگانی‌شده" : "ثبت و ارسال شده")</span></div>
                         <div class="iin-meta"><span><b>فرستنده:</b> @l.Ferestande</span><span><b>تاریخ صدور:</b> @l.Date.ToFaDate()</span><span><b>تاریخ ورود:</b> @l.DateErsal.ToFaDate()</span>@if (!string.IsNullOrWhiteSpace(l.NumberLetterVarede)){<span><b>شماره مبدأ:</b> @l.NumberLetterVarede</span>}</div>
                     </div>
-                    <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => Print(l)"><i class="bi bi-printer"></i> چاپ</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> بایگانی</button></div>
+                    <div class="iin-row-actions"><button class="iin-mini" @onclick="() => Show(l)"><i class="bi bi-eye"></i> نمایش</button><button class="iin-mini" @onclick="() => Print(l)"><i class="bi bi-printer"></i> چاپ</button><button class="iin-mini" @onclick="() => OpenFlow(l)"><i class="bi bi-diagram-3"></i> گردش</button><button class="iin-mini" @onclick="() => OpenErja(l)"><i class="bi bi-send"></i> ارجاع</button><button class="iin-mini" @onclick="() => Archive(l)"><i class="bi bi-archive"></i> بایگانی</button></div>
                 </div>
             }
         }
@@ -54,12 +54,13 @@
 </div>
 <ComposeIncomingModal @ref="compose" OnSaved="ReloadAsync" />
 <IncomingLetterViewModal @ref="viewModal" />
+<IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadAsync" />
 <IncomingGardeshModal @ref="flowModal" />
 @code {
     private string view = "registered", search = "";
     private bool loading; private List<IncomingLetterListItemDto> items = new();
     private int registeredTotal, archivedTotal; private ComposeIncomingModal? compose;
-    private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal;
+    private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal; private IncomingErjaSheet? erjaSheet;
     private bool CanRegister => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
     protected override async Task OnInitializedAsync() => await ReloadAsync();
     public void OpenCreateFromNavigation() => compose?.OpenCreate();
@@ -67,6 +68,7 @@
     public async Task SetViewFromNavigation(string value) { view = value; await ReloadAsync(); }
     private async Task Show(IncomingLetterListItemDto l) => await viewModal!.Open(l.LetterId);
     private async Task OpenFlow(IncomingLetterListItemDto l) => await flowModal!.Open(l.LetterId, l.Title, l.Ferestande, l.NumberSabt, l.DateErsal);
+    private async Task OpenErja(IncomingLetterListItemDto l) => await erjaSheet!.OpenErja(l.LetterId, l.NumberSabt);
     private async Task Archive(IncomingLetterListItemDto l)
     {
         try
