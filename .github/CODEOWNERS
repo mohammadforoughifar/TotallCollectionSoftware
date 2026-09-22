@@ -1,0 +1,262 @@
+# =============================================================================
+#  CODEOWNERS — مالکیت ماژول‌ها
+#
+#  این فایل «خودکار» تولید شده است. دستی ویرایشش نکنید.
+#  منبع حقیقت: tools/ownership-map.csv
+#  تولید مجدد:  ./tools/gen-codeowners.sh
+#
+#  اثر: روی هر PR، گیت‌هاب خودش reviewer مربوط به همان ماژول را assign می‌کند.
+#  اگر branch protection فعال باشد، بدون تأیید آن مالک امکان merge نیست.
+#  ⚠️ روی مخزن عمومی حتی با پلن Free هم CODEOWNERS کار می‌کند.
+# =============================================================================
+
+# --- زیرساخت مشترک (همهٔ تغییرات اینجا نیازمند بازبینی ارشد است) ------------
+/inventory/src/Inventory.Api/Program.cs                    @mohammadforoughifar
+/inventory/src/Inventory.Api/appsettings*.json             @mohammadforoughifar
+/inventory/src/Inventory.Api/Data/                         @mohammadforoughifar
+/inventory/src/Inventory.Api/Migrations/                   @mohammadforoughifar
+/inventory/src/Inventory.Shared/                           @mohammadforoughifar
+/inventory/src/Inventory.Api/Services/Core/                @mohammadforoughifar
+/inventory/src/Inventory.Api/Services/System/              @mohammadforoughifar
+/inventory/Inventory.sln                                   @mohammadforoughifar
+/inventory/Directory.Build.props                           @mohammadforoughifar
+/inventory/Directory.Build.targets                         @mohammadforoughifar
+/.github/                                                  @mohammadforoughifar
+/tools/                                                    @mohammadforoughifar
+/global.json                                               @mohammadforoughifar
+
+# ⏳ ماژول Accounting  (2942 خط، 13 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Accounting/   @TODO-Accounting
+# /inventory/src/Inventory.Api/Controllers/Accounting/   @TODO-Accounting
+# /inventory/src/Inventory.Api/Entities/Accounting/   @TODO-Accounting
+# /inventory/src/Inventory.Client/Pages/Accounting/   @TODO-Accounting
+
+# ⏳ ماژول BonHr  (0 خط، 19 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Client/Pages/BonHr/   @TODO-BonHr
+
+# ⏳ ماژول Catalog  (2637 خط، 9 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Catalog/   @TODO-Catalog
+# /inventory/src/Inventory.Api/Controllers/Catalog/   @TODO-Catalog
+# /inventory/src/Inventory.Api/Entities/Catalog/   @TODO-Catalog
+# /inventory/src/Inventory.Client/Pages/Catalog/   @TODO-Catalog
+
+# ⏳ ماژول Cctv  (1267 خط، 2 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Controllers/Cctv/   @TODO-Cctv
+# /inventory/src/Inventory.Api/Entities/Cctv/   @TODO-Cctv
+# /inventory/src/Inventory.Client/Pages/Cctv/   @TODO-Cctv
+
+# ⏳ ماژول Chat  (1473 خط، 1 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Chat/   @TODO-Chat
+# /inventory/src/Inventory.Api/Entities/Chat/   @TODO-Chat
+# /inventory/src/Inventory.Client/Pages/Chat/   @TODO-Chat
+
+# ⏳ ماژول Core  (770 خط، 0 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Core/   @TODO-Core
+# /inventory/src/Inventory.Api/Controllers/Core/   @TODO-Core
+# /inventory/src/Inventory.Api/Entities/Core/   @TODO-Core
+
+# ⏳ ماژول Dashboards  (1623 خط، 1 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Dashboards/   @TODO-Dashboards
+# /inventory/src/Inventory.Api/Controllers/Dashboards/   @TODO-Dashboards
+# /inventory/src/Inventory.Api/Entities/Dashboards/   @TODO-Dashboards
+# /inventory/src/Inventory.Client/Pages/Dashboards/   @TODO-Dashboards
+
+# ⏳ ماژول DevTeam  (939 خط، 4 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/DevTeam/   @TODO-DevTeam
+# /inventory/src/Inventory.Api/Controllers/DevTeam/   @TODO-DevTeam
+# /inventory/src/Inventory.Api/Entities/DevTeam/   @TODO-DevTeam
+# /inventory/src/Inventory.Client/Pages/DevTeam/   @TODO-DevTeam
+
+# ⏳ ماژول DocArchive  (6832 خط، 11 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/DocArchive/   @TODO-DocArchive
+# /inventory/src/Inventory.Api/Controllers/DocArchive/   @TODO-DocArchive
+# /inventory/src/Inventory.Api/Entities/DocArchive/   @TODO-DocArchive
+# /inventory/src/Inventory.Client/Pages/DocArchive/   @TODO-DocArchive
+
+# ⏳ ماژول Export  (2469 خط، 1 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Export/   @TODO-Export
+# /inventory/src/Inventory.Api/Controllers/Export/   @TODO-Export
+# /inventory/src/Inventory.Client/Pages/Export/   @TODO-Export
+
+# ⏳ ماژول FaAtt  (2109 خط، 12 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/FaAtt/   @TODO-FaAtt
+# /inventory/src/Inventory.Api/Controllers/FaAtt/   @TODO-FaAtt
+# /inventory/src/Inventory.Client/Pages/FaAtt/   @TODO-FaAtt
+
+# ⏳ ماژول FaCom  (1288 خط، 8 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/FaCom/   @TODO-FaCom
+# /inventory/src/Inventory.Api/Controllers/FaCom/   @TODO-FaCom
+# /inventory/src/Inventory.Client/Pages/FaCom/   @TODO-FaCom
+
+# ⏳ ماژول FaLms  (2309 خط، 14 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/FaLms/   @TODO-FaLms
+# /inventory/src/Inventory.Api/Controllers/FaLms/   @TODO-FaLms
+# /inventory/src/Inventory.Client/Pages/FaLms/   @TODO-FaLms
+
+# ⏳ ماژول FaPay  (2511 خط، 12 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/FaPay/   @TODO-FaPay
+# /inventory/src/Inventory.Api/Controllers/FaPay/   @TODO-FaPay
+# /inventory/src/Inventory.Client/Pages/FaPay/   @TODO-FaPay
+
+# ⏳ ماژول Finance  (276 خط، 1 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Finance/   @TODO-Finance
+# /inventory/src/Inventory.Api/Controllers/Finance/   @TODO-Finance
+# /inventory/src/Inventory.Api/Entities/Finance/   @TODO-Finance
+# /inventory/src/Inventory.Client/Pages/Finance/   @TODO-Finance
+
+# ⏳ ماژول Hr  (8948 خط، 8 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Hr/   @TODO-Hr
+# /inventory/src/Inventory.Api/Controllers/Hr/   @TODO-Hr
+# /inventory/src/Inventory.Api/Entities/Hr/   @TODO-Hr
+# /inventory/src/Inventory.Client/Pages/Hr/   @TODO-Hr
+
+# ⏳ ماژول HrCore  (5583 خط، 20 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/HrCore/   @TODO-HrCore
+# /inventory/src/Inventory.Api/Controllers/HrCore/   @TODO-HrCore
+# /inventory/src/Inventory.Api/Entities/HrCore/   @TODO-HrCore
+# /inventory/src/Inventory.Client/Pages/HrCore/   @TODO-HrCore
+
+# ⏳ ماژول HrMain  (1300 خط، 13 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/HrMain/   @TODO-HrMain
+# /inventory/src/Inventory.Api/Controllers/HrMain/   @TODO-HrMain
+# /inventory/src/Inventory.Api/Entities/HrMain/   @TODO-HrMain
+# /inventory/src/Inventory.Client/Pages/HrMain/   @TODO-HrMain
+
+# ⏳ ماژول HrReports  (310 خط، 0 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/HrReports/   @TODO-HrReports
+
+# ⏳ ماژول HrTalent  (869 خط، 0 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/HrTalent/   @TODO-HrTalent
+# /inventory/src/Inventory.Api/Controllers/HrTalent/   @TODO-HrTalent
+
+# ⏳ ماژول Invoicing  (2749 خط، 8 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Invoicing/   @TODO-Invoicing
+# /inventory/src/Inventory.Api/Controllers/Invoicing/   @TODO-Invoicing
+# /inventory/src/Inventory.Api/Entities/Invoicing/   @TODO-Invoicing
+# /inventory/src/Inventory.Client/Pages/Invoicing/   @TODO-Invoicing
+
+# ⏳ ماژول ItAssets  (4122 خط، 6 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/ItAssets/   @TODO-ItAssets
+# /inventory/src/Inventory.Api/Controllers/ItAssets/   @TODO-ItAssets
+# /inventory/src/Inventory.Api/Entities/ItAssets/   @TODO-ItAssets
+# /inventory/src/Inventory.Client/Pages/ItAssets/   @TODO-ItAssets
+
+# ⏳ ماژول Notification  (214 خط، 0 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Notification/   @TODO-Notification
+
+# ⏳ ماژول Office  (9785 خط، 27 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Office/   @TODO-Office
+# /inventory/src/Inventory.Api/Controllers/Office/   @TODO-Office
+# /inventory/src/Inventory.Api/Entities/Office/   @TODO-Office
+# /inventory/src/Inventory.Client/Pages/Office/   @TODO-Office
+
+# ⏳ ماژول Orders  (0 خط، 2 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Client/Pages/Orders/   @TODO-Orders
+
+# ⏳ ماژول Panel  (0 خط، 4 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Client/Pages/Panel/   @TODO-Panel
+
+# ⏳ ماژول Pdf  (66 خط، 0 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Pdf/   @TODO-Pdf
+
+# ⏳ ماژول Projects  (2880 خط، 5 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Projects/   @TODO-Projects
+# /inventory/src/Inventory.Api/Controllers/Projects/   @TODO-Projects
+# /inventory/src/Inventory.Api/Entities/Projects/   @TODO-Projects
+# /inventory/src/Inventory.Client/Pages/Projects/   @TODO-Projects
+
+# ⏳ ماژول Repairs  (598 خط، 1 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Repairs/   @TODO-Repairs
+# /inventory/src/Inventory.Api/Controllers/Repairs/   @TODO-Repairs
+# /inventory/src/Inventory.Api/Entities/Repairs/   @TODO-Repairs
+# /inventory/src/Inventory.Client/Pages/Repairs/   @TODO-Repairs
+
+# ⏳ ماژول ReportStudio  (2935 خط، 2 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/ReportStudio/   @TODO-ReportStudio
+# /inventory/src/Inventory.Api/Controllers/ReportStudio/   @TODO-ReportStudio
+# /inventory/src/Inventory.Api/Entities/ReportStudio/   @TODO-ReportStudio
+# /inventory/src/Inventory.Client/Pages/ReportStudio/   @TODO-ReportStudio
+
+# ⏳ ماژول Reports  (35 خط، 2 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Controllers/Reports/   @TODO-Reports
+# /inventory/src/Inventory.Client/Pages/Reports/   @TODO-Reports
+
+# ⏳ ماژول Sales  (192 خط، 0 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Controllers/Sales/   @TODO-Sales
+# /inventory/src/Inventory.Api/Entities/Sales/   @TODO-Sales
+
+# ⏳ ماژول Settings  (0 خط، 4 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Client/Pages/Settings/   @TODO-Settings
+
+# ⏳ ماژول Stocktaking  (1454 خط، 6 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Stocktaking/   @TODO-Stocktaking
+# /inventory/src/Inventory.Api/Controllers/Stocktaking/   @TODO-Stocktaking
+# /inventory/src/Inventory.Api/Entities/Stocktaking/   @TODO-Stocktaking
+# /inventory/src/Inventory.Client/Pages/Stocktaking/   @TODO-Stocktaking
+
+# ⏳ ماژول System  (3031 خط، 5 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/System/   @TODO-System
+# /inventory/src/Inventory.Api/Controllers/System/   @TODO-System
+# /inventory/src/Inventory.Api/Entities/System/   @TODO-System
+# /inventory/src/Inventory.Client/Pages/System/   @TODO-System
+
+# ⏳ ماژول Treasury  (2201 خط، 7 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Treasury/   @TODO-Treasury
+# /inventory/src/Inventory.Api/Controllers/Treasury/   @TODO-Treasury
+# /inventory/src/Inventory.Api/Entities/Treasury/   @TODO-Treasury
+# /inventory/src/Inventory.Client/Pages/Treasury/   @TODO-Treasury
+
+# ⏳ ماژول Warehousing  (2398 خط، 9 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Warehousing/   @TODO-Warehousing
+# /inventory/src/Inventory.Api/Controllers/Warehousing/   @TODO-Warehousing
+# /inventory/src/Inventory.Api/Entities/Warehousing/   @TODO-Warehousing
+# /inventory/src/Inventory.Client/Pages/Warehousing/   @TODO-Warehousing
+
+# ⏳ ماژول Watermark  (343 خط، 0 صفحه) — مالک تعیین نشده.
+#    ستون owner_github را در tools/ownership-map.csv پر کنید و دوباره اجرا کنید.
+# /inventory/src/Inventory.Api/Services/Watermark/   @TODO-Watermark
+
+# --- زیرپروژه‌های جدا ----------------------------------------------------------
+# ⏳ مالک تعیین نشده — برای فعال‌کردن، هندل واقعی بگذارید و کامنت را بردارید
+# /android/                                                 @android-owner
+# /ocr-service/                                             @ocr-owner
+
+# --- قاعدهٔ پایانی: هرچیز بی‌مالک به مالک پیش‌فرض می‌رسد -----------------------
+*                                                           @mohammadforoughifar

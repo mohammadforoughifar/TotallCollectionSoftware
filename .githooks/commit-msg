@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# =============================================================================
+#  .githooks/commit-msg — دو قانون را روی هر commit اعمال می‌کند
+#
+#  قانون ۱: نام برنچ باید الگوی «ماژول/شناسهٔ-کار-توضیح» داشته باشد.
+#  قانون ۲: هویت واقعی انسان باید قابل تشخیص باشد.
+#
+#  چرا قانون ۲ لازم است:
+#    در تاریخچهٔ این مخزن ۷۶٪ از commit‌های main به نام «Arena Agent» است و
+#    ۲۱ هویت نویسندهٔ متفاوت برای ~۶ نفر وجود دارد. برنچ‌هایی مثل Lak و
+#    Salehian هست ولی حتی یک commit به نام خودِ آن افراد ثبت نشده.
+#    یعنی git نمی‌تواند بگوید «کی روی چی کار کرده».
+#
+#    راه‌حل: هر commit باید یا نویسنده‌اش یک عضو واقعی تیم باشد، یا یک
+#    تریلر «Requested-by» داشته باشد که همان عضو واقعی را نام ببرد.
+#    این یک مکانیزم، هر دو حالت را پوشش می‌دهد:
+#      • ایجنت AI کد زده   → نویسنده=ایجنت، تریلر=انسانِ درخواست‌کننده
+#      • اکانت اشتراکی بوده → نویسنده=محمد، تریلر=انسانِ واقعیِ انجام‌دهنده
+# =============================================================================
+set -uo pipefail
+
+MSG_FILE="$1"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+MEMBERS="$REPO_ROOT/tools/team-members.txt"
+
+# --- الگوی نام برنچ: ماژول/کلید-توضیح   مثال: hr/HR-42-payroll-overtime ------
+BRANCH_RE='^[a-z][a-z0-9-]*\/[A-Za-z][A-Za-z0-9]*-[0-9]+-[a-z0-9-]+$'
+# برنچ‌هایی که از این قاعده مستثنا هستند
+ALLOWED_BRANCHES='^(main|develop|release\/.+|hotfix\/.+|docs\/.+)$'
+
+branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+
+fail() {
+  echo
+  echo "┌─────────────────────────────────────────────────────────────┐"
+  echo "│  ❌ commit رد شد                                            │"
+  echo "└─────────────────────────────────────────────────────────────┘"
+  printf '%s\n' "$1"
+  echo
+  exit 1
+}
+
+# ------------------------------------------------------------------ قانون ۱ --
+if [ "${SKIP_BRANCH_CHECK:-0}" = "1" ]; then
+  echo "⚠️  بررسی نام برنچ با SKIP_BRANCH_CHECK=1 رد شد (یک بدهی است؛ بعداً صافش کنید)."
+elif ! [[ "$branch" =~ $ALLOWED_BRANCHES ]] && ! [[ "$branch" =~ $BRANCH_RE ]]; then
+  fail "
+نام برنچ «$branch» با قرارداد تیم مطابقت ندارد.
+
+  الگو:   <ماژول>/<کلیدکار>-<توضیح-کوتاه>
+  نمونه:  hr/HR-42-payroll-overtime
+          office/OFF-17-incoming-letter-archive
+          docarchive/DOC-3-ocr-tags
+
+  ماژول‌های معتبر (از tools/ownership-map.csv):
+$(tail -n +2 "$REPO_ROOT/tools/ownership-map.csv" 2>/dev/null | awk -F, '{printf "            %s\n", tolower($1)}' | head -40)
+
+  تغییر نام برنچ فعلی بدون از دست رفتن کار:
+      git branch -m $branch hr/HR-00-توضیح-کار
+
+  اگر عمداً می‌خواهید این قاعده را دور بزنید (مثلاً روی برنچ شخصی قدیمی):
+      SKIP_BRANCH_CHECK=1 git commit ...
+"
+fi
+# ------------------------------------------------------------------ قانون ۲ --
+# خروجی `git var GIT_AUTHOR_IDENT` شامل timestamp است:  Name <mail> 1789996976 +0000
+# برای مقایسه با tools/team-members.txt فقط «نام <ایمیل>» را نگه می‌داریم.
+author_ident="$(git var GIT_AUTHOR_IDENT 2>/dev/null | sed -E 's/ [0-9]+ [-+][0-9]{4}$//' || echo '')"
+
+# هندل‌های عمومی/ایجنت که «انسان مشخص» محسوب نمی‌شوند (از تاریخچهٔ واقعی مخزن)
+# (با -i استفاده می‌شود، پس خود الگو حروف‌بزرگ/کوچک را نمی‌بیند)
+GENERIC_RE='(arena|agent|bot|dev@|team|noreply\.github\.com|@local|@invalid|merge bot)'
+
+is_member() {  # $1 = "Name <email>"
+  [ -f "$MEMBERS" ] || return 1
+  local needle; needle="$(printf '%s' "$1" | tr 'A-Z' 'a-z' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//')"
+  # هر خطِ فایل قالب «نام <ایمیل>   @هندل» است؛ برای مقایسه باید هندل را برداریم
+  grep -v '^\s*#' "$MEMBERS" | grep -v '^\s*$' \
+    | sed -E 's/[[:space:]]+@[^[:space:]]*$//' \
+    | tr 'A-Z' 'a-z' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' \
+    | grep -qxF "$needle"
+}
+
+# تریلر Requested-by را از پیام commit بیرون بکش
+requested_by="$(grep -iE '^\s*Requested-by:' "$MSG_FILE" | tail -1 | sed -E 's/^[^:]*:\s*//' | sed 's/\s*$//')"
+
+author_is_generic=0
+if printf '%s' "$author_ident" | grep -qEi "$GENERIC_RE"; then author_is_generic=1; fi
+if ! is_member "$author_ident"; then author_is_generic=1; fi
+
+if [ "${SKIP_ATTRIBUTION:-0}" = "1" ]; then
+  echo "⚠️  بررسی attribution با SKIP_ATTRIBUTION=1 رد شد — این commit بی‌نام می‌ماند."
+elif [ "$author_is_generic" = "1" ]; then
+  if [ -z "$requested_by" ]; then
+    fail "
+نویسندهٔ این commit یک «انسان مشخص» نیست:
+      $author_ident
+
+پس باید نام انسانِ واقعیِ درخواست‌کننده/انجام‌دهنده در پیام commit بیاید.
+
+  راه‌حل — تریلر را اضافه کنید:
+      git commit --trailer \"Requested-by=Lak <lak@example.com>\"
+
+  یا اگر این commit را قبلاً ساخته‌اید:
+      git commit --amend --trailer \"Requested-by=Lak <lak@example.com>\"
+
+  یا اگر خودتان عضو تیم هستید، هویت git‌تان را درست تنظیم کنید (راه بهتر):
+      git config user.name  \"نام شما\"
+      git config user.email \"ایمیل-شما@example.com\"
+
+  اعضای ثبت‌شدهٔ تیم در:  tools/team-members.txt
+  (اگر آن فایل خالی است، اول ./tools/install-hooks.sh را اجرا کنید)
+
+  رد کردن موقت این بررسی:  SKIP_ATTRIBUTION=1 git commit ...
+"
+  fi
+  if ! is_member "$requested_by"; then
+    fail "
+تریلر Requested-by پیدا شد ولی در فهرست اعضای تیم نیست:
+      Requested-by: $requested_by
+
+  اعضای ثبت‌شده در tools/team-members.txt:
+$(grep -v '^\s*#' "$MEMBERS" 2>/dev/null | grep -v '^\s*$' | sed 's/^/      /' | head -20)
+
+  قالب دقیق:  Requested-by=نام کامل <ایمیل>
+"
+  fi
+  echo "✅ attribution: نویسنده=$author_ident  ←  Requested-by: $requested_by"
+else
+  echo "✅ attribution: نویسندهٔ عضو تیم = $author_ident"
+fi

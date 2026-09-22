@@ -157,3 +157,39 @@ public interface IExpenseService
     Task<ExpenseDto> SaveExpenseAsync(ExpenseDto expense);
     Task DeleteExpenseAsync(int id);
 }
+
+// =====================================================================
+//  ماژول مدیریت برنامه‌نویسان (DevTeam)
+//  سه پرسشی که پاسخ می‌دهد: چه کسی روی چه ماژولی کار کرده، کدام آیتم در
+//  جریان است، و مالک هر ماژول کیست.
+// =====================================================================
+
+/// <summary>سرویس مدیریت برنامه‌نویسان سمت کلاینت.</summary>
+public interface IDevTeamService
+{
+    // بورد و تاریخچه
+    Task<DevBoardDto> GetBoardAsync(int? moduleId = null, int? assigneeId = null);
+    Task<List<DevTaskLogDto>> GetActivityAsync(int days = 14, int take = 200);
+
+    // اعضای تیم
+    Task<List<DevMemberDto>> GetMembersAsync(bool activeOnly = false);
+    Task<DevMemberDto> SaveMemberAsync(DevMemberDto dto);
+    Task DeleteMemberAsync(int id);
+
+    // ماژول‌ها و مالکیت
+    Task<List<DevModuleDto>> GetModulesAsync(bool activeOnly = false);
+    Task<DevModuleDto> SaveModuleAsync(DevModuleDto dto);
+    Task DeleteModuleAsync(int id);
+    Task<DevModuleDto> SetModuleOwnerAsync(int moduleId, int? ownerId);
+    Task<int> SyncModulesFromRepoAsync();
+
+    // آیتم‌های کاری
+    Task<PagedResult<DevTaskDto>> GetTasksAsync(string? search, DevTaskStatus? status, int? moduleId, int? assigneeId, int page, int pageSize);
+    Task<DevTaskDto?> GetTaskAsync(int id);
+    Task<DevTaskDto> SaveTaskAsync(DevTaskDto dto);
+    Task DeleteTaskAsync(int id);
+    Task<DevTaskDto> SetStatusAsync(int id, DevTaskStatusRequest request);
+    Task<DevTaskDto> AssignAsync(int id, int? memberId, string? note = null);
+    Task<List<DevTaskLogDto>> GetTaskLogsAsync(int taskId);
+    Task<DevTaskLogDto> AddLogAsync(int taskId, DevTaskLogRequest request);
+}

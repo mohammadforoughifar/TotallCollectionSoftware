@@ -104,6 +104,37 @@
         </div>
     }
 
+    @* ============ مدیریت برنامه‌نویسان (ماژول مستقل — DevTeam) ============
+       پاسخ سه پرسش تیم: چه کسی روی چه ماژولی کار می‌کند، کدام آیتم در جریان
+       است، و مالک هر بخش کیست. همان چیزی که بستهٔ گردش کار بیرون از برنامه
+       (CODEOWNERS/labels/PR) ردیابی می‌کرد، اینجا داخل منوی اصلی آمده است. *@
+    @if (Auth.CanSee("DevTeam"))
+    {
+        <div class="nav-group group-devteam">
+            <button type="button" class="nav-section-title nav-toggle @(gDevTeam ? "open" : "")" @onclick="() => gDevTeam = !gDevTeam">
+                <span><i class="bi bi-code-square"></i>مدیریت برنامه‌نویسان</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gDevTeam)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="dev-team" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                        <i class="bi bi-kanban"></i><span>بورد کار تیم</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="dev-team/tasks" @onclick="NotifyClose">
+                        <i class="bi bi-list-check"></i><span>آیتم‌های کاری</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="dev-team/modules" @onclick="NotifyClose">
+                        <i class="bi bi-diagram-3"></i><span>ماژول‌ها و مالکیت</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="dev-team/members" @onclick="NotifyClose">
+                        <i class="bi bi-people"></i><span>اعضای تیم</span>
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     @* ============ منابع انسانی بن‌سازه (ماژول مستقل) ============ *@
     @if (Auth.HasModule("RadisHr"))
     {
@@ -510,7 +541,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gDocs, gChat;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gDocs, gChat, gDevTeam;
 
     // ================== مجوز «مشاهده» = مبنای نمایش در منو ==================
     // اگر در «تنظیمات ← نقش‌ها و دسترسی‌ها» تیک مشاهدهٔ یک ماژول برداشته شود،
@@ -544,6 +575,7 @@
         gChat = p.StartsWith("chat");
         gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
         gWo = p.StartsWith("work-orders");
+        gDevTeam = p.StartsWith("dev-team");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gLetters = p.StartsWith("letters");
         gDocs = p.StartsWith("doc-archive");

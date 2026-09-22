@@ -553,3 +553,102 @@ public enum BarcodeType
     /// <summary>کد داخلی سازمان (بدون استاندارد جهانی)</summary>
     Internal = 3
 }
+
+// ================== ماژول مدیریت برنامه‌نویسان (DevTeam) ==================
+// این ماژول سه پرسش مدیریتی تیم را داخل خود برنامه پاسخ می‌دهد:
+// چه کسی روی چه ماژولی کار کرده، کدام آیتم در جریان است، و مالک هر ماژول کیست.
+
+/// <summary>نقش فرد در تیم توسعه</summary>
+public enum DevRole
+{
+    /// <summary>برنامه‌نویس</summary>
+    Developer = 0,
+
+    /// <summary>برنامه‌نویس ارشد</summary>
+    SeniorDeveloper = 1,
+
+    /// <summary>سرپرست تیم</summary>
+    TeamLead = 2,
+
+    /// <summary>تست و کنترل کیفیت</summary>
+    Qa = 3,
+
+    /// <summary>طراح رابط کاربری</summary>
+    UiDesigner = 4,
+
+    /// <summary>عملیات و استقرار</summary>
+    DevOps = 5,
+
+    /// <summary>مسئول محصول</summary>
+    ProductOwner = 6,
+    /// <summary>
+    /// ایجنت هوش مصنوعی — یک «عضو» واقعی تیم در این مخزن است، چون بخشی از کار را
+    /// ایجنت‌ها انجام می‌دهند. جدا نگه‌داشتنش دو فایده دارد: سهم کار ایجنت در بورد
+    /// دیده می‌شود و می‌دانیم کدام تغییرات به بازبینی سخت‌گیرانه‌تر نیاز دارند.
+    /// </summary>
+    AiAgent = 7
+}
+
+/// <summary>وضعیت یک آیتم کاری — همان ستون‌های بورد</summary>
+public enum DevTaskStatus
+{
+    /// <summary>در صف — هنوز شروع نشده</summary>
+    Backlog = 0,
+
+    /// <summary>در حال انجام</summary>
+    InProgress = 1,
+
+    /// <summary>در بازبینی — کار تمام شده و منتظر تأیید است</summary>
+    InReview = 2,
+
+    /// <summary>مسدود — منتظر رفع مانع</summary>
+    Blocked = 3,
+
+    /// <summary>انجام شد</summary>
+    Done = 4
+}
+
+/// <summary>اولویت آیتم کاری</summary>
+public enum DevPriority
+{
+    Low = 0,
+    Normal = 1,
+    High = 2,
+    Urgent = 3
+}
+
+/// <summary>برآورد اندازهٔ کار — برای سنجش بار واقعی هر فرد، نه فقط تعداد آیتم</summary>
+public enum DevTaskSize
+{
+    Small = 0,
+    Medium = 1,
+    Large = 2
+}
+
+/// <summary>نوع رویداد ثبت‌شده در تاریخچهٔ یک آیتم — مبنای «کی روی چه چیزی کار کرد»</summary>
+public enum DevLogAction
+{
+    /// <summary>ایجاد آیتم</summary>
+    Created = 0,
+
+    /// <summary>تغییر فرد مسئول</summary>
+    Assigned = 1,
+
+    /// <summary>تغییر وضعیت</summary>
+    StatusChanged = 2,
+
+    /// <summary>ثبت پیشرفت</summary>
+    Progress = 3,
+
+    /// <summary>ثبت commit مرتبط</summary>
+    Committed = 4,
+
+    /// <summary>بازبینی کد</summary>
+    Reviewed = 5,
+
+    /// <summary>اتمام کار</summary>
+    Completed = 6,
+
+    /// <summary>یادداشت آزاد</summary>
+    Comment = 7
+}

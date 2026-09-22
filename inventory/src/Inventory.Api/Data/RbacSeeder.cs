@@ -17,6 +17,11 @@ public static class RbacSeeder
         // فروش: + دسترسی «مشاهده سود» — قابل مدیریت به ازای هر نقش
         ["Orders"] = new[] { "Create", "Read", "Update", "Delete", "Export", "ViewProfit" },
         ["Repairs"] = CrudActions,
+        // ================== مدیریت برنامه‌نویسان ==================
+        // Read: دیدن بورد/اعضا/ماژول‌ها و تاریخچهٔ کار (مبنای نمایش در منو)
+        // Create/Update/Delete: ساخت و ویرایش آیتم کاری و عضو
+        // Manage: تعیین مالک ماژول و هم‌زمان‌سازی فهرست ماژول‌ها با مخزن
+        ["DevTeam"] = new[] { "Read", "Create", "Update", "Delete", "Manage" },
         ["CctvCameras"] = CrudActions,
         ["CctvNvrs"] = CrudActions,
         ["Parties"] = CrudActions,

@@ -7,6 +7,12 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
+    // ---------- مدیریت برنامه‌نویسان (DevTeam) ----------
+    public DbSet<DevMember> DevMembers => Set<DevMember>();
+    public DbSet<DevModule> DevModules => Set<DevModule>();
+    public DbSet<DevTask> DevTasks => Set<DevTask>();
+    public DbSet<DevTaskLog> DevTaskLogs => Set<DevTaskLog>();
+
     public DbSet<DocTemporaryGrant> DocTemporaryGrants => Set<DocTemporaryGrant>();
     public DbSet<DocRenewalPolicy> DocRenewalPolicies => Set<DocRenewalPolicy>();
     public DbSet<DocRenewalRun> DocRenewalRuns => Set<DocRenewalRun>();
@@ -1174,5 +1180,46 @@ public class AppDbContext : DbContext
         // گرفته می‌شوند تا مدل با پایگاه‌داده‌ی موجود هم‌خوان بماند.
         mb.Entity<OtoInboxEmail>().Ignore(e => e.Attachments);
         mb.Entity<OtoSentEmail>().Ignore(e => e.Attachments);
+
+        // ================== مدیریت برنامه‌نویسان (DevTeam) ==================
+        // جدول‌ها در DevTeamSchemaV1 به‌صورت خودتعمیر ساخته می‌شوند؛ این پیکربندی
+        // فقط ایندکس‌ها و رابطه‌ها را به مدل EF می‌شناساند تا پرس‌وجوها بهینه بمانند.
+        mb.Entity<DevMember>().HasIndex(m => m.IsActive);
+        mb.Entity<DevModule>().HasIndex(m => m.Key).IsUnique();
+        mb.Entity<DevModule>().HasIndex(m => m.OwnerId);
+        mb.Entity<DevModule>()
+            .HasOne<DevMember>()
+            .WithMany()
+            .HasForeignKey(m => m.OwnerId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<DevTask>().HasIndex(t => t.Status);
+        mb.Entity<DevTask>().HasIndex(t => t.ModuleId);
+        mb.Entity<DevTask>().HasIndex(t => t.AssigneeId);
+        mb.Entity<DevTask>()
+            .HasOne<DevModule>()
+            .WithMany()
+            .HasForeignKey(t => t.ModuleId)
+            .OnDelete(DeleteBehavior.NoAction);
+        mb.Entity<DevTask>()
+            .HasOne<DevMember>()
+            .WithMany()
+            .HasForeignKey(t => t.AssigneeId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<DevTask>().Ignore(t => t.Logs);
+
+        mb.Entity<DevTaskLog>().HasIndex(l => l.TaskId);
+        mb.Entity<DevTaskLog>().HasIndex(l => l.At);
+        mb.Entity<DevTaskLog>().HasIndex(l => l.MemberId);
+        mb.Entity<DevTaskLog>()
+            .HasOne<DevTask>()
+            .WithMany()
+            .HasForeignKey(l => l.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<DevTaskLog>()
+            .HasOne<DevMember>()
+            .WithMany()
+            .HasForeignKey(l => l.MemberId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }
