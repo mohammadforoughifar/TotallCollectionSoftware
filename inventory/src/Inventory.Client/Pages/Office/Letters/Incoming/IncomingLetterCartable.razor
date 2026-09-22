@@ -20,10 +20,6 @@
         @* ---------- ریل پوشه‌ها (Folder Rail) ---------- *@
         <nav class="rail">
             <div class="logo" title="اتوماسیون اداری — نامه وارده"><i class="bi bi-inbox-fill"></i></div>
-            @if (CanDabirkhane)
-            {
-                <button class="compose" title="ثبت نامه وارده جدید" @onclick="OpenComposeNew"><i class="bi bi-plus-lg"></i></button>
-            }
             <div style="height:8px"></div>
 
             <button class="@(folder == "inbox" ? "on" : "")" title="دریافتی (کارتابل جاری)" @onclick='() => SetFolder("inbox")'>
@@ -243,7 +239,6 @@
 </div>
 
 @* ---------- مدال‌های جانبی ---------- *@
-<ComposeIncomingModal @ref="composeModal" OnSaved="ReloadDataAsync" />
 <IncomingLetterViewModal @ref="viewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
 <IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadDataAsync" />
 <IncomingGardeshModal @ref="gardeshModal" />

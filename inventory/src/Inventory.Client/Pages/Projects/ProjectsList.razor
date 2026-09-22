@@ -616,7 +616,7 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label"><i class="bi bi-123 text-muted ms-1"></i>عدد برگشتی <span class="text-danger">*</span></label>
-                    <input class="form-control" type="number" min="1" max="9999" @bind="reNum" @bind:event="oninput" />
+                    <input class="form-control" type="number" min="1" max="9999" value="@reNum" readonly aria-readonly="true" />
                     <div class="fs-8 text-muted mt-1">دستی وارد کنید (مثلاً 1 ← RE1)</div>
                 </div>
                 <div class="col-md-4">
@@ -725,13 +725,11 @@
             </div>
         </div>
 
-        @* تاریخ ورود و تاریخ ثبت — فقط در فرم «ثبت» پروژه (ورود جدید) *@
-        @if (!editing && !isReturnMode)
-        {
-            <div class="col-12 section-pill green"><i class="bi bi-calendar3"></i> تاریخ‌های ثبت</div>
-            <div class="col-md-3"><label class="form-label">تاریخ ورود پروژه</label><DatePicker @bind-Value="form.EntryDate" AllowClear /></div>
-            <div class="col-md-3"><label class="form-label">تاریخ ثبت پروژه</label><DatePicker @bind-Value="form.ProjectRegistrationDate" AllowClear /></div>
-        }
+        @* تاریخ‌ها — در ثبت ورود جدید، برگشتی و ویرایش قابل ثبت هستند *@
+        <div class="col-12 section-pill green"><i class="bi bi-calendar3"></i> تاریخ‌های پروژه</div>
+        <div class="col-md-3"><label class="form-label">تاریخ ورود پروژه</label><DatePicker @bind-Value="form.EntryDate" AllowClear /></div>
+        <div class="col-md-3"><label class="form-label">تاریخ ثبت پروژه</label><DatePicker @bind-Value="form.ProjectRegistrationDate" AllowClear /></div>
+        <div class="col-md-3"><label class="form-label">تاریخ خروج پروژه</label><DatePicker @bind-Value="form.ExitDate" AllowClear /></div>
 
         <div class="col-12 section-pill"><i class="bi bi-file-text-fill"></i> جزئیات فنی</div>
         <div class="col-md-4">
@@ -1684,8 +1682,6 @@
             if (reNum < 1) { Toast.Error("عدد برگشتی باید حداقل ۱ باشد."); return; }
             form.ReturnOfProjectId = selectedReturnId; // مبدأ — سرور از روی آن کد می‌سازد
             form.ReturnProjectId = reNum;              // عدد برگشتی — دستی
-            form.EntryDate = null;
-            form.ProjectRegistrationDate = null;
         }
         else if (!editing)
         {

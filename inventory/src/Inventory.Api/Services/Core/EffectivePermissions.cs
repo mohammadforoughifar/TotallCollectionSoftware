@@ -43,10 +43,8 @@ public sealed class EffectivePermissions : IEffectivePermissions
     {
         var fromToken = user.FindAll(ClaimType).Select(c => c.Value)
             .Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
-        if (fromToken.Count > 0)
-            return new HashSet<string>(fromToken, StringComparer.OrdinalIgnoreCase);
-
-        // توکن قدیمی/فاقد claim — بازسازی از دیتابیس
+        // مجوزهای نقش از دیتابیس خوانده می‌شوند؛ claimهای JWT ممکن است بعد از
+        // تغییر نقش قدیمی باشند و باعث انتقال دسترسی یک ماژول به ماژول دیگر شوند.
         var uid = UserId(user);
         var roleIds = await _db.UserRoles.Where(ur => ur.UserId == uid).Select(ur => ur.RoleId).Distinct().ToListAsync();
         List<string> perms;
@@ -55,6 +53,10 @@ public sealed class EffectivePermissions : IEffectivePermissions
             perms = await _db.RolePermissions.Where(rp => roleIds.Contains(rp.RoleId))
                 .Join(_db.Permissions, rp => rp.PermissionId, p => p.Id, (rp, p) => p.Module + "." + p.Action)
                 .Distinct().ToListAsync();
+        }
+        else if (fromToken.Count > 0)
+        {
+            perms = fromToken;
         }
         else
         {
