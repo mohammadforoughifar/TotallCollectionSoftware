@@ -253,6 +253,7 @@
                     <button class="icb" title="نمایش نامه (صفحه کامل)" @onclick="() => ViewLetter(selected.LetterId)"><i class="bi bi-eye"></i></button>
                     <button class="icb" title="چاپ A4 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A4")'><i class="bi bi-printer"></i></button>
                     <button class="icb" title="چاپ A5 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A5")'><i class="bi bi-printer-fill"></i></button>
+                    <button class="icb" title="کپی نامه" @onclick="CopyLetter"><i class="bi bi-files"></i></button>
                     @if (selected.CanSign)
                     {
                         <button class="lbtn grn" @onclick="OpenSignModal"><i class="bi bi-pen"></i> امضای نامه</button>
@@ -873,6 +874,13 @@
         await ReloadAsync(keepSelection: true);
         if (selected != null) await LoadDetailAsync(selected.LetterId);
         StateHasChanged();
+    }
+
+    private void CopyLetter()
+    {
+        if (selected == null) return;
+        compose?.Open($"کپی - {selected.Title}", selected.Text, prefReceiverOrg: selected.ReceiverOrganization);
+        Toast.Success("فرم ثبت نامه صادره با اطلاعات نامه اصلی باز شد؛ اطلاعات گیرنده و امضا را بررسی کنید.");
     }
 
     private async Task EditLetter(int letterId)
