@@ -614,3 +614,11 @@
 .ltx .eml-pager .pg.on { background:var(--p2); border-color:var(--p2); color:#fff; }
 .ltx .eml-pager .pg:disabled { opacity:.4; cursor:default; }
 .ltx .eml-pager .pg-gap { color:#94a3b8; font-size:12px; padding:0 2px; }
+
+/* تقویم فرم ثبت نامه وارده داخل پنل ثابت فرم بریده نشود */
+.ltx .sheet-b:has(.dp-popover) { overflow: visible; }
+.ltx .sheet-b:has(.dp-popover) .dp-popover { z-index: 4600 !important; }
+/* دکمه‌های فرم‌های نامه وارده هم‌سبک فرم‌های صادره */
+.ltx .sheet-f .btn-pri, .ltx .sheet-f .btn-sec { min-height: 38px; border-radius: 10px; font-weight: 800; padding: 8px 18px; }
+.ltx .sheet-f .btn-pri { background: var(--p); color: #fff; border: 1px solid var(--p); box-shadow: 0 5px 12px rgba(99,64,232,.18); }
+.ltx .sheet-f .btn-sec { background: #fff; color: #475569; border: 1px solid #dbe1ea; }

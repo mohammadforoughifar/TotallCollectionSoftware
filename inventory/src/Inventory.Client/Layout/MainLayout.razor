@@ -10,6 +10,7 @@
 @inject IJSRuntime JS
 @inject RealtimeService Rt
 @inject IChatClientService Chat
+@inject TabService Tabs
 @implements IDisposable
 
 @if (!Auth.IsLoggedIn)
@@ -717,6 +718,7 @@ else
     {
         try { await JS.InvokeAsync<PushState>("appPush.logout", PushApiRoot, Auth.Token); } catch { }
         await Rt.StopAsync();
+        try { await Tabs.CloseAllAsync(); } catch { }
         await Auth.SignOutAsync();
         Nav.NavigateTo("/", forceLoad: true);
     }
