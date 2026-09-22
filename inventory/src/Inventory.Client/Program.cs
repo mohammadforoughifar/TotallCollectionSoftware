@@ -54,6 +54,9 @@ builder.Services.AddScoped<IFaPayClientService, FaPayService>(); // FaPay — ح
 
 builder.Services.AddScoped<IChatClientService, ChatClientService>(); // ماژول پیام‌رسان سازمانی (Chat)
 
+// ---------- ماژول مدیریت برنامه‌نویسان ----------
+builder.Services.AddScoped<IDevTeamService, DevTeamService>(); // بورد کار تیم، مالکیت ماژول‌ها و تاریخچهٔ «کی روی چی»
+
 // ---------- ماژول حسابداری ----------
 builder.Services.AddScoped<IAccFiscalYearService, AccFiscalYearService>();
 builder.Services.AddScoped<IAccAccountService, AccAccountService>();

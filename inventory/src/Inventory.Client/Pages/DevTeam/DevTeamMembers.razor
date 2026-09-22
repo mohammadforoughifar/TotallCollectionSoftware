@@ -1,0 +1,310 @@
+@namespace Inventory.Client.Pages
+@page "/dev-team/members"
+@inject IDevTeamService DevTeam
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject LayoutState Layout
+
+<PageTitle>اعضای تیم توسعه</PageTitle>
+
+@if (!Auth.CanSee("DevTeam"))
+{
+    <div class="alert alert-warning mt-3">
+        <i class="bi bi-shield-lock"></i> شما مجوز مشاهدهٔ ماژول «مدیریت برنامه‌نویسان» را ندارید.
+    </div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>اعضای تیم توسعه</h1>
+            <p class="lead">همهٔ کسانی که روی این نرم‌افزار کار می‌کنند — حساب شخصی، حساب اشتراکی و ایجنت‌های AI</p>
+        </div>
+        <div class="d-flex gap-2 me-auto">
+            <a class="btn btn-outline-secondary" href="dev-team"><i class="bi bi-kanban"></i> بورد</a>
+            @if (canEdit)
+            {
+                <button class="btn btn-primary" @onclick="NewMember"><i class="bi bi-person-plus"></i> عضو جدید</button>
+            }
+        </div>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div class="row g-3">
+        <div class="col-lg-@(editing ? "8" : "12")">
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <strong><i class="bi bi-people"></i> فهرست اعضا</strong>
+                    <label class="form-check form-switch ms-auto mb-0">
+                        <input class="form-check-input" type="checkbox" checked="@activeOnly" @onchange="ToggleActiveOnly" />
+                        <span class="form-check-label small">فقط فعال</span>
+                    </label>
+                </div>
+                <div class="card-body p-0">
+                    @if (members is null)
+                    {
+                        <div class="p-4 text-center text-muted"><div class="spinner-border"></div></div>
+                    }
+                    else if (members.Count == 0)
+                    {
+                        <div class="p-4 text-center text-muted">
+                            هنوز عضوی ثبت نشده است.
+                            @if (canEdit)
+                            {
+                                <button class="btn btn-sm btn-primary ms-1" @onclick="NewMember">افزودن اولین عضو</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover mb-0 dt-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:44%">نام</th>
+                                    <th>نقش</th>
+                                    <th>GitHub</th>
+                                    <th>تماس</th>
+                                    <th class="text-center">وضعیت</th>
+                                    @if (canEdit)
+                                    {
+                                        <th class="text-center" style="width:90px">عملیات</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var m in members)
+                                {
+                                    <tr class="@(m.IsActive ? "" : "table-secondary text-muted")">
+                                        <td>
+                                            <span class="dt-avatar" style="background:@m.ColorHex">
+                                                @(m.FullName.Length > 0 ? m.FullName.Substring(0, 1) : "?")
+                                            </span>
+                                            <strong>@m.FullName</strong>
+                                            @if (m.Note is not null)
+                                            {
+                                                <small class="text-muted d-block">@m.Note</small>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="badge dt-role-@m.Role.ToString().ToLowerInvariant()">
+                                                @m.RoleTitle
+                                            </span>
+                                        </td>
+                                        <td>
+                                            @if (m.GithubHandle is not null)
+                                            {
+                                                <code>@("@")@m.GithubHandle</code>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            <small>@m.Email</small>
+                                            @if (m.Phone is not null)
+                                            {
+                                                <small class="text-muted d-block">@m.Phone</small>
+                                            }
+                                        </td>
+                                        <td class="text-center">
+                                            @if (m.IsActive)
+                                            {
+                                                <span class="badge bg-success-subtle text-success">فعال</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-secondary-subtle text-secondary">غیرفعال</span>
+                                            }
+                                        </td>
+                                        @if (canEdit)
+                                        {
+                                            <td class="text-center">
+                                                <button class="btn btn-sm btn-link" title="ویرایش" @onclick="() => Edit(m)">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button class="btn btn-sm btn-link text-danger" title="حذف" @onclick="() => Remove(m)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+
+            <div class="alert alert-light border mt-3 small mb-0">
+                <strong><i class="bi bi-info-circle"></i> نکته دربارهٔ نقش «ایجنت AI»:</strong>
+                برای هر ایجنت یک عضو با نقش <em>ایجنت AI</em> بسازید و نام حساب اشتراکی را در یادداشت بنویسید.
+                سپس در هر آیتم کاری تیک «با کمک ایجنت» را بزنید تا سهم کار ایجنت در بورد جدا دیده شود و
+                بازبینی آن‌ها سخت‌گیرانه‌تر باشد.
+            </div>
+        </div>
+
+        @if (editing && form is not null)
+        {
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <strong>@(form.Id > 0 ? "ویرایش عضو" : "عضو جدید")</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label class="form-label small">نام و نام خانوادگی <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="form.FullName" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">نقش در تیم</label>
+                            <select class="form-select" @bind="form.Role">
+                                @foreach (var r in DevTeamLabels.AllRoles)
+                                {
+                                    <option value="@r">@DevTeamLabels.Role(r)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">نام کاربری GitHub</label>
+                            <input class="form-control" @bind="form.GithubHandle" placeholder="بدون @@" />
+                            <div class="form-text small">
+                                برای ساخت CODEOWNERS لازم است؛ اگر حساب اختصاصی ندارد خالی بگذارید.
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">ایمیل</label>
+                            <input class="form-control" @bind="form.Email" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">شماره تماس</label>
+                            <input class="form-control" @bind="form.Phone" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">رنگ (برای تشخیص در بورد)</label>
+                            <input class="form-control form-control-color" type="color" @bind="form.ColorHex" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">یادداشت</label>
+                            <input class="form-control" @bind="form.Note" placeholder="مثلاً: حساب اشتراکی با فلانی" />
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="memActive" @bind="form.IsActive" />
+                            <label class="form-check-label small" for="memActive">فعال</label>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary" @onclick="Save" disabled="@busy">
+                                <i class="bi bi-check-lg"></i> ذخیره
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="Cancel">انصراف</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<DevMemberDto>? members;
+    private DevMemberDto? form;
+    private bool editing;
+    private bool activeOnly;
+    private bool busy;
+    private string? error;
+
+    private bool canEdit => Auth.IsAdmin || Auth.Has("DevTeam.Create") || Auth.Has("DevTeam.Update") || Auth.Has("DevTeam.Delete");
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("اعضای تیم توسعه");
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        error = null;
+        try { members = await DevTeam.GetMembersAsync(activeOnly); }
+        catch (Exception ex) { error = "بارگذاری اعضا ناموفق بود: " + ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task ToggleActiveOnly(ChangeEventArgs e)
+    {
+        activeOnly = e.Value is bool b && b;
+        await LoadAsync();
+    }
+
+    private void NewMember()
+    {
+        form = new DevMemberDto { IsActive = true, ColorHex = DevTeamLabels.DefaultColor, Role = DevRole.Developer };
+        editing = true;
+    }
+
+    private void Edit(DevMemberDto m)
+    {
+        form = new DevMemberDto
+        {
+            Id = m.Id, FullName = m.FullName, GithubHandle = m.GithubHandle, Email = m.Email,
+            Phone = m.Phone, Role = m.Role, IsActive = m.IsActive, ColorHex = m.ColorHex, Note = m.Note
+        };
+        editing = true;
+    }
+
+    private void Cancel() { editing = false; form = null; }
+
+    private async Task Save()
+    {
+        if (form is null) return;
+        if (string.IsNullOrWhiteSpace(form.FullName))
+        {
+            Toast.Error("نام عضو الزامی است.");
+            return;
+        }
+        busy = true;
+        try
+        {
+            var saved = await DevTeam.SaveMemberAsync(form);
+            Toast.Success($"«{saved.FullName}» ذخیره شد.");
+            Cancel();
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task Remove(DevMemberDto m)
+    {
+        busy = true;
+        try
+        {
+            await DevTeam.DeleteMemberAsync(m.Id);
+            Toast.Success($"«{m.FullName}» حذف شد.");
+            await LoadAsync();
+        }
+        // اگر عضو مالک ماژول یا مسئول آیتم فعال باشد، سرور جلوی حذف را می‌گیرد
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+}
+
+<style>
+    .dt-table th { font-size:.76rem; color:#6c757d; font-weight:600; white-space:nowrap; }
+    .dt-table td { font-size:.85rem; vertical-align:middle; }
+    .dt-avatar { display:inline-flex; align-items:center; justify-content:center; width:1.7rem; height:1.7rem;
+                 border-radius:50%; color:#fff; font-size:.8rem; font-weight:700; margin-inline-end:.4rem; }
+    .badge[class*="dt-role-"] { color:#fff; }
+    .dt-role-developer { background:#198754; }
+    .dt-role-seniordeveloper { background:#0d6efd; }
+    .dt-role-teamlead { background:#0a58ca; }
+    .dt-role-qa { background:#dc3545; }
+    .dt-role-uidesigner { background:#d63384; }
+    .dt-role-devops { background:#495057; }
+    .dt-role-productowner { background:#6f42c1; }
+    .dt-role-aiagent { background:#6c757d; }
+</style>

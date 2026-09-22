@@ -482,6 +482,7 @@
         new() { Title = "منابع انسانی بن‌سازه (هر بخش جداگانه)", Icon = "bi-building", Modules = new[] { "RadisHr" } },
         new() { Title = "مدیریت سیستم", Icon = "bi-gear", Modules = new[] { "SystemUsers", "Settings", "ItRequests" } },
         new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders" } },
+        new() { Title = "مدیریت برنامه‌نویسان", Icon = "bi-code-square", Modules = new[] { "DevTeam" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
         new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } }
     };
@@ -493,6 +494,7 @@
         ["Stock"] = "موجودی انبار",
         ["Orders"] = "فروش / فاکتورها",
         ["Repairs"] = "تعمیرات",
+        ["DevTeam"] = "مدیریت برنامه‌نویسان",
         ["CctvCameras"] = "دوربین‌ها",
         ["CctvNvrs"] = "دستگاه NVR",
         ["Parties"] = "طرف حساب",
@@ -695,7 +697,10 @@
         ["RadisHr.ProductionDaily"] = "گزارش روزانه",
         ["RadisHr.Notices"] = "اطلاعیه‌ها",
         ["RadisHr.Access"] = "دسترسی کامل به همهٔ بخش‌ها + عملیات مدیریتی (پرسنل، سازمان، حقوق و اطلاعیه‌ها)",
-        ["HrCore.Recruitment"] = "جذب و استخدام"
+        ["HrCore.Recruitment"] = "جذب و استخدام",
+        // مدیریت برنامه‌نویسان — «Manage» اینجا یعنی مالکیت ماژول، نه «مدیر IT»
+        ["DevTeam.Read"] = "مشاهدهٔ بورد کار، اعضا، ماژول‌ها و تاریخچهٔ کار",
+        ["DevTeam.Manage"] = "تعیین مالک ماژول و هم‌زمان‌سازی فهرست ماژول‌ها با مخزن"
     };
 
     private static string GetActionLabel(string module, string action)

@@ -1,0 +1,548 @@
+@namespace Inventory.Client.Pages
+@page "/dev-team/tasks"
+@inject IDevTeamService DevTeam
+@inject IToastService Toast
+@inject IAuthState Auth
+@inject LayoutState Layout
+@inject NavigationManager Nav
+
+<PageTitle>آیتم‌های کاری</PageTitle>
+
+@if (!Auth.CanSee("DevTeam"))
+{
+    <div class="alert alert-warning mt-3">
+        <i class="bi bi-shield-lock"></i> شما مجوز مشاهدهٔ ماژول «مدیریت برنامه‌نویسان» را ندارید.
+    </div>
+}
+else
+{
+    <div class="page-head">
+        <div>
+            <h1>آیتم‌های کاری</h1>
+            <p class="lead">هر کار با شمارهٔ «ماژول-شماره»، وضعیت، مسئول، برنچ و PR ردیابی می‌شود</p>
+        </div>
+        <div class="d-flex gap-2 me-auto">
+            <a class="btn btn-outline-secondary" href="dev-team"><i class="bi bi-kanban"></i> بورد</a>
+            @if (canEdit)
+            {
+                <button class="btn btn-primary" @onclick="NewTask"><i class="bi bi-plus-lg"></i> آیتم جدید</button>
+            }
+        </div>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @* ================== فیلترها ================== *@
+    <div class="card mb-3">
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">جستجو</label>
+                    <input class="form-control form-control-sm" placeholder="عنوان، شماره، توضیح یا برنچ…"
+                           value="@search" @oninput="OnSearchInput" @onkeydown="OnSearchKey" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">وضعیت</label>
+                    <select class="form-select form-select-sm" value="@((int?)statusFilter)?.ToString() ?? """ @onchange="OnStatusFilter">
+                        <option value="">همه</option>
+                        @foreach (var s in DevTeamLabels.BoardOrder)
+                        {
+                            <option value="@((int)s)">@DevTeamLabels.Status(s)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small mb-1">ماژول</label>
+                    <select class="form-select form-select-sm" value="@(moduleIdFilter?.ToString() ?? "")" @onchange="OnModuleFilter">
+                        <option value="">همه</option>
+                        @foreach (var m in modules)
+                        {
+                            <option value="@m.Id">@m.Title</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small mb-1">مسئول</label>
+                    <select class="form-select form-select-sm" value="@(assigneeFilter?.ToString() ?? "")" @onchange="OnAssigneeFilter">
+                        <option value="">همه</option>
+                        @foreach (var mem in members)
+                        {
+                            <option value="@mem.Id">@mem.FullName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary w-100" @onclick="ResetFilters">
+                        <i class="bi bi-x-circle"></i> پاک کردن
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-@(editing ? "7" : "12")">
+            <div class="card">
+                <div class="card-header d-flex align-items-center">
+                    <strong><i class="bi bi-list-check"></i> فهرست آیتم‌ها</strong>
+                    <span class="badge bg-light text-dark ms-2">@result?.TotalCount.ToString() مورد</span>
+                </div>
+                <div class="card-body p-0">
+                    @if (result is null)
+                    {
+                        <div class="p-4 text-center text-muted"><div class="spinner-border"></div></div>
+                    }
+                    else if (result.Items.Count == 0)
+                    {
+                        <div class="p-4 text-center text-muted">
+                            آیتمی با این فیلترها پیدا نشد.
+                            @if (canEdit)
+                            {
+                                <button class="btn btn-sm btn-primary ms-1" @onclick="NewTask">ایجاد آیتم جدید</button>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0 dt-table">
+                                <thead>
+                                    <tr>
+                                        <th>شماره</th>
+                                        <th style="width:32%">عنوان</th>
+                                        <th>ماژول</th>
+                                        <th>مسئول</th>
+                                        <th class="text-center">وضعیت</th>
+                                        <th class="text-center">اولویت</th>
+                                        <th class="text-center">سررسید</th>
+                                        @if (canEdit)
+                                        {
+                                            <th class="text-center" style="width:80px"></th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var t in result.Items)
+                                    {
+                                        <tr class="@(t.Status == DevTaskStatus.Done ? "text-muted" : "")">
+                                            <td><code>@t.Number</code></td>
+                                            <td>
+                                                <a href="dev-team/tasks?id=@t.Id" @onclick="() => Open(t.Id)" @onclick:preventDefault>@t.Title</a>
+                                                @if (t.AgentAssisted)
+                                                {
+                                                    <i class="bi bi-robot text-secondary ms-1" title="با کمک ایجنت AI"></i>
+                                                }
+                                                @if (t.BranchName is not null)
+                                                {
+                                                    <small class="text-muted d-block"><code>@t.BranchName</code></small>
+                                                }
+                                            </td>
+                                            <td>
+                                                <span class="dt-mod" style="background:@t.ModuleColorHex">@t.ModuleKey</span>
+                                            </td>
+                                            <td>
+                                                @if (t.AssigneeName is null)
+                                                {
+                                                    <span class="text-danger small">بی‌مسئول</span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-circle-fill" style="font-size:.5rem;color:@t.AssigneeColorHex"></i>
+                                                    @t.AssigneeName
+                                                }
+                                            </td>
+                                            <td class="text-center">
+                                                <select class="form-select form-select-sm dt-status dt-s-@t.Status.ToString().ToLowerInvariant()"
+                                                        value="@((int)t.Status)" disabled="@(!canEdit)"
+                                                        @onchange="e => ChangeStatus(t, e)">
+                                                    @foreach (var s in DevTeamLabels.BoardOrder)
+                                                    {
+                                                        <option value="@((int)s)">@DevTeamLabels.Status(s)</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td class="text-center">
+                                                <span class="dt-prio dt-prio-@t.Priority.ToString().ToLowerInvariant()" title="@DevTeamLabels.Priority(t.Priority)">
+                                                    @DevTeamLabels.Priority(t.Priority)
+                                                </span>
+                                            </td>
+                                            <td class="text-center">
+                                                @if (t.DaysToDue is < 0)
+                                                {
+                                                    <span class="badge bg-danger">@(-t.DaysToDue!.Value) روز عقب</span>
+                                                }
+                                                else if (t.DaysToDue is <= 2)
+                                                {
+                                                    <span class="badge bg-warning text-dark">@t.DaysToDue روز</span>
+                                                }
+                                                else
+                                                {
+                                                    <small>@(t.DaysToDue?.ToString() ?? "—")</small>
+                                                }
+                                            </td>
+                                            @if (canEdit)
+                                            {
+                                                <td class="text-center">
+                                                    <button class="btn btn-sm btn-link" title="ویرایش" @onclick="() => Edit(t)">
+                                                        <i class="bi bi-pencil"></i>
+                                                    </button>
+                                                    <button class="btn btn-sm btn-link text-danger" title="حذف" @onclick="() => Remove(t)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
+                @if (result is not null && result.PageCount > 1)
+                {
+                    <div class="card-footer d-flex justify-content-between align-items-center py-1">
+                        <small class="text-muted">صفحهٔ @result.Page از @result.PageCount</small>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-outline-secondary" disabled="@(page <= 1)" @onclick="() => GoPage(page - 1)">قبلی</button>
+                            <button class="btn btn-outline-secondary" disabled="@(page >= result.PageCount)" @onclick="() => GoPage(page + 1)">بعدی</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
+        @if (editing && form is not null)
+        {
+            <div class="col-lg-5">
+                <div class="card">
+                    <div class="card-header d-flex align-items-center">
+                        <strong>@(form.Id > 0 ? $"ویرایش {form.Number}" : "آیتم کاری جدید")</strong>
+                        <button class="btn btn-sm btn-link ms-auto" @onclick="Cancel"><i class="bi bi-x-lg"></i></button>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label class="form-label small">عنوان <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="form.Title" placeholder="مثلاً: افزودن صدور فایل حقوق به فیش" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">توضیح</label>
+                            <textarea class="form-control" rows="3" @bind="form.Description"
+                                      placeholder="چه چیزی باید تغییر کند و معیار پذیرش چیست"></textarea>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label small">ماژول <span class="text-danger">*</span></label>
+                                <select class="form-select" value="@form.ModuleId.ToString()" @onchange="OnFormModule">
+                                    <option value="">— انتخاب کنید —</option>
+                                    @foreach (var m in modules.Where(x => x.IsActive))
+                                    {
+                                        <option value="@m.Id">@m.Title</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">مسئول</label>
+                                <select class="form-select" value="@(form.AssigneeId?.ToString() ?? "")" @onchange="OnFormAssignee">
+                                    <option value="">— بی‌مسئول —</option>
+                                    @foreach (var mem in members.Where(x => x.IsActive))
+                                    {
+                                        <option value="@mem.Id">@mem.FullName</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-4">
+                                <label class="form-label small">وضعیت</label>
+                                <select class="form-select" @bind="form.Status">
+                                    @foreach (var s in DevTeamLabels.BoardOrder)
+                                    {
+                                        <option value="@s">@DevTeamLabels.Status(s)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small">اولویت</label>
+                                <select class="form-select" @bind="form.Priority">
+                                    @foreach (var p in DevTeamLabels.AllPriorities)
+                                    {
+                                        <option value="@p">@DevTeamLabels.Priority(p)</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small">اندازه</label>
+                                <select class="form-select" @bind="form.Size">
+                                    @foreach (var z in DevTeamLabels.AllSizes)
+                                    {
+                                        <option value="@z">@DevTeamLabels.Size(z)</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label small">سررسید</label>
+                                <input class="form-control" type="date" @bind="form.DueDate" />
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small">تاریخ شروع</label>
+                                <input class="form-control" type="datetime-local" @bind="form.StartedAt" />
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">نام برنچ</label>
+                            <input class="form-control" @bind="form.BranchName" dir="ltr"
+                                   placeholder="arena/devteam-board-ui" />
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small">پیوند Pull Request</label>
+                            <input class="form-control" @bind="form.PullRequestUrl" dir="ltr"
+                                   placeholder="https://github.com/.../pull/42" />
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="tAgent" @bind="form.AgentAssisted" />
+                            <label class="form-check-label small" for="tAgent">
+                                با کمک ایجنت AI انجام شده
+                                <small class="text-muted d-block">علامت‌گذاری آن، بازبینی دقیق‌تر را یادآوری می‌کند.</small>
+                            </label>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary" @onclick="Save" disabled="@busy">
+                                <i class="bi bi-check-lg"></i> ذخیره
+                            </button>
+                            <button class="btn btn-outline-secondary" @onclick="Cancel">انصراف</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private PagedResult<DevTaskDto>? result;
+    private List<DevModuleDto> modules = new();
+    private List<DevMemberDto> members = new();
+    private DevTaskDto? form;
+    private bool editing;
+    private bool busy;
+    private string? error;
+    private string search = "";
+    private DevTaskStatus? statusFilter;
+    private int? moduleIdFilter;
+    private int? assigneeFilter;
+    private int page = 1;
+    private const int PageSize = 25;
+
+    private bool canEdit => Auth.IsAdmin || Auth.Has("DevTeam.Create") || Auth.Has("DevTeam.Update");
+
+    protected override async Task OnInitializedAsync()
+    {
+        Layout.SetTitle("آیتم‌های کاری");
+        await LoadRefsAsync();
+
+        // پشتیبانی از پیوندهای dev-team/tasks?new=1 و ?id=42
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (q["new"] == "1" && canEdit) NewTask();
+        else if (int.TryParse(q["id"], out var id) && id > 0) await Open(id);
+
+        await LoadAsync();
+    }
+
+    private async Task LoadRefsAsync()
+    {
+        try
+        {
+            modules = await DevTeam.GetModulesAsync(true);
+            members = await DevTeam.GetMembersAsync(true);
+        }
+        catch (Exception ex) { error = "بارگذاری فهرست ماژول‌ها/اعضا ناموفق بود: " + ex.Message; }
+    }
+
+    private async Task LoadAsync()
+    {
+        busy = true;
+        error = null;
+        try
+        {
+            result = await DevTeam.GetTasksAsync(search, statusFilter, moduleIdFilter, assigneeFilter, page, PageSize);
+        }
+        catch (Exception ex) { error = "بارگذاری آیتم‌ها ناموفق بود: " + ex.Message; }
+        finally { busy = false; }
+    }
+
+    private async Task Open(int id)
+    {
+        busy = true;
+        try
+        {
+            var t = await DevTeam.GetTaskAsync(id);
+            if (t is null) { Toast.Error("آیتم یافت نشد."); return; }
+            Edit(t);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) => search = e.Value?.ToString() ?? "";
+
+    private async Task OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter") return;
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnStatusFilter(ChangeEventArgs e)
+    {
+        statusFilter = int.TryParse(e.Value?.ToString(), out var v) ? (DevTaskStatus)v : null;
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnModuleFilter(ChangeEventArgs e)
+    {
+        moduleIdFilter = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task OnAssigneeFilter(ChangeEventArgs e)
+    {
+        assigneeFilter = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+        page = 1;
+        await LoadAsync();
+    }
+
+    private async Task ResetFilters()
+    {
+        search = ""; statusFilter = null; moduleIdFilter = null; assigneeFilter = null; page = 1;
+        await LoadAsync();
+    }
+
+    private async Task GoPage(int p)
+    {
+        page = p;
+        await LoadAsync();
+    }
+
+    private void NewTask()
+    {
+        form = new DevTaskDto
+        {
+            Status = DevTaskStatus.Backlog,
+            Priority = DevPriority.Normal,
+            Size = DevTaskSize.Medium,
+            ModuleId = moduleIdFilter ?? 0,
+            AssigneeId = assigneeFilter,
+            Number = "(خودکار)"
+        };
+        editing = true;
+    }
+
+    private void Edit(DevTaskDto t)
+    {
+        form = new DevTaskDto
+        {
+            Id = t.Id, Number = t.Number, Title = t.Title, Description = t.Description,
+            ModuleId = t.ModuleId, AssigneeId = t.AssigneeId, Status = t.Status,
+            Priority = t.Priority, Size = t.Size, BranchName = t.BranchName,
+            PullRequestUrl = t.PullRequestUrl, AgentAssisted = t.AgentAssisted,
+            StartedAt = t.StartedAt, DueDate = t.DueDate, CompletedAt = t.CompletedAt, CreatedBy = t.CreatedBy
+        };
+        editing = true;
+    }
+
+    private void OnFormModule(ChangeEventArgs e)
+    {
+        if (form is null) return;
+        form.ModuleId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : 0;
+    }
+
+    private void OnFormAssignee(ChangeEventArgs e)
+    {
+        if (form is null) return;
+        form.AssigneeId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+    }
+
+    private void Cancel() { editing = false; form = null; }
+
+    private async Task Save()
+    {
+        if (form is null) return;
+        if (string.IsNullOrWhiteSpace(form.Title))
+        {
+            Toast.Error("عنوان آیتم الزامی است.");
+            return;
+        }
+        if (form.ModuleId <= 0)
+        {
+            Toast.Error("انتخاب ماژول الزامی است؛ شمارهٔ آیتم از کلید ماژول ساخته می‌شود.");
+            return;
+        }
+        busy = true;
+        try
+        {
+            var saved = await DevTeam.SaveTaskAsync(form);
+            Toast.Success($"{saved.Number} ذخیره شد.");
+            Cancel();
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task ChangeStatus(DevTaskDto t, ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var v)) return;
+        var to = (DevTaskStatus)v;
+        if (to == t.Status) return;
+        busy = true;
+        try
+        {
+            await DevTeam.SetStatusAsync(t.Id, new DevTaskStatusRequest { Status = to });
+            Toast.Success($"{t.Number} به «{DevTeamLabels.Status(to)}» منتقل شد.");
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+            await LoadAsync(); // بازگرداندن مقدار نمایشی select
+        }
+        finally { busy = false; }
+    }
+
+    private async Task Remove(DevTaskDto t)
+    {
+        busy = true;
+        try
+        {
+            await DevTeam.DeleteTaskAsync(t.Id);
+            Toast.Success($"{t.Number} حذف شد.");
+            await LoadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+}
+
+<style>
+    .dt-table th { font-size:.76rem; color:#6c757d; font-weight:600; white-space:nowrap; }
+    .dt-table td { font-size:.84rem; vertical-align:middle; }
+    .dt-mod { font-size:.66rem; font-weight:700; color:#fff; padding:.05rem .35rem; border-radius:.3rem; }
+    .dt-status { width:auto; font-size:.75rem; padding:.1rem .3rem; }
+    .dt-s-inprogress { border-color:#fd7e14; color:#b25000; }
+    .dt-s-inreview { border-color:#6f42c1; color:#5a32a3; }
+    .dt-s-blocked { border-color:#dc3545; color:#b02a37; }
+    .dt-s-done { border-color:#20c997; color:#0f7b63; }
+    .dt-prio { font-size:.76rem; }
+    .dt-prio-urgent { color:#dc3545; font-weight:700; }
+    .dt-prio-high { color:#fd7e14; font-weight:600; }
+    .dt-prio-normal { color:#495057; }
+    .dt-prio-low { color:#adb5bd; }
+</style>

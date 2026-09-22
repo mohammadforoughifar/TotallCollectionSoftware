@@ -68,6 +68,7 @@ builder.Services.AddScoped<HrPayService>(); // ماژول حقوق
 builder.Services.AddScoped<HrPerfService>(); // ارزیابی عملکرد
 builder.Services.AddScoped<AttendanceSecurityService>();
 builder.Services.AddScoped<IRepairService, RepairService>();
+builder.Services.AddScoped<Inventory.Api.Services.DevTeam.IDevTeamService, Inventory.Api.Services.DevTeam.DevTeamService>(); // ماژول مدیریت برنامه‌نویسان
 builder.Services.AddScoped<IExpenseService, ExpenseService>();
 
 // ---------- اتوماسیون اداری — نامه داخلی (کارتابل، ارجاع، پیش‌نویس، گروه‌های گیرندگان) ----------
