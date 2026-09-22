@@ -6,6 +6,8 @@ namespace Inventory.Api.Services.HrCore;
 /// سرویس پس‌زمینه‌ی روزانه‌ی «عملیات خودکار HR» که پیش‌تر فقط با دکمه‌ی دستی اجرا می‌شدند:
 ///   ۱) بررسی و هشدار انقضای قرارداد (IHrCoreService.CheckAlertsAsync) — یادآوری به کارمند/پیامک طبق آستانه‌ی روز پیکربندی‌شده.
 ///   ۲) ایجاد خودکار دوره‌ی آزمایشی برای استخدام‌های اخیر (IHrTalentService.AutoCreateTrialsAsync).
+///   ۳) اجرای خودکار احکامِ رسیده‌به‌تاریخ (IHrCoreService.ApplyDueDecreesAsync) — تغییر پست/واحد/حقوق پایه
+///      روی پرونده اعمال می‌شود تا دوره‌ی حقوقی بعدی (FaPay) خودکار مبلغ جدید را بردارد.
 /// هر روز ساعت مشخص (پیش‌فرض ۷ صبح، قابل تنظیم با HrCore:DailyOpsCheckHour) اجرا می‌شود.
 /// </summary>
 public class HrOpsDailyWatcher : BackgroundService
@@ -44,6 +46,10 @@ public class HrOpsDailyWatcher : BackgroundService
                 var trialsCreated = await talent.AutoCreateTrialsAsync();
                 if (trialsCreated > 0)
                     _log.LogInformation("دوره‌ی آزمایشی خودکار: {Count} پرونده‌ی جدید ایجاد شد.", trialsCreated);
+
+                var decreesApplied = await hrCore.ApplyDueDecreesAsync();
+                if (decreesApplied > 0)
+                    _log.LogInformation("اجرای خودکار احکام رسیده‌به‌تاریخ: {Count} حکم روی پرونده پرسنل اعمال شد.", decreesApplied);
             }
             catch (Exception ex)
             {

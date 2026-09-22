@@ -328,3 +328,23 @@ public class FaAttInitYearDto
     public int Year { get; set; }
     public int? LeaveTypeId { get; set; }
 }
+
+// ==================== برنامه‌ریزی گرافیکی شیفت ====================
+
+/// <summary>یک روز از برنامه‌ی شیفت — ShiftId صفر/تهی یعنی فقط پاک‌کردن تخصیص آن روز</summary>
+public class FaAttShiftPlanItemDto
+{
+    public int EmployeeId { get; set; }
+    public int? ShiftId { get; set; }
+    public DateTime Date { get; set; }
+}
+
+public class FaAttShiftPlanSaveDto
+{
+    public List<FaAttShiftPlanItemDto> Items { get; set; } = new();
+}
+
+public class FaAttShiftPlanResultDto
+{
+    public int Applied { get; set; }
+}

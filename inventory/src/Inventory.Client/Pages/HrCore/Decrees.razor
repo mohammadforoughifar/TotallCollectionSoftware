@@ -27,6 +27,10 @@
         </div>
         <div class="ms-auto">
             <button class="btn btn-outline-success me-2" @onclick="ExportExcel"><i class="bi bi-file-earmark-excel"></i> اکسل</button>
+            @if (canUpdate)
+            {
+                <button class="btn btn-outline-warning me-2" title="اجرای همه‌ی احکامی که تاریخ اجرایشان رسیده است" @onclick="ApplyDue"><i class="bi bi-play-fill"></i> اجرای احکام رسیده</button>
+            }
             @if (canCreate)
             {
                 <button class="btn btn-success" @onclick="() => OpenEdit(null)"><i class="bi bi-plus-lg"></i> حکم جدید</button>
@@ -130,6 +134,15 @@ else
                 </select>
             </div>
             <div class="col-12"><label class="form-label">شرح حکم</label><input class="form-control" @bind="form.Description" /></div>
+            <div class="col-12">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="decreeAutoApply" @bind="form.AutoApply" />
+                    <label class="form-check-label" for="decreeAutoApply">
+                        اعمال خودکار روی پرونده پرسنل در صورت رسیده‌بودن تاریخ اجرا
+                        <span class="d-block small text-muted">حقوق پایه/پست/واحد پرونده به‌روز می‌شود تا دوره‌ی حقوقی بعدی خودکار مبلغ جدید را محاسبه کند. برای تاریخ‌های آینده، هر روز صبح به‌طور خودکار اجرا می‌شود.</span>
+                    </label>
+                </div>
+            </div>
         </div>
     </ChildContent>
     <Footer>
@@ -311,6 +324,17 @@ else
     {
         if (!await JS.InvokeAsync<bool>("confirm", "حکم روی پرونده اعمال شود؟ این عمل برگشت‌ناپذیر است.")) return;
         try { await Svc.ApplyDecreeAsync(id); await Reload(); Toast.Success("حکم اجرا شد."); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ApplyDue()
+    {
+        try
+        {
+            var n = await Svc.ApplyDueDecreesAsync();
+            await Reload();
+            Toast.Success(n > 0 ? $"{Fa.Digits(n)} حکم رسیده‌به‌تاریخ روی پرونده پرسنل اعمال شد." : "حکم رسیده‌به‌تاریخِ اجرانشده‌ای وجود ندارد.");
+        }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 

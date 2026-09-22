@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">پرسنل فروغ آریا</string>
+
+    <!-- ⚠️ آدرس سامانه را اینجا بگذارید (حتماً HTTPS با گواهی معتبر — بدون HTTPS، ساعت‌زنی GPS و اعلان کار نمی‌کند) -->
+    <string name="server_url" translatable="false">https://SAMANE-YOUR-SERVER</string>
+
+    <string name="retry">تلاش مجدد</string>
+    <string name="offline_title">اتصال برقرار نشد</string>
+    <string name="offline_message">اتصال اینترنت یا آدرس سرور را بررسی کنید و دوباره تلاش کنید.</string>
+</resources>

@@ -45,6 +45,8 @@ public interface IFaAttService
     Task<List<FaAttShiftAssignDto>> ListAssignsAsync(int? employeeId, int? shiftId);
     Task<FaAttShiftAssignDto> SaveAssignAsync(int? id, FaAttShiftAssignSaveDto dto);
     Task DeleteAssignAsync(int id);
+    /// <summary>برنامه‌ریزی روزانه‌ی شیفت: برای هر آیتم، تخصیص‌های هم‌پوشانِ همان روز برش/حذف و شیفت جدید درج می‌شود</summary>
+    Task<FaAttShiftPlanResultDto> PlanShiftsAsync(FaAttShiftPlanSaveDto dto);
 
     // دستگاه‌ها
     Task<List<FaAttDeviceDto>> ListDevicesAsync(bool? onlyActive);
@@ -219,6 +221,61 @@ public class FaAttService : IFaAttService
             ?? throw new InvalidOperationException("تخصیص یافت نشد.");
         _db.FaAttShiftAssigns.Remove(a);
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// برنامه‌ریزی روزانه‌ی شیفت (شبکه‌ی هفتگی/ماهانی): برای هر «پرسنل + روز»، تخصیص‌های هم‌پوشان
+    /// برش می‌خورند (قبل/بعدِ روز محفوظ می‌ماند) و در صورت تعیین شیفت، تخصیص یک‌روزه‌ی جدید درج می‌شود.
+    /// ShiftId تهی یعنی فقط خالی‌کردن آن روز. همه در یک تراکنش.
+    /// </summary>
+    public async Task<FaAttShiftPlanResultDto> PlanShiftsAsync(FaAttShiftPlanSaveDto dto)
+    {
+        if (dto.Items.Count == 0) throw new InvalidOperationException("آیتمی برای اعمال وجود ندارد.");
+        if (dto.Items.Count > 2000) throw new InvalidOperationException("حداکثر ۲۰۰۰ خانه در هر اعمال.");
+        var empIds = dto.Items.Select(i => i.EmployeeId).Distinct().ToList();
+        var shiftIds = dto.Items.Where(i => i.ShiftId is > 0).Select(i => i.ShiftId!.Value).Distinct().ToList();
+        if (await _db.HrEmployees.CountAsync(e => empIds.Contains(e.Id)) != empIds.Count)
+            throw new InvalidOperationException("برخی پرسنل نامعتبرند.");
+        var validShifts = shiftIds.Count == 0
+            ? new List<int>()
+            : await _db.FaAttShifts.Where(s => shiftIds.Contains(s.Id)).Select(s => s.Id).ToListAsync();
+        if (validShifts.Count != shiftIds.Count)
+            throw new InvalidOperationException("برخی شیفت‌ها نامعتبر یا غیرفعالند.");
+
+        var applied = 0;
+        foreach (var item in dto.Items)
+        {
+            var day = item.Date.Date;
+            var next = day.AddDays(1);
+            var overlaps = await _db.FaAttShiftAssigns
+                .Where(a => a.EmployeeId == item.EmployeeId && a.FromDate < next && (a.ToDate == null || a.ToDate.Value >= day))
+                .ToListAsync();
+            foreach (var a in overlaps)
+            {
+                var aFrom = a.FromDate.Date;
+                var aTo = a.ToDate?.Date;
+                var coversBefore = aFrom < day;
+                var coversAfter = aTo is null || aTo.Value > day;
+                if (coversBefore && coversAfter)
+                {
+                    // وسط بازه را برش می‌دهیم: تکه‌ی قبل کوتاه می‌شود و تکه‌ی بعد رکورد جدید می‌گیرد
+                    var after = new FaAttShiftAssign { EmployeeId = a.EmployeeId, ShiftId = a.ShiftId, FromDate = next, ToDate = aTo };
+                    _db.FaAttShiftAssigns.Add(after);
+                    a.ToDate = day.AddDays(-1);
+                }
+                else if (coversBefore) a.ToDate = day.AddDays(-1);
+                else if (coversAfter) a.FromDate = next;
+                else _db.FaAttShiftAssigns.Remove(a);
+            }
+            if (item.ShiftId is > 0)
+                _db.FaAttShiftAssigns.Add(new FaAttShiftAssign
+                {
+                    EmployeeId = item.EmployeeId, ShiftId = item.ShiftId!.Value, FromDate = day, ToDate = day
+                });
+            applied++;
+        }
+        await _db.SaveChangesAsync();
+        return new FaAttShiftPlanResultDto { Applied = applied };
     }
 
     // ==================== دستگاه‌ها ====================
@@ -585,6 +642,31 @@ public class FaAttService : IFaAttService
             shift = await _db.FaAttShifts.AsNoTracking()
                 .FirstOrDefaultAsync(s => s.Id == assign.ShiftId && s.IsActive);
 
+        // ساعات کاری پیش‌فرض سازمانی (HrMainRules): پرسنلی که شیفت اختصاصی FaAtt ندارد،
+        // از «ساعت شروع/پایان کار پیش‌فرض + روزهای تعطیل هفتگی + ارفاق تأخیر» تنظیمات پایه منابع
+        // انسانی اصلی پیروی می‌کند. شیفتِ مجازی فقط برای محاسبه است و ذخیره نمی‌شود (ShiftId = null می‌ماند).
+        var isDefaultShift = false;
+        if (shift == null)
+        {
+            var rules = await _db.HrMainRules.AsNoTracking().FirstOrDefaultAsync();
+            if (rules != null && rules.DefaultWorkStartTime != rules.DefaultWorkEndTime)
+            {
+                shift = new FaAttShift
+                {
+                    Name = "پیش‌فرض سازمان",
+                    Type = FaAttShiftType.Fixed,
+                    StartTime = rules.DefaultWorkStartTime,
+                    EndTime = rules.DefaultWorkEndTime,
+                    LateToleranceMin = Math.Max(0, rules.LateGraceMinutes),
+                    EarlyToleranceMin = Math.Max(0, rules.LateGraceMinutes),
+                    OvertimeGraceMin = 15,
+                    OffDays = rules.DefaultWeeklyOffDays,
+                    IsActive = true
+                };
+                isDefaultShift = true;
+            }
+        }
+
         var next = date.AddDays(1);
         var logs = await _db.FaAttLogs.AsNoTracking()
             .Where(l => l.EmployeeId == employeeId && l.Timestamp >= date && l.Timestamp < next)
@@ -669,10 +751,11 @@ public class FaAttService : IFaAttService
         if (status != FaAttDayStatus.Mission && onMission) notes.Add("مأموریت");
         if (status != FaAttDayStatus.Leave && onLeave) notes.Add("مرخصی");
         if (hourlyLeave > 0) notes.Add($"مرخصی ساعتی {hourlyLeave:0.#} ساعت");
+        if (isDefaultShift) notes.Add("شیفت پیش‌فرض سازمان");
 
         var row = await _db.FaAttDailies.FirstOrDefaultAsync(d => d.EmployeeId == employeeId && d.Date == date);
         if (row == null) { row = new FaAttDaily { EmployeeId = employeeId, Date = date }; _db.FaAttDailies.Add(row); }
-        row.ShiftId = shift?.Id;
+        row.ShiftId = isDefaultShift ? null : shift?.Id;
         row.FirstIn = firstIn; row.LastOut = lastOut;
         row.WorkMinutes = workMin; row.LateMinutes = late; row.EarlyMinutes = early; row.OvertimeMinutes = ot;
         row.NightMinutes = NightOverlapMinutes(firstIn, lastOut);

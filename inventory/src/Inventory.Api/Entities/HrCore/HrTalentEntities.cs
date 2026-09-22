@@ -149,3 +149,30 @@ public class HrAppraisalScore
     [MaxLength(300)] public string? Note { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
+
+// ==================== مشاهده/درخواست ویرایش پرونده توسط خود پرسنل ====================
+
+public enum HrProfileEditRequestStatus
+{
+    Pending = 0,
+    Approved = 1,
+    Rejected = 2
+}
+
+/// <summary>
+/// درخواست پرسنل برای به‌روزرسانی پرونده‌ی خودش بدون نیاز به دسترسی مستقیم به ماژول کارگزینی.
+/// فقط فیلدهای تماس مجازند (موبایل/ایمیل/آدرس/تلفن ثابت/تماس اضطراری) و پس از تأیید HR اعمال می‌شوند.
+/// Fields به‌صورت خط‌های «کلید=مقدار» ذخیره می‌شود.
+/// </summary>
+public class HrProfileEditRequest
+{
+    public int Id { get; set; }
+    public int EmployeeId { get; set; }
+    public string Fields { get; set; } = "";
+    [MaxLength(500)] public string? Reason { get; set; }
+    public HrProfileEditRequestStatus Status { get; set; } = HrProfileEditRequestStatus.Pending;
+    [MaxLength(150)] public string? DecidedBy { get; set; }
+    public DateTime? DecidedAt { get; set; }
+    [MaxLength(500)] public string? DecideNote { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}

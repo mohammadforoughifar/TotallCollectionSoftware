@@ -41,6 +41,19 @@ public static class FaAttSchemaV1
             c.ExecuteNonQuery();
         }
 
+        bool HasColumn(string table, string column)
+        {
+            using var c = raw.CreateCommand();
+            c.CommandText = $"PRAGMA table_info({table})";
+            using var r = c.ExecuteReader();
+            while (r.Read())
+            {
+                if (string.Equals(r.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
+
         Exec(@"
             CREATE TABLE IF NOT EXISTS FaAttShifts (
                 Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -102,6 +115,13 @@ public static class FaAttSchemaV1
             );
             CREATE INDEX IF NOT EXISTS IX_FaAttLogs_EmployeeId ON FaAttLogs (EmployeeId);
             CREATE INDEX IF NOT EXISTS IX_FaAttLogs_Timestamp ON FaAttLogs (Timestamp);");
+
+        // دیتابیس‌های قدیمی‌ترِ FaAtt ستون‌های مکان (GPS) را ندارند — خودتعمیر:
+        if (!HasColumn("FaAttLogs", "Latitude"))
+            Exec("ALTER TABLE FaAttLogs ADD COLUMN Latitude REAL NULL;");
+        if (!HasColumn("FaAttLogs", "Longitude"))
+            Exec("ALTER TABLE FaAttLogs ADD COLUMN Longitude REAL NULL;");
+
 
         Exec(@"
             CREATE TABLE IF NOT EXISTS FaAttDailies (
@@ -258,6 +278,13 @@ public static class FaAttSchemaV1
                 CREATE INDEX [IX_FaAttLogs_EmployeeId] ON [FaAttLogs] ([EmployeeId]);
             IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_FaAttLogs_Timestamp' AND object_id = OBJECT_ID(N'dbo.FaAttLogs'))
                 CREATE INDEX [IX_FaAttLogs_Timestamp] ON [FaAttLogs] ([Timestamp]);");
+
+        // دیتابیس‌های قدیمی‌ترِ FaAtt ستون‌های مکان (GPS) را ندارند — خودتعمیر:
+        await ExecAsync(@"
+IF OBJECT_ID(N'dbo.FaAttLogs', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.FaAttLogs', 'Latitude') IS NULL
+    ALTER TABLE [FaAttLogs] ADD [Latitude] float NULL;
+IF OBJECT_ID(N'dbo.FaAttLogs', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.FaAttLogs', 'Longitude') IS NULL
+    ALTER TABLE [FaAttLogs] ADD [Longitude] float NULL;");
 
         await ExecAsync(@"
             IF OBJECT_ID(N'dbo.FaAttDailies', N'U') IS NULL

@@ -45,9 +45,14 @@ public static class HrCoreTexts
 public interface IHrCoreService
 {
     // پرسنل
-    Task<(List<HrEmployeeDto> Items, int Total)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null);
-    Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive);
-    Task<HrEmployeeDto?> GetEmployeeAsync(int id);
+    Task<(List<HrEmployeeDto> Items, int Total)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null, HrTeamScopeDto? scope = null);
+    Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive, HrTeamScopeDto? scope = null);
+    Task<HrEmployeeDto?> GetEmployeeAsync(int id, HrTeamScopeDto? scope = null);
+    /// <summary>
+    /// دامنه‌ی دید «تیم من» برای کاربر فاقد HrCore.Manage: گره سازمانی (HrMain) خود او + زیرمجموعه‌ها،
+    /// یا در نبود آن واحد سازمانی قدیمی + زیرمجموعه‌ها. null یعنی پرونده/جایگاهی ندارد و نباید محدود شود.
+    /// </summary>
+    Task<HrTeamScopeDto?> ResolveTeamScopeAsync(int userId);
     Task<HrEmployeeDto> CreateEmployeeAsync(HrEmployeeSaveDto dto);
     Task<HrEmployeeDto> UpdateEmployeeAsync(int id, HrEmployeeSaveDto dto);
     Task SetEmployeeActiveAsync(int id, bool active);
@@ -69,7 +74,7 @@ public interface IHrCoreService
     Task<HrContractDto> RenewContractAsync(int id, int months);
     Task<int> RemindExpiringDocumentsAsync(int days);
     Task<byte[]> DossierPdfAsync(int employeeId);
-    Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q);
+    Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q, HrTeamScopeDto? scope = null);
     Task<(byte[] Data, string FileName)> BuildEmployeeImportTemplateAsync();
     Task<HrEmployeeImportResultDto> ImportEmployeesAsync(Stream stream);
     Task<(byte[] Data, string FileName)> ExportContractsExcelAsync();
@@ -103,6 +108,8 @@ public interface IHrCoreService
     Task<HrDecreeDto> SaveDecreeAsync(int? id, HrDecreeSaveDto dto, int byUserId, string byName);
     Task<HrBulkResultDto> SaveDecreesBulkAsync(HrDecreeBulkDto dto, int byUserId, string byName);
     Task<HrDecreeDto> ApplyDecreeAsync(int id);
+    /// <summary>اجرای گروهیِ همه‌ی احکامِ اجرانشده‌ای که تاریخ اجرایشان رسیده/گذشته است (واچر روزانه + دکمه‌ی دستی)</summary>
+    Task<int> ApplyDueDecreesAsync();
     Task<byte[]> DecreePdfAsync(int id);
     Task<byte[]> ContractPdfAsync(int id);
     Task DeleteDecreeAsync(int id);
@@ -146,13 +153,14 @@ public class HrCoreService : IHrCoreService
 
     // ==================== پرسنل ====================
 
-    public async Task<(List<HrEmployeeDto>, int)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null)
+    public async Task<(List<HrEmployeeDto>, int)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null, HrTeamScopeDto? scope = null)
     {
         take = Math.Clamp(take, 1, 200);
         var query = _db.HrEmployees.AsNoTracking().AsQueryable();
         if (orgUnitId is > 0) query = query.Where(e => e.OrgUnitId == orgUnitId.Value);
         if (hrMainNodeId is > 0) query = query.Where(e => e.HrMainNodeId == hrMainNodeId.Value);
         if (status is >= 0) query = query.Where(e => (int)e.Status == status.Value);
+        query = ApplyTeamScope(query, scope);
         if (!string.IsNullOrWhiteSpace(q))
         {
             q = q.Trim();
@@ -166,11 +174,87 @@ public class HrCoreService : IHrCoreService
         return (items, total);
     }
 
-    public async Task<HrEmployeeDto?> GetEmployeeAsync(int id)
+    public async Task<HrEmployeeDto?> GetEmployeeAsync(int id, HrTeamScopeDto? scope = null)
     {
         var e = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id);
-        return e is null ? null : await MapEmployeeAsync(e);
+        if (e is null) return null;
+        if (scope != null && !IsInTeamScope(e, scope)) return null; // خارج از دامنه‌ی تیم کاربر — مثل «یافت نشد»
+        return await MapEmployeeAsync(e);
     }
+
+    // ==================== دامنه‌ی دید تیمی (دسترسی مبتنی به واحد) ====================
+
+    /// <summary>
+    /// دامنه‌ی دید کاربر بدون مجوز HrCore.Manage: پرونده‌ی پرسنلی متصل به حساب او پیدا می‌شود و
+    /// گره سازمانی (HrMain) یا واحد قدیمی (HrOrgUnit) او به‌همراه تمامِ زیرمجموعه‌ها برگردانده می‌شود.
+    /// اگر پرونده یا جایگاهی نبود، null برمی‌گردد (محدودیتی اعمال نمی‌شود — رفتار پیشین حفظ می‌شود).
+    /// </summary>
+    public async Task<HrTeamScopeDto?> ResolveTeamScopeAsync(int userId)
+    {
+        if (userId <= 0) return null;
+        var me = await _db.HrEmployees.AsNoTracking()
+            .Where(e => e.SystemUserId == userId)
+            .Select(e => new { e.Id, e.HrMainNodeId, e.OrgUnitId })
+            .FirstOrDefaultAsync();
+        if (me is null) return null;
+
+        var scope = new HrTeamScopeDto { EmployeeId = me.Id };
+        if (me.HrMainNodeId is > 0)
+        {
+            var nodes = await _db.HrMainOrgNodes.AsNoTracking()
+                .Select(n => new { n.Id, n.ParentId }).ToListAsync();
+            scope.NodeIds = DescendantIds(nodes.Select(n => (n.Id, n.ParentId)), me.HrMainNodeId.Value);
+        }
+        if (me.OrgUnitId is > 0)
+        {
+            var units = await _db.HrOrgUnits.AsNoTracking()
+                .Select(u => new { u.Id, u.ParentId }).ToListAsync();
+            scope.OrgUnitIds = DescendantIds(units.Select(u => (u.Id, u.ParentId)), me.OrgUnitId.Value);
+        }
+        return scope.NodeIds.Count > 0 || scope.OrgUnitIds.Count > 0 ? scope : null;
+    }
+
+    /// <summary>شناسه‌ی ریشه + همه‌ی نوادگانش در یک درخت عمومی (Id/ParentId) — با محافظ حلقه.</summary>
+    private static List<int> DescendantIds(IEnumerable<(int Id, int? ParentId)> nodes, int rootId)
+    {
+        var byParent = new Dictionary<int, List<int>>();
+        foreach (var (id, parent) in nodes)
+        {
+            if (parent is not > 0) continue;
+            if (!byParent.TryGetValue(parent.Value, out var list)) byParent[parent.Value] = list = new List<int>();
+            list.Add(id);
+        }
+        var result = new List<int>();
+        var seen = new HashSet<int> { rootId };
+        var queue = new Queue<int>();
+        queue.Enqueue(rootId);
+        while (queue.Count > 0)
+        {
+            var cur = queue.Dequeue();
+            result.Add(cur);
+            if (!byParent.TryGetValue(cur, out var children)) continue;
+            foreach (var c in children) if (seen.Add(c)) queue.Enqueue(c);
+        }
+        return result;
+    }
+
+    /// <summary>اعمال دامنه‌ی تیم روی کوئری پرسنل: عضو تیم = گره در NodeIds یا واحد در OrgUnitIds.</summary>
+    private static IQueryable<HrEmployee> ApplyTeamScope(IQueryable<HrEmployee> query, HrTeamScopeDto? scope)
+    {
+        if (scope == null) return query;
+        if (scope.NodeIds.Count > 0 && scope.OrgUnitIds.Count > 0)
+            return query.Where(e => (e.HrMainNodeId != null && scope.NodeIds.Contains(e.HrMainNodeId.Value))
+                                 || (e.OrgUnitId != null && scope.OrgUnitIds.Contains(e.OrgUnitId.Value)));
+        if (scope.NodeIds.Count > 0)
+            return query.Where(e => e.HrMainNodeId != null && scope.NodeIds.Contains(e.HrMainNodeId.Value));
+        if (scope.OrgUnitIds.Count > 0)
+            return query.Where(e => e.OrgUnitId != null && scope.OrgUnitIds.Contains(e.OrgUnitId.Value));
+        return query;
+    }
+
+    private static bool IsInTeamScope(HrEmployee e, HrTeamScopeDto scope)
+        => (scope.NodeIds.Count > 0 && e.HrMainNodeId is > 0 && scope.NodeIds.Contains(e.HrMainNodeId.Value))
+        || (scope.OrgUnitIds.Count > 0 && e.OrgUnitId is > 0 && scope.OrgUnitIds.Contains(e.OrgUnitId.Value));
 
     public async Task<HrEmployeeDto> CreateEmployeeAsync(HrEmployeeSaveDto dto)
     {
@@ -479,10 +563,12 @@ public class HrCoreService : IHrCoreService
         return list;
     }
 
-    public async Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive)
+    public async Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive, HrTeamScopeDto? scope = null)
     {
-        var emps = await _db.HrEmployees.AsNoTracking()
-            .Where(e => !onlyActive || e.IsActive)
+        var query = _db.HrEmployees.AsNoTracking().AsQueryable();
+        if (onlyActive) query = query.Where(e => e.IsActive);
+        query = ApplyTeamScope(query, scope);
+        var emps = await query
             .OrderBy(e => e.Code).ThenBy(e => e.Id)
             .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.HrMainNodeId, e.IsActive })
             .ToListAsync();
@@ -809,6 +895,14 @@ public class HrCoreService : IHrCoreService
         d.NewBaseSalary = dto.NewBaseSalary;
         d.NewStatus = dto.NewStatus == null ? null : (HrEmployeeStatus)dto.NewStatus.Value;
         d.Description = dto.Description?.Trim();
+
+        // اعمال خودکار روی پرونده پرسنل در صورت رسیده‌بودن تاریخ اجرا (و کش ندادن کاربر)
+        var autoApplyNow = dto.AutoApply && d.EffectiveDate.Date <= DateTime.Today;
+        if (autoApplyNow)
+        {
+            var e = await _db.HrEmployees.FirstOrDefaultAsync(x => x.Id == d.EmployeeId);
+            if (e != null) ApplyDecreeCore(d, e);
+        }
         await _db.SaveChangesAsync();
         return (await EmployeeDecreesAsync(d.EmployeeId)).First(x => x.Id == d.Id);
     }
@@ -1218,6 +1312,30 @@ public class HrCoreService : IHrCoreService
         ApplyDecreeCore(d, e);
         await _db.SaveChangesAsync();
         return (await EmployeeDecreesAsync(d.EmployeeId)).First(x => x.Id == d.Id);
+    }
+
+    /// <summary>
+    /// اجرای گروهیِ احکامِ رسیده‌به‌تاریخ: هر حکمِ اجرانشده‌ای که EffectiveDate آن امروز یا قبل است
+    /// روی پرونده پرسنل اعمال می‌شود (تغییر پست/واحد/حقوق پایه/وضعیت). به این ترتیب دوره‌ی حقوقیِ
+    /// بعدی (FaPay که BaseSalary را از پرونده می‌خواند) به‌طور خودکار مبلغ جدید را محاسبه می‌کند.
+    /// خروجی: تعداد احکام اجراشده.
+    /// </summary>
+    public async Task<int> ApplyDueDecreesAsync()
+    {
+        var today = DateTime.Today;
+        var due = await _db.HrDecrees.Where(d => !d.IsApplied && d.EffectiveDate <= today).ToListAsync();
+        if (due.Count == 0) return 0;
+        var empIds = due.Select(d => d.EmployeeId).Distinct().ToList();
+        var emps = await _db.HrEmployees.Where(e => empIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
+        var applied = 0;
+        foreach (var d in due)
+        {
+            if (!emps.TryGetValue(d.EmployeeId, out var e)) continue; // پرسنل حذف‌شده — رد می‌شود
+            ApplyDecreeCore(d, e);
+            applied++;
+        }
+        if (applied > 0) await _db.SaveChangesAsync();
+        return applied;
     }
 
     public async Task DeleteDecreeAsync(int id)
@@ -1707,9 +1825,9 @@ public class HrCoreService : IHrCoreService
         return ms.ToArray();
     }
 
-    public async Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q)
+    public async Task<(byte[] Data, string FileName)> ExportEmployeesExcelAsync(string? q, HrTeamScopeDto? scope = null)
     {
-        var (items, _) = await SearchEmployeesAsync(q, null, null, 0, 10000);
+        var (items, _) = await SearchEmployeesAsync(q, null, null, 0, 10000, null, scope);
         using var wb = NewWorkbook("پرسنل");
         var ws = wb.Worksheet(1);
         string[] heads = { "کد", "نام", "نام خانوادگی", "کدملی", "موبایل", "استخدام", "وضعیت" };

@@ -18,6 +18,39 @@ public class HrTalentController : RbacControllerBase
 
     public HrTalentController(AppDbContext db, IHrTalentService svc) : base(db) => _svc = svc;
 
+    // ------------------- پرونده‌ی خود پرسنل (بدون نیاز به مجوز کارگزینی) -------------------
+
+    /// <summary>مشاهده‌ی پرونده‌ی خود — هر کاربر واردشده‌ای که پرونده‌ی پرسنلی متصل دارد</summary>
+    [HttpGet("my/profile")]
+    public async Task<IActionResult> MyProfile()
+    {
+        var p = await _svc.GetMyProfileAsync(MyUserId);
+        return p is null ? NotFound(new { message = "پرونده‌ی پرسنلی برای حساب شما ثبت نشده است." }) : Ok(p);
+    }
+
+    /// <summary>ثبت درخواست ویرایش فیلدهای تماس پرونده — پس از تأیید HR اعمال می‌شود</summary>
+    [HttpPost("my/profile-requests")]
+    public async Task<IActionResult> SubmitMyProfileEdit([FromBody] HrProfileEditRequestSaveDto dto)
+    {
+        var id = await _svc.SubmitMyProfileEditAsync(MyUserId, dto);
+        return Ok(new { id });
+    }
+
+    [HttpGet("profile-requests")]
+    public async Task<IActionResult> ProfileRequests([FromQuery] bool? onlyPending)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
+        return Ok(await _svc.ListProfileRequestsAsync(onlyPending));
+    }
+
+    /// <summary>تأیید (و اعمال روی پرونده) یا رد درخواست ویرایش</summary>
+    [HttpPost("profile-requests/{id:int}/decide")]
+    public async Task<IActionResult> DecideProfileRequest(int id, [FromQuery] bool approve, [FromQuery] string? note)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        return Ok(await _svc.DecideProfileRequestAsync(id, approve, MyUsername, note));
+    }
+
     // ------------------- آنبوردینگ -------------------
 
     [HttpGet("onboarding")]
@@ -249,6 +282,15 @@ public class HrTalentController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
         return Ok(await _svc.AppraisalResultsAsync(id));
+    }
+
+    /// <summary>صدور حکم افزایش حقوق/ارتقا برای نفرات برتر این ارزیابی (گرید A یا A+B)</summary>
+    [HttpPost("appraisals/{id:int}/propose-decrees")]
+    public async Task<IActionResult> ProposeDecrees(int id, [FromBody] HrAppraisalDecreeProposalDto dto)
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        dto.AppraisalId = id;
+        return Ok(await _svc.ProposeDecreesFromAppraisalAsync(dto, MyUserId, MyUsername));
     }
 
     [HttpPost("appraisals/{id:int}/status")]

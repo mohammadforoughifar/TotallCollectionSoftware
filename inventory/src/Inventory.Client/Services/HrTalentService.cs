@@ -37,7 +37,14 @@ public interface IHrTalentService
     Task SaveScoreAsync(HrAppraisalScoreSaveDto dto);
     Task<List<HrAppraisalScoreDto>> GetScoresAsync(int appraisalId, int? employeeId = null);
     Task<List<HrAppraisalResultDto>> GetResultsAsync(int appraisalId);
+    Task<HrAppraisalDecreeProposalResultDto> ProposeDecreesAsync(HrAppraisalDecreeProposalDto dto);
     Task<HrAppraisalDto> SetAppraisalStatusAsync(int id, int status, string? by);
+
+    // پرونده‌ی خود پرسنل
+    Task<HrMyProfileDto?> GetMyProfileAsync();
+    Task SubmitMyProfileEditAsync(HrProfileEditRequestSaveDto dto);
+    Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending = null);
+    Task<HrProfileEditRequestDto> DecideProfileRequestAsync(int id, bool approve, string? note);
 }
 
 public class HrTalentService : IHrTalentService
@@ -137,6 +144,26 @@ public class HrTalentService : IHrTalentService
     public Task<List<HrAppraisalResultDto>> GetResultsAsync(int appraisalId)
         => _api.GetAsync<List<HrAppraisalResultDto>>($"{Root}/appraisals/{appraisalId}/results");
 
+    public Task<HrAppraisalDecreeProposalResultDto> ProposeDecreesAsync(HrAppraisalDecreeProposalDto dto)
+        => _api.PostAsync<HrAppraisalDecreeProposalResultDto>($"{Root}/appraisals/{dto.AppraisalId}/propose-decrees", dto);
+
     public Task<HrAppraisalDto> SetAppraisalStatusAsync(int id, int status, string? by)
         => _api.PostAsync<HrAppraisalDto>($"{Root}/appraisals/{id}/status?status={status}&by={Uri.EscapeDataString(by ?? "")}", null);
+
+    // ==================== پرونده‌ی خود پرسنل ====================
+
+    public async Task<HrMyProfileDto?> GetMyProfileAsync()
+    {
+        try { return await _api.GetAsync<HrMyProfileDto>($"{Root}/my/profile"); }
+        catch { return null; }
+    }
+
+    public Task SubmitMyProfileEditAsync(HrProfileEditRequestSaveDto dto)
+        => _api.PostAsync<object>($"{Root}/my/profile-requests", dto);
+
+    public Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending = null)
+        => _api.GetAsync<List<HrProfileEditRequestDto>>($"{Root}/profile-requests?onlyPending={onlyPending}");
+
+    public Task<HrProfileEditRequestDto> DecideProfileRequestAsync(int id, bool approve, string? note)
+        => _api.PostAsync<HrProfileEditRequestDto>($"{Root}/profile-requests/{id}/decide?approve={approve}&note={Uri.EscapeDataString(note ?? "")}", null);
 }

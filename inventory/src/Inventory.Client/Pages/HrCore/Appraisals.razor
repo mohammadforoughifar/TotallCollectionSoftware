@@ -229,6 +229,33 @@ else
 </ChildContent>
 <Footer>
     <div class="d-flex justify-content-end gap-2 mt-3">
+        @if (canUpdate && results.Any(r => r.Grade is "A" or "B"))
+        {
+            <div class="me-auto d-flex flex-wrap align-items-end gap-2 border rounded p-2 bg-light">
+                <div>
+                    <label class="form-label small mb-0">افزایش حقوق (٪)</label>
+                    <input class="form-control form-control-sm num" type="number" min="0" max="100" step="0.5" style="width:90px" @bind="propRaise" />
+                </div>
+                <div>
+                    <label class="form-label small mb-0">نوع حکم</label>
+                    <select class="form-select form-select-sm" style="width:150px" @bind="propType">
+                        <option value="3">تغییر حقوق</option>
+                        <option value="1">ارتقا</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label small mb-0">تاریخ اجرا</label>
+                    <DatePicker @bind-Value="propEff" />
+                </div>
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="incB" @bind="propIncludeB" />
+                    <label class="form-check-label small" for="incB">شامل گرید B</label>
+                </div>
+                <button class="btn btn-sm btn-primary mb-1" disabled="@proposing" @onclick="ProposeDecrees" title="برای گرید A (و در صورت انتخاب B) با پوشش نمره‌گذاری کافی">
+                    <i class="bi bi-patch-plus"></i> @(proposing ? "..." : "صدور حکم برای منتخبان")
+                </button>
+            </div>
+        }
         <button class="btn btn-light" @onclick="() => showResults = false">بستن</button>
     </div>
 </Footer>
@@ -456,11 +483,43 @@ else
     private async Task OpenResults(HrAppraisalDto a)
     {
         resultAppTitle = a.Title;
+        resultAppId = a.Id;
         try
         {
             results = await Svc.GetResultsAsync(a.Id);
             showResults = true;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ---------- صدور حکم از نتایج (اتصال ارزیابی → حقوق/ارتقا) ----------
+    private int resultAppId;
+    private double propRaise = 10;
+    private bool propIncludeB, propAutoApply = true, proposing;
+    private int propType = 3;
+    private DateTime? propEff = DateTime.Today;
+
+    private async Task ProposeDecrees()
+    {
+        if (resultAppId <= 0 || proposing) return;
+        if (!await JS.InvokeAsync<bool>("confirm", $"برای نفرات برتر (گرید A{(propIncludeB ? " و B" : "")}) حکم با افزایش {Fa.Digits(propRaise.ToString("0.#"))}٪ صادر شود؟"))
+            return;
+        proposing = true;
+        try
+        {
+            var r = await Svc.ProposeDecreesAsync(new HrAppraisalDecreeProposalDto
+            {
+                AppraisalId = resultAppId,
+                RaisePercent = propRaise,
+                IncludeGradeB = propIncludeB,
+                DecreeType = propType,
+                EffectiveDate = propEff ?? DateTime.Today,
+                AutoApply = propAutoApply
+            });
+            Toast.Success($"{Fa.Digits(r.Created)} حکم صادر شد — برای بازبینی/اجرا به «احکام کارگزینی» بروید.");
+            showResults = false;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { proposing = false; }
     }
 }

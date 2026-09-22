@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using Inventory.Api.Data;
 using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -108,6 +109,45 @@ public class NotificationsController : ControllerBase
     /// <summary>کلید عمومی VAPID — برای ثبت اشتراک push در مرورگر/دستگاه.</summary>
     [HttpGet("push-vapid-key")]
     public IActionResult VapidKey() => Ok(new { publicKey = _push.VapidPublicKey, configured = _push.IsConfigured });
+
+    /// <summary>
+    /// تولید جفت‌کلید VAPID برای اعلان گوشی (فقط مدیر) — خروجی برای درج در appsettings.json
+    /// بخش PushNotifications یا متغیرهای محیطی VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY است.
+    /// </summary>
+    [HttpPost("push-vapid-generate")]
+    public async Task<IActionResult> GenerateVapid()
+    {
+        if (MyUserId <= 0) return Unauthorized();
+        if (!await IsPushAdminAsync())
+            return StatusCode(403, new { message = "تنها مدیر سامانه مجاز به تولید کلید اعلان است." });
+
+        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var p = ecdsa.ExportParameters(true);
+        var priv = p.D!;
+        var spki = ecdsa.ExportSubjectPublicKeyInfo(); // برای P-256، ۶۵ بایتِ انتهای DER نقطه‌ی فشرده‌نشده (04||X||Y) است
+        var pub = spki[^65..];
+        static string B64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        return Ok(new
+        {
+            publicKey = B64Url(pub),
+            privateKey = B64Url(priv),
+            subject = $"mailto:admin@{(Request.Host.Host is { Length: > 0 } h ? h : "example.com")}",
+            instructions = "این مقادیر را در appsettings.json بخش PushNotifications (یا متغیرهای محیطی VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT) قرار دهید و سرویس را ری‌استارت کنید. توجه: اگر قبلاً کلید دیگری فعال بوده، تولید کلید جدید اشتراک همه‌ی دستگاه‌ها را باطل می‌کند و کاربران باید اعلان را یک‌بار دیگر فعال کنند."
+        });
+    }
+
+    /// <summary>مدیر = نقش قدیمی Admin یا مجوز RBAC «Settings.Manage».</summary>
+    private async Task<bool> IsPushAdminAsync()
+    {
+        if (User.IsInRole("Admin")) return true;
+        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
+        if (!hasRoles) return false;
+        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId)
+            .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
+            .Join(_db.Permissions, pid => pid, pm => pm.Id, (pid, pm) => pm)
+            .AnyAsync(pm => pm.Module == "Settings" && pm.Action == "Manage");
+    }
 
     /// <summary>ثبت اشتراک push این دستگاه برای کاربر جاری.</summary>
     [HttpPost("push-subscribe")]

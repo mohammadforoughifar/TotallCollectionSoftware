@@ -9,6 +9,7 @@ public interface IFaAttService
     Task DeleteShiftAsync(int id);
 
     Task<List<FaAttShiftAssignDto>> GetAssignsAsync(int? employeeId = null, int? shiftId = null);
+    Task<FaAttShiftPlanResultDto> PlanShiftsAsync(FaAttShiftPlanSaveDto dto);
     Task<FaAttShiftAssignDto> SaveAssignAsync(int? id, FaAttShiftAssignSaveDto dto);
     Task DeleteAssignAsync(int id);
 
@@ -84,6 +85,9 @@ public class FaAttService : IFaAttService
 
     public Task DeleteShiftAsync(int id)
         => _api.DeleteAsync($"{Root}/shifts/{id}");
+
+    public Task<FaAttShiftPlanResultDto> PlanShiftsAsync(FaAttShiftPlanSaveDto dto)
+        => _api.PostAsync<FaAttShiftPlanResultDto>($"{Root}/assigns/plan", dto);
 
     public Task<List<FaAttShiftAssignDto>> GetAssignsAsync(int? employeeId = null, int? shiftId = null)
     {

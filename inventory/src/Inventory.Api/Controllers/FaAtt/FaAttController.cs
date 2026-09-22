@@ -80,6 +80,14 @@ public class FaAttController : RbacControllerBase
         return Ok(new { ok = true });
     }
 
+    /// <summary>برنامه‌ریزی روزانه‌ی شیفت (شبکه‌ی گرافیکی هفتگی/ماهانه) — اعمال گروهی خانه‌های انتخاب‌شده</summary>
+    [HttpPost("assigns/plan")]
+    public async Task<IActionResult> PlanShifts([FromBody] FaAttShiftPlanSaveDto dto)
+    {
+        if (await ForbiddenUnlessAnyAsync(Mod, "Create", "Update") is { } f) return f;
+        return Ok(await _svc.PlanShiftsAsync(dto));
+    }
+
     // ------------------- دستگاه‌ها -------------------
 
     [HttpGet("devices")]

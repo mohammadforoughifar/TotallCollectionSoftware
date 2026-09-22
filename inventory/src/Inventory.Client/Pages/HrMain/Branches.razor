@@ -135,10 +135,10 @@
 </Modal>
 
 @code {
-    private bool canRead => Auth.Has("HrMain.Read") || Auth.IsAdmin;
-    private bool canCreate => Auth.Has("HrMain.Create") || Auth.IsAdmin;
-    private bool canUpdate => Auth.Has("HrMain.Update") || Auth.IsAdmin;
-    private bool canDelete => Auth.Has("HrMain.Delete") || Auth.IsAdmin;
+    private bool canRead => Auth.Has("HrMain.Read") || Auth.Has("HrMain.Branches") || Auth.IsAdmin;
+    private bool canCreate => Auth.Has("HrMain.Create") || Auth.Has("HrMain.Branches") || Auth.IsAdmin;
+    private bool canUpdate => Auth.Has("HrMain.Update") || Auth.Has("HrMain.Branches") || Auth.IsAdmin;
+    private bool canDelete => Auth.Has("HrMain.Delete") || Auth.Has("HrMain.Branches") || Auth.IsAdmin;
 
     private bool loading = true, saving, deleting;
     private List<HrMainBranchDto> items = new();

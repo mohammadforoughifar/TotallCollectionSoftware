@@ -3,6 +3,7 @@
 @inject IFaAttService Svc
 @inject IAuthState Auth
 @inject IToastService Toast
+@inject IJSRuntime JS
 
 <PageTitle>وب‌کلاک من</PageTitle>
 
@@ -59,6 +60,21 @@ else
                             <i class="bi bi-box-arrow-left"></i> خروج
                         </button>
                     </div>
+                    <div class="small text-muted mt-3">
+                        <i class="bi bi-geo-alt"></i>
+                        @if (punching && geoWaiting)
+                        {
+                            <span>در حال دریافت موقعیت برای همراه‌کردن تردد…</span>
+                        }
+                        else if (geoState == GeoState.Denied)
+                        {
+                            <span class="text-warning">اجازه‌ی دسترسی به مکان داده نشده — تردد بدون مکان ثبت می‌شود.</span>
+                        }
+                        else
+                        {
+                            <span>با اجازه‌ی دسترسی به مکان، موقعیت شما (GPS) همراه تردد ثبت می‌شود.</span>
+                        }
+                    </div>
                 </div>
             </div>
         </div>
@@ -73,7 +89,7 @@ else
                     else
                     {
                         <div class="table-responsive"><table class="table table-sm mb-0 align-middle">
-                            <thead class="table-light"><tr><th>ساعت</th><th>نوع</th><th>مسیر</th></tr></thead>
+                            <thead class="table-light"><tr><th>ساعت</th><th>نوع</th><th>مسیر</th><th>مکان</th></tr></thead>
                             <tbody>
                                 @foreach (var l in my.Logs)
                                 {
@@ -94,6 +110,20 @@ else
                                             }
                                         </td>
                                         <td>@FaAttUi.LogSource(l.Source)</td>
+                                        <td>
+                                            @if (l.Latitude is not null && l.Longitude is not null)
+                                            {
+                                                <a class="badge text-bg-info text-decoration-none" dir="ltr" target="_blank" rel="noopener"
+                                                   title="مشاهده روی نقشه"
+                                                   href="@($"https://maps.google.com/?q={FmtCoord(l.Latitude.Value)},{FmtCoord(l.Longitude.Value)}")">
+                                                    📍 @FmtCoord(l.Latitude.Value)، @FmtCoord(l.Longitude.Value)
+                                                </a>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">—</span>
+                                            }
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
@@ -143,13 +173,37 @@ else
     private async Task Punch(int type)
     {
         punching = true;
+        geoWaiting = true;
         try
         {
-            await Svc.ClockAsync(new FaAttClockSaveDto { Type = type });
-            Toast.Success(type == 0 ? "ورود ثبت شد." : "خروج ثبت شد.");
+            // گرفتن موقعیت جغرافیایی (در صورت اجازه‌ی کاربر) برای همراه‌کردن تردد —
+            // attGetPosition در project-interop.js: null یعنی رد/عدم پشتیبانی/تایم‌اوت.
+            double? lat = null, lng = null;
+            try
+            {
+                var pos = await JS.InvokeAsync<GeoPos?>("attGetPosition", 8000);
+                if (pos is not null) { lat = pos.Lat; lng = pos.Lng; }
+                geoState = pos is not null ? GeoState.Granted : GeoState.Denied;
+            }
+            catch
+            {
+                geoState = GeoState.Denied; // بدون مکان ادامه می‌دهیم — ثبت تردد نباید گیر کند
+            }
+
+            await Svc.ClockAsync(new FaAttClockSaveDto { Type = type, Latitude = lat, Longitude = lng });
+            Toast.Success((type == 0 ? "ورود" : "خروج") + " ثبت شد" + (lat is null ? " (بدون مکان)." : " — همراه با موقعیت 📍."));
             await Reload();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { punching = false; }
+        finally { punching = false; geoWaiting = false; }
     }
+
+    private enum GeoState { Unknown, Granted, Denied }
+    private GeoState geoState = GeoState.Unknown;
+    private bool geoWaiting;
+
+    private sealed record GeoPos(double Lat, double Lng);
+
+    private static string FmtCoord(double v)
+        => v.ToString("0.00000", System.Globalization.CultureInfo.InvariantCulture);
 }

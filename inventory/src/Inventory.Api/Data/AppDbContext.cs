@@ -193,6 +193,7 @@ public class AppDbContext : DbContext
     public DbSet<HrExitItem> HrExitItems => Set<HrExitItem>();
     public DbSet<HrJobHistory> HrJobHistories => Set<HrJobHistory>();
     public DbSet<HrTrialPeriod> HrTrialPeriods => Set<HrTrialPeriod>();
+    public DbSet<HrProfileEditRequest> HrProfileEditRequests => Set<HrProfileEditRequest>();
     public DbSet<HrAppraisal> HrAppraisals => Set<HrAppraisal>();
     public DbSet<HrAppraisalKpi> HrAppraisalKpis => Set<HrAppraisalKpi>();
     public DbSet<HrAppraisalScore> HrAppraisalScores => Set<HrAppraisalScore>();

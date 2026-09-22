@@ -192,6 +192,8 @@ public class HrDecreeSaveDto
     public decimal? NewBaseSalary { get; set; }
     public int? NewStatus { get; set; }
     public string? Description { get; set; }
+    /// <summary>اگر true و تاریخ اجرا رسیده باشد، حکم بلافاصله روی پرونده پرسنل اعمال می‌شود (پیش‌فرض true).</summary>
+    public bool AutoApply { get; set; } = true;
 }
 
 /// <summary>ویجت داشبورد کارگزینی</summary>
@@ -499,6 +501,17 @@ public class HrEmployeeLiteDto
     public int? HrMainNodeId { get; set; }
     public string? HrMainNodeName { get; set; }
     public bool IsActive { get; set; }
+}
+
+/// <summary>
+/// دامنه‌ی دید «تیم من» برای کاربر بدون مجوز HrCore.Manage: شناسه‌ی گره‌های سازمانی (HrMain)
+/// و واحدهای قدیمی که کاربر اجازه‌ی دید پرونده پرسنلِ آن‌ها را دارد (گره خودش + زیرمجموعه‌ها).
+/// </summary>
+public class HrTeamScopeDto
+{
+    public int EmployeeId { get; set; }
+    public List<int> NodeIds { get; set; } = new();
+    public List<int> OrgUnitIds { get; set; } = new();
 }
 
 /// <summary>نتیجه عملیات گروهی</summary>

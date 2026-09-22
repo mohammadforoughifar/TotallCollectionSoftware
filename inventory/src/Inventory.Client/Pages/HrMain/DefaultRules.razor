@@ -192,8 +192,8 @@
 </div>
 
 @code {
-    private bool canRead => Auth.Has("HrMain.Read") || Auth.IsAdmin;
-    private bool canUpdate => Auth.Has("HrMain.Update") || Auth.IsAdmin;
+    private bool canRead => Auth.Has("HrMain.Read") || Auth.Has("HrMain.Rules") || Auth.IsAdmin;
+    private bool canUpdate => Auth.Has("HrMain.Update") || Auth.Has("HrMain.Rules") || Auth.IsAdmin;
 
     private bool loading = true, saving;
     private HrMainRulesDto form = new();

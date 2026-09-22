@@ -61,6 +61,7 @@ public interface IHrCoreService
     Task<HrDecreeDto> SaveDecreeAsync(int? id, HrDecreeSaveDto dto);
     Task<HrBulkResultDto> SaveDecreesBulkAsync(HrDecreeBulkDto dto);
     Task<HrDecreeDto> ApplyDecreeAsync(int id);
+    Task<int> ApplyDueDecreesAsync();
     Task DeleteDecreeAsync(int id);
     Task<(byte[] Data, string FileName, string ContentType)> GetDecreePdfAsync(int id);
     Task<(byte[] Data, string FileName, string ContentType)> GetContractPdfAsync(int id);
@@ -305,6 +306,10 @@ public class HrCoreService : IHrCoreService
 
     public Task<HrDecreeDto> ApplyDecreeAsync(int id)
         => _api.PostAsync<HrDecreeDto>($"{Root}/decrees/{id}/apply", null);
+
+    /// <summary>اجرای همه‌ی احکام اجرانشده‌ای که تاریخ اجرایشان رسیده است — خروجی: تعداد اجراشده</summary>
+    public Task<int> ApplyDueDecreesAsync()
+        => _api.PostAsync<int>($"{Root}/decrees/apply-due", null);
 
     public Task DeleteDecreeAsync(int id)
         => _api.DeleteAsync($"{Root}/decrees/{id}");

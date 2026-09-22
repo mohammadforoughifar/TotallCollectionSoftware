@@ -462,7 +462,8 @@ else
 @code {
     [Parameter] public int? Id { get; set; }
 
-    private bool canHrMain => Auth.Has("HrMain.Read") || Auth.IsAdmin;
+    private bool canNodes => Auth.Has("HrMain.Read") || Auth.Has("HrMain.Org") || Auth.IsAdmin;
+    private bool canPositions => Auth.Has("HrMain.Read") || Auth.Has("HrMain.Positions") || Auth.IsAdmin;
     private bool empRead => Auth.Has("HrCore.Read") || Auth.IsAdmin;
     private bool empCreate => Auth.Has("HrCore.Create") || Auth.IsAdmin;
     private bool empUpdate => Auth.Has("HrCore.Update") || Auth.IsAdmin;
@@ -572,7 +573,7 @@ else
     private async Task InitList()
     {
         if (!empRead) { loading = false; return; }
-        if (canHrMain) { try { nodes = await Svc.ListOrgNodesAsync(); nodesReady = true; } catch { nodesReady = false; } }
+        if (canNodes) { try { nodes = await Svc.ListOrgNodesAsync(); nodesReady = true; } catch { nodesReady = false; } }
         await Reload();
     }
 
@@ -615,8 +616,8 @@ else
         step = 1; maxStep = 1;
         try
         {
-            if (canHrMain) { try { nodes = await Svc.ListOrgNodesAsync(); nodesReady = true; } catch { nodesReady = false; } }
-            if (canHrMain) { try { positions = await Svc.ListPositionsAsync(); positionsReady = true; } catch { positionsReady = false; } }
+            if (canNodes) { try { nodes = await Svc.ListOrgNodesAsync(); nodesReady = true; } catch { nodesReady = false; } }
+            if (canPositions) { try { positions = await Svc.ListPositionsAsync(); positionsReady = true; } catch { positionsReady = false; } }
             if (empRead) { try { managers = (await EmpSvc.SearchEmployeesAsync(null, null, 0, 0, 200)).Items; managersReady = true; } catch { managersReady = false; } }
 
             if (Id is > 0)

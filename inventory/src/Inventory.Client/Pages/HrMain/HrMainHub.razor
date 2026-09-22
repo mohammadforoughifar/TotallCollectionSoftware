@@ -98,6 +98,7 @@ else
     private HrNavigation.Section[] groups = [];
     private HrNavigation.Section? myGroup;
     private bool Can(string permission) => Auth.IsAdmin || Auth.Has(permission);
+    private bool CanAny(params string[] permissions) => Auth.IsAdmin || permissions.Any(Auth.Has);
     private record SetupStep(string Title, string? Href, bool Done);
     private SetupStep[] SetupSteps => overview is null ? [] : [
         new("اطلاعات شرکت", "hr-main/company", !string.IsNullOrWhiteSpace(overview.CompanyName)),
@@ -113,7 +114,7 @@ else
     }
     private async Task LoadOverview()
     {
-        if (!Can("HrMain.Read")) return;
+        if (!CanAny("HrMain.Read", "HrMain.Overview")) return;
         loading = true; loadError = false; overview = null;
         try { overview = await Svc.GetOverviewAsync(); loadError = overview is null; }
         catch { loadError = true; }

@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "TotallMessenger"
 include(":messenger")
+include(":employee-app")

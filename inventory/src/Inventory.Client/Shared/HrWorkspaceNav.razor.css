@@ -1,20 +1,3 @@
-/* Only Main HR navigation. Sub-section rows use the same metrics as the application theme. */
-.hr-nav-toggle {
-    display: flex; align-items: center; gap: .75rem; width: 100%;
-    margin-bottom: 2px; padding: .55rem .75rem; padding-inline-start: 1.05rem;
-    border: 0; border-radius: 12px; background: transparent;
-    color: #a5b4c8; font: inherit; font-size: .92rem; font-weight: 600;
-    text-align: right; cursor: pointer;
-    transition: all .2s cubic-bezier(.4,0,.2,1);
-}
-.hr-nav-toggle > i:first-child { width: 22px; font-size: 1.05rem; text-align: center; color: #e879f9; flex-shrink: 0; }
-.hr-nav-toggle > span { flex: 1; }
-.hr-nav-toggle > i:last-child { font-size: .68rem; opacity: .7; }
-.hr-nav-toggle:hover { background: rgba(255,255,255,.06); color: #e2e8f0; transform: translateX(-3px); }
-.hr-nav-toggle:hover > i:last-child { opacity: 1; }
-.hr-nav-toggle.current { color: #e879f9; }
-.hr-nav-toggle.current > i:first-child { color: inherit; }
-.hr-nav-children { margin-inline-start: .65rem; border-inline-start: 2px solid rgba(232,121,249,.30); border-radius: 2px; }
-.hr-nav-legacy { border-top: 1px solid rgba(148,163,184,.15); margin-top: 6px; padding-top: 6px; }
-.hr-nav-legacy > .hr-nav-toggle { color: #98a7bb; font-weight: 500; }
-.hr-nav-legacy > .hr-nav-toggle > i:first-child { color: #98a7bb; }
+/* استایل‌های منوی «منابع انسانی اصلی» به app.css منتقل شد (بلوک .hr-navigation).
+   دلیل: وابستگی به باندل CSS ایزوله در برخی استقرارها/کش‌ها برآورده نمی‌شد و منو بی‌استایل دیده می‌شد.
+   این فایل عمداً خالی است؛ منبع یگانه: wwwroot/css/app.css */

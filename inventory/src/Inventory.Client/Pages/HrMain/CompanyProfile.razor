@@ -126,8 +126,8 @@
 @code {
     [Inject] private ApiOptions ApiCfg { get; set; } = default!;
 
-    private bool canRead => Auth.Has("HrMain.Read") || Auth.IsAdmin;
-    private bool canUpdate => Auth.Has("HrMain.Update") || Auth.IsAdmin;
+    private bool canRead => Auth.Has("HrMain.Read") || Auth.Has("HrMain.Company") || Auth.IsAdmin;
+    private bool canUpdate => Auth.Has("HrMain.Update") || Auth.Has("HrMain.Company") || Auth.IsAdmin;
 
     private bool loading = true, saving, uploading;
     private HrMainCompanyDto model = new();

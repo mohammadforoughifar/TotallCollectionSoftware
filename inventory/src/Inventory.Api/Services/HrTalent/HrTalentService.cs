@@ -21,6 +21,13 @@ public interface IHrTalentService
     Task DeleteExitItemAsync(int itemId);
     Task<HrExitCaseDto> CompleteExitCaseAsync(int id, string? by);
 
+    // مشاهده/درخواست ویرایش پرونده توسط خود پرسنل
+    /// <summary>پرونده‌ی خود کاربر (بر اساس حساب سیستمی متصل) — بدون نیاز به مجوز کارگزینی</summary>
+    Task<HrMyProfileDto?> GetMyProfileAsync(int userId);
+    Task<int> SubmitMyProfileEditAsync(int userId, HrProfileEditRequestSaveDto dto);
+    Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending);
+    Task<HrProfileEditRequestDto> DecideProfileRequestAsync(int id, bool approve, string? by, string? note);
+
     Task<List<HrJobHistoryDto>> EmployeeHistoryAsync(int employeeId);
     Task<HrJobHistoryDto> SaveHistoryAsync(HrJobHistorySaveDto dto);
     Task DeleteHistoryAsync(int id);
@@ -40,6 +47,8 @@ public interface IHrTalentService
     Task SaveScoreAsync(HrAppraisalScoreSaveDto dto);
     Task<List<HrAppraisalScoreDto>> ListScoresAsync(int appraisalId, int? employeeId);
     Task<List<HrAppraisalResultDto>> AppraisalResultsAsync(int appraisalId);
+    /// <summary>صدور حکم افزایش حقوق/ارتقا برای نفرات برترِ یک ارزیابی (گرید A یا A+B با پوشش کافی)</summary>
+    Task<HrAppraisalDecreeProposalResultDto> ProposeDecreesFromAppraisalAsync(HrAppraisalDecreeProposalDto dto, int byUserId, string byName);
     Task<HrAppraisalDto> SetAppraisalStatusAsync(int id, int status, string? by);
 }
 
@@ -287,6 +296,21 @@ public class HrTalentService : IHrTalentService
         {
             e.IsActive = false;
             e.Status = c.Type == HrExitType.Retire ? HrEmployeeStatus.Retired : HrEmployeeStatus.Terminated;
+
+            // غیرفعال‌سازی خودکار حساب کاربری سیستمیِ متصل — تا زمانی که پرونده بسته می‌شود،
+            // فرد دیگر نتواند وارد سیستم شود (AuthService هنگام ورود IsActive را چک می‌کند).
+            // حساب حذف نمی‌شود تا تاریخچه/audit مربوط به او حفظ شود.
+            if (e.SystemUserId is int uid)
+            {
+                var su = await _db.SystemUsers.FirstOrDefaultAsync(u => u.Id == uid);
+                if (su is { IsActive: true })
+                {
+                    su.IsActive = false;
+                    var note = $"[خودکار] حساب کاربری «{su.Username}» هم‌زمان با تکمیل پرونده خروج غیرفعال شد.";
+                    var merged = string.IsNullOrWhiteSpace(c.Reason) ? note : $"{c.Reason}\n{note}";
+                    c.Reason = merged.Length > 500 ? merged[..500] : merged;
+                }
+            }
         }
         await _db.SaveChangesAsync();
         return await GetExitCaseAsync(id);
@@ -591,6 +615,67 @@ public class HrTalentService : IHrTalentService
         return list.OrderByDescending(x => x.Total).ToList();
     }
 
+    /// <summary>
+    /// اتصال نتیجه‌ی ارزیابی به حقوق/ارتقا: برای نفرات برتر (گرید A، و در صورت تمایل B) با پوشش
+    /// نمره‌گذاری کافی، حکم «تغییر حقوق/ارتقا» با درصد افزایش مشخص صادر می‌کند. احکام پیش‌نویس‌اند؛
+    /// اگر تاریخ اجرا رسیده باشد و AutoApply فعال باشد بلافاصله اعمال می‌شوند، وگرنه واچر روزانه
+    /// (ApplyDueDecreesAsync) یا دکمه‌ی دستی در صفحه‌ی احکام آن‌ها را اجرا می‌کند.
+    /// </summary>
+    public async Task<HrAppraisalDecreeProposalResultDto> ProposeDecreesFromAppraisalAsync(HrAppraisalDecreeProposalDto dto, int byUserId, string byName)
+    {
+        if (dto.RaisePercent is < 0 or > 100)
+            throw new InvalidOperationException("درصد افزایش باید بین ۰ تا ۱۰۰ باشد.");
+        var appraisal = await _db.HrAppraisals.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.Id == dto.AppraisalId)
+            ?? throw new InvalidOperationException("ارزیابی یافت نشد.");
+        var results = await AppraisalResultsAsync(dto.AppraisalId);
+        var minCoverage = Math.Clamp(dto.MinCoveragePercent, 0, 100) / 100.0;
+        var selected = results
+            .Where(r => r.Grade is "A" || (dto.IncludeGradeB && r.Grade is "B"))
+            .Where(r => r.KpiCount > 0 && r.ScoredKpis >= Math.Ceiling(r.KpiCount * minCoverage))
+            .ToList();
+        if (selected.Count == 0)
+            throw new InvalidOperationException("هیچ نفرِ واجد شرایطی (گرید A" + (dto.IncludeGradeB ? " یا B" : "") + " با پوشش کافی) در نتایج نیست.");
+
+        var empIds = selected.Select(r => r.EmployeeId).ToList();
+        var emps = await _db.HrEmployees.Where(e => empIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
+        var result = new HrAppraisalDecreeProposalResultDto();
+        var applyNow = dto.AutoApply && dto.EffectiveDate.Date <= DateTime.Today;
+        var seq = await _db.HrDecrees.CountAsync(d => d.Description != null && d.Description.Contains($"ارزیابی «{appraisal.Title}»"));
+        foreach (var r in selected)
+        {
+            if (!emps.TryGetValue(r.EmployeeId, out var e)) continue;
+            seq++;
+            decimal? newSalary = e.BaseSalary > 0
+                ? Math.Round(e.BaseSalary * (1 + (decimal)dto.RaisePercent / 100m), 0)
+                : null;
+            var d = new HrDecree
+            {
+                EmployeeId = e.Id,
+                DecreeNo = $"APR-{appraisal.Year}-{appraisal.Id}-{seq}",
+                Type = (HrDecreeType)(dto.DecreeType is 1 or 3 ? dto.DecreeType : 3),
+                EffectiveDate = dto.EffectiveDate,
+                NewBaseSalary = newSalary,
+                Description = $"صدور از ارزیابی «{appraisal.Title}» — نمره‌ی نهایی {r.Total:0.#} (گرید {r.Grade})، افزایش {dto.RaisePercent:0.#}٪.",
+                CreatedByUserId = byUserId > 0 ? byUserId : null,
+                CreatedByName = byName
+            };
+            // اعمال فوری در صورت رسیده‌بودن تاریخ (همان اثر واچر روزانه — فقط فیلدهای این حکم)
+            if (applyNow && newSalary is > 0)
+            {
+                e.BaseSalary = newSalary.Value;
+                e.UpdatedAt = DateTime.Now;
+                d.IsApplied = true;
+                d.AppliedAt = DateTime.Now;
+            }
+            _db.HrDecrees.Add(d);
+            result.Created++;
+            result.EmployeeNames.Add($"{r.EmployeeName} ({r.Total:0.#}/{r.Grade})");
+        }
+        await _db.SaveChangesAsync();
+        return result;
+    }
+
     public async Task<HrAppraisalDto> SetAppraisalStatusAsync(int id, int status, string? by)
     {
         var x = await _db.HrAppraisals.FirstOrDefaultAsync(a => a.Id == id)
@@ -605,4 +690,145 @@ public class HrTalentService : IHrTalentService
         await _db.SaveChangesAsync();
         return await GetAppraisalAsync(id);
     }
+
+    // ==================== مشاهده/درخواست ویرایش پرونده خود ====================
+
+    private static readonly string[] ProfileEditableFields =
+    {
+        "Mobile", "Email", "Address", "Landline",
+        "EmergencyContactName", "EmergencyContactRelation", "EmergencyContactPhone"
+    };
+
+    public async Task<HrMyProfileDto?> GetMyProfileAsync(int userId)
+    {
+        var e = await _db.HrEmployees.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.SystemUserId == userId);
+        if (e is null) return null;
+        var pending = await _db.HrProfileEditRequests.AsNoTracking()
+            .Where(r => r.EmployeeId == e.Id && r.Status == HrProfileEditRequestStatus.Pending)
+            .OrderByDescending(r => r.Id)
+            .FirstOrDefaultAsync();
+        var nodeName = e.HrMainNodeId is > 0
+            ? await _db.HrMainOrgNodes.AsNoTracking().Where(n => n.Id == e.HrMainNodeId.Value).Select(n => n.Name).FirstOrDefaultAsync()
+            : null;
+        var posTitle = e.HrMainPositionId is > 0
+            ? await _db.HrMainPositions.AsNoTracking().Where(p => p.Id == e.HrMainPositionId.Value).Select(p => p.Title).FirstOrDefaultAsync()
+            : null;
+        return new HrMyProfileDto
+        {
+            EmployeeId = e.Id, Code = e.Code, FirstName = e.FirstName, LastName = e.LastName,
+            NationalCode = e.NationalCode, BirthDate = e.BirthDate,
+            Mobile = e.Mobile, Email = e.Email, Address = e.Address, Landline = e.Landline,
+            EmergencyContactName = e.EmergencyContactName, EmergencyContactRelation = e.EmergencyContactRelation,
+            EmergencyContactPhone = e.EmergencyContactPhone,
+            PostTitle = e.PostTitle, OrgNodeName = nodeName, PositionTitle = posTitle,
+            HireDate = e.HireDate, EmploymentType = (int)e.EmploymentType, Status = (int)e.Status,
+            PendingRequestId = pending?.Id
+        };
+    }
+
+    public async Task<int> SubmitMyProfileEditAsync(int userId, HrProfileEditRequestSaveDto dto)
+    {
+        var e = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(x => x.SystemUserId == userId)
+            ?? throw new InvalidOperationException("پرونده‌ی پرسنلی برای حساب کاربری شما ثبت نشده است؛ با منابع انسانی تماس بگیرید.");
+        if (await _db.HrProfileEditRequests.AnyAsync(r =>
+                r.EmployeeId == e.Id && r.Status == HrProfileEditRequestStatus.Pending))
+            throw new InvalidOperationException("شما یک درخواست در انتظار تأیید دارید؛ تا تعیین‌تکلیف آن باید صبر کنید.");
+
+        var pairs = new List<(string Key, string Value)>
+        {
+            ("Mobile", dto.Mobile), ("Email", dto.Email), ("Address", dto.Address), ("Landline", dto.Landline),
+            ("EmergencyContactName", dto.EmergencyContactName), ("EmergencyContactRelation", dto.EmergencyContactRelation),
+            ("EmergencyContactPhone", dto.EmergencyContactPhone)
+        };
+        var lines = pairs
+            .Where(p => !string.IsNullOrWhiteSpace(p.Value) && ProfileEditableFields.Contains(p.Key))
+            .Select(p => $"{p.Key}={p.Value!.Trim()}")
+            .ToList();
+        if (lines.Count == 0)
+            throw new InvalidOperationException("حداقل یک فیلد را برای درخواست تغییر پر کنید.");
+
+        var r = new HrProfileEditRequest
+        {
+            EmployeeId = e.Id,
+            Fields = string.Join("\n", lines),
+            Reason = dto.Reason?.Trim(),
+            Status = HrProfileEditRequestStatus.Pending
+        };
+        _db.HrProfileEditRequests.Add(r);
+        await _db.SaveChangesAsync();
+        return r.Id;
+    }
+
+    public async Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending)
+    {
+        var q = _db.HrProfileEditRequests.AsNoTracking().AsQueryable();
+        if (onlyPending == true) q = q.Where(r => r.Status == HrProfileEditRequestStatus.Pending);
+        var rows = await q.OrderByDescending(r => r.Id).Take(500).ToListAsync();
+        var names = await EmpNamesAsync(rows.Select(r => r.EmployeeId));
+        var codes = await _db.HrEmployees.AsNoTracking()
+            .Where(e => rows.Select(r => r.EmployeeId).Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.Code);
+        return rows.Select(r => new HrProfileEditRequestDto
+        {
+            Id = r.Id, EmployeeId = r.EmployeeId,
+            EmployeeName = NameOf(names, r.EmployeeId),
+            EmployeeCode = codes.TryGetValue(r.EmployeeId, out var c) ? c : "",
+            Fields = r.Fields, Reason = r.Reason,
+            Status = (int)r.Status, StatusName = StatusNameOf(r.Status),
+            DecidedBy = r.DecidedBy, DecidedAt = r.DecidedAt, DecideNote = r.DecideNote, CreatedAt = r.CreatedAt
+        }).ToList();
+    }
+
+    public async Task<HrProfileEditRequestDto> DecideProfileRequestAsync(int id, bool approve, string? by, string? note)
+    {
+        var r = await _db.HrProfileEditRequests.FirstOrDefaultAsync(x => x.Id == id)
+            ?? throw new InvalidOperationException("درخواست یافت نشد.");
+        if (r.Status != HrProfileEditRequestStatus.Pending)
+            throw new InvalidOperationException("این درخواست قبلاً تعیین‌تکلیف شده است.");
+
+        if (approve)
+        {
+            var e = await _db.HrEmployees.FirstOrDefaultAsync(x => x.Id == r.EmployeeId)
+                ?? throw new InvalidOperationException("پرسنل این درخواست یافت نشد.");
+            ApplyProfileFields(e, r);
+        }
+        r.Status = approve ? HrProfileEditRequestStatus.Approved : HrProfileEditRequestStatus.Rejected;
+        r.DecidedBy = by?.Trim();
+        r.DecidedAt = DateTime.Now;
+        r.DecideNote = note?.Trim();
+        await _db.SaveChangesAsync();
+        return (await ListProfileRequestsAsync(false)).First(x => x.Id == id);
+    }
+
+    /// <summary>اعمال فیلدهای درخواستی روی پرونده — فقط فیلدهای مجازِ تماس، بقیه نادیده گرفته می‌شوند.</summary>
+    private static void ApplyProfileFields(HrEmployee e, HrProfileEditRequest r)
+    {
+        foreach (var line in (r.Fields ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var ix = line.IndexOf('=');
+            if (ix <= 0) continue;
+            var k = line[..ix].Trim();
+            var v = line[(ix + 1)..].Trim();
+            if (!ProfileEditableFields.Contains(k) || v.Length == 0) continue;
+            switch (k)
+            {
+                case "Mobile": e.Mobile = v; break;
+                case "Email": e.Email = v; break;
+                case "Address": e.Address = v; break;
+                case "Landline": e.Landline = v; break;
+                case "EmergencyContactName": e.EmergencyContactName = v; break;
+                case "EmergencyContactRelation": e.EmergencyContactRelation = v; break;
+                case "EmergencyContactPhone": e.EmergencyContactPhone = v; break;
+            }
+        }
+        e.UpdatedAt = DateTime.Now;
+    }
+
+    private static string StatusNameOf(HrProfileEditRequestStatus s) => s switch
+    {
+        HrProfileEditRequestStatus.Pending => "در انتظار تأیید",
+        HrProfileEditRequestStatus.Approved => "تأیید و اعمال شد",
+        _ => "رد شد"
+    };
 }

@@ -17,8 +17,9 @@
                 {
                     var expanded = expandedId == group.Id;
                     <div class="hr-nav-section @(group.Legacy ? "hr-nav-legacy" : "")">
-                        <button type="button" class="hr-nav-toggle @(activeGroup == group.Id ? "current" : "")" aria-expanded="@expanded.ToString().ToLowerInvariant()" aria-controls="@("hr-nav-" + group.Id)" @onclick="() => expandedId = expanded ? null : group.Id">
-                            <i class="bi @group.Icon" aria-hidden="true"></i><span>@group.Title</span><i class="bi @(expanded ? "bi-chevron-up" : "bi-chevron-down")" aria-hidden="true"></i>
+                        <button type="button" class="hr-nav-toggle nav-toggle @(activeGroup == group.Id ? "current" : "") @(expanded ? "open" : "")" aria-expanded="@expanded.ToString().ToLowerInvariant()" aria-controls="@("hr-nav-" + group.Id)" @onclick="() => expandedId = expanded ? null : group.Id">
+                            <span><i class="bi @group.Icon" aria-hidden="true"></i>@group.Title</span>
+                            <i class="bi bi-chevron-down nav-chevron" aria-hidden="true"></i>
                         </button>
                         @if (expanded)
                         {
@@ -55,8 +56,10 @@
         path = HrNavigation.Path(Nav.ToBaseRelativePath(Nav.Uri));
         groups = HrNavigation.Visible(Auth.Has, Auth.IsAdmin);
         selected = HrNavigation.Find(path);
-        activeGroup = HrNavigation.SectionId(path);
-        expandedId = activeGroup;
+        // بخشِ حاوی صفحه‌ی جاری فقط هنگام تغییر به‌صورت خودکار باز شود؛
+        // گشودن/بستن دستی کاربر در جابه‌جایی‌های بعدی حفظ می‌شود.
+        var current = HrNavigation.SectionId(path);
+        if (current != activeGroup) { activeGroup = current; expandedId = current; }
         open = HrNavigation.IsWorkspace(path);
     }
     private void LocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });

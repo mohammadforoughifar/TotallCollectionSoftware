@@ -160,6 +160,21 @@ public static class HrTalentSchemaV1
         Exec("CREATE INDEX IF NOT EXISTS IX_HrAppraisalScore_App ON HrAppraisalScores (AppraisalId)");
         Exec("CREATE INDEX IF NOT EXISTS IX_HrAppraisalScore_Emp ON HrAppraisalScores (EmployeeId)");
 
+        Exec(@"
+            CREATE TABLE IF NOT EXISTS HrProfileEditRequests (
+                Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                EmployeeId INTEGER NOT NULL,
+                Fields TEXT NOT NULL,
+                Reason TEXT NULL,
+                Status INTEGER NOT NULL DEFAULT 0,
+                DecidedBy TEXT NULL,
+                DecidedAt TEXT NULL,
+                DecideNote TEXT NULL,
+                CreatedAt TEXT NOT NULL
+            )");
+        Exec("CREATE INDEX IF NOT EXISTS IX_HrProfileEditRequest_Emp ON HrProfileEditRequests (EmployeeId)");
+        Exec("CREATE INDEX IF NOT EXISTS IX_HrProfileEditRequest_Status ON HrProfileEditRequests (Status)");
+
         await Task.CompletedTask;
     }
 
@@ -296,5 +311,25 @@ CREATE TABLE HrAppraisalScores (
     Note nvarchar(300) NULL,
     UpdatedAt datetime2 NOT NULL
 )");
+
+        await Exec(@"
+IF OBJECT_ID(N'HrProfileEditRequests', N'U') IS NULL
+CREATE TABLE HrProfileEditRequests (
+    Id int NOT NULL IDENTITY(1,1) PRIMARY KEY,
+    EmployeeId int NOT NULL,
+    Fields nvarchar(max) NOT NULL,
+    Reason nvarchar(500) NULL,
+    Status int NOT NULL DEFAULT 0,
+    DecidedBy nvarchar(150) NULL,
+    DecidedAt datetime2 NULL,
+    DecideNote nvarchar(500) NULL,
+    CreatedAt datetime2 NOT NULL
+)");
+        await Exec(@"
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_HrProfileEditRequest_Emp' AND object_id = OBJECT_ID(N'HrProfileEditRequests'))
+    CREATE INDEX IX_HrProfileEditRequest_Emp ON HrProfileEditRequests (EmployeeId)");
+        await Exec(@"
+IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_HrProfileEditRequest_Status' AND object_id = OBJECT_ID(N'HrProfileEditRequests'))
+    CREATE INDEX IX_HrProfileEditRequest_Status ON HrProfileEditRequests (Status)");
     }
 }

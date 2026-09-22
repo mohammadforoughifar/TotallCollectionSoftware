@@ -28,6 +28,16 @@ public class HrCoreController : RbacControllerBase
         _reports = reports;
     }
 
+    /// <summary>
+    /// دامنه‌ی دید تیمی: کاربر دارای HrCore.Manage همه را می‌بیند (null)؛ کاربر فقط-خواندنی
+    /// به پرونده‌ی پرسنلِ گره سازمانی خودش + زیرمجموعه‌ها محدود می‌شود (دسترسی مبتنی به واحد).
+    /// </summary>
+    private async Task<HrTeamScopeDto?> TeamScopeAsync()
+    {
+        if (await HasAsync(Mod, "Manage")) return null;
+        return await _svc.ResolveTeamScopeAsync(MyUserId);
+    }
+
     // ------------------- پرسنل -------------------
 
     [HttpGet("employees")]
@@ -35,7 +45,7 @@ public class HrCoreController : RbacControllerBase
         [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int take = 50, [FromQuery] int? hrMainNodeId = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var (items, total) = await _svc.SearchEmployeesAsync(q, orgUnitId, status, skip, take, hrMainNodeId);
+        var (items, total) = await _svc.SearchEmployeesAsync(q, orgUnitId, status, skip, take, hrMainNodeId, await TeamScopeAsync());
         return Ok(new { total, items });
     }
 
@@ -43,7 +53,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> GetEmployee(int id)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var e = await _svc.GetEmployeeAsync(id);
+        var e = await _svc.GetEmployeeAsync(id, await TeamScopeAsync());
         return e is null ? NotFound(new { message = "پرسنل یافت نشد." }) : Ok(e);
     }
 
@@ -58,7 +68,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> EmployeeLite([FromQuery] bool onlyActive = true)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListEmployeeLiteAsync(onlyActive));
+        return Ok(await _svc.ListEmployeeLiteAsync(onlyActive, await TeamScopeAsync()));
     }
 
     [HttpGet("employees/import-template")]
@@ -300,7 +310,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> ExportEmployees([FromQuery] string? q)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var (data, name) = await _svc.ExportEmployeesExcelAsync(q);
+        var (data, name) = await _svc.ExportEmployeesExcelAsync(q, await TeamScopeAsync());
         return File(data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
     }
 
@@ -402,6 +412,15 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
         return Ok(await _svc.ApplyDecreeAsync(id));
+    }
+
+    /// <summary>اجرای همه‌ی احکامِ اجرانشده‌ای که تاریخ اجرایشان رسیده است (واچر روزانه هم همین را صدا می‌زند).</summary>
+    [HttpPost("decrees/apply-due")]
+    public async Task<IActionResult> ApplyDueDecrees()
+    {
+        if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
+        var n = await _svc.ApplyDueDecreesAsync();
+        return Ok(new { applied = n });
     }
 
     [HttpDelete("decrees/{id:int}")]
@@ -620,7 +639,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> EmployeePhoto(int id)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var e = await _svc.GetEmployeeAsync(id);
+        var e = await _svc.GetEmployeeAsync(id, await TeamScopeAsync());
         if (e is null || string.IsNullOrWhiteSpace(e.PhotoPath)) return NotFound();
         var bytes = _files.ReadBytes(e.PhotoPath);
         if (bytes is null) return NotFound();

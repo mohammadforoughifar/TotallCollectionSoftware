@@ -156,7 +156,76 @@ else
                                     {
                                         <button type="button" class="btn btn-sm btn-outline-primary" @onclick="TestPush" disabled="@pushBusy">آزمایش</button>
                                     }
+                                    @if (Auth.IsAdmin)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenVapidPanel" title="تولید و راهنمای کلیدهای VAPID">کلیدهای اعلان</button>
+                                    }
                                 </div>
+
+                                @* ===== پنل مدیریت کلیدهای VAPID (مدیر) ===== *@
+                                @if (vapidPanel)
+                                {
+                                    <div class="vapid-overlay" @onclick="CloseVapidPanel">
+                                        <div class="vapid-card" @onclick:stopPropagation>
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h6 class="fw-bold mb-0"><i class="bi bi-key text-primary"></i> کلیدهای اعلان (VAPID)</h6>
+                                                <button type="button" class="btn-close" @onclick="CloseVapidPanel"></button>
+                                            </div>
+                                            @if (vapidBusy)
+                                            {
+                                                <div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                                            }
+                                            else
+                                            {
+                                                <div class="alert @(vapidConfigured ? "alert-success" : "alert-warning") py-2 small">
+                                                    @(vapidConfigured ? "کلیدهای اعلان روی سرور فعال است." : "کلیدهای اعلان هنوز تنظیم نشده — با دکمه‌ی زیر یک جفت‌کلید بسازید.")
+                                                </div>
+                                                @if (vapidConfigured)
+                                                {
+                                                    <div class="alert alert-danger py-2 small mb-2">تولید کلید جدید، اشتراک همه‌ی دستگاه‌ها را باطل می‌کند و کاربران باید اعلان را دوباره فعال کنند.</div>
+                                                }
+                                                <div class="mb-2">
+                                                    <label class="form-label small mb-1">کلید عمومی (PublicKey)</label>
+                                                    <div class="input-group input-group-sm" dir="ltr">
+                                                        <input class="form-control" readonly value="@vapidPublicKey" />
+                                                        @if (!string.IsNullOrWhiteSpace(vapidPublicKey))
+                                                        {
+                                                            <button class="btn btn-outline-secondary" @onclick="() => CopyText(vapidPublicKey)" title="کپی"><i class="bi bi-clipboard"></i></button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                @if (!string.IsNullOrWhiteSpace(vapidPrivateKey))
+                                                {
+                                                    <div class="mb-2">
+                                                        <label class="form-label small mb-1">کلید خصوصی (PrivateKey)</label>
+                                                        <div class="input-group input-group-sm" dir="ltr">
+                                                            <input class="form-control" readonly value="@vapidPrivateKey" />
+                                                            <button class="btn btn-outline-secondary" @onclick="() => CopyText(vapidPrivateKey)" title="کپی"><i class="bi bi-clipboard"></i></button>
+                                                        </div>
+                                                    </div>
+                                                    <div class="mb-2">
+                                                        <label class="form-label small mb-1">Subject پیشنهادی</label>
+                                                        <div class="input-group input-group-sm" dir="ltr">
+                                                            <input class="form-control" readonly value="@vapidSubject" />
+                                                            <button class="btn btn-outline-secondary" @onclick="() => CopyText(vapidSubject)" title="کپی"><i class="bi bi-clipboard"></i></button>
+                                                        </div>
+                                                    </div>
+                                                }
+                                                <div class="alert alert-light border py-2 small mb-2" dir="rtl">
+                                                    <b>راهنمای فعال‌سازی:</b> مقادیر بالا را در <span dir="ltr">appsettings.json</span> بخش
+                                                    <span dir="ltr">PushNotifications</span> قرار دهید (یا متغیرهای محیطی
+                                                    <span dir="ltr">VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT</span>) و سرویس را ری‌استارت کنید.
+                                                    اعلان فقط روی HTTPS معتبر کار می‌کند.
+                                                </div>
+                                                <div class="d-flex justify-content-end gap-2">
+                                                    <button type="button" class="btn btn-sm btn-primary" @onclick="GenerateVapidAsync" disabled="@vapidBusy">
+                                                        <i class="bi bi-magic"></i> تولید کلید جدید
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
                                 <div class="ntf-panel-body">
                                     @if (ntfList.Count == 0)
                                     {
@@ -420,6 +489,60 @@ else
         finally { pushBusy = false; }
     }
     private class PushState { public bool supported { get; set; } public bool enabled { get; set; } public string? message { get; set; } }
+
+    // ===== کلیدهای VAPID (مدیر) =====
+    private bool vapidPanel, vapidBusy, vapidConfigured;
+    private string? vapidPublicKey, vapidPrivateKey, vapidSubject;
+
+    private async Task OpenVapidPanel()
+    {
+        vapidPanel = true;
+        vapidPrivateKey = null;
+        vapidSubject = null;
+        await LoadVapidStateAsync();
+    }
+    private void CloseVapidPanel() => vapidPanel = false;
+
+    private async Task LoadVapidStateAsync()
+    {
+        vapidBusy = true;
+        try
+        {
+            SetAuthHeader();
+            var st = await Http.GetFromJsonAsync<VapidState>($"{PushApiRoot}/api/notifications/push-vapid-key");
+            vapidConfigured = st?.configured ?? false;
+            vapidPublicKey = st?.publicKey;
+        }
+        catch { vapidConfigured = false; vapidPublicKey = null; }
+        finally { vapidBusy = false; }
+    }
+
+    private async Task GenerateVapidAsync()
+    {
+        vapidBusy = true;
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync($"{PushApiRoot}/api/notifications/push-vapid-generate", (object?)null);
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<VapidKeysResult>() : null;
+            if (r == null) { Toast.Error("تولید کلید انجام نشد."); return; }
+            vapidPublicKey = r.publicKey; vapidPrivateKey = r.privateKey; vapidSubject = r.subject;
+            vapidConfigured = false; // تا زمانی که در تنظیمات سرور اعمال و ری‌استارت شود
+            Toast.Success("کلیدها ساخته شد — مطابق راهنما در تنظیمات سرور قرار دهید.");
+        }
+        catch { Toast.Error("تولید کلید انجام نشد؛ دسترسی مدیر را بررسی کنید."); }
+        finally { vapidBusy = false; }
+    }
+
+    private async Task CopyText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); Toast.Success("کپی شد."); }
+        catch { Toast.Error("کپی نشد — به‌صورت دستی انتخاب و کپی کنید."); }
+    }
+
+    private class VapidState { public string? publicKey { get; set; } public bool configured { get; set; } }
+    private class VapidKeysResult { public string publicKey { get; set; } = ""; public string privateKey { get; set; } = ""; public string subject { get; set; } = ""; }
 
     public class NtfItem
     {
@@ -918,4 +1041,9 @@ else
         .ntf-toast { border-radius: 12px; }
         .ntf-panel { position: fixed; top: 60px; left: .5rem; right: .5rem; width: auto; }
     }
+
+    /* پنل کلیدهای VAPID */
+    .vapid-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .55); z-index: 2100; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .vapid-card { background: #fff; border-radius: 1rem; max-width: 600px; width: 100%; padding: 1.1rem; box-shadow: 0 20px 50px rgba(0,0,0,.25); max-height: 90vh; overflow: auto; }
+    .vapid-card .form-control[readonly] { font-family: monospace; font-size: .72rem; direction: ltr; }
 </style>

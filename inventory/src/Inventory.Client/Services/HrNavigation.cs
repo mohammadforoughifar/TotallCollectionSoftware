@@ -12,6 +12,8 @@ public static class HrNavigation
     public static readonly Section[] Sections =
     [
         new("my", "کارتابل من", "bi-inbox", [
+            E("my", "داشبورد من", "bi-grid-1x2", "FaAtt.Read", "FaAtt.Create", "FaPay.Read", "FaCom.Read", "FaLms.Read", "HrCore.Read"),
+            E("hr-main/my", "پرونده‌ی من", "bi-person-vcard", "HrCore.Read", "FaAtt.Read", "FaPay.Read", "FaLms.Read", "FaCom.Read"),
             E("fa-att/clock", "ثبت ورود و خروج", "bi-fingerprint", "FaAtt.Read", "FaAtt.Create"),
             E("fa-att/my-leaves", "مرخصی‌های من", "bi-calendar-heart", "FaAtt.Read"),
             E("fa-att/approvals", "تأییدهای من", "bi-person-check", "FaAtt.Read"),
@@ -24,6 +26,7 @@ public static class HrNavigation
         new("people", "پرسنل و کارگزینی", "bi-people", [
             E("hr-core", "داشبورد کارگزینی", "bi-speedometer2", "HrCore.Read"),
             E("hr-main/employees", "فهرست پرسنل", "bi-person-lines-fill", "HrCore.Read"),
+            E("hr-core/profile-requests", "درخواست‌های ویرایش پرونده", "bi-person-gear", "HrCore.Read"),
             E("hr-main/employees/new", "ثبت پرسنل", "bi-person-plus", "HrCore.Create"),
             E("hr-core/contracts", "قراردادها", "bi-file-earmark-text", "HrCore.Read"),
             E("hr-core/decrees", "احکام", "bi-patch-check", "HrCore.Read"),
@@ -33,17 +36,20 @@ public static class HrNavigation
             E("hr-core/job-history", "سوابق شغلی", "bi-clock-history", "HrCore.Read"),
             E("hr-core/exit", "پایان همکاری", "bi-box-arrow-right", "HrCore.Read")]),
         new("org", "ساختار سازمانی", "bi-diagram-3", [
-            E("hr-main/company", "اطلاعات شرکت", "bi-building", "HrMain.Read"),
-            E("hr-main/branches", "شعب و دفاتر", "bi-shop", "HrMain.Read"),
-            E("hr-main/org", "ساختار سازمانی", "bi-diagram-3", "HrMain.Read"),
-            E("hr-main/org/change-log", "تاریخچه و مقایسه ساختار", "bi-clock-history", "HrMain.Read"),
-            E("hr-main/positions", "پست‌های سازمانی", "bi-person-badge", "HrMain.Read"),
-            E("hr-main/calendar", "تقویم و تعطیلات", "bi-calendar3", "HrMain.Read"),
-            E("hr-main/rules", "قوانین پیش‌فرض", "bi-sliders", "HrMain.Read")]),
+            // مجوزهای تفکیکی (Company/Branches/Org/Positions/Calendar/Rules) همان‌طور که در
+            // HrMainController چک می‌شوند؛ مجوز عمومی HrMain.Read همچنان همه را باز می‌کند.
+            E("hr-main/company", "اطلاعات شرکت", "bi-building", "HrMain.Read", "HrMain.Company"),
+            E("hr-main/branches", "شعب و دفاتر", "bi-shop", "HrMain.Read", "HrMain.Branches"),
+            E("hr-main/org", "ساختار سازمانی", "bi-diagram-3", "HrMain.Read", "HrMain.Org"),
+            E("hr-main/org/change-log", "تاریخچه و مقایسه ساختار", "bi-clock-history", "HrMain.Read", "HrMain.Org"),
+            E("hr-main/positions", "پست‌های سازمانی", "bi-person-badge", "HrMain.Read", "HrMain.Positions"),
+            E("hr-main/calendar", "تقویم و تعطیلات", "bi-calendar3", "HrMain.Read", "HrMain.Calendar"),
+            E("hr-main/rules", "قوانین پیش‌فرض", "bi-sliders", "HrMain.Read", "HrMain.Rules")]),
         new("attendance", "حضور و مرخصی", "bi-calendar2-check", [
             E("fa-att/daily", "وضعیت روزانه", "bi-calendar2-check", "FaAtt.Read"),
             E("fa-att/calendar", "تقویم غیبت", "bi-calendar3", "FaAtt.Read"),
             E("fa-att/shifts", "شیفت‌های کاری", "bi-clock-history", "FaAtt.Read"),
+            E("fa-att/planner", "برنامه‌ریزی شیفت", "bi-calendar3-range", "FaAtt.Read", "FaAtt.Create", "FaAtt.Update", "FaAtt.Manage"),
             E("fa-att/missions", "مأموریت‌ها", "bi-briefcase", "FaAtt.Read"),
             E("fa-att/leaves", "مدیریت مرخصی", "bi-calendar2-week", "FaAtt.Manage"),
             E("fa-att/balances", "مانده مرخصی", "bi-piggy-bank", "FaAtt.Manage")]),

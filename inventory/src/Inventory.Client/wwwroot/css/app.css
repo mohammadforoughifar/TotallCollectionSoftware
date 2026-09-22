@@ -1457,6 +1457,161 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .group-hrmain .nav-group-items { border-inline-start-color: rgba(232,121,249,.30); }
 .group-hrmain .nav-toggle.open > span:first-child, .group-hrmain .nav-toggle:hover .nav-chevron { color: #e879f9; }
 
+/* ---------- منوی دومرحله‌ای «منابع انسانی اصلی»: دکمه‌ی هر بخش + فرزندانش ----------
+   ساختار: hr-navigation > nav-group-items > hr-nav-section > hr-nav-toggle + hr-nav-children */
+.hr-navigation button.hr-nav-toggle{position:relative;font-size:.9rem;color:#c3cede;padding:.4rem .5rem;margin-top:.12rem;}
+.hr-navigation button.hr-nav-toggle > span:first-child{gap:.5rem;}
+.hr-navigation button.hr-nav-toggle > span:first-child > i.bi{width:17px;font-size:.85rem;}
+.hr-navigation button.hr-nav-toggle .nav-chevron{font-size:.6rem;}
+.group-hrmain .nav-toggle.open .nav-chevron{color:#e879f9;}
+/* بخشِ حاوی صفحه‌ی جاری: ته‌رنگ ملایم + نشانگر فوچسیا کنار عنوان */
+.hr-navigation button.hr-nav-toggle.current{background:rgba(232,121,249,.08);}
+.hr-navigation button.hr-nav-toggle.current::before{content:"";position:absolute;inset-inline-start:0;top:22%;bottom:22%;width:3px;border-radius:3px;background:linear-gradient(180deg,#f0abfc,#d946ef);}
+.hr-navigation button.hr-nav-toggle.current > span:first-child{color:#f0abfc;}
+/* فهرست فرزندان: ریل تودرتو با تورفتگی، هم‌قالب ریل بیرونی گروه‌ها */
+.hr-navigation .hr-nav-children{overflow:hidden;margin-inline-start:1rem;margin-top:.1rem;border-inline-start:2px solid rgba(232,121,249,.22);border-radius:2px;}
+.hr-navigation .hr-nav-children .nav-link{padding:.4rem .6rem;padding-inline-start:.9rem;font-size:.87rem;animation:navOpen .18s ease both;}
+.hr-navigation .hr-nav-children .nav-link i{font-size:.95rem;width:18px;}
+/* آیتم فعال: نشانگر داخل کادر (نسخه‌ی بیرونیِ ::before زیر overflow:hidden پنهان می‌شود) */
+.hr-navigation .hr-nav-children .nav-link.active::before{right:0;top:18%;bottom:18%;width:3px;background:linear-gradient(180deg,#f5d0fe,#d946ef);}
+/* بخش سامانه‌های پیشین: کم‌رنگ و متمایز از بخش‌های جاری */
+.hr-navigation .hr-nav-legacy button.hr-nav-toggle{opacity:.72;}
+.hr-navigation .hr-nav-legacy .hr-nav-children{border-inline-start-color:rgba(148,163,184,.25);}
+
+/* ============================================================================
+   فضای کاری «منابع انسانی اصلی» — استایل‌های یکپارچه (منبع یگانه: app.css)
+   این قواعد قبلاً در فایل‌های .razor.css (CSS ایزوله) بودند که فقط از مسیر
+   باندل Inventory.Client.styles.css بار می‌شدند؛ اکنون اینجا هستند تا مستقل از
+   نحوه‌ی استقرار/کش همیشه اعمال شوند.
+   ============================================================================ */
+
+/* ----- چیدمان کلی و بردکرامب (HrWorkspaceShell) ----- */
+.hr-workspace{--hr-accent:#0f766e;--hr-ink:#182c40;max-width:1440px;margin:0 auto;min-width:0;color:var(--hr-ink)}
+.hr-context{margin-bottom:1.1rem;border-bottom:1px solid #e2e8f0;padding:0 0 .8rem}
+.hr-breadcrumb{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;font-size:.82rem;color:#738196}
+.hr-breadcrumb a{color:#526477;text-decoration:none;display:inline-flex;align-items:center;gap:.4rem}
+.hr-breadcrumb a:hover{color:var(--hr-accent)}
+.hr-breadcrumb>i{font-size:.55rem}
+.hr-breadcrumb [aria-current]{color:var(--hr-ink)}
+.hr-workspace .page-head{display:flex;justify-content:space-between;align-items:center;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap}
+.hr-workspace .page-head h1{font-size:1.2rem;line-height:1.7;color:var(--hr-ink);margin:0}
+.hr-workspace .page-head h1::before{display:none}
+.hr-workspace .page-head>.ms-auto{margin-right:auto!important;margin-left:0!important}
+.hr-workspace .page-head>.d-flex.justify-content-between{width:100%}
+.hr-workspace .page-head .btn{font-size:.78rem;border-radius:8px;min-height:36px}
+.hr-workspace .page-head .btn-primary{background:var(--hr-accent);border-color:var(--hr-accent)}
+.hr-workspace .page-head .lead{font-size:.82rem;color:#55637a}
+.hr-workspace .card{border:1px solid #e2e8f0!important;border-radius:12px;box-shadow:none!important}
+.hr-workspace .card-header{border-bottom:1px solid #edf1f6;font-size:.86rem;padding:.8rem 1rem}
+.hr-workspace .form-label{font-size:.8rem;color:#526477}
+.hr-workspace .form-control,.hr-workspace .form-select{border-color:#dce3eb;border-radius:8px;font-size:.85rem}
+.hr-workspace .form-control:focus,.hr-workspace .form-select:focus{border-color:#5da89d;box-shadow:0 0 0 3px #0f766e12}
+.hr-workspace .table thead th{background:#f6f8fb;color:#607086;font-size:.75rem;font-weight:600;padding:.85rem .7rem;border-bottom:1px solid #e2e8f0}
+.hr-workspace .table tbody td{padding:.8rem .7rem;font-size:.83rem;vertical-align:middle}
+.hr-workspace .wiz-step.active{border-color:var(--hr-accent);box-shadow:0 0 0 2px #0f766e0c}
+.hr-workspace .wiz-step.active .wiz-num{background:var(--hr-accent)}
+.hr-workspace .hr-filter-bar{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.hr-workspace .hr-filter-bar>div{flex:1;min-width:170px}
+.hr-workspace .hr-filter-bar .hr-filter-actions{flex:0 0 auto;min-width:0}
+.hr-loading{padding:2rem;text-align:center;color:#64748b}
+.hr-error{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem;border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;padding:.8rem 1rem;font-size:.82rem;margin-bottom:1rem;color:#9a3412}
+.hr-workspace h1[tabindex="-1"]:focus{outline:none}
+
+/* ----- خانه‌ی منابع انسانی (HrMainHub) ----- */
+.hr-home-heading{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin:.2rem 0 1.5rem}
+.hr-home-identity{display:flex;align-items:center;gap:.85rem}
+.hr-home-mark{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:#e4f0ed;color:#0f766e;font-size:1.45rem}
+.hr-home-identity h1{font-size:1.35rem;font-weight:800;margin:0;line-height:1.7;color:#1d3045}
+.hr-company-name{color:#7b8a9d;font-size:.77rem}
+.hr-home-actions{display:flex;gap:.6rem;margin-right:auto}
+.hr-home-actions a{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:40px;border-radius:9px;text-decoration:none;font-size:.81rem;padding:.65rem .95rem}
+.hr-primary{background:#0f766e;color:#fff;border:1px solid #0f766e}
+.hr-primary:hover{background:#115e59;color:#fff}
+.hr-secondary{background:#fff;border:1px solid #dde5ed;color:#64748b}
+.hr-stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.85rem;margin-bottom:1.4rem}
+.hr-stat-grid a{display:grid;grid-template-columns:1fr auto;gap:.55rem;background:#fff;padding:1rem 1.2rem;border:1px solid #e1e7ef;border-radius:12px;text-decoration:none;color:#263b50}
+.hr-stat-grid strong{font-size:1.65rem;line-height:1;grid-area:1/1}
+.hr-stat-grid i{grid-area:1/2;color:#91a3b3;font-size:1.2rem}
+.hr-stat-grid span{grid-column:1/-1;font-size:.76rem;color:#63758b}
+.hr-stat-grid a:hover{border-color:#75aea4}
+.hr-stat-grid a.hr-stat-warning{background:#fff8ec;border-color:#f0d19b}
+.hr-stat-grid a.hr-stat-warning strong{color:#a15c00}
+.hr-stat-grid a.hr-stat-warning i{color:#d99a2b}
+.hr-stat-grid a.hr-stat-warning:hover{border-color:#d99a2b}
+.hr-setup{border:1px solid #d9e9e5;border-radius:12px;background:#f5faf8;margin-bottom:1.5rem;padding:.9rem 1.1rem}
+.hr-setup summary{display:flex;justify-content:space-between;gap:.8rem;cursor:pointer;font-size:.79rem;font-weight:700;color:#29584f;list-style:none}
+.hr-setup summary::-webkit-details-marker{display:none}
+.hr-setup summary>span:last-child{font-weight:400;color:#729087}
+.hr-setup ol{display:flex;flex-wrap:wrap;list-style:none;margin:.9rem 0 .5rem;padding:0;gap:.65rem}
+.hr-setup li{display:flex;align-items:center;gap:.5rem;flex:1;min-width:140px;font-size:.76rem;color:#7b8985;background:#fff;border:1px solid #e4ebe8;border-radius:8px;padding:.65rem .75rem}
+.hr-setup li a{color:#657b76;text-decoration:none}
+.hr-setup li.done a{color:#246554}
+.hr-step-status{font-size:1rem}
+.hr-setup .done .hr-step-status{color:#15803d}
+.hr-setup-next{display:inline-flex;align-items:center;gap:.5rem;font-size:.73rem;color:#477267;text-decoration:none}
+.hr-section-head{display:flex;justify-content:space-between;align-items:center;margin:0 0 .85rem}
+.hr-section-head h2{font-size:.92rem;font-weight:750;margin:0;color:#2c4157}
+.hr-section-head>a{font-size:.75rem;color:#64748b;text-decoration:none}
+.hr-shortcuts{margin-bottom:1.75rem}
+.hr-shortcut-row{display:flex;flex-wrap:wrap;gap:.65rem}
+.hr-shortcut-row a{display:inline-flex;align-items:center;gap:.6rem;border:1px solid #dee5ed;background:#fff;border-radius:9px;color:#40566b;padding:.7rem 1rem;font-size:.79rem;text-decoration:none}
+.hr-shortcut-row i{color:#0f766e}
+.hr-shortcut-row a:hover{border-color:#72aba2}
+.hr-section-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.85rem}
+.hr-area{display:flex;align-items:center;gap:.9rem;border:1px solid #e0e6ee;border-radius:12px;padding:1.15rem;background:#fff;text-decoration:none;color:#253b50;min-width:0}
+.hr-area-icon{display:grid;place-items:center;flex-shrink:0;width:42px;height:42px;background:#f0f5f8;border-radius:11px;font-size:1.25rem;color:#567c86}
+.hr-area-content{display:flex;flex-direction:column;gap:.4rem;min-width:0;flex:1}
+.hr-area-content b{font-size:.86rem;font-weight:700}
+.hr-area-content small{font-size:.73rem;color:#63758b;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.hr-area>i{font-size:.75rem;color:#a0afbd}
+.hr-area:hover{border-color:#72ada3;background:#fcfefd}
+.hr-legacy-link{display:flex;align-items:center;gap:.6rem;font-size:.75rem;text-decoration:none;color:#63758b;margin-top:1.6rem;width:fit-content}
+.hr-legacy-link:hover{color:#536779}
+.hr-workspace a:focus-visible,.hr-workspace summary:focus-visible{outline:2px solid #0f766e;outline-offset:3px}
+
+/* ----- کارت‌های بخش‌ها (HrLinkGrid) ----- */
+.hr-link-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}
+.hr-link-card{display:flex;align-items:center;gap:.8rem;min-height:76px;border:1px solid #e2e8f0;border-radius:12px;padding:1rem;color:#24384d;text-decoration:none;background:#fff;transition:border-color .15s,background .15s;font-size:.84rem}
+.hr-link-icon{display:grid;place-items:center;background:#f1f6f8;width:38px;height:38px;flex-shrink:0;border-radius:10px;color:#0f766e;font-size:1.1rem}
+.hr-link-card>span:nth-child(2){flex:1}
+.hr-link-card>i{font-size:.8rem;color:#a2afbd}
+.hr-link-card:hover{border-color:#67a99f;background:#fbfefd}
+.hr-link-card:focus-visible{outline:2px solid #0f766e;outline-offset:2px}
+
+/* ----- واکنش‌گرایی فضای کاری HR ----- */
+@media(max-width:1050px){.hr-section-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1000px){.hr-link-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){
+    .hr-breadcrumb{font-size:.67rem;gap:.4rem}
+    .hr-context{margin-bottom:.8rem}
+    .hr-workspace .page-head h1{font-size:1.04rem}
+    .hr-workspace .page-head .btn{min-height:40px}
+    .hr-workspace .page-head>.ms-auto{justify-content:flex-end;width:100%}
+    .hr-workspace .wiz-steps{gap:.4rem}
+    .hr-workspace .wiz-step{padding:.35rem .5rem;flex:1 0 calc(33% - .5rem);justify-content:center}
+    .hr-workspace .wiz-title{font-size:.7rem}
+    .hr-workspace .wiz-line{display:none}
+    .hr-workspace .table-responsive{max-width:100%;overflow-x:auto}
+    .hr-workspace .hr-filter-bar>div{min-width:100%}
+    .hr-home-heading{gap:.8rem;margin-bottom:1.1rem}
+    .hr-home-identity h1{font-size:1.12rem}
+    .hr-home-mark{width:40px;height:40px;font-size:1.25rem}
+    .hr-home-actions{width:100%;justify-content:flex-end}
+    .hr-stat-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem}
+    .hr-stat-grid a{padding:.85rem}
+    .hr-stat-grid strong{font-size:1.4rem}
+    .hr-section-grid{grid-template-columns:1fr;gap:.65rem}
+    .hr-area{padding:1rem}
+    .hr-shortcut-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    .hr-shortcut-row a{font-size:.72rem;padding:.7rem;gap:.4rem}
+    .hr-setup{padding:.8rem}
+    .hr-setup li{min-width:calc(50% - .4rem);font-size:.7rem;padding:.55rem;flex-basis:calc(50% - .4rem)}
+}
+@media(max-width:540px){
+    .hr-link-grid{grid-template-columns:1fr}
+    .hr-link-card{min-height:64px;padding:.75rem 1rem}
+}
+
 .group-bonhr .nav-section-title { color: #c4b5fd; }
 .group-bonhr .nav-link i { color: #c4b5fd; }
 .group-bonhr .nav-link.active { background: linear-gradient(135deg, #8b5cf6, #5b21b6); box-shadow: 0 8px 22px rgba(139,92,246,.42); }
@@ -2617,6 +2772,7 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
   body:has(.wo-detail-modal) .wo-detail-modal, body:has(.wo-detail-modal) .wo-detail-modal * { visibility: visible !important; }
   body:has(.wo-detail-modal) .wo-detail-modal { position: absolute !important; inset: 0 !important; width: 100% !important; max-width: none !important; border: 0 !important; box-shadow: none !important; }
   body:has(.wo-detail-modal) .no-print, body:has(.wo-detail-modal) .wo-header-actions { display: none !important; }
+}
 
 @media (max-width: 575.98px) {
     /* در گوشی، نوار بالا ۵۶px است */
