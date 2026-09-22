@@ -739,7 +739,15 @@
         await ReloadAsync();
     }
 
-    private void SetFilter(string f) { filter = f; page = 1; _ = ReloadAsync(); }
+    private void SetFilter(string f)
+    {
+        // فیلترهای نشان‌شده، مهلت‌دار و خوانده‌نشده روی دادهٔ همین صفحه اعمال می‌شوند؛
+        // درخواست دوباره باعث loading طولانی و هم‌پوشانی درخواست‌ها می‌شد.
+        filter = f;
+        page = 1;
+        loading = false;
+        StateHasChanged();
+    }
 
     private void ToggleMenu(int id) => openMenuId = openMenuId == id ? 0 : id;
     private void CloseMenus() => openMenuId = 0;
