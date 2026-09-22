@@ -140,7 +140,7 @@ public class MyPanelController : ControllerBase
 
     /// <summary>آیا کاربر جاری از طریق نقش‌های RBAC این دسترسی را دارد؟</summary>
     private Task<bool> HasRbacAsync(string module, string action) =>
-        _db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == module && p.Action == action);

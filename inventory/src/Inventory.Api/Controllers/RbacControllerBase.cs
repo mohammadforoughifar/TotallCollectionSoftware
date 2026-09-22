@@ -24,15 +24,16 @@ public abstract class RbacControllerBase : ApiControllerBase
     /// <summary>آیا کاربر جاری این مجوز را دارد؟ (مثال: HasAsync("Projects", "Create"))</summary>
     protected async Task<bool> HasAsync(string module, string action)
     {
-        var hasRoles = await Db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
+        var hasRoles = await Db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
         if (!hasRoles)
         {
             var legacy = User.FindFirstValue(ClaimTypes.Role);
             if (legacy == "Admin") return true;
-            if (legacy == "Operator") return action is "Create" or "Read" or "Export" or "Erja";
+            // کاربران legacy غیر Admin بدون نقش RBAC، دسترسی سراسری دریافت نمی‌کنند؛
+            // اعطای permission باید از طریق Role و به‌صورت module-scoped انجام شود.
             return false;
         }
-        return await Db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        return await Db.UserRoles.Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(Db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == module && p.Action == action);
@@ -46,15 +47,14 @@ public abstract class RbacControllerBase : ApiControllerBase
     /// <summary>آیا کاربر جاری حداقل یکی از این اکشن‌های ماژول را دارد؟ (دسترسی تفکیکی هر لینک منو)</summary>
     protected async Task<bool> HasAnyAsync(string module, params string[] actions)
     {
-        var hasRoles = await Db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
+        var hasRoles = await Db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
         if (!hasRoles)
         {
             var legacy = User.FindFirstValue(ClaimTypes.Role);
             if (legacy == "Admin") return true;
-            if (legacy == "Operator") return actions.Any(a => a is "Create" or "Read" or "Export" or "Erja");
             return false;
         }
-        return await Db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        return await Db.UserRoles.Where(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(Db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == module && actions.Contains(p.Action));
@@ -89,6 +89,7 @@ public abstract class RbacControllerBase : ApiControllerBase
     protected async Task<List<int>> UsersWithPermissionAsync(string module, string action, bool excludeSelf = false)
     {
         var rbac = await Db.UserRoles
+            .Where(ur => Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(Db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => new { ur.UserId, rp.PermissionId })
             .Join(Db.Permissions, x => x.PermissionId, p => p.Id, (x, p) => new { x.UserId, p.Module, p.Action })
             .Where(x => x.Module == module && x.Action == action)

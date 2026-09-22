@@ -30,7 +30,7 @@ public class HrTimeController : ControllerBase
         if (_isHr.HasValue) return _isHr.Value;
         if (User.IsInRole("Admin")) { _isHr = true; return true; }
         if (User.HasClaim("permission", "LeaveRequests.Approve")) { _isHr = true; return true; }
-        _isHr = await _db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        _isHr = await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp)
             .Join(_db.Permissions, rp => rp.PermissionId, pm => pm.Id, (rp, pm) => pm)
             .AnyAsync(pm => pm.Module == "LeaveRequests" && pm.Action == "Approve");

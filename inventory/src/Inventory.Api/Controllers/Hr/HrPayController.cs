@@ -39,7 +39,7 @@ public class HrPayController : ControllerBase
         return _rd.Value;
     }
     private async Task<bool> HasPermAsync(string action)
-        => await _db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        => await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp)
             .Join(_db.Permissions, rp => rp.PermissionId, pm => pm.Id, (rp, pm) => pm)
             .AnyAsync(pm => pm.Module == "HrPay" && pm.Action == action);

@@ -82,6 +82,7 @@ public static class RbacSeeder
         // ViewAll: مشاهده لاگ همه پرسنل | ManageShifts: مدیریت شیفت‌ها و اصلاح رکوردها | Report: گزارش ماهانه
         ["Attendance"] = new[] { "SelfCheckin", "ViewAll", "ManageShifts", "Report" },
         // ================== سامانه کامل RADIS-HR V019 ==================
+        // HrTalent و جذب/استعداد فعلاً زیرمجموعهٔ HrCore هستند؛ بنابراین permission مستقل HrTalent تعریف نمی‌شود.
         // Access: ورود به کل ماژول؛ مجوز روی تمام کنترلرهای واردشده نیز در Host اعمال می‌شود.
         ["RadisHr"] = new[] { "Access", "Dashboard", "Employees", "EmployeeEntry", "Attendance", "Payroll", "StatutoryRules", "OrgStructure", "OrgSettings", "Hse", "Finance", "Accounting", "ProductionDaily", "Notices" /* دسترسی تفکیکی هر لینک بن‌سازه */ },
         // ================== دسترسی به ازای هر داشبورد ==================

@@ -27,7 +27,7 @@ public class ItRequestsController : ControllerBase
     /// <summary>بررسی دسترسی RBAC کاربر جاری — با سازگاری عقب‌رو برای کاربران بدون نقش RBAC.</summary>
     private async Task<bool> HasAsync(string action)
     {
-        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
+        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
         if (!hasRoles)
         {
             var legacy = User.FindFirstValue(ClaimTypes.Role);
@@ -36,7 +36,7 @@ public class ItRequestsController : ControllerBase
             return false;
         }
 
-        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == "ItRequests" && p.Action == action);

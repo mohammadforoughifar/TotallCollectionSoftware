@@ -46,7 +46,7 @@ public sealed class EffectivePermissions : IEffectivePermissions
         // مجوزهای نقش از دیتابیس خوانده می‌شوند؛ claimهای JWT ممکن است بعد از
         // تغییر نقش قدیمی باشند و باعث انتقال دسترسی یک ماژول به ماژول دیگر شوند.
         var uid = UserId(user);
-        var roleIds = await _db.UserRoles.Where(ur => ur.UserId == uid).Select(ur => ur.RoleId).Distinct().ToListAsync();
+        var roleIds = await _db.UserRoles.Where(ur => ur.UserId == uid && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive)).Select(ur => ur.RoleId).Distinct().ToListAsync();
         List<string> perms;
         if (roleIds.Count > 0)
         {
@@ -63,10 +63,8 @@ public sealed class EffectivePermissions : IEffectivePermissions
             perms = user.FindFirstValue(ClaimTypes.Role) switch
             {
                 "Admin" => await _db.Permissions.Select(p => p.Module + "." + p.Action).ToListAsync(),
-                "Operator" or "Accountant" => await _db.Permissions
-                    .Where(p => (p.Action == "Read" || p.Action == "View" || p.Action == "Create")
-                                && p.Module != "SystemUsers" && p.Module != "Settings" && p.Module != "DocArchive")
-                    .Select(p => p.Module + "." + p.Action).ToListAsync(),
+                // کاربران legacy غیر Admin بدون نقش RBAC، permission سراسری دریافت نمی‌کنند.
+                "Operator" or "Accountant" => new List<string>(),
                 _ => await _db.Permissions
                     .Where(p => p.Module == "ReferrerPanel" || p.Module == "MyCartable"
                                 || p.Module == "MyArchive" || p.Module == "MyDashboards")

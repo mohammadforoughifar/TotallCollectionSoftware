@@ -43,7 +43,7 @@ public class AttendanceController : ControllerBase
     /// <summary>بررسی دسترسی RBAC (سازگاری با کاربران قدیمی بدون نقش RBAC).</summary>
     private async Task<bool> HasAsync(string action)
     {
-        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
+        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
         if (!hasRoles)
         {
             var legacy = User.FindFirstValue(ClaimTypes.Role);
@@ -51,7 +51,7 @@ public class AttendanceController : ControllerBase
             if (legacy is "Operator" or "Accountant") return action is "SelfCheckin";
             return action is "SelfCheckin" && legacy == "Referrer";
         }
-        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId)
+        return await _db.UserRoles.Where(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive))
             .Join(_db.RolePermissions, ur => ur.RoleId, rp => rp.RoleId, (ur, rp) => rp.PermissionId)
             .Join(_db.Permissions, pid => pid, p => p.Id, (pid, p) => p)
             .AnyAsync(p => p.Module == Module && p.Action == action);

@@ -35,7 +35,7 @@ public class WorkOrdersController : ControllerBase
 
     private async Task<bool> HasAsync(string action)
     {
-        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId);
+        var hasRoles = await _db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && _db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
         if (!hasRoles)
         {
             var legacy = User.FindFirstValue(ClaimTypes.Role);

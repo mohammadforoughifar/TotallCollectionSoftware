@@ -22,7 +22,7 @@ public class IncomingLettersController : RbacControllerBase
 
     // ثبت نامه وارده و رزرو شماره فقط از مسیر دبیرخانه انجام می‌شود.
     private async Task<bool> HasDabirkhaneAsync() =>
-        await HasAsync(Module, "Dabirkhane") || await HasAsync("OutgoingLetters", "Dabirkhane") || await IsAdminAsync();
+        await HasAsync(Module, "Dabirkhane") || await IsAdminAsync();
 
     private async Task<string> MyDisplayNameAsync()
     {
