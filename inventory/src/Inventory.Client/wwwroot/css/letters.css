@@ -627,3 +627,44 @@
 .ltx .sheet-f .btn-main, .ltx .sheet-f .btn-sec { min-height:38px; border-radius:10px; padding:8px 18px; font-weight:800; transition:transform .15s, box-shadow .15s; }
 .ltx .sheet-f .btn-main:hover, .ltx .sheet-f .btn-sec:hover { transform:translateY(-1px); box-shadow:0 5px 14px rgba(30,41,59,.12); }
 .ltx .sheet-f .btn-main { box-shadow:0 4px 12px rgba(99,64,232,.2); }
+
+/* ظاهر یکپارچه و حرفه‌ای دکمه‌های فرم‌ها و نمایش نامه‌های وارده */
+.ltx .sheet-f button,
+.ltx .sheet-f a,
+.ltx .iin-btn,
+.ltx .iin-mini,
+.ltx .icb {
+    border-radius:10px;
+    min-height:36px;
+    padding:8px 15px;
+    font-weight:800;
+    transition:transform .15s ease, box-shadow .15s ease, background .15s ease;
+}
+.ltx .sheet-f .btn-main,
+.ltx .sheet-f .btn-primary,
+.ltx .btn-main {
+    background:linear-gradient(135deg,#7652ee,#5b35c9) !important;
+    border:1px solid #5b35c9 !important;
+    color:#fff !important;
+    box-shadow:0 5px 13px rgba(91,53,201,.22);
+}
+.ltx .sheet-f .btn-main.incoming-green,
+.ltx .incoming-green {
+    background:linear-gradient(135deg,#22b573,#168653) !important;
+    border-color:#168653 !important;
+    box-shadow:0 5px 13px rgba(22,134,83,.2);
+}
+.ltx .sheet-f .btn-sec,
+.ltx .sheet-f .btn-outline-secondary {
+    background:#fff !important;
+    border:1px solid #d9ddea !important;
+    color:#475569 !important;
+}
+.ltx .sheet-f button:hover,
+.ltx .sheet-f a:hover,
+.ltx .iin-btn:hover,
+.ltx .iin-mini:hover { transform:translateY(-1px); box-shadow:0 6px 15px rgba(39,31,82,.14); }
+.ltx .sheet-f .btn-danger,
+.ltx .sheet-f .btn-outline-danger { border-radius:9px; font-weight:800; }
+.ltx .sheet-f .btn-outline-primary,
+.ltx .sheet-f .btn-primary { border-radius:9px; }

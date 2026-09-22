@@ -164,7 +164,7 @@
                     }
                     @if (letter.ActiveErjaId.HasValue)
                     {
-                        <button class="btn-main" style="background:#0284c7" @onclick="() => OnAnswerErja.InvokeAsync((letter.ActiveErjaId.Value, letter.NumberSabt))">
+                        <button class="btn-main incoming-green" @onclick="() => OnAnswerErja.InvokeAsync((letter.ActiveErjaId.Value, letter.NumberSabt))">
                             <i class="bi bi-reply-fill"></i> ثبت پاسخ
                         </button>
                     }
