@@ -44,6 +44,7 @@
 - [ ] Cctv / Repairs / Sales / Finance
 - [ ] android/messenger
 - [ ] ocr-service
+- [ ] DevTeam (مدیریت برنامه‌نویسان — بورد کار تیم و مالکیت ماژول‌ها)
 - [ ] زیرساخت مشترک (Data, Migrations, Shared, Program.cs, csproj)
 
 ## انجام‌دهنده
