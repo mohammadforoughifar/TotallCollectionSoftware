@@ -326,7 +326,9 @@ else
                                             else
                                             {
                                                 <div class="alert @(vapidConfigured ? "alert-success" : "alert-warning") py-2 small">
-                                                    @(vapidConfigured ? "کلیدهای اعلان روی سرور فعال است." : "کلیدهای اعلان هنوز تنظیم نشده — با دکمه‌ی زیر یک جفت‌کلید بسازید.")
+                                                    @if (!vapidConfigured) { @("کلیدهای اعلان هنوز تنظیم نشده — با دکمه‌ی «ساخت و فعال‌سازی کلید» بسازید.") }
+                                                    else if (vapidSource == "settings") { @("کلیدهای اعلان در همین نرم‌افزار ساخته و فعال شده‌اند (بدون نیاز به فایل سرور).") }
+                                                    else { @("کلیدهای اعلان از فایل/متغیرهای محیطی سرور خوانده می‌شوند.") }
                                                 </div>
                                                 @if (vapidConfigured)
                                                 {
@@ -345,7 +347,7 @@ else
                                                 @if (!string.IsNullOrWhiteSpace(vapidPrivateKey))
                                                 {
                                                     <div class="mb-2">
-                                                        <label class="form-label small mb-1">کلید خصوصی (PrivateKey)</label>
+                                                        <label class="form-label small mb-1">کلید خصوصی (PrivateKey) — فقط همین لحظه نمایش داده می‌شود و در سرور ذخیره شده است</label>
                                                         <div class="input-group input-group-sm" dir="ltr">
                                                             <input class="form-control" readonly value="@vapidPrivateKey" />
                                                             <button class="btn btn-outline-secondary" @onclick="() => CopyText(vapidPrivateKey)" title="کپی"><i class="bi bi-clipboard"></i></button>
@@ -360,14 +362,25 @@ else
                                                     </div>
                                                 }
                                                 <div class="alert alert-light border py-2 small mb-2" dir="rtl">
-                                                    <b>راهنمای فعال‌سازی:</b> مقادیر بالا را در <span dir="ltr">appsettings.json</span> بخش
-                                                    <span dir="ltr">PushNotifications</span> قرار دهید (یا متغیرهای محیطی
-                                                    <span dir="ltr">VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT</span>) و سرویس را ری‌استارت کنید.
-                                                    اعلان فقط روی HTTPS معتبر کار می‌کند.
+                                                    <b>فعال‌سازی:</b> با زدن دکمه‌ی «ساخت و فعال‌سازی کلید»، کلید ساخته و <b>همان لحظه</b> روی سرور فعال می‌شود؛
+                                                    نه ویرایش <span dir="ltr">appsettings.json</span> لازم است و نه ری‌استارت سرویس.
+                                                    بعد از آن هر کاربر از پنجره‌ی «اعلان‌ها» دکمه‌ی «فعال‌سازی» را می‌زند تا اعلان‌ها مثل اعلان اندروید
+                                                    روی گوشی/دسکتاپ نشان داده شود — هم وقتی نرم‌افزار باز است و هم وقتی بسته است.
+                                                    اعلان سیستمی فقط روی <b>HTTPS</b> (یا localhost) کار می‌کند: Chrome/Edge در اندروید و ویندوز؛
+                                                    در iPhone باید نرم‌افزار را به صفحه‌ی اصلی اضافه کرد (iOS 16.4+).
                                                 </div>
-                                                <div class="d-flex justify-content-end gap-2">
+                                                <div class="d-flex justify-content-between gap-2">
+                                                    <div>
+                                                        @if (vapidConfigured && vapidSource == "settings")
+                                                        {
+                                                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="ResetVapidAsync" disabled="@vapidBusy"
+                                                                    title="حذف کلیدهای ساخته‌شده در نرم‌افزار و بازگشت به کلیدهای فایل سرور">
+                                                                <i class="bi bi-arrow-counterclockwise"></i> حذف کلیدهای نرم‌افزار
+                                                            </button>
+                                                        }
+                                                    </div>
                                                     <button type="button" class="btn btn-sm btn-primary" @onclick="GenerateVapidAsync" disabled="@vapidBusy">
-                                                        <i class="bi bi-magic"></i> تولید کلید جدید
+                                                        <i class="bi bi-magic"></i> @(vapidConfigured ? "ساخت و فعال‌سازی کلید جدید" : "ساخت و فعال‌سازی کلید")
                                                     </button>
                                                 </div>
                                             }
@@ -641,6 +654,7 @@ else
     // ===== کلیدهای VAPID (مدیر) =====
     private bool vapidPanel, vapidBusy, vapidConfigured;
     private string? vapidPublicKey, vapidPrivateKey, vapidSubject;
+    private string vapidSource = "none";
 
     private async Task OpenVapidPanel()
     {
@@ -660,8 +674,9 @@ else
             var st = await Http.GetFromJsonAsync<VapidState>($"{PushApiRoot}/api/notifications/push-vapid-key");
             vapidConfigured = st?.configured ?? false;
             vapidPublicKey = st?.publicKey;
+            vapidSource = st?.source ?? "none";
         }
-        catch { vapidConfigured = false; vapidPublicKey = null; }
+        catch { vapidConfigured = false; vapidPublicKey = null; vapidSource = "none"; }
         finally { vapidBusy = false; }
     }
 
@@ -671,14 +686,37 @@ else
         try
         {
             SetAuthHeader();
-            using var resp = await Http.PostAsJsonAsync($"{PushApiRoot}/api/notifications/push-vapid-generate", (object?)null);
+            using var resp = await Http.PostAsJsonAsync($"{PushApiRoot}/api/notifications/push-vapid-generate", new { });
             var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<VapidKeysResult>() : null;
-            if (r == null) { Toast.Error("تولید کلید انجام نشد."); return; }
+            if (r == null) { Toast.Error("ساخت کلید انجام نشد."); return; }
             vapidPublicKey = r.publicKey; vapidPrivateKey = r.privateKey; vapidSubject = r.subject;
-            vapidConfigured = false; // تا زمانی که در تنظیمات سرور اعمال و ری‌استارت شود
-            Toast.Success("کلیدها ساخته شد — مطابق راهنما در تنظیمات سرور قرار دهید.");
+            vapidConfigured = r.applied;
+            vapidSource = r.source ?? (r.applied ? "settings" : "none");
+            Toast.Success(r.message ?? "کلید اعلان ساخته و فعال شد.");
+            if (pushEnabled) await InitPushStateAsync(); // اشتراک دستگاه‌ها پس از تغییر کلید باید دوباره ثبت شود
         }
-        catch { Toast.Error("تولید کلید انجام نشد؛ دسترسی مدیر را بررسی کنید."); }
+        catch { Toast.Error("ساخت کلید انجام نشد؛ دسترسی مدیر را بررسی کنید."); }
+        finally { vapidBusy = false; }
+    }
+
+    private async Task ResetVapidAsync()
+    {
+        if (vapidBusy) return;
+        vapidBusy = true;
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync($"{PushApiRoot}/api/notifications/push-vapid-reset", new { });
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<VapidResetResult>() : null;
+            if (r == null) { Toast.Error("حذف کلیدها انجام نشد."); return; }
+            vapidConfigured = r.configured;
+            vapidSource = r.source ?? "none";
+            vapidPublicKey = r.publicKey;
+            vapidPrivateKey = null; vapidSubject = null;
+            Toast.Success(r.message ?? "کلیدها حذف شد.");
+            if (pushEnabled) await InitPushStateAsync();
+        }
+        catch { Toast.Error("حذف کلیدها انجام نشد؛ دسترسی مدیر را بررسی کنید."); }
         finally { vapidBusy = false; }
     }
 
@@ -689,8 +727,13 @@ else
         catch { Toast.Error("کپی نشد — به‌صورت دستی انتخاب و کپی کنید."); }
     }
 
-    private class VapidState { public string? publicKey { get; set; } public bool configured { get; set; } }
-    private class VapidKeysResult { public string publicKey { get; set; } = ""; public string privateKey { get; set; } = ""; public string subject { get; set; } = ""; }
+    private class VapidState { public string? publicKey { get; set; } public bool configured { get; set; } public string? source { get; set; } }
+    private class VapidKeysResult
+    {
+        public string publicKey { get; set; } = ""; public string privateKey { get; set; } = ""; public string subject { get; set; } = "";
+        public bool applied { get; set; } public string? source { get; set; } public int cleared { get; set; } public string? message { get; set; }
+    }
+    private class VapidResetResult { public bool configured { get; set; } public string? publicKey { get; set; } public string? source { get; set; } public int cleared { get; set; } public string? message { get; set; } }
 
     // ================== اعلان در پیام‌رسان‌های بله و ایتا ==================
     private bool msgPanel, msgBusy;
@@ -879,7 +922,10 @@ else
         await InvokeAsync(StateHasChanged);
         if (!pushEnabled)
         {
+            // اعلان سیستمی (Web Push) خاموش است → همان حس اعلان اندروید را داخل خود نرم‌افزار بساز:
+            // نوار اعلان بالای صفحه + صدای کوتاه و لرزش در گوشی
             try { await JS.InvokeVoidAsync("attLocalNotify", n.Title, n.Body ?? ""); } catch { }
+            try { await JS.InvokeVoidAsync("attNotifyAlert"); } catch { }
         }
         // اعلان ۱۵ ثانیه بالای صفحه می‌ماند (مثل نوتیف گوشی) — کاربر می‌تواند ببندد یا کلیک کند
         _ = Task.Delay(15000).ContinueWith(async _ =>

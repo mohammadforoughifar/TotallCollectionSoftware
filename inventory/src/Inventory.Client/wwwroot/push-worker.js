@@ -1,4 +1,4 @@
-/* Shared by development and published workers. No access token is stored here. */
+/* Shared by development and published workers. No access token is stored here. v2 */
 const pushOwnerCache = 'push-owner-v1';
 const pushOwnerUrl = new URL('/__push_owner__', self.location.origin).href;
 async function readPushOwner() {

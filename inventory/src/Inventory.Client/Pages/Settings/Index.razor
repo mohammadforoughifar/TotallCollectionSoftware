@@ -2,6 +2,9 @@
 @inject ISettingsService SettingsSvc
 @inject IToastService Toast
 @inject LayoutState Layout
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject IAuthState Auth
 
 <PageTitle>تنظیمات</PageTitle>
 
@@ -199,6 +202,121 @@
     </div>
 </div>
 
+@* ================== اعلان گوشی و مرورگر (Web Push) ================== *@
+<div class="card mt-3">
+    <div class="card-header">
+        <i class="bi bi-phone-vibrate text-primary"></i>
+        <span class="card-title">اعلان گوشی و مرورگر (مثل اعلان اندروید)</span>
+    </div>
+    <div class="card-body">
+        @if (!loading)
+        {
+            <p class="fs-8 text-muted mb-3">
+                برخلاف پیام‌رسان‌ها که در بله/ایتا می‌آیند، این بخش اعلان را <b>مستقیم مثل اعلان اندروید</b> روی همان دستگاهی که
+                نرم‌افزار را باز کرده‌اید نشان می‌دهد: در نوار اعلان گوشی یا گوشه‌ی دسکتاپ — <b>چه نرم‌افزار باز باشد و چه بسته</b>.
+                با کلیک روی اعلان، خودِ نرم‌افزار باز و روی همان صفحه باز می‌شود. روی <b>HTTPS</b> کار می‌کند:
+                <b>Chrome/Edge</b> در اندروید و ویندوز و <b>Firefox</b> در دسکتاپ؛ در iPhone باید نرم‌افزار در Safari به «صفحه‌ی اصلی» اضافه شود (iOS 16.4+).
+            </p>
+
+            @if (pushBusy && !pushSupportChecked)
+            {
+                <div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="border rounded-3 p-3 h-100">
+                            <div class="fw-700 mb-2"><i class="bi bi-display"></i> این دستگاه</div>
+                            <div class="alert @(pushEnabled ? "alert-success" : pushSupported ? "alert-warning" : "alert-secondary") py-2 small">
+                                @pushStatusText
+                            </div>
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-sm @(pushEnabled ? "btn-outline-danger" : "btn-primary")" @onclick="TogglePush" disabled="@pushBusy">
+                                    @if (pushBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                    else if (pushEnabled) { <i class="bi bi-bell-slash"></i> @("غیرفعال‌سازی اعلان این دستگاه") }
+                                    else { <i class="bi bi-bell"></i> @("فعال‌سازی اعلان این دستگاه") }
+                                </button>
+                                @if (pushEnabled)
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="TestPush" disabled="@pushBusy">
+                                        <i class="bi bi-send"></i> ارسال آزمایشی
+                                    </button>
+                                }
+                                <button type="button" class="btn btn-sm btn-light" @onclick="InitPushStateAsync" disabled="@pushBusy">بررسی وضعیت</button>
+                            </div>
+                            <div class="fs-9 text-muted mt-2">
+                                اعلان برای هر کاربر و هر دستگاه جداگانه است؛ اگر روی چند دستگاه کار می‌کنید، روی هرکدام یک‌بار فعال کنید.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="border rounded-3 p-3 h-100">
+                            <div class="fw-700 mb-2"><i class="bi bi-key"></i> کلید اعلان سرور (مدیر سامانه)</div>
+                            @if (!Auth.IsAdmin)
+                            {
+                                <div class="alert alert-light border py-2 small mb-0">
+                                    تنظیم کلید اعلان فقط برای مدیر سامانه است. اگر اعلان فعال نمی‌شود، به مدیر اطلاع دهید.
+                                </div>
+                            }
+                            else if (overviewBusy)
+                            {
+                                <div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                            }
+                            else
+                            {
+                                <div class="alert @(overview?.configured == true ? "alert-success" : "alert-warning") py-2 small">
+                                    @if (overview?.configured == true)
+                                    {
+                                        @(overview.source == "settings"
+                                            ? "کلید اعلان فعال است و از داخل همین نرم‌افزار ساخته شده است."
+                                            : "کلید اعلان از فایل/متغیرهای محیطی سرور خوانده می‌شود و فعال است.")
+                                    }
+                                    else
+                                    {
+                                        @("کلید اعلان هنوز تنظیم نشده؛ با دکمه‌ی زیر بسازید تا اعلان گوشی برای همه‌ی کاربران فعال شود.")
+                                    }
+                                </div>
+                                <div class="d-flex flex-wrap gap-3 fs-8 mb-2">
+                                    <span><b>@(overview?.devices ?? 0)</b> دستگاه ثبت‌شده</span>
+                                    <span class="text-muted">|</span>
+                                    <span><b>@(overview?.users ?? 0)</b> کاربر</span>
+                                    <span class="text-muted">|</span>
+                                    <span>در صف: <b>@(overview?.pending ?? 0)</b></span>
+                                    @if ((overview?.failed ?? 0) > 0)
+                                    {
+                                        <span class="text-danger">ناموفق: <b>@overview!.failed</b></span>
+                                    }
+                                </div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button type="button" class="btn btn-sm btn-primary" @onclick="GenerateVapidAsync" disabled="@overviewBusy">
+                                        <i class="bi bi-magic"></i> @(overview?.configured == true ? "ساخت کلید جدید" : "ساخت و فعال‌سازی کلید اعلان")
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-light" @onclick="LoadOverviewAsync" disabled="@overviewBusy">به‌روزرسانی وضعیت</button>
+                                    @if (overview?.source == "settings")
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="ResetVapidAsync" disabled="@overviewBusy"
+                                                title="حذف کلیدهای ساخته‌شده در نرم‌افزار و بازگشت به کلیدهای فایل سرور">
+                                            <i class="bi bi-arrow-counterclockwise"></i> حذف کلیدهای نرم‌افزار
+                                        </button>
+                                    }
+                                </div>
+                                @if (overview?.configured == true)
+                                {
+                                    <div class="fs-9 text-muted mt-2">
+                                        با ساخت کلید جدید، اشتراک دستگاه‌های فعلی باطل می‌شود و هر کاربر باید یک‌بار اعلان را دوباره فعال کند
+                                        (کلیدها در <span dir="ltr">App_Data/push-vapid.json</span> سرور ذخیره می‌شوند و نیازی به ویرایش فایل تنظیمات یا ری‌استارت نیست).
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
 <div class="card mt-3">
     <div class="card-header">
         <i class="bi bi-envelope-paper text-primary"></i>
@@ -246,6 +364,135 @@
         try { model = await SettingsSvc.GetAsync(); }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+        await InitPushStateAsync();
+        if (Auth.IsAdmin) await LoadOverviewAsync();
+    }
+
+    // ================== اعلان گوشی و مرورگر (Web Push) ==================
+    private string ApiRoot => Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
+    private bool pushBusy, pushEnabled, pushSupportChecked, pushSupported;
+    private string pushStatusText = "وضعیت اعلان این دستگاه بررسی نشده است.";
+    private PushStateResult? pushState;
+    private bool overviewBusy;
+    private PushOverview? overview;
+
+    private class PushStateResult { public bool supported { get; set; } public bool enabled { get; set; } public string? message { get; set; } }
+    private class PushOverview
+    {
+        public bool configured { get; set; } public string? source { get; set; } public string? publicKey { get; set; }
+        public int devices { get; set; } public int users { get; set; } public int pending { get; set; } public int failed { get; set; }
+    }
+    private class VapidResult
+    {
+        public string? publicKey { get; set; } public string? privateKey { get; set; } public string? subject { get; set; }
+        public bool applied { get; set; } public string? source { get; set; } public int cleared { get; set; } public string? message { get; set; }
+        public bool configured { get; set; }
+    }
+
+    private async Task InitPushStateAsync()
+    {
+        if (pushBusy) return;
+        pushBusy = true;
+        try
+        {
+            pushState = await JS.InvokeAsync<PushStateResult>("appPush.state", ApiRoot, Auth.Token, Auth.UserId);
+            pushSupportChecked = true;
+            pushSupported = pushState?.supported ?? false;
+            pushEnabled = pushState?.enabled ?? false;
+            pushStatusText = pushState?.message ?? "وضعیت اعلان مشخص نیست.";
+        }
+        catch { pushSupportChecked = true; pushSupported = false; pushEnabled = false; pushStatusText = "بررسی وضعیت اعلان ناموفق بود؛ صفحه را تازه کنید."; }
+        finally { pushBusy = false; }
+    }
+
+    private async Task TogglePush()
+    {
+        if (pushBusy) return;
+        pushBusy = true;
+        try
+        {
+            var action = pushEnabled ? "appPush.disable" : "appPush.enable";
+            pushState = await JS.InvokeAsync<PushStateResult>(action, ApiRoot, Auth.Token, Auth.UserId);
+            pushSupportChecked = true;
+            pushSupported = pushState?.supported ?? false;
+            pushEnabled = pushState?.enabled ?? false;
+            pushStatusText = pushState?.message ?? "وضعیت اعلان مشخص نیست.";
+            Toast.Success(pushEnabled ? "اعلان این دستگاه فعال شد." : "اعلان این دستگاه خاموش شد.");
+            if (Auth.IsAdmin) await LoadOverviewAsync();
+        }
+        catch { Toast.Error("تنظیم اعلان ناموفق بود؛ صفحه را تازه کنید."); }
+        finally { pushBusy = false; }
+    }
+
+    private async Task TestPush()
+    {
+        if (pushBusy) return;
+        pushBusy = true;
+        try
+        {
+            var result = await JS.InvokeAsync<PushStateResult>("appPush.test", ApiRoot, Auth.Token);
+            pushStatusText = result?.message ?? "درخواست آزمایش ثبت شد؛ چند لحظه بعد اعلان را ببینید.";
+            Toast.Success(pushStatusText);
+        }
+        catch { Toast.Error("ارسال آزمایشی انجام نشد؛ ۳۰ ثانیه صبر کنید و دوباره تلاش کنید."); }
+        finally { pushBusy = false; }
+    }
+
+    private async Task LoadOverviewAsync()
+    {
+        if (overviewBusy) return;
+        overviewBusy = true;
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync($"{ApiRoot}/api/notifications/push-overview", new { });
+            overview = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<PushOverview>() : null;
+        }
+        catch { overview = null; }
+        finally { overviewBusy = false; }
+    }
+
+    private async Task GenerateVapidAsync()
+    {
+        if (overviewBusy) return;
+        overviewBusy = true;
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync($"{ApiRoot}/api/notifications/push-vapid-generate", new { });
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<VapidResult>() : null;
+            if (r == null) { Toast.Error("ساخت کلید اعلان انجام نشد؛ دسترسی مدیر را بررسی کنید."); return; }
+            Toast.Success(r.message ?? "کلید اعلان ساخته و فعال شد.");
+            if (r.cleared > 0) Toast.Info($"{r.cleared} اشتراک دستگاه قبلی باطل شد؛ کاربران باید اعلان را دوباره فعال کنند.");
+            await LoadOverviewAsync();
+            await InitPushStateAsync(); // با تغییر کلید، اشتراک این دستگاه هم باید بازسازی شود
+        }
+        catch { Toast.Error("ساخت کلید اعلان انجام نشد."); }
+        finally { overviewBusy = false; }
+    }
+
+    private async Task ResetVapidAsync()
+    {
+        if (overviewBusy) return;
+        overviewBusy = true;
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync($"{ApiRoot}/api/notifications/push-vapid-reset", new { });
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<VapidResult>() : null;
+            if (r == null) { Toast.Error("حذف کلید اعلان انجام نشد."); return; }
+            Toast.Success(r.message ?? "کلیدهای نرم‌افزار حذف شد.");
+            await LoadOverviewAsync();
+            await InitPushStateAsync();
+        }
+        catch { Toast.Error("حذف کلید اعلان انجام نشد."); }
+        finally { overviewBusy = false; }
+    }
+
+    private void SetAuthHeader()
+    {
+        if (string.IsNullOrWhiteSpace(Auth.Token)) return;
+        Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
     }
 
     private async Task Save()

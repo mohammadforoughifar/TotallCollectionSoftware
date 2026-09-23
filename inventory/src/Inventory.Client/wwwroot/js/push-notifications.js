@@ -140,4 +140,33 @@
     };
     // Live toasts remain in Blazor. Do not generate a duplicate OS notification via SignalR.
     window.attLocalNotify = () => false;
+
+    // زنگ/لرزش اعلان داخل خود نرم‌افزار (وقتی اعلان سیستمی گوشی فعال نیست):
+    // صدای کوتاه دو‌نُتی + لرزش در اندروید — دقیقاً مثل وقتی اعلان اندروید می‌رسد.
+    let notifyAudio = null;
+    function beep() {
+        if (!notifyAudio) {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return;
+            notifyAudio = new Ctx();
+        }
+        if (notifyAudio.state === 'suspended') notifyAudio.resume().catch(() => { });
+        const now = notifyAudio.currentTime;
+        [[880, 0], [1180, 0.16]].forEach(([freq, at]) => {
+            const osc = notifyAudio.createOscillator();
+            const gain = notifyAudio.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.0001, now + at);
+            gain.gain.exponentialRampToValueAtTime(0.18, now + at + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.15);
+            osc.connect(gain); gain.connect(notifyAudio.destination);
+            osc.start(now + at); osc.stop(now + at + 0.17);
+        });
+    }
+    window.attNotifyAlert = function () {
+        try { beep(); } catch (_) { /* صدای مرورگر در دسترس نیست */ }
+        try { if (navigator.vibrate) navigator.vibrate([120, 60, 120]); } catch (_) { /* لرزش پشتیبانی نمی‌شود */ }
+        return true;
+    };
 })();

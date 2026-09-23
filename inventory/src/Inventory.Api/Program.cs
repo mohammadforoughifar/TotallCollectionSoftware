@@ -241,6 +241,7 @@ builder.Services.AddScoped<Inventory.Api.Hubs.IChatRealtimeNotifier, Inventory.A
 builder.Services.AddScoped<Inventory.Api.Services.Chat.IChatService, Inventory.Api.Services.Chat.ChatService>();
 builder.Services.AddScoped<Inventory.Api.Services.Chat.ChatAttachmentService>();
 builder.Services.AddSingleton<PushSettings>();
+builder.Services.AddSingleton<PushKeyStore>(); // کلیدهای اعلان ساخته‌شده از داخل «تنظیمات» (App_Data/push-vapid.json)
 builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddHttpClient("WebPush").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IPushTransport, WebPushTransport>();
@@ -267,6 +268,11 @@ builder.Services.AddSwaggerGen(o =>
 });
 
 var app = builder.Build();
+
+// کلیدهای اعلان گوشی/مرورگر (VAPID): اگر مدیر آن‌ها را از داخل «تنظیمات» ساخته باشد، همین‌جا زنده اعمال می‌شوند
+// تا پس از ساخت کلید نیازی به ویرایش appsettings.json یا ری‌استارت سرویس نباشد.
+app.Services.GetRequiredService<Inventory.Api.Services.PushKeyStore>()
+    .Load(app.Services.GetRequiredService<Inventory.Api.Services.PushSettings>());
 
 // ================== سرویس OCR پایتون: شناسایی خودکار ==================
 // اگر OcrService:BaseUrl خالی باشد، سرویس محلی پیش‌فرض (http://127.0.0.1:8765) جستجو می‌شود

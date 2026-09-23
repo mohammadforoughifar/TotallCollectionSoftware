@@ -18,12 +18,16 @@ public class NotificationsController : ControllerBase
     private readonly IMessengerService _messenger;
     private readonly IMessengerLinkCodes _codes;
     private readonly IPushService _push;
-    public NotificationsController(AppDbContext db, IMessengerService messenger, IMessengerLinkCodes codes, IPushService push)
+    private readonly PushKeyStore _keys;
+    private readonly PushSettings _pushSettings;
+    public NotificationsController(AppDbContext db, IMessengerService messenger, IMessengerLinkCodes codes, IPushService push, PushKeyStore keys, PushSettings pushSettings)
     {
         _db = db;
         _messenger = messenger;
         _codes = codes;
         _push = push;
+        _keys = keys;
+        _pushSettings = pushSettings;
     }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) && v > 0 ? v : 0;
@@ -217,34 +221,107 @@ public class NotificationsController : ControllerBase
 
     /// <summary>کلید عمومی VAPID — برای ثبت اشتراک push در مرورگر/دستگاه.</summary>
     [HttpGet("push-vapid-key")]
-    public IActionResult VapidKey() => Ok(new { publicKey = _push.VapidPublicKey, configured = _push.IsConfigured });
+    public IActionResult VapidKey() => Ok(new { publicKey = _push.VapidPublicKey, configured = _push.IsConfigured, source = _push.Source });
 
     /// <summary>
-    /// تولید جفت‌کلید VAPID برای اعلان گوشی (فقط مدیر) — خروجی برای درج در appsettings.json
-    /// بخش PushNotifications یا متغیرهای محیطی VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY است.
+    /// وضعیت کامل اعلان گوشی/مرورگر (فقط مدیر): فعال بودن کلیدها، منبع آن‌ها و تعداد دستگاه‌های ثبت‌شده.
+    /// </summary>
+    [HttpPost("push-overview")]
+    public async Task<IActionResult> PushOverview()
+    {
+        if (MyUserId <= 0) return Unauthorized();
+        if (!await IsPushAdminAsync()) return StatusCode(403, new { message = "تنها مدیر سامانه مجاز است." });
+        var devices = await _db.PushSubscriptions.AsNoTracking().CountAsync();
+        var users = await _db.PushSubscriptions.AsNoTracking().Select(s => s.UserId).Distinct().CountAsync();
+        var pending = await _db.PushDeliveries.AsNoTracking().CountAsync(j => j.Status == "Pending" || j.Status == "Working");
+        var failed = await _db.PushDeliveries.AsNoTracking().CountAsync(j => j.Status == "Failed");
+        var last = await _db.PushDeliveries.AsNoTracking().OrderByDescending(j => j.Id)
+            .Select(j => new { status = j.Status, errorCode = j.ErrorCode, createdAtUtc = j.CreatedAtUtc }).FirstOrDefaultAsync();
+        return Ok(new { configured = _push.IsConfigured, source = _push.Source, publicKey = _push.VapidPublicKey, devices, users, pending, failed, last });
+    }
+
+    public sealed class VapidApplyInput
+    {
+        public string? PublicKey { get; set; }
+        public string? PrivateKey { get; set; }
+        public string? Subject { get; set; }
+    }
+
+    /// <summary>
+    /// ساخت (یا ثبت) کلید اعلان و <b>فعال‌سازی زنده</b> از داخل خود نرم‌افزار (فقط مدیر):
+    /// بدون ویرایش appsettings.json و بدون ری‌استارت سرویس. کلیدها در App_Data/push-vapid.json ذخیره می‌شوند.
+    /// اگر بدنه شامل PublicKey/PrivateKey باشد، همان‌ها ذخیره می‌شوند؛ در غیر این صورت یک جفت‌کلید تازه ساخته می‌شود.
+    /// اگر کلید عمومی تغییر کند، اشتراک دستگاه‌های قبلی باطل است و پاک می‌شود (کاربران باید اعلان را یک‌بار دوباره فعال کنند).
     /// </summary>
     [HttpPost("push-vapid-generate")]
-    public async Task<IActionResult> GenerateVapid()
+    public async Task<IActionResult> GenerateVapid([FromBody] VapidApplyInput? input = null)
     {
         if (MyUserId <= 0) return Unauthorized();
         if (!await IsPushAdminAsync())
             return StatusCode(403, new { message = "تنها مدیر سامانه مجاز به تولید کلید اعلان است." });
 
-        using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        var p = ecdsa.ExportParameters(true);
-        var priv = p.D!;
-        var spki = ecdsa.ExportSubjectPublicKeyInfo(); // برای P-256، ۶۵ بایتِ انتهای DER نقطه‌ی فشرده‌نشده (04||X||Y) است
-        var pub = spki[^65..];
-        static string B64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-        return Ok(new
+        var previousKey = _push.VapidPublicKey;
+        string publicKey, privateKey, subject;
+        var manual = !string.IsNullOrWhiteSpace(input?.PublicKey) || !string.IsNullOrWhiteSpace(input?.PrivateKey);
+        if (manual)
         {
-            publicKey = B64Url(pub),
-            privateKey = B64Url(priv),
-            subject = $"mailto:admin@{(Request.Host.Host is { Length: > 0 } h ? h : "example.com")}",
-            instructions = "این مقادیر را در appsettings.json بخش PushNotifications (یا متغیرهای محیطی VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT) قرار دهید و سرویس را ری‌استارت کنید. توجه: اگر قبلاً کلید دیگری فعال بوده، تولید کلید جدید اشتراک همه‌ی دستگاه‌ها را باطل می‌کند و کاربران باید اعلان را یک‌بار دیگر فعال کنند."
-        });
+            publicKey = (input!.PublicKey ?? "").Trim();
+            privateKey = (input.PrivateKey ?? "").Trim();
+            subject = (input.Subject ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(subject)) subject = DefaultSubject();
+            if (!PushSettings.Validate(publicKey, privateKey, subject))
+                return BadRequest(new { message = "جفت‌کلید وارد‌شده معتبر نیست؛ کلید عمومی باید ۶۵ بایت (شروع 0x04) و کلید خصوصی ۳۲ بایت باشد." });
+        }
+        else
+        {
+            using var ecdsa = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            var p = ecdsa.ExportParameters(true);
+            var spki = ecdsa.ExportSubjectPublicKeyInfo(); // برای P-256، ۶۵ بایتِ انتهای DER نقطه‌ی فشرده‌نشده (04||X||Y) است
+            publicKey = B64Url(spki[^65..]);
+            privateKey = B64Url(p.D!);
+            subject = string.IsNullOrWhiteSpace(input?.Subject) ? DefaultSubject() : input!.Subject!.Trim();
+        }
+
+        _keys.Save(new PushKeyFile { PublicKey = publicKey, PrivateKey = privateKey, Subject = subject });
+        if (!_pushSettings.Apply(publicKey, privateKey, subject, out var error))
+        {
+            _keys.Delete();
+            return StatusCode(500, new { message = error });
+        }
+
+        var cleared = 0;
+        if (!string.IsNullOrEmpty(previousKey) && previousKey != publicKey) cleared = await _push.ClearSubscriptionsAsync();
+
+        var message = cleared > 0
+            ? $"کلید اعلان ساخته و فعال شد؛ {cleared} اشتراک دستگاه قبلی باطل و پاک شد — کاربران باید اعلان را یک‌بار دوباره فعال کنند."
+            : "کلید اعلان ساخته و فعال شد؛ نیازی به ویرایش فایل یا ری‌استارت نیست. کاربران اکنون می‌توانند اعلان گوشی را فعال کنند.";
+        return Ok(new { publicKey, privateKey, subject, applied = true, source = _push.Source, cleared, message });
     }
+
+    /// <summary>حذف کلیدهای ساخته‌شده در نرم‌افزار و بازگشت به کلیدهای فایل/متغیر محیطی سرور (فقط مدیر).</summary>
+    [HttpPost("push-vapid-reset")]
+    public async Task<IActionResult> ResetVapid()
+    {
+        if (MyUserId <= 0) return Unauthorized();
+        if (!await IsPushAdminAsync()) return StatusCode(403, new { message = "تنها مدیر سامانه مجاز است." });
+        var previousKey = _push.VapidPublicKey;
+        var removed = _keys.Delete();
+        _pushSettings.ResetToServerConfig();
+        var cleared = 0;
+        if (_push.VapidPublicKey != previousKey) cleared = await _push.ClearSubscriptionsAsync();
+        var message = _push.IsConfigured
+            ? "کلیدهای ساخته‌شده در نرم‌افزار حذف شد و کلیدهای فایل سرور فعال شد."
+            : "کلیدهای ساخته‌شده حذف شد؛ اکنون هیچ کلید فعالی نیست و اعلان گوشی خاموش است.";
+        return Ok(new { applied = removed, configured = _push.IsConfigured, publicKey = _push.VapidPublicKey, source = _push.Source, cleared, message });
+    }
+
+    private string DefaultSubject()
+    {
+        var host = Request.Host.Host;
+        return $"mailto:admin@{(string.IsNullOrWhiteSpace(host) ? "example.com" : host)}";
+    }
+
+    private static string B64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     /// <summary>مدیر = نقش قدیمی Admin یا مجوز RBAC «Settings.Manage».</summary>
     private async Task<bool> IsPushAdminAsync()
