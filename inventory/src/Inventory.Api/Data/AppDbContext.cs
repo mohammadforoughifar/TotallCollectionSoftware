@@ -138,6 +138,11 @@ public class AppDbContext : DbContext
     public DbSet<OutgoingPishnevisLetter> OutgoingPishnevisLetters => Set<OutgoingPishnevisLetter>();
     public DbSet<OutgoingLetterSigner> OutgoingLetterSigners => Set<OutgoingLetterSigner>();
 
+    // ==================== فرم‌های متفرقه — صورتجلسه ====================
+    public DbSet<MeetingMinutes> MeetingMinutes => Set<MeetingMinutes>();
+    public DbSet<MeetingMinutesParticipant> MeetingMinutesParticipants => Set<MeetingMinutesParticipant>();
+    public DbSet<MeetingMinutesItem> MeetingMinutesItems => Set<MeetingMinutesItem>();
+
     /// <summary>رونوشت‌گیرندگان نامه صادره (هر گیرنده یک ردیف)</summary>
     public DbSet<OutgoingLetterCopyTo> OutgoingLetterCopyToes => Set<OutgoingLetterCopyTo>();
 
@@ -1175,5 +1180,20 @@ public class AppDbContext : DbContext
         // گرفته می‌شوند تا مدل با پایگاه‌داده‌ی موجود هم‌خوان بماند.
         mb.Entity<OtoInboxEmail>().Ignore(e => e.Attachments);
         mb.Entity<OtoSentEmail>().Ignore(e => e.Attachments);
+
+        // ============ فرم‌های متفرقه — صورتجلسه ============
+        mb.Entity<MeetingMinutes>().HasIndex(m => m.Status);
+        mb.Entity<MeetingMinutesParticipant>()
+            .HasOne(p => p.Minutes)
+            .WithMany(m => m.Participants)
+            .HasForeignKey(p => p.MinutesId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<MeetingMinutesParticipant>().HasIndex(p => p.MinutesId);
+        mb.Entity<MeetingMinutesItem>()
+            .HasOne(i => i.Minutes)
+            .WithMany(m => m.Items)
+            .HasForeignKey(i => i.MinutesId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<MeetingMinutesItem>().HasIndex(i => i.MinutesId);
     }
 }

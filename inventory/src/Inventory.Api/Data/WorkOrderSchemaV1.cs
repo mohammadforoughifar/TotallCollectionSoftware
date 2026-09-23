@@ -47,7 +47,9 @@ AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_WorkOrders_Status_Due
 IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'Recurrence') IS NULL
     ALTER TABLE dbo.WorkOrders ADD Recurrence int NOT NULL DEFAULT(0);
 IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'RecurrenceParentId') IS NULL
-    ALTER TABLE dbo.WorkOrders ADD RecurrenceParentId int NULL;");
+    ALTER TABLE dbo.WorkOrders ADD RecurrenceParentId int NULL;
+IF OBJECT_ID(N'dbo.WorkOrders', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkOrders', N'SourceRefId') IS NULL
+    ALTER TABLE dbo.WorkOrders ADD SourceRefId int NULL;");
 
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.WorkOrderChecklistItems', N'U') IS NULL
@@ -224,6 +226,19 @@ CREATE INDEX IF NOT EXISTS IX_WorkOrderComments_OrderId ON WorkOrderComments (Or
         }
         catch { }
         if (!hasParent) await SafeAsync(db, "ALTER TABLE WorkOrders ADD COLUMN ParentOrderId INTEGER NULL;");
+
+        // ---------- موج ۸: شناسهٔ والد مبدأ (لینک بند صورتجلسه به صورتجلسه) ----------
+        var hasSourceRef = false;
+        try
+        {
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open) await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM pragma_table_info('WorkOrders') WHERE name='SourceRefId'";
+            hasSourceRef = Convert.ToInt32(await cmd.ExecuteScalarAsync()) > 0;
+        }
+        catch { }
+        if (!hasSourceRef) await SafeAsync(db, "ALTER TABLE WorkOrders ADD COLUMN SourceRefId INTEGER NULL;");
 
         // ---------- موج ۷: قالب‌های آمادهٔ دستور کار ----------
         await SafeAsync(db, @"

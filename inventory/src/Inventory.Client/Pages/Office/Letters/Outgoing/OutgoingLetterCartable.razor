@@ -8,6 +8,7 @@
 @inject LayoutState Layout
 @inject RealtimeService Rt
 @inject IJSRuntime JS
+@inject IApiClient Api
 @implements IDisposable
 
 <PageTitle>کارتابل نامه صادره</PageTitle>
@@ -700,6 +701,40 @@
         await ReloadAsync();
         if (int.TryParse(qs["open"], out var openId) && openId > 0)
             await OpenById(openId);
+
+        if (qs["compose"] == "1" && qs["source"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
+        {
+            _composeHandled = true;
+            await OpenComposeFromMinutesAsync(minId);
+        }
+    }
+
+    private bool _composeHandled;
+    private async Task OpenComposeFromMinutesAsync(int minutesId)
+    {
+        try
+        {
+            var m = await Api.GetAsync<Inventory.Shared.Dtos.MinutesDetailDto>($"api/meeting-minutes/{minutesId}");
+            if (m != null)
+            {
+                var title = $"ابلاغ مصوبات صورتجلسه «{m.Title}»";
+                var sb = new System.Text.StringBuilder();
+                sb.Append($"<p>با سلام و احترام،</p>");
+                sb.Append($"<p>مصوبات صورتجلسه <b>«{m.Title}»</b> مورخ {PersianDate.ToShortFa(m.MeetingDate)} به شرح ذیل جهت استحضار و اقدام مقتضی ارسال می‌گردد:</p><ul>");
+                foreach (var itm in m.Items)
+                {
+                    var due = itm.DueDate != null ? PersianDate.ToShortFa(itm.DueDate.Value) : "—";
+                    sb.Append($"<li><b>بند {itm.RowNo}:</b> {itm.Description} (مهلت: {due})</li>");
+                }
+                sb.Append("</ul>");
+                compose?.Open(title, sb.ToString());
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در بارگذاری صورتجلسه: {ex.Message}");
+            compose?.Open();
+        }
     }
 
     protected override async Task OnParametersSetAsync()

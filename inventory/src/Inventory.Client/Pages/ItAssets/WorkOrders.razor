@@ -1038,7 +1038,7 @@ else
                             {
                                 <div>
                                     <span class="wo-lbl">منبع</span><span class="d-inline-flex align-items-center flex-wrap gap-1">
-                                        @SourceLink(detail.SourceModule, detail.SourceId)
+                                        @SourceLink(detail.SourceModule, detail.SourceId, detail.SourceRefId)
                                         @if (detail.SourceModule == "Document" && _docRefs.TryGetValue(detail.Id, out var docRef))
                                         {
                                             <span class="text-muted fs-9">@docRef.Code — @docRef.Title</span>
@@ -2383,6 +2383,7 @@ else
     // اتصال به مبدأ (سورس) — نامه داخلی یا مدرک آرشیو اسناد
     private string? _sourceModule;
     private int? _sourceId;
+    private int? _sourceRefId;
     private string _sourceLabel = "";
     private string _sourceDocTitle = "";
     private bool _sourceHandled;
@@ -2491,7 +2492,8 @@ else
         if (!string.IsNullOrWhiteSpace(srcModule) && int.TryParse(qs["sourceId"], out var srcId) && srcId > 0 && !_sourceHandled)
         {
             _sourceHandled = true;
-            await OpenFromSourceAsync(srcModule, srcId);
+            int? srcRefId = int.TryParse(qs["sourceRefId"], out var sref) && sref > 0 ? sref : null;
+            await OpenFromSourceAsync(srcModule, srcId, srcRefId);
             return;
         }
 
@@ -2770,13 +2772,20 @@ else
     }
 
     /// <summary>لینک به رکورد مبدأ (سورس) — نامه داخلی یا مدرک آرشیو — برای اتصال برگشتی.</summary>
-    private RenderFragment? SourceLink(string? module, int? sourceId)
+    private RenderFragment? SourceLink(string? module, int? sourceId, int? sourceRefId = null)
     {
         if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0) return null;
         if (module == "Document")
             return @<a class="wo-att" href="@($"/doc-archive/documents/{sourceId}")" target="_blank" title="رفتن به مدرک مبدأ در آرشیو">
                 <i class="bi bi-file-earmark-text"></i> مدرک
             </a>;
+        if (module == "MeetingMinutes" || module == "MeetingMinutesItem")
+        {
+            var targetId = module == "MeetingMinutes" ? sourceId : (sourceRefId ?? _sourceRefId ?? sourceId);
+            return @<a class="wo-att" href="@($"/misc/minutes/{targetId}")" target="_blank" title="رفتن به صورتجلسه مبدأ">
+                <i class="bi bi-journal-text"></i> صورتجلسه
+            </a>;
+        }
         return @<a class="wo-att" href="@($"/letters?open={sourceId}")" target="_blank" title="رفتن به نامه مبدأ">
             <i class="bi bi-envelope"></i> نامه
         </a>;
@@ -2798,7 +2807,7 @@ else
     {
         editingSeries = false;
         editingId = 0;
-        _sourceModule = null; _sourceId = null; _sourceLabel = ""; _sourceDocTitle = "";
+        _sourceModule = null; _sourceId = null; _sourceRefId = null; _sourceLabel = ""; _sourceDocTitle = "";
         await ShowNewFormAsync("", "");
     }
 
@@ -2859,6 +2868,7 @@ else
         editingId = detail.Id;
         _sourceModule = detail.SourceModule;
         _sourceId = detail.SourceId;
+        _sourceRefId = detail.SourceRefId;
         _sourceLabel = "";
         _sourceDocTitle = "";
         var desc = detail.Description ?? "";
@@ -2894,14 +2904,14 @@ else
     }
 
     /// <summary>باز کردن فرم ایجاد از یک مبدأ (سورس) — پیش‌پُرش عنوان/شرح/گیرندگان از نامه.</summary>
-    private async Task OpenFromSourceAsync(string module, int sourceId)
+    private async Task OpenFromSourceAsync(string module, int sourceId, int? sourceRefId = null)
     {
         if (!access.CanCreate)
         {
             Toast.Error("شما مجوز ایجاد دستور کار را ندارید.");
             return;
         }
-        _sourceModule = module; _sourceId = sourceId; _sourceLabel = module; _sourceDocTitle = "";
+        _sourceModule = module; _sourceId = sourceId; _sourceRefId = sourceRefId; _sourceLabel = module; _sourceDocTitle = "";
         // فقط برای نامه داخلی، جزئیات نامه را می‌گیریم تا فرم پیش‌پُر شود
         if (module == "InnerLetter")
         {
@@ -2953,6 +2963,53 @@ else
             {
                 Toast.Error($"بارگذاری مدرک ناموفق بود: {ex.Message}");
                 await ShowNewFormAsync("", "");
+            }
+        }
+        else if (module == "MeetingMinutes" || module == "MeetingMinutesItem")
+        {
+            var minId = module == "MeetingMinutes" ? sourceId : (sourceRefId ?? sourceId);
+            Inventory.Shared.Dtos.MinutesDetailDto? mDetail = null;
+            try { mDetail = await Http.GetFromJsonAsync<Inventory.Shared.Dtos.MinutesDetailDto>($"/api/meeting-minutes/{minId}"); } catch { }
+            if (mDetail != null)
+            {
+                _sourceDocTitle = mDetail.Title;
+                if (module == "MeetingMinutesItem")
+                {
+                    var item = mDetail.Items.FirstOrDefault(i => i.Id == sourceId);
+                    var itemNo = item?.RowNo ?? 1;
+                    var t = $"پیگیری بند {itemNo} صورتجلسه «{mDetail.Title}»";
+                    var d = $"<p><b>مربوط به بند {itemNo} صورتجلسه «{mDetail.Title}» مورخ {mDetail.MeetingDate:yyyy/MM/dd}:</b></p>" +
+                            $"<p>{item?.Description}</p>";
+                    await ShowNewFormAsync(t, d);
+                    if (item?.ResponsibleUserId != null) selTargets = new() { item.ResponsibleUserId.Value };
+                    else if (item?.FollowUpUserId != null) selTargets = new() { item.FollowUpUserId.Value };
+                    if (item?.DueDate != null)
+                    {
+                        var targetDue = item.DueDate.Value.Date.AddHours(17);
+                        if (targetDue > DateTime.Now)
+                        {
+                            newDueDate = targetDue.Date;
+                            newDueTime = new TimeOnly(17, 0);
+                        }
+                    }
+                    _sourceLabel = $"صورتجلسه «{mDetail.Title}» — بند {itemNo}";
+                }
+                else
+                {
+                    var t = $"پیگیری مصوبات صورتجلسه «{mDetail.Title}»";
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append($"<p><b>پیگیری مصوبات صورتجلسه «{mDetail.Title}» مورخ {mDetail.MeetingDate:yyyy/MM/dd}:</b></p><ul>");
+                    foreach (var itm in mDetail.Items)
+                        sb.Append($"<li>بند {itm.RowNo}: {itm.Description}</li>");
+                    sb.Append("</ul>");
+                    await ShowNewFormAsync(t, sb.ToString());
+                    selTargets = mDetail.Participants.Where(p => p.Kind == "Attendee").Select(p => p.UserId).ToHashSet();
+                    _sourceLabel = $"صورتجلسه «{mDetail.Title}»";
+                }
+            }
+            else
+            {
+                await ShowNewFormAsync(module == "MeetingMinutes" ? $"صورتجلسه {sourceId}" : $"بند صورتجلسه {sourceId}", "");
             }
         }
         else
@@ -3022,7 +3079,7 @@ else
                 recurrence = newRecurrence,
                 checklistItems = newChecklist,
                 tags = newTags,
-                sourceModule = _sourceModule, sourceId = _sourceId,
+                sourceModule = _sourceModule, sourceId = _sourceId, sourceRefId = _sourceRefId,
                 parentOrderId = chainParent?.Id
             };
             var resp = editingId > 0
@@ -3049,7 +3106,7 @@ else
             // پاک‌سازی پارامترهای مبدأ (سورس) بعد از ثبت
             if (!string.IsNullOrWhiteSpace(_sourceModule))
             {
-                _sourceModule = null; _sourceId = null; _sourceLabel = ""; _sourceDocTitle = "";
+                _sourceModule = null; _sourceId = null; _sourceRefId = null; _sourceLabel = ""; _sourceDocTitle = "";
                 Nav.NavigateTo("/work-orders");
             }
         }
@@ -3270,7 +3327,7 @@ else
         public string? ParentNumber { get; set; }
         public string? ParentTitle { get; set; }
         public List<ChildItem> Children { get; set; } = new();
-        public string? SourceModule { get; set; } public int? SourceId { get; set; }
+        public string? SourceModule { get; set; } public int? SourceId { get; set; } public int? SourceRefId { get; set; }
         public int AttachmentCount { get; set; } public List<AsgItem> Assignees { get; set; } = new();
     }
 }

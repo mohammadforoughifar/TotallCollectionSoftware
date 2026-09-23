@@ -6,6 +6,7 @@
 @inject LayoutState Layout
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject IApiClient Api
 @using Inventory.Client.Pages.Office.Letters
 @using Inventory.Client.Pages.Office.Letters.Incoming
 @using Microsoft.AspNetCore.Components.Forms
@@ -460,6 +461,11 @@
                             var ff = f;
                             <span class="spill"><i class="bi bi-paperclip"></i> @ff.Name <small>(@FmtSize(ff.Size))</small> <i class="bi bi-x-lg" @onclick="() => _pendingBrowser.Remove(ff)"></i></span>
                         }
+                        @foreach (var vf in _virtualAtts)
+                        {
+                            var vff = vf;
+                            <span class="spill" style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd"><i class="bi bi-file-earmark-pdf"></i> @vff.FileName <small>(@FmtSize(vff.Data.Length))</small> <i class="bi bi-x-lg" @onclick="() => _virtualAtts.Remove(vff)"></i></span>
+                        }
                     </div>
                 </div>
             </div>
@@ -752,6 +758,14 @@
         Layout.SetTitle(personalMode ? "ایمیل شخصی" : "ایمیل سازمانی");
         await LoadAccountsAsync();
         await ReloadAsync();
+
+        var uri = new Uri(Nav.Uri);
+        var qs = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (qs["compose"] == "1" && qs["attach"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
+        {
+            _composeHandled = true;
+            await OpenComposeFromMinutesAsync(minId);
+        }
     }
 
     public void Dispose() { _searchTimer?.Dispose(); }
@@ -1002,6 +1016,7 @@
         cpErrTo = cpErrSubject = false;
         cpFiles.Clear();
         _pendingBrowser.Clear();
+        _virtualAtts.Clear();
         var pool = VisibleAccounts;
         if (pool.Any(x => x.IsActive)) cpAccountId = pool.First(x => x.IsActive).EmailId;
         composeOpen = true;
@@ -1019,6 +1034,49 @@
         cpFiles.Clear();
         _pendingBrowser.Clear();
         composeOpen = true;
+    }
+
+    private bool _composeHandled;
+    private List<EmailOutAttachment> _virtualAtts = new();
+    private async Task OpenComposeFromMinutesAsync(int minutesId)
+    {
+        try
+        {
+            var m = await Api.GetAsync<Inventory.Shared.Dtos.MinutesDetailDto>($"api/meeting-minutes/{minutesId}");
+            if (m != null)
+            {
+                OpenCompose();
+                cpSubject = $"صورتجلسه: {m.Title}";
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("با سلام و احترام،");
+                sb.AppendLine($"صورتجلسه «{m.Title}» مورخ {PersianDate.ToShortFa(m.MeetingDate)} به پیوست ارسال می‌گردد.");
+                sb.AppendLine();
+                sb.AppendLine("خلاصه مصوبات:");
+                foreach (var itm in m.Items)
+                {
+                    var due = itm.DueDate != null ? PersianDate.ToShortFa(itm.DueDate.Value) : "—";
+                    sb.AppendLine($"- بند {itm.RowNo}: {itm.Description} (مهلت: {due})");
+                }
+                cpBody = sb.ToString();
+
+                try
+                {
+                    var pdfRes = await Api.GetFileAsync($"api/meeting-minutes/{minutesId}/print.pdf");
+                    if (pdfRes.Data != null && pdfRes.Data.Length > 0)
+                    {
+                        var fname = !string.IsNullOrWhiteSpace(pdfRes.FileName) ? pdfRes.FileName : $"صورتجلسه-{minutesId}.pdf";
+                        _virtualAtts.Add(new EmailOutAttachment(fname, pdfRes.ContentType ?? "application/pdf", pdfRes.Data));
+                    }
+                }
+                catch { }
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در بارگذاری صورتجلسه: {ex.Message}");
+            OpenCompose();
+        }
     }
 
     private List<Microsoft.AspNetCore.Components.Forms.IBrowserFile> _pendingBrowser = new();
@@ -1058,11 +1116,13 @@
                 }
                 catch (Exception ex) { Toast.Error($"خواندن {bf.Name}: {ex.Message}"); }
             }
+            files.AddRange(_virtualAtts);
             await EmailSvc.SendAsync(cpAccountId, cpTo, cpCc, cpSubject, cpBody, files);
             Toast.Success("ایمیل ارسال شد.");
             composeOpen = false;
             _pendingBrowser.Clear();
             cpFiles.Clear();
+            _virtualAtts.Clear();
             if (tab == "sent") await ReloadAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

@@ -102,6 +102,13 @@ public static class RbacSeeder
         // Read: کارتابل، مشاهده نامه و پیوست‌ها | Erja: ارجاع نامه به دیگران
         // Delete: حذف نامه/گروه (مدیرانه)
         ["InnerLetters"] = new[] { "Create", "Read", "Erja", "Delete", "ViewAll" },
+        // ================== فرم‌های متفرقه — صورتجلسه ==================
+        // View: مشاهده ماژول (مبنای نمایش در منو) | Create: ثبت صورتجلسه
+        // Update: ویرایش، بندها و تصمیمات | Sign: امضای الکترونیکی
+        // ToInnerLetter / ToOutgoingLetter / SendEmail: تبدیل به نامه داخلی/صادره/ایمیل
+        // (این سه مورد در کنترلر، مجوز خودِ آن ماژول‌ها را هم چک می‌کنند)
+        // Print: قالب چاپی با سربرگ | Delete: حذف صورتجلسه
+        ["MeetingMinutes"] = new[] { "View", "Create", "Update", "Delete", "Sign", "ToInnerLetter", "ToOutgoingLetter", "SendEmail", "Print" },
         // ================== آرشیو اسناد و مدارک ==================
         ["DocArchive"] = new[] { "Read", "Create", "Delete", "Manage", "Export" },
         // ================== هسته پرسنلی (کارگزینی) ==================

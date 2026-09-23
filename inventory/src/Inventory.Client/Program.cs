@@ -99,6 +99,8 @@ builder.Services.AddScoped<ILetterService, LetterService>();
 builder.Services.AddScoped<IOutgoingLetterService, OutgoingLetterService>();
 builder.Services.AddScoped<IIncomingLetterService, IncomingLetterService>();
 builder.Services.AddScoped<IEmailClientService, EmailClientService>(); // ایمیل سازمانی (پست الکترونیک)
+// ---------- فرم‌های متفرقه — صورتجلسه ----------
+builder.Services.AddScoped<IMinutesApiService, MinutesApiService>();
 // تنظیمات ساختار شماره نامه (سازمان‌ها — جزء «واحد»)
 builder.Services.AddScoped<ILetterStructureService, LetterStructureService>();
 builder.Services.AddSingleton<IToastService, ToastService>();

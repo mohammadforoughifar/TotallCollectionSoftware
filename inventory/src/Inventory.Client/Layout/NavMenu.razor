@@ -210,6 +210,25 @@
         </div>
     }
 
+    @* ============ فرم‌های متفرقه ============ *@
+    @if (Auth.CanSee("MeetingMinutes"))
+    {
+        <div class="nav-group group-misc">
+            <button type="button" class="nav-section-title nav-toggle @(gMisc ? "open" : "")" @onclick="() => gMisc = !gMisc">
+                <span><i class="bi bi-files"></i>فرم‌های متفرقه</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gMisc)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="misc/minutes" Match="NavLinkMatch.All" @onclick="NotifyClose">
+                        <i class="bi bi-journal-text"></i><span>صورتجلسه</span>
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     @* ============ عملیات — گروه فقط با حداقل یک مجوز مشاهده ============ *@
     @if (ShowOpsGroup)
     {
@@ -510,7 +529,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gDocs, gChat;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gDocs, gChat, gMisc;
 
     // ================== مجوز «مشاهده» = مبنای نمایش در منو ==================
     // اگر در «تنظیمات ← نقش‌ها و دسترسی‌ها» تیک مشاهدهٔ یک ماژول برداشته شود،
@@ -546,6 +565,7 @@
         gWo = p.StartsWith("work-orders");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gLetters = p.StartsWith("letters");
+        gMisc = p.StartsWith("misc");
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOps = p.StartsWith("orders") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses");

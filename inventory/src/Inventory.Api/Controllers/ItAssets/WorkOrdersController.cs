@@ -135,6 +135,8 @@ public class WorkOrdersController : ControllerBase
         /// <summary>ماژول مبدأ — مثلاً "InnerLetter" برای نامه داخلی (اختیاری).</summary>
         public string? SourceModule { get; set; }
         public int? SourceId { get; set; }
+        /// <summary>شناسهٔ رکورد والد مبدأ (مثلاً شناسهٔ صورتجلسه برای بند) — اختیاری.</summary>
+        public int? SourceRefId { get; set; }
 
         /// <summary>برچسب‌ها (اختیاری) — حداکثر ۵ برچسب، هر یک تا ۳۰ حرف.</summary>
         public List<string> Tags { get; set; } = new();
@@ -256,7 +258,7 @@ public class WorkOrdersController : ControllerBase
             Title = dto.Title.Trim(), Description = dto.Description ?? "",
             OwnerUserId = MyUserId, OwnerName = await MyDisplayNameAsync(), DueAt = dto.DueAt,
             Priority = dto.Priority, Recurrence = dto.Recurrence, SourceModule = dto.SourceModule,
-            SourceId = dto.SourceId, Tags = NormalizeTags(dto.Tags), ParentOrderId = parent?.Id
+            SourceId = dto.SourceId, SourceRefId = dto.SourceRefId, Tags = NormalizeTags(dto.Tags), ParentOrderId = parent?.Id
         };
         _db.WorkOrders.Add(wo);
         await _db.SaveChangesAsync();
@@ -484,7 +486,7 @@ public class WorkOrdersController : ControllerBase
             w.Id, w.Number, w.Title, w.Description, w.OwnerUserId, w.OwnerName,
             w.DueAt, w.Status, w.CloseNote, w.ClosedAt, w.ExtensionCount, w.CreatedAt,
             w.Priority, w.Recurrence, w.RecurrenceSeriesId, w.RecurrenceScheduledAt,
-            w.SourceModule, w.SourceId,
+            w.SourceModule, w.SourceId, w.SourceRefId,
             Tags = TagsToList(w.Tags),
             ChecklistTotal = clStats.FirstOrDefault(c => c.Key == w.Id)?.Total ?? 0,
             ChecklistDone = clStats.FirstOrDefault(c => c.Key == w.Id)?.Done ?? 0,

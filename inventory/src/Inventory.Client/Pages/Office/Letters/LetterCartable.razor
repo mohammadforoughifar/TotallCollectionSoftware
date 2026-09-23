@@ -630,6 +630,54 @@
         // باز کردن مستقیم یک نامه (لینک نوتیفیکیشن): letters?open=ID
         if (int.TryParse(qs["open"], out var openId) && openId > 0)
             await OpenById(openId);
+
+        if (qs["compose"] == "1" && qs["source"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
+        {
+            _composeHandled = true;
+            await OpenComposeFromMinutesAsync(minId, int.TryParse(qs["itemId"], out var itmId) && itmId > 0 ? itmId : null);
+        }
+    }
+
+    private bool _composeHandled;
+    private async Task OpenComposeFromMinutesAsync(int minutesId, int? itemId)
+    {
+        try
+        {
+            var m = await Http.GetFromJsonAsync<Inventory.Shared.Dtos.MinutesDetailDto>($"/api/meeting-minutes/{minutesId}");
+            if (m != null)
+            {
+                if (itemId.HasValue)
+                {
+                    var item = m.Items.FirstOrDefault(i => i.Id == itemId.Value);
+                    var rowNo = item?.RowNo ?? 1;
+                    var title = $"پیگیری بند {rowNo} صورتجلسه «{m.Title}»";
+                    var body = $"<p>با سلام و احترام،</p>" +
+                               $"<p>پیرو صورتجلسه <b>«{m.Title}»</b> مورخ {PersianDate.ToShortFa(m.MeetingDate)}، بند شماره {rowNo} جهت اقدام و پیگیری ابلاغ می‌گردد:</p>" +
+                               $"<p><b>شرح مصوبه:</b> {item?.Description}</p>" +
+                               $"<p><b>مهلت انجام:</b> {(item?.DueDate != null ? PersianDate.ToShortFa(item.DueDate.Value) : "تعیین‌نشده")}</p>";
+                    compose?.Open(title, body);
+                }
+                else
+                {
+                    var title = $"ابلاغ مصوبات صورتجلسه «{m.Title}»";
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append($"<p>با سلام و احترام،</p>");
+                    sb.Append($"<p>مصوبات صورتجلسه <b>«{m.Title}»</b> مورخ {PersianDate.ToShortFa(m.MeetingDate)} به شرح ذیل جهت استحضار و اقدام لازم ارسال می‌گردد:</p><ul>");
+                    foreach (var itm in m.Items)
+                    {
+                        var due = itm.DueDate != null ? PersianDate.ToShortFa(itm.DueDate.Value) : "—";
+                        sb.Append($"<li><b>بند {itm.RowNo}:</b> {itm.Description} (مهلت: {due})</li>");
+                    }
+                    sb.Append("</ul>");
+                    compose?.Open(title, sb.ToString());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error($"خطا در بارگذاری صورتجلسه: {ex.Message}");
+            compose?.Open();
+        }
     }
 
     protected override async Task OnParametersSetAsync()

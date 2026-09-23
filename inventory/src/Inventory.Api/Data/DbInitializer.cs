@@ -67,6 +67,9 @@ public static class DbInitializer
                 // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.
                 await DabirkhaneSchemaV1.EnsureAsync(db);
 
+                // فرم‌های متفرقه — صورتجلسه (جدول‌های MeetingMinutes*)
+                await MeetingMinutesSchemaV1.EnsureAsync(db);
+
                 // نامه وارده — جدول IncomingLetters در مایگریشن SquashedInitial نیست؛
                 // بدون این، SQL Server خطای «Invalid object name 'IncomingLetters'» می‌دهد.
                 await IncomingLetterSchemaV1.EnsureAsync(db);
