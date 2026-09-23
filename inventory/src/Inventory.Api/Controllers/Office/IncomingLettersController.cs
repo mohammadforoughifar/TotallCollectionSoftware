@@ -89,8 +89,15 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Create([FromBody] AddIncomingLetterDto dto)
     {
         if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "ثبت نامه وارده فقط از طریق دبیرخانه مجاز است." });
-        var id = await _letters.AddAsync(dto, MyUserId);
-        return Ok(new { id, message = "نامه وارده با موفقیت ثبت شد." });
+        try
+        {
+            var id = await _letters.AddAsync(dto, MyUserId);
+            return Ok(new { id, message = "نامه وارده با موفقیت ثبت شد." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message, detail = "ثبت نامه وارده انجام نشد؛ اسکیمای دیتابیس و اطلاعات اجباری فرم را بررسی کنید." });
+        }
     }
 
     [HttpPut("{id:int}")]
@@ -146,8 +153,15 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> AnswerErja(int erjaId, [FromBody] AnswerErjaDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        await _erja.AnswerAsync(erjaId, dto, MyUserId, await MyDisplayNameAsync());
-        return Ok(new { message = "پاسخ ارجاع ثبت شد." });
+        try
+        {
+            await _erja.AnswerAsync(erjaId, dto, MyUserId, await MyDisplayNameAsync());
+            return Ok(new { message = "پاسخ ارجاع ثبت شد." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message, detail = "پاسخ ثبت نشد؛ بررسی کنید ارجاع برای کاربر جاری باشد و متن پاسخ خالی نباشد." });
+        }
     }
 
     [HttpPost("erja/{erjaId:int}/read")]

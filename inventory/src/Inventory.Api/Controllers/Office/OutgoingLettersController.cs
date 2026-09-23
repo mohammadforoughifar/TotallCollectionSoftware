@@ -118,8 +118,15 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Create([FromBody] AddOutgoingLetterDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
-        var id = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
-        return Ok(new { id, message = "نامه صادره با موفقیت ثبت شد." });
+        try
+        {
+            var id = await _letters.AddOutgoingLetterAsync(dto, MyUserId, await MyDisplayNameAsync());
+            return Ok(new { id, message = "نامه صادره با موفقیت ثبت شد." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message, detail = "ثبت نامه صادره انجام نشد؛ CreatorId/CreatorUserId و اطلاعات امضاکنندگان را بررسی کنید." });
+        }
     }
 
     [HttpPut("{id:int}")]
@@ -474,8 +481,15 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Answer(int erjaId, [FromBody] AnswerErjaDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        await _erja.AnswerAsync(erjaId, dto, MyUserId, await MyDisplayNameAsync());
-        return Ok(new { message = "پاسخ ثبت شد." });
+        try
+        {
+            await _erja.AnswerAsync(erjaId, dto, MyUserId, await MyDisplayNameAsync());
+            return Ok(new { message = "پاسخ ثبت شد." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message, detail = "پاسخ ثبت نشد؛ فقط گیرنده ارجاع می‌تواند پاسخ دهد." });
+        }
     }
 
     [HttpPost("erja/{erjaId:int}/read")]

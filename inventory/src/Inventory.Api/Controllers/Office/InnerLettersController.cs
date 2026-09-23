@@ -183,8 +183,15 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Answer(int erjaId, [FromBody] AnswerErjaDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        await _erja.AnswerAsync(erjaId, dto, MyUserId, await MyDisplayNameAsync());
-        return Ok(new { message = "پاسخ ثبت شد." });
+        try
+        {
+            await _erja.AnswerAsync(erjaId, dto, MyUserId, await MyDisplayNameAsync());
+            return Ok(new { message = "پاسخ ثبت شد." });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = PersianError(ex, "پاسخ ثبت نشد؛ فقط گیرنده ارجاع می‌تواند پاسخ دهد.") });
+        }
     }
 
     /// <summary>ثبت خوانده‌شدن ارجاع</summary>
