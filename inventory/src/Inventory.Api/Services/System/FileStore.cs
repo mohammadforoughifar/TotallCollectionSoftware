@@ -55,9 +55,23 @@ public class FileStore
         return s.Length > 80 ? s[..80] : s;
     }
 
+    private static string StorageModule(string module)
+    {
+        var key = (module ?? "").Trim();
+        return key switch
+        {
+            "InnerLetters" => "office/innerletter",
+            "IncomingLetters" => "office/incomingletter",
+            "OutgoingLetters" => "office/outgoingletter",
+            "OtoEmails" => "office/email",
+            "Email" => "office/email",
+            _ => key
+        };
+    }
+
     private string BuildDirectory(string module, int refId, string? subFolder = null)
     {
-        var parts = new List<string> { _root, SafeModule(module) };
+        var parts = new List<string> { _root, SafeModule(StorageModule(module)) };
         if (!string.IsNullOrWhiteSpace(subFolder))
             parts.Add(SafeModule(subFolder));
         parts.Add(refId.ToString());
@@ -85,7 +99,7 @@ public class FileStore
     /// </summary>
     public async Task<string> SaveRawAsync(string module, byte[] data, string ext, int? ownerId = null)
     {
-        var dir = Path.Combine(_root, SafeModule(module), ownerId?.ToString() ?? "common");
+        var dir = Path.Combine(_root, SafeModule(StorageModule(module)), ownerId?.ToString() ?? "common");
         Directory.CreateDirectory(dir);
         var file = Path.Combine(dir, $"{Guid.NewGuid():N}{(ext.StartsWith('.') ? ext : "." + ext)}");
         await File.WriteAllBytesAsync(file, data);
@@ -157,6 +171,19 @@ public class FileStore
 
         // لیست جفت‌مسیرهای معادل جهت پشتیبانی کامل از فایل‌های قبلی دیتابیس
         var aliases = new List<string> { uploadClean, clean };
+        // مسیرهای قدیمی ماژول‌های اتوماسیون را با مسیر استاندارد office تطبیق می‌دهیم.
+        var officeAliases = new[]
+        {
+            (Old: "InnerLetters/", New: "office/innerletter/"),
+            (Old: "IncomingLetters/", New: "office/incomingletter/"),
+            (Old: "OutgoingLetters/", New: "office/outgoingletter/"),
+            (Old: "OtoEmails/", New: "office/email/")
+        };
+        foreach (var a in officeAliases)
+        {
+            if (uploadClean.StartsWith(a.Old, StringComparison.OrdinalIgnoreCase)) aliases.Add(a.New + uploadClean[a.Old.Length..]);
+            if (uploadClean.StartsWith(a.New, StringComparison.OrdinalIgnoreCase)) aliases.Add(a.Old + uploadClean[a.New.Length..]);
+        }
         if (uploadClean.StartsWith("فایل های صادره/", StringComparison.OrdinalIgnoreCase))
             aliases.Add("office/outgoingletter/" + uploadClean["فایل های صادره/".Length..]);
         else if (uploadClean.StartsWith("office/outgoingletter/", StringComparison.OrdinalIgnoreCase))
