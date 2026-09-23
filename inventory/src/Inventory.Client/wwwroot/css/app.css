@@ -2782,3 +2782,25 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     .tabbar .tab .tab-x { width: 19px; height: 19px; font-size: .72rem; }
     .tabbar .tabtool { width: 26px; height: 26px; }
 }
+
+/* صورتجلسه: دکمه‌ها از سمت چپ فیزیکی.
+   html روی dir=rtl است، ولی bootstrap.min.css چپ/راست را منطقی نمی‌کند. */
+.mm-actions {
+    margin-right: auto !important;
+    margin-left: 0 !important;
+    direction: ltr;
+    justify-content: flex-start;
+}
+.mm-actions > .btn,
+.mm-btn-row > .btn,
+.mm-actions-cell .btn {
+    direction: rtl;
+}
+.mm-btn-row {
+    direction: ltr;
+    justify-content: flex-start;
+}
+.mm-actions-cell {
+    text-align: left !important;
+    direction: ltr;
+}

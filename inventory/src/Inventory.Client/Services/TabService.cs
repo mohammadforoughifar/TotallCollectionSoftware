@@ -120,6 +120,7 @@ public sealed class TabService
         ("projects",                    "پروژه‌ها",             "bi-arrow-left-right"),
         ("karfarmas",                   "کارفرماها",            "bi-briefcase"),
         ("letters",                     "نامه داخلی",           "bi-envelope-paper"),
+        ("misc/minutes",                "صورتجلسه",             "bi-journal-text"),
         ("expenses",                    "هزینه‌ها",             "bi-cash-coin"),
         ("repairs",                     "تعمیرات",              "bi-tools"),
         ("stock",                       "موجودی انبار",         "bi-boxes"),
@@ -159,9 +160,12 @@ public sealed class TabService
                 || key.StartsWith(k.Prefix + "?", StringComparison.OrdinalIgnoreCase))
                 return (k.Title, k.Icon);
 
-        // بخش‌های منابع انسانی بن‌سازه عنوانِ خود را دارند
-        var hr = HrNavigation.Title(key);
-        if (!string.IsNullOrWhiteSpace(hr)) return (hr!, "bi-people");
+        // فقط مسیرهای خودِ منابع انسانی — وگرنه هر صفحهٔ ناشناخته «منابع انسانی» می‌شد
+        if (HrNavigation.IsWorkspace(key))
+        {
+            var hr = HrNavigation.Title(key);
+            if (!string.IsNullOrWhiteSpace(hr)) return (hr, "bi-people");
+        }
 
         return (key.Split('?')[0].Trim('/'), "bi-circle");
     }
@@ -204,12 +208,15 @@ public sealed class TabService
                 if (_tabs.Any(x => x.Key == key)) continue;
 
                 var (title, icon) = Resolve(key);
+                var savedTitle = s.Title ?? "";
+                var staleHr = !HrNavigation.IsWorkspace(key)
+                    && (savedTitle == "منابع انسانی" || savedTitle == "خانه منابع انسانی");
                 _tabs.Add(new TabItem
                 {
                     Key = key,
                     Url = s.Url,
-                    Title = string.IsNullOrWhiteSpace(s.Title) ? title : s.Title,
-                    Icon = string.IsNullOrWhiteSpace(s.Icon) ? icon : s.Icon,
+                    Title = string.IsNullOrWhiteSpace(savedTitle) || staleHr ? title : savedTitle,
+                    Icon = string.IsNullOrWhiteSpace(s.Icon) || staleHr ? icon : s.Icon,
                     // تبِ خانه همیشه سنجاق است
                     Pinned = s.Pinned || key.Length == 0
                 });
@@ -264,6 +271,13 @@ public sealed class TabService
         else
         {
             t.Url = relativeUrl;
+            if (!HrNavigation.IsWorkspace(key)
+                && (t.Title == "منابع انسانی" || t.Title == "خانه منابع انسانی"))
+            {
+                var (title, icon) = Resolve(key);
+                t.Title = title;
+                t.Icon = icon;
+            }
         }
 
         t.RouteData = routeData;

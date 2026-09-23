@@ -322,16 +322,26 @@ public class MeetingMinutesController : RbacControllerBase
         }
     }
 
-    // ================== قالب چاپی با سربرگ ==================
+    // ================== قالب چاپی — سربرگ اختیاری است ==================
 
+    [HttpGet("{id:int}/print")]
     [HttpGet("{id:int}/print.pdf")]
     public async Task<IActionResult> Print(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "Print") is { } f) return f;
-        var pdf = await _print.GeneratePdfAsync(id);
-        if (pdf is null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
-        var fileName = $"صورتجلسه-{id}.pdf";
-        return File(pdf, "application/pdf", fileName);
+        try
+        {
+            var pdf = await _print.GeneratePdfAsync(id);
+            if (pdf is null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
+            var fileName = $"صورتجلسه-{id}.pdf";
+            return File(pdf, "application/pdf", fileName);
+        }
+        catch (Exception ex)
+        {
+            var msg = ex.Message ?? "خطای ناشناخته";
+            if (msg.Length > 280) msg = msg[..280] + "…";
+            return BadRequest(new { message = "ساخت PDF صورتجلسه ناموفق بود: " + msg });
+        }
     }
 
     // ================== ابزار ==================

@@ -483,7 +483,8 @@
         new() { Title = "مدیریت سیستم", Icon = "bi-gear", Modules = new[] { "SystemUsers", "Settings", "ItRequests" } },
         new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
-        new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } }
+        new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } },
+        new() { Title = "فرم‌های متفرقه", Icon = "bi-journal-text", Modules = new[] { "MeetingMinutes" } }
     };
 
     // ==================== ترجمه فارسی ====================
@@ -528,6 +529,7 @@
         ["IncomingLetters"] = "نامه وارده (دبیرخانه)",
         ["Email"] = "ایمیل سازمانی (پست الکترونیک) ✉",
         ["LetterStructures"] = "ساختار شماره نامه (اتوماسیون اداری)",
+        ["MeetingMinutes"] = "صورتجلسه",
         // ==================== ماژول‌های ERP ====================
         ["InvDocs"] = "اسناد انبار (رسید و حواله)",
         ["InvDocTypes"] = "انواع سند انبار",
@@ -695,7 +697,16 @@
         ["RadisHr.ProductionDaily"] = "گزارش روزانه",
         ["RadisHr.Notices"] = "اطلاعیه‌ها",
         ["RadisHr.Access"] = "دسترسی کامل به همهٔ بخش‌ها + عملیات مدیریتی (پرسنل، سازمان، حقوق و اطلاعیه‌ها)",
-        ["HrCore.Recruitment"] = "جذب و استخدام"
+        ["HrCore.Recruitment"] = "جذب و استخدام",
+        ["MeetingMinutes.View"] = "مشاهده صورتجلسه‌ها",
+        ["MeetingMinutes.Create"] = "ثبت صورتجلسه",
+        ["MeetingMinutes.Update"] = "ویرایش صورتجلسه",
+        ["MeetingMinutes.Delete"] = "حذف صورتجلسه",
+        ["MeetingMinutes.Sign"] = "امضای الکترونیکی صورتجلسه",
+        ["MeetingMinutes.Print"] = "چاپ صورتجلسه",
+        ["MeetingMinutes.ToInnerLetter"] = "تبدیل به نامه داخلی",
+        ["MeetingMinutes.ToOutgoingLetter"] = "تبدیل به نامه صادره",
+        ["MeetingMinutes.SendEmail"] = "ارسال صورتجلسه با ایمیل"
     };
 
     private static string GetActionLabel(string module, string action)

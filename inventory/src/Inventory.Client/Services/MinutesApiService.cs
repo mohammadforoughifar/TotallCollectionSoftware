@@ -95,7 +95,7 @@ public class MinutesApiService : IMinutesApiService
         return ExtractId(r);
     }
 
-    public string PrintUrl(int id) => _api.BuildUrl($"api/meeting-minutes/{id}/print.pdf");
+    public string PrintUrl(int id) => _api.BuildUrl($"api/meeting-minutes/{id}/print");
 
     private static int ExtractId(object? r)
     {

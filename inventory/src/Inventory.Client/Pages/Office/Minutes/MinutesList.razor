@@ -5,15 +5,18 @@
 @inject NavigationManager Nav
 @inject IApiClient Api
 @inject RealtimeService Rt
+@inject LayoutState Layout
 @implements IDisposable
 
 <PageTitle>صورتجلسه‌ها — فرم‌های متفرقه</PageTitle>
 
 <div class="container-fluid py-3" style="max-width:1300px">
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div class="d-flex flex-wrap align-items-center gap-2">
         <h4 class="mb-0"><i class="bi bi-journal-text me-2"></i>صورتجلسه‌ها</h4>
         <span class="badge text-bg-light border" title="تعداد ثبت‌شده">@(items.Count) مورد</span>
-        <div class="ms-auto d-flex flex-wrap gap-2">
+        </div>
+        <div class="d-flex flex-wrap gap-2 mm-actions">
             @if (Auth.Has("MeetingMinutes.Create"))
             {
                 <button class="btn btn-primary btn-sm" @onclick="GoNew">
@@ -69,7 +72,7 @@
                             <th style="width:130px">وضعیت</th>
                             <th style="width:110px">پیشرفت بندها</th>
                             <th style="width:110px">شرکت‌کنندگان</th>
-                            <th style="width:130px" class="text-end">عملیات</th>
+                            <th style="width:130px" class="mm-actions-cell">عملیات</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -115,7 +118,8 @@
                                         <span class="ms-2" title="پیوست"><i class="bi bi-paperclip me-1 text-secondary"></i>@m.AttachmentCount</span>
                                     }
                                 </td>
-                                <td class="text-end">
+                                <td class="mm-actions-cell">
+                                    <div class="d-inline-flex gap-1 mm-btn-row">
                                     <button type="button" class="btn btn-sm btn-outline-primary" title="باز کردن"
                                             @onclick:stopPropagation="true" @onclick="() => Open(m.Id)">
                                         <i class="bi bi-eye"></i>
@@ -127,6 +131,7 @@
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     }
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -166,7 +171,7 @@
                                     <span class="ms-2"><i class="bi bi-check-circle me-1"></i>بندها: @done از @total</span>
                                 }
                             </div>
-                            <div class="d-flex justify-content-end gap-1 pt-2 border-top">
+                            <div class="d-flex mm-btn-row gap-1 pt-2 border-top">
                                 <button type="button" class="btn btn-sm btn-outline-primary" @onclick:stopPropagation="true" @onclick="() => Open(m.Id)">
                                     <i class="bi bi-eye me-1"></i>مشاهده و جزئیات
                                 </button>
@@ -210,6 +215,7 @@
 
 protected override void OnInitialized()
     {
+        Layout.SetTitle("صورتجلسه‌ها");
         Rt.DataChanged += OnRealtimeChanged;
     }
 

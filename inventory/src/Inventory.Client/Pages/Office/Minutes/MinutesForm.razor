@@ -10,6 +10,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject RealtimeService Rt
+@inject LayoutState Layout
 @implements IDisposable
 
 <PageTitle>صورتجلسه — فرم‌های متفرقه</PageTitle>
@@ -17,7 +18,8 @@
 <div class="container-fluid py-3" style="max-width:1400px">
 
     @* ================== نوار بالای صفحه ================== *@
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div class="d-flex flex-wrap align-items-center gap-2">
         <button class="btn btn-sm btn-outline-secondary" @onclick='() => Nav.NavigateTo("misc/minutes")'>
             <i class="bi bi-arrow-right me-1"></i>فهرست صورتجلسه‌ها
         </button>
@@ -41,7 +43,8 @@
                 <span class="badge text-bg-light border num">بندها: @done از @detail.Items.Count انجام شد</span>
             }
         }
-        <div class="ms-auto d-flex flex-wrap flex-row-reverse gap-1 justify-content-start">
+        </div>
+        <div class="d-flex flex-wrap gap-1 mm-actions">
             @if (canEdit)
             {
                 <button class="btn btn-sm btn-primary" disabled="@busy" @onclick="Save">
@@ -54,7 +57,7 @@
             @if (minutesId > 0)
             {
                 <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="DownloadPrint">
-                    <i class="bi bi-printer me-1"></i>چاپ (با سربرگ)
+                    <i class="bi bi-printer me-1"></i>چاپ
                 </button>
                 @if (canWorkOrder)
                 {
@@ -192,12 +195,14 @@
 
         @* ================== کارت بندها ================== *@
         <div class="card border-0 shadow-sm mb-3">
-            <div class="card-header bg-white py-2 d-flex align-items-center gap-2">
+            <div class="card-header bg-white py-2 d-flex align-items-center justify-content-between gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2">
                 <span class="fw-600"><i class="bi bi-list-ol me-1"></i>بندها / موارد بحث و تصمیمات</span>
                 <span class="fs-7 text-muted">هر بند: شرح، تاریخ انجام، مسئول، تاریخ پیگیری، مسئول پیگیری</span>
+                </div>
                 @if (canEdit)
                 {
-                    <button type="button" class="btn btn-sm btn-primary ms-auto" @onclick="NewRow">
+                    <button type="button" class="btn btn-sm btn-primary" @onclick="NewRow">
                         <i class="bi bi-plus-lg me-1"></i>افزودن بند
                     </button>
                 }
@@ -216,7 +221,7 @@
                             <th style="width:150px">تصمیمات</th>
                             @if (canEdit || canWorkOrder || canInnerLetter)
                             {
-                                <th style="width:170px" class="text-end">عملیات</th>
+                                <th style="width:170px" class="mm-actions-cell">عملیات</th>
                             }
                         </tr>
                     </thead>
@@ -260,7 +265,7 @@
                                         </span>
                                     </div>
                                 </td>
-                                <td class="text-end">
+                                <td class="mm-actions-cell">
                                     @RowActions(row)
                                 </td>
                             </tr>
@@ -302,7 +307,7 @@
                                     <i class="bi @(row.FollowUpDecision == "Rejected" ? "bi-x-circle" : "bi-check2-circle") me-1"></i>پیگیری: @row.FollowUpNote
                                 </div>
                             }
-                            <div class="d-flex flex-wrap gap-1 justify-content-end mt-2 pt-2 border-top">
+                            <div class="d-flex flex-wrap gap-1 mm-btn-row mt-2 pt-2 border-top">
                                 @RowActions(row)
                             </div>
                         </div>
@@ -497,12 +502,14 @@
 
     protected override void OnInitialized()
     {
+        Layout.SetTitle("صورتجلسه");
         Rt.DataChanged += OnRealtimeChanged;
     }
 
     protected override async Task OnParametersSetAsync()
     {
         minutesId = Id ?? 0;
+        Layout.SetTitle(minutesId == 0 ? "ثبت صورتجلسه" : $"صورتجلسه {minutesId}");
         if (!canView) return;
         try
         {
@@ -552,7 +559,16 @@
         attendeeIds = detail.Participants.Where(p => p.Kind == "Attendee").Select(p => p.UserId).ToList();
         absentIds = detail.Participants.Where(p => p.Kind == "Absent").Select(p => p.UserId).ToList();
         rows = detail.Items.Select(i => ToRowForm(i)).ToList();
+        ApplyTabTitle();
         await LoadWorkOrderBadgesAsync();
+    }
+
+    private void ApplyTabTitle()
+    {
+        var name = (detail?.Title ?? title ?? "").Trim();
+        Layout.SetTitle(string.IsNullOrWhiteSpace(name)
+            ? (minutesId == 0 ? "ثبت صورتجلسه" : $"صورتجلسه {minutesId}")
+            : $"صورتجلسه — {name}");
     }
 
     private static RowForm ToRowForm(MinutesItemDto i) => new()
@@ -854,7 +870,7 @@ private async Task DoSubmit()
     {
         int seq = 0;
         builder.OpenElement(seq++, "div");
-        builder.AddAttribute(seq++, "class", "d-flex flex-wrap gap-1");
+        builder.AddAttribute(seq++, "class", "d-flex flex-wrap gap-1 mm-btn-row");
 
         if (canEdit && row.Id > 0)
         {
@@ -975,7 +991,9 @@ private async Task DoSubmit()
     {
         try
         {
-            var (data, fileName, contentType) = await Api.GetFileAsync($"api/meeting-minutes/{minutesId}/print.pdf");
+            var (data, fileName, contentType) = await Api.GetFileAsync($"api/meeting-minutes/{minutesId}/print");
+            if (data.Length < 5 || data[0] != (byte)'%' || data[1] != (byte)'P')
+                throw new Exception("خروجی چاپ PDF معتبر نیست.");
             var b64 = Convert.ToBase64String(data);
             await JS.InvokeAsync<bool>("downloadBase64", fileName, b64, contentType);
         }

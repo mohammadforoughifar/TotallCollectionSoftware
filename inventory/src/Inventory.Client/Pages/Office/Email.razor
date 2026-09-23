@@ -1061,7 +1061,7 @@
 
                 try
                 {
-                    var pdfRes = await Api.GetFileAsync($"api/meeting-minutes/{minutesId}/print.pdf");
+                    var pdfRes = await Api.GetFileAsync($"api/meeting-minutes/{minutesId}/print");
                     if (pdfRes.Data != null && pdfRes.Data.Length > 0)
                     {
                         var fname = !string.IsNullOrWhiteSpace(pdfRes.FileName) ? pdfRes.FileName : $"صورتجلسه-{minutesId}.pdf";
