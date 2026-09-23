@@ -162,6 +162,154 @@ else
                                     }
                                 </div>
 
+                                @* ================== اعلان در پیام‌رسان‌های بله و ایتا ================== *@
+                                <div class="ntf-push-row">
+                                    <div class="d-flex align-items-center gap-2 flex-grow-1 min-w-0">
+                                        <div class="ntf-push-icon"><i class="bi bi-chat-dots"></i></div>
+                                        <div class="min-w-0">
+                                            <div class="fs-8 fw-700">اعلان در بله و ایتا</div>
+                                            <div class="fs-9 text-muted ntf-push-msg">@msgStatusText</div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenMsgPanel" disabled="@msgBusy" title="اتصال و تنظیم اعلان‌های بله و ایتا">
+                                        <i class="bi bi-link-45deg"></i><span>اتصال</span>
+                                    </button>
+                                </div>
+
+                                @* ===== پنل اتصال پیام‌رسان‌ها (بله و ایتا) ===== *@
+                                @if (msgPanel)
+                                {
+                                    <div class="vapid-overlay" @onclick="CloseMsgPanel">
+                                        <div class="vapid-card" @onclick:stopPropagation>
+                                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                                <h6 class="fw-bold mb-0"><i class="bi bi-chat-dots text-primary"></i> اعلان در بله و ایتا</h6>
+                                                <button type="button" class="btn-close" @onclick="CloseMsgPanel"></button>
+                                            </div>
+
+                                            @if (msgBusy && msgStatus == null)
+                                            {
+                                                <div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                                            }
+                                            else
+                                            {
+                                                @* ---------- بله ---------- *@
+                                                <div class="border rounded-3 p-2 mb-2">
+                                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                                        <span class="fw-700 fs-8"><i class="bi bi-send-check text-success"></i> پیام‌رسان بله</span>
+                                                        @if (msgStatus?.baleLinked == true)
+                                                        {
+                                                            <span class="badge text-bg-success">متصل</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge text-bg-secondary">متصل نیست</span>
+                                                        }
+                                                    </div>
+                                                    @if (msgStatus?.baleLinked == true)
+                                                    {
+                                                        <div class="fs-9 text-muted">اعلان‌های سامانه در بله برای شما ارسال می‌شود.</div>
+                                                    }
+                                                    else if (msgStatus?.baleConfigured != true)
+                                                    {
+                                                        <div class="fs-9 text-muted">ربات بله هنوز روی سرور تنظیم نشده است؛ مدیر سامانه باید توکن ربات را در «تنظیمات ← پیام‌رسان‌ها» وارد کند.</div>
+                                                    }
+                                                    else if (msgStatus?.hasMobile != true)
+                                                    {
+                                                        <div class="fs-9 text-muted">برای تطبیق خودکار، شماره موبایل در پرونده‌ی کاربری شما ثبت نشده است؛ از مدیر سامانه بخواهید شماره را ثبت کند.</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="fs-9 text-muted">
+                                                            برای اتصال: در بله ربات سامانه را باز کنید، دکمه‌ی «شروع/Start» را بزنید و شماره‌ی خود را ارسال کنید —
+                                                            اتصال به‌صورت خودکار انجام می‌شود (حتی می‌توانید شماره را از منوی پیوست ← «مخاطب» بفرستید).
+                                                        </div>
+                                                    }
+                                                    <div class="d-flex gap-2 mt-2">
+                                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="TestMessengerAsync" disabled="@msgBusy">
+                                                            <i class="bi bi-send"></i> ارسال آزمایشی
+                                                        </button>
+                                                        @if (msgStatus?.isAdmin == true)
+                                                        {
+                                                            <button type="button" class="btn btn-sm btn-outline-success" @onclick="SyncBaleAsync" disabled="@msgBusy">
+                                                                <i class="bi bi-arrow-repeat"></i> همگام‌سازی بله
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                @* ---------- ایتا ---------- *@
+                                                <div class="border rounded-3 p-2 mb-2">
+                                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                                        <span class="fw-700 fs-8"><i class="bi bi-send-check text-success"></i> پیام‌رسان ایتا</span>
+                                                        @if (msgStatus?.eitaaLinked == true)
+                                                        {
+                                                            <span class="badge text-bg-success">متصل</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge text-bg-secondary">متصل نیست</span>
+                                                        }
+                                                    </div>
+                                                    @if (msgStatus?.eitaaLinked == true)
+                                                    {
+                                                        <div class="fs-9 text-muted">اعلان‌های سامانه در ایتا برای شما ارسال می‌شود.</div>
+                                                    }
+                                                    else if (msgStatus?.eitaaConfigured != true)
+                                                    {
+                                                        <div class="fs-9 text-muted">برنامه‌ی ایتا هنوز روی سرور تنظیم نشده است؛ مدیر سامانه باید توکن برنامه (developer.eitaa.com) را در «تنظیمات ← پیام‌رسان‌ها» وارد کند.</div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="fs-9 text-muted">
+                                                            برای اتصال: دکمه‌ی «دریافت کد اتصال» را بزنید، سپس در ایتا برنامه‌ی سامانه را باز کنید و همان کد را وارد کنید.
+                                                        </div>
+                                                    }
+
+                                                    @if (eitaaCode != null)
+                                                    {
+                                                        <div class="alert alert-light border py-2 my-2">
+                                                            <div class="fs-9 text-muted mb-1">کد اتصال شما (۱۵ دقیقه اعتبار):</div>
+                                                            <div class="d-flex align-items-center gap-2">
+                                                                <span class="fs-4 fw-bold text-primary" style="letter-spacing:.25em" dir="ltr">@eitaaCode</span>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => CopyText(eitaaCode)" title="کپی کد"><i class="bi bi-clipboard"></i></button>
+                                                            </div>
+                                                            <div class="fs-9 text-muted mt-1">
+                                                                ایتا ← منوی «برنامه‌ها» ← برنامه‌ی سامانه ← وارد کردن همین کد و زدن دکمه‌ی «اتصال».
+                                                            </div>
+                                                        </div>
+                                                    }
+
+                                                    <div class="d-flex gap-2 mt-2">
+                                                        @if (msgStatus?.eitaaLinked != true)
+                                                        {
+                                                            <button type="button" class="btn btn-sm btn-primary" @onclick="GetEitaaCodeAsync" disabled="@msgBusy">
+                                                                <i class="bi bi-key"></i> دریافت کد اتصال
+                                                            </button>
+                                                        }
+                                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="TestMessengerAsync" disabled="@msgBusy">
+                                                            <i class="bi bi-send"></i> ارسال آزمایشی
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                @if (!string.IsNullOrWhiteSpace(msgResultText))
+                                                {
+                                                    <div class="alert alert-light border py-2 mb-2 fs-8">@msgResultText</div>
+                                                }
+
+                                                <div class="fs-9 text-muted">
+                                                    پس از تنظیم توکن‌ها توسط مدیر، اعلان‌های سامانه‌ای که برای شما ثبت می‌شود، علاوه بر نرم‌افزار،
+                                                    به بله و ایتای شما هم ارسال می‌گردد. (در ایتا، اعتبار ارسال روزانه‌ی برنامه بر اساس تعامل کاربران تعیین می‌شود.)
+                                                </div>
+
+                                                <div class="d-flex justify-content-end gap-2 mt-2">
+                                                    <button type="button" class="btn btn-sm btn-light" @onclick="LoadMsgStatusAsync" disabled="@msgBusy">بررسی وضعیت</button>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
                                 @* ===== پنل مدیریت کلیدهای VAPID (مدیر) ===== *@
                                 @if (vapidPanel)
                                 {
@@ -544,6 +692,114 @@ else
     private class VapidState { public string? publicKey { get; set; } public bool configured { get; set; } }
     private class VapidKeysResult { public string publicKey { get; set; } = ""; public string privateKey { get; set; } = ""; public string subject { get; set; } = ""; }
 
+    // ================== اعلان در پیام‌رسان‌های بله و ایتا ==================
+    private bool msgPanel, msgBusy;
+    private MsgStatus? msgStatus;
+    private string msgStatusText = "برای اتصال، دکمه‌ی «اتصال» را بزنید.";
+    private string msgResultText = "";
+    private string? eitaaCode;
+
+    private void OpenMsgPanel()
+    {
+        msgPanel = true;
+        _ = LoadMsgStatusAsync();
+    }
+    private void CloseMsgPanel() => msgPanel = false;
+
+    private async Task LoadMsgStatusAsync()
+    {
+        if (!Auth.IsLoggedIn) return;
+        msgBusy = true;
+        try
+        {
+            SetAuthHeader();
+            msgStatus = await Http.GetFromJsonAsync<MsgStatus>("api/notifications/messenger-status");
+            msgStatusText = DescribeMsgStatus();
+        }
+        catch { msgStatusText = "دریافت وضعیت پیام‌رسان‌ها ناموفق بود."; }
+        finally { msgBusy = false; }
+    }
+
+    private string DescribeMsgStatus()
+    {
+        if (msgStatus == null) return msgStatusText;
+        var parts = new List<string>();
+        if (msgStatus.baleLinked) parts.Add("بله: متصل");
+        if (msgStatus.eitaaLinked) parts.Add("ایتا: متصل");
+        if (parts.Count > 0) return string.Join(" • ", parts);
+        return msgStatus.baleConfigured || msgStatus.eitaaConfigured
+            ? "هنوز به بله/ایتا متصل نشده‌اید — دکمه‌ی «اتصال» را بزنید."
+            : "پیام‌رسان‌ها هنوز روی سرور تنظیم نشده‌اند (تنظیمات ← پیام‌رسان‌ها).";
+    }
+
+    private async Task TestMessengerAsync()
+    {
+        if (msgBusy) return;
+        msgBusy = true; msgResultText = "در حال ارسال پیام آزمایشی…";
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync("api/notifications/test-messenger", new { });
+            var r = await resp.Content.ReadFromJsonAsync<MsgTestRes>();
+            msgResultText = r?.message ?? "پاسخ نامشخص از سرور.";
+        }
+        catch { msgResultText = "ارسال آزمایشی ناموفق بود؛ اتصال شبکه را بررسی کنید."; }
+        finally { msgBusy = false; }
+    }
+
+    private async Task SyncBaleAsync()
+    {
+        if (msgBusy) return;
+        msgBusy = true; msgResultText = "در حال همگام‌سازی بله…";
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync("api/notifications/sync-bale", new { });
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<MsgSyncRes>() : null;
+            msgResultText = r?.message ?? "همگام‌سازی انجام نشد (دسترسی مدیر لازم است).";
+            await LoadMsgStatusAsync();
+        }
+        catch { msgResultText = "همگام‌سازی بله ناموفق بود."; }
+        finally { msgBusy = false; }
+    }
+
+    private async Task GetEitaaCodeAsync()
+    {
+        if (msgBusy) return;
+        msgBusy = true; msgResultText = "در حال ساخت کد اتصال…";
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync("api/notifications/eitaa-link-code", new { });
+            var r = await resp.Content.ReadFromJsonAsync<MsgCodeRes>();
+            if (!string.IsNullOrWhiteSpace(r?.code))
+            {
+                eitaaCode = r!.code;
+                msgResultText = r.message ?? "کد ساخته شد.";
+            }
+            else msgResultText = r?.message ?? "ساخت کد اتصال ناموفق بود.";
+            msgStatusText = DescribeMsgStatus();
+        }
+        catch { msgResultText = "ساخت کد اتصال ناموفق بود."; }
+        finally { msgBusy = false; }
+    }
+
+    private class MsgStatus
+    {
+        public bool baleConfigured { get; set; }
+        public bool eitaaConfigured { get; set; }
+        public bool baleLinked { get; set; }
+        public bool eitaaLinked { get; set; }
+        public bool hasMobile { get; set; }
+        public bool isAdmin { get; set; }
+        public bool eitaaCodeActive { get; set; }
+        public string? ackEitaaUserId { get; set; }
+        public string? senderNumber { get; set; }
+    }
+    private class MsgTestRes { public bool posted { get; set; } public string? message { get; set; } public string? bale { get; set; } public string? eitaa { get; set; } }
+    private class MsgSyncRes { public int matched { get; set; } public string? message { get; set; } }
+    private class MsgCodeRes { public string? code { get; set; } public DateTime? expiresAt { get; set; } public bool configured { get; set; } public string? message { get; set; } }
+
     public class NtfItem
     {
         public int Id { get; set; }
@@ -585,6 +841,9 @@ else
 
         // وضعیت نوتیفیکیشن گوشی/تبلت (Web Push)
         await InitPushStateAsync();
+
+        // وضعیت اتصال پیام‌رسان‌ها (بله و ایتا)
+        await LoadMsgStatusAsync();
     }
 
     // ==================== اتوماسیون اداری: شمارنده نامه‌های نخوانده ====================

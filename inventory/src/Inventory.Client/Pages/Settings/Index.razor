@@ -169,21 +169,30 @@
         @if (!loading)
         {
             <p class="fs-8 text-muted mb-3">
-                با تنظیم توکن‌ها، هر نوتیفیکیشن سامانه برای کاربرانی که بله/ایتا دارند به پیام‌رسانشان هم ارسال می‌شود.
-                کاربران باید یک‌بار ربات بله را استارت و شماره خود را به اشتراک بگذارند؛ سپس در صفحه «کاربران» دکمه «همگام‌سازی بله» را بزنید.
+                با تنظیم توکن‌ها، اعلان‌های هر کاربر علاوه بر نرم‌افزار، در <b>بله</b> و <b>ایتا</b> هم برای خودش ارسال می‌شود.
+                هر کاربر از پنجره‌ی «اعلان‌ها» (زنگ بالای صفحه) اتصال حساب خود را انجام می‌دهد و می‌تواند پیام آزمایشی بگیرد.
             </p>
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">توکن ربات بله</label>
-                    <input class="form-control num" dir="ltr" placeholder="123456:abcdef..." @bind="model.BaleBotToken" />
+                    <input class="form-control num" dir="ltr" placeholder="123456789:abc..." @bind="model.BaleBotToken" />
+                    <div class="fs-9 text-muted mt-1">
+                        در بله با ربات <b>@@botfather</b> <span dir="ltr">(ble.ir/botfather)</span> ربات بسازید و توکن را اینجا بگذارید.
+                        کاربران با استارت ربات و ارسال شماره‌شان (دکمه‌ی «ارسال شماره من») به‌صورت خودکار متصل می‌شوند.
+                    </div>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">توکن ایتایار (eitaayar.ir)</label>
-                    <input class="form-control num" dir="ltr" @bind="model.EitaaToken" />
+                    <label class="form-label">توکن برنامه ایتا <span dir="ltr" class="fs-9">(developer.eitaa.com)</span></label>
+                    <input class="form-control num" dir="ltr" placeholder="5768337691:AAG..." @bind="model.EitaaToken" />
+                    <div class="fs-9 text-muted mt-1">
+                        برنامه را در <span dir="ltr">eitaayar.ir ← برنامه‌ها</span> بسازید و «آدرس مقصد» آن را روی
+                        <span dir="ltr">https://آدرس-سرور/eitaa-app</span> قرار دهید. کاربران با «کد اتصال» حساب ایتای خود را وصل می‌کنند.
+                    </div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">شماره معرف سامانه (در امضای پیام‌ها)</label>
                     <input class="form-control num" dir="ltr" @bind="model.MessengerSenderNumber" />
+                    <div class="fs-9 text-muted mt-1">این شماره در انتهای هر پیام ارسالی به بله/ایتا نمایش داده می‌شود.</div>
                 </div>
             </div>
         }

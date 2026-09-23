@@ -246,6 +246,8 @@ builder.Services.AddHttpClient("WebPush").ConfigurePrimaryHttpMessageHandler(() 
 builder.Services.AddScoped<IPushTransport, WebPushTransport>();
 builder.Services.AddHostedService<PushDeliveryWorker>();
 builder.Services.AddScoped<IMessengerService, MessengerService>();
+builder.Services.AddSingleton<IMessengerLinkCodes, MessengerLinkCodes>();
+builder.Services.AddHostedService<BaleBotWorker>(); // خواندن خودکار پیام‌های ربات بله (/start و اشتراک شماره)
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient("moadian", c => c.Timeout = TimeSpan.FromSeconds(30)); // سرویس مودیان (فاکتور الکترونیکی)
 builder.Services.AddSingleton<HardwareMonitor>();

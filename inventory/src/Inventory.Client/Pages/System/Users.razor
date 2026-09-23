@@ -275,8 +275,27 @@ else
                 </div>
             </div>
             <div class="col-md-6">
-                <label class="form-label">شناسه چت ایتا <span class="fs-8 text-muted">(اختیاری — دستی)</span></label>
-                <input class="form-control num" dir="ltr" @bind="form.EitaaChatId" />
+                <label class="form-label">شناسه ایتا <span class="fs-8 text-muted">(عددی — خودکار با «کد اتصال» پر می‌شود)</span></label>
+                <div class="input-group">
+                    <input class="form-control num" dir="ltr" @bind="form.EitaaChatId" />
+                    @if (Auth.IsAdmin && editing)
+                    {
+                        <button class="btn btn-outline-primary" type="button" @onclick="GetEitaaCode" disabled="@codeBusy" title="ساخت کد اتصال برای این کاربر">
+                            @if (codeBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                            <i class="bi bi-key"></i> کد اتصال
+                        </button>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(userEitaaCode))
+                {
+                    <div class="alert alert-light border py-2 mt-2 mb-0 fs-8">
+                        کد اتصال این کاربر: <b class="fs-5" dir="ltr" style="letter-spacing:.2em">@userEitaaCode</b>
+                        <div class="text-muted mt-1">
+                            این کد را به کاربر بدهید؛ او در ایتا برنامه‌ی سامانه را باز می‌کند و کد را وارد می‌کند (۱۵ دقیقه اعتبار).
+                        </div>
+                    </div>
+                }
+                <div class="fs-8 text-muted mt-1">شناسه چت ایتا پس از اتصال کاربر، خودکار در همین کادر ثبت می‌شود.</div>
             </div>
             @if (Auth.IsAdmin && editing)
             {
@@ -469,6 +488,33 @@ else
         finally { syncing = false; }
     }
     private class SyncRes { public int Matched { get; set; } public string Message { get; set; } = ""; }
+
+    // ===== کد اتصال ایتا برای این کاربر (مدیر) =====
+    private bool codeBusy;
+    private string? userEitaaCode;
+
+    private async Task GetEitaaCode()
+    {
+        if (form.Id <= 0) { Toast.Error("ابتدا کاربر را ذخیره کنید، سپس کد اتصال بگیرید."); return; }
+        codeBusy = true;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Auth.Token))
+                Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+            var resp = await Http.PostAsync($"/api/notifications/eitaa-link-code/{form.Id}", null);
+            var res = await resp.Content.ReadFromJsonAsync<CodeRes>();
+            if (!string.IsNullOrWhiteSpace(res?.Code))
+            {
+                userEitaaCode = res!.Code;
+                Toast.Success(res.Message);
+            }
+            else Toast.Error(res?.Message ?? "ساخت کد اتصال انجام نشد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { codeBusy = false; }
+    }
+
+    private class CodeRes { public string? Code { get; set; } public string? Message { get; set; } public bool Configured { get; set; } }
 
     // ================== افراد مجاز دستور کار (بند ۶) ==================
     private HashSet<int> woAllowed = new();

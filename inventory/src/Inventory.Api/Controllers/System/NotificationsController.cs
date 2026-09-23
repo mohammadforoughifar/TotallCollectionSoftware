@@ -16,11 +16,13 @@ public class NotificationsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IMessengerService _messenger;
+    private readonly IMessengerLinkCodes _codes;
     private readonly IPushService _push;
-    public NotificationsController(AppDbContext db, IMessengerService messenger, IPushService push)
+    public NotificationsController(AppDbContext db, IMessengerService messenger, IMessengerLinkCodes codes, IPushService push)
     {
         _db = db;
         _messenger = messenger;
+        _codes = codes;
         _push = push;
     }
 
@@ -64,21 +66,128 @@ public class NotificationsController : ControllerBase
         return Ok();
     }
 
-    /// <summary>همگام‌سازی بله — تطبیق مخاطبین ربات با موبایل کاربران.</summary>
+    // ================== پیام‌رسان‌ها: بله و ایتا ==================
+
+    /// <summary>وضعیت اتصال پیام‌رسان‌ها برای کاربر جاری (برای نمایش در پنل اعلان‌ها).</summary>
+    [HttpGet("messenger-status")]
+    public async Task<IActionResult> MessengerStatus()
+    {
+        if (MyUserId <= 0) return Unauthorized();
+
+        var settings = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
+        var user = await _db.Users.AsNoTracking()
+            .Where(u => u.Id == MyUserId)
+            .Select(u => new { u.BaleChatId, u.EitaaChatId, u.Mobile })
+            .FirstOrDefaultAsync();
+        if (user == null) return NotFound();
+
+        return Ok(new
+        {
+            baleConfigured = !string.IsNullOrWhiteSpace(settings?.BaleBotToken),
+            eitaaConfigured = !string.IsNullOrWhiteSpace(settings?.EitaaToken),
+            baleLinked = !string.IsNullOrWhiteSpace(user.BaleChatId),
+            eitaaLinked = !string.IsNullOrWhiteSpace(user.EitaaChatId),
+            hasMobile = !string.IsNullOrWhiteSpace(user.Mobile),
+            ackEitaaUserId = user.EitaaChatId,
+            senderNumber = settings?.MessengerSenderNumber ?? "09111189771",
+            isAdmin = await IsPushAdminAsync(),
+            eitaaCodeActive = _codes.HasActive(MyUserId)
+        });
+    }
+
+    /// <summary>همگام‌سازی بله — تطبیق مخاطبین ربات با موبایل کاربران (فقط مدیر سامانه).</summary>
     [HttpPost("sync-bale")]
     public async Task<IActionResult> SyncBale()
     {
+        if (MyUserId <= 0) return Unauthorized();
+        if (!await IsPushAdminAsync())
+            return StatusCode(403, new { message = "تنها مدیر سامانه مجاز به همگام‌سازی بله است." });
+
         var (matched, message) = await _messenger.SyncBaleAsync();
         return Ok(new { matched, message });
     }
 
-    /// <summary>ارسال پیام آزمایشی بله/ایتا به کاربر جاری.</summary>
+    /// <summary>ارسال پیام آزمایشی بله/ایتا به کاربر جاری — نتیجه‌ی هر پیام‌رسان برگردانده می‌شود.</summary>
     [HttpPost("test-messenger")]
     public async Task<IActionResult> TestMessenger()
     {
         if (MyUserId <= 0) return Unauthorized();
-        await _messenger.SendToUserAsync(MyUserId, "پیام آزمایشی", "اتصال بله/ایتا برقرار است ✅");
-        return Ok(new { message = "در صورت تنظیم توکن و شناسه چت، پیام ارسال شد." });
+
+        var r = await _messenger.SendTestAsync(MyUserId);
+        if (!r.Linked)
+            return Ok(new { posted = false, message = "حساب شما هنوز به بله یا ایتا متصل نشده است — ابتدا از همین پنجره اتصال را انجام دهید." });
+
+        var sentTo = new List<string>();
+        if (r.BaleSent) sentTo.Add("بله");
+        if (r.EitaaSent) sentTo.Add("ایتا");
+
+        var problems = new List<string>();
+        if (r.BaleError != null) problems.Add("بله: " + r.BaleError);
+        if (r.EitaaError != null) problems.Add("ایتا: " + r.EitaaError);
+
+        var message = sentTo.Count > 0
+            ? $"پیام آزمایشی به {string.Join(" و ", sentTo)} ارسال شد."
+            : "ارسال انجام نشد." + (problems.Count > 0 ? " " + string.Join(" | ", problems) : "");
+        if (sentTo.Count > 0 && problems.Count > 0) message += " " + string.Join(" | ", problems);
+
+        return Ok(new { posted = sentTo.Count > 0, bale = r.BaleError, eitaa = r.EitaaError, message });
+    }
+
+    /// <summary>ساخت کد اتصال ایتا برای کاربر جاری — کاربر این کد را داخل «برنامه» ایتا وارد می‌کند.</summary>
+    [HttpPost("eitaa-link-code")]
+    public async Task<IActionResult> CreateEitaaLinkCode()
+    {
+        if (MyUserId <= 0) return Unauthorized();
+        return Ok(await BuildEitaaCodeAsync(MyUserId));
+    }
+
+    /// <summary>ساخت کد اتصال ایتا برای یک کاربر دیگر (فقط مدیر — برای راه‌اندازی توسط پشتیبانی).</summary>
+    [HttpPost("eitaa-link-code/{userId:int}")]
+    public async Task<IActionResult> CreateEitaaLinkCodeFor(int userId)
+    {
+        if (MyUserId <= 0) return Unauthorized();
+        if (!await IsPushAdminAsync())
+            return StatusCode(403, new { message = "تنها مدیر سامانه مجاز به ساخت کد اتصال برای دیگران است." });
+        if (!await _db.Users.AnyAsync(u => u.Id == userId)) return NotFound(new { message = "کاربر پیدا نشد." });
+
+        return Ok(await BuildEitaaCodeAsync(userId));
+    }
+
+    private async Task<object> BuildEitaaCodeAsync(int userId)
+    {
+        var settings = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
+        var configured = !string.IsNullOrWhiteSpace(settings?.EitaaToken);
+        var (code, expires) = _codes.Create(userId);
+        return new
+        {
+            code,
+            expiresAt = expires,
+            configured,
+            message = configured
+                ? "این کد را در برنامه‌ی سامانه در ایتا وارد کنید."
+                : "توکن برنامه ایتا در «تنظیمات ← پیام‌رسان‌ها» وارد نشده است؛ ابتدا آن را تنظیم کنید."
+        };
+    }
+
+    /// <summary>
+    /// پایان‌یافتن اتصال ایتا: صفحه‌ی برنامک، initData ایتا را همراه کد اتصال به این مسیر می‌فرستد.
+    /// اعتبارسنجی امضا با HMAC-SHA256 و توکن برنامه انجام می‌شود (بدون نیاز به احراز هویت، چون داخل ایتا اجرا می‌شود).
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("eitaa-link")]
+    public async Task<IActionResult> LinkEitaa([FromBody] EitaaLinkInput? input)
+    {
+        if (input == null || string.IsNullOrWhiteSpace(input.InitData))
+            return Ok(new { ok = false, message = "داده‌ای از ایتا دریافت نشد؛ لطفاً این صفحه را از داخل برنامه‌ی ایتا باز کنید." });
+
+        var (ok, message) = await _messenger.LinkEitaaAsync(input.Code ?? "", input.InitData);
+        return Ok(new { ok, message });
+    }
+
+    public class EitaaLinkInput
+    {
+        public string? Code { get; set; }
+        public string? InitData { get; set; }
     }
 
     /// <summary>پاک کردن همه اعلان‌های کاربر جاری.</summary>
@@ -204,6 +313,122 @@ public class NotificationsController : ControllerBase
             .Select(j => new { status = j.Status, errorCode = j.ErrorCode, attempts = j.Attempts }).FirstOrDefaultAsync();
         return Ok(new { configured = _push.IsConfigured, registered = sub != null, last });
     }
+
+    /// <summary>
+    /// صفحه‌ی برنامک ایتا (Mini App) — «آدرس مقصد» در پنل توسعه‌دهندگان ایتا باید همین مسیر باشد:
+    ///    https://آدرس-سرور/eitaa-app
+    /// کاربر این صفحه را از داخل ایتا باز می‌کند، کد اتصال را وارد می‌کند و initData برای اعتبارسنجی ارسال می‌شود.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("/eitaa-app")]
+    public IActionResult EitaaApp() => Content(EitaaAppHtml, "text/html; charset=utf-8");
+
+    private const string EitaaAppHtml = """
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>اتصال اعلان‌های سامانه به ایتا</title>
+<script src="https://developer.eitaa.com/eitaa-web-app.js"></script>
+<style>
+  :root { --brand:#0d6efd; --ok:#15803d; --err:#b91c1c; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:16px; font-family:'Vazirmatn','Shabnam',Tahoma,sans-serif;
+         background:#f7f8fa; color:#1f2937; line-height:1.9; }
+  .card { max-width:520px; margin:0 auto; background:#fff; border-radius:16px; padding:20px;
+          box-shadow:0 6px 24px rgba(15,23,42,.08); }
+  h1 { font-size:1.15rem; margin:0 0 6px; }
+  p { font-size:.86rem; color:#4b5563; margin:.35rem 0; }
+  ol { font-size:.86rem; color:#4b5563; padding-right:1.1rem; margin:.4rem 0 .8rem; }
+  label { display:block; font-size:.85rem; font-weight:700; margin:10px 0 6px; }
+  input { width:100%; padding:12px; font-size:1.3rem; letter-spacing:.35em; text-align:center;
+          border:2px solid #d1d5db; border-radius:12px; text-transform:uppercase; direction:ltr; }
+  input:focus { outline:none; border-color:var(--brand); }
+  button { width:100%; margin-top:14px; padding:13px; font-size:1rem; font-weight:700; color:#fff;
+           background:var(--brand); border:0; border-radius:12px; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  .note { font-size:.8rem; color:#6b7280; margin-top:10px; }
+  .box { display:none; margin-top:14px; padding:12px; border-radius:12px; font-size:.88rem; }
+  .box.show { display:block; }
+  .box.ok { background:#ecfdf5; color:var(--ok); border:1px solid #a7f3d0; }
+  .box.err { background:#fef2f2; color:var(--err); border:1px solid #fecaca; }
+  .badge { display:inline-block; font-size:.75rem; padding:2px 8px; border-radius:999px;
+           background:#eef2ff; color:#3730a3; margin-inline-start:6px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>اتصال اعلان‌های سامانه به ایتا <span class="badge">سامانه انبار و فروش</span></h1>
+  <p>با انجام این اتصال، اعلان‌ها و یادآوری‌های سامانه به‌صورت پیام در ایتا برای شما ارسال می‌شود.</p>
+  <ol>
+    <li>در نرم‌افزار سامانه، از پنجره‌ی «اعلان‌ها» دکمه‌ی «اتصال ایتا» را بزنید و کد ۶ حرفی را بگیرید.</li>
+    <li>همان کد را در کادر زیر وارد کنید و دکمه‌ی «اتصال» را بزنید.</li>
+  </ol>
+  <label for="code">کد اتصال</label>
+  <input id="code" maxlength="8" autocomplete="off" inputmode="text" placeholder="مثلاً K7M2Q9">
+  <button id="btn" type="button">اتصال</button>
+  <div id="box" class="box"></div>
+  <p class="note" id="note"></p>
+</div>
+<script>
+  var box = document.getElementById('box');
+  var btn = document.getElementById('btn');
+  var input = document.getElementById('code');
+  var note = document.getElementById('note');
+
+  function show(kind, text) {
+    box.className = 'box show ' + kind;
+    box.textContent = text;
+  }
+  function sdk() { try { return window.Eitaa && window.Eitaa.WebApp ? window.Eitaa.WebApp : null; } catch (e) { return null; } }
+
+  var webApp = sdk();
+  if (webApp) {
+    if (webApp.expand) { try { webApp.expand(); } catch (e) { } }
+    input.focus();
+  } else {
+    show('err', 'این صفحه باید از داخل برنامه‌ی ایتا باز شود. لطفاً ایتا را باز کنید، وارد بخش «برنامه‌ها» شوید و برنامه‌ی سامانه را اجرا کنید.');
+    note.textContent = 'باز کردن در مرورگر، امکان اتصال را نمی‌دهد (برای امنیت، شناسه‌ی ایتا فقط از داخل خودِ ایتا خوانده می‌شود).';
+    btn.disabled = true;
+  }
+
+  async function connect() {
+    var code = (input.value || '').trim().toUpperCase();
+    if (code.length < 6) { show('err', 'کد اتصال را کامل وارد کنید (۶ حرف).'); return; }
+
+    btn.disabled = true;
+    show('ok', 'در حال بررسی…');
+    box.className = 'box show';
+    box.style.background = '#f3f4f6'; box.style.color = '#374151'; box.style.border = '1px solid #e5e7eb';
+
+    try {
+      var res = await fetch('api/notifications/eitaa-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code, initData: (webApp ? webApp.initData : '') })
+      });
+      var data = await res.json();
+      if (data && data.ok) {
+        show('ok', data.message || 'اتصال انجام شد.');
+        btn.textContent = 'بستن';
+        btn.disabled = false;
+        btn.onclick = function () { try { if (webApp && webApp.close) webApp.close(); } catch (e) { } };
+        return;
+      }
+      show('err', (data && data.message) || 'اتصال انجام نشد.');
+    } catch (e) {
+      show('err', 'ارتباط با سرور برقرار نشد: ' + (e && e.message ? e.message : e));
+    }
+    btn.disabled = false;
+  }
+
+  btn.addEventListener('click', connect);
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') connect(); });
+</script>
+</body>
+</html>
+""";
 
     public class PushSubscribeInput
     {
