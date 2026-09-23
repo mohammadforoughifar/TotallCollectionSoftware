@@ -224,6 +224,21 @@ else
                 </div>
             </div>
         </div>
+        <div class="border rounded-3 p-3 mb-3 bg-light-subtle">
+            <label class="form-label small fw-800 mb-1"><i class="bi bi-pen"></i> امضای کاربر (اختیاری)</label>
+            <div class="d-flex align-items-center gap-3">
+                <div class="border rounded bg-white p-2" style="width:180px;height:70px;display:flex;align-items:center;justify-content:center">
+                    @if (luSignaturePreview != null) { <img src="@luSignaturePreview" alt="پیش‌نمایش امضا" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                    else if (form.Id > 0 && !string.IsNullOrWhiteSpace(form.SignaturePath)) { <img src="/api/auth/users/signature/@form.Id" alt="امضای کاربر" style="max-width:165px;max-height:58px;object-fit:contain" /> }
+                    else { <span class="text-muted small">بدون امضا</span> }
+                </div>
+                <div class="d-flex flex-column gap-1">
+                    <InputFile OnChange="OnUserSignaturePicked" Accept="image/png,image/jpeg" class="btn btn-sm btn-outline-primary" style="max-width:220px" />
+                    <span class="text-muted fs-8">PNG یا JPG، حداکثر ۲ مگابایت</span>
+                    @if (luSignaturePreview != null) { <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="ClearUserSignature">حذف انتخاب</button> }
+                </div>
+            </div>
+        </div>
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">نام کاربری <span class="text-danger">*</span></label>
@@ -399,6 +414,8 @@ else
     private long photoBust;
     private byte[]? luPhotoBytes;
     private string? luPhotoPreview;
+    private byte[]? luSignatureBytes;
+    private string? luSignaturePreview;
 
     private async Task OnLoginUserPhotoPicked(InputFileChangeEventArgs e)
     {
@@ -411,6 +428,20 @@ else
         luPhotoPreview = "data:" + (file.ContentType ?? "image/jpeg") + ";base64," + Convert.ToBase64String(buf);
         StateHasChanged();
     }
+
+    private async Task OnUserSignaturePicked(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null || file.Size == 0) return;
+        if (file.Size > 2 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۲ مگابایت است."; return; }
+        if (file.ContentType is not ("image/png" or "image/jpeg")) { saveError = "امضا باید PNG یا JPG باشد."; return; }
+        luSignatureBytes = new byte[file.Size];
+        await file.OpenReadStream(2 * 1024 * 1024).ReadAsync(luSignatureBytes);
+        luSignaturePreview = "data:" + file.ContentType + ";base64," + Convert.ToBase64String(luSignatureBytes);
+        StateHasChanged();
+    }
+
+    private void ClearUserSignature() { luSignatureBytes = null; luSignaturePreview = null; StateHasChanged(); }
 
     private void ClearLoginUserPhoto()
     {
@@ -570,7 +601,7 @@ else
         selectedRoleIds = new();
         roleDropdownOpen = false; roleSearch = "";
         saveError = "";
-        luPhotoBytes = null; luPhotoPreview = null;
+        luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
         showModal = true;
     }
 
@@ -586,6 +617,7 @@ else
             Mobile = u.Mobile,
             BaleChatId = u.BaleChatId,
             EitaaChatId = u.EitaaChatId,
+            SignaturePath = u.SignaturePath,
             RoleIds = u.RoleIds is null ? null : new List<int>(u.RoleIds),
             ReferrerId = u.ReferrerId,
             IsActive = u.IsActive,
@@ -597,7 +629,7 @@ else
         saveError = "";
         woSearch = "";
         _ = LoadWoAllowed(u.Id);
-        luPhotoBytes = null; luPhotoPreview = null;
+        luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
         showModal = true;
         StateHasChanged();
     }
@@ -650,7 +682,21 @@ else
                 }
                 catch { Toast.Error("خطا در آپلود عکس."); }
             }
-            luPhotoBytes = null; luPhotoPreview = null;
+            if (luSignatureBytes != null)
+            {
+                try
+                {
+                    using var sf = new MultipartFormDataContent();
+                    var sc = new ByteArrayContent(luSignatureBytes);
+                    sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+                    sf.Add(sc, "file", "signature.png");
+                    var sr = await Http.PostAsync($"/api/auth/users/signature/{saved.Id}", sf);
+                    if (!sr.IsSuccessStatusCode) Toast.Error("کاربر ذخیره شد ولی امضا ذخیره نشد.");
+                    else form.SignaturePath = $"/api/auth/users/signature/{saved.Id}";
+                }
+                catch { Toast.Error("خطا در آپلود امضای کاربر."); }
+            }
+            luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
             photoBust++;
             if (Auth.IsAdmin && editing) await SaveWoAllowed(saved.Id);
             Toast.Success(editing ? "کاربر ویرایش شد." : "کاربر ثبت شد.");

@@ -59,7 +59,38 @@ public class AuthController : ControllerBase
         return File(data, ct);
     }
 
-    /// <summary>تغییر عکس کاربر لاگین — فقط ادمین.</summary>
+    /// <summary>دریافت امضای ثبت‌شدهٔ کاربر برای استفادهٔ ماژول‌های مجاز.</summary>
+    [HttpGet("users/signature/{id:int}")]
+    [Authorize]
+    public async Task<IActionResult> UserSignature(int id)
+    {
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
+        if (user == null || string.IsNullOrWhiteSpace(user.SignaturePath)) return NotFound(new { message = "امضای کاربر ثبت نشده است." });
+        var bytes = _store.ReadBytes(user.SignaturePath);
+        return bytes is null ? NotFound(new { message = "فایل امضای کاربر یافت نشد." }) : File(bytes, "image/png", enableRangeProcessing: true);
+    }
+
+    /// <summary>آپلود یا جایگزینی امضای کاربر — فقط ادمین.</summary>
+    [HttpPost("users/signature/{id:int}")]
+    [Authorize(Roles = "Admin")]
+    [RequestSizeLimit(2 * 1024 * 1024)]
+    public async Task<IActionResult> UploadUserSignature(int id, IFormFile file)
+    {
+        var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == id);
+        if (user == null) return NotFound(new { message = "کاربر پیدا نشد." });
+        if (file == null || file.Length == 0) return BadRequest(new { message = "فایل امضا انتخاب نشده است." });
+        var type = (file.ContentType ?? "").ToLowerInvariant();
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (type is not ("image/png" or "image/jpeg") || ext is not (".png" or ".jpg" or ".jpeg"))
+            return BadRequest(new { message = "امضا باید به‌صورت تصویر PNG یا JPG باشد." });
+        using var ms = new MemoryStream(); await file.CopyToAsync(ms); ms.Position = 0;
+        var path = await _store.SaveAsync("UserSignatures", id, ms, "signature.png");
+        if (!string.IsNullOrWhiteSpace(user.SignaturePath)) _store.Delete(user.SignaturePath);
+        user.SignaturePath = path; await _db.SaveChangesAsync();
+        return Ok(new { signaturePath = path, url = $"/api/auth/users/signature/{id}" });
+    }
+
+        /// <summary>تغییر عکس کاربر لاگین — فقط ادمین.</summary>
     [HttpPost("users/photo/{id:int}")]
     [Authorize(Roles = "Admin")]
     [RequestSizeLimit(6 * 1024 * 1024)]

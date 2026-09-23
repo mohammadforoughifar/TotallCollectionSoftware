@@ -72,6 +72,7 @@ public class UserDto
 
     public int? ReferrerId { get; set; }
     public string? ReferrerName { get; set; }
+    public string? SignaturePath { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
 }

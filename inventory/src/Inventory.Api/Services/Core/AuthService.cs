@@ -215,6 +215,7 @@ public class AuthService : IAuthService
             Mobile = u.Mobile,
             BaleChatId = u.BaleChatId,
             EitaaChatId = u.EitaaChatId,
+            SignaturePath = u.SignaturePath,
             IsActive = u.IsActive,
             CreatedAt = u.CreatedAt
         }).ToList();

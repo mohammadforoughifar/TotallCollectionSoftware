@@ -30,6 +30,10 @@ public class User
     [MaxLength(200)]
     public string? PhotoPath { get; set; }
 
+    /// <summary>مسیر نسبی تصویر امضای کاربر در uploads/UserSignatures/{id}/</summary>
+    [MaxLength(300)]
+    public string? SignaturePath { get; set; }
+
     /// <summary>شیفت پیش‌فرض پرسنل (می‌تواند null باشد)</summary>
     public int? ShiftGroupId { get; set; }
     public ShiftGroup? ShiftGroup { get; set; }

@@ -32,6 +32,7 @@ public static class DbInitializer
                     await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
                     // EnsureCreated ستون‌های جدید را به دیتابیسِ موجود اضافه نمی‌کند؛ اینجا خودتعمیر می‌کنیم
                     EnsureSqliteWorkCalendarSchema(db);
+                    EnsureSqliteUserSignatureColumn(db);
                     // امکانات امنیتی آرشیو: لاگ دانلود/مشاهده، تایید رمز برای دانلود، دسترسی گروهی
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                     // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
@@ -47,6 +48,7 @@ public static class DbInitializer
                 {
                     MigrateSqlServer(db);
                     EnsureSystemUserPhoneColumn(db);
+                    EnsureUserSignatureColumn(db);
                     // امکانات امنیتی آرشیو: لاگ دانلود/مشاهده، تایید رمز برای دانلود، دسترسی گروهی
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                     // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
@@ -555,6 +557,17 @@ AND (
     }
 
     /// <summary>ستون شماره تماس کاربران سیستم — دیتابیس‌های قدیمی این ستون را ندارند.</summary>
+    private static void EnsureUserSignatureColumn(AppDbContext db)
+    {
+        try { db.Database.ExecuteSqlRaw(@"IF OBJECT_ID(N'dbo.Users', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Users', N'SignaturePath') IS NULL ALTER TABLE dbo.Users ADD SignaturePath nvarchar(300) NULL;"); }
+        catch (Exception ex) { Console.WriteLine($"[DB] هشدار: افزودن ستون SignaturePath: {ex.Message}"); }
+    }
+
+    private static void EnsureSqliteUserSignatureColumn(AppDbContext db)
+    {
+        try { db.Database.ExecuteSqlRaw("ALTER TABLE Users ADD COLUMN SignaturePath TEXT NULL;"); } catch { }
+    }
+
     private static void EnsureSystemUserPhoneColumn(AppDbContext db)
     {
         try
