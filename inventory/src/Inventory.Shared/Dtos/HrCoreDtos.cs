@@ -552,3 +552,6 @@ public class HrEmployeeImportResultDto
     public int Failed { get; set; }
     public List<HrEmployeeImportErrorDto> Errors { get; set; } = new();
 }
+
+/// <summary>نتیجه‌ی پاک‌سازی داده‌های منابع انسانی (حذف داده‌های آزمایشی)</summary>
+public record HrPurgeResultDto(string Message, int Total, Dictionary<string, int> Areas, string? Warning);

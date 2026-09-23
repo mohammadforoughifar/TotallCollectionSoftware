@@ -19,13 +19,15 @@ public class HrCoreController : RbacControllerBase
     private readonly IHrCoreService _svc;
     private readonly FileStore _files;
     private readonly Inventory.Api.Services.HrReports.IHrReportService _reports;
+    private readonly IConfiguration _config;
 
     public HrCoreController(AppDbContext db, IHrCoreService svc, FileStore files,
-        Inventory.Api.Services.HrReports.IHrReportService reports) : base(db)
+        Inventory.Api.Services.HrReports.IHrReportService reports, IConfiguration config) : base(db)
     {
         _svc = svc;
         _files = files;
         _reports = reports;
+        _config = config;
     }
 
     /// <summary>
@@ -765,5 +767,26 @@ public class HrCoreController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         await _reports.DeleteTemplateAsync(MyUserId, id);
         return NoContent();
+    }
+
+    /// <summary>
+    /// پاک‌سازی کامل داده‌های منابع انسانی (برای حذف داده‌های آزمایشی/فیک).
+    /// فقط ادمین سامانه یا دارای مجوز Settings.Manage.
+    /// داده‌های پایه (انواع مرخصی، شیفت‌ها، اقلام/تنظیمات حقوق، قالب قرارداد)، کاربران و نقش‌ها حفظ می‌شوند.
+    /// </summary>
+    [HttpPost("purge-demo-data")]
+    public async Task<IActionResult> PurgeDemoData(CancellationToken ct)
+    {
+        if (!User.IsInRole("Admin") && !await HasAsync("Settings", "Manage"))
+            return StatusCode(403, new { message = "تنها مدیر سامانه مجاز به پاک‌سازی داده‌های منابع انسانی است." });
+
+        var result = await HrDemoPurger.PurgeAsync(Db, ct);
+        var seedFlag = _config["Database:SeedDemoData"];
+        var warning = string.Equals(seedFlag, "true", StringComparison.OrdinalIgnoreCase)
+            ? "هشدار: فلگ Database:SeedDemoData=true است؛ با اولین ری‌استارتِ جداولِ خالی، داده‌ی نمونه دوباره ساخته می‌شود. این فلگ را false کنید (appsettings یا متغیر محیطی Database__SeedDemoData)."
+            : null;
+        return Ok(new HrPurgeResultDto(
+            $"پاک‌سازی انجام شد — {result.Total} رکورد حذف شد.",
+            result.Total, result.Areas, warning));
     }
 }

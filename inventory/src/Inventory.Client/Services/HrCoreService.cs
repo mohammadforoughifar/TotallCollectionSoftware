@@ -110,6 +110,9 @@ public interface IHrCoreService
     Task<List<HrInterviewDto>> GetInterviewsAsync(int applicantId);
     Task<HrInterviewDto> SaveInterviewAsync(int? id, HrInterviewSaveDto dto);
     Task DeleteInterviewAsync(int id);
+
+    /// <summary>پاک‌سازی کامل داده‌های منابع انسانی (حذف داده‌های آزمایشی) — فقط ادمین</summary>
+    Task<HrPurgeResultDto> PurgeDemoDataAsync();
 }
 
 public class HrEmployeeListResult
@@ -444,4 +447,7 @@ public class HrCoreService : IHrCoreService
 
     public Task DeleteInterviewAsync(int id)
         => _api.DeleteAsync($"{Root}/interviews/{id}");
+
+    public Task<HrPurgeResultDto> PurgeDemoDataAsync()
+        => _api.PostAsync<HrPurgeResultDto>($"{Root}/purge-demo-data", null);
 }
