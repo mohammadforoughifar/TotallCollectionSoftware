@@ -51,6 +51,10 @@ public sealed class RsRowSource : IRsRowSource
         var shape = Key(tables);
         var leftJoin = q.Tables.Skip(1).All(t => t.JoinKind == RsJoinKind.Left);
 
+        var lowered = tables.Select(t => t.ToLowerInvariant()).ToList();
+        if (lowered.Count > 0 && lowered.All(IsWorkOrderTable))
+            return await WorkOrdersShapeAsync(q, hardLimit, ct);
+
         return shape switch
         {
             "letter" => await LettersAsync(hardLimit, ct),
@@ -1039,6 +1043,530 @@ public sealed class RsRowSource : IRsRowSource
             r.V["expense.count"] = 1;
             return r;
         }).ToList();
+    }
+
+    // =====================================================================
+    //  دستور کار
+    // =====================================================================
+
+    private static bool IsWorkOrderTable(string key) => key is
+        "workorder" or "wo_assignee" or "wo_checklist" or "wo_comment" or "wo_log" or "wo_attachment";
+
+    private IQueryable<WorkOrder> VisibleWorkOrders()
+    {
+        var q = _db.WorkOrders.AsNoTracking();
+        if (_scope.CanSeeAllWorkOrders) return q;
+        var uid = _scope.UserId;
+        return q.Where(w => w.OwnerUserId == uid
+            || _db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.UserId == uid));
+    }
+
+    private sealed class WoSnap
+    {
+        public int Id; public string Number = ""; public string Title = ""; public string Description = "";
+        public string OwnerName = ""; public int OwnerUserId; public DateTime DueAt; public string Status = "Open";
+        public int Priority; public int Recurrence; public DateTime CreatedAt; public DateTime? ClosedAt;
+        public string? CloseNote; public int ExtensionCount; public string? Tags;
+        public string? SourceModule; public int? SourceId; public int? ParentOrderId;
+    }
+
+    private sealed class WoAsgSnap
+    {
+        public int Id; public int OrderId; public int UserId; public string Name = "";
+        public DateTime? SeenAt; public DateTime? RepliedAt; public bool? Done;
+        public string? ReplyText; public string? OwnerDecision; public string? OwnerDecisionNote;
+    }
+
+    private sealed class WoChkSnap
+    {
+        public int Id; public int OrderId; public string Text = ""; public int SortOrder;
+        public bool IsDone; public string? DoneByName; public DateTime? DoneAt;
+    }
+
+    private sealed class WoCmtSnap
+    {
+        public int Id; public int OrderId; public string AuthorName = ""; public string Text = "";
+        public int? ReplyToId; public bool IsDeleted; public DateTime CreatedAt;
+    }
+
+    private sealed class WoLogSnap
+    {
+        public int Id; public int OrderId; public string ActorName = ""; public string Action = "";
+        public string? Text; public DateTime CreatedAt;
+    }
+
+    private sealed class WoAttSnap
+    {
+        public int Id; public int OrderId; public string FileName = ""; public string ContentType = "";
+        public string UploaderName = ""; public DateTime UploadedAt;
+    }
+
+    private async Task<List<RsRow>> WorkOrdersShapeAsync(RsQueryDto q, int limit, CancellationToken ct)
+    {
+        var wanted = q.Tables.Select(t => t.TableKey.ToLowerInvariant()).ToHashSet();
+        var inner = q.Tables
+            .Where(t => !string.IsNullOrWhiteSpace(t.JoinKey))
+            .Where(t => t.JoinKind != RsJoinKind.Left)
+            .Select(t => t.TableKey.ToLowerInvariant())
+            .ToHashSet();
+
+        var wantOrder = wanted.Contains("workorder");
+        var childKeys = wanted.Where(t => t != "workorder").ToList();
+
+        // جدول فرزند به‌تنهایی: از خودِ فرزند شروع می‌کنیم تا سطرهای قدیمی جا نمانند.
+        if (!wantOrder && childKeys.Count == 1)
+            return await WorkOrderChildOnlyAsync(childKeys[0], limit, ct);
+
+        var orders = await VisibleWorkOrders()
+            .OrderByDescending(w => w.Id)
+            .Take(limit)
+            .Select(w => new WoSnap
+            {
+                Id = w.Id, Number = w.Number, Title = w.Title, Description = w.Description,
+                OwnerName = w.OwnerName, OwnerUserId = w.OwnerUserId, DueAt = w.DueAt, Status = w.Status,
+                Priority = w.Priority, Recurrence = w.Recurrence, CreatedAt = w.CreatedAt, ClosedAt = w.ClosedAt,
+                CloseNote = w.CloseNote, ExtensionCount = w.ExtensionCount, Tags = w.Tags,
+                SourceModule = w.SourceModule, SourceId = w.SourceId, ParentOrderId = w.ParentOrderId
+            })
+            .ToListAsync(ct);
+
+        return await ComposeWorkOrdersAsync(orders, wanted, inner, limit, ct);
+    }
+
+    private async Task<List<RsRow>> WorkOrderChildOnlyAsync(string child, int limit, CancellationToken ct)
+    {
+        var visible = VisibleWorkOrders().Select(w => w.Id);
+        var rows = new List<RsRow>();
+        var now = DateTime.Now;
+
+        if (child == "wo_assignee")
+        {
+            var asgs = await _db.WorkOrderAssignees.AsNoTracking()
+                .Where(a => visible.Contains(a.OrderId))
+                .OrderByDescending(a => a.Id).Take(limit)
+                .Select(a => new WoAsgSnap
+                {
+                    Id = a.Id, OrderId = a.OrderId, UserId = a.UserId, Name = a.Name,
+                    SeenAt = a.SeenAt, RepliedAt = a.RepliedAt, Done = a.Done,
+                    ReplyText = a.ReplyText, OwnerDecision = a.OwnerDecision, OwnerDecisionNote = a.OwnerDecisionNote
+                }).ToListAsync(ct);
+            var orders = await OrderMapAsync(asgs.Select(a => a.OrderId), ct);
+            foreach (var a in asgs)
+            {
+                var r = new RsRow();
+                FillAssignee(r, a, orders.GetValueOrDefault(a.OrderId), now);
+                rows.Add(r);
+            }
+            return rows;
+        }
+
+        if (child == "wo_checklist")
+        {
+            var items = await _db.WorkOrderChecklistItems.AsNoTracking()
+                .Where(c => visible.Contains(c.OrderId))
+                .OrderByDescending(c => c.OrderId).ThenBy(c => c.SortOrder).Take(limit)
+                .Select(c => new WoChkSnap
+                {
+                    Id = c.Id, OrderId = c.OrderId, Text = c.Text, SortOrder = c.SortOrder,
+                    IsDone = c.IsDone, DoneByName = c.DoneByName, DoneAt = c.DoneAt
+                }).ToListAsync(ct);
+            var orders = await OrderMapAsync(items.Select(c => c.OrderId), ct);
+            foreach (var c in items)
+            {
+                var r = new RsRow();
+                FillChecklist(r, c, orders.GetValueOrDefault(c.OrderId));
+                rows.Add(r);
+            }
+            return rows;
+        }
+
+        if (child == "wo_comment")
+        {
+            var items = await _db.WorkOrderComments.AsNoTracking()
+                .Where(c => visible.Contains(c.OrderId))
+                .OrderByDescending(c => c.Id).Take(limit)
+                .Select(c => new WoCmtSnap
+                {
+                    Id = c.Id, OrderId = c.OrderId, AuthorName = c.AuthorName, Text = c.Text,
+                    ReplyToId = c.ReplyToId, IsDeleted = c.IsDeleted, CreatedAt = c.CreatedAt
+                }).ToListAsync(ct);
+            var orders = await OrderMapAsync(items.Select(c => c.OrderId), ct);
+            foreach (var c in items)
+            {
+                var r = new RsRow();
+                FillComment(r, c, orders.GetValueOrDefault(c.OrderId));
+                rows.Add(r);
+            }
+            return rows;
+        }
+
+        if (child == "wo_log")
+        {
+            var items = await _db.WorkOrderLogs.AsNoTracking()
+                .Where(c => visible.Contains(c.OrderId))
+                .OrderByDescending(c => c.Id).Take(limit)
+                .Select(c => new WoLogSnap
+                {
+                    Id = c.Id, OrderId = c.OrderId, ActorName = c.ActorName, Action = c.Action,
+                    Text = c.Text, CreatedAt = c.CreatedAt
+                }).ToListAsync(ct);
+            var orders = await OrderMapAsync(items.Select(c => c.OrderId), ct);
+            foreach (var c in items)
+            {
+                var r = new RsRow();
+                FillLog(r, c, orders.GetValueOrDefault(c.OrderId));
+                rows.Add(r);
+            }
+            return rows;
+        }
+
+        var atts = await _db.WorkOrderAttachments.AsNoTracking()
+            .Where(c => visible.Contains(c.OrderId))
+            .OrderByDescending(c => c.Id).Take(limit)
+            .Select(c => new WoAttSnap
+            {
+                Id = c.Id, OrderId = c.OrderId, FileName = c.FileName, ContentType = c.ContentType,
+                UploaderName = c.UploaderName, UploadedAt = c.UploadedAt
+            }).ToListAsync(ct);
+        var attOrders = await OrderMapAsync(atts.Select(c => c.OrderId), ct);
+        foreach (var c in atts)
+        {
+            var r = new RsRow();
+            FillAttachment(r, c, attOrders.GetValueOrDefault(c.OrderId));
+            rows.Add(r);
+        }
+        return rows;
+    }
+
+    private async Task<Dictionary<int, WoSnap>> OrderMapAsync(IEnumerable<int> ids, CancellationToken ct)
+    {
+        var list = ids.Distinct().ToList();
+        if (list.Count == 0) return new();
+        var rows = await _db.WorkOrders.AsNoTracking()
+            .Where(w => list.Contains(w.Id))
+            .Select(w => new WoSnap
+            {
+                Id = w.Id, Number = w.Number, Title = w.Title, OwnerName = w.OwnerName,
+                DueAt = w.DueAt, Status = w.Status, ParentOrderId = w.ParentOrderId
+            }).ToListAsync(ct);
+        return rows.ToDictionary(w => w.Id);
+    }
+
+    private async Task<List<RsRow>> ComposeWorkOrdersAsync(
+        List<WoSnap> orders, HashSet<string> wanted, HashSet<string> inner, int limit, CancellationToken ct)
+    {
+        var ids = orders.Select(o => o.Id).ToList();
+        var now = DateTime.Now;
+        var parentIds = orders.Where(o => o.ParentOrderId != null).Select(o => o.ParentOrderId!.Value).Distinct().ToList();
+        var parents = parentIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _db.WorkOrders.AsNoTracking().Where(w => parentIds.Contains(w.Id))
+                .Select(w => new { w.Id, w.Number }).ToDictionaryAsync(w => w.Id, w => w.Number, ct);
+
+        var asgs = await _db.WorkOrderAssignees.AsNoTracking()
+            .Where(a => ids.Contains(a.OrderId))
+            .Select(a => new WoAsgSnap
+            {
+                Id = a.Id, OrderId = a.OrderId, UserId = a.UserId, Name = a.Name,
+                SeenAt = a.SeenAt, RepliedAt = a.RepliedAt, Done = a.Done,
+                ReplyText = a.ReplyText, OwnerDecision = a.OwnerDecision, OwnerDecisionNote = a.OwnerDecisionNote
+            }).ToListAsync(ct);
+        var asgBy = asgs.GroupBy(a => a.OrderId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var checks = wanted.Contains("wo_checklist") || wanted.Contains("workorder")
+            ? await _db.WorkOrderChecklistItems.AsNoTracking()
+                .Where(c => ids.Contains(c.OrderId))
+                .Select(c => new WoChkSnap
+                {
+                    Id = c.Id, OrderId = c.OrderId, Text = c.Text, SortOrder = c.SortOrder,
+                    IsDone = c.IsDone, DoneByName = c.DoneByName, DoneAt = c.DoneAt
+                }).ToListAsync(ct)
+            : new List<WoChkSnap>();
+        var chkBy = checks.GroupBy(c => c.OrderId).ToDictionary(g => g.Key, g => g.OrderBy(x => x.SortOrder).ToList());
+
+        var comments = wanted.Contains("wo_comment") || wanted.Contains("workorder")
+            ? await _db.WorkOrderComments.AsNoTracking()
+                .Where(c => ids.Contains(c.OrderId))
+                .Select(c => new WoCmtSnap
+                {
+                    Id = c.Id, OrderId = c.OrderId, AuthorName = c.AuthorName, Text = c.Text,
+                    ReplyToId = c.ReplyToId, IsDeleted = c.IsDeleted, CreatedAt = c.CreatedAt
+                }).ToListAsync(ct)
+            : new List<WoCmtSnap>();
+        var cmtBy = comments.GroupBy(c => c.OrderId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var logs = wanted.Contains("wo_log")
+            ? await _db.WorkOrderLogs.AsNoTracking()
+                .Where(c => ids.Contains(c.OrderId))
+                .Select(c => new WoLogSnap
+                {
+                    Id = c.Id, OrderId = c.OrderId, ActorName = c.ActorName, Action = c.Action,
+                    Text = c.Text, CreatedAt = c.CreatedAt
+                }).ToListAsync(ct)
+            : new List<WoLogSnap>();
+        var logBy = logs.GroupBy(c => c.OrderId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var atts = wanted.Contains("wo_attachment") || wanted.Contains("workorder")
+            ? await _db.WorkOrderAttachments.AsNoTracking()
+                .Where(c => ids.Contains(c.OrderId))
+                .Select(c => new WoAttSnap
+                {
+                    Id = c.Id, OrderId = c.OrderId, FileName = c.FileName, ContentType = c.ContentType,
+                    UploaderName = c.UploaderName, UploadedAt = c.UploadedAt
+                }).ToListAsync(ct)
+            : new List<WoAttSnap>();
+        var attBy = atts.GroupBy(c => c.OrderId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var childOrder = new[] { "wo_assignee", "wo_checklist", "wo_comment", "wo_log", "wo_attachment" }
+            .Where(wanted.Contains).ToList();
+
+        if (orders.Count == 0) return new();
+
+        var rows = new List<RsRow>();
+        foreach (var o in orders)
+        {
+            var dims = new List<List<object?>>();
+            var drop = false;
+            foreach (var key in childOrder)
+            {
+                List<object?> items = key switch
+                {
+                    "wo_assignee" => (asgBy.GetValueOrDefault(o.Id) ?? new()).Cast<object?>().ToList(),
+                    "wo_checklist" => (chkBy.GetValueOrDefault(o.Id) ?? new()).Cast<object?>().ToList(),
+                    "wo_comment" => (cmtBy.GetValueOrDefault(o.Id) ?? new()).Cast<object?>().ToList(),
+                    "wo_log" => (logBy.GetValueOrDefault(o.Id) ?? new()).Cast<object?>().ToList(),
+                    _ => (attBy.GetValueOrDefault(o.Id) ?? new()).Cast<object?>().ToList()
+                };
+                if (items.Count == 0)
+                {
+                    if (inner.Contains(key)) { drop = true; break; }
+                    dims.Add(new List<object?> { null });
+                }
+                else dims.Add(items);
+            }
+            if (drop) continue;
+
+            foreach (var combo in Cartesian(dims))
+            {
+                var r = new RsRow();
+                if (wanted.Contains("workorder"))
+                    FillWorkOrder(r, o, parents, asgBy.GetValueOrDefault(o.Id), chkBy.GetValueOrDefault(o.Id),
+                        cmtBy.GetValueOrDefault(o.Id), attBy.GetValueOrDefault(o.Id), now);
+                for (var i = 0; i < childOrder.Count; i++)
+                {
+                    if (combo[i] is null) continue;
+                    switch (childOrder[i])
+                    {
+                        case "wo_assignee": FillAssignee(r, (WoAsgSnap)combo[i]!, o, now); break;
+                        case "wo_checklist": FillChecklist(r, (WoChkSnap)combo[i]!, o); break;
+                        case "wo_comment": FillComment(r, (WoCmtSnap)combo[i]!, o); break;
+                        case "wo_log": FillLog(r, (WoLogSnap)combo[i]!, o); break;
+                        case "wo_attachment": FillAttachment(r, (WoAttSnap)combo[i]!, o); break;
+                    }
+                }
+                rows.Add(r);
+                if (rows.Count >= limit) return rows;
+            }
+        }
+        return rows;
+    }
+
+    private static IEnumerable<object?[]> Cartesian(List<List<object?>> dims)
+    {
+        if (dims.Count == 0)
+        {
+            yield return Array.Empty<object?>();
+            yield break;
+        }
+        var idx = new int[dims.Count];
+        while (true)
+        {
+            var row = new object?[dims.Count];
+            for (var i = 0; i < dims.Count; i++) row[i] = dims[i][idx[i]];
+            yield return row;
+            var k = dims.Count - 1;
+            while (k >= 0)
+            {
+                idx[k]++;
+                if (idx[k] < dims[k].Count) break;
+                idx[k] = 0;
+                k--;
+            }
+            if (k < 0) yield break;
+        }
+    }
+
+    private static void FillWorkOrder(RsRow r, WoSnap o, Dictionary<int, string> parents,
+        List<WoAsgSnap>? asgs, List<WoChkSnap>? checks, List<WoCmtSnap>? comments, List<WoAttSnap>? atts, DateTime now)
+    {
+        asgs ??= new();
+        checks ??= new();
+        comments ??= new();
+        atts ??= new();
+        var chkDone = checks.Count(c => c.IsDone);
+        var asgDone = asgs.Count(a => a.Done == true);
+        var progress = checks.Count > 0
+            ? (int)Math.Round(chkDone * 100.0 / checks.Count)
+            : asgs.Count > 0 ? (int)Math.Round(asgDone * 100.0 / asgs.Count)
+            : o.Status == "Closed" ? 100 : 0;
+
+        r.V["workorder.id"] = o.Id;
+        r.V["workorder.number"] = o.Number;
+        r.V["workorder.title"] = o.Title;
+        r.V["workorder.description"] = PlainText(o.Description);
+        r.V["workorder.owner"] = o.OwnerName;
+        r.V["workorder.status"] = string.IsNullOrWhiteSpace(o.Status) ? "Open" : o.Status;
+        r.V["workorder.priority"] = o.Priority;
+        r.V["workorder.recurrence"] = o.Recurrence;
+        r.V["workorder.outcome"] = OutcomeOf(o, asgs, now);
+        r.V["workorder.due_at"] = o.DueAt;
+        r.V["workorder.created_at"] = o.CreatedAt;
+        r.V["workorder.closed_at"] = o.ClosedAt;
+        r.V["workorder.close_note"] = o.CloseNote ?? "";
+        r.V["workorder.extension_count"] = o.ExtensionCount;
+        r.V["workorder.tags"] = TagsFa(o.Tags);
+        r.V["workorder.source"] = SourceFa(o.SourceModule);
+        r.V["workorder.source_id"] = o.SourceId;
+        r.V["workorder.parent_no"] = o.ParentOrderId is int pid && parents.TryGetValue(pid, out var pn) ? pn : "";
+        r.V["workorder.assignees"] = string.Join("، ", asgs.Select(a => a.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct());
+        r.V["workorder.assignee_count"] = asgs.Count;
+        r.V["workorder.checklist_done"] = chkDone;
+        r.V["workorder.checklist_total"] = checks.Count;
+        r.V["workorder.progress"] = progress;
+        r.V["workorder.comment_count"] = comments.Count(c => !c.IsDeleted);
+        r.V["workorder.attachment_count"] = atts.Count;
+        r.V["workorder.days_left"] = Math.Round((decimal)((o.DueAt - now).TotalDays), 1);
+        r.V["workorder.overdue"] = o.Status == "Open" && o.DueAt < now;
+        r.V["workorder.count"] = 1;
+    }
+
+    private static void FillAssignee(RsRow r, WoAsgSnap a, WoSnap? o, DateTime now)
+    {
+        r.V["wo_assignee.id"] = a.Id;
+        r.V["wo_assignee.order_id"] = a.OrderId;
+        r.V["wo_assignee.order_no"] = o?.Number ?? "";
+        r.V["wo_assignee.order_title"] = o?.Title ?? "";
+        r.V["wo_assignee.order_status"] = o?.Status ?? "";
+        r.V["wo_assignee.order_due"] = o?.DueAt;
+        r.V["wo_assignee.owner"] = o?.OwnerName ?? "";
+        r.V["wo_assignee.user"] = a.Name;
+        r.V["wo_assignee.seen_at"] = a.SeenAt;
+        r.V["wo_assignee.replied_at"] = a.RepliedAt;
+        r.V["wo_assignee.result"] = a.Done == true ? "done" : a.Done == false ? "notdone" : "pending";
+        r.V["wo_assignee.reply"] = a.ReplyText ?? "";
+        r.V["wo_assignee.decision"] = string.IsNullOrWhiteSpace(a.OwnerDecision) ? "none" : a.OwnerDecision;
+        r.V["wo_assignee.decision_note"] = a.OwnerDecisionNote ?? "";
+        var due = o?.DueAt;
+        r.V["wo_assignee.late"] = due != null && (
+            (a.RepliedAt != null && a.RepliedAt > due) ||
+            (a.RepliedAt == null && due < now && (o?.Status == "Open")));
+        r.V["wo_assignee.count"] = 1;
+    }
+
+    private static void FillChecklist(RsRow r, WoChkSnap c, WoSnap? o)
+    {
+        r.V["wo_checklist.id"] = c.Id;
+        r.V["wo_checklist.order_id"] = c.OrderId;
+        r.V["wo_checklist.order_no"] = o?.Number ?? "";
+        r.V["wo_checklist.order_title"] = o?.Title ?? "";
+        r.V["wo_checklist.text"] = c.Text;
+        r.V["wo_checklist.sort"] = c.SortOrder;
+        r.V["wo_checklist.is_done"] = c.IsDone;
+        r.V["wo_checklist.done_by"] = c.DoneByName ?? "";
+        r.V["wo_checklist.done_at"] = c.DoneAt;
+        r.V["wo_checklist.count"] = 1;
+    }
+
+    private static void FillComment(RsRow r, WoCmtSnap c, WoSnap? o)
+    {
+        r.V["wo_comment.id"] = c.Id;
+        r.V["wo_comment.order_id"] = c.OrderId;
+        r.V["wo_comment.order_no"] = o?.Number ?? "";
+        r.V["wo_comment.order_title"] = o?.Title ?? "";
+        r.V["wo_comment.author"] = c.AuthorName;
+        r.V["wo_comment.text"] = c.IsDeleted ? "" : c.Text;
+        r.V["wo_comment.created_at"] = c.CreatedAt;
+        r.V["wo_comment.is_reply"] = c.ReplyToId != null;
+        r.V["wo_comment.is_deleted"] = c.IsDeleted;
+        r.V["wo_comment.count"] = 1;
+    }
+
+    private static void FillLog(RsRow r, WoLogSnap c, WoSnap? o)
+    {
+        r.V["wo_log.id"] = c.Id;
+        r.V["wo_log.order_id"] = c.OrderId;
+        r.V["wo_log.order_no"] = o?.Number ?? "";
+        r.V["wo_log.order_title"] = o?.Title ?? "";
+        r.V["wo_log.actor"] = c.ActorName;
+        r.V["wo_log.action"] = c.Action;
+        r.V["wo_log.text"] = c.Text ?? "";
+        r.V["wo_log.created_at"] = c.CreatedAt;
+        r.V["wo_log.count"] = 1;
+    }
+
+    private static void FillAttachment(RsRow r, WoAttSnap c, WoSnap? o)
+    {
+        r.V["wo_attachment.id"] = c.Id;
+        r.V["wo_attachment.order_id"] = c.OrderId;
+        r.V["wo_attachment.order_no"] = o?.Number ?? "";
+        r.V["wo_attachment.order_title"] = o?.Title ?? "";
+        r.V["wo_attachment.file_name"] = c.FileName;
+        r.V["wo_attachment.content_type"] = c.ContentType;
+        r.V["wo_attachment.uploader"] = c.UploaderName;
+        r.V["wo_attachment.uploaded_at"] = c.UploadedAt;
+        r.V["wo_attachment.count"] = 1;
+    }
+
+    private static string OutcomeOf(WoSnap o, List<WoAsgSnap> asgs, DateTime now)
+    {
+        var allDone = asgs.Count > 0 && asgs.All(a => a.Done == true);
+        if (allDone)
+        {
+            var last = asgs.Max(a => a.RepliedAt) ?? DateTime.MaxValue;
+            return last <= o.DueAt ? "ontime" : "latedone";
+        }
+        if (o.Status == "Closed") return "closednodone";
+        if (o.DueAt < now) return "late";
+        return "open";
+    }
+
+    private static string SourceFa(string? module) => (module ?? "").Trim() switch
+    {
+        "InnerLetter" => "نامه داخلی",
+        "OutgoingLetter" => "نامه صادره",
+        "IncomingLetter" => "نامه وارده",
+        "MeetingMinutes" => "صورتجلسه",
+        "MeetingMinutesItem" => "بند صورتجلسه",
+        "Document" => "مدرک آرشیو",
+        "" => "",
+        var other => other
+    };
+
+    private static string TagsFa(string? tags)
+    {
+        if (string.IsNullOrWhiteSpace(tags)) return "";
+        return string.Join("، ", tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+    }
+
+    private static string PlainText(string? html, int max = 400)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+        var sb = new System.Text.StringBuilder(html.Length);
+        var tag = false;
+        foreach (var ch in html)
+        {
+            if (ch == '<') { tag = true; continue; }
+            if (ch == '>')
+            {
+                tag = false;
+                if (sb.Length > 0 && sb[^1] != ' ') sb.Append(' ');
+                continue;
+            }
+            if (!tag) sb.Append(ch);
+        }
+        var s = System.Net.WebUtility.HtmlDecode(sb.ToString()).Replace('\n', ' ').Replace('\r', ' ').Trim();
+        while (s.Contains("  ")) s = s.Replace("  ", " ");
+        return s.Length <= max ? s : s[..max] + "…";
     }
 }
 

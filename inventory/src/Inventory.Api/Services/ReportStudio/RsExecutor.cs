@@ -60,6 +60,9 @@ public sealed class RsExecutor : IRsExecutor
                 res.Warnings.Add("این گزارش فقط نامه‌های شما را نشان می‌دهد. " +
                     "برای دیدن نامه‌های همه، مجوز «مشاهدهٔ نامه‌های دیگران» لازم است.");
 
+            if (!scope.CanSeeAllWorkOrders && v.Modules.Contains("WorkOrders"))
+                res.Warnings.Add("این گزارش فقط دستورکارهایی را نشان می‌دهد که شما صادر کرده‌اید یا به شما محول شده است.");
+
             // ۱) واکشی
             var rows = await _source.FetchAsync(query, ScanLimit, scope, ct);
 

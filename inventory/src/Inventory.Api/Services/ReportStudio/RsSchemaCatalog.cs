@@ -83,6 +83,47 @@ public static class RsSchemaCatalog
         ["0"] = "پیش‌نویس", ["1"] = "قطعی", ["2"] = "باطل"
     };
 
+    private static Dictionary<string, string> WoStatusMap => new()
+    {
+        ["Open"] = "باز", ["Closed"] = "بسته", ["Cancelled"] = "لغوشده"
+    };
+
+    private static Dictionary<string, string> WoPriorityMap => new()
+    {
+        ["0"] = "کم", ["1"] = "عادی", ["2"] = "بالا", ["3"] = "فوری"
+    };
+
+    private static Dictionary<string, string> WoRecurrenceMap => new()
+    {
+        ["0"] = "بدون تکرار", ["1"] = "روزانه", ["2"] = "هفتگی", ["3"] = "ماهانه"
+    };
+
+    private static Dictionary<string, string> WoOutcomeMap => new()
+    {
+        ["open"] = "باز",
+        ["late"] = "معوق",
+        ["ontime"] = "انجام به‌موقع",
+        ["latedone"] = "انجام با تأخیر",
+        ["closednodone"] = "بسته بدون انجام"
+    };
+
+    private static Dictionary<string, string> WoDoneMap => new()
+    {
+        ["pending"] = "بدون پاسخ", ["done"] = "انجام شد", ["notdone"] = "انجام نشد"
+    };
+
+    private static Dictionary<string, string> WoDecisionMap => new()
+    {
+        ["none"] = "بدون تصمیم", ["Approved"] = "تایید", ["Rejected"] = "رد"
+    };
+
+    private static Dictionary<string, string> WoActionMap => new()
+    {
+        ["Created"] = "ثبت", ["Edited"] = "ویرایش", ["Seen"] = "رویت", ["Reply"] = "پاسخ",
+        ["Approved"] = "تایید", ["Rejected"] = "رد", ["Extended"] = "تمدید", ["Closed"] = "بستن",
+        ["Deleted"] = "حذف", ["Chained"] = "ارجاع زنجیره‌ای", ["Commented"] = "گفتگو"
+    };
+
     // =====================================================================
     //  جدول‌ها
     // =====================================================================
@@ -458,6 +499,171 @@ public static class RsSchemaCatalog
                 F("expense.count", "تعداد هزینه‌ها", RsFieldType.Number,
                   group: false, agg: true, unit: "فقره")
             }
+        },
+
+        // --------------------------------------------------------------------
+        //  دستور کار
+        //  دستورهای تعمیر (repair) ماژول دیگری است و اینجا تکرار نمی‌شود.
+        // --------------------------------------------------------------------
+        new()
+        {
+            Key = "workorder",
+            Title = "دستورهای کار",
+            Category = "دستور کار",
+            Icon = "bi-list-task",
+            Module = "WorkOrders",
+            Description = "دستورهای کار باز و بسته. هر کاربر دستورهایی را می‌بیند که خودش داده یا به او محول شده؛ مدیر سیستم همه را می‌بیند.",
+            Fields = new()
+            {
+                Num("workorder.id", "شناسه"),
+                Text("workorder.number", "شماره"),
+                Text("workorder.title", "عنوان"),
+                Text("workorder.description", "شرح"),
+                Text("workorder.owner", "دستوردهنده"),
+                Enum("workorder.status", "وضعیت", WoStatusMap),
+                Enum("workorder.priority", "اولویت", WoPriorityMap),
+                Enum("workorder.recurrence", "تکرار", WoRecurrenceMap),
+                Enum("workorder.outcome", "نتیجه", WoOutcomeMap),
+                Date("workorder.due_at", "مهلت"),
+                Date("workorder.created_at", "تاریخ ثبت"),
+                Date("workorder.closed_at", "تاریخ بستن"),
+                Text("workorder.close_note", "یادداشت بستن"),
+                Num("workorder.extension_count", "تعداد تمدید"),
+                Text("workorder.tags", "برچسب‌ها"),
+                Text("workorder.source", "مبدأ"),
+                Num("workorder.source_id", "شناسه مبدأ"),
+                Text("workorder.parent_no", "شماره دستور والد"),
+                Text("workorder.assignees", "گیرندگان"),
+                Num("workorder.assignee_count", "تعداد گیرنده"),
+                Num("workorder.checklist_done", "آیتم انجام‌شده"),
+                Num("workorder.checklist_total", "کل چک‌لیست"),
+                Num("workorder.progress", "درصد پیشرفت"),
+                Num("workorder.comment_count", "تعداد گفتگو"),
+                Num("workorder.attachment_count", "تعداد پیوست"),
+                Num("workorder.days_left", "روز مانده تا مهلت"),
+                Bool("workorder.overdue", "معوق"),
+                F("workorder.count", "تعداد دستور کار", RsFieldType.Number,
+                  group: false, agg: true, unit: "مورد")
+            }
+        },
+        new()
+        {
+            Key = "wo_assignee",
+            Title = "گیرندگان دستور کار",
+            Category = "دستور کار",
+            Icon = "bi-people",
+            Module = "WorkOrders",
+            Description = "هر سطر یک گیرندهٔ دستور کار است: رویت، پاسخ، انجام و تصمیم دستوردهنده.",
+            Fields = new()
+            {
+                Num("wo_assignee.id", "شناسه"),
+                Num("wo_assignee.order_id", "شناسه دستور"),
+                Text("wo_assignee.order_no", "شماره دستور"),
+                Text("wo_assignee.order_title", "عنوان دستور"),
+                Enum("wo_assignee.order_status", "وضعیت دستور", WoStatusMap),
+                Date("wo_assignee.order_due", "مهلت دستور"),
+                Text("wo_assignee.owner", "دستوردهنده"),
+                Text("wo_assignee.user", "گیرنده"),
+                Date("wo_assignee.seen_at", "تاریخ رویت"),
+                Date("wo_assignee.replied_at", "تاریخ پاسخ"),
+                Enum("wo_assignee.result", "نتیجه پاسخ", WoDoneMap),
+                Text("wo_assignee.reply", "متن پاسخ"),
+                Enum("wo_assignee.decision", "تصمیم دستوردهنده", WoDecisionMap),
+                Text("wo_assignee.decision_note", "یادداشت تصمیم"),
+                Bool("wo_assignee.late", "پاسخ دیر یا مهلت گذشته"),
+                F("wo_assignee.count", "تعداد گیرنده", RsFieldType.Number,
+                  group: false, agg: true, unit: "نفر")
+            }
+        },
+        new()
+        {
+            Key = "wo_checklist",
+            Title = "چک‌لیست دستور کار",
+            Category = "دستور کار",
+            Icon = "bi-check2-square",
+            Module = "WorkOrders",
+            Description = "آیتم‌های چک‌لیست هر دستور کار و اینکه چه کسی تیک زده است.",
+            Fields = new()
+            {
+                Num("wo_checklist.id", "شناسه"),
+                Num("wo_checklist.order_id", "شناسه دستور"),
+                Text("wo_checklist.order_no", "شماره دستور"),
+                Text("wo_checklist.order_title", "عنوان دستور"),
+                Text("wo_checklist.text", "آیتم"),
+                Num("wo_checklist.sort", "ترتیب"),
+                Bool("wo_checklist.is_done", "انجام شده"),
+                Text("wo_checklist.done_by", "انجام‌دهنده"),
+                Date("wo_checklist.done_at", "تاریخ انجام"),
+                F("wo_checklist.count", "تعداد آیتم", RsFieldType.Number,
+                  group: false, agg: true, unit: "آیتم")
+            }
+        },
+        new()
+        {
+            Key = "wo_comment",
+            Title = "گفتگوی دستور کار",
+            Category = "دستور کار",
+            Icon = "bi-chat-left-text",
+            Module = "WorkOrders",
+            Description = "کامنت‌های داخل دستور کار، شامل پاسخ‌ها.",
+            Fields = new()
+            {
+                Num("wo_comment.id", "شناسه"),
+                Num("wo_comment.order_id", "شناسه دستور"),
+                Text("wo_comment.order_no", "شماره دستور"),
+                Text("wo_comment.order_title", "عنوان دستور"),
+                Text("wo_comment.author", "نویسنده"),
+                Text("wo_comment.text", "متن"),
+                Date("wo_comment.created_at", "تاریخ"),
+                Bool("wo_comment.is_reply", "پاسخ به کامنت دیگر"),
+                Bool("wo_comment.is_deleted", "حذف‌شده"),
+                F("wo_comment.count", "تعداد گفتگو", RsFieldType.Number,
+                  group: false, agg: true, unit: "مورد")
+            }
+        },
+        new()
+        {
+            Key = "wo_log",
+            Title = "تاریخچه دستور کار",
+            Category = "دستور کار",
+            Icon = "bi-clock-history",
+            Module = "WorkOrders",
+            Description = "رویدادهای دستور کار: ثبت، رویت، پاسخ، تمدید، بستن و حذف.",
+            Fields = new()
+            {
+                Num("wo_log.id", "شناسه"),
+                Num("wo_log.order_id", "شناسه دستور"),
+                Text("wo_log.order_no", "شماره دستور"),
+                Text("wo_log.order_title", "عنوان دستور"),
+                Text("wo_log.actor", "انجام‌دهنده"),
+                Enum("wo_log.action", "رویداد", WoActionMap),
+                Text("wo_log.text", "شرح رویداد"),
+                Date("wo_log.created_at", "تاریخ"),
+                F("wo_log.count", "تعداد رویداد", RsFieldType.Number,
+                  group: false, agg: true, unit: "مورد")
+            }
+        },
+        new()
+        {
+            Key = "wo_attachment",
+            Title = "پیوست‌های دستور کار",
+            Category = "دستور کار",
+            Icon = "bi-paperclip",
+            Module = "WorkOrders",
+            Description = "فهرست فایل‌های پیوست دستور کار (بدون محتوای فایل).",
+            Fields = new()
+            {
+                Num("wo_attachment.id", "شناسه"),
+                Num("wo_attachment.order_id", "شناسه دستور"),
+                Text("wo_attachment.order_no", "شماره دستور"),
+                Text("wo_attachment.order_title", "عنوان دستور"),
+                Text("wo_attachment.file_name", "نام فایل"),
+                Text("wo_attachment.content_type", "نوع فایل"),
+                Text("wo_attachment.uploader", "بارگذار"),
+                Date("wo_attachment.uploaded_at", "تاریخ بارگذاری"),
+                F("wo_attachment.count", "تعداد پیوست", RsFieldType.Number,
+                  group: false, agg: true, unit: "فایل")
+            }
         }
     };
 
@@ -522,6 +728,51 @@ public static class RsSchemaCatalog
             Title = "قلم فاکتور ← کالا",
             Description = "مشخصات کامل کالای هر قلم.",
             Multiplies = false
+        },
+        new()
+        {
+            Key = "workorder->wo_assignee",
+            FromTable = "workorder",
+            ToTable = "wo_assignee",
+            Title = "دستور کار ← گیرندگان",
+            Description = "هر دستور می‌تواند چند گیرنده داشته باشد؛ سطرها تکرار می‌شوند.",
+            Multiplies = true
+        },
+        new()
+        {
+            Key = "workorder->wo_checklist",
+            FromTable = "workorder",
+            ToTable = "wo_checklist",
+            Title = "دستور کار ← چک‌لیست",
+            Description = "آیتم‌های چک‌لیست همان دستور. سطرها به تعداد آیتم‌ها تکرار می‌شوند.",
+            Multiplies = true
+        },
+        new()
+        {
+            Key = "workorder->wo_comment",
+            FromTable = "workorder",
+            ToTable = "wo_comment",
+            Title = "دستور کار ← گفتگو",
+            Description = "کامنت‌های داخل دستور کار. سطرها تکرار می‌شوند.",
+            Multiplies = true
+        },
+        new()
+        {
+            Key = "workorder->wo_log",
+            FromTable = "workorder",
+            ToTable = "wo_log",
+            Title = "دستور کار ← تاریخچه",
+            Description = "رویدادهای تاریخچهٔ همان دستور. سطرها تکرار می‌شوند.",
+            Multiplies = true
+        },
+        new()
+        {
+            Key = "workorder->wo_attachment",
+            FromTable = "workorder",
+            ToTable = "wo_attachment",
+            Title = "دستور کار ← پیوست‌ها",
+            Description = "فایل‌های پیوست همان دستور. سطرها تکرار می‌شوند.",
+            Multiplies = true
         }
     };
 

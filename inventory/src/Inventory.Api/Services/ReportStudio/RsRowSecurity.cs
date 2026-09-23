@@ -29,13 +29,17 @@ public sealed class RsRowScope
     /// <summary>آیا اجازهٔ دیدن نامه‌های همه را دارد؟</summary>
     public bool CanSeeAllLetters { get; init; }
 
-    /// <summary>وقتی true است هیچ فیلتری لازم نیست.</summary>
+    /// <summary>آیا اجازهٔ دیدن همهٔ دستورهای کار را دارد؟ فقط مدیر سیستم.</summary>
+    public bool CanSeeAllWorkOrders { get; init; }
+
+    /// <summary>وقتی true است فیلتر نامه لازم نیست. روی دستور کار اثر ندارد.</summary>
     public bool Unrestricted => CanSeeAllLetters;
 
     public static RsRowScope All(int userId) => new()
     {
         UserId = userId,
-        CanSeeAllLetters = true
+        CanSeeAllLetters = true,
+        CanSeeAllWorkOrders = true
     };
 }
 
