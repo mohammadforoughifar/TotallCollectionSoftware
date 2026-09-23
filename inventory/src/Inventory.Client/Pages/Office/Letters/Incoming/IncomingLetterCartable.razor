@@ -105,7 +105,7 @@
                         var isUnread = !l.IsRead && folder == "inbox";
                         var isSel = activeLetter?.LetterId == l.LetterId;
 
-                        <div class="mail @(isUnread ? "un" : "") @(isSel ? "sel" : "")" @onclick="() => SelectLetter(l)">
+                        <div class="mail @(isUnread ? "unread" : "") @(isSel ? "sel" : "")" @onclick="() => SelectLetter(l)">
                             @if (folder == "inbox" && l.ErjaId.HasValue)
                             {
                                 <div style="display:flex;align-items:center;padding-left:6px" @onclick:stopPropagation="true">
