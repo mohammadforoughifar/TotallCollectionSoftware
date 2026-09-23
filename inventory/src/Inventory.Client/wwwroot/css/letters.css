@@ -668,3 +668,8 @@
 .ltx .sheet-f .btn-outline-danger { border-radius:9px; font-weight:800; }
 .ltx .sheet-f .btn-outline-primary,
 .ltx .sheet-f .btn-primary { border-radius:9px; }
+
+/* انتخاب عنصر در گردش دستور کار و نمایش توضیحات آن */
+.wo-gardesh-modal .gnode-click, .wo-gardesh-modal .wo-gd-station { cursor:pointer; }
+.wo-gardesh-modal .wo-gd-selected { border-color:var(--p,#6941e8) !important; box-shadow:0 0 0 3px rgba(105,65,232,.14); }
+.wo-gardesh-modal .wo-gd-description { border:1px solid #dcd5ff; border-radius:12px; background:#faf9ff; overflow:hidden; }

@@ -1884,7 +1884,7 @@ else
                         @foreach (var a in detail.Assignees)
                         {
                             var aa = a;
-                            <div class="wo-gd-station @(aa.Done == true ? "done" : "")">
+                            <div class="wo-gd-station @(aa.Done == true ? "done" : "") @(selectedGardeshAssignee?.Id == aa.Id ? "wo-gd-selected" : "")" @onclick="() => SelectGardeshAssignee(aa)">
                                 <div class="d-flex justify-content-between flex-wrap gap-1">
                                     <b><i class="bi bi-person"></i> @aa.Name @(aa.UserId == access.UserId ? "(شما)" : "")</b>
                                     @if (aa.Done == true) { <span class="badge bg-success-subtle text-success border">✅ انجام شد</span> }
@@ -1939,7 +1939,7 @@ else
                                                     {
                                                         var aa = a;
                                                         <li>
-                                                            <div class="tnode">
+                                                            <div class="tnode gnode-click @(selectedGardeshAssignee?.Id == aa.Id ? "wo-gd-selected" : "")" @onclick="() => SelectGardeshAssignee(aa)">
                                                                 <span class="mini"><i class="bi bi-person"></i></span>
                                                                 <div><b>@aa.Name</b><small> — رویت: @(aa.SeenAt == null ? "—" : aa.SeenAt.Value.ToFa())</small></div>
                                                                 <span class="tst @(aa.Done == true ? "g" : aa.Done == false ? "r" : "w")">
@@ -1975,7 +1975,7 @@ else
                                                 {
                                                     var aa = a;
                                                     <li>
-                                                        <div class="fnode @(aa.Done == true ? "ok" : aa.Done == false ? "no" : "wt")">
+                                                        <div class="fnode gnode-click @(aa.Done == true ? "ok" : aa.Done == false ? "no" : "wt") @(selectedGardeshAssignee?.Id == aa.Id ? "wo-gd-selected" : "")" @onclick="() => SelectGardeshAssignee(aa)">
                                                             <span class="mini"><i class="bi bi-person"></i></span>
                                                             <div><b>@aa.Name</b><small>@(aa.Done == true ? "انجام شد" : aa.Done == false ? "انجام نشد" : aa.SeenAt != null ? "رویت شده" : "در انتظار رویت")</small></div>
                                                             <span class="fdot @(aa.Done == true ? "g" : aa.Done == false ? "r" : "w")"></span>
@@ -2002,6 +2002,19 @@ else
                                 <span><span class="fdot g"></span> انجام‌شده</span>
                                 <span><span class="fdot w"></span> در انتظار</span>
                                 <span><span class="fdot r"></span> انجام‌نشده</span>
+                            </div>
+                        </div>
+                    }
+
+                    @if (selectedGardeshAssignee != null)
+                    {
+                        <div class="wo-gd-description mt-3">
+                            <div class="wo-block-title"><i class="bi bi-chat-left-text"></i> توضیحات گردش — @selectedGardeshAssignee.Name</div>
+                            <div class="wo-block-body">
+                                <div><b>وضعیت:</b> @(selectedGardeshAssignee.Done == true ? "انجام شد" : selectedGardeshAssignee.Done == false ? "انجام نشد" : selectedGardeshAssignee.SeenAt != null ? "رویت شده" : "در انتظار رویت")</div>
+                                <div class="mt-2"><b>پاسخ / توضیحات کارشناس:</b><br />@(string.IsNullOrWhiteSpace(selectedGardeshAssignee.ReplyText) ? "توضیحی ثبت نشده است." : selectedGardeshAssignee.ReplyText)</div>
+                                @if (!string.IsNullOrWhiteSpace(selectedGardeshAssignee.OwnerDecisionNote))
+                                { <div class="mt-2"><b>یادداشت دستوردهنده:</b><br />@selectedGardeshAssignee.OwnerDecisionNote</div> }
                             </div>
                         </div>
                     }
@@ -2385,10 +2398,14 @@ else
     // گردش کار (مشابه گردش نامه داخلی)
     private bool gardeshOpen;
     private int gardeshView;
+    private AsgItem? selectedGardeshAssignee;
+
+    private void SelectGardeshAssignee(AsgItem assignee) => selectedGardeshAssignee = assignee;
 
     private void OpenGardesh()
     {
         gardeshView = 0;
+        selectedGardeshAssignee = null;
         gardeshOpen = true;
     }
 

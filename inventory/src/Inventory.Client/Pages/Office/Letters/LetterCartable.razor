@@ -32,7 +32,7 @@
                 @if (stats.InboxUnread > 0) { <span class="rbadge">@stats.InboxUnread.FaDigits()</span> }
             </button>
             <span class="rlbl">دریافتی</span>
-            <button class="@(folder == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetFolder("sent")'><i class="bi bi-send"></i>@if (stats.SentTotal > 0) { <span class="rbadge">@stats.SentTotal.FaDigits()</span> }</button>
+            <button class="@(folder == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetFolder("sent")'><i class="bi bi-send"></i></button>
             <span class="rlbl">ارسالی</span>
             <button class="@(folder == "draft" ? "on" : "")" title="پیش‌نویس" @onclick='() => SetFolder("draft")'><i class="bi bi-pencil-square"></i></button>
             <span class="rlbl">پیش‌نویس</span>
