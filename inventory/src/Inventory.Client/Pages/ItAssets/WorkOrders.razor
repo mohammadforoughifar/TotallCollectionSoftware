@@ -666,9 +666,9 @@ else
             @for (var pn = 1; pn <= TotalPages; pn++)
             {
                 var p2 = pn;
-                <button class="wo-page-btn num @(page == p2 ? "active" : "")" @onclick="() => page = p2">@p2</button>
+                <button class="wo-page-btn num @(page == p2 ? "active" : "")" @onclick="() => GoToPage(p2)">@p2</button>
             }
-            <button class="wo-page-btn" disabled="@(page >= TotalPages)" @onclick="() => page++"><i class="bi bi-chevron-left"></i></button>
+            <button class="wo-page-btn" disabled="@(page >= TotalPages)" @onclick="() => GoToPage(page + 1)"><i class="bi bi-chevron-left"></i></button>
         </div>
     }
 }
@@ -2052,6 +2052,7 @@ else
 
     private AccessInfo access = new();
     private List<WoItem> mineItems = new(), assignedItems = new(), archiveItems = new();
+    private int mineTotal, assignedTotal, archiveTotal;
     private List<CalItem> calItems = new();
     private List<TargetOpt> targets = new();
     private HashSet<int> expanded = new();
@@ -2092,12 +2093,13 @@ else
             return it.ToList();
         }
     }
-    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredItems.Count / (double)PageSize));
-    private IEnumerable<WoItem> PagedItems => FilteredItems.Skip((page - 1) * PageSize).Take(PageSize);
+    private int CurrentTotal => tab switch { "assigned" => assignedTotal, "archive" => archiveTotal, _ => mineTotal };
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(CurrentTotal / (double)PageSize));
+    private IEnumerable<WoItem> PagedItems => FilteredItems;
 
-    private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; }
-    private void ClearSearch() { fltQ = ""; page = 1; }
-    private void SetPriorityFilter(int p) { fltPriority = p; page = 1; }
+    private void OnSearchInput(ChangeEventArgs e) { fltQ = e.Value?.ToString() ?? ""; page = 1; _ = LoadAll(); }
+    private void ClearSearch() { fltQ = ""; page = 1; _ = LoadAll(); }
+    private void SetPriorityFilter(int p) { fltPriority = p; page = 1; _ = LoadAll(); }
 
     // ---- برچسب/دسته‌بندی ----
     private List<string> newTags = new();   // فرم ایجاد/ویرایش
@@ -2119,7 +2121,7 @@ else
     }
     private void AddSuggestedTag(string t) { if (newTags.Count < 5 && !newTags.Contains(t)) newTags.Add(t); }
     private void OnTagKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddTag(); }
-    private void SetTagFilter(string? t) { fltTag = t; page = 1; }
+    private void SetTagFilter(string? t) { fltTag = t; page = 1; _ = LoadAll(); }
 
     private async Task LoadMyTags()
     {
@@ -2520,11 +2522,31 @@ else
         catch { Toast.Error("دریافت دستور کار انجام نشد."); }
     }
 
+    private async Task<WorkOrderPage> LoadWorkOrderPage(string endpoint)
+    {
+        var qs = $"page={page}&pageSize={PageSize}";
+        if (!string.IsNullOrWhiteSpace(fltQ)) qs += $"&Q={Uri.EscapeDataString(fltQ.Trim())}";
+        if (fltPriority >= 0) qs += $"&Priority={fltPriority}";
+        if (!string.IsNullOrWhiteSpace(fltTag)) qs += $"&Tag={Uri.EscapeDataString(fltTag)}";
+        return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
+    }
+
     private async Task LoadAll()
     {
-        try { mineItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/mine") ?? new(); } catch { }
-        try { assignedItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/assigned") ?? new(); } catch { }
-        try { archiveItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/archive") ?? new(); } catch { }
+        try
+        {
+            var m = await LoadWorkOrderPage("mine"); mineItems = m.Items; mineTotal = m.TotalCount;
+            var a = await LoadWorkOrderPage("assigned"); assignedItems = a.Items; assignedTotal = a.TotalCount;
+            var ar = await LoadWorkOrderPage("archive"); archiveItems = ar.Items; archiveTotal = ar.TotalCount;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task GoToPage(int target)
+    {
+        if (target < 1 || target > TotalPages || target == page) return;
+        page = target;
+        await LoadAll();
     }
 
     private void SwitchTab(string t)
@@ -3309,6 +3331,13 @@ else
         public DateTime? SeenAt { get; set; } public DateTime? RepliedAt { get; set; }
         public bool? Done { get; set; } public string? ReplyText { get; set; }
         public string? OwnerDecision { get; set; } public string? OwnerDecisionNote { get; set; }
+    }
+    public class WorkOrderPage
+    {
+        public List<WoItem> Items { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
     }
     public class WoItem
     {

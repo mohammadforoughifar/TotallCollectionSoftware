@@ -412,6 +412,8 @@ public class WorkOrdersController : ControllerBase
     /// <summary>پارامترهای فیلتر لیست — همه اختیاری؛ بدون پارامتر، رفتار قبلی حفظ می‌شود.</summary>
     public class ListFilterDto
     {
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 10;
         /// <summary>جستجو در شماره و عنوان (بدون حساسیت به بزرگی/کوچکی).</summary>
         public string? Q { get; set; }
 
@@ -506,18 +508,35 @@ public class WorkOrdersController : ControllerBase
     }
 
     /// <summary>دستورهایی که من داده‌ام (باز) — با فیلتر اختیاری جستجو/اولویت/بازه/شخص.</summary>
+    public class WorkOrderPageDto
+    {
+        public List<object> Items { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+    }
+
+    private async Task<IActionResult> BuildPage(IQueryable<WorkOrder> query, ListFilterDto filter)
+    {
+        var page = Math.Max(1, filter.Page);
+        var pageSize = Math.Clamp(filter.PageSize <= 0 ? 10 : filter.PageSize, 1, 100);
+        var filtered = ApplyFilter(query, filter);
+        var total = await filtered.CountAsync();
+        var rows = await BuildList(filtered.OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize));
+        return Ok(new WorkOrderPageDto { Items = rows, TotalCount = total, Page = page, PageSize = pageSize });
+    }
+
     [HttpGet("mine")]
     public async Task<IActionResult> Mine([FromQuery] ListFilterDto filter) =>
-        Ok(await BuildList(ApplyFilter(
-            _db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), filter)));
+        await BuildPage(_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), filter);
 
     /// <summary>دستورهای محول به من (باز) — با فیلتر اختیاری.</summary>
     [HttpGet("assigned")]
     public async Task<IActionResult> Assigned([FromQuery] ListFilterDto filter)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        return Ok(await BuildList(ApplyFilter(
-            _db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), filter)));
+        return await BuildPage(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), filter);
     }
 
     /// <summary>بایگانی — دستورهای بسته‌شده (من دستور داده‌ام یا به من محول شده) — با فیلتر اختیاری.</summary>
@@ -525,8 +544,8 @@ public class WorkOrdersController : ControllerBase
     public async Task<IActionResult> Archive([FromQuery] ListFilterDto filter)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        return Ok(await BuildList(ApplyFilter(_db.WorkOrders.Where(w =>
-            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), filter)));
+        return await BuildPage(_db.WorkOrders.Where(w =>
+            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), filter);
     }
 
     /// <summary>دستورهای کارِ ساخته‌شده از یک مبدأ (سورس) — مثلاً نامه داخلی. برای لینک/نشان «دستورکار شده».</summary>
