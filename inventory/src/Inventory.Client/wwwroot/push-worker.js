@@ -1,4 +1,4 @@
-/* Shared by development and published workers. No access token is stored here. v2 */
+/* Shared by development and published workers. No access token is stored here. v3 */
 const pushOwnerCache = 'push-owner-v1';
 const pushOwnerUrl = new URL('/__push_owner__', self.location.origin).href;
 async function readPushOwner() {
@@ -36,6 +36,8 @@ self.addEventListener('push', event => {
         await self.registration.showNotification(data.title || 'اعلان جدید', {
             body: data.body || '', icon: '/icon-192.png', badge: '/icon-192.png',
             tag: data.tag || 'inv-generic', renotify: false, dir: 'rtl', lang: 'fa', vibrate: [100, 50, 100],
+            // اعلان تا زمانی که کاربر آن را ببیند/کلیک کند روی صفحه بماند (به‌جای محو شدن سریع خودکار)
+            requireInteraction: true, silent: false,
             data: { url: safePushUrl(data.link), userId: data.userId }
         });
     })());

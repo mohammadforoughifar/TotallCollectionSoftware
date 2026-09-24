@@ -22,7 +22,8 @@ public class ToastService : IToastService
     {
         var toast = new ToastMessage { Message = message, Kind = kind };
         _toasts.Add(toast);
-        if (_toasts.Count > 4) _toasts.RemoveAt(0);
+        // با مدت نمایش طولانی، چند پیام پشت‌سرهم باید هم‌زمان دیده شوند (قبلاً ۴ بود)
+        if (_toasts.Count > 6) _toasts.RemoveAt(0);
         OnChange?.Invoke();
         _ = AutoRemove(toast.Id);
     }
@@ -37,7 +38,10 @@ public class ToastService : IToastService
 
     private async Task AutoRemove(Guid id)
     {
-        await Task.Delay(4200);
+        // مدت نمایش از تنظیمات کاربر (پنل اعلان‌ها) می‌آید؛ صفر یعنی تا بستن دستی بماند.
+        var delay = NotificationTiming.ToastMs;
+        if (delay <= 0) return;
+        await Task.Delay(delay);
         Remove(id);
     }
 }
