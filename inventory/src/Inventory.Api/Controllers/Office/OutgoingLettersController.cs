@@ -108,10 +108,18 @@ public class OutgoingLettersController : RbacControllerBase
             return forbid;
 
         // کاربر دبیرخانه مجاز به مشاهدهٔ نامه است حتی اگر در گردش آن نباشد
-        var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin || hasDabirkhane);
-        return dto is null
-            ? NotFound(new { message = "نامه پیدا نشد یا شما در گردش آن نیستید." })
-            : Ok(dto);
+        try
+        {
+            var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin || hasDabirkhane);
+            return dto is null
+                ? NotFound(new { message = "نامه پیدا نشد یا شما در گردش آن نیستید." })
+                : Ok(dto);
+        }
+        catch (Exception ex)
+        {
+            // از تبدیل خطاهای CreatorId/اسکیما به 400 بدون توضیح جلوگیری می‌کند.
+            return BadRequest(new { message = ex.Message, detail = "جزئیات نامه صادره از دیتابیس خوانده نشد؛ اسکیمای OutgoingLetters و CreatorId را بررسی کنید." });
+        }
     }
 
     [HttpPost]
