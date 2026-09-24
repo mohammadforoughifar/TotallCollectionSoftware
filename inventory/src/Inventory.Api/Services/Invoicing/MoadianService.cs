@@ -481,8 +481,20 @@ public class MoadianService : IMoadianService
                 var resp = await client.SendAsync(req);
                 var body = await resp.Content.ReadAsStringAsync();
 
+                // پاسخ سامانه باید JSON باشد. پاسخ HTML (که با < شروع می‌شود)
+                // معمولاً یعنی BaseUrl به صفحه وب/پروکسی/مسیر اشتباه اشاره می‌کند
+                // و فاکتور هنوز به کارپوشه ارسال نشده است.
+                if (string.IsNullOrWhiteSpace(body))
+                    throw new InvalidOperationException($"پاسخ خالی از سرویس مودیان دریافت شد (HTTP {(int)resp.StatusCode}). آدرس BaseUrl و دسترسی شبکه را بررسی کنید.");
+                var trimmedBody = body.TrimStart();
+                if (trimmedBody.StartsWith("<", StringComparison.Ordinal))
+                {
+                    var preview = trimmedBody.Length > 180 ? trimmedBody[..180] : trimmedBody;
+                    throw new InvalidOperationException($"سرویس مودیان پاسخ HTML برگرداند، نه JSON (HTTP {(int)resp.StatusCode}). احتمالاً BaseUrl یا مسیر API اشتباه است. پاسخ: {preview}");
+                }
+
                 // پاسخ سامانه: {"code": ..., "message": ..., "data": {...}}
-                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(body) ? "{}" : body);
+                using var doc = JsonDocument.Parse(body);
                 var root = doc.RootElement;
                 var code = 1;
                 if (root.TryGetProperty("code", out var c))
