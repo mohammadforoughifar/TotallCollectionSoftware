@@ -253,15 +253,17 @@ public static class RbacSeeder
         // ================== نقش‌های منابع انسانی ==================
         // نقش «مدیر منابع انسانی» — تایید/رد همه‌ی درخواست‌ها + گزارش ماهانه‌ی همه‌ی نیروها (پنل مدیریت)
         var hrManagerRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "HrManager");
+        var hrManagerCreated = false;
         if (hrManagerRole == null)
         {
+            hrManagerCreated = true;
             hrManagerRole = new Role { Name = "HrManager", Description = "مدیر منابع انسانی — تایید/رد درخواست‌های مرخصی و ماموریت همه‌ی نیروها + گزارش ماهانه", IsActive = true };
             db.Roles.Add(hrManagerRole);
             await db.SaveChangesAsync();
             Console.WriteLine("[RBAC] نقش «HrManager» ساخته شد.");
         }
         var hrPerms = await db.Permissions
-            .Where(p => p.Module == "LeaveRequests" && (p.Action == "Request" || p.Action == "Approve" || p.Action == "Report"))
+            .Where(p => hrManagerCreated && p.Module == "LeaveRequests" && (p.Action == "Request" || p.Action == "Approve" || p.Action == "Report"))
             .ToListAsync();
         var hrHas = await db.RolePermissions.Where(rp => rp.RoleId == hrManagerRole.Id)
             .Select(rp => rp.PermissionId).ToListAsync();
@@ -304,7 +306,7 @@ public static class RbacSeeder
 
         // مدیر منابع انسانی: مدیریت پایه سازمانی (HrMain) + کارگزینی (HrCore) + حقوق (HrPay)
         var hrMainModules = new[] { "HrMain", "HrCore", "HrPay", "FaAtt", "FaPay", "FaLms", "FaCom" };
-        var hrMainPerms = await db.Permissions.Where(p => hrMainModules.Contains(p.Module)).ToListAsync();
+        var hrMainPerms = await db.Permissions.Where(p => hrManagerCreated && hrMainModules.Contains(p.Module)).ToListAsync();
         var hrMainHas = await db.RolePermissions.Where(rp => rp.RoleId == hrManagerRole.Id).Select(rp => rp.PermissionId).ToListAsync();
         foreach (var perm in hrMainPerms.Where(p => !hrMainHas.Contains(p.Id)))
             db.RolePermissions.Add(new RolePermission { RoleId = hrManagerRole.Id, PermissionId = perm.Id });
