@@ -23,12 +23,13 @@ foreach (var message in httpsCerts.Messages) Console.WriteLine($"[HTTPS] {messag
 if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
 {
     var httpPortForKestrel = Environment.GetEnvironmentVariable("PORT") ?? "5100";
-    var httpsPortForKestrel = httpsCerts.Port;
-    var serverCert = httpsCerts.Certificate;
     builder.WebHost.ConfigureKestrel(options =>
     {
         options.ListenAnyIP(int.Parse(httpPortForKestrel));                       // همان HTTP فعلی (دست‌نخورده)
-        options.ListenAnyIP(httpsPortForKestrel, listen => listen.UseHttps(serverCert)); // HTTPS داخلی برای اعلان سیستمی
+        // HTTPS: پورت اصلی (پیش‌فرض 5443) + پورت‌های اضافه (Https:ExtraPorts، مثلاً 443).
+        // گواهی بر اساس نام درخواستی انتخاب می‌شود: دامنهٔ واقعی ← گواهی عمومی (Let's Encrypt)، آی‌پی/نام داخلی ← گواهی داخلی.
+        foreach (var httpsPort in httpsCerts.AllPorts)
+            options.ListenAnyIP(httpsPort, listen => listen.UseHttps(httpsCerts.CreateTlsOptions()));
     });
 }
 
@@ -353,6 +354,35 @@ app.UseSwaggerUI(o =>
     o.DocumentTitle = "API برنامه انبار";
 });
 
+// ================== هدایت HTTP → HTTPS (اختیاری: Https:RedirectHttp=true) ==================
+// فقط صفحه‌ها (GET/HEAD) هدایت می‌شوند؛ API و هاب‌ها دست نمی‌خورند تا نسخه‌های قدیمی/اپ‌ها نشکنند.
+// /https-setup و /ca.crt همیشه روی HTTP می‌مانند تا دستگاهِ بدون گواهی بتواند گواهی را نصب کند.
+// هدایت فقط وقتی انجام می‌شود که برای آن نام/آی‌پی واقعاً گواهی داریم (وگرنه کاربر پشت خطای گواهی گیر می‌کند).
+if (httpsCerts.Enabled && httpsCerts.RedirectHttp)
+{
+    app.Use(async (ctx, next) =>
+    {
+        var req = ctx.Request;
+        var path = req.Path.Value ?? "";
+        var isPage = HttpMethods.IsGet(req.Method) || HttpMethods.IsHead(req.Method);
+        var exempt = path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)
+                     || path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase)
+                     || path.StartsWith("/.well-known/", StringComparison.OrdinalIgnoreCase)
+                     || path.Equals("/https-setup", StringComparison.OrdinalIgnoreCase)
+                     || path.Equals("/ca.crt", StringComparison.OrdinalIgnoreCase);
+        var host = req.Host.Host;
+        if (!req.IsHttps && isPage && !exempt && !string.IsNullOrEmpty(host) && httpsCerts.HasCertificateFor(host))
+        {
+            var targetPort = httpsCerts.IsPublicHost(host) ? httpsCerts.PublicPort : httpsCerts.Port;
+            var hostPart = host.Contains(':') ? $"[{host}]" : host; // IPv6
+            var portPart = targetPort == 443 ? "" : $":{targetPort}";
+            ctx.Response.Redirect($"https://{hostPart}{portPart}{req.PathBase}{req.Path}{req.QueryString}", permanent: false);
+            return;
+        }
+        await next();
+    });
+}
+
 app.UseCors("wasm");
 
 app.UseAuthentication();
@@ -474,7 +504,7 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5100";
 if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
 {
-    Console.WriteLine($"[HTTPS] سامانه روی http://0.0.0.0:{port} و https://0.0.0.0:{httpsCerts.Port} در دسترس است.");
+    Console.WriteLine($"[HTTPS] سامانه روی http://0.0.0.0:{port} و {string.Join(" و ", httpsCerts.AllPorts.Select(p => $"https://0.0.0.0:{p}"))} در دسترس است.");
     Console.WriteLine($"[HTTPS] راهنمای نصب گواهی روی گوشی:  http://<آی‌پی-سرور>:{port}/https-setup");
     app.Run(); // بایندینگ‌ها در ConfigureKestrel تعیین شده‌اند (HTTP + HTTPS)
 }

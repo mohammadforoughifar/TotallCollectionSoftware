@@ -73,6 +73,20 @@ public class HttpsController : ControllerBase
             hasPfxFile = facts.HasPfxFile,
             dataDir = facts.DataDir,
             hosts = facts.Hosts,
+            extraPorts = facts.ExtraPorts,
+            redirectHttp = facts.RedirectHttp,
+            publicPort = facts.PublicPort,
+            publicCertificate = new
+            {
+                loaded = facts.PublicCertificate.Loaded,
+                names = facts.PublicCertificate.Names,
+                expiresAt = facts.PublicCertificate.NotAfterUtc,
+                issuer = facts.PublicCertificate.Issuer,
+                fingerprint = facts.PublicCertificate.Fingerprint,
+                path = facts.PublicCertificate.Path,
+                error = facts.PublicCertificate.Error,
+                urls = facts.PublicCertificate.Names.Where(n => !n.StartsWith("*.")).Select(n => facts.PublicPort == 443 ? $"https://{n}" : $"https://{n}:{facts.PublicPort}").ToList()
+            },
             messages = facts.Messages
         });
     }
@@ -87,7 +101,7 @@ public class HttpsController : ControllerBase
         var facts = fresh.Describe(_env, _cfg);
         return Ok(new
         {
-            enabled = facts.Enabled,
+            enabled = _https.Enabled, // وضعیت شنوندهٔ در حال اجرا (پورت را خود سرویس گرفته؛ بررسی دوباره اشتباهاً «غیرفعال» می‌داد)
             hosts = facts.Hosts,
             caFingerprint = facts.CaFingerprint,
             message = input?.NewCa == true

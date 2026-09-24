@@ -245,8 +245,21 @@
                         }
                         else if (https.enabled)
                         {
-                            <div class="fs-8 mb-2">وضعیت: <b class="text-success">فعال</b> — پورت <span dir="ltr">@https.port</span></div>
-                            <div class="fs-8 mb-2">نشانی‌های امن (برای باز کردن نرم‌افزار و اعلان‌ها):</div>
+                            <div class="fs-8 mb-2">وضعیت: <b class="text-success">فعال</b> — پورت <span dir="ltr">@https.port@(https.extraPorts.Count > 0 ? ", " + string.Join(", ", https.extraPorts) : "")</span>@(https.redirectHttp ? " — هدایت خودکار http→https روشن" : "")</div>
+                            @if (https.publicCertificate?.loaded == true)
+                            {
+                                <div class="fs-8 mb-2 p-2 rounded" style="background:rgba(25,135,84,.08)">
+                                    <i class="bi bi-patch-check-fill text-success"></i>
+                                    گواهی معتبر دامنه (بدون نیاز به نصب روی گوشی):
+                                    <span dir="ltr">@string.Join("  ", https.publicCertificate.urls)</span>
+                                    <span class="text-muted">— اعتبار تا <span dir="ltr">@https.publicCertificate.expiresAt?.ToString("yyyy-MM-dd")</span> (تمدید خودکار)</span>
+                                </div>
+                            }
+                            else if (!string.IsNullOrEmpty(https.publicCertificate?.error))
+                            {
+                                <div class="fs-9 text-danger mb-2">@https.publicCertificate.error</div>
+                            }
+                            <div class="fs-8 mb-2">نشانی‌های امن داخلی (با گواهی سامانه):</div>
                             <ul class="fs-8 mb-2 ps-3" dir="ltr">
                                 @foreach (var u in https.urls)
                                 {
@@ -631,7 +644,19 @@
         public DateTime? caExpiresAt { get; set; }
         public bool hasCaFile { get; set; }
         public string? dataDir { get; set; }
+        public List<int> extraPorts { get; set; } = new();
+        public bool redirectHttp { get; set; }
+        public HttpsPublicCert? publicCertificate { get; set; }
         public List<string> messages { get; set; } = new();
+    }
+
+    private class HttpsPublicCert
+    {
+        public bool loaded { get; set; }
+        public List<string> names { get; set; } = new();
+        public List<string> urls { get; set; } = new();
+        public DateTime? expiresAt { get; set; }
+        public string? error { get; set; }
     }
 
     private class HttpsAction { public bool enabled { get; set; } public string? message { get; set; } public List<string> hosts { get; set; } = new(); }
