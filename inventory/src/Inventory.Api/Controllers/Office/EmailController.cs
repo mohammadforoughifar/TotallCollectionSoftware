@@ -26,6 +26,14 @@ public class EmailController : RbacControllerBase
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
 
+    // دسترسی «ایمیل شخصی» جدا از دسترسی حساب‌های رسمی/دبیرخانه است.
+    private async Task<IActionResult?> PersonalAccessAsync(bool personal)
+    {
+        if (personal && !await HasAsync(Module, "Personal") && !await IsAdminAsync())
+            return StatusCode(403, new { message = "شما به ایمیل‌های شخصی دسترسی ندارید." });
+        return null;
+    }
+
     /// <summary>دسترسی دبیرخانه صادره — برای مدیریت حساب‌های رسمی دبیرخانه</summary>
     private async Task<bool> IsDabirkhaneAsync() =>
         await HasAsync("OutgoingLetters", "Dabirkhane") || await HasAsync(Module, "Delete");
@@ -149,6 +157,7 @@ public class EmailController : RbacControllerBase
         [FromQuery] bool spam = false, [FromQuery] bool starred = false, [FromQuery] bool personal = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetInboxAsync(MyUserId, emailId, search, unreadOnly, await IsDabirkhaneAsync(),
             personal, page, pageSize, folderId, spam, starred));
     }
@@ -160,6 +169,7 @@ public class EmailController : RbacControllerBase
         [FromQuery] bool starred = false, [FromQuery] bool personal = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetSentAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
             personal, page, pageSize, folderId, starred));
     }
@@ -170,6 +180,7 @@ public class EmailController : RbacControllerBase
         [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool personal = false)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetArchiveAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
             personal, page, pageSize));
     }

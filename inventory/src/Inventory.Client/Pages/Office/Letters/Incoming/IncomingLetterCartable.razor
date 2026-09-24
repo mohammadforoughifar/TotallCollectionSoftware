@@ -28,11 +28,6 @@
             </button>
             <span class="rlbl">دریافتی</span>
 
-            <button class="@(folder == "sent" ? "on" : "")" title="ثبت‌شده‌ها" @onclick='() => SetFolder("sent")'>
-                <i class="bi bi-send-check-fill"></i>
-            </button>
-            <span class="rlbl">ثبت‌شده</span>
-
             <button class="@(folder == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetFolder("starred")'>
                 <i class="bi bi-star-fill"></i>
             </button>
