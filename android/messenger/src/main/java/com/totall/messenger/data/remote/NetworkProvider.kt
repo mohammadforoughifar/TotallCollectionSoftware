@@ -8,7 +8,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 
-/** آدرس پایه‌ی سرور را هنگام ورود کاربر تنظیم کنید؛ مثل http://192.168.1.10:5000/ */
+/** آدرس پایه‌ی سرور را هنگام ورود کاربر تنظیم کنید؛ مثل https://192.168.1.10:5443/ یا https://erp.example.com/ (HTTP ساده در اندروید بسته است) */
 object ServerConfig {
     var baseUrl: String = "http://10.0.2.2:5000/"
         private set

@@ -14,7 +14,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         // ⚙️ اتصال به سرور توتال — این دو خط را با مقادیر واقعی لاگین پر کنید:
-        // ServerConfig.setBaseUrl("http://192.168.1.10:5000/")
+        // ServerConfig.setBaseUrl("https://192.168.1.10:5443/")
         // NetworkProvider.tokenProvider = { sessionManager.jwtToken }
 
         enableEdgeToEdge()

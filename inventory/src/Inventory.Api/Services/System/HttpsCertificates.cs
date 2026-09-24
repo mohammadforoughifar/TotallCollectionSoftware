@@ -21,7 +21,7 @@ namespace Inventory.Api.Services;
 ///   server.pfx  → گواهی سرور (برای Kestrel و در صورت نیاز برای IIS)
 ///   meta.json   → آی‌پی‌ها/نام‌های داخل گواهی، اثر انگشت و رمز فایل pfx
 /// </summary>
-public sealed class HttpsCertificates
+public sealed partial class HttpsCertificates
 {
     public const int DefaultPort = 5443;
 
@@ -63,14 +63,19 @@ public sealed class HttpsCertificates
 
         try
         {
-            var cert = LoadOrCreate(result);
+            var cert = LoadOrCreate(result, cfg);
             var listening = IsPortFree(port);
             if (!listening)
             {
                 result.Note($"پورت {port} در حال استفاده است؛ HTTPS داخلی فعال نشد. پورت دیگری با Https:Port یا متغیر HTTPS_PORT تنظیم کنید.");
-                return new HttpsCertificates(dir, false, port, null);
+                var busy = new HttpsCertificates(dir, false, port, null);
+                busy._log.AddRange(result._log);
+                return busy;
             }
-            return new HttpsCertificates(dir, true, port, cert);
+            var ready = new HttpsCertificates(dir, true, port, cert);
+            ready._log.AddRange(result._log); // پیام‌های ساخت گواهی در کنسول هم دیده شوند
+            ready.ConfigureExtras(cfg);        // گواهی عمومی (Let's Encrypt)، پورت‌های اضافه، هدایت HTTP → HTTPS
+            return ready;
         }
         catch (Exception ex)
         {
@@ -79,12 +84,12 @@ public sealed class HttpsCertificates
         }
     }
 
-    private static X509Certificate2 LoadOrCreate(HttpsCertificates target)
+    private static X509Certificate2 LoadOrCreate(HttpsCertificates target, IConfiguration cfg)
     {
         var dir = target._dir;
         Directory.CreateDirectory(dir);
         var metaPath = Path.Combine(dir, "meta.json");
-        var currentHosts = CollectHosts(null);
+        var currentHosts = CollectHosts(cfg); // شامل Https:Hosts (دامنه/آی‌پی عمومی که روی کارت شبکه نیست)
 
         Meta? meta = null;
         try { if (File.Exists(metaPath)) meta = JsonSerializer.Deserialize<Meta>(File.ReadAllText(metaPath)); } catch { }
@@ -100,7 +105,7 @@ public sealed class HttpsCertificates
             var ca = caExists ? LoadCa(target.CaPath) : CreateRootCa();
             if (!caExists) SavePem(target.CaPath, ca);
 
-            var hostList = CollectHosts(null);
+            var hostList = CollectHosts(cfg);
             var (server, pfxPassword) = CreateServerCertificate(ca, hostList);
             File.WriteAllBytes(target.PfxPath, server.Export(X509ContentType.Pfx, pfxPassword));
 
@@ -165,6 +170,10 @@ public sealed class HttpsCertificates
             PfxPassword = meta?.PfxPassword ?? "",
             HasCaFile = File.Exists(CaPath),
             HasPfxFile = File.Exists(PfxPath),
+            ExtraPorts = ExtraPorts.ToList(),
+            RedirectHttp = RedirectHttp,
+            PublicPort = PublicPort,
+            PublicCertificate = DescribePublic(),
             Messages = _log.ToList()
         };
     }
@@ -343,5 +352,9 @@ public sealed class HttpsFacts
     public string PfxPassword { get; set; } = "";
     public bool HasCaFile { get; set; }
     public bool HasPfxFile { get; set; }
+    public List<int> ExtraPorts { get; set; } = new();
+    public bool RedirectHttp { get; set; }
+    public int PublicPort { get; set; }
+    public PublicCertificateFacts PublicCertificate { get; set; } = new();
     public List<string> Messages { get; set; } = new();
 }
