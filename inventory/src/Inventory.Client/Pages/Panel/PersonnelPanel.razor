@@ -1,0 +1,16 @@
+@page "/panels/personnel"
+@inject IAuthState Auth
+<PageTitle>پنل پرسنل</PageTitle>
+@if (!HasPersonnelPanel) { <div class="alert alert-danger m-3">شما به پنل پرسنل دسترسی ندارید.</div> }
+else
+{
+<div class="container-fluid py-3"><h1 class="h3 fw-bold">پنل پرسنل</h1><p class="text-muted">خدمات کامل منابع انسانی، آموزش و ارتباطات داخلی</p><div class="row g-3 mt-2">
+    <PanelLink Icon="bi-person-vcard" Title="پرونده پرسنلی" Description="پروفایل، قراردادها و احکام" Href="/hr-core" />
+    <PanelLink Icon="bi-clock-history" Title="حضور و غیاب" Description="تردد، مرخصی و مأموریت" Href="/fa-att/my-leaves" />
+    <PanelLink Icon="bi-wallet2" Title="حقوق و دستمزد" Description="فیش حقوقی و سوابق پرداخت" Href="/fa-pay" />
+    <PanelLink Icon="bi-mortarboard" Title="آموزش و توسعه" Description="دوره‌ها، نیازهای آموزشی و گواهی‌ها" Href="/fa-lms" />
+    <PanelLink Icon="bi-chat-dots" Title="ارتباطات داخلی" Description="اطلاعیه‌ها و تیکت‌های سازمانی" Href="/fa-com" />
+    <PanelLink Icon="bi-envelope-paper" Title="کارتابل من" Description="نامه‌ها و ارجاع‌های شخصی" Href="/cartable" />
+</div></div>
+}
+@code { private bool HasPersonnelPanel => Auth.IsAdmin || Auth.HasModule("HrCore") || Auth.HasModule("HrMain") || Auth.HasModule("FaAtt") || Auth.HasModule("FaPay") || Auth.HasModule("FaLms") || Auth.HasModule("FaCom"); }

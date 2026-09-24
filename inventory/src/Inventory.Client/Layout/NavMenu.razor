@@ -32,6 +32,12 @@
         @if (gDash)
         {
             <div class="nav-group-items">
+                @if (Auth.IsLoggedIn)
+                {
+                    <NavLink class="nav-link" href="panels" @onclick="NotifyClose">
+                        <i class="bi bi-grid-1x2-fill text-primary"></i><span>پنل‌های کاربری</span>
+                    </NavLink>
+                }
                 @if (CanSeeCartable)
                 {
                 <NavLink class="nav-link" href="cartable" @onclick="NotifyClose">
@@ -542,7 +548,7 @@
                                     || Auth.Has("Dashboards.Management")
                                     || Auth.Has("Dashboards.Hardware");
 
-    private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
+    private bool ShowDashGroup => Auth.IsLoggedIn || CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
     private bool ShowOpsGroup => ModuleAccess.CanSeeAny(Auth, "Orders", "Stock", "Repairs", "Expenses");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs");
