@@ -182,6 +182,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
+            RequireExpirationTime = true,
+            RequireSignedTokens = true,
+            ClockSkew = TimeSpan.Zero,
             ValidateIssuerSigningKey = true,
             ValidIssuer = AuthService.JwtIssuer,
             ValidAudience = AuthService.JwtIssuer,
@@ -222,6 +225,12 @@ builder.Services.AddAuthorization(options =>
                   || ctx.User.HasClaim("permission", "RadisHr.Access")
                   || ctx.User.Claims.Any(c => c.Type == "permission"
                                               && c.Value.StartsWith("RadisHr.", StringComparison.OrdinalIgnoreCase))));
+
+    // تمام endpointهای API به‌صورت پیش‌فرض JWT می‌خواهند؛ مسیرهای عمومی باید
+    // صراحتاً با [AllowAnonymous] علامت‌گذاری شده باشند (Login، درخواست عمومی و ...).
+    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
 });
 
 // CORS برای کلاینت Blazor WASM (در محیط توسعه)

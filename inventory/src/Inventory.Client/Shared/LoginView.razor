@@ -4,27 +4,38 @@
 @inject IJSRuntime JS
 
 <div class="login-page">
-    <div class="login-card">
-        <div class="text-center mb-4">
-            <div class="login-logo"><i class="bi bi-box2-fill"></i></div>
-            <h4 class="fw-800 mt-3 mb-1">نرم افزار یکپارچه فروغ آریا</h4>
-            <div class="text-muted fs-8">برای ورود، نام کاربری و رمز عبور خود را وارد کنید</div>
+    <div class="login-shell">
+        <div class="login-visual d-none d-lg-flex">
+            <div class="visual-content">
+                <div class="visual-mark"><i class="bi bi-grid-1x2-fill"></i></div>
+                <span class="visual-kicker">نرم افزار یکپارچه فروغ آریا</span>
+                <h1>همه‌چیز در یک پنل</h1>
+                <p>مدیریت یکپارچه سازمان، منابع انسانی، اتوماسیون اداری، مالی و فروش.</p>
+                <div class="visual-pills"><span><i class="bi bi-shield-check"></i> امن</span><span><i class="bi bi-lightning-charge"></i> سریع</span><span><i class="bi bi-phone"></i> یکپارچه</span></div>
+            </div>
         </div>
+        <div class="login-card">
+            <div class="text-center mb-4">
+                <div class="login-logo"><i class="bi bi-box2-fill"></i></div>
+                <h4 class="fw-800 mt-3 mb-1">ورود به نرم افزار</h4>
+                <div class="text-muted fs-8">با حساب سازمانی خود وارد شوید</div>
+            </div>
 
-        <div class="mb-3">
-            <label class="form-label">نام کاربری</label>
-            <div class="input-group">
-                <span class="input-group-text"><i class="bi bi-person"></i></span>
-                <input class="form-control" @bind="username" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
+            <div class="mb-3">
+                <label class="form-label">نام کاربری</label>
+                <div class="input-group login-input">
+                    <span class="input-group-text"><i class="bi bi-person"></i></span>
+                    <input class="form-control" autocomplete="username" placeholder="نام کاربری را وارد کنید" @bind="username" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" autofocus />
+                </div>
             </div>
-        </div>
-        <div class="mb-4">
-            <label class="form-label">رمز عبور</label>
-            <div class="input-group">
-                <span class="input-group-text"><i class="bi bi-key"></i></span>
-                <input type="password" class="form-control" @bind="password" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
+            <div class="mb-4">
+                <label class="form-label">رمز عبور</label>
+                <div class="input-group login-input">
+                    <span class="input-group-text"><i class="bi bi-key"></i></span>
+                    <input type="@(showPassword ? "text" : "password")" class="form-control" autocomplete="current-password" placeholder="رمز عبور را وارد کنید" @bind="password" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
+                    <button type="button" class="btn btn-outline-secondary border-start-0" @onclick="() => showPassword = !showPassword" title="نمایش/پنهان کردن رمز"><i class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></i></button>
+                </div>
             </div>
-        </div>
 
         @if (!string.IsNullOrEmpty(error))
         {
@@ -44,9 +55,26 @@
     </div>
 </div>
 
+<style>
+    .login-shell { width:min(980px,94vw); display:grid; grid-template-columns:1fr 1fr; border-radius:28px; overflow:hidden; box-shadow:0 24px 70px rgba(15,23,42,.22); background:#fff; }
+    .login-visual { min-height:590px; padding:3rem; color:#fff; align-items:flex-end; background:radial-gradient(circle at 20% 10%,rgba(56,189,248,.35),transparent 32%),linear-gradient(145deg,#172554,#312e81 55%,#4f46e5); }
+    .visual-content { max-width:360px; }
+    .visual-mark { width:64px; height:64px; display:grid; place-items:center; margin-bottom:2.5rem; border-radius:20px; background:rgba(255,255,255,.16); font-size:1.7rem; }
+    .visual-kicker { font-size:.8rem; color:#bfdbfe; font-weight:700; }
+    .visual-content h1 { color:#fff; font-size:2.15rem; font-weight:900; margin:.65rem 0; }
+    .visual-content p { color:#dbeafe; line-height:1.9; }
+    .visual-pills { display:flex; flex-wrap:wrap; gap:.5rem; margin-top:2rem; }
+    .visual-pills span { padding:.45rem .7rem; border:1px solid rgba(255,255,255,.22); border-radius:999px; font-size:.75rem; color:#e0f2fe; }
+    .login-card { width:auto; max-width:none; border-radius:0; box-shadow:none; padding:3.2rem clamp(1.5rem,5vw,4rem); display:flex; flex-direction:column; justify-content:center; }
+    .login-input:focus-within { box-shadow:0 0 0 3px rgba(37,99,235,.12); border-radius:.375rem; }
+    .login-input .form-control { min-height:44px; }
+    .login-input .btn { min-width:45px; }
+    @@media (max-width: 991.98px) { .login-shell { display:block; max-width:480px; } .login-card { border-radius:28px; } }
+</style>
+
 @code {
     private string username = "", password = "", error = "";
-    private bool busy;
+    private bool busy, showPassword;
 
     private async Task OnKey(KeyboardEventArgs e)
     {
