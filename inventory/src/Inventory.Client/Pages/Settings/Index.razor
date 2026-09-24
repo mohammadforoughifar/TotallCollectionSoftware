@@ -202,6 +202,125 @@
     </div>
 </div>
 
+@* ================== HTTPS و اعلان اندروید ================== *@
+<div class="card mt-3" id="https">
+    <div class="card-header">
+        <i class="bi bi-shield-lock text-primary"></i>
+        <span class="card-title">HTTPS و اعلان اندروید</span>
+        @if (https?.secureNow == true)
+        {
+            <span class="badge bg-success-subtle text-success ms-2">اکنون روی HTTPS هستید</span>
+        }
+        else if (https != null)
+        {
+            <span class="badge bg-warning-subtle text-warning ms-2">اکنون روی HTTP هستید</span>
+        }
+    </div>
+    <div class="card-body">
+        @if (!loading)
+        {
+            <div class="alert @(https?.secureNow == true ? "alert-success" : "alert-warning") py-2 fs-8">
+                @if (https?.secureNow == true)
+                {
+                    @("این نشانی امن است؛ اعلان سیستمی (مثل اعلان اندروید) روی این دستگاه قابل فعال‌سازی است.")
+                }
+                else
+                {
+                    <span>
+                        <b>چرا اعلان سیستمی فعال نمی‌شود؟</b> مرورگرها اعلان سیستمی و کارکرد پس‌زمینه را فقط روی
+                        <b>HTTPS</b> اجازه می‌دهند؛ روی <span dir="ltr">http://</span> این امکان وجود ندارد (محدودیت خود Chrome/Edge، نه نرم‌افزار).
+                        راه‌حل: گواهی داخلی سامانه را یک‌بار روی هر دستگاه نصب کنید و نرم‌افزار را با آدرس <span dir="ltr">https://</span> باز کنید.
+                        (اعلان‌های بله و ایتا و صدای درون‌برنامه‌ای روی HTTP هم کار می‌کنند.)
+                    </span>
+                }
+            </div>
+
+            <div class="row g-3">
+                <div class="col-lg-6">
+                    <div class="border rounded-3 p-3 h-100">
+                        <div class="fw-700 mb-2"><i class="bi bi-key"></i> گواهی داخلی سامانه</div>
+                        @if (https == null)
+                        {
+                            <div class="fs-8 text-muted">وضعیت HTTPS دریافت نشد.</div>
+                        }
+                        else if (https.enabled)
+                        {
+                            <div class="fs-8 mb-2">وضعیت: <b class="text-success">فعال</b> — پورت <span dir="ltr">@https.port</span></div>
+                            <div class="fs-8 mb-2">نشانی‌های امن (برای باز کردن نرم‌افزار و اعلان‌ها):</div>
+                            <ul class="fs-8 mb-2 ps-3" dir="ltr">
+                                @foreach (var u in https.urls)
+                                {
+                                    <li>@u</li>
+                                }
+                            </ul>
+                            <div class="d-flex flex-wrap gap-2 mb-2">
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="OpenHttpsSetup">
+                                    <i class="bi bi-download"></i> دانلود گواهی و راهنمای نصب
+                                </button>
+                                <button type="button" class="btn btn-sm btn-light" @onclick="CopyHttpsDeviceUrl" title="نشانی‌ای که در گوشی وارد می‌کنید">
+                                    <i class="bi bi-clipboard"></i> کپی نشانی امن
+                                </button>
+                            </div>
+                            <div class="fs-9 text-muted">
+                                نصب گواهی: اندروید ← تنظیمات ← امنیت ← رمزگذاری و اعتبارنامه‌ها ← نصب گواهی ← «گواهی CA»؛
+                                ویندوز ← دوبار کلیک روی فایل ← «مراجع صدور گواهی ریشهٔ مورد اعتماد»؛
+                                iPhone ← نصب پروفایل + فعال‌سازی در Certificate Trust Settings.
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="fs-8 mb-2">وضعیت: <b class="text-warning">غیرفعال</b></div>
+                            @if (https.messages.Count > 0)
+                            {
+                                <ul class="fs-9 text-muted ps-3 mb-2">
+                                    @foreach (var m in https.messages) { <li>@m</li> }
+                                </ul>
+                            }
+                            <div class="fs-9 text-muted">
+                                مدیر می‌تواند با <span dir="ltr">Https:Enabled=true</span> در appsettings (یا «بازسازی گواهی») آن را فعال کند.
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="border rounded-3 p-3 h-100">
+                        <div class="fw-700 mb-2"><i class="bi bi-person-gear"></i> مدیر سامانه</div>
+                        @if (!Auth.IsAdmin)
+                        {
+                            <div class="alert alert-light border py-2 small mb-0">مدیریت گواهی HTTPS فقط برای مدیر سامانه است.</div>
+                        }
+                        else
+                        {
+                            <div class="fs-8 mb-2">اثر انگشت گواهی (SHA-256):</div>
+                            <div class="input-group input-group-sm mb-2" dir="ltr">
+                                <input class="form-control" readonly value="@(https?.caFingerprint ?? "")" />
+                                <button class="btn btn-outline-secondary" @onclick="() => CopyText(https?.caFingerprint)" title="کپی"><i class="bi bi-clipboard"></i></button>
+                            </div>
+                            @if (https?.serverExpiresAt != null)
+                            {
+                                <div class="fs-9 text-muted mb-2">انقضای گواهی سرور: <span dir="ltr">@https.serverExpiresAt.Value.ToString("yyyy-MM-dd")</span></div>
+                            }
+                            <div class="d-flex flex-wrap gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="RegenHttpsServerAsync" disabled="@httpsBusy">
+                                    <i class="bi bi-arrow-repeat"></i> بازسازی گواهی سرور
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="LoadHttpsAsync" disabled="@httpsBusy">به‌روزرسانی وضعیت</button>
+                                <button type="button" class="btn btn-sm btn-outline-dark" @onclick="ExportPfxAsync" disabled="@httpsBusy">
+                                    <i class="bi bi-file-earmark-lock"></i> گواهی برای IIS
+                                </button>
+                            </div>
+                            <div class="fs-9 text-muted mt-2">
+                                «بازسازی گواهی سرور» پس از تغییر آی‌پی سرور یا اضافه‌شدن کارت شبکه لازم است (نصب‌های قبلی معتبر می‌مانند)؛
+                                برای اعمال روی شنوندهٔ HTTPS، سرویس را یک‌بار ری‌استارت کنید.
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
 @* ================== اعلان گوشی و مرورگر (Web Push) ================== *@
 <div class="card mt-3">
     <div class="card-header">
@@ -368,6 +487,7 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
         await InitPushStateAsync();
+        await LoadHttpsAsync();
         if (Auth.IsAdmin) await LoadOverviewAsync();
     }
 
@@ -490,6 +610,98 @@
         }
         catch { Toast.Error("حذف کلید اعلان انجام نشد."); }
         finally { overviewBusy = false; }
+    }
+
+    // ================== HTTPS و اعلان اندروید ==================
+    private HttpsStatus? https;
+    private bool httpsBusy;
+
+    private class HttpsStatus
+    {
+        public bool enabled { get; set; }
+        public int port { get; set; }
+        public bool secureNow { get; set; }
+        public string? currentOrigin { get; set; }
+        public List<string> urls { get; set; } = new();
+        public string? caUrl { get; set; }
+        public string? setupUrl { get; set; }
+        public string? caFingerprint { get; set; }
+        public string? serverFingerprint { get; set; }
+        public DateTime? serverExpiresAt { get; set; }
+        public DateTime? caExpiresAt { get; set; }
+        public bool hasCaFile { get; set; }
+        public string? dataDir { get; set; }
+        public List<string> messages { get; set; } = new();
+    }
+
+    private class HttpsAction { public bool enabled { get; set; } public string? message { get; set; } public List<string> hosts { get; set; } = new(); }
+    private class PfxResult { public string? fileName { get; set; } public string? password { get; set; } public string? base64 { get; set; } public string? message { get; set; } }
+
+    private async Task LoadHttpsAsync()
+    {
+        try
+        {
+            SetAuthHeader();
+            https = await Http.GetFromJsonAsync<HttpsStatus>($"{ApiRoot}/api/system/https/status");
+        }
+        catch { https = null; }
+        StateHasChanged();
+    }
+
+    /// <summary>صفحهٔ راهنمای نصب گواهی را در تب جدید باز می‌کند (از روی همان HTTP هم کار می‌کند).</summary>
+    private async Task OpenHttpsSetup()
+    {
+        var url = https?.setupUrl ?? $"{ApiRoot}/https-setup";
+        try { await JS.InvokeVoidAsync("open", url, "_blank"); Toast.Info("دانلود گواهی و راهنمای نصب باز شد."); }
+        catch { Toast.Info($"این نشانی را در مرورگر باز کنید: {url}"); }
+    }
+
+    private async Task CopyHttpsDeviceUrl()
+    {
+        var url = https?.urls?.FirstOrDefault() ?? "";
+        if (string.IsNullOrWhiteSpace(url)) { Toast.Error("نشانی امنی موجود نیست؛ ابتدا گواهی را بسازید."); return; }
+        await CopyText(url);
+    }
+
+    private async Task RegenHttpsServerAsync()
+    {
+        if (httpsBusy) return;
+        httpsBusy = true;
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync($"{ApiRoot}/api/system/https/regenerate", new { newCa = false });
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<HttpsAction>() : null;
+            Toast.Success(r?.message ?? "گواهی سرور بازسازی شد؛ برای اعمال، سرویس را ری‌استارت کنید.");
+            await LoadHttpsAsync();
+        }
+        catch { Toast.Error("بازسازی گواهی انجام نشد؛ دسترسی مدیر را بررسی کنید."); }
+        finally { httpsBusy = false; }
+    }
+
+    private async Task ExportPfxAsync()
+    {
+        if (httpsBusy) return;
+        httpsBusy = true;
+        try
+        {
+            SetAuthHeader();
+            using var resp = await Http.PostAsJsonAsync($"{ApiRoot}/api/system/https/pfx", new { });
+            var r = resp.IsSuccessStatusCode ? await resp.Content.ReadFromJsonAsync<PfxResult>() : null;
+            if (r?.base64 == null) { Toast.Error("فایل گواهی موجود نیست؛ ابتدا گواهی را بسازید."); return; }
+            var saved = await JS.InvokeAsync<bool>("appSaveBase64File", r.base64, r.fileName ?? "totall-server.pfx", "application/x-pkcs12");
+            Toast.Success(saved ? $"فایل ذخیره شد. رمز فایل: {r.password}" : "ذخیرهٔ فایل انجام نشد.");
+        }
+        catch { Toast.Error("خروجی گرفتن گواهی انجام نشد."); }
+        finally { httpsBusy = false; }
+    }
+
+    /// <summary>کپی متن در کلیپ‌بورد (برای اثر انگشت گواهی و نشانی‌ها).</summary>
+    private async Task CopyText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); Toast.Success("کپی شد."); }
+        catch { Toast.Error("کپی نشد — به‌صورت دستی انتخاب و کپی کنید."); }
     }
 
     private void SetAuthHeader()

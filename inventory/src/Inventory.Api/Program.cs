@@ -14,6 +14,24 @@ using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ================== HTTPS داخلی (لازم برای اعلان سیستمی مرورگر) ==================
+// اعلان سیستمی و Service Worker فقط در «زمینهٔ امن» فعال می‌شوند؛ روی http://آی‌پی شبکه این امکان وجود ندارد.
+// این بخش یک گواهی داخلی می‌سازد/بارگذاری می‌کند و در صورت فعال بودن، شنوندهٔ HTTPS را هم بالا می‌آورد
+// (پیش‌فرض: پورت 5443 — قابل تغییر با Https:Port در appsettings یا متغیر محیطی HTTPS_PORT).
+var httpsCerts = Inventory.Api.Services.HttpsCertificates.Prepare(builder.Environment, builder.Configuration);
+foreach (var message in httpsCerts.Messages) Console.WriteLine($"[HTTPS] {message}");
+if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
+{
+    var httpPortForKestrel = Environment.GetEnvironmentVariable("PORT") ?? "5100";
+    var httpsPortForKestrel = httpsCerts.Port;
+    var serverCert = httpsCerts.Certificate;
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.ListenAnyIP(int.Parse(httpPortForKestrel));                       // همان HTTP فعلی (دست‌نخورده)
+        options.ListenAnyIP(httpsPortForKestrel, listen => listen.UseHttps(serverCert)); // HTTPS داخلی برای اعلان سیستمی
+    });
+}
+
 // ================== تنظیمات دیتابیس ==================
 // پیش‌فرض: SQL Server — برای توسعه/تست می‌توان Provider را روی Sqlite گذاشت.
 var provider = builder.Configuration["Database:Provider"] ?? "SqlServer";
@@ -241,6 +259,7 @@ builder.Services.AddScoped<Inventory.Api.Hubs.IChatRealtimeNotifier, Inventory.A
 builder.Services.AddScoped<Inventory.Api.Services.Chat.IChatService, Inventory.Api.Services.Chat.ChatService>();
 builder.Services.AddScoped<Inventory.Api.Services.Chat.ChatAttachmentService>();
 builder.Services.AddSingleton<PushSettings>();
+builder.Services.AddSingleton(httpsCerts); // وضعیت/گواهی HTTPS داخلی برای کنترلر تنظیمات
 builder.Services.AddSingleton<PushKeyStore>(); // کلیدهای اعلان ساخته‌شده از داخل «تنظیمات» (App_Data/push-vapid.json)
 builder.Services.AddScoped<IPushService, PushService>();
 builder.Services.AddHttpClient("WebPush").ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
@@ -268,7 +287,6 @@ builder.Services.AddSwaggerGen(o =>
 });
 
 var app = builder.Build();
-
 // کلیدهای اعلان گوشی/مرورگر (VAPID): اگر مدیر آن‌ها را از داخل «تنظیمات» ساخته باشد، همین‌جا زنده اعمال می‌شوند
 // تا پس از ساخت کلید نیازی به ویرایش appsettings.json یا ری‌استارت سرویس نباشد.
 app.Services.GetRequiredService<Inventory.Api.Services.PushKeyStore>()
@@ -445,7 +463,16 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
 }
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5100";
-app.Run($"http://0.0.0.0:{port}");
+if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
+{
+    Console.WriteLine($"[HTTPS] سامانه روی http://0.0.0.0:{port} و https://0.0.0.0:{httpsCerts.Port} در دسترس است.");
+    Console.WriteLine($"[HTTPS] راهنمای نصب گواهی روی گوشی:  http://<آی‌پی-سرور>:{port}/https-setup");
+    app.Run(); // بایندینگ‌ها در ConfigureKestrel تعیین شده‌اند (HTTP + HTTPS)
+}
+else
+{
+    app.Run($"http://0.0.0.0:{port}");
+}
 
 // پوشاندن رمز عبور در لاگ رشته اتصال
 static string Mask(string cs)

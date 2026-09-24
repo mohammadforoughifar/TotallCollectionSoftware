@@ -34,7 +34,8 @@
         } finally { channel.port1.close(); channel.port2.close(); }
     }
     function diagnose() {
-        if (!window.isSecureContext) return { supported: false, message: 'اعلان اندروید به HTTPS معتبر نیاز دارد؛ این آدرس امن نیست.' };
+        if (!window.isSecureContext) return { supported: false, insecureOrigin: true,
+            message: 'اعلان سیستمی فقط روی نشانی امن (HTTPS) فعال می‌شود و اکنون روی HTTP هستید. راه‌حل: در «تنظیمات ← HTTPS و اعلان اندروید» گواهی سامانه را نصب کنید (یک‌بار روی هر دستگاه) و نرم‌افزار را با https:// باز کنید.' };
         if (!('Notification' in window) || !('PushManager' in window) || !('serviceWorker' in navigator))
             return { supported: false, message: 'این مرورگر اعلان پس‌زمینه ندارد؛ از Chrome به‌روز استفاده کنید.' };
         if (Notification.permission === 'denied') return { supported: true, denied: true, message: 'اجازه اعلان مسدود است؛ در تنظیمات سایت و تنظیمات اعلان اندروید آن را فعال کنید.' };
@@ -138,6 +139,21 @@
             return await window.appPush.disable(root, token);
         }
     };
+    // ذخیرهٔ فایل دودویی (مثل گواهی PFX) که Base64 آن از سرور آمده است.
+    window.appSaveBase64File = function (base64, fileName, contentType) {
+        try {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([bytes], { type: contentType || 'application/octet-stream' }));
+            const link = document.createElement('a');
+            link.href = url; link.download = fileName || 'file.bin';
+            document.body.appendChild(link); link.click(); link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            return true;
+        } catch (_) { return false; }
+    };
+
     // Live toasts remain in Blazor. Do not generate a duplicate OS notification via SignalR.
     window.attLocalNotify = () => false;
 

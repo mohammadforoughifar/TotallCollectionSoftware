@@ -161,6 +161,14 @@ else
                                         <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="OpenVapidPanel" title="تولید و راهنمای کلیدهای VAPID">کلیدهای اعلان</button>
                                     }
                                 </div>
+                                @if (pushInsecure)
+                                {
+                                    <div class="px-2 pb-2">
+                                        <button type="button" class="btn btn-sm btn-warning w-100" @onclick="OpenHttpsSetupFromPanel">
+                                            <i class="bi bi-shield-lock"></i><span>راه‌اندازی HTTPS برای اعلان اندروید</span>
+                                        </button>
+                                    </div>
+                                }
 
                                 @* ===== مدت نمایش اعلان‌ها و پیام‌ها ===== *@
                                 <div class="ntf-push-row flex-wrap">
@@ -646,6 +654,7 @@ else
     private void ApplyPushState(PushState result)
     {
         pushSupportChecked = true; pushSupported = result.supported; pushEnabled = result.enabled;
+        pushInsecure = result.insecureOrigin;
         pushStatusText = result.message ?? "وضعیت اعلان مشخص نیست.";
     }
     private async Task InitPushStateAsync()
@@ -680,7 +689,15 @@ else
         catch { pushStatusText = "ارسال آزمایشی انجام نشد؛ ۳۰ ثانیه صبر کنید و وضعیت سرور را بررسی کنید."; }
         finally { pushBusy = false; }
     }
-    private class PushState { public bool supported { get; set; } public bool enabled { get; set; } public string? message { get; set; } }
+    private class PushState { public bool supported { get; set; } public bool enabled { get; set; } public bool insecureOrigin { get; set; } public string? message { get; set; } }
+
+    private bool pushInsecure;
+    private async Task OpenHttpsSetupFromPanel()
+    {
+        var url = $"{PushApiRoot}/https-setup";
+        try { await JS.InvokeVoidAsync("open", url, "_blank"); }
+        catch { Toast.Info($"این نشانی را در مرورگر باز کنید: {url}"); }
+    }
 
     // ===== کلیدهای VAPID (مدیر) =====
     private bool vapidPanel, vapidBusy, vapidConfigured;
