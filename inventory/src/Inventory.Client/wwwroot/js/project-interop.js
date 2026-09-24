@@ -103,7 +103,7 @@
             '<style>' + css + '<' + '/style>',
             '<' + '/head>',
             '<body>',
-            '<div class="brand"><h1>' + esc(title) + '<' + '/h1><span class="sys">سامانه انبار و فروش — فروغ آریا<' + '/span><' + '/div>',
+            '<div class="brand"><h1>' + esc(title) + '<' + '/h1><span class="sys">نرم افزار یکپارچه فروغ آریا<' + '/span><' + '/div>',
             subTitle ? '<div class="sub">' + esc(subTitle) + '<' + '/div>' : '',
             meta ? '<div class="chips">' + meta + '<' + '/div>' : '',
             '<table><thead><tr>' + head + '<' + '/tr><' + '/thead><tbody>' + body + '<' + '/tbody>' + foot + '<' + '/table>',

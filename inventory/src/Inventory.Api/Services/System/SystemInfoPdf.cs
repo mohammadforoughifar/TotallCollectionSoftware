@@ -92,7 +92,7 @@ public static class SystemInfoPdf
                     col.Item().Row(row =>
                     {
                         row.RelativeItem().AlignRight().Text("شناسنامه سیستم").FontFamily("Vazirmatn-Bold").FontSize(20).FontColor("#4b2fb8");
-                        row.ConstantItem(200, Unit.Point).AlignLeft().Text("سامانه انبار و فروش — فروغ آریا").FontSize(9).FontColor("#666");
+                        row.ConstantItem(200, Unit.Point).AlignLeft().Text("نرم افزار یکپارچه فروغ آریا").FontSize(9).FontColor("#666");
                     });
                     col.Item().PaddingVertical(6).LineHorizontal(1.2f).LineColor("#8e5cff");
                     col.Item().PaddingTop(4).Row(r2 =>
