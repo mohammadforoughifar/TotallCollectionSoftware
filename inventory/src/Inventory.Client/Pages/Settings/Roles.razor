@@ -171,98 +171,60 @@
 
                         @if (allPermissions.Any())
                         {
-                            @* ================== دسترسی‌ها دسته‌بندی‌شده بر اساس ماژول ================== *@
-                            @foreach (var cat in ModuleCategories)
-                            {
-                                var catGroups = allPermissions
-                                    .Where(p => cat.Modules.Contains(p.Module))
-                                    .GroupBy(p => p.Module)
-                                    .OrderBy(g => Array.IndexOf(cat.Modules, g.Key))
-                                    .ToList();
-                                if (!catGroups.Any()) continue;
-
-                                <div class="perm-cat mb-4">
-                                    <div class="perm-cat-head">
-                                        <i class="bi @cat.Icon"></i>
-                                        <span>@cat.Title</span>
-                                        <span class="perm-cat-line"></span>
-                                    </div>
-                                    <div class="row g-3">
-                                        @foreach (var group in catGroups)
-                                        {
-                                            <div class="col-lg-4 col-md-6">
-                                                <div class="card border h-100">
-                                                    <div class="card-header bg-light py-2 px-3">
-                                                        <strong class="text-primary mb-0">@(ModuleNames.GetValueOrDefault(group.Key, group.Key))</strong>
-                                                    </div>
-                                                    <div class="card-body py-2">
-                                                        <!-- Select All -->
-                                                        <div class="form-check py-1 border-bottom pb-2 mb-1">
-                                                            <input class="form-check-input" type="checkbox"
-                                                                   checked="@group.All(p => selectedPermissionIds.Contains(p.Id))"
-                                                                   @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" />
-                                                            <label class="form-check-label fw-bold text-primary">همه</label>
-                                                        </div>
-
+                            <div class="perm-toolbar mb-3">
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                    <input class="form-control" placeholder="جستجوی ماژول یا دسترسی…" @bind="permissionSearch" @bind:event="oninput" />
+                                </div>
+                                <div class="d-flex gap-2 mt-2 flex-wrap">
+                                    <button type="button" class="btn btn-sm btn-outline-primary" @onclick="ExpandAllPermissionTrees"><i class="bi bi-arrows-expand"></i> باز کردن همه</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CollapseAllPermissionTrees"><i class="bi bi-arrows-collapse"></i> بستن همه</button>
+                                </div>
+                            </div>
+                            <div class="permission-tree">
+                                @foreach (var cat in VisiblePermissionCategories)
+                                {
+                                    var catGroups = FilterPermissionGroups(allPermissions.Where(p => cat.Modules.Contains(p.Module)).GroupBy(p => p.Module));
+                                    if (!catGroups.Any()) continue;
+                                    <details class="perm-tree-category" open="@IsTreeOpen(cat.Title)">
+                                        <summary><span class="tree-title"><i class="bi @cat.Icon"></i> @cat.Title</span><span class="tree-count">@catGroups.Sum(g => g.Count()) مجوز</span></summary>
+                                        <div class="perm-tree-children">
+                                            @foreach (var group in catGroups.OrderBy(g => Array.IndexOf(cat.Modules, g.Key)))
+                                            {
+                                                <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
+                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count()</span><input type="checkbox" title="انتخاب همه این ماژول" checked="@group.All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                    <div class="perm-leaf-list">
                                                         @foreach (var perm in group.OrderBy(p => p.Action))
                                                         {
-                                                            <div class="form-check py-1">
-                                                                <input class="form-check-input" type="checkbox"
-                                                                       checked="@selectedPermissionIds.Contains(perm.Id)"
-                                                                       @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" />
-                                                                <label class="form-check-label">@GetActionLabel(perm.Module, perm.Action)</label>
-                                                            </div>
+                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small>@perm.Action</small></label>
                                                         }
                                                     </div>
-                                                </div>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            }
-
-                            @* ماژول‌هایی که در هیچ دسته‌ای نیستند *@
-                            var knownModules = ModuleCategories.SelectMany(c => c.Modules).ToHashSet();
-                            var otherGroups = allPermissions.Where(p => !knownModules.Contains(p.Module)).GroupBy(p => p.Module).ToList();
-                            if (otherGroups.Any())
-                            {
-                                <div class="perm-cat mb-4">
-                                    <div class="perm-cat-head">
-                                        <i class="bi bi-three-dots"></i>
-                                        <span>سایر</span>
-                                        <span class="perm-cat-line"></span>
-                                    </div>
-                                    <div class="row g-3">
-                                        @foreach (var group in otherGroups)
-                                        {
-                                            <div class="col-lg-4 col-md-6">
-                                                <div class="card border h-100">
-                                                    <div class="card-header bg-light py-2 px-3">
-                                                        <strong class="text-primary mb-0">@(ModuleNames.GetValueOrDefault(group.Key, group.Key))</strong>
-                                                    </div>
-                                                    <div class="card-body py-2">
-                                                        <div class="form-check py-1 border-bottom pb-2 mb-1">
-                                                            <input class="form-check-input" type="checkbox"
-                                                                   checked="@group.All(p => selectedPermissionIds.Contains(p.Id))"
-                                                                   @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" />
-                                                            <label class="form-check-label fw-bold text-primary">همه</label>
-                                                        </div>
+                                                </details>
+                                            }
+                                        </div>
+                                    </details>
+                                }
+                                @if (VisibleOtherPermissionGroups.Any())
+                                {
+                                    <details class="perm-tree-category" open="@IsTreeOpen(OtherTreeKey)">
+                                        <summary><span class="tree-title"><i class="bi bi-three-dots"></i> سایر</span><span class="tree-count">@VisibleOtherPermissionGroups.Sum(g => g.Count()) مجوز</span></summary>
+                                        <div class="perm-tree-children">
+                                            @foreach (var group in VisibleOtherPermissionGroups)
+                                            {
+                                                <details class="perm-tree-module" open="@IsTreeOpen(group.Key)">
+                                                    <summary><span><i class="bi bi-folder2-open text-primary"></i> @(ModuleNames.GetValueOrDefault(group.Key, group.Key)) <small class="text-muted">(@group.Key)</small></span><span class="tree-actions"><span class="badge bg-light text-dark">@group.Count()</span><input type="checkbox" checked="@group.All(p => selectedPermissionIds.Contains(p.Id))" @onclick:stopPropagation="true" @onchange="e => ToggleModuleAll(group.Key, (bool)e.Value!)" /></span></summary>
+                                                    <div class="perm-leaf-list">
                                                         @foreach (var perm in group.OrderBy(p => p.Action))
                                                         {
-                                                            <div class="form-check py-1">
-                                                                <input class="form-check-input" type="checkbox"
-                                                                       checked="@selectedPermissionIds.Contains(perm.Id)"
-                                                                       @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" />
-                                                                <label class="form-check-label">@GetActionLabel(perm.Module, perm.Action)</label>
-                                                            </div>
+                                                            <label class="perm-leaf"><input type="checkbox" checked="@selectedPermissionIds.Contains(perm.Id)" @onchange="e => TogglePermission(perm.Id, (bool)e.Value!)" /><span>@GetActionLabel(perm.Module, perm.Action)</span><small>@perm.Action</small></label>
                                                         }
                                                     </div>
-                                                </div>
-                                            </div>
-                                        }
-                                    </div>
-                                </div>
-                            }
+                                                </details>
+                                            }
+                                        </div>
+                                    </details>
+                                }
+                            </div>
                         }
                     </div>
                 </div>
@@ -312,6 +274,27 @@
     }
     .perm-cat-head i { color: var(--bs-primary, #2563eb); font-size: 1.1rem; }
     .perm-cat-line { flex: 1; height: 1px; background: linear-gradient(to left, #e2e8f0, transparent); }
+    /* ===== درخت دسترسی‌ها ===== */
+    .perm-toolbar { position: sticky; top: 0; z-index: 3; background: #fff; padding-bottom: .65rem; }
+    .permission-tree { display: flex; flex-direction: column; gap: .55rem; }
+    .perm-tree-category, .perm-tree-module { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; overflow: hidden; }
+    .perm-tree-category > summary { background: linear-gradient(135deg,#f1f5ff,#f8fafc); font-weight: 800; }
+    .perm-tree-module > summary { background: #f8fafc; font-weight: 700; margin: .45rem .65rem 0; border-radius: 9px; }
+    .permission-tree summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .7rem .85rem; user-select: none; }
+    .permission-tree summary::-webkit-details-marker { display: none; }
+    .permission-tree summary::before { content: '‹'; transform: rotate(-90deg); transition: transform .15s; font-size: 1.1rem; color: #64748b; }
+    .permission-tree details[open] > summary::before { transform: rotate(90deg); }
+    .tree-title { display: inline-flex; align-items: center; gap: .45rem; }
+    .tree-count { color: #64748b; font-size: .75rem; white-space: nowrap; }
+    .tree-actions { display: inline-flex; align-items: center; gap: .55rem; }
+    .perm-tree-children { padding: 0 .65rem .65rem; display: flex; flex-direction: column; gap: .4rem; }
+    .perm-leaf-list { padding: .45rem .9rem .7rem 2.1rem; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .35rem .8rem; }
+    .perm-leaf { display: flex; align-items: center; gap: .5rem; padding: .35rem .45rem; border-radius: 7px; cursor: pointer; min-width: 0; }
+    .perm-leaf:hover { background: #f1f5f9; }
+    .perm-leaf span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .perm-leaf small { color: #94a3b8; margin-right: auto; direction: ltr; }
+    @@media (max-width: 650px) { .perm-leaf-list { grid-template-columns: 1fr; padding-right: 1rem; } .tree-count { display:none; } .permission-tree summary { padding: .6rem; } }
+
     /* ===== رسپانسیو کارت‌های آمار ===== */
     @@media (max-width: 575.98px) {
         .fs-3.fw-bold { font-size: 1.35rem !important; }
@@ -328,6 +311,30 @@
 
     private RoleForm form = new();
     private HashSet<int> selectedPermissionIds = new();
+    private string permissionSearch = "";
+    private bool expandPermissionTree = true;
+    private const string OtherTreeKey = "سایر";
+
+    private IEnumerable<PermCategory> VisiblePermissionCategories =>
+        ModuleCategories.Where(cat => allPermissions.Any(p => cat.Modules.Contains(p.Module) && PermissionMatches(p)));
+
+    private IEnumerable<IGrouping<string, PermissionDto>> FilterPermissionGroups(IEnumerable<IGrouping<string, PermissionDto>> groups) =>
+        groups.Where(g => g.Any(PermissionMatches));
+
+    private IEnumerable<IGrouping<string, PermissionDto>> VisibleOtherPermissionGroups =>
+        allPermissions.Where(p => !ModuleCategories.SelectMany(c => c.Modules).Contains(p.Module) && PermissionMatches(p))
+            .GroupBy(p => p.Module);
+
+    private bool PermissionMatches(PermissionDto p) =>
+        string.IsNullOrWhiteSpace(permissionSearch)
+        || p.Module.Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+        || ModuleNames.GetValueOrDefault(p.Module, "").Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+        || p.Action.Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+        || GetActionLabel(p.Module, p.Action).Contains(permissionSearch.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private bool IsTreeOpen(string _) => expandPermissionTree || !string.IsNullOrWhiteSpace(permissionSearch);
+    private void ExpandAllPermissionTrees() => expandPermissionTree = true;
+    private void CollapseAllPermissionTrees() => expandPermissionTree = false;
 
     protected override async Task OnInitializedAsync() => await LoadData();
 
