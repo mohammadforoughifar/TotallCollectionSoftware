@@ -2,6 +2,14 @@
 @inject NavigationManager NavManager
 
 <div class="sidebar-nav">
+    @* ============ هوش مصنوعی فروغ آریا ============ *@
+    @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+    {
+        <NavLink class="nav-link ai-nav-link" href="ai-assistant" @onclick="NotifyClose">
+            <i class="bi bi-robot"></i><span>فروغ آریا 🤖</span>
+        </NavLink>
+    }
+
     @* ============ پیام‌رسان سازمانی (ماژول مستقل) ============ *@
     @if (Auth.CanSee("Chat"))
     {

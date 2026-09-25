@@ -66,6 +66,7 @@ public static class DbInitializer
                 await PushDeliverySchema.EnsureAsync(db);
                 // مدت نمایش اعلان‌ها/پیام‌ها (سراسری، مدیر سامانه) — ستون‌های AppSettings
                 await AppSettingsSchemaV1.EnsureAsync(db);
+                await AiSchemaV1.EnsureAsync(db);
 
                 // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt
                 // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.
@@ -171,6 +172,10 @@ public static class DbInitializer
 
                 // ==================== RBAC Seed ====================
                 await RbacSeeder.SeedAsync(db);
+
+                // ==================== هوش مصنوعی فروغ آریا ====================
+                await AiSeeder.EnsureAiUserAsync(db);
+                await AiSeeder.EnsureKnowledgeAsync(db);
 
                 // انبار پیش‌فرض (در اولین اجرا — قابل ویرایش/تغییر نام از بخش انبارها)
                 if (!db.Warehouses.Any())

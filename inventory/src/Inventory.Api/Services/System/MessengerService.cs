@@ -3,7 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Inventory.Api.Data;
+using Inventory.Api.Services.Ai;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Inventory.Api.Services;
 
@@ -49,13 +51,17 @@ public class MessengerService : IMessengerService
     private readonly IHttpClientFactory _httpFactory;
     private readonly IMessengerLinkCodes _codes;
     private readonly ILogger<MessengerService> _log;
+    private readonly AiOptions _aiOptions;
+    private readonly IAiAgentService _agent;
 
-    public MessengerService(AppDbContext db, IHttpClientFactory httpFactory, IMessengerLinkCodes codes, ILogger<MessengerService> log)
+    public MessengerService(AppDbContext db, IHttpClientFactory httpFactory, IMessengerLinkCodes codes, ILogger<MessengerService> log, IOptions<AiOptions> aiOptions, IAiAgentService agent)
     {
         _db = db;
         _httpFactory = httpFactory;
         _codes = codes;
         _log = log;
+        _aiOptions = aiOptions.Value;
+        _agent = agent;
     }
 
     private async Task<(string? bale, string? eitaa, string sender)> TokensAsync()
@@ -199,6 +205,8 @@ public class MessengerService : IMessengerService
                 // phone → chatId از مخاطبین به‌اشتراک‌گذاشته‌شده + پاسخ به /start
                 var phoneToChat = new Dictionary<string, string>();
                 var startChats = new List<string>();
+                var helpChats = new List<string>();
+                var aiIncoming = new List<(string chatId, string text)>();
                 long maxId = 0;
                 var updates = 0;
 
@@ -221,6 +229,8 @@ public class MessengerService : IMessengerService
 
                     var text = msg.TryGetProperty("text", out var tx) ? (tx.GetString() ?? "").Trim() : "";
                     if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase)) startChats.Add(chatId!);
+                    else if (text.Equals("/help", StringComparison.OrdinalIgnoreCase)) helpChats.Add(chatId!);
+                    else if (text.Length > 0) aiIncoming.Add((chatId!, text));
                 }
 
                 var linked = 0;
@@ -242,11 +252,21 @@ public class MessengerService : IMessengerService
                 foreach (var chatId in startChats.Distinct())
                 {
                     var known = await _db.Users.AsNoTracking().AnyAsync(u => u.BaleChatId == chatId);
-                    if (known) continue;
+                    if (known)
+                    {
+                        // کاربر لینک‌شده: معرفی دستیار فروغ آریا
+                        await ReplyAsync(http, baleToken, chatId, BaleIntroText);
+                        continue;
+                    }
                     await ReplyAsync(http, baleToken, chatId,
                         "سلام 👋\nبرای دریافت اعلان‌های سامانه، لطفاً شماره تلفن خود را با دکمه‌ی زیر ارسال کنید.",
                         new { keyboard = new[] { new[] { new { text = "📱 ارسال شماره من", request_contact = true } } }, resize_keyboard = true, one_time_keyboard = true });
                 }
+
+                // راهنمای دستیار + پاسخ فروغ آریا به پیام‌های متنی (فقط کاربران لینک‌شده و مجاز)
+                foreach (var chatId in helpChats.Distinct())
+                    await ReplyAsync(http, baleToken, chatId, BaleIntroText);
+                await ReplyAiAsync(http, baleToken, aiIncoming);
 
                 // تأیید آپدیت‌ها (تا دفعه‌ی بعد مجدداً پردازش نشوند)
                 if (maxId > 0)
@@ -261,6 +281,43 @@ public class MessengerService : IMessengerService
 
                 var note = updates == 0 ? "پیام تازه‌ای از کاربران دریافت نشد." : $"تعداد پیام‌های دریافتی: {updates}.";
                 return (linked, maxId, note);
+            }
+        }
+    }
+
+    private const string BaleIntroText =
+        "سلام! 👋 من «فروغ آریا»، دستیار هوشمند سامانه‌ام.\n\n" +
+        "می‌تونی ازم بپرسی:\n" +
+        "• مانده مرخصی‌ام چقدره؟\n" +
+        "• فیش حقوقیم چقدره؟\n" +
+        "• وضعیت حضور امروزم؟\n" +
+        "• نامه خوانده‌نشده دارم؟\n" +
+        "• چطور فاکتور ثبت کنم؟\n\n" +
+        "فقط بنویس! 🤖";
+
+    /// <summary>پاسخ دستیار فروغ آریا به پیام‌های بله (فقط کاربران لینک‌شده و مجاز).</summary>
+    private async Task ReplyAiAsync(HttpClient http, string token, List<(string chatId, string text)> incoming)
+    {
+        if (!_aiOptions.Enabled || !_aiOptions.BaleEnabled) return;
+        foreach (var (chatId, text) in incoming.DistinctBy(x => x.chatId + "\n" + x.text).Take(10))
+        {
+            try
+            {
+                var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.BaleChatId == chatId);
+                if (user == null || !user.IsActive) continue;
+                if (!await AiAccessHelper.UserHasAsync(_db, user.Id, "AiAssistant", "Use", user.Role)) continue;
+                var name = ((user.FirstName ?? "") + " " + (user.LastName ?? "")).Trim();
+                if (name == "") name = user.Username;
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+                var result = await _agent.ChatAsync(user.Id, name, false, null, text, "bale", cts.Token);
+                // سقف طول پیام بله + حذف لینک‌های داخلی (در بله قابل کلیک نیستند)
+                var reply = AiTextUtil.StripLinks(result.Reply);
+                if (reply.Length > 3900) reply = reply[..3900] + "…";
+                await ReplyAsync(http, token, chatId, reply);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "پاسخ هوش مصنوعی در بله ناموفق بود.");
             }
         }
     }

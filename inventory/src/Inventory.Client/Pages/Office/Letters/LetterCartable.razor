@@ -9,6 +9,7 @@
 @inject RealtimeService Rt
 @inject IJSRuntime JS
 @inject HttpClient Http
+@inject AiAssistantService AiSvc
 @implements IDisposable
 
 <PageTitle>کارتابل نامه داخلی</PageTitle>
@@ -335,6 +336,97 @@
                                 @if (my2.TypeTaeed == 1) { <span class="tg green" style="margin-inline-start:5px">تایید ✓</span> }
                                 @if (my2.TypeTaeed == 2) { <span class="tg red" style="margin-inline-start:5px">رد ✗</span> }
                                 <small style="color:var(--sub);display:block;margin-top:3px">@my2.DateAnswer?.ToFaDateTime()</small>
+                            </div>
+                        }
+
+                        @* 🤖 دستیار نامه — خلاصه، پیشنهاد ارجاع، اقدام‌ها، دسته‌بندی *@
+                        @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+                        {
+                            <div class="ai-card">
+                                <div class="ai-head">
+                                    <b><i class="bi bi-robot"></i> دستیار نامه</b>
+                                    <div class="ai-btns">
+                                        <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiSummarize">خلاصه</button>
+                                        <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiSuggest">پیشنهاد ارجاع</button>
+                                        <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiTasks">اقدام‌ها و مهلت‌ها</button>
+                                        <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiCategorize">دسته‌بندی</button>
+                                    </div>
+                                </div>
+                                @if (aiBusy)
+                                {
+                                    <div class="ai-status-line"><span class="spinner-border spinner-border-sm"></span> در حال پردازش…</div>
+                                }
+                                @if (!string.IsNullOrEmpty(aiErr) && aiForLetterId == AiLetterId)
+                                {
+                                    <div class="ai-err"><i class="bi bi-exclamation-circle"></i> @aiErr</div>
+                                }
+                                @if (aiSummary != null && aiForLetterId == AiLetterId)
+                                {
+                                    <div class="ai-res">
+                                        <b>خلاصه:</b>
+                                        <p>@aiSummary.Summary</p>
+                                        @if (!string.IsNullOrWhiteSpace(aiSummary.CurrentStatus))
+                                        {
+                                            <small class="ai-status-line">وضعیت گردش: @aiSummary.CurrentStatus</small>
+                                        }
+                                    </div>
+                                }
+                                @if (aiSuggest != null && aiForLetterId == AiLetterId)
+                                {
+                                    <div class="ai-res">
+                                        <b>پیشنهاد ارجاع:</b>
+                                        @foreach (var s in aiSuggest.Suggestions)
+                                        {
+                                            <div class="ai-sug">
+                                                <i class="bi bi-person"></i> <b>@s.Name</b>
+                                                @if (!string.IsNullOrWhiteSpace(s.Department))
+                                                {
+                                                    <span class="tg">@s.Department</span>
+                                                }
+                                                <small>@s.Reason</small>
+                                            </div>
+                                        }
+                                        @if (aiSuggest.Suggestions.Count == 0)
+                                        {
+                                            <p>پیشنهادی یافت نشد.</p>
+                                        }
+                                    </div>
+                                }
+                                @if (aiTasks != null && aiForLetterId == AiLetterId)
+                                {
+                                    <div class="ai-res">
+                                        <b>اقدام‌ها و مهلت‌ها:</b>
+                                        @foreach (var t in aiTasks.Tasks)
+                                        {
+                                            <div class="ai-task">
+                                                <i class="bi bi-check2-square"></i> @t.Action
+                                                @if (!string.IsNullOrWhiteSpace(t.AssigneeHint))
+                                                {
+                                                    <small> — @t.AssigneeHint</small>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(t.DeadlineText))
+                                                {
+                                                    <span class="tg amber"><i class="bi bi-clock"></i> @t.DeadlineText</span>
+                                                }
+                                            </div>
+                                        }
+                                        @if (aiTasks.Tasks.Count == 0)
+                                        {
+                                            <p>اقدامی استخراج نشد.</p>
+                                        }
+                                    </div>
+                                }
+                                @if (aiCategory != null && aiForLetterId == AiLetterId)
+                                {
+                                    <div class="ai-res">
+                                        <b>دسته‌بندی:</b> @aiCategory.Category
+                                        <span class="tg">اولویت @aiCategory.Priority</span>
+                                        @foreach (var tag in aiCategory.Tags)
+                                        {
+                                            <span class="tg purple">@tag</span>
+                                        }
+                                    </div>
+                                }
                             </div>
                         }
 
@@ -1284,6 +1376,54 @@
         StateHasChanged();
     }
 
+    // ==================== 🤖 دستیار نامه ====================
+
+    private bool aiBusy;
+    private string aiErr = "";
+    private int aiForLetterId;
+    private AiLetterSummary? aiSummary;
+    private AiReferralResponse? aiSuggest;
+    private AiLetterTasks? aiTasks;
+    private AiLetterCategory? aiCategory;
+
+    private int? AiLetterId => selected?.LetterId;
+
+    private async Task AiSummarize()
+    {
+        if (AiLetterId is not { } id || aiBusy) return;
+        aiBusy = true; aiErr = ""; aiForLetterId = id;
+        try { aiSummary = await AiSvc.SummarizeLetterAsync(id); }
+        catch (Exception ex) { aiErr = ex.Message; }
+        finally { aiBusy = false; }
+    }
+
+    private async Task AiSuggest()
+    {
+        if (AiLetterId is not { } id || aiBusy) return;
+        aiBusy = true; aiErr = ""; aiForLetterId = id;
+        try { aiSuggest = await AiSvc.SuggestReferralAsync(id); }
+        catch (Exception ex) { aiErr = ex.Message; }
+        finally { aiBusy = false; }
+    }
+
+    private async Task AiTasks()
+    {
+        if (AiLetterId is not { } id || aiBusy) return;
+        aiBusy = true; aiErr = ""; aiForLetterId = id;
+        try { aiTasks = await AiSvc.ExtractTasksAsync(id); }
+        catch (Exception ex) { aiErr = ex.Message; }
+        finally { aiBusy = false; }
+    }
+
+    private async Task AiCategorize()
+    {
+        if (AiLetterId is not { } id || aiBusy) return;
+        aiBusy = true; aiErr = ""; aiForLetterId = id;
+        try { aiCategory = await AiSvc.CategorizeLetterAsync(id); }
+        catch (Exception ex) { aiErr = ex.Message; }
+        finally { aiBusy = false; }
+    }
+
     public void Dispose() => Rt.DataChanged -= OnDataChanged;
 
     // ==================== مدل‌ها ====================
@@ -1296,3 +1436,16 @@
         public string Status { get; set; } = "Open";
     }
 }
+
+<style>
+    .ai-card { margin-top: .7rem; background: #fff; border: 1px dashed #a78bfa; border-radius: .7rem; padding: .6rem .7rem; }
+    .ai-head { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+    .ai-btns { display: flex; gap: .35rem; flex-wrap: wrap; }
+    .ai-err { margin-top: .5rem; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: .5rem; padding: .4rem .6rem; font-size: .82rem; }
+    .ai-res { margin-top: .6rem; background: #f8f7ff; border: 1px solid #ddd6fe; border-radius: .6rem; padding: .55rem .65rem; font-size: .82rem; line-height: 1.9; }
+    .ai-res p { margin: .3rem 0 0; }
+    .ai-status-line { margin-top: .4rem; color: #6d28d9; font-size: .78rem; }
+    .ai-sug { margin-top: .4rem; padding: .35rem .5rem; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+    .ai-sug small { color: var(--sub); flex-basis: 100%; }
+    .ai-task { margin-top: .35rem; padding: .35rem .5rem; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
+</style>

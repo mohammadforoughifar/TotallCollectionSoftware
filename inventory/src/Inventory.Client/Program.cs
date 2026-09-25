@@ -53,6 +53,7 @@ builder.Services.AddScoped<IFaLmsService, FaLmsService>(); // FaLms — آموز
 builder.Services.AddScoped<IFaPayClientService, FaPayService>(); // FaPay — حقوق و دستمزد
 
 builder.Services.AddScoped<IChatClientService, ChatClientService>(); // ماژول پیام‌رسان سازمانی (Chat)
+builder.Services.AddScoped<AiAssistantService>(); // هوش مصنوعی فروغ آریا
 
 // ---------- ماژول حسابداری ----------
 builder.Services.AddScoped<IAccFiscalYearService, AccFiscalYearService>();

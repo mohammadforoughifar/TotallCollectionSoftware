@@ -561,6 +561,12 @@ else
                 </button>
             </Footer>
         </Modal>
+
+        @* ویجت شناور هوش مصنوعی فروغ آریا *@
+        @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+        {
+            <AiChatWidget />
+        }
     </div>
 }
 

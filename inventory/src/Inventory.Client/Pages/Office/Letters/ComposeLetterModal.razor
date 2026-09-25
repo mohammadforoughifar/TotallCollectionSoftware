@@ -1,6 +1,8 @@
 @inject ILetterService LetterSvc
 @inject IJSRuntime JS
 @inject IToastService Toast
+@inject IAuthState Auth
+@inject AiAssistantService AiSvc
 
 @* ============================================================
    فرم ایجاد نامه — شیت کناری مطابق طرح مصوب (پروتوتایپ نسخه ۶):
@@ -71,7 +73,49 @@
             </div>
 
             <div class="fcard">
-                <label>متن نامه</label>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+                    <label style="margin:0">متن نامه</label>
+                    @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+                    {
+                        <button type="button" class="lbtn pri" style="padding:.3rem .7rem;font-size:.8rem" @onclick="ToggleAiDraft">
+                            <i class="bi bi-robot"></i> پیش‌نویس هوشمند
+                        </button>
+                    }
+                </div>
+                @if (aiDraftOpen)
+                {
+                    <div style="background:#f5f3ff;border:1px dashed #a78bfa;border-radius:.7rem;padding:.7rem;margin:.6rem 0;display:flex;flex-direction:column;gap:.55rem">
+                        <input class="tin" placeholder="موضوع یا خواسته‌ات را بنویس… (مثلاً: درخواست خرید ۵ لپ‌تاپ برای واحد مالی)"
+                               @bind="aiTopic" @bind:event="oninput" />
+                        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                            <select class="tin" style="flex:1;min-width:110px" @bind="aiKind">
+                                <option value="داخلی">داخلی</option>
+                                <option value="صادره">صادره</option>
+                                <option value="جوابیه">جوابیه</option>
+                                <option value="درخواست">درخواست</option>
+                                <option value="ابلاغ">ابلاغ</option>
+                            </select>
+                            <select class="tin" style="flex:1;min-width:110px" @bind="aiTone">
+                                <option value="رسمی">لحن رسمی</option>
+                                <option value="دوستانه">لحن دوستانه</option>
+                                <option value="دستوری">لحن دستوری</option>
+                            </select>
+                            <input class="tin" style="flex:2;min-width:150px" placeholder="نام گیرنده (اختیاری)"
+                                   @bind="aiTo" @bind:event="oninput" />
+                        </div>
+                        <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+                            <button type="button" class="lbtn grn" disabled="@(aiBusy || string.IsNullOrWhiteSpace(aiTopic))" @onclick="GenerateAiDraft">
+                                @if (aiBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                <i class="bi bi-magic"></i> تولید پیش‌نویس
+                            </button>
+                            <small class="text-muted">عنوان و متن با هوش مصنوعی پر می‌شود (قابل ویرایش).</small>
+                        </div>
+                        @if (!string.IsNullOrEmpty(aiErr))
+                        {
+                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> @aiErr</div>
+                        }
+                    </div>
+                }
                 <RichTextEditor @ref="_rich" Id="ltxEditor" Placeholder="متن نامه را بنویسید…"
                                 @bind-Value="pendingBody" Height="260" />
             </div>
@@ -196,6 +240,43 @@
 
     private bool errTitle, errRcv;
 
+    // ==================== 🤖 پیش‌نویس هوشمند ====================
+    private bool aiDraftOpen;
+    private bool aiBusy;
+    private string aiTopic = "";
+    private string aiKind = "داخلی";
+    private string aiTone = "رسمی";
+    private string aiTo = "";
+    private string aiErr = "";
+
+    private void ToggleAiDraft()
+    {
+        aiDraftOpen = !aiDraftOpen;
+        aiErr = "";
+    }
+
+    private async Task GenerateAiDraft()
+    {
+        if (string.IsNullOrWhiteSpace(aiTopic) || aiBusy) return;
+        aiBusy = true; aiErr = "";
+        try
+        {
+            var draft = await AiSvc.DraftLetterAsync(aiTopic.Trim(), aiTone, aiKind,
+                string.IsNullOrWhiteSpace(aiTo) ? null : aiTo.Trim(), null);
+            if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(draft.Subject))
+                title = draft.Subject.Trim();
+            if (!string.IsNullOrWhiteSpace(draft.BodyHtml))
+            {
+                pendingBody = draft.BodyHtml;
+                if (_rich != null) await _rich.SetContentAsync(pendingBody);
+            }
+            aiDraftOpen = false;
+            Toast.Success(draft.UsedFallback ? "پیش‌نویس (حالت آفلاین) درج شد." : "پیش‌نویس هوشمند درج شد.");
+        }
+        catch (Exception ex) { aiErr = ex.Message; }
+        finally { aiBusy = false; }
+    }
+
     private List<LetterReciverDto> allUsers = new();
     private List<LetterGroupDto> allGroups = new();
 
@@ -290,6 +371,7 @@
         hameshUsers.Clear(); hameshGroups.Clear();
         pendingFiles.Clear(); savedAtts.Clear();
         related.Clear(); relOpen = false; relSel.Clear();
+        aiDraftOpen = false; aiTopic = ""; aiTo = ""; aiErr = ""; aiKind = "داخلی"; aiTone = "رسمی";
     }
 
     private async Task InitEditorAsync()

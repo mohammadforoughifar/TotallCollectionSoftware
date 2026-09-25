@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Inventory.Api.Data;
 using Inventory.Api.Entities.Chat;
 using Inventory.Api.Hubs;
+using Inventory.Api.Services.Ai;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -41,13 +42,15 @@ public class ChatService : IChatService
     private readonly IChatRealtimeNotifier _notifier;
     private readonly ILogger<ChatService> _logger;
     private readonly ChatAttachmentService _files;
+    private readonly AiReplyQueue _aiQueue;
 
-    public ChatService(AppDbContext db, IChatRealtimeNotifier notifier, ILogger<ChatService> logger, ChatAttachmentService files)
+    public ChatService(AppDbContext db, IChatRealtimeNotifier notifier, ILogger<ChatService> logger, ChatAttachmentService files, AiReplyQueue aiQueue)
     {
         _db = db;
         _notifier = notifier;
         _logger = logger;
         _files = files;
+        _aiQueue = aiQueue;
     }
 
     public async Task<List<ChatConversationDto>> GetConversationsAsync(int currentUserId, string? search = null, ChatTypeDto? typeFilter = null, bool onlyUnread = false)
@@ -478,6 +481,9 @@ public class ChatService : IChatService
         var dto = MapToMessageDto(msg, currentUserId, 0);
         try { await _notifier.NotifyMessageReceivedAsync(request.ConversationId, recipients, dto); }
         catch (Exception ex) { _logger.LogWarning(ex, "Message {MessageId} saved, but realtime delivery failed.", msg.Id); }
+        // اگر گفتگوی مستقیم با «فروغ آریا»ست، پاسخ دستیار در صف پس‌زمینه می‌رود.
+        try { await _aiQueue.EnqueueIfAiChatAsync(_db, currentUserId, request.ConversationId, request.Text); }
+        catch (Exception ex) { _logger.LogWarning(ex, "AI reply enqueue failed for message {MessageId}.", msg.Id); }
         return dto;
     }
 

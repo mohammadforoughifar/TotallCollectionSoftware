@@ -1,0 +1,204 @@
+using Microsoft.Extensions.Options;
+
+namespace Inventory.Api.Services.Ai;
+
+// =====================================================================
+// ایجنت «فروغ آریا» — حلقه گفتگو + ابزار + حافظه مکالمه.
+// اگر مدل زبانی در دسترس نباشد، خودکار به حالت آفلاین (قطعی) می‌رود تا
+// دستیار هیچ‌وقت کاملاً از کار نیفتد.
+// =====================================================================
+
+public interface IAiAgentService
+{
+    Task<AiChatResponse> ChatAsync(int userId, string userName, bool isAdmin,
+        int? conversationId, string message, string channel, CancellationToken ct);
+
+    /// <summary>تولید متن تک‌مرحله‌ای (برای هوش نامه‌ها) — در صورت قطعی مدل null.</summary>
+    Task<string?> GenerateAsync(string systemPrompt, string userPrompt, CancellationToken ct);
+}
+
+public class AiAgentService : IAiAgentService
+{
+    private readonly AiOptions _options;
+    private readonly IAiChatClient _chat;
+    private readonly AiToolRegistry _tools;
+    private readonly AiConversationService _conversations;
+    private readonly AiFallbackRouter _fallback;
+    private readonly IServiceProvider _services;
+    private readonly ILogger<AiAgentService> _log;
+
+    public AiAgentService(
+        IOptions<AiOptions> options,
+        IAiChatClient chat,
+        AiToolRegistry tools,
+        AiConversationService conversations,
+        AiFallbackRouter fallback,
+        IServiceProvider services,
+        ILogger<AiAgentService> log)
+    {
+        _options = options.Value;
+        _chat = chat;
+        _tools = tools;
+        _conversations = conversations;
+        _fallback = fallback;
+        _services = services;
+        _log = log;
+    }
+
+    public async Task<string?> GenerateAsync(string systemPrompt, string userPrompt, CancellationToken ct)
+    {
+        if (!_options.Enabled) return null;
+        try
+        {
+            var result = await _chat.ChatAsync(new List<AiChatMessage>
+            {
+                new() { Role = "system", Content = systemPrompt },
+                new() { Role = "user", Content = userPrompt },
+            }, null, ct);
+            var text = (result.Content ?? "").Trim();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "تولید متن ناموفق بود؛ حالت آفلاین.");
+            return null;
+        }
+    }
+
+    public async Task<AiChatResponse> ChatAsync(int userId, string userName, bool isAdmin,
+        int? conversationId, string message, string channel, CancellationToken ct)
+    {
+        message = (message ?? "").Trim();
+        if (message.Length > 4000) message = message[..4000];
+        if (string.IsNullOrWhiteSpace(message))
+            return new AiChatResponse { ConversationId = conversationId ?? 0, Reply = "پیامت خالیه! 😊 یه چیزی بنویس تا کمکت کنم." };
+
+        if (!_options.Enabled)
+            return new AiChatResponse
+            {
+                ConversationId = conversationId ?? 0,
+                Reply = "دستیار هوشمند فعلاً توسط مدیر سیستم خاموش شده است. ⛔",
+                UsedFallback = true,
+            };
+
+        var conv = await _conversations.GetOrCreateAsync(userId, channel, conversationId);
+
+        // سقف مصرف روزانه
+        if (_options.MaxMessagesPerUserPerDay > 0)
+        {
+            var today = await _conversations.CountTodayAsync(userId);
+            if (today >= _options.MaxMessagesPerUserPerDay)
+            {
+                var limitMsg = "به سقف پیام روزانه‌ات رسیدی! ⏳ فردا دوباره در خدمتم. (اگر لازم داری، مدیر سیستم می‌تونه سقف رو بیشتر کنه)";
+                await _conversations.AddMessageAsync(conv.Id, "user", message);
+                await _conversations.AddMessageAsync(conv.Id, "assistant", limitMsg, null, true);
+                return new AiChatResponse { ConversationId = conv.Id, Reply = limitMsg, UsedFallback = true };
+            }
+        }
+
+        // تاریخچه برای حافظه مکالمه (قبل از ذخیره پیام جدید)
+        var existing = await _conversations.GetAsync(userId, conv.Id);
+        var history = (existing?.Messages ?? new()).TakeLast(_options.MaxHistoryMessages).ToList();
+        var isFirst = history.Count == 0;
+
+        await _conversations.AddMessageAsync(conv.Id, "user", message);
+        if (isFirst) await _conversations.AutoTitleAsync(conv.Id, message);
+
+        var ctx = new AiToolContext
+        {
+            UserId = userId,
+            UserName = userName,
+            IsAdmin = isAdmin,
+            Services = _services,
+            CancellationToken = ct,
+        };
+
+        try
+        {
+            var (reply, used) = await RunAgentLoopAsync(history, message, userName, ctx, ct);
+            await _conversations.AddMessageAsync(conv.Id, "assistant", reply,
+                used.Count > 0 ? string.Join(",", used.Distinct()) : null, false);
+            return new AiChatResponse { ConversationId = conv.Id, Reply = reply, ToolsUsed = used.Distinct().ToList() };
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "حلقه ایجنت ناموفق بود؛ حالت آفلاین برای کاربر {UserId}", userId);
+            var offline = await _fallback.TryAnswerAsync(message, ctx);
+            var reply = offline ?? "مغز متفکرم (مدل زبانی) فعلاً در دسترس نیست 😔 ولی من هنوز اینجام! " +
+                "می‌تونی این‌ها رو بپرسی: «مانده مرخصی»، «فیش حقوقی»، «حضور امروز»، «نامه‌های خوانده‌نشده» — یا بعداً دوباره تلاش کن.";
+            await _conversations.AddMessageAsync(conv.Id, "assistant", reply, "offline", true);
+            return new AiChatResponse { ConversationId = conv.Id, Reply = reply, UsedFallback = true };
+        }
+    }
+
+    private async Task<(string reply, List<string> used)> RunAgentLoopAsync(
+        List<AiMessageDto> history, string message, string userName, AiToolContext ctx, CancellationToken ct)
+    {
+        var messages = new List<AiChatMessage> { new() { Role = "system", Content = BuildSystemPrompt(userName) } };
+        messages.AddRange(history.Select(h => new AiChatMessage
+        {
+            Role = h.Role == "assistant" ? "assistant" : "user",
+            Content = AiTextUtil.Truncate(h.Content, 2000),
+        }));
+        messages.Add(new AiChatMessage { Role = "user", Content = message });
+
+        var schemas = _tools.Schemas();
+        var used = new List<string>();
+
+        for (var i = 0; i < _options.MaxToolIterations; i++)
+        {
+            var result = await _chat.ChatAsync(messages, schemas, ct);
+            if (result.ToolCalls.Count == 0)
+            {
+                var text = (result.Content ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                    text = "متأسفم، نتونستم جواب بدم. 😕 سؤالت رو یه جور دیگه بپرس.";
+                return (CleanReply(text), used);
+            }
+            messages.Add(new AiChatMessage { Role = "assistant", Content = result.Content, ToolCalls = result.ToolCalls });
+            foreach (var call in result.ToolCalls)
+            {
+                used.Add(call.Name);
+                var output = await _tools.ExecuteAsync(call.Name, call.ArgumentsJson, ctx);
+                messages.Add(new AiChatMessage
+                {
+                    Role = "tool",
+                    ToolCallId = call.Id,
+                    Content = AiTextUtil.Truncate(output, 6000),
+                });
+            }
+        }
+
+        // اگر مدل در حلقه ابزار گیر کرد، یک پاسخ نهایی بدون ابزار بخواه
+        var final = await _chat.ChatAsync(
+            messages.Concat(new[] { new AiChatMessage
+            {
+                Role = "user",
+                Content = "با همین اطلاعاتی که به دست آوردی، جواب نهایی فارسی و خلاصه بده. اگر داده‌ای پیدا نشد صادقانه بگو.",
+            } }).ToList(), null, ct);
+        return (CleanReply((final.Content ?? "").Trim()), used);
+    }
+
+    private static string BuildSystemPrompt(string userName) => $"""
+        تو «فروغ آریا» هستی — دستیار هوشمند فارسی سامانه یکپارچه سازمان (نرم‌افزار فروغ آریا).
+        امروز {AiDateUtil.TodayFa()} است. داری با «{userName}» حرف می‌زنی.
+
+        قوانین مهم:
+        ۱) همیشه فارسی، صمیمی، کوتاه و کاربردی جواب بده. از ایموجی کم استفاده کن.
+        ۲) هرگز عدد یا اطلاعات واقعی را از خودت نساز! برای هر داده واقعی (مرخصی، فیش، حضور، نامه، وام، راهنما) حتماً ابزار مناسب را صدا بزن.
+        ۳) ابزارها فقط اطلاعات خود همین کاربر را می‌دهند؛ اگر چیزی درباره شخص دیگری پرسید، مؤدبانه بگو فقط به اطلاعات خودش دسترسی داری.
+        ۴) اگر ابزار خطای دسترسی (access_denied) داد، بگو «به این مورد دسترسی نداری» و راهنمایی کن از چه کسی پیگیری کند.
+        ۵) وقتی ابزار لینک صفحه برگرداند، آن را دقیقاً به همین شکل در جواب بگذار: [متن](مسیر) — مثلاً [مرخصی‌های من](/fa-att/my-leaves)
+        ۶) اعداد و مبالغ را در جدول یا لیست مرتب بده و تاریخ‌ها را همان‌طور که ابزار داده (شمسی) بنویس.
+        ۷) اگر سؤال ربطی به سامانه و کار سازمانی ندارد، خیلی کوتاه جواب بده و برگرد به کارت.
+        ۸) جواب‌های طولانی را با تیتر و لیست خوانا کن. حداکثر در حد نیاز توضیح بده.
+        """;
+
+    private static string CleanReply(string text)
+    {
+        // حذف اکوی احتمالی JSON ابزار از انتهای پاسخ مدل‌های کوچک
+        var idx = text.IndexOf("{\"", StringComparison.Ordinal);
+        if (idx > 100) text = text[..idx].Trim();
+        return text;
+    }
+}

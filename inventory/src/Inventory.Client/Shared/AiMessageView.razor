@@ -1,0 +1,57 @@
+@* =====================================================================
+   نمایش پاسخ دستیار: رندر سبک مارک‌داون فارسی (پررنگ، لیست، لینک داخلی)
+   امن در برابر XSS: اول Encode کامل، بعد قالب‌بندی روی متن امن.
+   ===================================================================== *@
+<span class="ai-msg">@((MarkupString)Html)</span>
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+
+    private string Html => Render(Text ?? "");
+
+    private static string Render(string text)
+    {
+        // ۱) امن‌سازی کامل
+        var enc = System.Net.WebUtility.HtmlEncode(text);
+
+        // ۲) پررنگ: **متن**
+        enc = System.Text.RegularExpressions.Regex.Replace(enc, @"\*\*(.+?)\*\*", "<strong>$1</strong>");
+
+        // ۳) لینک [متن](مسیر) — فقط داخلی (/) یا http(s)
+        enc = System.Text.RegularExpressions.Regex.Replace(enc, @"\[([^\]]+)\]\(([^)]+)\)", m =>
+        {
+            var label = m.Groups[1].Value;
+            var url = m.Groups[2].Value;
+            var raw = System.Net.WebUtility.HtmlDecode(url);
+            if (raw.StartsWith("/") && !raw.StartsWith("//"))
+                return $"<a href=\"{url}\" class=\"ai-link\">{label}</a>";
+            if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                return $"<a href=\"{url}\" target=\"_blank\" rel=\"noopener\" class=\"ai-link\">{label} ⧉</a>";
+            return label;
+        });
+
+        // ۴) لیست‌ها و پاراگراف‌ها (خط‌به‌خط)
+        var sb = new System.Text.StringBuilder();
+        var inList = false;
+        foreach (var rawLine in enc.Replace("\r\n", "\n").Split('\n'))
+        {
+            var line = rawLine.Trim();
+            var isBullet = line.StartsWith("- ") || line.StartsWith("* ") || line.StartsWith("• ");
+            var isNumbered = System.Text.RegularExpressions.Regex.IsMatch(line, @"^[۰-۹0-9]+[.)] ");
+            if (isBullet || isNumbered)
+            {
+                if (!inList) { sb.Append("<ul class=\"ai-list\">"); inList = true; }
+                var item = isBullet ? line[2..] : System.Text.RegularExpressions.Regex.Replace(line, @"^[۰-۹0-9]+[.)] ", "");
+                sb.Append("<li>").Append(item).Append("</li>");
+            }
+            else
+            {
+                if (inList) { sb.Append("</ul>"); inList = false; }
+                if (line.Length == 0) sb.Append("<div class=\"ai-gap\"></div>");
+                else sb.Append("<div>").Append(line).Append("</div>");
+            }
+        }
+        if (inList) sb.Append("</ul>");
+        return sb.ToString();
+    }
+}

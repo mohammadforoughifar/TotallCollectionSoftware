@@ -55,6 +55,11 @@ public class AppDbContext : DbContext
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
+    // ================== هوش مصنوعی فروغ آریا ==================
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+    public DbSet<AiKnowledgeDoc> AiKnowledgeDocs => Set<AiKnowledgeDoc>();
+
     // ================== دستور کار ==================
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<WorkOrderAssignee> WorkOrderAssignees => Set<WorkOrderAssignee>();
@@ -384,6 +389,7 @@ public class AppDbContext : DbContext
         base.OnModelCreating(mb);
         DocEvolutionModel.Configure(mb);
         PushDeliverySchema.Configure(mb);
+        AiSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
         mb.Entity<ProductCategory>().HasIndex(c => c.Name).IsUnique();

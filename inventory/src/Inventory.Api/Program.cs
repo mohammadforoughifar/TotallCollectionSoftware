@@ -298,6 +298,34 @@ builder.Services.AddSingleton<IMessengerLinkCodes, MessengerLinkCodes>();
 builder.Services.AddHostedService<BaleBotWorker>(); // خواندن خودکار پیام‌های ربات بله (/start و اشتراک شماره)
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient("moadian", c => c.Timeout = TimeSpan.FromSeconds(30)); // سرویس مودیان (فاکتور الکترونیکی)
+
+// ================== هوش مصنوعی فروغ آریا (مدل لوکال — Ollama) ==================
+// تایم‌اوت هر درخواست داخل خود کلاینت مدیریت می‌شود (AiOptions.TimeoutSeconds).
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
+builder.Services.AddHttpClient("ai", c => c.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddScoped<IAiChatClient, OpenAiCompatibleChatClient>();
+builder.Services.AddScoped<IAiEmbeddingClient, OpenAiCompatibleEmbeddingClient>();
+builder.Services.AddScoped<AiConversationService>();
+builder.Services.AddScoped<AiKnowledgeService>();
+builder.Services.AddScoped<AiToolRegistry>();
+builder.Services.AddScoped<AiFallbackRouter>();
+builder.Services.AddScoped<IAiAgentService, AiAgentService>();
+builder.Services.AddScoped<ILetterAiService, LetterAiService>();
+// ابزارهای دستیار
+builder.Services.AddScoped<IAiTool, GuideSearchTool>();
+builder.Services.AddScoped<IAiTool, MyLeaveBalanceTool>();
+builder.Services.AddScoped<IAiTool, MyLeavesTool>();
+builder.Services.AddScoped<IAiTool, MyAttendanceTool>();
+builder.Services.AddScoped<IAiTool, MyPayslipTool>();
+builder.Services.AddScoped<IAiTool, MyLoansTool>();
+builder.Services.AddScoped<IAiTool, MyMissionsTool>();
+builder.Services.AddScoped<IAiTool, MyLettersStatsTool>();
+builder.Services.AddScoped<IAiTool, MyLettersInboxTool>();
+builder.Services.AddScoped<IAiTool, LetterDetailTool>();
+builder.Services.AddScoped<IAiTool, UsersLookupTool>();
+// پاسخ‌گویی در پیام‌رسان داخلی
+builder.Services.AddSingleton<AiReplyQueue>();
+builder.Services.AddHostedService<AiChatReplyWorker>();
 builder.Services.AddSingleton<HardwareMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HardwareMonitor>());
 

@@ -3,6 +3,7 @@
 @using System.Net.Http.Headers
 @using System.Text
 @inject IMinutesApiService Minutes
+@inject AiAssistantService AiSvc
 @inject IApiClient Api
 @inject IEmailClientService Email
 @inject IToastService Toast
@@ -202,9 +203,17 @@
                 </div>
                 @if (canEdit)
                 {
-                    <button type="button" class="btn btn-sm btn-primary" @onclick="NewRow">
-                        <i class="bi bi-plus-lg me-1"></i>افزودن بند
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="NewRow">
+                            <i class="bi bi-plus-lg me-1"></i>افزودن بند
+                        </button>
+                        @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenAiMinutes" title="تولید بندها از متن جلسه با هوش مصنوعی">
+                                <i class="bi bi-robot me-1"></i>پیش‌نویس هوشمند
+                            </button>
+                        }
+                    </div>
                 }
             </div>
             <div class="d-none d-md-block table-responsive">
@@ -427,6 +436,72 @@
 @* ---------- امضا ---------- *@
 <SignaturePadModal Visible="signModal" VisibleChanged="v => signModal = v"
                   SignerName="SignerNameDisplay" OnSign="OnSignatureSaved" />
+
+@* ---------- 🤖 پیش‌نویس هوشمند بندها ---------- *@
+<Modal Visible="aiMinutesModal" Title="@AiModalTitle" Size="modal-lg"
+       OnClose="() => aiMinutesModal = false">
+    <ChildContent>
+    @if (aiMinutesDraft == null)
+    {
+        <label class="form-label fw-600">متن جلسه (یادداشت خام، خلاصه صحبت‌ها…)</label>
+        <textarea class="form-control" rows="6" placeholder="مثلاً: در جلسه مقرر شد احمد تا شنبه فاکتورها را بررسی کند و مریم قرارداد را نهایی کند…"
+                  @bind="aiMinutesRaw"></textarea>
+        @if (!string.IsNullOrEmpty(aiMinutesErr))
+        {
+            <div class="alert alert-danger mt-2 mb-0 py-2">@aiMinutesErr</div>
+        }
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(aiMinutesDraft.Summary))
+        {
+            <p class="text-muted fs-7">@aiMinutesDraft.Summary</p>
+        }
+        <div class="list-group">
+            @foreach (var it in aiMinutesDraft.Items)
+            {
+                <label class="list-group-item d-flex gap-2 align-items-start">
+                    <input type="checkbox" class="form-check-input mt-1" checked="@aiMinutesSel.Contains(it)"
+                           @onchange="() => ToggleAiMinutesItem(it)" />
+                    <span>
+                        @it.Text
+                        @if (!string.IsNullOrWhiteSpace(it.Responsible))
+                        {
+                            <small class="text-muted"> — مسئول: @it.Responsible</small>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(it.DeadlineText))
+                        {
+                            <small class="text-muted"> — مهلت: @it.DeadlineText</small>
+                        }
+                    </span>
+                </label>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(aiMinutesErr))
+        {
+            <div class="alert alert-danger mt-2 mb-0 py-2">@aiMinutesErr</div>
+        }
+    }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-secondary" @onclick="() => aiMinutesModal = false">انصراف</button>
+        @if (aiMinutesDraft == null)
+        {
+            <button class="btn btn-primary" disabled="@(aiMinutesBusy || string.IsNullOrWhiteSpace(aiMinutesRaw))" @onclick="GenerateAiMinutes">
+                @if (aiMinutesBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                تولید بندها
+            </button>
+        }
+        else
+        {
+            <button class="btn btn-outline-secondary" disabled="@aiMinutesBusy" @onclick="() => { aiMinutesDraft = null; aiMinutesSel.Clear(); }">بازگشت</button>
+            <button class="btn btn-success" disabled="@(aiMinutesBusy || aiMinutesSel.Count == 0)" @onclick="AddAiMinutesItems">
+                @if (aiMinutesBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                افزودن @aiMinutesSel.Count بند
+            </button>
+        }
+    </Footer>
+</Modal>
 
 @code {
     // ================== حالت اصلی ==================
@@ -736,6 +811,83 @@ private async Task SaveRow()
             Toast.Error(ex.Message);
         }
         busy = false;
+    }
+
+    // ==================== 🤖 پیش‌نویس هوشمند بندها ====================
+
+    private bool aiMinutesModal;
+    private bool aiMinutesBusy;
+    private string aiMinutesRaw = "";
+    private string aiMinutesErr = "";
+    private AiMinutesDraft? aiMinutesDraft;
+    private readonly HashSet<AiMinutesItem> aiMinutesSel = new();
+
+    private string AiModalTitle => aiMinutesDraft == null ? "🤖 پیش‌نویس هوشمند بندها" : "بندهای پیشنهادی هوش مصنوعی";
+
+    private void OpenAiMinutes()
+    {
+        aiMinutesModal = true;
+        aiMinutesErr = "";
+        aiMinutesDraft = null;
+        aiMinutesSel.Clear();
+    }
+
+    private async Task GenerateAiMinutes()
+    {
+        if (string.IsNullOrWhiteSpace(aiMinutesRaw) || aiMinutesBusy) return;
+        aiMinutesBusy = true; aiMinutesErr = "";
+        try
+        {
+            aiMinutesDraft = await AiSvc.DraftMinutesAsync(aiMinutesRaw.Trim(), string.IsNullOrWhiteSpace(title) ? null : title.Trim());
+            aiMinutesSel.Clear();
+            foreach (var it in aiMinutesDraft.Items) aiMinutesSel.Add(it);
+            if (aiMinutesDraft.Items.Count == 0) aiMinutesErr = "بندی از این متن استخراج نشد؛ متن کامل‌تری بنویسید.";
+        }
+        catch (Exception ex) { aiMinutesErr = ex.Message; }
+        finally { aiMinutesBusy = false; }
+    }
+
+    private void ToggleAiMinutesItem(AiMinutesItem item)
+    {
+        if (!aiMinutesSel.Remove(item)) aiMinutesSel.Add(item);
+    }
+
+    private int? MatchResponsible(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || users.Count == 0) return null;
+        var n = name.Trim();
+        var hit = users.FirstOrDefault(u => u.Name == n)
+            ?? users.FirstOrDefault(u => u.Name.Contains(n) || n.Contains(u.Name));
+        return hit?.Id;
+    }
+
+    private async Task AddAiMinutesItems()
+    {
+        if (minutesId <= 0)
+        {
+            aiMinutesErr = "ابتدا صورتجلسه را ذخیره کنید، بعد بندها را اضافه کنید.";
+            return;
+        }
+        if (aiMinutesSel.Count == 0 || aiMinutesBusy) return;
+        aiMinutesBusy = true; aiMinutesErr = "";
+        try
+        {
+            var count = 0;
+            foreach (var it in aiMinutesSel.ToList())
+            {
+                await Minutes.AddItemAsync(minutesId, new SaveMinutesItemDto
+                {
+                    Description = it.Text,
+                    ResponsibleUserId = MatchResponsible(it.Responsible),
+                });
+                count++;
+            }
+            aiMinutesModal = false;
+            await LoadDetail();
+            Toast.Success($"{count} بند با هوش مصنوعی اضافه شد.");
+        }
+        catch (Exception ex) { aiMinutesErr = ex.Message; }
+        finally { aiMinutesBusy = false; }
     }
 
 private void AskDeleteRow(RowForm r)
