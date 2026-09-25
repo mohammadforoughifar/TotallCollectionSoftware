@@ -1554,3 +1554,296 @@ public class MyAlertsTool : IAiTool
         });
     }
 }
+
+// ---------------- اقدام‌های اجرایی موج دوم (§۱۰) ----------------
+
+public class ReferLetterTool : IAiTool
+{
+    public string Name => "refer_letter";
+    public string Description => "ثبت پیش‌فاکتور ارجاع نامه به همکار (اجرا فقط بعد از تأیید کاربر). نامه را با letter_id بده (از my_letters_inbox یا کاوش)؛ گیرنده را با نام یا شناسه (اگر نام مبهم بود، ابزار نامزدها را می‌دهد).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            letter_id = new { type = "integer", description = "شناسه نامه (اجباری)" },
+            receiver = new { type = "string", description = "نام همکار یا شناسه عددی او (اجباری)" },
+            text = new { type = "string", description = "متن ارجاع/پاراف (اجباری)" },
+            deadline = new { type = "string", description = "مهلت پاسخ: ۱۴۰۴/۰۷/۱۰ یا «فردا» (اختیاری)" },
+        },
+        required = new[] { "letter_id", "receiver", "text" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var letterId = AiToolArgs.GetInt(args, "letter_id") ?? 0;
+        var receiverRaw = (AiToolArgs.GetString(args, "receiver") ?? "").Trim();
+        var text = (AiToolArgs.GetString(args, "text") ?? "").Trim();
+        if (letterId <= 0 || receiverRaw == "" || text == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "نامه، گیرنده و متن ارجاع هر سه لازم است." });
+        var letter = await db.InnerLetters.AsNoTracking()
+            .Where(x => x.Id == letterId && !x.IsDelete)
+            .Select(x => new { x.Title }).FirstOrDefaultAsync(ctx.CancellationToken);
+        if (letter == null)
+            return JsonSerializer.Serialize(new { error = "bad_letter", message = $"نامه‌ای با شناسه {letterId} پیدا نشد." });
+
+        // حل گیرنده: عدد → شناسه؛ نام → جستجو با مدیریت ابهام
+        int receiverId = 0;
+        string receiverName = "";
+        if (int.TryParse(AiTextUtil.ToEnDigits(receiverRaw), out var rid))
+        {
+            var u = await db.Users.AsNoTracking()
+                .Where(x => x.Id == rid && x.IsActive && x.Username != Data.AiSeeder.AiUsername)
+                .Select(x => new { x.FirstName, x.LastName, x.Username }).FirstOrDefaultAsync(ctx.CancellationToken);
+            if (u == null)
+                return JsonSerializer.Serialize(new { error = "bad_receiver", message = $"کاربری با شناسه {rid} پیدا نشد." });
+            receiverId = rid;
+            receiverName = (((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim() is { Length: > 0 } nm) ? nm : u.Username;
+        }
+        else
+        {
+            var q = AiTextUtil.NormalizeFa(receiverRaw);
+            var matches = await db.Users.AsNoTracking()
+                .Where(x => x.IsActive && x.Username != Data.AiSeeder.AiUsername)
+                .Select(x => new { x.Id, x.FirstName, x.LastName, x.Username }).Take(200).ToListAsync(ctx.CancellationToken);
+            var found = matches
+                .Select(x => new { x.Id, Name = (((x.FirstName ?? "") + " " + (x.LastName ?? "")).Trim() is { Length: > 0 } nm) ? nm : x.Username })
+                .Where(x => AiTextUtil.NormalizeFa(x.Name).Contains(q))
+                .Take(8).ToList();
+            if (found.Count == 0)
+                return JsonSerializer.Serialize(new { error = "bad_receiver", message = $"کاربری با نام «{receiverRaw}» پیدا نشد؛ با users_lookup دقیقش کن." });
+            if (found.Count > 1)
+                return JsonSerializer.Serialize(new
+                {
+                    error = "ambiguous_receiver",
+                    message = "چند نفر با این نام پیدا شد؛ شناسه دقیق را بپرس.",
+                    candidates = found.Select(x => new { id = x.Id, name = x.Name }),
+                });
+            receiverId = found[0].Id;
+            receiverName = found[0].Name;
+        }
+
+        var deadlineRaw = AiToolArgs.GetString(args, "deadline");
+        DateTime? deadline = string.IsNullOrWhiteSpace(deadlineRaw) ? null : AiLeaveHelper.ParseFaDate(deadlineRaw, DateTime.Today)?.Date;
+        if (!string.IsNullOrWhiteSpace(deadlineRaw) && deadline == null)
+            return JsonSerializer.Serialize(new { error = "bad_date", message = $"مهلت «{deadlineRaw}» را نفهمیدم؛ مثل ۱۴۰۴/۰۷/۱۰ بنویس." });
+
+        var summary = $"ارجاع نامه «{letter.Title}» به {receiverName}" +
+            (deadline != null ? $" — مهلت {AiDateUtil.ToFaShort(deadline.Value)}" : "");
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var pending = await actions.CreateAsync(ctx.UserId, "refer_letter",
+            JsonSerializer.Serialize(new
+            {
+                letter_id = letterId, receiver_id = receiverId, text,
+                deadline = deadline?.ToString("yyyy-MM-dd"),
+            }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}
+
+public class AnswerTicketTool : IAiTool
+{
+    public string Name => "answer_ticket";
+    public string Description => "ثبت پیش‌فاکتور پاسخ به تیکت (اجرا فقط بعد از تأیید کاربر). کارمند روی تیکت خودش، و HR روی هر تیکتی می‌تواند جواب بدهد.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            ticket_id = new { type = "integer", description = "شناسه تیکت (اجباری)" },
+            body = new { type = "string", description = "متن پاسخ (اجباری)" },
+        },
+        required = new[] { "ticket_id", "body" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var ticketId = AiToolArgs.GetInt(args, "ticket_id") ?? 0;
+        var body = (AiToolArgs.GetString(args, "body") ?? "").Trim();
+        if (ticketId <= 0 || body == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "شناسه تیکت و متن پاسخ هر دو لازم است." });
+        var t = await db.FaComTickets.AsNoTracking()
+            .Where(x => x.Id == ticketId)
+            .Select(x => new { x.Subject, x.Status, x.EmployeeId }).FirstOrDefaultAsync(ctx.CancellationToken);
+        if (t == null)
+            return JsonSerializer.Serialize(new { error = "bad_ticket", message = $"تیکتی با شناسه {ticketId} پیدا نشد." });
+        if (t.Status == FaComTicketStatus.Closed)
+            return JsonSerializer.Serialize(new { error = "closed", message = "این تیکت بسته است؛ برای پیگیری مجدد تیکت جدید ثبت کن." });
+        var role = await db.Users.AsNoTracking()
+            .Where(u => u.Id == ctx.UserId).Select(u => u.Role).FirstOrDefaultAsync(ctx.CancellationToken);
+        var isHr = await AiAccessHelper.UserHasAsync(db, ctx.UserId, "FaCom", "Manage", role, ctx.CancellationToken);
+        if (!isHr)
+        {
+            var myEmp = await db.HrEmployees.AsNoTracking()
+                .Where(e => e.SystemUserId == ctx.UserId).Select(e => e.Id).FirstOrDefaultAsync(ctx.CancellationToken);
+            if (myEmp == 0 || myEmp != t.EmployeeId)
+                return JsonSerializer.Serialize(new { error = "access_denied", message = "به این تیکت دسترسی نداری." });
+        }
+        var summary = $"پاسخ به تیکت «{t.Subject}» (#{ticketId})" + (isHr ? " — به‌عنوان HR" : "");
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var pending = await actions.CreateAsync(ctx.UserId, "answer_ticket",
+            JsonSerializer.Serialize(new { ticket_id = ticketId, body }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}
+
+public class RegisterChequeTool : IAiTool
+{
+    public string Name => "register_cheque";
+    public string Description => "ثبت پیش‌فاکتور چک دریافتی/صادره (اجرا فقط بعد از تأیید کاربر). چک فقط «نزد ما» ثبت می‌شود و سند حسابداری نمی‌زند. برای چک صادره، حساب بانکی صادرکننده لازم است (با نام یا شناسه از trs_account). طرف حساب اختیاری است (با نام یا شناسه).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            kind = new { type = "string", description = "دریافتی یا صادره (اجباری)" },
+            number = new { type = "string", description = "شماره چک (اجباری)" },
+            amount = new { type = "string", description = "مبلغ به تومان با رقم، مثل ۱۲٬۵۰۰٬۰۰۰ (اجباری)" },
+            due_date = new { type = "string", description = "سررسید شمسی، مثل ۱۴۰۴/۰۸/۱۵ (اجباری)" },
+            issue_date = new { type = "string", description = "تاریخ صدور (اختیاری؛ پیش‌فرض امروز)" },
+            bank = new { type = "string", description = "نام بانک (اختیاری)" },
+            owner = new { type = "string", description = "صاحب چک (اختیاری)" },
+            party = new { type = "string", description = "طرف حساب: نام یا شناسه (اختیاری)" },
+            account = new { type = "string", description = "حساب بانکی: نام یا شناسه — برای صادره اجباری (اختیاری برای دریافتی)" },
+            description = new { type = "string", description = "توضیح (اختیاری)" },
+        },
+        required = new[] { "kind", "number", "amount", "due_date" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var k = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "kind"));
+        var kind = k.Contains("صادر") || k.Contains("پرداخت") ? 1 : k.Contains("دریافت") ? 0 : -1;
+        if (kind < 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "نوع چک مشخص نیست؛ «دریافتی» یا «صادره»؟" });
+        var number = AiTextUtil.ToEnDigits(AiToolArgs.GetString(args, "number") ?? "").Trim();
+        if (number == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "شماره چک لازم است." });
+        var amount = ParseAmount(AiToolArgs.GetString(args, "amount"));
+        if (amount == null || amount <= 0 || amount > 999_999_999_999_999m)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "مبلغ معتبر نیست؛ مبلغ را با رقم بنویس، مثل ۱۲٬۵۰۰٬۰۰۰." });
+        var due = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "due_date"), DateTime.Today)?.Date;
+        if (due == null)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "سررسید معتبر نیست؛ مثل ۱۴۰۴/۰۸/۱۵ بنویس." });
+        var issueRaw = AiToolArgs.GetString(args, "issue_date");
+        var issue = string.IsNullOrWhiteSpace(issueRaw) ? DateTime.Today
+            : AiLeaveHelper.ParseFaDate(issueRaw, DateTime.Today)?.Date;
+        if (issue == null)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "تاریخ صدور معتبر نیست." });
+
+        // طرف حساب (اختیاری)
+        var partyId = 0;
+        string? partyName = null;
+        var partyRaw = (AiToolArgs.GetString(args, "party") ?? "").Trim();
+        if (partyRaw != "")
+        {
+            var pr = await ResolvePartyAsync(db, partyRaw, ctx.CancellationToken);
+            if (!pr.ok) return pr.json!;
+            partyId = pr.id;
+            partyName = pr.name;
+        }
+
+        // حساب بانکی (برای صادره اجباری)
+        var accountId = 0;
+        string? accountName = null;
+        var accountRaw = (AiToolArgs.GetString(args, "account") ?? "").Trim();
+        if (accountRaw != "")
+        {
+            var ar = await ResolveAccountAsync(db, accountRaw, ctx.CancellationToken);
+            if (!ar.ok) return ar.json!;
+            accountId = ar.id;
+            accountName = ar.name;
+        }
+        if (kind == 1 && accountId <= 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "برای چک صادره، حساب بانکی صادرکننده لازم است." });
+
+        var dup = await db.TrsCheques.AsNoTracking()
+            .AnyAsync(c => c.Kind == (ChequeKind)kind && c.Number == number, ctx.CancellationToken);
+        var kindFa = kind == 1 ? "صادره" : "دریافتی";
+        var summary = $"چک {kindFa} شماره {number} — {AiTextUtil.ToFaDigits(amount.Value.ToString("#,##0"))} تومان — سررسید {AiDateUtil.ToFaShort(due.Value)}" +
+            (partyName != null ? $" — طرف: {partyName}" : "") +
+            (accountName != null ? $" — حساب: {accountName}" : "") +
+            (dup ? " ⚠️ (تذکر: چکی با همین شماره قبلاً ثبت شده)" : "");
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var pending = await actions.CreateAsync(ctx.UserId, "register_cheque",
+            JsonSerializer.Serialize(new
+            {
+                kind,
+                number,
+                amount = amount.Value,
+                due_date = due.Value.ToString("yyyy-MM-dd"),
+                issue_date = issue.Value.ToString("yyyy-MM-dd"),
+                bank = (AiToolArgs.GetString(args, "bank") ?? "").Trim(),
+                owner = (AiToolArgs.GetString(args, "owner") ?? "").Trim(),
+                party_id = partyId,
+                account_id = accountId,
+                description = (AiToolArgs.GetString(args, "description") ?? "").Trim(),
+            }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+
+    private static decimal? ParseAmount(string? raw)
+    {
+        var s = AiTextUtil.ToEnDigits(raw ?? "").Trim()
+            .Replace("تومان", "").Replace("تومان", "").Replace("ریال", "")
+            .Replace("٬", "").Replace(",", "").Replace(" ", "").Replace(" ", "");
+        return decimal.TryParse(s, System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+    }
+
+    private static async Task<(bool ok, int id, string? name, string? json)> ResolvePartyAsync(
+        AppDbContext db, string raw, CancellationToken ct)
+    {
+        if (int.TryParse(AiTextUtil.ToEnDigits(raw), out var id))
+        {
+            var p = await db.Parties.AsNoTracking()
+                .Where(x => x.Id == id).Select(x => new { x.Id, x.Name }).FirstOrDefaultAsync(ct);
+            if (p == null)
+                return (false, 0, null, JsonSerializer.Serialize(new { error = "bad_party", message = $"طرف حسابی با شناسه {id} پیدا نشد." }));
+            return (true, p.Id, p.Name, null);
+        }
+        var q = AiTextUtil.NormalizeFa(raw);
+        var all = await db.Parties.AsNoTracking().Select(x => new { x.Id, x.Name }).Take(500).ToListAsync(ct);
+        var found = all.Where(x => AiTextUtil.NormalizeFa(x.Name).Contains(q)).Take(8).ToList();
+        if (found.Count == 0)
+            return (false, 0, null, JsonSerializer.Serialize(new { error = "bad_party", message = $"طرف حسابی با نام «{raw}» پیدا نشد." }));
+        if (found.Count > 1)
+            return (false, 0, null, JsonSerializer.Serialize(new
+            {
+                error = "ambiguous_party",
+                message = "چند طرف حساب با این نام پیدا شد؛ شناسه دقیق را بپرس.",
+                candidates = found.Select(x => new { id = x.Id, name = x.Name }),
+            }));
+        return (true, found[0].Id, found[0].Name, null);
+    }
+
+    private static async Task<(bool ok, int id, string? name, string? json)> ResolveAccountAsync(
+        AppDbContext db, string raw, CancellationToken ct)
+    {
+        if (int.TryParse(AiTextUtil.ToEnDigits(raw), out var id))
+        {
+            var a = await db.TrsAccounts.AsNoTracking()
+                .Where(x => x.Id == id && x.IsActive).Select(x => new { x.Id, x.Name }).FirstOrDefaultAsync(ct);
+            if (a == null)
+                return (false, 0, null, JsonSerializer.Serialize(new { error = "bad_account", message = $"حساب فعالی با شناسه {id} پیدا نشد." }));
+            return (true, a.Id, a.Name, null);
+        }
+        var q = AiTextUtil.NormalizeFa(raw);
+        var all = await db.TrsAccounts.AsNoTracking()
+            .Where(x => x.IsActive).Select(x => new { x.Id, x.Name }).Take(100).ToListAsync(ct);
+        var found = all.Where(x => AiTextUtil.NormalizeFa(x.Name).Contains(q)).Take(8).ToList();
+        if (found.Count == 0)
+            return (false, 0, null, JsonSerializer.Serialize(new { error = "bad_account", message = $"حساب فعالی با نام «{raw}» پیدا نشد." }));
+        if (found.Count > 1)
+            return (false, 0, null, JsonSerializer.Serialize(new
+            {
+                error = "ambiguous_account",
+                message = "چند حساب با این نام پیدا شد؛ شناسه دقیق را بپرس.",
+                candidates = found.Select(x => new { id = x.Id, name = x.Name }),
+            }));
+        return (true, found[0].Id, found[0].Name, null);
+    }
+}

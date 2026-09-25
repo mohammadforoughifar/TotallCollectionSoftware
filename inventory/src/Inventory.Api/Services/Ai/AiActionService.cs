@@ -2,6 +2,8 @@ using System.Text.Json;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaAtt;
 using Inventory.Api.Services.FaCom;
+using Inventory.Api.Services.Treasury;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -30,10 +32,12 @@ public class AiActionService
     private readonly IErjaService _erja;
     private readonly IPishnevisService _pishnevis;
     private readonly IFaComService _faCom;
+    private readonly ITreasuryService _treasury;
     private readonly ILogger<AiActionService> _log;
 
     public AiActionService(AppDbContext db, IOptions<AiOptions> options, IFaAttService faAtt,
-        IErjaService erja, IPishnevisService pishnevis, IFaComService faCom, ILogger<AiActionService> log)
+        IErjaService erja, IPishnevisService pishnevis, IFaComService faCom,
+        ITreasuryService treasury, ILogger<AiActionService> log)
     {
         _db = db;
         _options = options.Value;
@@ -41,6 +45,7 @@ public class AiActionService
         _erja = erja;
         _pishnevis = pishnevis;
         _faCom = faCom;
+        _treasury = treasury;
         _log = log;
     }
 
@@ -99,6 +104,9 @@ public class AiActionService
             "create_ticket" => ("FaCom", "Create"),
             "report_work" => ("ReportWorks", "Create"),
             "create_letter_draft" => ("InnerLetters", "Create"),
+            "refer_letter" => ("InnerLetters", "Read"),
+            "answer_ticket" => ("FaCom", "Create"),
+            "register_cheque" => ("TrsCheques", "Create"),
             _ => ("", ""),
         };
         if (module == "")
@@ -120,6 +128,9 @@ public class AiActionService
                 "create_ticket" => await ExecuteTicketAsync(action, userId, ct),
                 "report_work" => await ExecuteReportWorkAsync(action, userId, ct),
                 "create_letter_draft" => await ExecuteLetterDraftAsync(action, userId, ct),
+                "refer_letter" => await ExecuteReferLetterAsync(action, userId, userName, ct),
+                "answer_ticket" => await ExecuteAnswerTicketAsync(action, userId, userName, role, ct),
+                "register_cheque" => await ExecuteRegisterChequeAsync(action, userId, userName, ct),
                 _ => throw new InvalidOperationException("نوع اقدام ناشناخته است."),
             };
             action.Status = 1;
@@ -269,6 +280,94 @@ public class AiActionService
             Priority = 1,
         }, false);
         return $"تیکت «{saved.Subject}» با شماره {saved.Id} ثبت شد. 🎫";
+    }
+
+    private async Task<string> ExecuteReferLetterAsync(AiPendingAction action, int userId, string userName, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var root = doc.RootElement;
+        var letterId = root.TryGetProperty("letter_id", out var l) && l.TryGetInt32(out var n) ? n : 0;
+        var receiverId = root.TryGetProperty("receiver_id", out var r) && r.TryGetInt32(out var m) ? m : 0;
+        var text = root.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        DateTime? deadline = root.TryGetProperty("deadline", out var d) && DateTime.TryParse(d.GetString(), out var dd) ? dd.Date : null;
+        if (letterId <= 0 || receiverId <= 0 || string.IsNullOrWhiteSpace(text))
+            throw new InvalidOperationException("نامه، گیرنده و متن ارجاع لازم است.");
+        var letter = await _db.InnerLetters.AsNoTracking()
+            .Where(x => x.Id == letterId && !x.IsDelete)
+            .Select(x => new { x.Title }).FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException("نامه یافت نشد.");
+        var receiver = await _db.Users.AsNoTracking()
+            .Where(u => u.Id == receiverId && u.IsActive && u.Username != Data.AiSeeder.AiUsername)
+            .Select(u => new { u.FirstName, u.LastName, u.Username }).FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException("گیرنده معتبر نیست.");
+        await _erja.AddErjaAsync(new AddErjaDto
+        {
+            LetterId = letterId,
+            TextErja = text.Trim(),
+            ReciversGirandegan = new List<int> { receiverId },
+            DeadlineAnswer = deadline,
+        }, userId, userName);
+        var receiverName = ((receiver.FirstName ?? "") + " " + (receiver.LastName ?? "")).Trim();
+        if (receiverName == "") receiverName = receiver.Username;
+        return $"نامه «{letter.Title}» به {receiverName} ارجاع شد. 📨";
+    }
+
+    private async Task<string> ExecuteAnswerTicketAsync(AiPendingAction action, int userId, string userName, string? role, CancellationToken ct)
+    {
+        _ = ct;
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var root = doc.RootElement;
+        var ticketId = root.TryGetProperty("ticket_id", out var t) && t.TryGetInt32(out var n) ? n : 0;
+        var body = root.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+        if (ticketId <= 0 || string.IsNullOrWhiteSpace(body))
+            throw new InvalidOperationException("تیکت و متن پاسخ لازم است.");
+        var isHr = await AiAccessHelper.UserHasAsync(_db, userId, "FaCom", "Manage", role);
+        var dto = new FaComReplySaveDto { TicketId = ticketId, Body = body.Trim() };
+        var saved = isHr
+            ? await _faCom.ReplyHrAsync(dto, userId, userName)
+            : await _faCom.ReplyMyAsync(userId, userName, dto);
+        return $"پاسخت در تیکت «{saved.Subject}» (شماره {saved.Id}) ثبت شد. 💬";
+    }
+
+    private async Task<string> ExecuteRegisterChequeAsync(AiPendingAction action, int userId, string userName, CancellationToken ct)
+    {
+        _ = userId;
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var root = doc.RootElement;
+        var kind = root.TryGetProperty("kind", out var k) && k.TryGetInt32(out var kn) ? kn : 0;
+        var number = root.TryGetProperty("number", out var n) ? n.GetString() ?? "" : "";
+        var amount = root.TryGetProperty("amount", out var a) && a.TryGetDecimal(out var m) ? m : 0;
+        DateTime? due = root.TryGetProperty("due_date", out var d) && DateTime.TryParse(d.GetString(), out var dd) ? dd.Date : null;
+        var issue = root.TryGetProperty("issue_date", out var i) && DateTime.TryParse(i.GetString(), out var idd) ? idd.Date : DateTime.Today;
+        var bank = root.TryGetProperty("bank", out var b) ? b.GetString() ?? "" : "";
+        var owner = root.TryGetProperty("owner", out var o) ? o.GetString() ?? "" : "";
+        var partyId = root.TryGetProperty("party_id", out var p) && p.TryGetInt32(out var pn) ? pn : 0;
+        var accountId = root.TryGetProperty("account_id", out var ac) && ac.TryGetInt32(out var an) ? an : 0;
+        var desc = root.TryGetProperty("description", out var ds) ? ds.GetString() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(number) || amount <= 0 || due == null)
+            throw new InvalidOperationException("شماره، مبلغ و سررسید چک لازم است.");
+        if (kind is < 0 or > 1) throw new InvalidOperationException("نوع چک نامعتبر است.");
+        if (partyId > 0 && !await _db.Parties.AnyAsync(p => p.Id == partyId, ct))
+            throw new InvalidOperationException("طرف حساب معتبر نیست.");
+        if (kind == 1 && accountId <= 0)
+            throw new InvalidOperationException("برای چک صادره، حساب بانکی لازم است.");
+        if (accountId > 0 && !await _db.TrsAccounts.AnyAsync(a => a.Id == accountId && a.IsActive, ct))
+            throw new InvalidOperationException("حساب بانکی معتبر نیست.");
+        var saved = await _treasury.SaveChequeAsync(new TrsCheque
+        {
+            Kind = (ChequeKind)kind,
+            Number = number.Trim(),
+            Amount = amount,
+            IssueDate = issue,
+            DueDate = due.Value,
+            BankName = bank == "" ? null : bank.Trim(),
+            OwnerName = owner == "" ? null : owner.Trim(),
+            PartyId = partyId > 0 ? partyId : null,
+            TrsAccountId = accountId > 0 ? accountId : null,
+            Description = desc == "" ? null : desc.Trim(),
+        }, userName);
+        var kindFa = kind == 1 ? "صادره" : "دریافتی";
+        return $"چک {kindFa} شماره {saved.Number} به مبلغ {AiTextUtil.ToFaDigits(saved.Amount.ToString("#,##0"))} تومان ثبت شد. 🧾";
     }
 
     private async Task<string> ExecuteReportWorkAsync(AiPendingAction action, int userId, CancellationToken ct)

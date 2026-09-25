@@ -350,6 +350,9 @@ builder.Services.AddScoped<IAiTool, BuildReportTool>();
 builder.Services.AddScoped<IAiTool, DataCatalogTool>();
 builder.Services.AddScoped<IAiTool, ExploreDataTool>();
 builder.Services.AddScoped<IAiTool, MyAlertsTool>();
+builder.Services.AddScoped<IAiTool, ReferLetterTool>();
+builder.Services.AddScoped<IAiTool, AnswerTicketTool>();
+builder.Services.AddScoped<IAiTool, RegisterChequeTool>();
 builder.Services.AddScoped<AiReportService>();
 builder.Services.AddScoped<AiDataExplorer>();
 // پاسخ‌گویی در پیام‌رسان داخلی
