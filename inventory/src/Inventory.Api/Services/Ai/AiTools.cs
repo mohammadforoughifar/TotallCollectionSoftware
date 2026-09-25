@@ -1417,8 +1417,8 @@ public class DataCatalogTool : IAiTool
                 values = f.MapFa?.Values.ToList(),
                 sensitive = f.Sensitive ? true : null as bool?,
             }),
-            ops = "eq, neq, gt, gte, lt, lte, contains, starts, between, in",
-            dates = "تاریخ‌ها شمسی: ۱۴۰۴/۰۷/۰۵ یا امروز/فردا/دیروز",
+            ops = "eq, neq, gt, gte, lt, lte, contains, starts, between, in, period (فقط تاریخ)",
+            dates = "روز دقیق: ۱۴۰۴/۰۷/۰۵، امروز، دیروز، فردا. بازه نسبی با op=period: این هفته، هفته گذشته، این ماه، ماه گذشته، امسال، پارسال، ۷ روز گذشته",
         }));
     }
 }
@@ -1426,7 +1426,7 @@ public class DataCatalogTool : IAiTool
 public class ExploreDataTool : IAiTool
 {
     public string Name => "explore_data";
-    public string Description => "جستجوی آزاد در داده‌های سامانه (فقط خواندن). entity: کلید موجودیت از data_catalog. مثال: (entity=invoice) فیلتر Date=امروز و Kind=فروش. فیلترها: field (نام فیلد)، op (eq,neq,gt,gte,lt,lte,contains,starts,between,in)، value و value2 برای between. تاریخ شمسی بده (۱۴۰۴/۰۷/۰۵، امروز، این ماه حساب نمی‌شود — برای بازه از between با اول و آخر ماه استفاده کن). مقادیر enum را فارسی بده (مثل برگشتی، قطعی، دریافتی). group_by + agg(count/sum/avg) + agg_field برای «به تفکیک». order_by + desc برای مرتب‌سازی. limit حداکثر ۵۰. excel=true اگر کاربر فایل/اکسل/گزارش کامل خواست — آن‌وقت report_id برمی‌گردد و دکمه دانلود خودکار زیر پیام می‌آید.";
+    public string Description => "جستجوی آزاد در داده‌های سامانه (فقط خواندن). entity: کلید موجودیت از data_catalog. مثال: (entity=invoice) فیلتر Date با op=period و value=این ماه، و Kind=فروش. فیلترها: field (نام فیلد)، op (eq,neq,gt,gte,lt,lte,contains,starts,between,in,period)، value و value2 برای between. تاریخ دقیق شمسی بده (۱۴۰۴/۰۷/۰۵، امروز، دیروز)؛ برای بازه نسبی (این هفته، هفته گذشته، این ماه، ماه گذشته، امسال، پارسال، ۷ روز گذشته) حتماً op=period بگذار. مقادیر enum را فارسی بده (مثل برگشتی، قطعی، دریافتی). group_by + agg(count/sum/avg) + agg_field برای «به تفکیک». order_by + desc برای مرتب‌سازی. limit حداکثر ۵۰. excel=true اگر کاربر فایل/اکسل/گزارش کامل خواست — آن‌وقت report_id برمی‌گردد و دکمه دانلود خودکار زیر پیام می‌آید.";
     public object ParametersSchema => new
     {
         type = "object",
@@ -1443,7 +1443,7 @@ public class ExploreDataTool : IAiTool
                     properties = new
                     {
                         field = new { type = "string" },
-                        op = new { type = "string", description = "eq, neq, gt, gte, lt, lte, contains, starts, between, in" },
+                        op = new { type = "string", description = "eq, neq, gt, gte, lt, lte, contains, starts, between, in, period (بازه نسبی تاریخ)" },
                         value = new { type = "string" },
                         value2 = new { type = "string" },
                     },

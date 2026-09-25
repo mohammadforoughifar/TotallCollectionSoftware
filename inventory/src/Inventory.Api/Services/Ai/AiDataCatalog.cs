@@ -33,7 +33,7 @@ public sealed class AiEntityDef
     /// <summary>ماژول RBAC (دسترسی Read)؛ خالی = باز برای همه کاربران مجاز AI</summary>
     public string Module { get; init; } = "";
     public Type ClrType { get; init; } = null!;
-    /// <summary>محدوده سطر: all | letters | employee | user</summary>
+    /// <summary>محدوده سطر: all | letters | employee | user | referral</summary>
     public string Scope { get; init; } = "all";
     /// <summary>ماژولی که مجوز Manage آن، محدوده سطر را دور می‌زند</summary>
     public string ScopeManageModule { get; init; } = "";

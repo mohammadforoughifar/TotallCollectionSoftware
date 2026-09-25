@@ -1,7 +1,7 @@
 // موتور کاوش داده حکمرانی‌شده (§۱۵) — تنها مسیر دسترسی AI به داده خام.
 // - فقط موجودیت‌ها و فیلدهای AiDataCatalog (هیچ SQL خامی، فقط Expression Tree)
 // - فیلتر و مرتب‌سازی سمت SQL؛ پرژکشن و گروه‌بندی در حافظه (سقف ۲۰۰۰ سطر)
-// - RBAC ماژول + فیلد حساس + محدوده سطر (نامه/مرخصی/حضور/تیکت: مال خودم مگر مدیر)
+// - RBAC ماژول + فیلد حساس + محدوده سطر (نامه/ارجاع/مرخصی/حضور/تیکت/مأموریت/وام/مانده: مال خودم مگر مدیر)
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -205,7 +205,7 @@ public class AiDataExplorer
 
     private static bool IsOp(string? op) => (op ?? "").Trim().ToLowerInvariant() switch
     {
-        "eq" or "neq" or "gt" or "gte" or "lt" or "lte" or "contains" or "starts" or "between" or "in" => true,
+        "eq" or "neq" or "gt" or "gte" or "lt" or "lte" or "contains" or "starts" or "between" or "in" or "period" => true,
         _ => false,
     };
 
@@ -429,12 +429,25 @@ public class AiDataExplorer
         // --- تاریخ ---
         if (underlying == typeof(DateTime))
         {
-            var d1 = AiLeaveHelper.ParseFaDate(f.Value, today);
-            if (d1 == null) { error = $"تاریخ «{f.Value}» را نفهمیدم؛ مثل ۱۴۰۴/۰۷/۰۵ یا «امروز» بنویس."; return null; }
-            var day1 = d1.Value.Date;
             Expression Ge(Expression v, DateTime d) => Expression.GreaterThanOrEqual(v, Expression.Constant(d));
             Expression Lt(Expression v, DateTime d) => Expression.LessThan(v, Expression.Constant(d));
             var v = Val();
+            if (op == "period")
+            {
+                var pc = BuildPeriodDate(v, Ge, Lt, f, today, out error);
+                if (pc == null) return null;
+                return isNullable ? Expression.AndAlso(Has(), pc) : pc;
+            }
+            var d1 = ParseDay(f.Value, today);
+            if (d1 == null)
+            {
+                var rp = ResolvePeriod(f.Value, today);
+                error = rp != null
+                    ? $"«{f.Value}» یک بازه است نه یک روز؛ با op=period بده."
+                    : $"تاریخ «{f.Value}» را نفهمیدم؛ روز دقیق (۱۴۰۴/۰۷/۰۵، امروز، دیروز) یا بازه با op=period (این هفته، این ماه، امسال) بنویس.";
+                return null;
+            }
+            var day1 = d1.Value.Date;
             Expression? core = op switch
             {
                 "eq" => Expression.AndAlso(Ge(v, day1), Lt(v, day1.AddDays(1))),
@@ -446,7 +459,7 @@ public class AiDataExplorer
                 "between" => BuildBetweenDate(v, Ge, Lt, f, today, fd, out error),
                 _ => null,
             };
-            if (core == null && error == null) error = $"عملگر «{op}» برای تاریخ معتبر نیست (eq, neq, gt, gte, lt, lte, between).";
+            if (core == null && error == null) error = $"عملگر «{op}» برای تاریخ معتبر نیست (eq, neq, gt, gte, lt, lte, between, period).";
             if (core == null) return null;
             return isNullable && op != "neq" ? Expression.AndAlso(Has(), core) : core;
         }
@@ -526,8 +539,8 @@ public class AiDataExplorer
         AiExploreFilter f, DateTime today, AiFieldDef fd, out string? error)
     {
         error = null;
-        var d1 = AiLeaveHelper.ParseFaDate(f.Value, today)?.Date;
-        var d2 = AiLeaveHelper.ParseFaDate(f.Value2, today)?.Date;
+        var d1 = ParseDay(f.Value, today)?.Date;
+        var d2 = ParseDay(f.Value2, today)?.Date;
         if (d1 == null || d2 == null)
         {
             error = $"بازه تاریخ «{fd.Fa}» نامعتبر است؛ هر دو مقدار را مثل ۱۴۰۴/۰۷/۰۱ بده.";
@@ -535,6 +548,121 @@ public class AiDataExplorer
         }
         var (from, to) = d1 <= d2 ? (d1.Value, d2.Value) : (d2.Value, d1.Value);
         return Expression.AndAlso(ge(v, from), lt(v, to.AddDays(1)));
+    }
+
+    private static Expression? BuildPeriodDate(Expression v,
+        Func<Expression, DateTime, Expression> ge, Func<Expression, DateTime, Expression> lt,
+        AiExploreFilter f, DateTime today, out string? error)
+    {
+        error = null;
+        var r = ResolvePeriod(f.Value, today);
+        if (r == null)
+        {
+            error = $"بازه «{f.Value}» را نفهمیدم؛ مثلاً: امروز، دیروز، این هفته، هفته گذشته، این ماه، ماه گذشته، امسال، پارسال، ۷ روز گذشته.";
+            return null;
+        }
+        return Expression.AndAlso(ge(v, r.Value.From), lt(v, r.Value.To.AddDays(1)));
+    }
+
+    /// <summary>روز تنها: اول مفسر مشترک، بعد کلمات نسبی تک‌روزه (دیروز و...).</summary>
+    private static DateTime? ParseDay(string? raw, DateTime today)
+    {
+        var d = AiLeaveHelper.ParseFaDate(raw, today);
+        if (d != null) return d;
+        var r = ResolvePeriod(raw, today);
+        return r != null && r.Value.From == r.Value.To ? r.Value.From : null;
+    }
+
+    /// <summary>بازه نسبی فارسی → [از، تا] (هر دو شامل). ناشناس = null (بدون حدس ساکت).</summary>
+    private static (DateTime From, DateTime To, string Label)? ResolvePeriod(string? raw, DateTime today)
+    {
+        var t = AiTextUtil.NormalizeFa(raw);
+        if (t == "") return null;
+        var pc = new PersianCalendar();
+        var fy = pc.GetYear(today);
+        var fm = pc.GetMonth(today);
+
+        // روزهای تنها
+        if (t is "امروز") return (today, today, "امروز");
+        if (t is "دیروز") return (today.AddDays(-1), today.AddDays(-1), "دیروز");
+        if (t is "فردا") return (today.AddDays(1), today.AddDays(1), "فردا");
+        if (t is "پس فردا") return (today.AddDays(2), today.AddDays(2), "پس‌فردا");
+
+        // فصل/ربع سال پشتیبانی نمی‌شود — نباید ساکت به «ماه» بچسبد
+        if (t.Contains("فصل") || t.Contains("سه ماهه") || t.Contains("شش ماهه")) return null;
+
+        // هفته (شنبه تا جمعه، کامل)
+        if (t.Contains("هفته"))
+        {
+            var wn = ParseLeadingInt(t);
+            if (wn != null)
+            {
+                if (t.Contains("گذشته") || t.Contains("اخیر") || t.Contains("پیش") || t.Contains("قبل"))
+                {
+                    var wdays = Math.Clamp(wn.Value * 7, 1, 365);
+                    return (today.AddDays(-wdays + 1), today, $"{wn.Value} هفته گذشته");
+                }
+                return null;
+            }
+            var sinceSat = ((int)today.DayOfWeek + 1) % 7;
+            var sat = today.AddDays(-sinceSat);
+            if (t.Contains("گذشته") || t.Contains("قبل") || t.Contains("پیش"))
+                return (sat.AddDays(-7), sat.AddDays(-1), "هفته گذشته");
+            if (t.Contains("آینده") || t.Contains("بعد"))
+                return (sat.AddDays(7), sat.AddDays(13), "هفته آینده");
+            return (sat, sat.AddDays(6), "این هفته");
+        }
+
+        // ماه شمسی (کامل)
+        if (t.Contains("ماه"))
+        {
+            if (ParseLeadingInt(t) != null) return null; // «۳ ماه گذشته» پشتیبانی نمی‌شود
+            var (yy, mm) = (fy, fm);
+            var label = "این ماه";
+            if (t.Contains("گذشته") || t.Contains("قبل") || t.Contains("پیش"))
+            {
+                mm--; if (mm < 1) { mm = 12; yy--; }
+                label = "ماه گذشته";
+            }
+            else if (t.Contains("آینده") || t.Contains("بعد"))
+            {
+                mm++; if (mm > 12) { mm = 1; yy++; }
+                label = "ماه آینده";
+            }
+            var from = pc.ToDateTime(yy, mm, 1, 0, 0, 0, 0);
+            return (from, from.AddDays(pc.GetDaysInMonth(yy, mm) - 1), label);
+        }
+
+        // سال شمسی (کامل)
+        if (t.Contains("امسال"))
+        {
+            var from = pc.ToDateTime(fy, 1, 1, 0, 0, 0, 0);
+            return (from, pc.ToDateTime(fy, 12, pc.GetDaysInMonth(fy, 12), 0, 0, 0, 0), "امسال");
+        }
+        if (t is "پارسال" || t.Contains("پارسال")
+            || (t.Contains("سال") && (t.Contains("گذشته") || t.Contains("قبل") || t.Contains("پیش"))))
+        {
+            var from = pc.ToDateTime(fy - 1, 1, 1, 0, 0, 0, 0);
+            return (from, pc.ToDateTime(fy - 1, 12, pc.GetDaysInMonth(fy - 1, 12), 0, 0, 0, 0), "پارسال");
+        }
+
+        // N روز گذشته/آینده
+        var dn = ParseLeadingInt(t);
+        if (dn != null && t.Contains("روز"))
+        {
+            var days = Math.Clamp(dn.Value, 1, 365);
+            if (t.Contains("گذشته") || t.Contains("اخیر") || t.Contains("پیش") || t.Contains("قبل"))
+                return (today.AddDays(-days + 1), today, $"{dn.Value} روز گذشته");
+            if (t.Contains("آینده") || t.Contains("بعد"))
+                return (today, today.AddDays(days - 1), $"{dn.Value} روز آینده");
+        }
+        return null;
+    }
+
+    private static int? ParseLeadingInt(string normFa)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(AiTextUtil.ToEnDigits(normFa), @"\d+");
+        return m.Success && int.TryParse(m.Value, out var n) ? n : null;
     }
 
     private static bool IsNumeric(Type t) => t is not null && (t == typeof(int) || t == typeof(long)
