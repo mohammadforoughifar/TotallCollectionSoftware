@@ -1226,21 +1226,8 @@ public class TopDebtorsTool : IAiTool
         var denied = await AiBiAccess.DeniedJsonAsync(ctx, "FacInvoices", "مطالبات");
         if (denied != null) return denied;
         var limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 10, 1, 20);
-        var db = ctx.Services.GetRequiredService<AppDbContext>();
-        var rows = await db.FacInvoices.AsNoTracking()
-            .Where(i => i.Status == InvoiceStatus.Confirmed && i.Settlement == SettlementType.Credit
-                && (i.Kind == InvoiceKind.Sale || i.Kind == InvoiceKind.SaleReturn))
-            .GroupBy(i => i.Party == null ? "بدون طرف حساب" : i.Party.Name)
-            .Select(g => new
-            {
-                Name = g.Key,
-                Total = g.Sum(i => i.Kind == InvoiceKind.Sale ? i.TotalNet : -i.TotalNet),
-                Count = g.Count(),
-            })
-            .Where(x => x.Total > 0)
-            .OrderByDescending(x => x.Total)
-            .Take(limit)
-            .ToListAsync(ctx.CancellationToken);
+        var svc = ctx.Services.GetRequiredService<AiReportService>();
+        var rows = await svc.GetDebtorRowsAsync(limit, ctx.CancellationToken);
         return JsonSerializer.Serialize(rows.Select(r => new
         {
             طرف = r.Name,
@@ -1295,6 +1282,92 @@ public class CashStatusTool : IAiTool
             پرداخت_دوره = d.PeriodOut,
             تعداد_دریافت = d.ReceiptCount,
             تعداد_پرداخت = d.PaymentCount,
+        });
+    }
+}
+
+public class BuildReportTool : IAiTool
+{
+    public string Name => "build_report";
+    public string Description => "ساخت گزارش تحلیلی با خروجی اکسل. وقتی کاربر «گزارش» خواست، گفت «به تفکیک ...»، یا جدول کامل/فایل اکسل لازم داشت. datasets: فروش (sales)، موجودی (stock)، چک‌ها (cheques)، بدهکاران (debtors). خروجی: report_id + پیش‌نمایش ۱۵ سطر اول. شناسه گزارش را به کاربر نشان نده؛ فقط جدول را خلاصه کن و بگو فایل اکسل کامل با دکمه زیر پیام قابل دانلود است.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            dataset = new { type = "string", description = "نوع گزارش: فروش، موجودی، چک، بدهکاران (اجباری)" },
+            period = new { type = "string", description = "دوره (فروش/چک): امروز، این هفته، این ماه، ماه گذشته، امسال (پیش‌فرض: این ماه)" },
+            from_date = new { type = "string", description = "شروع بازه دلخواه" },
+            to_date = new { type = "string", description = "پایان بازه دلخواه" },
+            group_by = new { type = "string", description = "تفکیک گزارش فروش: طرف/مشتری، کالا، ماه، روز (پیش‌فرض: طرف)" },
+            kind = new { type = "string", description = "فروش: فروش/خرید — چک: دریافتی/صادره (پیش‌فرض: فروش / همه)" },
+            search = new { type = "string", description = "جستجوی کالا (موجودی؛ خالی = فقط کمبودها)" },
+            days = new { type = "integer", description = "چک‌ها تا چند روز آینده (پیش‌فرض ۷)" },
+        },
+        required = new[] { "dataset" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var ds = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "dataset"));
+        var svc = ctx.Services.GetRequiredService<AiReportService>();
+        AiReportPreview preview;
+        if (ds.Contains("موجودی") || ds.Contains("انبار") || ds.Contains("کالا") || ds == "stock")
+        {
+            var denied = await AiBiAccess.DeniedJsonAsync(ctx, "Products", "موجودی انبار");
+            if (denied != null) return denied;
+            preview = await svc.BuildStockAsync(ctx.UserId,
+                AiToolArgs.GetString(args, "search"), ctx.CancellationToken);
+        }
+        else if (ds.Contains("چک") || ds == "cheques")
+        {
+            var denied = await AiBiAccess.DeniedJsonAsync(ctx, "TrsCheques", "چک‌ها");
+            if (denied != null) return denied;
+            var k = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "kind"));
+            ChequeKind? kind = k.Contains("دریافت") ? ChequeKind.Received
+                : k.Contains("صادر") || k.Contains("پرداخت") ? ChequeKind.Issued : null;
+            var days = Math.Clamp(AiToolArgs.GetInt(args, "days") ?? 7, 0, 90);
+            preview = await svc.BuildChequesAsync(ctx.UserId, kind, days, ctx.CancellationToken);
+        }
+        else if (ds.Contains("بدهکار") || ds.Contains("مطالبات") || ds == "debtors")
+        {
+            var denied = await AiBiAccess.DeniedJsonAsync(ctx, "FacInvoices", "مطالبات");
+            if (denied != null) return denied;
+            preview = await svc.BuildDebtorsAsync(ctx.UserId, ctx.CancellationToken);
+        }
+        else if (ds.Contains("فروش") || ds.Contains("خرید") || ds.Contains("فاکتور")
+            || ds is "sales" or "fac")
+        {
+            var denied = await AiBiAccess.DeniedJsonAsync(ctx, "FacInvoices", "فروش و خرید");
+            if (denied != null) return denied;
+            var period = AiToolArgs.GetString(args, "period");
+            if (string.IsNullOrWhiteSpace(period) && AiToolArgs.GetString(args, "from_date") == null)
+                period = "این ماه";
+            var (from, to, label) = AiBiPeriod.Resolve(period,
+                AiToolArgs.GetString(args, "from_date"), AiToolArgs.GetString(args, "to_date"));
+            var kind = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "kind")).Contains("خرید")
+                ? InvoiceKind.Purchase : InvoiceKind.Sale;
+            preview = await svc.BuildSalesAsync(ctx.UserId, kind,
+                AiToolArgs.GetString(args, "group_by") ?? "طرف", from, to, label, ctx.CancellationToken);
+        }
+        else
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = "bad_dataset",
+                message = "نوع گزارش مشخص نیست؛ یکی از: فروش، موجودی، چک، بدهکاران.",
+            });
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            report_id = preview.ReportId,
+            title = preview.Title,
+            columns = preview.Columns,
+            rows = preview.Rows,
+            total_row = preview.TotalRow,
+            total_rows = preview.TotalRows,
+            hint = $"این جدول فقط {preview.Rows.Count} سطر اول از {preview.TotalRows} سطر است؛ فایل اکسل کامل با دکمه دانلود زیر پیام.",
         });
     }
 }

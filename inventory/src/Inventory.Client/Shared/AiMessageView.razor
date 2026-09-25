@@ -4,6 +4,15 @@
    ===================================================================== *@
 <span class="ai-msg">@((MarkupString)Html)</span>
 
+<style>
+    .ai-table-wrap { overflow-x: auto; margin: .4rem 0; border: 1px solid #e2e8f0; border-radius: .6rem; background: #fff; }
+    .ai-table { width: 100%; border-collapse: collapse; font-size: .76rem; }
+    .ai-table th { background: #eef2ff; color: #3730a3; padding: .35rem .5rem; border-bottom: 2px solid #c7d2fe; white-space: nowrap; }
+    .ai-table td { padding: .3rem .5rem; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
+    .ai-table tr:last-child td { border-bottom: none; }
+    .ai-table tbody tr:nth-child(even) { background: #f8fafc; }
+</style>
+
 @code {
     [Parameter] public string Text { get; set; } = "";
 
@@ -33,9 +42,30 @@
         // ۴) لیست‌ها و پاراگراف‌ها (خط‌به‌خط)
         var sb = new System.Text.StringBuilder();
         var inList = false;
-        foreach (var rawLine in enc.Replace("\r\n", "\n").Split('\n'))
+        var lines = enc.Replace("\r\n", "\n").Split('\n');
+        for (var li = 0; li < lines.Length; li++)
         {
-            var line = rawLine.Trim();
+            var line = lines[li].Trim();
+            // جدول مارک‌داون: سرستون + خط جداکننده (| --- |)
+            if (line.StartsWith("|") && li + 1 < lines.Length && IsTableSeparator(lines[li + 1]))
+            {
+                if (inList) { sb.Append("</ul>"); inList = false; }
+                sb.Append("<div class=\"ai-table-wrap\"><table class=\"ai-table\"><thead><tr>");
+                foreach (var cell in SplitRowCells(line))
+                    sb.Append("<th>").Append(cell).Append("</th>");
+                sb.Append("</tr></thead><tbody>");
+                li += 2; // رد شدن از سرستون و جداکننده
+                for (; li < lines.Length && lines[li].Trim().StartsWith("|"); li++)
+                {
+                    sb.Append("<tr>");
+                    foreach (var cell in SplitRowCells(lines[li]))
+                        sb.Append("<td>").Append(cell).Append("</td>");
+                    sb.Append("</tr>");
+                }
+                sb.Append("</tbody></table></div>");
+                li--; // جبران افزایش حلقه بیرونی
+                continue;
+            }
             var isBullet = line.StartsWith("- ") || line.StartsWith("* ") || line.StartsWith("• ");
             var isNumbered = System.Text.RegularExpressions.Regex.IsMatch(line, @"^[۰-۹0-9]+[.)] ");
             if (isBullet || isNumbered)
@@ -54,4 +84,13 @@
         if (inList) sb.Append("</ul>");
         return sb.ToString();
     }
+
+    private static bool IsTableSeparator(string line)
+    {
+        var t = line.Trim();
+        return t.Length >= 3 && t.StartsWith("|") && t.Trim('|', '-', ':', ' ', '\t').Length == 0;
+    }
+
+    private static List<string> SplitRowCells(string line) =>
+        line.Trim().Trim('|').Split('|').Select(c => c.Trim()).ToList();
 }

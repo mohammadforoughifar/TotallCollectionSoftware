@@ -79,6 +79,19 @@
                                     <span class="ai-offline-badge">⚡ پاسخ آفلاین</span>
                                 }
                             </div>
+                            @if (m.Attachments.Count > 0)
+                            {
+                                <div style="margin-top:.35rem;display:flex;gap:.35rem;flex-wrap:wrap">
+                                    @foreach (var a in m.Attachments)
+                                    {
+                                        var aa = a;
+                                        <button class="ai-chip" title="@aa.Title" disabled="@dlBusy" @onclick="() => DownloadReport(aa)">
+                                            @if (dlBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                            <i class="bi bi-file-earmark-excel"></i> دانلود اکسل (@aa.TotalRows سطر)
+                                        </button>
+                                    }
+                                </div>
+                            }
                         }
                         else
                         {
@@ -184,6 +197,7 @@
         "نامه خوانده‌نشده دارم؟",
         "چطور فاکتور فروش ثبت کنم؟",
         "چطور انبارگردانی کنم؟",
+        "گزارش فروش این ماه به تفکیک مشتری",
     };
 
     protected override async Task OnInitializedAsync()
@@ -298,7 +312,7 @@
         {
             var result = await Ai.ChatAsync(conversationId, text);
             conversationId = result.ConversationId;
-            messages.Add(new AiChatMessage { Role = "assistant", Content = result.Reply, UsedFallback = result.UsedFallback });
+            messages.Add(new AiChatMessage { Role = "assistant", Content = result.Reply, UsedFallback = result.UsedFallback, Attachments = result.Attachments });
             if (wasFirst)
             {
                 try { conversations = await Ai.GetConversationsAsync(); } catch { }
@@ -314,6 +328,21 @@
             StateHasChanged();
             await ScrollAsync();
         }
+    }
+
+    private bool dlBusy;
+
+    private async Task DownloadReport(AiChatAttachment a)
+    {
+        if (dlBusy) return;
+        dlBusy = true; error = null;
+        try
+        {
+            var (data, name, _) = await Ai.DownloadReportExcelAsync(a.ReportId);
+            await JS.InvokeVoidAsync("saveAsFile", name, Convert.ToBase64String(data));
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { dlBusy = false; }
     }
 
     private async Task ScrollAsync()

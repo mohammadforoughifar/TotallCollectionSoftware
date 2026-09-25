@@ -24,6 +24,18 @@ public class AiChatResponse
     public string Reply { get; set; } = "";
     public bool UsedFallback { get; set; }
     public List<string> ToolsUsed { get; set; } = new();
+    /// <summary>پیوست‌های پاسخ (فعلاً: فایل اکسل گزارش ساخته‌شده).</summary>
+    public List<AiChatAttachment> Attachments { get; set; } = new();
+}
+
+/// <summary>پیوست پاسخ دستیار — دانلود با GET /api/ai/reports/{reportId}/excel</summary>
+public class AiChatAttachment
+{
+    /// <summary>نوع پیوست: excel</summary>
+    public string Kind { get; set; } = "excel";
+    public string ReportId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public int TotalRows { get; set; }
 }
 
 public class AiConversationDto

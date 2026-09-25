@@ -12,12 +12,21 @@ public class AiHealth
     public string? Error { get; set; }
 }
 
+public class AiChatAttachment
+{
+    public string Kind { get; set; } = "excel";
+    public string ReportId { get; set; } = "";
+    public string Title { get; set; } = "";
+    public int TotalRows { get; set; }
+}
+
 public class AiChatResult
 {
     public int ConversationId { get; set; }
     public string Reply { get; set; } = "";
     public bool UsedFallback { get; set; }
     public List<string> ToolsUsed { get; set; } = new();
+    public List<AiChatAttachment> Attachments { get; set; } = new();
 }
 
 public class AiConversation
@@ -35,6 +44,7 @@ public class AiChatMessage
     public string Content { get; set; } = "";
     public bool UsedFallback { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    public List<AiChatAttachment> Attachments { get; set; } = new();
 }
 
 public class AiLetterDraft
@@ -151,6 +161,9 @@ public class AiAssistantService
 
     public Task<AiMinutesDraft> DraftMinutesAsync(string rawText, string? title)
         => _api.PostAsync<AiMinutesDraft>("api/ai/minutes/draft", new { rawText, title });
+
+    public Task<(byte[] Data, string FileName, string ContentType)> DownloadReportExcelAsync(string reportId)
+        => _api.GetFileAsync($"api/ai/reports/{reportId}/excel");
 
     public Task<AiLetterDraft> DraftReplyAsync(int letterId, string? hint)
         => _api.PostAsync<AiLetterDraft>($"api/ai/letters/{letterId}/draft-reply", new { hint });

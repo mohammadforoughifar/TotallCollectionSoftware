@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace Inventory.Api.Services.Ai;
@@ -115,10 +116,16 @@ public class AiAgentService : IAiAgentService
 
         try
         {
-            var (reply, used) = await RunAgentLoopAsync(history, message, userName, ctx, ct);
+            var (reply, used, attachments) = await RunAgentLoopAsync(history, message, userName, ctx, ct);
             await _conversations.AddMessageAsync(conv.Id, "assistant", reply,
                 used.Count > 0 ? string.Join(",", used.Distinct()) : null, false);
-            return new AiChatResponse { ConversationId = conv.Id, Reply = reply, ToolsUsed = used.Distinct().ToList() };
+            return new AiChatResponse
+            {
+                ConversationId = conv.Id,
+                Reply = reply,
+                ToolsUsed = used.Distinct().ToList(),
+                Attachments = attachments,
+            };
         }
         catch (Exception ex)
         {
@@ -131,7 +138,7 @@ public class AiAgentService : IAiAgentService
         }
     }
 
-    private async Task<(string reply, List<string> used)> RunAgentLoopAsync(
+    private async Task<(string reply, List<string> used, List<AiChatAttachment> attachments)> RunAgentLoopAsync(
         List<AiMessageDto> history, string message, string userName, AiToolContext ctx, CancellationToken ct)
     {
         var messages = new List<AiChatMessage> { new() { Role = "system", Content = BuildSystemPrompt(userName) } };
@@ -144,6 +151,7 @@ public class AiAgentService : IAiAgentService
 
         var schemas = _tools.Schemas();
         var used = new List<string>();
+        var attachments = new List<AiChatAttachment>();
 
         for (var i = 0; i < _options.MaxToolIterations; i++)
         {
@@ -153,13 +161,15 @@ public class AiAgentService : IAiAgentService
                 var text = (result.Content ?? "").Trim();
                 if (string.IsNullOrWhiteSpace(text))
                     text = "متأسفم، نتونستم جواب بدم. 😕 سؤالت رو یه جور دیگه بپرس.";
-                return (CleanReply(text), used);
+                return (CleanReply(text), used, attachments);
             }
             messages.Add(new AiChatMessage { Role = "assistant", Content = result.Content, ToolCalls = result.ToolCalls });
             foreach (var call in result.ToolCalls)
             {
                 used.Add(call.Name);
                 var output = await _tools.ExecuteAsync(call.Name, call.ArgumentsJson, ctx);
+                if (call.Name == "build_report")
+                    TryExtractAttachment(output, attachments);
                 messages.Add(new AiChatMessage
                 {
                     Role = "tool",
@@ -176,7 +186,7 @@ public class AiAgentService : IAiAgentService
                 Role = "user",
                 Content = "با همین اطلاعاتی که به دست آوردی، جواب نهایی فارسی و خلاصه بده. اگر داده‌ای پیدا نشد صادقانه بگو.",
             } }).ToList(), null, ct);
-        return (CleanReply((final.Content ?? "").Trim()), used);
+        return (CleanReply((final.Content ?? "").Trim()), used, attachments);
     }
 
     private static string BuildSystemPrompt(string userName) => $"""
@@ -198,7 +208,28 @@ public class AiAgentService : IAiAgentService
         ۱۲) برای «تأیید مرخصی‌ها» اول pending_approvals را ببین و فهرست شماره‌دار نشان بده؛ بعد به‌ازای هر موردی که کاربر گفت، decide_leave بساز. برای «ارجاع‌های بی‌پاسخ» اول my_referrals_pending را ببین؛ بعد answer_referral.
         ۱۳) در report_work اگر ابزار خطای ambiguous_project داد، نامزدها را با شناسه نشان بده و بپرس کدام؛ اگر no_project داد، نام دقیق‌تر بخواه.
         ۱۴) برای سؤال‌های مدیریتی فقط از ابزارهای فقط-خواندنی استفاده کن: sales_summary (فروش/خرید/سود دوره)، recent_invoices (آخرین فاکتورها)، stock_status (موجودی کالا یا کمبودها)، cheques_due (چک‌های نزدیک سررسید)، top_debtors (بدهکاران)، cash_status (صندوق و بانک). مبالغ را با جداکننده هزارگان + «تومان» بنویس و لینک صفحه مرتبط را بگذار: [فاکتورها](/fac/invoices) — [موجودی انبار](/inv/stock) — [چک‌ها](/trs/cheques) — [صندوق و بانک](/trs/accounts).
+        ۱۵) وقتی کاربر «گزارش» خواست، گفت «به تفکیک ...»، یا جدول کامل/فایل اکسل لازم داشت، از build_report استفاده کن (نه ابزارهای خلاصه). جدول پیش‌نمایش را دقیقاً به همین شکل در جواب بگذار: یک جدول مارک‌داون (| ستون | ... | + خط | --- |) با همان ستون‌ها و حداکثر ۱۰ سطر اول + سطر جمع در انتها؛ بعد بنویس فایل اکسل کامل (N سطر) با دکمه «دانلود اکسل» زیر همین پیام. شناسه گزارش (report_id) را هرگز نشان نده.
         """;
+
+    /// <summary>استخراج پیوست اکسل از خروجی build_report (شناسه گزارش → دکمه دانلود زیر پیام).</summary>
+    private static void TryExtractAttachment(string output, List<AiChatAttachment> attachments)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(output);
+            var r = doc.RootElement;
+            if (r.ValueKind != JsonValueKind.Object) return;
+            if (!r.TryGetProperty("report_id", out var id) || id.GetString() is not { Length: > 0 } reportId) return;
+            if (attachments.Any(a => a.ReportId == reportId)) return;
+            attachments.Add(new AiChatAttachment
+            {
+                ReportId = reportId,
+                Title = r.TryGetProperty("title", out var t) ? t.GetString() ?? "گزارش" : "گزارش",
+                TotalRows = r.TryGetProperty("total_rows", out var n) && n.TryGetInt32(out var c) ? c : 0,
+            });
+        }
+        catch { /* پیوست اختیاری است */ }
+    }
 
     private static string CleanReply(string text)
     {

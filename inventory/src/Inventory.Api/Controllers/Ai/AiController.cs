@@ -21,6 +21,7 @@ public class AiController : RbacControllerBase
     private readonly AiConversationService _conversations;
     private readonly IAiChatClient _chat;
     private readonly AiBriefingService _briefing;
+    private readonly AiReportService _reports;
     private readonly IMessengerService _messenger;
     private readonly AiOptions _options;
 
@@ -31,6 +32,7 @@ public class AiController : RbacControllerBase
         AiConversationService conversations,
         IAiChatClient chat,
         AiBriefingService briefing,
+        AiReportService reports,
         IMessengerService messenger,
         IOptions<AiOptions> options)
         : base(db)
@@ -40,6 +42,7 @@ public class AiController : RbacControllerBase
         _conversations = conversations;
         _chat = chat;
         _briefing = briefing;
+        _reports = reports;
         _messenger = messenger;
         _options = options.Value;
     }
@@ -171,6 +174,20 @@ public class AiController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
         if (await ForbiddenUnlessAsync("InnerLetters", "Create") is { } noCreate) return noCreate;
         return Ok(await _letters.SuggestReceiversAsync(req, MyUserId, ct));
+    }
+
+    /// <summary>دانلود اکسل گزارش ساخته‌شده در گفتگو (فقط سازنده، تا ۱۵ دقیقه).</summary>
+    [HttpGet("reports/{id}/excel")]
+    public async Task<IActionResult> DownloadReportExcel(string id, CancellationToken ct)
+    {
+        _ = ct;
+        if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
+        var spec = _reports.TryGetSpec(MyUserId, id);
+        if (spec == null)
+            return NotFound(new { message = "گزارش یافت نشد یا منقضی شده است؛ دوباره از دستیار بخواه." });
+        var bytes = Services.Export.ExcelWriter.Build(spec);
+        return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"{spec.FileBaseName ?? "gozaresh"}.xlsx");
     }
 
     /// <summary>۱۰) پیش‌نویس صورتجلسه از متن خام.</summary>

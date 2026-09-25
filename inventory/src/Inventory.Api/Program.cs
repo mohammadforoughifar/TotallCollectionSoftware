@@ -345,6 +345,8 @@ builder.Services.AddScoped<IAiTool, StockStatusTool>();
 builder.Services.AddScoped<IAiTool, ChequesDueTool>();
 builder.Services.AddScoped<IAiTool, TopDebtorsTool>();
 builder.Services.AddScoped<IAiTool, CashStatusTool>();
+builder.Services.AddScoped<IAiTool, BuildReportTool>();
+builder.Services.AddScoped<AiReportService>();
 // پاسخ‌گویی در پیام‌رسان داخلی
 builder.Services.AddSingleton<AiReplyQueue>();
 builder.Services.AddHostedService<AiChatReplyWorker>();
