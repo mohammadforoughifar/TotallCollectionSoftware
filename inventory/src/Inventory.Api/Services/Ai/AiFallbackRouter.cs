@@ -67,6 +67,10 @@ public class AiFallbackRouter
             return await FormatLettersAsync(ctx);
         }
 
+        // هشدارهای امروز (قبل از هوش مدیریتی — چون «هشدار چک» شامل «چک» است)
+        if (ContainsAny(q, "هشدار", "اعلان", "آلارم"))
+            return FormatAlerts(await _tools.ExecuteAsync("my_alerts", "{}", ctx));
+
         // ---------- هوش مدیریتی آفلاین (فقط خواندنی) ----------
         // نقدینگی اول — چون «بانک» و «موجودی» با چک و انبار مشترک‌اند
         if (ContainsAny(q, "صندوق", "نقدینگی", "تنخواه")
@@ -324,6 +328,26 @@ public class AiFallbackRouter
         return sb.ToString();
     }
 
+    private static string FormatAlerts(string json)
+    {
+        if (ErrorOf(json) is { } err) return err;
+        var items = ParseArray(json, "alerts");
+        if (items.Count == 0) return "هشدار فعالی نداری؛ همه‌چیز آرام است! 🎉";
+        var sb = new StringBuilder("**هشدارهای امروز:**\n");
+        foreach (var it in items)
+        {
+            sb.AppendLine($"\n{Prop(it, "icon")} **{Prop(it, "title")}:**");
+            if (it.ValueKind == JsonValueKind.Object
+                && it.TryGetProperty("lines", out var lines)
+                && lines.ValueKind == JsonValueKind.Array)
+                foreach (var l in lines.EnumerateArray())
+                    sb.AppendLine($"- {(l.ValueKind == JsonValueKind.String ? l.GetString() : l.GetRawText())}");
+            var link = Prop(it, "link");
+            if (link != "") sb.AppendLine($"[{Prop(it, "link_text")}]({link})");
+        }
+        return sb.ToString().Trim();
+    }
+
     private static string FormatCheques(string json)
     {
         if (ErrorOf(json) is { } err) return err;
@@ -462,6 +486,7 @@ public class AiFallbackRouter
         "**اطلاعات خودت:** مانده مرخصی، فیش حقوقی، حضور امروز، وام‌ها، مأموریت‌ها، نامه‌های خوانده‌نشده\n" +
         "**مدیران:** «مرخصی‌های در انتظار تأیید» و «تأیید/رد مرخصی شماره…» + «ارجاع‌های بی‌پاسخ»\n" +
         "**هوش مدیریتی:** فروش دوره، آخرین فاکتورها، موجودی انبار، چک‌های نزدیک سررسید، بدهکاران، موجودی صندوق (با دسترسی همان بخش)\n" +
+        "**هشدارها:** بپرس «هشدارهای امروز» — کمبود انبار، چک برگشتی، پیش‌فاکتور قدیمی، تیکت جدید، قرارداد رو به اتمام\n" +
         "**راهنما:** بپرس «چطور ...؟» — مثلاً «چطور فاکتور ثبت کنم؟»\n" +
         "**نامه‌ها:** داخل کارتابل، دکمه‌های خلاصه، پیشنهاد ارجاع و پیش‌نویس هوشمند کمکت می‌کنن.";
 

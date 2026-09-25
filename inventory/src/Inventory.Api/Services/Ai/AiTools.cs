@@ -1526,3 +1526,31 @@ public class ExploreDataTool : IAiTool
         });
     }
 }
+
+// ---------------- هشدارهای هوشمند (§۱۷) ----------------
+
+public class MyAlertsTool : IAiTool
+{
+    public string Name => "my_alerts";
+    public string Description => "هشدارهای امروز کاربر: کمبود انبار، چک برگشتی، پیش‌فاکتور قدیمی، تیکت جدید، قرارداد رو به اتمام، یادآوری گزارش‌کار. هر بخش فقط با مجوز همان ماژول برمی‌گردد.";
+    public object ParametersSchema => new { type = "object", properties = new { } };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        _ = args;
+        var svc = ctx.Services.GetRequiredService<AiAlertsService>();
+        var alerts = await svc.GetAlertsAsync(ctx.UserId, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            count = alerts.Count,
+            alerts = alerts.Select(a => new
+            {
+                icon = a.Icon,
+                title = a.Title,
+                lines = a.Lines,
+                link = a.Link,
+                link_text = a.LinkText,
+            }),
+        });
+    }
+}

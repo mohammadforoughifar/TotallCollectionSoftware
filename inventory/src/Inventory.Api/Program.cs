@@ -313,6 +313,7 @@ builder.Services.AddScoped<AiFallbackRouter>();
 builder.Services.AddScoped<IAiAgentService, AiAgentService>();
 builder.Services.AddScoped<ILetterAiService, LetterAiService>();
 builder.Services.AddScoped<AiBriefingService>();
+builder.Services.AddScoped<AiAlertsService>();
 builder.Services.AddScoped<AiActionService>();
 // ابزارهای دستیار
 builder.Services.AddScoped<IAiTool, GuideSearchTool>();
@@ -348,6 +349,7 @@ builder.Services.AddScoped<IAiTool, CashStatusTool>();
 builder.Services.AddScoped<IAiTool, BuildReportTool>();
 builder.Services.AddScoped<IAiTool, DataCatalogTool>();
 builder.Services.AddScoped<IAiTool, ExploreDataTool>();
+builder.Services.AddScoped<IAiTool, MyAlertsTool>();
 builder.Services.AddScoped<AiReportService>();
 builder.Services.AddScoped<AiDataExplorer>();
 // پاسخ‌گویی در پیام‌رسان داخلی

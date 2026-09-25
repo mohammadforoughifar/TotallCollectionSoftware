@@ -21,6 +21,7 @@ public class AiBriefingService
     private readonly IInnerLetterService _letters;
     private readonly IFaAttService _faAtt;
     private readonly ITreasuryService _treasury;
+    private readonly AiAlertsService _alerts;
     private readonly ILogger<AiBriefingService> _log;
 
     public AiBriefingService(
@@ -29,6 +30,7 @@ public class AiBriefingService
         IInnerLetterService letters,
         IFaAttService faAtt,
         ITreasuryService treasury,
+        AiAlertsService alerts,
         ILogger<AiBriefingService> log)
     {
         _db = db;
@@ -36,6 +38,7 @@ public class AiBriefingService
         _letters = letters;
         _faAtt = faAtt;
         _treasury = treasury;
+        _alerts = alerts;
         _log = log;
     }
 
@@ -182,6 +185,21 @@ public class AiBriefingService
                 sb.AppendLine("📝 مرخصی‌های خودت در انتظار تأیید:");
                 foreach (var l in mine)
                     sb.AppendLine($"- {l.LeaveTypeName ?? "مرخصی"} ({AiDateUtil.ToFaShort(l.FromDate)} تا {AiDateUtil.ToFaShort(l.ToDate)})");
+            }
+        }
+        catch { /* بخش اختیاری */ }
+
+        // ---------- ۶) هشدارهای هوشمند (§۱۷) ----------
+        try
+        {
+            var alerts = await _alerts.GetAlertsAsync(userId, ct);
+            foreach (var a in alerts)
+            {
+                notable++;
+                sb.AppendLine();
+                sb.AppendLine($"{a.Icon} {a.Title}:");
+                foreach (var line in a.Lines.Take(6))
+                    sb.AppendLine($"- {line}");
             }
         }
         catch { /* بخش اختیاری */ }
