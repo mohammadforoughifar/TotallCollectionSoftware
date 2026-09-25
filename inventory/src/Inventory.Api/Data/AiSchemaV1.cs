@@ -20,11 +20,12 @@ public static class AiSchemaV1
         string T(string cols) => cols
             .Replace("IDKEY", sqlite ? "INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT" : "INT NOT NULL IDENTITY PRIMARY KEY")
             .Replace("DT", sqlite ? "TEXT" : "datetime2")
-            .Replace("BIGTEXT", sqlite ? "TEXT" : "NVARCHAR(MAX)");
+            .Replace("BIGTEXT", sqlite ? "TEXT" : "NVARCHAR(MAX)")
+            .Replace("BOOL", sqlite ? "INTEGER NOT NULL" : "BIT NOT NULL");
 
-        var conv = T("Id IDKEY, UserId INT NOT NULL, Channel NVARCHAR(20) NOT NULL, Title NVARCHAR(200) NOT NULL, CreatedAtUtc DT NOT NULL, LastMessageAtUtc DT NOT NULL, IsArchived INT NOT NULL");
-        var msg = T("Id IDKEY, ConversationId INT NOT NULL, Role NVARCHAR(20) NOT NULL, Content BIGTEXT NOT NULL, ToolsUsed NVARCHAR(500) NULL, UsedFallback INT NOT NULL, CreatedAtUtc DT NOT NULL");
-        var doc = T("Id IDKEY, Category NVARCHAR(100) NOT NULL, Title NVARCHAR(200) NOT NULL, Content BIGTEXT NOT NULL, Link NVARCHAR(300) NULL, DocKey NVARCHAR(100) NOT NULL, EmbeddingJson BIGTEXT NULL, IsActive INT NOT NULL, UpdatedAtUtc DT NOT NULL");
+        var conv = T("Id IDKEY, UserId INT NOT NULL, Channel NVARCHAR(20) NOT NULL, Title NVARCHAR(200) NOT NULL, CreatedAtUtc DT NOT NULL, LastMessageAtUtc DT NOT NULL, IsArchived BOOL");
+        var msg = T("Id IDKEY, ConversationId INT NOT NULL, Role NVARCHAR(20) NOT NULL, Content BIGTEXT NOT NULL, ToolsUsed NVARCHAR(500) NULL, UsedFallback BOOL, CreatedAtUtc DT NOT NULL");
+        var doc = T("Id IDKEY, Category NVARCHAR(100) NOT NULL, Title NVARCHAR(200) NOT NULL, Content BIGTEXT NOT NULL, Link NVARCHAR(300) NULL, DocKey NVARCHAR(100) NOT NULL, EmbeddingJson BIGTEXT NULL, IsActive BOOL, UpdatedAtUtc DT NOT NULL");
 
         foreach (var (table, cols) in new[] { ("AiConversations", conv), ("AiMessages", msg), ("AiKnowledgeDocs", doc) })
         {
@@ -34,9 +35,19 @@ public static class AiSchemaV1
             await db.Database.ExecuteSqlRawAsync(sql);
         }
 
+        // مهاجرت خودکار: در نسخه اول، ستون‌های بولی روی SQL Server اشتباهاً INT ساخته شدند؛
+        // ولی EF برای bool نوع BIT می‌خواهد و هنگام خواندن خطای Int32→Boolean می‌داد.
+        // مقادیر فقط ۰/۱ هستند پس تبدیل امن است و هیچ داده‌ای از دست نمی‌رود.
+        if (!sqlite)
+        {
+            await AlterColumnToBitAsync(db, "AiConversations", "IsArchived");
+            await AlterColumnToBitAsync(db, "AiMessages", "UsedFallback");
+            await AlterColumnToBitAsync(db, "AiKnowledgeDocs", "IsActive");
+        }
+
         // ستون‌های جدید برای دیتابیس‌های قدیمی (امن برای اجرای چندباره)
         await AddColumnIfMissingAsync(db, "AiKnowledgeDocs", "EmbeddingJson", sqlite ? "TEXT NULL" : "NVARCHAR(MAX) NULL");
-        await AddColumnIfMissingAsync(db, "AiMessages", "UsedFallback", "INT NOT NULL DEFAULT 0");
+        await AddColumnIfMissingAsync(db, "AiMessages", "UsedFallback", sqlite ? "INTEGER NOT NULL DEFAULT 0" : "BIT NOT NULL DEFAULT 0");
         await AddColumnIfMissingAsync(db, "AiMessages", "ToolsUsed", "NVARCHAR(500) NULL");
 
         foreach (var (table, cols, unique) in new[]
@@ -51,6 +62,18 @@ public static class AiSchemaV1
             if (!sqlite) sql = $"IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name=N'{name}' AND object_id=OBJECT_ID(N'dbo.{table}')) " + sql;
             await db.Database.ExecuteSqlRawAsync(sql);
         }
+    }
+
+    /// <summary>تبدیل ستون INT به BIT — فقط اگر هنوز BIT نشده باشد (امن برای اجرای چندباره).</summary>
+    private static async Task AlterColumnToBitAsync(AppDbContext db, string table, string column)
+    {
+        await db.Database.ExecuteSqlRawAsync($"""
+            IF EXISTS (SELECT 1 FROM sys.columns c
+                       INNER JOIN sys.types t ON c.user_type_id = t.user_type_id
+                       WHERE c.object_id = OBJECT_ID(N'dbo.{table}') AND c.name = N'{column}'
+                         AND t.name IN (N'int', N'tinyint', N'smallint'))
+                ALTER TABLE {table} ALTER COLUMN {column} BIT NOT NULL
+            """);
     }
 
     private static async Task AddColumnIfMissingAsync(AppDbContext db, string table, string column, string type)
