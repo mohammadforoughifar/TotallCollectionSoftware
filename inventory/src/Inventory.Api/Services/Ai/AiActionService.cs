@@ -81,7 +81,7 @@ public class AiActionService
             return (false, "پیش‌فاکتور بازی نداری. اول بگو چه کاری انجام بدهم (مثلاً «فردا مرخصی می‌خوام»).");
 
         // کنترل دسترسی ماژول مربوطه — مثل خود سامانه
-        var module = action.Action == "clock" ? "FaAtt" : "FaAtt";
+        const string module = "FaAtt";
         var role = await _db.Users.AsNoTracking()
             .Where(u => u.Id == userId).Select(u => u.Role).FirstOrDefaultAsync(ct);
         if (!await AiAccessHelper.UserHasAsync(_db, userId, module, "Create", role, ct))

@@ -488,10 +488,11 @@ public class RequestLeaveTool : IAiTool
         var fa = ctx.Services.GetRequiredService<IFaAttService>();
         var today = DateTime.Today;
 
-        var from = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "from_date"), today);
-        if (from == null)
+        var fromParsed = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "from_date"), today);
+        if (fromParsed == null)
             return JsonSerializer.Serialize(new { error = "bad_date", message = "تاریخ شروع را نفهمیدم؛ مثلاً بگو «فردا» یا «۱۴۰۴/۰۷/۰۵»." });
-        var to = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "to_date"), today) ?? from.Value;
+        var from = fromParsed.Value;
+        var to = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "to_date"), today) ?? from;
         if (to < from) (from, to) = (to, from);
 
         var type = await AiLeaveHelper.MatchLeaveTypeAsync(fa, AiToolArgs.GetString(args, "leave_type"));
@@ -499,14 +500,14 @@ public class RequestLeaveTool : IAiTool
             return JsonSerializer.Serialize(new { error = "no_leave_type", message = "نوع مرخصی فعالی تعریف نشده." });
 
         var reason = AiToolArgs.GetString(args, "reason");
-        var summary = $"مرخصی {type.Value.name} از {AiDateUtil.ToFaShort(from.Value)} تا {AiDateUtil.ToFaShort(to.Value)}" +
+        var summary = $"مرخصی {type.Value.name} از {AiDateUtil.ToFaShort(from)} تا {AiDateUtil.ToFaShort(to)}" +
                       (string.IsNullOrWhiteSpace(reason) ? "" : $" (دلیل: {reason.Trim()})");
         var pending = await actions.CreateAsync(ctx.UserId, "request_leave",
             JsonSerializer.Serialize(new
             {
                 leaveTypeId = type.Value.id,
-                from = from.Value.ToString("yyyy-MM-dd"),
-                to = to.Value.ToString("yyyy-MM-dd"),
+                from = from.ToString("yyyy-MM-dd"),
+                to = to.ToString("yyyy-MM-dd"),
                 reason,
             }), summary, ctx.CancellationToken);
 
