@@ -353,7 +353,7 @@ public class AiActionService
             throw new InvalidOperationException("برای چک صادره، حساب بانکی لازم است.");
         if (accountId > 0 && !await _db.TrsAccounts.AnyAsync(a => a.Id == accountId && a.IsActive, ct))
             throw new InvalidOperationException("حساب بانکی معتبر نیست.");
-        var saved = await _treasury.SaveChequeAsync(new TrsCheque
+        var saved = await _treasury.SaveChequeAsync(new Inventory.Api.Data.TrsCheque
         {
             Kind = (ChequeKind)kind,
             Number = number.Trim(),

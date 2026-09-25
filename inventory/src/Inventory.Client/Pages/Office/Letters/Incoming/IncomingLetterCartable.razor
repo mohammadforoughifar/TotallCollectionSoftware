@@ -241,6 +241,7 @@
 <IncomingReservationManager @ref="reservationManager" />
 <BayeganiFolderPickerModal @ref="folderPicker" />
 <IncomingLetterViewModal @ref="archiveViewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
+<ComposeIncomingModal @ref="composeModal" OnSaved="ReloadDataAsync" />
 
 @code {
     [Parameter] public string? Tab { get; set; }

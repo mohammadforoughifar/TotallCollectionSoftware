@@ -324,6 +324,9 @@ public class LetterAiService : ILetterAiService
     private static (string category, int priority) FallbackCategory(string text, string foriat)
     {
         var t = AiTextUtil.NormalizeFa(text);
+
+        static bool HasAny(string text, params string[] words) =>
+            words.Any(w => text.Contains(AiTextUtil.NormalizeFa(w)));
         string cat = "اداری";
         if (HasAny(t, "فاکتور", "پرداخت", "بودجه", "حساب", "مالیات", "چک", "حقوق")) cat = "مالی";
         else if (HasAny(t, "مرخصی", "استخدام", "حقوق", "پرسنل", "کارمند", "بیمه", "قرارداد کار")) cat = "منابع انسانی";
@@ -337,8 +340,6 @@ public class LetterAiService : ILetterAiService
             _ => t.Contains("فوری") || t.Contains("سریع") || t.Contains("عجله") ? 4 : 3,
         };
         return (cat, prio);
-        static bool HasAny(string text, params string[] words) =>
-            words.Any(w => text.Contains(AiTextUtil.NormalizeFa(w)));
     }
 
     // ==================== ۱۰) پیش‌نویس صورتجلسه ====================
