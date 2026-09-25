@@ -1371,3 +1371,158 @@ public class BuildReportTool : IAiTool
         });
     }
 }
+
+// ---------------- لایه داده حکمرانی‌شده (§۱۵) ----------------
+
+public class DataCatalogTool : IAiTool
+{
+    public string Name => "data_catalog";
+    public string Description => "راهنمای داده‌های سامانه: بدون ورودی، لیست همه موجودیت‌های قابل جستجو را می‌دهد؛ با دادن entity، فیلدها و مقادیر مجاز آن موجودیت را نشان می‌دهد. قبل از اولین explore_data روی یک موجودیت ناآشنا، حتماً این را صدا بزن.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            entity = new { type = "string", description = "نام موجودیت (مثل invoice) برای دیدن فیلدهایش؛ خالی = لیست همه" },
+        },
+    };
+
+    public Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        _ = ctx;
+        var name = AiToolArgs.GetString(args, "entity");
+        if (string.IsNullOrWhiteSpace(name))
+            return Task.FromResult(JsonSerializer.Serialize(new
+            {
+                entities = AiDataCatalog.Entities.Select(e => new { name = e.Name, title = e.Fa, hint = e.Hint }),
+                hint = "برای دیدن فیلدهای یک موجودیت، دوباره با entity صدا بزن.",
+            }));
+        var ent = AiDataCatalog.Find(name);
+        if (ent == null)
+            return Task.FromResult(JsonSerializer.Serialize(new
+            {
+                error = "unknown_entity",
+                message = $"موجودیت «{name}» وجود ندارد؛ نام‌های معتبر: {string.Join("، ", AiDataCatalog.Entities.Select(e => e.Name))}",
+            }));
+        return Task.FromResult(JsonSerializer.Serialize(new
+        {
+            name = ent.Name,
+            title = ent.Fa,
+            hint = ent.Hint,
+            fields = ent.Fields.Select(f => new
+            {
+                name = f.Name,
+                title = f.Fa,
+                kind = f.Kind,
+                values = f.MapFa?.Values.ToList(),
+                sensitive = f.Sensitive ? true : null as bool?,
+            }),
+            ops = "eq, neq, gt, gte, lt, lte, contains, starts, between, in",
+            dates = "تاریخ‌ها شمسی: ۱۴۰۴/۰۷/۰۵ یا امروز/فردا/دیروز",
+        }));
+    }
+}
+
+public class ExploreDataTool : IAiTool
+{
+    public string Name => "explore_data";
+    public string Description => "جستجوی آزاد در داده‌های سامانه (فقط خواندن). entity: کلید موجودیت از data_catalog. مثال: (entity=invoice) فیلتر Date=امروز و Kind=فروش. فیلترها: field (نام فیلد)، op (eq,neq,gt,gte,lt,lte,contains,starts,between,in)، value و value2 برای between. تاریخ شمسی بده (۱۴۰۴/۰۷/۰۵، امروز، این ماه حساب نمی‌شود — برای بازه از between با اول و آخر ماه استفاده کن). مقادیر enum را فارسی بده (مثل برگشتی، قطعی، دریافتی). group_by + agg(count/sum/avg) + agg_field برای «به تفکیک». order_by + desc برای مرتب‌سازی. limit حداکثر ۵۰. excel=true اگر کاربر فایل/اکسل/گزارش کامل خواست — آن‌وقت report_id برمی‌گردد و دکمه دانلود خودکار زیر پیام می‌آید.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            entity = new { type = "string", description = "کلید موجودیت (اجباری)" },
+            filters = new
+            {
+                type = "array",
+                description = "فیلترها: هر کدام field و op و value (و value2 برای between)",
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        field = new { type = "string" },
+                        op = new { type = "string", description = "eq, neq, gt, gte, lt, lte, contains, starts, between, in" },
+                        value = new { type = "string" },
+                        value2 = new { type = "string" },
+                    },
+                },
+            },
+            select = new { type = "array", description = "فیلدهای نمایشی (اختیاری؛ پیش‌فرض همه)", items = new { type = "string" } },
+            group_by = new { type = "string", description = "فیلد گروه‌بندی برای «به تفکیک»" },
+            agg = new { type = "string", description = "count (پیش‌فرض)، sum، avg" },
+            agg_field = new { type = "string", description = "فیلد تجمیع برای sum/avg (اجباری در آن حالت)" },
+            order_by = new { type = "string", description = "فیلد مرتب‌سازی (پیش‌فرض کد)" },
+            desc = new { type = "boolean", description = "نزولی؟ (پیش‌فرض true)" },
+            limit = new { type = "integer", description = "تعداد سطر پیش‌نمایش (پیش‌فرض ۲۰، حداکثر ۵۰)" },
+            excel = new { type = "boolean", description = "true اگر کاربر فایل اکسل خواست" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var req = new AiExploreRequest
+        {
+            Entity = AiToolArgs.GetString(args, "entity") ?? "",
+            GroupBy = AiToolArgs.GetString(args, "group_by"),
+            Agg = AiToolArgs.GetString(args, "agg"),
+            AggField = AiToolArgs.GetString(args, "agg_field"),
+            OrderBy = AiToolArgs.GetString(args, "order_by"),
+            Desc = AiToolArgs.GetBool(args, "desc", true),
+            Limit = AiToolArgs.GetInt(args, "limit") ?? 20,
+        };
+        if (args.ValueKind == JsonValueKind.Object)
+        {
+            if (args.TryGetProperty("filters", out var fv) && fv.ValueKind == JsonValueKind.Array)
+                foreach (var it in fv.EnumerateArray())
+                {
+                    if (it.ValueKind != JsonValueKind.Object) continue;
+                    req.Filters.Add(new AiExploreFilter
+                    {
+                        Field = it.TryGetProperty("field", out var a) ? a.ToString() : "",
+                        Op = it.TryGetProperty("op", out var b) ? b.ToString() : "eq",
+                        Value = it.TryGetProperty("value", out var c) ? c.ToString() : null,
+                        Value2 = it.TryGetProperty("value2", out var d) ? d.ToString() : null,
+                    });
+                }
+            if (args.TryGetProperty("select", out var sv) && sv.ValueKind == JsonValueKind.Array)
+                req.Select = sv.EnumerateArray().Select(x => x.ToString()).Where(s => s != "").ToList();
+        }
+
+        var explorer = ctx.Services.GetRequiredService<AiDataExplorer>();
+        var (ok, error, result) = await explorer.QueryAsync(ctx.UserId, req, ctx.CancellationToken);
+        if (!ok || result == null)
+            return JsonSerializer.Serialize(new { error = "explore_failed", message = error });
+
+        var wantExcel = AiToolArgs.GetBool(args, "excel");
+        string? reportId = null;
+        string? title = null;
+        if (wantExcel && result.Rows.Count > 0)
+        {
+            var ent = AiDataCatalog.Find(req.Entity);
+            title = $"کاوش {ent?.Fa ?? req.Entity} — {AiDateUtil.ToFaShort(DateTime.Today)}";
+            var svc = ctx.Services.GetRequiredService<AiReportService>();
+            var preview = await svc.BuildCustomAsync(ctx.UserId, title, result.Columns, result.Rows);
+            reportId = preview.ReportId;
+        }
+
+        var previewRows = result.Rows.Take(req.Limit > 0 ? Math.Min(req.Limit, AiDataExplorer.MaxLimit) : 20).ToList();
+        return JsonSerializer.Serialize(new
+        {
+            columns = result.Columns.Select(c => c.Title),
+            rows = previewRows,
+            total_count = result.TotalCount,
+            shown = previewRows.Count,
+            truncated = result.Truncated,
+            notice = result.Notice,
+            report_id = reportId,
+            title,
+            hint = reportId != null
+                ? $"این جدول فقط {previewRows.Count} سطر اول است؛ فایل اکسل کامل با دکمه دانلود زیر پیام."
+                : previewRows.Count < result.TotalCount
+                    ? $"فقط {previewRows.Count} سطر اول از {result.TotalCount} سطر نشان داده شد؛ اگر همه را خواست با excel=true دوباره صدا بزن."
+                    : null as string,
+        });
+    }
+}

@@ -346,7 +346,10 @@ builder.Services.AddScoped<IAiTool, ChequesDueTool>();
 builder.Services.AddScoped<IAiTool, TopDebtorsTool>();
 builder.Services.AddScoped<IAiTool, CashStatusTool>();
 builder.Services.AddScoped<IAiTool, BuildReportTool>();
+builder.Services.AddScoped<IAiTool, DataCatalogTool>();
+builder.Services.AddScoped<IAiTool, ExploreDataTool>();
 builder.Services.AddScoped<AiReportService>();
+builder.Services.AddScoped<AiDataExplorer>();
 // پاسخ‌گویی در پیام‌رسان داخلی
 builder.Services.AddSingleton<AiReplyQueue>();
 builder.Services.AddHostedService<AiChatReplyWorker>();

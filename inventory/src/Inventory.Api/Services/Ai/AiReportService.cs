@@ -232,6 +232,31 @@ public class AiReportService
         return FinishPreview(userId, spec, spec.Rows.Select(x => x.Values).ToList(), totalRow);
     }
 
+    // ---------------- سفارشی (خروجی اکسپلورر داده §۱۵) ----------------
+
+    /// <summary>ساخت اکسل از نتیجه کاوش داده؛ ستون‌های مبلغ/تعداد جمع خودکار می‌گیرند.</summary>
+    public Task<AiReportPreview> BuildCustomAsync(int userId, string title,
+        List<AiExploreColumn> columns, List<List<object?>> rows)
+    {
+        var spec = new ExportSpec { Title = title };
+        foreach (var c in columns)
+        {
+            var kind = c.Kind switch
+            {
+                "money" => ExportValueKind.Money,
+                "number" => ExportValueKind.Number,
+                _ => ExportValueKind.Text,
+            };
+            // جمع خودکار فقط برای مبلغ‌ها و ستون تجمیع (نه کد/شناسه)
+            var sum = c.Kind == "money" || c.Key == "__agg";
+            spec.Columns.Add(new ExportColumn(c.Title, kind, c.Kind == "money" ? 20 : 16) { Sum = sum });
+        }
+        foreach (var r in rows.Take(MaxExcelRows))
+            spec.Rows.Add(new ExportRow(r.ToArray()));
+        return Task.FromResult(FinishPreview(userId, spec,
+            spec.Rows.Select(x => x.Values).ToList(), null));
+    }
+
     // ---------------- مشترک ----------------
 
     private AiReportPreview FinishPreview(int userId, ExportSpec spec, List<List<object?>> displayRows, List<object?>? totalRow)
