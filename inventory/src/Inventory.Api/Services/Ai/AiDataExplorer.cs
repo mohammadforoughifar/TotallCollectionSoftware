@@ -287,6 +287,10 @@ public class AiDataExplorer
                 return Expression.Equal(Expression.Property(p, "EmployeeId"), Expression.Constant(plan.EmpId));
             case "user":
                 return Expression.Equal(Expression.Property(p, "UserId"), Expression.Constant(plan.UserId));
+            case "referral":
+                return Expression.OrElse(
+                    Expression.Equal(Expression.Property(p, "ReciverUserId"), Expression.Constant(plan.UserId)),
+                    Expression.Equal(Expression.Property(p, "SenderUserId"), Expression.Constant(plan.UserId)));
             default:
                 return null;
         }

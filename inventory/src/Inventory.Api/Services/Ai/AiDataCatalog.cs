@@ -336,6 +336,158 @@ public static class AiDataCatalog
                 F("Role", "نقش"), F("IsActive", "فعال؟", "bool"), F("CreatedAt", "تاریخ ثبت", "date"),
             },
         },
+        // ---------- موج دوم (§۱۵) ----------
+        new AiEntityDef
+        {
+            Name = "warehouse", Fa = "انبارها", Module = "Warehouses", ClrType = typeof(Warehouse),
+            Hint = "مشخصات انبارها؛ برای «لیست انبارها»، «انباردار فلان انبار» (موجودی با stock_status)",
+            Fields = new()
+            {
+                F("Id", "کد"), F("Code", "کد انبار"), F("Name", "نام انبار"),
+                F("Kind", "نوع", "enum", new()
+                {
+                    ["Main"] = "اصلی", ["Sub"] = "فرعی", ["Consignment"] = "امانی",
+                }),
+                F("KeeperName", "انباردار"), F("Phone", "تلفن"), F("Address", "آدرس", truncate: 80),
+                F("IsDefault", "پیش‌فرض؟", "bool"), F("IsActive", "فعال؟", "bool"),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "invoice_line", Fa = "سطرهای فاکتور", Module = "FacInvoices", ClrType = typeof(FacInvoiceLine),
+            Hint = "اقلام داخل فاکتورها: کالا، مقدار، فی و مبلغ؛ برای «فروش فلان کالا»، «اقلام فاکتور شماره X»",
+            Fields = new()
+            {
+                F("Id", "کد"), F("InvoiceId", "کد فاکتور"), F("Invoice.Number", "شماره فاکتور", "number"),
+                F("RowNo", "ردیف", "number"), F("ProductId", "کد کالا"),
+                F("Product.Code", "کد کالا (حرفی)"), F("Product.Name", "کالا"),
+                F("Quantity", "مقدار", "number"), F("UnitPrice", "فی", "money"),
+                F("Discount", "تخفیف", "money"), F("Taxable", "مشمول مالیات", "money"),
+                F("VatAmount", "مالیات", "money"), F("Total", "مبلغ", "money"),
+                F("Description", "شرح", truncate: 100),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "voucher_line", Fa = "سطرهای سند حسابداری", Module = "AccVouchers", ClrType = typeof(AccVoucherLine),
+            Hint = "آرتیکل‌های اسناد: حساب، بدهکار/بستانکار؛ برای «گردش حساب X»، «سطرهای سند شماره Y»",
+            Fields = new()
+            {
+                F("Id", "کد"), F("VoucherId", "کد سند"),
+                F("Voucher.Number", "شماره سند", "number"), F("Voucher.Date", "تاریخ سند", "date"),
+                F("RowNo", "ردیف", "number"), F("AccountId", "کد حساب"),
+                F("Account.Code", "کد حساب (حرفی)"), F("Account.Name", "حساب"),
+                F("PartyId", "کد طرف", "number"), F("Description", "شرح", truncate: 100),
+                F("Debit", "بدهکار", "money"), F("Credit", "بستانکار", "money"),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "mission", Fa = "مأموریت‌ها", Module = "FaAtt", ClrType = typeof(FaAttMission),
+            Scope = "employee", ScopeManageModule = "FaAtt",
+            Hint = "مأموریت‌های پرسنل؛ هر کس فقط مأموریت‌های خودش را می‌بیند مگر مدیر",
+            Fields = new()
+            {
+                F("Id", "کد"), F("EmployeeId", "کد پرسنل"),
+                F("FromDate", "از تاریخ", "date"), F("ToDate", "تا تاریخ", "date"),
+                F("Destination", "مقصد"), F("Reason", "علت", truncate: 120),
+                F("Status", "وضعیت", "enum", new()
+                {
+                    ["Pending"] = "در انتظار", ["Approved"] = "تأییدشده", ["Rejected"] = "ردشده",
+                }),
+                F("DecidedByName", "تصمیم‌گیرنده"), F("DecidedAt", "زمان تصمیم", "datetime"),
+                F("CreatedAt", "تاریخ ثبت", "datetime"),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "loan", Fa = "وام‌ها", Module = "FaPay", ClrType = typeof(FaPayLoan),
+            Scope = "employee", ScopeManageModule = "FaPay",
+            Hint = "وام و مساعده پرسنل؛ هر کس فقط وام‌های خودش را می‌بیند مگر مدیر حقوق",
+            Fields = new()
+            {
+                F("Id", "کد"), F("EmployeeId", "کد پرسنل"), F("Title", "عنوان"),
+                F("TotalAmount", "مبلغ کل", "money"), F("InstallmentCount", "تعداد قسط", "number"),
+                F("InstallmentAmount", "مبلغ قسط", "money"),
+                F("StartYear", "سال شروع", "number"), F("StartMonth", "ماه شروع", "number"),
+                F("Status", "وضعیت", "enum", new()
+                {
+                    ["Active"] = "فعال", ["Paid"] = "تسویه‌شده", ["Cancelled"] = "لغوشده",
+                }),
+                F("Note", "یادداشت", truncate: 100),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "leave_balance", Fa = "مانده مرخصی", Module = "FaAtt", ClrType = typeof(FaAttLeaveBalance),
+            Scope = "employee", ScopeManageModule = "FaAtt",
+            Hint = "استحقاق و مصرف مرخصی سالانه به تفکیک نوع؛ هر کس فقط مال خودش مگر مدیر",
+            Fields = new()
+            {
+                F("Id", "کد"), F("EmployeeId", "کد پرسنل"), F("Year", "سال", "number"),
+                F("LeaveTypeId", "کد نوع مرخصی", "number"),
+                F("EntitledDays", "استحقاق (روز)", "number"), F("UsedDays", "استفاده‌شده", "number"),
+                F("CarriedDays", "انتقالی", "number"), F("CashedDays", "بازخریدشده", "number"),
+                F("CashAmount", "مبلغ بازخرید", "money"),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "acc_account", Fa = "کدینگ حساب‌ها", Module = "AccAccounts", ClrType = typeof(AccAccount),
+            Hint = "سرفصل‌های حسابداری: کد، نام، سطح و نوع؛ برای «کد حساب X»، «حساب‌های معین»",
+            Fields = new()
+            {
+                F("Id", "کد"), F("Code", "کد حساب"), F("Name", "نام حساب"),
+                F("Level", "سطح", "enum", new()
+                {
+                    ["Group"] = "گروه", ["General"] = "کل", ["Subsidiary"] = "معین", ["Detail"] = "تفصیلی",
+                }),
+                F("Type", "نوع", "enum", new()
+                {
+                    ["Asset"] = "دارایی", ["Liability"] = "بدهی", ["Equity"] = "حقوق مالکانه",
+                    ["Income"] = "درآمد", ["Expense"] = "هزینه",
+                }),
+                F("Nature", "ماهیت", "enum", new()
+                {
+                    ["Debit"] = "بدهکار", ["Credit"] = "بستانکار",
+                }),
+                F("IsPostable", "قابل ثبت؟", "bool"), F("RequiresParty", "نیاز به طرف؟", "bool"),
+                F("IsActive", "فعال؟", "bool"),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "trs_account", Fa = "صندوق و بانک‌ها", Module = "TrsAccounts", ClrType = typeof(TrsAccount),
+            Hint = "حساب‌های خزانه: صندوق، بانک، کارتخوان؛ برای «لیست بانک‌ها»، «صندوق پیش‌فرض»",
+            Fields = new()
+            {
+                F("Id", "کد"), F("Code", "کد"), F("Name", "نام حساب"),
+                F("Kind", "نوع", "enum", new()
+                {
+                    ["Cash"] = "صندوق", ["Bank"] = "بانک", ["Pos"] = "کارتخوان",
+                }),
+                F("BankName", "بانک"), F("AccountNumber", "شماره حساب"),
+                F("OpeningBalance", "موجودی اول", "money"),
+                F("IsDefault", "پیش‌فرض؟", "bool"), F("IsActive", "فعال؟", "bool"),
+                F("Description", "شرح", truncate: 80),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "referral", Fa = "ارجاع‌ها", Module = "InnerLetters", ClrType = typeof(Erja),
+            Scope = "referral", ScopeManageModule = "InnerLetters", ScopeManageAction = "ViewAll",
+            Hint = "ارجاع‌های نامه‌ها؛ هر کس ارجاع‌های فرستاده/دریافت‌کرده خودش را می‌بیند",
+            DefaultOrder = "ErjaId",
+            Fields = new()
+            {
+                F("ErjaId", "کد ارجاع"), F("SourceId", "کد نامه", "number"),
+                F("SenderUserId", "کد فرستنده", "number"), F("ReciverUserId", "کد گیرنده", "number"),
+                F("Date", "تاریخ", "datetime"), F("Type", "نوع"),
+                F("IsRead", "خوانده‌شده؟", "bool"), F("MatnErja", "متن ارجاع", truncate: 150),
+                F("Answer", "پاسخ", truncate: 150), F("MohlatPasokh", "مهلت پاسخ", "date"),
+                F("IsBayegani", "بایگانی؟", "bool"),
+            },
+        },
     };
 
     public static AiEntityDef? Find(string name)
