@@ -32,7 +32,8 @@ public class AiFallbackRouter
             return $"امروز **{AiDateUtil.TodayFa()}** است. 📅";
 
         // حقوق و فیش (قبل از مرخصی چون «حقوق» گاهی با مرخصی می‌آید؟ نه — ترتیب مهم نیست، جدا هستند)
-        if (ContainsAny(q, "فیش", "حقوق", "دستمزد", "خالص پرداختی"))
+        if (ContainsAny(q, "فیش", "حقوق", "دستمزد", "خالص پرداختی")
+            || (ContainsAny(q, "درآمد", "درامد") && ContainsAny(q, "من", "خودم")))
         {
             var (year, month) = ExtractYearMonth(q);
             var args = "{}";
@@ -64,6 +65,37 @@ public class AiFallbackRouter
             if (ContainsAny(q, "بی پاسخ", "منتظر پاسخ", "پاسخ نداده", "جواب نداده", "پاسخ بدهم", "پاسخ بدم"))
                 return FormatReferrals(await _tools.ExecuteAsync("my_referrals_pending", "{\"limit\":10}", ctx));
             return await FormatLettersAsync(ctx);
+        }
+
+        // ---------- هوش مدیریتی آفلاین (فقط خواندنی) ----------
+        // نقدینگی اول — چون «بانک» و «موجودی» با چک و انبار مشترک‌اند
+        if (ContainsAny(q, "صندوق", "نقدینگی", "تنخواه")
+            || (ContainsAny(q, "بانک") && !ContainsAny(q, "چک")))
+            return FormatCash(await _tools.ExecuteAsync("cash_status",
+                JsonSerializer.Serialize(new { period = DetectPeriod(q) }), ctx));
+        if (ContainsAny(q, "چک"))
+            return FormatCheques(await _tools.ExecuteAsync("cheques_due",
+                JsonSerializer.Serialize(new { days = DetectChequeDays(q) }), ctx));
+        if (ContainsAny(q, "بدهکار", "بدهی", "مطالبات", "دریافتنی", "طلبکار"))
+        {
+            // «بدهی من» یعنی وام/مساعده خود کاربر، نه بدهکاران شرکت
+            if (ContainsAny(q, "بدهی") && ContainsAny(q, "من", "خودم", "وام"))
+                return FormatLoans(await _tools.ExecuteAsync("my_loans", "{}", ctx));
+            return FormatDebtors(await _tools.ExecuteAsync("top_debtors", "{\"limit\":10}", ctx));
+        }
+        if (ContainsAny(q, "فروش", "فاکتور", "سود", "درآمد", "درامد", "خرید")
+            && !ContainsAny(q, "چطور", "چگونه", "چجوری", "نحوه", "کجا", "آموزش", "ثبت"))
+        {
+            if (ContainsAny(q, "آخرین", "اخیر", "جدیدترین"))
+                return FormatInvoices(await _tools.ExecuteAsync("recent_invoices", "{\"limit\":5}", ctx));
+            return FormatSales(await _tools.ExecuteAsync("sales_summary",
+                JsonSerializer.Serialize(new { period = DetectPeriod(q) }), ctx));
+        }
+        if (ContainsAny(q, "انبار", "کالا", "موجودی"))
+        {
+            var stockSearch = ExtractStockSearch(q);
+            return FormatStock(await _tools.ExecuteAsync("stock_status",
+                JsonSerializer.Serialize(new { search = stockSearch, limit = 10 }), ctx), stockSearch != null);
         }
 
         // راهنمای «چطور...؟» با جستجوی کلیدواژه‌ای (بدون نیاز به مدل)
@@ -216,6 +248,162 @@ public class AiFallbackRouter
         return (id, m.Groups[1].Value != "رد");
     }
 
+    // ---------------- قالب‌بندهای هوش مدیریتی ----------------
+
+    /// <summary>اگر خروجی ابزار خطاست (مثلاً عدم دسترسی)، پیامش را برمی‌گرداند.</summary>
+    private static string? ErrorOf(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            if (r.ValueKind == JsonValueKind.Object && r.TryGetProperty("error", out _))
+                return Prop(r, "message");
+        }
+        catch { /* خطا نیست */ }
+        return null;
+    }
+
+    private static string FormatSales(string json)
+    {
+        if (ErrorOf(json) is { } err) return err;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            var sb = new StringBuilder($"**فروش و خرید {Prop(r, "دوره")}:**\n");
+            sb.AppendLine($"- 🛒 فروش: **{FaMoney(Prop(r, "فروش_جمع"))}** ({FaNum(Prop(r, "فروش_تعداد"))} فاکتور)");
+            sb.AppendLine($"- 📦 خرید: {FaMoney(Prop(r, "خرید_جمع"))} — برگشتی فروش: {FaMoney(Prop(r, "برگشتی_فروش"))}");
+            sb.AppendLine($"- 📈 سود ناخالص تقریبی: **{FaMoney(Prop(r, "سود_ناخالص_تقریبی"))}**");
+            sb.AppendLine($"- 💳 دریافتنی: {FaMoney(Prop(r, "دریافتنی"))} — پرداختنی: {FaMoney(Prop(r, "پرداختنی"))}");
+            if (Prop(r, "پیش_نویس_باز") is string drafts && drafts != "" && drafts != "0")
+                sb.AppendLine($"- 📝 {FaNum(drafts)} فاکتور پیش‌نویس باز داری.");
+            var prods = ParseArray(json, "پرفروش_ترین_کالاها");
+            if (prods.Count > 0)
+            {
+                sb.AppendLine("\n**پرفروش‌ترین کالاها:**");
+                foreach (var p in prods.Take(5))
+                    sb.AppendLine($"- {Prop(p, "عنوان")}: {FaMoney(Prop(p, "مبلغ"))}");
+            }
+            var parties = ParseArray(json, "بزرگ_ترین_طرف_ها");
+            if (parties.Count > 0)
+            {
+                sb.AppendLine("\n**بزرگ‌ترین طرف‌ها:**");
+                foreach (var p in parties.Take(5))
+                    sb.AppendLine($"- {Prop(p, "عنوان")}: {FaMoney(Prop(p, "مبلغ"))}");
+            }
+            sb.Append("\nجزئیات در [فاکتورها](/fac/invoices)");
+            return sb.ToString();
+        }
+        catch { return "نتونستم گزارش فروش رو بخونم. 😕"; }
+    }
+
+    private static string FormatInvoices(string json)
+    {
+        if (ErrorOf(json) is { } err) return err;
+        var items = ParseArray(json);
+        if (items.Count == 0) return "فاکتور قطعی‌شده‌ای پیدا نکردم.";
+        var sb = new StringBuilder("**آخرین فاکتورها:**\n");
+        foreach (var it in items)
+            sb.AppendLine($"- فاکتور {Prop(it, "نوع")} شماره **{FaNum(Prop(it, "شماره"))}** — {Prop(it, "طرف")} — {FaMoney(Prop(it, "مبلغ"))} ({Prop(it, "تسویه")}، {FaNum(Prop(it, "تاریخ"))})");
+        sb.Append("\nهمه در [فاکتورها](/fac/invoices)");
+        return sb.ToString();
+    }
+
+    private static string FormatStock(string json, bool searched)
+    {
+        if (ErrorOf(json) is { } err) return err;
+        var items = ParseArray(json);
+        if (items.Count == 0)
+            return searched ? "کالایی با این نام/کد پیدا نکردم. 🤷" : "کالای زیر نقطه سفارش نداری؛ انبار سالمه. 🎉";
+        var sb = new StringBuilder(searched ? "**موجودی:**\n" : "**کالاهای زیر نقطه سفارش:**\n");
+        foreach (var it in items)
+            sb.AppendLine($"- {Prop(it, "کالا")} ({Prop(it, "انبار")}): **{FaNum(Prop(it, "موجودی"))} {Prop(it, "واحد")}**" +
+                          (Prop(it, "وضعیت") == "کمبود" ? " ⚠️ کمبود" : ""));
+        sb.Append("\nجزئیات در [موجودی انبار](/inv/stock)");
+        return sb.ToString();
+    }
+
+    private static string FormatCheques(string json)
+    {
+        if (ErrorOf(json) is { } err) return err;
+        var items = ParseArray(json, "چک_ها");
+        if (items.Count == 0) return "چک بازی نزدیک سررسید نیست. 🎉";
+        var sb = new StringBuilder("**چک‌های نزدیک سررسید:**\n");
+        foreach (var it in items)
+            sb.AppendLine($"- چک {Prop(it, "نوع")} شماره {FaNum(Prop(it, "شماره"))} — {Prop(it, "طرف")} — **{FaMoney(Prop(it, "مبلغ"))}** — سررسید {FaNum(Prop(it, "سررسید"))} ({Prop(it, "وضعیت")})");
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            sb.AppendLine($"\nجمع دریافتی: {FaMoney(Prop(r, "جمع_دریافتی"))} — جمع صادره: {FaMoney(Prop(r, "جمع_صادره"))}");
+        }
+        catch { /* جمع اختیاری */ }
+        sb.Append("مدیریت در [چک‌ها](/trs/cheques)");
+        return sb.ToString();
+    }
+
+    private static string FormatDebtors(string json)
+    {
+        if (ErrorOf(json) is { } err) return err;
+        var items = ParseArray(json);
+        if (items.Count == 0) return "بدهکار بازی نداری. 🎉";
+        var sb = new StringBuilder("**بدهکاران بزرگ (جمع فاکتور نسیه منهای برگشتی):**\n");
+        foreach (var it in items)
+            sb.AppendLine($"- {Prop(it, "طرف")}: **{FaMoney(Prop(it, "جمع_نسیه"))}** ({FaNum(Prop(it, "تعداد_فاکتور"))} فاکتور)");
+        sb.Append("\nجزئیات در [فاکتورها](/fac/invoices)");
+        return sb.ToString();
+    }
+
+    private static string FormatCash(string json)
+    {
+        if (ErrorOf(json) is { } err) return err;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            var sb = new StringBuilder("**وضعیت نقدینگی:**\n");
+            sb.AppendLine($"- 💰 جمع کل: **{FaMoney(Prop(r, "جمع_کل"))}** (صندوق {FaMoney(Prop(r, "صندوق"))} + بانک {FaMoney(Prop(r, "بانک"))})");
+            var accs = ParseArray(json, "حساب_ها");
+            foreach (var a in accs.Take(8))
+                sb.AppendLine($"- {Prop(a, "نام")} ({Prop(a, "نوع")}): {FaMoney(Prop(a, "مانده"))}");
+            sb.AppendLine($"\nگردش {Prop(r, "دوره")}: دریافت {FaMoney(Prop(r, "دریافت_دوره"))} — پرداخت {FaMoney(Prop(r, "پرداخت_دوره"))}");
+            sb.Append("جزئیات در [صندوق و بانک](/trs/accounts)");
+            return sb.ToString();
+        }
+        catch { return "نتونستم وضعیت صندوق رو بخونم. 😕"; }
+    }
+
+    private static string DetectPeriod(string q)
+    {
+        if (ContainsAny(q, "امسال", "ام سال")) return "امسال";
+        if (ContainsAny(q, "ماه گذشته", "ماه قبل", "ماه پیش")) return "ماه گذشته";
+        if (ContainsAny(q, "ماه", "ماهانه")) return "این ماه";
+        if (ContainsAny(q, "هفته")) return "این هفته";
+        if (ContainsAny(q, "امروز")) return "امروز";
+        return "این ماه"; // پیش‌فرض مدیریتی
+    }
+
+    private static int DetectChequeDays(string q)
+    {
+        if (ContainsAny(q, "امروز")) return 0;
+        if (ContainsAny(q, "فردا", "پس فردا", "پس‌فردا")) return 2;
+        if (ContainsAny(q, "هفته")) return 7;
+        if (ContainsAny(q, "ماه")) return 30;
+        return 7;
+    }
+
+    private static string? ExtractStockSearch(string q)
+    {
+        string[] stop = { "موجودی", "انبار", "کالا", "کالای", "چقدر", "چند", "تعداد", "را", "رو", "است",
+            "هست", "چیه", "چیست", "بگو", "ببین", "نشان", "وضعیت", "کمبود", "زیر", "نقطه", "سفارش" };
+        var words = q.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Trim('؟', '?', '.', '،', ':'))
+            .Where(w => w.Length >= 2 && !stop.Contains(w))
+            .ToList();
+        return words.Count == 0 ? null : string.Join(" ", words);
+    }
+
     private async Task<string> FormatLettersAsync(AiToolContext ctx)
     {
         string statsJson = await _tools.ExecuteAsync("my_letters_stats", "{}", ctx);
@@ -273,6 +461,7 @@ public class AiFallbackRouter
         "من **فروغ آریا**، دستیار هوشمند سامانه‌ام 🤖\n\n" +
         "**اطلاعات خودت:** مانده مرخصی، فیش حقوقی، حضور امروز، وام‌ها، مأموریت‌ها، نامه‌های خوانده‌نشده\n" +
         "**مدیران:** «مرخصی‌های در انتظار تأیید» و «تأیید/رد مرخصی شماره…» + «ارجاع‌های بی‌پاسخ»\n" +
+        "**هوش مدیریتی:** فروش دوره، آخرین فاکتورها، موجودی انبار، چک‌های نزدیک سررسید، بدهکاران، موجودی صندوق (با دسترسی همان بخش)\n" +
         "**راهنما:** بپرس «چطور ...؟» — مثلاً «چطور فاکتور ثبت کنم؟»\n" +
         "**نامه‌ها:** داخل کارتابل، دکمه‌های خلاصه، پیشنهاد ارجاع و پیش‌نویس هوشمند کمکت می‌کنن.";
 

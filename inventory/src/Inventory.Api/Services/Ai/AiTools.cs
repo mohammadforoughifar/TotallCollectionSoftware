@@ -2,6 +2,10 @@ using System.Text.Json;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaAtt;
 using Inventory.Api.Services.FaPay;
+using Inventory.Api.Services.Invoicing;
+using Inventory.Api.Services.Treasury;
+using Inventory.Shared;
+using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -973,5 +977,324 @@ public class CreateLetterDraftTool : IAiTool
         var pending = await actions.CreateAsync(ctx.UserId, "create_letter_draft",
             JsonSerializer.Serialize(new { title, text }), summary, ctx.CancellationToken);
         return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}
+
+// ---------------- هوش مدیریتی (فقط خواندنی) ----------------
+
+/// <summary>کنترل دسترسی گزارش‌های مدیریتی — هر گزارش مجوز Read همان ماژول سامانه را می‌خواهد.</summary>
+internal static class AiBiAccess
+{
+    public static async Task<string?> DeniedJsonAsync(AiToolContext ctx, string module, string reportName)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var role = await db.Users.AsNoTracking()
+            .Where(u => u.Id == ctx.UserId).Select(u => u.Role).FirstOrDefaultAsync(ctx.CancellationToken);
+        if (await AiAccessHelper.UserHasAsync(db, ctx.UserId, module, "Read", role, ctx.CancellationToken))
+            return null;
+        return JsonSerializer.Serialize(new
+        {
+            error = "access_denied",
+            message = $"به گزارش «{reportName}» دسترسی نداری؛ اگر لازمش داری از مدیر سیستم بخواه. (مجوز: {module})",
+        });
+    }
+}
+
+/// <summary>تبدیل دوره فارسی به بازه میلادی (امروز/این هفته/این ماه/ماه گذشته/امسال یا بازه دلخواه).</summary>
+internal static class AiBiPeriod
+{
+    public static (DateTime from, DateTime to, string label) Resolve(string? period, string? fromRaw, string? toRaw)
+    {
+        var today = DateTime.Today;
+        var f = AiLeaveHelper.ParseFaDate(fromRaw, today);
+        var t = AiLeaveHelper.ParseFaDate(toRaw, today);
+        if (f != null || t != null)
+        {
+            var from = (f ?? t)!.Value.Date;
+            var to = (t ?? f)!.Value.Date;
+            if (to < from) (from, to) = (to, from);
+            return (from, to, $"{AiDateUtil.ToFaShort(from)} تا {AiDateUtil.ToFaShort(to)}");
+        }
+        var p = AiTextUtil.NormalizeFa(period);
+        var pc = new System.Globalization.PersianCalendar();
+        if (p.Contains("امسال") || p == "year")
+        {
+            var from = pc.ToDateTime(pc.GetYear(today), 1, 1, 0, 0, 0, 0);
+            return (from, today, "امسال");
+        }
+        if (p.Contains("ماه گذشته") || p.Contains("ماه قبل") || p == "last_month")
+        {
+            var y = pc.GetYear(today); var m = pc.GetMonth(today);
+            var pm = m == 1 ? 12 : m - 1; var py = m == 1 ? y - 1 : y;
+            var from = pc.ToDateTime(py, pm, 1, 0, 0, 0, 0);
+            var to = pc.ToDateTime(py, pm, pc.GetDaysInMonth(py, pm), 0, 0, 0, 0);
+            return (from, to, "ماه گذشته");
+        }
+        if (p.Contains("ماه") || p == "month")
+        {
+            var from = pc.ToDateTime(pc.GetYear(today), pc.GetMonth(today), 1, 0, 0, 0, 0);
+            return (from, today, "این ماه");
+        }
+        if (p.Contains("هفته") || p == "week")
+        {
+            var daysSinceSaturday = (((int)today.DayOfWeek) + 1) % 7; // هفته از شنبه شروع می‌شود
+            return (today.AddDays(-daysSinceSaturday), today, "این هفته");
+        }
+        return (today, today, "امروز");
+    }
+}
+
+public class SalesSummaryTool : IAiTool
+{
+    public string Name => "sales_summary";
+    public string Description => "خلاصه فروش و خرید یک دوره: جمع و تعداد فروش/خرید، برگشتی، سود ناخالص تقریبی، دریافتنی/پرداختنی، پرفروش‌ترین کالاها و بزرگ‌ترین طرف‌ها. دوره را می‌توانی فارسی بدهی: امروز، این هفته، این ماه، ماه گذشته، امسال.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            period = new { type = "string", description = "دوره: امروز، این هفته، این ماه، ماه گذشته، امسال (پیش‌فرض: این ماه)" },
+            from_date = new { type = "string", description = "شروع بازه دلخواه (مثل ۱۴۰۴/۰۷/۰۱) — جایگزین period" },
+            to_date = new { type = "string", description = "پایان بازه دلخواه" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var denied = await AiBiAccess.DeniedJsonAsync(ctx, "FacInvoices", "فروش و خرید");
+        if (denied != null) return denied;
+        var period = AiToolArgs.GetString(args, "period");
+        if (string.IsNullOrWhiteSpace(period) && AiToolArgs.GetString(args, "from_date") == null)
+            period = "این ماه";
+        var (from, to, label) = AiBiPeriod.Resolve(period,
+            AiToolArgs.GetString(args, "from_date"), AiToolArgs.GetString(args, "to_date"));
+        var inv = ctx.Services.GetRequiredService<IInvoicingService>();
+        var d = await inv.GetDashboardAsync(from, to);
+        return JsonSerializer.Serialize(new
+        {
+            دوره = label,
+            فروش_جمع = d.SaleTotal,
+            فروش_تعداد = d.SaleCount,
+            خرید_جمع = d.PurchaseTotal,
+            برگشتی_فروش = d.SaleReturnTotal,
+            سود_ناخالص_تقریبی = d.GrossProfit,
+            دریافتنی = d.Receivable,
+            پرداختنی = d.Payable,
+            پیش_نویس_باز = d.DraftCount,
+            پرفروش_ترین_کالاها = d.TopProducts.Select(r => new { عنوان = r.Title, تعداد = r.Count, مبلغ = r.Net }),
+            بزرگ_ترین_طرف_ها = d.TopParties.Select(r => new { عنوان = r.Title, تعداد = r.Count, مبلغ = r.Net }),
+        });
+    }
+}
+
+public class RecentInvoicesTool : IAiTool
+{
+    public string Name => "recent_invoices";
+    public string Description => "آخرین فاکتورهای قطعی‌شده (فروش یا خرید): شماره، طرف حساب، تاریخ، مبلغ، نقد/نسیه و سررسید.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            kind = new { type = "string", description = "فروش، خرید یا همه (پیش‌فرض: فروش)" },
+            limit = new { type = "integer", description = "تعداد (پیش‌فرض ۵، حداکثر ۱۵)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var denied = await AiBiAccess.DeniedJsonAsync(ctx, "FacInvoices", "فاکتورها");
+        if (denied != null) return denied;
+        var k = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "kind"));
+        InvoiceKind? kind = k.Contains("خرید") ? InvoiceKind.Purchase : k.Contains("همه") ? null : InvoiceKind.Sale;
+        var limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 5, 1, 15);
+        var inv = ctx.Services.GetRequiredService<IInvoicingService>();
+        var page = await inv.GetInvoicesAsync(kind, InvoiceStatus.Confirmed, null, null, null, null, null, 1, limit);
+        return JsonSerializer.Serialize(page.Items.Select(i => new
+        {
+            شماره = i.Number,
+            نوع = i.Kind == InvoiceKind.Sale ? "فروش" : i.Kind == InvoiceKind.Purchase ? "خرید" : "برگشتی",
+            طرف = i.PartyName,
+            تاریخ = AiDateUtil.ToFaShort(i.Date),
+            مبلغ = i.TotalNet,
+            تسویه = i.Settlement == SettlementType.Credit ? "نسیه" : "نقد",
+            سررسید = i.DueDate == null ? null : AiDateUtil.ToFaShort(i.DueDate.Value),
+        }));
+    }
+}
+
+public class StockStatusTool : IAiTool
+{
+    public string Name => "stock_status";
+    public string Description => "موجودی انبار. با search (نام یا کد کالا) = موجودی آن کالاها در همه انبارها؛ بدون search = فقط کالاهای زیر نقطه سفارش (کمبودها).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            search = new { type = "string", description = "نام یا کد کالا (اختیاری؛ خالی = فقط کمبودها)" },
+            limit = new { type = "integer", description = "تعداد (پیش‌فرض ۱۰، حداکثر ۲۰)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var denied = await AiBiAccess.DeniedJsonAsync(ctx, "Products", "موجودی انبار");
+        if (denied != null) return denied;
+        var search = (AiToolArgs.GetString(args, "search") ?? "").Trim();
+        var limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 10, 1, 20);
+        var wh = ctx.Services.GetRequiredService<IWarehousingService>();
+        var belowOnly = search == "";
+        var page = await wh.GetStockAsync(null, null, belowOnly ? null : search, belowOnly, 1, limit);
+        return JsonSerializer.Serialize(page.Items.Select(r => new
+        {
+            کد = r.ProductCode,
+            کالا = r.ProductName,
+            انبار = r.WarehouseName,
+            موجودی = r.Quantity,
+            واحد = r.Unit,
+            نقطه_سفارش = r.ReorderPoint,
+            وضعیت = r.BelowReorder ? "کمبود" : "موجود",
+        }));
+    }
+}
+
+public class ChequesDueTool : IAiTool
+{
+    public string Name => "cheques_due";
+    public string Description => "چک‌های باز نزدیک سررسید (دریافتی و صادره، شامل معوق‌ها): شماره، نوع، طرف، مبلغ، بانک، سررسید + جمع دریافتی/صادره.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            days = new { type = "integer", description = "تا چند روز آینده (پیش‌فرض ۷، حداکثر ۹۰)" },
+            kind = new { type = "string", description = "دریافتی، صادره یا همه (پیش‌فرض: همه)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var denied = await AiBiAccess.DeniedJsonAsync(ctx, "TrsCheques", "چک‌ها");
+        if (denied != null) return denied;
+        var k = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "kind"));
+        ChequeKind? kind = k.Contains("دریافت") ? ChequeKind.Received
+            : k.Contains("صادر") || k.Contains("پرداخت") ? ChequeKind.Issued : null;
+        var days = Math.Clamp(AiToolArgs.GetInt(args, "days") ?? 7, 0, 90);
+        var today = DateTime.Today;
+        var trs = ctx.Services.GetRequiredService<ITreasuryService>();
+        var page = await trs.GetChequesAsync(kind, null, null, null, null,
+            today.AddDays(-60), today.AddDays(days), true, 1, 50);
+        var items = page.Items
+            .Select(c => new
+            {
+                شماره = c.Number,
+                نوع = c.Kind == ChequeKind.Received ? "دریافتی" : "صادره",
+                طرف = c.PartyName ?? c.OwnerName,
+                مبلغ = c.Amount,
+                بانک = c.BankName,
+                سررسید = AiDateUtil.ToFaShort(c.DueDate),
+                وضعیت = c.DueDate.Date < today ? $"معوق ({(today - c.DueDate.Date).Days} روز)"
+                    : c.DueDate.Date == today ? "امروز" : $"{(c.DueDate.Date - today).Days} روز مانده",
+            })
+            .Take(20).ToList();
+        return JsonSerializer.Serialize(new
+        {
+            تعداد_کل = page.TotalCount,
+            جمع_دریافتی = page.Items.Where(c => c.Kind == ChequeKind.Received).Sum(c => c.Amount),
+            جمع_صادره = page.Items.Where(c => c.Kind == ChequeKind.Issued).Sum(c => c.Amount),
+            چک_ها = items,
+        });
+    }
+}
+
+public class TopDebtorsTool : IAiTool
+{
+    public string Name => "top_debtors";
+    public string Description => "بدهکاران بزرگ: طرف‌های با بیشترین جمع فاکتور نسیه (منهای برگشتی) — دقیقاً با همان تعریف «دریافتنی» خود سامانه.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            limit = new { type = "integer", description = "تعداد (پیش‌فرض ۱۰، حداکثر ۲۰)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var denied = await AiBiAccess.DeniedJsonAsync(ctx, "FacInvoices", "مطالبات");
+        if (denied != null) return denied;
+        var limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 10, 1, 20);
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var rows = await db.FacInvoices.AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Confirmed && i.Settlement == SettlementType.Credit
+                && (i.Kind == InvoiceKind.Sale || i.Kind == InvoiceKind.SaleReturn))
+            .GroupBy(i => i.Party == null ? "بدون طرف حساب" : i.Party.Name)
+            .Select(g => new
+            {
+                Name = g.Key,
+                Total = g.Sum(i => i.Kind == InvoiceKind.Sale ? i.TotalNet : -i.TotalNet),
+                Count = g.Count(),
+            })
+            .Where(x => x.Total > 0)
+            .OrderByDescending(x => x.Total)
+            .Take(limit)
+            .ToListAsync(ctx.CancellationToken);
+        return JsonSerializer.Serialize(rows.Select(r => new
+        {
+            طرف = r.Name,
+            جمع_نسیه = r.Total,
+            تعداد_فاکتور = r.Count,
+        }));
+    }
+}
+
+public class CashStatusTool : IAiTool
+{
+    public string Name => "cash_status";
+    public string Description => "وضعیت نقدینگی: جمع موجودی صندوق‌ها و بانک‌ها، مانده هر حساب، و گردش دوره (جمع دریافت/پرداخت).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            period = new { type = "string", description = "دوره گردش: امروز، این هفته، این ماه، امسال (پیش‌فرض: این ماه)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var denied = await AiBiAccess.DeniedJsonAsync(ctx, "TrsAccounts", "صندوق و بانک");
+        if (denied != null) return denied;
+        var period = AiToolArgs.GetString(args, "period");
+        if (string.IsNullOrWhiteSpace(period)) period = "این ماه";
+        var (from, to, label) = AiBiPeriod.Resolve(period, null, null);
+        var trs = ctx.Services.GetRequiredService<ITreasuryService>();
+        var d = await trs.GetDashboardAsync(from, to);
+        return JsonSerializer.Serialize(new
+        {
+            دوره = label,
+            جمع_کل = d.TotalBalance,
+            صندوق = d.TotalCashBalance,
+            بانک = d.TotalBankBalance,
+            حساب_ها = d.Accounts.Select(a => new
+            {
+                نام = a.Name,
+                نوع = a.Kind switch
+                {
+                    TreasuryAccountKind.Cash => "صندوق",
+                    TreasuryAccountKind.Bank => "بانک",
+                    TreasuryAccountKind.Pos => "کارتخوان",
+                    _ => "تنخواه",
+                },
+                مانده = a.Balance,
+                بانک = a.BankName,
+            }),
+            دریافت_دوره = d.PeriodIn,
+            پرداخت_دوره = d.PeriodOut,
+            تعداد_دریافت = d.ReceiptCount,
+            تعداد_پرداخت = d.PaymentCount,
+        });
     }
 }

@@ -339,6 +339,12 @@ builder.Services.AddScoped<IAiTool, AnswerReferralTool>();
 builder.Services.AddScoped<IAiTool, CreateTicketTool>();
 builder.Services.AddScoped<IAiTool, ReportWorkTool>();
 builder.Services.AddScoped<IAiTool, CreateLetterDraftTool>();
+builder.Services.AddScoped<IAiTool, SalesSummaryTool>();
+builder.Services.AddScoped<IAiTool, RecentInvoicesTool>();
+builder.Services.AddScoped<IAiTool, StockStatusTool>();
+builder.Services.AddScoped<IAiTool, ChequesDueTool>();
+builder.Services.AddScoped<IAiTool, TopDebtorsTool>();
+builder.Services.AddScoped<IAiTool, CashStatusTool>();
 // پاسخ‌گویی در پیام‌رسان داخلی
 builder.Services.AddSingleton<AiReplyQueue>();
 builder.Services.AddHostedService<AiChatReplyWorker>();
