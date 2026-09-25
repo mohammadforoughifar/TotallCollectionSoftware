@@ -50,9 +50,9 @@ public class LetterAiService : ILetterAiService
             $"نوع نامه: {req.Kind}\nلحن: {req.Tone}\n{to}{extra}موضوع/خواسته: {topic}",
             ct);
         var parsed = ParseJsonObject(gen);
-        if (parsed != null && parsed.TryGetProperty("body", out var body) && body.GetString() is { Length: > 0 } bodyText)
+        if (parsed != null && parsed.Value.TryGetProperty("body", out var body) && body.GetString() is { Length: > 0 } bodyText)
         {
-            var subject = parsed.TryGetProperty("subject", out var s) ? s.GetString() ?? topic : topic;
+            var subject = parsed.Value.TryGetProperty("subject", out var s) ? s.GetString() ?? topic : topic;
             return new AiLetterDraftDto { Subject = subject, BodyHtml = ToHtml(bodyText) };
         }
         return new AiLetterDraftDto { Subject = topic, BodyHtml = ToHtml(FallbackDraftBody(topic, req.Kind, req.ToName)), UsedFallback = true };
@@ -78,9 +78,9 @@ public class LetterAiService : ILetterAiService
             "\"status\": \"یک خط: الان نامه دست کیست و آخرین اقدام چه بوده\"}.",
             data.PromptText, ct);
         var parsed = ParseJsonObject(gen);
-        if (parsed != null && parsed.TryGetProperty("summary", out var s) && s.GetString() is { Length: > 0 } summary)
+        if (parsed != null && parsed.Value.TryGetProperty("summary", out var s) && s.GetString() is { Length: > 0 } summary)
         {
-            var status = parsed.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "";
+            var status = parsed.Value.TryGetProperty("status", out var st) ? st.GetString() ?? "" : "";
             return new AiLetterSummaryDto { LetterId = letterId, Summary = summary, CurrentStatus = status };
         }
         return new AiLetterSummaryDto
@@ -110,7 +110,7 @@ public class LetterAiService : ILetterAiService
             $"موضوع: {data.Title}\nمتن: {AiTextUtil.Truncate(data.PlainText, 2500)}\n\nهمکاران:\n{AiTextUtil.Truncate(usersJson, 6000)}",
             ct);
         var parsed = ParseJsonObject(gen);
-        if (parsed != null && parsed.TryGetProperty("suggestions", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        if (parsed != null && parsed.Value.TryGetProperty("suggestions", out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
             var byId = candidates.ToDictionary(c => c.Id);
             var list = new List<AiReferralSuggestionDto>();
@@ -197,7 +197,7 @@ public class LetterAiService : ILetterAiService
             $"موضوع: {data.Title}\nمتن: {AiTextUtil.Truncate(data.PlainText, 3000)}",
             ct);
         var parsed = ParseJsonObject(gen);
-        if (parsed != null && parsed.TryGetProperty("tasks", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        if (parsed != null && parsed.Value.TryGetProperty("tasks", out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
             var tasks = new List<AiLetterTaskDto>();
             foreach (var t in arr.EnumerateArray().Take(10))
@@ -259,11 +259,11 @@ public class LetterAiService : ILetterAiService
             $"موضوع: {data.Title}\nفوریت ثبت‌شده: {data.Priority}\nمتن: {AiTextUtil.Truncate(data.PlainText, 2500)}",
             ct);
         var parsed = ParseJsonObject(gen);
-        if (parsed != null && parsed.TryGetProperty("category", out var c) && c.GetString() is { Length: > 0 } category)
+        if (parsed != null && parsed.Value.TryGetProperty("category", out var c) && c.GetString() is { Length: > 0 } category)
         {
-            var prio = parsed.TryGetProperty("priority", out var p) && p.TryGetInt32(out var n) ? Math.Clamp(n, 1, 5) : 3;
+            var prio = parsed.Value.TryGetProperty("priority", out var p) && p.TryGetInt32(out var n) ? Math.Clamp(n, 1, 5) : 3;
             var tags = new List<string>();
-            if (parsed.TryGetProperty("tags", out var tg) && tg.ValueKind == JsonValueKind.Array)
+            if (parsed.Value.TryGetProperty("tags", out var tg) && tg.ValueKind == JsonValueKind.Array)
                 tags = tg.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x != "").Take(4).ToList();
             return new AiLetterCategoryDto { LetterId = letterId, Category = category, Priority = prio, Tags = tags };
         }
@@ -304,7 +304,7 @@ public class LetterAiService : ILetterAiService
             $"عنوان پیشنهادی: {req.Title}\n\nمتن جلسه:\n{AiTextUtil.Truncate(raw, 6000)}",
             ct);
         var parsed = ParseJsonObject(gen);
-        if (parsed != null && parsed.TryGetProperty("items", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        if (parsed != null && parsed.Value.TryGetProperty("items", out var arr) && arr.ValueKind == JsonValueKind.Array)
         {
             var items = new List<AiMinutesItemDto>();
             foreach (var i in arr.EnumerateArray().Take(20))
@@ -324,8 +324,8 @@ public class LetterAiService : ILetterAiService
             if (items.Count > 0)
                 return new AiMinutesDraftDto
                 {
-                    Title = parsed.TryGetProperty("title", out var tt) ? tt.GetString() ?? req.Title ?? "صورتجلسه" : req.Title ?? "صورتجلسه",
-                    Summary = parsed.TryGetProperty("summary", out var ss) ? ss.GetString() ?? "" : "",
+                    Title = parsed.Value.TryGetProperty("title", out var tt) ? tt.GetString() ?? req.Title ?? "صورتجلسه" : req.Title ?? "صورتجلسه",
+                    Summary = parsed.Value.TryGetProperty("summary", out var ss) ? ss.GetString() ?? "" : "",
                     Items = items,
                 };
         }

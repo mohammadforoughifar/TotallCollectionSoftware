@@ -5,6 +5,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Infrastructure;
 using Inventory.Api.Services;
+using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
