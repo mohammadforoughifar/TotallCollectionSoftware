@@ -1,4 +1,5 @@
 using Inventory.Api.Data;
+using Inventory.Api.Services;
 using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
@@ -18,6 +19,8 @@ public class AiController : RbacControllerBase
     private readonly ILetterAiService _letters;
     private readonly AiConversationService _conversations;
     private readonly IAiChatClient _chat;
+    private readonly AiBriefingService _briefing;
+    private readonly IMessengerService _messenger;
     private readonly AiOptions _options;
 
     public AiController(
@@ -26,6 +29,8 @@ public class AiController : RbacControllerBase
         ILetterAiService letters,
         AiConversationService conversations,
         IAiChatClient chat,
+        AiBriefingService briefing,
+        IMessengerService messenger,
         IOptions<AiOptions> options)
         : base(db)
     {
@@ -33,6 +38,8 @@ public class AiController : RbacControllerBase
         _letters = letters;
         _conversations = conversations;
         _chat = chat;
+        _briefing = briefing;
+        _messenger = messenger;
         _options = options.Value;
     }
 
@@ -153,5 +160,37 @@ public class AiController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
         if (await ForbiddenUnlessAnyAsync("MeetingMinutes", "View", "Create", "Update") is { } noAccess) return noAccess;
         return Ok(await _letters.DraftMinutesAsync(req, ct));
+    }
+
+    // ==================== گزارش صبحگاهی ====================
+
+    /// <summary>پیش‌نمایش گزارش صبحگاهی خودم (همان متنی که در بله می‌آید).</summary>
+    [HttpGet("briefing/preview")]
+    public async Task<IActionResult> BriefingPreview(CancellationToken ct)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
+        var text = await _briefing.BuildBriefingAsync(MyUserId, await MyDisplayNameAsync(ct), ct);
+        return Ok(new { briefing = text });
+    }
+
+    /// <summary>ارسال فوری گزارش صبحگاهی به همه کاربران واجد شرایط (مدیر — برای تست).</summary>
+    [HttpPost("briefing/send-now")]
+    public async Task<IActionResult> BriefingSendNow(CancellationToken ct)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
+        var sent = await _briefing.SendToAllAsync(_messenger, ct);
+        return Ok(new { sent });
+    }
+
+    private async Task<string> MyDisplayNameAsync(CancellationToken ct)
+    {
+        var displayName = string.IsNullOrWhiteSpace(MyUsername) ? "همکار" : MyUsername;
+        var me = await Db.Users.FindAsync(new object?[] { MyUserId }, ct);
+        if (me != null)
+        {
+            var full = ((me.FirstName ?? "") + " " + (me.LastName ?? "")).Trim();
+            if (full != "") displayName = full;
+        }
+        return displayName;
     }
 }

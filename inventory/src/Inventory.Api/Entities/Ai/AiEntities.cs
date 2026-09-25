@@ -80,3 +80,36 @@ public class AiKnowledgeDoc
 
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// پیش‌فاکتور «اقدام با تأیید»: دستیار اقدام را پیشنهاد می‌دهد و فقط بعد از
+/// تأیید صریح همان کاربر اجرا می‌شود (مثلاً ثبت مرخصی یا ساعت‌زنی).
+/// </summary>
+public class AiPendingAction
+{
+    public int Id { get; set; }
+
+    public int UserId { get; set; }
+
+    /// <summary>نوع اقدام: request_leave | clock</summary>
+    [MaxLength(40)]
+    public string Action { get; set; } = "";
+
+    /// <summary>آرگومان‌های اقدام به‌صورت JSON.</summary>
+    public string ArgsJson { get; set; } = "{}";
+
+    /// <summary>خلاصه فارسی برای نمایش به کاربر هنگام تأیید.</summary>
+    public string Summary { get; set; } = "";
+
+    /// <summary>0=در انتظار، 1=اجرا شده، 2=لغو/منقضی شده.</summary>
+    public int Status { get; set; }
+
+    public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+    public DateTime ExpiresAtUtc { get; set; } = DateTime.UtcNow.AddMinutes(15);
+
+    public DateTime? DecidedAtUtc { get; set; }
+
+    /// <summary>نتیجه اجرا یا دلیل لغو.</summary>
+    public string? ResultText { get; set; }
+}

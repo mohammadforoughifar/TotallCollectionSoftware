@@ -12,6 +12,7 @@ public static class AiSchemaV1
         model.Entity<AiConversation>().HasIndex(c => new { c.UserId, c.LastMessageAtUtc });
         model.Entity<AiMessage>().HasIndex(m => m.ConversationId);
         model.Entity<AiKnowledgeDoc>().HasIndex(d => d.DocKey).IsUnique();
+        model.Entity<AiPendingAction>().HasIndex(a => new { a.UserId, a.Status });
     }
 
     public static async Task EnsureAsync(AppDbContext db)
@@ -27,7 +28,9 @@ public static class AiSchemaV1
         var msg = T("Id IDKEY, ConversationId INT NOT NULL, Role NVARCHAR(20) NOT NULL, Content BIGTEXT NOT NULL, ToolsUsed NVARCHAR(500) NULL, UsedFallback BOOL, CreatedAtUtc DT NOT NULL");
         var doc = T("Id IDKEY, Category NVARCHAR(100) NOT NULL, Title NVARCHAR(200) NOT NULL, Content BIGTEXT NOT NULL, Link NVARCHAR(300) NULL, DocKey NVARCHAR(100) NOT NULL, EmbeddingJson BIGTEXT NULL, IsActive BOOL, UpdatedAtUtc DT NOT NULL");
 
-        foreach (var (table, cols) in new[] { ("AiConversations", conv), ("AiMessages", msg), ("AiKnowledgeDocs", doc) })
+        var act = T("Id IDKEY, UserId INT NOT NULL, Action NVARCHAR(40) NOT NULL, ArgsJson BIGTEXT NOT NULL, Summary BIGTEXT NOT NULL, Status INT NOT NULL, CreatedAtUtc DT NOT NULL, ExpiresAtUtc DT NOT NULL, DecidedAtUtc DT NULL, ResultText BIGTEXT NULL");
+
+        foreach (var (table, cols) in new[] { ("AiConversations", conv), ("AiMessages", msg), ("AiKnowledgeDocs", doc), ("AiPendingActions", act) })
         {
             var sql = sqlite
                 ? $"CREATE TABLE IF NOT EXISTS {table} ({cols})"
@@ -55,6 +58,7 @@ public static class AiSchemaV1
                      ("AiConversations", "UserId, LastMessageAtUtc", false),
                      ("AiMessages", "ConversationId", false),
                      ("AiKnowledgeDocs", "DocKey", true),
+                     ("AiPendingActions", "UserId, Status", false),
                  })
         {
             var name = "IX_" + table + "_" + cols.Replace(", ", "_");

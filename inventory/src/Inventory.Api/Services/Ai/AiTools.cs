@@ -462,3 +462,161 @@ public class UsersLookupTool : IAiTool
         return JsonSerializer.Serialize(filtered.Select(u => new { شناسه = u.Id, u.نام, u.واحد }));
     }
 }
+
+// ---------------- اقدام با تأیید ----------------
+
+public class RequestLeaveTool : IAiTool
+{
+    public string Name => "request_leave";
+    public string Description => "ثبت پیش‌فاکتور درخواست مرخصی (اجرا فقط بعد از تأیید کاربر). تاریخ‌ها را می‌توانی فارسی بدهی: امروز، فردا، پس‌فردا، نام روز هفته، یا ۱۴۰۴/۰۷/۰۵.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            leave_type = new { type = "string", description = "نوع مرخصی (مثلاً استحقاقی، استعلاجی) — خالی = استحقاقی" },
+            from_date = new { type = "string", description = "از تاریخ (اجباری): امروز، فردا، پس‌فردا، نام روز، یا ۱۴۰۴/۰۷/۰۵" },
+            to_date = new { type = "string", description = "تا تاریخ (اختیاری؛ خالی = همان روز شروع)" },
+            reason = new { type = "string", description = "دلیل (اختیاری)" },
+        },
+        required = new[] { "from_date" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var fa = ctx.Services.GetRequiredService<IFaAttService>();
+        var today = DateTime.Today;
+
+        var from = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "from_date"), today);
+        if (from == null)
+            return JsonSerializer.Serialize(new { error = "bad_date", message = "تاریخ شروع را نفهمیدم؛ مثلاً بگو «فردا» یا «۱۴۰۴/۰۷/۰۵»." });
+        var to = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "to_date"), today) ?? from.Value;
+        if (to < from) (from, to) = (to, from);
+
+        var type = await AiLeaveHelper.MatchLeaveTypeAsync(fa, AiToolArgs.GetString(args, "leave_type"));
+        if (type == null)
+            return JsonSerializer.Serialize(new { error = "no_leave_type", message = "نوع مرخصی فعالی تعریف نشده." });
+
+        var reason = AiToolArgs.GetString(args, "reason");
+        var summary = $"مرخصی {type.Value.name} از {AiDateUtil.ToFaShort(from.Value)} تا {AiDateUtil.ToFaShort(to.Value)}" +
+                      (string.IsNullOrWhiteSpace(reason) ? "" : $" (دلیل: {reason.Trim()})");
+        var pending = await actions.CreateAsync(ctx.UserId, "request_leave",
+            JsonSerializer.Serialize(new
+            {
+                leaveTypeId = type.Value.id,
+                from = from.Value.ToString("yyyy-MM-dd"),
+                to = to.Value.ToString("yyyy-MM-dd"),
+                reason,
+            }), summary, ctx.CancellationToken);
+
+        return JsonSerializer.Serialize(new
+        {
+            action_id = pending.Id,
+            summary,
+            hint = "برای اجرا، کاربر باید بنویسد: تأیید",
+        });
+    }
+}
+
+public class ClockTool : IAiTool
+{
+    public string Name => "clock";
+    public string Description => "ثبت پیش‌فاکتور ساعت‌زنی ورود/خروج (اجرا فقط بعد از تأیید کاربر).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            type = new { type = "string", description = "ورود یا خروج (یا in/out)" },
+        },
+        required = new[] { "type" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var t = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "type"));
+        var kind = t switch
+        {
+            var x when x.Contains("ورود") || x == "in" || x == "0" => 0,
+            var x when x.Contains("خروج") || x == "out" || x == "1" => 1,
+            _ => -1,
+        };
+        if (kind < 0)
+            return JsonSerializer.Serialize(new { error = "bad_type", message = "مشخص کن: ورود یا خروج؟" });
+
+        var summary = kind == 0 ? "ثبت ساعت ورود (الان)" : "ثبت ساعت خروج (الان)";
+        var pending = await actions.CreateAsync(ctx.UserId, "clock",
+            JsonSerializer.Serialize(new { type = kind }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            action_id = pending.Id,
+            summary,
+            hint = "برای اجرا، کاربر باید بنویسد: تأیید",
+        });
+    }
+}
+
+public class ConfirmActionTool : IAiTool
+{
+    public string Name => "confirm_action";
+    public string Description => "تأیید و اجرای پیش‌فاکتور باز کاربر. فقط وقتی صدا بزن که کاربر صراحتاً تأیید کرد (مثلاً گفت «تأیید»، «باشه»، «اوکی»). بدون شناسه = تازه‌ترین پیش‌فاکتور.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            action_id = new { type = "integer", description = "شناسه پیش‌فاکتور (اختیاری؛ خالی = تازه‌ترین)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var (ok, message) = await actions.ConfirmAsync(ctx.UserId, ctx.UserName,
+            AiToolArgs.GetInt(args, "action_id"), ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { ok, message });
+    }
+}
+
+public class CancelActionTool : IAiTool
+{
+    public string Name => "cancel_action";
+    public string Description => "لغو پیش‌فاکتور باز کاربر. وقتی کاربر گفت «لغو»، «کنسل» یا پشیمان شد صدا بزن. بدون شناسه = تازه‌ترین.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            action_id = new { type = "integer", description = "شناسه پیش‌فاکتور (اختیاری؛ خالی = تازه‌ترین)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var (ok, message) = await actions.CancelAsync(ctx.UserId,
+            AiToolArgs.GetInt(args, "action_id"), ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { ok, message });
+    }
+}
+
+public class PendingActionsTool : IAiTool
+{
+    public string Name => "my_pending_actions";
+    public string Description => "فهرست پیش‌فاکتورهای باز کاربر (اقدام‌های در انتظار تأیید).";
+    public object ParametersSchema => new { type = "object", properties = new { } };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var list = await actions.ListPendingAsync(ctx.UserId, ctx.CancellationToken);
+        return JsonSerializer.Serialize(list.Select(a => new
+        {
+            شناسه = a.Id,
+            اقدام = a.Action == "request_leave" ? "درخواست مرخصی" : a.Action == "clock" ? "ساعت‌زنی" : a.Action,
+            خلاصه = a.Summary,
+        }));
+    }
+}

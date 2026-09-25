@@ -44,5 +44,20 @@ public class AiOptions
     /// <summary>آیا دستیار داخل پیام‌رسان داخلی جواب بدهد؟ (گفتگوی مستقیم با کاربر «فروغ آریا»)</summary>
     public bool MessengerEnabled { get; set; } = true;
 
+    /// <summary>گزارش صبحگاهی خودکار در بله (خلاصه روزانه: نامه‌ها، مهلت‌ها، چک‌ها، تأییدها).</summary>
+    public bool BriefingEnabled { get; set; } = true;
+
+    /// <summary>ساعت ارسال گزارش صبحگاهی به وقت سرور (قالب 24ساعته HH:mm).</summary>
+    public string BriefingTime { get; set; } = "07:30";
+
+    /// <summary>چک‌های باز با سررسید تا چند روز آینده در گزارش بیایند.</summary>
+    public int BriefingChequeDays { get; set; } = 7;
+
+    /// <summary>ارجاع‌های با مهلت تا چند روز آینده در گزارش بیایند.</summary>
+    public int BriefingDeadlineDays { get; set; } = 2;
+
+    /// <summary>انقضای پیش‌فاکتور اقدام (دقیقه) — اقدام با تأیید کاربر.</summary>
+    public int PendingActionExpiryMinutes { get; set; } = 15;
+
     public string NormalizedBaseUrl => (BaseUrl ?? "").Trim().TrimEnd('/');
 }

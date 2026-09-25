@@ -145,4 +145,20 @@ public class AiAssistantService
 
     public Task<AiMinutesDraft> DraftMinutesAsync(string rawText, string? title)
         => _api.PostAsync<AiMinutesDraft>("api/ai/minutes/draft", new { rawText, title });
+
+    public class AiBriefingPreview
+    {
+        public string Briefing { get; set; } = "";
+    }
+
+    public class AiBriefingSendResult
+    {
+        public int Sent { get; set; }
+    }
+
+    public Task<AiBriefingPreview> GetBriefingPreviewAsync()
+        => _api.GetAsync<AiBriefingPreview>("api/ai/briefing/preview");
+
+    public Task<AiBriefingSendResult> SendBriefingNowAsync()
+        => _api.PostAsync<AiBriefingSendResult>("api/ai/briefing/send-now", new { });
 }

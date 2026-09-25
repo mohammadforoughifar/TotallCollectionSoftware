@@ -70,10 +70,15 @@
                         @if (m.Role == "assistant")
                         {
                             <AiMessageView Text="@m.Content" />
-                            @if (m.UsedFallback)
-                            {
-                                <div class="ai-offline-badge">⚡ پاسخ آفلاین</div>
-                            }
+                            <div>
+                                <button class="ai-speak" title="خواندن پاسخ با صدا" @onclick="() => ToggleSpeak(m.Content)">
+                                    <i class="bi @(speakingText == m.Content ? "bi-stop-circle-fill" : "bi-volume-up-fill")"></i>
+                                </button>
+                                @if (m.UsedFallback)
+                                {
+                                    <span class="ai-offline-badge">⚡ پاسخ آفلاین</span>
+                                }
+                            </div>
                         }
                         else
                         {
@@ -142,6 +147,8 @@
     @@keyframes aiBlink { 0%,100% { opacity: .25; } 50% { opacity: 1; } }
     .ai-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; border-radius: .6rem; padding: .5rem .7rem; font-size: .85rem; }
     .ai-offline-badge { font-size: .7rem; color: #92400e; background: #fef3c7; border-radius: 999px; padding: 0 .55rem; display: inline-block; margin-top: .35rem; }
+    .ai-speak { border: none; background: transparent; color: #64748b; cursor: pointer; padding: .1rem .3rem; border-radius: .4rem; font-size: 1rem; }
+    .ai-speak:hover { color: #4f46e5; background: #eef2ff; }
     .ai-main-input { display: flex; gap: .5rem; padding: .7rem; border-top: 1px solid #e2e8f0; background: #fff; align-items: flex-end; }
     .ai-text { flex: 1; border: 1px solid #cbd5e1; border-radius: .7rem; padding: .5rem .7rem; resize: none; }
     .ai-text:focus { outline: none; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
@@ -163,6 +170,7 @@
     private bool suppressNewline;
     private string draft = "";
     private string? error;
+    private string? speakingText;
     private int? conversationId;
     private List<AiConversation> conversations = new();
     private readonly List<AiChatMessage> messages = new();
@@ -219,17 +227,19 @@
         StateHasChanged();
     }
 
-    private void NewChat()
+    private async Task NewChat()
     {
         conversationId = null;
         messages.Clear();
         error = null;
+        await StopSpeakAsync();
     }
 
     private async Task OpenConversation(int id)
     {
         if (busy) return;
         error = null;
+        await StopSpeakAsync();
         try
         {
             var conv = await Ai.GetConversationAsync(id);
@@ -279,6 +289,7 @@
         draft = "";
         error = null;
         busy = true;
+        await StopSpeakAsync();
         var wasFirst = messages.Count == 0 && conversationId == null;
         messages.Add(new AiChatMessage { Role = "user", Content = text });
         StateHasChanged();
@@ -308,6 +319,30 @@
     private async Task ScrollAsync()
     {
         try { await JS.InvokeVoidAsync("aiChat.scrollBottom", "aiPageBody"); } catch { }
+    }
+
+    private async Task ToggleSpeak(string text)
+    {
+        try
+        {
+            if (speakingText == text)
+            {
+                await JS.InvokeVoidAsync("aiVoice.stopSpeak");
+                speakingText = null;
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("aiVoice.speak", text);
+                speakingText = text;
+            }
+        }
+        catch { speakingText = null; }
+    }
+
+    private async Task StopSpeakAsync()
+    {
+        speakingText = null;
+        try { await JS.InvokeVoidAsync("aiVoice.stopSpeak"); } catch { }
     }
 
     private async Task ToggleVoice()
@@ -350,5 +385,6 @@
     public void Dispose()
     {
         try { dotNetRef?.Dispose(); } catch { }
+        try { _ = JS.InvokeVoidAsync("aiVoice.stopSpeak"); } catch { }
     }
 }

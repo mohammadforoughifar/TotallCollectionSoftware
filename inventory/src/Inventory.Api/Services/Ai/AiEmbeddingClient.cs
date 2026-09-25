@@ -125,6 +125,16 @@ public static class AiTextUtil
         return System.Text.RegularExpressions.Regex.Replace(text, @"\[([^\]]+)\]\([^)]+\)", "$1");
     }
 
+    /// <summary>تبدیل ارقام انگلیسی به فارسی.</summary>
+    public static string ToFaDigits(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        var sb = new System.Text.StringBuilder(text.Length);
+        foreach (var c in text)
+            sb.Append(c is >= '0' and <= '9' ? (char)('۰' + (c - '0')) : c);
+        return sb.ToString();
+    }
+
     /// <summary>کوتاه‌سازی امن متن برای ورودی مدل.</summary>
     public static string Truncate(string? text, int maxChars)
     {

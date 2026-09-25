@@ -48,6 +48,28 @@ window.aiVoice = (function () {
         stop: function () {
             try { if (rec && listening) rec.stop(); } catch (err) { }
             listening = false;
+        },
+        speak: function (text) {
+            try {
+                if (!('speechSynthesis' in window)) return false;
+                window.speechSynthesis.cancel();
+                // تمیزکاری مارک‌داون برای خوانش روان‌تر
+                var clean = (text || '')
+                    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                    .replace(/[*_`#>]/g, '')
+                    .replace(/https?:\S+/g, '');
+                if (!clean.trim()) return false;
+                var u = new SpeechSynthesisUtterance(clean.slice(0, 1500));
+                u.lang = 'fa-IR';
+                var voices = window.speechSynthesis.getVoices() || [];
+                var fa = voices.find(function (v) { return v.lang && v.lang.toLowerCase().indexOf('fa') === 0; });
+                if (fa) u.voice = fa;
+                window.speechSynthesis.speak(u);
+                return true;
+            } catch (err) { return false; }
+        },
+        stopSpeak: function () {
+            try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (err) { }
         }
     };
 })();

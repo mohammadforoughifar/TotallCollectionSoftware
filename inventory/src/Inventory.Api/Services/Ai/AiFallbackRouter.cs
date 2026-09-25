@@ -20,6 +20,12 @@ public class AiFallbackRouter
         var q = AiTextUtil.NormalizeFa(message);
 
         if (IsGreeting(q)) return Greeting(ctx.UserName);
+
+        // تأیید/لغو پیش‌فاکتور اقدام — حتی در حالت آفلاین
+        if (q is "تأیید" or "تایید" or "باشه" or "اوکی" or "انجام بده" or "آره" or "اره" or "بله")
+            return FormatConfirm(await _tools.ExecuteAsync("confirm_action", "{}", ctx));
+        if (q is "لغو" or "کنسل" or "نه" or "پشیمان شدم" or "پشیمون شدم")
+            return FormatConfirm(await _tools.ExecuteAsync("cancel_action", "{}", ctx));
         if (ContainsAny(q, "کی هستی", "تو کی", "معرفی", "چه کار", "چیکار", "کمک", "راهنما", "help"))
             return HelpText();
         if (ContainsAny(q, "ساعت چنده", "تاریخ امروز", "امروز چه روزی", "امروز چندمه"))
@@ -57,6 +63,17 @@ public class AiFallbackRouter
     }
 
     // ---------------- قالب‌بندی پاسخ‌ها ----------------
+
+    private static string FormatConfirm(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var msg = Prop(doc.RootElement, "message");
+            return string.IsNullOrWhiteSpace(msg) ? "انجام شد." : msg;
+        }
+        catch { return "انجام شد."; }
+    }
 
     private static string FormatBalances(string json)
     {
