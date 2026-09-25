@@ -21,6 +21,7 @@ public class AiController : RbacControllerBase
     private readonly AiConversationService _conversations;
     private readonly IAiChatClient _chat;
     private readonly AiBriefingService _briefing;
+    private readonly AiDigestService _digest;
     private readonly AiReportService _reports;
     private readonly IMessengerService _messenger;
     private readonly AiOptions _options;
@@ -32,6 +33,7 @@ public class AiController : RbacControllerBase
         AiConversationService conversations,
         IAiChatClient chat,
         AiBriefingService briefing,
+        AiDigestService digest,
         AiReportService reports,
         IMessengerService messenger,
         IOptions<AiOptions> options)
@@ -42,6 +44,7 @@ public class AiController : RbacControllerBase
         _conversations = conversations;
         _chat = chat;
         _briefing = briefing;
+        _digest = digest;
         _reports = reports;
         _messenger = messenger;
         _options = options.Value;
@@ -216,6 +219,27 @@ public class AiController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
         var sent = await _briefing.SendToAllAsync(_messenger, ct);
+        return Ok(new { sent });
+    }
+
+    // ==================== خلاصه هفتگی ====================
+
+    /// <summary>پیش‌نمایش خلاصه هفته (مدیران — همان متنی که در پیام‌رسان می‌آید).</summary>
+    [HttpGet("digest/preview")]
+    public async Task<IActionResult> DigestPreview(CancellationToken ct)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
+        if (await ForbiddenUnlessAsync("FaAtt", "Manage") is { } noManage) return noManage;
+        var text = await _digest.BuildDigestAsync(MyUserId, await MyDisplayNameAsync(ct), ct);
+        return Ok(new { digest = text });
+    }
+
+    /// <summary>ارسال فوری خلاصه هفته به مدیران واجد شرایط (مدیر — برای تست).</summary>
+    [HttpPost("digest/send-now")]
+    public async Task<IActionResult> DigestSendNow(CancellationToken ct)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
+        var sent = await _digest.SendToAllAsync(_messenger, ct);
         return Ok(new { sent });
     }
 

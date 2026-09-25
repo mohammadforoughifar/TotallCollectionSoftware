@@ -56,6 +56,15 @@ public class AiOptions
     /// <summary>ارجاع‌های با مهلت تا چند روز آینده در گزارش بیایند.</summary>
     public int BriefingDeadlineDays { get; set; } = 2;
 
+    /// <summary>خلاصه هفتگی خودکار برای مدیران (جمع‌بندی ۷ روز: فروش، HR، تیکت، ارجاع، چک، گزارش‌کار).</summary>
+    public bool DigestEnabled { get; set; } = true;
+
+    /// <summary>روز ارسال خلاصه هفتگی (شنبه، یکشنبه، ... یا Saturday..Friday).</summary>
+    public string DigestDay { get; set; } = "Saturday";
+
+    /// <summary>ساعت ارسال خلاصه هفتگی به وقت سرور (قالب 24ساعته HH:mm).</summary>
+    public string DigestTime { get; set; } = "07:30";
+
     /// <summary>انقضای پیش‌فاکتور اقدام (دقیقه) — اقدام با تأیید کاربر.</summary>
     public int PendingActionExpiryMinutes { get; set; } = 15;
 

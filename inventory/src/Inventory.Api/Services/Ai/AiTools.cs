@@ -1847,3 +1847,30 @@ public class RegisterChequeTool : IAiTool
         return (true, found[0].Id, found[0].Name, null);
     }
 }
+
+public class WeeklyDigestTool : IAiTool
+{
+    public string Name => "weekly_digest";
+    public string Description => "خلاصه هفته مدیر: جمع‌بندی ۷ روز گذشته (فروش و خرید، منابع انسانی، تیکت‌ها، ارجاع‌ها، چک‌های هفته آینده، گزارش‌کارها و یادآوری‌ها). فقط مدیران (مجوز FaAtt.Manage).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new { },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var me = await db.Users.AsNoTracking()
+            .Where(u => u.Id == ctx.UserId)
+            .Select(u => new { u.FirstName, u.LastName, u.Username, u.Role })
+            .FirstOrDefaultAsync(ctx.CancellationToken);
+        if (me == null || !await AiAccessHelper.UserHasAsync(db, ctx.UserId, "FaAtt", "Manage", me.Role, ctx.CancellationToken))
+            return JsonSerializer.Serialize(new { error = "access_denied", message = "خلاصه هفته فقط برای مدیران است." });
+        var name = ((me.FirstName ?? "") + " " + (me.LastName ?? "")).Trim();
+        if (name == "") name = me.Username;
+        var digest = ctx.Services.GetRequiredService<AiDigestService>();
+        var text = await digest.BuildDigestAsync(ctx.UserId, name, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { digest = text });
+    }
+}

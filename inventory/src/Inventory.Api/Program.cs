@@ -313,6 +313,7 @@ builder.Services.AddScoped<AiFallbackRouter>();
 builder.Services.AddScoped<IAiAgentService, AiAgentService>();
 builder.Services.AddScoped<ILetterAiService, LetterAiService>();
 builder.Services.AddScoped<AiBriefingService>();
+builder.Services.AddScoped<AiDigestService>();
 builder.Services.AddScoped<AiAlertsService>();
 builder.Services.AddScoped<AiActionService>();
 // ابزارهای دستیار
@@ -353,6 +354,7 @@ builder.Services.AddScoped<IAiTool, MyAlertsTool>();
 builder.Services.AddScoped<IAiTool, ReferLetterTool>();
 builder.Services.AddScoped<IAiTool, AnswerTicketTool>();
 builder.Services.AddScoped<IAiTool, RegisterChequeTool>();
+builder.Services.AddScoped<IAiTool, WeeklyDigestTool>();
 builder.Services.AddScoped<AiReportService>();
 builder.Services.AddScoped<AiDataExplorer>();
 // پاسخ‌گویی در پیام‌رسان داخلی
@@ -360,6 +362,7 @@ builder.Services.AddSingleton<AiReplyQueue>();
 builder.Services.AddHostedService<AiChatReplyWorker>();
 // گزارش صبحگاهی خودکار
 builder.Services.AddHostedService<AiBriefingWorker>();
+builder.Services.AddHostedService<AiDigestWorker>();
 builder.Services.AddSingleton<HardwareMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HardwareMonitor>());
 
