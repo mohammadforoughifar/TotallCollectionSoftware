@@ -20,8 +20,8 @@ public class AiOptions
     /// <summary>کلید API (برای Ollama لازم نیست؛ برای درگاه‌های واسط لازم است).</summary>
     public string ApiKey { get; set; } = "";
 
-    /// <summary>مدل گفتگو — پیشنهاد لوکال: qwen3:8b (فارسی خوب + پشتیبانی از ابزار).</summary>
-    public string ChatModel { get; set; } = "qwen3:8b";
+    /// <summary>مدل گفتگو — پیشنهاد لوکال: qwen3.5:latest (فارسی خوب + پشتیبانی از ابزار).</summary>
+    public string ChatModel { get; set; } = "qwen3.5:latest";
 
     /// <summary>مدل امبدینگ برای جستجوی معنایی — پیشنهاد لوکال: bge-m3 (چندزبانه، فارسی خوب).</summary>
     public string EmbeddingModel { get; set; } = "bge-m3";

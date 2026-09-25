@@ -24,7 +24,7 @@
 └──────────────────────────────┘
                                                      ▼
                                       ┌─ Ollama (لوکال) ──────────┐
-                                      │ qwen3:8b  → گفتگو + ابزار │
+                                      │ qwen3.5:latest  → گفتگو + ابزار │
                                       │ bge-m3    → جستجوی معنایی │
                                       └──────────────────────────┘
 ```
@@ -44,21 +44,21 @@
 ۲. در PowerShell مدل‌ها را بگیرید (اولین‌بار دانلود ~۵ گیگابایت):
 
 ```powershell
-ollama pull qwen3:8b
+ollama pull qwen3.5:latest
 ollama pull bge-m3
 ```
 
 ۳. تست:
 
 ```powershell
-ollama run qwen3:8b "سلام! خودت را معرفی کن"
+ollama run qwen3.5:latest "سلام! خودت را معرفی کن"
 ```
 
 ### لینوکس (سرور)
 
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3:8b
+ollama pull qwen3.5:latest
 ollama pull bge-m3
 ```
 
@@ -70,7 +70,7 @@ ollama pull bge-m3
 | سرور | مدل گفتگو (`ChatModel`) | توضیح |
 |---|---|---|
 | قوی (۱۶GB+ رم / GPU) | `qwen3:14b` | دقیق‌تر، کمی کندتر |
-| **معمولی (۸GB رم) — پیشنهادی** | **`qwen3:8b`** | تعادل خوب سرعت و کیفیت فارسی |
+| **معمولی (۸GB رم) — پیشنهادی** | **`qwen3.5:latest`** | تعادل خوب سرعت و کیفیت فارسی |
 | ضعیف (۴GB رم) | `qwen3:4b` | سریع، دقت کمتر |
 | امبدینگ (همه) | `bge-m3` | ~۱.۲GB، برای جستجوی معنایی |
 
@@ -88,7 +88,7 @@ ollama pull bge-m3
   "Enabled": true,
   "BaseUrl": "http://localhost:11434/v1",
   "ApiKey": "",
-  "ChatModel": "qwen3:8b",
+  "ChatModel": "qwen3.5:latest",
   "EmbeddingModel": "bge-m3",
   "TimeoutSeconds": 180,
   "MaxToolIterations": 6,
@@ -127,12 +127,12 @@ ollama pull bge-m3
 
 | مشکل | علت / راه‌حل |
 |---|---|
-| پاسخ‌ها «⚡ آفلاین» است | Ollama خاموش است یا مدل دانلود نشده. `ollama list` را ببینید؛ باید `qwen3:8b` باشد. |
+| پاسخ‌ها «⚡ آفلاین» است | Ollama خاموش است یا مدل دانلود نشده. `ollama list` را ببینید؛ باید `qwen3.5:latest` باشد. |
 | `ارتباط با مدل برقرار نشد` در health | `BaseUrl` اشتباه است یا فایروال. با مرورگر `http://localhost:11434/v1/models` را باز کنید. |
 | پاسخ خیلی کند است (روی CPU) | طبیعی است (۳۰ تا ۹۰ ثانیه). مدل کوچک‌تر (`qwen3:4b`) یا GPU کمک می‌کند. `TimeoutSeconds` را بیشتر کنید. |
 | کاربر دستیار را نمی‌بیند | مجوز `AiAssistant.Use` + خروج/ورود مجدد. |
 | دستیار در بله جواب نمی‌دهد | کاربر باید `/start` و اشتراک شماره کرده باشد + `Ai:BaleEnabled=true` + مجوز Use. |
-| مدل فارسی ضعیف جواب می‌دهد | از `qwen3:8b` یا بزرگ‌تر استفاده کنید؛ از مدل‌های انگلیسی‌محور قدیمی استفاده نکنید. |
+| مدل فارسی ضعیف جواب می‌دهد | از `qwen3.5:latest` یا بزرگ‌تر استفاده کنید؛ از مدل‌های انگلیسی‌محور قدیمی استفاده نکنید. |
 
 ---
 
