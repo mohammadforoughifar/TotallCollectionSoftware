@@ -135,6 +135,21 @@ public static class AiTextUtil
         return sb.ToString();
     }
 
+    /// <summary>تبدیل ارقام فارسی/عربی به انگلیسی (برای پارس عدد و ساعت).</summary>
+    public static string ToEnDigits(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        var sb = new System.Text.StringBuilder(text.Length);
+        foreach (var c in text)
+            sb.Append(c switch
+            {
+                >= '۰' and <= '۹' => (char)('0' + (c - '۰')),
+                >= '٠' and <= '٩' => (char)('0' + (c - '٠')),
+                _ => c,
+            });
+        return sb.ToString();
+    }
+
     /// <summary>کوتاه‌سازی امن متن برای ورودی مدل.</summary>
     public static string Truncate(string? text, int maxChars)
     {

@@ -331,6 +331,14 @@ builder.Services.AddScoped<IAiTool, ClockTool>();
 builder.Services.AddScoped<IAiTool, ConfirmActionTool>();
 builder.Services.AddScoped<IAiTool, CancelActionTool>();
 builder.Services.AddScoped<IAiTool, PendingActionsTool>();
+builder.Services.AddScoped<IAiTool, PendingApprovalsTool>();
+builder.Services.AddScoped<IAiTool, MyReferralsPendingTool>();
+builder.Services.AddScoped<IAiTool, RequestMissionTool>();
+builder.Services.AddScoped<IAiTool, DecideLeaveTool>();
+builder.Services.AddScoped<IAiTool, AnswerReferralTool>();
+builder.Services.AddScoped<IAiTool, CreateTicketTool>();
+builder.Services.AddScoped<IAiTool, ReportWorkTool>();
+builder.Services.AddScoped<IAiTool, CreateLetterDraftTool>();
 // پاسخ‌گویی در پیام‌رسان داخلی
 builder.Services.AddSingleton<AiReplyQueue>();
 builder.Services.AddHostedService<AiChatReplyWorker>();

@@ -139,3 +139,22 @@ public class AiMinutesDraftDto
     public List<AiMinutesItemDto> Items { get; set; } = new();
     public bool UsedFallback { get; set; }
 }
+
+public class AiReplyHintRequest
+{
+    /// <summary>راهنمای پاسخ (اختیاری): مثلاً «موافقت کن»، «با دلیل مخالفت کن»، «مهلت دو هفته‌ای بخواه».</summary>
+    public string? Hint { get; set; }
+}
+
+public class AiReceiversSuggestRequest
+{
+    public string Title { get; set; } = "";
+    /// <summary>متن نامه (می‌تواند HTML ویرایشگر باشد؛ سرور تمیزش می‌کند).</summary>
+    public string Text { get; set; } = "";
+}
+
+public class AiReceiversSuggestResponse
+{
+    public List<AiReferralSuggestionDto> Suggestions { get; set; } = new();
+    public bool UsedFallback { get; set; }
+}

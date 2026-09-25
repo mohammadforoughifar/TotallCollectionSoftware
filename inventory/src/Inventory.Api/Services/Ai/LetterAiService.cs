@@ -4,8 +4,9 @@ using System.Text.Json;
 namespace Inventory.Api.Services.Ai;
 
 // =====================================================================
-// هوش نامه‌ها (قابلیت‌های ۶ تا ۱۱):
-// پیش‌نویس، خلاصه، پیشنهاد ارجاع، استخراج اقدام، دسته‌بندی، پیش‌نویس صورتجلسه.
+// هوش نامه‌ها (قابلیت‌های ۶ تا ۱۱ + پاسخ‌نویسی و پیشنهاد گیرنده):
+// پیش‌نویس، خلاصه، پیشنهاد ارجاع، استخراج اقدام، دسته‌بندی، پیش‌نویس صورتجلسه،
+// پیش‌نویس پاسخ با یک کلیک، پیشنهاد گیرنده هنگام نوشتن نامه.
 // همه متدها اگر مدل زبانی در دسترس نباشد، خروجی قطعی (قاعده‌محور) می‌دهند.
 // =====================================================================
 
@@ -17,6 +18,8 @@ public interface ILetterAiService
     Task<AiLetterTasksResponse?> ExtractTasksAsync(int letterId, int userId, bool isAdmin, CancellationToken ct);
     Task<AiLetterCategoryDto?> CategorizeAsync(int letterId, int userId, bool isAdmin, CancellationToken ct);
     Task<AiMinutesDraftDto> DraftMinutesAsync(AiMinutesDraftRequest req, CancellationToken ct);
+    Task<AiLetterDraftDto?> DraftReplyAsync(int letterId, int userId, bool isAdmin, string? hint, CancellationToken ct);
+    Task<AiReceiversSuggestResponse> SuggestReceiversAsync(AiReceiversSuggestRequest? req, int userId, CancellationToken ct);
 }
 
 public class LetterAiService : ILetterAiService
@@ -65,6 +68,40 @@ public class LetterAiService : ILetterAiService
                $"خواهشمند است دستور فرمایید در این خصوص بررسی و اقدام لازم صورت گیرد.\n\nبا تشکر\n[نام و امضا]";
     }
 
+    // ==================== پاسخ‌نویسی با یک کلیک ====================
+
+    public async Task<AiLetterDraftDto?> DraftReplyAsync(int letterId, int userId, bool isAdmin, string? hint, CancellationToken ct)
+    {
+        var data = await LoadLetterContextAsync(letterId, userId, isAdmin, ct);
+        if (data == null) return null;
+        var hintLine = string.IsNullOrWhiteSpace(hint) ? "" : $"خواسته کاربر از پاسخ: {hint.Trim()}\n";
+
+        var gen = await _agent.GenerateAsync(
+            "تو نویسنده پاسخ نامه‌های اداری فارسی هستی. فقط JSON معتبر (بدون هیچ متن اضافه) با همین کلیدها بده: " +
+            "{\"subject\": \"موضوع پاسخ (کوتاه، با پیشوند «در پاسخ به: ...»)\", \"body\": \"متن کامل پاسخ\"}. " +
+            "قواعد: پاراگراف اول با «عطف به نامه شماره ... مورخ ...» شروع شود؛ به خواسته اصلی نامه جواب بده؛ " +
+            "لحن رسمی و مؤدبانه؛ اگر خواسته کاربر با متن نامه ناسازگار بود خواسته کاربر ملاک است؛ جای امضا «[نام و امضا]».",
+            $"{hintLine}{data.PromptText}",
+            ct);
+        var parsed = ParseJsonObject(gen);
+        if (parsed != null && parsed.Value.TryGetProperty("body", out var body) && body.GetString() is { Length: > 0 } bodyText)
+        {
+            var subject = parsed.Value.TryGetProperty("subject", out var s) && s.GetString() is { Length: > 0 } st
+                ? st : $"در پاسخ به: {data.Title}";
+            return new AiLetterDraftDto { Subject = subject, BodyHtml = ToHtml(bodyText) };
+        }
+        return new AiLetterDraftDto
+        {
+            Subject = $"در پاسخ به: {data.Title}",
+            BodyHtml = ToHtml(FallbackReplyBody(data)),
+            UsedFallback = true,
+        };
+    }
+
+    private static string FallbackReplyBody(LetterContext data) =>
+        $"با سلام و احترام،\n\nعطف به نامه شماره {data.Number} مورخ {AiDateUtil.ToFaShort(data.Date)} با موضوع «{data.Title}»، " +
+        $"به استحضار می‌رساند موضوع در دست بررسی است و نتیجه متعاقباً اعلام می‌گردد.\n\nبا تشکر\n[نام و امضا]";
+
     // ==================== ۷) خلاصه نامه + وضعیت گردش ====================
 
     public async Task<AiLetterSummaryDto?> SummarizeAsync(int letterId, int userId, bool isAdmin, CancellationToken ct)
@@ -98,7 +135,25 @@ public class LetterAiService : ILetterAiService
     {
         var data = await LoadLetterContextAsync(letterId, userId, isAdmin, ct);
         if (data == null) return null;
+        var (list, usedFallback) = await SuggestPeopleAsync(data.Title, data.PlainText, userId, ct);
+        return new AiReferralSuggestResponse { LetterId = letterId, Suggestions = list, UsedFallback = usedFallback };
+    }
 
+    // ==================== پیشنهاد گیرنده هنگام نوشتن نامه ====================
+
+    public async Task<AiReceiversSuggestResponse> SuggestReceiversAsync(AiReceiversSuggestRequest? req, int userId, CancellationToken ct)
+    {
+        var title = (req?.Title ?? "").Trim();
+        var plain = AiTextUtil.StripHtml(req?.Text);
+        if (title == "" && plain == "") throw new ArgumentException("اول موضوع یا متن نامه را بنویسید.");
+        var (list, usedFallback) = await SuggestPeopleAsync(title, plain, userId, ct);
+        return new AiReceiversSuggestResponse { Suggestions = list, UsedFallback = usedFallback };
+    }
+
+    /// <summary>موتور مشترک پیشنهاد همکار از روی موضوع+متن (هم ارجاع، هم گیرنده نامه جدید).</summary>
+    private async Task<(List<AiReferralSuggestionDto> list, bool usedFallback)> SuggestPeopleAsync(
+        string title, string plainText, int userId, CancellationToken ct)
+    {
         var ctx = ToolCtx(userId, ct);
         var usersJson = await _tools.ExecuteAsync("users_lookup", "{\"search\":\"\"}", ctx);
         var candidates = ParseUsers(usersJson);
@@ -107,7 +162,7 @@ public class LetterAiService : ILetterAiService
             "تو کارشناس ارجاع نامه‌های اداری هستی. با توجه به موضوع نامه، از فهرست همکاران «حداکثر ۳ نفر» مناسب برای ارجاع را انتخاب کن. " +
             "فقط JSON معتبر بده (بدون متن اضافه): {\"suggestions\": [{\"user_id\": 12, \"reason\": \"دلیل کوتاه فارسی\"}]}. " +
             "user_id باید دقیقاً از فهرست باشد. اگر کسی مناسب نیست آرایه خالی بده.",
-            $"موضوع: {data.Title}\nمتن: {AiTextUtil.Truncate(data.PlainText, 2500)}\n\nهمکاران:\n{AiTextUtil.Truncate(usersJson, 6000)}",
+            $"موضوع: {title}\nمتن: {AiTextUtil.Truncate(plainText, 2500)}\n\nهمکاران:\n{AiTextUtil.Truncate(usersJson, 6000)}",
             ct);
         var parsed = ParseJsonObject(gen);
         if (parsed != null && parsed.Value.TryGetProperty("suggestions", out var arr) && arr.ValueKind == JsonValueKind.Array)
@@ -127,15 +182,10 @@ public class LetterAiService : ILetterAiService
                     });
             }
             if (list.Count > 0)
-                return new AiReferralSuggestResponse { LetterId = letterId, Suggestions = list };
+                return (list, false);
         }
         // حالت قطعی: تطبیق موضوعی واحد سازمانی
-        return new AiReferralSuggestResponse
-        {
-            LetterId = letterId,
-            Suggestions = FallbackReferral(data.PlainText + " " + data.Title, candidates),
-            UsedFallback = true,
-        };
+        return (FallbackReferral(plainText + " " + title, candidates), true);
     }
 
     private record Candidate(int Id, string Name, string? Dept);
@@ -347,7 +397,7 @@ public class LetterAiService : ILetterAiService
 
     // ==================== ابزارهای مشترک ====================
 
-    private record LetterContext(string Title, string Sender, string PlainText, string Priority, string PromptText, string FallbackStatus);
+    private record LetterContext(string Number, string Title, string Sender, string PlainText, string Priority, DateTime Date, string PromptText, string FallbackStatus);
 
     private async Task<LetterContext?> LoadLetterContextAsync(int letterId, int userId, bool isAdmin, CancellationToken ct)
     {
@@ -378,7 +428,7 @@ public class LetterAiService : ILetterAiService
                      $"تاریخ: {AiDateUtil.ToFaShort(d.DateSabt)}\nفوریت: {d.Foriat} — محرمانگی: {d.Mahramanegi}\n" +
                      $"متن:\n{AiTextUtil.Truncate(plain, 4000)}\n" +
                      (chainText != "" ? $"\nگردش ارجاع‌ها:\n{chainText}" : "");
-        return new LetterContext(d.Title, d.SenderName, plain, d.Foriat, prompt, fallbackStatus);
+        return new LetterContext(d.LetterNumber, d.Title, d.SenderName, plain, d.Foriat, d.DateSabt, prompt, fallbackStatus);
     }
 
     private AiToolContext ToolCtx(int userId, CancellationToken ct) => new()

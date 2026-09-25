@@ -616,8 +616,362 @@ public class PendingActionsTool : IAiTool
         return JsonSerializer.Serialize(list.Select(a => new
         {
             شناسه = a.Id,
-            اقدام = a.Action == "request_leave" ? "درخواست مرخصی" : a.Action == "clock" ? "ساعت‌زنی" : a.Action,
+            اقدام = AiActionNames.Fa(a.Action),
             خلاصه = a.Summary,
         }));
+    }
+}
+
+// ---------------- نام فارسی اقدام‌ها ----------------
+
+internal static class AiActionNames
+{
+    public static string Fa(string action) => action switch
+    {
+        "request_leave" => "درخواست مرخصی",
+        "clock" => "ساعت‌زنی",
+        "request_mission" => "درخواست مأموریت",
+        "decide_leave" => "تأیید/رد مرخصی",
+        "answer_referral" => "پاسخ به ارجاع",
+        "create_ticket" => "ثبت تیکت پشتیبانی",
+        "report_work" => "گزارش‌کار",
+        "create_letter_draft" => "پیش‌نویس نامه",
+        _ => action,
+    };
+}
+
+// ---------------- تأییدها و اقدام‌های اجرایی (فاز ۲) ----------------
+
+public class PendingApprovalsTool : IAiTool
+{
+    public string Name => "pending_approvals";
+    public string Description => "مرخصی‌های در انتظار تأییدِ کاربر جاری (برای مدیر/سرپرست: درخواست‌های نیروهای مستقیم). شناسه هر مورد را هم می‌دهد تا با decide_leave تأیید/رد شود. قبل از decide_leave حتماً این را صدا بزن تا شناسه درست را پیدا کنی.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            limit = new { type = "integer", description = "تعداد (پیش‌فرض ۱۰، حداکثر ۳۰)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var fa = ctx.Services.GetRequiredService<IFaAttService>();
+        var limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 10, 1, 30);
+        var list = (await fa.TeamLeavesAsync(ctx.UserId)).Take(limit).ToList();
+        return JsonSerializer.Serialize(list.Select(l => new
+        {
+            شناسه = l.Id,
+            کارمند = l.EmployeeName,
+            نوع = l.LeaveTypeName,
+            از = AiDateUtil.ToFaShort(l.FromDate),
+            تا = AiDateUtil.ToFaShort(l.ToDate),
+            دلیل = l.Reason,
+        }));
+    }
+}
+
+public class MyReferralsPendingTool : IAiTool
+{
+    public string Name => "my_referrals_pending";
+    public string Description => "ارجاع‌های بی‌پاسخ کاربر جاری از کارتابل (نامه‌هایی که باید جواب بدهد). شناسه ارجاع (erja_id) را می‌دهد تا با answer_referral پاسخ/تأیید/رد شود. قبل از answer_referral حتماً این را صدا بزن.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            limit = new { type = "integer", description = "تعداد (پیش‌فرض ۱۰، حداکثر ۲۰)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var letters = ctx.Services.GetRequiredService<IInnerLetterService>();
+        var limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 10, 1, 20);
+        var page = await letters.GetInboxAsync(ctx.UserId, null, false, 1, 50);
+        var items = page.Items
+            .Where(l => l.ErjaId != null && !l.HasAnswer)
+            .Take(limit).ToList();
+        return JsonSerializer.Serialize(items.Select(l => new
+        {
+            erja_id = l.ErjaId,
+            letter_id = l.LetterId,
+            شماره = l.LetterNumber,
+            عنوان = l.Title,
+            فرستنده = l.Sender,
+            پاراف = AiTextUtil.Truncate(AiTextUtil.StripHtml(l.MatnErja ?? ""), 200),
+            تاریخ = AiDateUtil.ToFaShort(l.Date),
+            مهلت = l.MohlatPasokh == null ? null : AiDateUtil.ToFaShort(l.MohlatPasokh.Value),
+        }));
+    }
+}
+
+public class RequestMissionTool : IAiTool
+{
+    public string Name => "request_mission";
+    public string Description => "ثبت پیش‌فاکتور درخواست مأموریت (اجرا فقط بعد از تأیید کاربر). تاریخ‌ها را می‌توانی فارسی بدهی: امروز، فردا، پس‌فردا، نام روز هفته، یا ۱۴۰۴/۰۷/۰۵.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            destination = new { type = "string", description = "مقصد مأموریت (اجباری)" },
+            from_date = new { type = "string", description = "از تاریخ (اجباری)" },
+            to_date = new { type = "string", description = "تا تاریخ (اختیاری؛ خالی = همان روز شروع)" },
+            reason = new { type = "string", description = "دلیل/موضوع مأموریت (اختیاری)" },
+        },
+        required = new[] { "destination", "from_date" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var dest = (AiToolArgs.GetString(args, "destination") ?? "").Trim();
+        if (dest == "")
+            return JsonSerializer.Serialize(new { error = "bad_destination", message = "مقصد مأموریت مشخص نیست." });
+        var today = DateTime.Today;
+        var fromParsed = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "from_date"), today);
+        if (fromParsed == null)
+            return JsonSerializer.Serialize(new { error = "bad_date", message = "تاریخ شروع را نفهمیدم؛ مثلاً بگو «فردا» یا «۱۴۰۴/۰۷/۰۵»." });
+        var from = fromParsed.Value;
+        var to = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "to_date"), today) ?? from;
+        if (to < from) (from, to) = (to, from);
+
+        var reason = AiToolArgs.GetString(args, "reason");
+        var summary = $"مأموریت {dest} از {AiDateUtil.ToFaShort(from)} تا {AiDateUtil.ToFaShort(to)}" +
+                      (string.IsNullOrWhiteSpace(reason) ? "" : $" (دلیل: {reason.Trim()})");
+        var pending = await actions.CreateAsync(ctx.UserId, "request_mission",
+            JsonSerializer.Serialize(new
+            {
+                from = from.ToString("yyyy-MM-dd"),
+                to = to.ToString("yyyy-MM-dd"),
+                destination = dest,
+                reason,
+            }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}
+
+public class DecideLeaveTool : IAiTool
+{
+    public string Name => "decide_leave";
+    public string Description => "ثبت پیش‌فاکتور تأیید/رد یک مرخصی (اجرا فقط بعد از تأیید کاربر). شناسه را از pending_approvals بگیر. فقط برای مرخصی نیروهای مستقیم کاربر (یا کارشناس منابع انسانی) جواب می‌دهد.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            leave_id = new { type = "integer", description = "شناسه مرخصی از خروجی pending_approvals (اجباری)" },
+            approve = new { type = "boolean", description = "true=تأیید، false=رد (اجباری)" },
+        },
+        required = new[] { "leave_id", "approve" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var fa = ctx.Services.GetRequiredService<IFaAttService>();
+        var leaveId = AiToolArgs.GetInt(args, "leave_id") ?? 0;
+        if (leaveId <= 0)
+            return JsonSerializer.Serialize(new { error = "bad_id", message = "شناسه مرخصی معتبر نیست؛ اول pending_approvals را ببین." });
+        var approve = AiToolArgs.GetBool(args, "approve");
+
+        var leave = (await fa.TeamLeavesAsync(ctx.UserId)).FirstOrDefault(l => l.Id == leaveId);
+        var what = approve ? "تأیید" : "رد";
+        var summary = leave == null
+            ? $"{what} مرخصی شماره {leaveId}"
+            : $"{what} مرخصی {leave.EmployeeName} ({leave.LeaveTypeName}، {AiDateUtil.ToFaShort(leave.FromDate)} تا {AiDateUtil.ToFaShort(leave.ToDate)})";
+        var pending = await actions.CreateAsync(ctx.UserId, "decide_leave",
+            JsonSerializer.Serialize(new { leave_id = leaveId, approve }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}
+
+public class AnswerReferralTool : IAiTool
+{
+    public string Name => "answer_referral";
+    public string Description => "ثبت پیش‌فاکتور پاسخ به یک ارجاع نامه (اجرا فقط بعد از تأیید کاربر). شناسه ارجاع را از my_referrals_pending بگیر. تصمیم: «تأیید» یا «رد» یا «پاسخ» (متن خالی).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            erja_id = new { type = "integer", description = "شناسه ارجاع از خروجی my_referrals_pending (اجباری)" },
+            decision = new { type = "string", description = "تأیید / رد / پاسخ (پیش‌فرض: پاسخ)" },
+            text = new { type = "string", description = "متن پاسخ (برای تصمیم «پاسخ» اجباری است)" },
+        },
+        required = new[] { "erja_id" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var letters = ctx.Services.GetRequiredService<IInnerLetterService>();
+        var erjaId = AiToolArgs.GetInt(args, "erja_id") ?? 0;
+        if (erjaId <= 0)
+            return JsonSerializer.Serialize(new { error = "bad_id", message = "شناسه ارجاع معتبر نیست؛ اول my_referrals_pending را ببین." });
+        var d = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "decision"));
+        var decision = d.Contains("تایید") || d.Contains("تأیید") || d is "approve" or "1" ? 1
+            : d is "رد" or "reject" or "2" || d.Contains("مخالف") ? 2 : 0;
+        var text = (AiToolArgs.GetString(args, "text") ?? "").Trim();
+        if (decision == 0 && text == "")
+            return JsonSerializer.Serialize(new { error = "no_text", message = "متن پاسخ را بگو، یا تصمیم را «تأیید»/«رد» بگذار." });
+
+        // عنوان نامه برای خلاصه خواناتر (اختیاری)
+        string title = "";
+        try
+        {
+            var page = await letters.GetInboxAsync(ctx.UserId, null, false, 1, 50);
+            title = page.Items.FirstOrDefault(l => l.ErjaId == erjaId)?.Title ?? "";
+        }
+        catch { /* خلاصه بدون عنوان */ }
+        var what = decision == 1 ? "تأیید" : decision == 2 ? "رد" : "پاسخ به";
+        var summary = $"{what} ارجاع" + (title == "" ? $" شماره {erjaId}" : $" «{title}»") +
+                      (decision == 0 ? $": {AiTextUtil.Truncate(text, 80)}" : "");
+        var pending = await actions.CreateAsync(ctx.UserId, "answer_referral",
+            JsonSerializer.Serialize(new { erja_id = erjaId, decision, text }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}
+
+public class CreateTicketTool : IAiTool
+{
+    public string Name => "create_ticket";
+    public string Description => "ثبت پیش‌فاکتور تیکت پشتیبانی منابع انسانی (اجرا فقط بعد از تأیید کاربر). دسته: مرخصی، حقوق، بیمه، قرارداد، آموزش یا سایر.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            subject = new { type = "string", description = "موضوع تیکت (اجباری)" },
+            body = new { type = "string", description = "شرح مشکل/درخواست (اجباری)" },
+            category = new { type = "string", description = "دسته: مرخصی، حقوق، بیمه، قرارداد، آموزش، سایر (پیش‌فرض: سایر)" },
+        },
+        required = new[] { "subject", "body" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var subject = (AiToolArgs.GetString(args, "subject") ?? "").Trim();
+        var body = (AiToolArgs.GetString(args, "body") ?? "").Trim();
+        if (subject == "" || body == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "موضوع و شرح تیکت هر دو لازم است." });
+        var c = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "category"));
+        var (category, catName) = c.Contains("مرخص") ? (1, "مرخصی")
+            : c.Contains("حقوق") || c.Contains("فیش") || c.Contains("دستمزد") ? (2, "حقوق")
+            : c.Contains("بیمه") ? (3, "بیمه")
+            : c.Contains("قرارداد") ? (4, "قرارداد")
+            : c.Contains("آموزش") ? (5, "آموزش") : (0, "سایر");
+        var summary = $"تیکت «{subject}» (دسته: {catName})";
+        var pending = await actions.CreateAsync(ctx.UserId, "create_ticket",
+            JsonSerializer.Serialize(new { subject, body, category }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}
+
+public class ReportWorkTool : IAiTool
+{
+    public string Name => "report_work";
+    public string Description => "ثبت پیش‌فاکتور گزارش‌کار روزانه روی یک پروژه (اجرا فقط بعد از تأیید کاربر). پروژه را می‌توانی با نام (حتی ناقص) یا شناسه بدهی؛ اگر چند پروژه شبیه هم بود، ابزار فهرست می‌دهد تا دقیق بپرسی.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            project = new { type = "string", description = "نام (کامل یا بخشی) یا شناسه عددی پروژه (اجباری)" },
+            description = new { type = "string", description = "شرح کاری که انجام شد (اجباری)" },
+            date = new { type = "string", description = "تاریخ گزارش: امروز، دیروز، یا ۱۴۰۴/۰۷/۰۵ (پیش‌فرض: امروز)" },
+            start = new { type = "string", description = "ساعت شروع مثل 08:00 (پیش‌فرض 08:00)" },
+            end = new { type = "string", description = "ساعت پایان مثل 17:00 (پیش‌فرض 17:00)" },
+        },
+        required = new[] { "project", "description" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var projArg = (AiToolArgs.GetString(args, "project") ?? "").Trim();
+        var desc = (AiToolArgs.GetString(args, "description") ?? "").Trim();
+        if (projArg == "" || desc == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "پروژه و شرح کار هر دو لازم است." });
+
+        var query = db.ProjectEntryExits.AsNoTracking().Where(x => !x.IsDelete);
+        List<ProjectListRow> matches;
+        if (int.TryParse(AiTextUtil.ToEnDigits(projArg), out var projId))
+        {
+            matches = await query.Where(x => x.Id == projId)
+                .Select(x => new ProjectListRow(x.Id, x.ProjectName, x.CodeProject)).ToListAsync(ctx.CancellationToken);
+        }
+        else
+        {
+            var norm = AiTextUtil.NormalizeFa(projArg);
+            var all = await query.Select(x => new ProjectListRow(x.Id, x.ProjectName, x.CodeProject))
+                .ToListAsync(ctx.CancellationToken);
+            matches = all.Where(x => AiTextUtil.NormalizeFa(x.Name + " " + x.Code).Contains(norm)).Take(6).ToList();
+        }
+        if (matches.Count == 0)
+            return JsonSerializer.Serialize(new { error = "no_project", message = $"پروژه‌ای با نام «{projArg}» پیدا نکردم؛ نام دقیق‌تر یا شناسه را بگو." });
+        if (matches.Count > 1)
+            return JsonSerializer.Serialize(new
+            {
+                error = "ambiguous_project",
+                message = "چند پروژه شبیه هم پیدا شد؛ کدام؟",
+                candidates = matches.Select(m => new { شناسه = m.Id, نام = m.Name, کد = m.Code }),
+            });
+        var project = matches[0];
+
+        var date = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "date"), DateTime.Today) ?? DateTime.Today;
+        var startRaw = AiTextUtil.ToEnDigits(AiToolArgs.GetString(args, "start") ?? "08:00");
+        var endRaw = AiTextUtil.ToEnDigits(AiToolArgs.GetString(args, "end") ?? "17:00");
+        if (!TimeOnly.TryParse(startRaw, out var start) || !TimeOnly.TryParse(endRaw, out var end))
+            return JsonSerializer.Serialize(new { error = "bad_time", message = "ساعت شروع/پایان معتبر نیست؛ مثل 08:00 و 17:00." });
+        if (start == end)
+            return JsonSerializer.Serialize(new { error = "bad_time", message = "ساعت شروع و پایان نمی‌توانند یکسان باشند." });
+
+        var summary = $"گزارش‌کار پروژه «{project.Name}» برای {AiDateUtil.ToFaShort(date)} ({start:HH:mm} تا {end:HH:mm})";
+        var pending = await actions.CreateAsync(ctx.UserId, "report_work",
+            JsonSerializer.Serialize(new
+            {
+                project_id = project.Id,
+                description = desc,
+                date = date.ToString("yyyy-MM-dd"),
+                start = start.ToString("HH:mm"),
+                end = end.ToString("HH:mm"),
+            }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+
+    private sealed record ProjectListRow(int Id, string Name, string Code);
+}
+
+public class CreateLetterDraftTool : IAiTool
+{
+    public string Name => "create_letter_draft";
+    public string Description => "ثبت پیش‌فاکتور پیش‌نویس نامه داخلی جدید (اجرا فقط بعد از تأیید کاربر). پیش‌نویس در کارتابل ذخیره می‌شود تا بعداً گیرنده بگیرد و ارسال شود.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            title = new { type = "string", description = "عنوان نامه (اجباری)" },
+            text = new { type = "string", description = "متن نامه (اختیاری؛ می‌تواند خالی بماند تا بعداً نوشته شود)" },
+        },
+        required = new[] { "title" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var title = (AiToolArgs.GetString(args, "title") ?? "").Trim();
+        if (title == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "عنوان نامه لازم است." });
+        var text = AiToolArgs.GetString(args, "text") ?? "";
+        var summary = $"پیش‌نویس نامه «{title}»";
+        var pending = await actions.CreateAsync(ctx.UserId, "create_letter_draft",
+            JsonSerializer.Serialize(new { title, text }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
     }
 }

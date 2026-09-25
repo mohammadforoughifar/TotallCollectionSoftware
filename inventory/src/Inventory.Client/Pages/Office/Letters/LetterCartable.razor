@@ -339,7 +339,7 @@
                             </div>
                         }
 
-                        @* 🤖 دستیار نامه — خلاصه، پیشنهاد ارجاع، اقدام‌ها، دسته‌بندی *@
+                        @* 🤖 دستیار نامه — خلاصه، پیشنهاد ارجاع، اقدام‌ها، دسته‌بندی، پیش‌نویس پاسخ *@
                         @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
                         {
                             <div class="ai-card">
@@ -350,6 +350,7 @@
                                         <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiSuggest">پیشنهاد ارجاع</button>
                                         <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiTasks">اقدام‌ها و مهلت‌ها</button>
                                         <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiCategorize">دسته‌بندی</button>
+                                        <button class="lbtn ghost" disabled="@aiBusy" @onclick="AiDraftReply">✍️ پیش‌نویس پاسخ</button>
                                     </div>
                                 </div>
                                 @if (aiBusy)
@@ -1424,6 +1425,26 @@
         finally { aiBusy = false; }
     }
 
+    private async Task AiDraftReply()
+    {
+        var sel = selected;
+        if (sel == null || aiBusy) return;
+        var id = sel.LetterId;
+        aiBusy = true; aiErr = ""; aiForLetterId = id;
+        try
+        {
+            var draft = await AiSvc.DraftReplyAsync(id, null);
+            if (sel.IsMine || sel.SenderUserId <= 0)
+                compose?.Open(draft.Subject, draft.BodyHtml);
+            else
+                compose?.OpenReply(draft.Subject, draft.BodyHtml, sel.SenderUserId,
+                    sel.LetterId, sel.LetterNumber, sel.Title);
+            if (draft.UsedFallback) Toast.Info("پیش‌نویس پاسخ (حالت آفلاین) باز شد؛ متن را بازبینی کن.");
+        }
+        catch (Exception ex) { aiErr = ex.Message; }
+        finally { aiBusy = false; }
+    }
+
     public void Dispose() => Rt.DataChanged -= OnDataChanged;
 
     // ==================== مدل‌ها ====================
@@ -1443,6 +1464,13 @@
     .ai-btns { display: flex; gap: .35rem; flex-wrap: wrap; }
     .ai-err { margin-top: .5rem; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: .5rem; padding: .4rem .6rem; font-size: .82rem; }
     .ai-res { margin-top: .6rem; background: #f8f7ff; border: 1px solid #ddd6fe; border-radius: .6rem; padding: .55rem .65rem; font-size: .82rem; line-height: 1.9; }
+    .ai-res p { margin: .3rem 0 0; }
+    .ai-status-line { margin-top: .4rem; color: #6d28d9; font-size: .78rem; }
+    .ai-sug { margin-top: .4rem; padding: .35rem .5rem; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+    .ai-sug small { color: var(--sub); flex-basis: 100%; }
+    .ai-task { margin-top: .35rem; padding: .35rem .5rem; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; display: flex; gap: .35rem; align-items: center; flex-wrap: wrap; }
+</style>
+x solid #ddd6fe; border-radius: .6rem; padding: .55rem .65rem; font-size: .82rem; line-height: 1.9; }
     .ai-res p { margin: .3rem 0 0; }
     .ai-status-line { margin-top: .4rem; color: #6d28d9; font-size: .78rem; }
     .ai-sug { margin-top: .4rem; padding: .35rem .5rem; background: #fff; border: 1px solid #e2e8f0; border-radius: .5rem; display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }

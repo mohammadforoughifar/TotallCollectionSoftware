@@ -91,7 +91,7 @@ public class AiPendingAction
 
     public int UserId { get; set; }
 
-    /// <summary>نوع اقدام: request_leave | clock</summary>
+    /// <summary>نوع اقدام: request_leave | clock | request_mission | decide_leave | answer_referral | create_ticket | report_work | create_letter_draft</summary>
     [MaxLength(40)]
     public string Action { get; set; } = "";
 

@@ -7,7 +7,8 @@ using Microsoft.Extensions.Options;
 namespace Inventory.Api.Controllers;
 
 /// <summary>
-/// هوش مصنوعی فروغ آریا — دستیار مرکزی (۱ تا ۵)، هوش نامه‌ها (۶ تا ۱۱) و منشی کارمندی (۲۲).
+/// هوش مصنوعی فروغ آریا — دستیار مرکزی (۱ تا ۵)، هوش نامه‌ها (۶ تا ۱۱ + پاسخ‌نویسی و پیشنهاد گیرنده)،
+/// منشی کارمندی (۲۲) و اقدام‌های اجرایی با تأیید (مرخصی، مأموریت، ارجاع، تیکت، گزارش‌کار، پیش‌نویس نامه).
 /// ماژول دسترسی: AiAssistant (Use) + مجوز ماژول مربوطه برای هوش نامه‌ها.
 /// </summary>
 [Route("api/ai")]
@@ -151,6 +152,25 @@ public class AiController : RbacControllerBase
         if (await ForbiddenUnlessAsync("InnerLetters", "Read") is { } noRead) return noRead;
         var result = await _letters.CategorizeAsync(id, MyUserId, await HasAsync("InnerLetters", "ViewAll"), ct);
         return result == null ? NotFound(new { message = "نامه یافت نشد یا دسترسی ندارید." }) : Ok(result);
+    }
+
+    /// <summary>پاسخ‌نویسی هوشمند: پیش‌نویس پاسخ آماده برای باز شدن در فرم نامه.</summary>
+    [HttpPost("letters/{id:int}/draft-reply")]
+    public async Task<IActionResult> DraftReply(int id, [FromBody] AiReplyHintRequest? req, CancellationToken ct)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
+        if (await ForbiddenUnlessAsync("InnerLetters", "Read") is { } noRead) return noRead;
+        var result = await _letters.DraftReplyAsync(id, MyUserId, await HasAsync("InnerLetters", "ViewAll"), req?.Hint, ct);
+        return result == null ? NotFound(new { message = "نامه یافت نشد یا دسترسی ندارید." }) : Ok(result);
+    }
+
+    /// <summary>پیشنهاد گیرنده هنگام نوشتن نامه جدید (از روی موضوع و متن).</summary>
+    [HttpPost("letters/suggest-receivers")]
+    public async Task<IActionResult> SuggestReceivers([FromBody] AiReceiversSuggestRequest? req, CancellationToken ct)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
+        if (await ForbiddenUnlessAsync("InnerLetters", "Create") is { } noCreate) return noCreate;
+        return Ok(await _letters.SuggestReceiversAsync(req, MyUserId, ct));
     }
 
     /// <summary>۱۰) پیش‌نویس صورتجلسه از متن خام.</summary>

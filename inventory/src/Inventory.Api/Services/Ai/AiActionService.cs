@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaAtt;
+using Inventory.Api.Services.FaCom;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -26,13 +27,20 @@ public class AiActionService
     private readonly AppDbContext _db;
     private readonly AiOptions _options;
     private readonly IFaAttService _faAtt;
+    private readonly IErjaService _erja;
+    private readonly IPishnevisService _pishnevis;
+    private readonly IFaComService _faCom;
     private readonly ILogger<AiActionService> _log;
 
-    public AiActionService(AppDbContext db, IOptions<AiOptions> options, IFaAttService faAtt, ILogger<AiActionService> log)
+    public AiActionService(AppDbContext db, IOptions<AiOptions> options, IFaAttService faAtt,
+        IErjaService erja, IPishnevisService pishnevis, IFaComService faCom, ILogger<AiActionService> log)
     {
         _db = db;
         _options = options.Value;
         _faAtt = faAtt;
+        _erja = erja;
+        _pishnevis = pishnevis;
+        _faCom = faCom;
         _log = log;
     }
 
@@ -80,11 +88,24 @@ public class AiActionService
         if (action == null)
             return (false, "پیش‌فاکتور بازی نداری. اول بگو چه کاری انجام بدهم (مثلاً «فردا مرخصی می‌خوام»).");
 
-        // کنترل دسترسی ماژول مربوطه — مثل خود سامانه
-        const string module = "FaAtt";
+        // کنترل دسترسی ماژول مربوطه — دقیقاً مثل خود سامانه
+        var (module, perm) = action.Action switch
+        {
+            "request_leave" => ("FaAtt", "Create"),
+            "clock" => ("FaAtt", "Create"),
+            "request_mission" => ("FaAtt", "Create"),
+            "decide_leave" => ("FaAtt", "Read"),
+            "answer_referral" => ("InnerLetters", "Read"),
+            "create_ticket" => ("FaCom", "Create"),
+            "report_work" => ("ReportWorks", "Create"),
+            "create_letter_draft" => ("InnerLetters", "Create"),
+            _ => ("", ""),
+        };
+        if (module == "")
+            return (false, "نوع اقدام ناشناخته است.");
         var role = await _db.Users.AsNoTracking()
             .Where(u => u.Id == userId).Select(u => u.Role).FirstOrDefaultAsync(ct);
-        if (!await AiAccessHelper.UserHasAsync(_db, userId, module, "Create", role, ct))
+        if (!await AiAccessHelper.UserHasAsync(_db, userId, module, perm, role, ct))
             return (false, "به این اقدام دسترسی نداری. ⛔");
 
         try
@@ -93,6 +114,12 @@ public class AiActionService
             {
                 "request_leave" => await ExecuteLeaveAsync(action, userId, userName, ct),
                 "clock" => await ExecuteClockAsync(action, userId, userName, ct),
+                "request_mission" => await ExecuteMissionAsync(action, userId, userName, ct),
+                "decide_leave" => await ExecuteDecideLeaveAsync(action, userId, userName, role, ct),
+                "answer_referral" => await ExecuteAnswerReferralAsync(action, userId, userName, ct),
+                "create_ticket" => await ExecuteTicketAsync(action, userId, ct),
+                "report_work" => await ExecuteReportWorkAsync(action, userId, ct),
+                "create_letter_draft" => await ExecuteLetterDraftAsync(action, userId, ct),
                 _ => throw new InvalidOperationException("نوع اقدام ناشناخته است."),
             };
             action.Status = 1;
@@ -164,6 +191,158 @@ public class AiActionService
         var log = await _faAtt.ClockAsync(userId, userName, new FaAttClockSaveDto { Type = type });
         var when = log.Timestamp.ToString("HH:mm");
         return type == 0 ? $"ساعت ورود ({when}) ثبت شد. 👋" : $"ساعت خروج ({when}) ثبت شد. 👋";
+    }
+
+    private async Task<string> ExecuteMissionAsync(AiPendingAction action, int userId, string userName, CancellationToken ct)
+    {
+        _ = userName;
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var root = doc.RootElement;
+        var from = root.TryGetProperty("from", out var f) ? f.GetString() : null;
+        var to = root.TryGetProperty("to", out var e) ? e.GetString() : null;
+        var dest = root.TryGetProperty("destination", out var d) ? d.GetString() : null;
+        var reason = root.TryGetProperty("reason", out var r) ? r.GetString() : null;
+        if (!DateTime.TryParse(from, out var fromDate) || !DateTime.TryParse(to, out var toDate)
+            || string.IsNullOrWhiteSpace(dest))
+            throw new InvalidOperationException("اطلاعات مأموریت ناقص است؛ مقصد و تاریخ را بگو.");
+        if (toDate < fromDate) (fromDate, toDate) = (toDate, fromDate);
+
+        var empId = await _db.HrEmployees.AsNoTracking()
+            .Where(x => x.SystemUserId == userId).Select(x => x.Id).FirstOrDefaultAsync(ct);
+        if (empId == 0) throw new InvalidOperationException("پرونده پرسنلی برایت یافت نشد.");
+
+        var saved = await _faAtt.RequestMyMissionAsync(userId, new FaAttMissionSaveDto
+        {
+            EmployeeId = empId,
+            FromDate = fromDate.Date,
+            ToDate = toDate.Date,
+            Destination = dest.Trim(),
+            Reason = string.IsNullOrWhiteSpace(reason) ? "ثبت با دستیار فروغ آریا" : reason.Trim(),
+        });
+        return $"مأموریت {saved.Destination} از {AiDateUtil.ToFaShort(saved.FromDate)} تا {AiDateUtil.ToFaShort(saved.ToDate)} ثبت شد و در انتظار تأیید است.";
+    }
+
+    private async Task<string> ExecuteDecideLeaveAsync(AiPendingAction action, int userId, string userName, string? role, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var leaveId = doc.RootElement.TryGetProperty("leave_id", out var l) && l.TryGetInt32(out var n) ? n : 0;
+        var approve = doc.RootElement.TryGetProperty("approve", out var a) && a.ValueKind == JsonValueKind.True;
+        if (leaveId <= 0) throw new InvalidOperationException("مرخصی مشخص نیست.");
+        var isHr = await AiAccessHelper.UserHasAsync(_db, userId, "FaAtt", "Manage", role, ct);
+        var decided = await _faAtt.ManagerDecideAsync(leaveId, approve, userId, userName, isHr);
+        var what = approve ? "تأیید" : "رد";
+        return $"مرخصی {decided.EmployeeName ?? ""} ({decided.LeaveTypeName}) {what} شد. ✅";
+    }
+
+    private async Task<string> ExecuteAnswerReferralAsync(AiPendingAction action, int userId, string userName, CancellationToken ct)
+    {
+        _ = ct;
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var erjaId = doc.RootElement.TryGetProperty("erja_id", out var e) && e.TryGetInt32(out var n) ? n : 0;
+        var decision = doc.RootElement.TryGetProperty("decision", out var d) && d.TryGetInt32(out var m) ? m : 0;
+        var text = doc.RootElement.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+        if (erjaId <= 0) throw new InvalidOperationException("ارجاع مشخص نیست.");
+        if (decision is < 0 or > 2) decision = 0;
+        await _erja.AnswerAsync(erjaId, new AnswerErjaDto { Answer = text.Trim(), TypeTaeed = decision }, userId, userName);
+        return decision switch
+        {
+            1 => "ارجاع تأیید شد. ✅",
+            2 => "ارجاع رد شد.",
+            _ => "پاسخ متنی روی ارجاع ثبت شد. ✍️",
+        };
+    }
+
+    private async Task<string> ExecuteTicketAsync(AiPendingAction action, int userId, CancellationToken ct)
+    {
+        _ = ct;
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var subject = doc.RootElement.TryGetProperty("subject", out var s) ? s.GetString() ?? "" : "";
+        var body = doc.RootElement.TryGetProperty("body", out var b) ? b.GetString() ?? "" : "";
+        var category = doc.RootElement.TryGetProperty("category", out var c) && c.TryGetInt32(out var n) ? n : 0;
+        if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
+            throw new InvalidOperationException("موضوع و شرح تیکت لازم است.");
+        var saved = await _faCom.CreateTicketAsync(userId, new FaComTicketSaveDto
+        {
+            Subject = subject.Trim(),
+            Body = body.Trim(),
+            Category = Math.Clamp(category, 0, 5),
+            Priority = 1,
+        }, false);
+        return $"تیکت «{saved.Subject}» با شماره {saved.Id} ثبت شد. 🎫";
+    }
+
+    private async Task<string> ExecuteReportWorkAsync(AiPendingAction action, int userId, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var root = doc.RootElement;
+        var projectId = root.TryGetProperty("project_id", out var p) && p.TryGetInt32(out var n) ? n : 0;
+        var desc = root.TryGetProperty("description", out var d) ? d.GetString() ?? "" : "";
+        var date = root.TryGetProperty("date", out var dt) && DateTime.TryParse(dt.GetString(), out var dd) ? dd.Date : DateTime.Today;
+        var start = root.TryGetProperty("start", out var s) && TimeOnly.TryParse(s.GetString(), out var st) ? st : new TimeOnly(8, 0);
+        var end = root.TryGetProperty("end", out var e) && TimeOnly.TryParse(e.GetString(), out var en) ? en : new TimeOnly(17, 0);
+        if (projectId <= 0 || string.IsNullOrWhiteSpace(desc))
+            throw new InvalidOperationException("پروژه و شرح کار لازم است.");
+        if (start == end) throw new InvalidOperationException("ساعت شروع و پایان نمی‌توانند یکسان باشند.");
+
+        // همان قوانین کنترلر گزارش‌کار (ValidateAsync)
+        var project = await _db.ProjectEntryExits.AsNoTracking()
+            .Where(x => x.Id == projectId && !x.IsDelete)
+            .Select(x => new { x.FlowStatus, x.ProjectName, x.CodeProject })
+            .FirstOrDefaultAsync(ct);
+        if (project == null) throw new InvalidOperationException("پروژه معتبر نیست.");
+        if (project.FlowStatus == 0)
+            throw new InvalidOperationException($"پروژه «{project.ProjectName}» هنوز در انتظار تأیید مدیر است؛ ثبت گزارش مجاز نیست.");
+        if (project.FlowStatus == 2)
+            throw new InvalidOperationException($"پروژه «{project.ProjectName}» رد شده است؛ ثبت گزارش مجاز نیست.");
+
+        var code = project.CodeProject;
+        var entity = new ReportWork
+        {
+            CodeProject = code,
+            ReportDate = date,
+            UserId = userId,
+            WorkDescription = desc.Trim(),
+            ProjectId = projectId,
+            StartTime = start,
+            EndTime = end,
+            SpentTime = CalcSpent(start, end, TimeOnly.MinValue, TimeOnly.MinValue),
+            CreatedAt = DateTime.Now,
+        };
+        _db.ReportWorks.Add(entity);
+        await _db.SaveChangesAsync(ct);
+
+        // به‌روزرسانی جمع ساعات پروژه (RecalcProjectTotalAsync)
+        var proj = await _db.ProjectEntryExits.FirstOrDefaultAsync(x => x.Id == projectId, ct);
+        if (proj != null)
+        {
+            var spans = await _db.ReportWorks
+                .Where(r => r.ProjectId == projectId && !r.IsDelete)
+                .Select(r => r.SpentTime)
+                .ToListAsync(ct);
+            proj.TotalSpentTime = TimeSpan.FromTicks(spans.Sum(s => s.Ticks));
+            await _db.SaveChangesAsync(ct);
+        }
+        return $"گزارش‌کار پروژه «{project.ProjectName}» برای {AiDateUtil.ToFaShort(date)} ثبت شد. 📋";
+    }
+
+    private async Task<string> ExecuteLetterDraftAsync(AiPendingAction action, int userId, CancellationToken ct)
+    {
+        _ = ct;
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var title = doc.RootElement.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var text = doc.RootElement.TryGetProperty("text", out var x) ? x.GetString() ?? "" : "";
+        if (string.IsNullOrWhiteSpace(title)) throw new InvalidOperationException("عنوان نامه لازم است.");
+        var id = await _pishnevis.AddAsync(new PishnevisDto { Title = title.Trim(), Text = text }, userId);
+        return $"پیش‌نویس نامه «{title.Trim()}» ذخیره شد (شماره {id})؛ از کارتابل ادامه‌اش بده. ✉️";
+    }
+
+    /// <summary>همان فرمول ReportWorksController.CalcSpent (کپی عمدی — منطق ساده و پایدار).</summary>
+    private static TimeSpan CalcSpent(TimeOnly start, TimeOnly end, TimeOnly breakfast, TimeOnly lunch)
+    {
+        var total = end - start;
+        if (total < TimeSpan.Zero) total += TimeSpan.FromDays(1);
+        var spent = total - breakfast.ToTimeSpan() - lunch.ToTimeSpan();
+        return spent < TimeSpan.Zero ? TimeSpan.Zero : spent;
     }
 
     // ---------------- کمکی ----------------

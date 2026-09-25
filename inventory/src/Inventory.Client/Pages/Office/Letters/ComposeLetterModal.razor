@@ -40,6 +40,43 @@
                                  SelectedUsers="hameshUsers" SelectedGroups="hameshGroups" />
             </div>
 
+            @* 🤖 پیشنهاد گیرنده هوشمند — از روی عنوان و متن نامه *@
+            @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+            {
+                <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:-.2rem 0 .4rem">
+                    <button type="button" class="lbtn ghost" style="padding:.3rem .7rem;font-size:.8rem"
+                            disabled="@aiRcvBusy" @onclick="SuggestReceivers">
+                        @if (aiRcvBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                        <i class="bi bi-robot"></i> پیشنهاد گیرنده هوشمند
+                    </button>
+                    <small class="text-muted">از روی عنوان و متنی که نوشتی، گیرنده مناسب پیشنهاد می‌دهد.</small>
+                </div>
+                @if (!string.IsNullOrEmpty(aiRcvErr))
+                {
+                    <div class="ferr" style="margin-bottom:.4rem"><i class="bi bi-exclamation-circle"></i> @aiRcvErr</div>
+                }
+                @if (aiReceivers != null)
+                {
+                    <div class="selpills" style="margin-top:0;margin-bottom:.4rem">
+                        @foreach (var s in aiReceivers.Suggestions)
+                        {
+                            var ss = s;
+                            <button type="button" class="addrel" title="@ss.Reason" @onclick="() => AddSuggestedReceiver(ss.UserId)">
+                                <i class="bi bi-plus-lg"></i> @ss.Name
+                                @if (!string.IsNullOrWhiteSpace(ss.Department))
+                                {
+                                    <small>(@ss.Department)</small>
+                                }
+                            </button>
+                        }
+                        @if (aiReceivers.Suggestions.Count == 0)
+                        {
+                            <small class="text-muted">پیشنهادی یافت نشد؛ عنوان یا متن را کامل‌تر بنویس.</small>
+                        }
+                    </div>
+                }
+            }
+
             <div class="row2">
                 <div class="fcard">
                     <label>فوریت نامه</label>
@@ -277,6 +314,31 @@
         finally { aiBusy = false; }
     }
 
+    // ==================== 🤖 پیشنهاد گیرنده هوشمند ====================
+    private bool aiRcvBusy;
+    private string aiRcvErr = "";
+    private AiReceiversResponse? aiReceivers;
+
+    private async Task SuggestReceivers()
+    {
+        if (aiRcvBusy) return;
+        aiRcvBusy = true; aiRcvErr = ""; aiReceivers = null;
+        try
+        {
+            var html = _rich != null ? await _rich.GetContentAsync() : pendingBody;
+            aiReceivers = await AiSvc.SuggestReceiversAsync(title ?? "", html ?? "");
+        }
+        catch (Exception ex) { aiRcvErr = ex.Message; }
+        finally { aiRcvBusy = false; }
+    }
+
+    private void AddSuggestedReceiver(int userId)
+    {
+        if (userId <= 0 || !rcvUsers.Add(userId)) return;
+        errRcv = false;
+        Toast.Success("به گیرندگان اضافه شد.");
+    }
+
     private List<LetterReciverDto> allUsers = new();
     private List<LetterGroupDto> allGroups = new();
 
@@ -321,6 +383,22 @@
         if (pishnevisId is > 0) _ = LoadDraftAttsAsync(pishnevisId.Value);
         StateHasChanged();
         _ = InitEditorAsync();
+    }
+
+    /// <summary>پاسخ به نامه: گیرنده = فرستنده اصلی + عطف خودکار به نامه مبدأ</summary>
+    public void OpenReply(string subject, string bodyHtml, int senderUserId,
+                          int letterId, string letterNumber, string letterTitle)
+    {
+        Open(subject, bodyHtml);
+        if (senderUserId > 0) rcvUsers.Add(senderUserId);
+        related.Add(new RelatedLetterDto
+        {
+            Related = 2, // عطف
+            RelateLetterId = letterId,
+            RelateLetterNumber = letterNumber,
+            RelateLetterTitle = letterTitle,
+        });
+        StateHasChanged();
     }
 
     /// <summary>ویرایش نامه ارسال‌شده (فقط قبل از خوانده‌شدن) — همه اطلاعات فرم ایجاد قابل ویرایش است</summary>
@@ -372,6 +450,7 @@
         pendingFiles.Clear(); savedAtts.Clear();
         related.Clear(); relOpen = false; relSel.Clear();
         aiDraftOpen = false; aiTopic = ""; aiTo = ""; aiErr = ""; aiKind = "داخلی"; aiTone = "رسمی";
+        aiRcvBusy = false; aiRcvErr = ""; aiReceivers = null;
     }
 
     private async Task InitEditorAsync()

@@ -46,6 +46,13 @@ public class AiFallbackRouter
             return FormatMissions(await _tools.ExecuteAsync("my_missions", "{\"limit\":5}", ctx));
         if (ContainsAny(q, "مرخصی", "مرخصى"))
         {
+            // «تأیید مرخصی ۱۲» / «رد مرخصی ۱۲» — ساخت پیش‌فاکتور حتی در حالت آفلاین
+            var decide = ParseDecideLeave(q);
+            if (decide != null)
+                return FormatProforma(await _tools.ExecuteAsync("decide_leave",
+                    JsonSerializer.Serialize(new { leave_id = decide.Value.id, approve = decide.Value.approve }), ctx));
+            if (ContainsAny(q, "تأیید", "تاييد", "تصویب", "در انتظار", "تیم", "نیروها"))
+                return FormatApprovals(await _tools.ExecuteAsync("pending_approvals", "{\"limit\":10}", ctx));
             if (ContainsAny(q, "مانده", "باقی", "باقیمانده", "چقدر", "چند روز", "دارم"))
                 return FormatBalances(await _tools.ExecuteAsync("my_leave_balance", "{}", ctx));
             return FormatLeaves(await _tools.ExecuteAsync("my_leaves", "{\"limit\":5}", ctx));
@@ -53,7 +60,11 @@ public class AiFallbackRouter
         if (ContainsAny(q, "حضور", "ورود", "خروج", "تاخیر", "تأخیر", "کارکرد", "شیفت", "ساعت زنی", "ساعت‌زنی"))
             return FormatAttendance(await _tools.ExecuteAsync("my_attendance_today", "{}", ctx));
         if (ContainsAny(q, "نامه", "کارتابل", "خوانده نشده", "خوانده‌نشده", "ارجاع"))
+        {
+            if (ContainsAny(q, "بی پاسخ", "منتظر پاسخ", "پاسخ نداده", "جواب نداده", "پاسخ بدهم", "پاسخ بدم"))
+                return FormatReferrals(await _tools.ExecuteAsync("my_referrals_pending", "{\"limit\":10}", ctx));
             return await FormatLettersAsync(ctx);
+        }
 
         // راهنمای «چطور...؟» با جستجوی کلیدواژه‌ای (بدون نیاز به مدل)
         if (ContainsAny(q, "چطور", "چگونه", "چجوری", "نحوه", "کجا", "آموزش", "ثبت", "چیکار کنم"))
@@ -154,6 +165,57 @@ public class AiFallbackRouter
         return sb.ToString();
     }
 
+    private static string FormatProforma(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var r = doc.RootElement;
+            if (r.TryGetProperty("error", out _))
+                return Prop(r, "message");
+            return $"📝 **پیش‌فاکتور:** {Prop(r, "summary")}\nبرای اجرا بنویس: **تأیید** (یا «لغو» برای انصراف)";
+        }
+        catch { return "نتونستم پیش‌فاکتور بسازم. 😕"; }
+    }
+
+    private static string FormatApprovals(string json)
+    {
+        var items = ParseArray(json);
+        if (items.Count == 0) return "مرخصی در انتظار تأییدی نداری. 🎉";
+        var sb = new StringBuilder("**مرخصی‌های در انتظار تأییدت:**\n");
+        foreach (var it in items)
+        {
+            sb.AppendLine($"- **شناسه {FaNum(Prop(it, "شناسه"))}** — {Prop(it, "کارمند")}: {Prop(it, "نوع")}، {FaNum(Prop(it, "از"))} تا {FaNum(Prop(it, "تا"))}" +
+                          (Prop(it, "دلیل") == "" ? "" : $" (دلیل: {Prop(it, "دلیل")})"));
+        }
+        sb.AppendLine().Append("برای تصمیم بنویس مثلاً: «تأیید مرخصی ۱۲» یا «رد مرخصی ۱۲»");
+        return sb.ToString();
+    }
+
+    private static string FormatReferrals(string json)
+    {
+        var items = ParseArray(json);
+        if (items.Count == 0) return "ارجاع بی‌پاسخی نداری. 🎉";
+        var sb = new StringBuilder("**ارجاع‌های بی‌پاسخت:**\n");
+        foreach (var it in items)
+        {
+            sb.AppendLine($"- **{Prop(it, "عنوان")}** (از {Prop(it, "فرستنده")} — {FaNum(Prop(it, "تاریخ"))})" +
+                          (Prop(it, "پاراف") == "" ? "" : $"\n  پاراف: {Prop(it, "پاراف")}") +
+                          (Prop(it, "مهلت") == "" ? "" : $" ⏰ مهلت: {FaNum(Prop(it, "مهلت"))}"));
+        }
+        sb.AppendLine().Append("باز کردن [کارتابل نامه‌ها](/letters)");
+        return sb.ToString();
+    }
+
+    private static (int id, bool approve)? ParseDecideLeave(string q)
+    {
+        // «تأیید مرخصی ۱۲» یا «رد مرخصی ۱۲» (ارقام فارسی هم قبول)
+        var m = System.Text.RegularExpressions.Regex.Match(AiTextUtil.ToEnDigits(q),
+            @"(تأیید|تاييد|تایید|رد)\s+(مرخصی\s+)?(\d+)");
+        if (!m.Success || !int.TryParse(m.Groups[3].Value, out var id) || id <= 0) return null;
+        return (id, m.Groups[1].Value != "رد");
+    }
+
     private async Task<string> FormatLettersAsync(AiToolContext ctx)
     {
         string statsJson = await _tools.ExecuteAsync("my_letters_stats", "{}", ctx);
@@ -210,6 +272,7 @@ public class AiFallbackRouter
     private static string HelpText() =>
         "من **فروغ آریا**، دستیار هوشمند سامانه‌ام 🤖\n\n" +
         "**اطلاعات خودت:** مانده مرخصی، فیش حقوقی، حضور امروز، وام‌ها، مأموریت‌ها، نامه‌های خوانده‌نشده\n" +
+        "**مدیران:** «مرخصی‌های در انتظار تأیید» و «تأیید/رد مرخصی شماره…» + «ارجاع‌های بی‌پاسخ»\n" +
         "**راهنما:** بپرس «چطور ...؟» — مثلاً «چطور فاکتور ثبت کنم؟»\n" +
         "**نامه‌ها:** داخل کارتابل، دکمه‌های خلاصه، پیشنهاد ارجاع و پیش‌نویس هوشمند کمکت می‌کنن.";
 

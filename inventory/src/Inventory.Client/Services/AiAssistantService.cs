@@ -107,6 +107,12 @@ public class AiMinutesDraft
     public bool UsedFallback { get; set; }
 }
 
+public class AiReceiversResponse
+{
+    public List<AiReferralSuggestion> Suggestions { get; set; } = new();
+    public bool UsedFallback { get; set; }
+}
+
 public class AiAssistantService
 {
     private readonly IApiClient _api;
@@ -145,6 +151,12 @@ public class AiAssistantService
 
     public Task<AiMinutesDraft> DraftMinutesAsync(string rawText, string? title)
         => _api.PostAsync<AiMinutesDraft>("api/ai/minutes/draft", new { rawText, title });
+
+    public Task<AiLetterDraft> DraftReplyAsync(int letterId, string? hint)
+        => _api.PostAsync<AiLetterDraft>($"api/ai/letters/{letterId}/draft-reply", new { hint });
+
+    public Task<AiReceiversResponse> SuggestReceiversAsync(string title, string text)
+        => _api.PostAsync<AiReceiversResponse>("api/ai/letters/suggest-receivers", new { title, text });
 
     public class AiBriefingPreview
     {

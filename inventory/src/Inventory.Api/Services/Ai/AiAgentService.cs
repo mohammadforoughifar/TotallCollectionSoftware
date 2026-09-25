@@ -125,7 +125,7 @@ public class AiAgentService : IAiAgentService
             _log.LogWarning(ex, "حلقه ایجنت ناموفق بود؛ حالت آفلاین برای کاربر {UserId}", userId);
             var offline = await _fallback.TryAnswerAsync(message, ctx);
             var reply = offline ?? "مغز متفکرم (مدل زبانی) فعلاً در دسترس نیست 😔 ولی من هنوز اینجام! " +
-                "می‌تونی این‌ها رو بپرسی: «مانده مرخصی»، «فیش حقوقی»، «حضور امروز»، «نامه‌های خوانده‌نشده» — یا بعداً دوباره تلاش کن.";
+                "می‌تونی این‌ها رو بپرسی: «مانده مرخصی»، «فیش حقوقی»، «حضور امروز»، «نامه‌های خوانده‌نشده»، «مرخصی‌های در انتظار تأیید» — یا بعداً دوباره تلاش کن.";
             await _conversations.AddMessageAsync(conv.Id, "assistant", reply, "offline", true);
             return new AiChatResponse { ConversationId = conv.Id, Reply = reply, UsedFallback = true };
         }
@@ -192,9 +192,11 @@ public class AiAgentService : IAiAgentService
         ۶) اعداد و مبالغ را در جدول یا لیست مرتب بده و تاریخ‌ها را همان‌طور که ابزار داده (شمسی) بنویس.
         ۷) اگر سؤال ربطی به سامانه و کار سازمانی ندارد، خیلی کوتاه جواب بده و برگرد به کارت.
         ۸) جواب‌های طولانی را با تیتر و لیست خوانا کن. حداکثر در حد نیاز توضیح بده.
-        ۹) اقدام اجرایی (مرخصی، ساعت‌زنی) فقط با ابزار request_leave و clock و به‌صورت پیش‌فاکتور ثبت می‌شود — هرگز مستقیم اجرا نکن!
+        ۹) اقدام اجرایی فقط با این ابزارها و به‌صورت پیش‌فاکتور ثبت می‌شود — هرگز مستقیم اجرا نکن: request_leave (مرخصی)، clock (ساعت‌زنی)، request_mission (مأموریت)، decide_leave (تأیید/رد مرخصی)، answer_referral (پاسخ به ارجاع)، create_ticket (تیکت)، report_work (گزارش‌کار)، create_letter_draft (پیش‌نویس نامه).
         ۱۰) بعد از ساخت پیش‌فاکتور، خلاصه‌اش را نشان بده و بنویس: «برای تأیید بنویس: تأیید» (یا «لغو» برای انصراف).
         ۱۱) ابزار confirm_action را فقط وقتی صدا بزن که کاربر در همین گفتگو صراحتاً تأیید کرد (تأیید، باشه، اوکی، انجام بده). اگر مطمئن نیستی، بپرس.
+        ۱۲) برای «تأیید مرخصی‌ها» اول pending_approvals را ببین و فهرست شماره‌دار نشان بده؛ بعد به‌ازای هر موردی که کاربر گفت، decide_leave بساز. برای «ارجاع‌های بی‌پاسخ» اول my_referrals_pending را ببین؛ بعد answer_referral.
+        ۱۳) در report_work اگر ابزار خطای ambiguous_project داد، نامزدها را با شناسه نشان بده و بپرس کدام؛ اگر no_project داد، نام دقیق‌تر بخواه.
         """;
 
     private static string CleanReply(string text)
