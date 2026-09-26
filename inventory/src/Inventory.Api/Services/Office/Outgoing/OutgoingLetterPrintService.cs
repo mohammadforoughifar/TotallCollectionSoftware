@@ -44,11 +44,19 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
+    private readonly IStimulsoftOutgoingLetterPrintService _stimulsoft;
+    private readonly ILogger<OutgoingLetterPrintService> _logger;
 
-    public OutgoingLetterPrintService(AppDbContext db, IWebHostEnvironment env)
+    public OutgoingLetterPrintService(
+        AppDbContext db,
+        IWebHostEnvironment env,
+        IStimulsoftOutgoingLetterPrintService stimulsoft,
+        ILogger<OutgoingLetterPrintService> logger)
     {
         _db = db;
         _env = env;
+        _stimulsoft = stimulsoft;
+        _logger = logger;
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -132,6 +140,16 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// </summary>
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
     {
+        // مسیر اصلی: رندر مستقیم قالب اختصاصی MRT شرکت با Stimulsoft.
+        // اگر موتور غیرفعال، قالب ناموجود یا رندر ناموفق باشد، پیاده‌سازی QuestPDF زیر fallback است.
+        var stimulsoftPdf = await _stimulsoft.TryGeneratePdfAsync(letterId, size);
+        if (stimulsoftPdf is { Length: > 0 })
+            return stimulsoftPdf;
+
+        _logger.LogWarning(
+            "چاپ نامه {LetterId} با MRT انجام نشد؛ QuestPDF به‌عنوان fallback استفاده می‌شود.",
+            letterId);
+
         var letter = await _db.OutgoingLetters.AsNoTracking()
             .Include(l => l.Creator)
             .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
@@ -168,10 +186,13 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         var contentPdf = BuildContentPdf(letter, signers, hasAttachment, isA5, withCopy, copyTos);
 
         // ==================== قرار دادن روی سربرگ / لوگوی شرکت ====================
+        // سربرگ باید فقط از شرکت انتخاب‌شدهٔ همین نامه دریافت شود.
+        // SystemCompany فیلدی به نام LogoPath ندارد و استفاده از لوگوی ماژول HR
+        // یا پوشهٔ ثابت شرکت 1 می‌تواند باعث چاپ سربرگ شرکت اشتباه شود.
         var letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
         if (letterheadPath == null)
         {
-            // اگر شرکت سربرگ ندارد: لوگوی سازمان (شرکت اصلی HR) به‌عنوان سربرگ استفاده می‌شود
+            // fallback نسخه فعلی مخزن: لوگوی سازمان اصلی HR
             var hrLogoPath = await _db.HrMainCompanies.AsNoTracking()
                 .Select(c => c.LogoPath)
                 .FirstOrDefaultAsync();
@@ -180,23 +201,31 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
 
         if (letterheadPath == null)
         {
-            var logoDir = Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), "uploads", "hr", "logo", "1");
-            if (Directory.Exists(logoDir))
-            {
-                letterheadPath = Directory.EnumerateFiles(logoDir).FirstOrDefault();
-            }
+            _logger.LogWarning(
+                "سربرگ نامه پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, Company={CompanyName}, LetterheadFileName={LetterheadFileName}, ContentRoot={ContentRoot}, WebRoot={WebRoot}, BaseDirectory={BaseDirectory}",
+                letterId,
+                company?.Id,
+                company?.Name,
+                company?.LetterheadFileName,
+                _env.ContentRootPath,
+                _env.WebRootPath,
+                AppContext.BaseDirectory);
+            return contentPdf;
         }
-
-        if (letterheadPath == null)
-            return contentPdf; // سربرگ موجود نیست — خود نامه برگردانده می‌شود
 
         try
         {
+            _logger.LogInformation(
+                "اعمال سربرگ نامه. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Path={LetterheadPath}",
+                letterId, company?.Id, size, letterheadPath);
             return OverlayOnLetterhead(contentPdf, letterheadPath);
         }
-        catch
+        catch (Exception ex)
         {
-            // اگر فایل سربرگ خراب بود، نامه بدون سربرگ چاپ شود تا کار دبیرخانه متوقف نشود
+            // خطا قبلاً بی‌صدا نادیده گرفته می‌شد و تشخیص نبودن سربرگ ممکن نبود.
+            _logger.LogError(ex,
+                "قرار دادن نامه روی سربرگ ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Path={LetterheadPath}",
+                letterId, company?.Id, letterheadPath);
             return contentPdf;
         }
     }
