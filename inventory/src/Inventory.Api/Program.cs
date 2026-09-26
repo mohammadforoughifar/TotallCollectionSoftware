@@ -113,6 +113,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, In
 // ---------- فرم‌های متفرقه — صورتجلسه (بندها، تصمیمات، امضا، چاپ با سربرگ) ----------
 builder.Services.AddScoped<Inventory.Api.Services.Office.IMeetingMinutesService, Inventory.Api.Services.Office.MeetingMinutesService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.IMeetingMinutesPrintService, Inventory.Api.Services.Office.MeetingMinutesPrintService>();
+builder.Services.AddScoped<Inventory.Api.Services.DevTeam.IDevTeamService, Inventory.Api.Services.DevTeam.DevTeamService>(); // میز کار توسعه
 
 // ---------- آرشیو اسناد و مدارک (پوشه، دسترسی، ورژن، گردش تایید) ----------
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocAccessService, Inventory.Api.Services.DocArchive.DocAccessService>();

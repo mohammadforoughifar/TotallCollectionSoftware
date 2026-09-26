@@ -1,0 +1,1902 @@
+@namespace Inventory.Client.Pages
+@page "/dev-team"
+@using Inventory.Shared
+@using Inventory.Shared.Dtos
+@inject IDevTeamClient Api
+@inject IAuthState Auth
+@inject IToastService Toast
+@inject NavigationManager Nav
+
+<PageTitle>میز کار توسعه</PageTitle>
+
+<div class="dt-page">
+    <div class="page-head dt-head">
+        <div>
+            <h1><i class="bi bi-code-slash"></i> میز کار توسعه</h1>
+            <div class="text-muted fs-8">مدیریت تیم نرم‌افزار — تسک، ماژول، خطا، changelog و گیت</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            @if (access.CanCreate)
+            {
+                <button class="btn btn-primary btn-sm" @onclick="OpenNewTask"><i class="bi bi-plus-lg"></i> تسک جدید</button>
+                <button class="btn btn-outline-danger btn-sm" @onclick="OpenNewProblem"><i class="bi bi-bug"></i> ثبت مشکل</button>
+                <button class="btn btn-outline-secondary btn-sm" @onclick="OpenNewChange"><i class="bi bi-git"></i> ثبت تغییر</button>
+            }
+        </div>
+    </div>
+
+    @* تب‌ها *@
+    <div class="dt-tabs mb-3">
+        @foreach (var (key, label, icon) in TabDefs)
+        {
+            <button class="dt-tab @(tab == key ? "active" : "")" @onclick="() => SwitchTab(key)">
+                <i class="bi @icon"></i> @label
+            </button>
+        }
+    </div>
+
+    @if (loading)
+    {
+        <div class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    }
+    else if (!access.CanView)
+    {
+        <div class="alert alert-warning">دسترسی مشاهدهٔ میز کار توسعه را ندارید.</div>
+    }
+    else
+    {
+        @* ========== فیلتر مشترک ========== *@
+        @if (tab == "board" || tab == "list")
+        {
+            <div class="dt-filters card border-0 shadow-sm mb-3">
+                <div class="card-body py-2">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-12 col-md-3">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                <input class="form-control" placeholder="جستجو عنوان / شماره / برچسب…"
+                                       @bind="fltQ" @bind:event="oninput" @bind:after="ReloadTasks" />
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <select class="form-select form-select-sm" @bind="fltModuleId" @bind:after="ReloadTasks">
+                                <option value="0">همه ماژول‌ها</option>
+                                @foreach (var m in lookups.Modules)
+                                {
+                                    <option value="@m.Id">@m.NameFa</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <select class="form-select form-select-sm" @bind="fltSprintId" @bind:after="ReloadTasks">
+                                <option value="0">همه اسپرینت‌ها</option>
+                                @foreach (var s in lookups.Sprints)
+                                {
+                                    <option value="@s.Id">@s.Name (@s.StatusFa)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <select class="form-select form-select-sm" @bind="fltAssigneeId" @bind:after="ReloadTasks">
+                                <option value="0">همه افراد</option>
+                                @foreach (var u in lookups.Users)
+                                {
+                                    <option value="@u.Id">@u.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <select class="form-select form-select-sm" @bind="fltType" @bind:after="ReloadTasks">
+                                <option value="">همه انواع</option>
+                                @foreach (var t in lookups.TaskTypes)
+                                {
+                                    <option value="@t">@TypeFa(t)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-1 d-flex gap-1">
+                            <button class="btn btn-sm @(onlyMine ? "btn-primary" : "btn-outline-secondary") flex-fill" title="فقط من"
+                                    @onclick="ToggleMine">
+                                <i class="bi bi-person"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ========== کانبان ========== *@
+        @if (tab == "board")
+        {
+            <div class="dt-board">
+                @foreach (var st in lookups.Statuses.Where(s => s.IsActive).OrderBy(s => s.SortOrder))
+                {
+                    var col = boardTasks.Where(t => t.StatusId == st.Id).ToList();
+                    <div class="dt-col">
+                        <div class="dt-col-head" style="border-top-color:@st.Color">
+                            <span class="dt-col-dot" style="background:@st.Color"></span>
+                            <strong>@st.NameFa</strong>
+                            <span class="badge rounded-pill text-bg-light">@col.Count</span>
+                        </div>
+                        <div class="dt-col-body">
+                            @foreach (var t in col.OrderByDescending(x => x.Priority).ThenBy(x => x.DueAt))
+                            {
+                                <div class="dt-card" @onclick="() => OpenTask(t.Id)">
+                                    <div class="dt-card-top">
+                                        <span class="dt-num">@t.Number</span>
+                                        <span class="dt-pri dt-pri-@t.Priority">@t.PriorityFa</span>
+                                    </div>
+                                    <div class="dt-card-title">@t.Title</div>
+                                    <div class="dt-card-meta">
+                                        @if (!string.IsNullOrEmpty(t.ModuleName))
+                                        {
+                                            <span class="dt-mod" style="background:@(t.ModuleColor)22;color:@t.ModuleColor">@t.ModuleName</span>
+                                        }
+                                        <span class="dt-type">@t.TypeFa</span>
+                                    </div>
+                                    <div class="dt-card-foot">
+                                        <span class="text-muted fs-8">@(t.AssigneeName ?? "—")</span>
+                                        @if (t.IsOverdue)
+                                        {
+                                            <span class="badge text-bg-danger">معوق</span>
+                                        }
+                                        else if (t.DueAt is DateTime d)
+                                        {
+                                            <span class="fs-8 text-muted">@PersianDate.ToShort(d)</span>
+                                        }
+                                        @if (t.GitLinkCount > 0)
+                                        {
+                                            <span title="لینک گیت"><i class="bi bi-git"></i> @t.GitLinkCount</span>
+                                        }
+                                        @if (t.OpenProblemCount > 0)
+                                        {
+                                            <span class="text-danger" title="مشکل باز"><i class="bi bi-bug"></i> @t.OpenProblemCount</span>
+                                        }
+                                        @if (t.WorkOrderId is not null)
+                                        {
+                                            <span class="badge text-bg-light border" title="دستور کار">@t.WorkOrderNumber</span>
+                                        }
+                                        @if (t.SubTaskCount > 0)
+                                        {
+                                            <span class="badge text-bg-light border" title="ساب‌تسک">
+                                                <i class="bi bi-diagram-3"></i> @t.SubTaskDoneCount/@t.SubTaskCount
+                                            </span>
+                                        }
+                                        @if (t.IsDependencyBlocked)
+                                        {
+                                            <span class="badge text-bg-warning" title="وابستگی باز">
+                                                <i class="bi bi-lock"></i> @t.OpenBlockerCount
+                                            </span>
+                                        }
+                                    </div>
+                                    @if (access.CanUpdate)
+                                    {
+                                        <div class="dt-card-moves" @onclick:stopPropagation="true">
+                                            @foreach (var ns in lookups.Statuses.Where(s => s.IsActive && s.Id != st.Id).Take(4))
+                                            {
+                                                var ns2 = ns;
+                                                <button class="dt-move" style="border-color:@ns2.Color;color:@ns2.Color"
+                                                        title="انتقال به @ns2.NameFa"
+                                                        @onclick="() => MoveTask(t.Id, ns2.Id)">
+                                                    @ns2.NameFa
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                            @if (col.Count == 0)
+                            {
+                                <div class="dt-empty">خالی</div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* ========== لیست ========== *@
+        else if (tab == "list")
+        {
+            <div class="card border-0 shadow-sm">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0 dt-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th>شماره</th>
+                                <th>عنوان</th>
+                                <th>وضعیت</th>
+                                <th>ماژول</th>
+                                <th>نوع</th>
+                                <th>اولویت</th>
+                                <th>مسئول</th>
+                                <th>مهلت</th>
+                                <th>ساعت</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var t in listTasks)
+                            {
+                                <tr style="cursor:pointer" @onclick="() => OpenTask(t.Id)">
+                                    <td class="font-monospace fs-8">@t.Number</td>
+                                    <td>
+                                        <div class="fw-semibold">
+                                            @t.Title
+                                            @if (t.SubTaskCount > 0)
+                                            {
+                                                <span class="badge text-bg-light border ms-1 fs-8">@t.SubTaskDoneCount/@t.SubTaskCount زیر</span>
+                                            }
+                                            @if (t.IsDependencyBlocked)
+                                            {
+                                                <span class="badge text-bg-warning ms-1 fs-8"><i class="bi bi-lock"></i></span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(t.Tags))
+                                        {
+                                            <div class="fs-8 text-muted">@t.Tags</div>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="dt-st-badge" style="background:@t.StatusColor">@t.StatusName</span>
+                                    </td>
+                                    <td>
+                                        @if (!string.IsNullOrEmpty(t.ModuleName))
+                                        {
+                                            <span class="dt-mod" style="background:@(t.ModuleColor)22;color:@t.ModuleColor">@t.ModuleName</span>
+                                        }
+                                    </td>
+                                    <td>@t.TypeFa</td>
+                                    <td><span class="dt-pri dt-pri-@t.Priority">@t.PriorityFa</span></td>
+                                    <td>@(t.AssigneeName ?? "—")</td>
+                                    <td class="@(t.IsOverdue ? "text-danger fw-bold" : "")">
+                                        @(t.DueAt is DateTime d ? PersianDate.ToShort(d) : "—")
+                                    </td>
+                                    <td class="fs-8">@(t.SpentHours)/@(t.EstimateHours?.ToString() ?? "—")</td>
+                                    <td @onclick:stopPropagation="true">
+                                        @if (access.CanDelete)
+                                        {
+                                            <button class="btn btn-sm btn-link text-danger" @onclick="() => DeleteTask(t.Id)"><i class="bi bi-trash"></i></button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (listTasks.Count == 0)
+                {
+                    <div class="text-center text-muted py-4">تسکی یافت نشد.</div>
+                }
+            </div>
+        }
+
+        @* ========== مشکلات ========== *@
+        else if (tab == "problems")
+        {
+            <div class="dt-filters card border-0 shadow-sm mb-3">
+                <div class="card-body py-2 row g-2">
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" @bind="probSeverity" @bind:after="LoadProblems">
+                            <option value="">همه شدت‌ها</option>
+                            <option value="Error">خطا</option>
+                            <option value="Warning">هشدار</option>
+                            <option value="Info">اطلاع</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" @bind="probStatus" @bind:after="LoadProblems">
+                            <option value="">همه وضعیت‌ها</option>
+                            <option value="Open">باز</option>
+                            <option value="Investigating">در حال بررسی</option>
+                            <option value="Resolved">رفع‌شده</option>
+                            <option value="WontFix">رفع نمی‌شود</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select form-select-sm" @bind="probModuleId" @bind:after="LoadProblems">
+                            <option value="0">همه ماژول‌ها</option>
+                            @foreach (var m in lookups.Modules)
+                            {
+                                <option value="@m.Id">@m.NameFa</option>
+                            }
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-2">
+                @foreach (var p in problems)
+                {
+                    <div class="col-12 col-md-6 col-lg-4">
+                        <div class="card border-0 shadow-sm h-100 dt-prob dt-prob-@p.Severity.ToLowerInvariant()">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start gap-2">
+                                    <h6 class="mb-1">@p.Title</h6>
+                                    <span class="badge @SevBadge(p.Severity)">@p.SeverityFa</span>
+                                </div>
+                                <div class="fs-8 text-muted mb-2">
+                                    @p.StatusFa
+                                    @if (!string.IsNullOrEmpty(p.ModuleName))
+                                    {
+                                        <span> · </span><span style="color:@p.ModuleColor">@p.ModuleName</span>
+                                    }
+                                    @if (!string.IsNullOrEmpty(p.TaskNumber))
+                                    {
+                                        <span> · </span><a href="javascript:void(0)" @onclick="() => OpenTask(p.TaskId!.Value)">@p.TaskNumber</a>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(p.Description))
+                                {
+                                    <div class="fs-8 text-muted mb-2 dt-clamp">@p.Description</div>
+                                }
+                                <div class="d-flex justify-content-between align-items-center fs-8">
+                                    <span>@(p.AssigneeName ?? p.ReporterName)</span>
+                                    <span>@PersianDate.ToShort(p.CreatedAt)</span>
+                                </div>
+                                @if (access.CanUpdate && (p.Status == "Open" || p.Status == "Investigating"))
+                                {
+                                    <div class="mt-2 d-flex gap-1">
+                                        <button class="btn btn-sm btn-outline-success" @onclick="() => ResolveProblem(p)">رفع شد</button>
+                                        <button class="btn btn-sm btn-outline-secondary" @onclick='() => SetProblemStatus(p, "Investigating")'>بررسی</button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (problems.Count == 0)
+                {
+                    <div class="col-12 text-center text-muted py-4">مشکلی ثبت نشده.</div>
+                }
+            </div>
+        }
+
+        @* ========== ماژول‌ها + changelog ========== *@
+        else if (tab == "modules")
+        {
+            <div class="row g-3">
+                <div class="col-lg-5">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white fw-semibold">ماژول‌های محصول</div>
+                        <div class="list-group list-group-flush">
+                            @foreach (var m in lookups.Modules)
+                            {
+                                <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center @(chgModuleId == m.Id ? "active" : "")"
+                                        @onclick="() => SelectModule(m.Id)">
+                                    <span>
+                                        <i class="bi @(m.Icon ?? "bi-box")" style="color:@(chgModuleId == m.Id ? "inherit" : m.Color)"></i>
+                                        @m.NameFa
+                                    </span>
+                                    <span class="d-flex gap-1">
+                                        @if (m.OpenTaskCount > 0)
+                                        {
+                                            <span class="badge text-bg-primary">@m.OpenTaskCount تسک</span>
+                                        }
+                                        @if (m.OpenProblemCount > 0)
+                                        {
+                                            <span class="badge text-bg-danger">@m.OpenProblemCount</span>
+                                        }
+                                        @if (m.RecentChangeCount > 0)
+                                        {
+                                            <span class="badge text-bg-secondary">@m.RecentChangeCount تغییر</span>
+                                        }
+                                    </span>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <span class="fw-semibold">Changelog @(chgModuleId > 0 ? lookups.Modules.FirstOrDefault(m => m.Id == chgModuleId)?.NameFa : "همه")</span>
+                            @if (access.CanCreate)
+                            {
+                                <button class="btn btn-sm btn-outline-primary" @onclick="OpenNewChange"><i class="bi bi-plus"></i> تغییر</button>
+                            }
+                        </div>
+                        <div class="card-body p-0">
+                            @if (changes.Count == 0)
+                            {
+                                <div class="text-center text-muted py-4">تغییری ثبت نشده.</div>
+                            }
+                            else
+                            {
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var c in changes)
+                                    {
+                                        <li class="list-group-item">
+                                            <div class="d-flex justify-content-between gap-2">
+                                                <div>
+                                                    <div class="fw-semibold">@c.Summary</div>
+                                                    <div class="fs-8 text-muted">
+                                                        <span style="color:@c.ModuleColor">@c.ModuleName</span>
+                                                        · @c.AuthorName · @PersianDate.ToShortDateTime(c.ChangedAt)
+                                                        @if (!string.IsNullOrEmpty(c.CommitSha))
+                                                        {
+                                                            <span class="font-monospace"> · @ShortSha(c.CommitSha)</span>
+                                                        }
+                                                        @if (!string.IsNullOrEmpty(c.Branch))
+                                                        {
+                                                            <span> · <i class="bi bi-diagram-3"></i> @c.Branch</span>
+                                                        }
+                                                        @if (!string.IsNullOrEmpty(c.TaskNumber))
+                                                        {
+                                                            <span> · @c.TaskNumber</span>
+                                                        }
+                                                    </div>
+                                                    @if (!string.IsNullOrWhiteSpace(c.Details))
+                                                    {
+                                                        <div class="fs-8 mt-1">@c.Details</div>
+                                                    }
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(c.CommitUrl))
+                                                {
+                                                    <a class="btn btn-sm btn-outline-secondary" href="@c.CommitUrl" target="_blank" rel="noopener">گیت</a>
+                                                }
+                                            </div>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ========== اسپرینت ========== *@
+        else if (tab == "sprints")
+        {
+            <div class="d-flex justify-content-between mb-3">
+                <h5 class="mb-0">اسپرینت‌ها / بازه‌های زمانی</h5>
+                @if (access.CanManage || access.CanCreate)
+                {
+                    <button class="btn btn-sm btn-primary" @onclick="OpenNewSprint"><i class="bi bi-plus"></i> اسپرینت</button>
+                }
+            </div>
+            <div class="row g-3">
+                @foreach (var s in lookups.Sprints)
+                {
+                    var pct = s.TaskCount == 0 ? 0 : Math.Round(100.0 * s.DoneTaskCount / s.TaskCount, 0);
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between">
+                                    <h6>@s.Name</h6>
+                                    <span class="badge @SprintBadge(s.Status)">@s.StatusFa</span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(s.Goal))
+                                {
+                                    <div class="fs-8 text-muted mb-2">@s.Goal</div>
+                                }
+                                <div class="fs-8 mb-1">@PersianDate.ToShort(s.StartDate) تا @PersianDate.ToShort(s.EndDate)</div>
+                                <div class="progress mb-2" style="height:8px">
+                                    <div class="progress-bar" style="width:@(pct)%"></div>
+                                </div>
+                                <div class="d-flex justify-content-between fs-8 text-muted">
+                                    <span>@s.DoneTaskCount / @s.TaskCount تسک</span>
+                                    <span>@s.TotalSpent / @s.TotalEstimate س</span>
+                                </div>
+                                <button class="btn btn-sm btn-link px-0 mt-1" @onclick="() => FilterBySprint(s.Id)">مشاهده تسک‌ها</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (lookups.Sprints.Count == 0)
+                {
+                    <div class="col-12 text-muted text-center py-4">اسپرینتی تعریف نشده.</div>
+                }
+            </div>
+        }
+
+        @* ========== داشبورد ========== *@
+        else if (tab == "dashboard" && dash is not null)
+        {
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md-3"><div class="dt-kpi"><div class="dt-kpi-v">@dash.TotalOpenTasks</div><div class="dt-kpi-l">تسک باز</div></div></div>
+                <div class="col-6 col-md-3"><div class="dt-kpi danger"><div class="dt-kpi-v">@dash.OverdueTasks</div><div class="dt-kpi-l">معوق</div></div></div>
+                <div class="col-6 col-md-3"><div class="dt-kpi warn"><div class="dt-kpi-v">@dash.BlockedTasks</div><div class="dt-kpi-l">مسدود</div></div></div>
+                <div class="col-6 col-md-3"><div class="dt-kpi err"><div class="dt-kpi-v">@dash.OpenErrors</div><div class="dt-kpi-l">خطای باز</div></div></div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(dash.ActiveSprintName))
+            {
+                <div class="alert alert-primary d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-lightning"></i> اسپرینت فعال: <b>@dash.ActiveSprintName</b></span>
+                    <span>پیشرفت: @(dash.ActiveSprintProgressPct?.ToString("0") ?? "—")٪ · تخمین @dash.SprintEstimateHours س / صرف‌شده @dash.SprintSpentHours س</span>
+                </div>
+            }
+
+            <div class="row g-3">
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white fw-semibold">بار افراد</div>
+                        <div class="card-body p-0">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>فرد</th><th>باز</th><th>فعال</th><th>معوق</th><th>ساعت</th></tr></thead>
+                                <tbody>
+                                @foreach (var m in dash.MemberLoads)
+                                {
+                                    <tr>
+                                        <td>@m.Name</td>
+                                        <td>@m.OpenTasks</td>
+                                        <td>@m.DoingTasks</td>
+                                        <td class="@(m.OverdueTasks>0?"text-danger":"")">@m.OverdueTasks</td>
+                                        <td class="fs-8">@m.SpentHours/@m.EstimateHours</td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                            @if (dash.MemberLoads.Count == 0)
+                            {
+                                <div class="text-muted text-center py-3 fs-8">داده‌ای نیست</div>
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white fw-semibold">ماژول‌های پرترافیک</div>
+                        <ul class="list-group list-group-flush">
+                            @foreach (var m in dash.ModuleLoads)
+                            {
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span><span class="dt-col-dot" style="background:@m.Color;display:inline-block;width:8px;height:8px;border-radius:50%"></span> @m.Name</span>
+                                    <span class="fs-8">
+                                        <span class="badge text-bg-primary">@m.OpenTasks</span>
+                                        @if (m.OpenProblems > 0) { <span class="badge text-bg-danger">@m.OpenProblems</span> }
+                                        @if (m.ChangesLast7Days > 0) { <span class="badge text-bg-secondary">@m.ChangesLast7Days</span> }
+                                    </span>
+                                </li>
+                            }
+                            @if (dash.ModuleLoads.Count == 0)
+                            {
+                                <li class="list-group-item text-muted text-center">—</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-header bg-white fw-semibold">توزیع وضعیت</div>
+                        <ul class="list-group list-group-flush">
+                            @foreach (var s in dash.StatusCounts)
+                            {
+                                <li class="list-group-item d-flex justify-content-between">
+                                    <span><span class="dt-col-dot" style="background:@s.Color;display:inline-block;width:8px;height:8px;border-radius:50%"></span> @s.Name</span>
+                                    <b>@s.Count</b>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white fw-semibold">آخرین تسک‌ها</div>
+                        <ul class="list-group list-group-flush">
+                            @foreach (var t in dash.RecentTasks)
+                            {
+                                <li class="list-group-item list-group-item-action" style="cursor:pointer" @onclick="() => OpenTask(t.Id)">
+                                    <span class="font-monospace fs-8">@t.Number</span> @t.Title
+                                    <div class="fs-8 text-muted">@t.StatusName · @(t.AssigneeName ?? "—")</div>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white fw-semibold">آخرین مشکلات باز</div>
+                        <ul class="list-group list-group-flush">
+                            @foreach (var p in dash.RecentProblems)
+                            {
+                                <li class="list-group-item">
+                                    <span class="badge @SevBadge(p.Severity)">@p.SeverityFa</span> @p.Title
+                                    <div class="fs-8 text-muted">@p.ModuleName · @PersianDate.ToShort(p.CreatedAt)</div>
+                                </li>
+                            }
+                            @if (dash.RecentProblems.Count == 0)
+                            {
+                                <li class="list-group-item text-muted text-center">مشکل بازی نیست 🎉</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @* ========== تنظیمات ========== *@
+        else if (tab == "settings")
+        {
+            <div class="card border-0 shadow-sm mb-3">
+                <div class="card-header bg-white fw-semibold"><i class="bi bi-git"></i> وب‌هوک گیت (GitHub / GitLab)</div>
+                <div class="card-body fs-8">
+                    <p class="mb-2">بعد از هر push، کامیت‌هایی که به تسک ارجاع دهند خودکار لینک و changelog می‌سازند.</p>
+                    <ul class="mb-2">
+                        <li>GitHub: <code>POST /api/dev-team/hooks/github</code> — Secret در تنظیمات سرور + رویداد push</li>
+                        <li>GitLab: <code>POST /api/dev-team/hooks/gitlab</code> — Secret token همان مقدار</li>
+                        <li>سلامت: <code>GET /api/dev-team/hooks/health</code></li>
+                    </ul>
+                    <p class="mb-1">در پیام کامیت بنویسید:</p>
+                    <pre class="bg-light border rounded p-2 mb-0" style="direction:ltr;text-align:left">fix(office): pagination DT-1405-0003
+# یا: task:12   و اختیاری  mod:Office</pre>
+                    <p class="text-muted mt-2 mb-0">Secret را در <code>appsettings</code> با کلید <code>DevTeam:GitWebhookSecret</code> یا متغیر <code>DEVTEAM_GIT_WEBHOOK_SECRET</code> بگذارید.</p>
+                </div>
+            </div>
+            @if (!access.CanManage)
+            {
+                <div class="alert alert-info">فقط با مجوز Manage می‌توانید وضعیت‌ها و کاتالوگ ماژول را ویرایش کنید.</div>
+            }
+            else
+            {
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white d-flex justify-content-between">
+                                <span class="fw-semibold">وضعیت‌های workflow</span>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="OpenNewStatus"><i class="bi bi-plus"></i></button>
+                            </div>
+                            <ul class="list-group list-group-flush">
+                                @foreach (var s in allStatuses.OrderBy(x => x.SortOrder))
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <span class="dt-col-dot" style="background:@s.Color;display:inline-block;width:10px;height:10px;border-radius:50%"></span>
+                                            <b>@s.NameFa</b>
+                                            <code class="fs-8">@s.Key</code>
+                                            @if (s.IsInitial) { <span class="badge text-bg-info">شروع</span> }
+                                            @if (s.IsDone) { <span class="badge text-bg-success">پایان</span> }
+                                            @if (s.IsBlocked) { <span class="badge text-bg-danger">مسدود</span> }
+                                            @if (!s.IsActive) { <span class="badge text-bg-secondary">غیرفعال</span> }
+                                        </span>
+                                        <button class="btn btn-sm btn-link" @onclick="() => EditStatus(s)"><i class="bi bi-pencil"></i></button>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="card border-0 shadow-sm">
+                            <div class="card-header bg-white d-flex justify-content-between">
+                                <span class="fw-semibold">کاتالوگ ماژول‌ها</span>
+                                <button class="btn btn-sm btn-outline-primary" @onclick="OpenNewModule"><i class="bi bi-plus"></i></button>
+                            </div>
+                            <div class="list-group list-group-flush" style="max-height:480px;overflow:auto">
+                                @foreach (var m in allModules.OrderBy(x => x.SortOrder))
+                                {
+                                    <div class="list-group-item d-flex justify-content-between">
+                                        <span>
+                                            <i class="bi @(m.Icon ?? "bi-box")" style="color:@m.Color"></i>
+                                            @m.NameFa <code class="fs-8">@m.Key</code>
+                                            @if (!m.IsActive) { <span class="badge text-bg-secondary">خاموش</span> }
+                                        </span>
+                                        <button class="btn btn-sm btn-link" @onclick="() => EditModule(m)"><i class="bi bi-pencil"></i></button>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    }
+</div>
+
+@* ===================== مودال تسک ===================== *@
+@if (showTaskModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.45)" @onclick="CloseTaskModal">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@(editingTaskId is null ? "تسک جدید" : $"تسک {taskFormNumber}")</h5>
+                    <button type="button" class="btn-close" @onclick="CloseTaskModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="form-label">عنوان *</label>
+                            <input class="form-control" @bind="taskForm.Title" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">نوع</label>
+                            <select class="form-select" @bind="taskForm.Type">
+                                @foreach (var t in lookups.TaskTypes)
+                                {
+                                    <option value="@t">@TypeFa(t)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">اولویت</label>
+                            <select class="form-select" @bind="taskForm.Priority">
+                                <option value="0">کم</option>
+                                <option value="1">عادی</option>
+                                <option value="2">بالا</option>
+                                <option value="3">بحرانی</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">وضعیت</label>
+                            <select class="form-select" @bind="taskFormStatusId">
+                                @foreach (var s in lookups.Statuses.Where(x => x.IsActive))
+                                {
+                                    <option value="@s.Id">@s.NameFa</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">ماژول</label>
+                            <select class="form-select" @bind="taskFormModuleId">
+                                <option value="0">—</option>
+                                @foreach (var m in lookups.Modules)
+                                {
+                                    <option value="@m.Id">@m.NameFa</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">اسپرینت</label>
+                            <select class="form-select" @bind="taskFormSprintId">
+                                <option value="0">—</option>
+                                @foreach (var s in lookups.Sprints)
+                                {
+                                    <option value="@s.Id">@s.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">مسئول</label>
+                            <select class="form-select" @bind="taskFormAssigneeId">
+                                <option value="0">—</option>
+                                @foreach (var u in lookups.Users)
+                                {
+                                    <option value="@u.Id">@u.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">مهلت (شمسی مثل 1405/01/15)</label>
+                            <input class="form-control" @bind="taskDueInput" placeholder="1405/01/15" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">تخمین ساعت</label>
+                            <input type="number" step="0.5" min="0" class="form-control" @bind="taskForm.EstimateHours" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">پیشرفت ٪</label>
+                            <input type="number" min="0" max="100" class="form-control" @bind="taskForm.Progress" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">برچسب‌ها (با کاما)</label>
+                            <input class="form-control" @bind="taskForm.Tags" placeholder="api,ui,urgent" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">شرح</label>
+                            <textarea class="form-control" rows="4" @bind="taskForm.Description"></textarea>
+                        </div>
+                    </div>
+
+                    @if (taskDetail is not null)
+                    {
+                        <hr />
+                        @if (taskDetail.ParentTaskId is int parentId)
+                        {
+                            <div class="alert alert-secondary py-2 d-flex flex-wrap align-items-center gap-2">
+                                <i class="bi bi-diagram-2"></i>
+                                <span>ساب‌تسکِ</span>
+                                <button type="button" class="btn btn-sm btn-link p-0" @onclick="() => OpenTask(parentId)">
+                                    @(taskDetail.ParentTaskNumber) — @(taskDetail.ParentTaskTitle)
+                                </button>
+                                @if (access.CanUpdate)
+                                {
+                                    <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="PromoteCurrent">ارتقا به تسک اصلی</button>
+                                }
+                            </div>
+                        }
+                        @if (taskDetail.IsDependencyBlocked)
+                        {
+                            <div class="alert alert-warning py-2 fs-8">
+                                <i class="bi bi-lock-fill"></i>
+                                این تسک @taskDetail.OpenBlockerCount وابستگی باز دارد و تا اتمام آن‌ها «انجام‌شده» نمی‌شود.
+                            </div>
+                        }
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 rounded border bg-light">
+                            <i class="bi bi-card-checklist"></i>
+                            <span class="fw-semibold">دستور کار:</span>
+                            @if (taskDetail.WorkOrderId is int woid)
+                            {
+                                <a class="badge text-bg-primary text-decoration-none" href="work-orders?open=@woid">@taskDetail.WorkOrderNumber</a>
+                                @if (access.CanUpdate)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="UnlinkWo">قطع اتصال</button>
+                                }
+                            }
+                            else if (access.CanCreate || access.CanUpdate)
+                            {
+                                <button class="btn btn-sm btn-outline-primary" disabled="@saving" @onclick="CreateWoFromTask">
+                                    <i class="bi bi-plus-lg"></i> ساخت دستور کار از این تسک
+                                </button>
+                                <div class="input-group input-group-sm" style="max-width:220px">
+                                    <input type="number" class="form-control" placeholder="شناسه WO موجود" @bind="linkWoId" />
+                                    <button class="btn btn-outline-secondary" @onclick="LinkExistingWo">اتصال</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="text-muted fs-8">متصل نیست</span>
+                            }
+                        </div>
+
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-6">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <h6 class="mb-0"><i class="bi bi-diagram-3"></i> ساب‌تسک‌ها
+                                        @if (taskDetail.SubTaskCount > 0)
+                                        {
+                                            <span class="badge text-bg-light border">@taskDetail.SubTaskDoneCount/@taskDetail.SubTaskCount</span>
+                                        }
+                                    </h6>
+                                </div>
+                                @if (taskDetail.SubTaskCount > 0)
+                                {
+                                    <div class="progress mb-2" style="height:6px">
+                                        @{
+                                            var spct = taskDetail.SubTaskCount == 0 ? 0 :
+                                                (int)Math.Round(100.0 * taskDetail.SubTaskDoneCount / taskDetail.SubTaskCount);
+                                        }
+                                        <div class="progress-bar" style="width:@(spct)%"></div>
+                                    </div>
+                                }
+                                @foreach (var st in taskDetail.SubTasks)
+                                {
+                                    <div class="d-flex align-items-center gap-2 border-bottom py-1 fs-8" style="cursor:pointer" @onclick="() => OpenTask(st.Id)">
+                                        <span class="dt-col-dot" style="background:@st.StatusColor;display:inline-block;width:8px;height:8px;border-radius:50%"></span>
+                                        <code>@st.Number</code>
+                                        <span class="flex-grow-1">@st.Title</span>
+                                        <span class="text-muted">@st.StatusName</span>
+                                        @if (st.IsDependencyBlocked)
+                                        {
+                                            <i class="bi bi-lock text-warning" title="مسدود"></i>
+                                        }
+                                    </div>
+                                }
+                                @if (access.CanCreate)
+                                {
+                                    <div class="input-group input-group-sm mt-2">
+                                        <input class="form-control" placeholder="عنوان ساب‌تسک جدید…" @bind="subTaskTitle" @onkeydown="OnSubTaskKey" />
+                                        <button class="btn btn-outline-primary" disabled="@saving" @onclick="AddSubTask">+</button>
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-link-45deg"></i> وابستگی‌ها</h6>
+                                <div class="fs-8 text-muted mb-1">مسدودکننده‌ها (باید اول تمام شوند):</div>
+                                @foreach (var d in taskDetail.BlockedBy)
+                                {
+                                    <div class="d-flex align-items-center gap-2 border-bottom py-1 fs-8">
+                                        <span class="badge @(d.DependsOnIsDone ? "text-bg-success" : "text-bg-warning")">@d.KindFa</span>
+                                        <button type="button" class="btn btn-link btn-sm p-0" @onclick="() => OpenTask(d.DependsOnTaskId)">
+                                            @d.DependsOnNumber — @d.DependsOnTitle
+                                        </button>
+                                        <span class="text-muted">@d.DependsOnStatusName</span>
+                                        @if (access.CanUpdate)
+                                        {
+                                            <button class="btn btn-sm btn-link text-danger p-0 ms-auto" @onclick="() => RemoveDep(d.Id)"><i class="bi bi-x"></i></button>
+                                        }
+                                    </div>
+                                }
+                                @if (taskDetail.BlockedBy.Count == 0)
+                                {
+                                    <div class="fs-8 text-muted mb-2">وابستگی مسدودکننده‌ای نیست.</div>
+                                }
+                                @if (taskDetail.Blocking.Count > 0)
+                                {
+                                    <div class="fs-8 text-muted mt-2 mb-1">تسک‌های منتظر این مورد:</div>
+                                    @foreach (var d in taskDetail.Blocking)
+                                    {
+                                        <div class="fs-8">
+                                            <button type="button" class="btn btn-link btn-sm p-0" @onclick="() => OpenTask(d.TaskId)">@d.TaskNumber</button>
+                                            — @d.TaskTitle
+                                        </div>
+                                    }
+                                }
+                                @if (access.CanUpdate || access.CanCreate)
+                                {
+                                    <div class="input-group input-group-sm mt-2">
+                                        <input class="form-control" placeholder="جستجو شماره/عنوان برای وابستگی…"
+                                               @bind="depSearch" @bind:event="oninput" @bind:after="SearchDeps" />
+                                    </div>
+                                    @if (depResults.Count > 0)
+                                    {
+                                        <div class="list-group list-group-flush border rounded mt-1" style="max-height:140px;overflow:auto">
+                                            @foreach (var r in depResults)
+                                            {
+                                                <button type="button" class="list-group-item list-group-item-action py-1 fs-8"
+                                                        @onclick="() => AddDep(r.Id)">
+                                                    <code>@r.Number</code> @r.Title
+                                                </button>
+                                            }
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-git"></i> لینک‌های گیت</h6>
+                                @foreach (var g in taskDetail.GitLinks)
+                                {
+                                    <div class="d-flex justify-content-between fs-8 border-bottom py-1">
+                                        <span>
+                                            <span class="badge text-bg-light">@g.KindFa</span>
+                                            @if (!string.IsNullOrEmpty(g.Url))
+                                            {
+                                                <a href="@g.Url" target="_blank" rel="noopener">@g.Ref</a>
+                                            }
+                                            else { <code>@g.Ref</code> }
+                                            @if (!string.IsNullOrEmpty(g.Title)) { <span class="text-muted"> — @g.Title</span> }
+                                        </span>
+                                        @if (access.CanUpdate)
+                                        {
+                                            <button class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveGit(g.Id)"><i class="bi bi-x"></i></button>
+                                        }
+                                    </div>
+                                }
+                                @if (access.CanUpdate || access.CanCreate)
+                                {
+                                    <div class="row g-1 mt-2">
+                                        <div class="col-3">
+                                            <select class="form-select form-select-sm" @bind="gitKind">
+                                                @foreach (var k in lookups.GitLinkKinds)
+                                                {
+                                                    <option value="@k">@GitFa(k)</option>
+                                                }
+                                            </select>
+                                        </div>
+                                        <div class="col-4"><input class="form-control form-control-sm" placeholder="SHA / branch / #PR" @bind="gitRef" /></div>
+                                        <div class="col-3"><input class="form-control form-control-sm" placeholder="URL" @bind="gitUrl" /></div>
+                                        <div class="col-2"><button class="btn btn-sm btn-outline-primary w-100" @onclick="AddGit">+</button></div>
+                                    </div>
+                                }
+                            </div>
+                            <div class="col-md-6">
+                                <h6><i class="bi bi-clock"></i> زمان</h6>
+                                <div class="fs-8 mb-2">صرف‌شده: <b>@taskDetail.SpentHours</b> س از @(taskDetail.EstimateHours?.ToString() ?? "—")</div>
+                                @foreach (var e in taskDetail.TimeEntries.Take(5))
+                                {
+                                    <div class="fs-8">@e.UserName — @e.Hours س — @PersianDate.ToShort(e.WorkDate)</div>
+                                }
+                                @if (access.CanUpdate || access.CanCreate)
+                                {
+                                    <div class="input-group input-group-sm mt-2">
+                                        <input type="number" step="0.25" min="0.25" max="24" class="form-control" @bind="timeHours" placeholder="ساعت" />
+                                        <input class="form-control" @bind="timeNote" placeholder="یادداشت" />
+                                        <button class="btn btn-outline-primary" @onclick="AddTime">ثبت</button>
+                                    </div>
+                                }
+
+                                <h6 class="mt-3"><i class="bi bi-chat"></i> نظرات</h6>
+                                @foreach (var c in taskDetail.Comments.Take(10))
+                                {
+                                    <div class="fs-8 border-bottom py-1">
+                                        <b>@c.AuthorName</b> <span class="text-muted">@PersianDate.ToShortDateTime(c.CreatedAt)</span>
+                                        <div>@c.Text</div>
+                                    </div>
+                                }
+                                <div class="input-group input-group-sm mt-2">
+                                    <input class="form-control" @bind="commentText" placeholder="نظر…" />
+                                    <button class="btn btn-outline-primary" @onclick="AddComment">ارسال</button>
+                                </div>
+
+                                <h6 class="mt-3"><i class="bi bi-activity"></i> فعالیت</h6>
+                                <div style="max-height:160px;overflow:auto">
+                                    @foreach (var a in taskDetail.Activities.Take(20))
+                                    {
+                                        <div class="fs-8 text-muted">@PersianDate.ToShortDateTime(a.CreatedAt) — @a.ActorName: @a.ActionFa @(a.Detail)</div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+                <div class="modal-footer">
+                    @if (editingTaskId is not null && access.CanDelete)
+                    {
+                        <button class="btn btn-outline-danger me-auto" @onclick="() => DeleteTask(editingTaskId.Value)">حذف</button>
+                    }
+                    <button class="btn btn-light" @onclick="CloseTaskModal">انصراف</button>
+                    <button class="btn btn-primary" disabled="@saving" @onclick="SaveTask">
+                        @if (saving) { <span class="spinner-border spinner-border-sm"></span> } else { <span>ذخیره</span> }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===================== مودال مشکل ===================== *@
+@if (showProblemModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.45)" @onclick="() => showProblemModal = false">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ثبت مشکل / خطا / هشدار</h5>
+                    <button type="button" class="btn-close" @onclick="() => showProblemModal = false"></button>
+                </div>
+                <div class="modal-body row g-2">
+                    <div class="col-12"><label class="form-label">عنوان *</label><input class="form-control" @bind="probForm.Title" /></div>
+                    <div class="col-md-6">
+                        <label class="form-label">شدت</label>
+                        <select class="form-select" @bind="probForm.Severity">
+                            <option value="Error">خطا</option>
+                            <option value="Warning">هشدار</option>
+                            <option value="Info">اطلاع</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">ماژول</label>
+                        <select class="form-select" @bind="probFormModuleId">
+                            <option value="0">—</option>
+                            @foreach (var m in lookups.Modules) { <option value="@m.Id">@m.NameFa</option> }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">مسئول</label>
+                        <select class="form-select" @bind="probFormAssigneeId">
+                            <option value="0">—</option>
+                            @foreach (var u in lookups.Users) { <option value="@u.Id">@u.Name</option> }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">محیط</label>
+                        <input class="form-control" @bind="probForm.Environment" placeholder="Production / Staging / Local" />
+                    </div>
+                    <div class="col-12"><label class="form-label">شرح</label><textarea class="form-control" rows="3" @bind="probForm.Description"></textarea></div>
+                    <div class="col-12"><label class="form-label">Stack / لاگ</label><textarea class="form-control font-monospace" rows="3" @bind="probForm.StackTrace"></textarea></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-light" @onclick="() => showProblemModal = false">انصراف</button>
+                    <button class="btn btn-danger" disabled="@saving" @onclick="SaveProblem">ثبت</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===================== مودال changelog ===================== *@
+@if (showChangeModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.45)" @onclick="() => showChangeModal = false">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ثبت تغییر ماژول</h5>
+                    <button type="button" class="btn-close" @onclick="() => showChangeModal = false"></button>
+                </div>
+                <div class="modal-body row g-2">
+                    <div class="col-12">
+                        <label class="form-label">ماژول *</label>
+                        <select class="form-select" @bind="chgFormModuleId">
+                            <option value="0">انتخاب…</option>
+                            @foreach (var m in lookups.Modules) { <option value="@m.Id">@m.NameFa</option> }
+                        </select>
+                    </div>
+                    <div class="col-12"><label class="form-label">خلاصه *</label><input class="form-control" @bind="chgForm.Summary" /></div>
+                    <div class="col-12"><label class="form-label">جزئیات</label><textarea class="form-control" rows="3" @bind="chgForm.Details"></textarea></div>
+                    <div class="col-md-4"><label class="form-label">Commit SHA</label><input class="form-control font-monospace" @bind="chgForm.CommitSha" /></div>
+                    <div class="col-md-4"><label class="form-label">شاخه</label><input class="form-control" @bind="chgForm.Branch" /></div>
+                    <div class="col-md-4"><label class="form-label">URL کامیت</label><input class="form-control" @bind="chgForm.CommitUrl" /></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-light" @onclick="() => showChangeModal = false">انصراف</button>
+                    <button class="btn btn-primary" disabled="@saving" @onclick="SaveChange">ثبت</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===================== مودال اسپرینت ===================== *@
+@if (showSprintModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.45)" @onclick="() => showSprintModal = false">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">اسپرینت جدید</h5>
+                    <button type="button" class="btn-close" @onclick="() => showSprintModal = false"></button>
+                </div>
+                <div class="modal-body row g-2">
+                    <div class="col-12"><label class="form-label">نام *</label><input class="form-control" @bind="sprintForm.Name" /></div>
+                    <div class="col-12"><label class="form-label">هدف</label><textarea class="form-control" rows="2" @bind="sprintForm.Goal"></textarea></div>
+                    <div class="col-md-6"><label class="form-label">شروع (شمسی)</label><input class="form-control" @bind="sprintStartInput" placeholder="1405/01/01" /></div>
+                    <div class="col-md-6"><label class="form-label">پایان (شمسی)</label><input class="form-control" @bind="sprintEndInput" placeholder="1405/01/14" /></div>
+                    <div class="col-12">
+                        <label class="form-label">وضعیت</label>
+                        <select class="form-select" @bind="sprintForm.Status">
+                            <option value="Planned">برنامه‌ریزی</option>
+                            <option value="Active">فعال</option>
+                            <option value="Closed">بسته</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-light" @onclick="() => showSprintModal = false">انصراف</button>
+                    <button class="btn btn-primary" disabled="@saving" @onclick="SaveSprint">ذخیره</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ===================== مودال وضعیت / ماژول تنظیمات ===================== *@
+@if (showStatusModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.45)" @onclick="() => showStatusModal = false">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">وضعیت workflow</h5><button type="button" class="btn-close" @onclick="() => showStatusModal = false"></button></div>
+                <div class="modal-body row g-2">
+                    <div class="col-md-6"><label class="form-label">کلید انگلیسی</label><input class="form-control" @bind="statusForm.Key" /></div>
+                    <div class="col-md-6"><label class="form-label">نام فارسی</label><input class="form-control" @bind="statusForm.NameFa" /></div>
+                    <div class="col-md-4"><label class="form-label">رنگ</label><input class="form-control" @bind="statusForm.Color" /></div>
+                    <div class="col-md-4"><label class="form-label">ترتیب</label><input type="number" class="form-control" @bind="statusForm.SortOrder" /></div>
+                    <div class="col-md-4 form-check mt-4">
+                        <input class="form-check-input" type="checkbox" @bind="statusForm.IsActive" id="stAct" />
+                        <label class="form-check-label" for="stAct">فعال</label>
+                    </div>
+                    <div class="col-4 form-check"><input class="form-check-input" type="checkbox" @bind="statusForm.IsInitial" id="stIni" /><label class="form-check-label" for="stIni">شروع پیش‌فرض</label></div>
+                    <div class="col-4 form-check"><input class="form-check-input" type="checkbox" @bind="statusForm.IsDone" id="stDone" /><label class="form-check-label" for="stDone">پایانی</label></div>
+                    <div class="col-4 form-check"><input class="form-check-input" type="checkbox" @bind="statusForm.IsBlocked" id="stBlk" /><label class="form-check-label" for="stBlk">مسدود</label></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-light" @onclick="() => showStatusModal = false">انصراف</button>
+                    <button class="btn btn-primary" @onclick="SaveStatus">ذخیره</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (showModuleModal)
+{
+    <div class="modal fade show d-block" style="background:rgba(15,23,42,.45)" @onclick="() => showModuleModal = false">
+        <div class="modal-dialog" @onclick:stopPropagation="true">
+            <div class="modal-content">
+                <div class="modal-header"><h5 class="modal-title">ماژول محصول</h5><button type="button" class="btn-close" @onclick="() => showModuleModal = false"></button></div>
+                <div class="modal-body row g-2">
+                    <div class="col-md-6"><label class="form-label">کلید</label><input class="form-control" @bind="moduleForm.Key" /></div>
+                    <div class="col-md-6"><label class="form-label">نام فارسی</label><input class="form-control" @bind="moduleForm.NameFa" /></div>
+                    <div class="col-md-4"><label class="form-label">آیکون (bi-...)</label><input class="form-control" @bind="moduleForm.Icon" /></div>
+                    <div class="col-md-4"><label class="form-label">رنگ</label><input class="form-control" @bind="moduleForm.Color" /></div>
+                    <div class="col-md-4"><label class="form-label">ترتیب</label><input type="number" class="form-control" @bind="moduleForm.SortOrder" /></div>
+                    <div class="col-12"><label class="form-label">توضیح</label><input class="form-control" @bind="moduleForm.Description" /></div>
+                    <div class="col-12 form-check"><input class="form-check-input" type="checkbox" @bind="moduleForm.IsActive" id="modAct" /><label class="form-check-label" for="modAct">فعال</label></div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-light" @onclick="() => showModuleModal = false">انصراف</button>
+                    <button class="btn btn-primary" @onclick="SaveModule">ذخیره</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .dt-page { max-width: 1600px; margin: 0 auto; padding: .5rem 1rem 2rem; }
+    .dt-head { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; margin-bottom:1rem; }
+    .dt-head h1 { font-size:1.35rem; margin:0; display:flex; align-items:center; gap:.5rem; }
+    .dt-tabs { display:flex; flex-wrap:wrap; gap:.35rem; border-bottom:1px solid var(--border,#e2e8f0); padding-bottom:.5rem; }
+    .dt-tab { border:0; background:transparent; padding:.45rem .85rem; border-radius:.5rem; color:#64748b; font-size:.9rem; }
+    .dt-tab:hover { background:#f1f5f9; color:#0f172a; }
+    .dt-tab.active { background:var(--primary-50,#eef2ff); color:var(--primary,#4f46e5); font-weight:600; }
+    .dt-board { display:flex; gap:.75rem; overflow-x:auto; padding-bottom:.5rem; min-height:420px; }
+    .dt-col { flex:0 0 260px; background:#f8fafc; border-radius:.75rem; display:flex; flex-direction:column; max-height:70vh; }
+    .dt-col-head { padding:.65rem .75rem; border-top:3px solid #94a3b8; display:flex; align-items:center; gap:.4rem; font-size:.9rem; }
+    .dt-col-dot { width:8px; height:8px; border-radius:50%; }
+    .dt-col-body { padding:.5rem; overflow-y:auto; flex:1; display:flex; flex-direction:column; gap:.5rem; }
+    .dt-card { background:#fff; border:1px solid #e2e8f0; border-radius:.6rem; padding:.65rem; cursor:pointer; transition:box-shadow .15s; }
+    .dt-card:hover { box-shadow:0 4px 12px rgba(15,23,42,.08); }
+    .dt-card-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:.25rem; }
+    .dt-num { font-family:ui-monospace,monospace; font-size:.7rem; color:#64748b; }
+    .dt-card-title { font-weight:600; font-size:.88rem; line-height:1.35; margin-bottom:.35rem; }
+    .dt-card-meta { display:flex; flex-wrap:wrap; gap:.25rem; margin-bottom:.35rem; }
+    .dt-mod { font-size:.7rem; padding:.1rem .4rem; border-radius:.3rem; font-weight:500; }
+    .dt-type { font-size:.7rem; color:#64748b; }
+    .dt-card-foot { display:flex; flex-wrap:wrap; gap:.35rem; align-items:center; font-size:.75rem; }
+    .dt-card-moves { display:flex; flex-wrap:wrap; gap:.2rem; margin-top:.4rem; }
+    .dt-move { font-size:.65rem; padding:.1rem .35rem; border:1px solid; border-radius:.3rem; background:#fff; cursor:pointer; }
+    .dt-empty { text-align:center; color:#94a3b8; font-size:.8rem; padding:1rem 0; }
+    .dt-pri { font-size:.7rem; padding:.1rem .4rem; border-radius:.3rem; background:#e2e8f0; }
+    .dt-pri-0 { background:#f1f5f9; color:#64748b; }
+    .dt-pri-1 { background:#e0e7ff; color:#4338ca; }
+    .dt-pri-2 { background:#ffedd5; color:#c2410c; }
+    .dt-pri-3 { background:#fee2e2; color:#b91c1c; }
+    .dt-st-badge { color:#fff; font-size:.72rem; padding:.2rem .5rem; border-radius:.35rem; white-space:nowrap; }
+    .dt-kpi { background:#fff; border-radius:.75rem; padding:1rem; box-shadow:0 1px 3px rgba(15,23,42,.06); text-align:center; }
+    .dt-kpi-v { font-size:1.6rem; font-weight:700; color:#0f172a; }
+    .dt-kpi-l { font-size:.8rem; color:#64748b; }
+    .dt-kpi.danger .dt-kpi-v { color:#dc2626; }
+    .dt-kpi.warn .dt-kpi-v { color:#d97706; }
+    .dt-kpi.err .dt-kpi-v { color:#e11d48; }
+    .dt-prob-error { border-right:3px solid #ef4444 !important; }
+    .dt-prob-warning { border-right:3px solid #f59e0b !important; }
+    .dt-prob-info { border-right:3px solid #3b82f6 !important; }
+    .dt-clamp { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+    .dt-table td, .dt-table th { font-size:.875rem; }
+    .fs-8 { font-size:.78rem; }
+</style>
+
+@code {
+    private static readonly (string key, string label, string icon)[] TabDefs =
+    {
+        ("board", "کانبان", "bi-kanban"),
+        ("list", "لیست", "bi-list-ul"),
+        ("problems", "مشکلات", "bi-bug"),
+        ("modules", "ماژول‌ها", "bi-boxes"),
+        ("sprints", "اسپرینت", "bi-calendar-range"),
+        ("dashboard", "داشبورد", "bi-speedometer2"),
+        ("settings", "تنظیمات", "bi-gear"),
+    };
+
+    private string tab = "board";
+    private bool loading = true, saving;
+    private DtAccessDto access = new();
+    private DtLookupsDto lookups = new();
+    private DtDashboardDto? dash;
+    private List<DtTaskListItemDto> boardTasks = new();
+    private List<DtTaskListItemDto> listTasks = new();
+    private List<DtProblemDto> problems = new();
+    private List<DtModuleChangeDto> changes = new();
+    private List<DtWorkflowStatusDto> allStatuses = new();
+    private List<DtProductModuleDto> allModules = new();
+
+    // filters
+    private string fltQ = "";
+    private int fltModuleId, fltSprintId, fltAssigneeId;
+    private string fltType = "";
+    private bool onlyMine;
+    private string probSeverity = "", probStatus = "";
+    private int probModuleId, chgModuleId;
+
+    // task modal
+    private bool showTaskModal;
+    private int? editingTaskId;
+    private string taskFormNumber = "";
+    private DtTaskUpsertDto taskForm = new();
+    private DtTaskDetailDto? taskDetail;
+    private int taskFormStatusId, taskFormModuleId, taskFormSprintId, taskFormAssigneeId;
+    private string taskDueInput = "";
+    private string gitKind = "Commit", gitRef = "", gitUrl = "", commentText = "", timeNote = "";
+    private decimal timeHours = 1;
+    private int linkWoId;
+    private string subTaskTitle = "";
+    private string depSearch = "";
+    private List<DtTaskListItemDto> depResults = new();
+
+    // other modals
+    private bool showProblemModal, showChangeModal, showSprintModal, showStatusModal, showModuleModal;
+    private DtProblemUpsertDto probForm = new();
+    private int probFormModuleId, probFormAssigneeId;
+    private DtModuleChangeCreateDto chgForm = new();
+    private int chgFormModuleId;
+    private DtSprintDto sprintForm = new();
+    private string sprintStartInput = "", sprintEndInput = "";
+    private DtWorkflowStatusDto statusForm = new();
+    private DtProductModuleDto moduleForm = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = uri.Query.TrimStart('?');
+        string? tabQ = null; int openId = 0;
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split('=', 2);
+            var key = Uri.UnescapeDataString(kv[0]);
+            var val = kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : "";
+            if (key == "tab") tabQ = val;
+            if (key == "open") int.TryParse(val, out openId);
+        }
+        if (!string.IsNullOrWhiteSpace(tabQ) && TabDefs.Any(x => x.key == tabQ))
+            tab = tabQ!;
+        await BootstrapAsync();
+        if (openId > 0) await OpenTask(openId);
+    }
+
+    private async Task BootstrapAsync()
+    {
+        loading = true;
+        try
+        {
+            access = await Api.GetAccessAsync();
+            if (!access.CanView) { loading = false; return; }
+            lookups = await Api.GetLookupsAsync();
+            await LoadTabData();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally { loading = false; }
+    }
+
+    private async Task SwitchTab(string key)
+    {
+        tab = key;
+        await LoadTabData();
+    }
+
+    private async Task LoadTabData()
+    {
+        try
+        {
+            switch (tab)
+            {
+                case "board":
+                    boardTasks = await Api.BoardAsync(
+                        fltSprintId > 0 ? fltSprintId : null,
+                        fltModuleId > 0 ? fltModuleId : null,
+                        fltAssigneeId > 0 ? fltAssigneeId : null);
+                    if (onlyMine && access.UserId > 0)
+                        boardTasks = boardTasks.Where(t => t.AssigneeUserId == access.UserId).ToList();
+                    if (!string.IsNullOrWhiteSpace(fltQ))
+                    {
+                        var term = fltQ.Trim();
+                        boardTasks = boardTasks.Where(t =>
+                            (t.Title?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                            (t.Number?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                            (t.Tags?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+                    }
+                    if (!string.IsNullOrWhiteSpace(fltType))
+                        boardTasks = boardTasks.Where(t => t.Type == fltType).ToList();
+                    break;
+                case "list":
+                    await ReloadTasks();
+                    break;
+                case "problems":
+                    await LoadProblems();
+                    break;
+                case "modules":
+                    lookups.Modules = await Api.GetModulesAsync();
+                    changes = await Api.QueryChangesAsync(chgModuleId > 0 ? chgModuleId : null, 80);
+                    break;
+                case "sprints":
+                    lookups.Sprints = await Api.GetSprintsAsync();
+                    break;
+                case "dashboard":
+                    dash = await Api.GetDashboardAsync(fltSprintId > 0 ? fltSprintId : null);
+                    break;
+                case "settings":
+                    if (access.CanManage)
+                    {
+                        allStatuses = await Api.GetStatusesAsync(true);
+                        allModules = await Api.GetModulesAsync(true);
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ReloadTasks()
+    {
+        if (tab == "board")
+        {
+            await LoadTabData();
+            return;
+        }
+        try
+        {
+            var res = await Api.QueryTasksAsync(new DtTaskQuery
+            {
+                Q = string.IsNullOrWhiteSpace(fltQ) ? null : fltQ,
+                ModuleId = fltModuleId > 0 ? fltModuleId : null,
+                SprintId = fltSprintId > 0 ? fltSprintId : null,
+                AssigneeUserId = fltAssigneeId > 0 ? fltAssigneeId : null,
+                Type = string.IsNullOrWhiteSpace(fltType) ? null : fltType,
+                OnlyMine = onlyMine ? true : null,
+                IncludeDone = true,
+                Page = 1,
+                PageSize = 200
+            });
+            listTasks = res.Items;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task ToggleMine()
+    {
+        onlyMine = !onlyMine;
+        await ReloadTasks();
+    }
+
+    private async Task LoadProblems()
+    {
+        problems = await Api.QueryProblemsAsync(
+            string.IsNullOrWhiteSpace(probSeverity) ? null : probSeverity,
+            string.IsNullOrWhiteSpace(probStatus) ? null : probStatus,
+            probModuleId > 0 ? probModuleId : null);
+    }
+
+    private async Task SelectModule(int id)
+    {
+        chgModuleId = chgModuleId == id ? 0 : id;
+        changes = await Api.QueryChangesAsync(chgModuleId > 0 ? chgModuleId : null, 80);
+    }
+
+    private async Task FilterBySprint(int id)
+    {
+        fltSprintId = id;
+        tab = "board";
+        await LoadTabData();
+    }
+
+    private async Task MoveTask(int id, int statusId)
+    {
+        try
+        {
+            await Api.MoveTaskAsync(id, statusId);
+            Toast.Success("وضعیت عوض شد");
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task DeleteTask(int id)
+    {
+        try
+        {
+            await Api.DeleteTaskAsync(id);
+            Toast.Success("حذف شد");
+            showTaskModal = false;
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ----- task modal -----
+    private void OpenNewTask()
+    {
+        editingTaskId = null;
+        taskFormNumber = "";
+        taskDetail = null;
+        taskForm = new DtTaskUpsertDto { Type = "Feature", Priority = 1 };
+        taskFormStatusId = lookups.Statuses.FirstOrDefault(s => s.IsInitial)?.Id
+            ?? lookups.Statuses.FirstOrDefault()?.Id ?? 0;
+        taskFormModuleId = fltModuleId;
+        taskFormSprintId = fltSprintId;
+        taskFormAssigneeId = 0;
+        taskDueInput = "";
+        showTaskModal = true;
+    }
+
+    private async Task OpenTask(int id)
+    {
+        try
+        {
+            taskDetail = await Api.GetTaskAsync(id);
+            if (taskDetail is null) { Toast.Error("تسک یافت نشد"); return; }
+            editingTaskId = id;
+            taskFormNumber = taskDetail.Number;
+            taskForm = new DtTaskUpsertDto
+            {
+                Title = taskDetail.Title,
+                Description = taskDetail.Description,
+                Type = taskDetail.Type,
+                Priority = taskDetail.Priority,
+                EstimateHours = taskDetail.EstimateHours,
+                Progress = taskDetail.Progress,
+                Tags = taskDetail.Tags,
+                DueAt = taskDetail.DueAt
+            };
+            taskFormStatusId = taskDetail.StatusId;
+            taskFormModuleId = taskDetail.ModuleId ?? 0;
+            taskFormSprintId = taskDetail.SprintId ?? 0;
+            taskFormAssigneeId = taskDetail.AssigneeUserId ?? 0;
+            taskDueInput = taskDetail.DueAt is DateTime d ? PersianDate.ToInput(d) : "";
+            gitKind = "Commit"; gitRef = ""; gitUrl = ""; commentText = ""; timeHours = 1; timeNote = "";
+            showTaskModal = true;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void CloseTaskModal() => showTaskModal = false;
+
+    private async Task SaveTask()
+    {
+        saving = true;
+        try
+        {
+            taskForm.StatusId = taskFormStatusId > 0 ? taskFormStatusId : null;
+            taskForm.ModuleId = taskFormModuleId > 0 ? taskFormModuleId : null;
+            taskForm.SprintId = taskFormSprintId > 0 ? taskFormSprintId : null;
+            taskForm.AssigneeUserId = taskFormAssigneeId > 0 ? taskFormAssigneeId : null;
+            taskForm.DueAt = string.IsNullOrWhiteSpace(taskDueInput) ? null : PersianDate.TryParse(taskDueInput);
+
+            if (editingTaskId is int id)
+                taskDetail = await Api.UpdateTaskAsync(id, taskForm);
+            else
+                taskDetail = await Api.CreateTaskAsync(taskForm);
+
+            editingTaskId = taskDetail.Id;
+            taskFormNumber = taskDetail.Number;
+            Toast.Success("ذخیره شد");
+            await LoadTabData();
+            // refresh detail
+            taskDetail = await Api.GetTaskAsync(taskDetail.Id);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task AddGit()
+    {
+        if (editingTaskId is not int id) { Toast.Info("ابتدا تسک را ذخیره کنید"); return; }
+        try
+        {
+            await Api.AddGitLinkAsync(id, new DtTaskGitLinkCreateDto { Kind = gitKind, Ref = gitRef, Url = string.IsNullOrWhiteSpace(gitUrl) ? null : gitUrl });
+            gitRef = ""; gitUrl = "";
+            taskDetail = await Api.GetTaskAsync(id);
+            Toast.Success("لینک گیت اضافه شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RemoveGit(int linkId)
+    {
+        try
+        {
+            await Api.DeleteGitLinkAsync(linkId);
+            if (editingTaskId is int id) taskDetail = await Api.GetTaskAsync(id);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task AddComment()
+    {
+        if (editingTaskId is not int id || string.IsNullOrWhiteSpace(commentText)) return;
+        try
+        {
+            await Api.AddCommentAsync(id, commentText);
+            commentText = "";
+            taskDetail = await Api.GetTaskAsync(id);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task AddTime()
+    {
+        if (editingTaskId is not int id) return;
+        try
+        {
+            await Api.AddTimeAsync(id, new DtTimeEntryCreateDto { Hours = timeHours, Note = timeNote });
+            timeNote = "";
+            taskDetail = await Api.GetTaskAsync(id);
+            Toast.Success("زمان ثبت شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task CreateWoFromTask()
+    {
+        if (editingTaskId is not int id) { Toast.Info("ابتدا تسک را ذخیره کنید"); return; }
+        saving = true;
+        try
+        {
+            var link = await Api.CreateWorkOrderFromTaskAsync(id);
+            Toast.Success($"دستور کار {link.WorkOrderNumber} ساخته شد");
+            taskDetail = await Api.GetTaskAsync(id);
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task LinkExistingWo()
+    {
+        if (editingTaskId is not int id || linkWoId <= 0) { Toast.Info("شناسه دستور کار را وارد کنید"); return; }
+        try
+        {
+            await Api.LinkWorkOrderAsync(id, linkWoId);
+            linkWoId = 0;
+            Toast.Success("متصل شد");
+            taskDetail = await Api.GetTaskAsync(id);
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task UnlinkWo()
+    {
+        if (editingTaskId is not int id) return;
+        try
+        {
+            await Api.UnlinkWorkOrderAsync(id);
+            Toast.Success("اتصال قطع شد");
+            taskDetail = await Api.GetTaskAsync(id);
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task OnSubTaskKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddSubTask();
+    }
+
+    private async Task AddSubTask()
+    {
+        if (editingTaskId is not int id || string.IsNullOrWhiteSpace(subTaskTitle)) return;
+        saving = true;
+        try
+        {
+            await Api.CreateSubTaskAsync(id, new DtTaskUpsertDto
+            {
+                Title = subTaskTitle.Trim(),
+                Type = taskDetail?.Type ?? "Feature",
+                Priority = taskDetail?.Priority ?? 1,
+                ModuleId = taskDetail?.ModuleId,
+                SprintId = taskDetail?.SprintId
+            });
+            subTaskTitle = "";
+            Toast.Success("ساب‌تسک ساخته شد");
+            taskDetail = await Api.GetTaskAsync(id);
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task PromoteCurrent()
+    {
+        if (editingTaskId is not int id) return;
+        try
+        {
+            await Api.PromoteAsync(id);
+            Toast.Success("به تسک اصلی ارتقا یافت");
+            taskDetail = await Api.GetTaskAsync(id);
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SearchDeps()
+    {
+        if (editingTaskId is not int id) return;
+        if (string.IsNullOrWhiteSpace(depSearch) || depSearch.Trim().Length < 2)
+        {
+            depResults = new();
+            return;
+        }
+        try
+        {
+            depResults = await Api.SearchTasksAsync(depSearch.Trim(), id, 12);
+        }
+        catch { depResults = new(); }
+    }
+
+    private async Task AddDep(int dependsOnId)
+    {
+        if (editingTaskId is not int id) return;
+        try
+        {
+            await Api.AddDependencyAsync(id, new DtDependencyCreateDto { DependsOnTaskId = dependsOnId, Kind = "Blocks" });
+            depSearch = "";
+            depResults = new();
+            Toast.Success("وابستگی اضافه شد");
+            taskDetail = await Api.GetTaskAsync(id);
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RemoveDep(int depId)
+    {
+        if (editingTaskId is not int id) return;
+        try
+        {
+            await Api.RemoveDependencyAsync(depId);
+            taskDetail = await Api.GetTaskAsync(id);
+            Toast.Success("وابستگی حذف شد");
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ----- problem -----
+    private void OpenNewProblem()
+    {
+        probForm = new DtProblemUpsertDto { Severity = "Error" };
+        probFormModuleId = fltModuleId;
+        probFormAssigneeId = 0;
+        showProblemModal = true;
+    }
+
+    private async Task SaveProblem()
+    {
+        saving = true;
+        try
+        {
+            probForm.ModuleId = probFormModuleId > 0 ? probFormModuleId : null;
+            probForm.AssigneeUserId = probFormAssigneeId > 0 ? probFormAssigneeId : null;
+            await Api.CreateProblemAsync(probForm);
+            showProblemModal = false;
+            Toast.Success("مشکل ثبت شد");
+            if (tab == "problems") await LoadProblems();
+            else if (tab == "dashboard") dash = await Api.GetDashboardAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task ResolveProblem(DtProblemDto p)
+    {
+        try
+        {
+            await Api.UpdateProblemAsync(p.Id, new DtProblemUpsertDto
+            {
+                Title = p.Title,
+                Description = p.Description,
+                Severity = p.Severity,
+                Status = "Resolved",
+                ModuleId = p.ModuleId,
+                TaskId = p.TaskId,
+                AssigneeUserId = p.AssigneeUserId,
+                ResolutionNote = "رفع شد"
+            });
+            await LoadProblems();
+            Toast.Success("رفع شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task SetProblemStatus(DtProblemDto p, string st)
+    {
+        try
+        {
+            await Api.UpdateProblemAsync(p.Id, new DtProblemUpsertDto
+            {
+                Title = p.Title, Description = p.Description, Severity = p.Severity,
+                Status = st, ModuleId = p.ModuleId, TaskId = p.TaskId, AssigneeUserId = p.AssigneeUserId
+            });
+            await LoadProblems();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ----- change -----
+    private void OpenNewChange()
+    {
+        chgForm = new DtModuleChangeCreateDto();
+        chgFormModuleId = chgModuleId > 0 ? chgModuleId : fltModuleId;
+        showChangeModal = true;
+    }
+
+    private async Task SaveChange()
+    {
+        saving = true;
+        try
+        {
+            chgForm.ModuleId = chgFormModuleId;
+            await Api.CreateChangeAsync(chgForm);
+            showChangeModal = false;
+            Toast.Success("تغییر ثبت شد");
+            if (tab == "modules")
+                changes = await Api.QueryChangesAsync(chgModuleId > 0 ? chgModuleId : null, 80);
+            lookups.Modules = await Api.GetModulesAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ----- sprint -----
+    private void OpenNewSprint()
+    {
+        sprintForm = new DtSprintDto { Status = "Planned", StartDate = DateTime.Today, EndDate = DateTime.Today.AddDays(13) };
+        sprintStartInput = PersianDate.ToInput(sprintForm.StartDate);
+        sprintEndInput = PersianDate.ToInput(sprintForm.EndDate);
+        showSprintModal = true;
+    }
+
+    private async Task SaveSprint()
+    {
+        saving = true;
+        try
+        {
+            var s = PersianDate.TryParse(sprintStartInput);
+            var e = PersianDate.TryParse(sprintEndInput);
+            if (s is null || e is null) throw new InvalidOperationException("تاریخ شروع/پایان نامعتبر است.");
+            sprintForm.StartDate = s.Value;
+            sprintForm.EndDate = e.Value;
+            await Api.UpsertSprintAsync(sprintForm);
+            showSprintModal = false;
+            lookups.Sprints = await Api.GetSprintsAsync();
+            Toast.Success("اسپرینت ذخیره شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ----- settings -----
+    private void OpenNewStatus()
+    {
+        statusForm = new DtWorkflowStatusDto { Color = "#64748b", SortOrder = 100, IsActive = true, Key = "", NameFa = "" };
+        showStatusModal = true;
+    }
+    private void EditStatus(DtWorkflowStatusDto s)
+    {
+        statusForm = new DtWorkflowStatusDto
+        {
+            Id = s.Id, Key = s.Key, NameFa = s.NameFa, Color = s.Color, SortOrder = s.SortOrder,
+            IsInitial = s.IsInitial, IsDone = s.IsDone, IsBlocked = s.IsBlocked, IsActive = s.IsActive
+        };
+        showStatusModal = true;
+    }
+    private async Task SaveStatus()
+    {
+        try
+        {
+            await Api.UpsertStatusAsync(statusForm);
+            showStatusModal = false;
+            allStatuses = await Api.GetStatusesAsync(true);
+            lookups.Statuses = await Api.GetStatusesAsync();
+            Toast.Success("ذخیره شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OpenNewModule()
+    {
+        moduleForm = new DtProductModuleDto { Color = "#4f46e5", IsActive = true, Icon = "bi-box" };
+        showModuleModal = true;
+    }
+    private void EditModule(DtProductModuleDto m)
+    {
+        moduleForm = new DtProductModuleDto
+        {
+            Id = m.Id, Key = m.Key, NameFa = m.NameFa, Icon = m.Icon, Color = m.Color,
+            Description = m.Description, SortOrder = m.SortOrder, IsActive = m.IsActive
+        };
+        showModuleModal = true;
+    }
+    private async Task SaveModule()
+    {
+        try
+        {
+            await Api.UpsertModuleAsync(moduleForm);
+            showModuleModal = false;
+            allModules = await Api.GetModulesAsync(true);
+            lookups.Modules = await Api.GetModulesAsync();
+            Toast.Success("ذخیره شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ----- helpers -----
+    private static string TypeFa(string t) => t switch
+    {
+        "Feature" => "فیچر", "Bug" => "باگ", "Improvement" => "بهبود",
+        "Spike" => "تحقیق", "Chore" => "کار فنی", "Docs" => "مستند", _ => t
+    };
+    private static string GitFa(string k) => k switch
+    {
+        "Commit" => "کامیت", "Branch" => "شاخه", "PullRequest" => "PR", "Tag" => "تگ", _ => k
+    };
+    private static string ShortSha(string sha) => sha.Length <= 8 ? sha : sha[..8];
+    private static string SevBadge(string s) => s switch
+    {
+        "Error" => "text-bg-danger", "Warning" => "text-bg-warning", _ => "text-bg-info"
+    };
+    private static string SprintBadge(string s) => s switch
+    {
+        "Active" => "text-bg-success", "Closed" => "text-bg-secondary", _ => "text-bg-primary"
+    };
+}

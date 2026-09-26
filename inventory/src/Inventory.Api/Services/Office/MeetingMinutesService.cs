@@ -245,13 +245,11 @@ public class MeetingMinutesService : IMeetingMinutesService
 
         var names = await NamesAsync(all);
         var now = DateTime.Now;
-        bool isEdit;
         MeetingMinutes m;
 
         if (dto.Id > 0)
         {
             m = await MustGetAsync(dto.Id);
-            isEdit = true;
             if (m.Status == MeetingMinutesStatus.Closed)
                 throw new Exception("صورتجلسه «اتمام نهایی» شده — امکان ویرایش نیست.");
             m.Title = dto.Title.Trim();
@@ -270,7 +268,6 @@ public class MeetingMinutesService : IMeetingMinutesService
             };
             _db.MeetingMinutes.Add(m);
             await _db.SaveChangesAsync();
-            isEdit = false;
         }
 
         // ---------- شرکت‌کنندگان: جایگزینی کامل (غیرفعال‌شدگان حذف، جدیدها با Notified=false) ----------

@@ -143,6 +143,19 @@ public class AppDbContext : DbContext
     public DbSet<MeetingMinutesParticipant> MeetingMinutesParticipants => Set<MeetingMinutesParticipant>();
     public DbSet<MeetingMinutesItem> MeetingMinutesItems => Set<MeetingMinutesItem>();
 
+    // ==================== میز کار توسعه (DevTeam) ====================
+    public DbSet<DtWorkflowStatus> DtWorkflowStatuses => Set<DtWorkflowStatus>();
+    public DbSet<DtProductModule> DtProductModules => Set<DtProductModule>();
+    public DbSet<DtSprint> DtSprints => Set<DtSprint>();
+    public DbSet<DtTask> DtTasks => Set<DtTask>();
+    public DbSet<DtTaskComment> DtTaskComments => Set<DtTaskComment>();
+    public DbSet<DtTaskActivity> DtTaskActivities => Set<DtTaskActivity>();
+    public DbSet<DtTaskGitLink> DtTaskGitLinks => Set<DtTaskGitLink>();
+    public DbSet<DtTimeEntry> DtTimeEntries => Set<DtTimeEntry>();
+    public DbSet<DtProblem> DtProblems => Set<DtProblem>();
+    public DbSet<DtModuleChange> DtModuleChanges => Set<DtModuleChange>();
+    public DbSet<DtTaskDependency> DtTaskDependencies => Set<DtTaskDependency>();
+
     /// <summary>رونوشت‌گیرندگان نامه صادره (هر گیرنده یک ردیف)</summary>
     public DbSet<OutgoingLetterCopyTo> OutgoingLetterCopyToes => Set<OutgoingLetterCopyTo>();
 
@@ -1195,5 +1208,98 @@ public class AppDbContext : DbContext
             .HasForeignKey(i => i.MinutesId)
             .OnDelete(DeleteBehavior.Cascade);
         mb.Entity<MeetingMinutesItem>().HasIndex(i => i.MinutesId);
+
+        // ============ میز کار توسعه (DevTeam) ============
+        mb.Entity<DtWorkflowStatus>().HasIndex(s => s.Key).IsUnique();
+        mb.Entity<DtProductModule>().HasIndex(m => m.Key).IsUnique();
+
+        mb.Entity<DtTask>().HasIndex(t => t.Number).IsUnique();
+        mb.Entity<DtTask>().HasIndex(t => t.StatusId);
+        mb.Entity<DtTask>().HasIndex(t => t.AssigneeUserId);
+        mb.Entity<DtTask>().HasIndex(t => t.ModuleId);
+        mb.Entity<DtTask>().HasIndex(t => t.SprintId);
+        mb.Entity<DtTask>().HasIndex(t => t.IsDeleted);
+        mb.Entity<DtTask>().HasIndex(t => t.ParentTaskId);
+        mb.Entity<DtTask>().Property(t => t.EstimateHours).HasPrecision(10, 2);
+        mb.Entity<DtTask>().Property(t => t.SpentHours).HasPrecision(10, 2);
+        mb.Entity<DtTask>()
+            .HasOne(t => t.Status).WithMany()
+            .HasForeignKey(t => t.StatusId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<DtTask>()
+            .HasOne(t => t.Module).WithMany()
+            .HasForeignKey(t => t.ModuleId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<DtTask>()
+            .HasOne(t => t.Sprint).WithMany()
+            .HasForeignKey(t => t.SprintId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<DtTask>()
+            .HasOne(t => t.ParentTask)
+            .WithMany(t => t.SubTasks)
+            .HasForeignKey(t => t.ParentTaskId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<DtTaskDependency>()
+            .HasIndex(d => new { d.TaskId, d.DependsOnTaskId }).IsUnique();
+        mb.Entity<DtTaskDependency>().HasIndex(d => d.DependsOnTaskId);
+        mb.Entity<DtTaskDependency>()
+            .HasOne(d => d.Task)
+            .WithMany(t => t.BlockedByLinks)
+            .HasForeignKey(d => d.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<DtTaskDependency>()
+            .HasOne(d => d.DependsOnTask)
+            .WithMany(t => t.BlockingLinks)
+            .HasForeignKey(d => d.DependsOnTaskId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        mb.Entity<DtTaskComment>()
+            .HasOne(c => c.Task).WithMany(t => t.Comments)
+            .HasForeignKey(c => c.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<DtTaskComment>().HasIndex(c => c.TaskId);
+
+        mb.Entity<DtTaskActivity>()
+            .HasOne(a => a.Task).WithMany(t => t.Activities)
+            .HasForeignKey(a => a.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<DtTaskActivity>().HasIndex(a => a.TaskId);
+
+        mb.Entity<DtTaskGitLink>()
+            .HasOne(g => g.Task).WithMany(t => t.GitLinks)
+            .HasForeignKey(g => g.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<DtTaskGitLink>().HasIndex(g => g.TaskId);
+
+        mb.Entity<DtTimeEntry>()
+            .HasOne(e => e.Task).WithMany(t => t.TimeEntries)
+            .HasForeignKey(e => e.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<DtTimeEntry>().HasIndex(e => e.TaskId);
+        mb.Entity<DtTimeEntry>().Property(e => e.Hours).HasPrecision(10, 2);
+
+        mb.Entity<DtProblem>().HasIndex(p => p.Status);
+        mb.Entity<DtProblem>().HasIndex(p => p.Severity);
+        mb.Entity<DtProblem>().HasIndex(p => p.ModuleId);
+        mb.Entity<DtProblem>()
+            .HasOne(p => p.Module).WithMany()
+            .HasForeignKey(p => p.ModuleId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<DtProblem>()
+            .HasOne(p => p.Task).WithMany()
+            .HasForeignKey(p => p.TaskId)
+            .OnDelete(DeleteBehavior.SetNull);
+
+        mb.Entity<DtModuleChange>().HasIndex(c => c.ModuleId);
+        mb.Entity<DtModuleChange>().HasIndex(c => c.ChangedAt);
+        mb.Entity<DtModuleChange>()
+            .HasOne(c => c.Module).WithMany()
+            .HasForeignKey(c => c.ModuleId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<DtModuleChange>()
+            .HasOne(c => c.Task).WithMany()
+            .HasForeignKey(c => c.TaskId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

@@ -234,6 +234,7 @@
 </div>
 
 @* ---------- مدال‌های جانبی ---------- *@
+<ComposeIncomingModal @ref="composeModal" OnSaved="ReloadDataAsync" />
 <IncomingLetterViewModal @ref="viewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
 <IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadDataAsync" />
 <IncomingGardeshModal @ref="gardeshModal" />
@@ -404,7 +405,11 @@
 
     private void CloseMenus() => openMenuLetterId = 0;
 
-    private void OpenComposeNew() => composeModal?.OpenCreate();
+    private async Task OpenComposeNew()
+    {
+        if (composeModal is not null)
+            await composeModal.OpenCreate();
+    }
     private void OpenReservationManager() => reservationManager?.Open();
     private void OpenDetailModal(int letterId) => viewModal?.Open(letterId);
 
@@ -470,7 +475,11 @@
 
     private void HandleErjaFromView((int LetterId, int SabtNumber) args) => erjaSheet?.OpenErja(args.LetterId, args.SabtNumber);
     private void HandleAnswerFromView((int ErjaId, int SabtNumber) args) => erjaSheet?.OpenAnswer(args.ErjaId, args.SabtNumber);
-    private void HandleEditFromView(IncomingLetterDetailDto letter) => composeModal?.OpenEdit(letter);
+    private async Task HandleEditFromView(IncomingLetterDetailDto letter)
+    {
+        if (composeModal is not null)
+            await composeModal.OpenEdit(letter);
+    }
     private void HandleGardeshFromView(int letterId)
     {
         if (activeDetail != null) gardeshModal?.Open(activeDetail.LetterId, activeDetail.Title, activeDetail.Ferestande, activeDetail.NumberSabt, activeDetail.DateErsal);

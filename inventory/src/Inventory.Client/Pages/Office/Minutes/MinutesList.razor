@@ -246,7 +246,7 @@ protected override void OnInitialized()
             items = await Minutes.GetListAsync(search, string.IsNullOrWhiteSpace(statusFilter) ? null : statusFilter);
         }
         catch { }
-        try { InvokeAsync(StateHasChanged); } catch { }
+        try { await InvokeAsync(StateHasChanged); } catch { }
     }
 
     private void GoNew() => Nav.NavigateTo("misc/minutes/new");

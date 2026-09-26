@@ -33,6 +33,10 @@ public static class RbacSeeder
         // View: مشاهده ماژول (مبنای نمایش در منو) | Create: ساخت دستور کار (حداقل برای خود)
         // AssignOthers: دستور کار به دیگران | Delete: حذف — فقط با مجوز مستقل، به نقش‌های عادی خودکار اعطا نمی‌شود
         ["WorkOrders"] = new[] { "View", "Create", "AssignOthers", "Delete" },
+        // ================== میز کار توسعه (مدیریت تیم نرم‌افزار) ==================
+        // View: منو و مشاهده | Create: تسک/مشکل/changelog | Update: ویرایش و جابجایی وضعیت
+        // Delete: حذف | Manage: تنظیم وضعیت‌ها/ماژول‌ها/اسپرینت | Assign: تخصیص به دیگران
+        ["DevTeam"] = new[] { "View", "Create", "Update", "Delete", "Manage", "Assign" },
         ["Settings"] = CrudActions,
         ["Warehouses"] = CrudActions,
         // ================== ماژول انبارداری ==================

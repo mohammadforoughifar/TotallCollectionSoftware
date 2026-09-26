@@ -74,6 +74,11 @@ public static class DbInitializer
                 // فرم‌های متفرقه — صورتجلسه (جدول‌های MeetingMinutes*)
                 await MeetingMinutesSchemaV1.EnsureAsync(db);
 
+                // میز کار توسعه — مدیریت تیم نرم‌افزار (تسک/مشکل/changelog/گیت)
+                await DevTeamSchemaV1.EnsureAsync(db);
+                await DevTeamSchemaV2.EnsureAsync(db);
+                await DevTeamSchemaV3.EnsureAsync(db);
+
                 // نامه وارده — جدول IncomingLetters در مایگریشن SquashedInitial نیست؛
                 // بدون این، SQL Server خطای «Invalid object name 'IncomingLetters'» می‌دهد.
                 await IncomingLetterSchemaV1.EnsureAsync(db);

@@ -63,8 +63,14 @@
     private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal; private IncomingErjaSheet? erjaSheet;
     private bool CanRegister => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
     protected override async Task OnInitializedAsync() => await ReloadAsync();
-    public void OpenCreateFromNavigation() => compose?.OpenCreate();
-    private void OpenCreate() => compose?.OpenCreate();
+    public async Task OpenCreateFromNavigation()
+    {
+        if (compose is not null) await compose.OpenCreate();
+    }
+    private async Task OpenCreate()
+    {
+        if (compose is not null) await compose.OpenCreate();
+    }
     public async Task SetViewFromNavigation(string value) { view = value; await ReloadAsync(); }
     private async Task Show(IncomingLetterListItemDto l) => await viewModal!.Open(l.LetterId);
     private async Task OpenFlow(IncomingLetterListItemDto l) => await flowModal!.Open(l.LetterId, l.Title, l.Ferestande, l.NumberSabt, l.DateErsal);

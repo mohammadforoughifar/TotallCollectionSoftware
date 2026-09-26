@@ -627,7 +627,7 @@
             else if (detail != null) { title = detail.Title; lastLoadedTitle = detail.Title; }
         }
         catch { }
-        try { InvokeAsync(StateHasChanged); } catch { }
+        try { await InvokeAsync(StateHasChanged); } catch { }
     }
 
     // ================== اقدامات ==================

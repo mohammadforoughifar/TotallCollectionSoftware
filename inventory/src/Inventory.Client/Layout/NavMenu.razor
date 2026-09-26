@@ -104,6 +104,34 @@
         </div>
     }
 
+    @* ============ میز کار توسعه (مدیریت تیم نرم‌افزار) ============ *@
+    @if (Auth.CanSee("DevTeam"))
+    {
+        <div class="nav-group group-devteam">
+            <button type="button" class="nav-section-title nav-toggle @(gDevTeam ? "open" : "")" @onclick="() => gDevTeam = !gDevTeam">
+                <span><i class="bi bi-code-slash"></i> میز کار توسعه</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gDevTeam)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="dev-team" @onclick="NotifyClose">
+                        <i class="bi bi-kanban"></i><span>برد و تسک‌ها</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="dev-team?tab=problems" @onclick="NotifyClose">
+                        <i class="bi bi-bug"></i><span>خطا و هشدار</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="dev-team?tab=modules" @onclick="NotifyClose">
+                        <i class="bi bi-boxes"></i><span>ماژول‌ها و تغییرات</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="dev-team?tab=dashboard" @onclick="NotifyClose">
+                        <i class="bi bi-speedometer2"></i><span>داشبورد تیم</span>
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     @* ============ منابع انسانی بن‌سازه (ماژول مستقل) ============ *@
     @if (Auth.HasModule("RadisHr"))
     {
@@ -529,7 +557,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gBonHr, gLetters, gDocs, gChat, gMisc;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gLetters, gDocs, gChat, gMisc;
 
     // ================== مجوز «مشاهده» = مبنای نمایش در منو ==================
     // اگر در «تنظیمات ← نقش‌ها و دسترسی‌ها» تیک مشاهدهٔ یک ماژول برداشته شود،
@@ -563,6 +591,7 @@
         gChat = p.StartsWith("chat");
         gDash = p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
         gWo = p.StartsWith("work-orders");
+        gDevTeam = p.StartsWith("dev-team");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gLetters = p.StartsWith("letters");
         gMisc = p.StartsWith("misc");

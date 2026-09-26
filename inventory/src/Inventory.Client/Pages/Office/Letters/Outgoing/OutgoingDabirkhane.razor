@@ -29,12 +29,12 @@
             @if (dabirType == "varede")
             {
                 <div class="logo"><i class="bi bi-inbox-fill"></i></div>
-                <button class="on" title="نامه‌های ثبت‌شده" @onclick='() => incomingPanel?.SetViewFromNavigation("registered")'><i class="bi bi-check2-circle"></i></button>
+                <button class="on" title="نامه‌های ثبت‌شده" @onclick='() => OpenIncomingView("registered")'><i class="bi bi-check2-circle"></i></button>
                 <span class="rlbl">ثبت‌شده</span>
-                <button title="نامه‌های بایگانی‌شده" @onclick='() => incomingPanel?.SetViewFromNavigation("archived")'><i class="bi bi-archive"></i></button>
+                <button title="نامه‌های بایگانی‌شده" @onclick='() => OpenIncomingView("archived")'><i class="bi bi-archive"></i></button>
                 <span class="rlbl">بایگانی</span>
                 <div class="grow"></div>
-                <button title="ثبت نامه وارده جدید" @onclick="() => incomingPanel?.OpenCreateFromNavigation()"><i class="bi bi-plus-lg"></i></button>
+                <button title="ثبت نامه وارده جدید" @onclick="OpenIncomingCreate"><i class="bi bi-plus-lg"></i></button>
                 <span class="rlbl">ثبت نامه</span>
                 <button title="بروزرسانی" @onclick="ReloadAsync"><i class="bi bi-arrow-clockwise"></i></button>
                 <span class="rlbl">بروزرسانی</span>
@@ -582,6 +582,18 @@
     private string dabirType = "sadere";
     private IntegratedIncomingPanel? incomingPanel;
     private bool showFilters;
+
+    private async Task OpenIncomingCreate()
+    {
+        if (incomingPanel is not null)
+            await incomingPanel.OpenCreateFromNavigation();
+    }
+
+    private async Task OpenIncomingView(string view)
+    {
+        if (incomingPanel is not null)
+            await incomingPanel.SetViewFromNavigation(view);
+    }
 
     // ---------- فیلترهای جستجوی پیشرفته ----------
     private string fText = "";

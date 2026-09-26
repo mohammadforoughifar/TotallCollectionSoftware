@@ -26,6 +26,7 @@
 | **Reports** (گزارشات) | Reports | — | — | Reports/ |
 | **System** (سیستم/سازمان) | SystemCompanies, SystemDepartments, SystemUsers, Roles, Permissions, Settings, Notifications, Dashboard, Archive | SystemCompany, SystemDepartment, SystemUser, ArchiveAndAttachments | FileStore, UserPhotoService, MessengerService | SystemUsers, SystemCompany, SystemDepartment, MyArchive, Users, Settings/ |
 | **Dashboards** (لندینگ) | — (در System) | — | — | DashboardLive, DashboardHardware (در روت Pages) |
+| **DevTeam** (میز کار توسعه) | `Controllers/DevTeam` (پیشوند `/api/dev-team`) | `Entities/DevTeam` — DtTask, DtProblem, DtSprint, DtModuleChange, … | `Services/DevTeam` | `Pages/DevTeam` — برد کانبان، مشکلات، changelog، داشبورد تیم |
 
 ## زیرساخت (ماژول‌دار نیست)
 - `API/Data/` — DbContext، Initializer، Seederها
