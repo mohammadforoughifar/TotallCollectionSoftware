@@ -60,6 +60,12 @@ public interface IDevTeamClient
     Task PromoteAsync(int taskId);
     Task<DtDependencyDto> AddDependencyAsync(int taskId, DtDependencyCreateDto dto);
     Task RemoveDependencyAsync(int dependencyId);
+
+    Task<DtChecklistItemDto> AddChecklistItemAsync(int taskId, string title);
+    Task<DtChecklistItemDto> ToggleChecklistItemAsync(int itemId);
+    Task DeleteChecklistItemAsync(int itemId);
+    Task ReorderChecklistAsync(int taskId, IReadOnlyList<int> orderedIds);
+    Task<DtTaskDetailDto> CreateTaskFromProblemAsync(int problemId, DtCreateTaskFromProblemDto? dto = null);
 }
 
 public class DevTeamClient : IDevTeamClient
@@ -380,5 +386,39 @@ public class DevTeamClient : IDevTeamClient
     {
         var res = await _http.DeleteAsync($"{Base}/dependencies/{dependencyId}");
         await EnsureOk(res);
+    }
+
+    public async Task<DtChecklistItemDto> AddChecklistItemAsync(int taskId, string title)
+    {
+        var res = await _http.PostAsJsonAsync($"{Base}/tasks/{taskId}/checklist", new DtChecklistItemCreateDto { Title = title });
+        await EnsureOk(res);
+        return (await res.Content.ReadFromJsonAsync<DtChecklistItemDto>())!;
+    }
+
+    public async Task<DtChecklistItemDto> ToggleChecklistItemAsync(int itemId)
+    {
+        var res = await _http.PostAsync($"{Base}/checklist/{itemId}/toggle", null);
+        await EnsureOk(res);
+        return (await res.Content.ReadFromJsonAsync<DtChecklistItemDto>())!;
+    }
+
+    public async Task DeleteChecklistItemAsync(int itemId)
+    {
+        var res = await _http.DeleteAsync($"{Base}/checklist/{itemId}");
+        await EnsureOk(res);
+    }
+
+    public async Task ReorderChecklistAsync(int taskId, IReadOnlyList<int> orderedIds)
+    {
+        var res = await _http.PostAsJsonAsync($"{Base}/tasks/{taskId}/checklist/reorder",
+            new DtChecklistReorderDto { OrderedIds = orderedIds.ToList() });
+        await EnsureOk(res);
+    }
+
+    public async Task<DtTaskDetailDto> CreateTaskFromProblemAsync(int problemId, DtCreateTaskFromProblemDto? dto = null)
+    {
+        var res = await _http.PostAsJsonAsync($"{Base}/problems/{problemId}/create-task", dto ?? new DtCreateTaskFromProblemDto());
+        await EnsureOk(res);
+        return (await res.Content.ReadFromJsonAsync<DtTaskDetailDto>())!;
     }
 }

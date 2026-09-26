@@ -155,6 +155,7 @@ public class AppDbContext : DbContext
     public DbSet<DtProblem> DtProblems => Set<DtProblem>();
     public DbSet<DtModuleChange> DtModuleChanges => Set<DtModuleChange>();
     public DbSet<DtTaskDependency> DtTaskDependencies => Set<DtTaskDependency>();
+    public DbSet<DtTaskChecklistItem> DtTaskChecklistItems => Set<DtTaskChecklistItem>();
 
     /// <summary>رونوشت‌گیرندگان نامه صادره (هر گیرنده یک ردیف)</summary>
     public DbSet<OutgoingLetterCopyTo> OutgoingLetterCopyToes => Set<OutgoingLetterCopyTo>();
@@ -1278,6 +1279,12 @@ public class AppDbContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
         mb.Entity<DtTimeEntry>().HasIndex(e => e.TaskId);
         mb.Entity<DtTimeEntry>().Property(e => e.Hours).HasPrecision(10, 2);
+
+        mb.Entity<DtTaskChecklistItem>()
+            .HasOne(c => c.Task).WithMany()
+            .HasForeignKey(c => c.TaskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<DtTaskChecklistItem>().HasIndex(c => c.TaskId);
 
         mb.Entity<DtProblem>().HasIndex(p => p.Status);
         mb.Entity<DtProblem>().HasIndex(p => p.Severity);

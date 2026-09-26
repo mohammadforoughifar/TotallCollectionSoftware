@@ -136,17 +136,29 @@
                     var col = boardTasks.Where(t => t.StatusId == st.Id)
                         .OrderBy(x => x.SortOrder).ThenByDescending(x => x.Priority).ThenBy(x => x.DueAt)
                         .ToList();
-                    <div class="dt-col @(dragOverStatusId == st.Id ? "dt-col-dragover" : "")"
+                    <div class="dt-col @(dragOverStatusId == st.Id ? "dt-col-dragover" : "") @(st.WipLimit is int __w and > 0 && boardTasks.Count(x => x.StatusId == st.Id) >= __w ? "dt-col-wip-full" : "")"
                          @ondragover="OnColDragOver"
                          @ondragover:preventDefault
                          @ondragenter="() => OnColDragEnter(st.Id)"
                          @ondragleave="OnColDragLeave"
                          @ondrop="() => OnColDrop(st.Id)"
                          @ondrop:preventDefault>
-                        <div class="dt-col-head" style="border-top-color:@st.Color">
+                        @{
+                            var wipLim = st.WipLimit is int _wl && _wl > 0 ? _wl : (int?)null;
+                            var wipCnt = col.Count;
+                            var wipOver = wipLim is int _lo && wipCnt >= _lo;
+                            var wipNear = wipLim is int _ln && !wipOver && wipCnt >= Math.Max(1, (int)Math.Ceiling(_ln * 0.8));
+                        }
+                        <div class="dt-col-head @(wipOver ? "dt-wip-over" : wipNear ? "dt-wip-near" : "")" style="border-top-color:@st.Color">
                             <span class="dt-col-dot" style="background:@st.Color"></span>
                             <strong>@st.NameFa</strong>
-                            <span class="badge rounded-pill text-bg-light">@col.Count</span>
+                            <span class="badge rounded-pill @(wipOver ? "text-bg-danger" : "text-bg-light")">
+                                @wipCnt@(wipLim is int _wshow ? $"/{_wshow}" : "")
+                            </span>
+                            @if (wipOver)
+                            {
+                                <span class="badge text-bg-danger" title="سقف WIP پر است">WIP</span>
+                            }
                         </div>
                         <div class="dt-col-body">
                             @foreach (var t in col)
@@ -383,7 +395,17 @@
                                 </div>
                                 @if (access.CanUpdate && (p.Status == "Open" || p.Status == "Investigating"))
                                 {
-                                    <div class="mt-2 d-flex gap-1">
+                                    <div class="mt-2 d-flex flex-wrap gap-1">
+                                        @if (access.CanCreate && p.TaskId is null)
+                                        {
+                                            <button class="btn btn-sm btn-outline-primary" disabled="@saving" @onclick="() => CreateTaskFromProblem(p)">
+                                                <i class="bi bi-plus-lg"></i> تسک
+                                            </button>
+                                        }
+                                        else if (p.TaskId is int tid)
+                                        {
+                                            <button class="btn btn-sm btn-outline-primary" @onclick="() => OpenTask(tid)">تسک</button>
+                                        }
                                         <button class="btn btn-sm btn-outline-success" @onclick="() => ResolveProblem(p)">رفع شد</button>
                                         <button class="btn btn-sm btn-outline-secondary" @onclick='() => SetProblemStatus(p, "Investigating")'>بررسی</button>
                                     </div>
@@ -892,6 +914,7 @@
                                             @if (s.IsInitial) { <span class="badge text-bg-info">شروع</span> }
                                             @if (s.IsDone) { <span class="badge text-bg-success">پایان</span> }
                                             @if (s.IsBlocked) { <span class="badge text-bg-danger">مسدود</span> }
+                                            @if (s.WipLimit is int wipL && wipL > 0) { <span class="badge text-bg-warning">WIP @wipL</span> }
                                             @if (!s.IsActive) { <span class="badge text-bg-secondary">غیرفعال</span> }
                                         </span>
                                         <button class="btn btn-sm btn-link" @onclick="() => EditStatus(s)"><i class="bi bi-pencil"></i></button>
@@ -1179,7 +1202,60 @@
                             </div>
                         </div>
 
-                        <div class="row g-3">
+                                                @if (editingTaskId is not null && taskDetail is not null)
+                        {
+                            <div class="mb-3 p-2 border rounded bg-light">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0"><i class="bi bi-check2-square"></i> چک‌لیست
+                                        @if (taskDetail.ChecklistTotal > 0)
+                                        {
+                                            <span class="badge text-bg-white border">@taskDetail.ChecklistDone/@taskDetail.ChecklistTotal</span>
+                                        }
+                                    </h6>
+                                </div>
+                                @if (taskDetail.ChecklistTotal > 0)
+                                {
+                                    <div class="progress mb-2" style="height:6px">
+                                        @{
+                                            var cpct = (int)Math.Round(100.0 * taskDetail.ChecklistDone / Math.Max(1, taskDetail.ChecklistTotal));
+                                        }
+                                        <div class="progress-bar bg-success" style="width:@(cpct)%"></div>
+                                    </div>
+                                }
+                                @foreach (var it in taskDetail.Checklist.OrderBy(x => x.SortOrder).ThenBy(x => x.Id))
+                                {
+                                    <div class="d-flex align-items-center gap-2 border-bottom py-1 fs-8 dt-check-row @(checkDragId == it.Id ? "dt-sub-dragging" : "")"
+                                         draggable="@(access.CanUpdate ? "true" : "false")"
+                                         @ondragstart="() => OnCheckDragStart(it.Id)"
+                                         @ondragend="OnCheckDragEnd"
+                                         @ondragover:preventDefault
+                                         @ondrop="() => OnCheckDrop(it.Id)"
+                                         @ondrop:preventDefault>
+                                        @if (access.CanUpdate)
+                                        {
+                                            <i class="bi bi-grip-vertical text-muted"></i>
+                                        }
+                                        <input type="checkbox" class="form-check-input mt-0" checked="@it.IsDone"
+                                               disabled="@(!access.CanUpdate && !access.CanCreate)"
+                                               @onchange="() => ToggleCheck(it.Id)" />
+                                        <span class="flex-grow-1 @(it.IsDone ? "text-decoration-line-through text-muted" : "")">@it.Title</span>
+                                        @if (access.CanUpdate || access.CanDelete)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="() => RemoveCheck(it.Id)"><i class="bi bi-x"></i></button>
+                                        }
+                                    </div>
+                                }
+                                @if (access.CanUpdate || access.CanCreate)
+                                {
+                                    <div class="input-group input-group-sm mt-2">
+                                        <input class="form-control" placeholder="آیتم جدید…" @bind="checkTitle" @onkeydown="OnCheckKey" />
+                                        <button class="btn btn-outline-primary" disabled="@saving" @onclick="AddCheck">+</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+
+<div class="row g-3">
                             <div class="col-md-6">
                                 <h6><i class="bi bi-git"></i> لینک‌های گیت</h6>
                                 @foreach (var g in taskDetail.GitLinks)
@@ -1425,6 +1501,11 @@
                     <div class="col-4 form-check"><input class="form-check-input" type="checkbox" @bind="statusForm.IsInitial" id="stIni" /><label class="form-check-label" for="stIni">شروع پیش‌فرض</label></div>
                     <div class="col-4 form-check"><input class="form-check-input" type="checkbox" @bind="statusForm.IsDone" id="stDone" /><label class="form-check-label" for="stDone">پایانی</label></div>
                     <div class="col-4 form-check"><input class="form-check-input" type="checkbox" @bind="statusForm.IsBlocked" id="stBlk" /><label class="form-check-label" for="stBlk">مسدود</label></div>
+                    <div class="col-md-6">
+                        <label class="form-label">سقف WIP (خالی = نامحدود)</label>
+                        <input type="number" min="0" class="form-control" @bind="statusFormWip" placeholder="مثلاً 5" />
+                        <div class="form-text fs-8">حداکثر تسک ریشه در این ستون</div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-light" @onclick="() => showStatusModal = false">انصراف</button>
@@ -1520,6 +1601,10 @@
     .dt-timer-clock { font-size:1.05rem; background:rgba(0,0,0,.2); color:#fff; padding:.15rem .45rem; border-radius:.35rem; }
     .dt-timer-pulse { animation: dt-pulse 1.4s ease-in-out infinite; }
     @@keyframes dt-pulse { 0%,100%{ opacity:1 } 50%{ opacity:.45 } }
+    .dt-wip-over { background:#fef2f2; }
+    .dt-wip-near { background:#fffbeb; }
+    .dt-col-wip-full { box-shadow: inset 0 0 0 2px #fca5a5; }
+    .dt-check-row { user-select:none; }
     .dt-filter-chip { font-size:.72rem; }
 </style>
 
@@ -1582,6 +1667,9 @@
     private decimal timeHours = 1;
     private int linkWoId;
     private string subTaskTitle = "";
+    private string checkTitle = "";
+    private int? checkDragId;
+    private int? statusFormWip;
     private string depSearch = "";
     private List<DtTaskListItemDto> depResults = new();
 
@@ -2437,6 +2525,7 @@
     private void OpenNewStatus()
     {
         statusForm = new DtWorkflowStatusDto { Color = "#64748b", SortOrder = 100, IsActive = true, Key = "", NameFa = "" };
+        statusFormWip = null;
         showStatusModal = true;
     }
     private void EditStatus(DtWorkflowStatusDto s)
@@ -2444,14 +2533,17 @@
         statusForm = new DtWorkflowStatusDto
         {
             Id = s.Id, Key = s.Key, NameFa = s.NameFa, Color = s.Color, SortOrder = s.SortOrder,
-            IsInitial = s.IsInitial, IsDone = s.IsDone, IsBlocked = s.IsBlocked, IsActive = s.IsActive
+            IsInitial = s.IsInitial, IsDone = s.IsDone, IsBlocked = s.IsBlocked, IsActive = s.IsActive,
+            WipLimit = s.WipLimit
         };
+        statusFormWip = s.WipLimit is int w && w > 0 ? w : null;
         showStatusModal = true;
     }
     private async Task SaveStatus()
     {
         try
         {
+            statusForm.WipLimit = statusFormWip is int w && w > 0 ? w : null;
             await Api.UpsertStatusAsync(statusForm);
             showStatusModal = false;
             allStatuses = await Api.GetStatusesAsync(true);
@@ -2486,6 +2578,80 @@
             Toast.Success("ذخیره شد");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+
+    private async Task AddCheck()
+    {
+        if (editingTaskId is not int id || string.IsNullOrWhiteSpace(checkTitle)) return;
+        saving = true;
+        try
+        {
+            await Api.AddChecklistItemAsync(id, checkTitle.Trim());
+            checkTitle = "";
+            taskDetail = await Api.GetTaskAsync(id);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task OnCheckKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AddCheck();
+    }
+
+    private async Task ToggleCheck(int itemId)
+    {
+        try
+        {
+            await Api.ToggleChecklistItemAsync(itemId);
+            if (editingTaskId is int id) taskDetail = await Api.GetTaskAsync(id);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RemoveCheck(int itemId)
+    {
+        try
+        {
+            await Api.DeleteChecklistItemAsync(itemId);
+            if (editingTaskId is int id) taskDetail = await Api.GetTaskAsync(id);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OnCheckDragStart(int id) { if (access.CanUpdate) checkDragId = id; }
+    private void OnCheckDragEnd() => checkDragId = null;
+    private async Task OnCheckDrop(int targetId)
+    {
+        if (checkDragId is not int sid || taskDetail is null || !access.CanUpdate) return;
+        if (sid == targetId) { checkDragId = null; return; }
+        var list = taskDetail.Checklist.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.Id).ToList();
+        if (!list.Contains(sid) || !list.Contains(targetId)) { checkDragId = null; return; }
+        list.Remove(sid);
+        list.Insert(list.IndexOf(targetId), sid);
+        checkDragId = null;
+        try
+        {
+            await Api.ReorderChecklistAsync(taskDetail.Id, list);
+            taskDetail = await Api.GetTaskAsync(taskDetail.Id);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task CreateTaskFromProblem(DtProblemDto p)
+    {
+        saving = true;
+        try
+        {
+            var task = await Api.CreateTaskFromProblemAsync(p.Id);
+            Toast.Success($"تسک {task.Number} ساخته شد");
+            await LoadProblems();
+            await OpenTask(task.Id);
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
     }
 
     // ----- helpers -----

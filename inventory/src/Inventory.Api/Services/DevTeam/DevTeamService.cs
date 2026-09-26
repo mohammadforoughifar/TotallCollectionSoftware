@@ -39,6 +39,13 @@ public interface IDevTeamService
     Task<DtTaskDetailDto> CreateTaskAsync(DtTaskUpsertDto dto, int userId, string userName);
     Task<DtTaskDetailDto> UpdateTaskAsync(int id, DtTaskUpsertDto dto, int userId, string userName);
     Task MoveTaskAsync(int id, int statusId, int userId, string userName, int? beforeTaskId = null);
+
+    // Path C — checklist + task-from-problem
+    Task<DtChecklistItemDto> AddChecklistItemAsync(int taskId, string title, int userId, string userName);
+    Task<DtChecklistItemDto> ToggleChecklistItemAsync(int itemId, int userId, string userName);
+    Task DeleteChecklistItemAsync(int itemId, int userId, string userName);
+    Task ReorderChecklistAsync(int taskId, IReadOnlyList<int> orderedIds, int userId, string userName);
+    Task<DtTaskDetailDto> CreateTaskFromProblemAsync(int problemId, DtCreateTaskFromProblemDto? dto, int userId, string userName);
     Task DeleteTaskAsync(int id, int userId, string userName);
     Task<DtTaskCommentDto> AddCommentAsync(int taskId, string text, int userId, string userName);
     Task<DtTaskGitLinkDto> AddGitLinkAsync(int taskId, DtTaskGitLinkCreateDto dto, int userId, string userName);
@@ -311,6 +318,20 @@ public class DevTeamService : IDevTeamService
                 .Select(d => d.DependsOnTaskId).ToListAsync();
             foreach (var n in next) queue.Enqueue(n);
         }
+    }
+
+
+    private async Task EnsureWipAllowsAsync(int statusId, int? excludeTaskId = null)
+    {
+        var st = await _db.DtWorkflowStatuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == statusId);
+        if (st is null || st.WipLimit is null || st.WipLimit <= 0) return;
+        // Done/Blocked columns usually unlimited unless explicitly set
+        var count = await _db.DtTasks.CountAsync(t =>
+            !t.IsDeleted && t.ParentTaskId == null && t.StatusId == statusId &&
+            (excludeTaskId == null || t.Id != excludeTaskId));
+        if (count >= st.WipLimit.Value)
+            throw new InvalidOperationException(
+                $"سقف WIP ستون «{st.NameFa}» ({st.WipLimit}) پر است. ابتدا تسکی را جابه‌جا یا تمام کنید.");
     }
 
     private async Task EnsureNoOpenBlockersAsync(int taskId)
@@ -650,7 +671,8 @@ public class DevTeamService : IDevTeamService
         {
             Id = s.Id, Key = s.Key, NameFa = s.NameFa, Color = s.Color,
             SortOrder = s.SortOrder, IsInitial = s.IsInitial, IsDone = s.IsDone,
-            IsBlocked = s.IsBlocked, IsActive = s.IsActive
+            IsBlocked = s.IsBlocked, IsActive = s.IsActive,
+            WipLimit = s.WipLimit
         }).ToListAsync();
     }
 
@@ -681,6 +703,7 @@ public class DevTeamService : IDevTeamService
         entity.IsDone = dto.IsDone;
         entity.IsBlocked = dto.IsBlocked;
         entity.IsActive = dto.IsActive;
+        entity.WipLimit = dto.WipLimit is int w && w > 0 ? w : null;
 
         if (entity.IsInitial)
         {
@@ -1047,6 +1070,11 @@ public class DevTeamService : IDevTeamService
             };
         }
 
+        var checklist = await _db.DtTaskChecklistItems.AsNoTracking()
+            .Where(c => c.TaskId == id)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Id)
+            .ToListAsync();
+
         return new DtTaskDetailDto
         {
             Id = list.Id, Number = list.Number, Title = list.Title, Type = list.Type, TypeFa = list.TypeFa,
@@ -1092,7 +1120,10 @@ public class DevTeamService : IDevTeamService
             }).ToList(),
             SubTasks = childDtos,
             BlockedBy = blockedByRows.Select(MapDep).ToList(),
-            Blocking = blockingRows.Select(MapDep).ToList()
+            Blocking = blockingRows.Select(MapDep).ToList(),
+            Checklist = checklist.Select(MapChecklist).ToList(),
+            ChecklistTotal = checklist.Count,
+            ChecklistDone = checklist.Count(c => c.IsDone)
         };
     }
 
@@ -1109,6 +1140,10 @@ public class DevTeamService : IDevTeamService
         if (initial is null)
             initial = await _db.DtWorkflowStatuses.Where(s => s.IsActive).OrderBy(s => s.SortOrder).FirstOrDefaultAsync()
                 ?? throw new InvalidOperationException("هیچ وضعیتی تعریف نشده است.");
+
+        // WIP فقط برای تسک ریشه
+        if (dto.ParentTaskId is null or <= 0)
+            await EnsureWipAllowsAsync(initial.Id);
 
         var (assigneeName, _) = await UserNameAsync(dto.AssigneeUserId);
 
@@ -1222,6 +1257,7 @@ public class DevTeamService : IDevTeamService
                 ?? throw new InvalidOperationException("وضعیت نامعتبر است.");
             if (st.IsDone)
                 await EnsureNoOpenBlockersAsync(id);
+            await EnsureWipAllowsAsync(newSt, excludeTaskId: id);
             var old = await _db.DtWorkflowStatuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == entity.StatusId);
             entity.StatusId = st.Id;
             entity.CompletedAt = st.IsDone ? DateTime.Now : null;
@@ -1249,6 +1285,8 @@ public class DevTeamService : IDevTeamService
         var statusChanged = entity.StatusId != statusId;
         if (statusChanged && st.IsDone)
             await EnsureNoOpenBlockersAsync(id);
+        if (statusChanged)
+            await EnsureWipAllowsAsync(statusId, excludeTaskId: id);
 
         if (statusChanged)
         {
@@ -1450,6 +1488,159 @@ public class DevTeamService : IDevTeamService
             .FirstOrDefaultAsync();
         if (task is null) return null;
         return await BuildTimerStateAsync(task);
+    }
+
+    private static DtChecklistItemDto MapChecklist(DtTaskChecklistItem c) => new()
+    {
+        Id = c.Id,
+        TaskId = c.TaskId,
+        Title = c.Title,
+        IsDone = c.IsDone,
+        SortOrder = c.SortOrder,
+        CreatedByName = c.CreatedByName,
+        CreatedAt = c.CreatedAt,
+        DoneAt = c.DoneAt,
+        DoneByName = c.DoneByName
+    };
+
+    public async Task<DtChecklistItemDto> AddChecklistItemAsync(int taskId, string title, int userId, string userName)
+    {
+        title = (title ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            throw new InvalidOperationException("عنوان آیتم چک‌لیست الزامی است.");
+        if (title.Length > 300) title = title[..300];
+
+        var task = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == taskId && !t.IsDeleted)
+            ?? throw new InvalidOperationException("تسک یافت نشد.");
+
+        var max = await _db.DtTaskChecklistItems.Where(c => c.TaskId == taskId)
+            .Select(c => (int?)c.SortOrder).MaxAsync() ?? 0;
+
+        var item = new DtTaskChecklistItem
+        {
+            TaskId = taskId,
+            Title = title,
+            IsDone = false,
+            SortOrder = max + 10,
+            CreatedByUserId = userId,
+            CreatedByName = userName,
+            CreatedAt = DateTime.Now
+        };
+        _db.DtTaskChecklistItems.Add(item);
+        task.UpdatedAt = DateTime.Now;
+        await LogAsync(taskId, userId, userName, "ChecklistAdded", title);
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+        return MapChecklist(item);
+    }
+
+    public async Task<DtChecklistItemDto> ToggleChecklistItemAsync(int itemId, int userId, string userName)
+    {
+        var item = await _db.DtTaskChecklistItems.FirstOrDefaultAsync(c => c.Id == itemId)
+            ?? throw new InvalidOperationException("آیتم یافت نشد.");
+        var task = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == item.TaskId && !t.IsDeleted)
+            ?? throw new InvalidOperationException("تسک یافت نشد.");
+
+        item.IsDone = !item.IsDone;
+        if (item.IsDone)
+        {
+            item.DoneAt = DateTime.Now;
+            item.DoneByUserId = userId;
+            item.DoneByName = userName;
+        }
+        else
+        {
+            item.DoneAt = null;
+            item.DoneByUserId = null;
+            item.DoneByName = null;
+        }
+        task.UpdatedAt = DateTime.Now;
+        await LogAsync(task.Id, userId, userName, item.IsDone ? "ChecklistDone" : "ChecklistUndone", item.Title);
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+        return MapChecklist(item);
+    }
+
+    public async Task DeleteChecklistItemAsync(int itemId, int userId, string userName)
+    {
+        var item = await _db.DtTaskChecklistItems.FirstOrDefaultAsync(c => c.Id == itemId)
+            ?? throw new InvalidOperationException("آیتم یافت نشد.");
+        var taskId = item.TaskId;
+        var title = item.Title;
+        _db.DtTaskChecklistItems.Remove(item);
+        var task = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == taskId);
+        if (task != null) task.UpdatedAt = DateTime.Now;
+        await LogAsync(taskId, userId, userName, "ChecklistRemoved", title);
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+    }
+
+    public async Task ReorderChecklistAsync(int taskId, IReadOnlyList<int> orderedIds, int userId, string userName)
+    {
+        if (orderedIds is null || orderedIds.Count == 0)
+            throw new InvalidOperationException("لیست ترتیب خالی است.");
+        _ = await _db.DtTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId && !t.IsDeleted)
+            ?? throw new InvalidOperationException("تسک یافت نشد.");
+
+        var items = await _db.DtTaskChecklistItems.Where(c => c.TaskId == taskId).ToListAsync();
+        var set = items.Select(i => i.Id).ToHashSet();
+        if (orderedIds.Any(id => !set.Contains(id)))
+            throw new InvalidOperationException("شناسه نامعتبر در ترتیب چک‌لیست.");
+
+        var final = orderedIds.ToList();
+        foreach (var it in items.OrderBy(x => x.SortOrder).ThenBy(x => x.Id))
+            if (!final.Contains(it.Id)) final.Add(it.Id);
+
+        var map = items.ToDictionary(i => i.Id);
+        for (var i = 0; i < final.Count; i++)
+            map[final[i]].SortOrder = (i + 1) * 10;
+
+        await LogAsync(taskId, userId, userName, "ChecklistReordered", $"{final.Count} مورد");
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+    }
+
+    public async Task<DtTaskDetailDto> CreateTaskFromProblemAsync(int problemId, DtCreateTaskFromProblemDto? dto, int userId, string userName)
+    {
+        var p = await _db.DtProblems.FirstOrDefaultAsync(x => x.Id == problemId && !x.IsDeleted)
+            ?? throw new InvalidOperationException("مشکل یافت نشد.");
+
+        if (p.TaskId is int existing)
+        {
+            var linked = await GetTaskAsync(existing);
+            if (linked != null) return linked;
+        }
+
+        var type = string.Equals(p.Severity, "Error", StringComparison.OrdinalIgnoreCase) ? "Bug" : "Bug";
+        var priority = dto?.Priority ?? (string.Equals(p.Severity, "Error", StringComparison.OrdinalIgnoreCase) ? 3 : 2);
+        if (!DtPriority.IsValid(priority)) priority = 2;
+
+        var upsert = new DtTaskUpsertDto
+        {
+            Title = p.Title.Length > 200 ? p.Title[..200] : p.Title,
+            Description = string.IsNullOrWhiteSpace(p.Description)
+                ? $"ساخته‌شده از مشکل #{p.Id} ({p.Severity})"
+                : p.Description + $"\n\n— از مشکل #{p.Id}",
+            Type = type,
+            Priority = priority,
+            ModuleId = p.ModuleId,
+            StatusId = dto?.StatusId,
+            AssigneeUserId = dto?.AssigneeUserId ?? p.AssigneeUserId,
+            SprintId = dto?.SprintId,
+            Tags = "from-problem"
+        };
+
+        var task = await CreateTaskAsync(upsert, userId, userName);
+        p.TaskId = task.Id;
+        if (string.Equals(p.Status, "Open", StringComparison.OrdinalIgnoreCase))
+            p.Status = "Investigating";
+        await _db.SaveChangesAsync();
+
+        await AddChecklistItemAsync(task.Id, "بازتولید مشکل", userId, userName);
+        await AddChecklistItemAsync(task.Id, "رفع و تست", userId, userName);
+        await AddChecklistItemAsync(task.Id, "بررسی regression", userId, userName);
+
+        return (await GetTaskAsync(task.Id))!;
     }
 
     public async Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null)

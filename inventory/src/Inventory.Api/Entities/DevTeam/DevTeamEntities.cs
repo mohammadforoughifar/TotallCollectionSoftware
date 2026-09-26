@@ -167,6 +167,9 @@ public class DtWorkflowStatus
     public bool IsBlocked { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>سقف WIP ستون (null یا ۰ = بدون سقف). فقط ریشه‌ها شمرده می‌شوند.</summary>
+    public int? WipLimit { get; set; }
 }
 
 /// <summary>کاتالوگ ماژول‌های نرم‌افزار پلتفرم.</summary>
@@ -532,4 +535,31 @@ public class DtModuleChange
 
     public DateTime ChangedAt { get; set; } = DateTime.Now;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+/// <summary>آیتم چک‌لیست داخل تسک (مسیر C).</summary>
+public class DtTaskChecklistItem
+{
+    public int Id { get; set; }
+    public int TaskId { get; set; }
+    public DtTask? Task { get; set; }
+
+    [MaxLength(300)]
+    public string Title { get; set; } = "";
+
+    public bool IsDone { get; set; }
+    public int SortOrder { get; set; }
+
+    public int CreatedByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string CreatedByName { get; set; } = "";
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public DateTime? DoneAt { get; set; }
+    public int? DoneByUserId { get; set; }
+
+    [MaxLength(150)]
+    public string? DoneByName { get; set; }
 }

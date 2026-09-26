@@ -327,6 +327,51 @@ public class DevTeamController : ControllerBase
         return Ok(await _svc.AddTimeAsync(id, dto, MyUserId, name));
     }
 
+    // ---------- checklist (path C) ----------
+
+    [HttpPost("tasks/{id:int}/checklist")]
+    public async Task<ActionResult<DtChecklistItemDto>> AddChecklist(int id, [FromBody] DtChecklistItemCreateDto dto)
+    {
+        await EnsureAsync(a => a.CanUpdate || a.CanCreate);
+        var name = await DisplayNameAsync();
+        return Ok(await _svc.AddChecklistItemAsync(id, dto.Title, MyUserId, name));
+    }
+
+    [HttpPost("checklist/{itemId:int}/toggle")]
+    public async Task<ActionResult<DtChecklistItemDto>> ToggleChecklist(int itemId)
+    {
+        await EnsureAsync(a => a.CanUpdate || a.CanCreate);
+        var name = await DisplayNameAsync();
+        return Ok(await _svc.ToggleChecklistItemAsync(itemId, MyUserId, name));
+    }
+
+    [HttpDelete("checklist/{itemId:int}")]
+    public async Task<IActionResult> DeleteChecklist(int itemId)
+    {
+        await EnsureAsync(a => a.CanUpdate || a.CanDelete);
+        var name = await DisplayNameAsync();
+        await _svc.DeleteChecklistItemAsync(itemId, MyUserId, name);
+        return Ok(new { message = "حذف شد" });
+    }
+
+    [HttpPost("tasks/{id:int}/checklist/reorder")]
+    public async Task<IActionResult> ReorderChecklist(int id, [FromBody] DtChecklistReorderDto dto)
+    {
+        await EnsureAsync(a => a.CanUpdate);
+        var name = await DisplayNameAsync();
+        await _svc.ReorderChecklistAsync(id, dto.OrderedIds ?? new List<int>(), MyUserId, name);
+        return Ok(new { message = "ترتیب ذخیره شد" });
+    }
+
+    /// <summary>ساخت تسک از مشکل + چک‌لیست پیش‌فرض.</summary>
+    [HttpPost("problems/{id:int}/create-task")]
+    public async Task<ActionResult<DtTaskDetailDto>> CreateTaskFromProblem(int id, [FromBody] DtCreateTaskFromProblemDto? dto = null)
+    {
+        await EnsureAsync(a => a.CanCreate);
+        var name = await DisplayNameAsync();
+        return Ok(await _svc.CreateTaskFromProblemAsync(id, dto, MyUserId, name));
+    }
+
     /// <summary>جستجوی سبک تسک‌ها (برای انتخاب والد/وابستگی).</summary>
     [HttpGet("tasks/search")]
     public async Task<ActionResult<List<DtTaskListItemDto>>> SearchTasks(

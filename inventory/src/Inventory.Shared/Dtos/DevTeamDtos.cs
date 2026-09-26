@@ -26,6 +26,8 @@ public class DtWorkflowStatusDto
     public bool IsDone { get; set; }
     public bool IsBlocked { get; set; }
     public bool IsActive { get; set; } = true;
+    /// <summary>سقف WIP ستون؛ null/0 = نامحدود</summary>
+    public int? WipLimit { get; set; }
 }
 
 public class DtProductModuleDto
@@ -145,6 +147,10 @@ public class DtTaskDetailDto : DtTaskListItemDto
     public List<DtDependencyDto> BlockedBy { get; set; } = new();
     /// <summary>تسک‌هایی که منتظر این تسک‌اند</summary>
     public List<DtDependencyDto> Blocking { get; set; } = new();
+
+    public List<DtChecklistItemDto> Checklist { get; set; } = new();
+    public int ChecklistTotal { get; set; }
+    public int ChecklistDone { get; set; }
 }
 
 public class DtTaskUpsertDto
@@ -556,4 +562,35 @@ public class DtRbacSummaryDto
     public bool AdminHasDevTeamPerms { get; set; }
     public string DeveloperRoleName { get; set; } = "DevDeveloper";
     public string HintFa { get; set; } = "";
+}
+
+public class DtChecklistItemDto
+{
+    public int Id { get; set; }
+    public int TaskId { get; set; }
+    public string Title { get; set; } = "";
+    public bool IsDone { get; set; }
+    public int SortOrder { get; set; }
+    public string CreatedByName { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public DateTime? DoneAt { get; set; }
+    public string? DoneByName { get; set; }
+}
+
+public class DtChecklistItemCreateDto
+{
+    public string Title { get; set; } = "";
+}
+
+public class DtChecklistReorderDto
+{
+    public List<int> OrderedIds { get; set; } = new();
+}
+
+public class DtCreateTaskFromProblemDto
+{
+    public int? StatusId { get; set; }
+    public int? AssigneeUserId { get; set; }
+    public int? SprintId { get; set; }
+    public int Priority { get; set; } = 2;
 }

@@ -124,6 +124,12 @@ API:
 - ✅ تایمر زنده ثبت زمان (`…/timer/start|stop`) — Schema V4: `TimerStartedAt`
 - ✅ مرتب‌سازی drag ساب‌تسک‌ها (`POST …/subtasks/reorder`)
 
+### مسیر C — WIP + Checklist (پیاده‌شده)
+
+- ✅ `WipLimit` روی وضعیت workflow (Schema V5) — جلوگیری از پر شدن ستون
+- ✅ چک‌لیست تسک: add/toggle/delete/reorder + نوار پیشرفت
+- ✅ `POST /problems/{id}/create-task` — تسک از مشکل + ۳ آیتم چک‌لیست پیش‌فرض
+
 ### مسیر B — UX (پیاده‌شده)
 
 - ✅ فیلتر/تب پایدار در URL: `?tab=&q=&module=&sprint=&assignee=&type=&mine=1&open=`
