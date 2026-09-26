@@ -2486,3 +2486,87 @@ public class CancelScheduleTool : IAiTool
         return JsonSerializer.Serialize(new { cancelled = id, message = "زمان‌بندی لغو شد. ✅" });
     }
 }
+
+// ---------------- جستجوی معنایی (§۲۲) ----------------
+
+public class SearchDocsTool : IAiTool
+{
+    public string Name => "search_docs";
+    public string Description => "جستجوی معنایی در نامه‌ها (داخلی/وارده/صادره) و تیکت‌های HR. query اجباری؛ scope اختیاری (letter/ticket/all یا «نامه»/«تیکت»)؛ فقط اسناد قابل‌مشاهده خود کاربر برمی‌گردد (نامه محرمانه/سری و حذف‌شده هرگز). اگر مدل معنایی خواب باشد، خودکار کلیدواژه‌ای می‌شود.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            query = new { type = "string", description = "عبارت جستجو (اجباری)" },
+            scope = new { type = "string", description = "محدوده: all (پیش‌فرض)، letter/نامه، ticket/تیکت" },
+            limit = new { type = "integer", description = "تعداد نتیجه (۱ تا ۱۰، پیش‌فرض ۵)" },
+        },
+        required = new[] { "query" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var query = (AiToolArgs.GetString(args, "query") ?? "").Trim();
+        if (query == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "عبارت جستجو خالی است." });
+        var svc = ctx.Services.GetRequiredService<AiSearchService>();
+        var (matches, semantic) = await svc.SearchAsync(ctx.UserId, query,
+            AiToolArgs.GetString(args, "scope"), AiToolArgs.GetInt(args, "limit") ?? 5, ctx.CancellationToken);
+        if (matches.Count == 0)
+            return JsonSerializer.Serialize(new
+            {
+                results = new object[0],
+                mode = semantic ? "معنایی" : "کلیدواژه‌ای",
+                message = "چیزی پیدا نشد؛ عبارت دیگری امتحان کن یا محدوده را عوض کن (نامه/تیکت).",
+            });
+        return JsonSerializer.Serialize(new
+        {
+            mode = semantic ? "معنایی" : "کلیدواژه‌ای",
+            note = semantic ? null : "مدل معنایی در دسترس نبود؛ جستجوی کلیدواژه‌ای انجام شد.",
+            results = matches.Select(m => new
+            {
+                type = AiSearchService.DocTypeFa(m.DocType),
+                id = m.DocId,
+                title = m.Title,
+                snippet = m.Snippet,
+                score = ((int)Math.Round(m.Score * 100)) + "٪",
+                meta = m.Meta,
+                link = m.Link,
+            }),
+        });
+    }
+}
+
+public class ReindexDocsTool : IAiTool
+{
+    public string Name => "reindex_docs";
+    public string Description => "ایندکس مجدد اسناد فاقد بردار یا تغییرکرده برای جستجوی معنایی (فقط مدیر سیستم). scope اختیاری (all/letter/ticket)؛ limit سقف تعداد (پیش‌فرض ۱۰۰).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            scope = new { type = "string", description = "محدوده: all (پیش‌فرض)، letter، ticket" },
+            limit = new { type = "integer", description = "سقف ایندکس (پیش‌فرض ۱۰۰، حداکثر ۵۰۰)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        if (!ctx.IsAdmin)
+            return JsonSerializer.Serialize(new { error = "forbidden", message = "ایندکس مجدد فقط برای مدیر سیستم است." });
+        var svc = ctx.Services.GetRequiredService<AiSearchService>();
+        var (indexed, failed, missing) = await svc.IndexMissingAsync(
+            AiToolArgs.GetString(args, "scope"), AiToolArgs.GetInt(args, "limit") ?? 100, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            indexed,
+            failed,
+            missing,
+            message = missing == 0 ? "همه اسناد ایندکس‌اند. ✅"
+                : failed > 0 ? $"از {missing} سند، {indexed} ایندکس شد و {failed} خطا خورد (مدل خواب است؟)."
+                : $"{indexed} سند از {missing} ایندکس شد. ✅",
+        });
+    }
+}

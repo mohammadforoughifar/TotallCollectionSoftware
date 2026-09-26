@@ -71,6 +71,9 @@ public class AiOptions
     /// <summary>اجرای دوره‌ای گزارش‌های زمان‌بندی‌شده کاربران (بررسی هر ۶۰ ثانیه).</summary>
     public bool ScheduleEnabled { get; set; } = true;
 
+    /// <summary>ایندکس دوره‌ای اسناد برای جستجوی معنایی (هر ۱۰ دقیقه، §۲۲).</summary>
+    public bool SearchEnabled { get; set; } = true;
+
     /// <summary>انقضای پیش‌فاکتور اقدام (دقیقه) — اقدام با تأیید کاربر.</summary>
     public int PendingActionExpiryMinutes { get; set; } = 15;
 

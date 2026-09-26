@@ -179,3 +179,22 @@ public class AiReportSchedule
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
+
+/// <summary>بردار معنایی سند برای جستجوی معنایی (§۲۲) — نامه‌ها و تیکت‌ها.</summary>
+public class AiDocEmbedding
+{
+    public int Id { get; set; }
+
+    /// <summary>نوع سند: inner_letter | incoming_letter | outgoing_letter | ticket</summary>
+    [MaxLength(20)] public string DocType { get; set; } = "";
+
+    public int DocId { get; set; }
+
+    /// <summary>هش متن ایندکس‌شده؛ تغییر سند را لو می‌دهد.</summary>
+    [MaxLength(16)] public string TextHash { get; set; } = "";
+
+    /// <summary>بردار float32 به‌صورت JSON (الگوی AiKnowledgeDoc).</summary>
+    public string? VectorJson { get; set; }
+
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+}
