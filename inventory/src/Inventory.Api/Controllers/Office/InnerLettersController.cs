@@ -466,7 +466,7 @@ public class InnerLettersController : RbacControllerBase
     /// فایل‌ها در wwwroot/uploads/innerletter/{letterId} ذخیره می‌شوند و در DB فقط اطلاعات + مسیر (FilePath) ثبت می‌شود.
     /// </summary>
     [HttpPost("{id:int}/attachments")]
-    [RequestSizeLimit(25 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
@@ -475,17 +475,11 @@ public class InnerLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
+        if (file.Length > long.MaxValue)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
-        var extension = Path.GetExtension(file.FileName);
-        if (!AllowedAttachmentExtensions.Contains(extension))
-            return BadRequest(new { message = "پسوند فایل مجاز نیست. فایل PDF، تصویر یا سند اداری انتخاب کنید." });
-
+        // محدودیت پسوند فایل و بررسی امضای محتوا برداشته شد — هر نوع فایلی مجاز است
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
-        var content = ms.ToArray();
-        if (!HasValidSignature(content, extension))
-            return BadRequest(new { message = "محتوای فایل با پسوند آن سازگار نیست یا فایل خراب است." });
         ms.Position = 0;
 
         // فایل روی دیسک در wwwroot/uploads/office/innerletter/{letterId} ذخیره می‌شود
@@ -562,7 +556,7 @@ public class InnerLettersController : RbacControllerBase
     /// فایل‌ها در wwwroot/uploads/innerletter/pishnevis/{pishnevisId} ذخیره می‌شوند.
     /// </summary>
     [HttpPost("pishnevis/{id:int}/attachments")]
-    [RequestSizeLimit(25 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadPishnevisAttachment(int id, IFormFile file)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
@@ -571,17 +565,11 @@ public class InnerLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
+        if (file.Length > long.MaxValue)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
-        var extension = Path.GetExtension(file.FileName);
-        if (!AllowedAttachmentExtensions.Contains(extension))
-            return BadRequest(new { message = "پسوند فایل مجاز نیست. فایل PDF، تصویر یا سند اداری انتخاب کنید." });
-
+        // محدودیت پسوند فایل و بررسی امضای محتوا برداشته شد — هر نوع فایلی مجاز است
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
-        var content = ms.ToArray();
-        if (!HasValidSignature(content, extension))
-            return BadRequest(new { message = "محتوای فایل با پسوند آن سازگار نیست یا فایل خراب است." });
         ms.Position = 0;
 
         // فایل پیش‌نویس زیر wwwroot/uploads/office/innerletter/pishnevis/{pishnevisId} ذخیره می‌شود

@@ -57,7 +57,7 @@ public class ProductsController : ApiControllerBase
 
     /// <summary>ورود گروهی کالا از فایل اکسل (xlsx).</summary>
     [HttpPost("import")]
-    [RequestSizeLimit(10 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<ActionResult<ExcelImportResult>> Import(IFormFile? file)
     {
         if (file is null || file.Length == 0)

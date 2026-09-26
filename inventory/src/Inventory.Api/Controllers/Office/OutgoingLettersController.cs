@@ -648,7 +648,7 @@ public class OutgoingLettersController : RbacControllerBase
     }
 
     [HttpPost("{id:int}/attachments")]
-    [RequestSizeLimit(25 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadAttachment(int id, IFormFile file)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
@@ -657,7 +657,7 @@ public class OutgoingLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
+        if (file.Length > long.MaxValue)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
         // پیوست‌های صادره روی دیسک در «wwwroot/فایل های صادره/{شناسه نامه}/» ذخیره می‌شوند
@@ -734,7 +734,7 @@ public class OutgoingLettersController : RbacControllerBase
     }
 
     [HttpPost("pishnevis/{id:int}/attachments")]
-    [RequestSizeLimit(25 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadPishnevisAttachment(int id, IFormFile file)
     {
         if (await ForbiddenUnlessAsync(Module, "Create") is { } forbid) return forbid;
@@ -743,7 +743,7 @@ public class OutgoingLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > 20 * 1024 * 1024)
+        if (file.Length > long.MaxValue)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
         // پیوست پیش‌نویس صادره هم در «فایل های صادره» ذخیره می‌شود و بعد از ارسال،

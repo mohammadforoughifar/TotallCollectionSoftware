@@ -308,7 +308,7 @@
                                     {
                                         <label class="att att-add" title="افزودن پیوست جدید">
                                             <div class="ic"><i class="bi @(attUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
-                                            <div>@(attUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>حداکثر ۲۰ مگابایت</small></div>
+                                            <div>@(attUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>بدون محدودیت حجم</small></div>
                                             <InputFile OnChange="OnReaderFiles" multiple disabled="@attUploading" style="display:none" />
                                         </label>
                                     }
@@ -1156,13 +1156,13 @@
         attUploading = true;
         try
         {
-            foreach (var f in e.GetMultipleFiles(50))
+            foreach (var f in e.GetMultipleFiles(int.MaxValue))
             {
                 if (f.Size <= 0) { Toast.Error($"فایل «{f.Name}» خالی است."); continue; }
-                if (f.Size > 20 * 1024 * 1024) { Toast.Error($"فایل «{f.Name}» بزرگ‌تر از ۲۰ مگابایت است."); continue; }
+                if (f.Size > long.MaxValue) { Toast.Error($"فایل «{f.Name}» بزرگ‌تر از ۲۰ مگابایت است."); continue; }
                 try
                 {
-                    await using var stream = f.OpenReadStream(20 * 1024 * 1024);
+                    await using var stream = f.OpenReadStream(long.MaxValue);
                     await LetterSvc.UploadAttachmentAsync(selected.LetterId, stream, f.Name, f.ContentType);
                 }
                 catch (Exception ex) { Toast.Error($"«{f.Name}»: {ex.Message}"); }

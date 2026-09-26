@@ -334,6 +334,49 @@
     </div>
 </div>
 
+@* ================== مدت نمایش اعلان‌ها و پیام‌ها (سراسری — مدیر سامانه) ================== *@
+<div class="card mt-3">
+    <div class="card-header">
+        <i class="bi bi-stopwatch text-primary"></i>
+        <span class="card-title">مدت نمایش اعلان‌ها و پیام‌ها</span>
+    </div>
+    <div class="card-body">
+        @if (loading)
+        {
+            <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+        }
+        else
+        {
+            <p class="fs-8 text-muted mb-3">
+                این تنظیم <b>سراسری</b> است: مقداری که اینجا انتخاب می‌کنید روی <b>همهٔ کاربران سامانه</b> و همهٔ دستگاه‌ها اعمال می‌شود.
+                گزینهٔ «تا بستن دستی» یعنی پیام تا وقتی کاربر خودش آن را نبندد باقی می‌ماند. برای اعمال، دکمهٔ <b>«ذخیره تنظیمات»</b> پایین صفحه را بزنید.
+            </p>
+
+            <div class="mb-3">
+                <label class="form-label fw-700">اعلان زندهٔ بالای صفحه <span class="text-muted fw-normal">(اکنون: @NotificationTiming.Label(model.NotifyBannerMs))</span></label>
+                <div class="d-flex flex-wrap gap-1">
+                    @foreach (var ms in NotificationTiming.BannerOptions)
+                    {
+                        <button type="button" class="btn btn-sm @(model.NotifyBannerMs == ms ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick="() => model.NotifyBannerMs = ms">@NotificationTiming.Label(ms)</button>
+                    }
+                </div>
+            </div>
+
+            <div class="mb-1">
+                <label class="form-label fw-700">پیام کوتاه (موفق/خطا/اطلاع) <span class="text-muted fw-normal">(اکنون: @NotificationTiming.Label(model.NotifyToastMs))</span></label>
+                <div class="d-flex flex-wrap gap-1">
+                    @foreach (var ms in NotificationTiming.ToastOptions)
+                    {
+                        <button type="button" class="btn btn-sm @(model.NotifyToastMs == ms ? "btn-primary" : "btn-outline-secondary")"
+                                @onclick="() => model.NotifyToastMs = ms">@NotificationTiming.Label(ms)</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
 @* ================== اعلان گوشی و مرورگر (Web Push) ================== *@
 <div class="card mt-3">
     <div class="card-header">
@@ -349,7 +392,8 @@
                 با کلیک روی اعلان، خودِ نرم‌افزار باز و روی همان صفحه باز می‌شود. روی <b>HTTPS</b> کار می‌کند:
                 <b>Chrome/Edge</b> در اندروید و ویندوز و <b>Firefox</b> در دسکتاپ؛ در iPhone باید نرم‌افزار در Safari به «صفحه‌ی اصلی» اضافه شود (iOS 16.4+).
                 <br />
-                <b>مدت نمایش اعلان‌ها و پیام‌ها</b> (اعلان زندهٔ بالای صفحه و پیام‌های کوتاه) از پنل اعلان‌ها — زنگ بالای صفحه — قابل تنظیم است؛
+                <b>مدت نمایش اعلان‌ها و پیام‌ها</b> (اعلان زندهٔ بالای صفحه و پیام‌های کوتاه) به‌صورت سراسری از کارت
+                «مدت نمایش اعلان‌ها و پیام‌ها» در همین صفحه (بالاتر) توسط مدیر سامانه تنظیم می‌شود؛
                 پیش‌فرض اعلان زنده <b>۲ دقیقه</b> و پیام کوتاه <b>۲۰ ثانیه</b> است و می‌توانید «تا بستن دستی» هم انتخاب کنید.
             </p>
 
@@ -741,6 +785,8 @@
         try
         {
             model = await SettingsSvc.SaveAsync(model);
+            // اعمال فوری مدت نمایش سراسری در همین نشست (بدون نیاز به ورود مجدد)
+            NotificationTiming.LoadServer(model.NotifyBannerMs, model.NotifyToastMs);
             Toast.Success("تنظیمات ذخیره شد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

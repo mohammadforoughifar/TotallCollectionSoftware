@@ -766,7 +766,7 @@
                             <i class="bi bi-images"></i> افزودن تصویر…
                             <InputFile OnChange="AddPendingImages" multiple accept="image/*" style="display:none" />
                         </label>
-                        <span class="fs-8 text-muted">فقط فایل تصویری — حداکثر ۶ فایل</span>
+                        <span class="fs-8 text-muted">فقط فایل تصویری — بدون محدودیت تعداد</span>
                     </div>
                     @if (pendingImages.Count > 0)
                     {
@@ -797,7 +797,7 @@
                             <option value="3">تاییدیه تحویل</option>
                             <option value="4">سایر</option>
                         </select>
-                        <span class="fs-8 text-muted">حداکثر ۶ فایل</span>
+                        <span class="fs-8 text-muted">بدون محدودیت تعداد</span>
                     </div>
                     @if (pendingDocs.Count > 0)
                     {
@@ -1726,21 +1726,21 @@
 
     private void AddPendingImages(InputFileChangeEventArgs e)
     {
-        foreach (var f in e.GetMultipleFiles(6))
+        foreach (var f in e.GetMultipleFiles(int.MaxValue))
         {
             if (!ImageExts.Contains(Path.GetExtension(f.Name)?.ToLowerInvariant())) { Toast.Error($"«{f.Name}» فایل تصویری نیست."); continue; }
             if (pendingImages.Any(x => x.Name == f.Name && x.Size == f.Size)) continue; // تکراری نباشد
-            if (pendingImages.Count >= 6) { Toast.Error("حداکثر ۶ تصویر در هر ثبت."); break; }
+            if (pendingImages.Count >= int.MaxValue) { Toast.Error("حداکثر ۶ تصویر در هر ثبت."); break; }
             pendingImages.Add(f);
         }
     }
 
     private void AddPendingDocs(InputFileChangeEventArgs e)
     {
-        foreach (var f in e.GetMultipleFiles(6))
+        foreach (var f in e.GetMultipleFiles(int.MaxValue))
         {
             if (pendingDocs.Any(x => x.Name == f.Name && x.Size == f.Size)) continue;
-            if (pendingDocs.Count >= 6) { Toast.Error("حداکثر ۶ سند در هر ثبت."); break; }
+            if (pendingDocs.Count >= int.MaxValue) { Toast.Error("حداکثر ۶ سند در هر ثبت."); break; }
             pendingDocs.Add(f);
         }
     }
@@ -1757,7 +1757,7 @@
                 using var content = new MultipartFormDataContent();
                 content.Add(new StringContent(projectId.ToString()), "projectId");
                 content.Add(new StringContent(type.ToString()), "type");
-                var sc = new StreamContent(file.OpenReadStream(250L * 1024 * 1024));
+                var sc = new StreamContent(file.OpenReadStream(long.MaxValue));
                 sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
                     string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
                 content.Add(sc, "files", file.Name);
@@ -2026,10 +2026,10 @@
             content.Add(new StringContent(imageProject.Id.ToString()), "projectId");
             content.Add(new StringContent("4"), "type");
             var count = 0;
-            foreach (var f in e.GetMultipleFiles(10))
+            foreach (var f in e.GetMultipleFiles(int.MaxValue))
             {
                 if (!ImageExts.Contains(Path.GetExtension(f.Name)?.ToLowerInvariant())) { Toast.Error($"«{f.Name}» فایل تصویری نیست."); return; }
-                var sc = new StreamContent(f.OpenReadStream(250L * 1024 * 1024));
+                var sc = new StreamContent(f.OpenReadStream(long.MaxValue));
                 sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
                     string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
                 content.Add(sc, "files", f.Name);

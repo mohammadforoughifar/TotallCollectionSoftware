@@ -84,7 +84,7 @@ public class EmailController : RbacControllerBase
 
     /// <summary>ارسال ایمیل از حساب کاربر (یا حساب دبیرخانه) — multipart با پیوست</summary>
     [HttpPost("send")]
-    [RequestSizeLimit(30 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> Send([FromForm] int emailAccountId, [FromForm] string to, [FromForm] string? cc,
         [FromForm] string subject, [FromForm] string? body, List<IFormFile> files)
     {
@@ -94,7 +94,7 @@ public class EmailController : RbacControllerBase
         foreach (var f in files ?? new List<IFormFile>())
         {
             if (f == null || f.Length <= 0) continue;
-            if (f.Length > 20 * 1024 * 1024)
+            if (f.Length > long.MaxValue)
                 return BadRequest(new { message = $"حجم فایل {f.FileName} بیش از ۲۰ مگابایت است." });
             using var ms = new MemoryStream();
             await f.CopyToAsync(ms);

@@ -170,36 +170,8 @@ else
                                     </div>
                                 }
 
-                                @* ===== مدت نمایش اعلان‌ها و پیام‌ها ===== *@
-                                <div class="ntf-push-row flex-wrap">
-                                    <div class="d-flex align-items-center gap-2 w-100">
-                                        <div class="ntf-push-icon"><i class="bi bi-stopwatch"></i></div>
-                                        <div class="min-w-0">
-                                            <div class="fs-8 fw-700">مدت نمایش اعلان‌ها و پیام‌ها</div>
-                                            <div class="fs-9 text-muted">انتخاب شما در همین دستگاه ذخیره می‌شود و روی همهٔ اعلان‌های سامانه اثر دارد.</div>
-                                        </div>
-                                    </div>
-                                    <div class="w-100 mt-2">
-                                        <div class="fs-9 text-muted mb-1">اعلان زندهٔ بالای صفحه (اکنون: @NotificationTiming.Label(NotificationTiming.BannerMs))</div>
-                                        <div class="d-flex flex-wrap gap-1">
-                                            @foreach (var ms in NotificationTiming.BannerOptions)
-                                            {
-                                                <button type="button" class="btn btn-sm @(NotificationTiming.BannerMs == ms ? "btn-primary" : "btn-outline-secondary")"
-                                                        @onclick="() => SetBannerTimingAsync(ms)">@NotificationTiming.Label(ms)</button>
-                                            }
-                                        </div>
-                                    </div>
-                                    <div class="w-100 mt-2">
-                                        <div class="fs-9 text-muted mb-1">پیام کوتاه (موفق/خطا/اطلاع) (اکنون: @NotificationTiming.Label(NotificationTiming.ToastMs))</div>
-                                        <div class="d-flex flex-wrap gap-1">
-                                            @foreach (var ms in NotificationTiming.ToastOptions)
-                                            {
-                                                <button type="button" class="btn btn-sm @(NotificationTiming.ToastMs == ms ? "btn-primary" : "btn-outline-secondary")"
-                                                        @onclick="() => SetToastTimingAsync(ms)">@NotificationTiming.Label(ms)</button>
-                                            }
-                                        </div>
-                                    </div>
-                                </div>
+                                @* «مدت نمایش اعلان‌ها و پیام‌ها» از این پنل حذف شد و به
+                                   «تنظیمات ← تنظیمات اصلی نرم‌افزار» منتقل شد (سراسری، فقط مدیر سامانه). *@
 
                                 @* ================== اعلان در پیام‌رسان‌های بله و ایتا ================== *@
                                 <div class="ntf-push-row">
@@ -797,42 +769,23 @@ else
     }
     private void CloseMsgPanel() => msgPanel = false;
 
-    private async Task SetBannerTimingAsync(int ms)
-    {
-        NotificationTiming.SetBanner(ms);
-        await PersistTimingAsync();
-    }
-
-    private async Task SetToastTimingAsync(int ms)
-    {
-        NotificationTiming.SetToast(ms);
-        await PersistTimingAsync();
-    }
-
-    /// <summary>ذخیرهٔ انتخاب کاربر در مرورگر همین دستگاه.</summary>
-    private async Task PersistTimingAsync()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("localStorage.setItem", "notify-banner-ms", NotificationTiming.BannerMs.ToString());
-            await JS.InvokeVoidAsync("localStorage.setItem", "notify-toast-ms", NotificationTiming.ToastMs.ToString());
-        }
-        catch { /* حافظهٔ مرورگر در دسترس نیست؛ مقدار همین نشست معتبر می‌ماند */ }
-        Toast.Info($"مدت نمایش به «{NotificationTiming.Label(NotificationTiming.BannerMs)}» برای اعلان و «{NotificationTiming.Label(NotificationTiming.ToastMs)}» برای پیام کوتاه تنظیم شد.");
-        StateHasChanged();
-    }
-
-    /// <summary>خواندن انتخاب ذخیره‌شدهٔ کاربر در شروع کار سامانه.</summary>
+    /// <summary>
+    /// خواندن مدت نمایش سراسری اعلان‌ها/پیام‌ها از سرور (AppSettings).
+    /// این مقدار را «مدیر سامانه» از صفحهٔ «تنظیمات» تعیین می‌کند و برای همهٔ کاربران یکسان است.
+    /// </summary>
     private async Task LoadTimingAsync()
     {
         try
         {
-            var banner = await JS.InvokeAsync<string?>("localStorage.getItem", "notify-banner-ms");
-            var toast = await JS.InvokeAsync<string?>("localStorage.getItem", "notify-toast-ms");
-            NotificationTiming.Load(banner, toast);
+            // endpoint سبک و امن: فقط دو عددِ مدت نمایش را برمی‌گرداند و برای همهٔ کاربران باز است
+            // (برخلاف GET /api/settings که محدود به مدیر/اپراتور است و توکن‌های حساس را هم دارد).
+            var t = await Http.GetFromJsonAsync<NotifyTimingResult>("api/settings/notify-timing");
+            if (t is not null) NotificationTiming.LoadServer(t.bannerMs, t.toastMs);
         }
         catch { /* مقدار پیش‌فرض (۲ دقیقه / ۲۰ ثانیه) استفاده می‌شود */ }
     }
+
+    private class NotifyTimingResult { public int bannerMs { get; set; } public int toastMs { get; set; } }
 
     private async Task LoadMsgStatusAsync()
     {
@@ -951,7 +904,7 @@ else
     {
         if (!Auth.IsLoggedIn) return;
         SetAuthHeader();
-        // مدت نمایش اعلان‌ها و پیام‌ها (انتخاب کاربر در همین دستگاه)
+        // مدت نمایش اعلان‌ها و پیام‌ها (سراسری از تنظیمات سرور — مدیر سامانه)
         await LoadTimingAsync();
         // اتصال چت در همهٔ صفحات فعال است، نه فقط پس از باز کردن صفحهٔ پیام‌رسان.
         await Chat.EnsureHubConnectedAsync();

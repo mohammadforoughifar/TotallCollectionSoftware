@@ -199,8 +199,8 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
     public async Task<ChatUploadResultDto> UploadAttachmentAsync(int conversationId, IBrowserFile file)
     {
         if (file.Size <= 0) throw new ApiException("فایل خالی قابل ارسال نیست.");
-        if (file.Size > ChatFileLimits.MaxFileBytes) throw new ApiException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
-        using var stream = file.OpenReadStream(ChatFileLimits.MaxFileBytes);
+        if (file.Size > long.MaxValue) throw new ApiException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
+        using var stream = file.OpenReadStream(long.MaxValue);
         return await _api.PostFileAsync<ChatUploadResultDto>($"api/chat/conversations/{conversationId}/attachments",
             stream, file.Name, "file", file.ContentType);
     }

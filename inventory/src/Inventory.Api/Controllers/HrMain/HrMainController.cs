@@ -47,7 +47,7 @@ public class HrMainController : RbacControllerBase
     }
 
     [HttpPost("company/logo")]
-    [RequestSizeLimit(2 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadLogo(IFormFile? file)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Update", "Company") is { } f) return f;

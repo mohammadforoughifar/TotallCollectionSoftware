@@ -84,7 +84,7 @@ public class SystemUsersController : ControllerBase
     // ================== عکس کاربر (فایل روی دیسک — uploads/users) ==================
 
     [HttpPost("photo/{id:int}")]
-    [RequestSizeLimit(6 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<ActionResult> UploadPhoto(int id, IFormFile file)
     {
         var item = await _db.SystemUsers.FirstOrDefaultAsync(x => x.Id == id);

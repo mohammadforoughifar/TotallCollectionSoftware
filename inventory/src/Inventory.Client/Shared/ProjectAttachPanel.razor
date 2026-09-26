@@ -141,9 +141,9 @@
             content.Add(new StringContent(attachType.ToString()), "type");
 
             var count = 0;
-            foreach (var f in e.GetMultipleFiles(10))
+            foreach (var f in e.GetMultipleFiles(int.MaxValue))
             {
-                var sc = new StreamContent(f.OpenReadStream(250L * 1024 * 1024));
+                var sc = new StreamContent(f.OpenReadStream(long.MaxValue));
                 sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
                     string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
                 content.Add(sc, "files", f.Name);

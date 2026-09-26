@@ -90,13 +90,7 @@ public class HrMainService : IHrMainService
 
     public async Task<HrMainCompanyDto> SaveLogoAsync(Stream stream, string fileName)
     {
-        var ext = Path.GetExtension(fileName ?? "").ToLowerInvariant();
-        var allowed = new[] { ".png", ".jpg", ".jpeg", ".webp", ".svg" };
-        if (!allowed.Contains(ext))
-            throw new InvalidOperationException("فرمت لوگو معتبر نیست (png، jpg، webp یا svg).");
-        if (stream.CanSeek && stream.Length > 2 * 1024 * 1024)
-            throw new InvalidOperationException("حجم لوگو نباید بیشتر از ۲ مگابایت باشد.");
-
+        // محدودیت نوع/پسوند و حجم لوگو برداشته شد — هر فایلی مجاز است
         var c = await GetOrCreateCompanyAsync();
         var rel = await _files.SaveAsync("hr/logo", 1, stream, fileName);
         // حذف لوگوی قبلی (در صورت خطا، ذخیره جدید حفظ می‌شود)

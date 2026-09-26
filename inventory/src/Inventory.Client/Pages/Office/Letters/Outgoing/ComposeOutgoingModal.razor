@@ -212,7 +212,7 @@
                 <label>پیوست</label>
                 <div class="dz">
                     <div class="ic"><i class="bi bi-cloud-arrow-up"></i></div>
-                    <div><b>فایل را بکشید و رها کنید یا کلیک کنید</b><small>بدون محدودیت تعداد — هر فایل حداکثر ۲۰ مگابایت</small></div>
+                    <div><b>فایل را بکشید و رها کنید یا کلیک کنید</b><small>بدون محدودیت تعداد و حجم</small></div>
                     <InputFile OnChange="OnFiles" multiple />
                 </div>
                 <div class="selpills">
@@ -493,10 +493,10 @@
     private void OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
         var rejected = new List<string>();
-        foreach (var f in e.GetMultipleFiles(100))
+        foreach (var f in e.GetMultipleFiles(int.MaxValue))
         {
             if (f.Size <= 0) { rejected.Add($"{f.Name} (خالی)"); continue; }
-            if (f.Size > MaxFile) { rejected.Add($"{f.Name} (بیش از ۲۰MB)"); continue; }
+            if (f.Size > long.MaxValue) { rejected.Add($"{f.Name} (بیش از ۲۰MB)"); continue; }
             if (pendingFiles.Any(x => x.Name == f.Name && x.Size == f.Size) ||
                 savedAtts.Any(x => x.FileName == f.Name && x.Size == f.Size))
             { rejected.Add($"{f.Name} (تکراری)"); continue; }
@@ -699,7 +699,7 @@
         {
             try
             {
-                await using var s = f.OpenReadStream(MaxFile);
+                await using var s = f.OpenReadStream(long.MaxValue);
                 await uploader((s, f.Name, f.ContentType));
             }
             catch (Exception ex) { Toast.Error($"بارگذاری {f.Name}: {ex.Message}"); }

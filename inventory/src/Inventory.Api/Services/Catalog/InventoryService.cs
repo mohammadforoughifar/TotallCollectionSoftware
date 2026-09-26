@@ -22,7 +22,7 @@ public class InventoryService : IInventoryService
         var s = await _db.AppSettings.FirstOrDefaultAsync();
         return s is null
             ? new AppSettings()
-            : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber };
+            : new AppSettings { CostingMethod = s.CostingMethod, AllowNegativeStock = s.AllowNegativeStock, ItServerUrl = s.ItServerUrl, ItCompanyName = s.ItCompanyName, BaleBotToken = s.BaleBotToken, EitaaToken = s.EitaaToken, MessengerSenderNumber = s.MessengerSenderNumber, NotifyBannerMs = s.NotifyBannerMs, NotifyToastMs = s.NotifyToastMs };
     }
 
     public async Task<AppSettings> SaveSettingsAsync(AppSettings dto)
@@ -44,9 +44,16 @@ public class InventoryService : IInventoryService
         s.BaleBotToken = string.IsNullOrWhiteSpace(dto.BaleBotToken) ? null : dto.BaleBotToken.Trim();
         s.EitaaToken = string.IsNullOrWhiteSpace(dto.EitaaToken) ? null : dto.EitaaToken.Trim();
         s.MessengerSenderNumber = string.IsNullOrWhiteSpace(dto.MessengerSenderNumber) ? "09111189771" : dto.MessengerSenderNumber.Trim();
+        // مدت نمایش اعلان‌ها و پیام‌ها (سراسری): ۰ = تا بستن دستی، در غیر این‌صورت بین ۵ ثانیه تا ۱ ساعت؛ مقدار نامعتبر → پیش‌فرض
+        s.NotifyBannerMs = SanitizeNotifyMs(dto.NotifyBannerMs, 120_000);
+        s.NotifyToastMs = SanitizeNotifyMs(dto.NotifyToastMs, 20_000);
         await _db.SaveChangesAsync();
         return await GetSettingsAsync();
     }
+
+    /// <summary>اعتبارسنجی مدت نمایش (میلی‌ثانیه): ۰ = تا بستن دستی؛ در غیر این‌صورت بین ۵۰۰۰ تا ۳۶۰۰۰۰۰؛ خارج از بازه → مقدار پیش‌فرض.</summary>
+    private static int SanitizeNotifyMs(int ms, int fallback)
+        => ms == 0 ? 0 : (ms >= 5_000 && ms <= 3_600_000 ? ms : fallback);
 
     // =============================== معرف (بازاریاب) ===============================
 

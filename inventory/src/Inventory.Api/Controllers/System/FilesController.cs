@@ -22,13 +22,13 @@ public class FilesController : ControllerBase
     }
 
     [HttpPost("upload/{module}")]
-    [RequestSizeLimit(20 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> Upload(string module, IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "فایلی ارسال نشده است." });
 
-        if (file.Length > 20 * 1024 * 1024)
+        if (file.Length > long.MaxValue)
             return BadRequest(new { message = "حداکثر حجم مجاز ۲۰ مگابایت است." });
 
         using var stream = file.OpenReadStream();

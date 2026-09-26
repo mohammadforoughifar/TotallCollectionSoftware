@@ -100,7 +100,7 @@
                                 {
                                     <button type="button" class="btn btn-sm btn-light border ms-1 mb-1" @onclick="() => photoRemove = true"><i class="bi bi-trash text-danger"></i> حذف عکس</button>
                                 }
-                                <div class="small text-muted">JPG ،PNG یا WebP تا ۵ مگابایت @if (photoRemove) { <span class="text-danger">(هنگام ثبت نهایی حذف می‌شود)</span> } </div>
+                                <div class="small text-muted">JPG ،PNG یا WebP — بدون محدودیت حجم @if (photoRemove) { <span class="text-danger">(هنگام ثبت نهایی حذف می‌شود)</span> } </div>
                             </div>
                         </div>
                     </div>
@@ -788,7 +788,7 @@ else
         impResult = null;
         try
         {
-            await using var s = impFile.OpenReadStream(20_000_000);
+            await using var s = impFile.OpenReadStream(long.MaxValue);
             impResult = await EmpSvc.ImportEmployeesAsync(s, impFile.Name);
             if (impResult.Created > 0) await ReloadFirst();
         }
@@ -825,10 +825,10 @@ else
     {
         var file = e.File;
         if (file is null) return;
-        if (file.Size > 5 * 1024 * 1024) { Toast.Error("حداکثر حجم عکس ۵ مگابایت است."); return; }
+        if (file.Size > long.MaxValue) { Toast.Error("حداکثر حجم عکس ۵ مگابایت است."); return; }
         try
         {
-            await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            await using var stream = file.OpenReadStream(long.MaxValue);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             photoBytes = ms.ToArray();

@@ -180,7 +180,7 @@ public class CctvCamerasController : ControllerBase
     }
 
     [HttpPost("import-excel")]
-    [RequestSizeLimit(15 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> ImportExcel(IFormFile? file)
     {
         if (file == null || file.Length == 0)

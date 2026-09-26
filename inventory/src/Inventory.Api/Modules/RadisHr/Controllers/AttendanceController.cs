@@ -83,7 +83,7 @@ public class AttendanceController : ControllerBase
     /// <summary>بارگذاری مستقیم فایل اکسل دستگاه (قالب بلوکی یا فهرست تردد)</summary>
     [Authorize(Roles = "hr,guard,ceo")]
     [HttpPost("import-workbook")]
-    [RequestSizeLimit(30 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<ActionResult<AttendanceImportResult>> ImportWorkbook(IFormFile file)
     {
         if (file == null || file.Length == 0)

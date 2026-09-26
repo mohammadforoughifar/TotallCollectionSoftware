@@ -3142,7 +3142,7 @@ else
         try
         {
             using var content = new MultipartFormDataContent();
-            var sc = new StreamContent(f.OpenReadStream(10 * 1024 * 1024));
+            var sc = new StreamContent(f.OpenReadStream(long.MaxValue));
             sc.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
             content.Add(sc, "file", f.Name);
             await Http.PostAsync($"/api/attachments/WorkOrders/{id}", content);

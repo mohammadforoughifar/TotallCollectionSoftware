@@ -30,10 +30,9 @@ public sealed class MemoryBrowserFile : IBrowserFile
 
     public string ContentType { get; }
 
-    public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default)
+    public Stream OpenReadStream(long maxAllowedSize = long.MaxValue, CancellationToken cancellationToken = default)
     {
-        if (Size > maxAllowedSize)
-            throw new IOException($"حجم فایل ({Size} بایت) بیش از حد مجاز ({maxAllowedSize} بایت) است.");
+        // بدون محدودیت حجم فایل — هر حجمی مجاز است
         return new MemoryStream(_data, writable: false);
     }
 }

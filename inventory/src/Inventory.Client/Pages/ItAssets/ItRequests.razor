@@ -316,7 +316,7 @@ else
                             <div id="rte-desc" class="rte-editor" contenteditable="true"></div>
                         </div>
                         <div class="col-12" hidden="@remoteMode">
-                            <label class="form-label"><i class="bi bi-paperclip"></i> فایل پیوست (اختیاری — حداکثر ۱۰ مگابایت)</label>
+                            <label class="form-label"><i class="bi bi-paperclip"></i> فایل پیوست (اختیاری — بدون محدودیت حجم)</label>
                             <InputFile class="form-control" OnChange="OnNewFileSelected" multiple />
                             @if (newFiles.Count > 0)
                             {
@@ -971,7 +971,7 @@ else
     }
 
     private void OnNewFileSelected(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
-        => newFiles = e.GetMultipleFiles(5).ToList();
+        => newFiles = e.GetMultipleFiles(int.MaxValue).ToList();
 
     private async Task SubmitNew()
     {
@@ -1043,7 +1043,7 @@ else
         try
         {
             using var content = new MultipartFormDataContent();
-            var sc = new StreamContent(f.OpenReadStream(10 * 1024 * 1024));
+            var sc = new StreamContent(f.OpenReadStream(long.MaxValue));
             sc.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
             content.Add(sc, "file", f.Name);
             await Http.PostAsync($"/api/itrequests/{reqId}/attachments?role={role}", content);
@@ -1212,7 +1212,7 @@ else
     {
         if (detail == null) return;
         var role = tab == "manager" ? "Manager" : tab == "expert" ? "Expert" : "Requester";
-        foreach (var f in e.GetMultipleFiles(5))
+        foreach (var f in e.GetMultipleFiles(int.MaxValue))
             await UploadFile(detail.Id, f, role);
         try { attachments = await Http.GetFromJsonAsync<List<AttItem>>($"/api/itrequests/{detail.Id}/attachments") ?? new(); }
         catch { }

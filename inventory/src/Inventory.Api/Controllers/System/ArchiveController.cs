@@ -321,7 +321,7 @@ public class AttachmentsController : ControllerBase
     }
 
     [HttpPost("{module}/{refId:int}")]
-    [RequestSizeLimit(15 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> Upload(string module, int refId, IFormFile file)
     {
         if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase) && !await CanWriteDocVersion(refId))
@@ -331,7 +331,7 @@ public class AttachmentsController : ControllerBase
             return StatusCode(403, new { message = "شما اجازه افزودن پیوست به این مورد را ندارید." });
 
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
-        if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
+        if (file.Length > long.MaxValue) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);

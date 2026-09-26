@@ -180,8 +180,8 @@ public class ChatController : ControllerBase
 
     /// <summary>بارگذاری فایل برای گفتگوی مشخص (فقط اعضا)، حداکثر ۵۰ MiB.</summary>
     [HttpPost("conversations/{id:int}/attachments")]
-    [RequestSizeLimit(ChatFileLimits.MaxRequestBytes)]
-    [RequestFormLimits(MultipartBodyLengthLimit = ChatFileLimits.MaxRequestBytes)]
+    [DisableRequestSizeLimit]
+    [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
     public async Task<IActionResult> UploadAttachment(int id, [FromForm] IFormFile? file)
     {
         if (file == null) return BadRequest(new { message = "فایلی انتخاب نشده است." });
@@ -190,8 +190,8 @@ public class ChatController : ControllerBase
 
     /// <summary>سازگاری با کلاینت قدیمی؛ فایل بدون گفتگو فقط در اختیار بارگذار می‌ماند.</summary>
     [HttpPost("upload")]
-    [RequestSizeLimit(ChatFileLimits.MaxRequestBytes)]
-    [RequestFormLimits(MultipartBodyLengthLimit = ChatFileLimits.MaxRequestBytes)]
+    [DisableRequestSizeLimit]
+    [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
     public async Task<IActionResult> UploadLegacy([FromForm] IFormFile? file, [FromQuery] int? conversationId)
     {
         if (file == null) return BadRequest(new { message = "فایلی انتخاب نشده است." });

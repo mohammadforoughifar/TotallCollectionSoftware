@@ -317,7 +317,7 @@
         impResult = null;
         try
         {
-            await using var stream = impFile.OpenReadStream(10 * 1024 * 1024);
+            await using var stream = impFile.OpenReadStream(long.MaxValue);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             ms.Position = 0;

@@ -279,7 +279,7 @@
     {
         var file = args.File;
         if (file == null) return;
-        using var stream = file.OpenReadStream(4 * 1024 * 1024);
+        using var stream = file.OpenReadStream(long.MaxValue);
         using var memory = new MemoryStream();
         await stream.CopyToAsync(memory);
         _model.Photo = $"data:{file.ContentType};base64,{Convert.ToBase64String(memory.ToArray())}";
@@ -289,7 +289,7 @@
     {
         var file = args.File;
         if (file == null) return;
-        using var stream = file.OpenReadStream(20 * 1024 * 1024);
+        using var stream = file.OpenReadStream(long.MaxValue);
         using var memory = new MemoryStream();
         await stream.CopyToAsync(memory);
 
@@ -346,7 +346,7 @@
     {
         var file = args.File;
         if (file == null) return;
-        using var reader = new StreamReader(file.OpenReadStream(10 * 1024 * 1024), System.Text.Encoding.UTF8);
+        using var reader = new StreamReader(file.OpenReadStream(long.MaxValue), System.Text.Encoding.UTF8);
         var text = await reader.ReadToEndAsync();
         _importRows = ParseCsv(text);
         _message = $"{BonFa.N(_importRows.Count)} ردیف خوانده شد.";

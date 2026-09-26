@@ -773,7 +773,7 @@ else
                     <div class="ver-drop-inner">
                         <i class="bi bi-cloud-arrow-up ver-drop-icon"></i>
                         <div class="fw-700 fs-8">فایل‌ها را اینجا رها کنید یا کلیک کنید</div>
-                        <div class="fs-9 text-muted">حداکثر ۵ فایل، هر فایل تا ۲۰ مگابایت — پس از ثبت ورژن، خودکار آپلود می‌شوند</div>
+                        <div class="fs-9 text-muted">بدون محدودیت تعداد و حجم — پس از ثبت ورژن، خودکار آپلود می‌شوند</div>
                     </div>
                     <InputFile class="ver-file-overlay" OnChange="OnVersionFiles" multiple />
                 </div>
@@ -933,7 +933,7 @@ else
     private void OnVersionFiles(InputFileChangeEventArgs e)
     {
         verDragDepth = 0; verDragOver = false;
-        verFiles = e.GetMultipleFiles(5).ToList();
+        verFiles = e.GetMultipleFiles(int.MaxValue).ToList();
     }
     private void VerDragEnter() { verDragDepth++; verDragOver = true; }
     private void VerDragLeave() { if (--verDragDepth <= 0) { verDragDepth = 0; verDragOver = false; } }
@@ -1173,7 +1173,7 @@ else
                     try
                     {
                         using var content = new MultipartFormDataContent();
-                        var sc = new StreamContent(f.OpenReadStream(20L * 1024 * 1024));
+                        var sc = new StreamContent(f.OpenReadStream(long.MaxValue));
                         sc.Headers.ContentType = new MediaTypeHeaderValue(
                             string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
                         content.Add(sc, "file", f.Name);

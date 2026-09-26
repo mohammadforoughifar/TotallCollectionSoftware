@@ -25,6 +25,8 @@ if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
     var httpPortForKestrel = Environment.GetEnvironmentVariable("PORT") ?? "5100";
     builder.WebHost.ConfigureKestrel(options =>
     {
+        // بدون محدودیت حجم بدنهٔ درخواست — آپلود/پیوست فایل با هر حجمی مجاز است
+        options.Limits.MaxRequestBodySize = null;
         options.ListenAnyIP(int.Parse(httpPortForKestrel));                       // همان HTTP فعلی (دست‌نخورده)
         // HTTPS: پورت اصلی (پیش‌فرض 5443) + پورت‌های اضافه (Https:ExtraPorts، مثلاً 443).
         // گواهی بر اساس نام درخواستی انتخاب می‌شود: دامنهٔ واقعی ← گواهی عمومی (Let's Encrypt)، آی‌پی/نام داخلی ← گواهی داخلی.
@@ -238,6 +240,21 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddCors(options =>
     options.AddPolicy("wasm", p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()
         .WithExposedHeaders("Content-Disposition", "Content-Length", "Accept-Ranges", "Content-Range")));
+
+// بدون محدودیت آپلود/پیوست فایل در سراسر برنامه:
+//  • FormOptions: سقف حجم چندبخشی (multipart) و طول مقادیر فرم برداشته شد
+//  • Kestrel: MaxRequestBodySize بالاتر روی null (نامحدود) تنظیم شد
+//  • IIS (در صورت میزبانی پشت IIS): سقف بدنه نامحدود
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o =>
+{
+    o.MultipartBodyLengthLimit = long.MaxValue;
+    o.ValueLengthLimit = int.MaxValue;
+    o.MultipartHeadersLengthLimit = int.MaxValue;
+    o.MultipartBoundaryLengthLimit = int.MaxValue;
+    o.KeyLengthLimit = int.MaxValue;
+    o.ValueCountLimit = int.MaxValue;
+});
+builder.Services.Configure<Microsoft.AspNetCore.Builder.IISServerOptions>(o => o.MaxRequestBodySize = null);
 
 // کنترلرها + فیلتر سراسری خطا + JSON با نام‌گذاری camelCase
 builder.Services.AddControllers(options =>

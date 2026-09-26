@@ -25,12 +25,12 @@ public class FilesController : ControllerBase
             .Take(500).ToListAsync();
 
     [HttpPost]
-    [RequestSizeLimit(MaxBytes)]
+    [DisableRequestSizeLimit]
     public async Task<ActionResult<IdResponse>> Upload(IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new ApiMessage(false, "فایلی انتخاب نشده است."));
-        if (file.Length > MaxBytes)
+        if (file.Length > long.MaxValue)
             return BadRequest(new ApiMessage(false, "حجم فایل نباید بیش از ۲۰ مگابایت باشد."));
 
         using var stream = new MemoryStream();

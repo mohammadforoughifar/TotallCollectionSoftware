@@ -417,7 +417,7 @@
         try
         {
             using var content = new MultipartFormDataContent();
-            using var stream = importFile.OpenReadStream(15 * 1024 * 1024);
+            using var stream = importFile.OpenReadStream(long.MaxValue);
             content.Add(new StreamContent(stream), "file", importFile.Name);
             var resp = await Http.PostAsync("/api/CctvCameras/import-excel", content);
             var body = await resp.Content.ReadAsStringAsync();

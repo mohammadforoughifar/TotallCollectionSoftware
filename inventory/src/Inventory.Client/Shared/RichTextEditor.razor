@@ -264,7 +264,7 @@
         try
         {
             using var content = new MultipartFormDataContent();
-            var streamContent = new StreamContent(file.OpenReadStream(20 * 1024 * 1024));
+            var streamContent = new StreamContent(file.OpenReadStream(long.MaxValue));
             var ct = file.ContentType ?? "application/octet-stream";
             streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(ct);
             content.Add(streamContent, "file", file.Name);

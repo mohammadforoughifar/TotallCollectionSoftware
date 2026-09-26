@@ -27,6 +27,12 @@ public class AppSettings
     /// <summary>واحد وزن پیش‌فرض (kg, g, ton)</summary>
     public string WeightUnit { get; set; } = "kg";
 
+    /// <summary>مدت نمایش اعلان زندهٔ بالای صفحه (میلی‌ثانیه). ۰ = تا بستن دستی. پیش‌فرض ۲ دقیقه. — سراسری، توسط مدیر سامانه</summary>
+    public int NotifyBannerMs { get; set; } = 120_000;
+
+    /// <summary>مدت نمایش پیام کوتاه/توست (میلی‌ثانیه). ۰ = تا بستن دستی. پیش‌فرض ۲۰ ثانیه. — سراسری، توسط مدیر سامانه</summary>
+    public int NotifyToastMs { get; set; } = 20_000;
+
     /// <summary>واحد ابعاد پیش‌فرض (cm, mm, m)</summary>
     public string DimensionUnit { get; set; } = "cm";
 

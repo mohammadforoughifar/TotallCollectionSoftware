@@ -1762,9 +1762,9 @@ window.sigClear = function (canvasId) {
     {
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > 5 * 1024 * 1024) return;
+        if (file.Size > long.MaxValue) return;
         var buf = new byte[file.Size];
-        await file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).ReadAsync(buf);
+        await file.OpenReadStream(long.MaxValue).ReadAsync(buf);
         quickUserPhoto = buf;
         quickUserPhotoName = file.Name;
         quickUserPhotoPreview = "data:" + (file.ContentType ?? "image/jpeg") + ";base64," + Convert.ToBase64String(buf);

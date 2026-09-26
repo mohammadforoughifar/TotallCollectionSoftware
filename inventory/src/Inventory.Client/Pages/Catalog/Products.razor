@@ -458,7 +458,7 @@
         importing = true;
         try
         {
-            await using var stream = importFile.OpenReadStream(10 * 1024 * 1024);
+            await using var stream = importFile.OpenReadStream(long.MaxValue);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             ms.Position = 0;

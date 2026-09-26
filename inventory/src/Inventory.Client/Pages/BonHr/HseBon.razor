@@ -654,7 +654,7 @@
 
         var file = args.File;
         using var content = new MultipartFormDataContent();
-        var stream = file.OpenReadStream(20 * 1024 * 1024);
+        var stream = file.OpenReadStream(long.MaxValue);
         content.Add(new StreamContent(stream), "file", file.Name);
 
         var stored = await Api.PostFormAsync<StoredFile>("api/files", content);

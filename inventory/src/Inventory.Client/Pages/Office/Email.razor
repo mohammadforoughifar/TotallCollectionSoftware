@@ -453,7 +453,7 @@
                     <textarea class="tin" rows="8" style="min-height:140px" @bind="cpBody"></textarea>
                 </div>
                 <div class="fcard">
-                    <label>پیوست <span class="opt">هر فایل حداکثر ۲۰ مگابایت</span></label>
+                    <label>پیوست <span class="opt">بدون محدودیت حجم</span></label>
                     <InputFile OnChange="OnComposeFiles" multiple />
                     <div class="selpills">
                         @foreach (var f in _pendingBrowser)
@@ -1083,9 +1083,9 @@
 
     private void OnComposeFiles(InputFileChangeEventArgs e)
     {
-        foreach (var f in e.GetMultipleFiles(20))
+        foreach (var f in e.GetMultipleFiles(int.MaxValue))
         {
-            if (f.Size <= 0 || f.Size > 20L * 1024 * 1024)
+            if (f.Size <= 0 || f.Size > long.MaxValue)
             {
                 Toast.Error($"فایل {f.Name} پذیرفته نشد (حداکثر ۲۰ مگابایت).");
                 continue;
@@ -1109,7 +1109,7 @@
             {
                 try
                 {
-                    await using var s = bf.OpenReadStream(20L * 1024 * 1024);
+                    await using var s = bf.OpenReadStream(long.MaxValue);
                     using var ms = new MemoryStream();
                     await s.CopyToAsync(ms);
                     files.Add(new EmailOutAttachment(bf.Name, bf.ContentType, ms.ToArray()));

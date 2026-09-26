@@ -144,7 +144,7 @@
             @* ---------- پنل پیشرفته پیوست‌ها (اسکن + سیستم) ---------- *@
             <div class="fcard" style="margin-top:8px">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-                    <label><i class="bi bi-paperclip"></i> پیوست‌های نامه وارده <span class="opt">حداکثر ۲۰ مگابایت</span></label>
+                    <label><i class="bi bi-paperclip"></i> پیوست‌های نامه وارده <span class="opt">بدون محدودیت حجم</span></label>
                     <div style="display:flex; gap:6px">
                         <button class="btn btn-sm btn-outline-primary" type="button" @onclick="TriggerScanModal">
                             <i class="bi bi-camera-fill me-1"></i> اسکن از اسکنر / دوربین سیستم
@@ -331,9 +331,9 @@
     private void OnFilesSelected(InputFileChangeEventArgs e)
     {
         showScanModal = false;
-        foreach (var file in e.GetMultipleFiles(10))
+        foreach (var file in e.GetMultipleFiles(int.MaxValue))
         {
-            if (file.Size > 20 * 1024 * 1024)
+            if (file.Size > long.MaxValue)
             {
                 Toast.Error($"فایل {file.Name} بیش از ۲۰ مگابایت است.");
                 continue;
@@ -412,7 +412,7 @@
             {
                 foreach (var f in pendingFiles)
                 {
-                    using var stream = f.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+                    using var stream = f.OpenReadStream(long.MaxValue);
                     await IncomingSvc.UploadAttachmentAsync(letterId, stream, f.Name, f.ContentType);
                 }
             }

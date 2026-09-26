@@ -273,10 +273,10 @@
     {
         _attachments.Clear();
 
-        foreach (var file in args.GetMultipleFiles(10))
+        foreach (var file in args.GetMultipleFiles(int.MaxValue))
         {
             using var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(file.OpenReadStream(20 * 1024 * 1024)), "file", file.Name);
+            content.Add(new StreamContent(file.OpenReadStream(long.MaxValue)), "file", file.Name);
 
             var stored = await Api.PostFormAsync<StoredFile>("api/files", content);
             if (stored == null) continue;

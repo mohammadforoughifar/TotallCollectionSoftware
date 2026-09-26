@@ -999,7 +999,7 @@
         try
         {
             using var c = new MultipartFormDataContent();
-            c.Add(new StreamContent(upFile.OpenReadStream(20_000_000)), "file", upFile.Name);
+            c.Add(new StreamContent(upFile.OpenReadStream(long.MaxValue)), "file", upFile.Name);
             c.Add(new StringContent(deviceCode.Trim()), "deviceCode");
             var r = await Http.PostAsync("/api/hr-time/device/upload", c);
             if (r.IsSuccessStatusCode)

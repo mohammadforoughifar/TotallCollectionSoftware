@@ -48,8 +48,8 @@ public class ProjectAttachController : RbacControllerBase
     }
 
     /// <summary>آپلود یک یا چند فایل برای یک پروژه (multipart)</summary>
-    [RequestFormLimits(MultipartBodyLengthLimit = 250_000_000)]
-    [RequestSizeLimit(250_000_000)]
+    [RequestFormLimits(MultipartBodyLengthLimit = long.MaxValue)]
+    [DisableRequestSizeLimit]
     [HttpPost]
     public async Task<IActionResult> Upload(
         [FromForm] int projectId,

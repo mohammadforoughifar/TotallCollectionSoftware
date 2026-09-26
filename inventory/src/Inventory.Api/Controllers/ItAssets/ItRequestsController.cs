@@ -688,13 +688,13 @@ public class ItRequestsController : ControllerBase
     }
 
     [HttpPost("{id:int}/attachments")]
-    [RequestSizeLimit(15 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> Upload(int id, IFormFile file, [FromQuery] string role = "Requester")
     {
         var req = await _db.ItRequests.FindAsync(id);
         if (req == null) return NotFound(new { message = "درخواست پیدا نشد." });
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
-        if (file.Length > 10 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
+        if (file.Length > long.MaxValue) return BadRequest(new { message = "حداکثر حجم فایل ۱۰ مگابایت است." });
 
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);

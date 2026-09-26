@@ -73,7 +73,7 @@ public class AuthController : ControllerBase
     /// <summary>آپلود یا جایگزینی امضای کاربر — فقط ادمین.</summary>
     [HttpPost("users/signature/{id:int}")]
     [Authorize(Roles = "Admin")]
-    [RequestSizeLimit(2 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadUserSignature(int id, IFormFile file)
     {
         var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == id);
@@ -93,7 +93,7 @@ public class AuthController : ControllerBase
         /// <summary>تغییر عکس کاربر لاگین — فقط ادمین.</summary>
     [HttpPost("users/photo/{id:int}")]
     [Authorize(Roles = "Admin")]
-    [RequestSizeLimit(6 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> UploadUserPhoto(int id, IFormFile file)
     {
         var user = await _db.Users.FirstOrDefaultAsync(x => x.Id == id);

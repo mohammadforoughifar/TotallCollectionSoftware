@@ -183,7 +183,7 @@ public class FaAttController : RbacControllerBase
     }
 
     [HttpPost("logs/import")]
-    [RequestSizeLimit(10 * 1024 * 1024)]
+    [DisableRequestSizeLimit]
     public async Task<IActionResult> ImportLogs(IFormFile? file, [FromQuery] int? deviceId)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Create", "Daily") is { } f) return f;
