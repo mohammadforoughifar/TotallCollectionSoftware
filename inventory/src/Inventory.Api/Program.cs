@@ -360,6 +360,9 @@ builder.Services.AddScoped<IAiTool, SetReminderTool>();
 builder.Services.AddScoped<IAiTool, MyRemindersTool>();
 builder.Services.AddScoped<IAiTool, CancelReminderTool>();
 builder.Services.AddScoped<IAiTool, DecideLeaveBulkTool>();
+builder.Services.AddScoped<IAiTool, DraftMinutesTool>();
+builder.Services.AddScoped<IAiTool, CreateMinutesTool>();
+builder.Services.AddScoped<IAiTool, MyMinutesActionsTool>();
 builder.Services.AddScoped<AiReportService>();
 builder.Services.AddScoped<AiDataExplorer>();
 // پاسخ‌گویی در پیام‌رسان داخلی

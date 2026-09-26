@@ -2040,3 +2040,246 @@ public class DecideLeaveBulkTool : IAiTool
         return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
     }
 }
+
+// ---------------- صورتجلسه هوشمند ----------------
+
+public class DraftMinutesTool : IAiTool
+{
+    public string Name => "draft_minutes";
+    public string Description => "پیش‌نویس هوشمند صورتجلسه از متن خام جلسه (فقط پیش‌نمایش؛ ذخیره نمی‌کند). خروجی: عنوان، خلاصه و بندها با نوع (مصوبه/اقدام/اطلاع) + مسئول و مهلت پیشنهادی. برای ذخیره، بعدش create_minutes.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            raw_text = new { type = "string", description = "متن خام جلسه (اجباری، حداقل ۱۰ نویسه)" },
+            title = new { type = "string", description = "عنوان پیشنهادی جلسه (اختیاری)" },
+        },
+        required = new[] { "raw_text" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var role = await db.Users.AsNoTracking()
+            .Where(u => u.Id == ctx.UserId).Select(u => u.Role).FirstOrDefaultAsync(ctx.CancellationToken);
+        if (!await AiAccessHelper.UserHasAsync(db, ctx.UserId, "MeetingMinutes", "View", role, ctx.CancellationToken))
+            return JsonSerializer.Serialize(new { error = "access_denied", message = "به صورتجلسه‌ها دسترسی نداری." });
+        var raw = (AiToolArgs.GetString(args, "raw_text") ?? "").Trim();
+        if (raw.Length < 10)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "متن جلسه خیلی کوتاه است؛ خلاصه مذاکرات را بده." });
+        var letters = ctx.Services.GetRequiredService<ILetterAiService>();
+        var draft = await letters.DraftMinutesAsync(new AiMinutesDraftRequest
+        {
+            Title = AiToolArgs.GetString(args, "title") ?? "",
+            RawText = raw,
+        }, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            title = draft.Title,
+            summary = draft.Summary,
+            items = draft.Items.Select((it, i) => new
+            {
+                n = i + 1,
+                kind = it.Kind,
+                text = it.Text,
+                responsible = it.Responsible,
+                deadline = it.DeadlineText,
+            }),
+            hint = "برای ذخیره: تاریخ جلسه و شناسه حاضران را بپرس (نام را با users_lookup به شناسه تبدیل کن)، بعد create_minutes بساز.",
+        });
+    }
+}
+
+public class CreateMinutesTool : IAiTool
+{
+    public string Name => "create_minutes";
+    public string Description => "ثبت پیش‌فاکتور صورتجلسه جدید (اجرا فقط بعد از تأیید کاربر؛ ذخیره در وضعیت «در حال بررسی»). بندها را از draft_minutes بگیر. حاضران حداقل یک نفر با شناسه عددی کاربر (نام را اول با users_lookup به شناسه تبدیل کن). مسئول هر بند: نام یا شناسه.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            title = new { type = "string", description = "عنوان صورتجلسه (اجباری)" },
+            meeting_date = new { type = "string", description = "تاریخ جلسه شمسی، مثل ۱۴۰۴/۰۷/۰۸ یا «امروز» (اجباری)" },
+            items = new
+            {
+                type = "array",
+                description = "بندها (اجباری، ۱ تا ۳۰): هر بند text (اجباری)، responsible (نام یا شناسه، اختیاری)، due (مهلت شمسی، اختیاری)",
+                items = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        text = new { type = "string" },
+                        responsible = new { type = "string" },
+                        due = new { type = "string" },
+                    },
+                    required = new[] { "text" },
+                },
+            },
+            attendees = new { type = "array", items = new { type = "integer" }, description = "شناسه عددی حاضران (اجباری، حداقل یک نفر)" },
+            absentees = new { type = "array", items = new { type = "integer" }, description = "شناسه عددی غایبان (اختیاری)" },
+        },
+        required = new[] { "title", "meeting_date", "items", "attendees" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var title = (AiToolArgs.GetString(args, "title") ?? "").Trim();
+        if (title == "" || title.Length > 300)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "عنوان صورتجلسه لازم است (حداکثر ۳۰۰ نویسه)." });
+        var meetingDate = AiLeaveHelper.ParseFaDate(AiToolArgs.GetString(args, "meeting_date"), DateTime.Today)?.Date;
+        if (meetingDate == null)
+            return JsonSerializer.Serialize(new { error = "bad_date", message = "تاریخ جلسه را نفهمیدم؛ مثل ۱۴۰۴/۰۷/۰۸ یا «امروز» بنویس." });
+
+        if (!args.TryGetProperty("items", out var itemsEl) || itemsEl.ValueKind != JsonValueKind.Array || itemsEl.GetArrayLength() == 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "دست‌کم یک بند لازم است (از draft_minutes بگیر)." });
+        var rawItems = itemsEl.EnumerateArray().ToList();
+        if (rawItems.Count > 30)
+            return JsonSerializer.Serialize(new { error = "too_many", message = "حداکثر ۳۰ بند در هر صورتجلسه." });
+        var items = new List<object>();
+        var withResp = 0;
+        var n = 0;
+        foreach (var it in rawItems)
+        {
+            n++;
+            var text = it.ValueKind == JsonValueKind.Object && it.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+            if (text.Trim() == "")
+                return JsonSerializer.Serialize(new { error = "bad_input", message = $"متن بند {n} خالی است." });
+            var respId = 0;
+            string? respRaw = null;
+            if (it.ValueKind == JsonValueKind.Object && it.TryGetProperty("responsible", out var r))
+                respRaw = r.ValueKind == JsonValueKind.String ? r.GetString() : r.ValueKind == JsonValueKind.Number && r.TryGetInt32(out var rn) ? rn.ToString() : null;
+            if (!string.IsNullOrWhiteSpace(respRaw))
+            {
+                var rr = await ResolveUserAsync(db, respRaw!.Trim(), ctx.CancellationToken);
+                if (!rr.ok)
+                    return JsonSerializer.Serialize(new { error = rr.error, message = $"بند {n}: {rr.message}", candidates = rr.candidates });
+                respId = rr.id;
+                withResp++;
+            }
+            string? dueIso = null;
+            if (it.ValueKind == JsonValueKind.Object && it.TryGetProperty("due", out var d) && d.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(d.GetString()))
+            {
+                var due = AiLeaveHelper.ParseFaDate(d.GetString(), DateTime.Today)?.Date;
+                if (due == null)
+                    return JsonSerializer.Serialize(new { error = "bad_date", message = $"مهلت بند {n} را نفهمیدم." });
+                dueIso = due.Value.ToString("yyyy-MM-dd");
+            }
+            items.Add(new { text = text.Trim(), responsible_id = respId, due = dueIso });
+        }
+
+        var attendees = ReadIds(args, "attendees");
+        if (attendees.Count == 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "دست‌کم یک حاضر با شناسه عددی لازم است (نام را با users_lookup به شناسه تبدیل کن)." });
+        var absentees = ReadIds(args, "absentees");
+        var allIds = attendees.Concat(absentees).Distinct().ToList();
+        var users = await db.Users.AsNoTracking()
+            .Where(u => allIds.Contains(u.Id) && u.IsActive)
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Username }).ToListAsync(ctx.CancellationToken);
+        var missing = allIds.Except(users.Select(u => u.Id)).ToList();
+        if (missing.Count > 0)
+            return JsonSerializer.Serialize(new { error = "bad_user", message = $"این شناسه‌ها کاربر فعال نیستند: {string.Join("، ", missing)}" });
+        string NameOf(int id)
+        {
+            var u = users.First(x => x.Id == id);
+            var nm = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim();
+            return nm == "" ? u.Username : nm;
+        }
+
+        var summary = $"صورتجلسه «{title}» — جلسه {AiDateUtil.ToFaShort(meetingDate.Value)} — " +
+            $"{AiTextUtil.ToFaDigits(items.Count.ToString())} بند ({AiTextUtil.ToFaDigits(withResp.ToString())} با مسئول) — " +
+            $"حاضران: {string.Join("، ", attendees.Take(3).Select(NameOf))}" +
+            (attendees.Count > 3 ? $" +{AiTextUtil.ToFaDigits((attendees.Count - 3).ToString())} نفر دیگر" : "");
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var pending = await actions.CreateAsync(ctx.UserId, "create_minutes",
+            JsonSerializer.Serialize(new
+            {
+                title,
+                meeting_date = meetingDate.Value.ToString("yyyy-MM-dd"),
+                items,
+                attendees,
+                absentees,
+            }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+
+    private static List<int> ReadIds(JsonElement args, string prop)
+    {
+        var ids = new List<int>();
+        if (args.TryGetProperty(prop, out var arr) && arr.ValueKind == JsonValueKind.Array)
+            foreach (var el in arr.EnumerateArray())
+                if (el.TryGetInt32(out var v) && v > 0 && !ids.Contains(v)) ids.Add(v);
+        return ids;
+    }
+
+    private static async Task<(bool ok, int id, string? error, string? message, object? candidates)> ResolveUserAsync(
+        AppDbContext db, string raw, CancellationToken ct)
+    {
+        if (int.TryParse(AiTextUtil.ToEnDigits(raw), out var id))
+        {
+            var ok = await db.Users.AsNoTracking().AnyAsync(u => u.Id == id && u.IsActive, ct);
+            return ok ? (true, id, null, null, null)
+                : (false, 0, "bad_user", $"کاربر فعالی با شناسه {id} نیست.", null);
+        }
+        var q = AiTextUtil.NormalizeFa(raw);
+        var all = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Username != Data.AiSeeder.AiUsername)
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.Username }).Take(200).ToListAsync(ct);
+        var found = all
+            .Select(u => new { u.Id, Name = (((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim() is { Length: > 0 } nm) ? nm : u.Username })
+            .Where(u => AiTextUtil.NormalizeFa(u.Name).Contains(q)).Take(8).ToList();
+        if (found.Count == 0)
+            return (false, 0, "bad_user", $"کسی با نام «{raw}» پیدا نشد.", null);
+        if (found.Count > 1)
+            return (false, 0, "ambiguous_user", "چند نفر با این نام پیدا شد؛ شناسه دقیق را بپرس.",
+                found.Select(u => new { id = u.Id, name = u.Name }));
+        return (true, found[0].Id, null, null, null);
+    }
+}
+
+public class MyMinutesActionsTool : IAiTool
+{
+    public string Name => "my_minutes_actions";
+    public string Description => "بندهای باز صورتجلسات که مسئول اجرایشان خودتی (در جریان + سررسید) — برای پیگیری اقدام‌های خودت.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            limit = new { type = "integer", description = "تعداد (پیش‌فرض ۱۰، حداکثر ۳۰)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var role = await db.Users.AsNoTracking()
+            .Where(u => u.Id == ctx.UserId).Select(u => u.Role).FirstOrDefaultAsync(ctx.CancellationToken);
+        if (!await AiAccessHelper.UserHasAsync(db, ctx.UserId, "MeetingMinutes", "View", role, ctx.CancellationToken))
+            return JsonSerializer.Serialize(new { error = "access_denied", message = "به صورتجلسه‌ها دسترسی نداری." });
+        var limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 10, 1, 30);
+        var rows = await db.MeetingMinutesItems.AsNoTracking()
+            .Where(i => i.ResponsibleUserId == ctx.UserId && i.ItemStatus == MinutesItemStatus.InProgress
+                && i.Minutes != null && !i.Minutes.IsDeleted)
+            .OrderBy(i => i.DueDate == null).ThenBy(i => i.DueDate).ThenBy(i => i.RowNo)
+            .Select(i => new { i.MinutesId, Title = i.Minutes!.Title, i.RowNo, i.Description, i.DueDate })
+            .Take(limit).ToListAsync(ctx.CancellationToken);
+        if (rows.Count == 0)
+            return JsonSerializer.Serialize(new { actions = new object[0], message = "بند بازی به مسئولیت تو نیست. 🎉" });
+        return JsonSerializer.Serialize(new
+        {
+            actions = rows.Select(r => new
+            {
+                minutes_id = r.MinutesId,
+                minutes_title = r.Title,
+                row_no = r.RowNo,
+                text = AiTextUtil.Truncate(r.Description, 120),
+                due = r.DueDate == null ? "—" : AiDateUtil.ToFaShort(r.DueDate.Value),
+                link = $"/misc/minutes/{r.MinutesId}",
+            }),
+        });
+    }
+}

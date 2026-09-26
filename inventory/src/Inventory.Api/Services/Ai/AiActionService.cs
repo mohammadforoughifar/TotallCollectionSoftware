@@ -3,6 +3,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.FaAtt;
 using Inventory.Api.Services.FaCom;
 using Inventory.Api.Services.Treasury;
+using Inventory.Api.Services.Office;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -33,11 +34,12 @@ public class AiActionService
     private readonly IPishnevisService _pishnevis;
     private readonly IFaComService _faCom;
     private readonly ITreasuryService _treasury;
+    private readonly IMeetingMinutesService _minutes;
     private readonly ILogger<AiActionService> _log;
 
     public AiActionService(AppDbContext db, IOptions<AiOptions> options, IFaAttService faAtt,
         IErjaService erja, IPishnevisService pishnevis, IFaComService faCom,
-        ITreasuryService treasury, ILogger<AiActionService> log)
+        ITreasuryService treasury, IMeetingMinutesService minutes, ILogger<AiActionService> log)
     {
         _db = db;
         _options = options.Value;
@@ -46,6 +48,7 @@ public class AiActionService
         _pishnevis = pishnevis;
         _faCom = faCom;
         _treasury = treasury;
+        _minutes = minutes;
         _log = log;
     }
 
@@ -108,6 +111,7 @@ public class AiActionService
             "refer_letter" => ("InnerLetters", "Read"),
             "answer_ticket" => ("FaCom", "Create"),
             "register_cheque" => ("TrsCheques", "Create"),
+            "create_minutes" => ("MeetingMinutes", "Create"),
             _ => ("", ""),
         };
         if (module == "")
@@ -133,6 +137,7 @@ public class AiActionService
                 "refer_letter" => await ExecuteReferLetterAsync(action, userId, userName, ct),
                 "answer_ticket" => await ExecuteAnswerTicketAsync(action, userId, userName, role, ct),
                 "register_cheque" => await ExecuteRegisterChequeAsync(action, userId, userName, ct),
+                "create_minutes" => await ExecuteCreateMinutesAsync(action, userId, userName, ct),
                 _ => throw new InvalidOperationException("نوع اقدام ناشناخته است."),
             };
             action.Status = 1;
@@ -402,6 +407,52 @@ public class AiActionService
         }, userName);
         var kindFa = kind == 1 ? "صادره" : "دریافتی";
         return $"چک {kindFa} شماره {saved.Number} به مبلغ {AiTextUtil.ToFaDigits(saved.Amount.ToString("#,##0"))} تومان ثبت شد. 🧾";
+    }
+
+    private async Task<string> ExecuteCreateMinutesAsync(AiPendingAction action, int userId, string userName, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var root = doc.RootElement;
+        var title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+        var meetingDate = root.TryGetProperty("meeting_date", out var md) && DateTime.TryParse(md.GetString(), out var mdt) ? mdt.Date : (DateTime?)null;
+        if (title.Trim() == "" || meetingDate == null)
+            throw new InvalidOperationException("اطلاعات صورتجلسه ناقص است؛ دوباره بگو.");
+        var items = new List<SaveMinutesItemDto>();
+        if (root.TryGetProperty("items", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            foreach (var el in arr.EnumerateArray().Take(30))
+            {
+                if (el.ValueKind != JsonValueKind.Object) continue;
+                var text = el.TryGetProperty("text", out var x) ? x.GetString() ?? "" : "";
+                if (text.Trim() == "") continue;
+                var respId = el.TryGetProperty("responsible_id", out var r) && r.TryGetInt32(out var n) ? n : 0;
+                var due = el.TryGetProperty("due", out var d) && DateTime.TryParse(d.GetString(), out var dd) ? dd.Date : (DateTime?)null;
+                items.Add(new SaveMinutesItemDto
+                {
+                    Description = text.Trim(),
+                    ResponsibleUserId = respId > 0 ? respId : null,
+                    DueDate = due,
+                });
+            }
+        if (items.Count == 0) throw new InvalidOperationException("دست‌کم یک بند لازم است.");
+        static List<int> ReadIds(JsonElement root, string prop)
+        {
+            var ids = new List<int>();
+            if (root.TryGetProperty(prop, out var a) && a.ValueKind == JsonValueKind.Array)
+                foreach (var el in a.EnumerateArray())
+                    if (el.TryGetInt32(out var v) && v > 0 && !ids.Contains(v)) ids.Add(v);
+            return ids;
+        }
+        var attendees = ReadIds(root, "attendees");
+        if (attendees.Count == 0) throw new InvalidOperationException("دست‌کم یک حاضر لازم است.");
+        var id = await _minutes.SaveAsync(new SaveMinutesDto
+        {
+            Title = title.Trim(),
+            MeetingDate = meetingDate.Value,
+            AttendeeUserIds = attendees,
+            AbsentUserIds = ReadIds(root, "absentees"),
+            Items = items,
+        }, userId, userName);
+        return $"صورتجلسه شماره {id} در وضعیت «در حال بررسی» ذخیره شد. 📝";
     }
 
     private async Task<string> ExecuteReportWorkAsync(AiPendingAction action, int userId, CancellationToken ct)
