@@ -135,7 +135,7 @@ public class AiAssistantService
         => _api.GetAsync<AiHealth>("api/ai/health");
 
     public Task<AiChatResult> ChatAsync(int? conversationId, string message)
-        => _api.PostAsync<AiChatResult>("api/ai/chat", new { conversationId, message });
+        => _api.PostLongAsync<AiChatResult>("api/ai/chat", new { conversationId, message });
 
     public Task<List<AiConversation>> GetConversationsAsync()
         => _api.GetAsync<List<AiConversation>>("api/ai/conversations");
@@ -147,32 +147,32 @@ public class AiAssistantService
         => _api.DeleteAsync($"api/ai/conversations/{id}");
 
     public Task<AiLetterDraft> DraftLetterAsync(string topic, string tone, string kind, string? toName, string? extra)
-        => _api.PostAsync<AiLetterDraft>("api/ai/letters/draft",
+        => _api.PostLongAsync<AiLetterDraft>("api/ai/letters/draft",
             new { topic, tone, kind, toName, extraContext = extra });
 
     public Task<AiLetterSummary> SummarizeLetterAsync(int letterId)
-        => _api.PostAsync<AiLetterSummary>($"api/ai/letters/{letterId}/summarize", new { });
+        => _api.PostLongAsync<AiLetterSummary>($"api/ai/letters/{letterId}/summarize", new { });
 
     public Task<AiReferralResponse> SuggestReferralAsync(int letterId)
-        => _api.PostAsync<AiReferralResponse>($"api/ai/letters/{letterId}/suggest-referral", new { });
+        => _api.PostLongAsync<AiReferralResponse>($"api/ai/letters/{letterId}/suggest-referral", new { });
 
     public Task<AiLetterTasks> ExtractTasksAsync(int letterId)
-        => _api.PostAsync<AiLetterTasks>($"api/ai/letters/{letterId}/extract-tasks", new { });
+        => _api.PostLongAsync<AiLetterTasks>($"api/ai/letters/{letterId}/extract-tasks", new { });
 
     public Task<AiLetterCategory> CategorizeLetterAsync(int letterId)
-        => _api.PostAsync<AiLetterCategory>($"api/ai/letters/{letterId}/categorize", new { });
+        => _api.PostLongAsync<AiLetterCategory>($"api/ai/letters/{letterId}/categorize", new { });
 
     public Task<AiMinutesDraft> DraftMinutesAsync(string rawText, string? title)
-        => _api.PostAsync<AiMinutesDraft>("api/ai/minutes/draft", new { rawText, title });
+        => _api.PostLongAsync<AiMinutesDraft>("api/ai/minutes/draft", new { rawText, title });
 
     public Task<(byte[] Data, string FileName, string ContentType)> DownloadReportExcelAsync(string reportId)
         => _api.GetFileAsync($"api/ai/reports/{reportId}/excel");
 
     public Task<AiLetterDraft> DraftReplyAsync(int letterId, string? hint)
-        => _api.PostAsync<AiLetterDraft>($"api/ai/letters/{letterId}/draft-reply", new { hint });
+        => _api.PostLongAsync<AiLetterDraft>($"api/ai/letters/{letterId}/draft-reply", new { hint });
 
     public Task<AiReceiversResponse> SuggestReceiversAsync(string title, string text)
-        => _api.PostAsync<AiReceiversResponse>("api/ai/letters/suggest-receivers", new { title, text });
+        => _api.PostLongAsync<AiReceiversResponse>("api/ai/letters/suggest-receivers", new { title, text });
 
     public class AiBriefingPreview
     {
@@ -188,7 +188,7 @@ public class AiAssistantService
         => _api.GetAsync<AiBriefingPreview>("api/ai/briefing/preview");
 
     public Task<AiBriefingSendResult> SendBriefingNowAsync()
-        => _api.PostAsync<AiBriefingSendResult>("api/ai/briefing/send-now", new { });
+        => _api.PostLongAsync<AiBriefingSendResult>("api/ai/briefing/send-now", new { });
 
     public Task<AiFeedbackSubmitResult> SubmitFeedbackAsync(int messageId, int rating, string? reason, string? comment)
         => _api.PostAsync<AiFeedbackSubmitResult>("api/ai/feedback/submit",

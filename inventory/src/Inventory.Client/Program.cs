@@ -13,7 +13,12 @@ builder.Services.AddScoped(sp =>
 {
     var opts = sp.GetRequiredService<ApiOptions>();
     var baseUrl = string.IsNullOrWhiteSpace(opts.BaseUrl) ? "http://localhost:5100" : opts.BaseUrl;
-    return new HttpClient { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
+    return new HttpClient
+    {
+        BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
+        // سقف پشتیبان؛ سقف واقعی هر فراخوانی در ApiClient (۱۰۰ ثانیه معمولی، ۱۰ دقیقه برای AI) اعمال می‌شود
+        Timeout = TimeSpan.FromMinutes(15),
+    };
 });
 builder.Services.AddScoped<TabService>(); // تب‌های کاری (نگه‌داری صفحاتِ باز)
 builder.Services.AddSingleton<ApiOptions>();
