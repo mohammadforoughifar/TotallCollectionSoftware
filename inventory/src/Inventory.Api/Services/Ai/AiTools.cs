@@ -1992,3 +1992,51 @@ public class CancelReminderTool : IAiTool
         return JsonSerializer.Serialize(new { cancelled = id, message = "یادآور لغو شد. ✅" });
     }
 }
+
+public class DecideLeaveBulkTool : IAiTool
+{
+    public string Name => "decide_leave_bulk";
+    public string Description => "ثبت پیش‌فاکتور تأیید/رد گروهی چند مرخصی با فقط یک «تأیید» کاربر (اجرا فقط بعد از تأیید). شناسه‌ها را از pending_approvals بگیر (حداکثر ۲۰ تا).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            leave_ids = new { type = "array", items = new { type = "integer" }, description = "شناسه مرخصی‌ها از pending_approvals (اجباری، حداکثر ۲۰)" },
+            approve = new { type = "boolean", description = "true=تأیید همه، false=رد همه (اجباری)" },
+        },
+        required = new[] { "leave_ids", "approve" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var ids = new List<int>();
+        if (args.TryGetProperty("leave_ids", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            foreach (var el in arr.EnumerateArray())
+                if (el.TryGetInt32(out var n) && n > 0 && !ids.Contains(n)) ids.Add(n);
+        if (ids.Count == 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "شناسه مرخصی‌ها لازم است؛ اول pending_approvals را ببین." });
+        if (ids.Count > 20)
+            return JsonSerializer.Serialize(new { error = "too_many", message = "حداکثر ۲۰ مرخصی در هر بسته؛ بقیه را در بسته بعدی بفرست." });
+        var approve = AiToolArgs.GetBool(args, "approve");
+        var what = approve ? "تأیید" : "رد";
+
+        var fa = ctx.Services.GetRequiredService<IFaAttService>();
+        var team = await fa.TeamLeavesAsync(ctx.UserId);
+        var names = new List<string>();
+        var unknown = 0;
+        foreach (var id in ids)
+        {
+            var l = team.FirstOrDefault(x => x.Id == id);
+            if (l == null) { unknown++; continue; }
+            names.Add(AiTextUtil.Truncate($"{l.EmployeeName} ({l.LeaveTypeName}، {AiDateUtil.ToFaShort(l.FromDate)})", 45));
+        }
+        var summary = $"{what} گروهی {AiTextUtil.ToFaDigits(ids.Count.ToString())} مرخصی" +
+            (names.Count > 0 ? ": " + string.Join("، ", names.Take(3)) + (names.Count > 3 ? $"، +{AiTextUtil.ToFaDigits((names.Count - 3).ToString())} مورد دیگر" : "") : "") +
+            (unknown > 0 ? $" (⚠️ {AiTextUtil.ToFaDigits(unknown.ToString())} مورد در فهرست درانتظار تو نیست؛ موقع اجرا بررسی می‌شود)" : "");
+        var actions = ctx.Services.GetRequiredService<AiActionService>();
+        var pending = await actions.CreateAsync(ctx.UserId, "decide_leave_bulk",
+            JsonSerializer.Serialize(new { leave_ids = ids, approve }), summary, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new { action_id = pending.Id, summary, hint = "برای اجرا، کاربر باید بنویسد: تأیید" });
+    }
+}

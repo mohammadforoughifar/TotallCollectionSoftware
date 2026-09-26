@@ -100,6 +100,7 @@ public class AiActionService
             "clock" => ("FaAtt", "Create"),
             "request_mission" => ("FaAtt", "Create"),
             "decide_leave" => ("FaAtt", "Read"),
+            "decide_leave_bulk" => ("FaAtt", "Read"),
             "answer_referral" => ("InnerLetters", "Read"),
             "create_ticket" => ("FaCom", "Create"),
             "report_work" => ("ReportWorks", "Create"),
@@ -124,6 +125,7 @@ public class AiActionService
                 "clock" => await ExecuteClockAsync(action, userId, userName, ct),
                 "request_mission" => await ExecuteMissionAsync(action, userId, userName, ct),
                 "decide_leave" => await ExecuteDecideLeaveAsync(action, userId, userName, role, ct),
+                "decide_leave_bulk" => await ExecuteDecideLeaveBulkAsync(action, userId, userName, role, ct),
                 "answer_referral" => await ExecuteAnswerReferralAsync(action, userId, userName, ct),
                 "create_ticket" => await ExecuteTicketAsync(action, userId, ct),
                 "report_work" => await ExecuteReportWorkAsync(action, userId, ct),
@@ -243,6 +245,38 @@ public class AiActionService
         var decided = await _faAtt.ManagerDecideAsync(leaveId, approve, userId, userName, isHr);
         var what = approve ? "تأیید" : "رد";
         return $"مرخصی {decided.EmployeeName ?? ""} ({decided.LeaveTypeName}) {what} شد. ✅";
+    }
+
+    private async Task<string> ExecuteDecideLeaveBulkAsync(AiPendingAction action, int userId, string userName, string? role, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(action.ArgsJson) ? "{}" : action.ArgsJson);
+        var root = doc.RootElement;
+        var ids = new List<int>();
+        if (root.TryGetProperty("leave_ids", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            foreach (var el in arr.EnumerateArray())
+                if (el.TryGetInt32(out var n) && n > 0 && !ids.Contains(n)) ids.Add(n);
+        var approve = root.TryGetProperty("approve", out var a) && a.ValueKind == JsonValueKind.True;
+        if (ids.Count == 0) throw new InvalidOperationException("مرخصی مشخص نیست.");
+        var isHr = await AiAccessHelper.UserHasAsync(_db, userId, "FaAtt", "Manage", role, ct);
+        var what = approve ? "تأیید" : "رد";
+        var ok = new List<string>();
+        var failed = new List<string>();
+        foreach (var id in ids.Take(20))
+        {
+            try
+            {
+                var decided = await _faAtt.ManagerDecideAsync(id, approve, userId, userName, isHr);
+                ok.Add(AiTextUtil.Truncate($"{decided.EmployeeName} ({decided.LeaveTypeName})", 40));
+            }
+            catch (Exception ex) { failed.Add($"#{id}: {ex.Message}"); }
+        }
+        if (ok.Count == 0)
+            throw new InvalidOperationException(string.Join("؛ ", failed.Take(3)));
+        var res = $"{what} گروهی انجام شد: {AiTextUtil.ToFaDigits(ok.Count.ToString())} موفق ✅ (" +
+            string.Join("، ", ok.Take(3)) + (ok.Count > 3 ? $"، +{AiTextUtil.ToFaDigits((ok.Count - 3).ToString())} مورد دیگر" : "") + ")";
+        if (failed.Count > 0)
+            res += $" ⚠️ ناموفق: {string.Join("؛ ", failed.Take(3))}";
+        return res;
     }
 
     private async Task<string> ExecuteAnswerReferralAsync(AiPendingAction action, int userId, string userName, CancellationToken ct)

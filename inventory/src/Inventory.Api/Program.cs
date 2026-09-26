@@ -359,6 +359,7 @@ builder.Services.AddScoped<IAiTool, WeeklyDigestTool>();
 builder.Services.AddScoped<IAiTool, SetReminderTool>();
 builder.Services.AddScoped<IAiTool, MyRemindersTool>();
 builder.Services.AddScoped<IAiTool, CancelReminderTool>();
+builder.Services.AddScoped<IAiTool, DecideLeaveBulkTool>();
 builder.Services.AddScoped<AiReportService>();
 builder.Services.AddScoped<AiDataExplorer>();
 // پاسخ‌گویی در پیام‌رسان داخلی
