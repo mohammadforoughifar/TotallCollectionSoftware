@@ -561,7 +561,7 @@
         var p = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
 
         gChat = p.StartsWith("chat");
-        gDash = p == "" || p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
+        gDash = p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
         gWo = p.StartsWith("work-orders");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
         gLetters = p.StartsWith("letters");

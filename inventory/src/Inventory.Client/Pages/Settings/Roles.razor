@@ -312,7 +312,7 @@
     private RoleForm form = new();
     private HashSet<int> selectedPermissionIds = new();
     private string permissionSearch = "";
-    private bool expandPermissionTree = true;
+    private bool expandPermissionTree = false;
     private const string OtherTreeKey = "سایر";
 
     private IEnumerable<PermCategory> VisiblePermissionCategories =>
@@ -355,6 +355,8 @@
         editingRole = null;
         form = new RoleForm { IsActive = true };
         selectedPermissionIds.Clear();
+        expandPermissionTree = false;
+        permissionSearch = "";
         showModal = true;
     }
 
@@ -370,6 +372,8 @@
         }
         catch { selectedPermissionIds.Clear(); }
 
+        expandPermissionTree = false;
+        permissionSearch = "";
         showModal = true;
     }
 
