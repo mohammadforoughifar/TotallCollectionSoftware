@@ -79,6 +79,9 @@ public interface IDevTeamService
     // Git webhook
     Task<DtGitWebhookResultDto> ProcessGitHubPushAsync(JsonElement payload);
     Task<DtGitWebhookResultDto> ProcessGitLabPushAsync(JsonElement payload);
+
+    // Path A — operational integration
+    Task<DtIntegrationStatusDto> GetIntegrationStatusAsync(string? publicBaseUrl = null);
 }
 
 public class DevTeamService : IDevTeamService
@@ -379,6 +382,121 @@ public class DevTeamService : IDevTeamService
             CanAssign = await HasPermAsync(userId, "Assign", isLegacyAdmin, roles),
         };
     }
+    public async Task<DtIntegrationStatusDto> GetIntegrationStatusAsync(string? publicBaseUrl = null)
+    {
+        var enabled = string.Equals(_config["DevTeam:GitWebhookEnabled"] ?? "true", "true", StringComparison.OrdinalIgnoreCase);
+        var cfgSecret = _config["DevTeam:GitWebhookSecret"] ?? _config["DevTeam__GitWebhookSecret"];
+        var envSecret = Environment.GetEnvironmentVariable("DEVTEAM_GIT_WEBHOOK_SECRET");
+        var secretConfigured = !string.IsNullOrWhiteSpace(cfgSecret) || !string.IsNullOrWhiteSpace(envSecret);
+        var fromEnv = !string.IsNullOrWhiteSpace(envSecret);
+
+        var baseUrl = (publicBaseUrl ?? "").Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            baseUrl = "https://YOUR-HOST";
+
+        DtWebhookEndpointInfoDto Ep(string key, string path, string title, string auth, string events) => new()
+        {
+            Key = key,
+            Method = "POST",
+            Path = path,
+            FullUrl = baseUrl + path,
+            TitleFa = title,
+            AuthHintFa = auth,
+            EventsHintFa = events
+        };
+
+        var endpoints = new List<DtWebhookEndpointInfoDto>
+        {
+            Ep("github", "/api/dev-team/hooks/github", "GitHub Push",
+                "X-Hub-Signature-256 (HMAC) یا هدر X-DevTeam-Token", "push"),
+            Ep("gitlab", "/api/dev-team/hooks/gitlab", "GitLab Push",
+                "X-Gitlab-Token یا X-DevTeam-Token", "Push Hook"),
+            Ep("ci", "/api/dev-team/hooks/ci", "CI عمومی (JSON)",
+                "X-DevTeam-Token", "body: DtCiBuildEventDto — فقط failure"),
+            Ep("github-ci", "/api/dev-team/hooks/github-ci", "GitHub Actions",
+                "X-Hub-Signature-256 یا X-DevTeam-Token", "workflow_run / check_suite"),
+            Ep("gitlab-ci", "/api/dev-team/hooks/gitlab-ci", "GitLab Pipeline",
+                "X-Gitlab-Token یا X-DevTeam-Token", "Pipeline Hook"),
+            new DtWebhookEndpointInfoDto
+            {
+                Key = "health", Method = "GET", Path = "/api/dev-team/hooks/health",
+                FullUrl = baseUrl + "/api/dev-team/hooks/health",
+                TitleFa = "سلامت وب‌هوک",
+                AuthHintFa = "عمومی (بدون توکن)",
+                EventsHintFa = "—"
+            }
+        };
+
+        // RBAC summary
+        var devPerms = await _db.Permissions.AsNoTracking()
+            .Where(p => p.Module == "DevTeam").Select(p => p.Id).ToListAsync();
+        var admin = await _db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.Name == "Admin");
+        var adminHas = false;
+        if (admin != null && devPerms.Count > 0)
+        {
+            var adminPermIds = await _db.RolePermissions.AsNoTracking()
+                .Where(rp => rp.RoleId == admin.Id && devPerms.Contains(rp.PermissionId))
+                .Select(rp => rp.PermissionId).ToListAsync();
+            adminHas = adminPermIds.Count >= devPerms.Count;
+        }
+
+        var devRole = await _db.Roles.AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Name == "DevDeveloper");
+        var devUsers = 0;
+        if (devRole != null)
+        {
+            devUsers = await _db.UserRoles.AsNoTracking().CountAsync(ur => ur.RoleId == devRole.Id);
+        }
+
+        var steps = new List<string>
+        {
+            "۱) متغیر DEVTEAM_GIT_WEBHOOK_SECRET (یا DevTeam:GitWebhookSecret) را روی سرور تنظیم کنید.",
+            "۲) در GitHub/GitLab وب‌هوک push را به URLهای زیر وصل کنید و همان secret را بگذارید.",
+            "۳) برای CI، workflow نمونه در tools/dev-team را کپی کنید و راز DEVTEAM_GIT_WEBHOOK_SECRET را در Secrets ریپو بگذارید.",
+            "۴) در پیام کامیت بنویسید: DT-1405-0001 یا task:12 و اختیاری mod:Office",
+            "۵) نقش «DevDeveloper» را از تنظیمات ← نقش‌ها به اعضای تیم توسعه بدهید.",
+            "۶) با GET /hooks/health و smoke-hooks.sh صحت اتصال را چک کنید."
+        };
+
+        var curl = "curl -sS -X POST '" + baseUrl + "/api/dev-team/hooks/ci' \\\n"
+            + "  -H 'Content-Type: application/json' \\\n"
+            + "  -H 'X-DevTeam-Token: YOUR_SECRET' \\\n"
+            + "  -d '{\"provider\":\"generic\",\"status\":\"failure\",\"jobName\":\"build\","
+            + "\"repo\":\"org/app\",\"branch\":\"main\",\"commitMessage\":\"fix: build DT-1405-0001\","
+            + "\"url\":\"https://ci.example/job/1\"}'";
+
+        return new DtIntegrationStatusDto
+        {
+            WebhookEnabled = enabled,
+            SecretConfigured = secretConfigured,
+            SecretFromEnvironment = fromEnv,
+            PublicBaseUrl = baseUrl,
+            Endpoints = endpoints,
+            CommitHints = new List<string>
+            {
+                "DT-1405-0001  یا  #DT-1405-0001  یا  task:12",
+                "mod:Office  (کلید ماژول اختیاری)",
+                "کلمات fail/error/باگ/خطا در پیام → Problem"
+            },
+            SetupStepsFa = steps,
+            SampleCurlCi = curl,
+            SampleCommitMessage = "fix(office): pagination DT-1405-0003 mod:Office",
+            Rbac = new DtRbacSummaryDto
+            {
+                DeveloperRoleExists = devRole != null,
+                DeveloperRoleUserCount = devUsers,
+                DevTeamPermissionCount = devPerms.Count,
+                AdminHasDevTeamPerms = adminHas,
+                DeveloperRoleName = "DevDeveloper",
+                HintFa = devRole == null
+                    ? "نقش DevDeveloper هنوز seed نشده — یک‌بار API را ری‌استارت کنید."
+                    : (devUsers == 0
+                        ? "نقش DevDeveloper هست ولی هنوز به کاربری وصل نیست. از «نقش‌ها و دسترسی‌ها» عضو اضافه کنید."
+                        : $"نقش DevDeveloper به {devUsers} کاربر وصل است.")
+            }
+        };
+    }
+
 
     public async Task<DtLookupsDto> GetLookupsAsync()
     {

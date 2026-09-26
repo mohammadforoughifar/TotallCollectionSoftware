@@ -6,6 +6,7 @@ namespace Inventory.Client.Services;
 public interface IDevTeamClient
 {
     Task<DtAccessDto> GetAccessAsync();
+    Task<DtIntegrationStatusDto> GetIntegrationStatusAsync();
     Task<DtLookupsDto> GetLookupsAsync();
     Task<DtDashboardDto> GetDashboardAsync(int? sprintId = null);
 
@@ -83,6 +84,9 @@ public class DevTeamClient : IDevTeamClient
 
     public async Task<DtAccessDto> GetAccessAsync() =>
         await _http.GetFromJsonAsync<DtAccessDto>($"{Base}/my-access") ?? new();
+
+    public async Task<DtIntegrationStatusDto> GetIntegrationStatusAsync() =>
+        await _http.GetFromJsonAsync<DtIntegrationStatusDto>($"{Base}/integration-status") ?? new();
 
     public async Task<DtLookupsDto> GetLookupsAsync() =>
         await _http.GetFromJsonAsync<DtLookupsDto>($"{Base}/lookups") ?? new();

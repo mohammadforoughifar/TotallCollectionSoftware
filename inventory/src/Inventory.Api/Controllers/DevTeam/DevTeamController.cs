@@ -45,6 +45,22 @@ public class DevTeamController : ControllerBase
     [HttpGet("my-access")]
     public async Task<ActionResult<DtAccessDto>> MyAccess() => Ok(await AccessAsync());
 
+    /// <summary>وضعیت وب‌هوک گیت/CI + RBAC برای تب تنظیمات (مسیر A).</summary>
+    [HttpGet("integration-status")]
+    public async Task<ActionResult<DtIntegrationStatusDto>> IntegrationStatus()
+    {
+        await EnsureAsync(a => a.CanView);
+        // Prefer public origin from reverse proxy headers when present
+        var scheme = Request.Headers.TryGetValue("X-Forwarded-Proto", out var xp) && !string.IsNullOrWhiteSpace(xp)
+            ? xp.ToString().Split(',')[0].Trim()
+            : Request.Scheme;
+        var host = Request.Headers.TryGetValue("X-Forwarded-Host", out var xh) && !string.IsNullOrWhiteSpace(xh)
+            ? xh.ToString().Split(',')[0].Trim()
+            : Request.Host.Value;
+        var baseUrl = $"{scheme}://{host}";
+        return Ok(await _svc.GetIntegrationStatusAsync(baseUrl));
+    }
+
     [HttpGet("lookups")]
     public async Task<ActionResult<DtLookupsDto>> Lookups()
     {

@@ -124,6 +124,13 @@ API:
 - ✅ تایمر زنده ثبت زمان (`…/timer/start|stop`) — Schema V4: `TimerStartedAt`
 - ✅ مرتب‌سازی drag ساب‌تسک‌ها (`POST …/subtasks/reorder`)
 
+### مسیر A — بهره‌برداری (پیاده‌شده)
+
+- ✅ `GET /api/dev-team/integration-status` — وضعیت secret، URL کامل endpointها، RBAC
+- ✅ تب **تنظیمات** — کارت یکپارچه‌سازی + کپی URL/curl
+- ✅ نقش RBAC **DevDeveloper** (View/Create/Update/Assign) + تضمین پرمیشن Admin
+- ✅ نمونه‌ها: `inventory/tools/dev-team/` (GitHub Actions، GitLab CI، smoke-hooks.sh)
+
 ## تمایز با «دستور کار»
 
 | | دستور کار | میز کار توسعه |

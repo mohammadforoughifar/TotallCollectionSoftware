@@ -4,6 +4,7 @@
 @using Inventory.Shared
 @using Inventory.Shared.Dtos
 @inject IDevTeamClient Api
+@inject IJSRuntime JS
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject NavigationManager Nav
@@ -727,18 +728,124 @@
         else if (tab == "settings")
         {
             <div class="card border-0 shadow-sm mb-3">
-                <div class="card-header bg-white fw-semibold"><i class="bi bi-git"></i> وب‌هوک گیت (GitHub / GitLab)</div>
-                <div class="card-body fs-8">
-                    <p class="mb-2">بعد از هر push، کامیت‌هایی که به تسک ارجاع دهند خودکار لینک و changelog می‌سازند.</p>
-                    <ul class="mb-2">
-                        <li>GitHub: <code>POST /api/dev-team/hooks/github</code> — Secret در تنظیمات سرور + رویداد push</li>
-                        <li>GitLab: <code>POST /api/dev-team/hooks/gitlab</code> — Secret token همان مقدار</li>
-                        <li>سلامت: <code>GET /api/dev-team/hooks/health</code></li>
-                    </ul>
-                    <p class="mb-1">در پیام کامیت بنویسید:</p>
-                    <pre class="bg-light border rounded p-2 mb-0" style="direction:ltr;text-align:left">fix(office): pagination DT-1405-0003
-# یا: task:12   و اختیاری  mod:Office</pre>
-                    <p class="text-muted mt-2 mb-0">Secret را در <code>appsettings</code> با کلید <code>DevTeam:GitWebhookSecret</code> یا متغیر <code>DEVTEAM_GIT_WEBHOOK_SECRET</code> بگذارید.</p>
+                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <span class="fw-semibold"><i class="bi bi-plug"></i> یکپارچه‌سازی گیت / CI</span>
+                    <button class="btn btn-sm btn-outline-secondary" disabled="@integLoading" @onclick="LoadIntegration">
+                        @if (integLoading) { <span class="spinner-border spinner-border-sm"></span> }
+                        else { <i class="bi bi-arrow-clockwise"></i> }
+                        تازه‌سازی وضعیت
+                    </button>
+                </div>
+                <div class="card-body">
+                    @if (integ is null && !integLoading)
+                    {
+                        <div class="text-muted fs-8">برای دیدن URLها و وضعیت secret روی «تازه‌سازی وضعیت» بزنید.</div>
+                    }
+                    else if (integ is null)
+                    {
+                        <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <span class="badge @(integ.WebhookEnabled ? "text-bg-success" : "text-bg-danger")">
+                                وب‌هوک: @(integ.WebhookEnabled ? "فعال" : "خاموش")
+                            </span>
+                            <span class="badge @(integ.SecretConfigured ? "text-bg-success" : "text-bg-warning")">
+                                Secret: @(integ.SecretConfigured ? (integ.SecretFromEnvironment ? "از ENV" : "پیکربندی‌شده") : "تنظیم نشده")
+                            </span>
+                            <span class="badge @(integ.Rbac.AdminHasDevTeamPerms ? "text-bg-success" : "text-bg-warning")">
+                                Admin←DevTeam: @(integ.Rbac.AdminHasDevTeamPerms ? "کامل" : "ناقص")
+                            </span>
+                            <span class="badge @(integ.Rbac.DeveloperRoleExists ? "text-bg-primary" : "text-bg-secondary")">
+                                نقش @integ.Rbac.DeveloperRoleName: @(integ.Rbac.DeveloperRoleExists ? $"{integ.Rbac.DeveloperRoleUserCount} کاربر" : "نیست")
+                            </span>
+                            <span class="badge text-bg-light border">@integ.Rbac.DevTeamPermissionCount پرمیشن</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(integ.Rbac.HintFa))
+                        {
+                            <div class="alert alert-info py-2 fs-8 mb-3">@integ.Rbac.HintFa</div>
+                        }
+                        @if (!integ.SecretConfigured)
+                        {
+                            <div class="alert alert-warning py-2 fs-8 mb-3">
+                                Secret خالی است. روی سرور:
+                                <code style="direction:ltr">export DEVTEAM_GIT_WEBHOOK_SECRET='…'</code>
+                                یا <code>DevTeam:GitWebhookSecret</code> در appsettings.
+                            </div>
+                        }
+
+                        <h6 class="fs-8 text-muted text-uppercase">مراحل راه‌اندازی</h6>
+                        <ol class="fs-8 mb-3">
+                            @foreach (var s in integ.SetupStepsFa)
+                            {
+                                <li class="mb-1">@s</li>
+                            }
+                        </ol>
+
+                        <h6 class="fs-8 text-muted text-uppercase">Endpointها</h6>
+                        <div class="table-responsive mb-3">
+                            <table class="table table-sm dt-table align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>عنوان</th>
+                                        <th>URL</th>
+                                        <th></th>
+                                        <th class="fs-8">احراز / رویداد</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var ep in integ.Endpoints)
+                                    {
+                                        <tr>
+                                            <td class="text-nowrap">
+                                                <span class="badge text-bg-light border">@ep.Method</span>
+                                                <b class="fs-8">@ep.TitleFa</b>
+                                            </td>
+                                            <td style="direction:ltr;text-align:left;font-size:.72rem">
+                                                <code>@ep.FullUrl</code>
+                                            </td>
+                                            <td>
+                                                <button type="button" class="btn btn-sm btn-link p-0" title="کپی"
+                                                        @onclick="() => CopyText(ep.FullUrl)">
+                                                    <i class="bi bi-clipboard"></i>
+                                                </button>
+                                            </td>
+                                            <td class="fs-8 text-muted">@ep.AuthHintFa<br /><span class="text-secondary">@ep.EventsHintFa</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <h6 class="fs-8">پیام کامیت نمونه</h6>
+                                <pre class="bg-light border rounded p-2 fs-8 mb-1" style="direction:ltr;text-align:left">@integ.SampleCommitMessage</pre>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => CopyText(integ.SampleCommitMessage)">کپی</button>
+                                <ul class="fs-8 text-muted mt-2 mb-0">
+                                    @foreach (var h in integ.CommitHints)
+                                    {
+                                        <li>@h</li>
+                                    }
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="fs-8">curl تست CI → Problem</h6>
+                                <pre class="bg-dark text-white rounded p-2 fs-8 mb-1" style="direction:ltr;text-align:left;max-height:160px;overflow:auto">@integ.SampleCurlCi</pre>
+                                <button class="btn btn-sm btn-outline-secondary" @onclick="() => CopyText(integ.SampleCurlCi)">کپی curl</button>
+                            </div>
+                        </div>
+
+                        <div class="mt-3 p-2 rounded border bg-light fs-8">
+                            <b>فایل‌های نمونه در ریپو:</b>
+                            <code style="direction:ltr">inventory/tools/dev-team/</code>
+                            — <code>github-actions-ci.yml</code>،
+                            <code>gitlab-ci-snippet.yml</code>،
+                            <code>smoke-hooks.sh</code>،
+                            <code>README.md</code>
+                        </div>
+                    }
                 </div>
             </div>
             @if (!access.CanManage)
@@ -1415,6 +1522,8 @@
     private int? dragOverStatusId;
     private int? subDragId;
     private DtBurndownDto? burndown;
+    private DtIntegrationStatusDto? integ;
+    private bool integLoading;
     private int burndownSprintId;
     private int timerDisplaySeconds;
     private System.Threading.Timer? timerUiClock;
@@ -1537,6 +1646,7 @@
                     dash = await Api.GetDashboardAsync(fltSprintId > 0 ? fltSprintId : null);
                     break;
                 case "settings":
+                    await LoadIntegration();
                     if (access.CanManage)
                     {
                         allStatuses = await Api.GetStatusesAsync(true);
@@ -2119,7 +2229,36 @@
         finally { saving = false; }
     }
 
-    // ----- settings -----
+    // ----- settings / integration (path A) -----
+    private async Task LoadIntegration()
+    {
+        integLoading = true;
+        try
+        {
+            integ = await Api.GetIntegrationStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+            integ = null;
+        }
+        finally { integLoading = false; }
+    }
+
+    private async Task CopyText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Toast.Success("کپی شد");
+        }
+        catch
+        {
+            Toast.Info("کپی خودکار ممکن نشد — متن را دستی انتخاب کنید.");
+        }
+    }
+
     private void OpenNewStatus()
     {
         statusForm = new DtWorkflowStatusDto { Color = "#64748b", SortOrder = 100, IsActive = true, Key = "", NameFa = "" };

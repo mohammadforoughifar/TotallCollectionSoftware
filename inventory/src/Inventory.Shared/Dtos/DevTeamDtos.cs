@@ -517,3 +517,41 @@ public class DtGitWebhookResultDto
     public int ProblemsCreated { get; set; }
     public List<string> Messages { get; set; } = new();
 }
+
+/// <summary>وضعیت یکپارچه‌سازی گیت/CI برای تب تنظیمات (مسیر A).</summary>
+public class DtIntegrationStatusDto
+{
+    public bool WebhookEnabled { get; set; }
+    public bool SecretConfigured { get; set; }
+    /// <summary>true اگر secret از env خوانده شود (نه appsettings خالی)</summary>
+    public bool SecretFromEnvironment { get; set; }
+    public string? PublicBaseUrl { get; set; }
+    public List<DtWebhookEndpointInfoDto> Endpoints { get; set; } = new();
+    public List<string> CommitHints { get; set; } = new();
+    public List<string> SetupStepsFa { get; set; } = new();
+    public DtRbacSummaryDto Rbac { get; set; } = new();
+    /// <summary>نمونه curl تست CI (بدون secret واقعی)</summary>
+    public string SampleCurlCi { get; set; } = "";
+    public string SampleCommitMessage { get; set; } = "";
+}
+
+public class DtWebhookEndpointInfoDto
+{
+    public string Key { get; set; } = "";
+    public string Method { get; set; } = "POST";
+    public string Path { get; set; } = "";
+    public string FullUrl { get; set; } = "";
+    public string TitleFa { get; set; } = "";
+    public string AuthHintFa { get; set; } = "";
+    public string EventsHintFa { get; set; } = "";
+}
+
+public class DtRbacSummaryDto
+{
+    public bool DeveloperRoleExists { get; set; }
+    public int DeveloperRoleUserCount { get; set; }
+    public int DevTeamPermissionCount { get; set; }
+    public bool AdminHasDevTeamPerms { get; set; }
+    public string DeveloperRoleName { get; set; } = "DevDeveloper";
+    public string HintFa { get; set; } = "";
+}

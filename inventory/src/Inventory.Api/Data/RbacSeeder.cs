@@ -381,6 +381,55 @@ public static class RbacSeeder
             Console.WriteLine("[RBAC] دسترسی «کارتابل من / بایگانی شخصی / داشبورد من» به نقش‌های فعال داده شد.");
         }
 
+// ================== نقش تیم نرم‌افزار (DevDeveloper) — میز کار توسعه ==================
+        // View/Create/Update/Assign برای کار روزمره؛ Manage/Delete معمولاً فقط Admin
+        var devDevRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == "DevDeveloper");
+        if (devDevRole == null)
+        {
+            devDevRole = new Role
+            {
+                Name = "DevDeveloper",
+                Description = "تیم نرم‌افزار — میز کار توسعه (تسک، مشکل، تایمر، changelog)",
+                IsActive = true
+            };
+            db.Roles.Add(devDevRole);
+            await db.SaveChangesAsync();
+            Console.WriteLine("[RBAC] نقش «DevDeveloper» ساخته شد.");
+        }
+        {
+            var wanted = new[] { "View", "Create", "Update", "Assign" };
+            var devPerms = await db.Permissions
+                .Where(p => p.Module == "DevTeam" && wanted.Contains(p.Action))
+                .ToListAsync();
+            var has = await db.RolePermissions.Where(rp => rp.RoleId == devDevRole.Id)
+                .Select(rp => rp.PermissionId).ToListAsync();
+            foreach (var perm in devPerms.Where(p => !has.Contains(p.Id)))
+                db.RolePermissions.Add(new RolePermission { RoleId = devDevRole.Id, PermissionId = perm.Id });
+            await db.SaveChangesAsync();
+        }
+
+        // اطمینان: Admin همهٔ پرمیشن‌های DevTeam را دارد (حتی اگر قبلاً seed شده)
+        {
+            var admin = await db.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
+            if (admin != null)
+            {
+                var allDt = await db.Permissions.Where(p => p.Module == "DevTeam").ToListAsync();
+                var has = await db.RolePermissions.Where(rp => rp.RoleId == admin.Id)
+                    .Select(rp => rp.PermissionId).ToListAsync();
+                var added = 0;
+                foreach (var perm in allDt.Where(p => !has.Contains(p.Id)))
+                {
+                    db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = perm.Id });
+                    added++;
+                }
+                if (added > 0)
+                {
+                    await db.SaveChangesAsync();
+                    Console.WriteLine($"[RBAC] {added} پرمیشن DevTeam به Admin اضافه شد.");
+                }
+            }
+        }
+
         if (firstSeed)
         {
             var allPermissions = await db.Permissions.ToListAsync();
