@@ -445,6 +445,8 @@
     // دسترسی‌ها
     private bool canView => Auth.Has("MeetingMinutes.View");
     private bool canEdit => (minutesId == 0 && Auth.Has("MeetingMinutes.Create")) || (minutesId > 0 && Auth.Has("MeetingMinutes.Update"));
+    // حذف بند در API با مجوز MeetingMinutes.Delete محافظت می‌شود؛ صورتجلسه بسته نیز قابل حذف نیست.
+    private bool canDelete => minutesId > 0 && detail?.Status != "Closed" && Auth.Has("MeetingMinutes.Delete");
     private bool canSign => Auth.Has("MeetingMinutes.Sign");
     private bool canWorkOrder => Auth.Has("WorkOrders.Create");
     private bool canInnerLetter => Auth.Has("MeetingMinutes.ToInnerLetter");
