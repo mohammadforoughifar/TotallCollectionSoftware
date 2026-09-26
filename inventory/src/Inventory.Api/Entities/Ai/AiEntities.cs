@@ -259,3 +259,32 @@ public class AiFeedback
 
     public DateTime? UpdatedAt { get; set; }
 }
+
+/// <summary>ردپای حسابرسی هر نوبت پاسخ دستیار (§۲۵).</summary>
+public class AiAuditLog
+{
+    public int Id { get; set; }
+
+    public int UserId { get; set; }
+
+    public int ConversationId { get; set; }
+
+    /// <summary>کانال: web | bale | messenger</summary>
+    [MaxLength(20)] public string Channel { get; set; } = "web";
+
+    /// <summary>خلاصه پیام کاربر (حداکثر ۵۰۰ نویسه).</summary>
+    [MaxLength(500)] public string UserMessage { get; set; } = "";
+
+    /// <summary>ابزارهای استفاده‌شده با کاما (خالی = پاسخ مستقیم مدل؛ offline = حالت آفلاین).</summary>
+    [MaxLength(500)] public string? ToolsUsed { get; set; }
+
+    public bool Success { get; set; } = true;
+
+    public bool UsedFallback { get; set; }
+
+    [MaxLength(300)] public string? Error { get; set; }
+
+    public int DurationMs { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}

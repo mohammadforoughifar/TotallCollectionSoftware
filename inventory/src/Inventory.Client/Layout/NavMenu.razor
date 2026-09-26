@@ -15,6 +15,12 @@
             <i class="bi bi-hand-thumbs-up"></i><span>بازبینی بازخوردها</span>
         </NavLink>
     }
+    @if (Auth.IsAdmin)
+    {
+        <NavLink class="nav-link" href="ai-audit" @onclick="NotifyClose">
+            <i class="bi bi-clipboard-data"></i><span>حسابرسی دستیار</span>
+        </NavLink>
+    }
 
     @* ============ پیام‌رسان سازمانی (ماژول مستقل) ============ *@
     @if (Auth.CanSee("Chat"))

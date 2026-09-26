@@ -23,6 +23,7 @@ public class AiController : RbacControllerBase
     private readonly AiBriefingService _briefing;
     private readonly AiDigestService _digest;
     private readonly AiFeedbackService _feedback;
+    private readonly AiAuditService _audit;
     private readonly AiReportService _reports;
     private readonly IMessengerService _messenger;
     private readonly AiOptions _options;
@@ -36,6 +37,7 @@ public class AiController : RbacControllerBase
         AiBriefingService briefing,
         AiDigestService digest,
         AiFeedbackService feedback,
+        AiAuditService audit,
         AiReportService reports,
         IMessengerService messenger,
         IOptions<AiOptions> options)
@@ -48,6 +50,7 @@ public class AiController : RbacControllerBase
         _briefing = briefing;
         _digest = digest;
         _feedback = feedback;
+        _audit = audit;
         _reports = reports;
         _messenger = messenger;
         _options = options.Value;
@@ -271,6 +274,22 @@ public class AiController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
         return Ok(await _feedback.ListAsync(rating, skip, take, ct));
+    }
+
+    /// <summary>آمار حسابرسی دستیار (مدیر، §۲۵).</summary>
+    [HttpGet("audit/stats")]
+    public async Task<IActionResult> AuditStats([FromQuery] int days = 14, CancellationToken ct = default)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
+        return Ok(await _audit.StatsAsync(days, ct));
+    }
+
+    /// <summary>فهرست نوبت‌های چت برای بازبینی (مدیر).</summary>
+    [HttpGet("audit/list")]
+    public async Task<IActionResult> AuditList([FromQuery] int? userId, [FromQuery] bool? success, [FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int take = 20, CancellationToken ct = default)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
+        return Ok(await _audit.ListAsync(userId, success, search, skip, take, ct));
     }
 
     private async Task<string> MyDisplayNameAsync(CancellationToken ct)

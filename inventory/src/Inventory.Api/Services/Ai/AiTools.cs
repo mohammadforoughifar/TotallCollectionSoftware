@@ -2772,3 +2772,42 @@ public class FeedbackStatsTool : IAiTool
         });
     }
 }
+
+// ---------------- پنل حسابرسی (§۲۵) ----------------
+
+public class AuditStatsTool : IAiTool
+{
+    public string Name => "audit_stats";
+    public string Description => "آمار حسابرسی دستیار (فقط مدیر سیستم): تعداد نوبت‌ها، درصد موفقیت، پرکاربردترین ابزارها و کاربران، اقدام‌های تأییدی اجراشده/لغوشده. days اختیاری (پیش‌فرض ۱۴).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            days = new { type = "integer", description = "بازه روز (۱ تا ۹۰، پیش‌فرض ۱۴)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        if (!ctx.IsAdmin)
+            return JsonSerializer.Serialize(new { error = "forbidden", message = "آمار حسابرسی فقط برای مدیر سیستم است." });
+        var svc = ctx.Services.GetRequiredService<AiAuditService>();
+        var st = await svc.StatsAsync(AiToolArgs.GetInt(args, "days") ?? 14, ctx.CancellationToken);
+        if (st.Total == 0 && st.ActionsExecuted == 0 && st.ActionsPending == 0)
+            return JsonSerializer.Serialize(new { message = "هنوز ردپایی ثبت نشده است." });
+        return JsonSerializer.Serialize(new
+        {
+            turns = st.Total,
+            failed = st.Failed,
+            fallback = st.Fallback,
+            success_pct = st.SuccessPct,
+            actions_executed = st.ActionsExecuted,
+            actions_rejected = st.ActionsRejected,
+            actions_pending = st.ActionsPending,
+            top_tools = st.TopTools.Select(t => new { tool = t.Key, count = t.Count }),
+            top_users = st.TopUsers.Select(u => new { user = u.Key, count = u.Count }),
+            hint = "فهرست جزئی نوبت‌ها در صفحه «حسابرسی دستیار» (/ai-audit).",
+        });
+    }
+}

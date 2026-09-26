@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Inventory.Api.Services.Ai;
 
@@ -83,6 +84,7 @@ public class AiAgentService : IAiAgentService
             };
 
         var conv = await _conversations.GetOrCreateAsync(userId, channel, conversationId);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         // سقف مصرف روزانه
         if (_options.MaxMessagesPerUserPerDay > 0)
@@ -93,6 +95,7 @@ public class AiAgentService : IAiAgentService
                 var limitMsg = "به سقف پیام روزانه‌ات رسیدی! ⏳ فردا دوباره در خدمتم. (اگر لازم داری، مدیر سیستم می‌تونه سقف رو بیشتر کنه)";
                 await _conversations.AddMessageAsync(conv.Id, "user", message);
                 var limitId = await _conversations.AddMessageAsync(conv.Id, "assistant", limitMsg, null, true);
+                await _services.GetRequiredService<AiAuditService>().LogAsync(userId, conv.Id, channel, message, null, false, false, "سقف پیام روزانه", sw.ElapsedMilliseconds, ct);
                 return new AiChatResponse { ConversationId = conv.Id, MessageId = limitId, Reply = limitMsg, UsedFallback = true };
             }
         }
@@ -119,6 +122,8 @@ public class AiAgentService : IAiAgentService
             var (reply, used, attachments) = await RunAgentLoopAsync(history, message, userName, ctx, ct);
             var msgId = await _conversations.AddMessageAsync(conv.Id, "assistant", reply,
                 used.Count > 0 ? string.Join(",", used.Distinct()) : null, false);
+            await _services.GetRequiredService<AiAuditService>().LogAsync(userId, conv.Id, channel, message,
+                used.Count > 0 ? string.Join(",", used.Distinct()) : null, true, false, null, sw.ElapsedMilliseconds, ct);
             return new AiChatResponse
             {
                 ConversationId = conv.Id,
@@ -135,6 +140,7 @@ public class AiAgentService : IAiAgentService
             var reply = offline ?? "مغز متفکرم (مدل زبانی) فعلاً در دسترس نیست 😔 ولی من هنوز اینجام! " +
                 "می‌تونی این‌ها رو بپرسی: «مانده مرخصی»، «فیش حقوقی»، «حضور امروز»، «نامه‌های خوانده‌نشده»، «مرخصی‌های در انتظار تأیید»، «فروش امروز» — یا بعداً دوباره تلاش کن.";
             var offId = await _conversations.AddMessageAsync(conv.Id, "assistant", reply, "offline", true);
+            await _services.GetRequiredService<AiAuditService>().LogAsync(userId, conv.Id, channel, message, "offline", true, true, null, sw.ElapsedMilliseconds, ct);
             return new AiChatResponse { ConversationId = conv.Id, MessageId = offId, Reply = reply, UsedFallback = true };
         }
     }
@@ -217,6 +223,7 @@ public class AiAgentService : IAiAgentService
         ۲۰) جستجوی معنایی: search_docs برای «نامه/تیکت درباره X» با query (و scope اختیاری: letter/نامه، ticket/تیکت) — فقط اسناد قابل‌مشاهده خود کاربر برمی‌گردد و نامه محرمانه/سری و حذف‌شده هرگز؛ اگر نتیجه خالی بود، scope را عوض کن یا عبارت را ساده‌تر بگو. reindex_docs فقط مدیر سیستم (اگر کاربر عادی خواست، بگو به مدیر بگو). نتیجه را با عنوان، درصد شباهت و لینک نشان بده.
         ۲۱) هشدار شرطی: create_alert (بدون نیاز به تأیید) با entity + فیلترهای کاوش + op (بیشتر/کمتر/حداقل/حداکثر/برابر) + مقدار آستانه؛ agg پیش‌فرض تعداد است و برای جمع/میانگین agg_field لازم است. فقط در گذار به «برقرار» خبر می‌دهد (نه هر ۵ دقیقه)؛ موقع ثبت، مقدار فعلی نمایش داده می‌شود. my_alert_rules (فهرست با وضعیت)، delete_alert (حذف با شناسه). بدون لینک بله/ایتا خبری نمی‌رسد.
         ۲۲) بازخورد پاسخ‌ها: feedback_stats فقط مدیر سیستم (اگر کاربر عادی خواست، بگو به مدیر بگو) — آمار رضایت، دلیل‌های نارضایتی و ابزارهای دخیل در پاسخ‌های ضعیف؛ فهرست جزئی در صفحه «بازبینی بازخوردها» (/ai-feedback). هرگز از کاربر در چت نخواه که امتیاز بدهد؛ دکمه‌ها زیر هر پاسخ هستند.
+        ۲۳) حسابرسی: audit_stats فقط مدیر سیستم (اگر کاربر عادی خواست، بگو به مدیر بگو) — آمار نوبت‌ها، موفقیت، ابزارها و کاربران پرکاربرد و اقدام‌های تأییدی؛ فهرست جزئی در صفحه «حسابرسی دستیار» (/ai-audit).
         """;
 
     /// <summary>استخراج پیوست اکسل از خروجی build_report (شناسه گزارش → دکمه دانلود زیر پیام).</summary>

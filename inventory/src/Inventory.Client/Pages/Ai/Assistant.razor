@@ -97,7 +97,7 @@
                                             <button class="ai-chip @(dislikeReason == rr ? "sel" : "")" @onclick="() => dislikeReason = rr">@rr</button>
                                         }
                                     </div>
-                                    <input class="ai-dislike-comment" placeholder="توضیح بیشتر (اختیاری)..." value="@dislikeComment" @oninput="(e) => dislikeComment = e.Value?.ToString() ?? \"\"" />
+                                    <input class="ai-dislike-comment" placeholder="توضیح بیشتر (اختیاری)..." value="@dislikeComment" @oninput="OnDislikeInput" />
                                     <div class="ai-dislike-actions">
                                         <button class="btn btn-sm btn-primary" disabled="@rateBusy" @onclick="() => Rate(m, -1)">ثبت</button>
                                         <button class="btn btn-sm btn-link" disabled="@rateBusy" @onclick="CancelDislike">انصراف</button>
@@ -322,6 +322,8 @@
         if (suppressNewline) { suppressNewline = false; return; }
         draft = e.Value?.ToString() ?? "";
     }
+
+    private void OnDislikeInput(ChangeEventArgs e) => dislikeComment = e.Value?.ToString() ?? "";
 
     private void OnKeyDown(KeyboardEventArgs e)
     {

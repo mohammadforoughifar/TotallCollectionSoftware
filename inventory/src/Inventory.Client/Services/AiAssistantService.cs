@@ -200,6 +200,67 @@ public class AiAssistantService
     public Task<List<AiFeedbackItem>> GetFeedbackListAsync(int? rating, int skip, int take)
         => _api.GetAsync<List<AiFeedbackItem>>(
             $"api/ai/feedback/list?skip={skip}&take={take}" + (rating == null ? "" : $"&rating={rating}"));
+
+    public Task<AiAuditStats> GetAuditStatsAsync(int days = 14)
+        => _api.GetAsync<AiAuditStats>($"api/ai/audit/stats?days={days}");
+
+    public Task<List<AiAuditTurn>> GetAuditListAsync(bool? success, string? search, int skip, int take)
+        => _api.GetAsync<List<AiAuditTurn>>(
+            $"api/ai/audit/list?skip={skip}&take={take}"
+            + (success == null ? "" : success.Value ? "&success=true" : "&success=false")
+            + (string.IsNullOrWhiteSpace(search) ? "" : $"&search={Uri.EscapeDataString(search.Trim())}"));
+}
+
+public class AiAuditStats
+{
+    public int Total { get; set; }
+    public int Failed { get; set; }
+    public int Fallback { get; set; }
+    public double? SuccessPct { get; set; }
+    public int ActionsExecuted { get; set; }
+    public int ActionsRejected { get; set; }
+    public int ActionsPending { get; set; }
+    public List<AiAuditCount> TopTools { get; set; } = new();
+    public List<AiAuditCount> TopUsers { get; set; } = new();
+    public List<AiAuditDay> ByDay { get; set; } = new();
+    public List<AiAuditAction> RecentActions { get; set; } = new();
+}
+
+public class AiAuditCount
+{
+    public string Key { get; set; } = "";
+    public int Count { get; set; }
+}
+
+public class AiAuditDay
+{
+    public string Day { get; set; } = "";
+    public int Total { get; set; }
+    public int Failed { get; set; }
+}
+
+public class AiAuditTurn
+{
+    public int Id { get; set; }
+    public string User { get; set; } = "";
+    public string Channel { get; set; } = "";
+    public string Message { get; set; } = "";
+    public List<string> Tools { get; set; } = new();
+    public bool Success { get; set; }
+    public bool UsedFallback { get; set; }
+    public string? Error { get; set; }
+    public int DurationMs { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class AiAuditAction
+{
+    public int Id { get; set; }
+    public string User { get; set; } = "";
+    public string Action { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string Status { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
 }
 
 public class AiFeedbackSubmitResult
