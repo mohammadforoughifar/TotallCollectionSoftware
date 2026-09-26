@@ -9,9 +9,10 @@
                 <i class="bi @Icon(t.Kind)"></i>
             </div>
             <div>@t.Message</div>
-            <div class="toast-close" @onclick="() => Toast.Remove(t.Id)">
+            <button type="button" class="toast-close btn btn-link p-0" title="بستن اعلان"
+                    @onclick="() => Toast.Remove(t.Id)" @onclick:stopPropagation="true" aria-label="بستن اعلان">
                 <i class="bi bi-x"></i>
-            </div>
+            </button>
         </div>
     }
 </div>

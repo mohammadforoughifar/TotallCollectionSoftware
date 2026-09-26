@@ -148,7 +148,7 @@ public class MeetingMinutesController : RbacControllerBase
     [HttpDelete("items/{itemId:int}")]
     public async Task<IActionResult> DeleteItem(int itemId)
     {
-        if (await ForbiddenUnlessAsync(Module, "Update") is { } f) return f;
+        if (await ForbiddenUnlessAsync(Module, "Delete") is { } f) return f;
         try
         {
             await _svc.DeleteItemAsync(itemId, MyUserId);

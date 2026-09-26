@@ -632,7 +632,12 @@
 
     // ================== اقدامات ==================
 
-    private void OnAttendees(List<int> v) => attendeeIds = v;
+    private void OnAttendees(List<int> v)
+    {
+        attendeeIds = v;
+        absentIds = absentIds.Where(x => !attendeeIds.Contains(x)).ToList();
+    }
+
     private void OnAbsents(List<int> v) => absentIds = v.Where(x => !attendeeIds.Contains(x)).ToList();
 
 
@@ -866,29 +871,45 @@ private async Task DoSubmit()
         Nav.NavigateTo($"/office/email?compose=1&attach=MeetingMinutes&sourceId={minutesId}");
     }
 
+    private void GoOutgoingRow(RowForm row)
+    {
+        if (minutesId <= 0 || row.Id <= 0) return;
+        Nav.NavigateTo($"/outgoing-letters?compose=1&source=MeetingMinutes&sourceId={minutesId}&itemId={row.Id}");
+    }
+
+    private void GoEmailRow(RowForm row)
+    {
+        if (minutesId <= 0 || row.Id <= 0) return;
+        Nav.NavigateTo($"/office/email?compose=1&attach=MeetingMinutes&sourceId={minutesId}&itemId={row.Id}");
+    }
+
     private RenderFragment RowActions(RowForm row) => builder =>
     {
         int seq = 0;
         builder.OpenElement(seq++, "div");
         builder.AddAttribute(seq++, "class", "d-flex flex-wrap gap-1 mm-btn-row");
 
-        if (canEdit && row.Id > 0)
+        if (row.Id > 0)
         {
             builder.OpenElement(seq++, "button");
             builder.AddAttribute(seq++, "type", "button");
             builder.AddAttribute(seq++, "class", "btn btn-outline-secondary btn-sm py-0");
             builder.AddAttribute(seq++, "title", "ویرایش بند");
+            builder.AddAttribute(seq++, "disabled", !canEdit);
             builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => OpenRowEdit(row)));
             builder.AddMarkupContent(seq++, "<i class=\"bi bi-pencil\"></i>");
             builder.CloseElement();
 
-            builder.OpenElement(seq++, "button");
-            builder.AddAttribute(seq++, "type", "button");
-            builder.AddAttribute(seq++, "class", "btn btn-outline-danger btn-sm py-0");
-            builder.AddAttribute(seq++, "title", "حذف بند");
-            builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => AskDeleteRow(row)));
-            builder.AddMarkupContent(seq++, "<i class=\"bi bi-trash\"></i>");
-            builder.CloseElement();
+            if (canDelete)
+            {
+                builder.OpenElement(seq++, "button");
+                builder.AddAttribute(seq++, "type", "button");
+                builder.AddAttribute(seq++, "class", "btn btn-outline-danger btn-sm py-0");
+                builder.AddAttribute(seq++, "title", "حذف بند");
+                builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => AskDeleteRow(row)));
+                builder.AddMarkupContent(seq++, "<i class=\"bi bi-trash\"></i>");
+                builder.CloseElement();
+            }
         }
 
         if (canWorkOrder && row.Id > 0 && detail?.Status != "Closed")
@@ -920,6 +941,28 @@ private async Task DoSubmit()
             builder.CloseElement();
         }
 
+        if (canOutgoing && row.Id > 0)
+        {
+            builder.OpenElement(seq++, "button");
+            builder.AddAttribute(seq++, "type", "button");
+            builder.AddAttribute(seq++, "class", "btn btn-outline-info btn-sm py-0");
+            builder.AddAttribute(seq++, "title", "تبدیل این بند به نامه صادره");
+            builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => GoOutgoingRow(row)));
+            builder.AddMarkupContent(seq++, "<i class=\"bi bi-send-check\"></i>");
+            builder.CloseElement();
+        }
+
+        if (canEmail && row.Id > 0)
+        {
+            builder.OpenElement(seq++, "button");
+            builder.AddAttribute(seq++, "type", "button");
+            builder.AddAttribute(seq++, "class", "btn btn-outline-info btn-sm py-0");
+            builder.AddAttribute(seq++, "title", "ارسال این بند با ایمیل");
+            builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => GoEmailRow(row)));
+            builder.AddMarkupContent(seq++, "<i class=\"bi bi-envelope-at\"></i>");
+            builder.CloseElement();
+        }
+
         if (row.Id > 0 && detail?.Status != "Closed" && row.ResponsibleUserId == Auth.UserId)
         {
             if (!row.RespApproved)
@@ -944,7 +987,7 @@ private async Task DoSubmit()
             }
         }
 
-        if (row.Id > 0 && detail?.Status != "Closed" && row.FollowUpUserId == Auth.UserId)
+        if (row.Id > 0 && detail?.Status != "Closed" && row.FollowUpUserId == Auth.UserId && string.IsNullOrWhiteSpace(row.FollowUpDecision))
         {
             builder.OpenElement(seq++, "button");
             builder.AddAttribute(seq++, "type", "button");

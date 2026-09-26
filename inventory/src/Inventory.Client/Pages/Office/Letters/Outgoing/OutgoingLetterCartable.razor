@@ -705,12 +705,12 @@
         if (qs["compose"] == "1" && qs["source"] == "MeetingMinutes" && int.TryParse(qs["sourceId"], out var minId) && minId > 0 && !_composeHandled)
         {
             _composeHandled = true;
-            await OpenComposeFromMinutesAsync(minId);
+            await OpenComposeFromMinutesAsync(minId, int.TryParse(qs["itemId"], out var itemId) ? itemId : 0);
         }
     }
 
     private bool _composeHandled;
-    private async Task OpenComposeFromMinutesAsync(int minutesId)
+    private async Task OpenComposeFromMinutesAsync(int minutesId, int itemId = 0)
     {
         try
         {
@@ -721,7 +721,7 @@
                 var sb = new System.Text.StringBuilder();
                 sb.Append($"<p>با سلام و احترام،</p>");
                 sb.Append($"<p>مصوبات صورتجلسه <b>«{m.Title}»</b> مورخ {PersianDate.ToShortFa(m.MeetingDate)} به شرح ذیل جهت استحضار و اقدام مقتضی ارسال می‌گردد:</p><ul>");
-                foreach (var itm in m.Items)
+                foreach (var itm in (itemId > 0 ? m.Items.Where(x => x.Id == itemId) : m.Items))
                 {
                     var due = itm.DueDate != null ? PersianDate.ToShortFa(itm.DueDate.Value) : "—";
                     sb.Append($"<li><b>بند {itm.RowNo}:</b> {itm.Description} (مهلت: {due})</li>");

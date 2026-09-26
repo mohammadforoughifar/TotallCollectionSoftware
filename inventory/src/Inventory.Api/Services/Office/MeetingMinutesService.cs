@@ -497,8 +497,13 @@ public class MeetingMinutesService : IMeetingMinutesService
             FollowUpUserId = dto.FollowUpUserId
         }));
 
-    public Task<MinutesItemDto> UpdateItemAsync(int itemId, SaveMinutesItemDto dto, int userId)
-        => WithDtoAsync(SaveItemCoreAsync(dto.Id, dto));
+    public async Task<MinutesItemDto> UpdateItemAsync(int itemId, SaveMinutesItemDto dto, int userId)
+    {
+        var item = await _db.MeetingMinutesItems.AsNoTracking().FirstOrDefaultAsync(i => i.Id == itemId);
+        if (item is null) throw new Exception("بند پیدا نشد.");
+        dto.Id = itemId;
+        return ItemDto(await SaveItemCoreAsync(item.MinutesId, dto));
+    }
 
     private static async Task<MinutesItemDto> WithDtoAsync(Task<MeetingMinutesItem> t)
     {
@@ -541,6 +546,12 @@ public class MeetingMinutesService : IMeetingMinutesService
             await _db.MeetingMinutesItems.Where(i => i.MinutesId == item.MinutesId).ToListAsync());
         await _db.SaveChangesAsync();
 
+        if (approved && item.FollowUpUserId is > 0 && item.FollowUpUserId != userId)
+        {
+            await _notify.SendAsync(item.FollowUpUserId.Value, "تایید مسئول اجرای بند ✅",
+                $"بند «{Shorten(item.Description)}» صورتجلسه «{item.Minutes.Title}» توسط مسئول اجرا تایید شد و منتظر تایید شماست.",
+                item.ResponsibleName ?? "مسئول اجرا", "صورتجلسه", $"misc/minutes/{item.MinutesId}");
+        }
         if (item.ItemStatus == MinutesItemStatus.Done)
             await NotifyItemDoneAsync(item);
         else if (!approved)
@@ -566,6 +577,8 @@ public class MeetingMinutesService : IMeetingMinutesService
             throw new Exception("صورتجلسه «اتمام نهایی» شده — تغییرات دیگر ممکن نیست.");
         if (item.FollowUpUserId != userId)
             throw new Exception("فقط مسئول پیگیری این بند می‌تواند تایید/رد کند.");
+        if (!string.IsNullOrWhiteSpace(item.FollowUpDecision))
+            throw new Exception("برای این بند قبلاً تصمیم ثبت شده است و تایید/رد مجدد امکان‌پذیر نیست.");
 
         item.FollowUpDecision = decision;
         item.FollowUpDecidedAt = DateTime.Now;
