@@ -207,6 +207,8 @@ public class DtReorderSubTasksDto
 public class DtTimerStateDto
 {
     public int TaskId { get; set; }
+    public string? TaskNumber { get; set; }
+    public string? TaskTitle { get; set; }
     public bool Running { get; set; }
     public DateTime? StartedAt { get; set; }
     public int? StartedByUserId { get; set; }

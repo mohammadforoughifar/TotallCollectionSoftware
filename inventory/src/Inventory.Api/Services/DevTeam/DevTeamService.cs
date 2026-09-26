@@ -50,6 +50,7 @@ public interface IDevTeamService
     Task<DtTimerStateDto> StartTimerAsync(int taskId, int userId, string userName);
     Task<DtTimerStateDto> StopTimerAsync(int taskId, int userId, string userName, string? note = null);
     Task<DtTimerStateDto?> GetTimerAsync(int taskId);
+    Task<DtTimerStateDto?> GetMyTimerAsync(int userId);
     Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null);
     Task<DtGitWebhookResultDto> ProcessCiEventAsync(DtCiBuildEventDto dto);
 
@@ -1430,12 +1431,25 @@ public class DevTeamService : IDevTeamService
         return Task.FromResult(new DtTimerStateDto
         {
             TaskId = task.Id,
+            TaskNumber = task.Number,
+            TaskTitle = task.Title,
             Running = running,
             StartedAt = task.TimerStartedAt,
             StartedByUserId = task.TimerStartedByUserId,
             ElapsedSeconds = elapsed,
             SpentHours = task.SpentHours
         });
+    }
+
+    public async Task<DtTimerStateDto?> GetMyTimerAsync(int userId)
+    {
+        if (userId <= 0) return null;
+        var task = await _db.DtTasks.AsNoTracking()
+            .Where(t => !t.IsDeleted && t.TimerStartedAt != null && t.TimerStartedByUserId == userId)
+            .OrderByDescending(t => t.TimerStartedAt)
+            .FirstOrDefaultAsync();
+        if (task is null) return null;
+        return await BuildTimerStateAsync(task);
     }
 
     public async Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null)

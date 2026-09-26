@@ -124,6 +124,12 @@ API:
 - ✅ تایمر زنده ثبت زمان (`…/timer/start|stop`) — Schema V4: `TimerStartedAt`
 - ✅ مرتب‌سازی drag ساب‌تسک‌ها (`POST …/subtasks/reorder`)
 
+### مسیر B — UX (پیاده‌شده)
+
+- ✅ فیلتر/تب پایدار در URL: `?tab=&q=&module=&sprint=&assignee=&type=&mine=1&open=`
+- ✅ نوار تایمر سراسری بالای صفحه + `GET /api/dev-team/my-timer`
+- ✅ توقف تایمر از نوار بدون باز بودن مودال
+
 ### مسیر A — بهره‌برداری (پیاده‌شده)
 
 - ✅ `GET /api/dev-team/integration-status` — وضعیت secret، URL کامل endpointها، RBAC

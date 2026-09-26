@@ -27,6 +27,26 @@
         </div>
     </div>
 
+    @if (globalTimer is { Running: true })
+    {
+        <div class="dt-timer-bar mb-3">
+            <div class="dt-timer-bar-inner">
+                <span class="dt-timer-pulse"><i class="bi bi-stopwatch-fill"></i></span>
+                <span class="fw-semibold">تایمر فعال</span>
+                <code class="dt-timer-clock">@FormatElapsed(globalTimerSeconds)</code>
+                <button type="button" class="btn btn-sm btn-link text-white text-decoration-none px-1"
+                        @onclick="() => OpenTask(globalTimer.TaskId)">
+                    <code>@globalTimer.TaskNumber</code>
+                    <span class="ms-1">@(globalTimer.TaskTitle is { Length: > 40 } ? globalTimer.TaskTitle[..40] + "…" : globalTimer.TaskTitle)</span>
+                </button>
+                <span class="flex-grow-1"></span>
+                <button type="button" class="btn btn-sm btn-light" disabled="@saving" @onclick="StopGlobalTimer">
+                    <i class="bi bi-stop-fill text-danger"></i> توقف و ثبت
+                </button>
+            </div>
+        </div>
+    }
+
     @* تب‌ها *@
     <div class="dt-tabs mb-3">
         @foreach (var (key, label, icon) in TabDefs)
@@ -57,11 +77,11 @@
                             <div class="input-group input-group-sm">
                                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                                 <input class="form-control" placeholder="جستجو عنوان / شماره / برچسب…"
-                                       @bind="fltQ" @bind:event="oninput" @bind:after="ReloadTasks" />
+                                       @bind="fltQ" @bind:event="oninput" @bind:after="OnFilterChanged" />
                             </div>
                         </div>
                         <div class="col-6 col-md-2">
-                            <select class="form-select form-select-sm" @bind="fltModuleId" @bind:after="ReloadTasks">
+                            <select class="form-select form-select-sm" @bind="fltModuleId" @bind:after="OnFilterChanged">
                                 <option value="0">همه ماژول‌ها</option>
                                 @foreach (var m in lookups.Modules)
                                 {
@@ -70,7 +90,7 @@
                             </select>
                         </div>
                         <div class="col-6 col-md-2">
-                            <select class="form-select form-select-sm" @bind="fltSprintId" @bind:after="ReloadTasks">
+                            <select class="form-select form-select-sm" @bind="fltSprintId" @bind:after="OnFilterChanged">
                                 <option value="0">همه اسپرینت‌ها</option>
                                 @foreach (var s in lookups.Sprints)
                                 {
@@ -79,7 +99,7 @@
                             </select>
                         </div>
                         <div class="col-6 col-md-2">
-                            <select class="form-select form-select-sm" @bind="fltAssigneeId" @bind:after="ReloadTasks">
+                            <select class="form-select form-select-sm" @bind="fltAssigneeId" @bind:after="OnFilterChanged">
                                 <option value="0">همه افراد</option>
                                 @foreach (var u in lookups.Users)
                                 {
@@ -88,7 +108,7 @@
                             </select>
                         </div>
                         <div class="col-6 col-md-2">
-                            <select class="form-select form-select-sm" @bind="fltType" @bind:after="ReloadTasks">
+                            <select class="form-select form-select-sm" @bind="fltType" @bind:after="OnFilterChanged">
                                 <option value="">همه انواع</option>
                                 @foreach (var t in lookups.TaskTypes)
                                 {
@@ -305,7 +325,7 @@
             <div class="dt-filters card border-0 shadow-sm mb-3">
                 <div class="card-body py-2 row g-2">
                     <div class="col-md-3">
-                        <select class="form-select form-select-sm" @bind="probSeverity" @bind:after="LoadProblems">
+                        <select class="form-select form-select-sm" @bind="probSeverity" @bind:after="OnProblemFilterChanged">
                             <option value="">همه شدت‌ها</option>
                             <option value="Error">خطا</option>
                             <option value="Warning">هشدار</option>
@@ -313,7 +333,7 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <select class="form-select form-select-sm" @bind="probStatus" @bind:after="LoadProblems">
+                        <select class="form-select form-select-sm" @bind="probStatus" @bind:after="OnProblemFilterChanged">
                             <option value="">همه وضعیت‌ها</option>
                             <option value="Open">باز</option>
                             <option value="Investigating">در حال بررسی</option>
@@ -322,7 +342,7 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <select class="form-select form-select-sm" @bind="probModuleId" @bind:after="LoadProblems">
+                        <select class="form-select form-select-sm" @bind="probModuleId" @bind:after="OnProblemFilterChanged">
                             <option value="0">همه ماژول‌ها</option>
                             @foreach (var m in lookups.Modules)
                             {
@@ -1490,6 +1510,17 @@
     .dt-sub-row { user-select:none; }
     .dt-burn-wrap { width:100%; height:220px; background:linear-gradient(#fff,#f8fafc); border:1px solid #e2e8f0; border-radius:.5rem; padding:.5rem; }
     .dt-burn-svg { width:100%; height:100%; display:block; }
+    .dt-timer-bar { position:sticky; top:0; z-index:20; }
+    .dt-timer-bar-inner {
+        display:flex; flex-wrap:wrap; align-items:center; gap:.65rem;
+        background:linear-gradient(90deg,#b91c1c,#dc2626 40%,#ea580c);
+        color:#fff; border-radius:.65rem; padding:.55rem .9rem;
+        box-shadow:0 6px 18px rgba(185,28,28,.25);
+    }
+    .dt-timer-clock { font-size:1.05rem; background:rgba(0,0,0,.2); color:#fff; padding:.15rem .45rem; border-radius:.35rem; }
+    .dt-timer-pulse { animation: dt-pulse 1.4s ease-in-out infinite; }
+    @@keyframes dt-pulse { 0%,100%{ opacity:1 } 50%{ opacity:.45 } }
+    .dt-filter-chip { font-size:.72rem; }
 </style>
 
 @code {
@@ -1527,6 +1558,9 @@
     private int burndownSprintId;
     private int timerDisplaySeconds;
     private System.Threading.Timer? timerUiClock;
+    private DtTimerStateDto? globalTimer;
+    private int globalTimerSeconds;
+    private bool suppressUrlWrite;
 
     // filters
     private string fltQ = "";
@@ -1564,21 +1598,94 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        suppressUrlWrite = true;
+        try { ApplyQueryFromUri(Nav.ToAbsoluteUri(Nav.Uri)); }
+        finally { suppressUrlWrite = false; }
+
+        var openId = PeekOpenId(Nav.ToAbsoluteUri(Nav.Uri));
+        await BootstrapAsync();
+        if (openId > 0) await OpenTask(openId);
+        await RefreshGlobalTimerAsync();
+        WriteUrl(replace: true);
+    }
+
+    private static int PeekOpenId(Uri uri)
+    {
         var query = uri.Query.TrimStart('?');
-        string? tabQ = null; int openId = 0;
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split('=', 2);
+            var key = Uri.UnescapeDataString(kv[0]);
+            if (key != "open") continue;
+            var val = kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : "";
+            return int.TryParse(val, out var id) ? id : 0;
+        }
+        return 0;
+    }
+
+    private void ApplyQueryFromUri(Uri uri)
+    {
+        var query = uri.Query.TrimStart('?');
         foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = part.Split('=', 2);
             var key = Uri.UnescapeDataString(kv[0]);
             var val = kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : "";
-            if (key == "tab") tabQ = val;
-            if (key == "open") int.TryParse(val, out openId);
+            switch (key)
+            {
+                case "tab" when TabDefs.Any(x => x.key == val): tab = val; break;
+                case "q": fltQ = val; break;
+                case "module": int.TryParse(val, out fltModuleId); break;
+                case "sprint": int.TryParse(val, out fltSprintId); break;
+                case "assignee": int.TryParse(val, out fltAssigneeId); break;
+                case "type": fltType = val; break;
+                case "mine": onlyMine = val is "1" or "true" or "yes"; break;
+                case "probSev": probSeverity = val; break;
+                case "probSt": probStatus = val; break;
+                case "probMod": int.TryParse(val, out probModuleId); break;
+                case "chgMod": int.TryParse(val, out chgModuleId); break;
+                case "bdSprint": int.TryParse(val, out burndownSprintId); break;
+            }
         }
-        if (!string.IsNullOrWhiteSpace(tabQ) && TabDefs.Any(x => x.key == tabQ))
-            tab = tabQ!;
-        await BootstrapAsync();
-        if (openId > 0) await OpenTask(openId);
+    }
+
+    private void WriteUrl(bool replace = true)
+    {
+        if (suppressUrlWrite) return;
+        var parts = new List<string>();
+        if (tab != "board") parts.Add($"tab={Uri.EscapeDataString(tab)}");
+        if (!string.IsNullOrWhiteSpace(fltQ)) parts.Add($"q={Uri.EscapeDataString(fltQ.Trim())}");
+        if (fltModuleId > 0) parts.Add($"module={fltModuleId}");
+        if (fltSprintId > 0) parts.Add($"sprint={fltSprintId}");
+        if (fltAssigneeId > 0) parts.Add($"assignee={fltAssigneeId}");
+        if (!string.IsNullOrWhiteSpace(fltType)) parts.Add($"type={Uri.EscapeDataString(fltType)}");
+        if (onlyMine) parts.Add("mine=1");
+        if (tab == "problems")
+        {
+            if (!string.IsNullOrWhiteSpace(probSeverity)) parts.Add($"probSev={Uri.EscapeDataString(probSeverity)}");
+            if (!string.IsNullOrWhiteSpace(probStatus)) parts.Add($"probSt={Uri.EscapeDataString(probStatus)}");
+            if (probModuleId > 0) parts.Add($"probMod={probModuleId}");
+        }
+        if (tab == "modules" && chgModuleId > 0) parts.Add($"chgMod={chgModuleId}");
+        if (tab == "burndown" && burndownSprintId > 0) parts.Add($"bdSprint={burndownSprintId}");
+        if (showTaskModal && editingTaskId is int oid && oid > 0) parts.Add($"open={oid}");
+
+        var qs = parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+        var target = "/dev-team" + qs;
+        var cur = Nav.ToBaseRelativePath(Nav.Uri);
+        if (!cur.StartsWith('/')) cur = "/" + cur;
+        // strip trailing slash noise
+        if (string.Equals(cur, target, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(cur, target.TrimStart('/'), StringComparison.OrdinalIgnoreCase))
+            return;
+        try { Nav.NavigateTo(target, forceLoad: false, replace: replace); }
+        catch { /* navigation during dispose */ }
+    }
+
+    private async Task OnFilterChanged()
+    {
+        WriteUrl();
+        await ReloadTasks();
     }
 
     private async Task BootstrapAsync()
@@ -1601,6 +1708,7 @@
     private async Task SwitchTab(string key)
     {
         tab = key;
+        WriteUrl();
         await LoadTabData();
         if (key == "burndown") await LoadBurndown();
     }
@@ -1687,7 +1795,14 @@
     private async Task ToggleMine()
     {
         onlyMine = !onlyMine;
+        WriteUrl();
         await ReloadTasks();
+    }
+
+    private async Task OnProblemFilterChanged()
+    {
+        WriteUrl();
+        await LoadProblems();
     }
 
     private async Task LoadProblems()
@@ -1701,6 +1816,7 @@
     private async Task SelectModule(int id)
     {
         chgModuleId = chgModuleId == id ? 0 : id;
+        WriteUrl();
         changes = await Api.QueryChangesAsync(chgModuleId > 0 ? chgModuleId : null, 80);
     }
 
@@ -1708,6 +1824,7 @@
     {
         fltSprintId = id;
         tab = "board";
+        WriteUrl();
         await LoadTabData();
     }
 
@@ -1782,6 +1899,7 @@
 
     private async Task LoadBurndown()
     {
+        WriteUrl();
         try
         {
             burndown = await Api.GetBurndownAsync(burndownSprintId > 0 ? burndownSprintId : null);
@@ -1802,12 +1920,61 @@
     {
         timerUiClock ??= new System.Threading.Timer(async _ =>
         {
+            var changed = false;
             if (taskDetail?.TimerRunning == true && taskDetail.TimerStartedAt is DateTime started)
             {
                 timerDisplaySeconds = (int)Math.Max(0, (DateTime.Now - started).TotalSeconds);
+                changed = true;
+            }
+            if (globalTimer is { Running: true, StartedAt: DateTime gs })
+            {
+                globalTimerSeconds = (int)Math.Max(0, (DateTime.Now - gs).TotalSeconds);
+                changed = true;
+            }
+            if (changed)
+            {
                 try { await InvokeAsync(StateHasChanged); } catch { }
             }
         }, null, 0, 1000);
+    }
+
+    private async Task RefreshGlobalTimerAsync()
+    {
+        try
+        {
+            globalTimer = await Api.GetMyTimerAsync();
+            if (globalTimer is { Running: true, StartedAt: DateTime gs })
+            {
+                globalTimerSeconds = globalTimer.ElapsedSeconds > 0
+                    ? globalTimer.ElapsedSeconds
+                    : (int)Math.Max(0, (DateTime.Now - gs).TotalSeconds);
+                EnsureTimerClock();
+            }
+            else
+            {
+                globalTimer = null;
+                globalTimerSeconds = 0;
+            }
+        }
+        catch { /* non-fatal */ }
+    }
+
+    private async Task StopGlobalTimer()
+    {
+        if (globalTimer is not { TaskId: > 0 }) return;
+        saving = true;
+        try
+        {
+            var st = await Api.StopTimerAsync(globalTimer.TaskId);
+            globalTimer = null;
+            globalTimerSeconds = 0;
+            if (editingTaskId == st.TaskId || (taskDetail?.Id == st.TaskId))
+                taskDetail = await Api.GetTaskAsync(st.TaskId);
+            Toast.Success(st.LastEntry is not null ? $"ثبت شد: {st.LastEntry.Hours} ساعت" : "تایمر متوقف شد");
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
     }
 
     private async Task StartTimer()
@@ -1825,6 +1992,7 @@
                 timerDisplaySeconds = st.ElapsedSeconds;
             }
             EnsureTimerClock();
+            await RefreshGlobalTimerAsync();
             Toast.Success("تایمر شروع شد");
             await LoadTabData();
         }
@@ -1841,6 +2009,7 @@
             var st = await Api.StopTimerAsync(id);
             taskDetail = await Api.GetTaskAsync(id);
             timerDisplaySeconds = 0;
+            await RefreshGlobalTimerAsync();
             Toast.Success(st.LastEntry is not null ? $"ثبت شد: {st.LastEntry.Hours} ساعت" : "تایمر متوقف شد");
             await LoadTabData();
         }
@@ -1874,6 +2043,7 @@
         taskFormAssigneeId = 0;
         taskDueInput = "";
         showTaskModal = true;
+        WriteUrl(replace: true);
     }
 
     private async Task OpenTask(int id)
@@ -1908,11 +2078,16 @@
             }
             else timerDisplaySeconds = 0;
             showTaskModal = true;
+            WriteUrl(replace: true);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private void CloseTaskModal() => showTaskModal = false;
+    private void CloseTaskModal()
+    {
+        showTaskModal = false;
+        WriteUrl(replace: true);
+    }
 
     private async Task SaveTask()
     {

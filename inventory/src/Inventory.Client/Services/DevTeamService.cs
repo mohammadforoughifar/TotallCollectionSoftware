@@ -38,6 +38,7 @@ public interface IDevTeamClient
     Task<DtTimerStateDto> StartTimerAsync(int taskId);
     Task<DtTimerStateDto> StopTimerAsync(int taskId, string? note = null);
     Task<DtTimerStateDto?> GetTimerAsync(int taskId);
+    Task<DtTimerStateDto?> GetMyTimerAsync();
     Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null);
 
     Task<List<DtProblemDto>> QueryProblemsAsync(string? severity = null, string? status = null, int? moduleId = null, int? taskId = null);
@@ -222,6 +223,13 @@ public class DevTeamClient : IDevTeamClient
 
     public async Task<DtTimerStateDto?> GetTimerAsync(int taskId) =>
         await _http.GetFromJsonAsync<DtTimerStateDto>($"{Base}/tasks/{taskId}/timer");
+
+    public async Task<DtTimerStateDto?> GetMyTimerAsync()
+    {
+        var s = await _http.GetFromJsonAsync<DtTimerStateDto>($"{Base}/my-timer");
+        if (s is null || !s.Running || s.TaskId <= 0) return null;
+        return s;
+    }
 
     public async Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null)
     {

@@ -268,6 +268,16 @@ public class DevTeamController : ControllerBase
         return Ok(s);
     }
 
+    /// <summary>تایمر زندهٔ کاربر جاری (برای نوار سراسری صفحه).</summary>
+    [HttpGet("my-timer")]
+    public async Task<ActionResult<DtTimerStateDto>> MyTimer()
+    {
+        await EnsureAsync(a => a.CanView);
+        var s = await _svc.GetMyTimerAsync(MyUserId);
+        if (s is null) return Ok(new DtTimerStateDto { Running = false });
+        return Ok(s);
+    }
+
     /// <summary>گزارش burndown اسپرینت (فاز ۳).</summary>
     [HttpGet("burndown")]
     public async Task<ActionResult<DtBurndownDto>> Burndown([FromQuery] int? sprintId = null)
