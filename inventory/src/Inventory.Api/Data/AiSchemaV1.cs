@@ -16,6 +16,7 @@ public static class AiSchemaV1
         model.Entity<AiReminder>().HasIndex(r => new { r.UserId, r.IsSent });
         model.Entity<AiReportSchedule>().HasIndex(x => new { x.IsActive, x.NextRunAt });
         model.Entity<AiDocEmbedding>().HasIndex(x => new { x.DocType, x.DocId }).IsUnique();
+        model.Entity<AiAlertRule>().HasIndex(x => x.IsActive);
     }
 
     public static async Task EnsureAsync(AppDbContext db)
@@ -33,10 +34,11 @@ public static class AiSchemaV1
 
         var act = T("Id IDKEY, UserId INT NOT NULL, Action NVARCHAR(40) NOT NULL, ArgsJson BIGTEXT NOT NULL, Summary BIGTEXT NOT NULL, Status INT NOT NULL, CreatedAtUtc DT NOT NULL, ExpiresAtUtc DT NOT NULL, DecidedAtUtc DT NULL, ResultText BIGTEXT NULL");
         var rem = T("Id IDKEY, UserId INT NOT NULL, Text NVARCHAR(500) NOT NULL, RemindAt DT NOT NULL, Recurrence INT NOT NULL, IsSent BOOL, Attempts INT NOT NULL, CreatedAt DT NOT NULL, SentAt DT NULL");
+        var alr = T("Id IDKEY, UserId INT NOT NULL, Title NVARCHAR(300) NOT NULL, QueryJson BIGTEXT NOT NULL, Agg NVARCHAR(10) NOT NULL, AggField NVARCHAR(100) NULL, Op NVARCHAR(10) NOT NULL, Value REAL NOT NULL, IsActive BOOL, LastState BOOL, LastCheckedAt DT NULL, LastFiredAt DT NULL, FailCount INT NOT NULL, CreatedAt DT NOT NULL");
         var emb = T("Id IDKEY, DocType NVARCHAR(20) NOT NULL, DocId INT NOT NULL, TextHash NVARCHAR(16) NOT NULL, VectorJson BIGTEXT NULL, UpdatedAt DT NOT NULL");
         var sch = T("Id IDKEY, UserId INT NOT NULL, Title NVARCHAR(300) NOT NULL, Kind NVARCHAR(20) NOT NULL, SpecJson BIGTEXT NOT NULL, ScheduleType NVARCHAR(20) NOT NULL, Day INT NOT NULL, Time NVARCHAR(5) NOT NULL, WantExcel BOOL, IsActive BOOL, NextRunAt DT NOT NULL, LastRunAt DT NULL, FailCount INT NOT NULL, CreatedAt DT NOT NULL");
 
-        foreach (var (table, cols) in new[] { ("AiConversations", conv), ("AiMessages", msg), ("AiKnowledgeDocs", doc), ("AiPendingActions", act), ("AiReminders", rem), ("AiReportSchedules", sch), ("AiDocEmbeddings", emb) })
+        foreach (var (table, cols) in new[] { ("AiConversations", conv), ("AiMessages", msg), ("AiKnowledgeDocs", doc), ("AiPendingActions", act), ("AiReminders", rem), ("AiReportSchedules", sch), ("AiDocEmbeddings", emb), ("AiAlertRules", alr) })
         {
             var sql = sqlite
                 ? $"CREATE TABLE IF NOT EXISTS {table} ({cols})"
@@ -68,6 +70,7 @@ public static class AiSchemaV1
                      ("AiReminders", "UserId, IsSent", false),
                      ("AiReportSchedules", "IsActive, NextRunAt", false),
                      ("AiDocEmbeddings", "DocType, DocId", true),
+                     ("AiAlertRules", "IsActive", false),
                  })
         {
             var name = "IX_" + table + "_" + cols.Replace(", ", "_");

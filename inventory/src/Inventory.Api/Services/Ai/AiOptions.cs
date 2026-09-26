@@ -74,6 +74,9 @@ public class AiOptions
     /// <summary>ایندکس دوره‌ای اسناد برای جستجوی معنایی (هر ۱۰ دقیقه، §۲۲).</summary>
     public bool SearchEnabled { get; set; } = true;
 
+    /// <summary>ارزیابی دوره‌ای قانون‌های هشدار شرطی کاربران (هر ۵ دقیقه، §۲۳).</summary>
+    public bool AlertRuleEnabled { get; set; } = true;
+
     /// <summary>انقضای پیش‌فاکتور اقدام (دقیقه) — اقدام با تأیید کاربر.</summary>
     public int PendingActionExpiryMinutes { get; set; } = 15;
 

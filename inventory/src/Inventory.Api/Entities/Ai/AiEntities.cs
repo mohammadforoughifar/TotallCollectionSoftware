@@ -198,3 +198,40 @@ public class AiDocEmbedding
 
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
+
+/// <summary>قانون هشدار شرطی (§۲۳): یک پرس‌وجوی کاوش + آستانه؛ در لبه صعودی خبر می‌دهد.</summary>
+public class AiAlertRule
+{
+    public int Id { get; set; }
+
+    public int UserId { get; set; }
+
+    [MaxLength(300)] public string Title { get; set; } = "";
+
+    /// <summary>پرس‌وجوی کاوش (AiExploreRequest به‌صورت JSON).</summary>
+    public string QueryJson { get; set; } = "";
+
+    /// <summary>تجمیع: count | sum | avg</summary>
+    [MaxLength(10)] public string Agg { get; set; } = "count";
+
+    /// <summary>فیلد تجمیع برای sum/avg (نام انگلیسی فیلد کاتالوگ).</summary>
+    [MaxLength(100)] public string? AggField { get; set; }
+
+    /// <summary>عملگر: gt | lt | gte | lte | eq</summary>
+    [MaxLength(10)] public string Op { get; set; } = "gt";
+
+    public double Value { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>وضعیت آخرین ارزیابی (برای تحریک لبه‌ای: فقط گذار false→true خبر می‌دهد).</summary>
+    public bool LastState { get; set; }
+
+    public DateTime? LastCheckedAt { get; set; }
+
+    public DateTime? LastFiredAt { get; set; }
+
+    public int FailCount { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}

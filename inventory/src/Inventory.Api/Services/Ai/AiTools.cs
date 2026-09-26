@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaAtt;
 using Inventory.Api.Services.FaPay;
@@ -84,6 +85,19 @@ internal static class AiToolArgs
             JsonValueKind.String when int.TryParse(v.GetString(), out var s) => s,
             _ => null,
         };
+    }
+
+    public static double? GetDouble(JsonElement args, string name)
+    {
+        if (args.ValueKind != JsonValueKind.Object) return null;
+        if (!args.TryGetProperty(name, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetDouble(out var n)) return n;
+        if (v.ValueKind == JsonValueKind.String)
+        {
+            var str = AiTextUtil.ToEnDigits(v.GetString() ?? "").Replace(",", "").Replace("٬", "").Replace(" ", "").Trim();
+            if (double.TryParse(str, NumberStyles.Any, CultureInfo.InvariantCulture, out var d)) return d;
+        }
+        return null;
     }
 
     public static bool GetBool(JsonElement args, string name, bool defaultValue = false)
@@ -2568,5 +2582,157 @@ public class ReindexDocsTool : IAiTool
                 : failed > 0 ? $"از {missing} سند، {indexed} ایندکس شد و {failed} خطا خورد (مدل خواب است؟)."
                 : $"{indexed} سند از {missing} ایندکس شد. ✅",
         });
+    }
+}
+
+// ---------------- هشدارهای شرطی (§۲۳) ----------------
+
+public class CreateAlertTool : IAiTool
+{
+    public string Name => "create_alert";
+    public string Description => "ثبت قانون هشدار شرطی (بدون نیاز به تأیید): یک پرس‌وجوی کاوش روی ۲۶ موجودیت + آستانه. وقتی شرط برقرار شود (گذار به true) در بله/ایتا خبر می‌دهد. entity و op و value اجباری؛ agg: تعداد (پیش‌فرض)/جمع/میانگین؛ agg_field برای جمع/میانگین لازم است.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            entity = new { type = "string", description = "کلید موجودیت از data_catalog (اجباری)" },
+            op = new { type = "string", description = "عملگر (اجباری): بیشتر/کمتر/حداقل/حداکثر/برابر یا >/</>=/<=/=" },
+            value = new { type = "number", description = "مقدار آستانه (اجباری)" },
+            filters = new
+            {
+                type = "array",
+                description = "فیلترها {field, op, value, value2}",
+                items = new { type = "object", properties = new { field = new { type = "string" }, op = new { type = "string" }, value = new { type = "string" }, value2 = new { type = "string" } } },
+            },
+            agg = new { type = "string", description = "تجمیع: count/تعداد (پیش‌فرض)، sum/جمع، avg/میانگین" },
+            agg_field = new { type = "string", description = "فیلد تجمیع برای جمع/میانگین (نام انگلیسی فیلد)" },
+            title = new { type = "string", description = "عنوان قانون (اختیاری؛ خودکار ساخته می‌شود)" },
+        },
+        required = new[] { "entity", "op", "value" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var entity = (AiToolArgs.GetString(args, "entity") ?? "").Trim();
+        if (entity == "")
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "موجودیت لازم است (از data_catalog)." });
+        var op = AiAlertRuleService.NormalizeOp(AiToolArgs.GetString(args, "op"));
+        if (op == null)
+            return JsonSerializer.Serialize(new { error = "bad_op", message = "عملگر را نفهمیدم؛ مثلاً «بیشتر از»، «کمتر از»، «حداقل»، «حداکثر» یا «برابر»." });
+        var value = AiToolArgs.GetDouble(args, "value");
+        if (value == null)
+            return JsonSerializer.Serialize(new { error = "bad_value", message = "مقدار آستانه لازم است (عدد)." });
+
+        var aggRaw = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "agg") ?? "").Trim();
+        var agg = aggRaw.Contains("جمع") || aggRaw == "sum" ? "sum"
+            : aggRaw.Contains("میانگین") || aggRaw == "avg" ? "avg" : "count";
+        var aggField = AiToolArgs.GetString(args, "agg_field");
+        if (agg != "count" && string.IsNullOrWhiteSpace(aggField))
+            return JsonSerializer.Serialize(new { error = "bad_agg", message = "برای جمع/میانگین، فیلد تجمیع (agg_field) لازم است." });
+
+        var req = new AiExploreRequest { Entity = entity };
+        if (args.TryGetProperty("filters", out var fa) && fa.ValueKind == JsonValueKind.Array)
+            foreach (var f in fa.EnumerateArray())
+            {
+                if (f.ValueKind != JsonValueKind.Object) continue;
+                req.Filters.Add(new AiExploreFilter
+                {
+                    Field = f.TryGetProperty("field", out var x) ? x.GetString() ?? "" : "",
+                    Op = f.TryGetProperty("op", out var o) ? o.GetString() ?? "eq" : "eq",
+                    Value = f.TryGetProperty("value", out var v) ? v.GetString() : null,
+                    Value2 = f.TryGetProperty("value2", out var v2) ? v2.GetString() : null,
+                });
+            }
+
+        var entFa = AiDataCatalog.Find(entity)?.Fa ?? entity;
+        var title = AiToolArgs.GetString(args, "title");
+        if (string.IsNullOrWhiteSpace(title))
+            title = $"{entFa} — {AiAlertRuleService.AggFa(agg)} {AiAlertRuleService.OpFa(op)} {AiAlertRuleService.FaNum(value.Value)}";
+
+        var svc = ctx.Services.GetRequiredService<AiAlertRuleService>();
+        var (rule, err, current, firesNow, approximate) = await svc.CreateAsync(
+            ctx.UserId, title!, req, agg, aggField, op, value.Value, ctx.Services, ctx.CancellationToken);
+        if (rule == null)
+        {
+            var msg = err switch
+            {
+                "bad_agg" => "برای جمع/میانگین، فیلد تجمیع لازم است.",
+                "too_many" => "۱۰ قانون فعال داری؛ اول با my_alert_rules ببین و با delete_alert یکی را حذف کن.",
+                _ when err?.StartsWith("dry_failed:") == true => $"پرس‌وجو اجرا نشد: {err["dry_failed:".Length..]}",
+                _ => "ثبت نشد؛ دوباره تلاش کن.",
+            };
+            return JsonSerializer.Serialize(new { error = err, message = msg });
+        }
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var linked = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId)
+            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            rule_id = rule.Id,
+            title = rule.Title,
+            condition = $"{AiAlertRuleService.AggFa(agg)} {AiAlertRuleService.OpFa(op)} {AiAlertRuleService.FaNum(value.Value)}",
+            current = AiAlertRuleService.FaNum(current),
+            state = firesNow ? "برقرار (اولین خبر در گذار بعدی)" : "نبرقرار",
+            approximate = approximate ? "تقریبی (بیش از ۲۰۰۰ سطر)" : null,
+            note = linked ? null : "حسابت به بله/ایتا لینک نیست؛ برای دریافت هشدار باید لینکش کنی.",
+        });
+    }
+}
+
+public class MyAlertRulesTool : IAiTool
+{
+    public string Name => "my_alert_rules";
+    public string Description => "فهرست قانون‌های هشدار شرطی خودت (شناسه، عنوان، شرط، وضعیت برقرار/نبرقرار، آخرین خبر).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new { },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var svc = ctx.Services.GetRequiredService<AiAlertRuleService>();
+        var list = await svc.ListActiveAsync(ctx.UserId, ctx.CancellationToken);
+        if (list.Count == 0)
+            return JsonSerializer.Serialize(new { rules = new object[0], message = "قانون هشدار فعالی نداری." });
+        return JsonSerializer.Serialize(new
+        {
+            rules = list.Select(r => new
+            {
+                id = r.Id,
+                title = r.Title,
+                condition = $"{AiAlertRuleService.AggFa(r.Agg)} {AiAlertRuleService.OpFa(r.Op)} {AiAlertRuleService.FaNum(r.Value)}",
+                state = r.LastState ? "برقرار" : "نبرقرار",
+                last_fired = r.LastFiredAt == null ? "—" : AiDateUtil.ToFaShort(r.LastFiredAt.Value),
+            }),
+        });
+    }
+}
+
+public class DeleteAlertTool : IAiTool
+{
+    public string Name => "delete_alert";
+    public string Description => "حذف یک قانون هشدار شرطی با شناسه (از my_alert_rules).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            alert_id = new { type = "integer", description = "شناسه قانون (اجباری)" },
+        },
+        required = new[] { "alert_id" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var id = AiToolArgs.GetInt(args, "alert_id") ?? 0;
+        if (id <= 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "شناسه قانون لازم است." });
+        var svc = ctx.Services.GetRequiredService<AiAlertRuleService>();
+        var ok = await svc.DeleteAsync(ctx.UserId, id, ctx.CancellationToken);
+        if (!ok)
+            return JsonSerializer.Serialize(new { error = "not_found", message = "قانون فعالی با این شناسه پیدا نشد." });
+        return JsonSerializer.Serialize(new { deleted = id, message = "قانون هشدار حذف شد. ✅" });
     }
 }
