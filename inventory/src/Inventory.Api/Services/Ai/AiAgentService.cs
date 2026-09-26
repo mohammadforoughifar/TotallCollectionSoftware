@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.DependencyInjection;
@@ -84,7 +85,7 @@ public class AiAgentService : IAiAgentService
             };
 
         var conv = await _conversations.GetOrCreateAsync(userId, channel, conversationId);
-        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var sw = Stopwatch.StartNew();
 
         // سقف مصرف روزانه
         if (_options.MaxMessagesPerUserPerDay > 0)

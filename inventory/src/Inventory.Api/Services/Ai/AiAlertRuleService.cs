@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Inventory.Api.Data;
-using Inventory.Api.Services.System;
+using Inventory.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
