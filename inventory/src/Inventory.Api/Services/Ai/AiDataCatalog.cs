@@ -32,6 +32,8 @@ public sealed class AiEntityDef
     public string Hint { get; init; } = "";
     /// <summary>ماژول RBAC (دسترسی Read)؛ خالی = باز برای همه کاربران مجاز AI</summary>
     public string Module { get; init; } = "";
+    /// <summary>اکشن RBAC روی ماژول (پیش‌فرض Read؛ مثلاً View برای صورتجلسه)</summary>
+    public string ModuleAction { get; init; } = "Read";
     public Type ClrType { get; init; } = null!;
     /// <summary>محدوده سطر: all | letters | employee | user | referral</summary>
     public string Scope { get; init; } = "all";
@@ -486,6 +488,42 @@ public static class AiDataCatalog
                 F("IsRead", "خوانده‌شده؟", "bool"), F("MatnErja", "متن ارجاع", truncate: 150),
                 F("Answer", "پاسخ", truncate: 150), F("MohlatPasokh", "مهلت پاسخ", "date"),
                 F("IsBayegani", "بایگانی؟", "bool"),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "meeting_minutes", Fa = "صورتجلسات", Module = "MeetingMinutes", ModuleAction = "View",
+            ClrType = typeof(MeetingMinutes),
+            Hint = "صورتجلسات: عنوان، تاریخ جلسه، وضعیت؛ برای «صورتجلسات ماه گذشته»، «صورتجلسه درباره بودجه»",
+            BaseFilters = new() { ("IsDeleted", "eq", "false") },
+            Fields = new()
+            {
+                F("Id", "کد"), F("Title", "موضوع", truncate: 120),
+                F("MeetingDate", "تاریخ جلسه", "date"),
+                F("Status", "وضعیت", "enum", new() { ["InReview"] = "در حال بررسی", ["Closed"] = "اتمام نهایی" }),
+                F("DateRegistered", "تاریخ ثبت", "datetime"),
+                F("CreatedByName", "ثبت‌کننده"),
+                F("ClosedAt", "تاریخ اتمام", "datetime"),
+            },
+        },
+        new AiEntityDef
+        {
+            Name = "minutes_item", Fa = "بندهای صورتجلسه", Module = "MeetingMinutes", ModuleAction = "View",
+            ClrType = typeof(MeetingMinutesItem),
+            Hint = "بندهای صورتجلسات با مسئول و مهلت؛ برای «اقدام‌های باز»، «بندهای با سررسید این هفته»",
+            BaseFilters = new() { ("Minutes.IsDeleted", "eq", "false") },
+            Fields = new()
+            {
+                F("Id", "کد"), F("MinutesId", "کد صورتجلسه", "number"),
+                F("Minutes.Title", "موضوع صورتجلسه", truncate: 100),
+                F("RowNo", "ردیف", "number"),
+                F("Description", "شرح بند", truncate: 150),
+                F("ItemStatus", "وضعیت", "enum", new() { ["InProgress"] = "در جریان", ["Done"] = "انجام شد", ["Rejected"] = "رد شده" }),
+                F("ResponsibleName", "مسئول"),
+                F("DueDate", "مهلت", "date"),
+                F("FollowUpName", "مسئول پیگیری"),
+                F("FollowUpDate", "تاریخ پیگیری", "date"),
+                F("FollowUpDecision", "تصمیم پیگیری", "enum", new() { ["Approved"] = "تأیید", ["Rejected"] = "رد" }),
             },
         },
     };

@@ -87,8 +87,8 @@ public class AiDataExplorer
             .Select(u => u.Role).FirstOrDefaultAsync(ct);
 
         // ۱) دسترسی سطح موجودیت
-        if (ent.Module != "" && !await AiAccessHelper.UserHasAsync(_db, userId, ent.Module, "Read", role, ct))
-            return (false, $"به داده «{ent.Fa}» دسترسی نداری. (مجوز لازم: {ent.Module})", null);
+        if (ent.Module != "" && !await AiAccessHelper.UserHasAsync(_db, userId, ent.Module, ent.ModuleAction, role, ct))
+            return (false, $"به داده «{ent.Fa}» دسترسی نداری. (مجوز لازم: {ent.Module}/{ent.ModuleAction})", null);
 
         // ۲) اعتبارسنجی فیلدها
         string? FieldError(string? name, string what)
