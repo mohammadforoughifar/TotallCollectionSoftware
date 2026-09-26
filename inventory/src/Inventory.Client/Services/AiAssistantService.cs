@@ -23,6 +23,7 @@ public class AiChatAttachment
 public class AiChatResult
 {
     public int ConversationId { get; set; }
+    public int MessageId { get; set; }
     public string Reply { get; set; } = "";
     public bool UsedFallback { get; set; }
     public List<string> ToolsUsed { get; set; } = new();
@@ -41,6 +42,8 @@ public class AiConversation
 public class AiChatMessage
 {
     public string Role { get; set; } = "user";
+    public int Id { get; set; }
+    public int? MyRating { get; set; }
     public string Content { get; set; } = "";
     public bool UsedFallback { get; set; }
     public DateTime CreatedAtUtc { get; set; }
@@ -186,4 +189,58 @@ public class AiAssistantService
 
     public Task<AiBriefingSendResult> SendBriefingNowAsync()
         => _api.PostAsync<AiBriefingSendResult>("api/ai/briefing/send-now", new { });
+
+    public Task<AiFeedbackSubmitResult> SubmitFeedbackAsync(int messageId, int rating, string? reason, string? comment)
+        => _api.PostAsync<AiFeedbackSubmitResult>("api/ai/feedback/submit",
+            new { messageId, rating, reason, comment });
+
+    public Task<AiFeedbackStats> GetFeedbackStatsAsync(int days = 14)
+        => _api.GetAsync<AiFeedbackStats>($"api/ai/feedback/stats?days={days}");
+
+    public Task<List<AiFeedbackItem>> GetFeedbackListAsync(int? rating, int skip, int take)
+        => _api.GetAsync<List<AiFeedbackItem>>(
+            $"api/ai/feedback/list?skip={skip}&take={take}" + (rating == null ? "" : $"&rating={rating}"));
+}
+
+public class AiFeedbackSubmitResult
+{
+    public bool Removed { get; set; }
+}
+
+public class AiFeedbackStats
+{
+    public int Total { get; set; }
+    public int Up { get; set; }
+    public int Down { get; set; }
+    public double? SatisfactionPct { get; set; }
+    public List<AiFeedbackCount> ByReason { get; set; } = new();
+    public List<AiFeedbackDay> ByDay { get; set; } = new();
+    public List<AiFeedbackCount> TopToolsDown { get; set; } = new();
+}
+
+public class AiFeedbackCount
+{
+    public string Key { get; set; } = "";
+    public int Count { get; set; }
+}
+
+public class AiFeedbackDay
+{
+    public string Day { get; set; } = "";
+    public int Up { get; set; }
+    public int Down { get; set; }
+}
+
+public class AiFeedbackItem
+{
+    public int Id { get; set; }
+    public int MessageId { get; set; }
+    public string User { get; set; } = "";
+    public int Rating { get; set; }
+    public string? Reason { get; set; }
+    public string? Comment { get; set; }
+    public List<string> Tools { get; set; } = new();
+    public bool UsedFallback { get; set; }
+    public string Excerpt { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
 }

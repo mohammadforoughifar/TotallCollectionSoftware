@@ -2736,3 +2736,39 @@ public class DeleteAlertTool : IAiTool
         return JsonSerializer.Serialize(new { deleted = id, message = "قانون هشدار حذف شد. ✅" });
     }
 }
+
+// ---------------- بازخورد پاسخ‌ها (§۲۴) ----------------
+
+public class FeedbackStatsTool : IAiTool
+{
+    public string Name => "feedback_stats";
+    public string Description => "آمار رضایت کاربران از پاسخ‌های دستیار (فقط مدیر سیستم): تعداد آرا، درصد رضایت، دلیل‌های نارضایتی، ابزارهای دخیل در پاسخ‌های ضعیف. days اختیاری (پیش‌فرض ۱۴).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            days = new { type = "integer", description = "بازه روز (۱ تا ۹۰، پیش‌فرض ۱۴)" },
+        },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        if (!ctx.IsAdmin)
+            return JsonSerializer.Serialize(new { error = "forbidden", message = "آمار بازخورد فقط برای مدیر سیستم است." });
+        var svc = ctx.Services.GetRequiredService<AiFeedbackService>();
+        var st = await svc.StatsAsync(AiToolArgs.GetInt(args, "days") ?? 14, ctx.CancellationToken);
+        if (st.Total == 0)
+            return JsonSerializer.Serialize(new { message = "هنوز رأیی ثبت نشده است." });
+        return JsonSerializer.Serialize(new
+        {
+            total = st.Total,
+            up = st.Up,
+            down = st.Down,
+            satisfaction_pct = st.SatisfactionPct,
+            by_reason = st.ByReason.Select(r => new { reason = r.Key, count = r.Count }),
+            top_tools_down = st.TopToolsDown.Select(t => new { tool = t.Key, count = t.Count }),
+            hint = "فهرست پاسخ‌های ضعیف در صفحه «بازبینی بازخوردها» (/ai-feedback).",
+        });
+    }
+}

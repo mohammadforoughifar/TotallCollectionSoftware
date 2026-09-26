@@ -21,6 +21,8 @@ public class AiChatRequest
 public class AiChatResponse
 {
     public int ConversationId { get; set; }
+    /// <summary>شناسه پیام دستیار (برای امتیازدهی؛ ۰ یعنی ذخیره نشده).</summary>
+    public int MessageId { get; set; }
     public string Reply { get; set; } = "";
     public bool UsedFallback { get; set; }
     public List<string> ToolsUsed { get; set; } = new();
@@ -50,6 +52,9 @@ public class AiConversationDto
 public class AiMessageDto
 {
     public string Role { get; set; } = "user";
+    public int Id { get; set; }
+    /// <summary>امتیاز من به این پیام (۱/۱-؛ null یعنی بی‌نظر).</summary>
+    public int? MyRating { get; set; }
     public string Content { get; set; } = "";
     public bool UsedFallback { get; set; }
     public DateTime CreatedAtUtc { get; set; }

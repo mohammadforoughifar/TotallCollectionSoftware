@@ -79,6 +79,31 @@
                                     <span class="ai-offline-badge">⚡ پاسخ آفلاین</span>
                                 }
                             </div>
+                            @if (m.Id > 0)
+                            {
+                                <div class="ai-rate">
+                                    <button class="ai-rate-btn @(m.MyRating == 1 ? "on-up" : "")" title="پاسخ خوب بود" disabled="@rateBusy" @onclick="() => Rate(m, 1)">👍</button>
+                                    <button class="ai-rate-btn @(m.MyRating == -1 ? "on-down" : "")" title="پاسخ ضعیف بود" disabled="@rateBusy" @onclick="() => AskDislike(m)">👎</button>
+                                </div>
+                            }
+                            @if (dislikeFor == m.Id && m.Id > 0)
+                            {
+                                <div class="ai-dislike">
+                                    <div class="ai-dislike-title">مشکل چی بود؟</div>
+                                    <div class="ai-dislike-reasons">
+                                        @foreach (var r in DislikeReasons)
+                                        {
+                                            var rr = r;
+                                            <button class="ai-chip @(dislikeReason == rr ? "sel" : "")" @onclick="() => dislikeReason = rr">@rr</button>
+                                        }
+                                    </div>
+                                    <input class="ai-dislike-comment" placeholder="توضیح بیشتر (اختیاری)..." value="@dislikeComment" @oninput="(e) => dislikeComment = e.Value?.ToString() ?? \"\"" />
+                                    <div class="ai-dislike-actions">
+                                        <button class="btn btn-sm btn-primary" disabled="@rateBusy" @onclick="() => Rate(m, -1)">ثبت</button>
+                                        <button class="btn btn-sm btn-link" disabled="@rateBusy" @onclick="CancelDislike">انصراف</button>
+                                    </div>
+                                </div>
+                            }
                             @if (m.Attachments.Count > 0)
                             {
                                 <div style="margin-top:.35rem;display:flex;gap:.35rem;flex-wrap:wrap">
@@ -170,6 +195,17 @@
     .ai-msg .ai-list { margin: .35rem 0; padding-right: 1.2rem; }
     .ai-msg .ai-gap { height: .45rem; }
     .ai-link { color: #4f46e5; font-weight: 600; text-decoration: none; border-bottom: 1px dashed #4f46e5; }
+    .ai-rate { display: flex; gap: .3rem; margin-top: .3rem; }
+    .ai-rate-btn { border: 1px solid #e2e8f0; background: #f8fafc; border-radius: .5rem; padding: .1rem .5rem; cursor: pointer; font-size: .9rem; filter: grayscale(1); opacity: .6; }
+    .ai-rate-btn:hover { opacity: 1; filter: none; background: #eef2ff; }
+    .ai-rate-btn.on-up { filter: none; opacity: 1; border-color: #22c55e; background: #f0fdf4; }
+    .ai-rate-btn.on-down { filter: none; opacity: 1; border-color: #ef4444; background: #fef2f2; }
+    .ai-dislike { margin-top: .4rem; border: 1px dashed #cbd5e1; border-radius: .6rem; padding: .5rem .6rem; background: #f8fafc; }
+    .ai-dislike-title { font-size: .8rem; color: #64748b; margin-bottom: .35rem; }
+    .ai-dislike-reasons { display: flex; gap: .3rem; flex-wrap: wrap; margin-bottom: .4rem; }
+    .ai-dislike-reasons .ai-chip.sel { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+    .ai-dislike-comment { width: 100%; border: 1px solid #cbd5e1; border-radius: .5rem; padding: .3rem .5rem; font-size: .82rem; }
+    .ai-dislike-actions { display: flex; gap: .4rem; margin-top: .4rem; align-items: center; }
     @@media (max-width: 767.98px) { .ai-page { flex-direction: column; height: auto; } .ai-side { width: 100%; max-height: 220px; } .ai-main-body { min-height: 380px; } }
 </style>
 
@@ -312,7 +348,7 @@
         {
             var result = await Ai.ChatAsync(conversationId, text);
             conversationId = result.ConversationId;
-            messages.Add(new AiChatMessage { Role = "assistant", Content = result.Reply, UsedFallback = result.UsedFallback, Attachments = result.Attachments });
+            messages.Add(new AiChatMessage { Id = result.MessageId, Role = "assistant", Content = result.Reply, UsedFallback = result.UsedFallback, Attachments = result.Attachments });
             if (wasFirst)
             {
                 try { conversations = await Ai.GetConversationsAsync(); } catch { }
@@ -332,6 +368,12 @@
 
     private bool dlBusy;
 
+    private bool rateBusy;
+    private int? dislikeFor;
+    private string? dislikeReason;
+    private string dislikeComment = "";
+    private static readonly string[] DislikeReasons = { "اشتباه بود", "ناقص بود", "نامرتبط بود", "دیر جواب داد" };
+
     private async Task DownloadReport(AiChatAttachment a)
     {
         if (dlBusy) return;
@@ -343,6 +385,38 @@
         }
         catch (Exception ex) { error = ex.Message; }
         finally { dlBusy = false; }
+    }
+
+    private void AskDislike(AiChatMessage m)
+    {
+        if (m.Id <= 0 || rateBusy) return;
+        if (m.MyRating == -1) { _ = Rate(m, -1); return; } // رأی دوباره = پس‌گرفتن
+        dislikeFor = dislikeFor == m.Id ? null : m.Id;
+        dislikeReason = null;
+        dislikeComment = "";
+    }
+
+    private void CancelDislike()
+    {
+        dislikeFor = null;
+        dislikeReason = null;
+        dislikeComment = "";
+    }
+
+    private async Task Rate(AiChatMessage m, int rating)
+    {
+        if (m.Id <= 0 || rateBusy) return;
+        rateBusy = true;
+        try
+        {
+            var res = await Ai.SubmitFeedbackAsync(m.Id, rating,
+                rating == -1 ? dislikeReason : null,
+                rating == -1 ? dislikeComment : null);
+            m.MyRating = res.Removed ? null : rating;
+            CancelDislike();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { rateBusy = false; }
     }
 
     private async Task ScrollAsync()

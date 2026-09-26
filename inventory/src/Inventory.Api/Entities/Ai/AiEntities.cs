@@ -235,3 +235,27 @@ public class AiAlertRule
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 }
+
+/// <summary>امتیاز کاربر به یک پاسخ دستیار (§۲۴).</summary>
+public class AiFeedback
+{
+    public int Id { get; set; }
+
+    public int MessageId { get; set; }
+
+    public int ConversationId { get; set; }
+
+    public int UserId { get; set; }
+
+    /// <summary>امتیاز: +1 پسندیدم / -1 نپسندیدم.</summary>
+    public int Rating { get; set; }
+
+    /// <summary>دلیل نارضایتی (یکی از گزینه‌های ثابت) — فقط برای ۱-.</summary>
+    [MaxLength(30)] public string? Reason { get; set; }
+
+    [MaxLength(500)] public string? Comment { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public DateTime? UpdatedAt { get; set; }
+}

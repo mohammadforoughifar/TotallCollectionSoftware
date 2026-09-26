@@ -9,6 +9,12 @@
             <i class="bi bi-robot"></i><span>فروغ آریا 🤖</span>
         </NavLink>
     }
+    @if (Auth.IsAdmin)
+    {
+        <NavLink class="nav-link" href="ai-feedback" @onclick="NotifyClose">
+            <i class="bi bi-hand-thumbs-up"></i><span>بازبینی بازخوردها</span>
+        </NavLink>
+    }
 
     @* ============ پیام‌رسان سازمانی (ماژول مستقل) ============ *@
     @if (Auth.CanSee("Chat"))

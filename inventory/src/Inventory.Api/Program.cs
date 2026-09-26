@@ -318,6 +318,7 @@ builder.Services.AddScoped<AiReminderService>();
 builder.Services.AddScoped<AiScheduleService>();
 builder.Services.AddScoped<AiSearchService>();
 builder.Services.AddScoped<AiAlertRuleService>();
+builder.Services.AddScoped<AiFeedbackService>();
 builder.Services.AddScoped<AiAlertsService>();
 builder.Services.AddScoped<AiActionService>();
 // ابزارهای دستیار
@@ -374,6 +375,7 @@ builder.Services.AddScoped<IAiTool, ReindexDocsTool>();
 builder.Services.AddScoped<IAiTool, CreateAlertTool>();
 builder.Services.AddScoped<IAiTool, MyAlertRulesTool>();
 builder.Services.AddScoped<IAiTool, DeleteAlertTool>();
+builder.Services.AddScoped<IAiTool, FeedbackStatsTool>();
 builder.Services.AddScoped<AiReportService>();
 builder.Services.AddScoped<AiDataExplorer>();
 // پاسخ‌گویی در پیام‌رسان داخلی

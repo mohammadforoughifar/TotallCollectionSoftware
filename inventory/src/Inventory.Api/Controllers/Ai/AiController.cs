@@ -22,6 +22,7 @@ public class AiController : RbacControllerBase
     private readonly IAiChatClient _chat;
     private readonly AiBriefingService _briefing;
     private readonly AiDigestService _digest;
+    private readonly AiFeedbackService _feedback;
     private readonly AiReportService _reports;
     private readonly IMessengerService _messenger;
     private readonly AiOptions _options;
@@ -34,6 +35,7 @@ public class AiController : RbacControllerBase
         IAiChatClient chat,
         AiBriefingService briefing,
         AiDigestService digest,
+        AiFeedbackService feedback,
         AiReportService reports,
         IMessengerService messenger,
         IOptions<AiOptions> options)
@@ -45,6 +47,7 @@ public class AiController : RbacControllerBase
         _chat = chat;
         _briefing = briefing;
         _digest = digest;
+        _feedback = feedback;
         _reports = reports;
         _messenger = messenger;
         _options = options.Value;
@@ -241,6 +244,33 @@ public class AiController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
         var sent = await _digest.SendToAllAsync(_messenger, ct);
         return Ok(new { sent });
+    }
+
+    /// <summary>ثبت امتیاز به یک پاسخ دستیار (§۲۴).</summary>
+    [HttpPost("feedback/submit")]
+    public async Task<IActionResult> FeedbackSubmit([FromBody] AiFeedbackSubmitRequest req, CancellationToken ct)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
+        if (req == null || req.MessageId <= 0) return BadRequest("شناسه پیام لازم است.");
+        var (ok, error, removed) = await _feedback.SubmitAsync(MyUserId, req.MessageId, req.Rating, req.Reason, req.Comment, ct);
+        if (!ok) return BadRequest(error);
+        return Ok(new { removed });
+    }
+
+    /// <summary>آمار بازخوردها (مدیر).</summary>
+    [HttpGet("feedback/stats")]
+    public async Task<IActionResult> FeedbackStats([FromQuery] int days = 14, CancellationToken ct = default)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
+        return Ok(await _feedback.StatsAsync(days, ct));
+    }
+
+    /// <summary>فهرست بازخوردها برای بازبینی (مدیر).</summary>
+    [HttpGet("feedback/list")]
+    public async Task<IActionResult> FeedbackList([FromQuery] int? rating, [FromQuery] int skip = 0, [FromQuery] int take = 20, CancellationToken ct = default)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Manage") is { } forbidden) return forbidden;
+        return Ok(await _feedback.ListAsync(rating, skip, take, ct));
     }
 
     private async Task<string> MyDisplayNameAsync(CancellationToken ct)

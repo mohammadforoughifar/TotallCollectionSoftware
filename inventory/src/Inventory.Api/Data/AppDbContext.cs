@@ -64,6 +64,7 @@ public class AppDbContext : DbContext
     public DbSet<AiReportSchedule> AiReportSchedules => Set<AiReportSchedule>();
     public DbSet<AiDocEmbedding> AiDocEmbeddings => Set<AiDocEmbedding>();
     public DbSet<AiAlertRule> AiAlertRules => Set<AiAlertRule>();
+    public DbSet<AiFeedback> AiFeedbacks => Set<AiFeedback>();
 
     // ================== دستور کار ==================
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();

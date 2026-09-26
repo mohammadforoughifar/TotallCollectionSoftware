@@ -37,19 +37,21 @@ public class AiConversationService
         return conv;
     }
 
-    public async Task AddMessageAsync(int conversationId, string role, string content, string? toolsUsed = null, bool usedFallback = false)
+    public async Task<int> AddMessageAsync(int conversationId, string role, string content, string? toolsUsed = null, bool usedFallback = false)
     {
-        _db.AiMessages.Add(new AiMessage
+        var msg = new AiMessage
         {
             ConversationId = conversationId,
             Role = role,
             Content = content ?? "",
             ToolsUsed = toolsUsed,
             UsedFallback = usedFallback,
-        });
+        };
+        _db.AiMessages.Add(msg);
         await _db.AiConversations.Where(c => c.Id == conversationId)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.LastMessageAtUtc, DateTime.UtcNow));
         await _db.SaveChangesAsync();
+        return msg.Id;
     }
 
     /// <summary>عنوان خودکار گفتگو از روی اولین پیام کاربر.</summary>
@@ -84,25 +86,30 @@ public class AiConversationService
         var conv = await _db.AiConversations.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == id && c.UserId == userId);
         if (conv == null) return null;
+        var ratings = await _db.AiFeedbacks.AsNoTracking()
+            .Where(f => f.ConversationId == id && f.UserId == userId)
+            .ToDictionaryAsync(f => f.MessageId, f => f.Rating);
         var messages = await _db.AiMessages.AsNoTracking()
             .Where(m => m.ConversationId == id)
             .OrderBy(m => m.Id)
             .Take(200)
-            .Select(m => new AiMessageDto
-            {
-                Role = m.Role,
-                Content = m.Content,
-                UsedFallback = m.UsedFallback,
-                CreatedAtUtc = m.CreatedAtUtc,
-            })
             .ToListAsync();
+        var dtos = messages.Select(m => new AiMessageDto
+        {
+            Id = m.Id,
+            Role = m.Role,
+            Content = m.Content,
+            UsedFallback = m.UsedFallback,
+            CreatedAtUtc = m.CreatedAtUtc,
+            MyRating = ratings.TryGetValue(m.Id, out var r) ? r : null,
+        }).ToList();
         return new AiConversationDto
         {
             Id = conv.Id,
             Title = conv.Title,
             Channel = conv.Channel,
             LastMessageAtUtc = conv.LastMessageAtUtc,
-            Messages = messages,
+            Messages = dtos,
         };
     }
 
