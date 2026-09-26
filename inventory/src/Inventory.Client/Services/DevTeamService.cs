@@ -26,12 +26,18 @@ public interface IDevTeamClient
     Task<DtTaskDetailDto?> GetTaskAsync(int id);
     Task<DtTaskDetailDto> CreateTaskAsync(DtTaskUpsertDto dto);
     Task<DtTaskDetailDto> UpdateTaskAsync(int id, DtTaskUpsertDto dto);
-    Task MoveTaskAsync(int id, int statusId);
+    Task MoveTaskAsync(int id, int statusId, int? beforeTaskId = null);
     Task DeleteTaskAsync(int id);
     Task<DtTaskCommentDto> AddCommentAsync(int taskId, string text);
     Task<DtTaskGitLinkDto> AddGitLinkAsync(int taskId, DtTaskGitLinkCreateDto dto);
     Task DeleteGitLinkAsync(int linkId);
     Task<DtTimeEntryDto> AddTimeAsync(int taskId, DtTimeEntryCreateDto dto);
+
+    Task ReorderSubTasksAsync(int parentId, IReadOnlyList<int> orderedIds);
+    Task<DtTimerStateDto> StartTimerAsync(int taskId);
+    Task<DtTimerStateDto> StopTimerAsync(int taskId, string? note = null);
+    Task<DtTimerStateDto?> GetTimerAsync(int taskId);
+    Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null);
 
     Task<List<DtProblemDto>> QueryProblemsAsync(string? severity = null, string? status = null, int? moduleId = null, int? taskId = null);
     Task<DtProblemDto> CreateProblemAsync(DtProblemUpsertDto dto);
@@ -181,10 +187,42 @@ public class DevTeamClient : IDevTeamClient
         return (await res.Content.ReadFromJsonAsync<DtTaskDetailDto>())!;
     }
 
-    public async Task MoveTaskAsync(int id, int statusId)
+    public async Task MoveTaskAsync(int id, int statusId, int? beforeTaskId = null)
     {
-        var res = await _http.PostAsJsonAsync($"{Base}/tasks/{id}/move", new DtTaskMoveDto { StatusId = statusId });
+        var res = await _http.PostAsJsonAsync($"{Base}/tasks/{id}/move",
+            new DtTaskMoveDto { StatusId = statusId, BeforeTaskId = beforeTaskId });
         await EnsureOk(res);
+    }
+
+    public async Task ReorderSubTasksAsync(int parentId, IReadOnlyList<int> orderedIds)
+    {
+        var res = await _http.PostAsJsonAsync($"{Base}/tasks/{parentId}/subtasks/reorder",
+            new DtReorderSubTasksDto { OrderedIds = orderedIds.ToList() });
+        await EnsureOk(res);
+    }
+
+    public async Task<DtTimerStateDto> StartTimerAsync(int taskId)
+    {
+        var res = await _http.PostAsync($"{Base}/tasks/{taskId}/timer/start", null);
+        await EnsureOk(res);
+        return (await res.Content.ReadFromJsonAsync<DtTimerStateDto>())!;
+    }
+
+    public async Task<DtTimerStateDto> StopTimerAsync(int taskId, string? note = null)
+    {
+        var res = await _http.PostAsJsonAsync($"{Base}/tasks/{taskId}/timer/stop",
+            new DtTimeEntryCreateDto { Hours = 0, Note = note });
+        await EnsureOk(res);
+        return (await res.Content.ReadFromJsonAsync<DtTimerStateDto>())!;
+    }
+
+    public async Task<DtTimerStateDto?> GetTimerAsync(int taskId) =>
+        await _http.GetFromJsonAsync<DtTimerStateDto>($"{Base}/tasks/{taskId}/timer");
+
+    public async Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null)
+    {
+        var url = sprintId is int s ? $"{Base}/burndown?sprintId={s}" : $"{Base}/burndown";
+        return (await _http.GetFromJsonAsync<DtBurndownDto>(url))!;
     }
 
     public async Task DeleteTaskAsync(int id)

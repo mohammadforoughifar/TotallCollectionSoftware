@@ -78,6 +78,7 @@ public static class DbInitializer
                 await DevTeamSchemaV1.EnsureAsync(db);
                 await DevTeamSchemaV2.EnsureAsync(db);
                 await DevTeamSchemaV3.EnsureAsync(db);
+                await DevTeamSchemaV4.EnsureAsync(db);
 
                 // نامه وارده — جدول IncomingLetters در مایگریشن SquashedInitial نیست؛
                 // بدون این، SQL Server خطای «Invalid object name 'IncomingLetters'» می‌دهد.

@@ -1,5 +1,6 @@
 @namespace Inventory.Client.Pages
 @page "/dev-team"
+@implements IDisposable
 @using Inventory.Shared
 @using Inventory.Shared.Dtos
 @inject IDevTeamClient Api
@@ -111,19 +112,41 @@
             <div class="dt-board">
                 @foreach (var st in lookups.Statuses.Where(s => s.IsActive).OrderBy(s => s.SortOrder))
                 {
-                    var col = boardTasks.Where(t => t.StatusId == st.Id).ToList();
-                    <div class="dt-col">
+                    var col = boardTasks.Where(t => t.StatusId == st.Id)
+                        .OrderBy(x => x.SortOrder).ThenByDescending(x => x.Priority).ThenBy(x => x.DueAt)
+                        .ToList();
+                    <div class="dt-col @(dragOverStatusId == st.Id ? "dt-col-dragover" : "")"
+                         @ondragover="OnColDragOver"
+                         @ondragover:preventDefault
+                         @ondragenter="() => OnColDragEnter(st.Id)"
+                         @ondragleave="OnColDragLeave"
+                         @ondrop="() => OnColDrop(st.Id)"
+                         @ondrop:preventDefault>
                         <div class="dt-col-head" style="border-top-color:@st.Color">
                             <span class="dt-col-dot" style="background:@st.Color"></span>
                             <strong>@st.NameFa</strong>
                             <span class="badge rounded-pill text-bg-light">@col.Count</span>
                         </div>
                         <div class="dt-col-body">
-                            @foreach (var t in col.OrderByDescending(x => x.Priority).ThenBy(x => x.DueAt))
+                            @foreach (var t in col)
                             {
-                                <div class="dt-card" @onclick="() => OpenTask(t.Id)">
+                                <div class="dt-card @(dragTaskId == t.Id ? "dt-card-dragging" : "") @(t.TimerRunning ? "dt-card-timer" : "")"
+                                     draggable="@(access.CanUpdate ? "true" : "false")"
+                                     @ondragstart="() => OnCardDragStart(t)"
+                                     @ondragend="OnCardDragEnd"
+                                     @ondragover="OnCardDragOver"
+                                     @ondragover:preventDefault
+                                     @ondrop="() => OnCardDropOn(t)"
+                                     @ondrop:preventDefault
+                                     @onclick="() => OpenTask(t.Id)">
                                     <div class="dt-card-top">
-                                        <span class="dt-num">@t.Number</span>
+                                        <span class="dt-num">
+                                            @if (access.CanUpdate)
+                                            {
+                                                <i class="bi bi-grip-vertical text-muted dt-grip" title="کشیدن"></i>
+                                            }
+                                            @t.Number
+                                        </span>
                                         <span class="dt-pri dt-pri-@t.Priority">@t.PriorityFa</span>
                                     </div>
                                     <div class="dt-card-title">@t.Title</div>
@@ -133,6 +156,10 @@
                                             <span class="dt-mod" style="background:@(t.ModuleColor)22;color:@t.ModuleColor">@t.ModuleName</span>
                                         }
                                         <span class="dt-type">@t.TypeFa</span>
+                                        @if (t.TimerRunning)
+                                        {
+                                            <span class="badge text-bg-danger"><i class="bi bi-stopwatch"></i> تایمر</span>
+                                        }
                                     </div>
                                     <div class="dt-card-foot">
                                         <span class="text-muted fs-8">@(t.AssigneeName ?? "—")</span>
@@ -187,7 +214,7 @@
                             }
                             @if (col.Count == 0)
                             {
-                                <div class="dt-empty">خالی</div>
+                                <div class="dt-empty">خالی — کارت را اینجا رها کنید</div>
                             }
                         </div>
                     </div>
@@ -491,7 +518,94 @@
         }
 
         @* ========== داشبورد ========== *@
+        else if (tab == "burndown")
+        {
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                <label class="form-label mb-0">اسپرینت:</label>
+                <select class="form-select form-select-sm" style="max-width:240px" @bind="burndownSprintId" @bind:after="LoadBurndown">
+                    <option value="0">اسپرینت فعال</option>
+                    @foreach (var s in lookups.Sprints)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="LoadBurndown"><i class="bi bi-arrow-clockwise"></i></button>
+            </div>
+            @if (burndown is null)
+            {
+                <div class="text-muted py-4 text-center">در حال بارگذاری…</div>
+            }
+            else
+            {
+                <div class="row g-3 mb-3">
+                    <div class="col-6 col-md-3"><div class="dt-kpi"><div class="dt-kpi-v">@burndown.TotalTasks</div><div class="dt-kpi-l">تسک</div></div></div>
+                    <div class="col-6 col-md-3"><div class="dt-kpi"><div class="dt-kpi-v">@burndown.DoneTasks</div><div class="dt-kpi-l">انجام‌شده</div></div></div>
+                    <div class="col-6 col-md-3"><div class="dt-kpi"><div class="dt-kpi-v">@burndown.ProgressPct.ToString("0.#")%</div><div class="dt-kpi-l">پیشرفت</div></div></div>
+                    <div class="col-6 col-md-3"><div class="dt-kpi"><div class="dt-kpi-v">@burndown.TotalEstimateHours</div><div class="dt-kpi-l">تخمین (س/واحد)</div></div></div>
+                </div>
+                <div class="card border-0 shadow-sm">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <h6 class="mb-0">@((burndown.SprintName) ?? "بدون اسپرینت")</h6>
+                            <span class="text-muted fs-8">
+                                @(burndown.StartDate is DateTime a ? PersianDate.ToShort(a) : "—")
+                                —
+                                @(burndown.EndDate is DateTime b ? PersianDate.ToShort(b) : "—")
+                            </span>
+                        </div>
+                        <div class="dt-burn-legend fs-8 mb-2">
+                            <span><i class="bi bi-dash-lg" style="color:#94a3b8"></i> ایده‌آل</span>
+                            <span class="ms-3"><i class="bi bi-dash-lg" style="color:#4f46e5"></i> واقعی</span>
+                        </div>
+                        <div class="dt-burn-wrap">
+                            @{
+                                var pts = burndown.Points;
+                                var maxY = pts.Count == 0 ? 1m : Math.Max(0.01m, pts.Max(p => Math.Max(p.IdealRemaining, p.ActualRemaining)));
+                                string Poly(bool ideal)
+                                {
+                                    if (pts.Count == 0) return "";
+                                    var n = pts.Count;
+                                    var sb = new System.Text.StringBuilder();
+                                    for (var i = 0; i < n; i++)
+                                    {
+                                        var x = n == 1 ? 0 : (100.0 * i / (n - 1));
+                                        var val = ideal ? pts[i].IdealRemaining : pts[i].ActualRemaining;
+                                        var y = 100.0 - (double)(val / maxY * 100m);
+                                        if (y < 0) y = 0; if (y > 100) y = 100;
+                                        sb.Append(i == 0 ? "" : " ");
+                                        sb.Append($"{x.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)},{y.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}");
+                                    }
+                                    return sb.ToString();
+                                }
+                            }
+                            <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="dt-burn-svg">
+                                <polyline fill="none" stroke="#cbd5e1" stroke-width="0.6" stroke-dasharray="2 1.5" points="@Poly(true)" />
+                                <polyline fill="none" stroke="#4f46e5" stroke-width="1.2" points="@Poly(false)" />
+                            </svg>
+                        </div>
+                        <div class="table-responsive mt-3">
+                            <table class="table table-sm dt-table mb-0">
+                                <thead><tr><th>تاریخ</th><th>ایده‌آل</th><th>واقعی</th><th>انجام‌شدهٔ تجمعی</th></tr></thead>
+                                <tbody>
+                                    @foreach (var pt in pts)
+                                    {
+                                        <tr>
+                                            <td>@PersianDate.ToShort(pt.Date)</td>
+                                            <td>@pt.IdealRemaining</td>
+                                            <td>@pt.ActualRemaining</td>
+                                            <td>@pt.DoneTasksCumulative</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+
         else if (tab == "dashboard" && dash is not null)
+
         {
             <div class="row g-3 mb-3">
                 <div class="col-6 col-md-3"><div class="dt-kpi"><div class="dt-kpi-v">@dash.TotalOpenTasks</div><div class="dt-kpi-l">تسک باز</div></div></div>
@@ -852,9 +966,20 @@
                                         <div class="progress-bar" style="width:@(spct)%"></div>
                                     </div>
                                 }
-                                @foreach (var st in taskDetail.SubTasks)
+                                @foreach (var st in taskDetail.SubTasks.OrderBy(x => x.SortOrder).ThenBy(x => x.Id))
                                 {
-                                    <div class="d-flex align-items-center gap-2 border-bottom py-1 fs-8" style="cursor:pointer" @onclick="() => OpenTask(st.Id)">
+                                    <div class="d-flex align-items-center gap-2 border-bottom py-1 fs-8 dt-sub-row @(subDragId == st.Id ? "dt-sub-dragging" : "")"
+                                         draggable="@(access.CanUpdate ? "true" : "false")"
+                                         @ondragstart="() => OnSubDragStart(st.Id)"
+                                         @ondragend="OnSubDragEnd"
+                                         @ondragover:preventDefault
+                                         @ondrop="() => OnSubDrop(st.Id)"
+                                         @ondrop:preventDefault
+                                         style="cursor:pointer" @onclick="() => OpenTask(st.Id)">
+                                        @if (access.CanUpdate)
+                                        {
+                                            <i class="bi bi-grip-vertical text-muted" @onclick:stopPropagation="true"></i>
+                                        }
                                         <span class="dt-col-dot" style="background:@st.StatusColor;display:inline-block;width:8px;height:8px;border-radius:50%"></span>
                                         <code>@st.Number</code>
                                         <span class="flex-grow-1">@st.Title</span>
@@ -968,16 +1093,34 @@
                             <div class="col-md-6">
                                 <h6><i class="bi bi-clock"></i> زمان</h6>
                                 <div class="fs-8 mb-2">صرف‌شده: <b>@taskDetail.SpentHours</b> س از @(taskDetail.EstimateHours?.ToString() ?? "—")</div>
+                                @if (access.CanUpdate || access.CanCreate)
+                                {
+                                    <div class="d-flex flex-wrap align-items-center gap-2 mb-2 p-2 rounded border @(taskDetail.TimerRunning ? "border-danger bg-danger-subtle" : "bg-light")">
+                                        @if (taskDetail.TimerRunning)
+                                        {
+                                            <span class="badge text-bg-danger"><i class="bi bi-stopwatch"></i> در حال اجرا</span>
+                                            <code class="fs-6">@FormatElapsed(timerDisplaySeconds)</code>
+                                            <button class="btn btn-sm btn-danger" disabled="@saving" @onclick="StopTimer">توقف و ثبت</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-success" disabled="@saving" @onclick="StartTimer">
+                                                <i class="bi bi-play-fill"></i> شروع تایمر
+                                            </button>
+                                            <span class="text-muted fs-8">زمان به‌صورت خودکار هنگام توقف ثبت می‌شود</span>
+                                        }
+                                    </div>
+                                }
                                 @foreach (var e in taskDetail.TimeEntries.Take(5))
                                 {
-                                    <div class="fs-8">@e.UserName — @e.Hours س — @PersianDate.ToShort(e.WorkDate)</div>
+                                    <div class="fs-8">@e.UserName — @e.Hours س — @PersianDate.ToShort(e.WorkDate) @(e.Note)</div>
                                 }
                                 @if (access.CanUpdate || access.CanCreate)
                                 {
                                     <div class="input-group input-group-sm mt-2">
                                         <input type="number" step="0.25" min="0.25" max="24" class="form-control" @bind="timeHours" placeholder="ساعت" />
                                         <input class="form-control" @bind="timeNote" placeholder="یادداشت" />
-                                        <button class="btn btn-outline-primary" @onclick="AddTime">ثبت</button>
+                                        <button class="btn btn-outline-primary" @onclick="AddTime">ثبت دستی</button>
                                     </div>
                                 }
 
@@ -1232,6 +1375,14 @@
     .dt-clamp { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
     .dt-table td, .dt-table th { font-size:.875rem; }
     .fs-8 { font-size:.78rem; }
+    .dt-col-dragover { outline:2px dashed #4f46e5; outline-offset:-2px; background:#eef2ff; }
+    .dt-card-dragging { opacity:.45; }
+    .dt-card-timer { border-color:#fca5a5; box-shadow:0 0 0 1px #fecaca; }
+    .dt-grip { cursor:grab; margin-left:.15rem; }
+    .dt-sub-dragging { opacity:.5; background:#eef2ff; }
+    .dt-sub-row { user-select:none; }
+    .dt-burn-wrap { width:100%; height:220px; background:linear-gradient(#fff,#f8fafc); border:1px solid #e2e8f0; border-radius:.5rem; padding:.5rem; }
+    .dt-burn-svg { width:100%; height:100%; display:block; }
 </style>
 
 @code {
@@ -1242,6 +1393,7 @@
         ("problems", "مشکلات", "bi-bug"),
         ("modules", "ماژول‌ها", "bi-boxes"),
         ("sprints", "اسپرینت", "bi-calendar-range"),
+        ("burndown", "برن‌داون", "bi-graph-down"),
         ("dashboard", "داشبورد", "bi-speedometer2"),
         ("settings", "تنظیمات", "bi-gear"),
     };
@@ -1257,6 +1409,15 @@
     private List<DtModuleChangeDto> changes = new();
     private List<DtWorkflowStatusDto> allStatuses = new();
     private List<DtProductModuleDto> allModules = new();
+
+    // Phase3 — DnD / timer / burndown
+    private int? dragTaskId;
+    private int? dragOverStatusId;
+    private int? subDragId;
+    private DtBurndownDto? burndown;
+    private int burndownSprintId;
+    private int timerDisplaySeconds;
+    private System.Threading.Timer? timerUiClock;
 
     // filters
     private string fltQ = "";
@@ -1332,6 +1493,7 @@
     {
         tab = key;
         await LoadTabData();
+        if (key == "burndown") await LoadBurndown();
     }
 
     private async Task LoadTabData()
@@ -1439,15 +1601,141 @@
         await LoadTabData();
     }
 
-    private async Task MoveTask(int id, int statusId)
+    private async Task MoveTask(int id, int statusId, int? beforeTaskId = null)
     {
         try
         {
-            await Api.MoveTaskAsync(id, statusId);
-            Toast.Success("وضعیت عوض شد");
+            await Api.MoveTaskAsync(id, statusId, beforeTaskId);
+            Toast.Success(beforeTaskId is null && dragTaskId is null ? "وضعیت عوض شد" : "جابجا شد");
             await LoadTabData();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OnCardDragStart(DtTaskListItemDto t)
+    {
+        if (!access.CanUpdate) return;
+        dragTaskId = t.Id;
+    }
+    private void OnCardDragEnd()
+    {
+        dragTaskId = null;
+        dragOverStatusId = null;
+    }
+    private void OnColDragOver() { /* allow drop */ }
+    private void OnColDragEnter(int statusId) => dragOverStatusId = statusId;
+    private void OnColDragLeave() { /* keep highlight until drop/end */ }
+    private async Task OnColDrop(int statusId)
+    {
+        if (dragTaskId is not int tid || !access.CanUpdate) return;
+        var task = boardTasks.FirstOrDefault(x => x.Id == tid);
+        dragOverStatusId = null;
+        var movingId = tid;
+        dragTaskId = null;
+        if (task is null) return;
+        // drop on empty column / end → beforeTaskId null
+        if (task.StatusId == statusId) return; // same col empty area — no-op without target
+        await MoveTask(movingId, statusId, null);
+    }
+    private void OnCardDragOver() { }
+    private async Task OnCardDropOn(DtTaskListItemDto target)
+    {
+        if (dragTaskId is not int tid || !access.CanUpdate) return;
+        if (tid == target.Id) return;
+        var moving = boardTasks.FirstOrDefault(x => x.Id == tid);
+        dragTaskId = null;
+        dragOverStatusId = null;
+        if (moving is null) return;
+        await MoveTask(tid, target.StatusId, target.Id);
+    }
+
+    private void OnSubDragStart(int id) { if (access.CanUpdate) subDragId = id; }
+    private void OnSubDragEnd() => subDragId = null;
+    private async Task OnSubDrop(int targetId)
+    {
+        if (subDragId is not int sid || taskDetail is null || !access.CanUpdate) return;
+        if (sid == targetId) { subDragId = null; return; }
+        var list = taskDetail.SubTasks.OrderBy(x => x.SortOrder).ThenBy(x => x.Id).Select(x => x.Id).ToList();
+        if (!list.Contains(sid) || !list.Contains(targetId)) { subDragId = null; return; }
+        list.Remove(sid);
+        var idx = list.IndexOf(targetId);
+        list.Insert(idx, sid);
+        subDragId = null;
+        try
+        {
+            await Api.ReorderSubTasksAsync(taskDetail.Id, list);
+            taskDetail = await Api.GetTaskAsync(taskDetail.Id);
+            Toast.Success("ترتیب ساب‌تسک ذخیره شد");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task LoadBurndown()
+    {
+        try
+        {
+            burndown = await Api.GetBurndownAsync(burndownSprintId > 0 ? burndownSprintId : null);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); burndown = null; }
+    }
+
+    private static string FormatElapsed(int totalSec)
+    {
+        if (totalSec < 0) totalSec = 0;
+        var h = totalSec / 3600;
+        var m = (totalSec % 3600) / 60;
+        var s = totalSec % 60;
+        return h > 0 ? $"{h:00}:{m:00}:{s:00}" : $"{m:00}:{s:00}";
+    }
+
+    private void EnsureTimerClock()
+    {
+        timerUiClock ??= new System.Threading.Timer(async _ =>
+        {
+            if (taskDetail?.TimerRunning == true && taskDetail.TimerStartedAt is DateTime started)
+            {
+                timerDisplaySeconds = (int)Math.Max(0, (DateTime.Now - started).TotalSeconds);
+                try { await InvokeAsync(StateHasChanged); } catch { }
+            }
+        }, null, 0, 1000);
+    }
+
+    private async Task StartTimer()
+    {
+        if (editingTaskId is not int id) return;
+        saving = true;
+        try
+        {
+            var st = await Api.StartTimerAsync(id);
+            taskDetail = await Api.GetTaskAsync(id);
+            if (taskDetail is not null)
+            {
+                taskDetail.TimerRunning = st.Running;
+                taskDetail.TimerStartedAt = st.StartedAt;
+                timerDisplaySeconds = st.ElapsedSeconds;
+            }
+            EnsureTimerClock();
+            Toast.Success("تایمر شروع شد");
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task StopTimer()
+    {
+        if (editingTaskId is not int id) return;
+        saving = true;
+        try
+        {
+            var st = await Api.StopTimerAsync(id);
+            taskDetail = await Api.GetTaskAsync(id);
+            timerDisplaySeconds = 0;
+            Toast.Success(st.LastEntry is not null ? $"ثبت شد: {st.LastEntry.Hours} ساعت" : "تایمر متوقف شد");
+            await LoadTabData();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
     }
 
     private async Task DeleteTask(int id)
@@ -1503,6 +1791,12 @@
             taskFormAssigneeId = taskDetail.AssigneeUserId ?? 0;
             taskDueInput = taskDetail.DueAt is DateTime d ? PersianDate.ToInput(d) : "";
             gitKind = "Commit"; gitRef = ""; gitUrl = ""; commentText = ""; timeHours = 1; timeNote = "";
+            if (taskDetail.TimerRunning && taskDetail.TimerStartedAt is DateTime ts)
+            {
+                timerDisplaySeconds = (int)Math.Max(0, (DateTime.Now - ts).TotalSeconds);
+                EnsureTimerClock();
+            }
+            else timerDisplaySeconds = 0;
             showTaskModal = true;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1899,4 +2193,11 @@
     {
         "Active" => "text-bg-success", "Closed" => "text-bg-secondary", _ => "text-bg-primary"
     };
+
+    public void Dispose()
+    {
+        timerUiClock?.Dispose();
+        timerUiClock = null;
+    }
+
 }

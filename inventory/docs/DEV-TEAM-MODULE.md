@@ -113,13 +113,16 @@ API:
 - `DELETE /api/dev-team/dependencies/{id}`
 - `GET /api/dev-team/tasks/search?q=`
 
-### فاز ۳
+### فاز ۳ — پیاده‌شده
 
-- برد drag-and-drop واقعی
-- گزارش burndown
-- یکپارچگی با CI (بیلد شکست‌خورده → Problem)
-- تایمر زنده ثبت زمان
-- مرتب‌سازی drag ساب‌تسک‌ها
+- ✅ برد drag-and-drop واقعی (HTML5 DnD + دکمه جابجایی)
+- ✅ گزارش burndown (`GET /api/dev-team/burndown?sprintId=` + تب UI)
+- ✅ یکپارچگی CI → Problem  
+  - `POST /api/dev-team/hooks/ci` (generic)  
+  - `POST /api/dev-team/hooks/github-ci` (workflow_run / check_suite)  
+  - `POST /api/dev-team/hooks/gitlab-ci` (Pipeline Hook)
+- ✅ تایمر زنده ثبت زمان (`…/timer/start|stop`) — Schema V4: `TimerStartedAt`
+- ✅ مرتب‌سازی drag ساب‌تسک‌ها (`POST …/subtasks/reorder`)
 
 ## تمایز با «دستور کار»
 

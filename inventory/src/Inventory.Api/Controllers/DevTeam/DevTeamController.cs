@@ -213,8 +213,51 @@ public class DevTeamController : ControllerBase
     {
         await EnsureAsync(a => a.CanUpdate);
         var name = await DisplayNameAsync();
-        await _svc.MoveTaskAsync(id, dto.StatusId, MyUserId, name);
+        await _svc.MoveTaskAsync(id, dto.StatusId, MyUserId, name, dto.BeforeTaskId);
         return Ok(new { message = "وضعیت به‌روز شد" });
+    }
+
+    /// <summary>مرتب‌سازی ساب‌تسک‌های یک والد (فاز ۳).</summary>
+    [HttpPost("tasks/{id:int}/subtasks/reorder")]
+    public async Task<IActionResult> ReorderSubTasks(int id, [FromBody] DtReorderSubTasksDto dto)
+    {
+        await EnsureAsync(a => a.CanUpdate);
+        var name = await DisplayNameAsync();
+        await _svc.ReorderSubTasksAsync(id, dto.OrderedIds ?? new List<int>(), MyUserId, name);
+        return Ok(new { message = "ترتیب ساب‌تسک‌ها ذخیره شد" });
+    }
+
+    [HttpPost("tasks/{id:int}/timer/start")]
+    public async Task<ActionResult<DtTimerStateDto>> StartTimer(int id)
+    {
+        await EnsureAsync(a => a.CanUpdate || a.CanCreate);
+        var name = await DisplayNameAsync();
+        return Ok(await _svc.StartTimerAsync(id, MyUserId, name));
+    }
+
+    [HttpPost("tasks/{id:int}/timer/stop")]
+    public async Task<ActionResult<DtTimerStateDto>> StopTimer(int id, [FromBody] DtTimeEntryCreateDto? body = null)
+    {
+        await EnsureAsync(a => a.CanUpdate || a.CanCreate);
+        var name = await DisplayNameAsync();
+        return Ok(await _svc.StopTimerAsync(id, MyUserId, name, body?.Note));
+    }
+
+    [HttpGet("tasks/{id:int}/timer")]
+    public async Task<ActionResult<DtTimerStateDto>> GetTimer(int id)
+    {
+        await EnsureAsync(a => a.CanView);
+        var s = await _svc.GetTimerAsync(id);
+        if (s is null) return NotFound();
+        return Ok(s);
+    }
+
+    /// <summary>گزارش burndown اسپرینت (فاز ۳).</summary>
+    [HttpGet("burndown")]
+    public async Task<ActionResult<DtBurndownDto>> Burndown([FromQuery] int? sprintId = null)
+    {
+        await EnsureAsync(a => a.CanView);
+        return Ok(await _svc.GetBurndownAsync(sprintId));
     }
 
     [HttpDelete("tasks/{id:int}")]

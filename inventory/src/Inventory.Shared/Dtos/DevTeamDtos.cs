@@ -120,6 +120,14 @@ public class DtTaskListItemDto
 
     /// <summary>به‌خاطر وابستگی هنوز باز، منطقاً مسدود است</summary>
     public bool IsDependencyBlocked { get; set; }
+
+    /// <summary>ترتیب در ستون کانبان / بین خواهر-برادرها</summary>
+    public int SortOrder { get; set; }
+
+    /// <summary>تایمر زنده در حال اجراست</summary>
+    public bool TimerRunning { get; set; }
+    public DateTime? TimerStartedAt { get; set; }
+    public int? TimerStartedByUserId { get; set; }
 }
 
 public class DtTaskDetailDto : DtTaskListItemDto
@@ -186,6 +194,73 @@ public class DtDependencyCreateDto
 public class DtTaskMoveDto
 {
     public int StatusId { get; set; }
+    /// <summary>اختیاری — قرارگیری قبل از این تسک در ستون مقصد (null = انتهای ستون)</summary>
+    public int? BeforeTaskId { get; set; }
+}
+
+public class DtReorderSubTasksDto
+{
+    /// <summary>شناسه‌های فرزندان به ترتیب جدید (همهٔ خواهر/برادرهای همان والد)</summary>
+    public List<int> OrderedIds { get; set; } = new();
+}
+
+public class DtTimerStateDto
+{
+    public int TaskId { get; set; }
+    public bool Running { get; set; }
+    public DateTime? StartedAt { get; set; }
+    public int? StartedByUserId { get; set; }
+    public string? StartedByName { get; set; }
+    /// <summary>ثانیه‌های سپری‌شده از شروع (تقریبی)</summary>
+    public int ElapsedSeconds { get; set; }
+    public decimal SpentHours { get; set; }
+    public DtTimeEntryDto? LastEntry { get; set; }
+}
+
+public class DtBurndownDto
+{
+    public int? SprintId { get; set; }
+    public string? SprintName { get; set; }
+    public DateTime? StartDate { get; set; }
+    public DateTime? EndDate { get; set; }
+    public string? Status { get; set; }
+    public decimal TotalEstimateHours { get; set; }
+    public decimal TotalSpentHours { get; set; }
+    public int TotalTasks { get; set; }
+    public int DoneTasks { get; set; }
+    public double ProgressPct { get; set; }
+    /// <summary>نقاط روزانه burndown</summary>
+    public List<DtBurndownPointDto> Points { get; set; } = new();
+}
+
+public class DtBurndownPointDto
+{
+    public DateTime Date { get; set; }
+    /// <summary>ساعت باقی‌مانده ایده‌آل (خط مستقیم)</summary>
+    public decimal IdealRemaining { get; set; }
+    /// <summary>ساعت باقی‌مانده واقعی (تخمین تسک‌های ناتمام در آن روز)</summary>
+    public decimal ActualRemaining { get; set; }
+    public int DoneTasksCumulative { get; set; }
+}
+
+public class DtCiBuildEventDto
+{
+    /// <summary>github-actions | gitlab-ci | generic</summary>
+    public string Provider { get; set; } = "generic";
+    public string? PipelineId { get; set; }
+    public string? JobName { get; set; }
+    public string? Repo { get; set; }
+    public string? Branch { get; set; }
+    public string? CommitSha { get; set; }
+    public string? CommitMessage { get; set; }
+    public string? Url { get; set; }
+    /// <summary>success | failure | cancelled</summary>
+    public string Status { get; set; } = "failure";
+    public string? Conclusion { get; set; }
+    /// <summary>کلید ماژول اختیاری</summary>
+    public string? ModuleKey { get; set; }
+    /// <summary>شماره/شناسه تسک اختیاری</summary>
+    public string? TaskRef { get; set; }
 }
 
 public class DtTaskCommentDto
@@ -353,6 +428,9 @@ public class DtDashboardDto
     public List<DtTaskListItemDto> RecentTasks { get; set; } = new();
     public List<DtProblemDto> RecentProblems { get; set; } = new();
     public List<DtModuleChangeDto> RecentChanges { get; set; } = new();
+
+    /// <summary>خلاصه burndown اسپرینت فعال (در صورت وجود)</summary>
+    public DtBurndownDto? Burndown { get; set; }
 }
 
 public class DtMemberLoadDto

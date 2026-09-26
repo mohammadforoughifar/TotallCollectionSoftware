@@ -38,12 +38,20 @@ public interface IDevTeamService
     Task<DtTaskDetailDto?> GetTaskAsync(int id);
     Task<DtTaskDetailDto> CreateTaskAsync(DtTaskUpsertDto dto, int userId, string userName);
     Task<DtTaskDetailDto> UpdateTaskAsync(int id, DtTaskUpsertDto dto, int userId, string userName);
-    Task MoveTaskAsync(int id, int statusId, int userId, string userName);
+    Task MoveTaskAsync(int id, int statusId, int userId, string userName, int? beforeTaskId = null);
     Task DeleteTaskAsync(int id, int userId, string userName);
     Task<DtTaskCommentDto> AddCommentAsync(int taskId, string text, int userId, string userName);
     Task<DtTaskGitLinkDto> AddGitLinkAsync(int taskId, DtTaskGitLinkCreateDto dto, int userId, string userName);
     Task DeleteGitLinkAsync(int linkId);
     Task<DtTimeEntryDto> AddTimeAsync(int taskId, DtTimeEntryCreateDto dto, int userId, string userName);
+
+    // Phase 3 — timer / reorder / burndown / CI
+    Task ReorderSubTasksAsync(int parentId, IReadOnlyList<int> orderedIds, int userId, string userName);
+    Task<DtTimerStateDto> StartTimerAsync(int taskId, int userId, string userName);
+    Task<DtTimerStateDto> StopTimerAsync(int taskId, int userId, string userName, string? note = null);
+    Task<DtTimerStateDto?> GetTimerAsync(int taskId);
+    Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null);
+    Task<DtGitWebhookResultDto> ProcessCiEventAsync(DtCiBuildEventDto dto);
 
     // Sub-tasks & dependencies
     Task<DtTaskDetailDto> CreateSubTaskAsync(int parentId, DtTaskUpsertDto dto, int userId, string userName);
@@ -241,7 +249,11 @@ public class DevTeamService : IDevTeamService
             SubTaskCount = subCount,
             SubTaskDoneCount = subDone,
             OpenBlockerCount = openBlockers,
-            IsDependencyBlocked = openBlockers > 0 && !(st?.IsDone ?? false)
+            IsDependencyBlocked = openBlockers > 0 && !(st?.IsDone ?? false),
+            SortOrder = t.SortOrder,
+            TimerRunning = t.TimerStartedAt != null,
+            TimerStartedAt = t.TimerStartedAt,
+            TimerStartedByUserId = t.TimerStartedByUserId
         };
     }
 
@@ -505,6 +517,8 @@ public class DevTeamService : IDevTeamService
             .OrderByDescending(c => c.ChangedAt).Take(8).ToListAsync();
         dto.RecentChanges = recentChanges.Select(c => MapChange(c, modules.FirstOrDefault(m => m.Id == c.ModuleId), null)).ToList();
 
+        try { dto.Burndown = await GetBurndownAsync(sprint?.Id); } catch { /* non-fatal */ }
+
         return dto;
     }
 
@@ -765,7 +779,8 @@ public class DevTeamService : IDevTeamService
 
         var total = await query.CountAsync();
         var items = await query
-            .OrderByDescending(t => t.Priority)
+            .OrderBy(t => t.SortOrder)
+            .ThenByDescending(t => t.Priority)
             .ThenBy(t => t.DueAt ?? DateTime.MaxValue)
             .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt)
             .Skip((page - 1) * size).Take(size)
@@ -933,6 +948,8 @@ public class DevTeamService : IDevTeamService
             ParentTaskId = list.ParentTaskId, ParentTaskNumber = list.ParentTaskNumber, ParentTaskTitle = list.ParentTaskTitle,
             SubTaskCount = list.SubTaskCount, SubTaskDoneCount = list.SubTaskDoneCount,
             OpenBlockerCount = list.OpenBlockerCount, IsDependencyBlocked = list.IsDependencyBlocked,
+            SortOrder = list.SortOrder,
+            TimerRunning = list.TimerRunning, TimerStartedAt = list.TimerStartedAt, TimerStartedByUserId = list.TimerStartedByUserId,
             Comments = comments.Select(c => new DtTaskCommentDto
             {
                 Id = c.Id, AuthorUserId = c.AuthorUserId, AuthorName = c.AuthorName,
@@ -1101,27 +1118,413 @@ public class DevTeamService : IDevTeamService
         return (await GetTaskAsync(id))!;
     }
 
-    public async Task MoveTaskAsync(int id, int statusId, int userId, string userName)
+    public async Task MoveTaskAsync(int id, int statusId, int userId, string userName, int? beforeTaskId = null)
     {
         var entity = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == id && !t.IsDeleted)
             ?? throw new InvalidOperationException("تسک یافت نشد.");
-        if (entity.StatusId == statusId) return;
 
         var st = await _db.DtWorkflowStatuses.FirstOrDefaultAsync(s => s.Id == statusId && s.IsActive)
             ?? throw new InvalidOperationException("وضعیت نامعتبر است.");
         var old = await _db.DtWorkflowStatuses.AsNoTracking().FirstOrDefaultAsync(s => s.Id == entity.StatusId);
 
-        if (st.IsDone)
+        var statusChanged = entity.StatusId != statusId;
+        if (statusChanged && st.IsDone)
             await EnsureNoOpenBlockersAsync(id);
 
-        entity.StatusId = st.Id;
-        entity.UpdatedAt = DateTime.Now;
-        entity.CompletedAt = st.IsDone ? DateTime.Now : null;
-        if (st.IsDone && entity.Progress < 100) entity.Progress = 100;
+        if (statusChanged)
+        {
+            entity.StatusId = st.Id;
+            entity.CompletedAt = st.IsDone ? DateTime.Now : null;
+            if (st.IsDone && entity.Progress < 100) entity.Progress = 100;
+        }
 
-        await LogAsync(id, userId, userName, "StatusChanged", $"{old?.NameFa} ← {st.NameFa}");
+        // ترتیب در ستون مقصد (ریشه‌ها؛ ساب‌تسک‌ها با ReorderSubTasks)
+        await ApplyColumnSortAsync(entity, statusId, beforeTaskId);
+
+        entity.UpdatedAt = DateTime.Now;
+        if (statusChanged)
+            await LogAsync(id, userId, userName, "StatusChanged", $"{old?.NameFa} ← {st.NameFa}");
+        else
+            await LogAsync(id, userId, userName, "Reordered", "جابجایی در ستون");
+
         await _db.SaveChangesAsync();
         try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+    }
+
+    /// <summary>بازنویسی SortOrder در ستون وضعیت برای ریشه‌ها.</summary>
+    private async Task ApplyColumnSortAsync(DtTask entity, int statusId, int? beforeTaskId)
+    {
+        // فقط ریشه‌ها در کانبان مرتب می‌شوند
+        if (entity.ParentTaskId is not null)
+        {
+            if (beforeTaskId is null) return;
+        }
+
+        var siblings = await _db.DtTasks
+            .Where(t => !t.IsDeleted && t.StatusId == statusId && t.ParentTaskId == null && t.Id != entity.Id)
+            .OrderBy(t => t.SortOrder).ThenBy(t => t.Id)
+            .ToListAsync();
+
+        var ordered = new List<DtTask>();
+        var inserted = false;
+        foreach (var s in siblings)
+        {
+            if (beforeTaskId is int bid && s.Id == bid && !inserted)
+            {
+                ordered.Add(entity);
+                inserted = true;
+            }
+            ordered.Add(s);
+        }
+        if (!inserted) ordered.Add(entity);
+
+        for (var i = 0; i < ordered.Count; i++)
+            ordered[i].SortOrder = (i + 1) * 10;
+    }
+
+    public async Task ReorderSubTasksAsync(int parentId, IReadOnlyList<int> orderedIds, int userId, string userName)
+    {
+        if (orderedIds is null || orderedIds.Count == 0)
+            throw new InvalidOperationException("لیست ترتیب خالی است.");
+
+        var parent = await _db.DtTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == parentId && !t.IsDeleted)
+            ?? throw new InvalidOperationException("والد یافت نشد.");
+
+        var children = await _db.DtTasks
+            .Where(t => !t.IsDeleted && t.ParentTaskId == parentId)
+            .ToListAsync();
+        if (children.Count == 0) return;
+
+        var set = children.Select(c => c.Id).ToHashSet();
+        if (orderedIds.Any(id => !set.Contains(id)))
+            throw new InvalidOperationException("شناسهٔ نامعتبر در ترتیب ساب‌تسک‌ها.");
+        if (orderedIds.Distinct().Count() != orderedIds.Count)
+            throw new InvalidOperationException("شناسه تکراری در ترتیب.");
+
+        // موارد جاافتاده را انتهای لیست بگذار
+        var final = orderedIds.ToList();
+        foreach (var c in children.OrderBy(x => x.SortOrder).ThenBy(x => x.Id))
+            if (!final.Contains(c.Id)) final.Add(c.Id);
+
+        var map = children.ToDictionary(c => c.Id);
+        for (var i = 0; i < final.Count; i++)
+            map[final[i]].SortOrder = (i + 1) * 10;
+
+        await LogAsync(parentId, userId, userName, "SubTasksReordered", $"{final.Count} مورد");
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+    }
+
+    public async Task<DtTimerStateDto> StartTimerAsync(int taskId, int userId, string userName)
+    {
+        var task = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == taskId && !t.IsDeleted)
+            ?? throw new InvalidOperationException("تسک یافت نشد.");
+
+        // توقف تایمرهای دیگر همین کاربر
+        var others = await _db.DtTasks
+            .Where(t => !t.IsDeleted && t.TimerStartedAt != null && t.TimerStartedByUserId == userId && t.Id != taskId)
+            .ToListAsync();
+        foreach (var o in others)
+        {
+            await StopTimerCoreAsync(o, userId, userName, "توقف خودکار — شروع تایمر دیگر");
+        }
+
+        if (task.TimerStartedAt != null && task.TimerStartedByUserId == userId)
+            return await BuildTimerStateAsync(task);
+
+        if (task.TimerStartedAt != null && task.TimerStartedByUserId != userId)
+            throw new InvalidOperationException("تایمر این تسک توسط کاربر دیگری در حال اجراست.");
+
+        task.TimerStartedAt = DateTime.Now;
+        task.TimerStartedByUserId = userId;
+        task.UpdatedAt = DateTime.Now;
+        await LogAsync(taskId, userId, userName, "TimerStarted", null);
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+        return await BuildTimerStateAsync(task);
+    }
+
+    public async Task<DtTimerStateDto> StopTimerAsync(int taskId, int userId, string userName, string? note = null)
+    {
+        var task = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == taskId && !t.IsDeleted)
+            ?? throw new InvalidOperationException("تسک یافت نشد.");
+        if (task.TimerStartedAt is null)
+            return await BuildTimerStateAsync(task);
+
+        // فقط شروع‌کننده یا Manage می‌تواند متوقف کند — در عمل userId چک نرم
+        var entry = await StopTimerCoreAsync(task, userId, userName, note);
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+        var state = await BuildTimerStateAsync(task);
+        state.LastEntry = entry;
+        return state;
+    }
+
+    public async Task<DtTimerStateDto?> GetTimerAsync(int taskId)
+    {
+        var task = await _db.DtTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId && !t.IsDeleted);
+        if (task is null) return null;
+        return await BuildTimerStateAsync(task);
+    }
+
+    private async Task<DtTimeEntryDto?> StopTimerCoreAsync(DtTask task, int userId, string userName, string? note)
+    {
+        if (task.TimerStartedAt is null) return null;
+        var started = task.TimerStartedAt.Value;
+        var elapsed = DateTime.Now - started;
+        // حداقل ۱ دقیقه → ۰.۰۲ ساعت؛ رند به ۰.۲۵
+        var hours = (decimal)Math.Max(elapsed.TotalHours, 1.0 / 60.0);
+        hours = Math.Round(hours * 4m, MidpointRounding.AwayFromZero) / 4m;
+        if (hours < 0.25m) hours = 0.25m;
+        if (hours > 24m) hours = 24m;
+
+        var e = new DtTimeEntry
+        {
+            TaskId = task.Id,
+            UserId = task.TimerStartedByUserId ?? userId,
+            UserName = userName,
+            Hours = hours,
+            WorkDate = started.Date,
+            Note = string.IsNullOrWhiteSpace(note)
+                ? $"تایمر {started:HH:mm}–{DateTime.Now:HH:mm}"
+                : note,
+            CreatedAt = DateTime.Now
+        };
+        _db.DtTimeEntries.Add(e);
+        task.SpentHours += hours;
+        task.TimerStartedAt = null;
+        task.TimerStartedByUserId = null;
+        task.UpdatedAt = DateTime.Now;
+        await LogAsync(task.Id, userId, userName, "TimerStopped", $"{hours} ساعت");
+        return new DtTimeEntryDto
+        {
+            Id = e.Id, UserId = e.UserId, UserName = e.UserName,
+            Hours = e.Hours, WorkDate = e.WorkDate, Note = e.Note, CreatedAt = e.CreatedAt
+        };
+    }
+
+    private Task<DtTimerStateDto> BuildTimerStateAsync(DtTask task)
+    {
+        var running = task.TimerStartedAt != null;
+        var elapsed = running
+            ? (int)Math.Max(0, (DateTime.Now - task.TimerStartedAt!.Value).TotalSeconds)
+            : 0;
+        return Task.FromResult(new DtTimerStateDto
+        {
+            TaskId = task.Id,
+            Running = running,
+            StartedAt = task.TimerStartedAt,
+            StartedByUserId = task.TimerStartedByUserId,
+            ElapsedSeconds = elapsed,
+            SpentHours = task.SpentHours
+        });
+    }
+
+    public async Task<DtBurndownDto> GetBurndownAsync(int? sprintId = null)
+    {
+        var sprint = sprintId.HasValue
+            ? await _db.DtSprints.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sprintId)
+            : await _db.DtSprints.AsNoTracking().FirstOrDefaultAsync(s => s.Status == DtSprintStatus.Active);
+
+        var statuses = await _db.DtWorkflowStatuses.AsNoTracking().Where(s => s.IsActive).ToListAsync();
+        var doneIds = statuses.Where(s => s.IsDone).Select(s => s.Id).ToHashSet();
+
+        IQueryable<DtTask> tq = _db.DtTasks.AsNoTracking().Where(t => !t.IsDeleted && t.ParentTaskId == null);
+        if (sprint is not null)
+            tq = tq.Where(t => t.SprintId == sprint.Id);
+        var tasks = await tq.ToListAsync();
+
+        var totalEst = tasks.Sum(t => t.EstimateHours ?? 0);
+        if (totalEst <= 0)
+            totalEst = tasks.Count; // واحد «تسک» اگر تخمین نباشد
+        var useHours = tasks.Any(t => t.EstimateHours is > 0);
+
+        decimal TaskWeight(DtTask t) => useHours ? (t.EstimateHours ?? 0) : 1m;
+
+        var start = (sprint?.StartDate ?? tasks.MinBy(t => t.CreatedAt)?.CreatedAt ?? DateTime.Today).Date;
+        var end = (sprint?.EndDate ?? DateTime.Today.AddDays(7)).Date;
+        if (end < start) end = start;
+        // سقف ۳۰ روز برای نمودار
+        if ((end - start).TotalDays > 45) end = start.AddDays(45);
+
+        var points = new List<DtBurndownPointDto>();
+        var dayCount = Math.Max(1, (int)(end - start).TotalDays);
+        var today = DateTime.Today;
+
+        for (var d = start; d <= end; d = d.AddDays(1))
+        {
+            var dayIdx = (int)(d - start).TotalDays;
+            var ideal = totalEst * (1m - (decimal)dayIdx / dayCount);
+            if (ideal < 0) ideal = 0;
+
+            // تسک‌هایی که تا پایان این روز «done» شده‌اند
+            decimal remaining;
+            int doneCum;
+            if (d > today)
+            {
+                // آینده: فقط ideal
+                remaining = -1; // UI نادیده می‌گیرد
+                doneCum = tasks.Count(t => t.CompletedAt is DateTime c && c.Date <= today && doneIds.Contains(t.StatusId));
+                // remaining actual = null-ish → keep last known
+                remaining = tasks.Where(t => !(t.CompletedAt is DateTime c && c.Date <= today && doneIds.Contains(t.StatusId))
+                                             && !(doneIds.Contains(t.StatusId) && t.CompletedAt == null && d >= today))
+                    .Sum(TaskWeight);
+                // simpler: for future days use today's remaining
+                remaining = tasks.Where(t => !doneIds.Contains(t.StatusId) || (t.CompletedAt is DateTime c && c.Date > today))
+                    .Where(t => !(doneIds.Contains(t.StatusId) && (t.CompletedAt == null || t.CompletedAt.Value.Date <= today)))
+                    .Sum(TaskWeight);
+            }
+            else
+            {
+                doneCum = tasks.Count(t =>
+                    doneIds.Contains(t.StatusId) &&
+                    (t.CompletedAt is DateTime c ? c.Date <= d : t.UpdatedAt?.Date <= d || t.CreatedAt.Date <= d));
+
+                remaining = tasks
+                    .Where(t =>
+                    {
+                        var isDoneByDay = doneIds.Contains(t.StatusId) &&
+                            (t.CompletedAt is DateTime c ? c.Date <= d : (t.UpdatedAt ?? t.CreatedAt).Date <= d);
+                        return !isDoneByDay;
+                    })
+                    .Sum(TaskWeight);
+            }
+
+            points.Add(new DtBurndownPointDto
+            {
+                Date = d,
+                IdealRemaining = Math.Round(ideal, 2),
+                ActualRemaining = Math.Round(remaining, 2),
+                DoneTasksCumulative = doneCum
+            });
+        }
+
+        var doneNow = tasks.Count(t => doneIds.Contains(t.StatusId));
+        var remNow = tasks.Where(t => !doneIds.Contains(t.StatusId)).Sum(TaskWeight);
+        return new DtBurndownDto
+        {
+            SprintId = sprint?.Id,
+            SprintName = sprint?.Name,
+            StartDate = start,
+            EndDate = end,
+            Status = sprint?.Status,
+            TotalEstimateHours = Math.Round(totalEst, 2),
+            TotalSpentHours = Math.Round(tasks.Sum(t => t.SpentHours), 2),
+            TotalTasks = tasks.Count,
+            DoneTasks = doneNow,
+            ProgressPct = tasks.Count == 0 ? 0 : Math.Round(100.0 * doneNow / tasks.Count, 1),
+            Points = points
+        };
+    }
+
+    public async Task<DtGitWebhookResultDto> ProcessCiEventAsync(DtCiBuildEventDto dto)
+    {
+        var result = new DtGitWebhookResultDto
+        {
+            Ok = true,
+            Provider = string.IsNullOrWhiteSpace(dto.Provider) ? "CI" : dto.Provider
+        };
+
+        var status = (dto.Status ?? dto.Conclusion ?? "").Trim().ToLowerInvariant();
+        var failed = status is "failure" or "failed" or "error" or "cancelled" or "canceled" or "timed_out";
+        if (!failed)
+        {
+            result.Messages.Add($"وضعیت «{status}» نادیده گرفته شد (فقط failure → Problem).");
+            return result;
+        }
+
+        var modules = await _db.DtProductModules.AsNoTracking().Where(m => m.IsActive).ToListAsync();
+        var modByKey = modules.ToDictionary(m => m.Key, StringComparer.OrdinalIgnoreCase);
+
+        int? moduleId = null;
+        if (!string.IsNullOrWhiteSpace(dto.ModuleKey) && modByKey.TryGetValue(dto.ModuleKey!, out var mk))
+            moduleId = mk.Id;
+
+        DtTask? task = null;
+        if (!string.IsNullOrWhiteSpace(dto.TaskRef))
+        {
+            var pref = dto.TaskRef!.Trim();
+            if (int.TryParse(pref, out var tid))
+                task = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == tid && !t.IsDeleted);
+            if (task is null)
+                task = await _db.DtTasks.FirstOrDefaultAsync(t => !t.IsDeleted && t.Number == pref);
+            // DT- pattern in ref or commit message
+            if (task is null)
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(pref + " " + (dto.CommitMessage ?? ""),
+                    @"DT-\d{4}-\d+", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (m.Success)
+                    task = await _db.DtTasks.FirstOrDefaultAsync(t => !t.IsDeleted && t.Number == m.Value.ToUpperInvariant());
+            }
+        }
+        if (task is null && !string.IsNullOrWhiteSpace(dto.CommitMessage))
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(dto.CommitMessage!,
+                @"DT-\d{4}-\d+|task:(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (m.Success)
+            {
+                if (m.Groups[1].Success && int.TryParse(m.Groups[1].Value, out var tid2))
+                    task = await _db.DtTasks.FirstOrDefaultAsync(t => t.Id == tid2 && !t.IsDeleted);
+                else
+                    task = await _db.DtTasks.FirstOrDefaultAsync(t => !t.IsDeleted && t.Number == m.Value.ToUpperInvariant());
+            }
+        }
+        if (moduleId is null && task?.ModuleId is int tm) moduleId = tm;
+        if (moduleId is null && modByKey.TryGetValue("Other", out var other)) moduleId = other.Id;
+        if (moduleId is null && modules.Count > 0) moduleId = modules[0].Id;
+
+        var sha = dto.CommitSha ?? "";
+        var shaShort = sha.Length <= 8 ? sha : sha[..8];
+        var title = $"CI شکست: {(dto.JobName ?? dto.PipelineId ?? "pipeline")}";
+        if (!string.IsNullOrEmpty(shaShort)) title += $" ({shaShort})";
+        if (title.Length > 200) title = title[..200];
+
+        // dedupe
+        var already = await _db.DtProblems.AnyAsync(p =>
+            !p.IsDeleted &&
+            p.Title == title &&
+            (p.Status == DtProblemStatus.Open || p.Status == DtProblemStatus.Investigating));
+        if (already)
+        {
+            result.Messages.Add("Problem تکراری — ساخته نشد.");
+            return result;
+        }
+
+        var desc = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(dto.Repo)) desc.AppendLine($"Repo: {dto.Repo}");
+        if (!string.IsNullOrWhiteSpace(dto.Branch)) desc.AppendLine($"Branch: {dto.Branch}");
+        if (!string.IsNullOrWhiteSpace(dto.PipelineId)) desc.AppendLine($"Pipeline: {dto.PipelineId}");
+        if (!string.IsNullOrWhiteSpace(dto.JobName)) desc.AppendLine($"Job: {dto.JobName}");
+        if (!string.IsNullOrWhiteSpace(dto.CommitMessage)) desc.AppendLine(dto.CommitMessage);
+        if (!string.IsNullOrWhiteSpace(dto.Url)) desc.AppendLine(dto.Url);
+
+        _db.DtProblems.Add(new DtProblem
+        {
+            Title = title,
+            Description = desc.ToString(),
+            Severity = DtProblemSeverity.Error,
+            Status = DtProblemStatus.Open,
+            ModuleId = moduleId,
+            TaskId = task?.Id,
+            ReporterUserId = 0,
+            ReporterName = $"CI/{dto.Provider}",
+            Environment = dto.Branch,
+            StackTrace = dto.Url,
+            CreatedAt = DateTime.Now
+        });
+        result.ProblemsCreated++;
+        result.Messages.Add($"Problem ثبت شد: {title}");
+
+        if (task is not null)
+        {
+            await LogAsync(task.Id, 0, $"CI/{dto.Provider}", "CiFailed", title);
+            task.UpdatedAt = DateTime.Now;
+            result.TasksLinked++;
+        }
+
+        await _db.SaveChangesAsync();
+        try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
+        return result;
     }
 
     // ---------- sub-tasks & dependencies ----------

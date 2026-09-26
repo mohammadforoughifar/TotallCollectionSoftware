@@ -289,6 +289,10 @@ public class DtTask
     /// <summary>ترتیب نمایش بین خواهر/برادرها</summary>
     public int SortOrder { get; set; }
 
+    /// <summary>شروع تایمر زنده (null = متوقف).</summary>
+    public DateTime? TimerStartedAt { get; set; }
+    public int? TimerStartedByUserId { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     public DateTime? UpdatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
