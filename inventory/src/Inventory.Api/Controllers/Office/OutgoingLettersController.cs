@@ -25,6 +25,7 @@ public class OutgoingLettersController : RbacControllerBase
     private readonly IOutgoingLetterPrintService _print;
     private readonly IArchiveService _archive;
     private readonly FileStore _store;
+    private readonly ILogger<OutgoingLettersController> _logger;
 
     /// <summary>پوشه پیوست‌های نامه صادره در wwwroot/uploads/office/outgoingletter</summary>
     private const string SadereFolder = "office/outgoingletter";
@@ -37,7 +38,8 @@ public class OutgoingLettersController : RbacControllerBase
         ILetterGroupService groups,
         IOutgoingLetterPrintService print,
         IArchiveService archive,
-        FileStore store) : base(db)
+        FileStore store,
+        ILogger<OutgoingLettersController> logger) : base(db)
     {
         _letters = letters;
         _pishnevis = pishnevis;
@@ -46,6 +48,7 @@ public class OutgoingLettersController : RbacControllerBase
         _print = print;
         _archive = archive;
         _store = store;
+        _logger = logger;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
@@ -133,7 +136,14 @@ public class OutgoingLettersController : RbacControllerBase
         }
         catch (Exception ex)
         {
-            return BadRequest(new { message = ex.Message, detail = "ثبت نامه صادره انجام نشد؛ CreatorId/CreatorUserId و اطلاعات امضاکنندگان را بررسی کنید." });
+            _logger.LogError(ex,
+                "ثبت نامه صادره ناموفق بود. UserId={UserId}, CompanyId={CompanyId}, SignerCount={SignerCount}",
+                MyUserId, dto.CompanyId, (dto.SignerUserIds?.Count ?? 0) + (dto.SignerGroupIds?.Count ?? 0));
+            return BadRequest(new
+            {
+                message = ex.GetBaseException().Message,
+                detail = "ثبت نامه صادره انجام نشد؛ جزئیات کامل در لاگ Inventory.Api ثبت شد."
+            });
         }
     }
 

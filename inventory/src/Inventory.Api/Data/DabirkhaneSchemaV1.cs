@@ -45,6 +45,22 @@ IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL
     ALTER TABLE dbo.OutgoingLetters ADD {name} {ddl};");
         }
 
+        // همگام‌سازی شناسه سازنده بین اسکیمای قدیمی (CreatorId) و مدل جدید
+        // (CreatorUserId). از این پس هنگام درج نیز هر دو ستون مقدار می‌گیرند.
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.OutgoingLetters', N'CreatorId') IS NOT NULL
+   AND COL_LENGTH(N'dbo.OutgoingLetters', N'CreatorUserId') IS NOT NULL
+BEGIN
+    UPDATE dbo.OutgoingLetters
+       SET CreatorUserId = CreatorId
+     WHERE ISNULL(CreatorUserId, 0) = 0 AND ISNULL(CreatorId, 0) > 0;
+
+    UPDATE dbo.OutgoingLetters
+       SET CreatorId = CreatorUserId
+     WHERE ISNULL(CreatorId, 0) = 0 AND ISNULL(CreatorUserId, 0) > 0;
+END");
+
         // نمایه برای فیلتر سریع «بایگانی‌شده / بایگانی‌نشده» در دبیرخانه
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.OutgoingLetters', N'U') IS NOT NULL
@@ -67,6 +83,15 @@ AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_OutgoingLetters_SendM
             if (await SqliteColumnExistsAsync(db, "OutgoingLetters", name)) continue;
             await SafeAsync(db, $"ALTER TABLE OutgoingLetters ADD COLUMN {name} {ddl};");
         }
+
+        await SafeAsync(db, @"
+UPDATE OutgoingLetters
+   SET CreatorUserId = CreatorId
+ WHERE IFNULL(CreatorUserId, 0) = 0 AND IFNULL(CreatorId, 0) > 0;");
+        await SafeAsync(db, @"
+UPDATE OutgoingLetters
+   SET CreatorId = CreatorUserId
+ WHERE IFNULL(CreatorId, 0) = 0 AND IFNULL(CreatorUserId, 0) > 0;");
 
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_OutgoingLetters_IsArchived ON OutgoingLetters (IsArchived);");
         await SafeAsync(db, "CREATE INDEX IF NOT EXISTS IX_OutgoingLetters_SendMethod ON OutgoingLetters (SendMethod);");

@@ -27,8 +27,15 @@ public class OutgoingLetter
     /// <summary>شماره ترتیبی داخل سال شمسی (هر سال از ۱ شروع می‌شود)</summary>
     public int Number { get; set; }
 
-    /// <summary>کاربر ثبت‌کننده (فرستنده/صادرکننده)</summary>
+    /// <summary>کاربر ثبت‌کننده (فرستنده/صادرکننده) در مدل فعلی.</summary>
     public int CreatorUserId { get; set; }
+
+    /// <summary>
+    /// ستون سازگار با دیتابیس‌های قدیمی اتوماسیون. بعضی نسخه‌های قبلی جدول
+    /// OutgoingLetters این ستون را اجباری تعریف کرده‌اند؛ هنگام درج باید همراه
+    /// CreatorUserId مقداردهی شود تا خطای Cannot insert NULL رخ ندهد.
+    /// </summary>
+    public int CreatorId { get; set; }
 
     /// <summary>سمت ثبت‌کننده — بعد از پیاده‌سازی چارت سازمانی فعال می‌شود</summary>
     public int? CreatorSematId { get; set; }

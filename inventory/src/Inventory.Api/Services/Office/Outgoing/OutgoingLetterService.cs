@@ -255,7 +255,9 @@ public class OutgoingLetterService : IOutgoingLetterService
             Number = number,
             // sematId بعداً از CreatorSematId صادرکننده پر می‌شود (فاز چارت سازمانی)
             LetterNumber = await BuildLetterNumberAsync(number, now),
+            // هر دو ستون برای سازگاری دیتابیس‌های جدید و قدیمی مقداردهی می‌شوند.
             CreatorUserId = creatorUserId,
+            CreatorId = creatorUserId,
             Title = dto.Title.Trim(),
             Text = dto.Text,
             DateSabt = now,
