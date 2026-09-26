@@ -68,6 +68,9 @@ public class AiOptions
     /// <summary>ارسال سر وقت یادآورهای شخصی در پیام‌رسان (بررسی هر ۶۰ ثانیه).</summary>
     public bool ReminderEnabled { get; set; } = true;
 
+    /// <summary>اجرای دوره‌ای گزارش‌های زمان‌بندی‌شده کاربران (بررسی هر ۶۰ ثانیه).</summary>
+    public bool ScheduleEnabled { get; set; } = true;
+
     /// <summary>انقضای پیش‌فاکتور اقدام (دقیقه) — اقدام با تأیید کاربر.</summary>
     public int PendingActionExpiryMinutes { get; set; } = 15;
 

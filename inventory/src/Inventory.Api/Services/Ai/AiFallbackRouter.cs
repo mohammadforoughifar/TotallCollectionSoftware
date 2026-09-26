@@ -268,7 +268,7 @@ public class AiFallbackRouter
         return null;
     }
 
-    private static string FormatSales(string json)
+    internal static string FormatSales(string json)
     {
         if (ErrorOf(json) is { } err) return err;
         try
@@ -302,7 +302,7 @@ public class AiFallbackRouter
         catch { return "نتونستم گزارش فروش رو بخونم. 😕"; }
     }
 
-    private static string FormatInvoices(string json)
+    internal static string FormatInvoices(string json)
     {
         if (ErrorOf(json) is { } err) return err;
         var items = ParseArray(json);
@@ -314,7 +314,7 @@ public class AiFallbackRouter
         return sb.ToString();
     }
 
-    private static string FormatStock(string json, bool searched)
+    internal static string FormatStock(string json, bool searched)
     {
         if (ErrorOf(json) is { } err) return err;
         var items = ParseArray(json);
@@ -348,7 +348,7 @@ public class AiFallbackRouter
         return sb.ToString().Trim();
     }
 
-    private static string FormatCheques(string json)
+    internal static string FormatCheques(string json)
     {
         if (ErrorOf(json) is { } err) return err;
         var items = ParseArray(json, "چک_ها");
@@ -367,7 +367,7 @@ public class AiFallbackRouter
         return sb.ToString();
     }
 
-    private static string FormatDebtors(string json)
+    internal static string FormatDebtors(string json)
     {
         if (ErrorOf(json) is { } err) return err;
         var items = ParseArray(json);
@@ -379,7 +379,7 @@ public class AiFallbackRouter
         return sb.ToString();
     }
 
-    private static string FormatCash(string json)
+    internal static string FormatCash(string json)
     {
         if (ErrorOf(json) is { } err) return err;
         try

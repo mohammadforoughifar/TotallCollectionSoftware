@@ -31,6 +31,8 @@ public interface IMessengerService
 {
     /// <summary>ارسال پیام به کاربر در بله و ایتا (هر کدام که متصل است). خطاها برگردانده می‌شوند و بی‌صدا نمی‌مانند.</summary>
     Task<MessengerSendResult> SendToUserAsync(int userId, string title, string? body);
+    /// <summary>ارسال فایل اکسل به بله کاربر لینک‌شده (ایتا فایل نمی‌گیرد).</summary>
+    Task<bool> SendExcelToUserAsync(int userId, string caption, byte[] bytes, string fileName);
 
     /// <summary>همگام‌سازی دستی بله (دکمه‌ی صفحه‌ی کاربران): خواندن آپدیت‌ها، پاسخ به /start و تطبیق شماره‌ها.</summary>
     Task<(int matched, string message)> SyncBaleAsync();
@@ -124,6 +126,25 @@ public class MessengerService : IMessengerService
         {
             _log.LogWarning(ex, "ارسال پیام‌رسان برای کاربر {UserId} ناموفق بود", userId);
             return new MessengerSendResult(false, ex.Message, false, null, false);
+        }
+    }
+
+    public async Task<bool> SendExcelToUserAsync(int userId, string caption, byte[] bytes, string fileName)
+    {
+        try
+        {
+            var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null || string.IsNullOrWhiteSpace(user.BaleChatId)) return false;
+            var baleToken = (await TokensAsync()).bale;
+            if (string.IsNullOrWhiteSpace(baleToken)) return false;
+            var http = _httpFactory.CreateClient("messenger");
+            await SendDocumentAsync(http, baleToken, user.BaleChatId!, bytes, fileName, caption ?? "");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "ارسال اکسل برای کاربر {UserId} ناموفق بود.", userId);
+            return false;
         }
     }
 

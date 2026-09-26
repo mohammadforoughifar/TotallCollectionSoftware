@@ -2283,3 +2283,206 @@ public class MyMinutesActionsTool : IAiTool
         });
     }
 }
+
+// ---------------- گزارش‌های زمان‌بندی‌شده (§۲۱) ----------------
+
+public class ScheduleReportTool : IAiTool
+{
+    public string Name => "schedule_report";
+    public string Description => "ثبت گزارش زمان‌بندی‌شده (بدون نیاز به تأیید). kind ‏bi = یکی از ۶ خلاصه آماده با period نسبی (متن فقط)؛ kind ‏explore = هر کاوش روی موجودیت‌ها با فیلتر/گروه‌بندی (متن + اکسل اختیاری). اگر کاربر اکسل خواست حتماً explore. زمان فارسی: «هر روز ساعت ۸»، «هر شنبه ساعت ۸»، «اول هر ماه ساعت ۹»، «آخر هر ماه».";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            kind = new { type = "string", description = "نوع: bi یا explore (اجباری)" },
+            title = new { type = "string", description = "عنوان گزارش (اختیاری؛ خودکار ساخته می‌شود)" },
+            schedule = new { type = "string", description = "دوره فارسی (اجباری): «هر روز ساعت ۸»، «هر شنبه ساعت ۸»، «اول هر ماه ساعت ۹»" },
+            excel = new { type = "boolean", description = "فایل اکسل هم فرستاده شود؟ فقط برای explore" },
+            report = new { type = "string", description = "برای bi: sales_summary/recent_invoices/stock_status/cheques_due/top_debtors/cash_status" },
+            period = new { type = "string", description = "برای bi: دوره نسبی مثل «این هفته»، «این ماه»، «امروز»" },
+            days = new { type = "integer", description = "برای cheques_due: بازه روز" },
+            limit = new { type = "integer", description = "برای recent_invoices/top_debtors یا سقف سطر explore" },
+            filter_kind = new { type = "string", description = "برای recent_invoices/cheques_due: نوع (فروش/خرید، دریافتی/صادره)" },
+            search = new { type = "string", description = "برای stock_status: جستجوی کالا" },
+            entity = new { type = "string", description = "برای explore: کلید موجودیت از data_catalog" },
+            filters = new
+            {
+                type = "array",
+                description = "برای explore: فیلترها {field, op, value, value2}",
+                items = new { type = "object", properties = new { field = new { type = "string" }, op = new { type = "string" }, value = new { type = "string" }, value2 = new { type = "string" } } },
+            },
+            group_by = new { type = "string", description = "برای explore: فیلد گروه‌بندی" },
+            agg = new { type = "string", description = "برای explore: count/sum/avg" },
+            agg_field = new { type = "string", description = "برای explore: فیلد تجمیع" },
+            order_by = new { type = "string", description = "برای explore: فیلد مرتب‌سازی" },
+            desc = new { type = "boolean", description = "برای explore: نزولی؟" },
+            select = new { type = "array", items = new { type = "string" }, description = "برای explore: ستون‌ها" },
+        },
+        required = new[] { "kind", "schedule" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var kindRaw = AiTextUtil.NormalizeFa(AiToolArgs.GetString(args, "kind") ?? "");
+        var kind = kindRaw.Contains("کاوش") || kindRaw == "explore" ? "explore"
+            : kindRaw.Contains("هوشمند") || kindRaw.Contains("خلاصه") || kindRaw == "bi" ? "bi" : "";
+        if (kind == "")
+            return JsonSerializer.Serialize(new { error = "bad_kind", message = "نوع گزارش مشخص نیست؛ bi (خلاصه آماده) یا explore (کاوش)؟" });
+        var excel = AiToolArgs.GetBool(args, "excel");
+        if (excel && kind == "bi")
+            return JsonSerializer.Serialize(new { error = "bad_spec", message = "اکسل فقط برای کاوش است؛ برای فروش/چک با اکسل، روی موجودیت invoice/cheque کاوش (explore) بساز." });
+
+        var (schedType, day, time) = AiScheduleTime.Parse(AiToolArgs.GetString(args, "schedule"), DateTime.Now);
+        if (schedType == null)
+            return JsonSerializer.Serialize(new { error = "bad_schedule", message = "دوره را نفهمیدم؛ مثلاً «هر روز ساعت ۸»، «هر شنبه ساعت ۸»، «اول هر ماه ساعت ۹» یا «آخر هر ماه» بنویس." });
+
+        string specJson;
+        string autoTitle;
+        if (kind == "bi")
+        {
+            var report = (AiToolArgs.GetString(args, "report") ?? "").Trim();
+            if (!AiScheduleService.BiReports.Contains(report))
+                return JsonSerializer.Serialize(new { error = "bad_spec", message = "گزارش معتبر نیست؛ یکی از: sales_summary، ‏recent_invoices، ‏stock_status، ‏cheques_due، ‏top_debtors، ‏cash_status." });
+            var bag = new Dictionary<string, object?>();
+            foreach (var (k, v) in new[] { ("period", AiToolArgs.GetString(args, "period")), ("filter_kind", AiToolArgs.GetString(args, "filter_kind")), ("search", AiToolArgs.GetString(args, "search")) })
+                if (!string.IsNullOrWhiteSpace(v)) bag[k == "filter_kind" ? "kind" : k] = v;
+            var days = AiToolArgs.GetInt(args, "days");
+            if (days != null) bag["days"] = days;
+            var limit = AiToolArgs.GetInt(args, "limit");
+            if (limit != null) bag["limit"] = limit;
+            specJson = JsonSerializer.Serialize(new { report, args = bag });
+            var period = AiToolArgs.GetString(args, "period");
+            autoTitle = BiFa(report) + (string.IsNullOrWhiteSpace(period) ? "" : $" — {period}");
+        }
+        else
+        {
+            var entity = (AiToolArgs.GetString(args, "entity") ?? "").Trim();
+            if (entity == "")
+                return JsonSerializer.Serialize(new { error = "bad_spec", message = "موجودیت کاوش لازم است (از data_catalog)." });
+            var req = new AiExploreRequest { Entity = entity };
+            if (args.TryGetProperty("filters", out var fa) && fa.ValueKind == JsonValueKind.Array)
+                foreach (var f in fa.EnumerateArray())
+                {
+                    if (f.ValueKind != JsonValueKind.Object) continue;
+                    req.Filters.Add(new AiExploreFilter
+                    {
+                        Field = f.TryGetProperty("field", out var x) ? x.GetString() ?? "" : "",
+                        Op = f.TryGetProperty("op", out var o) ? o.GetString() ?? "eq" : "eq",
+                        Value = f.TryGetProperty("value", out var v) ? v.GetString() : null,
+                        Value2 = f.TryGetProperty("value2", out var v2) ? v2.GetString() : null,
+                    });
+                }
+            req.GroupBy = AiToolArgs.GetString(args, "group_by");
+            req.Agg = AiToolArgs.GetString(args, "agg") ?? "count";
+            req.AggField = AiToolArgs.GetString(args, "agg_field");
+            req.OrderBy = AiToolArgs.GetString(args, "order_by");
+            var desc = args.TryGetProperty("desc", out var dd) && dd.ValueKind == JsonValueKind.True;
+            req.Desc = args.TryGetProperty("desc", out _) ? desc : true;
+            req.Limit = Math.Clamp(AiToolArgs.GetInt(args, "limit") ?? 20, 1, 50);
+            if (args.TryGetProperty("select", out var sv) && sv.ValueKind == JsonValueKind.Array)
+                req.Select = sv.EnumerateArray().Select(x => x.ToString()).Where(s => s != "").ToList();
+            specJson = JsonSerializer.Serialize(req);
+            autoTitle = $"کاوش {AiDataCatalog.Find(entity)?.Fa ?? entity}";
+        }
+
+        var title = AiToolArgs.GetString(args, "title");
+        var svc = ctx.Services.GetRequiredService<AiScheduleService>();
+        var (sch, err, preview) = await svc.CreateAsync(ctx.UserId, string.IsNullOrWhiteSpace(title) ? autoTitle : title!,
+            kind, specJson, schedType!, day, time, excel, ctx.Services, ctx.CancellationToken);
+        if (sch == null)
+        {
+            var msg = err switch
+            {
+                "bad_kind" => "نوع گزارش معتبر نیست.",
+                "bad_spec" => "مشخصات گزارش معتبر نیست.",
+                "bad_schedule" => "دوره معتبر نیست.",
+                "too_many" => "۱۰ زمان‌بندی فعال داری؛ اول با my_schedules ببین و با cancel_schedule یکی را لغو کن.",
+                _ when err?.StartsWith("dry_failed:") == true => $"مشخصات اجرا نشد: {err["dry_failed:".Length..]}",
+                _ => "ثبت نشد؛ دوباره تلاش کن.",
+            };
+            return JsonSerializer.Serialize(new { error = err, message = msg });
+        }
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var linked = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId)
+            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            schedule_id = sch.Id,
+            title = sch.Title,
+            schedule = AiScheduleService.FaSchedule(sch.ScheduleType, sch.Day, sch.Time),
+            next_run = AiScheduleService.FaDateTime(sch.NextRunAt),
+            excel = sch.WantExcel,
+            preview,
+            note = linked ? null : "حسابت به بله/ایتا لینک نیست؛ برای دریافت باید لینکش کنی.",
+        });
+    }
+
+    private static string BiFa(string report) => report switch
+    {
+        "sales_summary" => "فروش و خرید",
+        "recent_invoices" => "آخرین فاکتورها",
+        "stock_status" => "موجودی",
+        "cheques_due" => "چک‌ها",
+        "top_debtors" => "بدهکاران",
+        _ => "نقدینگی",
+    };
+}
+
+public class MySchedulesTool : IAiTool
+{
+    public string Name => "my_schedules";
+    public string Description => "فهرست گزارش‌های زمان‌بندی‌شده فعال خودت (شناسه، عنوان، دوره، نوبت بعدی، اکسل).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new { },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var svc = ctx.Services.GetRequiredService<AiScheduleService>();
+        var list = await svc.ListActiveAsync(ctx.UserId, ctx.CancellationToken);
+        if (list.Count == 0)
+            return JsonSerializer.Serialize(new { schedules = new object[0], message = "زمان‌بندی فعالی نداری." });
+        return JsonSerializer.Serialize(new
+        {
+            schedules = list.Select(s => new
+            {
+                id = s.Id,
+                title = s.Title,
+                kind = s.Kind == "bi" ? "خلاصه آماده" : "کاوش",
+                schedule = AiScheduleService.FaSchedule(s.ScheduleType, s.Day, s.Time),
+                next_run = AiScheduleService.FaDateTime(s.NextRunAt),
+                excel = s.WantExcel ? "بله" : "خیر",
+            }),
+        });
+    }
+}
+
+public class CancelScheduleTool : IAiTool
+{
+    public string Name => "cancel_schedule";
+    public string Description => "لغو یک گزارش زمان‌بندی‌شده با شناسه (از my_schedules).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            schedule_id = new { type = "integer", description = "شناسه زمان‌بندی (اجباری)" },
+        },
+        required = new[] { "schedule_id" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var id = AiToolArgs.GetInt(args, "schedule_id") ?? 0;
+        if (id <= 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "شناسه زمان‌بندی لازم است." });
+        var svc = ctx.Services.GetRequiredService<AiScheduleService>();
+        var ok = await svc.CancelAsync(ctx.UserId, id, ctx.CancellationToken);
+        if (!ok)
+            return JsonSerializer.Serialize(new { error = "not_found", message = "زمان‌بندی فعالی با این شناسه پیدا نشد." });
+        return JsonSerializer.Serialize(new { cancelled = id, message = "زمان‌بندی لغو شد. ✅" });
+    }
+}

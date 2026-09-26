@@ -138,3 +138,44 @@ public class AiReminder
 
     public DateTime? SentAt { get; set; }
 }
+
+/// <summary>گزارش زمان‌بندی‌شده کاربر (§۲۱) — اجرای دوره‌ای یک خلاصه BI یا کاوش + ارسال در پیام‌رسان.</summary>
+public class AiReportSchedule
+{
+    public int Id { get; set; }
+
+    public int UserId { get; set; }
+
+    [MaxLength(300)]
+    public string Title { get; set; } = "";
+
+    /// <summary>نوع: bi (خلاصه آماده) | explore (کاوش آزاد).</summary>
+    [MaxLength(20)]
+    public string Kind { get; set; } = "explore";
+
+    /// <summary>مشخصات اجرا (JSON): برای bi {report,args} و برای explore همان AiExploreRequest.</summary>
+    public string SpecJson { get; set; } = "{}";
+
+    /// <summary>دوره: daily | weekly | monthly.</summary>
+    [MaxLength(20)]
+    public string ScheduleType { get; set; } = "weekly";
+
+    /// <summary>هفتگی: DayOfWeek (شنبه=6)؛ ماهانه: روز ماه 1..31 یا 0=آخر ماه؛ روزانه نادیده.</summary>
+    public int Day { get; set; }
+
+    /// <summary>ساعت اجرا HH:mm.</summary>
+    [MaxLength(5)]
+    public string Time { get; set; } = "08:00";
+
+    public bool WantExcel { get; set; }
+
+    public bool IsActive { get; set; } = true;
+
+    public DateTime NextRunAt { get; set; }
+
+    public DateTime? LastRunAt { get; set; }
+
+    public int FailCount { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
