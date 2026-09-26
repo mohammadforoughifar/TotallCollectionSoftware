@@ -1,4 +1,4 @@
-// سرویس هشدارهای هوشمند (§۱۷) — ۶ بررسی روزانه، هر کدام با مجوز همان ماژول.
+// سرویس هشدارهای هوشمند (§۱۷) — ۷ بررسی روزانه، هر کدام با مجوز همان ماژول.
 // خروجی ساخت‌یافته است تا هم بریفینگ پیام‌رسان (بدون لینک) و هم چت/آفلاین (با لینک) از آن استفاده کنند.
 using Inventory.Api.Data;
 using Inventory.Api.Services.Invoicing;
@@ -39,6 +39,7 @@ public class AiAlertsService
         await TryAdd(list, () => NewTicketsAsync(userId, role, ct));
         await TryAdd(list, () => ExpiringContractsAsync(userId, role, ct));
         await TryAdd(list, () => ReportNudgeAsync(userId, role, ct));
+        await TryAdd(list, () => MinutesDueAsync(userId, role, ct));
         return list;
     }
 
@@ -52,8 +53,39 @@ public class AiAlertsService
         catch { /* هشدار خراب، بقیه را خراب نمی‌کند */ }
     }
 
-    private async Task<bool> Can(int userId, string module, string? role, CancellationToken ct)
-        => await AiAccessHelper.UserHasAsync(_db, userId, module, "Read", role, ct);
+    private async Task<bool> Can(int userId, string module, string? role, CancellationToken ct, string action = "Read")
+        => await AiAccessHelper.UserHasAsync(_db, userId, module, action, role, ct);
+
+    // ---------- ۷) اقدام‌های صورتجلسه نزدیک سررسید/معوق ----------
+    private async Task<AiAlertSection?> MinutesDueAsync(int userId, string? role, CancellationToken ct)
+    {
+        if (!await Can(userId, "MeetingMinutes", role, ct, "View")) return null;
+        var today = DateTime.Today;
+        var rows = await _db.MeetingMinutesItems.AsNoTracking()
+            .Where(i => i.ResponsibleUserId == userId && i.ItemStatus == MinutesItemStatus.InProgress
+                && i.DueDate != null && i.DueDate <= today.AddDays(7)
+                && i.Minutes != null && !i.Minutes.IsDeleted)
+            .OrderBy(i => i.DueDate)
+            .Select(i => new { i.MinutesId, Title = i.Minutes!.Title, i.RowNo, i.Description, Due = i.DueDate!.Value })
+            .Take(6).ToListAsync(ct);
+        if (rows.Count == 0) return null;
+        var overdue = rows.Count(r => r.Due < today);
+        var s = new AiAlertSection
+        {
+            Icon = overdue > 0 ? "\U0001F534" : "\U0001F7E1",
+            Title = overdue > 0
+                ? $"{FaNum(overdue)} اقدام معوق + {FaNum(rows.Count - overdue)} نزدیک سررسید در صورتجلسات"
+                : $"{FaNum(rows.Count)} اقدام نزدیک سررسید در صورتجلسات",
+            Link = "/misc/minutes",
+            LinkText = "صورتجلسات",
+        };
+        foreach (var r in rows)
+        {
+            var flag = r.Due < today ? "معوق" : r.Due == today ? "امروز" : AiDateUtil.ToFaShort(r.Due);
+            s.Lines.Add($"بند {FaNum(r.RowNo)} «{Truncate(r.Title, 35)}»: {Truncate(r.Description, 60)} — مهلت {flag}");
+        }
+        return s;
+    }
 
     // ---------- ۱) کمبود انبار ----------
     private async Task<AiAlertSection?> LowStockAsync(int userId, string? role, CancellationToken ct)
