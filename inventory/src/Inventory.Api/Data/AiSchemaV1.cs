@@ -13,6 +13,7 @@ public static class AiSchemaV1
         model.Entity<AiMessage>().HasIndex(m => m.ConversationId);
         model.Entity<AiKnowledgeDoc>().HasIndex(d => d.DocKey).IsUnique();
         model.Entity<AiPendingAction>().HasIndex(a => new { a.UserId, a.Status });
+        model.Entity<AiReminder>().HasIndex(r => new { r.UserId, r.IsSent });
     }
 
     public static async Task EnsureAsync(AppDbContext db)
@@ -29,8 +30,9 @@ public static class AiSchemaV1
         var doc = T("Id IDKEY, Category NVARCHAR(100) NOT NULL, Title NVARCHAR(200) NOT NULL, Content BIGTEXT NOT NULL, Link NVARCHAR(300) NULL, DocKey NVARCHAR(100) NOT NULL, EmbeddingJson BIGTEXT NULL, IsActive BOOL, UpdatedAtUtc DT NOT NULL");
 
         var act = T("Id IDKEY, UserId INT NOT NULL, Action NVARCHAR(40) NOT NULL, ArgsJson BIGTEXT NOT NULL, Summary BIGTEXT NOT NULL, Status INT NOT NULL, CreatedAtUtc DT NOT NULL, ExpiresAtUtc DT NOT NULL, DecidedAtUtc DT NULL, ResultText BIGTEXT NULL");
+        var rem = T("Id IDKEY, UserId INT NOT NULL, Text NVARCHAR(500) NOT NULL, RemindAt DT NOT NULL, Recurrence INT NOT NULL, IsSent BOOL, Attempts INT NOT NULL, CreatedAt DT NOT NULL, SentAt DT NULL");
 
-        foreach (var (table, cols) in new[] { ("AiConversations", conv), ("AiMessages", msg), ("AiKnowledgeDocs", doc), ("AiPendingActions", act) })
+        foreach (var (table, cols) in new[] { ("AiConversations", conv), ("AiMessages", msg), ("AiKnowledgeDocs", doc), ("AiPendingActions", act), ("AiReminders", rem) })
         {
             var sql = sqlite
                 ? $"CREATE TABLE IF NOT EXISTS {table} ({cols})"
@@ -59,6 +61,7 @@ public static class AiSchemaV1
                      ("AiMessages", "ConversationId", false),
                      ("AiKnowledgeDocs", "DocKey", true),
                      ("AiPendingActions", "UserId, Status", false),
+                     ("AiReminders", "UserId, IsSent", false),
                  })
         {
             var name = "IX_" + table + "_" + cols.Replace(", ", "_");

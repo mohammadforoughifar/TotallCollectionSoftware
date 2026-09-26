@@ -1874,3 +1874,121 @@ public class WeeklyDigestTool : IAiTool
         return JsonSerializer.Serialize(new { digest = text });
     }
 }
+
+// ---------------- یادآور شخصی (§۲۰) ----------------
+
+public class SetReminderTool : IAiTool
+{
+    public string Name => "set_reminder";
+    public string Description => "ثبت یادآور شخصی (بدون نیاز به تأیید؛ ثبت همان انجام است). زمان را فارسی آزاد بده: «فردا ساعت ۹»، «هر روز ساعت ۸ صبح»، «جمعه ساعت ۵ عصر»، «۱۴۰۴/۰۷/۱۰ ساعت ۱۰»، «۲۰ دقیقه دیگه». تکرار (هر روز/هر هفته) را هم از متن می‌فهمد.";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            when = new { type = "string", description = "زمان فارسی (اجباری)" },
+            text = new { type = "string", description = "متن یادآوری (اجباری)" },
+            repeat = new { type = "string", description = "تکرار: none/daily/weekly یا یکبار/روزانه/هفتگی (اختیاری؛ اگر در when «هر روز» بود خودکار فهمیده می‌شود)" },
+        },
+        required = new[] { "when", "text" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var when = AiToolArgs.GetString(args, "when") ?? "";
+        var text = AiToolArgs.GetString(args, "text") ?? "";
+        var (at, recAuto) = AiReminderTime.Parse(when, DateTime.Now);
+        if (at == null)
+            return JsonSerializer.Serialize(new { error = "bad_date", message = "زمان را نفهمیدم؛ مثلاً «فردا ساعت ۹»، «هر روز ساعت ۸ صبح»، «جمعه ساعت ۵ عصر» یا «۲۰ دقیقه دیگه» بنویس." });
+        var rec = ParseRepeat(AiToolArgs.GetString(args, "repeat"), recAuto);
+        var svc = ctx.Services.GetRequiredService<AiReminderService>();
+        var (r, err) = await svc.CreateAsync(ctx.UserId, text, at.Value, rec, ctx.CancellationToken);
+        if (r == null)
+        {
+            var msg = err switch
+            {
+                "empty" => "متن یادآوری خالی است.",
+                "past" => "این زمان گذشته! یک زمان در آینده بگو.",
+                "far" => "حداکثر تا یک سال آینده می‌توانی یادآور بگذاری.",
+                _ => "۲۰ یادآور فعال داری؛ اول با my_reminders ببین و با cancel_reminder یکی را لغو کن.",
+            };
+            return JsonSerializer.Serialize(new { error = err, message = msg });
+        }
+        var db = ctx.Services.GetRequiredService<AppDbContext>();
+        var linked = await db.Users.AsNoTracking().Where(u => u.Id == ctx.UserId)
+            .AnyAsync(u => u.BaleChatId != null || u.EitaaChatId != null, ctx.CancellationToken);
+        return JsonSerializer.Serialize(new
+        {
+            reminder_id = r.Id,
+            remind_at = AiReminderService.FaDateTime(r.RemindAt),
+            repeat = AiReminderService.RepeatFa(r.Recurrence),
+            note = linked ? null : "حسابت به بله/ایتا لینک نیست؛ برای دریافت سر وقت باید لینکش کنی.",
+        });
+    }
+
+    private static int ParseRepeat(string? raw, int auto)
+    {
+        var v = AiTextUtil.NormalizeFa(raw ?? "").Trim();
+        if (v == "") return auto;
+        if (v.Contains("روزانه") || v.Contains("daily")) return 1;
+        if (v.Contains("هفتگی") || v.Contains("weekly")) return 2;
+        if (v.Contains("یکبار") || v.Contains("none")) return 0;
+        return auto;
+    }
+}
+
+public class MyRemindersTool : IAiTool
+{
+    public string Name => "my_reminders";
+    public string Description => "فهرست یادآورهای فعال خودت (شناسه، متن، زمان شمسی، تکرار).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new { },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var svc = ctx.Services.GetRequiredService<AiReminderService>();
+        var list = await svc.ListPendingAsync(ctx.UserId, ctx.CancellationToken);
+        if (list.Count == 0)
+            return JsonSerializer.Serialize(new { reminders = new object[0], message = "یادآور فعالی نداری." });
+        return JsonSerializer.Serialize(new
+        {
+            reminders = list.Select(r => new
+            {
+                id = r.Id,
+                text = AiTextUtil.Truncate(r.Text, 80),
+                at = AiReminderService.FaDateTime(r.RemindAt),
+                repeat = AiReminderService.RepeatFa(r.Recurrence),
+            }),
+        });
+    }
+}
+
+public class CancelReminderTool : IAiTool
+{
+    public string Name => "cancel_reminder";
+    public string Description => "لغو یک یادآور فعال با شناسه (از my_reminders).";
+    public object ParametersSchema => new
+    {
+        type = "object",
+        properties = new
+        {
+            reminder_id = new { type = "integer", description = "شناسه یادآور (اجباری)" },
+        },
+        required = new[] { "reminder_id" },
+    };
+
+    public async Task<string> ExecuteAsync(JsonElement args, AiToolContext ctx)
+    {
+        var id = AiToolArgs.GetInt(args, "reminder_id") ?? 0;
+        if (id <= 0)
+            return JsonSerializer.Serialize(new { error = "bad_input", message = "شناسه یادآور لازم است." });
+        var svc = ctx.Services.GetRequiredService<AiReminderService>();
+        var ok = await svc.CancelAsync(ctx.UserId, id, ctx.CancellationToken);
+        if (!ok)
+            return JsonSerializer.Serialize(new { error = "not_found", message = "یادآور فعالی با این شناسه پیدا نشد." });
+        return JsonSerializer.Serialize(new { cancelled = id, message = "یادآور لغو شد. ✅" });
+    }
+}

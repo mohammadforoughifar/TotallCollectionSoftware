@@ -113,3 +113,28 @@ public class AiPendingAction
     /// <summary>نتیجه اجرا یا دلیل لغو.</summary>
     public string? ResultText { get; set; }
 }
+
+/// <summary>یادآور شخصی کاربر (§۲۰) — ارسال سر وقت با پیام‌رسان (بله/ایتا).</summary>
+public class AiReminder
+{
+    public int Id { get; set; }
+
+    public int UserId { get; set; }
+
+    [MaxLength(500)]
+    public string Text { get; set; } = "";
+
+    /// <summary>زمان یادآوری به وقت محلی سرور.</summary>
+    public DateTime RemindAt { get; set; }
+
+    /// <summary>تکرار: 0=یکبار، 1=روزانه، 2=هفتگی.</summary>
+    public int Recurrence { get; set; }
+
+    public bool IsSent { get; set; }
+
+    public int Attempts { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public DateTime? SentAt { get; set; }
+}

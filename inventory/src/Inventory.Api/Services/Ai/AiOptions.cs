@@ -65,6 +65,9 @@ public class AiOptions
     /// <summary>ساعت ارسال خلاصه هفتگی به وقت سرور (قالب 24ساعته HH:mm).</summary>
     public string DigestTime { get; set; } = "07:30";
 
+    /// <summary>ارسال سر وقت یادآورهای شخصی در پیام‌رسان (بررسی هر ۶۰ ثانیه).</summary>
+    public bool ReminderEnabled { get; set; } = true;
+
     /// <summary>انقضای پیش‌فاکتور اقدام (دقیقه) — اقدام با تأیید کاربر.</summary>
     public int PendingActionExpiryMinutes { get; set; } = 15;
 

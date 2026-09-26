@@ -60,6 +60,7 @@ public class AppDbContext : DbContext
     public DbSet<AiMessage> AiMessages => Set<AiMessage>();
     public DbSet<AiKnowledgeDoc> AiKnowledgeDocs => Set<AiKnowledgeDoc>();
     public DbSet<AiPendingAction> AiPendingActions => Set<AiPendingAction>();
+    public DbSet<AiReminder> AiReminders => Set<AiReminder>();
 
     // ================== دستور کار ==================
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
