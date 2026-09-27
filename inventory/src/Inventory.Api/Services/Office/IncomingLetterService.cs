@@ -126,42 +126,42 @@ public class IncomingLetterService : IIncomingLetterService
                              || e.Source.IncomingLetter!.Ferestande.Contains(s));
         }
 
-        var totalCount = await q.CountAsync();
-
-        var items = await q
-            .OrderByDescending(e => e.ErjaId)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+        var erjaItems = await q
             .Select(e => new IncomingLetterListItemDto
             {
-                LetterId = e.SourceId,
-                ErjaId = e.ErjaId,
-                LetterNumber = e.Source.IncomingLetter!.LetterNumber ?? "",
-                NumberSabt = e.Source.IncomingLetter!.NumberSabt,
-                NumberLetterVarede = e.Source.IncomingLetter!.NumberLetterVarede ?? "",
-                Title = e.Source.IncomingLetter!.Title,
+                LetterId = e.SourceId, ErjaId = e.ErjaId,
+                LetterNumber = e.Source.IncomingLetter!.LetterNumber ?? "", NumberSabt = e.Source.IncomingLetter!.NumberSabt,
+                NumberLetterVarede = e.Source.IncomingLetter!.NumberLetterVarede ?? "", Title = e.Source.IncomingLetter!.Title,
                 Ferestande = e.Source.IncomingLetter!.Ferestande,
-                Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName)
-                    ? e.UserSender.Username
-                    : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
-                SenderUserId = e.SenderUserId,
-                Date = e.Source.IncomingLetter!.Date,
-                DateErsal = e.Source.IncomingLetter!.DateErsal,
-                TypeErsal = e.Source.IncomingLetter!.TypeErsal ?? "",
-                DeliveryName = e.Source.IncomingLetter!.DeliveryName ?? "",
-                Mahramanegi = e.Source.IncomingLetter!.Mahramanegi,
-                Foriat = e.Source.IncomingLetter!.Foriat,
-                ErjaType = e.Type,
-                MatnErja = e.MatnErja,
-                MohlatPasokh = e.MohlatPasokh,
-                IsNeshan = e.IsNeshan,
-                IsRead = e.IsRead,
-                IsBayegani = true,
-                HasAnswer = !string.IsNullOrEmpty(e.Answer),
-                ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
+                Sender = string.IsNullOrEmpty(e.UserSender!.FirstName + e.UserSender.LastName) ? e.UserSender.Username : (e.UserSender.FirstName + " " + e.UserSender.LastName).Trim(),
+                SenderUserId = e.SenderUserId, Date = e.Source.IncomingLetter!.Date, DateErsal = e.Source.IncomingLetter!.DateErsal,
+                TypeErsal = e.Source.IncomingLetter!.TypeErsal ?? "", DeliveryName = e.Source.IncomingLetter!.DeliveryName ?? "",
+                Mahramanegi = e.Source.IncomingLetter!.Mahramanegi, Foriat = e.Source.IncomingLetter!.Foriat,
+                ErjaType = e.Type, MatnErja = e.MatnErja, MohlatPasokh = e.MohlatPasokh, IsNeshan = e.IsNeshan, IsRead = e.IsRead,
+                IsBayegani = true, HasAnswer = !string.IsNullOrEmpty(e.Answer), ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId)
-            })
-            .ToListAsync();
+            }).ToListAsync();
+
+        var direct = _db.IncomingLetters.AsNoTracking()
+            .Where(l => l.CreateUserId == userId && l.IsBayegani && !l.IsDelete && !l.Source.IsDelete);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            direct = direct.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.Ferestande.Contains(s));
+        }
+        var directItems = await direct.Select(l => new IncomingLetterListItemDto
+        {
+            LetterId = l.Id, LetterNumber = l.LetterNumber ?? "", NumberSabt = l.NumberSabt,
+            NumberLetterVarede = l.NumberLetterVarede ?? "", Title = l.Title, Ferestande = l.Ferestande,
+            Sender = l.Ferestande, Date = l.Date, DateErsal = l.DateErsal, TypeErsal = l.TypeErsal ?? "",
+            DeliveryName = l.DeliveryName ?? "", Mahramanegi = l.Mahramanegi, Foriat = l.Foriat,
+            IsBayegani = true, IsRead = true, ReciverCount = _db.Erjas.Count(e => e.SourceId == l.Id && !e.IsDelete),
+            HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == l.Id)
+        }).ToListAsync();
+
+        var allItems = erjaItems.Concat(directItems).OrderByDescending(x => x.NumberSabt).ToList();
+        var totalCount = allItems.Count;
+        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
         return new PagedResult<IncomingLetterListItemDto>
         {
@@ -178,7 +178,7 @@ public class IncomingLetterService : IIncomingLetterService
         pageSize = pageSize <= 0 ? 15 : pageSize;
 
         var q = _db.IncomingLetters.AsNoTracking()
-            .Where(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete);
+            .Where(l => l.CreateUserId == userId && !l.IsDelete && !l.Source.IsDelete && !l.IsBayegani);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

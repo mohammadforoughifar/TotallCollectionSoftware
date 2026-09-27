@@ -200,7 +200,7 @@ public class IncomingLettersController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var letter = await Db.IncomingLetters.FirstOrDefaultAsync(x => x.Id == id && !x.IsDelete);
         if (letter == null) return NotFound(new { message = "نامه وارده پیدا نشد." });
-        if (letter.CreateUserId != MyUserId && !await IsAdminAsync()) return StatusCode(403, new { message = "فقط ثبت‌کننده یا مدیر می‌تواند نامه را بایگانی کند." });
+        if (letter.CreateUserId != MyUserId && !await IsAdminAsync() && !await HasDabirkhaneAsync()) return StatusCode(403, new { message = "فقط ثبت‌کننده، دبیرخانه یا مدیر می‌تواند نامه را بایگانی کند." });
         letter.IsBayegani = !letter.IsBayegani;
         await Db.SaveChangesAsync();
         return Ok(new { isBayegani = letter.IsBayegani });

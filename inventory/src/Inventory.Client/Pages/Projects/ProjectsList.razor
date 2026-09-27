@@ -264,6 +264,12 @@
             </div>
             <details class="mt-3">
                 <summary class="fw-700 text-primary" style="cursor:pointer"><i class="bi bi-funnel ms-1"></i> جستجوی پیشرفته — پروژه‌های بدون داده</summary>
+                @if (HasAnyFilter)
+                {
+                    <button type="button" class="btn btn-sm btn-outline-danger mt-2" @onclick="ClearColFilters">
+                        <i class="bi bi-x-circle ms-1"></i> پاک کردن همه فیلترها
+                    </button>
+                }
                 <div class="d-flex flex-wrap gap-3 mt-2 p-2 rounded" style="background:#f8fafc">
                     <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptySerial" @bind:after="OnFilterChanged" /> شماره سریال ثبت نشده</label>
                     <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyEntry" @bind:after="OnFilterChanged" /> تاریخ ورود ثبت نشده</label>
