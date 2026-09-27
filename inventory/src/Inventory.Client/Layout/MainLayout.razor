@@ -111,6 +111,7 @@ else
                                 <div class="ntf-panel-head">
                                     <span class="fw-700">اعلان‌ها</span>
                                     <div class="d-flex gap-2 align-items-center">
+                                        <button type="button" class="btn-close btn-close-sm ms-1" title="بستن اعلان‌ها" aria-label="بستن اعلان‌ها" @onclick="ToggleNtfPanel"></button>
                                         @if (unreadCount > 0)
                                         {
                                             <button class="btn btn-link btn-sm p-0 fs-8" @onclick="MarkAllRead">همه خوانده شد</button>
@@ -1340,11 +1341,15 @@ else
     @@keyframes ntfPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
     .ntf-panel {
         position: absolute; top: calc(100% + 8px); left: 0; z-index: 1080;
-        width: 340px; max-width: 92vw; background: #fff;
+        width: 340px; max-width: 92vw; max-height: calc(100dvh - 72px);
+        display: flex; flex-direction: column; background: #fff;
         border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden;
     }
     .ntf-panel-head { display: flex; justify-content: space-between; align-items: center; padding: .6rem .9rem; border-bottom: 1px solid #eef2f7; background: #f8fafc; }
-    .ntf-panel-body { max-height: 380px; overflow-y: auto; }
+    .ntf-panel-body {
+        flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto;
+        overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+    }
     .ntf-item { padding: .6rem .9rem; border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background .12s; }
     .ntf-item:hover { background: #f8fafc; }
     .ntf-item.unread { background: #eff6ff; border-right: 3px solid #2563eb; }
@@ -1392,7 +1397,14 @@ else
     @@media (max-width: 575.98px) {
         .ntf-toasts { top: .6rem; right: .5rem; left: .5rem; width: auto; max-width: none; }
         .ntf-toast { border-radius: 12px; }
-        .ntf-panel { position: fixed; top: 60px; left: .5rem; right: .5rem; width: auto; }
+        .ntf-panel {
+            position: fixed; top: .5rem; left: .5rem; right: .5rem;
+            width: auto; max-width: none; max-height: calc(100dvh - 1rem);
+        }
+        .ntf-panel-head { flex-wrap: wrap; gap: .45rem; }
+        .ntf-panel-head > .d-flex { flex-wrap: wrap; justify-content: flex-end; }
+        .ntf-item { padding: .7rem .8rem; }
+        .ntf-item .fs-8 { overflow-wrap: anywhere; }
     }
 
     /* فرم‌های بررسی وضعیت و کلیدهای اعلان در موبایل/دسکتاپ */
