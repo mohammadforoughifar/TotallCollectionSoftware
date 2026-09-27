@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.FaAtt;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.FaAtt;
 
@@ -21,10 +22,10 @@ public class FaAttController : RbacControllerBase
     // ------------------- شیفت‌ها -------------------
 
     [HttpGet("shifts")]
-    public async Task<IActionResult> Shifts([FromQuery] bool? onlyActive)
+    public async Task<IActionResult> Shifts([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListShiftsAsync(onlyActive));
+        return Ok(Paging.Result(await _svc.ListShiftsAsync(onlyActive), skip, take));
     }
 
     [HttpPost("shifts")]
@@ -52,10 +53,10 @@ public class FaAttController : RbacControllerBase
     // ------------------- تخصیص شیفت -------------------
 
     [HttpGet("assigns")]
-    public async Task<IActionResult> Assigns([FromQuery] int? employeeId, [FromQuery] int? shiftId)
+    public async Task<IActionResult> Assigns([FromQuery] int? employeeId, [FromQuery] int? shiftId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListAssignsAsync(employeeId, shiftId));
+        return Ok(Paging.Result(await _svc.ListAssignsAsync(employeeId, shiftId), skip, take));
     }
 
     [HttpPost("assigns")]
@@ -91,10 +92,10 @@ public class FaAttController : RbacControllerBase
     // ------------------- دستگاه‌ها -------------------
 
     [HttpGet("devices")]
-    public async Task<IActionResult> Devices([FromQuery] bool? onlyActive)
+    public async Task<IActionResult> Devices([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListDevicesAsync(onlyActive));
+        return Ok(Paging.Result(await _svc.ListDevicesAsync(onlyActive), skip, take));
     }
 
     [HttpPost("devices")]
@@ -144,10 +145,10 @@ public class FaAttController : RbacControllerBase
     }
 
     [HttpGet("employees/{id:int}/logs")]
-    public async Task<IActionResult> EmployeeLogs(int id, [FromQuery] DateTime from, [FromQuery] DateTime to)
+    public async Task<IActionResult> EmployeeLogs(int id, [FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.EmployeeLogsAsync(id, from, to));
+        return Ok(Paging.Result(await _svc.EmployeeLogsAsync(id, from, to), skip, take));
     }
 
     [HttpGet("my/today")]
@@ -161,10 +162,10 @@ public class FaAttController : RbacControllerBase
 
     [HttpGet("daily")]
     public async Task<IActionResult> Daily([FromQuery] DateTime from, [FromQuery] DateTime to,
-        [FromQuery] int? employeeId, [FromQuery] int? orgUnitId, [FromQuery] int? status)
+        [FromQuery] int? employeeId, [FromQuery] int? orgUnitId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.DailyListAsync(from, to, employeeId, orgUnitId, status));
+        return Ok(Paging.Result(await _svc.DailyListAsync(from, to, employeeId, orgUnitId, status), skip, take));
     }
 
     [HttpPost("daily/recalc")]
@@ -205,10 +206,10 @@ public class FaAttController : RbacControllerBase
     // ------------------- ماموریت -------------------
 
     [HttpGet("missions/my")]
-    public async Task<IActionResult> MyMissions()
+    public async Task<IActionResult> MyMissions([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MyMissionsAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.MyMissionsAsync(MyUserId), skip, take));
     }
 
     [HttpPost("missions/my")]
@@ -226,10 +227,10 @@ public class FaAttController : RbacControllerBase
     }
 
     [HttpGet("missions")]
-    public async Task<IActionResult> Missions([FromQuery] int? employeeId, [FromQuery] int? status)
+    public async Task<IActionResult> Missions([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListMissionsAsync(employeeId, status));
+        return Ok(Paging.Result(await _svc.ListMissionsAsync(employeeId, status), skip, take));
     }
 
     [HttpPost("missions")]
@@ -271,10 +272,10 @@ public class FaAttController : RbacControllerBase
     // ------------------- مرخصی -------------------
 
     [HttpGet("leavetypes")]
-    public async Task<IActionResult> LeaveTypes()
+    public async Task<IActionResult> LeaveTypes([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListLeaveTypesAsync());
+        return Ok(Paging.Result(await _svc.ListLeaveTypesAsync(), skip, take));
     }
 
     [HttpPost("leavetypes")]
@@ -292,10 +293,10 @@ public class FaAttController : RbacControllerBase
     }
 
     [HttpGet("leaves")]
-    public async Task<IActionResult> Leaves([FromQuery] int? employeeId, [FromQuery] int? status)
+    public async Task<IActionResult> Leaves([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListLeavesAsync(employeeId, status));
+        return Ok(Paging.Result(await _svc.ListLeavesAsync(employeeId, status), skip, take));
     }
 
     [HttpPost("leaves")]
@@ -313,17 +314,17 @@ public class FaAttController : RbacControllerBase
     }
 
     [HttpGet("leaves/my")]
-    public async Task<IActionResult> MyLeaves()
+    public async Task<IActionResult> MyLeaves([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MyLeavesAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.MyLeavesAsync(MyUserId), skip, take));
     }
 
     [HttpGet("leaves/team")]
-    public async Task<IActionResult> TeamLeaves()
+    public async Task<IActionResult> TeamLeaves([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.TeamLeavesAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.TeamLeavesAsync(MyUserId), skip, take));
     }
 
     [HttpPost("leaves/my")]
@@ -379,32 +380,32 @@ public class FaAttController : RbacControllerBase
     }
 
     [HttpGet("leaves/by-unit")]
-    public async Task<IActionResult> LeavesByUnit([FromQuery] int orgUnitId, [FromQuery] DateTime from, [FromQuery] DateTime to)
+    public async Task<IActionResult> LeavesByUnit([FromQuery] int orgUnitId, [FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.LeavesByUnitAsync(orgUnitId, from, to));
+        return Ok(Paging.Result(await _svc.LeavesByUnitAsync(orgUnitId, from, to), skip, take));
     }
 
     [HttpGet("absence-calendar")]
     public async Task<IActionResult> AbsenceCalendar([FromQuery] DateTime from, [FromQuery] DateTime to,
-        [FromQuery] int? employeeId, [FromQuery] int? orgUnitId)
+        [FromQuery] int? employeeId, [FromQuery] int? orgUnitId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.AbsenceCalendarAsync(from, to, employeeId, orgUnitId));
+        return Ok(Paging.Result(await _svc.AbsenceCalendarAsync(from, to, employeeId, orgUnitId), skip, take));
     }
 
     [HttpGet("balances/my")]
-    public async Task<IActionResult> MyBalances([FromQuery] int? year)
+    public async Task<IActionResult> MyBalances([FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MyBalancesAsync(MyUserId, year));
+        return Ok(Paging.Result(await _svc.MyBalancesAsync(MyUserId, year), skip, take));
     }
 
     [HttpGet("balances")]
-    public async Task<IActionResult> Balances([FromQuery] int? employeeId, [FromQuery] int? year, [FromQuery] int? leaveTypeId)
+    public async Task<IActionResult> Balances([FromQuery] int? employeeId, [FromQuery] int? year, [FromQuery] int? leaveTypeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.GetBalancesAsync(employeeId, year, leaveTypeId));
+        return Ok(Paging.Result(await _svc.GetBalancesAsync(employeeId, year, leaveTypeId), skip, take));
     }
 
     [HttpPost("balances")]
@@ -446,10 +447,10 @@ public class FaAttController : RbacControllerBase
     // ------------------- گزارش‌ها -------------------
 
     [HttpGet("reports/month")]
-    public async Task<IActionResult> MonthReport([FromQuery] int year, [FromQuery] int month, [FromQuery] int? orgUnitId)
+    public async Task<IActionResult> MonthReport([FromQuery] int year, [FromQuery] int month, [FromQuery] int? orgUnitId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MonthSummaryAsync(year, month, orgUnitId));
+        return Ok(Paging.Result(await _svc.MonthSummaryAsync(year, month, orgUnitId), skip, take));
     }
 
     [HttpGet("reports/month-excel")]

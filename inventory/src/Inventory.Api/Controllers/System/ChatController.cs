@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
+using Inventory.Api.Services;
 
 namespace Inventory.Api.Controllers;
 
@@ -35,10 +37,10 @@ public class ChatController : ControllerBase
 
     /// <summary>فهرست گفتگوهای کاربر جاری</summary>
     [HttpGet("conversations")]
-    public async Task<ActionResult<List<ChatConversationDto>>> GetConversations([FromQuery] string? search, [FromQuery] ChatTypeDto? type, [FromQuery] bool onlyUnread = false)
+    public async Task<ActionResult<List<ChatConversationDto>>> GetConversations([FromQuery] string? search, [FromQuery] ChatTypeDto? type, [FromQuery] bool onlyUnread = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = await _chatService.GetConversationsAsync(CurrentUserId, search, type, onlyUnread);
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>جزئیات یک گفتگو</summary>
@@ -67,9 +69,9 @@ public class ChatController : ControllerBase
 
     /// <summary>دریافت پیام‌های یک گفتگو با صفحه‌بندی</summary>
     [HttpGet("conversations/{id}/messages")]
-    public async Task<ActionResult<List<ChatMessageDto>>> GetMessages(int id, [FromQuery] int? beforeId, [FromQuery] int pageSize = 50, [FromQuery] string? search = null)
+    public async Task<ActionResult<List<ChatMessageDto>>> GetMessages(int id, [FromQuery] int? beforeId, [FromQuery] int pageSize = 50, [FromQuery] string? search = null, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
-        var messages = await _chatService.GetMessagesAsync(CurrentUserId, id, beforeId, pageSize, search);
+        var messages = await _chatService.GetMessagesAsync(CurrentUserId, id, beforeId, Paging.ToPageSize(take, pageSize), search, skip ?? 0);
         return Ok(messages);
     }
 
@@ -140,10 +142,10 @@ public class ChatController : ControllerBase
 
     /// <summary>فهرست اعضای گروه</summary>
     [HttpGet("conversations/{id}/members")]
-    public async Task<ActionResult<List<ChatMemberDto>>> GetMembers(int id)
+    public async Task<ActionResult<List<ChatMemberDto>>> GetMembers(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var members = await _chatService.GetGroupMembersAsync(CurrentUserId, id);
-        return Ok(members);
+        return Ok(Paging.Result(members, skip, take));
     }
 
     /// <summary>افزودن عضو جدید به گروه</summary>
@@ -164,10 +166,10 @@ public class ChatController : ControllerBase
 
     /// <summary>فهرست تمامی کاربران نرم‌افزار جهت شروع چت</summary>
     [HttpGet("users")]
-    public async Task<ActionResult<List<ChatUserDto>>> GetUsers([FromQuery] string? search)
+    public async Task<ActionResult<List<ChatUserDto>>> GetUsers([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var users = await _chatService.GetSoftwareUsersForChatAsync(CurrentUserId, search);
-        return Ok(users);
+        return Ok(Paging.Result(users, skip, take));
     }
 
     /// <summary>خلاصه اعلان‌های چت برای هدر نرم‌افزار</summary>

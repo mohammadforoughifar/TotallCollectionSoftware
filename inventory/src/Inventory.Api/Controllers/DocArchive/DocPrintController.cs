@@ -231,7 +231,7 @@ public class DocPrintController : RbacControllerBase
     [HttpGet("recent")]
     public async Task<IActionResult> Recent([FromQuery] int? documentId = null,
         [FromQuery] int? userId = null, [FromQuery] DateTime? from = null,
-        [FromQuery] DateTime? to = null, [FromQuery] int take = 200)
+        [FromQuery] DateTime? to = null, [FromQuery] int take = 200, [FromQuery] int skip = 0)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
         if (!IsAdmin && !await IsManagerAsync())
@@ -245,7 +245,7 @@ public class DocPrintController : RbacControllerBase
         if (from.HasValue) q = q.Where(l => l.PrintedAt >= from.Value);
         if (to.HasValue) q = q.Where(l => l.PrintedAt < to.Value.AddDays(1));
 
-        var logs = await q.OrderByDescending(l => l.Id).Take(take).ToListAsync();
+        var logs = await q.OrderByDescending(l => l.Id).Skip(Math.Max(0, skip)).Take(take).ToListAsync();
         if (logs.Count == 0) return Ok(Array.Empty<DocPrintLogDto>());
 
         var docIds = logs.Select(l => l.DocumentId).Distinct().ToList();

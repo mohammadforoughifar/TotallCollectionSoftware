@@ -65,7 +65,7 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>افرادی که کاربر جاری می‌تواند به آن‌ها دستور کار بدهد (بند ۶).</summary>
     [HttpGet("targets")]
-    public async Task<IActionResult> Targets()
+    public async Task<IActionResult> Targets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var canOthers = await HasAsync("AssignOthers");
         var me = await _db.Users.FindAsync(MyUserId);
@@ -91,16 +91,16 @@ public class WorkOrdersController : ControllerBase
                     ? u.Username : $"{u.FirstName} {u.LastName}".Trim() + $" ({u.Username})"
             }));
         }
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     /// <summary>لیست مجاز یک کاربر (پیکربندی — فقط مدیر).</summary>
     [HttpGet("allowed/{userId:int}")]
-    public async Task<IActionResult> GetAllowed(int userId)
+    public async Task<IActionResult> GetAllowed(int userId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!IsLegacyAdmin && !await HasAsync("AssignOthers")) return Forbid();
-        return Ok(await _db.WorkOrderAllowedAssignees.Where(a => a.OwnerUserId == userId)
-            .Select(a => a.TargetUserId).ToListAsync());
+        return Ok(await Paging.ResultAsync(_db.WorkOrderAllowedAssignees.Where(a => a.OwnerUserId == userId)
+            .Select(a => a.TargetUserId), skip, take));
     }
 
     [HttpPost("allowed/{userId:int}")]
@@ -551,7 +551,7 @@ public class WorkOrdersController : ControllerBase
     /// <summary>دستورهای کارِ ساخته‌شده از یک مبدأ (سورس) — مثلاً نامه داخلی. برای لینک/نشان «دستورکار شده».</summary>
     /// <remarks>فقط متادیتای سبک برمی‌گرداند (بدون شرح/گیرندگان) تا به‌عنوان نشان در کارتابل نامه استفاده شود.</remarks>
     [HttpGet("for-source")]
-    public async Task<IActionResult> ForSource([FromQuery] string? module, [FromQuery] int? sourceId)
+    public async Task<IActionResult> ForSource([FromQuery] string? module, [FromQuery] int? sourceId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0)
             return Ok(new List<object>());
@@ -560,7 +560,7 @@ public class WorkOrdersController : ControllerBase
             .OrderByDescending(w => w.Id)
             .Select(w => new { w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId })
             .ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>جزئیات یک دستور کار به‌صورت مستقیم — برای لینک عمیق (مثلاً از نشان «دستورکار شده» نامه).</summary>
@@ -574,7 +574,7 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>تقویم شمسی — دستورهای بازه زمانی (بند ۱۳).</summary>
     [HttpGet("calendar")]
-    public async Task<IActionResult> Calendar([FromQuery] DateTime from, [FromQuery] DateTime to)
+    public async Task<IActionResult> Calendar([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
         var orders = await _db.WorkOrders
@@ -583,7 +583,7 @@ public class WorkOrdersController : ControllerBase
         var ids = orders.Select(o => o.Id).ToList();
         var asgs = await _db.WorkOrderAssignees.Where(a => ids.Contains(a.OrderId)).ToListAsync();
 
-        return Ok(orders.Select(w =>
+        return Ok(Paging.Result(orders.Select(w =>
         {
             var mine = w.OwnerUserId == MyUserId;
             var list = asgs.Where(a => a.OrderId == w.Id).ToList();
@@ -607,7 +607,7 @@ public class WorkOrdersController : ControllerBase
             else tone = "none";
 
             return new { w.Id, w.Number, w.Title, w.DueAt, w.Status, Kind = kind, Tone = tone };
-        }));
+        }), skip, take));
     }
 
     // ================== رویت (بند ۸) ==================
@@ -820,13 +820,12 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>آیتم‌های چک‌لیست یک دستور کار — به ترتیب SortOrder.</summary>
     [HttpGet("{id:int}/checklist")]
-    public async Task<IActionResult> Checklist(int id)
+    public async Task<IActionResult> Checklist(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanSeeOrderAsync(id)) return Forbid();
-        return Ok(await _db.WorkOrderChecklistItems.Where(c => c.OrderId == id)
+        return Ok(await Paging.ResultAsync(_db.WorkOrderChecklistItems.Where(c => c.OrderId == id)
             .OrderBy(c => c.SortOrder).ThenBy(c => c.Id)
-            .Select(c => new { c.Id, c.Text, c.SortOrder, c.IsDone, c.DoneByName, c.DoneAt })
-            .ToListAsync());
+            .Select(c => new { c.Id, c.Text, c.SortOrder, c.IsDone, c.DoneByName, c.DoneAt }), skip, take));
     }
 
     public class ChecklistAddDto { public string Text { get; set; } = ""; }
@@ -1091,11 +1090,11 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>گزارش عملکرد افراد — فقط دستورهایی که کاربر جاری داده است. days=0 یعنی همهٔ بازه.</summary>
     [HttpGet("performance")]
-    public async Task<IActionResult> Performance([FromQuery] int days = 0)
+    public async Task<IActionResult> Performance([FromQuery] int days = 0, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("View")) return Forbid();
         if (days is < 0 or > 3660) return BadRequest(new { message = "بازهٔ زمانی نامعتبر است." });
-        return Ok(await BuildPerformanceAsync(days));
+        return Ok(Paging.Result(await BuildPerformanceAsync(days), skip, take));
     }
 
     /// <summary>خروجی Excel/PDF گزارش عملکرد افراد — همان داده با رتبه‌بندی.</summary>
@@ -1194,7 +1193,7 @@ public class WorkOrdersController : ControllerBase
     /// برای پیشنهاد در فرم و چیپ‌های فیلتر. مرتب بر اساس بیشترین استفاده.
     /// </summary>
     [HttpGet("my-tags")]
-    public async Task<IActionResult> MyTags()
+    public async Task<IActionResult> MyTags([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
         var tagStrings = await _db.WorkOrders.AsNoTracking()
@@ -1208,7 +1207,7 @@ public class WorkOrdersController : ControllerBase
             .Take(30)
             .Select(g => g.Key)
             .ToList();
-        return Ok(top);
+        return Ok(Paging.Result(top, skip, take));
     }
 
     // ================== قالب‌های آمادهٔ دستور کار (موج ۷) ==================
@@ -1227,14 +1226,14 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>فهرست قالب‌های کاربر جاری — پرکاربردها بالا. هر کاربر فقط قالب‌های خودش را می‌بیند.</summary>
     [HttpGet("templates")]
-    public async Task<IActionResult> Templates()
+    public async Task<IActionResult> Templates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("Create")) return Forbid();
         var rows = await _db.WorkOrderTemplates.AsNoTracking()
             .Where(t => t.OwnerUserId == MyUserId)
             .OrderByDescending(t => t.UsageCount).ThenByDescending(t => t.Id)
             .ToListAsync();
-        return Ok(rows.Select(t => new
+        return Ok(Paging.Result(rows.Select(t => new
         {
             t.Id, t.Name, t.Title, t.Description, t.Priority, t.Recurrence, t.UsageCount, t.CreatedAt,
             AssigneeUserIds = (t.AssigneeUserIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -1242,7 +1241,7 @@ public class WorkOrdersController : ControllerBase
             ChecklistItems = (t.ChecklistItems ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim()).Where(s => s.Length > 0).ToList(),
             Tags = TagsToList(t.Tags)
-        }));
+        }), skip, take));
     }
 
     /// <summary>ذخیرهٔ قالب جدید — حداکثر ۲۰ قالب برای هر کاربر تا فهرست شلوغ نشود.</summary>
@@ -1308,19 +1307,19 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>لیست کامنت‌های یک دستور — قدیمی به جدید. کامنت‌های حذف‌شده با متن خالی می‌آیند تا رشتهٔ پاسخ‌ها نشکند.</summary>
     [HttpGet("{id:int}/comments")]
-    public async Task<IActionResult> Comments(int id)
+    public async Task<IActionResult> Comments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanSeeOrderAsync(id)) return Forbid();
         var items = await _db.WorkOrderComments.AsNoTracking()
             .Where(c => c.OrderId == id)
             .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
             .ToListAsync();
-        return Ok(items.Select(c => new
+        return Ok(Paging.Result(items.Select(c => new
         {
             c.Id, c.AuthorUserId, c.AuthorName,
             Text = c.IsDeleted ? "" : c.Text,
             c.ReplyToId, c.IsDeleted, c.CreatedAt, c.EditedAt
-        }));
+        }), skip, take));
     }
 
     public class CommentDto { public string Text { get; set; } = ""; public int? ReplyToId { get; set; } }
@@ -1517,23 +1516,23 @@ public class WorkOrdersController : ControllerBase
 
     // ================== تاریخچه (بند ۱۷ و ۱۸) ==================
     [HttpGet("{id:int}/logs")]
-    public async Task<IActionResult> Logs(int id)
+    public async Task<IActionResult> Logs(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanSeeOrderAsync(id)) return Forbid();
-        return Ok(await _db.WorkOrderLogs.Where(l => l.OrderId == id).OrderBy(l => l.Id)
-            .Select(l => new { l.Id, l.ActorName, l.Action, l.Text, l.CreatedAt }).ToListAsync());
+        return Ok(await Paging.ResultAsync(_db.WorkOrderLogs.Where(l => l.OrderId == id).OrderBy(l => l.Id)
+            .Select(l => new { l.Id, l.ActorName, l.Action, l.Text, l.CreatedAt }), skip, take));
     }
 
     // ================== پیوست‌ها (بند ۴) ==================
     [HttpGet("{id:int}/attachments")]
-    public async Task<IActionResult> Attachments(int id)
+    public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanSeeOrderAsync(id)) return Forbid();
         var rows = await _db.WorkOrderAttachments.Where(a => a.OrderId == id)
             .Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt, a.FilePath, a.Data })
             .ToListAsync();
-        return Ok(rows.Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt,
-            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length }));
+        return Ok(Paging.Result(rows.Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length }), skip, take));
     }
 
     [HttpPost("{id:int}/attachments")]

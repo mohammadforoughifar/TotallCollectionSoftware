@@ -5,6 +5,7 @@ using RadisHr.Api.Data;
 using RadisHr.Api.Services;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -23,12 +24,12 @@ public class AuthController : ControllerBase
 
     /// <summary>فهرست نقش‌ها برای صفحهٔ ورود (بدون افشای رمز)</summary>
     [HttpGet("roles")]
-    public async Task<ActionResult<List<UserAccountInfo>>> Roles()
+    public async Task<ActionResult<List<UserAccountInfo>>> Roles([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var users = await _db.Users.Where(u => u.IsActive).ToListAsync();
-        return users.Select(u => new UserAccountInfo(
+        return Ok(Paging.Result(users.Select(u => new UserAccountInfo(
             u.UserKey, u.DisplayName, u.RoleTitle, u.MustChangePassword, u.PasswordChangedAt, u.LastLoginAt))
-            .ToList();
+            .ToList(), skip, take));
     }
 
     [HttpPost("login")]

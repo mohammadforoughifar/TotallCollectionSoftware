@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -14,7 +15,7 @@ public class TypeFactorsController : RbacControllerBase
     public TypeFactorsController(AppDbContext db) : base(db) { }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? search)
+    public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -31,7 +32,7 @@ public class TypeFactorsController : RbacControllerBase
                 ProjectCount = t.Projects.Count(p => !p.IsDelete)
             })
             .ToListAsync();
-        return Ok(items);
+        return Ok(Paging.Result(items, skip, take));
     }
 
     [HttpGet("{id:int}")]

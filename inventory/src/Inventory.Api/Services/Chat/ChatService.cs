@@ -10,6 +10,7 @@ using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Services.Chat;
 
@@ -19,7 +20,7 @@ public interface IChatService
     Task<ChatConversationDto> GetConversationByIdAsync(int currentUserId, int conversationId);
     Task<ChatConversationDto> GetOrCreateDirectConversationAsync(int currentUserId, string currentUserName, int targetUserId);
     Task<ChatConversationDto> CreateGroupConversationAsync(int currentUserId, string currentUserName, CreateGroupChatRequest request);
-    Task<List<ChatMessageDto>> GetMessagesAsync(int currentUserId, int conversationId, int? beforeMessageId = null, int pageSize = 50, string? search = null);
+    Task<List<ChatMessageDto>> GetMessagesAsync(int currentUserId, int conversationId, int? beforeMessageId = null, int pageSize = 50, string? search = null, int skip = 0);
     Task<ChatMessageDto> SendMessageAsync(int currentUserId, string currentUserName, string? currentUserAvatar, SendChatMessageRequest request);
     Task<ChatMessageDto> EditMessageAsync(int currentUserId, int messageId, string newText);
     Task DeleteMessageAsync(int currentUserId, int messageId);
@@ -371,7 +372,7 @@ public class ChatService : IChatService
         return dto;
     }
 
-    public async Task<List<ChatMessageDto>> GetMessagesAsync(int currentUserId, int conversationId, int? beforeMessageId = null, int pageSize = 50, string? search = null)
+    public async Task<List<ChatMessageDto>> GetMessagesAsync(int currentUserId, int conversationId, int? beforeMessageId = null, int pageSize = 50, string? search = null, int skip = 0)
     {
         var myMem = await _db.ChatMembers
             .AsNoTracking()
@@ -405,6 +406,7 @@ public class ChatService : IChatService
 
         var messages = await q
             .OrderByDescending(m => m.CreatedAt)
+            .Skip(Math.Max(0, skip))
             .Take(Math.Min(pageSize, 100))
             .ToListAsync();
 

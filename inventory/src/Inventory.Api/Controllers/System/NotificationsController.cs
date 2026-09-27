@@ -33,13 +33,14 @@ public class NotificationsController : ControllerBase
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) && v > 0 ? v : 0;
 
     [HttpGet]
-    public async Task<IActionResult> My([FromQuery] int take = 50)
+    public async Task<IActionResult> My([FromQuery] int take = 50, [FromQuery] int skip = 0)
     {
         if (MyUserId <= 0) return Unauthorized();
 
         var list = await _db.AppNotifications.AsNoTracking()
             .Where(n => n.UserId == MyUserId)
             .OrderByDescending(n => n.Id)
+            .Skip(Math.Max(0, skip))
             .Take(Math.Min(take, 100))
             .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt })
             .ToListAsync();

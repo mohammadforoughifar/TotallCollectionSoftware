@@ -4,6 +4,7 @@ using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -483,7 +484,7 @@ public class DocumentsController : RbacControllerBase
 
     /// <summary>گزارش مشاهده/دانلود فایل‌های این مدرک — فقط برای دارندگان دسترسی کامل.</summary>
     [HttpGet("{id:int}/access-logs")]
-    public async Task<IActionResult> AccessLogs(int id)
+    public async Task<IActionResult> AccessLogs(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
@@ -508,7 +509,7 @@ public class DocumentsController : RbacControllerBase
                 At = l.At
             }).ToListAsync();
 
-        return Ok(logs);
+        return Ok(Paging.Result(logs, skip, take));
     }
 
     /// <summary>آیا این کد مدرک قبلاً ثبت شده است؟ — برای هشدار زنده در فرم ساخت/ویرایش.</summary>
@@ -591,7 +592,7 @@ public class DocumentsController : RbacControllerBase
 
     /// <summary>فهرست درخواست‌های دسترسی این مدرک — فقط مدیران مدرک (دسترسی کامل).</summary>
     [HttpGet("{id:int}/access-requests")]
-    public async Task<IActionResult> AccessRequests(int id)
+    public async Task<IActionResult> AccessRequests(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
@@ -606,12 +607,12 @@ public class DocumentsController : RbacControllerBase
             .ThenByDescending(r => r.Id)
             .Select(r => ToRequestDto(r))
             .ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>درخواست‌های من برای این مدرک — برای نمایش وضعیت به خودِ درخواست‌کننده.</summary>
     [HttpGet("{id:int}/access-requests/mine")]
-    public async Task<IActionResult> MyAccessRequests(int id)
+    public async Task<IActionResult> MyAccessRequests(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
@@ -620,7 +621,7 @@ public class DocumentsController : RbacControllerBase
             .OrderByDescending(r => r.Id)
             .Select(r => ToRequestDto(r))
             .ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     private static DocAccessRequestDto ToRequestDto(DocAccessRequest r) => new()
@@ -1095,7 +1096,7 @@ public class DocumentsController : RbacControllerBase
     // ---------------------------- کارتابل آرشیو ----------------------------
 
     [HttpGet("/api/doc-archive/cartable")]
-    public async Task<IActionResult> Cartable(bool includeDone = false)
+    public async Task<IActionResult> Cartable(bool includeDone = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
@@ -1128,7 +1129,7 @@ public class DocumentsController : RbacControllerBase
             CreatedAt = t.CreatedAt
         }).ToList();
 
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     /// <summary>بستن دستی یک کار کارتابل (اعلان ورژن / بررسی مدرک مرتبط).</summary>

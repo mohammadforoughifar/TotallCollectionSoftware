@@ -24,7 +24,7 @@ public class ProjectAttachController : RbacControllerBase
 
     /// <summary>لیست پیوست‌های یک پروژه</summary>
     [HttpGet("project/{projectId:int}")]
-    public async Task<IActionResult> GetForProject(int projectId)
+    public async Task<IActionResult> GetForProject(int projectId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -44,7 +44,7 @@ public class ProjectAttachController : RbacControllerBase
             ProjectId = a.ProjectId,
             UserName = a.User is null ? null : DisplayOf(a.User)
         }).ToList();
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     /// <summary>آپلود یک یا چند فایل برای یک پروژه (multipart)</summary>

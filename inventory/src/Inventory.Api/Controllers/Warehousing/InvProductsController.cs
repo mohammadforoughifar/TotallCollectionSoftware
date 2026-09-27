@@ -23,8 +23,8 @@ public class InvProductsController : RbacControllerBase
         [FromQuery] bool below = false,
         [FromQuery] bool activeOnly = false,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetProductsAsync(search, categoryId, warehouseId, below, activeOnly, page, pageSize));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetProductsAsync(search, categoryId, warehouseId, below, activeOnly, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     /// <summary>یک کالا با همه‌ی جزئیات و مقادیر ویژگی‌ها.</summary>
     [HttpGet("{id:int}")]
@@ -42,8 +42,8 @@ public class InvProductsController : RbacControllerBase
     /// <summary>فهرست سبک کالاها برای انتخاب در فرم‌ها.</summary>
     [HttpGet("lookups")]
     public async Task<ActionResult<List<LookupItem>>> Lookups(
-        [FromQuery] string? search = null, [FromQuery] int? warehouseId = null)
-        => Ok(await _svc.GetProductLookupsAsync(search, warehouseId));
+        [FromQuery] string? search = null, [FromQuery] int? warehouseId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetProductLookupsAsync(search, warehouseId), skip, take));
 
     /// <summary>ایجاد یا ویرایش کالا.</summary>
     [HttpPost]

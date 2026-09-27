@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -200,7 +201,7 @@ public class ReportWorksController : RbacControllerBase
     /// خروجی: PagedResult (ردیف‌های همان صفحه + تعداد کل + جمع ساعات کل فیلتر).
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] ReportWorkListQuery q)
+    public async Task<IActionResult> GetAll([FromQuery] ReportWorkListQuery q, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -209,6 +210,9 @@ public class ReportWorksController : RbacControllerBase
 
         var page = q.Page < 1 ? 1 : q.Page;
         var pageSize = q.PageSize;
+        // ورودی یکپارچه skip/take — بر page/pageSize اولویت دارد
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         var idQuery = ApplySort(filtered, q.Sort, q.Desc).Select(r => r.Id);
         if (pageSize > 0)
         {

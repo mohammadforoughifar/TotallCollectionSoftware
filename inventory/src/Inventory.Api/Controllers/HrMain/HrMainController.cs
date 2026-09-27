@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.HrMain;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.HrMain;
 
@@ -70,10 +71,10 @@ public class HrMainController : RbacControllerBase
     // مسئول شعب باشد، بدون این‌که به تنظیمات شرکت/ساختار/قوانین دسترسی داشته باشد.
 
     [HttpGet("branches")]
-    public async Task<IActionResult> Branches()
+    public async Task<IActionResult> Branches([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Branches") is { } f) return f;
-        return Ok(await _svc.ListBranchesAsync());
+        return Ok(Paging.Result(await _svc.ListBranchesAsync(), skip, take));
     }
 
     [HttpPost("branches")]
@@ -103,17 +104,17 @@ public class HrMainController : RbacControllerBase
     // بدون نیاز به مجوز عمومی که کل ماژول (شرکت/شعب/قوانین) را هم باز می‌کند.
 
     [HttpGet("org/tree")]
-    public async Task<IActionResult> OrgTree()
+    public async Task<IActionResult> OrgTree([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Org") is { } f) return f;
-        return Ok(await _svc.GetTreeAsync());
+        return Ok(Paging.Result(await _svc.GetTreeAsync(), skip, take));
     }
 
     [HttpGet("org/nodes")]
-    public async Task<IActionResult> OrgNodes()
+    public async Task<IActionResult> OrgNodes([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Org") is { } f) return f;
-        return Ok(await _svc.ListNodesAsync());
+        return Ok(Paging.Result(await _svc.ListNodesAsync(), skip, take));
     }
 
     [HttpPost("org/nodes")]
@@ -142,10 +143,10 @@ public class HrMainController : RbacControllerBase
     // دسترسی تفکیکی: مجوز اختصاصی «HrMain.Positions».
 
     [HttpGet("positions")]
-    public async Task<IActionResult> Positions([FromQuery] int? orgNodeId)
+    public async Task<IActionResult> Positions([FromQuery] int? orgNodeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Positions") is { } f) return f;
-        return Ok(await _svc.ListPositionsAsync(orgNodeId));
+        return Ok(Paging.Result(await _svc.ListPositionsAsync(orgNodeId), skip, take));
     }
 
     [HttpPost("positions")]
@@ -230,10 +231,10 @@ public class HrMainController : RbacControllerBase
     // دسترسی تفکیکی: مجوز اختصاصی «HrMain.Calendar» (تعطیلات جزو تقویم سازمان است).
 
     [HttpGet("holidays")]
-    public async Task<IActionResult> Holidays([FromQuery] int? year)
+    public async Task<IActionResult> Holidays([FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Calendar") is { } f) return f;
-        return Ok(await _svc.ListHolidaysAsync(year));
+        return Ok(Paging.Result(await _svc.ListHolidaysAsync(year), skip, take));
     }
 
     [HttpPost("holidays")]

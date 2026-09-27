@@ -3,6 +3,7 @@ using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 namespace Inventory.Api.Controllers.DocArchive;
 
 [Route("api/doc-archive")]
@@ -27,14 +28,14 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
         });
     }
     [HttpGet("documents/{id:int}/temporary-grants")]
-    public async Task<IActionResult> Grants(int id)
+    public async Task<IActionResult> Grants(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await Full(id)) return Forbid();
-        return Ok(await (from g in Db.DocTemporaryGrants.AsNoTracking()
+        return Ok(await Paging.ResultAsync((from g in Db.DocTemporaryGrants.AsNoTracking()
                          join u in Db.Users on g.UserId equals u.Id
                          where g.DocumentId == id
                          orderby g.ExpiresAtUtc descending
-                         select new DocTemporaryGrantDto { Id = g.Id, UserId = g.UserId, UserName = u.Username, ExpiresAtUtc = DateTime.SpecifyKind(g.ExpiresAtUtc, DateTimeKind.Utc), RevokedAtUtc = g.RevokedAtUtc, CanDownload = g.CanDownload }).ToListAsync());
+                         select new DocTemporaryGrantDto { Id = g.Id, UserId = g.UserId, UserName = u.Username, ExpiresAtUtc = DateTime.SpecifyKind(g.ExpiresAtUtc, DateTimeKind.Utc), RevokedAtUtc = g.RevokedAtUtc, CanDownload = g.CanDownload }), skip, take));
     }
     [HttpPost("documents/{id:int}/temporary-grants")]
     public async Task<IActionResult> Grant(int id, DocTemporaryGrantDto dto)

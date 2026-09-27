@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -13,8 +14,7 @@ public class PermissionsController : ControllerBase
     public PermissionsController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll() =>
-        Ok(await _db.Permissions.AsNoTracking()
-            .Select(p => new { p.Id, p.Module, p.Action })
-            .ToListAsync());
+    public async Task<IActionResult> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.Permissions.AsNoTracking()
+            .Select(p => new { p.Id, p.Module, p.Action }), skip, take));
 }

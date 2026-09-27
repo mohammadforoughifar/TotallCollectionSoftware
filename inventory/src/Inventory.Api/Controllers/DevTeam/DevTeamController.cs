@@ -3,6 +3,7 @@ using Inventory.Api.Services.DevTeam;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.DevTeam;
 
@@ -78,10 +79,10 @@ public class DevTeamController : ControllerBase
     // ---------- statuses ----------
 
     [HttpGet("statuses")]
-    public async Task<ActionResult<List<DtWorkflowStatusDto>>> Statuses([FromQuery] bool all = false)
+    public async Task<ActionResult<List<DtWorkflowStatusDto>>> Statuses([FromQuery] bool all = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         await EnsureAsync(a => a.CanView);
-        return Ok(await _svc.GetStatusesAsync(all));
+        return Ok(Paging.Result(await _svc.GetStatusesAsync(all), skip, take));
     }
 
     [HttpPost("statuses")]
@@ -102,10 +103,10 @@ public class DevTeamController : ControllerBase
     // ---------- modules ----------
 
     [HttpGet("modules")]
-    public async Task<ActionResult<List<DtProductModuleDto>>> Modules([FromQuery] bool all = false)
+    public async Task<ActionResult<List<DtProductModuleDto>>> Modules([FromQuery] bool all = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         await EnsureAsync(a => a.CanView);
-        return Ok(await _svc.GetModulesAsync(all));
+        return Ok(Paging.Result(await _svc.GetModulesAsync(all), skip, take));
     }
 
     [HttpPost("modules")]
@@ -126,10 +127,10 @@ public class DevTeamController : ControllerBase
     // ---------- sprints ----------
 
     [HttpGet("sprints")]
-    public async Task<ActionResult<List<DtSprintDto>>> Sprints()
+    public async Task<ActionResult<List<DtSprintDto>>> Sprints([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         await EnsureAsync(a => a.CanView);
-        return Ok(await _svc.GetSprintsAsync());
+        return Ok(Paging.Result(await _svc.GetSprintsAsync(), skip, take));
     }
 
     [HttpPost("sprints")]
@@ -163,8 +164,10 @@ public class DevTeamController : ControllerBase
         [FromQuery] bool? onlyOverdue = null,
         [FromQuery] bool? includeDone = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 50)
+        [FromQuery] int pageSize = 50, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         await EnsureAsync(a => a.CanView);
         var query = new DtTaskQuery
         {
@@ -180,10 +183,10 @@ public class DevTeamController : ControllerBase
     public async Task<ActionResult<List<DtTaskListItemDto>>> Board(
         [FromQuery] int? sprintId = null,
         [FromQuery] int? moduleId = null,
-        [FromQuery] int? assigneeUserId = null)
+        [FromQuery] int? assigneeUserId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         await EnsureAsync(a => a.CanView);
-        return Ok(await _svc.BoardTasksAsync(sprintId, moduleId, assigneeUserId));
+        return Ok(Paging.Result(await _svc.BoardTasksAsync(sprintId, moduleId, assigneeUserId), skip, take));
     }
 
     [HttpGet("tasks/{id:int}")]
@@ -377,10 +380,10 @@ public class DevTeamController : ControllerBase
     public async Task<ActionResult<List<DtTaskListItemDto>>> SearchTasks(
         [FromQuery] string? q = null,
         [FromQuery] int? excludeId = null,
-        [FromQuery] int take = 20)
+        [FromQuery] int take = 20, [FromQuery] int skip = 0)
     {
         await EnsureAsync(a => a.CanView);
-        return Ok(await _svc.SearchTasksAsync(q, excludeId, take));
+        return Ok(await _svc.SearchTasksAsync(q, excludeId, take, skip));
     }
 
     /// <summary>ساخت ساب‌تسک زیر یک تسک.</summary>
@@ -468,10 +471,10 @@ public class DevTeamController : ControllerBase
         [FromQuery] string? severity = null,
         [FromQuery] string? status = null,
         [FromQuery] int? moduleId = null,
-        [FromQuery] int? taskId = null)
+        [FromQuery] int? taskId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         await EnsureAsync(a => a.CanView);
-        return Ok(await _svc.QueryProblemsAsync(severity, status, moduleId, taskId));
+        return Ok(Paging.Result(await _svc.QueryProblemsAsync(severity, status, moduleId, taskId), skip, take));
     }
 
     [HttpPost("problems")]
@@ -503,10 +506,10 @@ public class DevTeamController : ControllerBase
     [HttpGet("changes")]
     public async Task<ActionResult<List<DtModuleChangeDto>>> Changes(
         [FromQuery] int? moduleId = null,
-        [FromQuery] int take = 50)
+        [FromQuery] int take = 50, [FromQuery] int skip = 0)
     {
         await EnsureAsync(a => a.CanView);
-        return Ok(await _svc.QueryChangesAsync(moduleId, take));
+        return Ok(await _svc.QueryChangesAsync(moduleId, take, skip));
     }
 
     [HttpPost("changes")]

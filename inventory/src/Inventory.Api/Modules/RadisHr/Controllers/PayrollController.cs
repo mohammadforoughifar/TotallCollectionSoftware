@@ -6,6 +6,7 @@ using RadisHr.Api.Services;
 using RadisHr.Shared.Calculations;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -25,12 +26,12 @@ public class PayrollController : ControllerBase
 
     /// <summary>ردیف‌های محاسبه‌شدهٔ یک ماه (۱۴۰۵/۰۳)</summary>
     [HttpGet("month/{month}")]
-    public async Task<ActionResult<List<PayrollRow>>> Month(string month) =>
-        await _payroll.MonthRowsAsync(month);
+    public async Task<ActionResult<List<PayrollRow>>> Month(string month, [FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(Paging.Result(await _payroll.MonthRowsAsync(month), skip, take));
 
     [HttpGet("months")]
-    public async Task<ActionResult<List<string>>> Months() =>
-        await _db.PayrollRows.Select(r => r.Month).Distinct().OrderBy(m => m).ToListAsync();
+    public async Task<ActionResult<List<string>>> Months([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.PayrollRows.Select(r => r.Month).Distinct().OrderBy(m => m), skip, take));
 
     /// <summary>محاسبهٔ فیش یک نفر — معادل RADIS_PRINT.payslip</summary>
     [HttpPost("payslip")]
@@ -51,7 +52,7 @@ public class PayrollController : ControllerBase
 
     /// <summary>محاسبهٔ همهٔ پرسنل برای یک ماه بدون داده‌های حضور (حکم پایه)</summary>
     [HttpGet("preview")]
-    public async Task<ActionResult<List<PayrollRow>>> Preview([FromQuery] int year, [FromQuery] int month)
+    public async Task<ActionResult<List<PayrollRow>>> Preview([FromQuery] int year, [FromQuery] int month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var employees = await _db.Employees.AsNoTracking().Where(e => e.IsActive).ToListAsync();
         var rules = await _payroll.RulesForAsync(year);
@@ -81,7 +82,7 @@ public class PayrollController : ControllerBase
                 Tax = r.Tax, Net = r.Net
             });
         }
-        return rows.OrderBy(r => r.Code).ToList();
+        return Ok(Paging.Result(rows.OrderBy(r => r.Code).ToList(), skip, take));
     }
 
     /// <summary>جمع‌های ماه برای داشبورد و حسابداری</summary>

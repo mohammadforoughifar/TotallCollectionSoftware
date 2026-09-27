@@ -5,6 +5,7 @@ using RadisHr.Api.Data;
 using RadisHr.Shared.Calculations;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -18,9 +19,9 @@ public class OrganizationController : ControllerBase
 
     // ───────── واحدها و پست‌های کاری ─────────
     [HttpGet("departments")]
-    public async Task<ActionResult<List<Department>>> Departments() =>
-        await _db.Departments.Include(d => d.Stations).AsNoTracking()
-            .OrderBy(d => d.Ordinal).ToListAsync();
+    public async Task<ActionResult<List<Department>>> Departments([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.Departments.Include(d => d.Stations).AsNoTracking()
+            .OrderBy(d => d.Ordinal), skip, take));
 
     [HttpGet("levels")]
     public ActionResult<string[]> Levels() => DbSeeder.ResponsibilityLevels;
@@ -82,13 +83,13 @@ public class OrganizationController : ControllerBase
 
     /// <summary>ماتریس پرسنل: واحد ← پست کاری ← افراد</summary>
     [HttpGet("matrix")]
-    public async Task<ActionResult<object>> Matrix()
+    public async Task<ActionResult<object>> Matrix([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var departments = await _db.Departments.Include(d => d.Stations).AsNoTracking()
             .OrderBy(d => d.Ordinal).ToListAsync();
         var employees = await _db.Employees.AsNoTracking().ToListAsync();
 
-        return departments.Select(d => new
+        return Paging.Result(departments.Select(d => new
         {
             unit = d.Name,
             stations = d.Stations.Select(s => new
@@ -103,13 +104,13 @@ public class OrganizationController : ControllerBase
                 .Where(e => e.Unit == d.Name && !d.Stations.Select(s => s.Name).Contains(e.WorkStation))
                 .Select(e => new { e.Code, name = $"{e.First} {e.Last}", e.ResponsibilityLevel })
                 .ToList()
-        }).ToList();
+        }).ToList(), skip, take);
     }
 
     // ───────── برنامهٔ کاری واحدها ─────────
     [HttpGet("schedules")]
-    public async Task<ActionResult<List<UnitSchedule>>> Schedules() =>
-        await _db.UnitSchedules.AsNoTracking().OrderBy(s => s.Unit).ToListAsync();
+    public async Task<ActionResult<List<UnitSchedule>>> Schedules([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.UnitSchedules.AsNoTracking().OrderBy(s => s.Unit), skip, take));
 
     [Authorize(Roles = "hr,ceo")]
     [HttpPut("schedules")]
@@ -139,11 +140,11 @@ public class OrganizationController : ControllerBase
 
     // ───────── تقویم و تعطیلات ─────────
     [HttpGet("holidays")]
-    public async Task<ActionResult<List<Holiday>>> Holidays([FromQuery] int? year)
+    public async Task<ActionResult<List<Holiday>>> Holidays([FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.Holidays.AsNoTracking().AsQueryable();
         if (year.HasValue) query = query.Where(h => h.Date.StartsWith(year.Value.ToString()));
-        return await query.OrderBy(h => h.Date).ToListAsync();
+        return Ok(await Paging.ResultAsync(query.OrderBy(h => h.Date), skip, take));
     }
 
     [Authorize(Roles = "hr,ceo")]

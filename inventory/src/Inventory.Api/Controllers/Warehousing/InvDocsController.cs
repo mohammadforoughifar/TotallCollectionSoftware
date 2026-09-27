@@ -17,8 +17,8 @@ public class InvDocTypesController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<InvDocType>>> GetAll(
-        [FromQuery] bool activeOnly = false, [FromQuery] StockNature? nature = null)
-        => Ok(await _svc.GetDocTypesAsync(activeOnly, nature));
+        [FromQuery] bool activeOnly = false, [FromQuery] StockNature? nature = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetDocTypesAsync(activeOnly, nature), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<InvDocType>> Save([FromBody] InvDocType dto)
@@ -60,8 +60,8 @@ public class InvDocsController : RbacControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetDocsAsync(nature, docTypeId, warehouseId, status, search, from, to, page, pageSize));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetDocsAsync(nature, docTypeId, warehouseId, status, search, from, to, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<InvDoc>> Get(int id)
@@ -150,6 +150,6 @@ public class InvReportsController : RbacControllerBase
         [FromQuery] string? search = null,
         [FromQuery] bool below = false,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetStockAsync(warehouseId, categoryId, search, below, page, pageSize));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetStockAsync(warehouseId, categoryId, search, below, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 }

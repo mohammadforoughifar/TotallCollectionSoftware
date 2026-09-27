@@ -49,22 +49,28 @@ public class IncomingLettersController : RbacControllerBase
     }
 
     [HttpGet("inbox")]
-    public async Task<IActionResult> GetInbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 15)
+    public async Task<IActionResult> GetInbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
     }
 
     [HttpGet("archive")]
-    public async Task<IActionResult> GetArchive([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 15)
+    public async Task<IActionResult> GetArchive([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.GetArchiveAsync(MyUserId, search, page, pageSize));
     }
 
     [HttpGet("sent")]
-    public async Task<IActionResult> GetSent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 15)
+    public async Task<IActionResult> GetSent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
     }
@@ -143,10 +149,10 @@ public class IncomingLettersController : RbacControllerBase
     }
 
     [HttpGet("{id:int}/gardesh")]
-    public async Task<IActionResult> Gardesh(int id)
+    public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()));
+        return Ok(Paging.Result(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()), skip, take));
     }
 
     [HttpPost("erja/{erjaId:int}/answer")]
@@ -225,10 +231,10 @@ public class IncomingLettersController : RbacControllerBase
 
     /// <summary>لیست کاربران فعال برای انتخاب گیرنده ارجاع</summary>
     [HttpGet("recivers")]
-    public async Task<IActionResult> Recivers()
+    public async Task<IActionResult> Recivers([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        var users = await Db.Users.AsNoTracking()
+        var users = Db.Users.AsNoTracking()
             .Where(u => u.IsActive && u.Id != MyUserId)
             .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
             .Select(u => new LetterReciverDto
@@ -237,25 +243,25 @@ public class IncomingLettersController : RbacControllerBase
                 FullName = string.IsNullOrEmpty(u.FirstName + u.LastName)
                     ? u.Username
                     : (u.FirstName + " " + u.LastName).Trim()
-            })
-            .ToListAsync();
-        return Ok(users);
+            });
+        return Ok(await Paging.ResultAsync(users, skip, take));
     }
 
     /// <summary>گروه‌های گیرندگان فعال — برای انتخاب گروهی در ارجاع</summary>
     [HttpGet("groups")]
-    public async Task<IActionResult> Groups([FromQuery] bool withMembers = true)
+    public async Task<IActionResult> Groups([FromQuery] bool withMembers = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _groups.GetAllAsync(withMembers));
+        return Ok(Paging.Result(await _groups.GetAllAsync(withMembers), skip, take));
     }
 
     /// <summary>عملگرهای ارجاع (جهت اقدام، جهت اطلاع و …)</summary>
     [HttpGet("amalgars")]
-    public async Task<IActionResult> Amalgars() => Ok(await _erja.GetAmalgarsAsync());
+    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(Paging.Result(await _erja.GetAmalgarsAsync(), skip, take));
 
     [HttpGet("{id:int}/attachments")]
-    public async Task<IActionResult> Attachments(int id)
+    public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var rows = await Db.AppAttachments.AsNoTracking()
@@ -274,7 +280,7 @@ public class IncomingLettersController : RbacControllerBase
             UploaderUserId = a.UploaderUserId,
             UploadedAt = a.UploadedAt
         }).ToList();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     [HttpPost("{id:int}/attachments")]
@@ -337,17 +343,19 @@ public class IncomingLettersController : RbacControllerBase
     }
 
     [HttpGet("pick")]
-    public async Task<IActionResult> Pick([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 15)
+    public async Task<IActionResult> Pick([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.PickListAsync(MyUserId, search, page, pageSize));
     }
 
     [HttpGet("reservations")]
-    public async Task<IActionResult> GetReservations([FromQuery] int typeForm = 3)
+    public async Task<IActionResult> GetReservations([FromQuery] int typeForm = 3, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetReservationsAsync(MyUserId, typeForm));
+        return Ok(Paging.Result(await _letters.GetReservationsAsync(MyUserId, typeForm), skip, take));
     }
 
     [HttpPost("reserve-number")]

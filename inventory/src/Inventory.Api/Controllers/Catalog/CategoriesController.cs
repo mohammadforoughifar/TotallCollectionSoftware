@@ -14,8 +14,8 @@ public class CategoriesController : ApiControllerBase
 
     /// <summary>فهرست گروه‌های کالا (با تعداد کالای هر گروه).</summary>
     [HttpGet]
-    public async Task<ActionResult<List<ProductCategory>>> GetAll([FromQuery] bool activeOnly = false)
-        => Ok(await _service.GetCategoriesAsync(activeOnly));
+    public async Task<ActionResult<List<ProductCategory>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _service.GetCategoriesAsync(activeOnly), skip, take));
 
     /// <summary>ایجاد یا ویرایش گروه کالا.</summary>
     [HttpPost]

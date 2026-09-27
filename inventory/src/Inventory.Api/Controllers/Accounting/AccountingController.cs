@@ -3,6 +3,7 @@ using Inventory.Api.Services.Accounting;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Accounting;
 
@@ -24,8 +25,8 @@ public class AccFiscalYearsController : RbacControllerBase
     public AccFiscalYearsController(Db.AppDbContext db, IAccountingService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<AccFiscalYear>>> GetAll()
-        => Ok(await _svc.GetFiscalYearsAsync());
+    public async Task<ActionResult<List<AccFiscalYear>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetFiscalYearsAsync(), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccFiscalYear>> Save([FromBody] AccFiscalYear dto)
@@ -61,17 +62,17 @@ public class AccAccountsController : RbacControllerBase
 
     [HttpGet("tree")]
     public async Task<ActionResult<List<AccAccount>>> GetTree(
-        [FromQuery] bool activeOnly = false, [FromQuery] bool withBalances = false)
-        => Ok(await _svc.GetAccountTreeAsync(activeOnly, withBalances));
+        [FromQuery] bool activeOnly = false, [FromQuery] bool withBalances = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetAccountTreeAsync(activeOnly, withBalances), skip, take));
 
     [HttpGet]
     public async Task<ActionResult<List<AccAccount>>> GetFlat(
-        [FromQuery] bool activeOnly = false, [FromQuery] bool withBalances = false)
-        => Ok(await _svc.GetAccountsFlatAsync(activeOnly, withBalances));
+        [FromQuery] bool activeOnly = false, [FromQuery] bool withBalances = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetAccountsFlatAsync(activeOnly, withBalances), skip, take));
 
     [HttpGet("lookups")]
-    public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] string? search = null)
-        => Ok(await _svc.GetPostableAccountLookupsAsync(search));
+    public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetPostableAccountLookupsAsync(search), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccAccount>> Save([FromBody] AccAccount dto)
@@ -114,8 +115,8 @@ public class AccVouchersController : RbacControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetVouchersAsync(fiscalYearId, status, source, search, from, to, page, pageSize));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetVouchersAsync(fiscalYearId, status, source, search, from, to, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     [HttpGet("new")]
     public async Task<ActionResult<AccVoucher>> New()
@@ -186,8 +187,8 @@ public class AccReportsController : RbacControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 30)
-        => Ok(await _svc.GetJournalAsync(from, to, page, pageSize));
+        [FromQuery] int pageSize = 30, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetJournalAsync(from, to, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     [HttpGet("trial-balance")]
     public async Task<ActionResult<AccTrialBalanceResult>> TrialBalance(
@@ -211,8 +212,8 @@ public class AccInvRulesController : RbacControllerBase
     public AccInvRulesController(Db.AppDbContext db, IAccountingService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<AccInvRule>>> GetAll()
-        => Ok(await _svc.GetInvRulesAsync());
+    public async Task<ActionResult<List<AccInvRule>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetInvRulesAsync(), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccInvRule>> Save([FromBody] AccInvRule dto)

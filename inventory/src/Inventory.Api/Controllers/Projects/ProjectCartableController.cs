@@ -3,6 +3,7 @@ using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -56,7 +57,7 @@ public class ProjectCartableController : RbacControllerBase
     // ==================== لیست صف‌ها ====================
     /// <param name="kind">manager (در انتظار تایید مدیر) | expert (در انتظار کارشناسی)</param>
     [HttpGet("queue")]
-    public async Task<IActionResult> Queue([FromQuery] string? kind)
+    public async Task<IActionResult> Queue([FromQuery] string? kind, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(CCModule, "Read") is { } forbid) return forbid;
 
@@ -73,7 +74,7 @@ public class ProjectCartableController : RbacControllerBase
             .ToListAsync();
 
         var today = DateTime.Today;
-        return Ok(list.Select(p => new
+        return Ok(Paging.Result(list.Select(p => new
         {
             p.Id,
             p.CodeProject,
@@ -87,7 +88,7 @@ public class ProjectCartableController : RbacControllerBase
             RegisterUser = p.User is null ? null : DisplayOf(p.User),
             DaysWaiting = Math.Max(0, (today - p.CreatedAt.Date).Days),
             AttachCount = p.Attaches.Count
-        }).ToList());
+        }).ToList(), skip, take));
     }
 
     // ==================== اکشن‌های مدیر ====================
@@ -253,7 +254,7 @@ public class ProjectCartableController : RbacControllerBase
 
     /// <summary>لیست درخواست‌های ویرایش/حذف در انتظار تایید مدیر</summary>
     [HttpGet("changes")]
-    public async Task<IActionResult> Changes()
+    public async Task<IActionResult> Changes([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(CCModule, "Read") is { } forbid) return forbid;
 
@@ -265,7 +266,7 @@ public class ProjectCartableController : RbacControllerBase
             .ToListAsync();
 
         var today = DateTime.Today;
-        return Ok(list.Select(c => new ProjectChangeRequestDto
+        return Ok(Paging.Result(list.Select(c => new ProjectChangeRequestDto
         {
             Id = c.Id,
             ProjectId = c.ProjectId,
@@ -281,7 +282,7 @@ public class ProjectCartableController : RbacControllerBase
             RequestedAt = c.RequestedAt,
             ManagerActionAt = c.ManagerActionAt,
             DaysWaiting = Math.Max(0, (today - c.RequestedAt.Date).Days)
-        }).ToList());
+        }).ToList(), skip, take));
     }
 
     /// <summary>تایید مدیر → تغییر واقعاً اعمال می‌شود (ویرایش ذخیره یا پروژه حذف نرم می‌شود)</summary>

@@ -322,20 +322,20 @@ public class LeaveRequestsController : ControllerBase
     // ================== درخواست‌های من ==================
 
     [HttpGet("mine")]
-    public async Task<IActionResult> Mine()
+    public async Task<IActionResult> Mine([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = await _db.LeaveRequests
             .Where(l => l.RequesterUserId == MyUserId)
             .OrderByDescending(l => l.CreatedAt)
             .Take(200)
             .ToListAsync();
-        return Ok(await PopulateUserNamesAndToDtoAsync(list));
+        return Ok(Paging.Result(await PopulateUserNamesAndToDtoAsync(list), skip, take));
     }
 
     // ================== همه‌ی درخواست‌ها (مدیر) ==================
 
     [HttpGet]
-    public async Task<IActionResult> All([FromQuery] string? status, [FromQuery] int? jy, [FromQuery] int? jm)
+    public async Task<IActionResult> All([FromQuery] string? status, [FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanManageAsync()) return Forbid();
         var q = _db.LeaveRequests.AsQueryable();
@@ -347,7 +347,7 @@ public class LeaveRequestsController : ControllerBase
             q = q.Where(l => l.StartDate >= s && l.StartDate < e);
         }
         var list = await q.OrderByDescending(l => l.CreatedAt).Take(300).ToListAsync();
-        return Ok(await PopulateUserNamesAndToDtoAsync(list));
+        return Ok(Paging.Result(await PopulateUserNamesAndToDtoAsync(list), skip, take));
     }
 
     // ================== ثبت درخواست ==================
@@ -708,10 +708,10 @@ public class LeaveRequestsController : ControllerBase
     public class HolidayInput { public DateTime HolidayDate { get; set; } public string? Name { get; set; } }
 
     [HttpGet("holidays")]
-    public async Task<IActionResult> GetHolidays()
+    public async Task<IActionResult> GetHolidays([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = await _db.CompanyHolidays.AsNoTracking().OrderByDescending(h => h.HolidayDate).ToListAsync();
-        return Ok(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt, h.IsOfficial }));
+        return Ok(Paging.Result(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt, h.IsOfficial }).ToList(), skip, take));
     }
 
     [HttpPost("holidays")]

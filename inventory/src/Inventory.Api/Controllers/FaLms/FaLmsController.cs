@@ -3,6 +3,7 @@ using Inventory.Api.Services.FaLms;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.FaLms;
 
@@ -23,10 +24,10 @@ public class FaLmsController : RbacControllerBase
 
     [HttpGet("courses")]
     public async Task<IActionResult> Courses([FromQuery] int? year, [FromQuery] int? status,
-        [FromQuery] int? kind, [FromQuery] string? q)
+        [FromQuery] int? kind, [FromQuery] string? q, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListCoursesAsync(year, status, kind, q));
+        return Ok(Paging.Result(await _svc.ListCoursesAsync(year, status, kind, q), skip, take));
     }
 
     [HttpGet("courses/{id:int}")]
@@ -67,10 +68,10 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("calendar")]
-    public async Task<IActionResult> Calendar([FromQuery] int year)
+    public async Task<IActionResult> Calendar([FromQuery] int year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.GetCalendarAsync(year));
+        return Ok(Paging.Result(await _svc.GetCalendarAsync(year), skip, take));
     }
 
     [HttpGet("courses/{id:int}/report")]
@@ -85,17 +86,17 @@ public class FaLmsController : RbacControllerBase
 
     [HttpGet("needs")]
     public async Task<IActionResult> Needs([FromQuery] int? year, [FromQuery] int? status,
-        [FromQuery] int? source, [FromQuery] int? employeeId)
+        [FromQuery] int? source, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListNeedsAsync(year, status, source, employeeId));
+        return Ok(Paging.Result(await _svc.ListNeedsAsync(year, status, source, employeeId), skip, take));
     }
 
     [HttpGet("needs/my")]
-    public async Task<IActionResult> MyNeeds()
+    public async Task<IActionResult> MyNeeds([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MyNeedsAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.MyNeedsAsync(MyUserId), skip, take));
     }
 
     [HttpPost("needs")]
@@ -128,20 +129,20 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("perf/periods")]
-    public async Task<IActionResult> PerfPeriods()
+    public async Task<IActionResult> PerfPeriods([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         var list = await Db.HrPerfPeriods.OrderByDescending(p => p.Id)
             .Select(p => new FaLmsPerfPeriodDto { Id = p.Id, Title = p.Title, Year = p.Year, Status = p.Status })
             .ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     [HttpGet("perf/weak")]
-    public async Task<IActionResult> WeakScores([FromQuery] int periodId, [FromQuery] double threshold = 60)
+    public async Task<IActionResult> WeakScores([FromQuery] int periodId, [FromQuery] double threshold = 60, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.WeakScoresAsync(periodId, threshold));
+        return Ok(Paging.Result(await _svc.WeakScoresAsync(periodId, threshold), skip, take));
     }
 
     [HttpPost("perf/suggest")]
@@ -154,17 +155,17 @@ public class FaLmsController : RbacControllerBase
     // ------------------- ثبت‌نام -------------------
 
     [HttpGet("enrollments")]
-    public async Task<IActionResult> Enrollments([FromQuery] int? courseId, [FromQuery] int? status)
+    public async Task<IActionResult> Enrollments([FromQuery] int? courseId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListEnrollmentsAsync(courseId, status));
+        return Ok(Paging.Result(await _svc.ListEnrollmentsAsync(courseId, status), skip, take));
     }
 
     [HttpGet("enrollments/my")]
-    public async Task<IActionResult> MyEnrollments()
+    public async Task<IActionResult> MyEnrollments([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MyEnrollmentsAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.MyEnrollmentsAsync(MyUserId), skip, take));
     }
 
     [HttpPost("enrollments")]
@@ -201,10 +202,10 @@ public class FaLmsController : RbacControllerBase
     // ------------------- جلسات و حضور -------------------
 
     [HttpGet("sessions")]
-    public async Task<IActionResult> Sessions([FromQuery] int courseId)
+    public async Task<IActionResult> Sessions([FromQuery] int courseId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListSessionsAsync(courseId));
+        return Ok(Paging.Result(await _svc.ListSessionsAsync(courseId), skip, take));
     }
 
     [HttpPost("sessions")]
@@ -230,10 +231,10 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("sessions/{id:int}/attendance")]
-    public async Task<IActionResult> Attendance(int id)
+    public async Task<IActionResult> Attendance(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.GetAttendanceAsync(id));
+        return Ok(Paging.Result(await _svc.GetAttendanceAsync(id), skip, take));
     }
 
     [HttpPost("sessions/{id:int}/attendance")]
@@ -248,10 +249,10 @@ public class FaLmsController : RbacControllerBase
     // ------------------- آزمون -------------------
 
     [HttpGet("exams")]
-    public async Task<IActionResult> Exams([FromQuery] int courseId)
+    public async Task<IActionResult> Exams([FromQuery] int courseId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListExamsAsync(courseId));
+        return Ok(Paging.Result(await _svc.ListExamsAsync(courseId), skip, take));
     }
 
     [HttpPost("exams")]
@@ -277,10 +278,10 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("exams/{examId:int}/questions")]
-    public async Task<IActionResult> Questions(int examId)
+    public async Task<IActionResult> Questions(int examId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListQuestionsAsync(examId));
+        return Ok(Paging.Result(await _svc.ListQuestionsAsync(examId), skip, take));
     }
 
     [HttpPost("exams/{examId:int}/questions")]
@@ -321,19 +322,19 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("exams/{examId:int}/attempts")]
-    public async Task<IActionResult> Attempts(int examId)
+    public async Task<IActionResult> Attempts(int examId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListAttemptsAsync(examId));
+        return Ok(Paging.Result(await _svc.ListAttemptsAsync(examId), skip, take));
     }
 
     // ------------------- بانک سؤال مشترک -------------------
 
     [HttpGet("banks")]
-    public async Task<IActionResult> Banks()
+    public async Task<IActionResult> Banks([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListBanksAsync());
+        return Ok(Paging.Result(await _svc.ListBanksAsync(), skip, take));
     }
 
     [HttpPost("banks")]
@@ -361,10 +362,10 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("banks/{bankId:int}/questions")]
-    public async Task<IActionResult> BankQuestions(int bankId)
+    public async Task<IActionResult> BankQuestions(int bankId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListBankQuestionsAsync(bankId));
+        return Ok(Paging.Result(await _svc.ListBankQuestionsAsync(bankId), skip, take));
     }
 
     [HttpPost("banks/{bankId:int}/questions")]
@@ -410,10 +411,10 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("attempts/{id:int}/texts")]
-    public async Task<IActionResult> AttemptTexts(int id)
+    public async Task<IActionResult> AttemptTexts(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        try { return Ok(await _svc.ListTextAnswersAsync(id)); }
+        try { return Ok(Paging.Result(await _svc.ListTextAnswersAsync(id), skip, take)); }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
@@ -428,17 +429,17 @@ public class FaLmsController : RbacControllerBase
     // ------------------- گواهی -------------------
 
     [HttpGet("certificates")]
-    public async Task<IActionResult> Certificates([FromQuery] int? courseId, [FromQuery] int? employeeId, [FromQuery] int? year)
+    public async Task<IActionResult> Certificates([FromQuery] int? courseId, [FromQuery] int? employeeId, [FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListCertificatesAsync(courseId, employeeId, year));
+        return Ok(Paging.Result(await _svc.ListCertificatesAsync(courseId, employeeId, year), skip, take));
     }
 
     [HttpGet("certificates/my")]
-    public async Task<IActionResult> MyCertificates()
+    public async Task<IActionResult> MyCertificates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MyCertificatesAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.MyCertificatesAsync(MyUserId), skip, take));
     }
 
     [HttpPost("certificates/issue")]
@@ -473,10 +474,10 @@ public class FaLmsController : RbacControllerBase
     // ------------------- مدرس‌ها -------------------
 
     [HttpGet("instructors")]
-    public async Task<IActionResult> Instructors([FromQuery] bool? onlyActive)
+    public async Task<IActionResult> Instructors([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListInstructorsAsync(onlyActive));
+        return Ok(Paging.Result(await _svc.ListInstructorsAsync(onlyActive), skip, take));
     }
 
     [HttpPost("instructors")]
@@ -498,10 +499,10 @@ public class FaLmsController : RbacControllerBase
     // ------------------- نظرسنجی اثربخشی -------------------
 
     [HttpGet("courses/{id:int}/survey")]
-    public async Task<IActionResult> SurveyQuestions(int id, [FromQuery] int? employeeId)
+    public async Task<IActionResult> SurveyQuestions(int id, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListSurveyQuestionsAsync(id, employeeId));
+        return Ok(Paging.Result(await _svc.ListSurveyQuestionsAsync(id, employeeId), skip, take));
     }
 
     [HttpPost("courses/{id:int}/survey")]
@@ -542,10 +543,10 @@ public class FaLmsController : RbacControllerBase
     // ------------------- تداخل‌یابی -------------------
 
     [HttpGet("courses/{id:int}/conflicts")]
-    public async Task<IActionResult> Conflicts(int id, [FromQuery] int? employeeId)
+    public async Task<IActionResult> Conflicts(int id, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.CheckConflictsAsync(id, employeeId));
+        return Ok(Paging.Result(await _svc.CheckConflictsAsync(id, employeeId), skip, take));
     }
 
     [HttpDelete("certificates/{id:int}")]
@@ -559,10 +560,10 @@ public class FaLmsController : RbacControllerBase
     // ------------------- بودجه -------------------
 
     [HttpGet("budgets")]
-    public async Task<IActionResult> Budgets()
+    public async Task<IActionResult> Budgets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListBudgetsAsync());
+        return Ok(Paging.Result(await _svc.ListBudgetsAsync(), skip, take));
     }
 
     [HttpPost("budgets")]

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using RadisHr.Api.Data;
 using RadisHr.Shared.Calculations;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -35,12 +36,12 @@ public class AnalyticsController : ControllerBase
 
     /// <summary>فهرست ماه‌های دارای داده برای فیلترهای نمودار</summary>
     [HttpGet("months")]
-    public async Task<ActionResult<object>> Months()
+    public async Task<ActionResult<object>> Months([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var keys = await _db.PayrollRows.AsNoTracking()
             .Select(r => r.Month).Distinct().ToListAsync();
-        return keys.OrderBy(k => k, StringComparer.Ordinal)
-            .Select(k => new { key = k, label = LabelFor(k) }).ToList();
+        return Paging.Result(keys.OrderBy(k => k, StringComparer.Ordinal)
+            .Select(k => new { key = k, label = LabelFor(k) }).ToList(), skip, take);
     }
 
     /// <summary>

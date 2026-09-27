@@ -50,10 +50,10 @@ public class MeetingMinutesController : RbacControllerBase
     // ================== فهرست ==================
 
     [HttpGet]
-    public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] string? status)
+    public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] string? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "View") is { } f) return f;
-        return Ok(await _svc.GetListAsync(search, status));
+        return Ok(Paging.Result(await _svc.GetListAsync(search, status), skip, take));
     }
 
     // ================== جزئیات ==================

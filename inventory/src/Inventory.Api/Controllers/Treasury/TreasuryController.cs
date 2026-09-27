@@ -3,6 +3,7 @@ using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Treasury;
 
@@ -26,12 +27,12 @@ public class TrsAccountsController : RbacControllerBase
     [HttpGet]
     public async Task<ActionResult<List<TrsAccount>>> GetAll(
         [FromQuery] bool activeOnly = false,
-        [FromQuery] bool withBalances = false)
-        => Ok(await _svc.GetAccountsAsync(activeOnly, withBalances));
+        [FromQuery] bool withBalances = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetAccountsAsync(activeOnly, withBalances), skip, take));
 
     [HttpGet("lookups")]
-    public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] bool activeOnly = true)
-        => Ok(await _svc.GetAccountLookupsAsync(activeOnly));
+    public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] bool activeOnly = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetAccountLookupsAsync(activeOnly), skip, take));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<TrsAccount>> Get(int id)
@@ -74,8 +75,8 @@ public class TrsVouchersController : RbacControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetVouchersAsync(kind, status, partyId, trsAccountId, search, from, to, page, pageSize));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetVouchersAsync(kind, status, partyId, trsAccountId, search, from, to, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     [HttpGet("new")]
     public async Task<ActionResult<TrsVoucher>> New([FromQuery] TreasuryKind kind = TreasuryKind.Receipt)
@@ -149,8 +150,8 @@ public class TrsChequesController : RbacControllerBase
         [FromQuery] DateTime? to = null,
         [FromQuery] bool onlyOpen = false,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetChequesAsync(kind, status, partyId, trsAccountId, search, from, to, onlyOpen, page, pageSize));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetChequesAsync(kind, status, partyId, trsAccountId, search, from, to, onlyOpen, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<TrsCheque>> Get(int id)
@@ -192,7 +193,7 @@ public class TrsRulesController : RbacControllerBase
     public TrsRulesController(Db.AppDbContext db, ITreasuryService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<TrsRule>>> GetAll() => Ok(await _svc.GetRulesAsync());
+    public async Task<ActionResult<List<TrsRule>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _svc.GetRulesAsync(), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<TrsRule>> Save([FromBody] TrsRule dto)

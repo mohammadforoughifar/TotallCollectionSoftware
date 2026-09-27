@@ -67,7 +67,7 @@ public interface IDevTeamService
     Task PromoteSubTaskAsync(int taskId, int userId, string userName);
     Task<DtDependencyDto> AddDependencyAsync(int taskId, DtDependencyCreateDto dto, int userId, string userName);
     Task RemoveDependencyAsync(int dependencyId, int userId, string userName);
-    Task<List<DtTaskListItemDto>> SearchTasksAsync(string? q, int? excludeId, int take = 20);
+    Task<List<DtTaskListItemDto>> SearchTasksAsync(string? q, int? excludeId, int take = 20, int skip = 0);
 
     // WorkOrder bridge
     Task<DtWorkOrderLinkDto> CreateWorkOrderFromTaskAsync(int taskId, DtCreateWorkOrderDto dto, int userId, string userName);
@@ -80,7 +80,7 @@ public interface IDevTeamService
     Task DeleteProblemAsync(int id);
 
     // Changelog
-    Task<List<DtModuleChangeDto>> QueryChangesAsync(int? moduleId, int take = 50);
+    Task<List<DtModuleChangeDto>> QueryChangesAsync(int? moduleId, int take = 50, int skip = 0);
     Task<DtModuleChangeDto> CreateChangeAsync(DtModuleChangeCreateDto dto, int userId, string userName);
     Task DeleteChangeAsync(int id);
 
@@ -1979,7 +1979,7 @@ public class DevTeamService : IDevTeamService
         try { await _notify.BroadcastChangedAsync("devteam"); } catch { }
     }
 
-    public async Task<List<DtTaskListItemDto>> SearchTasksAsync(string? q, int? excludeId, int take = 20)
+    public async Task<List<DtTaskListItemDto>> SearchTasksAsync(string? q, int? excludeId, int take = 20, int skip = 0)
     {
         take = Math.Clamp(take, 1, 50);
         var query = TasksBase();
@@ -1989,7 +1989,7 @@ public class DevTeamService : IDevTeamService
             var term = q.Trim();
             query = query.Where(t => t.Title.Contains(term) || t.Number.Contains(term));
         }
-        var items = await query.OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).Take(take).ToListAsync();
+        var items = await query.OrderByDescending(t => t.UpdatedAt ?? t.CreatedAt).Skip(Math.Max(0, skip)).Take(take).ToListAsync();
         var statuses = await _db.DtWorkflowStatuses.AsNoTracking().ToDictionaryAsync(s => s.Id);
         return items.Select(t => MapList(t, statuses.GetValueOrDefault(t.StatusId), null, null)).ToList();
     }
@@ -2243,12 +2243,12 @@ public class DevTeamService : IDevTeamService
         ChangedAt = c.ChangedAt
     };
 
-    public async Task<List<DtModuleChangeDto>> QueryChangesAsync(int? moduleId, int take = 50)
+    public async Task<List<DtModuleChangeDto>> QueryChangesAsync(int? moduleId, int take = 50, int skip = 0)
     {
         take = Math.Clamp(take, 1, 200);
         var q = _db.DtModuleChanges.AsNoTracking().AsQueryable();
         if (moduleId is int mid) q = q.Where(c => c.ModuleId == mid);
-        var list = await q.OrderByDescending(c => c.ChangedAt).Take(take).ToListAsync();
+        var list = await q.OrderByDescending(c => c.ChangedAt).Skip(Math.Max(0, skip)).Take(take).ToListAsync();
         var mods = await _db.DtProductModules.AsNoTracking().ToListAsync();
         var taskIds = list.Where(c => c.TaskId != null).Select(c => c.TaskId!.Value).Distinct().ToList();
         var tasks = await _db.DtTasks.AsNoTracking().Where(t => taskIds.Contains(t.Id)).ToListAsync();

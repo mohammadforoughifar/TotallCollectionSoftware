@@ -2,6 +2,7 @@ using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Accounting;
 
@@ -20,8 +21,8 @@ public class AccDimensionsController : RbacControllerBase
     public AccDimensionsController(Db.AppDbContext db, IAnalyticalDimensionService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<AccDimension>>> GetAll()
-        => Ok(await _svc.GetDimensionsAsync());
+    public async Task<ActionResult<List<AccDimension>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetDimensionsAsync(), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccDimension>> Save([FromBody] AccDimension dto)
@@ -40,8 +41,8 @@ public class AccDimensionsController : RbacControllerBase
 
     // -------------------- مقادیر --------------------
     [HttpGet("{dimensionId:int}/values")]
-    public async Task<ActionResult<List<AccDimensionValue>>> GetValues(int dimensionId, [FromQuery] bool activeOnly = false)
-        => Ok(await _svc.GetValuesAsync(dimensionId, activeOnly));
+    public async Task<ActionResult<List<AccDimensionValue>>> GetValues(int dimensionId, [FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetValuesAsync(dimensionId, activeOnly), skip, take));
 
     [HttpPost("{dimensionId:int}/values")]
     public async Task<ActionResult<AccDimensionValue>> SaveValue(int dimensionId, [FromBody] AccDimensionValue dto)
@@ -60,6 +61,6 @@ public class AccDimensionsController : RbacControllerBase
     }
 
     [HttpGet("{dimensionId:int}/values/lookups")]
-    public async Task<ActionResult<List<LookupItem>>> GetValueLookups(int dimensionId, [FromQuery] string? search = null)
-        => Ok(await _svc.GetValueLookupsAsync(dimensionId, search));
+    public async Task<ActionResult<List<LookupItem>>> GetValueLookups(int dimensionId, [FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetValueLookupsAsync(dimensionId, search), skip, take));
 }

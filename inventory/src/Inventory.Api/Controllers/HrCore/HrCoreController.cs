@@ -67,10 +67,10 @@ public class HrCoreController : RbacControllerBase
     }
 
     [HttpGet("employees/lite")]
-    public async Task<IActionResult> EmployeeLite([FromQuery] bool onlyActive = true)
+    public async Task<IActionResult> EmployeeLite([FromQuery] bool onlyActive = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListEmployeeLiteAsync(onlyActive, await TeamScopeAsync()));
+        return Ok(Paging.Result(await _svc.ListEmployeeLiteAsync(onlyActive, await TeamScopeAsync()), skip, take));
     }
 
     [HttpGet("employees/import-template")]
@@ -120,17 +120,17 @@ public class HrCoreController : RbacControllerBase
     // ------------------- ساختار سازمانی -------------------
 
     [HttpGet("org/tree")]
-    public async Task<IActionResult> OrgTree()
+    public async Task<IActionResult> OrgTree([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.GetTreeAsync());
+        return Ok(Paging.Result(await _svc.GetTreeAsync(), skip, take));
     }
 
     [HttpGet("org/units")]
-    public async Task<IActionResult> OrgUnits()
+    public async Task<IActionResult> OrgUnits([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListUnitsAsync());
+        return Ok(Paging.Result(await _svc.ListUnitsAsync(), skip, take));
     }
 
     [HttpPost("org/units")]
@@ -158,24 +158,24 @@ public class HrCoreController : RbacControllerBase
     // ------------------- قراردادها -------------------
 
     [HttpGet("contracts")]
-    public async Task<IActionResult> Contracts([FromQuery] bool? onlyActive)
+    public async Task<IActionResult> Contracts([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListContractsAsync(onlyActive));
+        return Ok(Paging.Result(await _svc.ListContractsAsync(onlyActive), skip, take));
     }
 
     [HttpGet("contracts/expiring")]
-    public async Task<IActionResult> Expiring([FromQuery] int days = 30)
+    public async Task<IActionResult> Expiring([FromQuery] int days = 30, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ExpiringContractsAsync(days));
+        return Ok(Paging.Result(await _svc.ExpiringContractsAsync(days), skip, take));
     }
 
     [HttpGet("employees/{id:int}/contracts")]
-    public async Task<IActionResult> EmployeeContracts(int id)
+    public async Task<IActionResult> EmployeeContracts(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.EmployeeContractsAsync(id));
+        return Ok(Paging.Result(await _svc.EmployeeContractsAsync(id), skip, take));
     }
 
     [HttpPost("contracts")]
@@ -210,10 +210,10 @@ public class HrCoreController : RbacControllerBase
     // ------------------- قالب‌های قرارداد (§۹) -------------------
 
     [HttpGet("contract-templates")]
-    public async Task<IActionResult> Templates()
+    public async Task<IActionResult> Templates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListTemplatesAsync());
+        return Ok(Paging.Result(await _svc.ListTemplatesAsync(), skip, take));
     }
 
     [HttpPost("contract-templates")]
@@ -262,10 +262,10 @@ public class HrCoreController : RbacControllerBase
     }
 
     [HttpGet("contracts/{id:int}/versions")]
-    public async Task<IActionResult> ContractVersions(int id)
+    public async Task<IActionResult> ContractVersions(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListVersionsAsync(id));
+        return Ok(Paging.Result(await _svc.ListVersionsAsync(id), skip, take));
     }
 
     [HttpGet("contracts/{id:int}/pdf")]
@@ -343,10 +343,10 @@ public class HrCoreController : RbacControllerBase
     // ------------------- هشدارهای انقضای قرارداد (§۹) -------------------
 
     [HttpGet("contract-alerts")]
-    public async Task<IActionResult> Alerts()
+    public async Task<IActionResult> Alerts([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListAlertsAsync());
+        return Ok(Paging.Result(await _svc.ListAlertsAsync(), skip, take));
     }
 
     [HttpPost("contract-alerts/check")]
@@ -367,17 +367,17 @@ public class HrCoreController : RbacControllerBase
     // ------------------- احکام -------------------
 
     [HttpGet("decrees")]
-    public async Task<IActionResult> Decrees([FromQuery] int? employeeId, [FromQuery] bool? onlyPending)
+    public async Task<IActionResult> Decrees([FromQuery] int? employeeId, [FromQuery] bool? onlyPending, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListDecreesAsync(employeeId, onlyPending));
+        return Ok(Paging.Result(await _svc.ListDecreesAsync(employeeId, onlyPending), skip, take));
     }
 
     [HttpGet("employees/{id:int}/decrees")]
-    public async Task<IActionResult> EmployeeDecrees(int id)
+    public async Task<IActionResult> EmployeeDecrees(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.EmployeeDecreesAsync(id));
+        return Ok(Paging.Result(await _svc.EmployeeDecreesAsync(id), skip, take));
     }
 
     [HttpGet("decrees/{id:int}/pdf")]
@@ -445,10 +445,10 @@ public class HrCoreController : RbacControllerBase
     // ----- تحت‌تکفل -----
 
     [HttpGet("employees/{id:int}/dependents")]
-    public async Task<IActionResult> Dependents(int id)
+    public async Task<IActionResult> Dependents(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListDependentsAsync(id));
+        return Ok(Paging.Result(await _svc.ListDependentsAsync(id), skip, take));
     }
 
     [HttpPost("employees/{id:int}/dependents")]
@@ -476,10 +476,10 @@ public class HrCoreController : RbacControllerBase
     // ----- دوره‌های آموزشی -----
 
     [HttpGet("employees/{id:int}/courses")]
-    public async Task<IActionResult> Courses(int id)
+    public async Task<IActionResult> Courses(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListCoursesAsync(id));
+        return Ok(Paging.Result(await _svc.ListCoursesAsync(id), skip, take));
     }
 
     [HttpPost("employees/{id:int}/courses")]
@@ -507,10 +507,10 @@ public class HrCoreController : RbacControllerBase
     // ----- مهارت‌ها -----
 
     [HttpGet("employees/{id:int}/skills")]
-    public async Task<IActionResult> Skills(int id)
+    public async Task<IActionResult> Skills(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListSkillsAsync(id));
+        return Ok(Paging.Result(await _svc.ListSkillsAsync(id), skip, take));
     }
 
     [HttpPost("employees/{id:int}/skills")]
@@ -538,10 +538,10 @@ public class HrCoreController : RbacControllerBase
     // ----- زبان‌های خارجی -----
 
     [HttpGet("employees/{id:int}/languages")]
-    public async Task<IActionResult> Languages(int id)
+    public async Task<IActionResult> Languages(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListLanguagesAsync(id));
+        return Ok(Paging.Result(await _svc.ListLanguagesAsync(id), skip, take));
     }
 
     [HttpPost("employees/{id:int}/languages")]
@@ -569,10 +569,10 @@ public class HrCoreController : RbacControllerBase
     // ----- اسناد -----
 
     [HttpGet("employees/{id:int}/documents")]
-    public async Task<IActionResult> Documents(int id, [FromQuery] int expiringDays = 30)
+    public async Task<IActionResult> Documents(int id, [FromQuery] int expiringDays = 30, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListDocumentsAsync(id, expiringDays));
+        return Ok(Paging.Result(await _svc.ListDocumentsAsync(id, expiringDays), skip, take));
     }
 
     [HttpPost("employees/{id:int}/documents")]
@@ -600,10 +600,10 @@ public class HrCoreController : RbacControllerBase
     }
 
     [HttpGet("documents/expiring")]
-    public async Task<IActionResult> ExpiringDocuments([FromQuery] int days = 30)
+    public async Task<IActionResult> ExpiringDocuments([FromQuery] int days = 30, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ExpiringDocumentsAsync(days));
+        return Ok(Paging.Result(await _svc.ExpiringDocumentsAsync(days), skip, take));
     }
 
     [HttpPost("documents/{docId:int}/file")]
@@ -746,10 +746,10 @@ public class HrCoreController : RbacControllerBase
     }
 
     [HttpGet("reports/templates")]
-    public async Task<IActionResult> ListTemplates()
+    public async Task<IActionResult> ListTemplates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _reports.ListTemplatesAsync(MyUserId));
+        return Ok(Paging.Result(await _reports.ListTemplatesAsync(MyUserId), skip, take));
     }
 
     [HttpPost("reports/templates")]

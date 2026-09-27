@@ -3,6 +3,7 @@ using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -27,7 +28,7 @@ public class DocFoldersController : RbacControllerBase
 
     /// <summary>درخت پوشه‌ها — فقط پوشه‌هایی که کاربر حداقل «مشاهده» دارد.</summary>
     [HttpGet]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
@@ -62,7 +63,7 @@ public class DocFoldersController : RbacControllerBase
                 MyCanDownload = map[x.Id].Download
             }).ToList();
 
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     /// <summary>یک پوشه با فهرست دسترسی‌ها (برای فرم مدیریت دسترسی).</summary>

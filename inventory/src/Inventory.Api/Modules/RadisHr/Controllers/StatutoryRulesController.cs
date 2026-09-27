@@ -6,6 +6,7 @@ using RadisHr.Api.Services;
 using RadisHr.Shared.Calculations;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -24,16 +25,16 @@ public class StatutoryRulesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<StatutoryRules>>> All() =>
-        await _db.StatutoryRules.Include(r => r.TaxBrackets).AsNoTracking()
-            .OrderByDescending(r => r.Year).ToListAsync();
+    public async Task<ActionResult<List<StatutoryRules>>> All([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.StatutoryRules.Include(r => r.TaxBrackets).AsNoTracking()
+            .OrderByDescending(r => r.Year), skip, take));
 
     [HttpGet("{year:int}")]
     public async Task<ActionResult<StatutoryRules>> ForYear(int year) => await _payroll.RulesForAsync(year);
 
     [HttpGet("years")]
-    public async Task<ActionResult<List<int>>> Years() =>
-        await _db.StatutoryRules.Select(r => r.Year).OrderByDescending(y => y).ToListAsync();
+    public async Task<ActionResult<List<int>>> Years([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.StatutoryRules.Select(r => r.Year).OrderByDescending(y => y), skip, take));
 
     /// <summary>
     /// ویرایش الزامات — هر تغییر عددی در جدول ممیزی و اطلاع‌رسانی مدیرعامل ثبت می‌شود
@@ -173,11 +174,11 @@ public class StatutoryRulesController : ControllerBase
     }
 
     [HttpGet("audits")]
-    public async Task<ActionResult<List<StatutoryRuleAudit>>> Audits([FromQuery] int? year)
+    public async Task<ActionResult<List<StatutoryRuleAudit>>> Audits([FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.RuleAudits.AsNoTracking().AsQueryable();
         if (year.HasValue) query = query.Where(a => a.Year == year.Value);
-        return await query.OrderByDescending(a => a.ChangedAt).Take(500).ToListAsync();
+        return Ok((await Paging.QueryAsync(query.OrderByDescending(a => a.ChangedAt), skip, take, 500)).Result());
     }
 
     /// <summary>محاسبهٔ آزمایشی مزایای قانونی — همان ماشین‌حساب صفحهٔ الزامات</summary>

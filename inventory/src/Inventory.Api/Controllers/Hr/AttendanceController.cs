@@ -68,7 +68,7 @@ public class AttendanceController : ControllerBase
 
     // ================== شیفت‌ها ==================
     [HttpGet("shifts")]
-    public async Task<IActionResult> GetShifts() => Ok((await _db.ShiftGroups.ToListAsync()).OrderBy(s => s.StartTime).ToList());
+    public async Task<IActionResult> GetShifts([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result((await _db.ShiftGroups.ToListAsync()).OrderBy(s => s.StartTime).ToList(), skip, take));
 
     [HttpPost("shifts")]
     public async Task<IActionResult> SaveShift([FromBody] ShiftInput input)
@@ -228,7 +228,7 @@ public class AttendanceController : ControllerBase
 
     /// <summary>تعطیلات رسمی یک سال شمسی (از جدول تعطیلات — فقط IsOfficial=true)</summary>
     [HttpGet("official-holidays")]
-    public async Task<IActionResult> GetOfficialHolidays([FromQuery] int jy)
+    public async Task<IActionResult> GetOfficialHolidays([FromQuery] int jy, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         DateTime from, to;
         if (jy > 0)
@@ -246,7 +246,7 @@ public class AttendanceController : ControllerBase
         var list = await _db.CompanyHolidays.AsNoTracking()
             .Where(h => h.IsOfficial && h.HolidayDate >= from && h.HolidayDate < to)
             .OrderBy(h => h.HolidayDate).ToListAsync();
-        return Ok(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt }));
+        return Ok(Paging.Result(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt }).ToList(), skip, take));
     }
 
     /// <summary>افزودن دستی یک تعطیل رسمی (یا اصلاح عنوان تاریخ تکراری)</summary>
@@ -646,21 +646,21 @@ public class AttendanceController : ControllerBase
 
     // ================== لیست پرسنل ==================
     [HttpGet("personnel")]
-    public async Task<IActionResult> GetPersonnel()
+    public async Task<IActionResult> GetPersonnel([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var canManage = await HasAsync("ManageShifts") || User.IsInRole("Admin");
         var canView = await IsAdminAsync();
         if (!canManage && !canView) return Forbid();
         var list = await _db.Users.Where(u => u.IsActive).OrderBy(u => u.Username).ToListAsync();
         var shifts = await _db.ShiftGroups.ToDictionaryAsync(s => s.Id);
-        return Ok(list.Select(u => new
+        return Ok(Paging.Result(list.Select(u => new
         {
             u.Id,
             u.Username,
             FullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim(),
             u.ShiftGroupId,
             ShiftName = u.ShiftGroupId.HasValue && shifts.TryGetValue(u.ShiftGroupId.Value, out var s) ? s.Name : null,
-        }));
+        }), skip, take));
     }
 
     // ================== شیفت پیش‌فرض کاربر جاری ==================
@@ -2048,13 +2048,14 @@ public class AttendanceController : ControllerBase
 
     /// <summary>لیست هشدارهای امنیتی (دستگاه جدید / دستگاه مشترک / خارج از محدوده).</summary>
     [HttpGet("security/alerts")]
-    public async Task<IActionResult> GetSecurityAlerts([FromQuery] bool pendingOnly = false)
+    public async Task<IActionResult> GetSecurityAlerts([FromQuery] bool pendingOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsAdminAsync()) return Forbid();
         var q = _db.AttendanceAlerts.AsNoTracking();
         if (pendingOnly) q = q.Where(a => a.Status == AttendanceSecurityService.StatusPending);
-        var list = await q.OrderByDescending(a => a.CreatedAt).Take(100).ToListAsync();
-        return Ok(list.Select(a => new
+        var pg = await Paging.QueryAsync(q.OrderByDescending(a => a.CreatedAt), skip, take, 100);
+        var list = pg.Rows;
+        return Ok(pg.Result(list.Select(a => new
         {
             a.Id,
             a.UserId,
@@ -2083,7 +2084,7 @@ public class AttendanceController : ControllerBase
                 AttendanceSecurityService.StatusApproved => "تأیید شده",
                 _ => "رد شده"
             }
-        }));
+        })));
     }
 
     /// <summary>تأیید دستگاه جدید توسط مدیر — دستگاهِ جدید، اصلی می‌شود.</summary>
