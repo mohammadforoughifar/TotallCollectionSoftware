@@ -621,6 +621,16 @@
 /* تقویم فرم ثبت نامه وارده داخل پنل ثابت فرم بریده نشود */
 .ltx .sheet-b:has(.dp-popover) { overflow: visible; }
 .ltx .sheet-b:has(.dp-popover) .dp-popover { z-index: 4600 !important; }
+/* تقویم فرم ثبت نامه باید داخل همان کارت فرم باز شود، نه خارج از پنجرهٔ ثبت. */
+.ltx .incoming-compose-sheet .sheet-b:has(.dp-popover) { overflow: visible; }
+.ltx .incoming-compose-sheet .fcard:has(.dp-popover) { position: relative; z-index: 4601; }
+.ltx .incoming-compose-sheet .fcard:has(.dp-popover) .dp-popover {
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    right: 0 !important;
+    left: auto !important;
+    visibility: visible !important;
+}
 /* دکمه‌های فرم‌های نامه وارده هم‌سبک فرم‌های صادره */
 .ltx .sheet-f .btn-pri, .ltx .sheet-f .btn-sec { min-height: 38px; border-radius: 10px; font-weight: 800; padding: 8px 18px; }
 .ltx .sheet-f .btn-pri { background: var(--p); color: #fff; border: 1px solid var(--p); box-shadow: 0 5px 12px rgba(99,64,232,.18); }
