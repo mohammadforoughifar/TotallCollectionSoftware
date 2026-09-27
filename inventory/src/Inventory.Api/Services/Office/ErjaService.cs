@@ -282,10 +282,22 @@ public class ErjaService : IErjaService
         var erja = await _db.Erjas.FirstOrDefaultAsync(e => e.ErjaId == erjaId && !e.IsDelete)
             ?? throw new Exception("ارجاع پیدا نشد.");
         if (erja.ReciverUserId != userId) return;
-        if (erja.IsRead) return;
-
-        erja.IsRead = true;
-        erja.DateRead = DateTime.Now;
+        // یک نامه ممکن است برای یک کاربر بیش از یک ارجاع داشته باشد
+        // (ارجاع اولیه و گردش‌های بعدی). با بازکردن نامه، همه ارجاع‌های
+        // خوانده‌نشده همان نامه برای همان کاربر رویت‌شده محسوب می‌شوند؛
+        // وگرنه شمارنده کارتابل می‌تواند بی‌دلیل روی ۱ باقی بماند.
+        var now = DateTime.Now;
+        var sameLetter = await _db.Erjas
+            .Where(e => e.SourceId == erja.SourceId
+                        && e.ReciverUserId == userId
+                        && !e.IsDelete
+                        && !e.IsRead)
+            .ToListAsync();
+        foreach (var pending in sameLetter)
+        {
+            pending.IsRead = true;
+            pending.DateRead = now;
+        }
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("letters");
     }

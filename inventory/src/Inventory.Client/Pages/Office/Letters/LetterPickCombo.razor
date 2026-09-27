@@ -29,7 +29,15 @@
         @if (open)
         {
             <div class="cpanel" @onclick:stopPropagation="true">
-                <input class="cpanel-search" placeholder="جستجو…" @bind="query" @bind:event="oninput" />
+                <div class="cpanel-tools">
+                    <input class="cpanel-search" placeholder="جستجو…" @bind="query" @bind:event="oninput" />
+                    @if (mode == "user" && FilteredUsers.Count > 0)
+                    {
+                        <button type="button" class="select-all" @onclick="SelectAllUsers">
+                            <i class="bi bi-check2-all"></i> انتخاب همه
+                        </button>
+                    }
+                </div>
                 @if (mode == "user")
                 {
                     @foreach (var u in FilteredUsers)
@@ -127,6 +135,17 @@
     private async Task ToggleUser(int id)
     {
         if (!SelectedUsers.Remove(id)) SelectedUsers.Add(id);
+        await Changed.InvokeAsync();
+    }
+
+    private async Task SelectAllUsers()
+    {
+        // با جستجو، همه موارد فیلترشده؛ بدون جستجو، همه کاربران فعال فرم
+        var source = string.IsNullOrWhiteSpace(query)
+            ? Users
+            : FilteredUsers;
+        foreach (var user in source)
+            SelectedUsers.Add(user.UserId);
         await Changed.InvokeAsync();
     }
 

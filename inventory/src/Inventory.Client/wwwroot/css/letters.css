@@ -188,7 +188,10 @@
                        display:inline-flex; align-items:center; justify-content:center; padding:0 5px; }
 .ltx .cpanel { position:absolute; top:calc(100% + 5px); right:0; left:0; z-index:60; background:#fff; border:1px solid var(--line);
                border-radius:13px; box-shadow:0 18px 44px rgba(15,23,42,.18); max-height:240px; overflow:auto; padding:6px; }
-.ltx .cpanel-search { width:100%; border:1px solid var(--line); border-radius:9px; padding:6px 10px; font:inherit; font-size:11.5px; margin-bottom:5px; }
+.ltx .cpanel-tools { display:flex; align-items:center; gap:6px; margin-bottom:5px; }
+.ltx .cpanel-search { flex:1; min-width:0; border:1px solid var(--line); border-radius:9px; padding:6px 10px; font:inherit; font-size:11.5px; margin-bottom:0; }
+.ltx .select-all { border:1px solid #c7d2fe; background:#eef2ff; color:#3730a3; border-radius:8px; padding:6px 8px; font:inherit; font-size:11px; white-space:nowrap; cursor:pointer; }
+.ltx .select-all:hover { background:#e0e7ff; }
 .ltx .copt { display:flex; align-items:center; gap:8px; padding:7px 9px; border-radius:9px; cursor:pointer; font-size:12px; }
 .ltx .copt:hover { background:#f1f5f9; }
 .ltx .copt small { margin-inline-start:auto; color:var(--sub); font-size:10px; }
