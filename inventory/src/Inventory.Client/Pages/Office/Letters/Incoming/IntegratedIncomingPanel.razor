@@ -11,7 +11,7 @@
         .iin-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:4px 4px 14px;border-bottom:1px solid var(--line)}
         .iin-title{font-size:17px;font-weight:800;color:#202033;display:flex;align-items:center;gap:8px}.iin-title i{color:var(--purple)}
         .iin-sub{font-size:11px;color:#8b8b9d;margin-top:5px}.iin-actions{display:flex;gap:8px;align-items:center}
-        .iin-btn{border:1px solid #ddddea;background:#fff;border-radius:9px;padding:9px 14px;color:#303044;font-size:12px;font-weight:700;cursor:pointer}.iin-btn.active,.iin-btn.primary{background:var(--purple);border-color:var(--purple);color:#fff;box-shadow:0 5px 12px #6941e82c}.iin-btn i{margin-left:5px}
+        .iin-btn{border:1px solid #ddddea;background:#fff;border-radius:9px;padding:9px 14px;color:#303044;font-size:12px;font-weight:700;cursor:pointer}.iin-btn.active,.iin-btn.primary{background:var(--purple);border-color:var(--purple);color:#fff;box-shadow:0 5px 12px #6941e82c}.iin-btn.incoming-create{background:#16a34a;border-color:#15803d;color:#fff;box-shadow:0 5px 12px #16a34a33}.iin-btn i{margin-left:5px}
         .iin-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.iin-stat{background:#fff;border:1px solid var(--line);border-radius:13px;text-align:center;padding:12px 8px}.iin-stat b{display:block;font-size:23px;color:var(--purple)}.iin-stat span{font-size:11px;color:#8b8b9d}.iin-stat.green b{color:#13a15d}.iin-stat.orange b{color:#d89400}
         .iin-filter{display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:13px;padding:10px;margin-bottom:12px}.iin-search{flex:1;border:1px solid #e3e3ec;border-radius:9px;padding:10px 13px;outline:none;font-size:12px;text-align:right}.iin-search:focus{border-color:var(--purple)}
         .iin-row{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--line);border-radius:13px;margin:9px 0;padding:14px 15px;min-height:88px;transition:.15s}.iin-row:hover{border-color:#b9a9fa;box-shadow:0 5px 16px #3e27730d}.iin-main{flex:1;min-width:0}.iin-r1{display:flex;align-items:center;gap:8px;margin-bottom:9px}.iin-r1 strong{font-size:13px;color:#202033;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.iin-num{color:#10945a;font-weight:800;font-size:11px}.iin-meta{display:flex;flex-wrap:wrap;gap:13px;color:#8b8b9d;font-size:11px}.iin-meta b{color:#555568}.iin-badge{font-size:10px;border-radius:7px;padding:5px 8px;white-space:nowrap}.iin-badge.ok{background:#e8f8ef;color:#16834d}.iin-badge.arc{background:#f0edff;color:#6343cd}.iin-row-actions{display:flex;gap:6px;direction:rtl}.iin-mini{border:1px solid #e5e5ee;background:#fff;border-radius:8px;padding:8px 10px;font-size:11px;color:#343447;cursor:pointer}.iin-mini:hover{background:#f5f2ff;border-color:#cfc2ff}.iin-empty{text-align:center;background:#fff;border:1px solid var(--line);border-radius:13px;padding:45px;color:#999;font-size:13px}
@@ -27,7 +27,7 @@
                 }
                 <button class="iin-btn @(view == "registered" ? "active" : "")" @onclick='() => SetViewFromNavigation("registered")'><i class="bi bi-check2-circle"></i>ثبت‌شده‌ها</button>
                 <button class="iin-btn @(view == "archived" ? "active" : "")" @onclick='() => SetViewFromNavigation("archived")'><i class="bi bi-archive"></i>بایگانی‌شده‌ها</button>
-                @if (CanRegister) { <button class="iin-btn primary" @onclick="OpenCreate"><i class="bi bi-plus-lg"></i>ثبت نامه وارده جدید</button> }
+                @if (CanRegister) { <button class="iin-btn incoming-create" @onclick="OpenCreate"><i class="bi bi-plus-lg"></i>ثبت نامه وارده جدید</button> }
             </div>
         </div>
         <div class="iin-stats">
@@ -62,7 +62,7 @@
     </div>
 </div>
 <ComposeIncomingModal @ref="compose" OnSaved="ReloadAsync" />
-<IncomingLetterViewModal @ref="viewModal" />
+<IncomingLetterViewModal @ref="viewModal" OnErja="HandleErjaFromView" OnAnswerErja="HandleAnswerFromView" OnEdit="HandleEditFromView" OnGardesh="HandleGardeshFromView" />
 <IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadAsync" />
 <IncomingGardeshModal @ref="flowModal" />
 <BayeganiFolderPickerModal @ref="folderPicker" />
@@ -98,14 +98,33 @@
         {
             var folderId = await folderPicker.PickAsync("انتخاب پوشه برای بایگانی گروهی");
             if (folderId is not { } destination || destination <= 0) return;
-            await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto
-            {
-                FolderId = destination,
-                LetterIds = selectedIds.ToList()
-            });
-            Toast.Success($"{selectedIds.Count.FaDigits()} نامه در پوشه انتخاب‌شده بایگانی شد.");
+            var selected = items.Where(x => selectedIds.Contains(x.LetterId)).ToList();
+            var erjaIds = selected.Where(x => x.ErjaId.HasValue).Select(x => x.ErjaId!.Value).ToList();
+            var directIds = selected.Where(x => !x.ErjaId.HasValue).Select(x => x.LetterId).ToList();
+            if (erjaIds.Count > 0)
+                await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto { FolderId = destination, ErjaIds = erjaIds });
+            foreach (var letterId in directIds)
+                await IncomingSvc.ToggleLetterBayeganiAsync(letterId);
+            Toast.Success($"{selected.Count.FaDigits()} نامه بایگانی شد.");
             selectedIds.Clear();
             await ReloadAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void HandleErjaFromView((int LetterId, int SabtNumber) args) => erjaSheet?.OpenErja(args.LetterId, args.SabtNumber);
+    private void HandleAnswerFromView((int ErjaId, int SabtNumber) args) => erjaSheet?.OpenAnswer(args.ErjaId, args.SabtNumber);
+    private async Task HandleEditFromView(IncomingLetterDetailDto letter)
+    {
+        if (compose is not null) await compose.OpenEdit(letter);
+    }
+    private async Task HandleGardeshFromView(int letterId)
+    {
+        try
+        {
+            var detail = await IncomingSvc.GetDetailAsync(letterId);
+            if (detail is not null && flowModal is not null)
+                await flowModal.Open(detail.LetterId, detail.Title, detail.Ferestande, detail.NumberSabt, detail.DateErsal);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -125,11 +144,11 @@
                 if (folderPicker == null) return;
                 var folderId = await folderPicker.PickAsync($"بایگانی نامه «{l.Title}»");
                 if (folderId is not { } selectedFolder || selectedFolder <= 0) return;
-                var dto = new ArchiveLettersDto { FolderId = selectedFolder };
-                if (l.ErjaId is { } erjaId) dto.ErjaIds.Add(erjaId);
-                else dto.LetterIds.Add(l.LetterId);
-                await LetterSvc.ArchiveLettersAsync(dto);
-                Toast.Success("نامه در پوشه انتخاب‌شده بایگانی شد.");
+                if (l.ErjaId is { } erjaId)
+                    await LetterSvc.ArchiveLettersAsync(new ArchiveLettersDto { FolderId = selectedFolder, ErjaIds = new() { erjaId } });
+                else
+                    await IncomingSvc.ToggleLetterBayeganiAsync(l.LetterId);
+                Toast.Success("نامه بایگانی شد.");
             }
             await ReloadAsync();
         }
