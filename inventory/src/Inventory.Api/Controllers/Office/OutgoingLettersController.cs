@@ -111,6 +111,9 @@ public class OutgoingLettersController : RbacControllerBase
             return forbid;
 
         // کاربر دبیرخانه مجاز به مشاهدهٔ نامه است حتی اگر در گردش آن نباشد
+        // دیتابیس‌های قدیمی ممکن است جدول رونوشت‌ها را نداشته باشند؛ قبل از
+        // خواندن جزئیات، اسکیمای idempotent آن را تضمین می‌کنیم.
+        await OutgoingCopyToSchemaV1.EnsureAsync(Db);
         try
         {
             var dto = await _letters.GetDetailAsync(id, MyUserId, isAdmin || hasDabirkhane);

@@ -21,6 +21,7 @@
             <div class="gm-seg">
                 <button class="@(view == 0 ? "on" : "")" @onclick="() => view = 0"><i class="bi bi-list-ul"></i> لیستی</button>
                 <button class="@(view == 1 ? "on" : "")" @onclick="() => view = 1"><i class="bi bi-diagram-2"></i> درختواره</button>
+                <button class="@(view == 2 ? "on" : "")" @onclick="() => view = 2"><i class="bi bi-diagram-3"></i> فلوچارتی</button>
             </div>
             <div class="gm-b">
                 @if (loading)
@@ -67,7 +68,7 @@
                         }
                     </div>
                 }
-                else
+                else if (view == 1)
                 {
                     <div class="gtree">
                         <ul>
@@ -84,6 +85,15 @@
                         </ul>
                     </div>
                 }
+                else
+                {
+                    <div class="fcwrap">
+                        <div class="fc"><ul><li>
+                            <div class="fnode root"><span class="mini"><i class="bi bi-box-arrow-in-left"></i></span><div><b>@ferestande</b><small>ورود به دبیرخانه · @dateErsal.ToFaDate()</small></div></div>
+                            <ul>@foreach (var n in roots) { @FlowNode(n) }</ul>
+                        </li></ul></div>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -93,7 +103,7 @@
 @code {
     private bool visible = false;
     private bool loading = false;
-    private int view = 0; // 0=List, 1=Tree
+    private int view = 0; // 0=List, 1=Tree, 2=Flow
 
     private string title = "";
     private string ferestande = "";
@@ -165,6 +175,18 @@
         if (n.MohlatPasokh.HasValue) parts.Add($"مهلت: {n.MohlatPasokh.Value.ToFaDate()}");
         return string.Join(" · ", parts);
     }
+
+    private RenderFragment FlowNode(ErjaTreeNodeDto n) => @<li>
+        <div class="fnode @(IsDone(n) ? "ok" : "wt")">
+            <span class="mini"><i class="bi bi-person"></i></span>
+            <div><b>@n.Reciver</b><small>@NodeSub(n)</small></div>
+            <span class="fdot" style="background:@(IsDone(n) ? "#22c55e" : "#f59e0b")"></span>
+        </div>
+        @if (n.Children.Count > 0)
+        {
+            <ul>@foreach (var k in n.Children) { @FlowNode(k) }</ul>
+        }
+    </li>;
 
     // گرهٔ بازگشتی درختواره — معادل الگوی GardeshModal نامه داخلی/صادره
     private RenderFragment TreeNode(ErjaTreeNodeDto n) => @<li>
