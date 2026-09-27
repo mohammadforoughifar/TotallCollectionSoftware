@@ -17,6 +17,7 @@ public interface IMinutesApiService
     Task<MinutesItemDto> RespDecisionAsync(int itemId, bool approved, string? note);
     Task<MinutesItemDto> FollowUpDecisionAsync(int itemId, string decision, string? note);
     Task SignAsync(int minutesId, string signatureBase64);
+    Task RemoveSignatureAsync(int minutesId, int participantUserId);
     Task<int> ToInnerLetterAsync(int minutesId, MinutesToInnerLetterDto dto);
     Task<int> ToOutgoingLetterAsync(int minutesId, MinutesToOutgoingLetterDto dto);
     Task<int> SendEmailAsync(int minutesId, MinutesSendEmailDto dto);
@@ -73,6 +74,9 @@ public class MinutesApiService : IMinutesApiService
     public Task SignAsync(int minutesId, string signatureBase64)
         => _api.PostAsync<object>($"api/meeting-minutes/{minutesId}/sign",
             new MinutesSignDto { SignatureBase64 = signatureBase64 });
+
+    public Task RemoveSignatureAsync(int minutesId, int participantUserId)
+        => _api.DeleteAsync($"api/meeting-minutes/{minutesId}/participants/{participantUserId}/signature");
 
     public async Task<int> ToInnerLetterAsync(int minutesId, MinutesToInnerLetterDto dto)
     {

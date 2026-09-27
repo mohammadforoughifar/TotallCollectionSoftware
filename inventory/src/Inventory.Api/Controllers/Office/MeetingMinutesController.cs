@@ -75,6 +75,13 @@ public class MeetingMinutesController : RbacControllerBase
     {
         var need = dto.Id > 0 ? "Update" : "Create";
         if (await ForbiddenUnlessAsync(Module, need) is { } f) return f;
+        if (dto.Id > 0)
+        {
+            var existing = await Db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == dto.Id && !x.IsDeleted);
+            if (existing is null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
+            if (existing.CreatedByUserId != MyUserId)
+                return StatusCode(403, new { message = "فقط ایجادکننده صورتجلسه مجاز به ویرایش آن است." });
+        }
         try
         {
             var id = await _svc.SaveAsync(dto, MyUserId, MyUsername);
@@ -109,6 +116,10 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> Delete(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "Delete") is { } f) return f;
+        var owner = await Db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+        if (owner is null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
+        if (owner.CreatedByUserId != MyUserId)
+            return StatusCode(403, new { message = "فقط ایجادکننده صورتجلسه مجاز به حذف آن است." });
         await _svc.DeleteAsync(id, MyUserId);
         return Ok(new { ok = true });
     }
@@ -119,6 +130,7 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> AddItem(int id, [FromBody] SaveMinutesItemDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Update") is { } f) return f;
+        if (await CreatorOnlyAsync(id) is { } ownerForbid) return ownerForbid;
         try
         {
             var item = await _svc.AddItemAsync(id, dto, MyUserId);
@@ -134,6 +146,9 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> UpdateItem(int itemId, [FromBody] SaveMinutesItemDto dto)
     {
         if (await ForbiddenUnlessAsync(Module, "Update") is { } f) return f;
+        var itemOwner = await Db.MeetingMinutesItems.AsNoTracking().Where(i => i.Id == itemId).Select(i => (int?)i.MinutesId).FirstOrDefaultAsync();
+        if (itemOwner is null) return NotFound(new { message = "بند پیدا نشد." });
+        if (await CreatorOnlyAsync(itemOwner.Value) is { } ownerForbid) return ownerForbid;
         try
         {
             var item = await _svc.UpdateItemAsync(itemId, dto, MyUserId);
@@ -149,6 +164,9 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> DeleteItem(int itemId)
     {
         if (await ForbiddenUnlessAsync(Module, "Delete") is { } f) return f;
+        var itemOwner = await Db.MeetingMinutesItems.AsNoTracking().Where(i => i.Id == itemId).Select(i => (int?)i.MinutesId).FirstOrDefaultAsync();
+        if (itemOwner is null) return NotFound(new { message = "بند پیدا نشد." });
+        if (await CreatorOnlyAsync(itemOwner.Value) is { } ownerForbid) return ownerForbid;
         try
         {
             await _svc.DeleteItemAsync(itemId, MyUserId);
@@ -209,6 +227,18 @@ public class MeetingMinutesController : RbacControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    [HttpDelete("{id:int}/participants/{participantUserId:int}/signature")]
+    public async Task<IActionResult> RemoveSignature(int id, int participantUserId)
+    {
+        if (await ForbiddenUnlessAsync(Module, "Update") is { } f) return f;
+        try
+        {
+            await _svc.RemoveSignatureAsync(id, participantUserId, MyUserId);
+            return Ok(new { ok = true });
+        }
+        catch (Exception ex) { return BadRequest(new { message = ex.Message }); }
     }
 
     // ================== تبدیل به نامه داخلی ==================
@@ -345,6 +375,18 @@ public class MeetingMinutesController : RbacControllerBase
     }
 
     // ================== ابزار ==================
+
+    private async Task<IActionResult?> CreatorOnlyAsync(int minutesId)
+    {
+        var owner = await Db.MeetingMinutes.AsNoTracking()
+            .Where(x => x.Id == minutesId && !x.IsDeleted)
+            .Select(x => (int?)x.CreatedByUserId)
+            .FirstOrDefaultAsync();
+        if (owner is null) return NotFound(new { message = "صورتجلسه پیدا نشد." });
+        return owner.Value == MyUserId
+            ? null
+            : StatusCode(403, new { message = "فقط ایجادکننده صورتجلسه مجاز به ویرایش یا حذف آن است." });
+    }
 
     private async Task<string> DefaultTitleAsync(int minutesId, int itemId)
     {

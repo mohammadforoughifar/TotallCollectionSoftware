@@ -23,6 +23,7 @@ public interface IMeetingMinutesService
     Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName);
     Task SubmitAsync(int id, bool includeAbsentees, int userId, string userName);
     Task DeleteAsync(int id, int userId);
+    Task RemoveSignatureAsync(int minutesId, int participantUserId, int creatorUserId);
     Task<MinutesItemDto> AddItemAsync(int minutesId, SaveMinutesItemDto dto, int userId);
     Task<MinutesItemDto> UpdateItemAsync(int itemId, SaveMinutesItemDto dto, int userId);
     Task DeleteItemAsync(int itemId, int userId);
@@ -250,6 +251,8 @@ public class MeetingMinutesService : IMeetingMinutesService
         if (dto.Id > 0)
         {
             m = await MustGetAsync(dto.Id);
+            if (m.CreatedByUserId != userId)
+                throw new Exception("فقط ایجادکننده صورتجلسه مجاز به ویرایش آن است.");
             if (m.Status == MeetingMinutesStatus.Closed)
                 throw new Exception("صورتجلسه «اتمام نهایی» شده — امکان ویرایش نیست.");
             m.Title = dto.Title.Trim();
@@ -408,6 +411,10 @@ public class MeetingMinutesService : IMeetingMinutesService
     public async Task DeleteAsync(int id, int userId)
     {
         var m = await MustGetAsync(id);
+        if (m.CreatedByUserId != userId)
+            throw new Exception("فقط ایجادکننده صورتجلسه مجاز به حذف آن است.");
+        if (await _db.MeetingMinutesParticipants.AnyAsync(p => p.MinutesId == id && p.SignedAt != null))
+            throw new Exception("حداقل یک شرکت‌کننده امضا کرده است. ایجادکننده باید ابتدا امضای شرکت‌کنندگان را بردارد، سپس صورتجلسه را حذف کند.");
         m.IsDeleted = true;
         m.DeletedAt = DateTime.Now;
         m.DeletedByUserId = userId;
@@ -625,6 +632,23 @@ public class MeetingMinutesService : IMeetingMinutesService
     }
 
     // ------------------------------ امضای الکترونیکی ------------------------------
+
+    public async Task RemoveSignatureAsync(int minutesId, int participantUserId, int creatorUserId)
+    {
+        var m = await MustGetAsync(minutesId);
+        if (m.CreatedByUserId != creatorUserId)
+            throw new Exception("فقط ایجادکننده صورتجلسه می‌تواند امضای شرکت‌کنندگان را بردارد.");
+        if (m.Status == MeetingMinutesStatus.Closed)
+            throw new Exception("صورتجلسه نهایی شده و امکان تغییر امضا ندارد.");
+
+        var part = await _db.MeetingMinutesParticipants
+            .FirstOrDefaultAsync(p => p.MinutesId == minutesId && p.UserId == participantUserId);
+        if (part is null) throw new Exception("شرکت‌کننده پیدا نشد.");
+        part.SignatureData = null;
+        part.SignedAt = null;
+        await _db.SaveChangesAsync();
+        await _notify.BroadcastChangedAsync("meeting-minutes");
+    }
 
     public async Task SignAsync(int minutesId, int userId, string signatureBase64)
     {

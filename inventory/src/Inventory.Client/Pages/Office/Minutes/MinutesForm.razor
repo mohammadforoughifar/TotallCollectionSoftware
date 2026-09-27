@@ -159,6 +159,14 @@
                                         @if (p.SignedAt != null)
                                         {
                                             <span class="badge text-bg-success"><i class="bi bi-check-lg me-1"></i>امضا شده</span>
+                                            @if (canCreator && detail?.Status != "Closed")
+                                            {
+                                                <button type="button" class="btn btn-link btn-sm text-danger p-0 ms-1"
+                                                        title="برداشتن امضای شرکت‌کننده"
+                                                        @onclick="() => RemoveParticipantSignature(p)">
+                                                    <i class="bi bi-eraser"></i>
+                                                </button>
+                                            }
                                         }
                                         else
                                         {
@@ -444,9 +452,10 @@
 
     // دسترسی‌ها
     private bool canView => Auth.Has("MeetingMinutes.View");
-    private bool canEdit => (minutesId == 0 && Auth.Has("MeetingMinutes.Create")) || (minutesId > 0 && Auth.Has("MeetingMinutes.Update"));
-    // حذف بند در API با مجوز MeetingMinutes.Delete محافظت می‌شود؛ صورتجلسه بسته نیز قابل حذف نیست.
-    private bool canDelete => minutesId > 0 && detail?.Status != "Closed" && Auth.Has("MeetingMinutes.Delete");
+    private bool canCreator => minutesId > 0 && detail?.CreatedByUserId == Auth.UserId;
+    private bool canEdit => (minutesId == 0 && Auth.Has("MeetingMinutes.Create")) || (minutesId > 0 && canCreator && Auth.Has("MeetingMinutes.Update"));
+    // حذف بند/صورتجلسه فقط برای ایجادکننده و با مجوز حذف مجاز است.
+    private bool canDelete => canCreator && detail?.Status != "Closed" && Auth.Has("MeetingMinutes.Delete");
     private bool canSign => Auth.Has("MeetingMinutes.Sign");
     private bool canWorkOrder => Auth.Has("WorkOrders.Create");
     private bool canInnerLetter => Auth.Has("MeetingMinutes.ToInnerLetter");
@@ -1026,6 +1035,18 @@ private async Task DoSubmit()
             await Minutes.SignAsync(minutesId, base64);
             await LoadDetail();
             Toast.Success("امضای شما ثبت شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task RemoveParticipantSignature(MinutesParticipantDto participant)
+    {
+        if (!canCreator) return;
+        try
+        {
+            await Minutes.RemoveSignatureAsync(minutesId, participant.UserId);
+            await LoadDetail();
+            Toast.Success($"امضای {participant.Name} برداشته شد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }

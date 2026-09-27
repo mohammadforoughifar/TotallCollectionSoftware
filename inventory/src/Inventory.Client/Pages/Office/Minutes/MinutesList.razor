@@ -124,7 +124,7 @@
                                             @onclick:stopPropagation="true" @onclick="() => Open(m.Id)">
                                         <i class="bi bi-eye"></i>
                                     </button>
-                                    @if (Auth.Has("MeetingMinutes.Delete") && m.Status != "Closed")
+                                    @if (Auth.Has("MeetingMinutes.Delete") && m.CreatedByUserId == Auth.UserId && m.Status != "Closed")
                                     {
                                         <button type="button" class="btn btn-sm btn-outline-danger" title="حذف"
                                                 @onclick:stopPropagation="true" @onclick="() => AskDelete(m)">
@@ -175,7 +175,7 @@
                                 <button type="button" class="btn btn-sm btn-outline-primary" @onclick:stopPropagation="true" @onclick="() => Open(m.Id)">
                                     <i class="bi bi-eye me-1"></i>مشاهده و جزئیات
                                 </button>
-                                @if (Auth.Has("MeetingMinutes.Delete") && m.Status != "Closed")
+                                @if (Auth.Has("MeetingMinutes.Delete") && m.CreatedByUserId == Auth.UserId && m.Status != "Closed")
                                 {
                                     <button type="button" class="btn btn-sm btn-outline-danger" @onclick:stopPropagation="true" @onclick="() => AskDelete(m)">
                                         <i class="bi bi-trash me-1"></i>حذف
