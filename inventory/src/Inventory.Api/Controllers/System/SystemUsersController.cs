@@ -1,3 +1,4 @@
+using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
@@ -24,8 +25,8 @@ public class SystemUsersController : ControllerBase
     // ================== CRUD کاربران سیستم ==================
 
     [HttpGet]
-    public async Task<ActionResult> Get() =>
-        Ok(await _db.SystemUsers.OrderBy(u => u.Id).ToListAsync());
+    public async Task<ActionResult> Get([FromQuery] PagingRequest? paging = null) =>
+        Ok(await _db.SystemUsers.AsNoTracking().OrderBy(u => u.Id).ToPagedResultAsync(paging));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult> Get(int id)

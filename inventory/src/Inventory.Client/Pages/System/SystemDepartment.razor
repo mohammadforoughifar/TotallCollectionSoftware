@@ -124,9 +124,9 @@ window.addEventListener('keydown', function(e) {
 
     protected override async Task OnInitializedAsync()
     {
-        try { items = await Http.GetFromJsonAsync<List<SystemDepartmentItem>>("/api/SystemDepartments") ?? new(); var sysInfos = await Http.GetFromJsonAsync<List<SystemInfoItem>>("/api/SystemInfo") ?? new(); foreach(var d in items) { d.SystemCount = sysInfos.Count(x => x.DepartmentId == d.Id); } }
+        try { items = (await Http.GetFromJsonAsync<PagedResult<SystemDepartmentItem>>($"/api/SystemDepartments?{PagingRequest.AllQuery}"))?.Items ?? new(); var sysInfos = (await Http.GetFromJsonAsync<PagedResult<SystemInfoItem>>($"/api/SystemInfo?{PagingRequest.AllQuery}"))?.Items ?? new(); foreach(var d in items) { d.SystemCount = sysInfos.Count(x => x.DepartmentId == d.Id); } }
         catch { items = new(); }
-        try { companies = await Http.GetFromJsonAsync<List<SystemCompanyItem>>("/api/SystemCompanies") ?? new(); }
+        try { companies = (await Http.GetFromJsonAsync<PagedResult<SystemCompanyItem>>($"/api/SystemCompanies?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { companies = new(); }
     }
 
@@ -183,7 +183,7 @@ window.addEventListener('keydown', function(e) {
     {
         try
         {
-            var systemInfos = await Http.GetFromJsonAsync<List<SystemInfoItem>>("/api/SystemInfo") ?? new();
+            var systemInfos = (await Http.GetFromJsonAsync<PagedResult<SystemInfoItem>>($"/api/SystemInfo?{PagingRequest.AllQuery}"))?.Items ?? new();
             var count = systemInfos.Count(x => x.DepartmentId == id);
             if (count > 0) { return; }
             var resp = await Http.DeleteAsync($"/api/SystemDepartments/{id}");

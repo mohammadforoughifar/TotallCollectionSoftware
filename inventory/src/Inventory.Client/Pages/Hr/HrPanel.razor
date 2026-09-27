@@ -615,7 +615,7 @@
     private async Task LoadHolidays()
     {
         holLoading = true;
-        try { holidays = await Http.GetFromJsonAsync<List<HolidayItem>>("/api/LeaveRequests/holidays") ?? new(); }
+        try { holidays = (await Http.GetFromJsonAsync<PagedResult<HolidayItem>>($"/api/LeaveRequests/holidays?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { holidays = new(); }
         holLoading = false;
     }
@@ -789,7 +789,7 @@
         allLoading = true;
         try
         {
-            all = await Http.GetFromJsonAsync<List<LeaveItem>>($"/api/LeaveRequests?status={allStatus}") ?? new();
+            all = (await Http.GetFromJsonAsync<PagedResult<LeaveItem>>($"/api/LeaveRequests?status={allStatus}&{PagingRequest.AllQuery}"))?.Items ?? new();
             if (filterUserId > 0) all = all.Where(x => x.RequesterUserId == filterUserId).ToList();
             RebuildUserOptions();
         }

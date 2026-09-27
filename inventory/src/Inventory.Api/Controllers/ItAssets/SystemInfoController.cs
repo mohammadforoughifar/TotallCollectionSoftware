@@ -1,3 +1,5 @@
+using Inventory.Shared.Dtos;
+using Inventory.Api.Services;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -95,10 +97,15 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get()
+    public async Task<IActionResult> Get([FromQuery] PagingRequest? paging = null)
     {
         // لیست از جدول‌های قطعات می‌خواند (همان منبع صفحه‌ی جزئیات) — فیلدهای تخت فقط fallback
-        var systems = await _db.SystemInfos.AsNoTracking().ToListAsync();
+        // Skip/Take روی دیتابیس؛ قطعات و سلامت فقط برای سیستم‌های همان صفحه
+        var total = await _db.SystemInfos.CountAsync();
+        var systems = await _db.SystemInfos.AsNoTracking()
+            .OrderByDescending(s => s.ReceivedAt)
+            .ApplyPaging(paging)
+            .ToListAsync();
         var ids = systems.Select(s => s.Id).ToList();
 
         var cpus = await _db.SystemCpus.AsNoTracking().Where(c => ids.Contains(c.SystemInfoId)).ToListAsync();
@@ -110,7 +117,6 @@ public class SystemInfoController : ControllerBase
         var healths = await Services.SystemHealth.ComputeManyAsync(_db, ids);
 
         var result = systems
-            .OrderByDescending(s => s.ReceivedAt)
             .Select(s =>
             {
                 var ramSum = rams.Where(r => r.SystemInfoId == s.Id).Sum(r => r.CapacityGb);
@@ -129,7 +135,7 @@ public class SystemInfoController : ControllerBase
                 };
             }).ToList();
 
-        return Ok(result);
+        return Ok(result.ToPagedResult(total));
     }
 
     // ================= PDF شناسنامه سیستم =================
@@ -253,11 +259,13 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("history/{id}")]
-    public async Task<IActionResult> History(int id)
+    public async Task<IActionResult> History(int id, [FromQuery] PagingRequest? paging = null)
     {
-        var logs = await _db.SystemInfoChangeLogs
-            .Where(l => l.SystemInfoId == id)
+        var query = _db.SystemInfoChangeLogs.Where(l => l.SystemInfoId == id);
+        var total = await query.CountAsync();
+        var logs = await query
             .OrderByDescending(l => l.ChangedAt)
+            .ApplyPaging(paging)
             .ToListAsync();
 
         var result = logs.Select(l => new HistoryEntry
@@ -268,7 +276,7 @@ public class SystemInfoController : ControllerBase
             Diffs = TryParseDiffs(l.ChangesJson)
         }).ToList();
 
-        return Ok(result);
+        return Ok(result.ToPagedResult(total));
     }
 
     private static List<DiffItem> TryParseDiffs(string json)
@@ -336,7 +344,7 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("user-history/{id}")]
-    public async Task<IActionResult> UserHistory(int id)
+    public async Task<IActionResult> UserHistory(int id, [FromQuery] PagingRequest? paging = null)
     {
         var list = await _db.SystemInfoUserHistories
             .AsNoTracking()
@@ -352,7 +360,7 @@ public class SystemInfoController : ControllerBase
                 FromAt = h.FromAt,
                 ToAt = h.ToAt
             })
-            .ToListAsync();
+            .ToPagedResultAsync(paging);
         return Ok(list);
     }
 
@@ -449,12 +457,13 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("handovers/{id}")]
-    public async Task<IActionResult> Handovers(int id)
+    public async Task<IActionResult> Handovers(int id, [FromQuery] PagingRequest? paging = null)
     {
-        var list = await _db.SystemHandovers
-            .AsNoTracking()
-            .Where(h => h.SystemInfoId == id)
+        var query = _db.SystemHandovers.AsNoTracking().Where(h => h.SystemInfoId == id);
+        var total = await query.CountAsync();
+        var list = await query
             .OrderByDescending(h => h.CreatedAt)
+            .ApplyPaging(paging)
             .ToListAsync();
         var result = list.Select(h => new HandoverItem
         {
@@ -469,7 +478,7 @@ public class SystemInfoController : ControllerBase
             Note = h.Note,
             Checklist = TryParseChecklist(h.ChecklistJson)
         }).ToList();
-        return Ok(result);
+        return Ok(result.ToPagedResult(total));
     }
 
     private static List<ChecklistItemDto> TryParseChecklist(string json)
@@ -520,20 +529,19 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("commands/{id}")]
-    public async Task<IActionResult> Commands(int id)
+    public async Task<IActionResult> Commands(int id, [FromQuery] PagingRequest? paging = null)
     {
-        var list = await _db.SystemRemoteCommands
+        return Ok(await _db.SystemRemoteCommands
             .AsNoTracking()
             .Where(c => c.SystemInfoId == id)
             .OrderByDescending(c => c.CreatedAt)
-            .Take(20)
-            .ToListAsync();
-        return Ok(list.Select(c => new CommandItem
-        {
-            Id = c.Id, Action = c.Action, Status = c.Status,
-            CreatedAt = c.CreatedAt, ByUserName = c.ByUserName,
-            CompletedAt = c.CompletedAt, Result = c.Result
-        }).ToList());
+            .Select(c => new CommandItem
+            {
+                Id = c.Id, Action = c.Action, Status = c.Status,
+                CreatedAt = c.CreatedAt, ByUserName = c.ByUserName,
+                CompletedAt = c.CompletedAt, Result = c.Result
+            })
+            .ToPagedResultAsync(paging));
     }
 
     /// <summary>ایجنت: دریافت دستورهای در انتظار این سیستم.</summary>

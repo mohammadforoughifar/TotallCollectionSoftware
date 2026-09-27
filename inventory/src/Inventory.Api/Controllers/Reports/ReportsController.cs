@@ -14,10 +14,11 @@ public class KardexController : ApiControllerBase
 
     /// <summary>گردش کالا (کاردکس) با فیلتر انبار و بازه تاریخ.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<KardexRow>>> Get(
+    public async Task<ActionResult<PagedResult<KardexRow>>> Get(
         [FromQuery] int productId, [FromQuery] int? warehouseId,
-        [FromQuery] DateTime? from, [FromQuery] DateTime? to)
-        => Ok(await _service.GetKardexAsync(productId, warehouseId, from, to));
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetKardexAsync(productId, warehouseId, from, to, paging ?? new PagingRequest()));
 }
 
 /// <summary>گزارش نقطه سفارش.</summary>
@@ -30,6 +31,6 @@ public class ReorderController : ApiControllerBase
 
     /// <summary>کالاهایی که موجودی‌شان به نقطه سفارش رسیده است.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<ReorderItem>>> Get([FromQuery] int? warehouseId)
-        => Ok(await _service.GetReorderAsync(warehouseId));
+    public async Task<ActionResult<PagedResult<ReorderItem>>> Get([FromQuery] int? warehouseId, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetReorderAsync(warehouseId, paging ?? new PagingRequest()));
 }

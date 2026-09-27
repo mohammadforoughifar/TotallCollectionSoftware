@@ -454,10 +454,10 @@
     }
 
     private async Task LoadShifts()
-    { try { shifts = await Http.GetFromJsonAsync<List<ShiftDto>>("/api/Attendance/shifts") ?? new(); } catch { shifts = new(); } }
+    { try { shifts = (await Http.GetFromJsonAsync<PagedResult<ShiftDto>>($"/api/Attendance/shifts?{PagingRequest.AllQuery}"))?.Items ?? new(); } catch { shifts = new(); } }
 
     private async Task LoadPersonnel()
-    { try { personnel = await Http.GetFromJsonAsync<List<PersonnelItem>>("/api/Attendance/personnel") ?? new(); } catch { personnel = new(); } }
+    { try { personnel = (await Http.GetFromJsonAsync<PagedResult<PersonnelItem>>($"/api/Attendance/personnel?{PagingRequest.AllQuery}"))?.Items ?? new(); } catch { personnel = new(); } }
 
     private async Task LoadReport()
     {

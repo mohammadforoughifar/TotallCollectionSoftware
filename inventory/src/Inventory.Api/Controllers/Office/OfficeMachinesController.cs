@@ -1,3 +1,5 @@
+using Inventory.Shared.Dtos;
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
@@ -29,22 +31,27 @@ public class OfficeMachinesController : ControllerBase
     public OfficeMachinesController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string? q)
+    public async Task<IActionResult> Get([FromQuery] string? q, [FromQuery] PagingRequest? paging = null)
     {
-        var machines = await _db.OfficeMachines.AsNoTracking().ToListAsync();
-        var repairs = await _db.OfficeMachineRepairs.AsNoTracking().ToListAsync();
-        var costs = await _db.OfficeMachineCosts.AsNoTracking().ToListAsync();
+        var query = _db.OfficeMachines.AsNoTracking().AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(q))
         {
             q = q.Trim();
-            machines = machines.Where(m =>
-                m.Model.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                (m.SerialNumber ?? "").Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                (m.Location ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+            query = query.Where(m =>
+                m.Model.Contains(q) ||
+                (m.SerialNumber != null && m.SerialNumber.Contains(q)) ||
+                (m.Location != null && m.Location.Contains(q)));
         }
 
-        var dto = machines.OrderBy(m => m.Id).Select(m => new MachineDto
+        // Skip/Take روی دیتابیس؛ آمار تعمیر/هزینه فقط برای ماشین‌های همان صفحه
+        var total = await query.CountAsync();
+        var machines = await query.OrderBy(m => m.Id).ApplyPaging(paging).ToListAsync();
+        var ids = machines.Select(m => m.Id).ToList();
+        var repairs = await _db.OfficeMachineRepairs.AsNoTracking().Where(r => ids.Contains(r.MachineId)).ToListAsync();
+        var costs = await _db.OfficeMachineCosts.AsNoTracking().Where(c => ids.Contains(c.MachineId)).ToListAsync();
+
+        var dto = machines.Select(m => new MachineDto
         {
             Id = m.Id,
             Model = m.Model,
@@ -61,7 +68,7 @@ public class OfficeMachinesController : ControllerBase
                            + repairs.Where(r => r.MachineId == m.Id).Sum(r => r.Cost)
         }).ToList();
 
-        return Ok(dto);
+        return Ok(dto.ToPagedResult(total));
     }
 
     [HttpPost]
@@ -125,11 +132,11 @@ public class OfficeMachinesController : ControllerBase
     // ================= تعمیرات =================
 
     [HttpGet("{id}/repairs")]
-    public async Task<IActionResult> Repairs(int id)
+    public async Task<IActionResult> Repairs(int id, [FromQuery] PagingRequest? paging = null)
         => Ok(await _db.OfficeMachineRepairs.AsNoTracking()
             .Where(r => r.MachineId == id)
             .OrderByDescending(r => r.RepairDate)
-            .ToListAsync());
+            .ToPagedResultAsync(paging));
 
     [HttpPost("{id}/repairs")]
     public async Task<IActionResult> AddRepair(int id, [FromBody] OfficeMachineRepair r)
@@ -174,11 +181,11 @@ public class OfficeMachinesController : ControllerBase
     // ================= هزینه‌ها =================
 
     [HttpGet("{id}/costs")]
-    public async Task<IActionResult> Costs(int id)
+    public async Task<IActionResult> Costs(int id, [FromQuery] PagingRequest? paging = null)
         => Ok(await _db.OfficeMachineCosts.AsNoTracking()
             .Where(c => c.MachineId == id)
             .OrderByDescending(c => c.CostDate)
-            .ToListAsync());
+            .ToPagedResultAsync(paging));
 
     [HttpPost("{id}/costs")]
     public async Task<IActionResult> AddCost(int id, [FromBody] OfficeMachineCost c)

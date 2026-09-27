@@ -364,7 +364,7 @@ else
         {
             var res = await Http.GetFromJsonAsync<UnreadRes>("/api/notifications/unread-count");
             unreadCount = res?.Count ?? 0;
-            ntfList = await Http.GetFromJsonAsync<List<NtfItem>>("/api/notifications") ?? new();
+            ntfList = (await Http.GetFromJsonAsync<PagedResult<NtfItem>>("/api/notifications?skip=0&take=50"))?.Items ?? new();
         }
         catch { }
     }
@@ -493,7 +493,7 @@ else
     {
         try
         {
-            var systems = await Http.GetFromJsonAsync<List<NewSystemCountItem>>("/api/SystemInfo");
+            var systems = (await Http.GetFromJsonAsync<PagedResult<NewSystemCountItem>>($"/api/SystemInfo?{PagingRequest.AllQuery}"))?.Items;
             // آلارم منو: سیستم جدیدِ تاییدنشده + سیستم موجود با تغییرات در انتظار
             var n = systems?.Count(s => !s.IsApproved || !string.IsNullOrEmpty(s.PendingPayloadJson)) ?? 0;
             if (n != newSystemsCount)

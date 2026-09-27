@@ -46,26 +46,26 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>صندوق وارده کاربر جاری</summary>
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly));
+        return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, paging ?? new PagingRequest()));
     }
 
     /// <summary>پوشه بایگانی کاربر جاری</summary>
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive([FromQuery] string? search)
+    public async Task<IActionResult> Archive([FromQuery] string? search, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetArchiveAsync(MyUserId, search));
+        return Ok(await _letters.GetArchiveAsync(MyUserId, search, paging ?? new PagingRequest()));
     }
 
     /// <summary>نامه‌های ارسالی کاربر جاری</summary>
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.GetSentAsync(MyUserId, search));
+        return Ok(await _letters.GetSentAsync(MyUserId, search, paging ?? new PagingRequest()));
     }
 
     /// <summary>آمار کارتابل (شمارنده نخوانده‌ها و…)</summary>
@@ -120,10 +120,13 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست انتخاب نامه برای عطف/پیرو</summary>
     [HttpGet("pick")]
-    public async Task<IActionResult> Pick([FromQuery] string? search)
+    public async Task<IActionResult> Pick([FromQuery] string? search, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _letters.PickListAsync(MyUserId, search));
+        // پیش‌فرض لیست انتخاب عطف/پیرو: ۳۰ نامه آخر
+        paging ??= new PagingRequest();
+        if (!paging.UsesSkipTake && !paging.PageSize.HasValue) paging.Take = 30;
+        return Ok(await _letters.PickListAsync(MyUserId, search, paging));
     }
 
     // ==================== گردش / ارجاع ====================
@@ -185,10 +188,10 @@ public class InnerLettersController : RbacControllerBase
     // ==================== پیش‌نویس ====================
 
     [HttpGet("pishnevis")]
-    public async Task<IActionResult> PishnevisList([FromQuery] string? search)
+    public async Task<IActionResult> PishnevisList([FromQuery] string? search, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _pishnevis.GetAllAsync(MyUserId, search));
+        return Ok(await _pishnevis.GetAllAsync(MyUserId, search, paging ?? new PagingRequest()));
     }
 
     [HttpGet("pishnevis/{id:int}")]

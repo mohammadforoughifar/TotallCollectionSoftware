@@ -189,7 +189,7 @@
     private async Task SelectFolder(FolderItem f)
     {
         selected = f;
-        try { items = await Http.GetFromJsonAsync<List<ArchItem>>($"/api/archive/items/{f.Id}") ?? new(); }
+        try { items = (await Http.GetFromJsonAsync<PagedResult<ArchItem>>($"/api/archive/items/{f.Id}?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { items = new(); }
     }
 

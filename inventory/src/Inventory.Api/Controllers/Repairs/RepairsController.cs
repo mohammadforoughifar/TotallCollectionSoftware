@@ -17,8 +17,8 @@ public class RepairsController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResult<RepairOrderDto>>> GetAll(
         [FromQuery] string? search, [FromQuery] RepairStatus? status,
-        [FromQuery] int? technicianId, [FromQuery] int page = 1, [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetRepairsAsync(search, status, technicianId, page, pageSize));
+        [FromQuery] int? technicianId, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _svc.GetRepairsAsync(search, status, technicianId, paging ?? new PagingRequest()));
 
     /// <summary>جزئیات یک پذیرش.</summary>
     [HttpGet("{id:int}")]
@@ -61,8 +61,8 @@ public class TechniciansController : ApiControllerBase
     public TechniciansController(IRepairService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<PagedResult<Technician>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _svc.GetTechniciansPagedAsync(activeOnly, page, pageSize));
+    public async Task<ActionResult<PagedResult<Technician>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _svc.GetTechniciansPagedAsync(activeOnly, paging ?? new PagingRequest()));
 
     [HttpPost]
     public async Task<ActionResult<Technician>> Save([FromBody] Technician technician)

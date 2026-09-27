@@ -17,8 +17,8 @@ public class ExpensesController : ApiControllerBase
     public async Task<ActionResult<PagedResult<ExpenseDto>>> GetAll(
         [FromQuery] string? search, [FromQuery] int? categoryId,
         [FromQuery] DateTime? from, [FromQuery] DateTime? to,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetExpensesAsync(search, categoryId, from, to, page, pageSize));
+        [FromQuery] PagingRequest? paging = null)
+        => Ok(await _svc.GetExpensesAsync(search, categoryId, from, to, paging ?? new PagingRequest()));
 
     /// <summary>ایجاد / ویرایش سند هزینه.</summary>
     [HttpPost]
@@ -43,8 +43,8 @@ public class ExpenseCategoriesController : ApiControllerBase
     public ExpenseCategoriesController(IExpenseService svc) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<PagedResult<ExpenseCategoryDto>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _svc.GetCategoriesPagedAsync(activeOnly, page, pageSize));
+    public async Task<ActionResult<PagedResult<ExpenseCategoryDto>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _svc.GetCategoriesPagedAsync(activeOnly, paging ?? new PagingRequest()));
 
     [HttpPost]
     public async Task<ActionResult<ExpenseCategoryDto>> Save([FromBody] ExpenseCategoryDto category)

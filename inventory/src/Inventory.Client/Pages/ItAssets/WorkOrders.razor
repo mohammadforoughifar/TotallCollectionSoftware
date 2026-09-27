@@ -906,9 +906,9 @@ else
 
     private async Task LoadAll()
     {
-        try { mineItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/mine") ?? new(); } catch { }
-        try { assignedItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/assigned") ?? new(); } catch { }
-        try { archiveItems = await Http.GetFromJsonAsync<List<WoItem>>("/api/workorders/archive") ?? new(); } catch { }
+        try { mineItems = (await Http.GetFromJsonAsync<PagedResult<WoItem>>($"/api/workorders/mine?{PagingRequest.AllQuery}"))?.Items ?? new(); } catch { }
+        try { assignedItems = (await Http.GetFromJsonAsync<PagedResult<WoItem>>($"/api/workorders/assigned?{PagingRequest.AllQuery}"))?.Items ?? new(); } catch { }
+        try { archiveItems = (await Http.GetFromJsonAsync<PagedResult<WoItem>>($"/api/workorders/archive?{PagingRequest.AllQuery}"))?.Items ?? new(); } catch { }
     }
 
     private void SwitchTab(string t)
@@ -1038,7 +1038,7 @@ else
             mine.SeenAt = DateTime.Now;
         }
 
-        try { logs = await Http.GetFromJsonAsync<List<LogItem>>($"/api/workorders/{w.Id}/logs") ?? new(); } catch { }
+        try { logs = (await Http.GetFromJsonAsync<PagedResult<LogItem>>($"/api/workorders/{w.Id}/logs?{PagingRequest.AllQuery}"))?.Items ?? new(); } catch { }
     }
 
 

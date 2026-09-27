@@ -323,9 +323,9 @@
     private async Task Load()
     {
         isLoading = true;
-        try { items = await Http.GetFromJsonAsync<List<CctvCameraItem>>("/api/CctvCameras") ?? new(); }
+        try { items = (await Http.GetFromJsonAsync<PagedResult<CctvCameraItem>>($"/api/CctvCameras?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { items = new(); }
-        try { nvrs = await Http.GetFromJsonAsync<List<CctvNvrItem>>("/api/CctvNvrs") ?? new(); }
+        try { nvrs = (await Http.GetFromJsonAsync<PagedResult<CctvNvrItem>>($"/api/CctvNvrs?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { nvrs = new(); }
         finally { isLoading = false; }
     }

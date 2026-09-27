@@ -7,12 +7,12 @@ public interface IExpenseService
 {
     // ---------------- دسته‌های هزینه ----------------
     Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false);
-    Task<PagedResult<ExpenseCategoryDto>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize);
+    Task<PagedResult<ExpenseCategoryDto>> GetCategoriesPagedAsync(bool activeOnly, PagingRequest paging);
     Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto dto);
     Task DeleteCategoryAsync(int id);
 
     // ---------------- اسناد هزینه ----------------
-    Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, int page, int pageSize);
+    Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, PagingRequest paging);
     Task<ExpenseDto> SaveExpenseAsync(ExpenseDto dto);
     Task DeleteExpenseAsync(int id);
 

@@ -1059,7 +1059,7 @@ window.sigClear = function (canvasId) {
     {
         if (!string.IsNullOrWhiteSpace(Auth.Token))
             Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
-        try { itHistory = await Http.GetFromJsonAsync<List<ItHistoryItem>>($"/api/itrequests/by-system/{Id}") ?? new(); }
+        try { itHistory = (await Http.GetFromJsonAsync<PagedResult<ItHistoryItem>>($"/api/itrequests/by-system/{Id}?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { itHistory = new(); }
     }
     private SystemInfoItem? item;
@@ -1091,7 +1091,7 @@ window.sigClear = function (canvasId) {
 
     private async Task LoadHistory()
     {
-        try { history = await Http.GetFromJsonAsync<List<HistoryEntry>>($"/api/SystemInfo/history/{Id}") ?? new(); }
+        try { history = (await Http.GetFromJsonAsync<PagedResult<HistoryEntry>>($"/api/SystemInfo/history/{Id}?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { history = new(); }
     }
 
@@ -1249,7 +1249,7 @@ window.sigClear = function (canvasId) {
 
     private async Task LoadUserHistory()
     {
-        try { userHistory = await Http.GetFromJsonAsync<List<UserHistoryItem>>($"/api/SystemInfo/user-history/{Id}") ?? new(); }
+        try { userHistory = (await Http.GetFromJsonAsync<PagedResult<UserHistoryItem>>($"/api/SystemInfo/user-history/{Id}?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { userHistory = new(); }
     }
 
@@ -1419,7 +1419,7 @@ window.sigClear = function (canvasId) {
 
     private async Task LoadHandovers()
     {
-        try { handovers = await Http.GetFromJsonAsync<List<HandoverItem>>($"/api/SystemInfo/handovers/{Id}") ?? new(); }
+        try { handovers = (await Http.GetFromJsonAsync<PagedResult<HandoverItem>>($"/api/SystemInfo/handovers/{Id}?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { handovers = new(); }
     }
 
@@ -1483,7 +1483,7 @@ window.sigClear = function (canvasId) {
 
     private async Task LoadCommands()
     {
-        try { commands = await Http.GetFromJsonAsync<List<RemoteCommandItem>>($"/api/SystemInfo/commands/{Id}") ?? new(); }
+        try { commands = (await Http.GetFromJsonAsync<PagedResult<RemoteCommandItem>>($"/api/SystemInfo/commands/{Id}?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { commands = new(); }
     }
 
@@ -1610,15 +1610,15 @@ window.sigClear = function (canvasId) {
 
     private async Task LoadData()
     {
-        try { companies = await Http.GetFromJsonAsync<List<SystemCompanyItem>>("/api/SystemCompanies") ?? new(); }
+        try { companies = (await Http.GetFromJsonAsync<PagedResult<SystemCompanyItem>>($"/api/SystemCompanies?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { companies = new(); }
-        try { departments = await Http.GetFromJsonAsync<List<SystemDepartmentItem>>("/api/SystemDepartments") ?? new(); }
+        try { departments = (await Http.GetFromJsonAsync<PagedResult<SystemDepartmentItem>>($"/api/SystemDepartments?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { departments = new(); }
     }
 
     private async Task LoadUsers()
     {
-        try { allUsers = await Http.GetFromJsonAsync<List<SystemUserItem>>("/api/SystemUsers") ?? new(); }
+        try { allUsers = (await Http.GetFromJsonAsync<PagedResult<SystemUserItem>>($"/api/SystemUsers?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { allUsers = new(); }
     }
 

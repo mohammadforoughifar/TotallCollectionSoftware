@@ -69,22 +69,22 @@ public class LetterService : ILetterService
     private class IdResponse { public int Id { get; set; } }
     private class NeshanResponse { public bool IsNeshan { get; set; } }
 
-    public Task<List<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null)
+    public async Task<List<InnerLetterListItemDto>> GetInboxAsync(string? search = null, bool? unreadOnly = null)
     {
         var qs = new List<string>();
         if (!string.IsNullOrWhiteSpace(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
         if (unreadOnly == true) qs.Add("unreadOnly=true");
-        var q = qs.Count > 0 ? "?" + string.Join("&", qs) : "";
-        return _api.GetAsync<List<InnerLetterListItemDto>>($"api/letters/inbox{q}");
+        qs.Add(PagingRequest.AllQuery);
+        return (await _api.GetAsync<PagedResult<InnerLetterListItemDto>>($"api/letters/inbox?{string.Join("&", qs)}")).Items;
     }
 
-    public Task<List<InnerLetterListItemDto>> GetSentAsync(string? search = null) =>
-        _api.GetAsync<List<InnerLetterListItemDto>>(
-            $"api/letters/sent{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    public async Task<List<InnerLetterListItemDto>> GetSentAsync(string? search = null) =>
+        (await _api.GetAsync<PagedResult<InnerLetterListItemDto>>(
+            $"api/letters/sent?{PagingRequest.AllQuery}{(string.IsNullOrWhiteSpace(search) ? "" : $"&search={Uri.EscapeDataString(search)}")}")).Items;
 
-    public Task<List<InnerLetterListItemDto>> GetArchiveAsync(string? search = null) =>
-        _api.GetAsync<List<InnerLetterListItemDto>>(
-            $"api/letters/archive{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    public async Task<List<InnerLetterListItemDto>> GetArchiveAsync(string? search = null) =>
+        (await _api.GetAsync<PagedResult<InnerLetterListItemDto>>(
+            $"api/letters/archive?{PagingRequest.AllQuery}{(string.IsNullOrWhiteSpace(search) ? "" : $"&search={Uri.EscapeDataString(search)}")}")).Items;
 
     public Task<LetterCartableStatsDto> GetStatsAsync() =>
         _api.GetAsync<LetterCartableStatsDto>("api/letters/stats");
@@ -97,9 +97,10 @@ public class LetterService : ILetterService
 
     public Task DeleteAsync(int letterId) => _api.DeleteAsync($"api/letters/{letterId}");
 
-    public Task<List<LetterPickDto>> PickAsync(string? search = null) =>
-        _api.GetAsync<List<LetterPickDto>>(
-            $"api/letters/pick{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    // لیست انتخاب عطف/پیرو — همان پیش‌فرض قبلی: ۳۰ نامه آخر (skip/take)
+    public async Task<List<LetterPickDto>> PickAsync(string? search = null) =>
+        (await _api.GetAsync<PagedResult<LetterPickDto>>(
+            $"api/letters/pick?skip=0&take=30{(string.IsNullOrWhiteSpace(search) ? "" : $"&search={Uri.EscapeDataString(search)}")}")).Items;
 
     public Task<List<ErjaTreeNodeDto>> GetGardeshAsync(int letterId) =>
         _api.GetAsync<List<ErjaTreeNodeDto>>($"api/letters/{letterId}/gardesh");
@@ -123,9 +124,9 @@ public class LetterService : ILetterService
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         _api.GetAsync<List<AmalgarDto>>("api/letters/amalgars");
 
-    public Task<List<PishnevisDto>> GetPishnevisListAsync(string? search = null) =>
-        _api.GetAsync<List<PishnevisDto>>(
-            $"api/letters/pishnevis{(string.IsNullOrWhiteSpace(search) ? "" : $"?search={Uri.EscapeDataString(search)}")}");
+    public async Task<List<PishnevisDto>> GetPishnevisListAsync(string? search = null) =>
+        (await _api.GetAsync<PagedResult<PishnevisDto>>(
+            $"api/letters/pishnevis?{PagingRequest.AllQuery}{(string.IsNullOrWhiteSpace(search) ? "" : $"&search={Uri.EscapeDataString(search)}")}")).Items;
 
     public Task<PishnevisDto> GetPishnevisAsync(int id) =>
         _api.GetAsync<PishnevisDto>($"api/letters/pishnevis/{id}");

@@ -117,7 +117,7 @@ else
     private async Task ReloadAsync()
     {
         actions = new();
-        try { ntfs = await Http.GetFromJsonAsync<List<NtfItem>>("/api/notifications") ?? new(); } catch { }
+        try { ntfs = (await Http.GetFromJsonAsync<PagedResult<NtfItem>>("/api/notifications?skip=0&take=50"))?.Items ?? new(); } catch { }
 
         // ================== موارد منتظر اقدام ==================
         try
@@ -125,14 +125,14 @@ else
             var access = await Http.GetFromJsonAsync<AccessInfo>("/api/itrequests/my-access") ?? new();
 
             // درخواست‌دهنده: پاسخ آماده تایید
-            var mine = await Http.GetFromJsonAsync<List<ReqLite>>("/api/itrequests/mine") ?? new();
+            var mine = (await Http.GetFromJsonAsync<PagedResult<ReqLite>>($"/api/itrequests/mine?{PagingRequest.AllQuery}"))?.Items ?? new();
             foreach (var r in mine.Where(r => r.Status == "ManagerApproved"))
                 actions.Add(new ActionItem { Title = $"پاسخ درخواست «{r.Title}» آماده تایید شماست", Sub = "درخواست خدمت IT", Link = "/it-requests", Icon = "bi-check2-circle", Color = "#0ea5e9" });
 
             // کارشناس: ارجاع‌های بدون گزارش
             if (access.IsExpert)
             {
-                var exp = await Http.GetFromJsonAsync<List<ReqLite>>("/api/itrequests/expert") ?? new();
+                var exp = (await Http.GetFromJsonAsync<PagedResult<ReqLite>>($"/api/itrequests/expert?{PagingRequest.AllQuery}"))?.Items ?? new();
                 foreach (var r in exp.Where(r => r.Status == "Assigned" &&
                          r.Assignments.Any(a => a.ExpertUserId == access.UserId && !a.ReportSubmitted)))
                     actions.Add(new ActionItem { Title = $"درخواست «{r.Title}» منتظر گزارش شماست", Sub = "کارتابل کارشناس IT", Link = "/it-requests", Icon = "bi-tools", Color = "#d97706" });
@@ -141,7 +141,7 @@ else
             // مدیر IT: درخواست‌های جدید + گزارش‌های منتظر تصمیم
             if (access.IsManager)
             {
-                var mgr = await Http.GetFromJsonAsync<List<ReqLite>>("/api/itrequests/manager") ?? new();
+                var mgr = (await Http.GetFromJsonAsync<PagedResult<ReqLite>>($"/api/itrequests/manager?{PagingRequest.AllQuery}"))?.Items ?? new();
                 foreach (var r in mgr.Where(r => r.Status == "New"))
                     actions.Add(new ActionItem { Title = $"درخواست جدید «{r.Title}» منتظر ارجاع", Sub = "کارتابل مدیر IT", Link = "/it-requests", Icon = "bi-inbox", Color = "#7c3aed" });
                 foreach (var r in mgr.Where(r => r.Status == "Assigned" &&

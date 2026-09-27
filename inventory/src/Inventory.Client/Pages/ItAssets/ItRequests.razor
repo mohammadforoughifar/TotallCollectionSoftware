@@ -875,16 +875,16 @@ else
 
     private async Task LoadAll()
     {
-        try { myItems = await Http.GetFromJsonAsync<List<ReqItem>>("/api/itrequests/mine") ?? new(); }
+        try { myItems = (await Http.GetFromJsonAsync<PagedResult<ReqItem>>($"/api/itrequests/mine?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { myItems = new(); }
         if (access.IsExpert)
         {
-            try { expertItems = await Http.GetFromJsonAsync<List<ReqItem>>("/api/itrequests/expert") ?? new(); }
+            try { expertItems = (await Http.GetFromJsonAsync<PagedResult<ReqItem>>($"/api/itrequests/expert?{PagingRequest.AllQuery}"))?.Items ?? new(); }
             catch { expertItems = new(); }
         }
         if (access.IsManager)
         {
-            try { managerItems = await Http.GetFromJsonAsync<List<ReqItem>>("/api/itrequests/manager") ?? new(); }
+            try { managerItems = (await Http.GetFromJsonAsync<PagedResult<ReqItem>>($"/api/itrequests/manager?{PagingRequest.AllQuery}"))?.Items ?? new(); }
             catch { managerItems = new(); }
         }
     }
@@ -1058,7 +1058,7 @@ else
         catch { }
         if (tab != "mine")
         {
-            try { logs = await Http.GetFromJsonAsync<List<LogItem>>($"/api/itrequests/{r.Id}/logs") ?? new(); }
+            try { logs = (await Http.GetFromJsonAsync<PagedResult<LogItem>>($"/api/itrequests/{r.Id}/logs?{PagingRequest.AllQuery}"))?.Items ?? new(); }
             catch { }
         }
         if (access.IsManager && experts.Count == 0)

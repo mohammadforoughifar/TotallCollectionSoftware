@@ -116,7 +116,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try { items = await Http.GetFromJsonAsync<List<SystemCompanyItem>>("/api/SystemCompanies") ?? new(); var sysInfos = await Http.GetFromJsonAsync<List<SystemInfoItem>>("/api/SystemInfo") ?? new(); foreach(var c in items) { c.SystemCount = sysInfos.Count(x => x.CompanyId == c.Id); } }
+        try { items = (await Http.GetFromJsonAsync<PagedResult<SystemCompanyItem>>($"/api/SystemCompanies?{PagingRequest.AllQuery}"))?.Items ?? new(); var sysInfos = (await Http.GetFromJsonAsync<PagedResult<SystemInfoItem>>($"/api/SystemInfo?{PagingRequest.AllQuery}"))?.Items ?? new(); foreach(var c in items) { c.SystemCount = sysInfos.Count(x => x.CompanyId == c.Id); } }
         catch { items = new(); }
     }
 
@@ -167,7 +167,7 @@
     {
         try
         {
-            var systemCount = await Http.GetFromJsonAsync<List<SystemInfoItem>>("/api/SystemInfo") ?? new();
+            var systemCount = (await Http.GetFromJsonAsync<PagedResult<SystemInfoItem>>($"/api/SystemInfo?{PagingRequest.AllQuery}"))?.Items ?? new();
             var count = systemCount.Count(x => x.CompanyId == id);
             if (count > 0) { return; }
             var resp = await Http.DeleteAsync($"/api/SystemCompanies/{id}");

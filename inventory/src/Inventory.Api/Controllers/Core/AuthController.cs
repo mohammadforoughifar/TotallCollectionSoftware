@@ -95,8 +95,8 @@ public class UsersController : ApiControllerBase
 
     /// <summary>فهرست کاربران.</summary>
     [HttpGet]
-    public async Task<ActionResult<PagedResult<UserDto>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _auth.GetUsersPagedAsync(page, pageSize));
+    public async Task<ActionResult<PagedResult<UserDto>>> GetAll([FromQuery] PagingRequest? paging = null)
+        => Ok(await _auth.GetUsersPagedAsync(paging ?? new PagingRequest()));
 
     /// <summary>ایجاد یا ویرایش کاربر (رمز فقط در صورت پر بودن تغییر می‌کند).
     /// اپراتور نمی‌تواند کاربر ادمین بسازد، نقش کسی را به ادمین تغییر دهد یا کاربر ادمین را ویرایش کند.</summary>
@@ -155,20 +155,20 @@ public class MyPanelController : ControllerBase
 
     /// <summary>کالاهای موجود — فقط اگر مدیر دسترسی «مشاهده کالا» را برای این معرف فعال کرده باشد.</summary>
     [HttpGet("products")]
-    public async Task<ActionResult<List<ReferrerProductItem>>> Products([FromQuery] string? search)
+    public async Task<ActionResult<PagedResult<ReferrerProductItem>>> Products([FromQuery] string? search, [FromQuery] PagingRequest? paging = null)
     {
         if (MyReferrerId <= 0) return Forbid();
         // مجوز مشاهده کالاها: یا پرمیشن RBAC (ReferrerPanel.MyProducts) یا فلگ مشاهده کالا روی خود معرف
         var hasRbac = await HasRbacAsync("ReferrerPanel", "MyProducts");
-        return Ok(await _inventory.GetReferrerProductsAsync(MyReferrerId, search, bypassFlag: hasRbac));
+        return Ok(await _inventory.GetReferrerProductsAsync(MyReferrerId, search, paging ?? new PagingRequest(), bypassFlag: hasRbac));
     }
 
     /// <summary>اسناد پرداخت معرف جاری.</summary>
     [HttpGet("payments")]
-    public async Task<ActionResult<List<ReferrerPayment>>> Payments()
+    public async Task<ActionResult<PagedResult<ReferrerPayment>>> Payments([FromQuery] PagingRequest? paging = null)
     {
         if (MyReferrerId <= 0) return Forbid();
-        return Ok(await _inventory.GetReferrerPaymentsAsync(MyReferrerId));
+        return Ok(await _inventory.GetReferrerPaymentsAsync(MyReferrerId, paging ?? new PagingRequest()));
     }
 
 }

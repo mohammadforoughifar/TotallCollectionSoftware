@@ -183,7 +183,8 @@ print()
 print("=" * 60)
 print("6) کاردکس کالا")
 print("=" * 60)
-s, kx = req("GET", f"/api/kardex?productId={prod_id}&warehouseId={wh_id}")
+s, kx = req("GET", f"/api/kardex?productId={prod_id}&warehouseId={wh_id}&skip=0&take=500")
+kx = (kx or {}).get("items", []) if isinstance(kx, dict) else kx
 check("کاردکس دارای سطر است", s == 200 and len(kx) > 0, str(len(kx)))
 # بررسی سطر‌به‌سطر: مانده هر سطر باید با مجموع تجمعی ورودی/خروجی برابر باشد
 running = 0
@@ -195,7 +196,8 @@ for row in kx:
 check("مانده هر سطر کاردکس با مجموع تجمعی برابر است", consistent)
 check("مانده نهایی = موجودی فعلی", approx(running, 130, 0.01), f"balance={running}")
 
-s, kx2 = req("GET", f"/api/kardex?productId={prod_id}&warehouseId={wh_id}&from={_D}&to={_D2}")
+s, kx2 = req("GET", f"/api/kardex?productId={prod_id}&warehouseId={wh_id}&from={_D}&to={_D2}&skip=0&take=500")
+kx2 = (kx2 or {}).get("items", []) if isinstance(kx2, dict) else kx2
 check("کاردکس فیلتر تاریخ", s == 200 and len(kx2) >= 2, str(len(kx2)))
 
 print()
@@ -216,7 +218,8 @@ print()
 print("=" * 60)
 print("8) گزارش نقطه سفارش")
 print("=" * 60)
-s, ro = req("GET", "/api/reorder")
+s, ro = req("GET", "/api/reorder?skip=0&take=500")
+ro = (ro or {}).get("items", []) if isinstance(ro, dict) else ro
 check("گزارش نقطه سفارش", s == 200, str(s))
 names = [r["productName"] for r in ro]
 check("شامل اقلام زیر نقطه سفارش", any("لاستیک" in n or "دیسک" in n or "شمع" in n for n in names), str(names))
@@ -314,8 +317,8 @@ check("داشبورد معرف", s == 200 and (dash or {}).get("referrerName") =
 check("پورسانت داشبورد = پورسانت سند", dash is not None and approx(dash.get("totalCommission", -1), comm10), f"{(dash or {}).get('totalCommission')} vs {comm10}")
 
 # کیف پول معرف (پرداخت‌ها)
-s, pays = req_auth("GET", "/api/my/payments", ref_token)
-check("کیف پول معرف (پرداخت‌ها)", s == 200 and isinstance(pays, list), str(s))
+s, pays = req_auth("GET", "/api/my/payments?skip=0&take=50", ref_token)
+check("کیف پول معرف (پرداخت‌ها)", s == 200 and isinstance(pays, dict) and isinstance(pays.get("items"), list), str(s))
 
 # داشبورد بدون توکن ممنوع (توکن ادمین هم نقش Referrer ندارد → 403)
 try:

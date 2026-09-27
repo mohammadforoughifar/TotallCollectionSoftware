@@ -1,3 +1,5 @@
+using Inventory.Shared.Dtos;
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
@@ -18,7 +20,7 @@ public class CctvNvrsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string? q)
+    public async Task<IActionResult> Get([FromQuery] string? q, [FromQuery] PagingRequest? paging = null)
     {
         var list = _db.CctvNvrs.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
@@ -29,7 +31,7 @@ public class CctvNvrsController : ControllerBase
                 (n.Ip != null && n.Ip.Contains(q)) ||
                 (n.Location != null && n.Location.Contains(q)));
         }
-        return Ok(await list.OrderBy(n => n.Id).ToListAsync());
+        return Ok(await list.OrderBy(n => n.Id).ToPagedResultAsync(paging));
     }
 
     [HttpGet("{id}")]
@@ -40,8 +42,8 @@ public class CctvNvrsController : ControllerBase
     }
 
     [HttpGet("{id}/cameras")]
-    public async Task<IActionResult> Cameras(int id)
-        => Ok(await _db.CctvCameras.AsNoTracking().Where(c => c.NvrId == id).OrderBy(c => c.Id).ToListAsync());
+    public async Task<IActionResult> Cameras(int id, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _db.CctvCameras.AsNoTracking().Where(c => c.NvrId == id).OrderBy(c => c.Id).ToPagedResultAsync(paging));
 
     [HttpPost]
     public async Task<IActionResult> Post([FromBody] CctvNvr n)

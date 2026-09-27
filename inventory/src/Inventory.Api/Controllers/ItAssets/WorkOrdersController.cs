@@ -1,3 +1,4 @@
+using Inventory.Shared.Dtos;
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
@@ -196,9 +197,11 @@ public class WorkOrdersController : ControllerBase
     }
 
     // ================== لیست‌ها ==================
-    private async Task<List<object>> BuildList(IQueryable<WorkOrder> q)
+    private async Task<PagedResult<object>> BuildList(IQueryable<WorkOrder> q, PagingRequest? paging)
     {
-        var orders = await q.OrderByDescending(w => w.Id).ToListAsync();
+        // Skip/Take روی دیتابیس؛ گیرندگان و پیوست‌ها فقط برای دستورهای همان صفحه
+        var total = await q.CountAsync();
+        var orders = await q.OrderByDescending(w => w.Id).ApplyPaging(paging).ToListAsync();
         var ids = orders.Select(w => w.Id).ToList();
         var asgs = await _db.WorkOrderAssignees.Where(a => ids.Contains(a.OrderId)).ToListAsync();
         var attCounts = await _db.WorkOrderAttachments.Where(a => ids.Contains(a.OrderId))
@@ -214,29 +217,29 @@ public class WorkOrdersController : ControllerBase
                 a.Id, a.UserId, a.Name, a.SeenAt, a.RepliedAt, a.Done, a.ReplyText,
                 a.OwnerDecision, a.OwnerDecisionNote
             }).ToList()
-        }).ToList();
+        }).ToPagedResult(total);
     }
 
     /// <summary>دستورهایی که من داده‌ام (باز).</summary>
     [HttpGet("mine")]
-    public async Task<IActionResult> Mine() =>
-        Ok(await BuildList(_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open")));
+    public async Task<IActionResult> Mine([FromQuery] PagingRequest? paging = null) =>
+        Ok(await BuildList(_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), paging));
 
     /// <summary>دستورهای محول به من (باز).</summary>
     [HttpGet("assigned")]
-    public async Task<IActionResult> Assigned()
+    public async Task<IActionResult> Assigned([FromQuery] PagingRequest? paging = null)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        return Ok(await BuildList(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open")));
+        return Ok(await BuildList(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), paging));
     }
 
     /// <summary>بایگانی — دستورهای بسته‌شده (من دستور داده‌ام یا به من محول شده).</summary>
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive()
+    public async Task<IActionResult> Archive([FromQuery] PagingRequest? paging = null)
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
         return Ok(await BuildList(_db.WorkOrders.Where(w =>
-            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id)))));
+            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), paging));
     }
 
     /// <summary>تقویم شمسی — دستورهای بازه زمانی (بند ۱۳).</summary>
@@ -417,9 +420,9 @@ public class WorkOrdersController : ControllerBase
 
     // ================== تاریخچه (بند ۱۷ و ۱۸) ==================
     [HttpGet("{id:int}/logs")]
-    public async Task<IActionResult> Logs(int id) =>
+    public async Task<IActionResult> Logs(int id, [FromQuery] PagingRequest? paging = null) =>
         Ok(await _db.WorkOrderLogs.Where(l => l.OrderId == id).OrderBy(l => l.Id)
-            .Select(l => new { l.Id, l.ActorName, l.Action, l.Text, l.CreatedAt }).ToListAsync());
+            .Select(l => new { l.Id, l.ActorName, l.Action, l.Text, l.CreatedAt }).ToPagedResultAsync(paging));
 
     // ================== پیوست‌ها (بند ۴) ==================
     [HttpGet("{id:int}/attachments")]

@@ -1,3 +1,4 @@
+using Inventory.Shared.Dtos;
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Services;
@@ -20,11 +21,16 @@ public class NotificationsController : ControllerBase
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
 
     [HttpGet]
-    public async Task<IActionResult> My([FromQuery] int take = 50) =>
-        Ok(await _db.AppNotifications.Where(n => n.UserId == MyUserId)
-            .OrderByDescending(n => n.Id).Take(take)
+    public async Task<IActionResult> My([FromQuery] PagingRequest? paging = null)
+    {
+        // پیش‌فرض این لیست ۵۰ اعلان آخر است (skip/take قابل ارسال)
+        paging ??= new PagingRequest();
+        if (!paging.UsesSkipTake && !paging.PageSize.HasValue) paging.Take = 50;
+        return Ok(await _db.AppNotifications.Where(n => n.UserId == MyUserId)
+            .OrderByDescending(n => n.Id)
             .Select(n => new { n.Id, n.Title, n.Body, n.FromName, n.FormName, n.Link, n.IsRead, n.CreatedAt })
-            .ToListAsync());
+            .ToPagedResultAsync(paging));
+    }
 
     [HttpGet("unread-count")]
     public async Task<IActionResult> UnreadCount() =>
