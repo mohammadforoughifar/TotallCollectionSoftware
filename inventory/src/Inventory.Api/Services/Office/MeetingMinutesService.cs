@@ -18,8 +18,8 @@ namespace Inventory.Api.Services.Office;
 
 public interface IMeetingMinutesService
 {
-    Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status);
-    Task<MinutesDetailDto?> GetDetailAsync(int id);
+    Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId);
+    Task<MinutesDetailDto?> GetDetailAsync(int id, int userId);
     Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName);
     Task SubmitAsync(int id, bool includeAbsentees, int userId, string userName);
     Task DeleteAsync(int id, int userId);
@@ -152,9 +152,13 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     // ------------------------------ فهرست ------------------------------
 
-    public async Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status)
+    public async Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId)
     {
-        var q = _db.MeetingMinutes.AsNoTracking().Where(m => !m.IsDeleted);
+        // کاربر فقط صورتجلسه‌ای را می‌بیند که ایجادکننده آن است یا در گردش
+        // صورتجلسه به‌عنوان حاضر/غایب قرار گرفته است.
+        var q = _db.MeetingMinutes.AsNoTracking().Where(m => !m.IsDeleted &&
+            (m.CreatedByUserId == userId ||
+             _db.MeetingMinutesParticipants.Any(p => p.MinutesId == m.Id && p.UserId == userId)));
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
@@ -186,10 +190,13 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     // ------------------------------ جزئیات ------------------------------
 
-    public async Task<MinutesDetailDto?> GetDetailAsync(int id)
+    public async Task<MinutesDetailDto?> GetDetailAsync(int id, int userId)
     {
+        // عدم عضویت عمداً مانند «پیدا نشد» پاسخ داده می‌شود تا وجود صورتجلسه افشا نشود.
         var m = await _db.MeetingMinutes.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted);
+            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted &&
+                (x.CreatedByUserId == userId ||
+                 _db.MeetingMinutesParticipants.Any(p => p.MinutesId == x.Id && p.UserId == userId)));
         if (m == null) return null;
 
         var parts = await _db.MeetingMinutesParticipants.AsNoTracking()

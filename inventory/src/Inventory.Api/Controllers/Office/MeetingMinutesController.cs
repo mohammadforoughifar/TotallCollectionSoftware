@@ -53,7 +53,7 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] string? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "View") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetListAsync(search, status), skip, take));
+        return Ok(Paging.Result(await _svc.GetListAsync(search, status, MyUserId), skip, take));
     }
 
     // ================== جزئیات ==================
@@ -62,7 +62,7 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> Detail(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "View") is { } f) return f;
-        var d = await _svc.GetDetailAsync(id);
+        var d = await _svc.GetDetailAsync(id, MyUserId);
         return d is null ? NotFound(new { message = "صورتجلسه پیدا نشد." }) : Ok(d);
     }
 
