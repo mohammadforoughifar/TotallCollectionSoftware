@@ -6,6 +6,7 @@ using RadisHr.Api.Services;
 using RadisHr.Shared.Calculations;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -25,18 +26,18 @@ public class AttendanceController : ControllerBase
 
     [HttpGet("days")]
     public async Task<ActionResult<List<AttendanceDay>>> Days(
-        [FromQuery] string? month, [FromQuery] string? code, [FromQuery] string? date)
+        [FromQuery] string? month, [FromQuery] string? code, [FromQuery] string? date, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.AttendanceDays.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(month)) query = query.Where(d => d.Month == month);
         if (!string.IsNullOrEmpty(code)) query = query.Where(d => d.Code == code);
         if (!string.IsNullOrEmpty(date)) query = query.Where(d => d.Date == date);
-        return await query.OrderBy(d => d.Date).ThenBy(d => d.Code).Take(5000).ToListAsync();
+        return Ok((await Paging.QueryAsync(query.OrderBy(d => d.Date).ThenBy(d => d.Code), skip, take, 5000)).Result());
     }
 
     [HttpGet("months")]
-    public async Task<ActionResult<List<string>>> Months() =>
-        await _db.AttendanceDays.Select(d => d.Month).Distinct().OrderBy(m => m).ToListAsync();
+    public async Task<ActionResult<List<string>>> Months([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.AttendanceDays.Select(d => d.Month).Distinct().OrderBy(m => m), skip, take));
 
     /// <summary>
     /// بارگذاری داده‌های دستگاه — سیاست append-only:
@@ -111,8 +112,8 @@ public class AttendanceController : ControllerBase
     }
 
     [HttpGet("import-audits")]
-    public async Task<ActionResult<List<ImportAudit>>> ImportAudits() =>
-        await _db.ImportAudits.AsNoTracking().OrderByDescending(a => a.At).Take(200).ToListAsync();
+    public async Task<ActionResult<List<ImportAudit>>> ImportAudits([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok((await Paging.QueryAsync(_db.ImportAudits.AsNoTracking().OrderByDescending(a => a.At), skip, take, 200)).Result());
 
     /// <summary>محاسبهٔ مجدد (idempotent) — تولید ردیف‌های حقوق از داده‌های حضور</summary>
     [Authorize(Roles = "hr,guard,ceo,accounting")]
@@ -125,12 +126,12 @@ public class AttendanceController : ControllerBase
 
     // ───────── مرخصی و مأموریت ─────────
     [HttpGet("leaves")]
-    public async Task<ActionResult<List<LeaveMission>>> Leaves([FromQuery] string? code, [FromQuery] string? month)
+    public async Task<ActionResult<List<LeaveMission>>> Leaves([FromQuery] string? code, [FromQuery] string? month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.LeaveMissions.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(code)) query = query.Where(l => l.Employee == code);
         if (!string.IsNullOrEmpty(month)) query = query.Where(l => l.Date.StartsWith(month));
-        return await query.OrderByDescending(l => l.Date).Take(1000).ToListAsync();
+        return Ok((await Paging.QueryAsync(query.OrderByDescending(l => l.Date), skip, take, 1000)).Result());
     }
 
     [Authorize(Roles = "hr,guard,ceo")]
@@ -157,11 +158,11 @@ public class AttendanceController : ControllerBase
 
     // ───────── تردد دستی (نیازمند تأیید) ─────────
     [HttpGet("punches")]
-    public async Task<ActionResult<List<ManualPunch>>> Punches([FromQuery] string? status)
+    public async Task<ActionResult<List<ManualPunch>>> Punches([FromQuery] string? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.ManualPunches.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(status)) query = query.Where(p => p.Status == status);
-        return await query.OrderByDescending(p => p.CreatedAt).Take(1000).ToListAsync();
+        return Ok((await Paging.QueryAsync(query.OrderByDescending(p => p.CreatedAt), skip, take, 1000)).Result());
     }
 
     [Authorize(Roles = "guard,hr,ceo")]
@@ -194,8 +195,8 @@ public class AttendanceController : ControllerBase
 
     // ───────── چرخهٔ نگهبانی ─────────
     [HttpGet("guard-cycles")]
-    public async Task<ActionResult<List<GuardCycle>>> GuardCycles() =>
-        await _db.GuardCycles.AsNoTracking().ToListAsync();
+    public async Task<ActionResult<List<GuardCycle>>> GuardCycles([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.GuardCycles.AsNoTracking(), skip, take));
 
     [Authorize(Roles = "guard,hr,ceo")]
     [HttpPost("guard-cycles")]
@@ -229,14 +230,14 @@ public class AttendanceController : ControllerBase
 
     /// <summary>گزارش روزانهٔ حضور — صفحهٔ productionDaily</summary>
     [HttpGet("daily-report")]
-    public async Task<ActionResult<List<DailyReportRow>>> DailyReport([FromQuery] string date)
+    public async Task<ActionResult<List<DailyReportRow>>> DailyReport([FromQuery] string date, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var month = PersianCalendarUtil.MonthOf(date);
         var dayRows = await _db.AttendanceDays.AsNoTracking().Where(d => d.Date == date).ToListAsync();
         var monthRows = await _db.AttendanceDays.AsNoTracking().Where(d => d.Month == month).ToListAsync();
         var monthByCode = monthRows.GroupBy(d => d.Code).ToDictionary(g => g.Key, g => g.ToList());
 
-        return dayRows.Select(d =>
+        return Ok(Paging.Result(dayRows.Select(d =>
         {
             var m = monthByCode.TryGetValue(d.Code, out var list) ? list : new List<AttendanceDay>();
             return new DailyReportRow(
@@ -247,6 +248,6 @@ public class AttendanceController : ControllerBase
                 AttendanceEngine.Hm(m.Sum(x => x.Leave)),
                 AttendanceEngine.Hm(m.Sum(x => x.Shortfall)),
                 AttendanceEngine.Hm(m.Sum(x => x.Ot)));
-        }).OrderBy(r => r.Code).ToList();
+        }).OrderBy(r => r.Code).ToList(), skip, take));
     }
 }

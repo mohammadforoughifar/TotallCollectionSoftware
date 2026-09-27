@@ -57,24 +57,30 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>صندوق وارده کاربر جاری</summary>
     [HttpGet("inbox")]
-    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> Inbox([FromQuery] string? search, [FromQuery] bool? unreadOnly, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.GetInboxAsync(MyUserId, search, unreadOnly, page, pageSize));
     }
 
     /// <summary>پوشه بایگانی کاربر جاری</summary>
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> Archive([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.GetArchiveAsync(MyUserId, search, page, pageSize));
     }
 
     /// <summary>نامه‌های ارسالی کاربر جاری</summary>
     [HttpGet("sent")]
-    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> Sent([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.GetSentAsync(MyUserId, search, page, pageSize));
     }
@@ -152,8 +158,10 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست انتخاب نامه برای عطف/پیرو</summary>
     [HttpGet("pick")]
-    public async Task<IActionResult> Pick([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> Pick([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         return Ok(await _letters.PickListAsync(MyUserId, search, page, pageSize));
     }
@@ -162,10 +170,10 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>درخت گردش کامل نامه</summary>
     [HttpGet("{id:int}/gardesh")]
-    public async Task<IActionResult> Gardesh(int id)
+    public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        try { return Ok(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync())); }
+        try { return Ok(Paging.Result(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()), skip, take)); }
         catch (Exception ex) { return BadRequest(new { message = PersianError(ex, "گردش نامه قابل دریافت نیست.") }); }
     }
 
@@ -242,7 +250,7 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>درخت کامل بایگانی کاربر جاری (پوشه‌ها + نامه‌ها)</summary>
     [HttpGet("bayegani/tree")]
-    public async Task<IActionResult> BayeganiTree() => Ok(await _archive.GetTreeAsync(MyUserId));
+    public async Task<IActionResult> BayeganiTree([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _archive.GetTreeAsync(MyUserId), skip, take));
 
     /// <summary>ایجاد دسته اصلی بایگانی (ریشه)</summary>
     [HttpPost("bayegani/main-category")]
@@ -303,15 +311,15 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست عملگرهای ارجاع</summary>
     [HttpGet("amalgars")]
-    public async Task<IActionResult> Amalgars() => Ok(await _erja.GetAmalgarsAsync());
+    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _erja.GetAmalgarsAsync(), skip, take));
 
     // ==================== پیش‌نویس ====================
 
     [HttpGet("pishnevis")]
-    public async Task<IActionResult> PishnevisList([FromQuery] string? search)
+    public async Task<IActionResult> PishnevisList([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _pishnevis.GetAllAsync(MyUserId, search));
+        return Ok(Paging.Result(await _pishnevis.GetAllAsync(MyUserId, search), skip, take));
     }
 
     [HttpGet("pishnevis/{id:int}")]
@@ -347,7 +355,7 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست کاربران فعال برای انتخاب گیرنده</summary>
     [HttpGet("recivers")]
-    public async Task<IActionResult> Recivers()
+    public async Task<IActionResult> Recivers([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var users = await Db.Users.AsNoTracking()
@@ -361,17 +369,17 @@ public class InnerLettersController : RbacControllerBase
                     : (u.FirstName + " " + u.LastName).Trim()
             })
             .ToListAsync();
-        return Ok(users);
+        return Ok(Paging.Result(users, skip, take));
     }
 
     // ==================== گروه‌های گیرندگان (پورت Groups کارفرما) ====================
 
     /// <summary>لیست گروه‌های فعال — با اعضا (برای نمایش در کمبوی گروهی)</summary>
     [HttpGet("groups")]
-    public async Task<IActionResult> Groups([FromQuery] bool withMembers = true)
+    public async Task<IActionResult> Groups([FromQuery] bool withMembers = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _groups.GetAllAsync(withMembers));
+        return Ok(Paging.Result(await _groups.GetAllAsync(withMembers), skip, take));
     }
 
     /// <summary>ایجاد/ویرایش گروه گیرندگان</summary>
@@ -425,7 +433,7 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست پیوست‌های نامه — فقط افراد در گردش یا مدیر</summary>
     [HttpGet("{id:int}/attachments")]
-    public async Task<IActionResult> Attachments(int id)
+    public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync())
@@ -447,7 +455,7 @@ public class InnerLettersController : RbacControllerBase
             UploaderUserId = a.UploaderUserId,
             UploadedAt = a.UploadedAt
         }).ToList();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>
@@ -530,7 +538,7 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست پیوست‌های پیش‌نویس کاربر جاری</summary>
     [HttpGet("pishnevis/{id:int}/attachments")]
-    public async Task<IActionResult> PishnevisAttachments(int id)
+    public async Task<IActionResult> PishnevisAttachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var owns = await Db.PishnevisLetters.AnyAsync(p => p.PishnevisId == id && p.UserId == MyUserId && !p.IsDelete);
@@ -548,7 +556,7 @@ public class InnerLettersController : RbacControllerBase
             Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length, UploaderName = a.UploaderName,
             UploaderUserId = a.UploaderUserId, UploadedAt = a.UploadedAt
         }).ToList();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>

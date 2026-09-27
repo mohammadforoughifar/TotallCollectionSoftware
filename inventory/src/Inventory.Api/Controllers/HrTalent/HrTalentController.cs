@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.HrTalent;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.HrTalent;
 
@@ -37,10 +38,10 @@ public class HrTalentController : RbacControllerBase
     }
 
     [HttpGet("profile-requests")]
-    public async Task<IActionResult> ProfileRequests([FromQuery] bool? onlyPending)
+    public async Task<IActionResult> ProfileRequests([FromQuery] bool? onlyPending, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListProfileRequestsAsync(onlyPending));
+        return Ok(Paging.Result(await _svc.ListProfileRequestsAsync(onlyPending), skip, take));
     }
 
     /// <summary>تأیید (و اعمال روی پرونده) یا رد درخواست ویرایش</summary>
@@ -54,10 +55,10 @@ public class HrTalentController : RbacControllerBase
     // ------------------- آنبوردینگ -------------------
 
     [HttpGet("onboarding")]
-    public async Task<IActionResult> Onboarding([FromQuery] bool? onlyOpen)
+    public async Task<IActionResult> Onboarding([FromQuery] bool? onlyOpen, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListOnboardingAsync(onlyOpen));
+        return Ok(Paging.Result(await _svc.ListOnboardingAsync(onlyOpen), skip, take));
     }
 
     [HttpPost("onboarding")]
@@ -103,10 +104,10 @@ public class HrTalentController : RbacControllerBase
     // ------------------- ترک‌کار -------------------
 
     [HttpGet("exit")]
-    public async Task<IActionResult> ExitCases([FromQuery] bool? onlyOpen)
+    public async Task<IActionResult> ExitCases([FromQuery] bool? onlyOpen, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListExitCasesAsync(onlyOpen));
+        return Ok(Paging.Result(await _svc.ListExitCasesAsync(onlyOpen), skip, take));
     }
 
     [HttpPost("exit")]
@@ -152,10 +153,10 @@ public class HrTalentController : RbacControllerBase
     // ------------------- سوابق شغلی -------------------
 
     [HttpGet("history/{employeeId:int}")]
-    public async Task<IActionResult> History(int employeeId)
+    public async Task<IActionResult> History(int employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.EmployeeHistoryAsync(employeeId));
+        return Ok(Paging.Result(await _svc.EmployeeHistoryAsync(employeeId), skip, take));
     }
 
     [HttpPost("history")]
@@ -177,10 +178,10 @@ public class HrTalentController : RbacControllerBase
     // ------------------- دوره آزمایشی -------------------
 
     [HttpGet("trials")]
-    public async Task<IActionResult> Trials([FromQuery] bool? onlyActive)
+    public async Task<IActionResult> Trials([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListTrialsAsync(onlyActive));
+        return Ok(Paging.Result(await _svc.ListTrialsAsync(onlyActive), skip, take));
     }
 
     [HttpPost("trials")]
@@ -217,10 +218,10 @@ public class HrTalentController : RbacControllerBase
     // ------------------- ارزیابی عملکرد -------------------
 
     [HttpGet("appraisals")]
-    public async Task<IActionResult> Appraisals()
+    public async Task<IActionResult> Appraisals([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListAppraisalsAsync());
+        return Ok(Paging.Result(await _svc.ListAppraisalsAsync(), skip, take));
     }
 
     [HttpPost("appraisals")]
@@ -240,10 +241,10 @@ public class HrTalentController : RbacControllerBase
     }
 
     [HttpGet("appraisals/{id:int}/kpis")]
-    public async Task<IActionResult> Kpis(int id)
+    public async Task<IActionResult> Kpis(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListKpisAsync(id));
+        return Ok(Paging.Result(await _svc.ListKpisAsync(id), skip, take));
     }
 
     [HttpPost("appraisals/{id:int}/kpis")]
@@ -271,17 +272,17 @@ public class HrTalentController : RbacControllerBase
     }
 
     [HttpGet("appraisals/{id:int}/scores")]
-    public async Task<IActionResult> Scores(int id, [FromQuery] int? employeeId)
+    public async Task<IActionResult> Scores(int id, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListScoresAsync(id, employeeId));
+        return Ok(Paging.Result(await _svc.ListScoresAsync(id, employeeId), skip, take));
     }
 
     [HttpGet("appraisals/{id:int}/results")]
-    public async Task<IActionResult> Results(int id)
+    public async Task<IActionResult> Results(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.AppraisalResultsAsync(id));
+        return Ok(Paging.Result(await _svc.AppraisalResultsAsync(id), skip, take));
     }
 
     /// <summary>صدور حکم افزایش حقوق/ارتقا برای نفرات برتر این ارزیابی (گرید A یا A+B)</summary>

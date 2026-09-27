@@ -3,6 +3,7 @@ using Inventory.Api.Services.Invoicing;
 using Inventory.Shared.Dtos;
 using Inventory.Shared;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Invoicing;
 
@@ -37,7 +38,7 @@ public class MoadianController : RbacControllerBase
 
     // ---------------------- دوره‌ها ----------------------
     [HttpGet("periods")]
-    public async Task<ActionResult<List<MoadianFiscalPeriod>>> GetPeriods() => Ok(await _svc.GetPeriodsAsync());
+    public async Task<ActionResult<List<MoadianFiscalPeriod>>> GetPeriods([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _svc.GetPeriodsAsync(), skip, take));
 
     [HttpPost("periods")]
     public async Task<ActionResult<MoadianFiscalPeriod>> SavePeriod([FromBody] MoadianFiscalPeriod dto)
@@ -57,8 +58,8 @@ public class MoadianController : RbacControllerBase
     // ---------------------- فاکتورها ----------------------
     [HttpGet("invoices")]
     public async Task<ActionResult<List<MoadianInvoice>>> GetInvoices(
-        [FromQuery] int? periodId, [FromQuery] MoadianInvoiceStatus? status, [FromQuery] string? search)
-        => Ok(await _svc.GetInvoicesAsync(periodId, status, search));
+        [FromQuery] int? periodId, [FromQuery] MoadianInvoiceStatus? status, [FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetInvoicesAsync(periodId, status, search), skip, take));
 
     [HttpGet("invoices/{id:int}")]
     public async Task<ActionResult<MoadianInvoice>> GetInvoice(int id) => Ok(await _svc.GetInvoiceAsync(id));
@@ -129,12 +130,12 @@ public class MoadianController : RbacControllerBase
 
     // ---------------------- لاگ / CPC / داشبورد ----------------------
     [HttpGet("logs")]
-    public async Task<ActionResult<List<MoadianLog>>> GetLogs([FromQuery] int? invoiceId)
-        => Ok(await _svc.GetLogsAsync(invoiceId));
+    public async Task<ActionResult<List<MoadianLog>>> GetLogs([FromQuery] int? invoiceId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetLogsAsync(invoiceId), skip, take));
 
     [HttpGet("cpc")]
-    public async Task<ActionResult<List<MoadianCpc>>> GetCpc([FromQuery] string? search)
-        => Ok(await _svc.GetCpcAsync(search));
+    public async Task<ActionResult<List<MoadianCpc>>> GetCpc([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetCpcAsync(search), skip, take));
 
     [HttpPost("cpc")]
     public async Task<ActionResult<MoadianCpc>> SaveCpc([FromBody] MoadianCpc dto)

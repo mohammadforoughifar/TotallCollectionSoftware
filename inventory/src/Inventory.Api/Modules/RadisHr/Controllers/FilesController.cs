@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using RadisHr.Api.Data;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -18,11 +19,10 @@ public class FilesController : ControllerBase
     public FilesController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<ActionResult<object>> List() =>
-        await _db.StoredFiles.AsNoTracking()
+    public async Task<ActionResult<object>> List([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok((await Paging.QueryAsync(_db.StoredFiles.AsNoTracking()
             .OrderByDescending(f => f.StoredAt)
-            .Select(f => new { f.Id, f.Uid, f.Name, f.ContentType, f.Size, f.UploadedBy, f.StoredAt })
-            .Take(500).ToListAsync();
+            .Select(f => new { f.Id, f.Uid, f.Name, f.ContentType, f.Size, f.UploadedBy, f.StoredAt }), skip, take, 500)).Result());
 
     [HttpPost]
     [DisableRequestSizeLimit]

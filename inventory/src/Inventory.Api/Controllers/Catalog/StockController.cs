@@ -16,8 +16,8 @@ public class StockController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResult<StockItem>>> GetAll(
         [FromQuery] int? warehouseId, [FromQuery] string? search, [FromQuery] bool? below,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _service.GetStockAsync(warehouseId, search, below == true, page, pageSize));
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _service.GetStockAsync(warehouseId, search, below == true, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     /// <summary>اصلاح (تعدیل) موجودی یک کالا در یک انبار.</summary>
     [HttpPost("adjust")]

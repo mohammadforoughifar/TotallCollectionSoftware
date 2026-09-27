@@ -30,12 +30,11 @@ public class ArchiveController : ControllerBase
 
     // ---------- پوشه‌ها ----------
     [HttpGet("folders")]
-    public async Task<IActionResult> Folders() =>
-        Ok(await _db.ArchiveFolders.Where(f => f.OwnerUserId == MyUserId)
+    public async Task<IActionResult> Folders([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.ArchiveFolders.Where(f => f.OwnerUserId == MyUserId)
             .OrderBy(f => f.Name)
             .Select(f => new { f.Id, f.ParentId, f.Name, f.CreatedAt,
-                ItemCount = _db.ArchiveItems.Count(i => i.FolderId == f.Id) })
-            .ToListAsync());
+                ItemCount = _db.ArchiveItems.Count(i => i.FolderId == f.Id) }), skip, take));
 
     public class FolderDto { public string Name { get; set; } = ""; public int? ParentId { get; set; } }
 
@@ -88,12 +87,11 @@ public class ArchiveController : ControllerBase
 
     // ---------- آیتم‌ها ----------
     [HttpGet("items/{folderId:int}")]
-    public async Task<IActionResult> Items(int folderId) =>
-        Ok(await _db.ArchiveItems
+    public async Task<IActionResult> Items(int folderId, [FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.ArchiveItems
             .Where(i => i.OwnerUserId == MyUserId && i.FolderId == folderId)
             .OrderByDescending(i => i.Id)
-            .Select(i => new { i.Id, i.Module, i.RefId, i.Title, i.Link, i.Note, i.CreatedAt })
-            .ToListAsync());
+            .Select(i => new { i.Id, i.Module, i.RefId, i.Title, i.Link, i.Note, i.CreatedAt }), skip, take));
 
     public class ItemDto
     {
@@ -289,7 +287,7 @@ public class AttachmentsController : ControllerBase
     }
 
     [HttpGet("{module}/{refId:int}")]
-    public async Task<IActionResult> List(string module, int refId)
+    public async Task<IActionResult> List(string module, int refId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var access = await _guard.CheckAsync(module, refId, MyUserId, IsAdmin);
         if (access == AttachmentAccess.None)
@@ -303,7 +301,7 @@ public class AttachmentsController : ControllerBase
         var flags = await DocSecurityFlagsAsync(module, refId);
         var needsConfirm = flags is { RequireConfirm: true } f0 && !_confirm.IsConfirmed(MyUserId, f0.DocId);
 
-        return Ok(rows.Select(a =>
+        return Ok(Paging.Result(rows.Select(a =>
         {
             var ct = GuessContentType(a.FileName, a.ContentType);
             return new
@@ -317,7 +315,7 @@ public class AttachmentsController : ControllerBase
                 NeedsConfirm = needsConfirm,
                 Watermark = flags?.Watermark ?? false
             };
-        }));
+        }), skip, take));
     }
 
     [HttpPost("{module}/{refId:int}")]

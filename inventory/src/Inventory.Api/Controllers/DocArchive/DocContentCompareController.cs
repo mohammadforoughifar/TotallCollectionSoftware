@@ -17,12 +17,12 @@ public class DocContentCompareController(AppDbContext db, IDocAccessService acce
         return null;
     }
     [HttpGet("compare-files/{versionId:int}")]
-    public async Task<IActionResult> Attachments(int id, int versionId)
+    public async Task<IActionResult> Attachments(int id, int versionId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await Guard(id, false) is { } denied) return denied;
         if (!await Db.DocumentVersions.AnyAsync(v => v.Id == versionId && v.DocumentId == id)) return NotFound();
-        return Ok(await Db.AppAttachments.Where(a => a.Module == "DocVersion" && a.RefId == versionId).OrderBy(a => a.Id)
-            .Select(a => new LookupItem { Id = a.Id, Name = a.FileName }).ToListAsync());
+        return Ok(await Paging.ResultAsync(Db.AppAttachments.Where(a => a.Module == "DocVersion" && a.RefId == versionId).OrderBy(a => a.Id)
+            .Select(a => new LookupItem { Id = a.Id, Name = a.FileName }), skip, take));
     }
     [HttpPost("compare-content")]
     public async Task<IActionResult> Compare(int id, DocContentCompareRequest request)

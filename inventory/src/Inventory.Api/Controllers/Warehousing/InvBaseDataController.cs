@@ -20,13 +20,13 @@ public class InvCategoriesController : RbacControllerBase
 
     /// <summary>درخت گروه‌های کالا (هر گره شامل زیرگروه‌هایش).</summary>
     [HttpGet("tree")]
-    public async Task<ActionResult<List<InvCategory>>> Tree([FromQuery] bool activeOnly = false)
-        => Ok(await _svc.GetCategoryTreeAsync(activeOnly));
+    public async Task<ActionResult<List<InvCategory>>> Tree([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetCategoryTreeAsync(activeOnly), skip, take));
 
     /// <summary>فهرست تخت گروه‌ها (برای کمبوها و انتخاب والد).</summary>
     [HttpGet]
-    public async Task<ActionResult<List<InvCategory>>> Flat([FromQuery] bool activeOnly = false)
-        => Ok(await _svc.GetCategoriesFlatAsync(activeOnly));
+    public async Task<ActionResult<List<InvCategory>>> Flat([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetCategoriesFlatAsync(activeOnly), skip, take));
 
     /// <summary>ایجاد یا ویرایش گروه کالا.</summary>
     [HttpPost]
@@ -65,8 +65,8 @@ public class InvAttributesController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<InvAttribute>>> GetAll(
-        [FromQuery] bool activeOnly = false, [FromQuery] int? categoryId = null)
-        => Ok(await _svc.GetAttributesAsync(activeOnly, categoryId));
+        [FromQuery] bool activeOnly = false, [FromQuery] int? categoryId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetAttributesAsync(activeOnly, categoryId), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<InvAttribute>> Save([FromBody] InvAttribute dto)
@@ -93,14 +93,14 @@ public class InvWarehousesController : RbacControllerBase
     public InvWarehousesController(Db.AppDbContext db, IWarehousingService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<InvWarehouse>>> GetAll([FromQuery] bool activeOnly = false)
-        => Ok(await _svc.GetWarehousesAsync(activeOnly));
+    public async Task<ActionResult<List<InvWarehouse>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetWarehousesAsync(activeOnly), skip, take));
 
     [HttpGet("lookups")]
-    public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] bool activeOnly = true)
+    public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] bool activeOnly = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = await _svc.GetWarehousesAsync(activeOnly);
-        return Ok(list.Select(w => new LookupItem { Id = w.Id, Name = w.Name }).ToList());
+        return Ok(Paging.Result(list.Select(w => new LookupItem { Id = w.Id, Name = w.Name }).ToList(), skip, take));
     }
 
     [HttpPost]

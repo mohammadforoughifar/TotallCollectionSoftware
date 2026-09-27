@@ -6,6 +6,7 @@ using RadisHr.Api.Data;
 using RadisHr.Api.Services;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -27,11 +28,11 @@ public class WorkflowsController : ControllerBase
 
     // ═════════ مساعده (نقش مالی) ═════════
     [HttpGet("advances")]
-    public async Task<ActionResult<List<Advance>>> Advances([FromQuery] string? code)
+    public async Task<ActionResult<List<Advance>>> Advances([FromQuery] string? code, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.Advances.Include(a => a.Installments).AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(code)) query = query.Where(a => a.EmployeeCode == code);
-        return await query.OrderByDescending(a => a.CreatedAt).ToListAsync();
+        return Ok(await Paging.ResultAsync(query.OrderByDescending(a => a.CreatedAt), skip, take));
     }
 
     /// <summary>ثبت مساعدهٔ پرداخت‌شده — کاربر مالی فقط ثبت می‌کند</summary>
@@ -299,20 +300,20 @@ public class WorkflowsController : ControllerBase
     }
 
     [HttpGet("payments")]
-    public async Task<ActionResult<List<PayrollPayment>>> Payments([FromQuery] string? month)
+    public async Task<ActionResult<List<PayrollPayment>>> Payments([FromQuery] string? month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.PayrollPayments.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(month)) query = query.Where(p => p.Month == month);
-        return await query.OrderByDescending(p => p.CreatedAt).Take(2000).ToListAsync();
+        return Ok((await Paging.QueryAsync(query.OrderByDescending(p => p.CreatedAt), skip, take, 2000)).Result());
     }
 
     [HttpGet("archives")]
-    public async Task<ActionResult<List<AccountingArchive>>> Archives() =>
-        await _db.AccountingArchives.AsNoTracking().OrderByDescending(a => a.Month).ToListAsync();
+    public async Task<ActionResult<List<AccountingArchive>>> Archives([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.AccountingArchives.AsNoTracking().OrderByDescending(a => a.Month), skip, take));
 
     // ═════════ اطلاعیه‌ها ═════════
     [HttpGet("announcements")]
-    public async Task<ActionResult<List<Announcement>>> Announcements()
+    public async Task<ActionResult<List<Announcement>>> Announcements([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
         var all = await _db.Announcements
@@ -320,12 +321,12 @@ public class WorkflowsController : ControllerBase
             .AsNoTracking().OrderByDescending(a => a.CreatedAt).ToListAsync();
 
         // مدت اعتبار از نخستین مشاهده شمرده می‌شود
-        return all.Where(a => a.Recipients.Any(r =>
+        return Ok(Paging.Result(all.Where(a => a.Recipients.Any(r =>
         {
             if (r.RoleKey != role && role != "ceo" && role != "hr") return false;
             if (r.FirstSeenAt == null) return true;
             return (DateTime.UtcNow - r.FirstSeenAt.Value).TotalDays <= a.DurationDays;
-        })).ToList();
+        })).ToList(), skip, take));
     }
 
     [Authorize(Roles = "hr,ceo")]
@@ -376,11 +377,11 @@ public class WorkflowsController : ControllerBase
 
     // ═════════ اعلان‌های ممیزی مدیرعامل ═════════
     [HttpGet("notices")]
-    public async Task<ActionResult<List<AuditNotice>>> Notices([FromQuery] string? channel)
+    public async Task<ActionResult<List<AuditNotice>>> Notices([FromQuery] string? channel, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.CeoNotifications.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(channel)) query = query.Where(n => n.Channel == channel);
-        return await query.OrderByDescending(n => n.CreatedAt).Take(300).ToListAsync();
+        return Ok((await Paging.QueryAsync(query.OrderByDescending(n => n.CreatedAt), skip, take, 300)).Result());
     }
 
     [HttpPost("notices/{id:int}/seen")]

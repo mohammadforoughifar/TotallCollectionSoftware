@@ -4,6 +4,7 @@ using Inventory.Shared;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -31,8 +32,10 @@ public class AuditLogsController : ControllerBase
         [FromQuery] string? action = null,
         [FromQuery] string? q = null,
         [FromQuery] DateTime? from = null,
-        [FromQuery] DateTime? to = null)
+        [FromQuery] DateTime? to = null, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (!IsAdmin) return Forbid();
         if (pageSize < 1) pageSize = 25;
         if (pageSize > 100) pageSize = 100;
@@ -93,17 +96,17 @@ public class AuditLogsController : ControllerBase
 
     /// <summary>ماژول‌های ثبت‌شده (برای کمبوی فیلتر)</summary>
     [HttpGet("modules")]
-    public async Task<IActionResult> Modules()
+    public async Task<IActionResult> Modules([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!IsAdmin) return Forbid();
         var list = await _db.AuditLogs.AsNoTracking()
             .Select(l => l.Module).Distinct().OrderBy(m => m).ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>کاربران ثبت‌شده در لاگ (برای کمبوی سرچ‌دار)</summary>
     [HttpGet("users")]
-    public async Task<IActionResult> Users()
+    public async Task<IActionResult> Users([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!IsAdmin) return Forbid();
         var list = await _db.AuditLogs.AsNoTracking()
@@ -111,18 +114,18 @@ public class AuditLogsController : ControllerBase
             .GroupBy(l => new { l.UserId, l.Username })
             .Select(g => new { Id = g.Key.UserId, Name = g.Key.Username })
             .OrderBy(u => u.Name).ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>اکشن‌های یک ماژول (برای فیلتر دوم)</summary>
     [HttpGet("actions")]
-    public async Task<IActionResult> Actions([FromQuery] string? module = null)
+    public async Task<IActionResult> Actions([FromQuery] string? module = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!IsAdmin) return Forbid();
         var q = _db.AuditLogs.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(module)) q = q.Where(l => l.Module == module);
         var list = await q.Select(l => l.Action).Distinct().OrderBy(a => a).ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     /// <summary>خروجی CSV با همان فیلترهای فعال</summary>

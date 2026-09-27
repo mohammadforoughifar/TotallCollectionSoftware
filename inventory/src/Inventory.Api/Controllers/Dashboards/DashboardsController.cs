@@ -7,6 +7,7 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -168,7 +169,7 @@ public class DashboardsController : ControllerBase
     // ================== داشبوردهای من ==================
 
     [HttpGet("")]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync("View") is ObjectResult fb) return fb;
         if (await EnsureDashDbAsync() is ObjectResult dbErr) return dbErr;
@@ -215,7 +216,7 @@ public class DashboardsController : ControllerBase
 
         // اولین داشبورد، پیش‌فرض تلقی می‌شود
         if (list.Count > 0 && !list.Any(d => d.IsDefault)) list[0].IsDefault = true;
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     public record SaveDashboardRequest(string? Name, bool IsDefault, List<UserDashWidgetDto>? Widgets);

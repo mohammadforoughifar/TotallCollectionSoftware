@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -95,7 +96,7 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get()
+    public async Task<IActionResult> Get([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         // لیست از جدول‌های قطعات می‌خواند (همان منبع صفحه‌ی جزئیات) — فیلدهای تخت فقط fallback
         var systems = await _db.SystemInfos.AsNoTracking().ToListAsync();
@@ -129,7 +130,7 @@ public class SystemInfoController : ControllerBase
                 };
             }).ToList();
 
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     // ================= PDF شناسنامه سیستم =================
@@ -253,7 +254,7 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("history/{id}")]
-    public async Task<IActionResult> History(int id)
+    public async Task<IActionResult> History(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var logs = await _db.SystemInfoChangeLogs
             .Where(l => l.SystemInfoId == id)
@@ -268,7 +269,7 @@ public class SystemInfoController : ControllerBase
             Diffs = TryParseDiffs(l.ChangesJson)
         }).ToList();
 
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     private static List<DiffItem> TryParseDiffs(string json)
@@ -336,7 +337,7 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("user-history/{id}")]
-    public async Task<IActionResult> UserHistory(int id)
+    public async Task<IActionResult> UserHistory(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = await _db.SystemInfoUserHistories
             .AsNoTracking()
@@ -353,7 +354,7 @@ public class SystemInfoController : ControllerBase
                 ToAt = h.ToAt
             })
             .ToListAsync();
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     // ================= چک‌لیست تحویل دیجیتال با امضا =================
@@ -449,7 +450,7 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("handovers/{id}")]
-    public async Task<IActionResult> Handovers(int id)
+    public async Task<IActionResult> Handovers(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = await _db.SystemHandovers
             .AsNoTracking()
@@ -469,7 +470,7 @@ public class SystemInfoController : ControllerBase
             Note = h.Note,
             Checklist = TryParseChecklist(h.ChecklistJson)
         }).ToList();
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     private static List<ChecklistItemDto> TryParseChecklist(string json)
@@ -520,7 +521,7 @@ public class SystemInfoController : ControllerBase
     }
 
     [HttpGet("commands/{id}")]
-    public async Task<IActionResult> Commands(int id)
+    public async Task<IActionResult> Commands(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = await _db.SystemRemoteCommands
             .AsNoTracking()
@@ -528,17 +529,17 @@ public class SystemInfoController : ControllerBase
             .OrderByDescending(c => c.CreatedAt)
             .Take(20)
             .ToListAsync();
-        return Ok(list.Select(c => new CommandItem
+        return Ok(Paging.Result(list.Select(c => new CommandItem
         {
             Id = c.Id, Action = c.Action, Status = c.Status,
             CreatedAt = c.CreatedAt, ByUserName = c.ByUserName,
             CompletedAt = c.CompletedAt, Result = c.Result
-        }).ToList());
+        }).ToList(), skip, take));
     }
 
     /// <summary>ایجنت: دریافت دستورهای در انتظار این سیستم.</summary>
     [HttpGet("agent-commands")]
-    public async Task<IActionResult> AgentCommands([FromQuery] string agentId)
+    public async Task<IActionResult> AgentCommands([FromQuery] string agentId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var pending = await _db.SystemRemoteCommands
             .AsNoTracking()
@@ -550,7 +551,7 @@ public class SystemInfoController : ControllerBase
             .OrderBy(x => x.c.CreatedAt)
             .Select(x => x.c)
             .ToListAsync();
-        return Ok(pending.Select(c => new { c.Id, c.Action, c.CreatedAt }).ToList());
+        return Ok(Paging.Result(pending.Select(c => new { c.Id, c.Action, c.CreatedAt }).ToList(), skip, take));
     }
 
     /// <summary>ایجنت: گزارش نتیجه‌ی اجرای دستور.</summary>

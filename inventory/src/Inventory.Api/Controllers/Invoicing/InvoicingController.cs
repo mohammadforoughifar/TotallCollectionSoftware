@@ -3,6 +3,7 @@ using Inventory.Api.Services.Invoicing;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Invoicing;
 
@@ -31,12 +32,8 @@ public class FacInvoicesController : RbacControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetInvoicesAsync(kind, status, partyId, warehouseId, search, from, to, page, pageSize));
-
-    [HttpGet("new")]
-    public async Task<ActionResult<FacInvoice>> New([FromQuery] InvoiceKind kind = InvoiceKind.Sale)
-        => Ok(await _svc.NewInvoiceAsync(kind));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetInvoicesAsync(kind, status, partyId, warehouseId, search, from, to, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     /// <summary>سطر آماده برای یک کالا (قیمت، نرخ مالیات، کد مالیاتی و موجودی).</summary>
     [HttpGet("line")]
@@ -99,8 +96,8 @@ public class FacRulesController : RbacControllerBase
     public FacRulesController(Db.AppDbContext db, IInvoicingService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<FacRule>>> GetAll()
-        => Ok(await _svc.GetRulesAsync());
+    public async Task<ActionResult<List<FacRule>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetRulesAsync(), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<FacRule>> Save([FromBody] FacRule dto)

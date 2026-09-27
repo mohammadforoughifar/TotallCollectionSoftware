@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.HrCore;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.HrCore;
 
@@ -19,10 +20,10 @@ public class RecruitmentController : RbacControllerBase
     // ------------------- آگهی -------------------
 
     [HttpGet("postings")]
-    public async Task<IActionResult> Postings([FromQuery] bool? onlyOpen)
+    public async Task<IActionResult> Postings([FromQuery] bool? onlyOpen, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", Sec) is { } f) return f;
-        return Ok(await _svc.ListPostingsAsync(onlyOpen));
+        return Ok(Paging.Result(await _svc.ListPostingsAsync(onlyOpen), skip, take));
     }
 
     [HttpGet("postings/{id:int}")]
@@ -60,10 +61,10 @@ public class RecruitmentController : RbacControllerBase
     // ------------------- متقاضی -------------------
 
     [HttpGet("applicants")]
-    public async Task<IActionResult> Applicants([FromQuery] int? postingId, [FromQuery] int? status)
+    public async Task<IActionResult> Applicants([FromQuery] int? postingId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", Sec) is { } f) return f;
-        return Ok(await _svc.ListApplicantsAsync(postingId, status));
+        return Ok(Paging.Result(await _svc.ListApplicantsAsync(postingId, status), skip, take));
     }
 
     [HttpGet("applicants/{id:int}")]
@@ -117,10 +118,10 @@ public class RecruitmentController : RbacControllerBase
     // ------------------- مصاحبه -------------------
 
     [HttpGet("applicants/{id:int}/interviews")]
-    public async Task<IActionResult> Interviews(int id)
+    public async Task<IActionResult> Interviews(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", Sec) is { } f) return f;
-        return Ok(await _svc.ListInterviewsAsync(id));
+        return Ok(Paging.Result(await _svc.ListInterviewsAsync(id), skip, take));
     }
 
     [HttpPost("interviews")]

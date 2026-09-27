@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.FaPay;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.FaPay;
 
@@ -37,10 +38,10 @@ public class FaPayController : RbacControllerBase
     // ------------------- پلکان مالیاتی -------------------
 
     [HttpGet("brackets")]
-    public async Task<IActionResult> Brackets()
+    public async Task<IActionResult> Brackets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListBracketsAsync());
+        return Ok(Paging.Result(await _svc.ListBracketsAsync(), skip, take));
     }
 
     [HttpPost("brackets")]
@@ -68,10 +69,10 @@ public class FaPayController : RbacControllerBase
     // ------------------- اقلام حقوقی -------------------
 
     [HttpGet("itemtypes")]
-    public async Task<IActionResult> ItemTypes()
+    public async Task<IActionResult> ItemTypes([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListItemTypesAsync());
+        return Ok(Paging.Result(await _svc.ListItemTypesAsync(), skip, take));
     }
 
     [HttpPost("itemtypes")]
@@ -99,10 +100,10 @@ public class FaPayController : RbacControllerBase
     // ------------------- ثبت‌های ماهانه -------------------
 
     [HttpGet("adjustments")]
-    public async Task<IActionResult> Adjustments([FromQuery] int? year, [FromQuery] int? month, [FromQuery] int? employeeId)
+    public async Task<IActionResult> Adjustments([FromQuery] int? year, [FromQuery] int? month, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListAdjustmentsAsync(year, month, employeeId));
+        return Ok(Paging.Result(await _svc.ListAdjustmentsAsync(year, month, employeeId), skip, take));
     }
 
     [HttpPost("adjustments")]
@@ -130,10 +131,10 @@ public class FaPayController : RbacControllerBase
     // ------------------- دوره‌ها -------------------
 
     [HttpGet("runs")]
-    public async Task<IActionResult> Runs()
+    public async Task<IActionResult> Runs([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListRunsAsync());
+        return Ok(Paging.Result(await _svc.ListRunsAsync(), skip, take));
     }
 
     [HttpGet("runs/{id:int}")]
@@ -181,10 +182,10 @@ public class FaPayController : RbacControllerBase
     }
 
     [HttpGet("runs/{id:int}/slips")]
-    public async Task<IActionResult> RunSlips(int id)
+    public async Task<IActionResult> RunSlips(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.RunSlipsAsync(id));
+        return Ok(Paging.Result(await _svc.RunSlipsAsync(id), skip, take));
     }
 
     [HttpGet("runs/{id:int}/bank-check")]
@@ -212,10 +213,10 @@ public class FaPayController : RbacControllerBase
     // ------------------- فیش‌ها -------------------
 
     [HttpGet("slips/my")]
-    public async Task<IActionResult> MySlips()
+    public async Task<IActionResult> MySlips([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MySlipsAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.MySlipsAsync(MyUserId), skip, take));
     }
 
     [HttpGet("slips/my/{id:int}")]

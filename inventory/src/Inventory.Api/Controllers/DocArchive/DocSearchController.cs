@@ -3,6 +3,7 @@ using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.DocArchive;
 
@@ -230,7 +231,7 @@ public class DocSearchController : RbacControllerBase
     // =========================================================================
 
     [HttpGet("documents/{id:int}/extracted-texts")]
-    public async Task<IActionResult> GetExtractedTexts(int id)
+    public async Task<IActionResult> GetExtractedTexts(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
@@ -263,7 +264,7 @@ public class DocSearchController : RbacControllerBase
             })
             .ToListAsync();
 
-        return Ok(texts);
+        return Ok(Paging.Result(texts, skip, take));
     }
 
     // =========================================================================

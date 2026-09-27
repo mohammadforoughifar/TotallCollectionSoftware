@@ -8,6 +8,7 @@ using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -134,7 +135,7 @@ public class ReportStudioController : ControllerBase
     //  فهرست و خواندن
     // =====================================================================
     [HttpGet("reports")]
-    public async Task<IActionResult> List()
+    public async Task<IActionResult> List([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await GuardAsync("View") is ObjectResult fb) return fb;
         await EnsureDbAsync();
@@ -149,7 +150,7 @@ public class ReportStudioController : ControllerBase
             if (!acc.CanView) continue;
             list.Add(ToDto(r, acc, owners, includeQuery: false));
         }
-        return Ok(list);
+        return Ok(Paging.Result(list, skip, take));
     }
 
     [HttpGet("reports/{id:int}")]

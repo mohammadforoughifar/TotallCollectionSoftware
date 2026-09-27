@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers;
 
@@ -29,7 +30,7 @@ public class OfficeMachinesController : ControllerBase
     public OfficeMachinesController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string? q)
+    public async Task<IActionResult> Get([FromQuery] string? q, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var machines = await _db.OfficeMachines.AsNoTracking().ToListAsync();
         var repairs = await _db.OfficeMachineRepairs.AsNoTracking().ToListAsync();
@@ -61,7 +62,7 @@ public class OfficeMachinesController : ControllerBase
                            + repairs.Where(r => r.MachineId == m.Id).Sum(r => r.Cost)
         }).ToList();
 
-        return Ok(dto);
+        return Ok(Paging.Result(dto, skip, take));
     }
 
     [HttpPost]
@@ -98,8 +99,8 @@ public class OfficeMachinesController : ControllerBase
 
     /// <summary>سیستم‌های تاییدشده برای انتخاب در ماشین کابلی — با نام مالک و IP.</summary>
     [HttpGet("systems-lookup")]
-    public async Task<IActionResult> SystemsLookup() =>
-        Ok(await _db.SystemInfos.AsNoTracking().Where(s => s.IsApproved)
+    public async Task<IActionResult> SystemsLookup([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.SystemInfos.AsNoTracking().Where(s => s.IsApproved)
             .Select(s => new
             {
                 s.Id,
@@ -108,7 +109,7 @@ public class OfficeMachinesController : ControllerBase
                     .Select(n => n.Ipv4).FirstOrDefault() ?? "",
                 Owner = _db.SystemUsers.Where(u => u.Id == s.UserId)
                     .Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefault() ?? ""
-            }).ToListAsync());
+            }), skip, take));
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
@@ -125,11 +126,10 @@ public class OfficeMachinesController : ControllerBase
     // ================= تعمیرات =================
 
     [HttpGet("{id}/repairs")]
-    public async Task<IActionResult> Repairs(int id)
-        => Ok(await _db.OfficeMachineRepairs.AsNoTracking()
+    public async Task<IActionResult> Repairs(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(await Paging.ResultAsync(_db.OfficeMachineRepairs.AsNoTracking()
             .Where(r => r.MachineId == id)
-            .OrderByDescending(r => r.RepairDate)
-            .ToListAsync());
+            .OrderByDescending(r => r.RepairDate), skip, take));
 
     [HttpPost("{id}/repairs")]
     public async Task<IActionResult> AddRepair(int id, [FromBody] OfficeMachineRepair r)
@@ -174,11 +174,10 @@ public class OfficeMachinesController : ControllerBase
     // ================= هزینه‌ها =================
 
     [HttpGet("{id}/costs")]
-    public async Task<IActionResult> Costs(int id)
-        => Ok(await _db.OfficeMachineCosts.AsNoTracking()
+    public async Task<IActionResult> Costs(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(await Paging.ResultAsync(_db.OfficeMachineCosts.AsNoTracking()
             .Where(c => c.MachineId == id)
-            .OrderByDescending(c => c.CostDate)
-            .ToListAsync());
+            .OrderByDescending(c => c.CostDate), skip, take));
 
     [HttpPost("{id}/costs")]
     public async Task<IActionResult> AddCost(int id, [FromBody] OfficeMachineCost c)

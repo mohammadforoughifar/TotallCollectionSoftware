@@ -22,16 +22,16 @@ public class ProductsController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResult<Product>>> GetAll(
         [FromQuery] string? search, [FromQuery] bool? below, [FromQuery] int? warehouseId,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _service.GetProductsAsync(search, below == true, page, pageSize, warehouseId));
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _service.GetProductsAsync(search, below == true, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize), warehouseId));
 
     /// <summary>فهرست خلاصه کالاها برای لیست‌های انتخاب.</summary>
     [HttpGet("lookups")]
-    public async Task<ActionResult<List<LookupItem>>> GetLookups()
+    public async Task<ActionResult<List<LookupItem>>> GetLookups([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var res = await _service.GetProductsAsync(null, false, 1, 100000);
-        return Ok(res.Items.OrderBy(p => p.Name)
-            .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" }).ToList());
+        return Ok(Paging.Result(res.Items.OrderBy(p => p.Name)
+            .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" }).ToList(), skip, take));
     }
 
     /// <summary>دریافت یک کالا.</summary>

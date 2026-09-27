@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using RadisHr.Api.Data;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -16,7 +17,7 @@ public class EmployeesController : ControllerBase
     public EmployeesController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<ActionResult<List<Employee>>> GetAll([FromQuery] string? search, [FromQuery] string? unit)
+    public async Task<ActionResult<List<Employee>>> GetAll([FromQuery] string? search, [FromQuery] string? unit, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.Employees.Include(e => e.Contracts).AsNoTracking().AsQueryable();
 
@@ -32,7 +33,7 @@ public class EmployeesController : ControllerBase
                 e.PositionTitle.Contains(s) || e.Unit.Contains(s));
         }
 
-        return await query.OrderBy(e => e.Code).ToListAsync();
+        return Ok(await Paging.ResultAsync(query.OrderBy(e => e.Code), skip, take));
     }
 
     [HttpGet("{id:int}")]

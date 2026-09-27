@@ -47,11 +47,11 @@ public class HrPayController : ControllerBase
     // ================= آیتم‌ها =================
 
     [HttpGet("items")]
-    public async Task<IActionResult> Items()
+    public async Task<IActionResult> Items([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         await _svc.EnsureSeedAsync();
-        return Ok(await _db.HrPayItems.AsNoTracking().OrderBy(i => i.SortOrder).ToListAsync());
+        return Ok(await Paging.ResultAsync(_db.HrPayItems.AsNoTracking().OrderBy(i => i.SortOrder), skip, take));
     }
 
     public class ItemInput
@@ -156,19 +156,20 @@ public class HrPayController : ControllerBase
     // ================= مبالغ اختصاصی =================
 
     [HttpGet("empitems")]
-    public async Task<IActionResult> EmpItems([FromQuery] int? employeeId)
+    public async Task<IActionResult> EmpItems([FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         var q = _db.HrPayEmployeeItems.AsNoTracking().AsQueryable();
         if (employeeId != null) q = q.Where(x => x.EmployeeId == employeeId);
-        var rows = await q.Take(1000).ToListAsync();
+        var pg = await Paging.QueryAsync(q, skip, take, 1000);
+        var rows = pg.Rows;
         var items = await _db.HrPayItems.AsNoTracking().ToDictionaryAsync(i => i.Id);
-        return Ok(rows.Select(r => new
+        return Ok(pg.Result(rows.Select(r => new
         {
             r.Id, r.EmployeeId, r.ItemId, r.Amount,
             ItemCode = items.TryGetValue(r.ItemId, out var it) ? it.Code : null,
             ItemTitle = items.TryGetValue(r.ItemId, out var it2) ? it2.Title : null,
-        }));
+        })));
     }
 
     public class EmpItemInput { public int EmployeeId { get; set; } public int ItemId { get; set; } public decimal Amount { get; set; } }
@@ -200,12 +201,13 @@ public class HrPayController : ControllerBase
     // ================= پروفایل =================
 
     [HttpGet("profiles")]
-    public async Task<IActionResult> Profiles([FromQuery] int? employeeId)
+    public async Task<IActionResult> Profiles([FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         var q = _db.HrPayProfiles.AsNoTracking().AsQueryable();
         if (employeeId != null) q = q.Where(p => p.EmployeeId == employeeId);
-        return Ok(await q.Take(2000).ToListAsync());
+        var pg = await Paging.QueryAsync(q, skip, take, 2000);
+        return Ok(pg.Result());
     }
 
     public class ProfileInput
@@ -239,13 +241,13 @@ public class HrPayController : ControllerBase
     // ================= پلکان مالیات =================
 
     [HttpGet("brackets")]
-    public async Task<IActionResult> Brackets([FromQuery] int? year)
+    public async Task<IActionResult> Brackets([FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         var y = year ?? 1405;
         await _svc.EnsureTaxSeedAsync(y);
         var rows = await _db.HrPayTaxBrackets.AsNoTracking().Where(b => b.Year == y).ToListAsync();
-        return Ok(rows.OrderBy(b => b.FromAmount).ToList());
+        return Ok(Paging.Result(rows.OrderBy(b => b.FromAmount).ToList(), skip, take));
     }
 
     public class BracketInput { public int Year { get; set; } public decimal FromAmount { get; set; } public decimal ToAmount { get; set; } public decimal Rate { get; set; } }
@@ -285,10 +287,10 @@ public class HrPayController : ControllerBase
     // ================= قوانین =================
 
     [HttpGet("rules")]
-    public async Task<IActionResult> Rules()
+    public async Task<IActionResult> Rules([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(await _svc.GetPayRulesAsync());
+        return Ok(Paging.Result(await _svc.GetPayRulesAsync(), skip, take));
     }
 
     [HttpPut("rules")]
@@ -302,20 +304,21 @@ public class HrPayController : ControllerBase
     // ================= وام =================
 
     [HttpGet("loans")]
-    public async Task<IActionResult> Loans([FromQuery] int? employeeId, [FromQuery] string? status)
+    public async Task<IActionResult> Loans([FromQuery] int? employeeId, [FromQuery] string? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         var q = _db.HrPayLoans.AsNoTracking().AsQueryable();
         if (employeeId != null) q = q.Where(l => l.EmployeeId == employeeId);
         if (!string.IsNullOrWhiteSpace(status)) q = q.Where(l => l.Status == status);
-        var rows = await q.OrderByDescending(l => l.Id).Take(1000).ToListAsync();
+        var pg = await Paging.QueryAsync(q.OrderByDescending(l => l.Id), skip, take, 1000);
+        var rows = pg.Rows;
         var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
-        return Ok(rows.Select(l => new
+        return Ok(pg.Result(rows.Select(l => new
         {
             l.Id, l.EmployeeId, l.Kind, l.Amount, l.Installments, l.MonthlyAmount, l.PaidCount,
             l.StartYear, l.StartMonth, l.Status, l.Description, l.CreatedAt,
             EmployeeName = emps.TryGetValue(l.EmployeeId, out var e) ? $"{e.FirstName} {e.LastName}".Trim() : null,
-        }));
+        })));
     }
 
     public class LoanInput
@@ -364,19 +367,20 @@ public class HrPayController : ControllerBase
     // ================= معوقه / علی‌الحساب =================
 
     [HttpGet("arrears")]
-    public async Task<IActionResult> Arrears([FromQuery] int? year, [FromQuery] int? month)
+    public async Task<IActionResult> Arrears([FromQuery] int? year, [FromQuery] int? month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         var q = _db.HrPayArrears.AsNoTracking().AsQueryable();
         if (year != null) q = q.Where(a => a.Year == year);
         if (month != null) q = q.Where(a => a.Month == month);
-        var rows = await q.OrderByDescending(a => a.Id).Take(500).ToListAsync();
+        var pg = await Paging.QueryAsync(q.OrderByDescending(a => a.Id), skip, take, 500);
+        var rows = pg.Rows;
         var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
-        return Ok(rows.Select(a => new
+        return Ok(pg.Result(rows.Select(a => new
         {
             a.Id, a.EmployeeId, a.Year, a.Month, a.Amount, a.Title, a.Status,
             EmployeeName = emps.TryGetValue(a.EmployeeId, out var e) ? $"{e.FirstName} {e.LastName}".Trim() : null,
-        }));
+        })));
     }
 
     public class ArrearInput { public int EmployeeId { get; set; } public int Year { get; set; } public int Month { get; set; } public decimal Amount { get; set; } public string? Title { get; set; } }
@@ -406,19 +410,20 @@ public class HrPayController : ControllerBase
     }
 
     [HttpGet("onaccounts")]
-    public async Task<IActionResult> OnAccounts([FromQuery] int? year, [FromQuery] int? month)
+    public async Task<IActionResult> OnAccounts([FromQuery] int? year, [FromQuery] int? month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         var q = _db.HrPayOnAccounts.AsNoTracking().AsQueryable();
         if (year != null) q = q.Where(a => a.Year == year);
         if (month != null) q = q.Where(a => a.Month == month);
-        var rows = await q.OrderByDescending(a => a.Id).Take(500).ToListAsync();
+        var pg = await Paging.QueryAsync(q.OrderByDescending(a => a.Id), skip, take, 500);
+        var rows = pg.Rows;
         var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
-        return Ok(rows.Select(a => new
+        return Ok(pg.Result(rows.Select(a => new
         {
             a.Id, a.EmployeeId, a.Year, a.Month, a.Amount, a.PaidDate, a.Status,
             EmployeeName = emps.TryGetValue(a.EmployeeId, out var e) ? $"{e.FirstName} {e.LastName}".Trim() : null,
-        }));
+        })));
     }
 
     [HttpPost("onaccounts")]
@@ -448,10 +453,10 @@ public class HrPayController : ControllerBase
     // ================= دوره‌ها =================
 
     [HttpGet("runs")]
-    public async Task<IActionResult> Runs()
+    public async Task<IActionResult> Runs([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(await _db.HrPayRuns.AsNoTracking().OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).Take(60).ToListAsync());
+        return Ok((await Paging.QueryAsync(_db.HrPayRuns.AsNoTracking().OrderByDescending(r => r.Year).ThenByDescending(r => r.Month), skip, take, 60)).Result());
     }
 
     public class RunInput { public int Year { get; set; } public int Month { get; set; } public string? Kind { get; set; } }
@@ -497,10 +502,10 @@ public class HrPayController : ControllerBase
     }
 
     [HttpGet("runs/{id:int}/compare")]
-    public async Task<IActionResult> Compare(int id)
+    public async Task<IActionResult> Compare(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        try { return Ok(await _svc.CompareAsync(id)); }
+        try { return Ok(Paging.Result(await _svc.CompareAsync(id), skip, take)); }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
@@ -519,10 +524,10 @@ public class HrPayController : ControllerBase
     // ================= فیش‌ها =================
 
     [HttpGet("runs/{id:int}/slips")]
-    public async Task<IActionResult> Slips(int id)
+    public async Task<IActionResult> Slips(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == id).OrderBy(s => s.EmployeeName).ToListAsync());
+        return Ok(await Paging.ResultAsync(_db.HrPaySlips.AsNoTracking().Where(s => s.RunId == id).OrderBy(s => s.EmployeeName), skip, take));
     }
 
     [HttpGet("slips/{id:int}")]
@@ -541,17 +546,18 @@ public class HrPayController : ControllerBase
     }
 
     [HttpGet("slips/my")]
-    public async Task<IActionResult> MySlips()
+    public async Task<IActionResult> MySlips([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var rows = await _db.HrPaySlips.AsNoTracking().Where(s => s.UserId == MyUserId).OrderByDescending(s => s.Id).Take(24).ToListAsync();
+        var pg = await Paging.QueryAsync(_db.HrPaySlips.AsNoTracking().Where(s => s.UserId == MyUserId).OrderByDescending(s => s.Id), skip, take, 24);
+        var rows = pg.Rows;
         var runIds = rows.Select(s => s.RunId).Distinct().ToList();
         var runs = await _db.HrPayRuns.AsNoTracking().Where(r => runIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id);
-        return Ok(rows.Select(s => new
+        return Ok(pg.Result(rows.Select(s => new
         {
             s.Id, s.RunId, s.EmployeeName, s.DaysPaid, s.GrossEarnings, s.TaxAmount, s.InsuranceAmount, s.OtherDeductions, s.NetPay,
             Year = runs.TryGetValue(s.RunId, out var r) ? r.Year : 0,
             Month = runs.TryGetValue(s.RunId, out var r2) ? r2.Month : 0,
-        }));
+        })));
     }
 
     // ================= خروجی‌ها =================
@@ -595,19 +601,20 @@ public class HrPayController : ControllerBase
     // ================= تسویه =================
 
     [HttpGet("settlements")]
-    public async Task<IActionResult> Settlements([FromQuery] int? employeeId)
+    public async Task<IActionResult> Settlements([FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
         var q = _db.HrPaySettlements.AsNoTracking().AsQueryable();
         if (employeeId != null) q = q.Where(s => s.EmployeeId == employeeId);
-        var rows = await q.OrderByDescending(s => s.Id).Take(500).ToListAsync();
+        var pg = await Paging.QueryAsync(q.OrderByDescending(s => s.Id), skip, take, 500);
+        var rows = pg.Rows;
         var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
-        return Ok(rows.Select(s => new
+        return Ok(pg.Result(rows.Select(s => new
         {
             s.Id, s.EmployeeId, s.LeaveDate, s.YearsOfService, s.LastBase, s.UnusedLeaveDays,
             s.SeveranceAmount, s.LeaveRefund, s.EydiProrata, s.TotalAmount, s.Status, s.CreatedAt,
             EmployeeName = emps.TryGetValue(s.EmployeeId, out var e) ? $"{e.FirstName} {e.LastName}".Trim() : null,
-        }));
+        })));
     }
 
     public class SettlementInput { public int EmployeeId { get; set; } public DateTime LeaveDate { get; set; } public double? UnusedLeaveDays { get; set; } }
@@ -634,12 +641,12 @@ public class HrPayController : ControllerBase
     }
 
     [HttpGet("employees")]
-    public async Task<IActionResult> Employees()
+    public async Task<IActionResult> Employees([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(await _db.HrEmployees.AsNoTracking().OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
-            .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.NationalCode, e.BaseSalary, e.Status, e.HireDate })
-            .Take(2000).ToListAsync());
+        var pg = await Paging.QueryAsync(_db.HrEmployees.AsNoTracking().OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
+            .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.NationalCode, e.BaseSalary, e.Status, e.HireDate }), skip, take, 2000);
+        return Ok(pg.Result());
     }
 
     // ================= کارکرد ماه (نمایش در فیش/گزارش) =================
@@ -685,10 +692,10 @@ public class HrPayController : ControllerBase
     }
 
     [HttpGet("filings")]
-    public async Task<IActionResult> Filings([FromQuery] int? runId)
+    public async Task<IActionResult> Filings([FromQuery] int? runId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(await _svc.FilingsAsync(runId));
+        return Ok(Paging.Result(await _svc.FilingsAsync(runId), skip, take));
     }
 
     [HttpGet("filings/verify")]

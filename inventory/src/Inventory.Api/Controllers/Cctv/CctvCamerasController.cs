@@ -25,7 +25,7 @@ public class CctvCamerasController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string? q)
+    public async Task<IActionResult> Get([FromQuery] string? q, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var list = _db.CctvCameras.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
@@ -37,7 +37,7 @@ public class CctvCamerasController : ControllerBase
                 (c.Mac != null && c.Mac.Contains(q)) ||
                 (c.Location != null && c.Location.Contains(q)));
         }
-        return Ok(await list.OrderByDescending(c => c.Id).ToListAsync());
+        return Ok(await Paging.ResultAsync(list.OrderByDescending(c => c.Id), skip, take));
     }
 
     [HttpGet("{id}")]

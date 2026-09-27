@@ -79,7 +79,7 @@ public class ItRequestsController : ControllerBase
 
     // ================== سیستم‌های قابل انتخاب (با IP) ==================
     [HttpGet("systems")]
-    public async Task<IActionResult> Systems()
+    public async Task<IActionResult> Systems([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var viewCompany = await HasAsync("ViewCompany");
         var viewDepartment = await HasAsync("ViewDepartment");
@@ -117,12 +117,12 @@ public class ItRequestsController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok(systems);
+        return Ok(Paging.Result(systems, skip, take));
     }
 
     // ================== کارشناسان (برای ارجاع) ==================
     [HttpGet("experts")]
-    public async Task<IActionResult> Experts()
+    public async Task<IActionResult> Experts([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("Manage")) return Forbid();
 
@@ -134,7 +134,7 @@ public class ItRequestsController : ControllerBase
 
         var experts = await _db.Users.Where(u => expertUserIds.Contains(u.Id) && u.IsActive)
             .Select(u => new { u.Id, u.Username }).ToListAsync();
-        return Ok(experts);
+        return Ok(Paging.Result(experts, skip, take));
     }
 
     // ================== ثبت درخواست ==================
@@ -237,29 +237,29 @@ public class ItRequestsController : ControllerBase
 
     /// <summary>کارتابل درخواست‌دهنده — بدون جزئیات داخلی واحد IT.</summary>
     [HttpGet("mine")]
-    public async Task<IActionResult> Mine() =>
-        Ok(await BuildList(_db.ItRequests.Where(r => r.RequesterUserId == MyUserId), internalView: false));
+    public async Task<IActionResult> Mine([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(Paging.Result(await BuildList(_db.ItRequests.Where(r => r.RequesterUserId == MyUserId), internalView: false), skip, take));
 
     /// <summary>کارتابل مدیر آی‌تی.</summary>
     [HttpGet("manager")]
-    public async Task<IActionResult> ManagerInbox()
+    public async Task<IActionResult> ManagerInbox([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("Manage")) return Forbid();
-        return Ok(await BuildList(_db.ItRequests, internalView: true));
+        return Ok(Paging.Result(await BuildList(_db.ItRequests, internalView: true), skip, take));
     }
 
     /// <summary>کارتابل کارشناس.</summary>
     [HttpGet("expert")]
-    public async Task<IActionResult> ExpertInbox()
+    public async Task<IActionResult> ExpertInbox([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("Expert")) return Forbid();
         var myReqIds = _db.ItRequestAssignments.Where(a => a.ExpertUserId == MyUserId).Select(a => a.RequestId);
-        return Ok(await BuildList(_db.ItRequests.Where(r => myReqIds.Contains(r.Id)), internalView: true));
+        return Ok(Paging.Result(await BuildList(_db.ItRequests.Where(r => myReqIds.Contains(r.Id)), internalView: true), skip, take));
     }
 
     // ================== آرشیو رفت‌وبرگشت‌ها ==================
     [HttpGet("{id:int}/logs")]
-    public async Task<IActionResult> Logs(int id)
+    public async Task<IActionResult> Logs(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var req = await _db.ItRequests.FindAsync(id);
         if (req == null) return NotFound();
@@ -268,9 +268,8 @@ public class ItRequestsController : ControllerBase
         var q = _db.ItRequestLogs.Where(l => l.RequestId == id);
         if (!isIt) q = q.Where(l => !l.InternalOnly); // درخواست‌دهنده فقط رویدادهای عمومی
 
-        return Ok(await q.OrderBy(l => l.Id)
-            .Select(l => new { l.Id, l.ActorName, l.ActorRole, l.Action, l.Text, l.CreatedAt })
-            .ToListAsync());
+        return Ok(await Paging.ResultAsync(q.OrderBy(l => l.Id)
+            .Select(l => new { l.Id, l.ActorName, l.ActorRole, l.Action, l.Text, l.CreatedAt }), skip, take));
     }
 
     // ================== ارجاع مدیر ==================
@@ -637,19 +636,20 @@ public class ItRequestsController : ControllerBase
 
     // ================== سوابق درخواست‌های یک سیستم (برای شناسنامه سیستم) ==================
     [HttpGet("by-system/{sysId:int}")]
-    public async Task<IActionResult> BySystem(int sysId)
+    public async Task<IActionResult> BySystem(int sysId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var reqs = await _db.ItRequests.Where(r => r.SystemInfoId == sysId)
-            .OrderByDescending(r => r.Id).ToListAsync();
+        var pg = await Paging.QueryAsync(_db.ItRequests.Where(r => r.SystemInfoId == sysId)
+            .OrderByDescending(r => r.Id), skip, take);
+        var reqs = pg.Rows;
         var ids = reqs.Select(r => r.Id).ToList();
         var asgs = await _db.ItRequestAssignments.Where(a => ids.Contains(a.RequestId)).ToListAsync();
 
-        return Ok(reqs.Select(r => new
+        return Ok(pg.Result(reqs.Select(r => new
         {
             r.Id, r.Number, r.Title, r.RequestType, r.Status, r.RequesterName,
             r.CreatedAt, r.CompletedAt, r.FinalResponse,
             Experts = asgs.Where(a => a.RequestId == r.Id).Select(a => a.ExpertName).ToList()
-        }));
+        })));
     }
 
     // ================== تکمیل توسط درخواست‌دهنده ==================
@@ -678,13 +678,13 @@ public class ItRequestsController : ControllerBase
 
     // ================== پیوست‌ها ==================
     [HttpGet("{id:int}/attachments")]
-    public async Task<IActionResult> Attachments(int id)
+    public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var rows = await _db.ItRequestAttachments.Where(a => a.RequestId == id)
-            .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderRole, a.UploaderName, a.UploadedAt, a.FilePath, a.Data })
-            .ToListAsync();
-        return Ok(rows.Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderRole, a.UploaderName, a.UploadedAt,
-            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length }));
+        var pg = await Paging.QueryAsync(_db.ItRequestAttachments.Where(a => a.RequestId == id)
+            .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderRole, a.UploaderName, a.UploadedAt, a.FilePath, a.Data }), skip, take);
+        var rows = pg.Rows;
+        return Ok(pg.Result(rows.Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderRole, a.UploaderName, a.UploadedAt,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length })));
     }
 
     [HttpPost("{id:int}/attachments")]

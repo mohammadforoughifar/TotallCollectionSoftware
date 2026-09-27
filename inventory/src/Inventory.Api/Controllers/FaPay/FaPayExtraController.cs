@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.FaPay;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.FaPay;
 
@@ -37,10 +38,10 @@ public class FaPayExtraController : RbacControllerBase
     // ------------------- وام و مساعده -------------------
 
     [HttpGet("loans")]
-    public async Task<IActionResult> Loans([FromQuery] int? employeeId, [FromQuery] int? status)
+    public async Task<IActionResult> Loans([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListLoansAsync(employeeId, status));
+        return Ok(Paging.Result(await _svc.ListLoansAsync(employeeId, status), skip, take));
     }
 
     [HttpGet("loans/{id:int}")]
@@ -77,10 +78,10 @@ public class FaPayExtraController : RbacControllerBase
     // ------------------- معوقات -------------------
 
     [HttpGet("arrears")]
-    public async Task<IActionResult> Arrears([FromQuery] int? employeeId, [FromQuery] int? status)
+    public async Task<IActionResult> Arrears([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListArrearsAsync(employeeId, status));
+        return Ok(Paging.Result(await _svc.ListArrearsAsync(employeeId, status), skip, take));
     }
 
     [HttpPost("arrears")]
@@ -125,10 +126,10 @@ public class FaPayExtraController : RbacControllerBase
     }
 
     [HttpGet("settlements")]
-    public async Task<IActionResult> Settlements([FromQuery] int? employeeId, [FromQuery] int? status)
+    public async Task<IActionResult> Settlements([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListSettlementsAsync(employeeId, status));
+        return Ok(Paging.Result(await _svc.ListSettlementsAsync(employeeId, status), skip, take));
     }
 
     [HttpGet("settlements/{id:int}")]

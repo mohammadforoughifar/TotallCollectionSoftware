@@ -5,6 +5,7 @@ using RadisHr.Api.Data;
 using RadisHr.Shared.Calculations;
 using RadisHr.Shared.Contracts;
 using RadisHr.Shared.Models;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace RadisHr.Api.Controllers;
 
@@ -46,8 +47,8 @@ public class HseController : ControllerBase
 
     /// <summary>فهرست خام تعاریف همراه با شناسه — برای حذف از رابط کاربری</summary>
     [HttpGet("definitions/all")]
-    public async Task<ActionResult<List<HseDefinition>>> AllDefinitions() =>
-        await _db.HseDefinitions.AsNoTracking().OrderBy(d => d.Group).ThenBy(d => d.Ordinal).ToListAsync();
+    public async Task<ActionResult<List<HseDefinition>>> AllDefinitions([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.HseDefinitions.AsNoTracking().OrderBy(d => d.Group).ThenBy(d => d.Ordinal), skip, take));
 
     [Authorize(Roles = "hse,hr,ceo")]
     [HttpPost("definitions")]
@@ -75,13 +76,13 @@ public class HseController : ControllerBase
 
     // ───────── حوادث ─────────
     [HttpGet("incidents")]
-    public async Task<ActionResult<List<Incident>>> Incidents([FromQuery] string? status, [FromQuery] string? unit)
+    public async Task<ActionResult<List<Incident>>> Incidents([FromQuery] string? status, [FromQuery] string? unit, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.Incidents.Include(i => i.CorrectiveActions).Include(i => i.MedicalDocuments)
             .AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(status)) query = query.Where(i => i.Status == status);
         if (!string.IsNullOrEmpty(unit)) query = query.Where(i => i.Unit == unit);
-        return await query.OrderByDescending(i => i.CreatedAt).ToListAsync();
+        return Ok(await Paging.ResultAsync(query.OrderByDescending(i => i.CreatedAt), skip, take));
     }
 
     /// <summary>ثبت اولیهٔ حادثه توسط واحد اداری — شماره پرونده HSE-{سال}-{0001}</summary>
@@ -163,13 +164,13 @@ public class HseController : ControllerBase
 
     // ───────── تجهیزات حفاظت فردی ─────────
     [HttpGet("ppe")]
-    public async Task<ActionResult<List<PpeDelivery>>> Ppe([FromQuery] string? code, [FromQuery] string? pending)
+    public async Task<ActionResult<List<PpeDelivery>>> Ppe([FromQuery] string? code, [FromQuery] string? pending, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var query = _db.PpeDeliveries.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(code)) query = query.Where(p => p.EmployeeCode == code);
         if (pending == "hse") query = query.Where(p => p.HseApproval == "در انتظار");
         if (pending == "production") query = query.Where(p => p.ProductionApproval == "در انتظار");
-        return await query.OrderByDescending(p => p.CreatedAt).ToListAsync();
+        return Ok(await Paging.ResultAsync(query.OrderByDescending(p => p.CreatedAt), skip, take));
     }
 
     /// <summary>ثبت تحویل PPE توسط انباردار — نیازمند تأیید دوگانهٔ HSE و مدیر تولید</summary>
@@ -229,8 +230,8 @@ public class HseController : ControllerBase
 
     // ───────── ماتریس تجهیزات مجاز ─────────
     [HttpGet("ppe-authorizations")]
-    public async Task<ActionResult<List<PpeAuthorization>>> PpeAuthorizations() =>
-        await _db.PpeAuthorizations.AsNoTracking().OrderBy(a => a.StationKey).ToListAsync();
+    public async Task<ActionResult<List<PpeAuthorization>>> PpeAuthorizations([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.PpeAuthorizations.AsNoTracking().OrderBy(a => a.StationKey), skip, take));
 
     [Authorize(Roles = "hse,hr,ceo")]
     [HttpPut("ppe-authorizations")]
@@ -247,8 +248,8 @@ public class HseController : ControllerBase
 
     // ───────── کپسول‌های آتش‌نشانی ─────────
     [HttpGet("extinguishers")]
-    public async Task<ActionResult<List<Extinguisher>>> Extinguishers() =>
-        await _db.Extinguishers.AsNoTracking().OrderBy(e => e.ExpiryDate).ToListAsync();
+    public async Task<ActionResult<List<Extinguisher>>> Extinguishers([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.Extinguishers.AsNoTracking().OrderBy(e => e.ExpiryDate), skip, take));
 
     [Authorize(Roles = "hse,warehouse,ceo")]
     [HttpPost("extinguishers")]
@@ -275,8 +276,8 @@ public class HseController : ControllerBase
 
     // ───────── اعلان‌های HSE ─────────
     [HttpGet("notifications")]
-    public async Task<ActionResult<List<HseNotification>>> Notifications() =>
-        await _db.HseNotifications.AsNoTracking().OrderByDescending(n => n.CreatedAt).Take(200).ToListAsync();
+    public async Task<ActionResult<List<HseNotification>>> Notifications([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok((await Paging.QueryAsync(_db.HseNotifications.AsNoTracking().OrderByDescending(n => n.CreatedAt), skip, take, 200)).Result());
 
     [Authorize(Roles = "hse,ceo")]
     [HttpPost("notifications/{id:int}/seen")]

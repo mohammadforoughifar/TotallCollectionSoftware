@@ -42,19 +42,19 @@ public class EmailController : RbacControllerBase
 
     /// <summary>حساب‌های من (شخصی) + حساب‌های دبیرخانه در صورت داشتن دسترسی</summary>
     [HttpGet("accounts")]
-    public async Task<IActionResult> Accounts()
+    public async Task<IActionResult> Accounts([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _email.GetMyAccountsAsync(MyUserId, await IsDabirkhaneAsync()));
+        return Ok(Paging.Result(await _email.GetMyAccountsAsync(MyUserId, await IsDabirkhaneAsync()), skip, take));
     }
 
     /// <summary>حساب‌های فعال دبیرخانه — برای انتخاب در ثبت دبیرخانه نامه صادره</summary>
     [HttpGet("dabirkhane-accounts")]
-    public async Task<IActionResult> DabirkhaneAccounts()
+    public async Task<IActionResult> DabirkhaneAccounts([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsDabirkhaneAsync())
             return StatusCode(403, new { message = "شما به حساب‌های دبیرخانه دسترسی ندارید." });
-        return Ok(await _email.GetDabirkhaneAccountsAsync());
+        return Ok(Paging.Result(await _email.GetDabirkhaneAccountsAsync(), skip, take));
     }
 
     [HttpPost("accounts")]
@@ -154,8 +154,10 @@ public class EmailController : RbacControllerBase
     [HttpGet("inbox")]
     public async Task<IActionResult> Inbox([FromQuery] int? emailId, [FromQuery] string? search, [FromQuery] bool? unreadOnly,
         [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
-        [FromQuery] bool spam = false, [FromQuery] bool starred = false, [FromQuery] bool personal = false)
+        [FromQuery] bool spam = false, [FromQuery] bool starred = false, [FromQuery] bool personal = false, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetInboxAsync(MyUserId, emailId, search, unreadOnly, await IsDabirkhaneAsync(),
@@ -166,8 +168,10 @@ public class EmailController : RbacControllerBase
     [HttpGet("sent")]
     public async Task<IActionResult> Sent([FromQuery] int? emailId, [FromQuery] string? search,
         [FromQuery] int? folderId, [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
-        [FromQuery] bool starred = false, [FromQuery] bool personal = false)
+        [FromQuery] bool starred = false, [FromQuery] bool personal = false, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetSentAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
@@ -177,8 +181,10 @@ public class EmailController : RbacControllerBase
     /// <summary>بایگانی (دریافتی + ارسالیِ داخل پوشه‌ها) — صفحه‌بندی کاملاً سمت سرور</summary>
     [HttpGet("archive")]
     public async Task<IActionResult> Archive([FromQuery] int? emailId, [FromQuery] string? search,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool personal = false)
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 25, [FromQuery] bool personal = false, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        page = Paging.ToPage(skip, take, page);
+        pageSize = Paging.ToPageSize(take, pageSize);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (await PersonalAccessAsync(personal) is { } personalForbid) return personalForbid;
         return Ok(await _email.GetArchiveAsync(MyUserId, emailId, search, await IsDabirkhaneAsync(),
@@ -243,10 +249,10 @@ public class EmailController : RbacControllerBase
     // ==================== پوشه‌های بایگانی ====================
 
     [HttpGet("folders")]
-    public async Task<IActionResult> Folders()
+    public async Task<IActionResult> Folders([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(await _email.GetFoldersAsync(MyUserId));
+        return Ok(Paging.Result(await _email.GetFoldersAsync(MyUserId), skip, take));
     }
 
     [HttpPost("folders")]

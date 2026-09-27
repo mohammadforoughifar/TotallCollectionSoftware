@@ -3,6 +3,7 @@ using Inventory.Api.Services.Accounting;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Accounting;
 
@@ -21,7 +22,7 @@ public class FixedAssetCategoriesController : RbacControllerBase
     public FixedAssetCategoriesController(Db.AppDbContext db, IFixedAssetService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<FixedAssetCategory>>> GetAll() => Ok(await _svc.GetCategoriesAsync());
+    public async Task<ActionResult<List<FixedAssetCategory>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _svc.GetCategoriesAsync(), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<FixedAssetCategory>> Save([FromBody] FixedAssetCategory dto)
@@ -48,8 +49,8 @@ public class FixedAssetsController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<FixedAsset>>> GetAll(
-        [FromQuery] FixedAssetStatus? status = null, [FromQuery] int? categoryId = null, [FromQuery] string? search = null)
-        => Ok(await _svc.GetAssetsAsync(status, categoryId, search));
+        [FromQuery] FixedAssetStatus? status = null, [FromQuery] int? categoryId = null, [FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetAssetsAsync(status, categoryId, search), skip, take));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<FixedAsset>> Get(int id) => Ok(await _svc.GetAssetAsync(id));
@@ -78,8 +79,8 @@ public class FixedAssetRunsController : RbacControllerBase
     public FixedAssetRunsController(Db.AppDbContext db, IFixedAssetService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<FixedAssetDepreciationRun>>> GetAll()
-        => Ok(await _svc.GetRunsAsync());
+    public async Task<ActionResult<List<FixedAssetDepreciationRun>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetRunsAsync(), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<FixedAssetDepreciationRun>> Run(

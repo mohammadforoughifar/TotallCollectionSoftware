@@ -3,6 +3,7 @@ using Inventory.Api.Services.Stocktaking;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Stocktaking;
 
@@ -25,8 +26,8 @@ public class BcdBarcodesController : RbacControllerBase
     [HttpGet]
     public async Task<ActionResult<List<BcdBarcode>>> GetAll(
         [FromQuery] int? productId = null,
-        [FromQuery] string? search = null)
-        => Ok(await _svc.GetBarcodesAsync(productId, search));
+        [FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(await _svc.GetBarcodesAsync(productId, search), skip, take));
 
     /// <summary>یافتن کالا از روی بارکد — قلب صفحه اسکنر.</summary>
     [HttpGet("scan")]
@@ -87,8 +88,8 @@ public class StkSessionsController : RbacControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 15)
-        => Ok(await _svc.GetSessionsAsync(warehouseId, status, search, from, to, page, pageSize));
+        [FromQuery] int pageSize = 15, [FromQuery] int? skip = null, [FromQuery] int? take = null)
+        => Ok(await _svc.GetSessionsAsync(warehouseId, status, search, from, to, Paging.ToPage(skip, take, page), Paging.ToPageSize(take, pageSize)));
 
     [HttpGet("new")]
     public async Task<ActionResult<StkSession>> New([FromQuery] int warehouseId = 0)

@@ -24,8 +24,8 @@ public class SystemUsersController : ControllerBase
     // ================== CRUD کاربران سیستم ==================
 
     [HttpGet]
-    public async Task<ActionResult> Get() =>
-        Ok(await _db.SystemUsers.OrderBy(u => u.Id).ToListAsync());
+    public async Task<ActionResult> Get([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
+        Ok(await Paging.ResultAsync(_db.SystemUsers.OrderBy(u => u.Id), skip, take));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult> Get(int id)

@@ -37,10 +37,10 @@ public class HrPerfController : ControllerBase
     // ================= دوره =================
 
     [HttpGet("periods")]
-    public async Task<IActionResult> Periods()
+    public async Task<IActionResult> Periods([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(await _svc.PeriodsAsync());
+        return Ok(Paging.Result(await _svc.PeriodsAsync(), skip, take));
     }
 
     public class PeriodInput
@@ -86,10 +86,10 @@ public class HrPerfController : ControllerBase
     // ================= شاخص =================
 
     [HttpGet("periods/{id:int}/kpis")]
-    public async Task<IActionResult> Kpis(int id)
+    public async Task<IActionResult> Kpis(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(await _svc.KpisAsync(id));
+        return Ok(Paging.Result(await _svc.KpisAsync(id), skip, take));
     }
 
     public class KpiInput
@@ -151,19 +151,19 @@ public class HrPerfController : ControllerBase
     }
 
     [HttpGet("scores")]
-    public async Task<IActionResult> Scores([FromQuery] int periodId, [FromQuery] int employeeId)
+    public async Task<IActionResult> Scores([FromQuery] int periodId, [FromQuery] int employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(await _svc.ScoresAsync(periodId, employeeId));
+        return Ok(Paging.Result(await _svc.ScoresAsync(periodId, employeeId), skip, take));
     }
 
     // ================= کارنامه =================
 
     [HttpGet("periods/{id:int}/results")]
-    public async Task<IActionResult> Results(int id)
+    public async Task<IActionResult> Results(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        try { return Ok(await _svc.ResultsAsync(id)); }
+        try { return Ok(Paging.Result(await _svc.ResultsAsync(id), skip, take)); }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
@@ -211,11 +211,11 @@ public class HrPerfController : ControllerBase
     }
 
     [HttpGet("employees")]
-    public async Task<IActionResult> Employees()
+    public async Task<IActionResult> Employees([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(await _db.HrEmployees.AsNoTracking().OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
-            .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.BaseSalary, e.Status })
-            .Take(2000).ToListAsync());
+        var pg = await Paging.QueryAsync(_db.HrEmployees.AsNoTracking().OrderBy(e => e.FirstName).ThenBy(e => e.LastName)
+            .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.BaseSalary, e.Status }), skip, take, 2000);
+        return Ok(pg.Result());
     }
 }

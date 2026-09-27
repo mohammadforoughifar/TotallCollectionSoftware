@@ -2,6 +2,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.FaCom;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.FaCom;
 
@@ -21,17 +22,17 @@ public class FaComController : RbacControllerBase
     // ------------------- اطلاعیه‌ها -------------------
 
     [HttpGet("announcements/feed")]
-    public async Task<IActionResult> Feed()
+    public async Task<IActionResult> Feed([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.GetFeedAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.GetFeedAsync(MyUserId), skip, take));
     }
 
     [HttpGet("announcements")]
-    public async Task<IActionResult> Announcements()
+    public async Task<IActionResult> Announcements([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListAnnouncementsAsync());
+        return Ok(Paging.Result(await _svc.ListAnnouncementsAsync(), skip, take));
     }
 
     [HttpPost("announcements")]
@@ -81,10 +82,10 @@ public class FaComController : RbacControllerBase
     // ------------------- صندوق پیشنهادها -------------------
 
     [HttpGet("suggestions/my")]
-    public async Task<IActionResult> MySuggestions()
+    public async Task<IActionResult> MySuggestions([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.MySuggestionsAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.MySuggestionsAsync(MyUserId), skip, take));
     }
 
     [HttpPost("suggestions")]
@@ -96,10 +97,10 @@ public class FaComController : RbacControllerBase
     }
 
     [HttpGet("suggestions")]
-    public async Task<IActionResult> Suggestions([FromQuery] int? status, [FromQuery] int? category)
+    public async Task<IActionResult> Suggestions([FromQuery] int? status, [FromQuery] int? category, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListSuggestionsAsync(status, category));
+        return Ok(Paging.Result(await _svc.ListSuggestionsAsync(status, category), skip, take));
     }
 
     [HttpPost("suggestions/{id:int}/respond")]
@@ -121,17 +122,17 @@ public class FaComController : RbacControllerBase
     // ------------------- نظرسنجی‌ها -------------------
 
     [HttpGet("polls")]
-    public async Task<IActionResult> Polls()
+    public async Task<IActionResult> Polls([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.ListPollsAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.ListPollsAsync(MyUserId), skip, take));
     }
 
     [HttpGet("polls/manage")]
-    public async Task<IActionResult> ManagePolls()
+    public async Task<IActionResult> ManagePolls([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ManagePollsAsync());
+        return Ok(Paging.Result(await _svc.ManagePollsAsync(), skip, take));
     }
 
     [HttpGet("polls/{id:int}")]
@@ -177,10 +178,10 @@ public class FaComController : RbacControllerBase
     // ------------------- تیکت‌های من -------------------
 
     [HttpGet("tickets/my")]
-    public async Task<IActionResult> MyTickets()
+    public async Task<IActionResult> MyTickets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.GetMyTicketsAsync(MyUserId));
+        return Ok(Paging.Result(await _svc.GetMyTicketsAsync(MyUserId), skip, take));
     }
 
     [HttpGet("tickets/my/{id:int}")]
@@ -207,10 +208,10 @@ public class FaComController : RbacControllerBase
     // ------------------- کارتابل تیکت HR -------------------
 
     [HttpGet("tickets")]
-    public async Task<IActionResult> Tickets([FromQuery] int? status, [FromQuery] int? category)
+    public async Task<IActionResult> Tickets([FromQuery] int? status, [FromQuery] int? category, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.ListTicketsAsync(status, category));
+        return Ok(Paging.Result(await _svc.ListTicketsAsync(status, category), skip, take));
     }
 
     [HttpGet("tickets/{id:int}")]

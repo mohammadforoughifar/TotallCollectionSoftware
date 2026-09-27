@@ -1,6 +1,7 @@
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Export;
 using Microsoft.AspNetCore.Mvc;
+using Paging = Inventory.Api.Services.Paging;
 
 namespace Inventory.Api.Controllers.Export;
 
@@ -30,15 +31,15 @@ public class ExportController : RbacControllerBase
 
     /// <summary>فهرست گزارش‌هایی که کاربر می‌تواند از آن‌ها خروجی بگیرد — «مرکز خروجی».</summary>
     [HttpGet("reports")]
-    public ActionResult<List<ExportReportInfo>> GetReports()
-        => Ok(_svc.GetCatalog()
+    public ActionResult<List<ExportReportInfo>> GetReports([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(Paging.Result(_svc.GetCatalog()
             .Select(r => new ExportReportInfo
             {
                 Key = r.Key,
                 Title = r.Title,
                 Module = r.Module
             })
-            .ToList());
+            .ToList(), skip, take));
 
     /// <summary>
     /// خروجی یک گزارش. فرمت با پارامتر <c>format</c> مشخص می‌شود: <c>pdf</c> یا <c>xlsx</c>.
