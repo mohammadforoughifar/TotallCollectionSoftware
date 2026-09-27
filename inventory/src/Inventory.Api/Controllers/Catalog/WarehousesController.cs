@@ -14,8 +14,8 @@ public class WarehousesController : ApiControllerBase
 
     /// <summary>فهرست انبارها.</summary>
     [HttpGet]
-    public async Task<ActionResult<PagedResult<Warehouse>>> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _service.GetWarehousesPagedAsync(page, pageSize));
+    public async Task<ActionResult<PagedResult<Warehouse>>> GetAll([FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetWarehousesPagedAsync(paging ?? new PagingRequest()));
 
     /// <summary>ایجاد یا ویرایش انبار.</summary>
     [HttpPost]

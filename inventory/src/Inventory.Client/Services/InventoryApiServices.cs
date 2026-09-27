@@ -35,13 +35,15 @@ public class ReferrerService : IReferrerService
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/referrers/{id}");
 
-    public Task<List<Referrer>> GetWalletsAsync(string? search = null, string sortBy = "name", bool desc = false)
-        => _api.GetAsync<List<Referrer>>(
-            $"api/referrers/wallets?search={Uri.EscapeDataString(search ?? "")}&sortBy={sortBy}&desc={desc}");
+    public async Task<List<Referrer>> GetWalletsAsync(string? search = null, string sortBy = "name", bool desc = false)
+        => (await _api.GetAsync<PagedResult<Referrer>>(
+            $"api/referrers/wallets?search={Uri.EscapeDataString(search ?? "")}&sortBy={sortBy}&desc={desc}&{PagingRequest.AllQuery}")).Items;
 
-    public Task<List<ReferrerPayment>> GetPaymentsAsync(int? referrerId = null)
-        => _api.GetAsync<List<ReferrerPayment>>(
-            referrerId is > 0 ? $"api/referrers/payments?referrerId={referrerId}" : "api/referrers/payments");
+    public async Task<List<ReferrerPayment>> GetPaymentsAsync(int? referrerId = null)
+        => (await _api.GetAsync<PagedResult<ReferrerPayment>>(
+            referrerId is > 0
+                ? $"api/referrers/payments?referrerId={referrerId}&{PagingRequest.AllQuery}"
+                : $"api/referrers/payments?{PagingRequest.AllQuery}")).Items;
 
     public Task<ReferrerPayment> AddPaymentAsync(ReferrerPayment payment)
         => _api.PostAsync<ReferrerPayment>("api/referrers/payments", payment);
@@ -215,20 +217,21 @@ public class ReportService : IReportService
     private readonly IApiClient _api;
     public ReportService(IApiClient api) => _api = api;
 
-    public Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId = null, DateTime? from = null, DateTime? to = null)
+    public async Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId = null, DateTime? from = null, DateTime? to = null)
     {
         var q = $"api/kardex?productId={productId}";
         if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
         if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
-        return _api.GetAsync<List<KardexRow>>(q);
+        q += $"&{PagingRequest.AllQuery}";
+        return (await _api.GetAsync<PagedResult<KardexRow>>(q)).Items;
     }
 
-    public Task<List<ReorderItem>> GetReorderAsync(int? warehouseId = null)
+    public async Task<List<ReorderItem>> GetReorderAsync(int? warehouseId = null)
     {
-        var q = "api/reorder";
-        if (warehouseId is > 0) q += $"?warehouseId={warehouseId}";
-        return _api.GetAsync<List<ReorderItem>>(q);
+        var q = $"api/reorder?{PagingRequest.AllQuery}";
+        if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
+        return (await _api.GetAsync<PagedResult<ReorderItem>>(q)).Items;
     }
 }
 

@@ -130,11 +130,11 @@ public class AuthApi : IAuthApi
     public Task<ReferrerDashboard> GetMyDashboardAsync()
         => _api.GetAsync<ReferrerDashboard>("api/my/dashboard");
 
-    public Task<List<ReferrerPayment>> GetMyPaymentsAsync()
-        => _api.GetAsync<List<ReferrerPayment>>("api/my/payments");
+    public async Task<List<ReferrerPayment>> GetMyPaymentsAsync()
+        => (await _api.GetAsync<PagedResult<ReferrerPayment>>($"api/my/payments?{PagingRequest.AllQuery}")).Items;
 
-    public Task<List<ReferrerProductItem>> GetMyProductsAsync(string? search = null)
-        => _api.GetAsync<List<ReferrerProductItem>>($"api/my/products?search={Uri.EscapeDataString(search ?? "")}");
+    public async Task<List<ReferrerProductItem>> GetMyProductsAsync(string? search = null)
+        => (await _api.GetAsync<PagedResult<ReferrerProductItem>>($"api/my/products?search={Uri.EscapeDataString(search ?? "")}&{PagingRequest.AllQuery}")).Items;
 
     public Task ChangePasswordAsync(ChangePasswordRequest request)
         => _api.PostAsync<object>("api/auth/change-password", request);

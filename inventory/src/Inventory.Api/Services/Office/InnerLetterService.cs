@@ -18,12 +18,12 @@ namespace Inventory.Api.Services;
 public interface IInnerLetterService
 {
     Task<int> AddInnerLetterAsync(AddInnerLetterDto dto, int creatorUserId, string creatorName);
-    Task<List<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly);
-    Task<List<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search);
-    Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search);
+    Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, PagingRequest paging);
+    Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search, PagingRequest paging);
+    Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, PagingRequest paging);
     Task<InnerLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin);
     Task<LetterCartableStatsDto> GetStatsAsync(int userId);
-    Task<List<LetterPickDto>> PickListAsync(int userId, string? search);
+    Task<PagedResult<LetterPickDto>> PickListAsync(int userId, string? search, PagingRequest paging);
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditInnerLetterDto dto, int userId, bool isAdmin);
 }
@@ -214,7 +214,7 @@ public class InnerLetterService : IInnerLetterService
         return source.Id;
     }
 
-    public async Task<List<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetInboxAsync(int userId, string? search, bool? unreadOnly, PagingRequest paging)
     {
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
@@ -257,11 +257,11 @@ public class InnerLetterService : IInnerLetterService
                 ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
             })
-            .ToListAsync();
+            .ToPagedResultAsync(paging);
     }
 
     /// <summary>پوشه بایگانی — ارجاع‌های کاربر که IsBayegani=true دارند</summary>
-    public async Task<List<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetArchiveAsync(int userId, string? search, PagingRequest paging)
     {
         var q = _db.Erjas.AsNoTracking()
             .Where(e => e.ReciverUserId == userId && !e.IsDelete && !e.Source.IsDelete
@@ -301,10 +301,10 @@ public class InnerLetterService : IInnerLetterService
                 ReciverCount = e.Source.Erjas.Count(x => !x.IsDelete),
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == e.SourceId)
             })
-            .ToListAsync();
+            .ToPagedResultAsync(paging);
     }
 
-    public async Task<List<InnerLetterListItemDto>> GetSentAsync(int userId, string? search)
+    public async Task<PagedResult<InnerLetterListItemDto>> GetSentAsync(int userId, string? search, PagingRequest paging)
     {
         var q = _db.InnerLetters.AsNoTracking()
             .Where(l => l.CreatorUserId == userId && !l.IsDelete && !l.Source.IsDelete);
@@ -342,7 +342,7 @@ public class InnerLetterService : IInnerLetterService
                 HasAnswer = l.Source.Erjas.Any(e => !e.IsDelete && e.Answer != ""),
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "InnerLetters" && a.RefId == l.Id)
             })
-            .ToListAsync();
+            .ToPagedResultAsync(paging);
     }
 
     public async Task<InnerLetterDetailDto?> GetDetailAsync(int letterId, int userId, bool isAdmin)
@@ -459,7 +459,7 @@ public class InnerLetterService : IInnerLetterService
         };
     }
 
-    public async Task<List<LetterPickDto>> PickListAsync(int userId, string? search)
+    public async Task<PagedResult<LetterPickDto>> PickListAsync(int userId, string? search, PagingRequest paging)
     {
         // نامه‌هایی که کاربر فرستنده یا گیرنده‌ی آن‌ها بوده — برای انتخاب عطف/پیرو
         var q = _db.InnerLetters.AsNoTracking()
@@ -474,7 +474,6 @@ public class InnerLetterService : IInnerLetterService
         }
 
         return await q.OrderByDescending(l => l.Id)
-            .Take(30)
             .Select(l => new LetterPickDto
             {
                 LetterId = l.Id,
@@ -483,7 +482,7 @@ public class InnerLetterService : IInnerLetterService
                 Date = l.DateSabt,
                 IsSent = l.CreatorUserId == userId
             })
-            .ToListAsync();
+            .ToPagedResultAsync(paging);
     }
 
     public async Task DeleteAsync(int letterId, int userId, bool isAdmin)

@@ -34,8 +34,8 @@ public class ReferrersController : ApiControllerBase
 
     /// <summary>فهرست معرف‌ها.</summary>
     [HttpGet]
-    public async Task<ActionResult<PagedResult<Referrer>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _service.GetReferrersPagedAsync(activeOnly, page, pageSize));
+    public async Task<ActionResult<PagedResult<Referrer>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetReferrersPagedAsync(activeOnly, paging ?? new PagingRequest()));
 
     /// <summary>ایجاد یا ویرایش معرف.</summary>
     [HttpPost]
@@ -52,14 +52,15 @@ public class ReferrersController : ApiControllerBase
 
     /// <summary>کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance).</summary>
     [HttpGet("wallets")]
-    public async Task<ActionResult<List<Referrer>>> GetWallets(
-        [FromQuery] string? search, [FromQuery] string? sortBy = "name", [FromQuery] bool desc = false)
-        => Ok(await _service.GetReferrerWalletsAsync(search, sortBy, desc));
+    public async Task<ActionResult<PagedResult<Referrer>>> GetWallets(
+        [FromQuery] string? search, [FromQuery] string? sortBy = "name", [FromQuery] bool desc = false,
+        [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetReferrerWalletsPagedAsync(search, sortBy, desc, paging ?? new PagingRequest()));
 
     /// <summary>فهرست اسناد پرداخت (اختیاری: فقط یک معرف).</summary>
     [HttpGet("payments")]
-    public async Task<ActionResult<List<ReferrerPayment>>> GetPayments([FromQuery] int? referrerId)
-        => Ok(await _service.GetReferrerPaymentsAsync(referrerId));
+    public async Task<ActionResult<PagedResult<ReferrerPayment>>> GetPayments([FromQuery] int? referrerId, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetReferrerPaymentsAsync(referrerId, paging ?? new PagingRequest()));
 
     /// <summary>ثبت سند پرداخت پورسانت به معرف.</summary>
     [HttpPost("payments")]

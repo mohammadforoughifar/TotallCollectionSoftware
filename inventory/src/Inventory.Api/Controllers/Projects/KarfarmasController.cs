@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -15,7 +16,7 @@ public class KarfarmasController : RbacControllerBase
 
     /// <summary>لیست کارفرماها + جستجو</summary>
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -26,9 +27,8 @@ public class KarfarmasController : RbacControllerBase
                                      (k.ModirAmelPhone != null && k.ModirAmelPhone.Contains(search)));
 
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
         var items = await query.OrderByDescending(k => k.CreatedAt)
-            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ApplyPaging(paging)
             .Select(k => new KarFarmaDto
             {
                 Id = k.Id,

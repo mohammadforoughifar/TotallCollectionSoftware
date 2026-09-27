@@ -377,12 +377,12 @@
     {
         try
         {
-            var all = await Http.GetFromJsonAsync<List<SystemInfoItem>>("/api/SystemInfo") ?? new();
+            var all = (await Http.GetFromJsonAsync<PagedResult<SystemInfoItem>>($"/api/SystemInfo?{PagingRequest.AllQuery}"))?.Items ?? new();
             // همه‌ی سیستم‌ها (تأییدشده و در انتظار) — جدیدترین اول
             items = all.OrderByDescending(x => x.ReceivedAt).ToList();
-            try { users = await Http.GetFromJsonAsync<List<SystemUserItem>>("/api/SystemUsers") ?? new(); }
+            try { users = (await Http.GetFromJsonAsync<PagedResult<SystemUserItem>>($"/api/SystemUsers?{PagingRequest.AllQuery}"))?.Items ?? new(); }
             catch { users = new(); }
-            try { departments = await Http.GetFromJsonAsync<List<DeptItem>>("/api/SystemDepartments") ?? new(); }
+            try { departments = (await Http.GetFromJsonAsync<PagedResult<DeptItem>>($"/api/SystemDepartments?{PagingRequest.AllQuery}"))?.Items ?? new(); }
             catch { departments = new(); }
             ComputeAlarm();
             await LoadWeakestTips();

@@ -35,11 +35,32 @@ public class ExpenseService : IExpenseService
         }).ToList();
     }
 
-    public async Task<PagedResult<ExpenseCategoryDto>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize)
+    // دسته‌ها: Skip/Take روی دیتابیس؛ آمار فقط برای دسته‌های همان صفحه
+    public async Task<PagedResult<ExpenseCategoryDto>> GetCategoriesPagedAsync(bool activeOnly, PagingRequest paging)
     {
-        var all = await GetCategoriesAsync(activeOnly);
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<ExpenseCategoryDto> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
+        var q = _db.ExpenseCategories.AsNoTracking().AsQueryable();
+        if (activeOnly) q = q.Where(c => c.IsActive);
+
+        var total = await q.CountAsync();
+        var cats = await q.OrderBy(c => c.Name).ApplyPaging(paging).ToListAsync();
+        var ids = cats.Select(c => c.Id).ToList();
+
+        // آمار در حافظه (SQLite جمع decimal در SQL ندارد) — فقط هزینه‌های دسته‌های این صفحه
+        var expenses = await _db.Expenses.AsNoTracking().Where(e => ids.Contains(e.CategoryId)).ToListAsync();
+        var stats = expenses.GroupBy(e => e.CategoryId)
+            .ToDictionary(g => g.Key, g => new { Count = g.Count(), Total = g.Sum(x => x.Amount) });
+
+        var items = cats.Select(c => new ExpenseCategoryDto
+        {
+            Id = c.Id,
+            Name = c.Name,
+            IsActive = c.IsActive,
+            CreatedAt = c.CreatedAt,
+            ExpenseCount = stats.TryGetValue(c.Id, out var s) ? s.Count : 0,
+            TotalAmount = stats.TryGetValue(c.Id, out var s2) ? s2.Total : 0
+        }).ToList();
+
+        return new PagedResult<ExpenseCategoryDto> { Items = items, TotalCount = total };
     }
 
     public async Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto dto)
@@ -84,7 +105,7 @@ public class ExpenseService : IExpenseService
 
     // =============================== اسناد هزینه ===============================
 
-    public async Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, int page, int pageSize)
+    public async Task<PagedResult<ExpenseDto>> GetExpensesAsync(string? search, int? categoryId, DateTime? from, DateTime? to, PagingRequest paging)
     {
         var q = _db.Expenses.AsNoTracking().AsQueryable();
         if (categoryId is > 0) q = q.Where(e => e.CategoryId == categoryId);
@@ -99,11 +120,9 @@ public class ExpenseService : IExpenseService
         }
 
         var total = await q.CountAsync();
-        if (pageSize <= 0) pageSize = 15;
-        if (page <= 0) page = 1;
 
         var items = await q.OrderByDescending(e => e.Date).ThenByDescending(e => e.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            .ApplyPaging(paging).ToListAsync();
 
         var catNames = await _db.ExpenseCategories.ToDictionaryAsync(c => c.Id, c => c.Name);
 

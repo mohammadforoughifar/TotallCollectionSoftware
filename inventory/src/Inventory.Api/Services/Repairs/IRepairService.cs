@@ -8,12 +8,12 @@ public interface IRepairService
 {
     // ---------------- تعمیرکارها ----------------
     Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false);
-    Task<PagedResult<Technician>> GetTechniciansPagedAsync(bool activeOnly, int page, int pageSize);
+    Task<PagedResult<Technician>> GetTechniciansPagedAsync(bool activeOnly, PagingRequest paging);
     Task<Technician> SaveTechnicianAsync(Technician dto);
     Task DeleteTechnicianAsync(int id);
 
     // ---------------- پذیرش تعمیر ----------------
-    Task<PagedResult<RepairOrderDto>> GetRepairsAsync(string? search, RepairStatus? status, int? technicianId, int page, int pageSize);
+    Task<PagedResult<RepairOrderDto>> GetRepairsAsync(string? search, RepairStatus? status, int? technicianId, PagingRequest paging);
     Task<RepairOrderDto?> GetRepairAsync(int id);
     Task<RepairOrderDto> SaveRepairAsync(RepairOrderDto dto);
     Task DeleteRepairAsync(int id);

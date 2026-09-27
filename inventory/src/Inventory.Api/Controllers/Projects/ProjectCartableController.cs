@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
@@ -55,20 +56,23 @@ public class ProjectCartableController : RbacControllerBase
     // ==================== لیست صف‌ها ====================
     /// <param name="kind">manager (در انتظار تایید مدیر) | expert (در انتظار کارشناسی)</param>
     [HttpGet("queue")]
-    public async Task<IActionResult> Queue([FromQuery] string? kind)
+    public async Task<IActionResult> Queue([FromQuery] string? kind, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(CCModule, "Read") is { } forbid) return forbid;
 
         var isManager = string.Equals(kind, "manager", StringComparison.OrdinalIgnoreCase);
         var status = isManager ? 0 : 1;
 
-        // کارتابل FIFO — قدیمی‌ترین در انتظار، بالای لیست
-        var list = await Db.ProjectEntryExits.AsNoTracking()
+        // کارتابل FIFO — قدیمی‌ترین در انتظار، بالای لیست (Skip/Take روی دیتابیس)
+        var query = Db.ProjectEntryExits.AsNoTracking()
             .Include(p => p.KarFarma)
             .Include(p => p.User)
             .Include(p => p.Attaches.Where(a => !a.IsDelete))
-            .Where(p => !p.IsDelete && p.FlowStatus == status)
+            .Where(p => !p.IsDelete && p.FlowStatus == status);
+        var total = await query.CountAsync();
+        var list = await query
             .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
+            .ApplyPaging(paging)
             .ToListAsync();
 
         var today = DateTime.Today;
@@ -86,7 +90,7 @@ public class ProjectCartableController : RbacControllerBase
             RegisterUser = p.User is null ? null : DisplayOf(p.User),
             DaysWaiting = Math.Max(0, (today - p.CreatedAt.Date).Days),
             AttachCount = p.Attaches.Count
-        }).ToList());
+        }).ToPagedResult(total));
     }
 
     // ==================== اکشن‌های مدیر ====================

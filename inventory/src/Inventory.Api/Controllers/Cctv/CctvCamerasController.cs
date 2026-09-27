@@ -1,3 +1,5 @@
+using Inventory.Shared.Dtos;
+using Inventory.Api.Services;
 using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +23,7 @@ public class CctvCamerasController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromQuery] string? q)
+    public async Task<IActionResult> Get([FromQuery] string? q, [FromQuery] PagingRequest? paging = null)
     {
         var list = _db.CctvCameras.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
@@ -33,7 +35,7 @@ public class CctvCamerasController : ControllerBase
                 (c.Mac != null && c.Mac.Contains(q)) ||
                 (c.Location != null && c.Location.Contains(q)));
         }
-        return Ok(await list.OrderByDescending(c => c.Id).ToListAsync());
+        return Ok(await list.OrderByDescending(c => c.Id).ToPagedResultAsync(paging));
     }
 
     [HttpGet("{id}")]

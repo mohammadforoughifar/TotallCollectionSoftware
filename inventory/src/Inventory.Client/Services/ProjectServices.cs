@@ -224,8 +224,8 @@ public class ProjectCartableService : IProjectCartableService
     public Task<ProjectCartableCountsDto?> GetCountsAsync()
         => _api.GetAsync<ProjectCartableCountsDto?>("api/projectcartable/counts");
 
-    public Task<List<ProjectCartableItem>> GetQueueAsync(string kind)
-        => _api.GetAsync<List<ProjectCartableItem>>($"api/projectcartable/queue?kind={Uri.EscapeDataString(kind)}");
+    public async Task<List<ProjectCartableItem>> GetQueueAsync(string kind)
+        => (await _api.GetAsync<PagedResult<ProjectCartableItem>>($"api/projectcartable/queue?kind={Uri.EscapeDataString(kind)}&{PagingRequest.AllQuery}")).Items;
 
     public Task ApproveAsync(int id, string? note)
         => _api.PostAsync<object>($"api/projectcartable/{id}/approve", new ProjectFlowActionDto { Note = note });

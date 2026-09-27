@@ -18,8 +18,8 @@ public class OrdersController : ApiControllerBase
     public async Task<ActionResult<PagedResult<Order>>> GetAll(
         [FromQuery] TransactionType type, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
         [FromQuery] int? partyId, [FromQuery] int? warehouseId,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _service.GetOrdersAsync(type, from, to, partyId, warehouseId, page, pageSize));
+        [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetOrdersAsync(type, from, to, partyId, warehouseId, paging ?? new PagingRequest()));
 
     /// <summary>پیشنهاد قیمت بر اساس آخرین معامله کالا.</summary>
     [HttpGet("suggest-price")]

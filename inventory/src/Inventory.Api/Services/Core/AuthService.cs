@@ -173,11 +173,39 @@ public class AuthService : IAuthService
         }).ToList();
     }
 
-    public async Task<PagedResult<UserDto>> GetUsersPagedAsync(int page, int pageSize)
+    // کاربران: Skip/Take روی دیتابیس؛ نقش‌ها و معرف فقط برای کاربران همان صفحه
+    public async Task<PagedResult<UserDto>> GetUsersPagedAsync(PagingRequest paging)
     {
-        var all = await GetUsersAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<UserDto> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
+        var q = _db.Users.AsNoTracking();
+        var total = await q.CountAsync();
+        var users = await q.OrderBy(u => u.Username).ApplyPaging(paging).ToListAsync();
+        var ids = users.Select(u => u.Id).ToList();
+
+        var refNames = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
+        var roleNames = await _db.Roles.ToDictionaryAsync(r => r.Id, r => r.Name);
+        var userRoles = await _db.UserRoles.Where(ur => ids.Contains(ur.UserId)).ToListAsync();
+
+        var items = users.Select(u => new UserDto
+        {
+            Id = u.Id,
+            Username = u.Username,
+            Role = u.Role,
+            RoleIds = userRoles.Where(ur => ur.UserId == u.Id).Select(ur => ur.RoleId).ToList(),
+            RoleNames = userRoles.Where(ur => ur.UserId == u.Id)
+                .Select(ur => roleNames.GetValueOrDefault(ur.RoleId, ""))
+                .Where(n => n != "").ToList(),
+            ReferrerId = u.ReferrerId,
+            ReferrerName = u.ReferrerId.HasValue && refNames.TryGetValue(u.ReferrerId.Value, out var n) ? n : null,
+            FirstName = u.FirstName,
+            LastName = u.LastName,
+            Mobile = u.Mobile,
+            BaleChatId = u.BaleChatId,
+            EitaaChatId = u.EitaaChatId,
+            IsActive = u.IsActive,
+            CreatedAt = u.CreatedAt
+        }).ToList();
+
+        return new PagedResult<UserDto> { Items = items, TotalCount = total };
     }
 
     /// <summary>نگاشت نقش‌های RBAC به نقش قدیمی (برای احراز هویت/JWT).</summary>
@@ -341,7 +369,8 @@ public class AuthService : IAuthService
             }
         }
 
-        var payments = await _inventory.GetReferrerPaymentsAsync(referrerId);
+        // آخرین ۸ سند پرداخت — Skip/Take روی دیتابیس
+        var payments = (await _inventory.GetReferrerPaymentsAsync(referrerId, PagingRequest.FromSkipTake(0, 8))).Items;
 
         return new ReferrerDashboard
         {
@@ -358,7 +387,7 @@ public class AuthService : IAuthService
             WalletBalance = wallet?.WalletBalance ?? 0,
             MonthCommission = monthCommission,
             RecentSales = recent,
-            RecentPayments = payments.Take(8).ToList()
+            RecentPayments = payments
         };
     }
 }

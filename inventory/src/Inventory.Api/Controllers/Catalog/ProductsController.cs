@@ -16,8 +16,8 @@ public class ProductsController : ApiControllerBase
     [HttpGet]
     public async Task<ActionResult<PagedResult<Product>>> GetAll(
         [FromQuery] string? search, [FromQuery] bool? below, [FromQuery] int? warehouseId,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _service.GetProductsAsync(search, below == true, page, pageSize, warehouseId));
+        [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetProductsAsync(search, below == true, paging ?? new PagingRequest(), warehouseId));
 
     /// <summary>فهرست خلاصه کالاها برای لیست‌های انتخاب.</summary>
     [HttpGet("lookups")]

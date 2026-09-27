@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -297,7 +298,7 @@ public class ProjectsController : RbacControllerBase
         [FromQuery] int? typeFactorId,
         [FromQuery] int? userId,
         [FromQuery] bool? returned,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -328,9 +329,8 @@ public class ProjectsController : RbacControllerBase
         if (returned == true) query = query.Where(p => p.ReturnProjectId > 0);
 
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
         var list = await query.OrderByDescending(p => p.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            .ApplyPaging(paging).ToListAsync();
         return Ok(new PagedResult<ProjectEntryExitDto> { Items = list.Select(p => ToDto(p, showFactor)).ToList(), TotalCount = total });
     }
 

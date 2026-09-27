@@ -79,18 +79,116 @@ public class InventoryService : IInventoryService
     }
 
 
-    private static PagedResult<T> Page<T>(IReadOnlyList<T> items, int page, int pageSize)
+    // ---------- صفحه‌بندی Skip/Take ----------
+    // معرف‌ها: Skip/Take روی دیتابیس؛ شمارش سفارش فقط برای رکوردهای همان صفحه
+    public async Task<PagedResult<Referrer>> GetReferrersPagedAsync(bool activeOnly, PagingRequest paging)
     {
-        page = page < 1 ? 1 : page;
-        pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<T> { TotalCount = items.Count, Items = items.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
+        var q = _db.Referrers.AsNoTracking().AsQueryable();
+        if (activeOnly) q = q.Where(r => r.IsActive);
+
+        var total = await q.CountAsync();
+        var list = await q.OrderBy(r => r.Name).ApplyPaging(paging).ToListAsync();
+        var ids = list.Select(r => r.Id).ToList();
+
+        var counts = await _db.Transactions
+            .Where(t => t.ReferrerId != null && ids.Contains(t.ReferrerId!.Value))
+            .GroupBy(t => t.ReferrerId!.Value)
+            .Select(g => new { Id = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        var items = list.Select(r => new Referrer
+        {
+            Id = r.Id,
+            Name = r.Name,
+            CompanyName = r.CompanyName,
+            Phone = r.Phone,
+            GoodsCommissionPercent = r.GoodsCommissionPercent,
+            ServiceCommissionPercent = r.ServiceCommissionPercent,
+            CardNumber = r.CardNumber,
+            Iban = r.Iban,
+            CanViewProducts = r.CanViewProducts,
+            IsActive = r.IsActive,
+            CreatedAt = r.CreatedAt,
+            OrderCount = counts.FirstOrDefault(x => x.Id == r.Id)?.Count ?? 0
+        }).ToList();
+
+        return new PagedResult<Referrer> { Items = items, TotalCount = total };
     }
 
-    public async Task<PagedResult<Referrer>> GetReferrersPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetReferrersAsync(activeOnly), page, pageSize);
-    public async Task<PagedResult<ProductCategory>> GetCategoriesPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetCategoriesAsync(activeOnly), page, pageSize);
-    public async Task<PagedResult<MeasureUnit>> GetUnitsPagedAsync(bool activeOnly, int page, int pageSize) => Page(await GetUnitsAsync(activeOnly), page, pageSize);
-    public async Task<PagedResult<Warehouse>> GetWarehousesPagedAsync(int page, int pageSize) => Page(await GetWarehousesAsync(), page, pageSize);
-    public async Task<PagedResult<Party>> GetPartiesPagedAsync(PartyType type, int page, int pageSize) => Page(await GetPartiesAsync(type), page, pageSize);
+    // گروه کالا: ترتیب درختی در حافظه محاسبه می‌شود → Skip/Take روی لیست مرتب‌شده
+    public async Task<PagedResult<ProductCategory>> GetCategoriesPagedAsync(bool activeOnly, PagingRequest paging)
+        => (await GetCategoriesAsync(activeOnly)).ToPagedResult(paging);
+
+    // واحد شمارش: Skip/Take روی دیتابیس
+    public async Task<PagedResult<MeasureUnit>> GetUnitsPagedAsync(bool activeOnly, PagingRequest paging)
+    {
+        var q = _db.MeasureUnits.AsNoTracking().AsQueryable();
+        if (activeOnly) q = q.Where(u => u.IsActive);
+
+        var total = await q.CountAsync();
+        var units = await q.OrderBy(u => u.Name).ApplyPaging(paging).ToListAsync();
+        var names = units.Select(u => u.Name).ToList();
+
+        var counts = await _db.Products
+            .Where(p => names.Contains(p.Unit))
+            .GroupBy(p => p.Unit)
+            .Select(g => new { Name = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        var items = units.Select(u => new MeasureUnit
+        {
+            Id = u.Id,
+            Name = u.Name,
+            IsActive = u.IsActive,
+            CreatedAt = u.CreatedAt,
+            ProductCount = counts.FirstOrDefault(x => x.Name == u.Name)?.Count ?? 0
+        }).ToList();
+
+        return new PagedResult<MeasureUnit> { Items = items, TotalCount = total };
+    }
+
+    // انبار: Skip/Take روی دیتابیس
+    public async Task<PagedResult<Warehouse>> GetWarehousesPagedAsync(PagingRequest paging)
+    {
+        var q = _db.Warehouses.AsNoTracking();
+        var total = await q.CountAsync();
+        var list = await q.OrderBy(w => w.Name).ApplyPaging(paging).ToListAsync();
+        var ids = list.Select(w => w.Id).ToList();
+
+        var itemCounts = await _db.Stocks
+            .Where(s => ids.Contains(s.WarehouseId) && s.Quantity > 0)
+            .GroupBy(s => s.WarehouseId)
+            .Select(g => new { Id = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        var items = list.Select(w => new Warehouse
+        {
+            Id = w.Id,
+            Name = w.Name,
+            Address = w.Address,
+            Phone = w.Phone,
+            Note = w.Note,
+            IsActive = w.IsActive,
+            ItemCount = itemCounts.FirstOrDefault(c => c.Id == w.Id)?.Count ?? 0
+        }).ToList();
+
+        return new PagedResult<Warehouse> { Items = items, TotalCount = total };
+    }
+
+    // طرف حساب: Skip/Take روی دیتابیس؛ آمار مالی فقط برای رکوردهای صفحه
+    public async Task<PagedResult<Party>> GetPartiesPagedAsync(PartyType type, PagingRequest paging)
+    {
+        var q = _db.Parties.AsNoTracking().Where(p => p.Type == type);
+        var total = await q.CountAsync();
+        var list = await q.OrderBy(p => p.Name).ApplyPaging(paging).ToListAsync();
+        var ids = list.Select(p => p.Id).ToList();
+
+        var txns = await _db.Transactions.Where(t => t.PartyId != null && ids.Contains(t.PartyId!.Value)).ToListAsync();
+        var refNames = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
+
+        var items = list.Select(p => ToPartyDto(p, txns, refNames)).ToList();
+        return new PagedResult<Party> { Items = items, TotalCount = total };
+    }
 
     public async Task<Referrer> SaveReferrerAsync(Referrer dto)
     {
@@ -211,14 +309,22 @@ public class InventoryService : IInventoryService
         return list;
     }
 
-    public async Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId)
+    // کیف پول: مرتب‌سازی روی ستون‌های محاسباتی → Skip/Take در حافظه
+    public async Task<PagedResult<Referrer>> GetReferrerWalletsPagedAsync(string? search, string? sortBy, bool desc, PagingRequest paging)
+        => (await GetReferrerWalletsAsync(search, sortBy, desc)).ToPagedResult(paging);
+
+    // اسناد پرداخت: Skip/Take روی دیتابیس
+    public async Task<PagedResult<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId, PagingRequest paging)
     {
-        var q = _db.ReferrerPayments.AsQueryable();
+        var q = _db.ReferrerPayments.AsNoTracking().AsQueryable();
         if (referrerId is > 0) q = q.Where(p => p.ReferrerId == referrerId);
-        var list = await q.OrderByDescending(p => p.Date).ThenByDescending(p => p.Id).ToListAsync();
+
+        var total = await q.CountAsync();
+        var list = await q.OrderByDescending(p => p.Date).ThenByDescending(p => p.Id)
+            .ApplyPaging(paging).ToListAsync();
 
         var names = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
-        return list.Select(p => new ReferrerPayment
+        var items = list.Select(p => new ReferrerPayment
         {
             Id = p.Id,
             ReferrerId = p.ReferrerId,
@@ -229,6 +335,8 @@ public class InventoryService : IInventoryService
             Description = p.Description,
             CreatedAt = p.CreatedAt
         }).ToList();
+
+        return new PagedResult<ReferrerPayment> { Items = items, TotalCount = total };
     }
 
     public async Task<ReferrerPayment> AddReferrerPaymentAsync(ReferrerPayment dto)
@@ -780,7 +888,7 @@ public class InventoryService : IInventoryService
 
     // =============================== کالا ===============================
 
-    public async Task<PagedResult<Product>> GetProductsAsync(string? search, bool belowReorderOnly, int page, int pageSize, int? warehouseId = null)
+    public async Task<PagedResult<Product>> GetProductsAsync(string? search, bool belowReorderOnly, PagingRequest paging, int? warehouseId = null)
     {
         var q = _db.Products.AsQueryable();
 
@@ -794,16 +902,24 @@ public class InventoryService : IInventoryService
             q = q.Where(p => p.Name.Contains(s) || p.Code.Contains(s) || (p.Category != null && p.Category.Contains(s)) || (p.Barcode != null && p.Barcode.Contains(s)));
         }
 
-        var all = await q.OrderBy(p => p.Name).ToListAsync();
-        var stocks = await _db.Stocks.ToListAsync();
         var whNames = await _db.Warehouses.ToDictionaryAsync(w => w.Id, w => w.Name);
 
-        var dtos = all.Select(p => ToProductDto(p, stocks, whNames)).ToList();
         if (belowReorderOnly)
-            dtos = dtos.Where(p => p.BelowReorder).ToList();
+        {
+            // فیلتر «زیر نقطه سفارش» به موجودی محاسباتی وابسته است → Skip/Take در حافظه
+            var all = await q.OrderBy(p => p.Name).ToListAsync();
+            var stocksAll = await _db.Stocks.ToListAsync();
+            var dtos = all.Select(p => ToProductDto(p, stocksAll, whNames)).Where(p => p.BelowReorder).ToList();
+            return dtos.ToPagedResult(paging);
+        }
 
-        var total = dtos.Count;
-        var items = dtos.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        // حالت عادی: شمارش + Skip/Take روی دیتابیس، موجودی فقط برای کالاهای همان صفحه
+        var total = await q.CountAsync();
+        var pageProducts = await q.OrderBy(p => p.Name).ApplyPaging(paging).ToListAsync();
+        var ids = pageProducts.Select(p => p.Id).ToList();
+        var stocks = await _db.Stocks.Where(s => ids.Contains(s.ProductId)).ToListAsync();
+
+        var items = pageProducts.Select(p => ToProductDto(p, stocks, whNames)).ToList();
         return new PagedResult<Product> { Items = items, TotalCount = total };
     }
 
@@ -987,22 +1103,24 @@ public class InventoryService : IInventoryService
         var list = await _db.Parties.Where(p => p.Type == type).OrderBy(p => p.Name).ToListAsync();
         var txns = await _db.Transactions.Where(t => t.PartyId != null).ToListAsync();
         var refNames = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
-        return list.Select(p => new Party
-        {
-            Id = p.Id,
-            Type = p.Type,
-            Name = p.Name,
-            Phone = p.Phone,
-            Mobile = p.Mobile,
-            Address = p.Address,
-            Note = p.Note,
-            IsActive = p.IsActive,
-            ReferrerId = p.ReferrerId,
-            ReferrerName = p.ReferrerId.HasValue && refNames.TryGetValue(p.ReferrerId.Value, out var rn) ? rn : null,
-            Balance = txns.Where(t => t.PartyId == p.Id)
-                          .Sum(t => t.Type == TransactionType.Sale ? t.Amount : -t.Amount)
-        }).ToList();
+        return list.Select(p => ToPartyDto(p, txns, refNames)).ToList();
     }
+
+    private static Party ToPartyDto(Db.Party p, List<Db.Transaction> txns, Dictionary<int, string> refNames) => new()
+    {
+        Id = p.Id,
+        Type = p.Type,
+        Name = p.Name,
+        Phone = p.Phone,
+        Mobile = p.Mobile,
+        Address = p.Address,
+        Note = p.Note,
+        IsActive = p.IsActive,
+        ReferrerId = p.ReferrerId,
+        ReferrerName = p.ReferrerId.HasValue && refNames.TryGetValue(p.ReferrerId.Value, out var rn) ? rn : null,
+        Balance = txns.Where(t => t.PartyId == p.Id)
+                      .Sum(t => t.Type == TransactionType.Sale ? t.Amount : -t.Amount)
+    };
 
     public async Task<Party> SavePartyAsync(Party dto)
     {
@@ -1036,7 +1154,7 @@ public class InventoryService : IInventoryService
 
     // =============================== موجودی ===============================
 
-    public async Task<PagedResult<StockItem>> GetStockAsync(int? warehouseId, string? search, bool belowOnly, int page, int pageSize)
+    public async Task<PagedResult<StockItem>> GetStockAsync(int? warehouseId, string? search, bool belowOnly, PagingRequest paging)
     {
         var stocks = await _db.Stocks.ToListAsync();
         var products = await _db.Products.ToListAsync();
@@ -1074,13 +1192,12 @@ public class InventoryService : IInventoryService
 
         if (belowOnly) rows = rows.Where(r => r.BelowReorder).ToList();
 
-        var total = rows.Count;
-        var items = rows
+        // Skip/Take روی لیست مرتب‌شده
+        return rows
             .OrderBy(r => r.ProductName)
             .ThenBy(r => r.WarehouseName)
-            .Skip((page - 1) * pageSize).Take(pageSize).ToList();
-
-        return new PagedResult<StockItem> { Items = items, TotalCount = total };
+            .ToList()
+            .ToPagedResult(paging);
     }
 
     public async Task AdjustStockAsync(AdjustmentCommand cmd)
@@ -1233,7 +1350,7 @@ public class InventoryService : IInventoryService
         return await ToOrderDtoAsync(t);
     }
 
-    public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize)
+    public async Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, PagingRequest paging)
     {
         var q = _db.Transactions.Include(x => x.Lines)
             .Include(x => x.Cheques).Include(x => x.Installments)
@@ -1245,7 +1362,7 @@ public class InventoryService : IInventoryService
 
         var total = await q.CountAsync();
         var pageItems = await q.OrderByDescending(t => t.Date).ThenByDescending(t => t.Id)
-                               .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+                               .ApplyPaging(paging).ToListAsync();
 
         var items = new List<Order>();
         foreach (var t in pageItems) items.Add(await ToOrderDtoAsync(t));
@@ -1458,7 +1575,7 @@ public class InventoryService : IInventoryService
 
     // =============================== کاردکس ===============================
 
-    public async Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to)
+    public async Task<PagedResult<KardexRow>> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to, PagingRequest paging)
     {
         var q = _db.Transactions.Include(t => t.Lines)
             .Where(t => t.Lines.Any(l => l.ProductId == productId));
@@ -1516,12 +1633,13 @@ public class InventoryService : IInventoryService
         if (from.HasValue) filtered = filtered.Where(r => r.Date >= from.Value.Date);
         if (to.HasValue) filtered = filtered.Where(r => r.Date < to.Value.Date.AddDays(1));
 
-        return filtered.ToList();
+        // مانده (Balance) تجمعی است و باید روی کل گردش محاسبه شود → Skip/Take بعد از محاسبه
+        return filtered.ToList().ToPagedResult(paging);
     }
 
     // =============================== نقطه سفارش ===============================
 
-    public async Task<List<ReorderItem>> GetReorderAsync(int? warehouseId)
+    public async Task<PagedResult<ReorderItem>> GetReorderAsync(int? warehouseId, PagingRequest paging)
     {
         var stocks = await _db.Stocks.ToListAsync();
         var products = await _db.Products.Where(p => p.IsActive && p.ReorderPoint > 0).ToListAsync();
@@ -1546,7 +1664,8 @@ public class InventoryService : IInventoryService
                 });
             }
         }
-        return list.OrderByDescending(r => r.Shortage).ToList();
+        // کسری محاسباتی است → Skip/Take روی لیست مرتب‌شده در حافظه
+        return list.OrderByDescending(r => r.Shortage).ToList().ToPagedResult(paging);
     }
 
     // =============================== داشبورد ===============================
@@ -1897,7 +2016,7 @@ public class InventoryService : IInventoryService
         return dash;
     }
 
-    public async Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false)
+    public async Task<PagedResult<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, PagingRequest paging, bool bypassFlag = false)
     {
         var referrer = await _db.Referrers.FindAsync(referrerId)
             ?? throw new InvalidOperationException("معرف یافت نشد.");
@@ -1919,6 +2038,7 @@ public class InventoryService : IInventoryService
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
 
         // فقط کالاهای دارای موجودی؛ بدون قیمت خرید و بدون مقدار دقیق موجودی (نمای محدود)
+        // فیلتر موجودی محاسباتی است → Skip/Take در حافظه
         return products
             .Where(p => stockByProduct.TryGetValue(p.Id, out var qty) && qty > 0)
             .Select(p => new ReferrerProductItem
@@ -1929,7 +2049,8 @@ public class InventoryService : IInventoryService
                 Category = p.Category,
                 // قیمت فروش عمداً ارسال نمی‌شود — معرف فقط موجود بودن کالا را می‌بیند
                 InStock = true
-            }).ToList();
+            }).ToList()
+            .ToPagedResult(paging);
     }
 
     /// <summary>پاس کردن چک.</summary>

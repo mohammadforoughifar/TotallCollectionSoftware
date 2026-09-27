@@ -1,3 +1,4 @@
+using Inventory.Shared.Dtos;
 using System.Security.Claims;
 using System.Text;
 using Inventory.Api.Data;
@@ -68,7 +69,8 @@ public class AttendanceController : ControllerBase
 
     // ================== شیفت‌ها ==================
     [HttpGet("shifts")]
-    public async Task<IActionResult> GetShifts() => Ok((await _db.ShiftGroups.ToListAsync()).OrderBy(s => s.StartTime).ToList());
+    public async Task<IActionResult> GetShifts([FromQuery] PagingRequest? paging = null)
+        => Ok((await _db.ShiftGroups.AsNoTracking().ToListAsync()).OrderBy(s => s.StartTime).ToList().ToPagedResult(paging));
 
     [HttpPost("shifts")]
     public async Task<IActionResult> SaveShift([FromBody] ShiftInput input)
@@ -146,12 +148,14 @@ public class AttendanceController : ControllerBase
 
     // ================== لیست پرسنل ==================
     [HttpGet("personnel")]
-    public async Task<IActionResult> GetPersonnel()
+    public async Task<IActionResult> GetPersonnel([FromQuery] PagingRequest? paging = null)
     {
         var canManage = await HasAsync("ManageShifts") || User.IsInRole("Admin");
         var canView = await IsAdminAsync();
         if (!canManage && !canView) return Forbid();
-        var list = await _db.Users.Where(u => u.IsActive).OrderBy(u => u.Username).ToListAsync();
+        var query = _db.Users.AsNoTracking().Where(u => u.IsActive);
+        var total = await query.CountAsync();
+        var list = await query.OrderBy(u => u.Username).ApplyPaging(paging).ToListAsync();
         var shifts = await _db.ShiftGroups.ToDictionaryAsync(s => s.Id);
         return Ok(list.Select(u => new
         {
@@ -160,7 +164,7 @@ public class AttendanceController : ControllerBase
             FullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim(),
             u.ShiftGroupId,
             ShiftName = u.ShiftGroupId.HasValue && shifts.TryGetValue(u.ShiftGroupId.Value, out var s) ? s.Name : null,
-        }));
+        }).ToPagedResult(total));
     }
 
     // ================== شیفت پیش‌فرض کاربر جاری ==================

@@ -502,7 +502,7 @@
     }
 
     private async Task LoadMine()
-    { try { mine = await Http.GetFromJsonAsync<List<LeaveItem>>("/api/LeaveRequests/mine") ?? new(); } catch { mine = new(); } }
+    { try { mine = (await Http.GetFromJsonAsync<PagedResult<LeaveItem>>($"/api/LeaveRequests/mine?{PagingRequest.AllQuery}"))?.Items ?? new(); } catch { mine = new(); } }
 
     private async Task LoadPendingAll()
     {

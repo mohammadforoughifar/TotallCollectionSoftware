@@ -1,3 +1,4 @@
+using Inventory.Shared.Dtos;
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Microsoft.AspNetCore.Authorization;
@@ -82,12 +83,12 @@ public class ArchiveController : ControllerBase
 
     // ---------- آیتم‌ها ----------
     [HttpGet("items/{folderId:int}")]
-    public async Task<IActionResult> Items(int folderId) =>
+    public async Task<IActionResult> Items(int folderId, [FromQuery] PagingRequest? paging = null) =>
         Ok(await _db.ArchiveItems
             .Where(i => i.OwnerUserId == MyUserId && i.FolderId == folderId)
             .OrderByDescending(i => i.Id)
             .Select(i => new { i.Id, i.Module, i.RefId, i.Title, i.Link, i.Note, i.CreatedAt })
-            .ToListAsync());
+            .ToPagedResultAsync(paging));
 
     public class ItemDto
     {

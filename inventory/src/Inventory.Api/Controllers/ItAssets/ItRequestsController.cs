@@ -1,3 +1,4 @@
+using Inventory.Shared.Dtos;
 using System.Security.Claims;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
@@ -207,9 +208,11 @@ public class ItRequestsController : ControllerBase
             : new List<object>()
     };
 
-    private async Task<List<object>> BuildList(IQueryable<ItRequest> q, bool internalView)
+    private async Task<PagedResult<object>> BuildList(IQueryable<ItRequest> q, bool internalView, PagingRequest? paging)
     {
-        var reqs = await q.OrderByDescending(r => r.Id).ToListAsync();
+        // Skip/Take روی دیتابیس؛ اطلاعات تکمیلی فقط برای درخواست‌های همان صفحه
+        var total = await q.CountAsync();
+        var reqs = await q.OrderByDescending(r => r.Id).ApplyPaging(paging).ToListAsync();
         var ids = reqs.Select(r => r.Id).ToList();
         var asgs = await _db.ItRequestAssignments.Where(a => ids.Contains(a.RequestId)).ToListAsync();
         var attCounts = await _db.ItRequestAttachments.Where(a => ids.Contains(a.RequestId))
@@ -219,7 +222,7 @@ public class ItRequestsController : ControllerBase
             .Select(sn => sn.RequestId).ToListAsync()).ToHashSet();
         return reqs.Select(r => ToItem(r,
             asgs.Where(a => a.RequestId == r.Id).ToList(),
-            attCounts.FirstOrDefault(c => c.Key == r.Id)?.C ?? 0, internalView, seenIds)).ToList();
+            attCounts.FirstOrDefault(c => c.Key == r.Id)?.C ?? 0, internalView, seenIds)).ToPagedResult(total);
     }
 
     // ================== رویت درخواست (نشانگر «جدید» برداشته می‌شود) ==================
@@ -236,29 +239,29 @@ public class ItRequestsController : ControllerBase
 
     /// <summary>کارتابل درخواست‌دهنده — بدون جزئیات داخلی واحد IT.</summary>
     [HttpGet("mine")]
-    public async Task<IActionResult> Mine() =>
-        Ok(await BuildList(_db.ItRequests.Where(r => r.RequesterUserId == MyUserId), internalView: false));
+    public async Task<IActionResult> Mine([FromQuery] PagingRequest? paging = null) =>
+        Ok(await BuildList(_db.ItRequests.Where(r => r.RequesterUserId == MyUserId), internalView: false, paging));
 
     /// <summary>کارتابل مدیر آی‌تی.</summary>
     [HttpGet("manager")]
-    public async Task<IActionResult> ManagerInbox()
+    public async Task<IActionResult> ManagerInbox([FromQuery] PagingRequest? paging = null)
     {
         if (!await HasAsync("Manage")) return Forbid();
-        return Ok(await BuildList(_db.ItRequests, internalView: true));
+        return Ok(await BuildList(_db.ItRequests, internalView: true, paging));
     }
 
     /// <summary>کارتابل کارشناس.</summary>
     [HttpGet("expert")]
-    public async Task<IActionResult> ExpertInbox()
+    public async Task<IActionResult> ExpertInbox([FromQuery] PagingRequest? paging = null)
     {
         if (!await HasAsync("Expert")) return Forbid();
         var myReqIds = _db.ItRequestAssignments.Where(a => a.ExpertUserId == MyUserId).Select(a => a.RequestId);
-        return Ok(await BuildList(_db.ItRequests.Where(r => myReqIds.Contains(r.Id)), internalView: true));
+        return Ok(await BuildList(_db.ItRequests.Where(r => myReqIds.Contains(r.Id)), internalView: true, paging));
     }
 
     // ================== آرشیو رفت‌وبرگشت‌ها ==================
     [HttpGet("{id:int}/logs")]
-    public async Task<IActionResult> Logs(int id)
+    public async Task<IActionResult> Logs(int id, [FromQuery] PagingRequest? paging = null)
     {
         var req = await _db.ItRequests.FindAsync(id);
         if (req == null) return NotFound();
@@ -269,7 +272,7 @@ public class ItRequestsController : ControllerBase
 
         return Ok(await q.OrderBy(l => l.Id)
             .Select(l => new { l.Id, l.ActorName, l.ActorRole, l.Action, l.Text, l.CreatedAt })
-            .ToListAsync());
+            .ToPagedResultAsync(paging));
     }
 
     // ================== ارجاع مدیر ==================
@@ -636,10 +639,11 @@ public class ItRequestsController : ControllerBase
 
     // ================== سوابق درخواست‌های یک سیستم (برای شناسنامه سیستم) ==================
     [HttpGet("by-system/{sysId:int}")]
-    public async Task<IActionResult> BySystem(int sysId)
+    public async Task<IActionResult> BySystem(int sysId, [FromQuery] PagingRequest? paging = null)
     {
-        var reqs = await _db.ItRequests.Where(r => r.SystemInfoId == sysId)
-            .OrderByDescending(r => r.Id).ToListAsync();
+        var query = _db.ItRequests.Where(r => r.SystemInfoId == sysId);
+        var total = await query.CountAsync();
+        var reqs = await query.OrderByDescending(r => r.Id).ApplyPaging(paging).ToListAsync();
         var ids = reqs.Select(r => r.Id).ToList();
         var asgs = await _db.ItRequestAssignments.Where(a => ids.Contains(a.RequestId)).ToListAsync();
 
@@ -648,7 +652,7 @@ public class ItRequestsController : ControllerBase
             r.Id, r.Number, r.Title, r.RequestType, r.Status, r.RequesterName,
             r.CreatedAt, r.CompletedAt, r.FinalResponse,
             Experts = asgs.Where(a => a.RequestId == r.Id).Select(a => a.ExpertName).ToList()
-        }));
+        }).ToPagedResult(total));
     }
 
     // ================== تکمیل توسط درخواست‌دهنده ==================

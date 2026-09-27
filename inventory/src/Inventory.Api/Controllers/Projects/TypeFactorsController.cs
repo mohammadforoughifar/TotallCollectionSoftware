@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +15,7 @@ public class TypeFactorsController : RbacControllerBase
     public TypeFactorsController(AppDbContext db) : base(db) { }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] PagingRequest? paging = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -23,9 +24,8 @@ public class TypeFactorsController : RbacControllerBase
             query = query.Where(t => t.Name.Contains(search));
 
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
         var items = await query.OrderByDescending(t => t.CreatedAt)
-            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ApplyPaging(paging)
             .Select(t => new TypeFactorDto
             {
                 Id = t.Id,

@@ -10,7 +10,7 @@ public interface IAuthService
 
     // ---------------- مدیریت کاربران (فقط مدیر) ----------------
     Task<List<UserDto>> GetUsersAsync();
-    Task<PagedResult<UserDto>> GetUsersPagedAsync(int page, int pageSize);
+    Task<PagedResult<UserDto>> GetUsersPagedAsync(PagingRequest paging);
     /// <summary>ایجاد/ویرایش کاربر. callerIsAdmin=false یعنی درخواست از اپراتور است و عملیات مرتبط با ادمین ممنوع.</summary>
     Task<UserDto> SaveUserAsync(UserDto dto, bool callerIsAdmin = true);
     Task DeleteUserAsync(int id, int currentUserId, bool callerIsAdmin = true);

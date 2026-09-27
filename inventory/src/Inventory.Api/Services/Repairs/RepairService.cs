@@ -49,11 +49,36 @@ public class RepairService : IRepairService
         }).ToList();
     }
 
-    public async Task<PagedResult<Technician>> GetTechniciansPagedAsync(bool activeOnly, int page, int pageSize)
+    // تعمیرکارها: Skip/Take روی دیتابیس؛ شمارش پذیرش فعال فقط برای رکوردهای صفحه
+    public async Task<PagedResult<Technician>> GetTechniciansPagedAsync(bool activeOnly, PagingRequest paging)
     {
-        var all = await GetTechniciansAsync(activeOnly);
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        return new PagedResult<Technician> { TotalCount = all.Count, Items = all.Skip((page - 1) * pageSize).Take(pageSize).ToList() };
+        var q = _db.Technicians.AsNoTracking().AsQueryable();
+        if (activeOnly) q = q.Where(t => t.IsActive);
+
+        var total = await q.CountAsync();
+        var list = await q.OrderBy(t => t.Name).ApplyPaging(paging).ToListAsync();
+        var ids = list.Select(t => t.Id).ToList();
+
+        var active = await _db.RepairOrders
+            .Where(r => r.TechnicianId != null && ids.Contains(r.TechnicianId.Value) &&
+                        r.Status != RepairStatus.Delivered &&
+                        r.Status != RepairStatus.Cancelled)
+            .GroupBy(r => r.TechnicianId!.Value)
+            .Select(g => new { Id = g.Key, Count = g.Count() })
+            .ToListAsync();
+
+        var items = list.Select(t => new Technician
+        {
+            Id = t.Id,
+            Name = t.Name,
+            Phone = t.Phone,
+            Specialty = t.Specialty,
+            IsActive = t.IsActive,
+            CreatedAt = t.CreatedAt,
+            ActiveRepairs = active.FirstOrDefault(a => a.Id == t.Id)?.Count ?? 0
+        }).ToList();
+
+        return new PagedResult<Technician> { Items = items, TotalCount = total };
     }
 
     public async Task<Technician> SaveTechnicianAsync(Technician dto)
@@ -100,7 +125,7 @@ public class RepairService : IRepairService
 
     // =============================== پذیرش تعمیر ===============================
 
-    public async Task<PagedResult<RepairOrderDto>> GetRepairsAsync(string? search, RepairStatus? status, int? technicianId, int page, int pageSize)
+    public async Task<PagedResult<RepairOrderDto>> GetRepairsAsync(string? search, RepairStatus? status, int? technicianId, PagingRequest paging)
     {
         var q = _db.RepairOrders.AsNoTracking().Include(r => r.Items).AsQueryable();
 
@@ -119,11 +144,9 @@ public class RepairService : IRepairService
         }
 
         var total = await q.CountAsync();
-        if (pageSize <= 0) pageSize = 15;
-        if (page <= 0) page = 1;
 
         var items = await q.OrderByDescending(r => r.ReceivedAt).ThenByDescending(r => r.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ApplyPaging(paging)
             .ToListAsync();
 
         var dtos = new List<RepairOrderDto>();

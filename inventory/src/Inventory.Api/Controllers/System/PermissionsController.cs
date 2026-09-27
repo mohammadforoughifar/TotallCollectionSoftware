@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
@@ -14,13 +15,12 @@ public class PermissionsController : ControllerBase
     public PermissionsController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> GetAll([FromQuery] PagingRequest? paging = null)
     {
         var query = _db.Permissions.AsNoTracking().OrderBy(p => p.Module).ThenBy(p => p.Action);
         var total = await query.CountAsync();
-        page = page < 1 ? 1 : page; pageSize = pageSize is < 1 or > 200 ? 20 : pageSize;
-        var items = await query.Skip((page - 1) * pageSize)
-            .Take(pageSize).Select(p => new PermissionItem { Id = p.Id, Module = p.Module, Action = p.Action }).ToListAsync();
+        var items = await query.ApplyPaging(paging)
+            .Select(p => new PermissionItem { Id = p.Id, Module = p.Module, Action = p.Action }).ToListAsync();
         return Ok(new PagedResult<PermissionItem> { Items = items, TotalCount = total });
     }
 

@@ -370,7 +370,7 @@
     private async Task Load()
     {
         isLoading = true;
-        try { items = await Http.GetFromJsonAsync<List<MachineItem>>("/api/OfficeMachines") ?? new(); }
+        try { items = (await Http.GetFromJsonAsync<PagedResult<MachineItem>>($"/api/OfficeMachines?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { items = new(); }
         finally { isLoading = false; }
     }
@@ -478,7 +478,7 @@
     private async Task LoadRepairs()
     {
         if (repairMachine == null) return;
-        try { repairList = await Http.GetFromJsonAsync<List<RepairItem>>($"/api/OfficeMachines/{repairMachine.Id}/repairs") ?? new(); }
+        try { repairList = (await Http.GetFromJsonAsync<PagedResult<RepairItem>>($"/api/OfficeMachines/{repairMachine.Id}/repairs?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { repairList = new(); }
     }
 

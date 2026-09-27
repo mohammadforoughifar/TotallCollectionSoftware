@@ -409,15 +409,15 @@
     private async Task LoadAsync()
     {
         isLoading = true;
-        try { items = await Http.GetFromJsonAsync<List<SystemUserItem>>("/api/SystemUsers") ?? new(); }
+        try { items = (await Http.GetFromJsonAsync<PagedResult<SystemUserItem>>($"/api/SystemUsers?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { items = new(); }
         try
         {
-            companies = await Http.GetFromJsonAsync<List<SystemCompanyItem>>("/api/SystemCompanies") ?? new();
+            companies = (await Http.GetFromJsonAsync<PagedResult<SystemCompanyItem>>($"/api/SystemCompanies?{PagingRequest.AllQuery}"))?.Items ?? new();
             companiesLoadFailed = false;
         }
         catch { companies = new(); companiesLoadFailed = true; }
-        try { departments = await Http.GetFromJsonAsync<List<SystemDepartmentItem>>("/api/SystemDepartments") ?? new(); }
+        try { departments = (await Http.GetFromJsonAsync<PagedResult<SystemDepartmentItem>>($"/api/SystemDepartments?{PagingRequest.AllQuery}"))?.Items ?? new(); }
         catch { departments = new(); }
         finally { isLoading = false; }
     }

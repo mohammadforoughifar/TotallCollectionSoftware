@@ -15,8 +15,8 @@ public class PartiesController : ApiControllerBase
 
     /// <summary>فهرست طرف حساب‌ها بر اساس نوع.</summary>
     [HttpGet]
-    public async Task<ActionResult<PagedResult<Party>>> GetAll([FromQuery] PartyType type, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
-        => Ok(await _service.GetPartiesPagedAsync(type, page, pageSize));
+    public async Task<ActionResult<PagedResult<Party>>> GetAll([FromQuery] PartyType type, [FromQuery] PagingRequest? paging = null)
+        => Ok(await _service.GetPartiesPagedAsync(type, paging ?? new PagingRequest()));
 
     /// <summary>ایجاد یا ویرایش طرف حساب.</summary>
     [HttpPost]
