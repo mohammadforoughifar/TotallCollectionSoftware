@@ -379,7 +379,7 @@
                                     }
                                 </div>
 
-                                <div class="paper-body">@((MarkupString)(openMsg.Body ?? "—"))</div>
+                                <div class="paper-body">@((MarkupString)RenderEmailBody(openMsg.Body))</div>
 
                                 @if (openMsg.Attachments.Count > 0)
                                 {
@@ -597,6 +597,27 @@
 <ComposeIncomingModal @ref="composeIncomingModal" OnSaved="() => StateHasChanged()" />
 
 @code {
+    private string RenderEmailBody(string? body)
+    {
+        var html = body ?? "—";
+        // تصاویر inline ایمیل اکنون به endpoint کنترل‌شدهٔ پیوست تبدیل می‌شوند.
+        // چون img نمی‌تواند هدر Bearer بفرستد، توکن فقط برای همین URL اضافه می‌شود.
+        var marker = "/api/email/attachments/";
+        var pos = 0;
+        while ((pos = html.IndexOf(marker, pos, StringComparison.OrdinalIgnoreCase)) >= 0)
+        {
+            var end = pos + marker.Length;
+            while (end < html.Length && html[end] is not ('\"' or '\'' or ' ' or '>')) end++;
+            if (html.IndexOf("?access_token=", pos, end - pos, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                html = html.Insert(end, "?access_token=" + Uri.EscapeDataString(Auth.Token ?? ""));
+                pos = end + 15;
+            }
+            else pos = end;
+        }
+        return html;
+    }
+
     private bool loading = true;
     private bool syncing;
 

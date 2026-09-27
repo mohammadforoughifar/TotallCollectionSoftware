@@ -1,5 +1,6 @@
 @using Inventory.Shared.Dtos
 @inject IIncomingLetterService IncomingSvc
+@inject ILetterService LetterSvc
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject IJSRuntime JS
@@ -56,11 +57,12 @@
 <IncomingLetterViewModal @ref="viewModal" />
 <IncomingErjaSheet @ref="erjaSheet" OnSubmitted="ReloadAsync" />
 <IncomingGardeshModal @ref="flowModal" />
+<BayeganiFolderPickerModal @ref="folderPicker" />
 @code {
     private string view = "registered", search = "";
     private bool loading; private List<IncomingLetterListItemDto> items = new();
     private int registeredTotal, archivedTotal; private ComposeIncomingModal? compose;
-    private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal; private IncomingErjaSheet? erjaSheet;
+    private IncomingLetterViewModal? viewModal; private IncomingGardeshModal? flowModal; private IncomingErjaSheet? erjaSheet; private BayeganiFolderPickerModal? folderPicker;
     private bool CanRegister => Auth.Has("IncomingLetters.Dabirkhane") || Auth.Has("OutgoingLetters.Dabirkhane") || Auth.Has("Admin");
     protected override async Task OnInitializedAsync() => await ReloadAsync();
     public async Task OpenCreateFromNavigation()
@@ -79,9 +81,23 @@
     {
         try
         {
-            if (l.ErjaId is { } erjaId) await IncomingSvc.ToggleBayeganiAsync(erjaId);
-            else await IncomingSvc.ToggleLetterBayeganiAsync(l.LetterId);
-            Toast.Success(view == "archived" ? "نامه از بایگانی خارج شد." : "نامه بایگانی شد.");
+            if (view == "archived")
+            {
+                if (l.ErjaId is { } archivedErja) await LetterSvc.UnarchiveByErjaAsync(archivedErja);
+                else await LetterSvc.UnarchiveByLetterAsync(l.LetterId);
+                Toast.Success("نامه از بایگانی خارج شد.");
+            }
+            else
+            {
+                if (folderPicker == null) return;
+                var folderId = await folderPicker.PickAsync($"بایگانی نامه «{l.Title}»");
+                if (folderId is not { } selectedFolder || selectedFolder <= 0) return;
+                var dto = new ArchiveLettersDto { FolderId = selectedFolder };
+                if (l.ErjaId is { } erjaId) dto.ErjaIds.Add(erjaId);
+                else dto.LetterIds.Add(l.LetterId);
+                await LetterSvc.ArchiveLettersAsync(dto);
+                Toast.Success("نامه در پوشه انتخاب‌شده بایگانی شد.");
+            }
             await ReloadAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }

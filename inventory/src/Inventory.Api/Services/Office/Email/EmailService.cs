@@ -755,7 +755,9 @@ public class EmailService : IEmailService
                     };
                     _db.OtoSentEmails.Add(sent);
                     await _db.SaveChangesAsync();
-                    await SaveAttachmentsAsync(msg, "Sent", sent.SentId, key);
+                    var inline = await SaveAttachmentsAsync(msg, "Sent", sent.SentId, key);
+                    sent.Body = ReplaceInlineImageReferences(sent.Body, inline);
+                    await _db.SaveChangesAsync();
                 }
                 else
                 {
@@ -774,7 +776,9 @@ public class EmailService : IEmailService
                     };
                     _db.OtoInboxEmails.Add(inbox);
                     await _db.SaveChangesAsync();
-                    await SaveAttachmentsAsync(msg, "Inbox", inbox.InboxId, key);
+                    var inline = await SaveAttachmentsAsync(msg, "Inbox", inbox.InboxId, key);
+                    inbox.Body = ReplaceInlineImageReferences(inbox.Body, inline);
+                    await _db.SaveChangesAsync();
                 }
 
                 existingSet.Add(key);
@@ -845,11 +849,23 @@ public class EmailService : IEmailService
         return null;
     }
 
-    private async Task SaveAttachmentsAsync(MimeMessage msg, string box, int messageId, string uid)
+    private static string ReplaceInlineImageReferences(string body, Dictionary<string, int> inline)
     {
-        if (!msg.Attachments.Any()) return;
+        foreach (var pair in inline)
+        {
+            body = body.Replace($"cid:{pair.Key}", $"/api/email/attachments/{pair.Value}/download", StringComparison.OrdinalIgnoreCase);
+            body = body.Replace($"&lt;{pair.Key}&gt;", $"/api/email/attachments/{pair.Value}/download", StringComparison.OrdinalIgnoreCase);
+        }
+        return body;
+    }
+
+    private async Task<Dictionary<string, int>> SaveAttachmentsAsync(MimeMessage msg, string box, int messageId, string uid)
+    {
+        var inline = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (!msg.Attachments.Any()) return inline;
 
         var dir = Path.Combine(AttachmentRoot, $"{box}_{messageId}");
+        var pendingInline = new List<(string ContentId, OtoEmailAttachment Attachment)>();
         foreach (var entity in msg.Attachments)
         {
             if (entity is not MimePart part) continue;
@@ -861,7 +877,7 @@ public class EmailService : IEmailService
                 Directory.CreateDirectory(dir);
                 var saved = $"{Guid.NewGuid():N}_{SafeName(name)}";
                 await File.WriteAllBytesAsync(Path.Combine(dir, saved), ms.ToArray());
-                _db.OtoEmailAttachments.Add(new OtoEmailAttachment
+                var attachment = new OtoEmailAttachment
                 {
                     EmailId = messageId,
                     UId = uid,
@@ -869,11 +885,18 @@ public class EmailService : IEmailService
                     AttachmentRealName = name,
                     AttachmentSavedName = saved,
                     FilePath = $"{AttachmentFolder}/{box}_{messageId}/{saved}"
-                });
+                };
+                _db.OtoEmailAttachments.Add(attachment);
+                if (!string.IsNullOrWhiteSpace(part.ContentId))
+                    pendingInline.Add((part.ContentId.Trim('<', '>'), attachment));
             }
             catch (Exception ex) { _log.LogWarning(ex, "ذخیره پیوست ایمیل ناموفق بود"); }
         }
         await _db.SaveChangesAsync();
+        foreach (var item in pendingInline)
+            if (item.Attachment.AttachmentId > 0)
+                inline[item.ContentId] = item.Attachment.AttachmentId;
+        return inline;
     }
 
     /// <summary>نمایشِ گیرنده‌ها برای صندوقِ ارسالی — نام اگر داشت، وگرنه نشانی</summary>
