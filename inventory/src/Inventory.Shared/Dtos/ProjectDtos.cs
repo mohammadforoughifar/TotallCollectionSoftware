@@ -251,6 +251,9 @@ public class ProjectListQuery
     public bool EmptySerial { get; set; }
     public bool EmptyEntry { get; set; }
     public bool EmptyExit { get; set; }
+    public bool EmptyTemporaryExit { get; set; }
+    public bool EmptyDelivery { get; set; }
+    public bool EmptyFile { get; set; }
     public bool EmptyFactor { get; set; }
     public bool EmptyFactorType { get; set; }
     public bool EmptyKarshenasi { get; set; }
@@ -270,6 +273,22 @@ public class ProjectListQuery
     public string? FSabt { get; set; }
     public string? FNeed { get; set; }
     public string? FSpent { get; set; }
+
+    // ---------- بازه‌های دقیق تاریخ (شامل سطرهای دارای مقدار) ----------
+    public DateTime? EntryFrom { get; set; }
+    public DateTime? EntryTo { get; set; }
+    public DateTime? ExitFrom { get; set; }
+    public DateTime? ExitTo { get; set; }
+    public DateTime? TemporaryExitFrom { get; set; }
+    public DateTime? TemporaryExitTo { get; set; }
+    public DateTime? RegistrationFrom { get; set; }
+    public DateTime? RegistrationTo { get; set; }
+    public DateTime? CustomerNeedFrom { get; set; }
+    public DateTime? CustomerNeedTo { get; set; }
+    public DateTime? DeliveryFrom { get; set; }
+    public DateTime? DeliveryTo { get; set; }
+    public DateTime? FileFrom { get; set; }
+    public DateTime? FileTo { get; set; }
 
     /// <summary>پوشه: y = دارد، n = ندارد، خالی = همه</summary>
     public string? FFolder { get; set; }
@@ -293,6 +312,7 @@ public class ProjectListQuery
         {
             if (!string.IsNullOrWhiteSpace(v)) parts.Add($"{k}={Uri.EscapeDataString(v)}");
         }
+        void AddDate(string k, DateTime? v) => Add(k, v?.ToString("yyyy-MM-dd"));
         Add("search", Search);
         if (KarfarmaId is > 0) Add("karfarmaId", KarfarmaId.ToString());
         if (TypeFactorId is > 0) Add("typeFactorId", TypeFactorId.ToString());
@@ -301,6 +321,9 @@ public class ProjectListQuery
         if (EmptySerial) Add("emptySerial", "true");
         if (EmptyEntry) Add("emptyEntry", "true");
         if (EmptyExit) Add("emptyExit", "true");
+        if (EmptyTemporaryExit) Add("emptyTemporaryExit", "true");
+        if (EmptyDelivery) Add("emptyDelivery", "true");
+        if (EmptyFile) Add("emptyFile", "true");
         if (EmptyFactor) Add("emptyFactor", "true");
         if (EmptyFactorType) Add("emptyFactorType", "true");
         if (EmptyKarshenasi) Add("emptyKarshenasi", "true");
@@ -318,6 +341,13 @@ public class ProjectListQuery
         Add("fSabt", FSabt);
         Add("fNeed", FNeed);
         Add("fSpent", FSpent);
+        AddDate("entryFrom", EntryFrom); AddDate("entryTo", EntryTo);
+        AddDate("exitFrom", ExitFrom); AddDate("exitTo", ExitTo);
+        AddDate("temporaryExitFrom", TemporaryExitFrom); AddDate("temporaryExitTo", TemporaryExitTo);
+        AddDate("registrationFrom", RegistrationFrom); AddDate("registrationTo", RegistrationTo);
+        AddDate("customerNeedFrom", CustomerNeedFrom); AddDate("customerNeedTo", CustomerNeedTo);
+        AddDate("deliveryFrom", DeliveryFrom); AddDate("deliveryTo", DeliveryTo);
+        AddDate("fileFrom", FileFrom); AddDate("fileTo", FileTo);
         Add("fFolder", FFolder);
         Add("fStatus", FStatus);
         Add("sort", Sort);

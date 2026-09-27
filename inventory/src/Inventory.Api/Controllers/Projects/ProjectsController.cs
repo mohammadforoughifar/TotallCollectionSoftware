@@ -458,6 +458,47 @@ public class ProjectsController : RbacControllerBase
             }
         }
 
+        if (!q.EmptyEntry && (q.EntryFrom.HasValue || q.EntryTo.HasValue))
+        {
+            if (q.EntryFrom.HasValue) query = query.Where(p => p.EntryDate >= q.EntryFrom.Value.Date);
+            if (q.EntryTo.HasValue) query = query.Where(p => p.EntryDate < q.EntryTo.Value.Date.AddDays(1));
+        }
+        if (!q.EmptyExit && (q.ExitFrom.HasValue || q.ExitTo.HasValue))
+        {
+            if (q.ExitFrom.HasValue) query = query.Where(p => p.ExitDate >= q.ExitFrom.Value.Date);
+            if (q.ExitTo.HasValue) query = query.Where(p => p.ExitDate < q.ExitTo.Value.Date.AddDays(1));
+        }
+
+        if (q.EmptyTemporaryExit)
+        {
+            query = query.Where(p => p.TemporaryExitDate == null);
+        }
+        else if (q.TemporaryExitFrom.HasValue || q.TemporaryExitTo.HasValue)
+        {
+            if (q.TemporaryExitFrom.HasValue) query = query.Where(p => p.TemporaryExitDate >= q.TemporaryExitFrom.Value.Date);
+            if (q.TemporaryExitTo.HasValue) query = query.Where(p => p.TemporaryExitDate < q.TemporaryExitTo.Value.Date.AddDays(1));
+        }
+
+        if (q.EmptyDelivery)
+        {
+            query = query.Where(p => p.DeliveryDate == null);
+        }
+        else if (q.DeliveryFrom.HasValue || q.DeliveryTo.HasValue)
+        {
+            if (q.DeliveryFrom.HasValue) query = query.Where(p => p.DeliveryDate >= q.DeliveryFrom.Value.Date);
+            if (q.DeliveryTo.HasValue) query = query.Where(p => p.DeliveryDate < q.DeliveryTo.Value.Date.AddDays(1));
+        }
+
+        if (q.EmptyFile)
+        {
+            query = query.Where(p => p.FileDate == null);
+        }
+        else if (q.FileFrom.HasValue || q.FileTo.HasValue)
+        {
+            if (q.FileFrom.HasValue) query = query.Where(p => p.FileDate >= q.FileFrom.Value.Date);
+            if (q.FileTo.HasValue) query = query.Where(p => p.FileDate < q.FileTo.Value.Date.AddDays(1));
+        }
+
         if (q.EmptyRegistration)
         {
             query = query.Where(p => p.ProjectRegistrationDate == null);
@@ -484,6 +525,17 @@ public class ProjectsController : RbacControllerBase
                 var f = rNeed.Value.From; var t = rNeed.Value.To;
                 query = query.Where(p => p.CustomerRequiredDate >= f && p.CustomerRequiredDate < t);
             }
+        }
+
+        if (!q.EmptyRegistration && (q.RegistrationFrom.HasValue || q.RegistrationTo.HasValue))
+        {
+            if (q.RegistrationFrom.HasValue) query = query.Where(p => p.ProjectRegistrationDate >= q.RegistrationFrom.Value.Date);
+            if (q.RegistrationTo.HasValue) query = query.Where(p => p.ProjectRegistrationDate < q.RegistrationTo.Value.Date.AddDays(1));
+        }
+        if (!q.EmptyCustomerNeed && (q.CustomerNeedFrom.HasValue || q.CustomerNeedTo.HasValue))
+        {
+            if (q.CustomerNeedFrom.HasValue) query = query.Where(p => p.CustomerRequiredDate >= q.CustomerNeedFrom.Value.Date);
+            if (q.CustomerNeedTo.HasValue) query = query.Where(p => p.CustomerRequiredDate < q.CustomerNeedTo.Value.Date.AddDays(1));
         }
 
         var rSpent = SpanRange(q.FSpent);

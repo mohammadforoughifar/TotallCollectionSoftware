@@ -273,6 +273,26 @@
                     @if (canViewFactor) { <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFactor" @bind:after="OnFilterChanged" /> شماره فاکتور ثبت نشده</label> }
                     @if (canViewFactor) { <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFactorType" @bind:after="OnFilterChanged" /> نوع فاکتور ثبت نشده</label> }
                     <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyKarshenasi" @bind:after="OnFilterChanged" /> کارشناسی اولیه ثبت نشده</label>
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyTemporaryExit" @bind:after="OnFilterChanged" /> خروج موقت ثبت نشده</label>
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyDelivery" @bind:after="OnFilterChanged" /> تاریخ تحویل ثبت نشده</label>
+                    <label class="form-check"><input class="form-check-input" type="checkbox" @bind="emptyFile" @bind:after="OnFilterChanged" /> تاریخ پرونده ثبت نشده</label>
+                </div>
+                <div class="row g-2 mt-2 p-2 rounded" style="background:#f8fafc">
+                    <div class="col-12 small fw-bold text-primary">بازه‌های تاریخی (برای ردیف‌های دارای تاریخ)</div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">ورود از</label><DatePicker @bind-Value="advancedEntryFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">ورود تا</label><DatePicker @bind-Value="advancedEntryTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">خروج از</label><DatePicker @bind-Value="advancedExitFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">خروج تا</label><DatePicker @bind-Value="advancedExitTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">خروج موقت از</label><DatePicker @bind-Value="advancedTemporaryExitFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">خروج موقت تا</label><DatePicker @bind-Value="advancedTemporaryExitTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">ثبت پروژه از</label><DatePicker @bind-Value="advancedRegistrationFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">ثبت پروژه تا</label><DatePicker @bind-Value="advancedRegistrationTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">نیاز مشتری از</label><DatePicker @bind-Value="advancedCustomerNeedFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">نیاز مشتری تا</label><DatePicker @bind-Value="advancedCustomerNeedTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">تحویل از</label><DatePicker @bind-Value="advancedDeliveryFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">تحویل تا</label><DatePicker @bind-Value="advancedDeliveryTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">پرونده از</label><DatePicker @bind-Value="advancedFileFrom" @bind-Value:after="OnFilterChanged" Placeholder="از تاریخ" /></div>
+                    <div class="col-sm-6 col-lg-3"><label class="small">پرونده تا</label><DatePicker @bind-Value="advancedFileTo" @bind-Value:after="OnFilterChanged" Placeholder="تا تاریخ" /></div>
                 </div>
             </details>
         </div>
@@ -1214,7 +1234,7 @@
                     <span class="ms-2 fs-8 text-muted">کد پروژه: <b dir="ltr">@ShowDetailCode(reportsProject)</b> — سریال: @reportsProject.SerialNumber.FaDigits()</span>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <span class="badge bg-primary fs-7 p-2"><i class="bi bi-clock-history ms-1"></i>جمع زمان مصرفی: @Fmt(reportsProject.TotalSpentTime)</span>
+                    <span class="badge bg-primary fs-7 p-2"><i class="bi bi-clock-history ms-1"></i>جمع زمان مصرفی فیلترشده: @Fmt(SumFilteredReportTime)</span>
                     @if (Auth.Has("ReportWorks.Create"))
                     {
                         <button class="btn btn-warning btn-sm fw-700 shadow-sm px-3" disabled="@(!CanReport(reportsProject))"
@@ -1229,7 +1249,7 @@
             {
                 <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
             }
-            else if (projectReportItems.Count == 0)
+                            else if (!FilteredProjectReports.Any())
             {
                 <div class="text-center py-4 text-muted">
                     <i class="bi bi-clock fs-2 d-block mb-2 text-primary opacity-50"></i>
@@ -1260,9 +1280,20 @@
                                 <th>ساعت خالص</th>
                                 <th>شرح فعالیت</th>
                             </tr>
+                            <tr class="col-filter-row">
+                                <th></th>
+                                <th><input class="form-control form-control-sm" placeholder="تاریخ" @bind="reportFilterDate" @bind:event="oninput" /></th>
+                                <th><input class="form-control form-control-sm" placeholder="ثبت‌کننده" @bind="reportFilterUser" @bind:event="oninput" /></th>
+                                <th><input class="form-control form-control-sm" placeholder="اپراتور" @bind="reportFilterOperator" @bind:event="oninput" /></th>
+                                <th><input class="form-control form-control-sm" placeholder="شروع" @bind="reportFilterStart" @bind:event="oninput" dir="ltr" /></th>
+                                <th><input class="form-control form-control-sm" placeholder="پایان" @bind="reportFilterEnd" @bind:event="oninput" dir="ltr" /></th>
+                                <th><input class="form-control form-control-sm" placeholder="استراحت" @bind="reportFilterBreak" @bind:event="oninput" dir="ltr" /></th>
+                                <th><input class="form-control form-control-sm" placeholder="خالص" @bind="reportFilterNet" @bind:event="oninput" dir="ltr" /></th>
+                                <th><input class="form-control form-control-sm" placeholder="شرح" @bind="reportFilterDescription" @bind:event="oninput" /></th>
+                            </tr>
                         </thead>
                         <tbody>
-                            @foreach (var (r, idx) in projectReportItems.Select((r, i) => (r, i + 1)))
+                            @foreach (var (r, idx) in FilteredProjectReports.Select((r, i) => (r, i + 1)))
                             {
                                 <tr>
                                     <td class="num">@idx.FaDigits()</td>
@@ -1297,7 +1328,9 @@
     private string search = "";
     private int filterKarfarma, filterTypeFactor, filterUser;
     private bool filterReturned;
-    private bool emptySerial, emptyEntry, emptyExit, emptyFactor, emptyFactorType, emptyKarshenasi, emptyRegistration, emptyCustomerNeed;
+    private bool emptySerial, emptyEntry, emptyExit, emptyTemporaryExit, emptyDelivery, emptyFile, emptyFactor, emptyFactorType, emptyKarshenasi, emptyRegistration, emptyCustomerNeed;
+    private DateTime? advancedEntryFrom, advancedEntryTo, advancedExitFrom, advancedExitTo, advancedTemporaryExitFrom, advancedTemporaryExitTo;
+    private DateTime? advancedRegistrationFrom, advancedRegistrationTo, advancedCustomerNeedFrom, advancedCustomerNeedTo, advancedDeliveryFrom, advancedDeliveryTo, advancedFileFrom, advancedFileTo;
 
     /// <summary>رویت ستون‌های شماره/نوع فاکتور — مجوز جدا (Projects.ViewFactor)</summary>
     private bool canViewFactor => Auth.Has("Projects.ViewFactor");
@@ -1322,13 +1355,19 @@
     /// <summary>آیا هیچ فیلتری (بالای صفحه یا سرستون) فعال است؟</summary>
     private bool HasAnyFilter => HasColFilter || !string.IsNullOrWhiteSpace(search)
         || filterKarfarma > 0 || filterTypeFactor > 0 || filterUser > 0 || filterReturned
-        || emptySerial || emptyEntry || emptyExit || emptyFactor || emptyFactorType || emptyKarshenasi || emptyRegistration || emptyCustomerNeed;
+        || emptySerial || emptyEntry || emptyExit || emptyTemporaryExit || emptyDelivery || emptyFile || emptyFactor || emptyFactorType || emptyKarshenasi || emptyRegistration || emptyCustomerNeed
+        || advancedEntryFrom.HasValue || advancedEntryTo.HasValue || advancedExitFrom.HasValue || advancedExitTo.HasValue
+        || advancedTemporaryExitFrom.HasValue || advancedTemporaryExitTo.HasValue || advancedRegistrationFrom.HasValue || advancedRegistrationTo.HasValue
+        || advancedCustomerNeedFrom.HasValue || advancedCustomerNeedTo.HasValue || advancedDeliveryFrom.HasValue || advancedDeliveryTo.HasValue
+        || advancedFileFrom.HasValue || advancedFileTo.HasValue;
 
     private async Task ClearColFilters()
     {
         fNum = fName = fSerial = fKarfarma = fEntry = fExit = fFactor = fFactorType = "";
         fKarshenasi = fSabt = fNeed = fSpent = fFolder = fStatus = "";
-        emptySerial = emptyEntry = emptyExit = emptyFactor = emptyFactorType = emptyKarshenasi = emptyRegistration = emptyCustomerNeed = false;
+        emptySerial = emptyEntry = emptyExit = emptyTemporaryExit = emptyDelivery = emptyFile = emptyFactor = emptyFactorType = emptyKarshenasi = emptyRegistration = emptyCustomerNeed = false;
+        advancedEntryFrom = advancedEntryTo = advancedExitFrom = advancedExitTo = advancedTemporaryExitFrom = advancedTemporaryExitTo = null;
+        advancedRegistrationFrom = advancedRegistrationTo = advancedCustomerNeedFrom = advancedCustomerNeedTo = advancedDeliveryFrom = advancedDeliveryTo = advancedFileFrom = advancedFileTo = null;
         page = 1;
         await Load();
     }
@@ -1426,6 +1465,18 @@
     private readonly Dictionary<int, List<ReportWorkDto>> reportPrintCache = new();
     private ProjectEntryExitDto? reportsProject;
     private List<ReportWorkDto> projectReportItems = new();
+    private string reportFilterDate = "", reportFilterUser = "", reportFilterOperator = "", reportFilterStart = "", reportFilterEnd = "", reportFilterBreak = "", reportFilterNet = "", reportFilterDescription = "";
+    private IEnumerable<ReportWorkDto> FilteredProjectReports => projectReportItems.Where(r =>
+        ContainsFilter(r.ReportDate.ToFaDate(), reportFilterDate) &&
+        ContainsFilter(r.UserName, reportFilterUser) &&
+        ContainsFilter(r.OperatorName, reportFilterOperator) &&
+        ContainsFilter(r.StartTime.TimeFa(), reportFilterStart) &&
+        ContainsFilter(r.EndTime.TimeFa(), reportFilterEnd) &&
+        ContainsFilter((r.BreakfastTime.ToTimeSpan() + r.LunchTime.ToTimeSpan()).HoursFa(), reportFilterBreak) &&
+        ContainsFilter(Fmt(r.SpentTime), reportFilterNet) &&
+        ContainsFilter(r.WorkDescription, reportFilterDescription));
+    private TimeSpan SumFilteredReportTime => FilteredProjectReports.Aggregate(TimeSpan.Zero, (sum, r) => sum + r.SpentTime);
+    private static bool ContainsFilter(string? value, string filter) => string.IsNullOrWhiteSpace(filter) || (value ?? "").Contains(filter.Trim(), StringComparison.OrdinalIgnoreCase);
     private bool projectReportsLoading;
 
     private bool showReport;
@@ -1474,7 +1525,7 @@
         TypeFactorId = filterTypeFactor > 0 ? filterTypeFactor : null,
         UserId = filterUser > 0 ? filterUser : null,
         Returned = filterReturned ? true : null,
-        EmptySerial = emptySerial, EmptyEntry = emptyEntry, EmptyExit = emptyExit, EmptyFactor = emptyFactor,
+        EmptySerial = emptySerial, EmptyEntry = emptyEntry, EmptyExit = emptyExit, EmptyTemporaryExit = emptyTemporaryExit, EmptyDelivery = emptyDelivery, EmptyFile = emptyFile, EmptyFactor = emptyFactor,
         EmptyFactorType = emptyFactorType, EmptyKarshenasi = emptyKarshenasi,
         EmptyRegistration = emptyRegistration, EmptyCustomerNeed = emptyCustomerNeed,
         FCode = fNum,
@@ -1489,6 +1540,13 @@
         FSabt = fSabt,
         FNeed = fNeed,
         FSpent = fSpent,
+        EntryFrom = advancedEntryFrom, EntryTo = advancedEntryTo,
+        ExitFrom = advancedExitFrom, ExitTo = advancedExitTo,
+        TemporaryExitFrom = advancedTemporaryExitFrom, TemporaryExitTo = advancedTemporaryExitTo,
+        RegistrationFrom = advancedRegistrationFrom, RegistrationTo = advancedRegistrationTo,
+        CustomerNeedFrom = advancedCustomerNeedFrom, CustomerNeedTo = advancedCustomerNeedTo,
+        DeliveryFrom = advancedDeliveryFrom, DeliveryTo = advancedDeliveryTo,
+        FileFrom = advancedFileFrom, FileTo = advancedFileTo,
         FFolder = fFolder,
         FStatus = fStatus,
         Sort = sortKey,
@@ -1928,6 +1986,7 @@
         CloseMenu();
         if (!CanReport(p)) { Toast.Error(ReportBlockReason(p)); return; }
         reportsProject = p;
+        reportFilterDate = reportFilterUser = reportFilterOperator = reportFilterStart = reportFilterEnd = reportFilterBreak = reportFilterNet = reportFilterDescription = "";
         showProjectReportsList = true;
         await LoadProjectReports();
     }
