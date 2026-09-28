@@ -292,23 +292,6 @@
                     <input class="form-control" @bind="form.EnName" dir="ltr" />
                 </div>
 
-                <div class="col-md-3">
-                    <label class="form-label">برند</label>
-                    <input class="form-control" @bind="form.Brand" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">مدل</label>
-                    <input class="form-control" @bind="form.Model" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">شماره فنی (Part No)</label>
-                    <input class="form-control" @bind="form.PartNumber" dir="ltr" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">بارکد</label>
-                    <input class="form-control num" @bind="form.Barcode" dir="ltr" />
-                </div>
-
                 <div class="col-12">
                     <div class="d-flex flex-wrap gap-4">
                         <div class="form-check form-switch">
@@ -385,31 +368,66 @@
             </div>
         }
 
-        @* ============ تب ۳: کدهای کاربردی ============ *@
+        @* ============ تب ۳: بارکد و کدهای کاربردی ============ *@
         else if (tab == 2)
         {
             <div class="row g-3">
                 <div class="col-12">
                     <div class="alert alert-light border py-2 d-flex align-items-center gap-2 mb-1" style="font-size: .84rem;">
                         <i class="bi bi-upc-scan text-primary fs-5"></i>
-                        <span>شناسه کالای مالیاتی سامانه مودیان، کد واحد سنجش، کد تعرفه گمرکی و کشور سازنده کالا.</span>
+                        <span>اطلاعات بارکد، برند، مدل، شماره فنی کالا و شناسه‌های استاندارد مالیاتی و گمرکی.</span>
                     </div>
                 </div>
+
+                @* بخش اول: بارکد، شماره فنی، برند و مدل *@
+                <div class="col-md-6">
+                    <label class="form-label fw-600">بارکد کالا</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="bi bi-upc"></i></span>
+                        <input class="form-control num font-monospace" @bind="form.Barcode" dir="ltr" placeholder="مثلاً: 6260123456789" />
+                    </div>
+                    <div class="fs-8 text-muted mt-1">کد میله‌ای، شناسه اسکن یا بارکد بین‌المللی کالا</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-600">شماره فنی (Part Number)</label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light"><i class="bi bi-hash"></i></span>
+                        <input class="form-control font-monospace" @bind="form.PartNumber" dir="ltr" placeholder="مثلاً: PN-9842-X" />
+                    </div>
+                    <div class="fs-8 text-muted mt-1">شماره فنی یا پارت نامبر اختصاصی قطعه/کالا</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-600">برند (Brand / شرکت سازنده)</label>
+                    <input class="form-control" @bind="form.Brand" placeholder="مثلاً: بوش، بهران، سامسونگ…" />
+                    <div class="fs-8 text-muted mt-1">برند تجاری یا کمپانی تولیدکننده کالا</div>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-600">مدل کالا (Model)</label>
+                    <input class="form-control" @bind="form.Model" placeholder="مثلاً: ۲۰۲۴ سوپر پلاس" />
+                    <div class="fs-8 text-muted mt-1">مدل، تیپ یا مشخصه تولید محصول</div>
+                </div>
+
+                <div class="col-12"><hr class="my-2" /></div>
+
+                @* بخش دوم: شناسه‌ها و استانداردهای کاربردی مودیان و گمرک *@
                 <div class="col-md-6">
                     <label class="form-label">
                         شناسه کالای مالیاتی <span class="fs-8 text-muted">(سامانه مودیان — ۱۳ رقمی)</span>
                     </label>
-                    <input class="form-control num" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="2710000000000" />
+                    <input class="form-control num font-monospace" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="2710000000000" />
                     <div class="fs-8 text-muted mt-1">شناسه یکتای اختصاص داده شده توسط سازمان امور مالیاتی</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد واحد سنجش مالیاتی</label>
-                    <input class="form-control num" @bind="form.TaxUnitCode" dir="ltr" placeholder="164" />
+                    <input class="form-control num font-monospace" @bind="form.TaxUnitCode" dir="ltr" placeholder="164" />
                     <div class="fs-8 text-muted mt-1">کد واحد سنجش بر اساس جدول استانداردهای سامانه مودیان</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد گمرکی / تعرفه (HS Code)</label>
-                    <input class="form-control num" @bind="form.CustomsCode" dir="ltr" placeholder="مثلاً: 84713020" />
+                    <input class="form-control num font-monospace" @bind="form.CustomsCode" dir="ltr" placeholder="مثلاً: 84713020" />
                     <div class="fs-8 text-muted mt-1">شماره تعرفه ۸ رقمی گمرک</div>
                 </div>
                 <div class="col-md-6">
@@ -792,7 +810,7 @@
     private string productSuffix = "";
     private bool manualCodeEdit = false;
 
-    private static readonly string[] TabTitles = { "اطلاعات اصلی", "قیمت و مالیات", "کدهای کاربردی", "انبار و موجودی", "ویژگی‌ها", "ضریب مصرف", "شرح و تصویر" };
+    private static readonly string[] TabTitles = { "اطلاعات اصلی", "قیمت و مالیات", "بارکد و کدهای کاربردی", "انبار و موجودی", "ویژگی‌ها", "ضریب مصرف", "شرح و تصویر" };
     private static readonly string[] TabIcons = { "bi-info-circle", "bi-cash-coin", "bi-upc-scan", "bi-boxes", "bi-sliders", "bi-calculator", "bi-card-image" };
 
     private string ModalTitle => editing ? $"ویرایش کالا — {form.Name}" : "تعریف کالای جدید";
