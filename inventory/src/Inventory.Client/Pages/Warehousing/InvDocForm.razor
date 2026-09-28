@@ -45,7 +45,7 @@
         }
         else
         {
-            <button class="btn btn-outline-primary" data-hotkey="f1" title="کلید میانبر: F1" disabled="@saving" @onclick="() => Save(false)">
+            <button class="btn btn-outline-primary" disabled="@saving" @onclick="() => Save(false)">
                 <i class="bi bi-save"></i> ذخیره پیش‌نویس
             </button>
             <button class="btn btn-primary" data-hotkey="f2" title="کلید میانبر: F2" disabled="@saving" @onclick="() => Save(true)">
@@ -162,8 +162,8 @@ else
             <span><i class="bi bi-list-ol text-primary"></i> اقلام سند</span>
             @if (!ReadOnly)
             {
-                <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="AddLine">
-                    <i class="bi bi-plus-lg"></i> افزودن ردیف
+                <button id="btn-add-line" class="btn btn-sm btn-outline-primary ms-auto" data-hotkey="f1" title="افزودن ردیف جدید (F1)" @onclick="AddLine">
+                    <i class="bi bi-plus-lg"></i> افزودن ردیف (F1)
                 </button>
             }
         </div>
@@ -175,7 +175,7 @@ else
                     <h5>هنوز کالایی به سند اضافه نشده است</h5>
                     @if (!ReadOnly)
                     {
-                        <button class="btn btn-primary btn-sm mt-2" @onclick="AddLine"><i class="bi bi-plus-lg"></i> افزودن اولین ردیف</button>
+                        <button id="btn-add-line-empty" class="btn btn-primary btn-sm mt-2" data-hotkey="f1" title="افزودن اولین ردیف (F1)" @onclick="AddLine"><i class="bi bi-plus-lg"></i> افزودن اولین ردیف (F1)</button>
                     }
                 </div>
             }
@@ -408,7 +408,7 @@ else
                     DocTypeId = QueryDocTypeId ?? docTypes.FirstOrDefault()?.Id ?? 0,
                     WarehouseId = warehouses.FirstOrDefault()?.Id ?? 0
                 };
-                AddLine();
+                await AddLine();
             }
 
             await LoadParties();
@@ -478,8 +478,16 @@ else
         return l.UnitPrice > 0 ? Fa.FormatTyping(l.UnitPrice.ToString("0")) : "";
     }
 
-    private void AddLine()
-        => doc.Lines.Add(new InvDocLine { RowNo = doc.Lines.Count + 1 });
+    private async Task AddLine()
+    {
+        doc.Lines.Add(new InvDocLine { RowNo = doc.Lines.Count + 1 });
+        StateHasChanged();
+        try
+        {
+            await JS.InvokeVoidAsync("focusLastProductInput");
+        }
+        catch { }
+    }
 
     private void RemoveLine(int idx)
     {
@@ -662,7 +670,7 @@ else
         finally
         {
             saving = false;
-            if (doc.Lines.Count == 0) AddLine();
+            if (doc.Lines.Count == 0) await AddLine();
         }
     }
 

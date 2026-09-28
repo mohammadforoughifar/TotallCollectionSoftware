@@ -47,6 +47,7 @@
                          class="ss-item @(isSelected ? "selected" : "") @(isHighlighted ? "highlighted" : "")"
                          @onmousedown="@(() => Select(it))"
                          @onmousedown:preventDefault="true"
+                         @onclick="@(() => Select(it))"
                          @onmouseover="@(() => highlightIndex = idx)">
                         @if (!string.IsNullOrWhiteSpace(it.AvatarUrl))
                         {

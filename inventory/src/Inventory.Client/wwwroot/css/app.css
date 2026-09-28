@@ -480,10 +480,10 @@ a { text-decoration: none; }
     overflow: auto;
     z-index: 4500;
 }
-.ss-item { padding: .5rem .85rem; cursor: pointer; font-size: .88rem; }
-.ss-item:hover, .ss-item.highlighted { background: var(--primary-50); color: inherit; }
+.ss-item { padding: .5rem .85rem; cursor: pointer; font-size: .88rem; transition: background .08s ease; }
+.ss-item:hover, .ss-item.highlighted { background: #e0e7ff !important; color: #1e1b4b !important; }
 .ss-item.selected { background: var(--primary); color: #fff; }
-.ss-item.selected.highlighted { filter: brightness(0.92); }
+.ss-item.selected.highlighted { background: var(--primary-600, #4338ca) !important; color: #fff !important; }
 .ss-empty { padding: .9rem; color: var(--text-muted); font-size: .85rem; text-align: center; }
 
 /* دکمه پاک کردن انتخاب جستجوی انتخاب (کمبوباکس) */
