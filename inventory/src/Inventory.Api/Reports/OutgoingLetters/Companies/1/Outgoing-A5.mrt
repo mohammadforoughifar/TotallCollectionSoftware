@@ -13,7 +13,7 @@
     <DataSources isList="true" count="1">
       <DataSource1 Ref="3" type="DataTableSource" isKey="true">
         <Alias>DataSource1</Alias>
-        <Columns isList="true" count="7">
+        <Columns isList="true" count="9">
           <value>LetterNumber,System.String</value>
           <value>Date_Letter,System.DateTime</value>
           <value>TextLetter,System.String</value>
@@ -21,6 +21,8 @@
           <value>GirandeAsli,System.String</value>
           <value>Name,System.String</value>
           <value>Desc,System.String</value>
+          <value>DateShams,System.String</value>
+          <value>Peyvast,System.String</value>
         </Columns>
         <Dictionary isRef="1" />
         <Key>09704e30262b4655bc144f9b122533a8</Key>
@@ -136,7 +138,7 @@
           <Name>Text1</Name>
           <Page isRef="4" />
           <Parent isRef="4" />
-          <Text>{dateshams}</Text>
+          <Text>{DataSource1.DateShams}</Text>
           <TextBrush>Black</TextBrush>
           <Type>Expression</Type>
         </Text1>
@@ -165,7 +167,7 @@
           <Name>Text3</Name>
           <Page isRef="4" />
           <Parent isRef="4" />
-          <Text>{peyvast_String}</Text>
+          <Text>{DataSource1.Peyvast}</Text>
           <TextBrush>Black</TextBrush>
           <Type>Expression</Type>
         </Text3>

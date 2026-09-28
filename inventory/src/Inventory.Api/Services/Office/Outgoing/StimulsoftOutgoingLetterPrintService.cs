@@ -125,7 +125,7 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
             // اتصال رمزگذاری‌شده قدیمی A5 هرگز نباید در نسخه وب استفاده شود.
             report.Dictionary.Databases.Clear();
 
-            RegisterLetterData(report, letter, hamesh);
+            RegisterLetterData(report, letter, hamesh, hasAttachment);
             var persianDate = ToPersianDate(letter.DateSadere ?? letter.DateSabt);
             SetVariable(report, "dateshams", persianDate);
             SetVariable(report, "dateshamsi", persianDate);
@@ -175,7 +175,7 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
         }
     }
 
-    private void RegisterLetterData(StiReport report, OutgoingLetter letter, IReadOnlyList<HameshPrintRow> hamesh)
+    private void RegisterLetterData(StiReport report, OutgoingLetter letter, IReadOnlyList<HameshPrintRow> hamesh, bool hasAttachment)
     {
         var table = new DataTable("DataSource1");
         table.Columns.Add("LetterNumber", typeof(string));
@@ -185,6 +185,8 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
         table.Columns.Add("GirandeAsli", typeof(string));
         table.Columns.Add("Name", typeof(string));
         table.Columns.Add("Desc", typeof(string));
+        table.Columns.Add("DateShams", typeof(string));
+        table.Columns.Add("Peyvast", typeof(string));
 
         var number = string.IsNullOrWhiteSpace(letter.SadereNumber)
             ? letter.LetterNumber ?? "—"
@@ -197,7 +199,9 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
             letter.Title,
             BuildReceiver(letter),
             string.Join(Environment.NewLine, hamesh.Select(x => x.Name)),
-            string.Join(Environment.NewLine, hamesh.Select(x => x.Desc)));
+            string.Join(Environment.NewLine, hamesh.Select(x => x.Desc)),
+            ToPersianDate(letter.DateSadere ?? letter.DateSabt),
+            hasAttachment ? "دارد" : "ندارد");
 
         var dataSet = new DataSet("LetterData");
         dataSet.Tables.Add(table);
