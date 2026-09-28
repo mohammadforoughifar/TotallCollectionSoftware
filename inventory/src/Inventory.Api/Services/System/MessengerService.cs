@@ -3,7 +3,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Inventory.Api.Data;
+using Inventory.Api.Services.Ai;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Inventory.Api.Services;
 
@@ -29,6 +31,8 @@ public interface IMessengerService
 {
     /// <summary>ارسال پیام به کاربر در بله و ایتا (هر کدام که متصل است). خطاها برگردانده می‌شوند و بی‌صدا نمی‌مانند.</summary>
     Task<MessengerSendResult> SendToUserAsync(int userId, string title, string? body);
+    /// <summary>ارسال فایل اکسل به بله کاربر لینک‌شده (ایتا فایل نمی‌گیرد).</summary>
+    Task<bool> SendExcelToUserAsync(int userId, string caption, byte[] bytes, string fileName);
 
     /// <summary>همگام‌سازی دستی بله (دکمه‌ی صفحه‌ی کاربران): خواندن آپدیت‌ها، پاسخ به /start و تطبیق شماره‌ها.</summary>
     Task<(int matched, string message)> SyncBaleAsync();
@@ -49,13 +53,19 @@ public class MessengerService : IMessengerService
     private readonly IHttpClientFactory _httpFactory;
     private readonly IMessengerLinkCodes _codes;
     private readonly ILogger<MessengerService> _log;
+    private readonly AiOptions _aiOptions;
+    private readonly IAiAgentService _agent;
+    private readonly AiReportService _reports;
 
-    public MessengerService(AppDbContext db, IHttpClientFactory httpFactory, IMessengerLinkCodes codes, ILogger<MessengerService> log)
+    public MessengerService(AppDbContext db, IHttpClientFactory httpFactory, IMessengerLinkCodes codes, ILogger<MessengerService> log, IOptions<AiOptions> aiOptions, IAiAgentService agent, AiReportService reports)
     {
         _db = db;
         _httpFactory = httpFactory;
         _codes = codes;
         _log = log;
+        _aiOptions = aiOptions.Value;
+        _agent = agent;
+        _reports = reports;
     }
 
     private async Task<(string? bale, string? eitaa, string sender)> TokensAsync()
@@ -116,6 +126,25 @@ public class MessengerService : IMessengerService
         {
             _log.LogWarning(ex, "ارسال پیام‌رسان برای کاربر {UserId} ناموفق بود", userId);
             return new MessengerSendResult(false, ex.Message, false, null, false);
+        }
+    }
+
+    public async Task<bool> SendExcelToUserAsync(int userId, string caption, byte[] bytes, string fileName)
+    {
+        try
+        {
+            var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null || string.IsNullOrWhiteSpace(user.BaleChatId)) return false;
+            var baleToken = (await TokensAsync()).bale;
+            if (string.IsNullOrWhiteSpace(baleToken)) return false;
+            var http = _httpFactory.CreateClient("messenger");
+            await SendDocumentAsync(http, baleToken, user.BaleChatId!, bytes, fileName, caption ?? "");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "ارسال اکسل برای کاربر {UserId} ناموفق بود.", userId);
+            return false;
         }
     }
 
@@ -199,6 +228,8 @@ public class MessengerService : IMessengerService
                 // phone → chatId از مخاطبین به‌اشتراک‌گذاشته‌شده + پاسخ به /start
                 var phoneToChat = new Dictionary<string, string>();
                 var startChats = new List<string>();
+                var helpChats = new List<string>();
+                var aiIncoming = new List<(string chatId, string text)>();
                 long maxId = 0;
                 var updates = 0;
 
@@ -221,6 +252,8 @@ public class MessengerService : IMessengerService
 
                     var text = msg.TryGetProperty("text", out var tx) ? (tx.GetString() ?? "").Trim() : "";
                     if (text.StartsWith("/start", StringComparison.OrdinalIgnoreCase)) startChats.Add(chatId!);
+                    else if (text.Equals("/help", StringComparison.OrdinalIgnoreCase)) helpChats.Add(chatId!);
+                    else if (text.Length > 0) aiIncoming.Add((chatId!, text));
                 }
 
                 var linked = 0;
@@ -242,11 +275,21 @@ public class MessengerService : IMessengerService
                 foreach (var chatId in startChats.Distinct())
                 {
                     var known = await _db.Users.AsNoTracking().AnyAsync(u => u.BaleChatId == chatId);
-                    if (known) continue;
+                    if (known)
+                    {
+                        // کاربر لینک‌شده: معرفی دستیار فروغ آریا
+                        await ReplyAsync(http, baleToken, chatId, BaleIntroText);
+                        continue;
+                    }
                     await ReplyAsync(http, baleToken, chatId,
                         "سلام 👋\nبرای دریافت اعلان‌های سامانه، لطفاً شماره تلفن خود را با دکمه‌ی زیر ارسال کنید.",
                         new { keyboard = new[] { new[] { new { text = "📱 ارسال شماره من", request_contact = true } } }, resize_keyboard = true, one_time_keyboard = true });
                 }
+
+                // راهنمای دستیار + پاسخ فروغ آریا به پیام‌های متنی (فقط کاربران لینک‌شده و مجاز)
+                foreach (var chatId in helpChats.Distinct())
+                    await ReplyAsync(http, baleToken, chatId, BaleIntroText);
+                await ReplyAiAsync(http, baleToken, aiIncoming);
 
                 // تأیید آپدیت‌ها (تا دفعه‌ی بعد مجدداً پردازش نشوند)
                 if (maxId > 0)
@@ -262,6 +305,139 @@ public class MessengerService : IMessengerService
                 var note = updates == 0 ? "پیام تازه‌ای از کاربران دریافت نشد." : $"تعداد پیام‌های دریافتی: {updates}.";
                 return (linked, maxId, note);
             }
+        }
+    }
+
+    private const string BaleIntroText =
+        "سلام! 👋 من «فروغ آریا»، دستیار هوشمند سامانه‌ام.\n\n" +
+        "می‌تونی ازم بپرسی:\n" +
+        "• مانده مرخصی‌ام چقدره؟\n" +
+        "• فیش حقوقیم چقدره؟\n" +
+        "• وضعیت حضور امروزم؟\n" +
+        "• نامه خوانده‌نشده دارم؟\n" +
+        "• چطور فاکتور ثبت کنم؟\n" +
+        "• گزارش فروش این ماه (با فایل اکسل 📥)\n\n" +
+        "فقط بنویس! 🤖";
+
+    /// <summary>پاسخ دستیار فروغ آریا به پیام‌های بله: تایپینگ، متن تمیز، چندپیامی، فایل اکسل (§۱۸).</summary>
+    private async Task ReplyAiAsync(HttpClient http, string token, List<(string chatId, string text)> incoming)
+    {
+        if (!_aiOptions.Enabled || !_aiOptions.BaleEnabled) return;
+        foreach (var (chatId, text) in incoming.DistinctBy(x => x.chatId + "\n" + x.text).Take(10))
+        {
+            try
+            {
+                var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.BaleChatId == chatId);
+                if (user == null)
+                {
+                    // غریبه در چت خصوصی: دعوت به اتصال (در گروه‌ها سکوت)
+                    if (long.TryParse(chatId, out var cid) && cid > 0)
+                        await ReplyAsync(http, token, chatId,
+                            "سلام 👋\nبرای استفاده از دستیار هوشمند، اول /start را بزن و شماره‌ات را متصل کن.");
+                    continue;
+                }
+                if (!user.IsActive) continue;
+                if (!await AiAccessHelper.UserHasAsync(_db, user.Id, "AiAssistant", "Use", user.Role))
+                {
+                    await ReplyAsync(http, token, chatId,
+                        "به دستیار هوشمند دسترسی نداری؛ از مدیر سامانه بخواه دسترسی دستیار (AiAssistant) را برایت فعال کند.");
+                    continue;
+                }
+                var name = ((user.FirstName ?? "") + " " + (user.LastName ?? "")).Trim();
+                if (name == "") name = user.Username;
+
+                // نمایش «در حال نوشتن…» تا آمدن جواب مدل
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+                using var typingCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
+                var typingTask = TypingLoopAsync(http, token, chatId, typingCts.Token);
+                AiChatResponse result;
+                try
+                {
+                    result = await _agent.ChatAsync(user.Id, name, false, null, text, "bale", cts.Token);
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "پاسخ هوش مصنوعی در بله ناموفق بود.");
+                    await ReplyAsync(http, token, chatId,
+                        "نتونستم جوابت را آماده کنم 😔\nیک بار دیگر بفرست؛ اگر درست نشد از چت وب سامانه استفاده کن.");
+                    continue;
+                }
+                finally
+                {
+                    typingCts.Cancel();
+                    try { await typingTask; } catch { /* تمام */ }
+                }
+
+                var plain = AiMessengerFormat.ToPlain(result.Reply);
+                if (plain == "") plain = "پاسخی آماده نشد؛ سوالت را واضح‌تر بپرس. 🤖";
+                foreach (var part in AiMessengerFormat.SplitMessage(plain))
+                    await ReplyAsync(http, token, chatId, part);
+
+                // فایل‌های اکسل گزارش → سند بله
+                foreach (var att in (result.Attachments ?? new()).Where(a => a.Kind == "excel").Take(3))
+                {
+                    try
+                    {
+                        var spec = _reports.TryGetSpec(user.Id, att.ReportId);
+                        if (spec == null) continue;
+                        var bytes = Inventory.Api.Services.Export.ExcelWriter.Build(spec);
+                        await SendDocumentAsync(http, token, chatId, bytes,
+                            $"{spec.FileBaseName ?? "gozaresh"}.xlsx", $"📥 {att.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.LogWarning(ex, "ارسال فایل اکسل در بله ناموفق بود.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "پردازش پیام بله ناموفق بود.");
+            }
+        }
+    }
+
+    /// <summary>حلقه «در حال نوشتن…» تا لغو توکن.</summary>
+    private static async Task TypingLoopAsync(HttpClient http, string token, string chatId, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    var payload = JsonSerializer.Serialize(new { chat_id = BaleChatIdValue(chatId), action = "typing" });
+                    using var _ = await http.PostAsync($"https://tapi.bale.ai/bot{token}/sendChatAction",
+                        new StringContent(payload, Encoding.UTF8, "application/json"), ct);
+                }
+                catch { /* یک دور ناموفق مهم نیست */ }
+                await Task.Delay(TimeSpan.FromSeconds(4), ct);
+            }
+        }
+        catch (OperationCanceledException) { /* پایان طبیعی */ }
+        catch { /* خطای دیگر هم مهم نیست */ }
+    }
+
+    /// <summary>ارسال فایل (اکسل گزارش) به چت بله.</summary>
+    private async Task SendDocumentAsync(HttpClient http, string token, string chatId,
+        byte[] bytes, string fileName, string caption)
+    {
+        try
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(BaleChatIdValue(chatId).ToString() ?? chatId), "chat_id");
+            var file = new ByteArrayContent(bytes);
+            file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            form.Add(file, "document", fileName);
+            if (caption.Length > 1000) caption = caption[..1000];
+            form.Add(new StringContent(caption, Encoding.UTF8), "caption");
+            using var resp = await http.PostAsync($"https://tapi.bale.ai/bot{token}/sendDocument", form);
+            _ = await resp.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "ارسال سند در بله ناموفق بود.");
         }
     }
 

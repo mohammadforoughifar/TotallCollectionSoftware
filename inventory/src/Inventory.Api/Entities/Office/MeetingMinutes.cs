@@ -48,6 +48,9 @@ public class MeetingMinutes
 {
     public int Id { get; set; }
 
+    /// <summary>شرکت فعال مالک صورتجلسه</summary>
+    public int? CompanyId { get; set; }
+
     /// <summary>عنوان صورتجلسه</summary>
     [MaxLength(300)]
     public string Title { get; set; } = "";

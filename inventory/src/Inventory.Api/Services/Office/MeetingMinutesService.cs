@@ -18,9 +18,9 @@ namespace Inventory.Api.Services.Office;
 
 public interface IMeetingMinutesService
 {
-    Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId);
-    Task<MinutesDetailDto?> GetDetailAsync(int id, int userId);
-    Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName);
+    Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId);
+    Task<MinutesDetailDto?> GetDetailAsync(int id, int userId, int companyId);
+    Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName, int companyId);
     Task SubmitAsync(int id, bool includeAbsentees, int userId, string userName);
     Task DeleteAsync(int id, int userId);
     Task RemoveSignatureAsync(int minutesId, int participantUserId, int creatorUserId);
@@ -152,11 +152,11 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     // ------------------------------ فهرست ------------------------------
 
-    public async Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId)
+    public async Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId)
     {
         // کاربر فقط صورتجلسه‌ای را می‌بیند که ایجادکننده آن است یا در گردش
         // صورتجلسه به‌عنوان حاضر/غایب قرار گرفته است.
-        var q = _db.MeetingMinutes.AsNoTracking().Where(m => !m.IsDeleted &&
+        var q = _db.MeetingMinutes.AsNoTracking().Where(m => !m.IsDeleted && m.CompanyId == companyId &&
             (m.CreatedByUserId == userId ||
              _db.MeetingMinutesParticipants.Any(p => p.MinutesId == m.Id && p.UserId == userId)));
         if (!string.IsNullOrWhiteSpace(search))
@@ -190,11 +190,11 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     // ------------------------------ جزئیات ------------------------------
 
-    public async Task<MinutesDetailDto?> GetDetailAsync(int id, int userId)
+    public async Task<MinutesDetailDto?> GetDetailAsync(int id, int userId, int companyId)
     {
         // عدم عضویت عمداً مانند «پیدا نشد» پاسخ داده می‌شود تا وجود صورتجلسه افشا نشود.
         var m = await _db.MeetingMinutes.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted &&
+            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted && x.CompanyId == companyId &&
                 (x.CreatedByUserId == userId ||
                  _db.MeetingMinutesParticipants.Any(p => p.MinutesId == x.Id && p.UserId == userId)));
         if (m == null) return null;
@@ -229,7 +229,7 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     // ------------------------------ ساخت/ویرایش ------------------------------
 
-    public async Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName)
+    public async Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName, int companyId)
     {
         if (string.IsNullOrWhiteSpace(dto.Title))
             throw new Exception("عنوان صورتجلسه الزامی است.");
@@ -258,6 +258,7 @@ public class MeetingMinutesService : IMeetingMinutesService
         if (dto.Id > 0)
         {
             m = await MustGetAsync(dto.Id);
+            if (m.CompanyId != companyId) throw new Exception("صورتجلسه متعلق به شرکت فعال نیست.");
             if (m.CreatedByUserId != userId)
                 throw new Exception("فقط ایجادکننده صورتجلسه مجاز به ویرایش آن است.");
             if (m.Status == MeetingMinutesStatus.Closed)
@@ -274,7 +275,8 @@ public class MeetingMinutesService : IMeetingMinutesService
                 DateRegistered = now,
                 Status = MeetingMinutesStatus.InReview,
                 CreatedByUserId = userId,
-                CreatedByName = userName
+                CreatedByName = userName,
+                CompanyId = companyId
             };
             _db.MeetingMinutes.Add(m);
             await _db.SaveChangesAsync();

@@ -5,6 +5,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Infrastructure;
 using Inventory.Api.Services;
+using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.FileProviders;
@@ -13,6 +14,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHttpContextAccessor();
 
 // ================== HTTPS داخلی (لازم برای اعلان سیستمی مرورگر) ==================
 // اعلان سیستمی و Service Worker فقط در «زمینهٔ امن» فعال می‌شوند؛ روی http://آی‌پی شبکه این امکان وجود ندارد.
@@ -299,6 +301,97 @@ builder.Services.AddSingleton<IMessengerLinkCodes, MessengerLinkCodes>();
 builder.Services.AddHostedService<BaleBotWorker>(); // خواندن خودکار پیام‌های ربات بله (/start و اشتراک شماره)
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddHttpClient("moadian", c => c.Timeout = TimeSpan.FromSeconds(30)); // سرویس مودیان (فاکتور الکترونیکی)
+
+// ================== هوش مصنوعی فروغ آریا (مدل لوکال — Ollama) ==================
+// تایم‌اوت هر درخواست داخل خود کلاینت مدیریت می‌شود (AiOptions.TimeoutSeconds).
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
+builder.Services.AddHttpClient("ai", c => c.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddScoped<IAiChatClient, OpenAiCompatibleChatClient>();
+builder.Services.AddScoped<IAiEmbeddingClient, OpenAiCompatibleEmbeddingClient>();
+builder.Services.AddScoped<AiConversationService>();
+builder.Services.AddScoped<AiKnowledgeService>();
+builder.Services.AddScoped<AiToolRegistry>();
+builder.Services.AddScoped<AiFallbackRouter>();
+builder.Services.AddScoped<IAiAgentService, AiAgentService>();
+builder.Services.AddScoped<ILetterAiService, LetterAiService>();
+builder.Services.AddScoped<AiBriefingService>();
+builder.Services.AddScoped<AiDigestService>();
+builder.Services.AddScoped<AiReminderService>();
+builder.Services.AddScoped<AiScheduleService>();
+builder.Services.AddScoped<AiSearchService>();
+builder.Services.AddScoped<AiAlertRuleService>();
+builder.Services.AddScoped<AiFeedbackService>();
+builder.Services.AddScoped<AiAuditService>();
+builder.Services.AddScoped<AiAlertsService>();
+builder.Services.AddScoped<AiActionService>();
+// ابزارهای دستیار
+builder.Services.AddScoped<IAiTool, GuideSearchTool>();
+builder.Services.AddScoped<IAiTool, MyLeaveBalanceTool>();
+builder.Services.AddScoped<IAiTool, MyLeavesTool>();
+builder.Services.AddScoped<IAiTool, MyAttendanceTool>();
+builder.Services.AddScoped<IAiTool, MyPayslipTool>();
+builder.Services.AddScoped<IAiTool, MyLoansTool>();
+builder.Services.AddScoped<IAiTool, MyMissionsTool>();
+builder.Services.AddScoped<IAiTool, MyLettersStatsTool>();
+builder.Services.AddScoped<IAiTool, MyLettersInboxTool>();
+builder.Services.AddScoped<IAiTool, LetterDetailTool>();
+builder.Services.AddScoped<IAiTool, UsersLookupTool>();
+builder.Services.AddScoped<IAiTool, RequestLeaveTool>();
+builder.Services.AddScoped<IAiTool, ClockTool>();
+builder.Services.AddScoped<IAiTool, ConfirmActionTool>();
+builder.Services.AddScoped<IAiTool, CancelActionTool>();
+builder.Services.AddScoped<IAiTool, PendingActionsTool>();
+builder.Services.AddScoped<IAiTool, PendingApprovalsTool>();
+builder.Services.AddScoped<IAiTool, MyReferralsPendingTool>();
+builder.Services.AddScoped<IAiTool, RequestMissionTool>();
+builder.Services.AddScoped<IAiTool, DecideLeaveTool>();
+builder.Services.AddScoped<IAiTool, AnswerReferralTool>();
+builder.Services.AddScoped<IAiTool, CreateTicketTool>();
+builder.Services.AddScoped<IAiTool, ReportWorkTool>();
+builder.Services.AddScoped<IAiTool, CreateLetterDraftTool>();
+builder.Services.AddScoped<IAiTool, SalesSummaryTool>();
+builder.Services.AddScoped<IAiTool, RecentInvoicesTool>();
+builder.Services.AddScoped<IAiTool, StockStatusTool>();
+builder.Services.AddScoped<IAiTool, ChequesDueTool>();
+builder.Services.AddScoped<IAiTool, TopDebtorsTool>();
+builder.Services.AddScoped<IAiTool, CashStatusTool>();
+builder.Services.AddScoped<IAiTool, BuildReportTool>();
+builder.Services.AddScoped<IAiTool, DataCatalogTool>();
+builder.Services.AddScoped<IAiTool, ExploreDataTool>();
+builder.Services.AddScoped<IAiTool, MyAlertsTool>();
+builder.Services.AddScoped<IAiTool, ReferLetterTool>();
+builder.Services.AddScoped<IAiTool, AnswerTicketTool>();
+builder.Services.AddScoped<IAiTool, RegisterChequeTool>();
+builder.Services.AddScoped<IAiTool, WeeklyDigestTool>();
+builder.Services.AddScoped<IAiTool, SetReminderTool>();
+builder.Services.AddScoped<IAiTool, MyRemindersTool>();
+builder.Services.AddScoped<IAiTool, CancelReminderTool>();
+builder.Services.AddScoped<IAiTool, DecideLeaveBulkTool>();
+builder.Services.AddScoped<IAiTool, DraftMinutesTool>();
+builder.Services.AddScoped<IAiTool, CreateMinutesTool>();
+builder.Services.AddScoped<IAiTool, MyMinutesActionsTool>();
+builder.Services.AddScoped<IAiTool, ScheduleReportTool>();
+builder.Services.AddScoped<IAiTool, MySchedulesTool>();
+builder.Services.AddScoped<IAiTool, CancelScheduleTool>();
+builder.Services.AddScoped<IAiTool, SearchDocsTool>();
+builder.Services.AddScoped<IAiTool, ReindexDocsTool>();
+builder.Services.AddScoped<IAiTool, CreateAlertTool>();
+builder.Services.AddScoped<IAiTool, MyAlertRulesTool>();
+builder.Services.AddScoped<IAiTool, DeleteAlertTool>();
+builder.Services.AddScoped<IAiTool, FeedbackStatsTool>();
+builder.Services.AddScoped<IAiTool, AuditStatsTool>();
+builder.Services.AddScoped<AiReportService>();
+builder.Services.AddScoped<AiDataExplorer>();
+// پاسخ‌گویی در پیام‌رسان داخلی
+builder.Services.AddSingleton<AiReplyQueue>();
+builder.Services.AddHostedService<AiChatReplyWorker>();
+// گزارش صبحگاهی خودکار
+builder.Services.AddHostedService<AiBriefingWorker>();
+builder.Services.AddHostedService<AiDigestWorker>();
+builder.Services.AddHostedService<AiReminderWorker>();
+builder.Services.AddHostedService<AiScheduleWorker>();
+builder.Services.AddHostedService<AiSearchWorker>();
+builder.Services.AddHostedService<AiAlertRuleWorker>();
 builder.Services.AddSingleton<HardwareMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HardwareMonitor>());
 

@@ -297,6 +297,22 @@ else
                 }
                 <div class="fs-8 text-muted mt-1">شناسه چت ایتا پس از اتصال کاربر، خودکار در همین کادر ثبت می‌شود.</div>
             </div>
+            @if (Auth.IsAdmin)
+            {
+                <div class="col-12">
+                    <label class="form-label d-block"><i class="bi bi-building text-primary"></i> شرکت‌های مجاز کاربر</label>
+                    <div class="border rounded p-2" style="max-height:150px;overflow:auto">
+                        @if (companyOptions.Count == 0) { <span class="text-muted fs-8">شرکتی برای انتخاب وجود ندارد.</span> }
+                        @foreach (var company in companyOptions)
+                        {
+                            <label class="form-check form-check-inline mb-1">
+                                <input class="form-check-input" type="checkbox" checked="@selectedCompanyIds.Contains(company.Id)" @onchange="e => ToggleCompany(company.Id, (bool)e.Value!)" />
+                                <span class="form-check-label">@company.Name</span>
+                            </label>
+                        }
+                    </div>
+                </div>
+            }
             @if (Auth.IsAdmin && editing)
             {
                 <div class="col-12">
@@ -424,6 +440,9 @@ else
 
 @code {
     private List<UserDto> items = new();
+    private List<CompanyOption> companyOptions = new();
+    private HashSet<int> selectedCompanyIds = new();
+    private sealed class CompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
     private List<Referrer> referrers = new();
     private bool loading = true;
 
@@ -519,6 +538,22 @@ else
     // ================== افراد مجاز دستور کار (بند ۶) ==================
     private HashSet<int> woAllowed = new();
     private string woSearch = "";
+
+    private async Task LoadCompanyAccess(int userId)
+    {
+        try
+        {
+            var ids = await Http.GetFromJsonAsync<List<int>>($"/api/company-context/users/{userId}") ?? new();
+            selectedCompanyIds = ids.ToHashSet();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { selectedCompanyIds = new(); }
+    }
+
+    private void ToggleCompany(int id, bool selected)
+    {
+        if (selected) selectedCompanyIds.Add(id); else selectedCompanyIds.Remove(id);
+    }
 
     private async Task LoadWoAllowed(int userId)
     {
@@ -628,6 +663,7 @@ else
         try
         {
             items = await AuthApi.GetUsersAsync();
+            try { companyOptions = await Http.GetFromJsonAsync<List<CompanyOption>>("/api/SystemCompanies") ?? new(); } catch { companyOptions = new(); }
             referrers = await ReferrerSvc.GetAllAsync(activeOnly: true);
             try { allRoles = (await Http.GetFromJsonAsync<List<RoleOpt>>("/api/roles") ?? new()).Where(r => r.IsActive).ToList(); }
             catch (Exception rex)
@@ -645,6 +681,7 @@ else
         form = new UserDto { Role = Auth.IsAdmin ? "Admin" : "Operator", IsActive = true };
         referrerIdStr = "0";
         selectedRoleIds = new();
+        selectedCompanyIds = new();
         roleDropdownOpen = false; roleSearch = "";
         saveError = "";
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
@@ -675,6 +712,7 @@ else
         saveError = "";
         woSearch = "";
         _ = LoadWoAllowed(u.Id);
+        _ = LoadCompanyAccess(u.Id);
         luPhotoBytes = null; luPhotoPreview = null; luSignatureBytes = null; luSignaturePreview = null;
         showModal = true;
         StateHasChanged();
@@ -714,6 +752,11 @@ else
         try
         {
             var saved = await AuthApi.SaveUserAsync(form);
+            if (Auth.IsAdmin)
+            {
+                var cr = await Http.PutAsJsonAsync($"/api/company-context/users/{saved.Id}", new { companyIds = selectedCompanyIds.ToList() });
+                if (!cr.IsSuccessStatusCode) Toast.Error("کاربر ذخیره شد ولی تخصیص شرکت‌ها ذخیره نشد.");
+            }
             if (luPhotoBytes != null)
             {
                 try

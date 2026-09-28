@@ -422,6 +422,15 @@ else
                             </div>
                         }
                     </div>
+                    @if (companyOptions.Count > 0)
+                    {
+                        <select class="form-select form-select-sm company-switcher" value="@activeCompanyId" @onchange="SwitchCompany" title="شرکت فعال">
+                            @foreach (var company in companyOptions)
+                            {
+                                <option value="@company.Id">@company.Name</option>
+                            }
+                        </select>
+                    }
                     <span class="badge badge-soft-primary d-none d-sm-inline d-inline-flex align-items-center gap-1" style="border-radius:999px;padding:.3rem .7rem .3rem .35rem;">
                         <UserAvatar LoginUserId="Auth.UserId" Size="26" CssClass="user-avatar-sm" />
                         @Auth.DisplayName
@@ -562,6 +571,12 @@ else
                 </button>
             </Footer>
         </Modal>
+
+        @* ویجت شناور هوش مصنوعی فروغ آریا *@
+        @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+        {
+            <AiChatWidget />
+        }
     </div>
 }
 
@@ -570,6 +585,43 @@ else
     private bool mobileOpen;
     private int reorderCount;
     private int newSystemsCount;
+    private int? activeCompanyId;
+    private List<CompanyOption> companyOptions = new();
+    private sealed class CompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
+
+    private async Task LoadCompanyContextAsync()
+    {
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
+            if (int.TryParse(saved, out var id) && id > 0)
+                Http.DefaultRequestHeaders.Remove("X-Company-Id");
+            if (id > 0) Http.DefaultRequestHeaders.Add("X-Company-Id", id.ToString());
+            var context = await Http.GetFromJsonAsync<CompanyContextResponse>("api/company-context");
+            companyOptions = context?.Companies ?? new();
+            activeCompanyId = context?.ActiveCompanyId;
+            if (activeCompanyId is > 0)
+            {
+                Http.DefaultRequestHeaders.Remove("X-Company-Id");
+                Http.DefaultRequestHeaders.Add("X-Company-Id", activeCompanyId.Value.ToString());
+                await JS.InvokeVoidAsync("localStorage.setItem", "activeCompanyId", activeCompanyId.Value.ToString());
+            }
+        }
+        catch { companyOptions = new(); }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SwitchCompany(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var id) || id <= 0) return;
+        activeCompanyId = id;
+        Http.DefaultRequestHeaders.Remove("X-Company-Id");
+        Http.DefaultRequestHeaders.Add("X-Company-Id", id.ToString());
+        await JS.InvokeVoidAsync("localStorage.setItem", "activeCompanyId", id.ToString());
+        Nav.NavigateTo(Nav.Uri, forceLoad: true);
+    }
+
+    private sealed class CompanyContextResponse { public int? ActiveCompanyId { get; set; } public List<CompanyOption> Companies { get; set; } = new(); }
 
     // حالت موبایل/اندروید: صفحه کوچک‌تر از ~۱۲ اینچ
     private bool isMobile;
@@ -584,6 +636,7 @@ else
         Chat.OnMessagesRead += OnChatRead;
         Chat.OnConversationChanged += OnChatConversation;
         Chat.OnSyncRequested += OnChatSync;
+        _ = LoadCompanyContextAsync();
 
     }
 
@@ -1329,6 +1382,7 @@ else
 
 <style>
     /* ================== زنگ اعلان ================== */
+    .company-switcher { width: 150px; min-width: 110px; font-size: .75rem; }
     .ntf-bell-wrap { position: relative; }
     .ntf-bell { position: relative; }
     .ntf-badge {

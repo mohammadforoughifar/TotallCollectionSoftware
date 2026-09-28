@@ -25,6 +25,11 @@ public class ApiClient : IApiClient
     private readonly HttpClient _http;
     private readonly ApiOptions _opts;
 
+    /// <summary>سقف انتظار فراخوانی‌های معمولی (رفتار قبلی: ۱۰۰ ثانیه).</summary>
+    private static readonly TimeSpan DefaultCallTimeout = TimeSpan.FromSeconds(100);
+    /// <summary>سقف انتظار فراخوانی‌های AI (استنتاج CPU + حلقه ابزار ممکن است چند دقیقه طول بکشد).</summary>
+    private static readonly TimeSpan LongCallTimeout = TimeSpan.FromMinutes(10);
+
     private readonly IAuthState _auth;
 
     public ApiClient(HttpClient http, ApiOptions opts, IAuthState auth)
@@ -134,8 +139,10 @@ public class ApiClient : IApiClient
     }
 
     public async Task<T> GetAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path);
+    public async Task<T> GetLongAsync<T>(string path) => await SendAsync<T>(HttpMethod.Get, path, null, LongCallTimeout);
 
     public async Task<T> PostAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Post, path, body);
+    public async Task<T> PostLongAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Post, path, body, LongCallTimeout);
 
     public async Task<T> PutAsync<T>(string path, object? body = null) => await SendAsync<T>(HttpMethod.Put, path, body);
 
@@ -143,17 +150,23 @@ public class ApiClient : IApiClient
 
     public async Task<T> DeleteAsync<T>(string path) => await SendAsync<T>(HttpMethod.Delete, path);
 
-    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null)
+    private async Task<T> SendAsync<T>(HttpMethod method, string path, object? body = null, TimeSpan? timeout = null)
     {
         var req = new HttpRequestMessage(method, Url(path));
         AddAuth(req);
         if (body is not null)
             req.Content = JsonContent.Create(body, options: JsonOpts);
 
+        var limit = timeout ?? DefaultCallTimeout;
+        using var cts = new CancellationTokenSource(limit);
         HttpResponseMessage resp;
         try
         {
-            resp = await _http.SendAsync(req);
+            resp = await _http.SendAsync(req, cts.Token);
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+            throw new ApiException($"پاسخ سرور بیش از {(int)limit.TotalSeconds} ثانیه طول کشید و قطع شد. اگر مدل تازه بارگذاری شده، یک بار دیگر تلاش کن (دفعه بعد سریع‌تر است).");
         }
         catch (Exception ex)
         {

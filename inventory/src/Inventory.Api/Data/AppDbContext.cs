@@ -55,6 +55,18 @@ public class AppDbContext : DbContext
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
+    // ================== هوش مصنوعی فروغ آریا ==================
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+    public DbSet<AiKnowledgeDoc> AiKnowledgeDocs => Set<AiKnowledgeDoc>();
+    public DbSet<AiPendingAction> AiPendingActions => Set<AiPendingAction>();
+    public DbSet<AiReminder> AiReminders => Set<AiReminder>();
+    public DbSet<AiReportSchedule> AiReportSchedules => Set<AiReportSchedule>();
+    public DbSet<AiDocEmbedding> AiDocEmbeddings => Set<AiDocEmbedding>();
+    public DbSet<AiAlertRule> AiAlertRules => Set<AiAlertRule>();
+    public DbSet<AiFeedback> AiFeedbacks => Set<AiFeedback>();
+    public DbSet<AiAuditLog> AiAuditLogs => Set<AiAuditLog>();
+
     // ================== دستور کار ==================
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<WorkOrderAssignee> WorkOrderAssignees => Set<WorkOrderAssignee>();
@@ -104,6 +116,7 @@ public class AppDbContext : DbContext
     public DbSet<SystemHandover> SystemHandovers => Set<SystemHandover>();
     public DbSet<SystemRemoteCommand> SystemRemoteCommands => Set<SystemRemoteCommand>();
     public DbSet<SystemCompany> SystemCompanies => Set<SystemCompany>();
+    public DbSet<UserCompanyAccess> UserCompanyAccesses => Set<UserCompanyAccess>();
     public DbSet<SystemDepartment> SystemDepartments => Set<SystemDepartment>();
     public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
 
@@ -385,8 +398,12 @@ public class AppDbContext : DbContext
         base.OnModelCreating(mb);
         DocEvolutionModel.Configure(mb);
         PushDeliverySchema.Configure(mb);
+        AiSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
+        mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
+        mb.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<ProductCategory>().HasIndex(c => c.Name).IsUnique();
         mb.Entity<MeasureUnit>().HasIndex(u => u.Name).IsUnique();
         mb.Entity<Stock>().HasIndex(s => new { s.WarehouseId, s.ProductId }).IsUnique();

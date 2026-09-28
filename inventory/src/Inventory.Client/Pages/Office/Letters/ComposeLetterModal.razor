@@ -1,6 +1,10 @@
 @inject ILetterService LetterSvc
+@inject IOutgoingLetterService OutgoingSvc
+@inject IIncomingLetterService IncomingSvc
 @inject IJSRuntime JS
 @inject IToastService Toast
+@inject IAuthState Auth
+@inject AiAssistantService AiSvc
 
 @* ============================================================
    فرم ایجاد نامه — شیت کناری مطابق طرح مصوب (پروتوتایپ نسخه ۶):
@@ -38,6 +42,43 @@
                                  SelectedUsers="hameshUsers" SelectedGroups="hameshGroups" />
             </div>
 
+            @* 🤖 پیشنهاد گیرنده هوشمند — از روی عنوان و متن نامه *@
+            @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+            {
+                <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin:-.2rem 0 .4rem">
+                    <button type="button" class="lbtn ghost" style="padding:.3rem .7rem;font-size:.8rem"
+                            disabled="@aiRcvBusy" @onclick="SuggestReceivers">
+                        @if (aiRcvBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                        <i class="bi bi-robot"></i> پیشنهاد گیرنده هوشمند
+                    </button>
+                    <small class="text-muted">از روی عنوان و متنی که نوشتی، گیرنده مناسب پیشنهاد می‌دهد.</small>
+                </div>
+                @if (!string.IsNullOrEmpty(aiRcvErr))
+                {
+                    <div class="ferr" style="margin-bottom:.4rem"><i class="bi bi-exclamation-circle"></i> @aiRcvErr</div>
+                }
+                @if (aiReceivers != null)
+                {
+                    <div class="selpills" style="margin-top:0;margin-bottom:.4rem">
+                        @foreach (var s in aiReceivers.Suggestions)
+                        {
+                            var ss = s;
+                            <button type="button" class="addrel" title="@ss.Reason" @onclick="() => AddSuggestedReceiver(ss.UserId)">
+                                <i class="bi bi-plus-lg"></i> @ss.Name
+                                @if (!string.IsNullOrWhiteSpace(ss.Department))
+                                {
+                                    <small>(@ss.Department)</small>
+                                }
+                            </button>
+                        }
+                        @if (aiReceivers.Suggestions.Count == 0)
+                        {
+                            <small class="text-muted">پیشنهادی یافت نشد؛ عنوان یا متن را کامل‌تر بنویس.</small>
+                        }
+                    </div>
+                }
+            }
+
             <div class="row2">
                 <div class="fcard">
                     <label>فوریت نامه</label>
@@ -71,7 +112,49 @@
             </div>
 
             <div class="fcard">
-                <label>متن نامه</label>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:.5rem">
+                    <label style="margin:0">متن نامه</label>
+                    @if (Auth.IsAdmin || Auth.Has("AiAssistant.Use"))
+                    {
+                        <button type="button" class="lbtn pri" style="padding:.3rem .7rem;font-size:.8rem" @onclick="ToggleAiDraft">
+                            <i class="bi bi-robot"></i> پیش‌نویس هوشمند
+                        </button>
+                    }
+                </div>
+                @if (aiDraftOpen)
+                {
+                    <div style="background:#f5f3ff;border:1px dashed #a78bfa;border-radius:.7rem;padding:.7rem;margin:.6rem 0;display:flex;flex-direction:column;gap:.55rem">
+                        <input class="tin" placeholder="موضوع یا خواسته‌ات را بنویس… (مثلاً: درخواست خرید ۵ لپ‌تاپ برای واحد مالی)"
+                               @bind="aiTopic" @bind:event="oninput" />
+                        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                            <select class="tin" style="flex:1;min-width:110px" @bind="aiKind">
+                                <option value="داخلی">داخلی</option>
+                                <option value="صادره">صادره</option>
+                                <option value="جوابیه">جوابیه</option>
+                                <option value="درخواست">درخواست</option>
+                                <option value="ابلاغ">ابلاغ</option>
+                            </select>
+                            <select class="tin" style="flex:1;min-width:110px" @bind="aiTone">
+                                <option value="رسمی">لحن رسمی</option>
+                                <option value="دوستانه">لحن دوستانه</option>
+                                <option value="دستوری">لحن دستوری</option>
+                            </select>
+                            <input class="tin" style="flex:2;min-width:150px" placeholder="نام گیرنده (اختیاری)"
+                                   @bind="aiTo" @bind:event="oninput" />
+                        </div>
+                        <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+                            <button type="button" class="lbtn grn" disabled="@(aiBusy || string.IsNullOrWhiteSpace(aiTopic))" @onclick="GenerateAiDraft">
+                                @if (aiBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                <i class="bi bi-magic"></i> تولید پیش‌نویس
+                            </button>
+                            <small class="text-muted">عنوان و متن با هوش مصنوعی پر می‌شود (قابل ویرایش).</small>
+                        </div>
+                        @if (!string.IsNullOrEmpty(aiErr))
+                        {
+                            <div class="ferr"><i class="bi bi-exclamation-circle"></i> @aiErr</div>
+                        }
+                    </div>
+                }
                 <RichTextEditor @ref="_rich" Id="ltxEditor" Placeholder="متن نامه را بنویسید…"
                                 @bind-Value="pendingBody" Height="260" />
             </div>
@@ -152,21 +235,23 @@
                     <button class="@(relType == 1 ? "on" : "")" @onclick="() => relType = 1"><i class="bi bi-arrow-return-left"></i> پیرو</button>
                 </div>
                 <div class="gm-b">
+                    <div class="d-flex gap-2 mb-2 flex-wrap">
+                        @foreach (var tab in new[] { (1, "داخلی"), (2, "صادره"), (3, "وارده") })
+                        {
+                            <button type="button" class="btn btn-sm @(relSourceType == tab.Item1 ? "btn-primary" : "btn-outline-secondary")" @onclick="() => { relSourceType = tab.Item1; _ = SearchRel(); }">@tab.Item2 <span class="badge bg-light text-dark">@relResults.Count(x => x.SourceType == tab.Item1)</span></button>
+                        }
+                    </div>
                     <input class="tin" style="margin-bottom:9px" placeholder="جستجوی شماره یا عنوان…"
                            @bind="relSearch" @bind:event="oninput" @bind:after="SearchRel" />
-                    @foreach (var l in relResults)
+                    @foreach (var rl in relResults.Where(x => x.SourceType == relSourceType))
                     {
-                        var rl = l;
-                        <div class="rl-row @(relSel.Contains(rl.LetterId) ? "on" : "")" @onclick="() => ToggleRelSel(rl.LetterId)">
+                        <div class="rl-row @(relSel.Contains(rl.SelectionKey) ? "on" : "")" @onclick="() => ToggleRelSel(rl.SelectionKey)">
                             <span class="chk"><i class="bi bi-check"></i></span>
                             <div class="inf"><b>@rl.Title</b><small class="num"># @rl.LetterNumber.FaDigits() · @rl.Date.ToFa()</small></div>
-                            <span class="rl-dir @(rl.IsSent ? "out" : "in")">
-                                <i class="bi @(rl.IsSent ? "bi-send" : "bi-box-arrow-in-down")"></i>
-                                @(rl.IsSent ? "ارسالی" : "دریافتی")
-                            </span>
+                            <span class="rl-dir @(rl.SourceType == 2 ? "out" : "in")"><i class="bi @(rl.SourceType == 2 ? "bi-send" : rl.SourceType == 3 ? "bi-box-arrow-in-down" : "bi-file-earmark-text")"></i> @rl.SourceTypeTitle</span>
                         </div>
                     }
-                    @if (relResults.Count == 0) { <div class="cempty">نامه‌ای یافت نشد</div> }
+                    @if (!relResults.Any(x => x.SourceType == relSourceType)) { <div class="cempty">نامه‌ای در این دسته یافت نشد</div> }
                 </div>
                 <div class="gm-f">
                     <button class="lbtn ghost" @onclick="() => relOpen = false">انصراف</button>
@@ -196,6 +281,68 @@
 
     private bool errTitle, errRcv;
 
+    // ==================== 🤖 پیش‌نویس هوشمند ====================
+    private bool aiDraftOpen;
+    private bool aiBusy;
+    private string aiTopic = "";
+    private string aiKind = "داخلی";
+    private string aiTone = "رسمی";
+    private string aiTo = "";
+    private string aiErr = "";
+
+    private void ToggleAiDraft()
+    {
+        aiDraftOpen = !aiDraftOpen;
+        aiErr = "";
+    }
+
+    private async Task GenerateAiDraft()
+    {
+        if (string.IsNullOrWhiteSpace(aiTopic) || aiBusy) return;
+        aiBusy = true; aiErr = "";
+        try
+        {
+            var draft = await AiSvc.DraftLetterAsync(aiTopic.Trim(), aiTone, aiKind,
+                string.IsNullOrWhiteSpace(aiTo) ? null : aiTo.Trim(), null);
+            if (string.IsNullOrWhiteSpace(title) && !string.IsNullOrWhiteSpace(draft.Subject))
+                title = draft.Subject.Trim();
+            if (!string.IsNullOrWhiteSpace(draft.BodyHtml))
+            {
+                pendingBody = draft.BodyHtml;
+                if (_rich != null) await _rich.SetContentAsync(pendingBody);
+            }
+            aiDraftOpen = false;
+            Toast.Success(draft.UsedFallback ? "پیش‌نویس (حالت آفلاین) درج شد." : "پیش‌نویس هوشمند درج شد.");
+        }
+        catch (Exception ex) { aiErr = ex.Message; }
+        finally { aiBusy = false; }
+    }
+
+    // ==================== 🤖 پیشنهاد گیرنده هوشمند ====================
+    private bool aiRcvBusy;
+    private string aiRcvErr = "";
+    private AiReceiversResponse? aiReceivers;
+
+    private async Task SuggestReceivers()
+    {
+        if (aiRcvBusy) return;
+        aiRcvBusy = true; aiRcvErr = ""; aiReceivers = null;
+        try
+        {
+            var html = _rich != null ? await _rich.GetContentAsync() : pendingBody;
+            aiReceivers = await AiSvc.SuggestReceiversAsync(title ?? "", html ?? "");
+        }
+        catch (Exception ex) { aiRcvErr = ex.Message; }
+        finally { aiRcvBusy = false; }
+    }
+
+    private void AddSuggestedReceiver(int userId)
+    {
+        if (userId <= 0 || !rcvUsers.Add(userId)) return;
+        errRcv = false;
+        Toast.Success("به گیرندگان اضافه شد.");
+    }
+
     private List<LetterReciverDto> allUsers = new();
     private List<LetterGroupDto> allGroups = new();
 
@@ -215,8 +362,19 @@
     private bool relOpen;
     private int relType = 2;
     private string relSearch = "";
-    private List<LetterPickDto> relResults = new();
-    private HashSet<int> relSel = new();
+    private int relSourceType = 1;
+    private sealed class RelatedPick
+    {
+        public int LetterId { get; set; }
+        public string SelectionKey => $"{SourceType}:{LetterId}";
+        public string LetterNumber { get; set; } = "";
+        public string Title { get; set; } = "";
+        public DateTime Date { get; set; }
+        public int SourceType { get; set; }
+        public string SourceTypeTitle => SourceType == 1 ? "داخلی" : SourceType == 2 ? "صادره" : "وارده";
+    }
+    private List<RelatedPick> relResults = new();
+    private HashSet<string> relSel = new();
 
     private string SheetTitle => isEditLetter ? "ویرایش نامه" : draftId is > 0 ? "ادامه پیش‌نویس" : "ایجاد نامه جدید";
 
@@ -240,6 +398,22 @@
         if (pishnevisId is > 0) _ = LoadDraftAttsAsync(pishnevisId.Value);
         StateHasChanged();
         _ = InitEditorAsync();
+    }
+
+    /// <summary>پاسخ به نامه: گیرنده = فرستنده اصلی + عطف خودکار به نامه مبدأ</summary>
+    public void OpenReply(string subject, string bodyHtml, int senderUserId,
+                          int letterId, string letterNumber, string letterTitle)
+    {
+        Open(subject, bodyHtml);
+        if (senderUserId > 0) rcvUsers.Add(senderUserId);
+        related.Add(new RelatedLetterDto
+        {
+            Related = 2, // عطف
+            RelateLetterId = letterId,
+            RelateLetterNumber = letterNumber,
+            RelateLetterTitle = letterTitle,
+        });
+        StateHasChanged();
     }
 
     /// <summary>ویرایش نامه ارسال‌شده (فقط قبل از خوانده‌شدن) — همه اطلاعات فرم ایجاد قابل ویرایش است</summary>
@@ -290,6 +464,8 @@
         hameshUsers.Clear(); hameshGroups.Clear();
         pendingFiles.Clear(); savedAtts.Clear();
         related.Clear(); relOpen = false; relSel.Clear();
+        aiDraftOpen = false; aiTopic = ""; aiTo = ""; aiErr = ""; aiKind = "داخلی"; aiTone = "رسمی";
+        aiRcvBusy = false; aiRcvErr = ""; aiReceivers = null;
     }
 
     private async Task InitEditorAsync()
@@ -390,22 +566,38 @@
 
     private async Task SearchRel()
     {
+        var term = string.IsNullOrWhiteSpace(relSearch) ? null : relSearch;
+        var all = new List<RelatedPick>();
         try
         {
-            var res = await LetterSvc.PickAsync(string.IsNullOrWhiteSpace(relSearch) ? null : relSearch);
-            relResults = res.Where(r => related.All(x => x.RelateLetterId != r.LetterId)).ToList();
+            var items = await LetterSvc.PickAsync(term);
+            all.AddRange(items.Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 1 }));
         }
-        catch { relResults = new(); }
+        catch { }
+        try
+        {
+            var items = await OutgoingSvc.PickAsync(term);
+            all.AddRange(items.Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 2 }));
+        }
+        catch { }
+        try
+        {
+            var result = await IncomingSvc.PickAsync(term, 1, 100);
+            all.AddRange(result.Items.Select(x => new RelatedPick { LetterId = x.SourceId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 3 }));
+        }
+        catch { }
+        relResults = all.Where(r => related.All(x => x.RelateLetterId != r.LetterId))
+            .GroupBy(x => x.SelectionKey).Select(g => g.First()).OrderByDescending(x => x.Date).ToList();
     }
 
-    private void ToggleRelSel(int id) { if (!relSel.Remove(id)) relSel.Add(id); }
+    private void ToggleRelSel(string key) { if (!relSel.Remove(key)) relSel.Add(key); }
 
     private void AddRel()
     {
         if (relSel.Count == 0) { Toast.Error("هیچ نامه‌ای انتخاب نشده است."); return; }
-        foreach (var id in relSel)
+        foreach (var key in relSel)
         {
-            var l = relResults.FirstOrDefault(x => x.LetterId == id);
+            var l = relResults.FirstOrDefault(x => x.SelectionKey == key);
             if (l == null) continue;
             related.Add(new RelatedLetterDto
             {

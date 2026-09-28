@@ -142,7 +142,7 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     {
         // مسیر اصلی: رندر مستقیم قالب اختصاصی MRT شرکت با Stimulsoft.
         // اگر موتور غیرفعال، قالب ناموجود یا رندر ناموفق باشد، پیاده‌سازی QuestPDF زیر fallback است.
-        var stimulsoftPdf = await _stimulsoft.TryGeneratePdfAsync(letterId, size);
+        var stimulsoftPdf = await _stimulsoft.TryGeneratePdfAsync(letterId, size, withCopy);
         if (stimulsoftPdf is { Length: > 0 })
             return stimulsoftPdf;
 
