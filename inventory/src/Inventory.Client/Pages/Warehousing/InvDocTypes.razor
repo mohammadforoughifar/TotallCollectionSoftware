@@ -85,7 +85,7 @@
                         <tr>
                             <th style="width:8px"></th>
                             <th>نوع سند</th>
-                            @if (Auth.IsAdmin)
+                            @if (CanSeeCode)
                             {
                                 <th>کد</th>
                             }
@@ -122,7 +122,7 @@
                                         </div>
                                     </div>
                                 </td>
-                                @if (Auth.IsAdmin)
+                                @if (CanSeeCode)
                                 {
                                     <td class="num text-muted">@t.Code</td>
                                 }
@@ -188,7 +188,7 @@
                             </div>
                         </div>
                         <div class="m-card-body">
-                            @if (Auth.IsAdmin)
+                            @if (CanSeeCode)
                             {
                                 <div class="m-card-row"><span><i class="bi bi-upc text-muted"></i> کد</span><b class="num">@t.Code</b></div>
                             }
@@ -361,6 +361,10 @@
     private List<InvDocType> Filtered =>
         (fNature is null ? items : items.Where(t => t.Nature == fNature))
         .OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ThenBy(t => t.Name).ToList();
+
+    private bool CanSeeCode => Auth.IsAdmin ||
+                               string.Equals(Auth.Role, "Admin", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(Auth.Role, "مدیر", StringComparison.OrdinalIgnoreCase);
 
     private void SetNature(StockNature? n) => fNature = n;
 
