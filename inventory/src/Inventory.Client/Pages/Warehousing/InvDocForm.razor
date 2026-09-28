@@ -241,8 +241,10 @@ else
                                                @onchange="e => SetQty(l, e)" />
                                     </td>
                                     <td>
-                                        <input class="form-control text-start num" dir="ltr" inputmode="decimal" disabled="@ReadOnly"
-                                               value="@(l.UnitPrice == 0 ? "" : Fa.Money(l.UnitPrice))"
+                                        <input class="form-control text-start num price-input" dir="ltr" inputmode="decimal" disabled="@ReadOnly"
+                                               data-format="price"
+                                               value="@GetPriceText(l)"
+                                               @oninput="e => SetPriceInput(l, e)"
                                                @onchange="e => SetPrice(l, e)" />
                                     </td>
                                     <td>
@@ -390,6 +392,12 @@ else
             if (Id is not null)
             {
                 doc = await DocSvc.GetAsync(Id.Value);
+                _priceInputs.Clear();
+                foreach (var line in doc.Lines)
+                {
+                    if (line.UnitPrice > 0)
+                        _priceInputs[line] = Fa.FormatTyping(line.UnitPrice.ToString("0"));
+                }
             }
             else
             {
@@ -461,14 +469,27 @@ else
     }
 
     // ---------- ردیف‌ها ----------
+    private readonly Dictionary<InvDocLine, string> _priceInputs = new();
+
+    private string GetPriceText(InvDocLine l)
+    {
+        if (_priceInputs.TryGetValue(l, out var txt))
+            return txt;
+        return l.UnitPrice > 0 ? Fa.FormatTyping(l.UnitPrice.ToString("0")) : "";
+    }
+
     private void AddLine()
         => doc.Lines.Add(new InvDocLine { RowNo = doc.Lines.Count + 1 });
 
     private void RemoveLine(int idx)
     {
-        doc.Lines.RemoveAt(idx);
-        for (var i = 0; i < doc.Lines.Count; i++)
-            doc.Lines[i].RowNo = i + 1;
+        if (idx >= 0 && idx < doc.Lines.Count)
+        {
+            _priceInputs.Remove(doc.Lines[idx]);
+            doc.Lines.RemoveAt(idx);
+            for (var i = 0; i < doc.Lines.Count; i++)
+                doc.Lines[i].RowNo = i + 1;
+        }
     }
 
     private async Task OnProductChanged(InvDocLine line, int productId)
@@ -480,6 +501,9 @@ else
             line.ProductCode = "";
             line.Unit = "";
             line.CurrentStock = 0;
+            line.UnitPrice = 0;
+            _priceInputs.Remove(line);
+            RecalculateLineDiscount(line);
             return;
         }
         try
@@ -492,7 +516,11 @@ else
             line.IsVatIncluded = p.IsVatIncluded;
             line.VatRate = p.VatRate;
             if (line.UnitPrice == 0)
+            {
                 line.UnitPrice = SelectedType?.Nature == StockNature.Decrease ? p.SalePrice : p.PurchasePrice;
+                if (line.UnitPrice > 0)
+                    _priceInputs[line] = Fa.FormatTyping(line.UnitPrice.ToString("0"));
+            }
             RecalculateLineDiscount(line);
             if (p.TrackBatch || p.TrackSerial) batchProducts = true;
             if (p.TrackExpiry) expiryProducts = true;
@@ -522,9 +550,20 @@ else
         RecalculateLineDiscount(l);
     }
 
-    private static void SetPrice(InvDocLine l, ChangeEventArgs e)
+    private void SetPriceInput(InvDocLine l, ChangeEventArgs e)
     {
-        l.UnitPrice = Fa.ParseDecimal(e.Value?.ToString());
+        var raw = e.Value?.ToString() ?? "";
+        var formatted = Fa.FormatTyping(raw);
+        _priceInputs[l] = formatted;
+        l.UnitPrice = Fa.ParseDecimal(formatted);
+        RecalculateLineDiscount(l);
+    }
+
+    private void SetPrice(InvDocLine l, ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        l.UnitPrice = Fa.ParseDecimal(raw);
+        _priceInputs[l] = l.UnitPrice > 0 ? Fa.FormatTyping(l.UnitPrice.ToString("0")) : "";
         RecalculateLineDiscount(l);
     }
 

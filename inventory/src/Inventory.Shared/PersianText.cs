@@ -85,14 +85,21 @@ public static class Fa
     /// <summary>قالب‌بندی زنده ورودی عددی حین تایپ با جداکننده سه‌رقمی (حفظ اعشار + ارقام فارسی).</summary>
     public static string FormatTyping(string? value)
     {
-        var raw = ToEn(value ?? "").Replace(",", "");
+        var raw = ToEn(value ?? "").Replace(",", "").Trim();
         if (string.IsNullOrWhiteSpace(raw)) return "";
 
         var parts = raw.Split('.', 2);
-        var intPart = new string(parts[0].Where(char.IsDigit).ToArray());
-        if (intPart.Length == 0) intPart = "0";
+        var intDigits = new string(parts[0].Where(char.IsDigit).ToArray());
+        if (intDigits.Length == 0)
+        {
+            if (parts.Length == 2) intDigits = "0";
+            else return "";
+        }
 
-        var formatted = decimal.Parse(intPart, CultureInfo.InvariantCulture).ToString("#,##0", CultureInfo.InvariantCulture);
+        if (!decimal.TryParse(intDigits, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed))
+            return "";
+
+        var formatted = parsed.ToString("#,##0", CultureInfo.InvariantCulture);
         if (parts.Length == 2)
         {
             var frac = new string(parts[1].Where(char.IsDigit).ToArray());

@@ -3,6 +3,7 @@
 
 @code {
     private string Dflt => (ApiCfg?.BaseUrl ?? "").TrimEnd('/') + "/uploads/users/default.jpg";
+    private readonly string _uniqueId = Guid.NewGuid().ToString("N").Substring(0, 8);
 }
 
 <div class="ss">
@@ -13,6 +14,7 @@
            @ref="_input"
            @onfocus="OnFocus"
            @oninput="OnInput"
+           @onkeydown="OnKeyDown"
            @onfocusout="OnBlur" />
 
     @if (AllowClear && Value > 0)
@@ -35,9 +37,17 @@
             }
             else
             {
-                @foreach (var it in filtered)
+                @for (var i = 0; i < filtered.Count; i++)
                 {
-                    <div class="ss-item @(it.Id == Value ? "selected" : "")" @onmousedown="@(() => Select(it))" @onmousedown:preventDefault="true">
+                    var idx = i;
+                    var it = filtered[idx];
+                    var isSelected = it.Id == Value;
+                    var isHighlighted = idx == highlightIndex;
+                    <div id="@($"ss-opt-{_uniqueId}-{idx}")"
+                         class="ss-item @(isSelected ? "selected" : "") @(isHighlighted ? "highlighted" : "")"
+                         @onmousedown="@(() => Select(it))"
+                         @onmousedown:preventDefault="true"
+                         @onmouseover="@(() => highlightIndex = idx)">
                         @if (!string.IsNullOrWhiteSpace(it.AvatarUrl))
                         {
                             <img class="user-avatar user-avatar-sm" src="@it.AvatarUrl" alt="" onerror="this.onerror=null;this.src='@Dflt';" />
@@ -62,12 +72,14 @@
 
     private string query = "";
     private bool open;
+    private int highlightIndex = 0;
 
     /// <summary>پاک کردن انتخاب فعلی — مقدار صفر (هیچ) به والد برمی‌گردد</summary>
     private async Task ClearSelection()
     {
         query = "";
         open = false;
+        highlightIndex = 0;
         if (Value != 0)
         {
             Value = 0;
@@ -112,10 +124,16 @@
     {
         focused = true;
         await OpenMenu();
+        highlightIndex = 0;
         if (Value > 0)
         {
             var sel = Items.FirstOrDefault(i => i.Id == Value);
-            if (sel is not null) query = sel.Name;
+            if (sel is not null)
+            {
+                query = sel.Name;
+                var idx = filtered.FindIndex(i => i.Id == Value);
+                if (idx >= 0) highlightIndex = idx;
+            }
         }
     }
 
@@ -132,10 +150,66 @@
 
     private void CloseMenu() => open = false;
 
-    private void OnInput(ChangeEventArgs e)
+    private async Task OnInput(ChangeEventArgs e)
     {
         query = e.Value?.ToString() ?? "";
-        open = true;
+        highlightIndex = 0;
+        if (!open) await OpenMenu();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (!open)
+        {
+            if (e.Key is "ArrowDown" or "ArrowUp")
+            {
+                await OpenMenu();
+                highlightIndex = 0;
+                return;
+            }
+            return;
+        }
+
+        if (filtered.Count == 0) return;
+
+        if (e.Key == "ArrowDown")
+        {
+            if (highlightIndex < filtered.Count - 1)
+                highlightIndex++;
+            else
+                highlightIndex = 0;
+
+            await ScrollHighlightedIntoView();
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            if (highlightIndex > 0)
+                highlightIndex--;
+            else
+                highlightIndex = filtered.Count - 1;
+
+            await ScrollHighlightedIntoView();
+        }
+        else if (e.Key == "Enter")
+        {
+            if (highlightIndex >= 0 && highlightIndex < filtered.Count)
+            {
+                await Select(filtered[highlightIndex]);
+            }
+        }
+        else if (e.Key == "Escape")
+        {
+            CloseMenu();
+        }
+    }
+
+    private async Task ScrollHighlightedIntoView()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("scrollIntoViewById", $"ss-opt-{_uniqueId}-{highlightIndex}");
+        }
+        catch { }
     }
 
     private async Task OnBlur()

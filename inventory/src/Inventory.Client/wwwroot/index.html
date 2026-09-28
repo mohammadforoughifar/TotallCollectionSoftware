@@ -246,6 +246,16 @@
                 }
             }
 
+            // اگر داخل کمبوباکس با منوی باز هستیم، کلیدهای جهت‌نما و اینتر برای انتخاب گزینه‌اند
+            var ssEl = e.target && e.target.closest ? e.target.closest('.ss') : null;
+            var isSsMenuOpen = ssEl && ssEl.querySelector('.ss-menu');
+
+            if (isSsMenuOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                // جلوگیری از حرکت بی‌مورد مکان‌نما داخل اینپوت کمبوباکس هنگام جابه‌جایی بین آیتم‌ها
+                e.preventDefault();
+                return;
+            }
+
             // ناوبری با کلید Enter بین المان‌ها
             if (e.key === 'Enter') {
                 var target = e.target;
@@ -253,6 +263,9 @@
                 var tag = (target.tagName || '').toUpperCase();
                 if (tag === 'TEXTAREA') return;
                 if (tag === 'BUTTON' || (tag === 'INPUT' && (target.type === 'submit' || target.type === 'button'))) return;
+
+                // اگر منوی کمبوباکس باز است، اینتر باید آیتم انتخابی را تایید کند
+                if (isSsMenuOpen) return;
 
                 var container = target.closest('.doc-grid') || target.closest('.modal-content') || target.closest('form') || target.closest('.card-body') || document.body;
                 var focusables = Array.from(container.querySelectorAll('input:not([disabled]):not([type="hidden"]), select:not([disabled])'));
