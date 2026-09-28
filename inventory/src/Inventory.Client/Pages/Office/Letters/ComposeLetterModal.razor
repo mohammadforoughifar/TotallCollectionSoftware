@@ -1,4 +1,6 @@
 @inject ILetterService LetterSvc
+@inject IOutgoingLetterService OutgoingSvc
+@inject IIncomingLetterService IncomingSvc
 @inject IJSRuntime JS
 @inject IToastService Toast
 @inject IAuthState Auth
@@ -233,21 +235,23 @@
                     <button class="@(relType == 1 ? "on" : "")" @onclick="() => relType = 1"><i class="bi bi-arrow-return-left"></i> پیرو</button>
                 </div>
                 <div class="gm-b">
+                    <div class="d-flex gap-2 mb-2 flex-wrap">
+                        @foreach (var tab in new[] { (1, "داخلی"), (2, "صادره"), (3, "وارده") })
+                        {
+                            <button type="button" class="btn btn-sm @(relSourceType == tab.Item1 ? "btn-primary" : "btn-outline-secondary")" @onclick="() => { relSourceType = tab.Item1; _ = SearchRel(); }">@tab.Item2 <span class="badge bg-light text-dark">@relResults.Count(x => x.SourceType == tab.Item1)</span></button>
+                        }
+                    </div>
                     <input class="tin" style="margin-bottom:9px" placeholder="جستجوی شماره یا عنوان…"
                            @bind="relSearch" @bind:event="oninput" @bind:after="SearchRel" />
-                    @foreach (var l in relResults)
+                    @foreach (var rl in relResults.Where(x => x.SourceType == relSourceType))
                     {
-                        var rl = l;
                         <div class="rl-row @(relSel.Contains(rl.LetterId) ? "on" : "")" @onclick="() => ToggleRelSel(rl.LetterId)">
                             <span class="chk"><i class="bi bi-check"></i></span>
                             <div class="inf"><b>@rl.Title</b><small class="num"># @rl.LetterNumber.FaDigits() · @rl.Date.ToFa()</small></div>
-                            <span class="rl-dir @(rl.IsSent ? "out" : "in")">
-                                <i class="bi @(rl.IsSent ? "bi-send" : "bi-box-arrow-in-down")"></i>
-                                @(rl.IsSent ? "ارسالی" : "دریافتی")
-                            </span>
+                            <span class="rl-dir @(rl.SourceType == 2 ? "out" : "in")"><i class="bi @(rl.SourceType == 2 ? "bi-send" : rl.SourceType == 3 ? "bi-box-arrow-in-down" : "bi-file-earmark-text")"></i> @rl.SourceTypeTitle</span>
                         </div>
                     }
-                    @if (relResults.Count == 0) { <div class="cempty">نامه‌ای یافت نشد</div> }
+                    @if (!relResults.Any(x => x.SourceType == relSourceType)) { <div class="cempty">نامه‌ای در این دسته یافت نشد</div> }
                 </div>
                 <div class="gm-f">
                     <button class="lbtn ghost" @onclick="() => relOpen = false">انصراف</button>
@@ -358,7 +362,17 @@
     private bool relOpen;
     private int relType = 2;
     private string relSearch = "";
-    private List<LetterPickDto> relResults = new();
+    private int relSourceType = 1;
+    private sealed class RelatedPick
+    {
+        public int LetterId { get; set; }
+        public string LetterNumber { get; set; } = "";
+        public string Title { get; set; } = "";
+        public DateTime Date { get; set; }
+        public int SourceType { get; set; }
+        public string SourceTypeTitle => SourceType == 1 ? "داخلی" : SourceType == 2 ? "صادره" : "وارده";
+    }
+    private List<RelatedPick> relResults = new();
     private HashSet<int> relSel = new();
 
     private string SheetTitle => isEditLetter ? "ویرایش نامه" : draftId is > 0 ? "ادامه پیش‌نویس" : "ایجاد نامه جدید";
@@ -553,8 +567,16 @@
     {
         try
         {
-            var res = await LetterSvc.PickAsync(string.IsNullOrWhiteSpace(relSearch) ? null : relSearch);
-            relResults = res.Where(r => related.All(x => x.RelateLetterId != r.LetterId)).ToList();
+            var term = string.IsNullOrWhiteSpace(relSearch) ? null : relSearch;
+            var innerTask = LetterSvc.PickAsync(term);
+            var outgoingTask = OutgoingSvc.PickAsync(term);
+            var incomingTask = IncomingSvc.PickAsync(term, 1, 100);
+            await Task.WhenAll(innerTask, outgoingTask, incomingTask);
+            var all = new List<RelatedPick>();
+            all.AddRange((await innerTask).Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 1 }));
+            all.AddRange((await outgoingTask).Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 2 }));
+            all.AddRange((await incomingTask).Items.Select(x => new RelatedPick { LetterId = x.SourceId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 3 }));
+            relResults = all.Where(r => related.All(x => x.RelateLetterId != r.LetterId)).GroupBy(x => x.LetterId).Select(g => g.First()).OrderByDescending(x => x.Date).ToList();
         }
         catch { relResults = new(); }
     }
