@@ -931,8 +931,14 @@
     private async Task MenuErja(OutgoingLetterListItemDto l) { openMenuId = 0; await OpenLetter(l); OpenErjaSheet(); }
     private void MenuGardesh(OutgoingLetterListItemDto l) { openMenuId = 0; _ = gardesh?.Open(l.LetterId, l.Title, l.LetterNumber, string.IsNullOrEmpty(l.Sender) ? "شما" : l.Sender, l.Date); }
     private void MenuGardeshCur() { if (selected == null) return; _ = gardesh?.Open(selected.LetterId, selected.Title, selected.LetterNumber, selected.SenderName, selected.DateSabt); }
-    private async Task MenuPrint(OutgoingLetterListItemDto l) { openMenuId = 0; await OpenLetter(l); await Print(); }
-    private async Task Print() { try { await JS.InvokeVoidAsync("ltxPrint"); } catch { } }
+    // چاپ از منوی هر ردیف نیز باید PDF سربرگ‌دار سرور را باز کند، نه چاپ HTML صفحه.
+    // پس از بازشدن نامه، دکمه‌های A4 و A5 در نوار ابزار خواننده هم در دسترس هستند.
+    private async Task MenuPrint(OutgoingLetterListItemDto l)
+    {
+        openMenuId = 0;
+        await OpenLetter(l);
+        await PrintPdf("A4");
+    }
 
     private bool printingPdf;
 
