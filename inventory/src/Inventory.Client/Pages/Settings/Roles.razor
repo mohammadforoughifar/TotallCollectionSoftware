@@ -495,7 +495,8 @@
         new() { Title = "دستور کار", Icon = "bi-list-task", Modules = new[] { "WorkOrders" } },
         new() { Title = "مدیریت پروژه‌ها", Icon = "bi-kanban", Modules = new[] { "Projects", "ProjectCartable", "ReportWorks", "Karfarmas", "TypeFactors", "ProjectAttach" } },
         new() { Title = "اتوماسیون اداری", Icon = "bi-envelope-paper", Modules = new[] { "InnerLetters", "OutgoingLetters", "LetterStructures", "Email" } },
-        new() { Title = "فرم‌های متفرقه", Icon = "bi-journal-text", Modules = new[] { "MeetingMinutes" } }
+        new() { Title = "فرم‌های متفرقه", Icon = "bi-journal-text", Modules = new[] { "MeetingMinutes" } },
+        new() { Title = "هوش مصنوعی", Icon = "bi-stars", Modules = new[] { "AiAssistant" } }
     };
 
     // ==================== ترجمه فارسی ====================
@@ -566,7 +567,8 @@
         ["FaAtt"] = "حضور و غیاب",
         ["FaPay"] = "حقوق و دستمزد",
         ["FaLms"] = "آموزش و توسعه",
-        ["FaCom"] = "ارتباطات داخلی"
+        ["FaCom"] = "ارتباطات داخلی",
+        ["AiAssistant"] = "دستیار هوش مصنوعی"
     };
 
     private static readonly Dictionary<string, string> ActionNames = new()
@@ -718,7 +720,9 @@
         ["MeetingMinutes.Print"] = "چاپ صورتجلسه",
         ["MeetingMinutes.ToInnerLetter"] = "تبدیل به نامه داخلی",
         ["MeetingMinutes.ToOutgoingLetter"] = "تبدیل به نامه صادره",
-        ["MeetingMinutes.SendEmail"] = "ارسال صورتجلسه با ایمیل"
+        ["MeetingMinutes.SendEmail"] = "ارسال صورتجلسه با ایمیل",
+        ["AiAssistant.Use"] = "استفاده از دستیار هوش مصنوعی",
+        ["AiAssistant.Manage"] = "مدیریت تنظیمات و قواعد هوش مصنوعی"
     };
 
     private static string GetActionLabel(string module, string action)
