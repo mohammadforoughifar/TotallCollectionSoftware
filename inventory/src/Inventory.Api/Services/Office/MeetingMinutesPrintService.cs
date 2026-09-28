@@ -352,7 +352,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                                     .Text(FaDigits(it.RowNo.ToString())).FontFamily(FntBold).FontSize(9).FontColor(Brand);
                                 table.Cell().Background(bg).BorderBottom(0.6f).BorderColor(Line)
                                     .PaddingVertical(7).PaddingHorizontal(6).AlignMiddle()
-                                    .Text(it.Description).FontSize(9).LineHeight(1.5f).FontColor(Ink).WrapAnywhere();
+                                    .Text(it.Description).FontSize(9).LineHeight(1.5f).FontColor(Ink);
                                 void Person(string? name, DateTime? date)
                                 {
                                     table.Cell().Background(bg).BorderBottom(0.6f).BorderColor(Line)
@@ -360,7 +360,7 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
                                         .Column(c =>
                                         {
                                             c.Item().AlignCenter().Text(string.IsNullOrWhiteSpace(name) ? "—" : name)
-                                                .FontFamily(FntBold).FontSize(8).FontColor(Ink).WrapAnywhere();
+                                                .FontFamily(FntBold).FontSize(8).FontColor(Ink);
                                             c.Item().PaddingTop(1).AlignCenter().Text(FaDatePretty(date))
                                                 .FontSize(7.5f).FontColor(Muted);
                                         });

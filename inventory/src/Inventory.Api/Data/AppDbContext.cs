@@ -55,6 +55,18 @@ public class AppDbContext : DbContext
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
+    // ================== هوش مصنوعی فروغ آریا ==================
+    public DbSet<AiConversation> AiConversations => Set<AiConversation>();
+    public DbSet<AiMessage> AiMessages => Set<AiMessage>();
+    public DbSet<AiKnowledgeDoc> AiKnowledgeDocs => Set<AiKnowledgeDoc>();
+    public DbSet<AiPendingAction> AiPendingActions => Set<AiPendingAction>();
+    public DbSet<AiReminder> AiReminders => Set<AiReminder>();
+    public DbSet<AiReportSchedule> AiReportSchedules => Set<AiReportSchedule>();
+    public DbSet<AiDocEmbedding> AiDocEmbeddings => Set<AiDocEmbedding>();
+    public DbSet<AiAlertRule> AiAlertRules => Set<AiAlertRule>();
+    public DbSet<AiFeedback> AiFeedbacks => Set<AiFeedback>();
+    public DbSet<AiAuditLog> AiAuditLogs => Set<AiAuditLog>();
+
     // ================== دستور کار ==================
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<WorkOrderAssignee> WorkOrderAssignees => Set<WorkOrderAssignee>();
@@ -386,6 +398,7 @@ public class AppDbContext : DbContext
         base.OnModelCreating(mb);
         DocEvolutionModel.Configure(mb);
         PushDeliverySchema.Configure(mb);
+        AiSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
         mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
