@@ -7,7 +7,7 @@
 @inject LayoutState Layout
 @inject IJSRuntime JS
 @inject IServiceProvider ServiceProvider
-@inject HttpClient Http
+@inject IApiClient Api
 @inject ApiOptions ApiCfg
 
 <PageTitle>تعریف کالا</PageTitle>
@@ -1028,35 +1028,24 @@
 
         try
         {
-            using var stream = file.OpenReadStream(10 * 1024 * 1024);
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+
+            await using var stream = file.OpenReadStream(10 * 1024 * 1024);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
             var bytes = ms.ToArray();
-            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
 
             // پیش‌نمایش فوری کلاینت با Base64
             imagePreviewData = $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
             StateHasChanged();
 
-            // آپلود در سرور از طریق api/files/upload/products
-            using var formContent = new MultipartFormDataContent();
-            var byteContent = new ByteArrayContent(bytes);
-            byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
-            formContent.Add(byteContent, "file", file.Name);
-
-            var res = await Http.PostAsync("api/files/upload/products", formContent);
-            if (res.IsSuccessStatusCode)
+            // آپلود از طریق IApiClient که هدر توکن Bearer را به‌طور خودکار ارسال می‌کند
+            using var uploadMs = new MemoryStream(bytes);
+            var uploadRes = await Api.PostFileAsync<FileUploadResult>("api/files/upload/products", uploadMs, file.Name, "file", contentType);
+            if (uploadRes != null && !string.IsNullOrWhiteSpace(uploadRes.Url))
             {
-                var uploadRes = await res.Content.ReadFromJsonAsync<FileUploadResult>();
-                if (uploadRes != null && !string.IsNullOrWhiteSpace(uploadRes.Url))
-                {
-                    form.ImageUrl = uploadRes.Url;
-                    Toast.Success("تصویر با موفقیت بارگذاری شد.");
-                }
-            }
-            else
-            {
-                Toast.Warning("پیش‌نمایش تصویر اعمال شد، هنگام ذخیره کالا ثبت خواهد شد.");
+                form.ImageUrl = uploadRes.Url;
+                Toast.Success("تصویر با موفقیت بارگذاری شد.");
             }
         }
         catch (Exception ex)
