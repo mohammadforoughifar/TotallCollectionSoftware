@@ -472,6 +472,29 @@ public class OutgoingLettersController : RbacControllerBase
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
             return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
 
+        // چاپ نامه صادره فقط زمانی مجاز است که همه امضاکنندگان، امضای خود را ثبت کرده باشند
+        // و تصویر امضای آن‌ها نیز برای درج در سربرگ موجود باشد.
+        var signers = await Db.OutgoingLetterSigners.AsNoTracking()
+            .Include(x => x.User)
+            .Where(x => x.SourceId == id && !x.IsDelete)
+            .OrderBy(x => x.Order).ThenBy(x => x.Id)
+            .ToListAsync();
+        var missingSignature = signers
+            .Where(x => !x.IsSigned || string.IsNullOrWhiteSpace(x.User?.SignaturePath))
+            .Select(x =>
+            {
+                var name = x.User == null
+                    ? $"کاربر {x.UserId}"
+                    : ($"{x.User.FirstName} {x.User.LastName}").Trim();
+                return string.IsNullOrWhiteSpace(name) ? $"کاربر {x.UserId}" : name;
+            })
+            .ToList();
+        if (missingSignature.Count > 0)
+            return BadRequest(new
+            {
+                message = $"چاپ امکان‌پذیر نیست؛ امضای این امضاکننده ثبت نشده یا تصویر امضای او وجود ندارد: {string.Join("، ", missingSignature)}"
+            });
+
         var pdf = await _print.GeneratePdfAsync(id, size, withCopy);
         if (pdf == null) return NotFound(new { message = "نامه پیدا نشد." });
 

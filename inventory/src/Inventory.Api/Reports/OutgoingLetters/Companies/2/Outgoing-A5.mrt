@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <StiSerializer version="1.02" type="Net" application="StiReport">
   <Dictionary Ref="1" type="Dictionary" isKey="true">
     <BusinessObjects isList="true" count="0" />
@@ -76,6 +76,7 @@
         <Text6 Ref="6" type="Text" isKey="true">
           <AllowHtmlTags>True</AllowHtmlTags>
           <Brush>Transparent</Brush>
+          <Enabled>False</Enabled>
           <CanGrow>True</CanGrow>
           <ClientRectangle>0.1,1.6,4.9,3.6</ClientRectangle>
           <Conditions isList="true" count="0" />
@@ -94,8 +95,8 @@
         <Text7 Ref="7" type="Text" isKey="true">
           <AllowHtmlTags>True</AllowHtmlTags>
           <Brush>Transparent</Brush>
-          <CanGrow>True</CanGrow>
-          <ClientRectangle>0.1,1.6,4.9,3.6</ClientRectangle>
+          <CanGrow>False</CanGrow>
+          <ClientRectangle>0.1,1.6,4.8,3.2</ClientRectangle>
           <Conditions isList="true" count="0" />
           <Expressions isList="true" count="0" />
           <Font>Vazir,12</Font>
