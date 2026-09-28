@@ -140,9 +140,16 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
     /// </summary>
     public async Task<byte[]?> GeneratePdfAsync(int letterId, string size, bool withCopy = true)
     {
-        // مسیر اصلی: رندر مستقیم قالب اختصاصی MRT شرکت با Stimulsoft.
-        // اگر موتور غیرفعال، قالب ناموجود یا رندر ناموفق باشد، پیاده‌سازی QuestPDF زیر fallback است.
-        var stimulsoftPdf = await _stimulsoft.TryGeneratePdfAsync(letterId, size, withCopy);
+        // متن‌های کوتاه با قالب MRT چاپ می‌شوند؛ متن‌های طولانی مستقیماً به
+        // QuestPDF می‌روند تا امکان صفحه‌های بعدی با سربرگ تکرارشونده وجود داشته باشد.
+        var preview = await _db.OutgoingLetters.AsNoTracking()
+            .Where(x => x.Id == letterId && !x.IsDelete)
+            .Select(x => x.Text)
+            .FirstOrDefaultAsync();
+        var isLongLetter = HtmlToPlainText(preview).Length > 2500;
+        var stimulsoftPdf = isLongLetter
+            ? null
+            : await _stimulsoft.TryGeneratePdfAsync(letterId, size, withCopy);
         if (stimulsoftPdf is { Length: > 0 })
             return stimulsoftPdf;
 
@@ -230,9 +237,25 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         }
     }
 
+    private byte[]? TryReadSignature(string? relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath)) return null;
+        var clean = relativePath.Replace('\\', '/').TrimStart('/');
+        if (clean.Contains("..", StringComparison.Ordinal)) return null;
+        var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
+        var path = new[]
+        {
+            Path.Combine(webRoot, clean),
+            Path.Combine(webRoot, "uploads", clean),
+            Path.Combine(_env.ContentRootPath, clean),
+            Path.Combine(AppContext.BaseDirectory, clean)
+        }.FirstOrDefault(File.Exists);
+        return path == null ? null : File.ReadAllBytes(path);
+    }
+
     /// <summary>ساخت PDF متن نامه (بدون پس‌زمینه) — راست‌به‌چپ با فونت وزیرمتن</summary>
     /// <param name="withCopy">false = نسخهٔ بدون رونوشت (بلوک «رونوشت» چاپ نمی‌شود)</param>
-    private static byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null)
+    private byte[] BuildContentPdf(OutgoingLetter letter, List<OutgoingLetterSigner> signers, bool hasAttachment, bool isA5, bool withCopy = true, List<OutgoingLetterCopyTo>? copyTos = null)
     {
         EnsureFonts();
 
@@ -327,8 +350,11 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                             {
                                 row.AutoItem().PaddingRight(isA5 ? 12 : 22).Column(sc =>
                                 {
-                                    sc.Item().AlignCenter().Text(FullName(s.User)).FontFamily("Vazirmatn-Bold").FontSize(fs);
-                                    sc.Item().AlignCenter().Text(s.IsSigned ? $"امضا شده — {FaDate(s.DateSigned)}" : "")
+                                var signatureBytes = TryReadSignature(s.User?.SignaturePath);
+                                if (signatureBytes != null)
+                                    sc.Item().Height(isA5 ? 28 : 42).AlignCenter().Image(signatureBytes).FitHeight();
+                                sc.Item().AlignCenter().Text(FullName(s.User)).FontFamily("Vazirmatn-Bold").FontSize(fs);
+                                sc.Item().AlignCenter().Text(s.IsSigned ? $"امضا شده — {FaDate(s.DateSigned)}" : "")
                                         .FontSize(fsSmall).FontColor("#444444");
                                 });
                             }
