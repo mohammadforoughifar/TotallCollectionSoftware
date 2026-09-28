@@ -3,6 +3,7 @@
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
+@inject IAuthState Auth
 
 <PageTitle>مدیریت نوع رسید و حواله</PageTitle>
 
@@ -84,7 +85,10 @@
                         <tr>
                             <th style="width:8px"></th>
                             <th>نوع سند</th>
-                            <th>کد</th>
+                            @if (Auth.IsAdmin)
+                            {
+                                <th>کد</th>
+                            }
                             <th>ماهیت</th>
                             <th>پیش‌شماره</th>
                             <th>الزامات</th>
@@ -118,7 +122,10 @@
                                         </div>
                                     </div>
                                 </td>
-                                <td class="num text-muted">@t.Code</td>
+                                @if (Auth.IsAdmin)
+                                {
+                                    <td class="num text-muted">@t.Code</td>
+                                }
                                 <td><span class="badge @NatureBadge(t.Nature)">@t.NatureTitle</span></td>
                                 <td class="num text-muted">@(string.IsNullOrWhiteSpace(t.NumberPrefix) ? "—" : t.NumberPrefix)</td>
                                 <td>
@@ -181,7 +188,10 @@
                             </div>
                         </div>
                         <div class="m-card-body">
-                            <div class="m-card-row"><span><i class="bi bi-upc text-muted"></i> کد</span><b class="num">@t.Code</b></div>
+                            @if (Auth.IsAdmin)
+                            {
+                                <div class="m-card-row"><span><i class="bi bi-upc text-muted"></i> کد</span><b class="num">@t.Code</b></div>
+                            }
                             <div class="m-card-row"><span><i class="bi bi-hash text-muted"></i> پیش‌شماره</span><b class="num">@(string.IsNullOrWhiteSpace(t.NumberPrefix) ? "—" : t.NumberPrefix)</b></div>
                         </div>
                         <div class="m-card-actions">

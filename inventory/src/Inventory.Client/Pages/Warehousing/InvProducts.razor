@@ -7,6 +7,8 @@
 @inject LayoutState Layout
 @inject IJSRuntime JS
 @inject IServiceProvider ServiceProvider
+@inject HttpClient Http
+@inject ApiOptions ApiCfg
 
 <PageTitle>تعریف کالا</PageTitle>
 
@@ -98,11 +100,19 @@
                             <tr>
                                 <td class="doc-number text-muted">@p.Code.FaDigits()</td>
                                 <td>
-                                    <div class="fw-500">@p.Name</div>
-                                    @if (!string.IsNullOrWhiteSpace(p.Brand))
-                                    {
-                                        <div class="fs-8 text-muted">@p.Brand @p.Model</div>
-                                    }
+                                    <div class="d-flex align-items-center gap-2">
+                                        @if (!string.IsNullOrWhiteSpace(p.ImageUrl))
+                                        {
+                                            <img src="@ResolveThumbnailUrl(p.ImageUrl)" alt="" class="rounded border" style="width:36px;height:36px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'" />
+                                        }
+                                        <div>
+                                            <div class="fw-500">@p.Name</div>
+                                            @if (!string.IsNullOrWhiteSpace(p.Brand))
+                                            {
+                                                <div class="fs-8 text-muted">@p.Brand @p.Model</div>
+                                            }
+                                        </div>
+                                    </div>
                                 </td>
                                 <td class="fs-8">@(p.CategoryName ?? "—")</td>
                                 <td class="num fs-8">@(string.IsNullOrWhiteSpace(p.TaxCode) ? "—" : p.TaxCode.FaDigits())</td>
@@ -146,7 +156,14 @@
                 {
                     <div class="m-card @(p.BelowReorder ? "st-cancelled" : "st-ready")">
                         <div class="m-card-head">
-                            <div class="m-card-icon"><i class="bi bi-box-seam"></i></div>
+                            @if (!string.IsNullOrWhiteSpace(p.ImageUrl))
+                            {
+                                <img src="@ResolveThumbnailUrl(p.ImageUrl)" alt="" class="rounded border" style="width:40px;height:40px;object-fit:cover;flex-shrink:0" onerror="this.style.display='none'" />
+                            }
+                            else
+                            {
+                                <div class="m-card-icon"><i class="bi bi-box-seam"></i></div>
+                            }
                             <div class="flex-grow-1 min-w-0">
                                 <div class="d-flex align-items-center gap-2 flex-wrap">
                                     <span class="doc-number text-muted fs-8">@p.Code.FaDigits()</span>
@@ -596,8 +613,54 @@
                     <textarea class="form-control" rows="2" @bind="form.Note"></textarea>
                 </div>
                 <div class="col-12">
-                    <label class="form-label">آدرس تصویر کالا</label>
-                    <input class="form-control" @bind="form.ImageUrl" dir="ltr" placeholder="https://…" />
+                    <label class="form-label d-flex align-items-center justify-content-between">
+                        <span><i class="bi bi-image me-1"></i> تصویر کالا</span>
+                        @if (uploadingImage)
+                        {
+                            <span class="text-primary fs-8">
+                                <span class="spinner-border spinner-border-sm me-1"></span> در حال بارگذاری تصویر…
+                            </span>
+                        }
+                    </label>
+
+                    @if (!string.IsNullOrWhiteSpace(ImagePreviewSrc))
+                    {
+                        <div class="p-3 border rounded-3 bg-light d-flex flex-column align-items-center justify-content-center text-center">
+                            <div class="mb-3 position-relative">
+                                <img src="@ImagePreviewSrc" alt="پیش‌نمایش تصویر کالا" class="rounded shadow-sm border bg-white" style="max-height: 200px; max-width: 100%; object-fit: contain;" />
+                            </div>
+                            <div class="d-flex gap-2">
+                                <label class="btn btn-sm btn-outline-primary mb-0" style="cursor:pointer">
+                                    <InputFile OnChange="OnImagePicked" accept="image/*" style="display:none" disabled="@uploadingImage" />
+                                    <i class="bi bi-arrow-repeat me-1"></i> تغییر تصویر
+                                </label>
+                                <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemoveImage" disabled="@uploadingImage">
+                                    <i class="bi bi-trash me-1"></i> حذف تصویر
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="p-4 border rounded-3 bg-light text-center" style="border-style: dashed !important; border-width: 2px !important;">
+                            <div class="text-muted mb-2">
+                                <i class="bi bi-cloud-arrow-up text-primary" style="font-size: 2.5rem;"></i>
+                            </div>
+                            <div class="fw-600 mb-1">بارگذاری تصویر کالا</div>
+                            <div class="text-muted fs-8 mb-3">فرمت‌های مجاز: JPG، PNG، WEBP (حداکثر ۱۰ مگابایت)</div>
+                            <label class="btn btn-primary btn-sm mb-0" style="cursor:pointer">
+                                <InputFile OnChange="OnImagePicked" accept="image/*" style="display:none" disabled="@uploadingImage" />
+                                <i class="bi bi-cloud-arrow-up me-1"></i> انتخاب تصویر از سیستم
+                            </label>
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(uploadError))
+                    {
+                        <div class="alert alert-danger py-2 mt-2 fs-8 mb-0">
+                            <i class="bi bi-exclamation-triangle me-1"></i> @uploadError
+                        </div>
+                    }
                 </div>
                 @if (editing)
                 {
@@ -618,8 +681,8 @@
         {
             <button class="btn btn-outline-primary" @onclick="() => tab++">مرحله بعد <i class="bi bi-chevron-left"></i></button>
         }
-        <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@saving">
-            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+        <button class="btn btn-primary" data-hotkey="f1" title="کلید میانبر: F1" @onclick="Save" disabled="@(saving || uploadingImage)">
+            @if (saving || uploadingImage) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             ذخیره کالا
         </button>
     </Footer>
@@ -722,6 +785,9 @@
         warehouseStr = "0";
         valuationStr = "";
         fSale = fSale2 = fPurchase = fReorder = fMax = fMinOrder = "";
+        imagePreviewData = null;
+        uploadError = null;
+        uploadingImage = false;
         tab = 0;
         showModal = true;
         await LoadAvailableAttributes();
@@ -742,12 +808,21 @@
         fReorder = Fa.Money(form.ReorderPoint);
         fMax = Fa.Money(form.MaxStock);
         fMinOrder = Fa.Money(form.MinOrderQty);
+        imagePreviewData = null;
+        uploadError = null;
+        uploadingImage = false;
         tab = 0;
         showModal = true;
         await LoadAvailableAttributes();
     }
 
-    private void CloseModal() => showModal = false;
+    private void CloseModal()
+    {
+        showModal = false;
+        imagePreviewData = null;
+        uploadError = null;
+        uploadingImage = false;
+    }
 
     /// <summary>با تغییر گروه، ویژگی‌های همان گروه بارگذاری می‌شوند (مقادیر واردشده حفظ می‌شود).</summary>
     private async Task OnCategoryChanged()
@@ -898,4 +973,116 @@
         ValuationMethod.Lifo => "LIFO",
         _ => "میانگین موزون"
     };
+
+    // ---------- تصویر و پیش‌نمایش ----------
+    private string? imagePreviewData;
+    private bool uploadingImage;
+    private string? uploadError;
+
+    private string? ImagePreviewSrc
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(imagePreviewData)) return imagePreviewData;
+            if (!string.IsNullOrWhiteSpace(form.ImageUrl))
+            {
+                if (form.ImageUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                    form.ImageUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+                    form.ImageUrl.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                {
+                    return form.ImageUrl;
+                }
+                var baseUri = (ApiCfg?.BaseUrl ?? "").TrimEnd('/');
+                return $"{baseUri}/{form.ImageUrl.TrimStart('/')}";
+            }
+            return null;
+        }
+    }
+
+    private string ResolveThumbnailUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ||
+            url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            return url;
+        var baseUri = (ApiCfg?.BaseUrl ?? "").TrimEnd('/');
+        return $"{baseUri}/{url.TrimStart('/')}";
+    }
+
+    private async Task OnImagePicked(InputFileChangeEventArgs e)
+    {
+        uploadError = null;
+        var file = e.File;
+        if (file is null) return;
+
+        if (file.Size > 10 * 1024 * 1024)
+        {
+            uploadError = "حداکثر حجم مجاز تصویر ۱۰ مگابایت است.";
+            Toast.Error(uploadError);
+            return;
+        }
+
+        uploadingImage = true;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = file.OpenReadStream(10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+
+            // پیش‌نمایش فوری کلاینت با Base64
+            imagePreviewData = $"data:{contentType};base64,{Convert.ToBase64String(bytes)}";
+            StateHasChanged();
+
+            // آپلود در سرور از طریق api/files/upload/products
+            using var formContent = new MultipartFormDataContent();
+            var byteContent = new ByteArrayContent(bytes);
+            byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(contentType);
+            formContent.Add(byteContent, "file", file.Name);
+
+            var res = await Http.PostAsync("api/files/upload/products", formContent);
+            if (res.IsSuccessStatusCode)
+            {
+                var uploadRes = await res.Content.ReadFromJsonAsync<FileUploadResult>();
+                if (uploadRes != null && !string.IsNullOrWhiteSpace(uploadRes.Url))
+                {
+                    form.ImageUrl = uploadRes.Url;
+                    Toast.Success("تصویر با موفقیت بارگذاری شد.");
+                }
+            }
+            else
+            {
+                Toast.Warning("پیش‌نمایش تصویر اعمال شد، هنگام ذخیره کالا ثبت خواهد شد.");
+            }
+        }
+        catch (Exception ex)
+        {
+            uploadError = "خطا در بارگذاری تصویر: " + ex.Message;
+            Toast.Error(uploadError);
+        }
+        finally
+        {
+            uploadingImage = false;
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveImage()
+    {
+        form.ImageUrl = null;
+        imagePreviewData = null;
+        uploadError = null;
+    }
+
+    private class FileUploadResult
+    {
+        public string Url { get; set; } = "";
+        public string FileName { get; set; } = "";
+        public long Size { get; set; }
+        public string ContentType { get; set; } = "";
+    }
 }
