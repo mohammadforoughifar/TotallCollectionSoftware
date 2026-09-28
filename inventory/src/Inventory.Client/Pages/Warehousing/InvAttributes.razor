@@ -228,11 +228,22 @@
             </div>
 
             <div class="col-12">
-                <div class="d-flex flex-wrap gap-4">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="attrReq" @bind="editing.IsRequired" />
-                        <label class="form-check-label" for="attrReq">تکمیل این ویژگی اجباری است</label>
+                <div class="p-2 border rounded bg-light mb-2">
+                    <label class="form-label d-block fw-500 mb-1">الزام ویژگی (آیا تکمیل آن اجباری است؟)</label>
+                    <div class="d-flex align-items-center gap-4">
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input cursor-pointer" type="radio" name="attrDefReq" id="attrDefReqYes"
+                                   checked="@editing.IsRequired" @onchange="() => editing.IsRequired = true" />
+                            <label class="form-check-label cursor-pointer text-danger fw-500" for="attrDefReqYes">دارد (الزامی)</label>
+                        </div>
+                        <div class="form-check form-check-inline mb-0">
+                            <input class="form-check-input cursor-pointer" type="radio" name="attrDefReq" id="attrDefReqNo"
+                                   checked="@(!editing.IsRequired)" @onchange="() => editing.IsRequired = false" />
+                            <label class="form-check-label cursor-pointer text-muted" for="attrDefReqNo">ندارد (اختیاری)</label>
+                        </div>
                     </div>
+                </div>
+                <div class="d-flex flex-wrap gap-4 mt-2">
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="attrList" @bind="editing.ShowInList" />
                         <label class="form-check-label" for="attrList">نمایش در فهرست کالاها</label>

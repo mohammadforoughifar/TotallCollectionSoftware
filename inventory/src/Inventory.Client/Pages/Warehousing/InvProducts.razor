@@ -289,54 +289,8 @@
             </div>
         }
 
-        @* ============ تب ۲: ضریب مصرف ============ *@
+        @* ============ تب ۲: قیمت و مالیات ============ *@
         else if (tab == 1)
-        {
-            <div class="row g-3">
-                <div class="col-12">
-                    <div class="alert alert-info py-2 d-flex align-items-center gap-2 mb-1" style="font-size: .84rem;">
-                        <i class="bi bi-info-circle-fill fs-5"></i>
-                        <span>تعریف واحد اصلی، واحد فرعی و نسبت تبدیل میان آن‌ها برای اسناد انبار، فاکتور و گزارش‌ها.</span>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">واحد اصلی <span class="text-danger">*</span></label>
-                    <input class="form-control" list="unitList" @bind="form.Unit" placeholder="مثلاً: عدد، کیلوگرم، لیتر…" />
-                    <datalist id="unitList">
-                        @foreach (var u in units)
-                        {
-                            <option value="@u.Name"></option>
-                        }
-                    </datalist>
-                    <div class="fs-8 text-muted mt-1">واحد پایه نگهداری موجودی در انبار</div>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">واحد فرعی</label>
-                    <input class="form-control" @bind="form.SecondUnit" placeholder="مثلاً: کارتن، بسته، جعبه…" />
-                    <div class="fs-8 text-muted mt-1">واحد ثانویه برای فروش یا بسته‌بندی</div>
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">ضریب تبدیل</label>
-                    <input type="number" step="any" class="form-control num" @bind="form.UnitFactor" dir="ltr" placeholder="مثلاً: ۱۲" />
-                    <div class="fs-8 text-muted mt-1">تعداد واحد اصلی در هر یک واحد فرعی</div>
-                </div>
-
-                @if (!string.IsNullOrWhiteSpace(form.SecondUnit) && (form.UnitFactor ?? 0) > 0)
-                {
-                    <div class="col-12">
-                        <div class="p-3 bg-light border rounded-3 d-flex align-items-center justify-content-between">
-                            <span class="fw-600"><i class="bi bi-arrow-left-right text-primary me-2"></i>رابطه تبدیل واحد:</span>
-                            <span class="badge bg-white text-dark border px-3 py-2 fs-7 num">
-                                ۱ @form.SecondUnit = @(form.UnitFactor?.ToString("G29")) @(string.IsNullOrWhiteSpace(form.Unit) ? "واحد اصلی" : form.Unit)
-                            </span>
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-
-        @* ============ تب ۳: قیمت و مالیات ============ *@
-        else if (tab == 2)
         {
             <div class="row g-3">
                 <div class="col-md-4">
@@ -394,8 +348,8 @@
             </div>
         }
 
-        @* ============ تب ۴: کدهای کاربردی ============ *@
-        else if (tab == 3)
+        @* ============ تب ۳: کدهای کاربردی ============ *@
+        else if (tab == 2)
         {
             <div class="row g-3">
                 <div class="col-12">
@@ -429,8 +383,8 @@
             </div>
         }
 
-        @* ============ تب ۵: انبار و موجودی ============ *@
-        else if (tab == 4)
+        @* ============ تب ۴: انبار و موجودی ============ *@
+        else if (tab == 3)
         {
             <div class="row g-3">
                 <div class="col-md-4">
@@ -543,8 +497,8 @@
             </div>
         }
 
-        @* ============ تب ۶: ویژگی‌ها (گرید با کمبو + مقدار بر اساس نوع) ============ *@
-        else if (tab == 5)
+        @* ============ تب ۵: ویژگی‌ها (انتخاب از کمبو + رادیوباتن الزام) ============ *@
+        else if (tab == 4)
         {
             <div class="attr-box">
                 @if (availableAttributes.Count == 0 && form.Attributes.Count == 0)
@@ -562,7 +516,10 @@
                 else
                 {
                     <div class="d-flex align-items-center mb-3">
-                        <span class="fw-600"><i class="bi bi-sliders text-primary"></i> ویژگی‌های کالا</span>
+                        <div>
+                            <span class="fw-600"><i class="bi bi-sliders text-primary me-1"></i> ویژگی‌های کالا</span>
+                            <span class="text-muted fs-8 me-2">(انتخاب ویژگی و مقدار از کمبو + تعیین الزام)</span>
+                        </div>
                         <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="AddAttributeRow">
                             <i class="bi bi-plus-lg"></i> افزودن ویژگی
                         </button>
@@ -575,9 +532,10 @@
                                 <thead>
                                     <tr>
                                         <th style="width:40px">#</th>
-                                        <th style="width:35%">ویژگی</th>
-                                        <th>مقدار</th>
-                                        <th style="width:60px"></th>
+                                        <th style="width:32%">نام ویژگی</th>
+                                        <th style="width:35%">مقدار ویژگی (انتخاب از کمبو)</th>
+                                        <th style="width:25%">الزام</th>
+                                        <th style="width:50px"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -599,35 +557,53 @@
                                                 </select>
                                             </td>
                                             <td>
-                                                @switch (a.ValueType)
-                                                {
-                                                    case AttrValueType.Text:
-                                                        <input class="form-control form-control-sm" @bind="a.TextValue" placeholder="مقدار متنی" />
-                                                        break;
-                                                    case AttrValueType.Number:
-                                                        <input type="number" step="any" class="form-control form-control-sm num" @bind="a.NumberValue" dir="ltr" placeholder="مقدار عددی" />
-                                                        break;
-                                                    case AttrValueType.Boolean:
-                                                        <select class="form-select form-select-sm" value="@BoolStr(a)" @onchange="e => SetBool(a, e)">
-                                                            <option value="">—</option>
-                                                            <option value="true">بله</option>
-                                                            <option value="false">خیر</option>
-                                                        </select>
-                                                        break;
-                                                    case AttrValueType.Date:
-                                                        <DatePicker Value="a.DateValue" ValueChanged="v => a.DateValue = v" AllowClear="true" />
-                                                        break;
-                                                    case AttrValueType.List:
-                                                        <select class="form-select form-select-sm" value="@(a.OptionId?.ToString() ?? "")"
-                                                                @onchange="e => a.OptionId = int.TryParse(e.Value?.ToString(), out var oid) ? oid : null">
-                                                            <option value="">— انتخاب کنید —</option>
-                                                            @foreach (var o in a.Options)
-                                                            {
-                                                                <option value="@o.Id">@o.Title</option>
-                                                            }
-                                                        </select>
-                                                        break;
-                                                }
+                                                <select class="form-select form-select-sm"
+                                                        value="@GetAttrSelectedValue(a)"
+                                                        @onchange="e => OnAttributeOptionChanged(a, e)"
+                                                        disabled="@(a.AttributeId == 0)">
+                                                    <option value="">— انتخاب مقدار —</option>
+                                                    @if (a.Options != null && a.Options.Count > 0)
+                                                    {
+                                                        @foreach (var o in a.Options)
+                                                        {
+                                                            <option value="@o.Id">@o.Title</option>
+                                                        }
+                                                    }
+                                                    else if (!string.IsNullOrWhiteSpace(a.TextValue))
+                                                    {
+                                                        <option value="@a.TextValue">@a.TextValue</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="" disabled>(مقداری برای انتخاب تعریف نشده است)</option>
+                                                    }
+                                                </select>
+                                            </td>
+                                            <td>
+                                                <div class="d-inline-flex align-items-center gap-3">
+                                                    <div class="form-check form-check-inline mb-0">
+                                                        <input class="form-check-input cursor-pointer"
+                                                               type="radio"
+                                                               name="attr_req_@idx"
+                                                               id="req_yes_@idx"
+                                                               checked="@a.IsRequired"
+                                                               @onchange="() => a.IsRequired = true" />
+                                                        <label class="form-check-label cursor-pointer text-danger fw-500" for="req_yes_@idx">
+                                                            دارد
+                                                        </label>
+                                                    </div>
+                                                    <div class="form-check form-check-inline mb-0">
+                                                        <input class="form-check-input cursor-pointer"
+                                                               type="radio"
+                                                               name="attr_req_@idx"
+                                                               id="req_no_@idx"
+                                                               checked="@(!a.IsRequired)"
+                                                               @onchange="() => a.IsRequired = false" />
+                                                        <label class="form-check-label cursor-pointer text-muted" for="req_no_@idx">
+                                                            ندارد
+                                                        </label>
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td>
                                                 <button class="btn btn-sm btn-light" title="حذف" @onclick="() => RemoveAttributeRow(idx)">
@@ -640,6 +616,52 @@
                             </table>
                         </div>
                     }
+                }
+            </div>
+        }
+
+        @* ============ تب ۶: ضریب مصرف ============ *@
+        else if (tab == 5)
+        {
+            <div class="row g-3">
+                <div class="col-12">
+                    <div class="alert alert-info py-2 d-flex align-items-center gap-2 mb-1" style="font-size: .84rem;">
+                        <i class="bi bi-calculator text-primary fs-5"></i>
+                        <span>تعریف واحد اصلی، واحد فرعی و نسبت تبدیل میان آن‌ها برای اسناد انبار، فاکتور و گزارش‌ها.</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">واحد اصلی <span class="text-danger">*</span></label>
+                    <input class="form-control" list="unitList" @bind="form.Unit" placeholder="مثلاً: عدد، کیلوگرم، لیتر…" />
+                    <datalist id="unitList">
+                        @foreach (var u in units)
+                        {
+                            <option value="@u.Name"></option>
+                        }
+                    </datalist>
+                    <div class="fs-8 text-muted mt-1">واحد پایه نگهداری موجودی در انبار</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">واحد فرعی</label>
+                    <input class="form-control" @bind="form.SecondUnit" placeholder="مثلاً: کارتن، بسته، جعبه…" />
+                    <div class="fs-8 text-muted mt-1">واحد ثانویه برای فروش یا بسته‌بندی</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">ضریب تبدیل</label>
+                    <input type="number" step="any" class="form-control num" @bind="form.UnitFactor" dir="ltr" placeholder="مثلاً: ۱۲" />
+                    <div class="fs-8 text-muted mt-1">تعداد واحد اصلی در هر یک واحد فرعی</div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(form.SecondUnit) && (form.UnitFactor ?? 0) > 0)
+                {
+                    <div class="col-12">
+                        <div class="p-3 bg-light border rounded-3 d-flex align-items-center justify-content-between">
+                            <span class="fw-600"><i class="bi bi-arrow-left-right text-primary me-2"></i>رابطه تبدیل واحد:</span>
+                            <span class="badge bg-white text-dark border px-3 py-2 fs-7 num">
+                                ۱ @form.SecondUnit = @(form.UnitFactor?.ToString("G29")) @(string.IsNullOrWhiteSpace(form.Unit) ? "واحد اصلی" : form.Unit)
+                            </span>
+                        </div>
+                    </div>
                 }
             </div>
         }
@@ -750,8 +772,8 @@
     private string fSale = "", fSale2 = "", fPurchase = "", fReorder = "", fMax = "", fMinOrder = "";
     private bool editing => form.Id != 0;
 
-    private static readonly string[] TabTitles = { "اطلاعات اصلی", "ضریب مصرف", "قیمت و مالیات", "کدهای کاربردی", "انبار و موجودی", "ویژگی‌ها", "شرح و تصویر" };
-    private static readonly string[] TabIcons = { "bi-info-circle", "bi-calculator", "bi-cash-coin", "bi-upc-scan", "bi-boxes", "bi-sliders", "bi-card-image" };
+    private static readonly string[] TabTitles = { "اطلاعات اصلی", "قیمت و مالیات", "کدهای کاربردی", "انبار و موجودی", "ویژگی‌ها", "ضریب مصرف", "شرح و تصویر" };
+    private static readonly string[] TabIcons = { "bi-info-circle", "bi-cash-coin", "bi-upc-scan", "bi-boxes", "bi-sliders", "bi-calculator", "bi-card-image" };
 
     private string ModalTitle => editing ? $"ویرایش کالا — {form.Name}" : "تعریف کالای جدید";
 
@@ -834,6 +856,7 @@
         uploadingImage = false;
         tab = 0;
         showModal = true;
+        EnsureAttributeOptions();
         await LoadAvailableAttributes();
     }
 
@@ -857,6 +880,7 @@
         uploadingImage = false;
         tab = 0;
         showModal = true;
+        EnsureAttributeOptions();
         await LoadAvailableAttributes();
     }
 
@@ -884,18 +908,45 @@
                 a.BoolValue = old.BoolValue;
                 a.DateValue = old.DateValue;
                 a.OptionId = old.OptionId;
+                a.IsRequired = old.IsRequired;
             }
             form.Attributes = fresh.Attributes;
             form.EffectiveValuation = fresh.EffectiveValuation;
             form.ValuationSource = fresh.ValuationSource;
+            EnsureAttributeOptions();
             await LoadAvailableAttributes();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
+    private void EnsureAttributeOptions()
+    {
+        foreach (var a in form.Attributes)
+        {
+            if (a.ValueType == AttrValueType.Boolean && (a.Options == null || a.Options.Count == 0))
+            {
+                a.Options = new List<InvAttributeOption>
+                {
+                    new() { Id = 1, AttributeId = a.AttributeId, Title = "بله", SortOrder = 1 },
+                    new() { Id = 2, AttributeId = a.AttributeId, Title = "خیر", SortOrder = 2 }
+                };
+            }
+        }
+    }
+
     private async Task Save()
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام کالا را وارد کنید."); tab = 0; return; }
+
+        foreach (var a in form.Attributes.Where(x => x.IsRequired && x.AttributeId > 0))
+        {
+            if (a.OptionId is null or 0 && string.IsNullOrWhiteSpace(a.TextValue) && a.NumberValue is null && a.BoolValue is null)
+            {
+                Toast.Error($"انتخاب مقدار برای ویژگی «{a.AttributeName}» الزامی است.");
+                tab = 4;
+                return;
+            }
+        }
 
         form.CategoryId = int.TryParse(categoryStr, out var c) && c > 0 ? c : null;
         form.WarehouseId = int.TryParse(warehouseStr, out var w) && w > 0 ? w : null;
@@ -976,25 +1027,90 @@
         var attr = availableAttributes.FirstOrDefault(a => a.Id == attrId);
         var row = form.Attributes[idx];
         row.AttributeId = attrId;
+        row.OptionId = null;
+        row.TextValue = null;
+        row.NumberValue = null;
+        row.BoolValue = null;
+        row.DateValue = null;
+
         if (attr != null)
         {
             row.AttributeName = attr.Name;
             row.ValueType = attr.ValueType;
             row.Unit = attr.Unit;
             row.IsRequired = attr.IsRequired;
-            row.Options = attr.Options.Select(o => new InvAttributeOption
+            if (attr.Options != null && attr.Options.Count > 0)
             {
-                Id = o.Id, AttributeId = o.AttributeId, Title = o.Title, SortOrder = o.SortOrder
-            }).ToList();
+                row.Options = attr.Options.Select(o => new InvAttributeOption
+                {
+                    Id = o.Id, AttributeId = o.AttributeId, Title = o.Title, SortOrder = o.SortOrder
+                }).ToList();
+            }
+            else if (attr.ValueType == AttrValueType.Boolean)
+            {
+                row.Options = new List<InvAttributeOption>
+                {
+                    new() { Id = 1, AttributeId = attr.Id, Title = "بله", SortOrder = 1 },
+                    new() { Id = 2, AttributeId = attr.Id, Title = "خیر", SortOrder = 2 }
+                };
+            }
+            else
+            {
+                row.Options = new();
+            }
         }
         else
         {
             row.AttributeName = "";
             row.ValueType = AttrValueType.Text;
             row.Unit = "";
+            row.IsRequired = false;
             row.Options.Clear();
         }
         await InvokeAsync(StateHasChanged);
+    }
+
+    private static string GetAttrSelectedValue(InvProductAttrValue a)
+    {
+        if (a.OptionId is > 0) return a.OptionId.Value.ToString();
+        if (!string.IsNullOrWhiteSpace(a.TextValue))
+        {
+            var match = a.Options?.FirstOrDefault(o => o.Title == a.TextValue);
+            if (match != null) return match.Id.ToString();
+            return a.TextValue;
+        }
+        if (a.BoolValue.HasValue)
+        {
+            var title = a.BoolValue.Value ? "بله" : "خیر";
+            var match = a.Options?.FirstOrDefault(o => o.Title == title);
+            return match != null ? match.Id.ToString() : (a.BoolValue.Value ? "true" : "false");
+        }
+        return "";
+    }
+
+    private void OnAttributeOptionChanged(InvProductAttrValue a, ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        if (int.TryParse(raw, out var optId) && optId > 0)
+        {
+            a.OptionId = optId;
+            var opt = a.Options?.FirstOrDefault(o => o.Id == optId);
+            a.TextValue = opt?.Title ?? "";
+            if (decimal.TryParse(opt?.Title, out var num))
+                a.NumberValue = num;
+            if (opt?.Title == "بله") a.BoolValue = true;
+            else if (opt?.Title == "خیر") a.BoolValue = false;
+        }
+        else
+        {
+            a.OptionId = null;
+            a.TextValue = string.IsNullOrWhiteSpace(raw) ? null : raw;
+            if (decimal.TryParse(raw, out var n)) a.NumberValue = n;
+            else a.NumberValue = null;
+            if (raw == "بله" || raw == "true") a.BoolValue = true;
+            else if (raw == "خیر" || raw == "false") a.BoolValue = false;
+            else a.BoolValue = null;
+        }
     }
 
     private void RemoveAttributeRow(int idx)
