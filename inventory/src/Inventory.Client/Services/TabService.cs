@@ -160,6 +160,14 @@ public sealed class TabService
                 || key.StartsWith(k.Prefix + "?", StringComparison.OrdinalIgnoreCase))
                 return (k.Title, k.Icon);
 
+        // مسیرهای «منابع انسانی فروغ آریا» (برنامهٔ پیشین) — پیش از بررسی منوی اصلی،
+        // چون دو نمای پیشین (فهرست پرسنل / چارت سازمانی) درون hr-core جا دارند.
+        if (ForoughAryaHrNavigation.IsWorkspace(key))
+        {
+            var fa = ForoughAryaHrNavigation.Title(key);
+            if (!string.IsNullOrWhiteSpace(fa)) return (fa, "bi-person-workspace");
+        }
+
         // فقط مسیرهای خودِ منابع انسانی — وگرنه هر صفحهٔ ناشناخته «منابع انسانی» می‌شد
         if (HrNavigation.IsWorkspace(key))
         {

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 namespace Inventory.Api.Hubs;
 
 /// <summary>هاب بلادرنگ داشبورد — هر تغییری در سیستم‌ها/دوربین‌ها/NVRها به همه‌ی صفحات داشبورد پخش می‌شود.</summary>
+[Microsoft.AspNetCore.Authorization.Authorize]
 public class DashboardHub : Hub
 {
     private readonly IServiceProvider _sp;

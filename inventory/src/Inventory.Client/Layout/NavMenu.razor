@@ -1,5 +1,6 @@
 @inject IAuthState Auth
 @inject NavigationManager NavManager
+@implements IDisposable
 
 <div class="sidebar-nav">
     @* ============ پیام‌رسان سازمانی (ماژول مستقل) ============ *@
@@ -158,6 +159,29 @@
     }
 
     <HrWorkspaceNav OnNavigate="NotifyClose" />
+
+    @* ============ منابع انسانی فروغ آریا (برنامهٔ پیشین) ============ *@
+    @if (FaHrItems.Length > 0)
+    {
+        <div class="nav-group group-fahr">
+            <button type="button" class="nav-section-title nav-toggle @(gFaHr ? "open" : "")" @onclick="() => gFaHr = !gFaHr">
+                <span><i class="bi bi-person-workspace"></i>منابع انسانی فروغ آریا</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gFaHr)
+            {
+                <div class="nav-group-items">
+                    @foreach (var item in FaHrItems)
+                    {
+                        var active = FaHrSelected == item;
+                        <a class="nav-link @(active ? "active" : "")" href="@item.Href" @onclick="NotifyClose">
+                            <i class="bi @item.Icon"></i><span>@item.Title</span>
+                        </a>
+                    }
+                </div>
+            }
+        </div>
+    }
 
     @* ============ آرشیو اسناد و مدارک ============ *@
     @if (Auth.CanSee("DocArchive"))
@@ -563,7 +587,21 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gLetters, gDocs, gChat, gMisc;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc;
+
+    // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
+    private HrNavigation.Entry[] FaHrItems = [];
+    private HrNavigation.Entry? FaHrSelected;
+
+    private void RefreshFaHr()
+    {
+        var p = ForoughAryaHrNavigation.Path(NavManager.ToBaseRelativePath(NavManager.Uri));
+        FaHrItems = ForoughAryaHrNavigation.Visible(Auth.Has, Auth.IsAdmin);
+        FaHrSelected = ForoughAryaHrNavigation.Find(p);
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => _ = InvokeAsync(() => { RefreshFaHr(); StateHasChanged(); });
 
     // ================== مجوز «مشاهده» = مبنای نمایش در منو ==================
     // اگر در «تنظیمات ← نقش‌ها و دسترسی‌ها» تیک مشاهدهٔ یک ماژول برداشته شود،
@@ -594,11 +632,15 @@
         // پیش‌فرض: همه‌ی گروه‌ها بسته — فقط گروهی که صفحه‌ی فعلی داخل آن است باز می‌شود
         var p = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
 
+        NavManager.LocationChanged += OnLocationChanged;
+        RefreshFaHr();
+
         gChat = p.StartsWith("chat");
         gDash = p.StartsWith("dashboard") || p.StartsWith("cartable") || p.StartsWith("my-archive") || p.StartsWith("my-dashboards") || p.StartsWith("report-studio") || p.StartsWith("reports-hub");
         gWo = p.StartsWith("work-orders");
         gDevTeam = p.StartsWith("dev-team");
         gBonHr = p == "bon-hr" || p.StartsWith("bon-hr/");
+        gFaHr = ForoughAryaHrNavigation.IsWorkspace(p);
         gLetters = p.StartsWith("letters");
         gMisc = p.StartsWith("misc");
         gDocs = p.StartsWith("doc-archive");
@@ -614,4 +656,6 @@
     }
 
     private async Task NotifyClose() => await OnNavigate.InvokeAsync();
+
+    public void Dispose() => NavManager.LocationChanged -= OnLocationChanged;
 }

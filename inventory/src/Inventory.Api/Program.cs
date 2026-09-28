@@ -233,9 +233,11 @@ builder.Services.AddAuthorization(options =>
 
     // تمام endpointهای API به‌صورت پیش‌فرض JWT می‌خواهند؛ مسیرهای عمومی باید
     // صراحتاً با [AllowAnonymous] علامت‌گذاری شده باشند (Login، درخواست عمومی و ...).
-    options.FallbackPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build();
+    // ⚠️ FallbackPolicy حذف شد: این سیاست علاوه بر endpointها، درخواست‌های «بدون endpoint»
+    // (فایل‌های استاتیک کلاینت مثل /index.html و /_framework/*.wasm در استقرار تک‌سرورهٔ
+    // پابلیش‌شده) را هم با 401 رد می‌کرد و برنامه بعد از انتشار اصلاً باز نمی‌شد.
+    // امنیت پیش‌فرض APIها با DefaultAuthorizeConvention (همهٔ کنترلرها [Authorize]) حفظ می‌شود؛
+    // مسیرهای عمومی همچنان با [AllowAnonymous] باز هستند و هاب‌های SignalR هم صریحاً [Authorize] شدند.
 });
 
 // CORS برای کلاینت Blazor WASM (در محیط توسعه)
@@ -266,6 +268,8 @@ builder.Services.AddControllers(options =>
         options.Filters.Add<AuditLogFilter>();
         // میزبانی ماژول RADIS-HR: پیشوند مسیر radis-hr و سیاست دسترسی RadisHrAccess
         options.Conventions.Add(new RadisHrControllerConvention());
+        // امنیت پیش‌فرض: همهٔ کنترلرها [Authorize] — جایگزین FallbackPolicy حذف‌شده
+        options.Conventions.Add(new Inventory.Api.Infrastructure.DefaultAuthorizeConvention());
     })
     .AddJsonOptions(o =>
     {
@@ -517,7 +521,12 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
                 ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
         }
     });
-    app.MapFallbackToFile("index.html");
+    // ⚠️ حیاتی: FallbackPolicy سرویس‌های احراز هویت، «همهٔ» endpointهای بدون متادیتا را JWT-اجباری می‌کند.
+    // endpoint فالبک (سرو فایل‌های کلاینت در استقرار تک‌سروره) هم بی‌متادیتا است؛ بدون AllowAnonymous،
+    // بعد از پابلیش خودِ index.html و همهٔ فایل‌های WASM خطای 401 می‌گیرند و برنامه اصلاً باز نمی‌شود
+    // (در حالت سورس، کلاینت با dev server جدا سرو می‌شود و مشکل دیده نمی‌شود).
+    // APIها همچنان با همان FallbackPolicy محافظت می‌شوند؛ فقط پوستهٔ SPA عمومی می‌ماند (مثل صفحهٔ ورود).
+    app.MapFallbackToFile("index.html").AllowAnonymous();
 }
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5100";

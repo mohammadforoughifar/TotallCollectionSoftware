@@ -7,7 +7,7 @@ public static class HrNavigation
     {
         public bool Allowed(Func<string, bool> has, bool admin) => admin || Permissions.Any(has);
     }
-    public record Section(string Id, string Title, string Icon, Entry[] Items, bool Legacy = false);
+    public record Section(string Id, string Title, string Icon, Entry[] Items);
     private static Entry E(string href, string title, string icon, params string[] permissions) => new(href, title, icon, permissions);
     public static readonly Section[] Sections =
     [
@@ -90,19 +90,11 @@ public static class HrNavigation
             E("fa-pay/items", "اقلام حقوقی", "bi-list-check", "FaPay.Manage"),
             E("fa-pay/settings", "تنظیمات حقوق و مالیات", "bi-gear", "FaPay.Manage"),
             E("fa-lms/instructors", "مدرس‌ها", "bi-person-video3", "FaLms.Read"),
-            E("fa-lms/banks", "بانک سؤال", "bi-collection", "FaLms.Manage")]),
-        new("legacy", "سامانه‌های پیشین", "bi-clock-history", [
-            E("attendance", "حضور من — پیشین", "bi-stopwatch", "Attendance.SelfCheckin"),
-            E("leave", "مرخصی و مأموریت — پیشین", "bi-calendar2-check", "LeaveRequests.Request"),
-            E("attendance-admin", "مدیریت حضور — پیشین", "bi-person-gear", "Attendance.ViewAll", "Attendance.ManageShifts"),
-            E("hr-admin", "مدیریت مرخصی — پیشین", "bi-people", "LeaveRequests.Approve", "LeaveRequests.Report"),
-            E("work-calendar", "تقویم کاری — پیشین", "bi-calendar2-week", "Attendance.ManageShifts"),
-            E("hr-time", "زمان‌بندی — پیشین", "bi-clock", "LeaveRequests.Approve", "Attendance.ManageShifts"),
-            E("payroll", "حقوق و دستمزد — پیشین", "bi-cash-stack", "HrPay.Read", "HrPay.Manage"),
-            E("hr-performance", "ارزیابی — پیشین", "bi-graph-up-arrow", "LeaveRequests.Approve", "HrPay.Read"),
-            E("hr-core/employees", "فهرست پرسنل — نمای پیشین", "bi-person-lines-fill", "HrCore.Read"),
-            E("hr-core/org", "چارت سازمانی — پیشین", "bi-diagram-3", "HrCore.Read")], true)
+            E("fa-lms/banks", "بانک سؤال", "bi-collection", "FaLms.Manage")])
     ];
+    // «سامانه‌های پیشین» (برنامهٔ پیشین منابع انسانی) از این فهرست خارج شد و
+    // به‌صورت منوی مستقل «منابع انسانی فروغ آریا» نمایش داده می‌شود
+    // (نگاه کنید به ForoughAryaHrNavigation و NavMenu.razor).
     public static Section[] Visible(Func<string, bool> has, bool admin) => Sections
         .Select(s => s with { Items = s.Items.Where(i => i.Allowed(has, admin)).ToArray() }).Where(s => s.Items.Length > 0).ToArray();
     public static bool CanEnter(Func<string, bool> has, bool admin) => Visible(has, admin).Length > 0;
@@ -111,7 +103,8 @@ public static class HrNavigation
     public static bool IsWorkspace(string path)
     {
         path = Path(path);
-        return new[] { "hr-main", "hr-core", "fa-att", "fa-pay", "fa-lms", "fa-com", "hr-time", "payroll", "hr-performance", "attendance", "attendance-admin", "leave", "hr-admin", "work-calendar" }.Any(p => At(path, p));
+        // ریشه‌های برنامهٔ پیشین (attendance، payroll، leave و…) به ForoughAryaHrNavigation منتقل شدند.
+        return new[] { "hr-main", "hr-core", "fa-att", "fa-pay", "fa-lms", "fa-com" }.Any(p => At(path, p));
     }
     public static Entry? Find(string path)
     {

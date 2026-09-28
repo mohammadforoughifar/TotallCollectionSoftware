@@ -1475,9 +1475,6 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .hr-navigation .hr-nav-children .nav-link i{font-size:.95rem;width:18px;}
 /* آیتم فعال: نشانگر داخل کادر (نسخه‌ی بیرونیِ ::before زیر overflow:hidden پنهان می‌شود) */
 .hr-navigation .hr-nav-children .nav-link.active::before{right:0;top:18%;bottom:18%;width:3px;background:linear-gradient(180deg,#f5d0fe,#d946ef);}
-/* بخش سامانه‌های پیشین: کم‌رنگ و متمایز از بخش‌های جاری */
-.hr-navigation .hr-nav-legacy button.hr-nav-toggle{opacity:.72;}
-.hr-navigation .hr-nav-legacy .hr-nav-children{border-inline-start-color:rgba(148,163,184,.25);}
 
 /* ============================================================================
    فضای کاری «منابع انسانی اصلی» — استایل‌های یکپارچه (منبع یگانه: app.css)
@@ -1566,8 +1563,6 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .hr-area-content small{font-size:.73rem;color:#63758b;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
 .hr-area>i{font-size:.75rem;color:#a0afbd}
 .hr-area:hover{border-color:#72ada3;background:#fcfefd}
-.hr-legacy-link{display:flex;align-items:center;gap:.6rem;font-size:.75rem;text-decoration:none;color:#63758b;margin-top:1.6rem;width:fit-content}
-.hr-legacy-link:hover{color:#536779}
 .hr-workspace a:focus-visible,.hr-workspace summary:focus-visible{outline:2px solid #0f766e;outline-offset:3px}
 
 /* ----- کارت‌های بخش‌ها (HrLinkGrid) ----- */
@@ -1616,6 +1611,13 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .group-bonhr .nav-section-title { color: #c4b5fd; }
 .group-bonhr .nav-link i { color: #c4b5fd; }
 .group-bonhr .nav-link.active { background: linear-gradient(135deg, #8b5cf6, #5b21b6); box-shadow: 0 8px 22px rgba(139,92,246,.42); }
+
+/* منوی «منابع انسانی فروغ آریا» — برنامهٔ پیشین منابع انسانی (کهربایی) */
+.group-fahr .nav-section-title { color: #fcd34d; }
+.group-fahr .nav-link i { color: #fcd34d; }
+.group-fahr .nav-link.active { background: linear-gradient(135deg, #f59e0b, #b45309); box-shadow: 0 8px 22px rgba(245,158,11,.42); }
+.group-fahr .nav-group-items { border-inline-start-color: rgba(252,211,77,.28); }
+.group-fahr .nav-toggle.open > span:first-child, .group-fahr .nav-toggle:hover .nav-chevron { color: #fcd34d; }
 .group-faatt .nav-section-title { color: #2dd4bf; }
 .group-faatt .nav-link i { color: #2dd4bf; }
 .group-faatt .nav-link.active { background: linear-gradient(135deg, #14b8a6, #0f766e); box-shadow: 0 8px 22px rgba(20,184,166,.42); }

@@ -7,6 +7,7 @@ namespace Inventory.Api.Hubs;
 
 /// <summary>هاب اعلان‌های بلادرنگ — تفکیک و ایزولاسیون بر اساس شناسه کاربری (u{id}) و نقش (r_{role}).</summary>
 [Microsoft.AspNetCore.Authorization.Authorize]
+[Microsoft.AspNetCore.Authorization.Authorize]
 public class NotifyHub : Hub
 {
     public override async Task OnConnectedAsync()
