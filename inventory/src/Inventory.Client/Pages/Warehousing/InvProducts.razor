@@ -231,6 +231,17 @@
         @if (tab == 0)
         {
             <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label fw-600">گروه کالا</label>
+                    <select class="form-select" @bind="categoryStr" @bind:after="OnCategoryChanged">
+                        <option value="0">— بدون گروه —</option>
+                        @foreach (var c in categories)
+                        {
+                            <option value="@c.Id">@(new string('\u00A0', c.Depth * 4))@(c.Depth > 0 ? "└ " : "")@c.Name</option>
+                        }
+                    </select>
+                </div>
+
                 <div class="col-md-3">
                     <label class="form-label">کد کالا <span class="text-danger">*</span></label>
                     <input class="form-control num" @bind="form.Code" dir="ltr" />
@@ -242,35 +253,6 @@
                 <div class="col-md-3">
                     <label class="form-label">نام لاتین</label>
                     <input class="form-control" @bind="form.EnName" dir="ltr" />
-                </div>
-
-                <div class="col-md-5">
-                    <label class="form-label">گروه کالا</label>
-                    <select class="form-select" @bind="categoryStr" @bind:after="OnCategoryChanged">
-                        <option value="0">— بدون گروه —</option>
-                        @foreach (var c in categories)
-                        {
-                            <option value="@c.Id">@(new string('\u00A0', c.Depth * 4))@(c.Depth > 0 ? "└ " : "")@c.Name</option>
-                        }
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">واحد اصلی <span class="text-danger">*</span></label>
-                    <input class="form-control" list="unitList" @bind="form.Unit" />
-                    <datalist id="unitList">
-                        @foreach (var u in units)
-                        {
-                            <option value="@u.Name"></option>
-                        }
-                    </datalist>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">واحد فرعی</label>
-                    <input class="form-control" @bind="form.SecondUnit" placeholder="کارتن، بسته…" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">ضریب تبدیل</label>
-                    <input type="number" step="any" class="form-control num" @bind="form.UnitFactor" dir="ltr" />
                 </div>
 
                 <div class="col-md-3">
@@ -307,8 +289,54 @@
             </div>
         }
 
-        @* ============ تب ۲: قیمت و مالیات ============ *@
+        @* ============ تب ۲: ضریب مصرف ============ *@
         else if (tab == 1)
+        {
+            <div class="row g-3">
+                <div class="col-12">
+                    <div class="alert alert-info py-2 d-flex align-items-center gap-2 mb-1" style="font-size: .84rem;">
+                        <i class="bi bi-info-circle-fill fs-5"></i>
+                        <span>تعریف واحد اصلی، واحد فرعی و نسبت تبدیل میان آن‌ها برای اسناد انبار، فاکتور و گزارش‌ها.</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">واحد اصلی <span class="text-danger">*</span></label>
+                    <input class="form-control" list="unitList" @bind="form.Unit" placeholder="مثلاً: عدد، کیلوگرم، لیتر…" />
+                    <datalist id="unitList">
+                        @foreach (var u in units)
+                        {
+                            <option value="@u.Name"></option>
+                        }
+                    </datalist>
+                    <div class="fs-8 text-muted mt-1">واحد پایه نگهداری موجودی در انبار</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">واحد فرعی</label>
+                    <input class="form-control" @bind="form.SecondUnit" placeholder="مثلاً: کارتن، بسته، جعبه…" />
+                    <div class="fs-8 text-muted mt-1">واحد ثانویه برای فروش یا بسته‌بندی</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">ضریب تبدیل</label>
+                    <input type="number" step="any" class="form-control num" @bind="form.UnitFactor" dir="ltr" placeholder="مثلاً: ۱۲" />
+                    <div class="fs-8 text-muted mt-1">تعداد واحد اصلی در هر یک واحد فرعی</div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(form.SecondUnit) && (form.UnitFactor ?? 0) > 0)
+                {
+                    <div class="col-12">
+                        <div class="p-3 bg-light border rounded-3 d-flex align-items-center justify-content-between">
+                            <span class="fw-600"><i class="bi bi-arrow-left-right text-primary me-2"></i>رابطه تبدیل واحد:</span>
+                            <span class="badge bg-white text-dark border px-3 py-2 fs-7 num">
+                                ۱ @form.SecondUnit = @(form.UnitFactor?.ToString("G29")) @(string.IsNullOrWhiteSpace(form.Unit) ? "واحد اصلی" : form.Unit)
+                            </span>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @* ============ تب ۳: قیمت و مالیات ============ *@
+        else if (tab == 2)
         {
             <div class="row g-3">
                 <div class="col-md-4">
@@ -325,25 +353,6 @@
                 </div>
 
                 <div class="col-12"><hr class="my-1" /></div>
-
-                <div class="col-md-4">
-                    <label class="form-label">
-                        شناسه کالای مالیاتی <span class="fs-8 text-muted">(سامانه مودیان — ۱۳ رقمی)</span>
-                    </label>
-                    <input class="form-control num" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="2710000000000" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">کد واحد سنجش مالیاتی</label>
-                    <input class="form-control num" @bind="form.TaxUnitCode" dir="ltr" placeholder="164" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">کد گمرکی / تعرفه</label>
-                    <input class="form-control num" @bind="form.CustomsCode" dir="ltr" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">کشور سازنده</label>
-                    <input class="form-control" @bind="form.CountryOfOrigin" />
-                </div>
 
                 <div class="col-md-3">
                     <label class="form-label d-block">مشمول ارزش افزوده</label>
@@ -385,8 +394,43 @@
             </div>
         }
 
-        @* ============ تب ۳: انبار و موجودی ============ *@
-        else if (tab == 2)
+        @* ============ تب ۴: کدهای کاربردی ============ *@
+        else if (tab == 3)
+        {
+            <div class="row g-3">
+                <div class="col-12">
+                    <div class="alert alert-light border py-2 d-flex align-items-center gap-2 mb-1" style="font-size: .84rem;">
+                        <i class="bi bi-upc-scan text-primary fs-5"></i>
+                        <span>شناسه کالای مالیاتی سامانه مودیان، کد واحد سنجش، کد تعرفه گمرکی و کشور سازنده کالا.</span>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">
+                        شناسه کالای مالیاتی <span class="fs-8 text-muted">(سامانه مودیان — ۱۳ رقمی)</span>
+                    </label>
+                    <input class="form-control num" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="2710000000000" />
+                    <div class="fs-8 text-muted mt-1">شناسه یکتای اختصاص داده شده توسط سازمان امور مالیاتی</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">کد واحد سنجش مالیاتی</label>
+                    <input class="form-control num" @bind="form.TaxUnitCode" dir="ltr" placeholder="164" />
+                    <div class="fs-8 text-muted mt-1">کد واحد سنجش بر اساس جدول استانداردهای سامانه مودیان</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">کد گمرکی / تعرفه (HS Code)</label>
+                    <input class="form-control num" @bind="form.CustomsCode" dir="ltr" placeholder="مثلاً: 84713020" />
+                    <div class="fs-8 text-muted mt-1">شماره تعرفه ۸ رقمی گمرک</div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">کشور سازنده</label>
+                    <input class="form-control" @bind="form.CountryOfOrigin" placeholder="مثلاً: ایران، آلمان، چین…" />
+                    <div class="fs-8 text-muted mt-1">کشور مبدا تولید برای امور گمرکی و بازرگانی</div>
+                </div>
+            </div>
+        }
+
+        @* ============ تب ۵: انبار و موجودی ============ *@
+        else if (tab == 4)
         {
             <div class="row g-3">
                 <div class="col-md-4">
@@ -499,8 +543,8 @@
             </div>
         }
 
-        @* ============ تب ۴: ویژگی‌ها (گرید با کمبو + مقدار بر اساس نوع) ============ *@
-        else if (tab == 3)
+        @* ============ تب ۶: ویژگی‌ها (گرید با کمبو + مقدار بر اساس نوع) ============ *@
+        else if (tab == 5)
         {
             <div class="attr-box">
                 @if (availableAttributes.Count == 0 && form.Attributes.Count == 0)
@@ -706,8 +750,8 @@
     private string fSale = "", fSale2 = "", fPurchase = "", fReorder = "", fMax = "", fMinOrder = "";
     private bool editing => form.Id != 0;
 
-    private static readonly string[] TabTitles = { "اطلاعات اصلی", "قیمت و مالیات", "انبار و موجودی", "ویژگی‌ها", "شرح و تصویر" };
-    private static readonly string[] TabIcons = { "bi-info-circle", "bi-cash-coin", "bi-boxes", "bi-sliders", "bi-card-text" };
+    private static readonly string[] TabTitles = { "اطلاعات اصلی", "ضریب مصرف", "قیمت و مالیات", "کدهای کاربردی", "انبار و موجودی", "ویژگی‌ها", "شرح و تصویر" };
+    private static readonly string[] TabIcons = { "bi-info-circle", "bi-calculator", "bi-cash-coin", "bi-upc-scan", "bi-boxes", "bi-sliders", "bi-card-image" };
 
     private string ModalTitle => editing ? $"ویرایش کالا — {form.Name}" : "تعریف کالای جدید";
 
