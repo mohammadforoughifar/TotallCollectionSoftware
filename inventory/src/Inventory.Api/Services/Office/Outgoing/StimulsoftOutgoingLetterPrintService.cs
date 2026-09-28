@@ -21,6 +21,12 @@ public interface IStimulsoftOutgoingLetterPrintService
 
 public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLetterPrintService
 {
+    private sealed class HameshPrintRow
+    {
+        public string Name { get; set; } = string.Empty;
+        public string Desc { get; set; } = string.Empty;
+    }
+
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _configuration;
@@ -95,6 +101,18 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
         var hasAttachment = await _db.AppAttachments.AsNoTracking()
             .AnyAsync(x => x.Module == "OutgoingLetters" && x.RefId == letterId, cancellationToken);
 
+        var hamesh = await _db.Erjas.AsNoTracking()
+            .Include(x => x.UserReciver)
+            .Where(x => x.SourceId == letterId && !x.IsDelete && x.Type == "هامش")
+            .OrderBy(x => x.ErjaId)
+            .Take(5)
+            .Select(x => new HameshPrintRow
+            {
+                Name = x.UserReciver == null ? string.Empty : ($"{x.UserReciver.FirstName} {x.UserReciver.LastName}").Trim(),
+                Desc = x.MatnErja ?? string.Empty
+            })
+            .ToListAsync(cancellationToken);
+
         try
         {
             using var report = new StiReport();
@@ -103,11 +121,14 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
             // اتصال رمزگذاری‌شده قدیمی A5 هرگز نباید در نسخه وب استفاده شود.
             report.Dictionary.Databases.Clear();
 
-            RegisterLetterData(report, letter);
-            SetVariable(report, "dateshamsi", ToPersianDate(letter.DateSadere ?? letter.DateSabt));
+            RegisterLetterData(report, letter, hamesh);
+            var persianDate = ToPersianDate(letter.DateSadere ?? letter.DateSabt);
+            SetVariable(report, "dateshams", persianDate);
+            SetVariable(report, "dateshamsi", persianDate);
             SetVariable(report, "peyvast_String", hasAttachment ? "دارد" : "ندارد");
-            // در ساختار فعلی نزدیک‌ترین مفهوم به هامش، رونوشت نامه است.
-            SetVariable(report, "hamesh", letter.CopyTo ?? string.Empty);
+            // برای قالب‌های قدیمی، هامش متنی نیز مقداردهی می‌شود.
+            SetVariable(report, "hamesh", string.Join(Environment.NewLine,
+                hamesh.Select(x => string.IsNullOrWhiteSpace(x.Desc) ? x.Name : $"{x.Name}: {x.Desc}")));
 
             for (var index = 0; index < 3; index++)
             {
@@ -121,22 +142,16 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
                 SetVariable(report, $"ImageSignature{suffix}", null);
             }
 
-            // امضای آزمایشی فقط برای امضاکنندگان تاییدشده و فقط با تنظیم صریح فعال می‌شود.
-            if (_configuration.GetValue("Reporting:Stimulsoft:UseTestSignature", false))
+            // فقط تصویر امضای واقعی امضاکننده‌ای که امضای او ثبت شده چاپ می‌شود.
+            for (var index = 0; index < signers.Count; index++)
             {
-                var signaturePath = ResolveFile("Resources/reports/test-signature.png");
-                if (signaturePath != null)
-                {
-                    for (var index = 0; index < signers.Count; index++)
-                    {
-                        if (!signers[index].IsSigned) continue;
-                        var suffix = index == 0 ? string.Empty : (index + 1).ToString(CultureInfo.InvariantCulture);
-                        // Image از Stream جدا می‌شود تا تا پایان Render معتبر بماند.
-                        using var source = Image.FromFile(signaturePath);
-                        var signature = new Bitmap(source);
-                        SetVariable(report, $"ImageSignature{suffix}", signature);
-                    }
-                }
+                var signer = signers[index];
+                if (!signer.IsSigned || string.IsNullOrWhiteSpace(signer.User?.SignaturePath)) continue;
+                var signaturePath = ResolveUserFile(signer.User.SignaturePath);
+                if (signaturePath == null) continue;
+                var suffix = index == 0 ? string.Empty : (index + 1).ToString(CultureInfo.InvariantCulture);
+                using var source = Image.FromFile(signaturePath);
+                SetVariable(report, $"ImageSignature{suffix}", new Bitmap(source));
             }
 
             report.Render(false);
@@ -156,7 +171,7 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
         }
     }
 
-    private void RegisterLetterData(StiReport report, OutgoingLetter letter)
+    private void RegisterLetterData(StiReport report, OutgoingLetter letter, IReadOnlyList<HameshPrintRow> hamesh)
     {
         var table = new DataTable("DataSource1");
         table.Columns.Add("LetterNumber", typeof(string));
@@ -164,6 +179,8 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
         table.Columns.Add("TextLetter", typeof(string));
         table.Columns.Add("TitleLetter", typeof(string));
         table.Columns.Add("GirandeAsli", typeof(string));
+        table.Columns.Add("Name", typeof(string));
+        table.Columns.Add("Desc", typeof(string));
 
         var number = string.IsNullOrWhiteSpace(letter.SadereNumber)
             ? letter.LetterNumber ?? "—"
@@ -174,7 +191,9 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
             letter.DateSadere ?? letter.DateSabt,
             letter.Text ?? string.Empty,
             letter.Title,
-            BuildReceiver(letter));
+            BuildReceiver(letter),
+            string.Join(Environment.NewLine, hamesh.Select(x => x.Name)),
+            string.Join(Environment.NewLine, hamesh.Select(x => x.Desc)));
 
         var dataSet = new DataSet("LetterData");
         dataSet.Tables.Add(table);
@@ -193,6 +212,21 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
         var root = _configuration["Reporting:Stimulsoft:TemplateRoot"]
                    ?? "Reports/OutgoingLetters/Companies";
         return ResolveFile(Path.Combine(root, companyId.ToString(CultureInfo.InvariantCulture), $"Outgoing-{size}.mrt"));
+    }
+
+    private string? ResolveUserFile(string relativePath)
+    {
+        var clean = relativePath.Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar).TrimStart(Path.DirectorySeparatorChar);
+        if (clean.Split(Path.DirectorySeparatorChar).Contains("..")) return null;
+        var webRoot = _env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot");
+        return new[]
+        {
+            Path.Combine(webRoot, clean),
+            Path.Combine(webRoot, "uploads", clean),
+            Path.Combine(_env.ContentRootPath, clean),
+            Path.Combine(AppContext.BaseDirectory, clean)
+        }.FirstOrDefault(File.Exists);
     }
 
     private string? ResolveFile(string relativePath)

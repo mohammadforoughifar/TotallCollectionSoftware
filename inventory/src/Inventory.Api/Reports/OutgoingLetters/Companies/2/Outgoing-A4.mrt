@@ -6,12 +6,14 @@
     <DataSources isList="true" count="1">
       <DataSource1 Ref="2" type="DataTableSource" isKey="true">
         <Alias>DataSource1</Alias>
-        <Columns isList="true" count="5">
+        <Columns isList="true" count="7">
           <value>LetterNumber,System.String</value>
           <value>Date_Letter,System.DateTime</value>
           <value>TextLetter,System.String</value>
           <value>TitleLetter,System.String</value>
           <value>GirandeAsli,System.String</value>
+          <value>Name,System.String</value>
+          <value>Desc,System.String</value>
         </Columns>
         <Dictionary isRef="1" />
         <Key>6e67244e46564593865bbd97677766d8</Key>
@@ -22,7 +24,8 @@
     <Relations isList="true" count="0" />
     <Report isRef="0" />
     <Resources isList="true" count="0" />
-    <Variables isList="true" count="12">
+    <Variables isList="true" count="13">
+      <value>,dateshams,dateshams,,System.String,,False,False,False,False,,_x0032_dateshams</value>
       <value>,dateshamsi,dateshamsi,,System.String,,False,False,False,False,,ecef97119d1649f7a2805bc0fdd4c1c9</value>
       <value>,peyvast_String,peyvast_String,,System.String,,False,False,False,False,,f352a96144a84cd3b3d8135d61e16a55</value>
       <value>,hamesh,hamesh,,System.String,,False,False,False,False,,_x0033_ee33400ecc045a9920b6110e2a25e39</value>
@@ -157,7 +160,7 @@
           <Name>Text1</Name>
           <Page isRef="3" />
           <Parent isRef="3" />
-          <Text>{dateshamsi}</Text>
+          <Text>{dateshams}</Text>
           <TextBrush>Black</TextBrush>
           <Type>Expression</Type>
         </Text1>
@@ -187,7 +190,8 @@
           <Name>Text11</Name>
           <Page isRef="3" />
           <Parent isRef="3" />
-          <Text>{hamesh}</Text>
+          <Text>{DataSource1.Name}
+{DataSource1.Desc}</Text>
           <TextBrush>Black</TextBrush>
           <Type>Expression</Type>
         </Text11>
