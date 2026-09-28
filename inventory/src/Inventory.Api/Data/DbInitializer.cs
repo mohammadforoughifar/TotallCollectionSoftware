@@ -66,6 +66,7 @@ public static class DbInitializer
                 await PushDeliverySchema.EnsureAsync(db);
                 // مدت نمایش اعلان‌ها/پیام‌ها (سراسری، مدیر سامانه) — ستون‌های AppSettings
                 await AppSettingsSchemaV1.EnsureAsync(db);
+                await CompanyAccessSchemaV1.EnsureAsync(db);
 
                 // دبیرخانه نامه صادره — ستون‌های CreatorUserId/CreatorId و ArchiveAt
                 // باید برای دیتابیس‌های قدیمی نیز خودکار ایجاد شوند.

@@ -104,6 +104,7 @@ public class AppDbContext : DbContext
     public DbSet<SystemHandover> SystemHandovers => Set<SystemHandover>();
     public DbSet<SystemRemoteCommand> SystemRemoteCommands => Set<SystemRemoteCommand>();
     public DbSet<SystemCompany> SystemCompanies => Set<SystemCompany>();
+    public DbSet<UserCompanyAccess> UserCompanyAccesses => Set<UserCompanyAccess>();
     public DbSet<SystemDepartment> SystemDepartments => Set<SystemDepartment>();
     public DbSet<SystemUser> SystemUsers => Set<SystemUser>();
 
@@ -387,6 +388,9 @@ public class AppDbContext : DbContext
         PushDeliverySchema.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
+        mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
+        mb.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<ProductCategory>().HasIndex(c => c.Name).IsUnique();
         mb.Entity<MeasureUnit>().HasIndex(u => u.Name).IsUnique();
         mb.Entity<Stock>().HasIndex(s => new { s.WarehouseId, s.ProductId }).IsUnique();
