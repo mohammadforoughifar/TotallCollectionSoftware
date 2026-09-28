@@ -1228,7 +1228,7 @@ public class AttendanceController : ControllerBase
 
     // ================== تاریخچه من ==================
     [HttpGet("my-history")]
-    public async Task<IActionResult> MyHistory([FromQuery] int? jy, [FromQuery] int? jm)
+    public async Task<IActionResult> MyHistory([FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("SelfCheckin")) return Forbid();
         DateTime from, to; int y, m;
@@ -1246,12 +1246,14 @@ public class AttendanceController : ControllerBase
             .OrderBy(s => s.Seq)
             .ToListAsync();
         var byDate = segs.GroupBy(s => s.WorkDate).ToDictionary(g => g.Key, g => g.ToList());
-        return Ok(new { year = y, month = m, items = list.Select(r => Map(r, byDate.GetValueOrDefault(r.WorkDate))) });
+        var items = list.Select(r => Map(r, byDate.GetValueOrDefault(r.WorkDate))).ToList();
+        if (Paging.Requested(skip, take)) return Ok(new { year = y, month = m, total = items.Count, items = Paging.Slice(items, skip, take) });
+        return Ok(new { year = y, month = m, items });
     }
 
     // ================== روزهای دارای کسری + بازه‌های بدون پوشش (برای درخواست آسان مرخصی) ==================
     [HttpGet("my-deficit-ranges")]
-    public async Task<IActionResult> MyDeficitRanges([FromQuery] int? jy, [FromQuery] int? jm)
+    public async Task<IActionResult> MyDeficitRanges([FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("SelfCheckin")) return Forbid();
         int y, m;
@@ -1368,6 +1370,7 @@ public class AttendanceController : ControllerBase
             items.Add(new { date = d.Date, deficitMinutes = deficit, ranges });
         }
 
+        if (Paging.Requested(skip, take)) return Ok(new { year = y, month = m, total = items.Count, items = Paging.Slice(items, skip, take) });
         return Ok(new { year = y, month = m, items });
     }
 
@@ -1596,7 +1599,7 @@ public class AttendanceController : ControllerBase
 
     // ================== گزارش ادمین (جزئیات روزانه) ==================
     [HttpGet("report")]
-    public async Task<IActionResult> Report([FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int? userId)
+    public async Task<IActionResult> Report([FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int? userId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsAdminAsync()) return Forbid();
         int y, m; DateTime from, to;
@@ -1612,12 +1615,14 @@ public class AttendanceController : ControllerBase
         if (userId.HasValue && userId > 0) segq = segq.Where(s => s.UserId == userId);
         var segs = await segq.OrderBy(s => s.Seq).ToListAsync();
         var byDateUser = segs.GroupBy(s => (s.UserId, s.WorkDate)).ToDictionary(g => g.Key, g => g.ToList());
-        return Ok(new { year = y, month = m, items = list.Select(r => Map(r, byDateUser.GetValueOrDefault((r.UserId, r.WorkDate)))) });
+        var items = list.Select(r => Map(r, byDateUser.GetValueOrDefault((r.UserId, r.WorkDate)))).ToList();
+        if (Paging.Requested(skip, take)) return Ok(new { year = y, month = m, total = items.Count, items = Paging.Slice(items, skip, take) });
+        return Ok(new { year = y, month = m, items });
     }
 
     // ================== گزارش خلاصه ماهانه (به ازای هر کاربر) ==================
     [HttpGet("monthly-report")]
-    public async Task<IActionResult> MonthlyReport([FromQuery] int? jy, [FromQuery] int? jm)
+    public async Task<IActionResult> MonthlyReport([FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsAdminAsync()) return Forbid();
         int y, m;
@@ -1705,6 +1710,16 @@ public class AttendanceController : ControllerBase
             });
         }
 
+        if (Paging.Requested(skip, take))
+            return Ok(new
+            {
+                year = y,
+                month = m,
+                monthName = PersianDate.MonthName(m),
+                days = daysInMonth,
+                total = rows.Count,
+                items = Paging.Slice(rows, skip, take)
+            });
         return Ok(new
         {
             year = y,
@@ -1717,7 +1732,7 @@ public class AttendanceController : ControllerBase
 
     // ================== وضعیت امروز همه ==================
     [HttpGet("today-status")]
-    public async Task<IActionResult> TodayStatus()
+    public async Task<IActionResult> TodayStatus([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsAdminAsync()) return Forbid();
         var today = DateTime.Today;
@@ -1798,6 +1813,7 @@ public class AttendanceController : ControllerBase
             Late = items.Count(x => ((dynamic)x).EnterStatus == "Late"),
             OnLeave = items.Count(x => ((dynamic)x).HasApprovedLeave),
         };
+        if (Paging.Requested(skip, take)) return Ok(new { stats, total = items.Count, items = Paging.Slice(items, skip, take) });
         return Ok(new { stats, items });
     }
 

@@ -63,7 +63,7 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
         return Ok(new { message = "دسترسی موقت لغو شد؛ دسترسی‌های دائمی مستقل باقی می‌مانند." });
     }
     [HttpGet("documents/{id:int}/renewal")]
-    public async Task<IActionResult> GetRenewal(int id)
+    public async Task<IActionResult> GetRenewal(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await Full(id)) return Forbid();
         var p = await Db.DocRenewalPolicies.AsNoTracking().FirstOrDefaultAsync(p => p.DocumentId == id);
@@ -73,6 +73,8 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
                                where r.DocumentId == id && (w.OwnerUserId == MyUserId || Db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.UserId == MyUserId))
                                orderby r.Id descending
                                select new DocRenewalOrderDto { Id = w.Id, Number = w.Number, Status = w.DeletedAt != null ? "Deleted" : w.Status, ExpiryDate = r.ExpiryDate }).Take(20).ToListAsync();
+        if (Paging.Requested(skip, take))
+            return Ok(new { result.Enabled, result.AssigneeUserId, result.LeadDays, total = result.Orders.Count, orders = Paging.Slice(result.Orders, skip, take) });
         return Ok(result);
     }
     [HttpPut("documents/{id:int}/renewal")]
@@ -95,11 +97,11 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
         return Ok(new { message = "تنظیمات تمدید ذخیره شد." });
     }
     [HttpGet("index-queue")]
-    public async Task<IActionResult> Queue()
+    public async Task<IActionResult> Queue([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("DocArchive", "Manage")) return Forbid();
         var q = Db.DocIndexJobs.AsNoTracking();
-        return Ok(new DocIndexQueueDto
+        var dto = new DocIndexQueueDto
         {
             Pending = await q.CountAsync(j => j.Status == "Pending"),
             Working = await q.CountAsync(j => j.Status == "Working"),
@@ -110,7 +112,10 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
                               where j.Status == "Failed"
                               orderby j.UpdatedAtUtc descending
                               select new DocIndexFailureDto { AttachmentId = j.AttachmentId, FileName = a.FileName, Error = j.Error }).Take(30).ToListAsync()
-        });
+        };
+        if (Paging.Requested(skip, take))
+            return Ok(new { dto.Pending, dto.Working, dto.Failed, dto.Done, total = dto.Failures.Count, failures = Paging.Slice(dto.Failures, skip, take) });
+        return Ok(dto);
     }
     [HttpPost("index-queue/{attachmentId:int}/retry")]
     public async Task<IActionResult> Retry(int attachmentId)

@@ -57,12 +57,14 @@ public class HrTimeController : ControllerBase
     // ================= موجودی مرخصی =================
 
     [HttpGet("balances")]
-    public async Task<IActionResult> Balances([FromQuery] int? userId, [FromQuery] int? year)
+    public async Task<IActionResult> Balances([FromQuery] int? userId, [FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var uid = userId ?? MyUserId;
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
         var jy = year ?? HrTimeService.JalaliYear(DateTime.Now);
-        return Ok(new { year = jy, items = await _svc.GetBalancesAsync(uid, jy) });
+        var items = await _svc.GetBalancesAsync(uid, jy);
+        if (Paging.Requested(skip, take)) return Ok(new { year = jy, total = items.Count, items = Paging.Slice(items, skip, take) });
+        return Ok(new { year = jy, items });
     }
 
     public class GrantInput { public int UserId { get; set; } public int Year { get; set; } public string Category { get; set; } = "Annual"; public double Days { get; set; } }

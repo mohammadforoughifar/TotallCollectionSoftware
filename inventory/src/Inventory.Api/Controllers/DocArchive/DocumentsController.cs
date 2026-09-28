@@ -36,7 +36,8 @@ public class DocumentsController : RbacControllerBase
     /// <param name="status">وضعیت مدرک: active (پیش‌فرض) | inactive | all</param>
     public async Task<IActionResult> List(int? folderId = null, string? search = null,
         bool onlyExpiring = false, string status = "active",
-        string? expiry = null, int expiringDays = 60)
+        string? expiry = null, int expiringDays = 60,
+        [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
@@ -166,7 +167,7 @@ public class DocumentsController : RbacControllerBase
             });
         }
 
-        return Ok(result);
+        return Ok(Paging.Result(result, skip, take));
     }
 
     // ---------------------------- جزئیات ----------------------------

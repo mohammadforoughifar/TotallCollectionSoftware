@@ -91,10 +91,10 @@ public class AiController : RbacControllerBase
 
     /// <summary>فهرست گفتگوهای من.</summary>
     [HttpGet("conversations")]
-    public async Task<IActionResult> Conversations()
+    public async Task<IActionResult> Conversations([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
-        return Ok(await _conversations.ListAsync(MyUserId));
+        return Ok(Paging.Result(await _conversations.ListAsync(MyUserId), skip, take));
     }
 
     /// <summary>یک گفتگو با پیام‌ها.</summary>

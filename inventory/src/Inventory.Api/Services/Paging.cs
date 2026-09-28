@@ -76,7 +76,7 @@ public static class Paging
     }
 
     /// <summary>اعمال Skip و Take با کمینه‌سازی (skip منفی ← صفر؛ take تهی/صفر ← بدون محدودیت).</summary>
-    private static IEnumerable<T> Slice<T>(IEnumerable<T> source, int skip, int? take)
+    public static IEnumerable<T> Slice<T>(IEnumerable<T> source, int skip, int? take)
     {
         if (skip > 0) source = source.Skip(skip);
         if (take is > 0) source = source.Take(take.Value);

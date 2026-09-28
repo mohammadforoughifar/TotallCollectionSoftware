@@ -563,7 +563,7 @@ public class LeaveRequestsController : ControllerBase
     // ================== گزارش ماهانه ==================
 
     [HttpGet("report/{jy:int}/{jm:int}")]
-    public async Task<IActionResult> Report(int jy, int jm)
+    public async Task<IActionResult> Report(int jy, int jm, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReportAsync()) return Forbid();
         var (s, e) = MonthRange(jy, jm);
@@ -602,7 +602,7 @@ public class LeaveRequestsController : ControllerBase
         }
         rows = rows.OrderByDescending(r => r.TotalQuotaDays).ThenBy(r => r.MissionDays).ToList();
 
-        return Ok(new ReportResult
+        var res = new ReportResult
         {
             Year = jy,
             Month = jm,
@@ -610,7 +610,10 @@ public class LeaveRequestsController : ControllerBase
             Rows = rows,
             TotalUsed = Math.Round(rows.Sum(r => r.TotalQuotaDays), 2),
             TotalMissions = rows.Sum(r => r.MissionCount)
-        });
+        };
+        if (Paging.Requested(skip, take))
+            return Ok(new { res.Year, res.Month, res.MonthName, res.Quota, res.TotalUsed, res.TotalMissions, total = res.Rows.Count, rows = Paging.Slice(res.Rows, skip, take) });
+        return Ok(res);
     }
 
     // ================== گزارش اکسل/CSV ==================

@@ -404,10 +404,13 @@ public class FaLmsController : RbacControllerBase
     // ------------------- تصحیح تشریحی -------------------
 
     [HttpGet("grading/pending")]
-    public async Task<IActionResult> GradingPending()
+    public async Task<IActionResult> GradingPending([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.GradingInboxAsync(MyUserId));
+        var r = await _svc.GradingInboxAsync(MyUserId);
+        if (Paging.Requested(skip, take))
+            return Ok(new { r.MyInstructorId, total = r.Items.Count, items = Paging.Slice(r.Items, skip, take) });
+        return Ok(r);
     }
 
     [HttpGet("attempts/{id:int}/texts")]
@@ -534,10 +537,13 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("courses/{id:int}/survey-results")]
-    public async Task<IActionResult> SurveyResults(int id)
+    public async Task<IActionResult> SurveyResults(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.SurveyResultsAsync(id));
+        var r = await _svc.SurveyResultsAsync(id);
+        if (Paging.Requested(skip, take))
+            return Ok(new { r.QuestionCount, r.RespondentCount, r.OverallAvg, total = r.Questions.Count, questions = Paging.Slice(r.Questions, skip, take) });
+        return Ok(r);
     }
 
     // ------------------- تداخل‌یابی -------------------
@@ -589,34 +595,51 @@ public class FaLmsController : RbacControllerBase
     }
 
     [HttpGet("budgets/report")]
-    public async Task<IActionResult> BudgetReport([FromQuery] int year)
+    public async Task<IActionResult> BudgetReport([FromQuery] int year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(await _svc.BudgetReportAsync(year));
+        var r = await _svc.BudgetReportAsync(year);
+        if (Paging.Requested(skip, take))
+            return Ok(new { r.Year, r.BudgetAmount, r.SpentAmount, r.Remaining, total = r.Rows.Count, rows = Paging.Slice(r.Rows, skip, take) });
+        return Ok(r);
     }
 
     // ------------------- گزارش‌ها -------------------
 
     [HttpGet("dashboard")]
-    public async Task<IActionResult> Dashboard([FromQuery] int year)
+    public async Task<IActionResult> Dashboard([FromQuery] int year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(await _svc.GetDashboardAsync(year));
+        var r = await _svc.GetDashboardAsync(year);
+        if (r is null || !Paging.Requested(skip, take)) return Ok(r);
+        return Ok(new
+        {
+            r.Year, r.OpenCourses, r.RunningCourses, r.FinishedThisYear,
+            r.PendingNeeds, r.PendingEnrolls, r.UpcomingSessions,
+            r.BudgetAmount, r.SpentAmount,
+            total = r.RecentCerts.Count, recentCerts = Paging.Slice(r.RecentCerts, skip, take)
+        });
     }
 
     [HttpGet("reports/employee/{employeeId:int}")]
-    public async Task<IActionResult> EmployeeReport(int employeeId)
+    public async Task<IActionResult> EmployeeReport(int employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         var r = await _svc.EmployeeReportAsync(employeeId);
-        return r == null ? NotFound() : Ok(r);
+        if (r == null) return NotFound();
+        if (Paging.Requested(skip, take))
+            return Ok(new { r.EmployeeId, r.EmployeeName, r.CoursesCount, r.HoursTotal, r.AvgScore, r.CertsCount, r.AvgAttendance, total = r.Rows.Count, rows = Paging.Slice(r.Rows, skip, take) });
+        return Ok(r);
     }
 
     [HttpGet("reports/employee/my")]
-    public async Task<IActionResult> MyReport()
+    public async Task<IActionResult> MyReport([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
         var r = await _svc.MyReportAsync(MyUserId);
-        return r == null ? NotFound() : Ok(r);
+        if (r == null) return NotFound();
+        if (Paging.Requested(skip, take))
+            return Ok(new { r.EmployeeId, r.EmployeeName, r.CoursesCount, r.HoursTotal, r.AvgScore, r.CertsCount, r.AvgAttendance, total = r.Rows.Count, rows = Paging.Slice(r.Rows, skip, take) });
+        return Ok(r);
     }
 }

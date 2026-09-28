@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Inventory.Api.Data;
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -18,7 +19,7 @@ public sealed class CompanyContextController : ControllerBase
     private bool IsAdmin => User.IsInRole("Admin");
 
     [HttpGet]
-    public async Task<IActionResult> Get([FromHeader(Name = "X-Company-Id")] int? requested)
+    public async Task<IActionResult> Get([FromHeader(Name = "X-Company-Id")] int? requested, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var access = _db.UserCompanyAccesses.AsNoTracking().Where(x => x.UserId == UserId && x.Company.IsActive);
         if (!await access.AnyAsync())
@@ -29,9 +30,16 @@ public sealed class CompanyContextController : ControllerBase
                 access = _db.SystemCompanies.AsNoTracking().Where(c => c.Id == legacyCompany && c.IsActive).Select(c => new UserCompanyAccess { UserId = UserId, CompanyId = c.Id, Company = c });
         }
         if (IsAdmin && !await access.AnyAsync())
-            return Ok(new { activeCompanyId = requested, companies = await _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync() });
+        {
+            var allCompanies = await _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
+            if (Paging.Requested(skip, take))
+                return Ok(new { activeCompanyId = requested, total = allCompanies.Count, companies = Paging.Slice(allCompanies, skip, take) });
+            return Ok(new { activeCompanyId = requested, companies = allCompanies });
+        }
         var companies = await access.OrderBy(x => x.Company.Name).Select(x => x.Company).ToListAsync();
         var active = requested is > 0 && companies.Any(c => c.Id == requested) ? requested : companies.FirstOrDefault()?.Id;
+        if (Paging.Requested(skip, take))
+            return Ok(new { activeCompanyId = active, total = companies.Count, companies = Paging.Slice(companies, skip, take) });
         return Ok(new { activeCompanyId = active, companies });
     }
 
@@ -52,10 +60,10 @@ public sealed class CompanyContextController : ControllerBase
     }
 
     [HttpGet("users/{userId:int}")]
-    public async Task<IActionResult> GetUserCompanies(int userId)
+    public async Task<IActionResult> GetUserCompanies(int userId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!IsAdmin && userId != UserId) return Forbid();
-        return Ok(await _db.UserCompanyAccesses.AsNoTracking().Where(x => x.UserId == userId).Select(x => x.CompanyId).ToListAsync());
+        return Ok(Paging.Result(await _db.UserCompanyAccesses.AsNoTracking().Where(x => x.UserId == userId).Select(x => x.CompanyId).ToListAsync(), skip, take));
     }
 
     public sealed class CompanyAssignmentDto { public List<int> CompanyIds { get; set; } = new(); }

@@ -538,8 +538,10 @@ public class WorkOrdersController : ControllerBase
     }
 
     [HttpGet("mine")]
-    public async Task<IActionResult> Mine([FromQuery] ListFilterDto filter)
+    public async Task<IActionResult> Mine([FromQuery] ListFilterDto filter, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        filter.Page = Paging.ToPage(skip, take, filter.Page);
+        filter.PageSize = Paging.ToPageSize(take, filter.PageSize);
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         return await BuildPage(_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), filter, companyId.Value);
@@ -547,8 +549,10 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>دستورهای محول به من (باز) — با فیلتر اختیاری.</summary>
     [HttpGet("assigned")]
-    public async Task<IActionResult> Assigned([FromQuery] ListFilterDto filter)
+    public async Task<IActionResult> Assigned([FromQuery] ListFilterDto filter, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        filter.Page = Paging.ToPage(skip, take, filter.Page);
+        filter.PageSize = Paging.ToPageSize(take, filter.PageSize);
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
@@ -557,8 +561,10 @@ public class WorkOrdersController : ControllerBase
 
     /// <summary>بایگانی — دستورهای بسته‌شده (من دستور داده‌ام یا به من محول شده) — با فیلتر اختیاری.</summary>
     [HttpGet("archive")]
-    public async Task<IActionResult> Archive([FromQuery] ListFilterDto filter)
+    public async Task<IActionResult> Archive([FromQuery] ListFilterDto filter, [FromQuery] int? skip = null, [FromQuery] int? take = null)
     {
+        filter.Page = Paging.ToPage(skip, take, filter.Page);
+        filter.PageSize = Paging.ToPageSize(take, filter.PageSize);
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);

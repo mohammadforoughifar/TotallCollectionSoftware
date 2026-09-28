@@ -634,7 +634,7 @@ public class ProjectsController : RbacControllerBase
 
     /// <summary>کدهای برگشتی ثبت‌شدهٔ یک پروژه مبدأ + اطلاعات پایهٔ آن (برای فرم پروژه برگشتی)</summary>
     [HttpGet("{id:int}/returns")]
-    public async Task<IActionResult> Returns(int id)
+    public async Task<IActionResult> Returns(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
@@ -649,6 +649,16 @@ public class ProjectsController : RbacControllerBase
             .Select(p => p.CodeProject)
             .ToListAsync();
 
+        if (Paging.Requested(skip, take))
+            return Ok(new
+            {
+                parentCode = parent.CodeProject,
+                parentName = parent.ProjectName,
+                parentReceiver = parent.ProjectReceiver,
+                karFarmaId = parent.KarFarmaId,
+                total = codes.Count,
+                codes = Paging.Slice(codes, skip, take)
+            });
         return Ok(new
         {
             parentCode = parent.CodeProject,

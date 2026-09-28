@@ -136,10 +136,22 @@ public class InvReportsController : RbacControllerBase
         [FromQuery] int productId,
         [FromQuery] int? warehouseId = null,
         [FromQuery] DateTime? from = null,
-        [FromQuery] DateTime? to = null)
+        [FromQuery] DateTime? to = null,
+        [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync("ReportPages", "Kardex") is ObjectResult forbidden) return forbidden;
-        return Ok(await _svc.GetKardexAsync(productId, warehouseId, from, to));
+        var r = await _svc.GetKardexAsync(productId, warehouseId, from, to);
+        if (Paging.Requested(skip, take))
+            return Ok(new
+            {
+                r.ProductId, r.ProductCode, r.ProductName, r.Unit, r.WarehouseName,
+                r.Method, r.MethodTitle, r.OpeningQty, r.OpeningValue,
+                r.TotalInQty, r.TotalInValue, r.TotalOutQty, r.TotalOutValue,
+                r.ClosingQty, r.ClosingValue,
+                total = r.Rows.Count,
+                rows = Paging.Slice(r.Rows, skip, take)
+            });
+        return Ok(r);
     }
 
     /// <summary>موجودی مقداری و ریالی انبارها.</summary>
