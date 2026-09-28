@@ -77,3 +77,10 @@ public interface IInvReportService
     Task<PagedResult<InvStockRow>> GetStockAsync(int? warehouseId = null, int? categoryId = null,
         string? search = null, bool below = false, int page = 1, int pageSize = 15);
 }
+
+/// <summary>تنظیمات جامع ماژول انبارداری و ساختار کدینگ کالا.</summary>
+public interface IInvSettingsService
+{
+    Task<WarehousingSettingsDto> GetSettingsAsync();
+    Task<WarehousingSettingsDto> SaveSettingsAsync(WarehousingSettingsDto dto);
+}

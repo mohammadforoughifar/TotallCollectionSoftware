@@ -41,6 +41,25 @@ public class AppSettings
 
     /// <summary>وزن پیش‌فرض محموله (kg)</summary>
     public decimal DefaultShipmentWeight { get; set; } = 0;
+
+    // ---------- تنظیمات انبارداری، ارزش افزوده و ساختار کدینگ ----------
+    /// <summary>نرخ پیش‌فرض ارزش افزوده در سیستم (درصد)</summary>
+    public decimal DefaultVatRate { get; set; } = 10m;
+
+    /// <summary>نرخ پیش‌فرض عوارض قانونی (درصد)</summary>
+    public decimal DefaultDutyRate { get; set; } = 0m;
+
+    /// <summary>طول کد هر سطح از گروه‌های کالا (تعداد ارقام، پیش‌فرض: ۲)</summary>
+    public int CategoryCodeLength { get; set; } = 2;
+
+    /// <summary>طول کد اختصاصی کالا / گام کالا (تعداد ارقام/کاراکترها، پیش‌فرض: ۴)</summary>
+    public int ProductCodeLength { get; set; } = 4;
+
+    /// <summary>تولید خودکار کد کالا بر اساس سلسله‌مراتب گروه کالا</summary>
+    public bool AutoCodeFromCategory { get; set; } = true;
+
+    /// <summary>جداکننده اجزای کد کالا (خالی = بدون جداکننده مانند 01020001، یا - یا /)</summary>
+    public string? CodeDelimiter { get; set; } = "";
 }
 
 /// <summary>معرف (بازاریاب).</summary>

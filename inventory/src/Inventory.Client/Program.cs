@@ -48,6 +48,7 @@ builder.Services.AddScoped<IInvWarehouseService, InvWarehouseService>();
 builder.Services.AddScoped<IInvDocTypeService, InvDocTypeService>();
 builder.Services.AddScoped<IInvDocService, InvDocService>();
 builder.Services.AddScoped<IInvReportService, InvReportService>();
+builder.Services.AddScoped<IInvSettingsService, InvSettingsService>();
 builder.Services.AddScoped<IDocArchiveService, DocArchiveService>(); // ماژول آرشیو اسناد و مدارک
 builder.Services.AddScoped<IHrCoreService, HrCoreService>(); // HrCore
 builder.Services.AddScoped<IHrTalentService, HrTalentService>(); // HrTalent

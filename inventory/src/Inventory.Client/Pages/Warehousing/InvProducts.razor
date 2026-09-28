@@ -2,6 +2,7 @@
 @inject IInvProductService ProductSvc
 @inject IInvCategoryService CategorySvc
 @inject IInvWarehouseService WarehouseSvc
+@inject IInvSettingsService SettingsSvc
 @inject IUnitService UnitSvc
 @inject IToastService Toast
 @inject LayoutState Layout
@@ -237,16 +238,52 @@
                         <option value="0">— بدون گروه —</option>
                         @foreach (var c in categories)
                         {
-                            <option value="@c.Id">@(new string('\u00A0', c.Depth * 4))@(c.Depth > 0 ? "└ " : "")@c.Name</option>
+                            <option value="@c.Id">@(new string('\u00A0', c.Depth * 4))@(c.Depth > 0 ? "└ " : "")@c.Name @(!string.IsNullOrEmpty(c.HierarchyCode) ? $"({c.HierarchyCode})" : "")</option>
                         }
                     </select>
                 </div>
 
-                <div class="col-md-3">
-                    <label class="form-label">کد کالا <span class="text-danger">*</span></label>
-                    <input class="form-control num" @bind="form.Code" dir="ltr" />
+                <div class="col-md-5">
+                    <label class="form-label fw-600">
+                        کد کالا <span class="text-danger">*</span>
+                        <span class="fs-8 text-muted fw-normal">(@(!string.IsNullOrEmpty(categoryPrefix) ? "پیشوند گروه + " : "")حداکثر @productCodeLength کاراکتر گام کالا)</span>
+                    </label>
+                    <div class="input-group" dir="ltr">
+                        @if (!string.IsNullOrEmpty(categoryPrefix))
+                        {
+                            <span class="input-group-text bg-light text-primary font-monospace fw-bold" title="پیشوند سلسله‌مراتب گروه کالا">
+                                <i class="bi bi-folder2-open me-1"></i>@categoryPrefix@whSettings.CodeDelimiter
+                            </span>
+                        }
+                        <input class="form-control num font-monospace fw-bold"
+                               value="@productSuffix"
+                               @oninput="OnProductSuffixInput"
+                               @onblur="OnProductSuffixBlur"
+                               maxlength="@productCodeLength"
+                               placeholder="تا @productCodeLength کاراکتر"
+                               dir="ltr" />
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between mt-1 fs-8">
+                        <span class="text-muted">
+                            کد کامل کالا: <b class="num text-dark font-monospace">@(string.IsNullOrWhiteSpace(form.Code) ? "—" : form.Code)</b>
+                        </span>
+                        <button type="button" class="btn btn-link p-0 text-decoration-none fs-8" @onclick="ToggleManualCodeEdit">
+                            <i class="bi @(manualCodeEdit ? "bi-magic" : "bi-pencil")"></i>
+                            @(manualCodeEdit ? "بازگشت به کد هوشمند" : "ویرایش دستی کل کد")
+                        </button>
+                    </div>
+                    @if (manualCodeEdit)
+                    {
+                        <div class="mt-2 p-2 bg-light border rounded">
+                            <div class="fs-8 text-muted mb-1">ویرایش مستقیم رشته کامل کد:</div>
+                            <input class="form-control form-control-sm num font-monospace"
+                                   @bind="form.Code"
+                                   @bind:after="OnManualCodeChanged"
+                                   dir="ltr" />
+                        </div>
+                    }
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="form-label">نام کالا <span class="text-danger">*</span></label>
                     <input class="form-control" @bind="form.Name" placeholder="مثلاً: روغن موتور ۲۰-۵۰" />
                 </div>
@@ -748,6 +785,13 @@
     private string fSale = "", fSale2 = "", fPurchase = "", fReorder = "", fMax = "", fMinOrder = "";
     private bool editing => form.Id != 0;
 
+    // تنظیمات ساختار کدینگ
+    private WarehousingSettingsDto whSettings = new();
+    private int productCodeLength => whSettings.ProductCodeLength > 0 ? whSettings.ProductCodeLength : 4;
+    private string categoryPrefix = "";
+    private string productSuffix = "";
+    private bool manualCodeEdit = false;
+
     private static readonly string[] TabTitles = { "اطلاعات اصلی", "قیمت و مالیات", "کدهای کاربردی", "انبار و موجودی", "ویژگی‌ها", "ضریب مصرف", "شرح و تصویر" };
     private static readonly string[] TabIcons = { "bi-info-circle", "bi-cash-coin", "bi-upc-scan", "bi-boxes", "bi-sliders", "bi-calculator", "bi-card-image" };
 
@@ -774,6 +818,7 @@
     {
         try
         {
+            whSettings = await SettingsSvc.GetSettingsAsync() ?? new WarehousingSettingsDto();
             categories = await CategorySvc.GetFlatAsync(activeOnly: true);
             warehouses = await WarehouseSvc.GetAllAsync(activeOnly: true);
             units = await UnitSvc.GetAllAsync(activeOnly: true);
@@ -832,6 +877,12 @@
         uploadingImage = false;
         tab = 0;
         showModal = true;
+
+        categoryPrefix = form.CategoryCodePrefix ?? "";
+        productSuffix = form.ProductCodeSuffix ?? "";
+        manualCodeEdit = false;
+        SyncFullProductCode();
+
         EnsureAttributeOptions();
         UpdateEffectiveValuation();
         await LoadAvailableAttributes();
@@ -857,6 +908,27 @@
         uploadingImage = false;
         tab = 0;
         showModal = true;
+
+        categoryPrefix = form.CategoryCodePrefix ?? "";
+        productSuffix = form.ProductCodeSuffix ?? "";
+        if (string.IsNullOrEmpty(categoryPrefix) && form.CategoryId is > 0)
+        {
+            var cat = categories.FirstOrDefault(c => c.Id == form.CategoryId.Value);
+            if (cat is not null && !string.IsNullOrEmpty(cat.HierarchyCode))
+            {
+                categoryPrefix = cat.HierarchyCode;
+                if (!string.IsNullOrEmpty(form.Code) && form.Code.StartsWith(categoryPrefix))
+                {
+                    productSuffix = form.Code.Substring(categoryPrefix.Length).TrimStart('-', '/', '.');
+                }
+            }
+        }
+        if (string.IsNullOrEmpty(productSuffix))
+        {
+            productSuffix = form.Code ?? "";
+        }
+        manualCodeEdit = false;
+
         EnsureAttributeOptions();
         UpdateEffectiveValuation();
         await LoadAvailableAttributes();
@@ -870,13 +942,24 @@
         uploadingImage = false;
     }
 
-    /// <summary>با تغییر گروه، ویژگی‌های همان گروه بارگذاری می‌شوند (مقادیر واردشده حفظ می‌شود).</summary>
+    /// <summary>با تغییر گروه، کد پیشنهادی و ویژگی‌های همان گروه بارگذاری می‌شوند.</summary>
     private async Task OnCategoryChanged()
     {
         form.CategoryId = int.TryParse(categoryStr, out var c) && c > 0 ? c : null;
         try
         {
             var fresh = await ProductSvc.NewAsync(form.CategoryId);
+            categoryPrefix = fresh.CategoryCodePrefix ?? "";
+            if (form.Id == 0)
+            {
+                productSuffix = fresh.ProductCodeSuffix ?? "";
+                form.Code = fresh.Code;
+            }
+            else
+            {
+                SyncFullProductCode();
+            }
+
             foreach (var a in fresh.Attributes)
             {
                 var old = form.Attributes.FirstOrDefault(x => x.AttributeId == a.AttributeId);
@@ -894,6 +977,62 @@
             await LoadAvailableAttributes();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void OnProductSuffixInput(ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString() ?? "";
+        if (raw.Length > productCodeLength)
+        {
+            raw = raw.Substring(0, productCodeLength);
+        }
+        productSuffix = raw;
+        SyncFullProductCode();
+    }
+
+    private void OnProductSuffixBlur()
+    {
+        if (!string.IsNullOrWhiteSpace(productSuffix) && productSuffix.All(char.IsDigit) && productSuffix.Length < productCodeLength)
+        {
+            productSuffix = productSuffix.PadLeft(productCodeLength, '0');
+            SyncFullProductCode();
+        }
+    }
+
+    private void SyncFullProductCode()
+    {
+        if (manualCodeEdit) return;
+
+        if (!string.IsNullOrEmpty(categoryPrefix) && whSettings.AutoCodeFromCategory)
+        {
+            var delim = whSettings.CodeDelimiter ?? "";
+            form.Code = string.IsNullOrEmpty(delim) ? $"{categoryPrefix}{productSuffix}" : $"{categoryPrefix}{delim}{productSuffix}";
+        }
+        else
+        {
+            form.Code = productSuffix;
+        }
+    }
+
+    private void ToggleManualCodeEdit()
+    {
+        manualCodeEdit = !manualCodeEdit;
+        if (!manualCodeEdit)
+        {
+            SyncFullProductCode();
+        }
+    }
+
+    private void OnManualCodeChanged()
+    {
+        if (!string.IsNullOrEmpty(categoryPrefix) && (form.Code ?? "").StartsWith(categoryPrefix))
+        {
+            productSuffix = form.Code.Substring(categoryPrefix.Length).TrimStart('-', '/', '.');
+        }
+        else
+        {
+            productSuffix = form.Code ?? "";
+        }
     }
 
     private void UpdateEffectiveValuation()
@@ -951,6 +1090,9 @@
     private async Task Save()
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام کالا را وارد کنید."); tab = 0; return; }
+
+        SyncFullProductCode();
+        if (string.IsNullOrWhiteSpace(form.Code)) { Toast.Error("کد کالا را وارد کنید."); tab = 0; return; }
 
         form.CategoryId = int.TryParse(categoryStr, out var c) && c > 0 ? c : null;
         form.WarehouseId = int.TryParse(warehouseStr, out var w) && w > 0 ? w : null;

@@ -59,6 +59,9 @@ public class InvCategory
     /// <summary>مسیر کامل: والد ← فرزند</summary>
     public string FullPath { get; set; } = "";
 
+    /// <summary>کد کامل سلسله‌مراتبی گروه کالا (ترکیب کدهای والد تا این سطح)</summary>
+    public string HierarchyCode { get; set; } = "";
+
     /// <summary>زیرگروه‌ها (در خروجی درختی پر می‌شود)</summary>
     public List<InvCategory> Children { get; set; } = new();
 }
@@ -169,6 +172,12 @@ public class InvProduct
     public int? CategoryId { get; set; }
     public string? CategoryName { get; set; }
     public string? CategoryPath { get; set; }
+
+    /// <summary>پیشوند کد گروه در کد کالا (تولید شده از سلسله‌مراتب)</summary>
+    public string? CategoryCodePrefix { get; set; }
+
+    /// <summary>بخش اختصاصی کد کالا (گام / سریال کالا)</summary>
+    public string? ProductCodeSuffix { get; set; }
 
     public string Unit { get; set; } = "عدد";
 
@@ -513,3 +522,34 @@ public class InvStockRow
     public decimal ReorderPoint { get; set; }
     public bool BelowReorder => ReorderPoint > 0 && Quantity <= ReorderPoint;
 }
+
+// ============================ ۸) تنظیمات جامع انبارداری و کدینگ ============================
+
+/// <summary>تنظیمات انبارداری، ساختار کدینگ کالا و ارزش افزوده</summary>
+public class WarehousingSettingsDto
+{
+    /// <summary>روش قیمت‌گذاری خروج انبار: Average | FIFO | LIFO</summary>
+    public string CostingMethod { get; set; } = "Average";
+
+    /// <summary>اجازه منفی شدن موجودی در انبار</summary>
+    public bool AllowNegativeStock { get; set; } = false;
+
+    /// <summary>نرخ پیش‌فرض مالیات بر ارزش افزوده (درصد)</summary>
+    public decimal DefaultVatRate { get; set; } = 10m;
+
+    /// <summary>نرخ پیش‌فرض عوارض قانونی (درصد)</summary>
+    public decimal DefaultDutyRate { get; set; } = 0m;
+
+    /// <summary>طول کد هر سطح از گروه‌های کالا (تعداد ارقام، پیش‌فرض: ۲)</summary>
+    public int CategoryCodeLength { get; set; } = 2;
+
+    /// <summary>طول کد اختصاصی کالا / گام کالا (تعداد ارقام/کاراکترها، پیش‌فرض: ۴)</summary>
+    public int ProductCodeLength { get; set; } = 4;
+
+    /// <summary>تولید خودکار کد کالا بر اساس سلسله‌مراتب گروه کالا</summary>
+    public bool AutoCodeFromCategory { get; set; } = true;
+
+    /// <summary>جداکننده اجزای کد کالا (خالی = بدون جداکننده مانند 01020001، یا - یا /)</summary>
+    public string? CodeDelimiter { get; set; } = "";
+}
+

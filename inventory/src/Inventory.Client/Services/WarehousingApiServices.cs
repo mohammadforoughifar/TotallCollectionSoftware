@@ -197,3 +197,16 @@ public class InvReportService : IInvReportService
         return _api.GetAsync<PagedResult<InvStockRow>>(q);
     }
 }
+
+/// <summary>پیاده‌سازی سرویس تنظیمات انبارداری و ساختار کدینگ.</summary>
+public class InvSettingsService : IInvSettingsService
+{
+    private readonly IApiClient _api;
+    public InvSettingsService(IApiClient api) => _api = api;
+
+    public Task<WarehousingSettingsDto> GetSettingsAsync()
+        => _api.GetAsync<WarehousingSettingsDto>("api/inv/settings");
+
+    public Task<WarehousingSettingsDto> SaveSettingsAsync(WarehousingSettingsDto dto)
+        => _api.PostAsync<WarehousingSettingsDto>("api/inv/settings", dto);
+}

@@ -72,4 +72,8 @@ public interface IWarehousingService
     Task<InvKardexResult> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to);
     Task<PagedResult<InvStockRow>> GetStockAsync(int? warehouseId, int? categoryId, string? search,
         bool belowOnly, int page, int pageSize);
+
+    // ---------------- تنظیمات انبارداری و کدینگ ----------------
+    Task<WarehousingSettingsDto> GetWarehousingSettingsAsync();
+    Task<WarehousingSettingsDto> SaveWarehousingSettingsAsync(WarehousingSettingsDto dto);
 }

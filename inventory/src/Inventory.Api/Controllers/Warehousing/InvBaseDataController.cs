@@ -127,3 +127,26 @@ public class InvWarehousesController : RbacControllerBase
         return Ok(new { ok = true });
     }
 }
+
+/// <summary>تنظیمات جامع ماژول انبارداری، ساختار کدینگ کالا و نرخ‌های پیش‌فرض ارزش افزوده.</summary>
+[Route("api/inv/settings")]
+public class InvSettingsController : RbacControllerBase
+{
+    private readonly IWarehousingService _svc;
+
+    public InvSettingsController(Db.AppDbContext db, IWarehousingService svc) : base(db) => _svc = svc;
+
+    [HttpGet]
+    public async Task<ActionResult<WarehousingSettingsDto>> Get()
+        => Ok(await _svc.GetWarehousingSettingsAsync());
+
+    [HttpPost]
+    public async Task<ActionResult<WarehousingSettingsDto>> Save([FromBody] WarehousingSettingsDto dto)
+    {
+        if (await ForbiddenUnlessAnyAsync("Settings", "Update", "Read") is ObjectResult forbidden &&
+            await ForbiddenUnlessAsync("Products", "Update") is ObjectResult forbidden2)
+            return forbidden;
+
+        return Ok(await _svc.SaveWarehousingSettingsAsync(dto));
+    }
+}

@@ -49,6 +49,31 @@ IF OBJECT_ID(N'dbo.InvDocLines', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.InvDocLi
         await SafeAsync(db, @"
 IF OBJECT_ID(N'dbo.InvDocLines', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.InvDocLines', N'VatAmount') IS NULL
     ALTER TABLE dbo.InvDocLines ADD VatAmount decimal(18,2) NOT NULL DEFAULT(0);");
+
+        // AppSettings: DefaultVatRate, DefaultDutyRate, CategoryCodeLength, ProductCodeLength, AutoCodeFromCategory, CodeDelimiter
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'DefaultVatRate') IS NULL
+    ALTER TABLE dbo.AppSettings ADD DefaultVatRate decimal(18,2) NOT NULL DEFAULT(10);");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'DefaultDutyRate') IS NULL
+    ALTER TABLE dbo.AppSettings ADD DefaultDutyRate decimal(18,2) NOT NULL DEFAULT(0);");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'CategoryCodeLength') IS NULL
+    ALTER TABLE dbo.AppSettings ADD CategoryCodeLength int NOT NULL DEFAULT(2);");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'ProductCodeLength') IS NULL
+    ALTER TABLE dbo.AppSettings ADD ProductCodeLength int NOT NULL DEFAULT(4);");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'AutoCodeFromCategory') IS NULL
+    ALTER TABLE dbo.AppSettings ADD AutoCodeFromCategory bit NOT NULL DEFAULT(1);");
+
+        await SafeAsync(db, @"
+IF OBJECT_ID(N'dbo.AppSettings', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AppSettings', N'CodeDelimiter') IS NULL
+    ALTER TABLE dbo.AppSettings ADD CodeDelimiter nvarchar(10) NULL DEFAULT('');");
     }
 
     // ==================== SQLite ====================
@@ -74,6 +99,24 @@ IF OBJECT_ID(N'dbo.InvDocLines', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.InvDocLi
 
         if (!await ColumnExistsAsync(db, "InvDocLines", "VatAmount"))
             await SafeAsync(db, "ALTER TABLE InvDocLines ADD COLUMN VatAmount NUMERIC NOT NULL DEFAULT 0;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "DefaultVatRate"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN DefaultVatRate NUMERIC NOT NULL DEFAULT 10;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "DefaultDutyRate"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN DefaultDutyRate NUMERIC NOT NULL DEFAULT 0;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "CategoryCodeLength"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN CategoryCodeLength INTEGER NOT NULL DEFAULT 2;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "ProductCodeLength"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN ProductCodeLength INTEGER NOT NULL DEFAULT 4;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "AutoCodeFromCategory"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN AutoCodeFromCategory INTEGER NOT NULL DEFAULT 1;");
+
+        if (!await ColumnExistsAsync(db, "AppSettings", "CodeDelimiter"))
+            await SafeAsync(db, "ALTER TABLE AppSettings ADD COLUMN CodeDelimiter TEXT NULL DEFAULT '';");
     }
 
     private static async Task<bool> ColumnExistsAsync(AppDbContext db, string table, string column)

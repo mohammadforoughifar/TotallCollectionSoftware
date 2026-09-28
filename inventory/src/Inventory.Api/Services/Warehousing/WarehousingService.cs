@@ -46,11 +46,14 @@ public class WarehousingService : IWarehousingService
             .ToDictionaryAsync(x => x.Id);
 
         var settingsMethod = await GetSettingsMethodAsync();
+        var whSettings = await GetWarehousingSettingsAsync();
+        var catCodeLen = whSettings.CategoryCodeLength > 0 ? whSettings.CategoryCodeLength : 2;
+        var delim = whSettings.CodeDelimiter ?? "";
         var byParent = all.GroupBy(c => c.ParentId ?? 0).ToDictionary(g => g.Key, g => g.OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ToList());
 
         var result = new List<InvCategory>();
 
-        void Walk(int parentKey, int depth, string path, ValuationMethod inherited, bool inheritedFlag)
+        void Walk(int parentKey, int depth, string path, string parentHierCode, ValuationMethod inherited, bool inheritedFlag)
         {
             if (!byParent.TryGetValue(parentKey, out var children)) return;
             foreach (var c in children)
@@ -59,6 +62,20 @@ public class WarehousingService : IWarehousingService
                 var isInherited = c.Valuation is null;
                 var full = string.IsNullOrEmpty(path) ? c.Name : $"{path} ← {c.Name}";
                 var vat = vatStats.TryGetValue(c.Id, out var vs) ? (vs.HasVat, vs.Rate > 0 ? vs.Rate : 10m) : (true, 10m);
+
+                var stepCode = (c.Code ?? "").Trim();
+                if (string.IsNullOrEmpty(stepCode))
+                {
+                    stepCode = c.Id.ToString().PadLeft(catCodeLen, '0');
+                }
+                else if (stepCode.All(char.IsDigit) && stepCode.Length < catCodeLen)
+                {
+                    stepCode = stepCode.PadLeft(catCodeLen, '0');
+                }
+
+                var hierCode = string.IsNullOrEmpty(parentHierCode)
+                    ? stepCode
+                    : (string.IsNullOrEmpty(delim) ? $"{parentHierCode}{stepCode}" : $"{parentHierCode}{delim}{stepCode}");
 
                 result.Add(new InvCategory
                 {
@@ -77,14 +94,15 @@ public class WarehousingService : IWarehousingService
                     CreatedAt = c.CreatedAt,
                     ProductCount = counts.TryGetValue(c.Id, out var n) ? n : 0,
                     Depth = depth,
-                    FullPath = full
+                    FullPath = full,
+                    HierarchyCode = hierCode
                 });
 
-                Walk(c.Id, depth + 1, full, eff, isInherited);
+                Walk(c.Id, depth + 1, full, hierCode, eff, isInherited);
             }
         }
 
-        Walk(0, 0, "", settingsMethod, true);
+        Walk(0, 0, "", "", settingsMethod, true);
 
         // تعداد کالا با احتساب زیرگروه‌ها
         var map = result.ToDictionary(c => c.Id);
@@ -493,30 +511,42 @@ public class WarehousingService : IWarehousingService
 
     public async Task<InvProduct> NewProductAsync(int? categoryId)
     {
+        var whSettings = await GetWarehousingSettingsAsync();
         var settingsMethod = await GetSettingsMethodAsync();
         var dto = new InvProduct
         {
             IsActive = true,
             Unit = "عدد",
-            VatRate = 10,
+            VatRate = whSettings.DefaultVatRate > 0 ? whSettings.DefaultVatRate : 10,
             IsVatIncluded = true,
             CategoryId = categoryId is > 0 ? categoryId : null,
             EffectiveValuation = settingsMethod,
-            ValuationSource = "تنظیمات کلی",
-            Code = await NextProductCodeAsync()
+            ValuationSource = "تنظیمات کلی"
         };
 
+        InvCategory? cat = null;
         if (categoryId is > 0)
         {
-            var cat = (await GetCategoriesFlatAsync()).FirstOrDefault(c => c.Id == categoryId);
+            var catFlat = await GetCategoriesFlatAsync();
+            cat = catFlat.FirstOrDefault(c => c.Id == categoryId);
             if (cat is not null)
             {
                 dto.CategoryName = cat.Name;
                 dto.CategoryPath = cat.FullPath;
                 dto.EffectiveValuation = cat.EffectiveValuation;
                 dto.ValuationSource = $"گروه کالا: {cat.Name}";
+                if (cat.IsVatIncluded.HasValue)
+                {
+                    dto.IsVatIncluded = cat.IsVatIncluded.Value;
+                    dto.VatRate = cat.VatRate ?? whSettings.DefaultVatRate;
+                }
             }
         }
+
+        var (prefix, suffix, code) = await GenerateProductCodeAsync(cat, whSettings);
+        dto.CategoryCodePrefix = prefix;
+        dto.ProductCodeSuffix = suffix;
+        dto.Code = code;
 
         dto.Attributes = await BuildAttributeValuesAsync(dto.CategoryId, 0);
         return dto;
@@ -528,8 +558,19 @@ public class WarehousingService : IWarehousingService
         if (string.IsNullOrWhiteSpace(name))
             throw new InvalidOperationException("نام کالا الزامی است.");
 
+        var whSettings = await GetWarehousingSettingsAsync();
         var code = (dto.Code ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(code)) code = await NextProductCodeAsync();
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            InvCategory? cat = null;
+            if (dto.CategoryId is > 0)
+            {
+                var catFlat = await GetCategoriesFlatAsync();
+                cat = catFlat.FirstOrDefault(c => c.Id == dto.CategoryId);
+            }
+            var (_, _, generated) = await GenerateProductCodeAsync(cat, whSettings);
+            code = generated;
+        }
 
         if (await _db.Products.AnyAsync(p => p.Code == code && p.Id != dto.Id))
             throw new InvalidOperationException($"کالایی با کد «{code}» قبلاً ثبت شده است.");
@@ -766,10 +807,19 @@ public class WarehousingService : IWarehousingService
             src = "تنظیمات کلی سیستم (پیش‌فرض)";
         }
 
+        string prefix = cat?.HierarchyCode ?? "";
+        string suffix = p.Code ?? "";
+        if (!string.IsNullOrEmpty(prefix) && suffix.StartsWith(prefix))
+        {
+            suffix = suffix.Substring(prefix.Length).TrimStart('-', '/', '.');
+        }
+
         return new InvProduct
         {
             Id = p.Id,
             Code = p.Code,
+            CategoryCodePrefix = prefix,
+            ProductCodeSuffix = suffix,
             Name = p.Name,
             EnName = p.EnName,
             CategoryId = p.CategoryId,
@@ -847,14 +897,99 @@ public class WarehousingService : IWarehousingService
 
     private async Task<string> NextProductCodeAsync()
     {
-        var codes = await _db.Products.Select(p => p.Code).ToListAsync();
-        var max = 0;
+        var whSettings = await GetWarehousingSettingsAsync();
+        var (_, _, fullCode) = await GenerateProductCodeAsync(null, whSettings);
+        return fullCode;
+    }
+
+    private async Task<(string prefix, string suffix, string fullCode)> GenerateProductCodeAsync(
+        InvCategory? cat, WarehousingSettingsDto settings)
+    {
+        var prodLen = settings.ProductCodeLength > 0 ? settings.ProductCodeLength : 4;
+        var delim = settings.CodeDelimiter ?? "";
+
+        string prefix = "";
+        if (cat is not null && settings.AutoCodeFromCategory)
+        {
+            prefix = (cat.HierarchyCode ?? "").Trim();
+        }
+
+        int maxSerial = 0;
+        var query = _db.Products.AsNoTracking().AsQueryable();
+        if (cat is not null && !string.IsNullOrEmpty(prefix))
+        {
+            query = query.Where(p => p.CategoryId == cat.Id || (p.Code != null && p.Code.StartsWith(prefix)));
+        }
+
+        var codes = await query.Select(p => p.Code).ToListAsync();
         foreach (var c in codes)
         {
-            var digits = new string((c ?? "").Where(char.IsDigit).ToArray());
-            if (int.TryParse(digits, out var n) && n > max) max = n;
+            if (string.IsNullOrWhiteSpace(c)) continue;
+            var rem = c.Trim();
+            if (!string.IsNullOrEmpty(prefix) && rem.StartsWith(prefix))
+            {
+                rem = rem.Substring(prefix.Length);
+                if (!string.IsNullOrEmpty(delim) && rem.StartsWith(delim))
+                    rem = rem.Substring(delim.Length);
+            }
+            var digits = new string(rem.Where(char.IsDigit).ToArray());
+            if (int.TryParse(digits, out var n) && n > maxSerial)
+                maxSerial = n;
         }
-        return $"{max + 1:00000}";
+
+        var nextSerial = (maxSerial + 1).ToString().PadLeft(prodLen, '0');
+        string fullCode;
+        if (string.IsNullOrEmpty(prefix))
+        {
+            fullCode = nextSerial;
+        }
+        else
+        {
+            fullCode = string.IsNullOrEmpty(delim) ? $"{prefix}{nextSerial}" : $"{prefix}{delim}{nextSerial}";
+        }
+
+        return (prefix, nextSerial, fullCode);
+    }
+
+    // =====================================================================
+    //  تنظیمات جامع انبارداری و ساختار کدینگ
+    // =====================================================================
+
+    public async Task<WarehousingSettingsDto> GetWarehousingSettingsAsync()
+    {
+        var s = await _db.AppSettings.AsNoTracking().FirstOrDefaultAsync();
+        if (s is null) return new WarehousingSettingsDto();
+        return new WarehousingSettingsDto
+        {
+            CostingMethod = s.CostingMethod ?? "Average",
+            AllowNegativeStock = s.AllowNegativeStock,
+            DefaultVatRate = s.DefaultVatRate > 0 ? s.DefaultVatRate : 10m,
+            DefaultDutyRate = s.DefaultDutyRate,
+            CategoryCodeLength = s.CategoryCodeLength > 0 ? s.CategoryCodeLength : 2,
+            ProductCodeLength = s.ProductCodeLength > 0 ? s.ProductCodeLength : 4,
+            AutoCodeFromCategory = s.AutoCodeFromCategory,
+            CodeDelimiter = s.CodeDelimiter ?? ""
+        };
+    }
+
+    public async Task<WarehousingSettingsDto> SaveWarehousingSettingsAsync(WarehousingSettingsDto dto)
+    {
+        var s = await _db.AppSettings.FirstOrDefaultAsync();
+        if (s is null)
+        {
+            s = new Db.AppSetting();
+            _db.AppSettings.Add(s);
+        }
+        if (!string.IsNullOrWhiteSpace(dto.CostingMethod)) s.CostingMethod = dto.CostingMethod;
+        s.AllowNegativeStock = dto.AllowNegativeStock;
+        s.DefaultVatRate = dto.DefaultVatRate;
+        s.DefaultDutyRate = dto.DefaultDutyRate;
+        s.CategoryCodeLength = Math.Clamp(dto.CategoryCodeLength, 1, 10);
+        s.ProductCodeLength = Math.Clamp(dto.ProductCodeLength, 1, 15);
+        s.AutoCodeFromCategory = dto.AutoCodeFromCategory;
+        s.CodeDelimiter = dto.CodeDelimiter ?? "";
+        await _db.SaveChangesAsync();
+        return await GetWarehousingSettingsAsync();
     }
 
     // =====================================================================
