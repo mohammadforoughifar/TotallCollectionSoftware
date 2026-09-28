@@ -33,4 +33,7 @@ public class Warehouse
 
     /// <summary>اجازه منفی شدن موجودی در این انبار</summary>
     public bool AllowNegative { get; set; }
+
+    /// <summary>روش قیمت‌گذاری پیش‌فرض انبار (اختیاری — اولویت پس از گروه کالا)</summary>
+    public ValuationMethod? Valuation { get; set; }
 }

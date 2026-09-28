@@ -236,16 +236,19 @@
                 <input type="number" class="form-control num" @bind="form.SortOrder" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">روش قیمت‌گذاری این گروه</label>
+                <label class="form-label fw-600">نوع قیمت‌گذاری گروه کالا <span class="text-danger">*</span></label>
                 <select class="form-select" @bind="valuationStr">
-                    <option value="">— ارث‌بری از والد / تنظیمات کلی —</option>
+                    @if (form.ParentId is not null && form.ParentId > 0)
+                    {
+                        <option value="">— ارث‌بری از گروه والد —</option>
+                    }
                     <option value="0">میانگین موزون</option>
                     <option value="1">اولین صادره از اولین وارده (FIFO)</option>
                     <option value="2">اولین صادره از آخرین وارده (LIFO)</option>
                 </select>
                 <div class="fs-8 text-muted mt-1">
                     <i class="bi bi-info-circle"></i>
-                    این روش برای همه‌ی کالاهای این گروه و زیرگروه‌ها اعمال می‌شود؛ مگر اینکه روی خود کالا مقدار دیگری تعیین شود.
+                    اولویت سیستم: ۱) تعریف کالا ← ۲) گروه کالا ← ۳) انبار ← ۴) تنظیمات کلی
                 </div>
             </div>
             <div class="col-md-6">
@@ -367,9 +370,9 @@
     // ---------- عملیات ----------
     private void OpenNew(int? parentId)
     {
-        form = new InvCategory { IsActive = true, ParentId = parentId };
+        form = new InvCategory { IsActive = true, ParentId = parentId, Valuation = ValuationMethod.Average };
         parentIdStr = (parentId ?? 0).ToString();
-        valuationStr = "";
+        valuationStr = parentId > 0 ? "" : "0";
         showModal = true;
     }
 
@@ -393,6 +396,10 @@
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام گروه را وارد کنید."); return; }
 
         form.ParentId = int.TryParse(parentIdStr, out var pid) && pid > 0 ? pid : null;
+        if (form.ParentId is null or 0 && string.IsNullOrWhiteSpace(valuationStr))
+        {
+            valuationStr = "0";
+        }
         form.Valuation = int.TryParse(valuationStr, out var v) ? (ValuationMethod)v : null;
 
         saving = true;

@@ -388,12 +388,12 @@ public class WarehousingService : IWarehousingService
         var items = new List<InvProduct>();
         var catFlat = await GetCategoriesFlatAsync();
         var catMap = catFlat.ToDictionary(c => c.Id);
-        var whNames = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
+        var whMap = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => (w.Name, w.Valuation));
         var settingsMethod = await GetSettingsMethodAsync();
 
         foreach (var p in list)
         {
-            var dto = MapProduct(p, catMap, whNames, settingsMethod);
+            var dto = MapProduct(p, catMap, whMap, settingsMethod);
             if (qtyMap.TryGetValue(p.Id, out var st))
             {
                 dto.TotalStock = st.Qty;
@@ -418,8 +418,8 @@ public class WarehousingService : IWarehousingService
 
         var catFlat = await GetCategoriesFlatAsync();
         var catMap = catFlat.ToDictionary(c => c.Id);
-        var whNames = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
-        var dto = MapProduct(p, catMap, whNames, await GetSettingsMethodAsync());
+        var whMap = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => (w.Name, w.Valuation));
+        var dto = MapProduct(p, catMap, whMap, await GetSettingsMethodAsync());
 
         var st = await _db.InvStocks.AsNoTracking().Where(s => s.ProductId == id).ToListAsync();
         dto.TotalStock = st.Sum(s => s.Quantity);
@@ -482,14 +482,7 @@ public class WarehousingService : IWarehousingService
                 throw new InvalidOperationException($"شناسه کالای مالیاتی «{tc}» برای کالای دیگری ثبت شده است.");
         }
 
-        // ---------- ویژگی‌های اجباری ----------
-        var defs = await GetAttributesAsync(activeOnly: true, categoryId: dto.CategoryId);
-        foreach (var d in defs.Where(x => x.IsRequired))
-        {
-            var v = dto.Attributes.FirstOrDefault(a => a.AttributeId == d.Id);
-            if (v is null || IsEmptyValue(v))
-                throw new InvalidOperationException($"مقدار ویژگی «{d.Name}» الزامی است.");
-        }
+        // ---------- بررسی یکتایی کد مالیاتی ----------
 
         Db.Product entity;
         if (dto.Id == 0)
@@ -555,21 +548,21 @@ public class WarehousingService : IWarehousingService
 
         await _db.SaveChangesAsync();
 
-        // ---------- مقادیر ویژگی‌ها ----------
+        // ---------- ویژگی‌های کالا و الزام آن‌ها ----------
         var currentValues = await _db.ProductAttributeValues.Where(v => v.ProductId == entity.Id).ToListAsync();
-        foreach (var v in dto.Attributes)
+        var incomingAttrIds = dto.Attributes.Where(v => v.AttributeId > 0).Select(v => v.AttributeId).ToHashSet();
+        var toRemove = currentValues.Where(x => !incomingAttrIds.Contains(x.AttributeId)).ToList();
+        _db.ProductAttributeValues.RemoveRange(toRemove);
+
+        foreach (var v in dto.Attributes.Where(x => x.AttributeId > 0))
         {
             var row = currentValues.FirstOrDefault(x => x.AttributeId == v.AttributeId);
-            if (IsEmptyValue(v))
-            {
-                if (row is not null) _db.ProductAttributeValues.Remove(row);
-                continue;
-            }
             if (row is null)
             {
                 row = new Db.ProductAttributeValue { ProductId = entity.Id, AttributeId = v.AttributeId };
                 _db.ProductAttributeValues.Add(row);
             }
+            row.IsRequired = v.IsRequired;
             row.OptionId = v.OptionId is > 0 ? v.OptionId : null;
             row.TextValue = NullIfEmpty(v.TextValue);
             row.NumberValue = v.NumberValue;
@@ -656,7 +649,7 @@ public class WarehousingService : IWarehousingService
                 AttributeName = d.Name,
                 ValueType = d.ValueType,
                 Unit = d.Unit,
-                IsRequired = d.IsRequired,
+                IsRequired = v is not null ? v.IsRequired : d.IsRequired,
                 OptionId = v?.OptionId,
                 TextValue = v?.TextValue,
                 NumberValue = v?.NumberValue,
@@ -681,15 +674,35 @@ public class WarehousingService : IWarehousingService
     };
 
     private InvProduct MapProduct(Db.Product p, Dictionary<int, InvCategory> catMap,
-        Dictionary<int, string> whNames, ValuationMethod settingsMethod)
+        Dictionary<int, (string Name, ValuationMethod? Valuation)> whMap, ValuationMethod settingsMethod)
     {
         InvCategory? cat = p.CategoryId is > 0 && catMap.TryGetValue(p.CategoryId.Value, out var c) ? c : null;
+        var hasWh = p.WarehouseId is > 0 && whMap.TryGetValue(p.WarehouseId.Value, out var whInfo);
 
-        var eff = p.Valuation ?? cat?.EffectiveValuation ?? settingsMethod;
-        var src = p.Valuation is not null ? "کالا"
-                : cat is not null && !cat.ValuationInherited ? $"گروه کالا: {cat.Name}"
-                : cat is not null && cat.EffectiveValuation != settingsMethod ? "گروه کالای والد"
-                : "تنظیمات کلی";
+        // اولویت قیمت‌گذاری: ۱) کالا ← ۲) گروه کالا ← ۳) انبار ← ۴) تنظیمات کلی سیستم
+        ValuationMethod eff;
+        string src;
+
+        if (p.Valuation is not null)
+        {
+            eff = p.Valuation.Value;
+            src = "کالا (اولویت ۱)";
+        }
+        else if (cat is not null && (cat.Valuation is not null || !cat.ValuationInherited))
+        {
+            eff = cat.EffectiveValuation;
+            src = cat.Valuation is not null ? $"گروه کالا: {cat.Name} (اولویت ۲)" : "گروه کالای والد (اولویت ۲)";
+        }
+        else if (hasWh && whInfo.Valuation is not null)
+        {
+            eff = whInfo.Valuation.Value;
+            src = $"انبار: {whInfo.Name} (اولویت ۳)";
+        }
+        else
+        {
+            eff = cat?.EffectiveValuation ?? settingsMethod;
+            src = "تنظیمات کلی سیستم (پیش‌فرض)";
+        }
 
         return new InvProduct
         {
@@ -723,7 +736,7 @@ public class WarehousingService : IWarehousingService
             CountryOfOrigin = p.CountryOfOrigin,
 
             WarehouseId = p.WarehouseId,
-            WarehouseName = p.WarehouseId is > 0 && whNames.TryGetValue(p.WarehouseId.Value, out var wn) ? wn : null,
+            WarehouseName = hasWh ? whInfo.Name : null,
             Valuation = p.Valuation,
             EffectiveValuation = eff,
             ValuationSource = src,
@@ -806,6 +819,7 @@ public class WarehousingService : IWarehousingService
                 Code = w.Code,
                 Name = w.Name,
                 Kind = w.Kind,
+                Valuation = w.Valuation,
                 Address = w.Address,
                 Phone = w.Phone,
                 KeeperName = w.KeeperName,
@@ -849,6 +863,7 @@ public class WarehousingService : IWarehousingService
         entity.Name = name;
         entity.Code = code;
         entity.Kind = dto.Kind;
+        entity.Valuation = dto.Valuation;
         entity.Address = NullIfEmpty(dto.Address);
         entity.Phone = NullIfEmpty(dto.Phone);
         entity.KeeperName = NullIfEmpty(dto.KeeperName);
@@ -1358,7 +1373,7 @@ public class WarehousingService : IWarehousingService
     /// </summary>
     private async Task RebuildLedgerAsync(int productId, int warehouseId)
     {
-        var method = await GetEffectiveMethodAsync(productId);
+        var method = await GetEffectiveMethodAsync(productId, warehouseId);
 
         var old = await _db.InvLedger.Where(e => e.ProductId == productId && e.WarehouseId == warehouseId).ToListAsync();
         _db.InvLedger.RemoveRange(old);
@@ -1524,12 +1539,14 @@ public class WarehousingService : IWarehousingService
         return value;
     }
 
-    /// <summary>روش قیمت‌گذاری موثر یک کالا: کالا ← گروه کالا (و والدها) ← تنظیمات کلی.</summary>
-    private async Task<ValuationMethod> GetEffectiveMethodAsync(int productId)
+    /// <summary>روش قیمت‌گذاری موثر: ۱) کالا ← ۲) گروه کالا (و والدها) ← ۳) انبار ← ۴) تنظیمات کلی.</summary>
+    private async Task<ValuationMethod> GetEffectiveMethodAsync(int productId, int? warehouseId = null)
     {
         var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId);
+        // اولویت ۱: کالا
         if (product?.Valuation is not null) return product.Valuation.Value;
 
+        // اولویت ۲: گروه کالا
         if (product?.CategoryId is > 0)
         {
             var chain = await CategoryChainAsync(product.CategoryId.Value);
@@ -1540,6 +1557,16 @@ public class WarehousingService : IWarehousingService
                     return c.Valuation.Value;
         }
 
+        // اولویت ۳: انبار
+        var whId = warehouseId ?? product?.WarehouseId;
+        if (whId is > 0)
+        {
+            var wh = await _db.Warehouses.AsNoTracking().FirstOrDefaultAsync(w => w.Id == whId.Value);
+            if (wh?.Valuation is not null)
+                return wh.Valuation.Value;
+        }
+
+        // اولویت ۴: تنظیمات کلی
         return await GetSettingsMethodAsync();
     }
 
@@ -1643,7 +1670,7 @@ public class WarehousingService : IWarehousingService
         var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId)
                       ?? throw new InvalidOperationException("کالا یافت نشد.");
 
-        var method = await GetEffectiveMethodAsync(productId);
+        var method = await GetEffectiveMethodAsync(productId, warehouseId);
 
         var q = _db.InvLedger.AsNoTracking().Where(e => e.ProductId == productId);
         if (warehouseId is > 0) q = q.Where(e => e.WarehouseId == warehouseId);

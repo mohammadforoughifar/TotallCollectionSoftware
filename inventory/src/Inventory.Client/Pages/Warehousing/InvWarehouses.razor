@@ -74,6 +74,7 @@
                             <th>نام انبار</th>
                             <th>کد</th>
                             <th>نوع</th>
+                            <th>روش قیمت‌گذاری</th>
                             <th>انباردار</th>
                             <th>تلفن</th>
                             <th class="text-center">اقلام</th>
@@ -109,6 +110,16 @@
                                 </td>
                                 <td class="num text-muted">@(string.IsNullOrWhiteSpace(w.Code) ? "—" : w.Code)</td>
                                 <td><span class="badge badge-soft-info">@KindTitle(w.Kind)</span></td>
+                                <td>
+                                    @if (w.Valuation is not null)
+                                    {
+                                        <span class="badge badge-soft-primary fs-8">@MethodTitle(w.Valuation.Value)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted fs-8">—</span>
+                                    }
+                                </td>
                                 <td>@(string.IsNullOrWhiteSpace(w.KeeperName) ? "—" : w.KeeperName)</td>
                                 <td class="num">@(string.IsNullOrWhiteSpace(w.Phone) ? "—" : w.Phone)</td>
                                 <td class="text-center"><span class="badge badge-soft-primary num">@w.ItemCount.Num()</span></td>
@@ -207,7 +218,21 @@
                 <input class="form-control num" @bind="editing.Phone" dir="ltr" />
             </div>
 
-            <div class="col-12">
+            <div class="col-12 col-md-6">
+                <label class="form-label">روش قیمت‌گذاری پیش‌فرض انبار</label>
+                <select class="form-select" @bind="valuationStr">
+                    <option value="">— ارث‌بری از تنظیمات کلی سیستم —</option>
+                    <option value="0">میانگین موزون</option>
+                    <option value="1">اولین صادره از اولین وارده (FIFO)</option>
+                    <option value="2">اولین صادره از آخرین وارده (LIFO)</option>
+                </select>
+                <div class="fs-8 text-muted mt-1">
+                    <i class="bi bi-info-circle"></i>
+                    اولویت روش قیمت‌گذاری در سیستم: ۱) کالا ← ۲) گروه کالا ← ۳) انبار ← ۴) تنظیمات کلی
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
                 <label class="form-label">آدرس</label>
                 <input class="form-control" @bind="editing.Address" />
             </div>
@@ -261,6 +286,7 @@
     private List<InvWarehouse> items = new();
     private bool loading = true, saving, showModal, activeOnly;
     private InvWarehouse editing = new();
+    private string valuationStr = "";
 
     private static readonly WarehouseKind[] Kinds =
     {
@@ -303,6 +329,7 @@
     private void OpenNew()
     {
         editing = new InvWarehouse { IsActive = true, IsDefault = items.Count == 0 };
+        valuationStr = "";
         showModal = true;
     }
 
@@ -314,6 +341,7 @@
             Code = w.Code,
             Name = w.Name,
             Kind = w.Kind,
+            Valuation = w.Valuation,
             Address = w.Address,
             Phone = w.Phone,
             KeeperName = w.KeeperName,
@@ -322,6 +350,7 @@
             IsActive = w.IsActive,
             Note = w.Note
         };
+        valuationStr = w.Valuation is null ? "" : ((int)w.Valuation.Value).ToString();
         showModal = true;
     }
 
@@ -334,6 +363,7 @@
             Toast.Error("نام انبار الزامی است.");
             return;
         }
+        editing.Valuation = int.TryParse(valuationStr, out var v) ? (ValuationMethod)v : null;
         saving = true;
         try
         {
@@ -351,6 +381,13 @@
             saving = false;
         }
     }
+
+    private static string MethodTitle(ValuationMethod m) => m switch
+    {
+        ValuationMethod.Fifo => "FIFO",
+        ValuationMethod.Lifo => "LIFO",
+        _ => "میانگین موزون"
+    };
 
     private async Task Delete(InvWarehouse w)
     {

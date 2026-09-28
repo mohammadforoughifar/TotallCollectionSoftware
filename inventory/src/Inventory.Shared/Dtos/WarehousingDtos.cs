@@ -265,6 +265,9 @@ public class InvWarehouse
     /// <summary>اجازه منفی شدن موجودی این انبار</summary>
     public bool AllowNegative { get; set; }
 
+    /// <summary>روش قیمت‌گذاری پیش‌فرض انبار (اختیاری — اولویت پس از گروه کالا)</summary>
+    public ValuationMethod? Valuation { get; set; }
+
     public bool IsActive { get; set; } = true;
     public string? Note { get; set; }
 

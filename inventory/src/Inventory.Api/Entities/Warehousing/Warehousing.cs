@@ -54,6 +54,9 @@ public class ProductAttributeValue
     public int ProductId { get; set; }
     public int AttributeId { get; set; }
 
+    /// <summary>الزام ویژگی در سطح این کالا (دارد / ندارد)</summary>
+    public bool IsRequired { get; set; }
+
     public int? OptionId { get; set; }
     [MaxLength(500)] public string? TextValue { get; set; }
     public decimal? NumberValue { get; set; }

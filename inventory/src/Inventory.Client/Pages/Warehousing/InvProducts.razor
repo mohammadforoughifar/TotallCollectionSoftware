@@ -389,7 +389,7 @@
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">انبار پیش‌فرض</label>
-                    <select class="form-select" @bind="warehouseStr">
+                    <select class="form-select" @bind="warehouseStr" @bind:after="UpdateEffectiveValuation">
                         <option value="0">— همه انبارها —</option>
                         @foreach (var w in warehouses)
                         {
@@ -399,17 +399,17 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">روش قیمت‌گذاری کالا</label>
-                    <select class="form-select" @bind="valuationStr">
-                        <option value="">— ارث‌بری از گروه کالا / تنظیمات —</option>
+                    <select class="form-select" @bind="valuationStr" @bind:after="UpdateEffectiveValuation">
+                        <option value="">— ارث‌بری (گروه کالا ← انبار ← تنظیمات) —</option>
                         <option value="0">میانگین موزون</option>
                         <option value="1">اولین صادره از اولین وارده (FIFO)</option>
                         <option value="2">اولین صادره از آخرین وارده (LIFO)</option>
                     </select>
                     <div class="fs-8 text-muted mt-1">
-                        <i class="bi bi-info-circle"></i> روش فعلی: <b>@MethodTitle(form.EffectiveValuation)</b>
+                        <i class="bi bi-info-circle"></i> روش موثر فعلی: <b>@MethodTitle(form.EffectiveValuation)</b>
                         @if (!string.IsNullOrWhiteSpace(form.ValuationSource))
                         {
-                            <span>— منبع: @form.ValuationSource</span>
+                            <span class="text-primary me-1">— منبع: @form.ValuationSource</span>
                         }
                     </div>
                 </div>
@@ -532,10 +532,9 @@
                                 <thead>
                                     <tr>
                                         <th style="width:40px">#</th>
-                                        <th style="width:32%">نام ویژگی</th>
-                                        <th style="width:35%">مقدار ویژگی (انتخاب از کمبو)</th>
-                                        <th style="width:25%">الزام</th>
-                                        <th style="width:50px"></th>
+                                        <th>نام ویژگی (انتخاب از کمبو)</th>
+                                        <th style="width:250px">الزام (آیا دارد یا خیر)</th>
+                                        <th style="width:60px" class="text-center">عملیات</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -549,33 +548,10 @@
                                                 <select class="form-select form-select-sm"
                                                         value="@a.AttributeId"
                                                         @onchange="e => OnAttributeChanged(idx, e)">
-                                                    <option value="0">— انتخاب ویژگی —</option>
+                                                    <option value="0">— انتخاب ویژگی از کمبو —</option>
                                                     @foreach (var attr in availableAttributes)
                                                     {
                                                         <option value="@attr.Id">@attr.Name @(!string.IsNullOrWhiteSpace(attr.Unit) ? $"({attr.Unit})" : "")</option>
-                                                    }
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <select class="form-select form-select-sm"
-                                                        value="@GetAttrSelectedValue(a)"
-                                                        @onchange="e => OnAttributeOptionChanged(a, e)"
-                                                        disabled="@(a.AttributeId == 0)">
-                                                    <option value="">— انتخاب مقدار —</option>
-                                                    @if (a.Options != null && a.Options.Count > 0)
-                                                    {
-                                                        @foreach (var o in a.Options)
-                                                        {
-                                                            <option value="@o.Id">@o.Title</option>
-                                                        }
-                                                    }
-                                                    else if (!string.IsNullOrWhiteSpace(a.TextValue))
-                                                    {
-                                                        <option value="@a.TextValue">@a.TextValue</option>
-                                                    }
-                                                    else
-                                                    {
-                                                        <option value="" disabled>(مقداری برای انتخاب تعریف نشده است)</option>
                                                     }
                                                 </select>
                                             </td>
@@ -605,7 +581,7 @@
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td>
+                                            <td class="text-center">
                                                 <button class="btn btn-sm btn-light" title="حذف" @onclick="() => RemoveAttributeRow(idx)">
                                                     <i class="bi bi-trash text-danger"></i>
                                                 </button>
@@ -857,6 +833,7 @@
         tab = 0;
         showModal = true;
         EnsureAttributeOptions();
+        UpdateEffectiveValuation();
         await LoadAvailableAttributes();
     }
 
@@ -881,6 +858,7 @@
         tab = 0;
         showModal = true;
         EnsureAttributeOptions();
+        UpdateEffectiveValuation();
         await LoadAvailableAttributes();
     }
 
@@ -911,12 +889,48 @@
                 a.IsRequired = old.IsRequired;
             }
             form.Attributes = fresh.Attributes;
-            form.EffectiveValuation = fresh.EffectiveValuation;
-            form.ValuationSource = fresh.ValuationSource;
             EnsureAttributeOptions();
+            UpdateEffectiveValuation();
             await LoadAvailableAttributes();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private void UpdateEffectiveValuation()
+    {
+        form.Valuation = int.TryParse(valuationStr, out var v) ? (ValuationMethod)v : null;
+        form.CategoryId = int.TryParse(categoryStr, out var c) && c > 0 ? c : null;
+        form.WarehouseId = int.TryParse(warehouseStr, out var w) && w > 0 ? w : null;
+
+        // اولویت ۱: کالا
+        if (form.Valuation.HasValue)
+        {
+            form.EffectiveValuation = form.Valuation.Value;
+            form.ValuationSource = "کالا (اولویت ۱)";
+            return;
+        }
+
+        // اولویت ۲: گروه کالا
+        var selectedCat = categories.FirstOrDefault(x => x.Id == form.CategoryId);
+        if (selectedCat != null && (selectedCat.Valuation.HasValue || !selectedCat.ValuationInherited))
+        {
+            form.EffectiveValuation = selectedCat.EffectiveValuation;
+            form.ValuationSource = selectedCat.Valuation.HasValue ? $"گروه کالا: {selectedCat.Name} (اولویت ۲)" : "گروه کالای والد (اولویت ۲)";
+            return;
+        }
+
+        // اولویت ۳: انبار
+        var selectedWh = warehouses.FirstOrDefault(x => x.Id == form.WarehouseId);
+        if (selectedWh?.Valuation != null)
+        {
+            form.EffectiveValuation = selectedWh.Valuation.Value;
+            form.ValuationSource = $"انبار: {selectedWh.Name} (اولویت ۳)";
+            return;
+        }
+
+        // اولویت ۴: تنظیمات کلی سیستم
+        form.EffectiveValuation = selectedCat?.EffectiveValuation ?? ValuationMethod.Average;
+        form.ValuationSource = "تنظیمات کلی سیستم (پیش‌فرض)";
     }
 
     private void EnsureAttributeOptions()
@@ -937,16 +951,6 @@
     private async Task Save()
     {
         if (string.IsNullOrWhiteSpace(form.Name)) { Toast.Error("نام کالا را وارد کنید."); tab = 0; return; }
-
-        foreach (var a in form.Attributes.Where(x => x.IsRequired && x.AttributeId > 0))
-        {
-            if (a.OptionId is null or 0 && string.IsNullOrWhiteSpace(a.TextValue) && a.NumberValue is null && a.BoolValue is null)
-            {
-                Toast.Error($"انتخاب مقدار برای ویژگی «{a.AttributeName}» الزامی است.");
-                tab = 4;
-                return;
-            }
-        }
 
         form.CategoryId = int.TryParse(categoryStr, out var c) && c > 0 ? c : null;
         form.WarehouseId = int.TryParse(warehouseStr, out var w) && w > 0 ? w : null;
@@ -1039,25 +1043,6 @@
             row.ValueType = attr.ValueType;
             row.Unit = attr.Unit;
             row.IsRequired = attr.IsRequired;
-            if (attr.Options != null && attr.Options.Count > 0)
-            {
-                row.Options = attr.Options.Select(o => new InvAttributeOption
-                {
-                    Id = o.Id, AttributeId = o.AttributeId, Title = o.Title, SortOrder = o.SortOrder
-                }).ToList();
-            }
-            else if (attr.ValueType == AttrValueType.Boolean)
-            {
-                row.Options = new List<InvAttributeOption>
-                {
-                    new() { Id = 1, AttributeId = attr.Id, Title = "بله", SortOrder = 1 },
-                    new() { Id = 2, AttributeId = attr.Id, Title = "خیر", SortOrder = 2 }
-                };
-            }
-            else
-            {
-                row.Options = new();
-            }
         }
         else
         {
@@ -1065,52 +1050,8 @@
             row.ValueType = AttrValueType.Text;
             row.Unit = "";
             row.IsRequired = false;
-            row.Options.Clear();
         }
         await InvokeAsync(StateHasChanged);
-    }
-
-    private static string GetAttrSelectedValue(InvProductAttrValue a)
-    {
-        if (a.OptionId is > 0) return a.OptionId.Value.ToString();
-        if (!string.IsNullOrWhiteSpace(a.TextValue))
-        {
-            var match = a.Options?.FirstOrDefault(o => o.Title == a.TextValue);
-            if (match != null) return match.Id.ToString();
-            return a.TextValue;
-        }
-        if (a.BoolValue.HasValue)
-        {
-            var title = a.BoolValue.Value ? "بله" : "خیر";
-            var match = a.Options?.FirstOrDefault(o => o.Title == title);
-            return match != null ? match.Id.ToString() : (a.BoolValue.Value ? "true" : "false");
-        }
-        return "";
-    }
-
-    private void OnAttributeOptionChanged(InvProductAttrValue a, ChangeEventArgs e)
-    {
-        var raw = e.Value?.ToString() ?? "";
-        if (int.TryParse(raw, out var optId) && optId > 0)
-        {
-            a.OptionId = optId;
-            var opt = a.Options?.FirstOrDefault(o => o.Id == optId);
-            a.TextValue = opt?.Title ?? "";
-            if (decimal.TryParse(opt?.Title, out var num))
-                a.NumberValue = num;
-            if (opt?.Title == "بله") a.BoolValue = true;
-            else if (opt?.Title == "خیر") a.BoolValue = false;
-        }
-        else
-        {
-            a.OptionId = null;
-            a.TextValue = string.IsNullOrWhiteSpace(raw) ? null : raw;
-            if (decimal.TryParse(raw, out var n)) a.NumberValue = n;
-            else a.NumberValue = null;
-            if (raw == "بله" || raw == "true") a.BoolValue = true;
-            else if (raw == "خیر" || raw == "false") a.BoolValue = false;
-            else a.BoolValue = null;
-        }
     }
 
     private void RemoveAttributeRow(int idx)
