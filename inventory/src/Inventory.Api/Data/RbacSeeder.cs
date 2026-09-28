@@ -179,7 +179,10 @@ public static class RbacSeeder
         // ================== اتوماسیون اداری — ساختار شماره نامه (تنظیمات مدیر سیستم) ==================
         // Read: مشاهده ساختار شماره سه نوع نامه (داخلی/صادره/وارده) در تنظیمات
         // Update: تغییر ترتیب/اجزای ساختار شماره اندیکاتور
-        ["LetterStructures"] = new[] { "Read", "Update" }
+        ["LetterStructures"] = new[] { "Read", "Update" },
+        // ================== هوش مصنوعی فروغ آریا ==================
+        // Use: گفتگو با دستیار + هوش نامه‌ها + منشی کارمندی | Manage: مدیریت (آینده)
+        ["AiAssistant"] = new[] { "Use", "Manage" }
     };
 
     public static async Task SeedAsync(AppDbContext db)

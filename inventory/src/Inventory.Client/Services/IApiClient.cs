@@ -4,7 +4,11 @@ namespace Inventory.Client.Services;
 public interface IApiClient
 {
     Task<T> GetAsync<T>(string path);
+    /// <summary>GET با سقف انتظار طولانی (۱۰ دقیقه) برای فراخوانی‌های AI.</summary>
+    Task<T> GetLongAsync<T>(string path);
     Task<T> PostAsync<T>(string path, object? body = null);
+    /// <summary>POST با سقف انتظار طولانی (۱۰ دقیقه) برای فراخوانی‌های AI.</summary>
+    Task<T> PostLongAsync<T>(string path, object? body = null);
     Task<T> PutAsync<T>(string path, object? body = null);
     Task DeleteAsync(string path);
 
