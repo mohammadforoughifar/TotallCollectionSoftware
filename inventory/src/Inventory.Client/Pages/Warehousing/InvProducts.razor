@@ -1,5 +1,6 @@
 @page "/inv/products"
 @inject IInvProductService ProductSvc
+@inject IInvAttributeService AttrSvc
 @inject IInvCategoryService CategorySvc
 @inject IInvWarehouseService WarehouseSvc
 @inject IInvSettingsService SettingsSvc
@@ -552,101 +553,177 @@
             </div>
         }
 
-        @* ============ تب ۵: ویژگی‌ها (انتخاب از کمبو + رادیوباتن الزام) ============ *@
+        @* ============ تب ۵: ویژگی‌ها (انتخاب از کمبو + مقدار + رادیوباتن الزام) ============ *@
         else if (tab == 4)
         {
             <div class="attr-box">
-                @if (availableAttributes.Count == 0 && form.Attributes.Count == 0)
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 pb-2 border-bottom">
+                    <div>
+                        <span class="fw-700 fs-6"><i class="bi bi-sliders text-primary me-1"></i> ویژگی‌های کالا</span>
+                        <span class="text-muted fs-8 me-2">(انتخاب ویژگی، ثبت مقدار و تعیین الزام)</span>
+                        @if (form.Attributes.Count > 0)
+                        {
+                            <span class="badge bg-soft-primary text-primary num ms-1">@form.Attributes.Count.FaDigits() سطر</span>
+                        }
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenQuickNewAttribute" title="تعریف ویژگی جدید در سامانه">
+                            <i class="bi bi-plus-circle"></i> تعریف ویژگی جدید
+                        </button>
+                        <button type="button" class="btn btn-sm btn-primary" @onclick="AddAttributeRow" title="افزودن سطر مشخصه به این کالا">
+                            <i class="bi bi-plus-lg"></i> افزودن سطر ویژگی
+                        </button>
+                    </div>
+                </div>
+
+                @if (form.Attributes.Count == 0)
                 {
-                    <div class="attr-empty">
-                        <i class="bi bi-sliders fs-3 d-block mb-2"></i>
-                        برای این گروه کالا ویژگی‌ای تعریف نشده است.
-                        <div class="mt-2">
-                            <a href="inv/attributes" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-plus-lg"></i> تعریف ویژگی جدید
-                            </a>
+                    <div class="attr-empty py-4 text-center border rounded bg-light">
+                        <i class="bi bi-sliders fs-1 d-block mb-2 text-primary opacity-75"></i>
+                        <h6 class="fw-600 mb-1">هنوز ویژگی‌ای برای این کالا افزوده نشده است</h6>
+                        <p class="text-muted fs-8 mb-3">
+                            می‌توانید با دکمه «افزودن سطر ویژگی» از لیست مشخصات موجود انتخاب کنید یا با «تعریف ویژگی جدید» مشخصه جدیدی ایجاد کنید.
+                        </p>
+                        <div class="d-flex justify-content-center gap-2">
+                            <button type="button" class="btn btn-primary btn-sm px-3" @onclick="AddAttributeRow">
+                                <i class="bi bi-plus-lg"></i> افزودن اولین سطر ویژگی
+                            </button>
+                            <button type="button" class="btn btn-outline-primary btn-sm px-3" @onclick="OpenQuickNewAttribute">
+                                <i class="bi bi-plus-circle"></i> تعریف ویژگی جدید
+                            </button>
                         </div>
                     </div>
                 }
                 else
                 {
-                    <div class="d-flex align-items-center mb-3">
-                        <div>
-                            <span class="fw-600"><i class="bi bi-sliders text-primary me-1"></i> ویژگی‌های کالا</span>
-                            <span class="text-muted fs-8 me-2">(انتخاب ویژگی و مقدار از کمبو + تعیین الزام)</span>
-                        </div>
-                        <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="AddAttributeRow">
-                            <i class="bi bi-plus-lg"></i> افزودن ویژگی
-                        </button>
-                    </div>
-
-                    @if (form.Attributes.Count > 0)
-                    {
-                        <div class="doc-grid">
-                            <table class="table table-sm table-hover align-middle mb-0">
-                                <thead>
+                    <div class="doc-grid table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width:40px" class="text-center">#</th>
+                                    <th style="min-width:240px">نام ویژگی</th>
+                                    <th style="min-width:220px">مقدار ویژگی</th>
+                                    <th style="width:230px">الزام (آیا دارد یا خیر)</th>
+                                    <th style="width:50px" class="text-center">حذف</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var i = 0; i < form.Attributes.Count; i++)
+                                {
+                                    var idx = i;
+                                    var a = form.Attributes[idx];
                                     <tr>
-                                        <th style="width:40px">#</th>
-                                        <th>نام ویژگی (انتخاب از کمبو)</th>
-                                        <th style="width:250px">الزام (آیا دارد یا خیر)</th>
-                                        <th style="width:60px" class="text-center">عملیات</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @for (var i = 0; i < form.Attributes.Count; i++)
-                                    {
-                                        var idx = i;
-                                        var a = form.Attributes[idx];
-                                        <tr>
-                                            <td><span class="row-no">@((idx + 1).FaDigits())</span></td>
-                                            <td>
+                                        <td class="text-center"><span class="row-no num">@((idx + 1).FaDigits())</span></td>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-1">
                                                 <select class="form-select form-select-sm"
                                                         value="@a.AttributeId"
                                                         @onchange="e => OnAttributeChanged(idx, e)">
-                                                    <option value="0">— انتخاب ویژگی از کمبو —</option>
+                                                    <option value="0">— انتخاب ویژگی از فهرست —</option>
                                                     @foreach (var attr in availableAttributes)
                                                     {
-                                                        <option value="@attr.Id">@attr.Name @(!string.IsNullOrWhiteSpace(attr.Unit) ? $"({attr.Unit})" : "")</option>
+                                                        <option value="@attr.Id">
+                                                            @attr.Name @(!string.IsNullOrWhiteSpace(attr.Unit) ? $"({attr.Unit})" : "")
+                                                            @(attr.CategoryId.HasValue && attr.CategoryId == form.CategoryId ? " ★" : "")
+                                                        </option>
                                                     }
                                                 </select>
-                                            </td>
-                                            <td>
-                                                <div class="d-inline-flex align-items-center gap-3">
-                                                    <div class="form-check form-check-inline mb-0">
-                                                        <input class="form-check-input cursor-pointer"
-                                                               type="radio"
-                                                               name="attr_req_@idx"
-                                                               id="req_yes_@idx"
-                                                               checked="@a.IsRequired"
-                                                               @onchange="() => a.IsRequired = true" />
-                                                        <label class="form-check-label cursor-pointer text-danger fw-500" for="req_yes_@idx">
-                                                            دارد
-                                                        </label>
-                                                    </div>
-                                                    <div class="form-check form-check-inline mb-0">
-                                                        <input class="form-check-input cursor-pointer"
-                                                               type="radio"
-                                                               name="attr_req_@idx"
-                                                               id="req_no_@idx"
-                                                               checked="@(!a.IsRequired)"
-                                                               @onchange="() => a.IsRequired = false" />
-                                                        <label class="form-check-label cursor-pointer text-muted" for="req_no_@idx">
-                                                            ندارد
-                                                        </label>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td class="text-center">
-                                                <button class="btn btn-sm btn-light" title="حذف" @onclick="() => RemoveAttributeRow(idx)">
-                                                    <i class="bi bi-trash text-danger"></i>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary px-2" title="تعریف ویژگی جدید در سامانه" @onclick="OpenQuickNewAttribute">
+                                                    <i class="bi bi-plus-lg"></i>
                                                 </button>
-                                            </td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    }
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if (a.AttributeId == 0)
+                                            {
+                                                <span class="text-muted fs-8">ابتدا ویژگی را از ستون قبل انتخاب کنید</span>
+                                            }
+                                            else if (a.ValueType == AttrValueType.Text)
+                                            {
+                                                <input type="text" class="form-control form-control-sm"
+                                                       @bind="a.TextValue"
+                                                       placeholder="مقدار متنی…" />
+                                            }
+                                            else if (a.ValueType == AttrValueType.Number)
+                                            {
+                                                <div class="input-group input-group-sm">
+                                                    <input type="number" step="any" class="form-control num" dir="ltr"
+                                                           @bind="a.NumberValue"
+                                                           placeholder="0" />
+                                                    @if (!string.IsNullOrWhiteSpace(a.Unit))
+                                                    {
+                                                        <span class="input-group-text">@a.Unit</span>
+                                                    }
+                                                </div>
+                                            }
+                                            else if (a.ValueType == AttrValueType.List)
+                                            {
+                                                <select class="form-select form-select-sm"
+                                                        value="@(a.OptionId ?? 0)"
+                                                        @onchange="e => a.OptionId = int.TryParse(e.Value?.ToString(), out var ov) && ov > 0 ? ov : null">
+                                                    <option value="0">— انتخاب گزینه —</option>
+                                                    @foreach (var opt in a.Options)
+                                                    {
+                                                        <option value="@opt.Id">@opt.Title</option>
+                                                    }
+                                                </select>
+                                            }
+                                            else if (a.ValueType == AttrValueType.Boolean)
+                                            {
+                                                <select class="form-select form-select-sm"
+                                                        value="@BoolStr(a)"
+                                                        @onchange="e => SetBool(a, e)">
+                                                    <option value="">— انتخاب —</option>
+                                                    <option value="true">بله</option>
+                                                    <option value="false">خیر</option>
+                                                </select>
+                                            }
+                                            else if (a.ValueType == AttrValueType.Date)
+                                            {
+                                                <DatePicker Value="a.DateValue" ValueChanged="d => a.DateValue = d" AllowClear="true" />
+                                            }
+                                        </td>
+                                        <td>
+                                            <div class="d-inline-flex align-items-center gap-3">
+                                                <div class="form-check form-check-inline mb-0">
+                                                    <input class="form-check-input cursor-pointer"
+                                                           type="radio"
+                                                           name="attr_req_@idx"
+                                                           id="req_yes_@idx"
+                                                           checked="@a.IsRequired"
+                                                           @onchange="() => a.IsRequired = true" />
+                                                    <label class="form-check-label cursor-pointer text-danger fw-500" for="req_yes_@idx">
+                                                        دارد (الزامی)
+                                                    </label>
+                                                </div>
+                                                <div class="form-check form-check-inline mb-0">
+                                                    <input class="form-check-input cursor-pointer"
+                                                           type="radio"
+                                                           name="attr_req_@idx"
+                                                           id="req_no_@idx"
+                                                           checked="@(!a.IsRequired)"
+                                                           @onchange="() => a.IsRequired = false" />
+                                                    <label class="form-check-label cursor-pointer text-muted" for="req_no_@idx">
+                                                        ندارد (اختیاری)
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="text-center">
+                                            <button type="button" class="btn btn-sm btn-light text-danger" title="حذف سطر" @onclick="() => RemoveAttributeRow(idx)">
+                                                <i class="bi bi-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddAttributeRow">
+                            <i class="bi bi-plus-lg"></i> افزودن سطر جدید
+                        </button>
+                    </div>
                 }
             </div>
         }
@@ -785,6 +862,119 @@
     </Footer>
 </Modal>
 
+@* ================= مودال سریع تعریف ویژگی جدید ================= *@
+@if (showQuickAttrModal)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background: rgba(15,23,42,.65); z-index: 1070;">
+        <div class="modal-dialog modal-dialog-centered modal-lg" @onclick:stopPropagation="true">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-light border-bottom">
+                    <h5 class="modal-title fs-6 fw-700">
+                        <i class="bi bi-sliders text-primary me-1"></i> تعریف ویژگی جدید برای کالا
+                    </h5>
+                    <button type="button" class="btn-close" @onclick="CloseQuickAttrModal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">نام ویژگی <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="quickAttr.Name" placeholder="مثلاً: رنگ، سایز، جنس، ولتاژ، گارانتی…" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">کد لاتین (اختیاری)</label>
+                            <input class="form-control" @bind="quickAttr.Code" dir="ltr" placeholder="COLOR" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label">نوع مقدار</label>
+                            <select class="form-select" value="@((int)quickAttr.ValueType)" @onchange="OnQuickTypeChanged">
+                                <option value="@((int)AttrValueType.Text)">متنی</option>
+                                <option value="@((int)AttrValueType.Number)">عددی</option>
+                                <option value="@((int)AttrValueType.List)">انتخاب از فهرست (چندگزینه‌ای)</option>
+                                <option value="@((int)AttrValueType.Boolean)">بله / خیر (دودویی)</option>
+                                <option value="@((int)AttrValueType.Date)">تاریخ</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <label class="form-label">واحد سنجش (اختیاری)</label>
+                            <input class="form-control" @bind="quickAttr.Unit" placeholder="سانتی‌متر، کیلوگرم، ماه…" />
+                        </div>
+                        <div class="col-6 col-md-4">
+                            <label class="form-label">گروه کالای مرتبط</label>
+                            <select class="form-select" value="@(quickAttr.CategoryId?.ToString() ?? "")"
+                                    @onchange="e => quickAttr.CategoryId = int.TryParse(e.Value?.ToString(), out var cid) && cid > 0 ? cid : null">
+                                <option value="">همه گروه‌ها (مشترک/عمومی)</option>
+                                @foreach (var c in categories)
+                                {
+                                    <option value="@c.Id">@c.Name</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-4">
+                            <label class="form-label d-block">الزام پر کردن</label>
+                            <div class="d-flex align-items-center gap-3 pt-2">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="radio" name="quickReq" id="qreqYes"
+                                           checked="@quickAttr.IsRequired" @onchange="() => quickAttr.IsRequired = true" />
+                                    <label class="form-check-label text-danger fw-500 cursor-pointer" for="qreqYes">دارد (الزامی)</label>
+                                </div>
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="radio" name="quickReq" id="qreqNo"
+                                           checked="@(!quickAttr.IsRequired)" @onchange="() => quickAttr.IsRequired = false" />
+                                    <label class="form-check-label text-muted cursor-pointer" for="qreqNo">ندارد (اختیاری)</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if (quickAttr.ValueType == AttrValueType.List)
+                        {
+                            <div class="col-12">
+                                <div class="p-3 border rounded bg-light">
+                                    <label class="form-label fw-600 mb-2">گزینه‌های مجاز فهرست</label>
+                                    <div class="input-group mb-2">
+                                        <input class="form-control" @bind="newQuickOption" placeholder="عنوان گزینه (مثلاً: قرمز، آبی، مشکی…)"
+                                               @onkeydown='e => { if (e.Key == "Enter") AddQuickOption(); }' />
+                                        <button type="button" class="btn btn-outline-primary" @onclick="AddQuickOption">
+                                            <i class="bi bi-plus-lg"></i> افزودن گزینه
+                                        </button>
+                                    </div>
+                                    @if (quickAttr.Options.Count > 0)
+                                    {
+                                        <div class="d-flex flex-wrap gap-2 pt-1">
+                                            @for (var oi = 0; oi < quickAttr.Options.Count; oi++)
+                                            {
+                                                var optIdx = oi;
+                                                var opt = quickAttr.Options[optIdx];
+                                                <span class="badge bg-white text-dark border d-inline-flex align-items-center gap-2 px-2 py-1 fs-8">
+                                                    @opt.Title
+                                                    <i class="bi bi-x cursor-pointer text-danger" @onclick="() => RemoveQuickOption(optIdx)"></i>
+                                                </span>
+                                            }
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="fs-8 text-muted">حداقل یک گزینه برای این ویژگی تعریف کنید.</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer bg-light border-top">
+                    <button type="button" class="btn btn-light" @onclick="CloseQuickAttrModal">انصراف</button>
+                    <button type="button" class="btn btn-primary" disabled="@quickAttrSaving" @onclick="SaveQuickAttribute">
+                        @if (quickAttrSaving)
+                        {
+                            <span class="spinner-border spinner-border-sm ms-1"></span>
+                        }
+                        <i class="bi bi-check2-circle"></i> ذخیره و افزودن به این کالا
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<InvProduct> items = new();
     private List<InvCategory> categories = new();
@@ -901,9 +1091,9 @@
         manualCodeEdit = false;
         SyncFullProductCode();
 
+        await LoadAvailableAttributes();
         EnsureAttributeOptions();
         UpdateEffectiveValuation();
-        await LoadAvailableAttributes();
     }
 
     private async Task OpenEdit(InvProduct p)
@@ -947,9 +1137,9 @@
         }
         manualCodeEdit = false;
 
+        await LoadAvailableAttributes();
         EnsureAttributeOptions();
         UpdateEffectiveValuation();
-        await LoadAvailableAttributes();
     }
 
     private void CloseModal()
@@ -990,9 +1180,9 @@
                 a.IsRequired = old.IsRequired;
             }
             form.Attributes = fresh.Attributes;
+            await LoadAvailableAttributes();
             EnsureAttributeOptions();
             UpdateEffectiveValuation();
-            await LoadAvailableAttributes();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -1094,6 +1284,20 @@
     {
         foreach (var a in form.Attributes)
         {
+            var matched = availableAttributes.FirstOrDefault(x => x.Id == a.AttributeId);
+            if (matched != null && (a.Options == null || a.Options.Count == 0))
+            {
+                a.Options = matched.Options?.Select(o => new InvAttributeOption
+                {
+                    Id = o.Id,
+                    AttributeId = o.AttributeId,
+                    Title = o.Title,
+                    SortOrder = o.SortOrder
+                }).ToList() ?? new();
+                if (string.IsNullOrEmpty(a.AttributeName)) a.AttributeName = matched.Name;
+                if (string.IsNullOrEmpty(a.Unit)) a.Unit = matched.Unit;
+                a.ValueType = matched.ValueType;
+            }
             if (a.ValueType == AttrValueType.Boolean && (a.Options == null || a.Options.Count == 0))
             {
                 a.Options = new List<InvAttributeOption>
@@ -1111,6 +1315,8 @@
 
         SyncFullProductCode();
         if (string.IsNullOrWhiteSpace(form.Code)) { Toast.Error("کد کالا را وارد کنید."); tab = 0; return; }
+
+        form.Attributes.RemoveAll(a => a.AttributeId == 0);
 
         form.CategoryId = int.TryParse(categoryStr, out var c) && c > 0 ? c : null;
         form.WarehouseId = int.TryParse(warehouseStr, out var w) && w > 0 ? w : null;
@@ -1166,18 +1372,121 @@
         return formatted;
     }
 
-    // ---------- ویژگی‌ها: لیست ویژگی‌های قابل انتخاب ----------
+    // ---------- ویژگی‌ها: لیست ویژگی‌های قابل انتخاب و مودال سریع ----------
     private List<InvAttribute> availableAttributes = new();
+    private bool showQuickAttrModal;
+    private InvAttribute quickAttr = new();
+    private string newQuickOption = "";
+    private bool quickAttrSaving;
 
     private async Task LoadAvailableAttributes()
     {
         try
         {
-            var attrSvc = (IInvAttributeService)ServiceProvider.GetService(typeof(IInvAttributeService))!;
-            var all = await attrSvc.GetAllAsync(true);
-            availableAttributes = all.Where(a => a.CategoryId == null || a.CategoryId == form.CategoryId).ToList();
+            var all = await AttrSvc.GetAllAsync(true);
+            availableAttributes = all.OrderByDescending(a => a.CategoryId == form.CategoryId || a.CategoryId == null)
+                                     .ThenBy(a => a.SortOrder)
+                                     .ThenBy(a => a.Name)
+                                     .ToList();
         }
         catch { availableAttributes = new(); }
+    }
+
+    private void OpenQuickNewAttribute()
+    {
+        quickAttr = new InvAttribute
+        {
+            IsActive = true,
+            CategoryId = form.CategoryId,
+            ValueType = AttrValueType.Text
+        };
+        newQuickOption = "";
+        showQuickAttrModal = true;
+    }
+
+    private void CloseQuickAttrModal()
+    {
+        showQuickAttrModal = false;
+    }
+
+    private void OnQuickTypeChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var tv))
+        {
+            quickAttr.ValueType = (AttrValueType)tv;
+            if (quickAttr.ValueType == AttrValueType.List && quickAttr.Options.Count == 0)
+            {
+                quickAttr.Options = new();
+            }
+        }
+    }
+
+    private void AddQuickOption()
+    {
+        var t = (newQuickOption ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(t)) return;
+        quickAttr.Options.Add(new InvAttributeOption
+        {
+            Title = t,
+            SortOrder = quickAttr.Options.Count + 1
+        });
+        newQuickOption = "";
+    }
+
+    private void RemoveQuickOption(int idx)
+    {
+        if (idx >= 0 && idx < quickAttr.Options.Count)
+            quickAttr.Options.RemoveAt(idx);
+    }
+
+    private async Task SaveQuickAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(quickAttr.Name))
+        {
+            Toast.Error("نام ویژگی الزامی است.");
+            return;
+        }
+
+        if (quickAttr.ValueType == AttrValueType.List && quickAttr.Options.Count == 0)
+        {
+            Toast.Error("برای ویژگی فهرستی حداقل یک گزینه تعریف کنید.");
+            return;
+        }
+
+        quickAttrSaving = true;
+        try
+        {
+            var saved = await AttrSvc.SaveAsync(quickAttr);
+            Toast.Success($"ویژگی «{saved.Name}» ایجاد شد.");
+            await LoadAvailableAttributes();
+
+            // افزودن خودکار سطر این ویژگی به کالا
+            var newRow = new InvProductAttrValue
+            {
+                AttributeId = saved.Id,
+                AttributeName = saved.Name,
+                ValueType = saved.ValueType,
+                Unit = saved.Unit,
+                IsRequired = saved.IsRequired,
+                Options = saved.Options?.Select(o => new InvAttributeOption
+                {
+                    Id = o.Id,
+                    AttributeId = o.AttributeId,
+                    Title = o.Title,
+                    SortOrder = o.SortOrder
+                }).ToList() ?? new()
+            };
+            form.Attributes.Add(newRow);
+            showQuickAttrModal = false;
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            quickAttrSaving = false;
+        }
     }
 
     private void AddAttributeRow()
@@ -1203,6 +1512,13 @@
             row.ValueType = attr.ValueType;
             row.Unit = attr.Unit;
             row.IsRequired = attr.IsRequired;
+            row.Options = attr.Options?.Select(o => new InvAttributeOption
+            {
+                Id = o.Id,
+                AttributeId = o.AttributeId,
+                Title = o.Title,
+                SortOrder = o.SortOrder
+            }).ToList() ?? new();
         }
         else
         {
@@ -1210,6 +1526,7 @@
             row.ValueType = AttrValueType.Text;
             row.Unit = "";
             row.IsRequired = false;
+            row.Options = new();
         }
         await InvokeAsync(StateHasChanged);
     }
