@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddHttpContextAccessor();
 
 // ================== HTTPS داخلی (لازم برای اعلان سیستمی مرورگر) ==================
 // اعلان سیستمی و Service Worker فقط در «زمینهٔ امن» فعال می‌شوند؛ روی http://آی‌پی شبکه این امکان وجود ندارد.

@@ -35,11 +35,13 @@ public class AiActionService
     private readonly IFaComService _faCom;
     private readonly ITreasuryService _treasury;
     private readonly IMeetingMinutesService _minutes;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AiActionService> _log;
 
     public AiActionService(AppDbContext db, IOptions<AiOptions> options, IFaAttService faAtt,
         IErjaService erja, IPishnevisService pishnevis, IFaComService faCom,
-        ITreasuryService treasury, IMeetingMinutesService minutes, ILogger<AiActionService> log)
+        ITreasuryService treasury, IMeetingMinutesService minutes,
+        IHttpContextAccessor httpContextAccessor, ILogger<AiActionService> log)
     {
         _db = db;
         _options = options.Value;
@@ -49,6 +51,7 @@ public class AiActionService
         _faCom = faCom;
         _treasury = treasury;
         _minutes = minutes;
+        _httpContextAccessor = httpContextAccessor;
         _log = log;
     }
 
@@ -444,6 +447,10 @@ public class AiActionService
         }
         var attendees = ReadIds(root, "attendees");
         if (attendees.Count == 0) throw new InvalidOperationException("دست‌کم یک حاضر لازم است.");
+        var companyId = await ActiveCompanyIdAsync(userId, ct);
+        if (companyId is null)
+            throw new InvalidOperationException("شرکت فعال انتخاب نشده است.");
+
         var id = await _minutes.SaveAsync(new SaveMinutesDto
         {
             Title = title.Trim(),
@@ -451,8 +458,18 @@ public class AiActionService
             AttendeeUserIds = attendees,
             AbsentUserIds = ReadIds(root, "absentees"),
             Items = items,
-        }, userId, userName);
+        }, userId, userName, companyId.Value);
         return $"صورتجلسه شماره {id} در وضعیت «در حال بررسی» ذخیره شد. 📝";
+    }
+
+    private async Task<int?> ActiveCompanyIdAsync(int userId, CancellationToken ct)
+    {
+        var header = _httpContextAccessor.HttpContext?.Request.Headers["X-Company-Id"].FirstOrDefault();
+        if (!int.TryParse(header, out var companyId) || companyId <= 0) return null;
+        return await _db.UserCompanyAccesses.AsNoTracking()
+            .AnyAsync(x => x.UserId == userId && x.CompanyId == companyId && x.Company.IsActive, ct)
+            ? companyId
+            : null;
     }
 
     private async Task<string> ExecuteReportWorkAsync(AiPendingAction action, int userId, CancellationToken ct)
