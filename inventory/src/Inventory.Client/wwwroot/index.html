@@ -270,52 +270,13 @@
                 }
             }
 
-            // ناوبری با کلیدهای جهت‌نما (ArrowUp / ArrowDown) و اینتر در کمبوباکس‌ها
+            // جلوگیری از پرش‌های ناخواسته مرورگر هنگام استفاده از جهت‌نما و اینتر در کمبوباکس باز
             var ssEl = e.target && e.target.closest ? e.target.closest('.ss') : null;
-            if (ssEl) {
-                var menu = ssEl.querySelector('.ss-menu');
-                if (menu) {
-                    var items = menu.querySelectorAll('.ss-item');
-                    if (items.length > 0) {
-                        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            var curIdx = -1;
-                            for (var i = 0; i < items.length; i++) {
-                                if (items[i].classList.contains('highlighted')) {
-                                    curIdx = i;
-                                    break;
-                                }
-                            }
-                            var nextIdx = 0;
-                            if (e.key === 'ArrowDown') {
-                                nextIdx = (curIdx + 1) < items.length ? (curIdx + 1) : 0;
-                            } else {
-                                nextIdx = curIdx > 0 ? (curIdx - 1) : (items.length - 1);
-                            }
-                            for (var j = 0; j < items.length; j++) {
-                                if (j === nextIdx) {
-                                    items[j].classList.add('highlighted');
-                                    items[j].scrollIntoView({ block: 'nearest', inline: 'nearest' });
-                                } else {
-                                    items[j].classList.remove('highlighted');
-                                }
-                            }
-                            return;
-                        }
-                        if (e.key === 'Enter') {
-                            var highlighted = menu.querySelector('.ss-item.highlighted');
-                            if (!highlighted && items.length > 0) highlighted = items[0];
-                            if (highlighted) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                highlighted.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-                                highlighted.click();
-                                return;
-                            }
-                        }
-                    }
-                }
+            var isSsMenuOpen = ssEl && ssEl.querySelector('.ss-menu');
+            if (isSsMenuOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter')) {
+                // فقط preventDefault تا مکان‌نما در اینپوت حرکت نکند و فرم سابمیت نشود، اما رویداد به Blazor برسد
+                e.preventDefault();
+                if (e.key === 'Enter') return;
             }
 
             // ناوبری با کلید Enter بین المان‌ها
@@ -327,7 +288,7 @@
                 if (tag === 'BUTTON' || (tag === 'INPUT' && (target.type === 'submit' || target.type === 'button'))) return;
 
                 // اگر منوی کمبوباکس باز است، اینتر باید صرفاً انتخاب را تایید کند
-                if (ssEl && ssEl.querySelector('.ss-menu')) return;
+                if (isSsMenuOpen) return;
 
                 var container = target.closest('.doc-grid') || target.closest('.modal-content') || target.closest('form') || target.closest('.card-body') || document.body;
                 var focusables = Array.from(container.querySelectorAll('input:not([disabled]):not([type="hidden"]), select:not([disabled])'));
@@ -344,76 +305,6 @@
                 }
             }
         }, true);
-
-        // ---------- جداسازی لحظه‌ای ۳ رقم ۳ رقم فیلدهای قیمت/فی هنگام تایپ ----------
-        (function () {
-            var pMap = { '۰':'0', '۱':'1', '۲':'2', '۳':'3', '۴':'4', '۵':'5', '۶':'6', '۷':'7', '۸':'8', '۹':'9' };
-            var aMap = { '٠':'0', '١':'1', '٢':'2', '٣':'3', '٤':'4', '٥':'5', '٦':'6', '٧':'7', '٨':'8', '٩':'9' };
-
-            function toEn(str) {
-                return (str || '').replace(/[۰-۹]/g, function (d) { return pMap[d] || d; })
-                                  .replace(/[٠-٩]/g, function (d) { return aMap[d] || d; });
-            }
-
-            document.addEventListener('keydown', function (e) {
-                var target = e.target;
-                if (!target || !target.matches || !target.matches('input[data-format="price"], input.price-input')) return;
-                if (e.key === 'Backspace' && target.selectionStart === target.selectionEnd && target.selectionStart > 0) {
-                    var val = target.value;
-                    var pos = target.selectionStart;
-                    if (val[pos - 1] === ',') {
-                        e.preventDefault();
-                        var nextVal = val.slice(0, pos - 2) + val.slice(pos - 1);
-                        target.value = nextVal;
-                        var newPos = Math.max(0, pos - 2);
-                        target.setSelectionRange(newPos, newPos);
-                        target.dispatchEvent(new Event('input', { bubbles: true }));
-                    }
-                }
-            }, true);
-
-            document.addEventListener('input', function (e) {
-                var target = e.target;
-                if (!target || !target.matches || !target.matches('input[data-format="price"], input.price-input')) return;
-
-                var raw = target.value;
-                if (!raw) return;
-
-                var converted = toEn(raw);
-                var curPos = target.selectionStart || 0;
-                var digitsBeforeCount = converted.slice(0, curPos).replace(/[^0-9.]/g, '').length;
-
-                var clean = converted.replace(/[^0-9.]/g, '');
-                if (!clean) {
-                    target.value = '';
-                    return;
-                }
-
-                var parts = clean.split('.');
-                var intPart = parts[0] || '';
-                var decPart = parts.length > 1 ? '.' + parts.slice(1).join('') : '';
-
-                var formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-                var formatted = (formattedInt || (parts.length > 1 ? '0' : '')) + decPart;
-
-                target.value = formatted;
-
-                var newCursor = 0;
-                var foundDigits = 0;
-                for (var i = 0; i < formatted.length; i++) {
-                    if (/[\d.]/.test(formatted[i])) foundDigits++;
-                    if (foundDigits >= digitsBeforeCount) {
-                        newCursor = i + 1;
-                        break;
-                    }
-                }
-                if (foundDigits < digitsBeforeCount) newCursor = formatted.length;
-
-                try {
-                    target.setSelectionRange(newCursor, newCursor);
-                } catch (_) { }
-            }, true);
-        })();
     </script>
     <script src="lib/chart.umd.min.js"></script>
     <script>

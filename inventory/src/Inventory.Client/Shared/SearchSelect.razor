@@ -193,9 +193,10 @@
         }
         else if (e.Key == "Enter")
         {
-            if (highlightIndex >= 0 && highlightIndex < filtered.Count)
+            if (filtered.Count > 0)
             {
-                await Select(filtered[highlightIndex]);
+                var clamped = Math.Clamp(highlightIndex, 0, filtered.Count - 1);
+                await Select(filtered[clamped]);
             }
         }
         else if (e.Key == "Escape")

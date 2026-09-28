@@ -372,6 +372,7 @@ public class InvDocLine
     public string Unit { get; set; } = "";
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
+    public string? UnitPriceText { get; set; }
     public decimal Discount { get; set; }
 
     /// <summary>ورودی تخفیف (تا ۱۰۰ = درصد، بیشتر از ۱۰۰ = ریال)</summary>
