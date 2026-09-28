@@ -14,7 +14,7 @@
         @if (t.RouteData is not null)
         {
             <div class="tabpane-body" @key="t.Version">
-                @if (HrNavigation.IsWorkspace(t.Key))
+                @if (HrNavigation.IsWorkspace(t.Key) && !ForoughAryaHrNavigation.IsWorkspace(t.Key))
                 {
                     <HrWorkspaceShell>
                         <RouteView RouteData="@t.RouteData" />

@@ -16,7 +16,7 @@
                 @foreach (var group in groups)
                 {
                     var expanded = expandedId == group.Id;
-                    <div class="hr-nav-section @(group.Legacy ? "hr-nav-legacy" : "")">
+                    <div class="hr-nav-section">
                         <button type="button" class="hr-nav-toggle nav-toggle @(activeGroup == group.Id ? "current" : "") @(expanded ? "open" : "")" aria-expanded="@expanded.ToString().ToLowerInvariant()" aria-controls="@("hr-nav-" + group.Id)" @onclick="() => expandedId = expanded ? null : group.Id">
                             <span><i class="bi @group.Icon" aria-hidden="true"></i>@group.Title</span>
                             <i class="bi bi-chevron-down nav-chevron" aria-hidden="true"></i>
@@ -60,7 +60,8 @@
         // گشودن/بستن دستی کاربر در جابه‌جایی‌های بعدی حفظ می‌شود.
         var current = HrNavigation.SectionId(path);
         if (current != activeGroup) { activeGroup = current; expandedId = current; }
-        open = HrNavigation.IsWorkspace(path);
+        // صفحات «منابع انسانی فروغ آریا» (برنامهٔ پیشین) دیگر این منو را باز نمی‌کنند.
+        open = HrNavigation.IsWorkspace(path) && !ForoughAryaHrNavigation.IsWorkspace(path);
     }
     private void LocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });
     private void AuthChanged() => _ = InvokeAsync(() => { Refresh(); StateHasChanged(); });

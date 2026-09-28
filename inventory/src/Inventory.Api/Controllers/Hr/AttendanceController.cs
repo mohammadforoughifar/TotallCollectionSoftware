@@ -1620,6 +1620,113 @@ public class AttendanceController : ControllerBase
         return Ok(new { year = y, month = m, items });
     }
 
+    // ================== گزارش روزانهٔ ماه — یک سطر به ازای هر پرسنل در هر روز ==================
+    // برخلاف report (که فقط رکوردهای موجود را برمی‌گرداند)، این گزارش همهٔ پرسنل فعال را
+    // برای همهٔ روزهای ماه نشان می‌دهد: غایب‌ها (بدون رکورد)، تعطیلات و مرخصی‌ها هم دیده می‌شوند.
+    [HttpGet("month-day-report")]
+    public async Task<IActionResult> MonthDayReport([FromQuery] int? jy, [FromQuery] int? jm,
+        [FromQuery] int? userId, [FromQuery] bool onlyDeficit = false)
+    {
+        if (!await IsAdminAsync()) return Forbid();
+        int y, m;
+        if (jy.HasValue && jm.HasValue) { y = jy.Value; m = jm.Value; }
+        else { (y, m, _) = PersianDate.FromGregorian(DateTime.Now); }
+        var from = PersianDate.ToGregorian(y, m, 1);
+        var to = m == 12 ? PersianDate.ToGregorian(y + 1, 1, 1) : PersianDate.ToGregorian(y, m + 1, 1);
+        if (from == DateTime.MinValue || to == DateTime.MinValue || to <= from)
+            return BadRequest(new { message = "ماه درخواستی معتبر نیست." });
+
+        // روزهای آینده در گزارش نمی‌آیند (هنوز اتفاق نیافتاده‌اند)
+        var today = DateTime.Today;
+        var toExclusive = to <= today.AddDays(1) ? to : today.AddDays(1);
+        var empty = new List<object>();
+
+        var users = await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive).ToListAsync();
+        if (userId.HasValue && userId > 0) users = users.Where(u => u.Id == userId.Value).ToList();
+        if (users.Count == 0 || toExclusive <= from)
+            return Ok(new { year = y, month = m, monthName = PersianDate.MonthName(m), items = empty });
+
+        var recBy = (await _db.AttendanceRecords
+            .Where(a => a.WorkDate >= from && a.WorkDate < toExclusive).ToListAsync())
+            .ToDictionary(r => (r.UserId, r.WorkDate.Date));
+        var inOut = (await _db.AttendanceSegments
+            .Where(s => s.WorkDate >= from && s.WorkDate < toExclusive && s.EnterAt != null)
+            .GroupBy(s => new { s.UserId, s.WorkDate })
+            .Select(g => new { g.Key.UserId, g.Key.WorkDate, Cnt = g.Count() })
+            .ToListAsync())
+            .ToDictionary(x => (x.UserId, x.WorkDate.Date), x => x.Cnt);
+        // مرخصی‌های تاییدشدهٔ هم‌پوشان با بازهٔ گزارش (فیلتر دقیق در حافظه)
+        var leaves = await _db.LeaveRequests
+            .Where(l => l.Status == "Approved" && (l.Type == "Daily" || l.Type == "Hourly")
+                        && l.StartDate < toExclusive && l.EndDate >= from)
+            .ToListAsync();
+        var calDays = await _db.WorkCalendarDays.AsNoTracking()
+            .Where(c => c.Date >= from && c.Date < toExclusive).ToDictionaryAsync(c => c.Date.Date);
+        var hols = (await _db.CompanyHolidays.AsNoTracking()
+            .Where(h => h.HolidayDate >= from && h.HolidayDate < toExclusive).ToListAsync())
+            .ToDictionary(h => h.HolidayDate.Date);
+        var settings = await GetSettingsAsync();
+        var now = DateTime.Now;
+
+        var items = new List<object>();
+        foreach (var u in users)
+        {
+            var uLeaves = leaves.Where(l => l.RequesterUserId == u.Id).ToList();
+            for (var day = from.Date; day < toExclusive.Date; day = day.AddDays(1))
+            {
+                recBy.TryGetValue((u.Id, day), out var r);
+                string? finalStatus;
+                var deficitMinutes = 0;
+                var hasApprovedLeave = false;
+                if (r != null)
+                {
+                    finalStatus = r.FinalStatus;
+                    deficitMinutes = r.DeficitMinutes;
+                    hasApprovedLeave = r.HasApprovedLeave;
+                }
+                else
+                {
+                    var hasDaily = uLeaves.Any(l => l.Type == "Daily" && day >= l.StartDate.Date && day <= l.EndDate.Date);
+                    var hasHourly = uLeaves.Any(l => l.Type == "Hourly" && l.StartDate.Date == day);
+                    var rule = WorkRules.Resolve(day, u.ShiftGroup, calDays.GetValueOrDefault(day), hols.GetValueOrDefault(day), settings);
+                    var shiftStart = u.ShiftGroup?.StartTime ?? new TimeSpan(8, 0, 0);
+                    var grace = u.ShiftGroup?.GraceMinutes ?? 10;
+                    var deadline = day.Add(shiftStart).AddMinutes(grace + 30);
+                    if (hasDaily || hasHourly) { finalStatus = "LeaveDay"; hasApprovedLeave = true; }
+                    else if (!rule.IsWorkday) finalStatus = "Holiday";
+                    else if (day == today && now < deadline) finalStatus = "Pending";
+                    else { finalStatus = "Absent"; deficitMinutes = AttendanceMath.ScheduledMinutes(rule); }
+                }
+
+                if (onlyDeficit && deficitMinutes <= 0) continue;
+
+                items.Add(new
+                {
+                    date = day,
+                    weekday = PersianDate.WeekdayName(day),
+                    userId = u.Id,
+                    fullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim(),
+                    shiftName = r?.ShiftGroup?.Name ?? u.ShiftGroup?.Name ?? "—",
+                    enterAt = r?.EnterAt,
+                    exitAt = r?.ExitAt,
+                    enterStatus = r?.EnterStatus,
+                    lateMinutes = r?.LateMinutes ?? 0,
+                    earlyLeaveMinutes = r?.EarlyLeaveMinutes ?? 0,
+                    workMinutes = r?.WorkMinutes ?? 0,
+                    deficitMinutes,
+                    overtimeMinutes = r?.OvertimeMinutes ?? 0,
+                    hasApprovedLeave,
+                    finalStatus,
+                    note = r?.Note,
+                    inOutCount = inOut.TryGetValue((u.Id, day), out var cnt) ? cnt : 0
+                });
+            }
+        }
+        // تازه‌ترین روزها اول
+        items = items.OrderByDescending(x => ((dynamic)x).date).ThenBy(x => ((dynamic)x).fullName).ToList();
+        return Ok(new { year = y, month = m, monthName = PersianDate.MonthName(m), items });
+    }
+
     // ================== گزارش خلاصه ماهانه (به ازای هر کاربر) ==================
     [HttpGet("monthly-report")]
     public async Task<IActionResult> MonthlyReport([FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int skip = 0, [FromQuery] int? take = null)
@@ -1733,47 +1840,85 @@ public class AttendanceController : ControllerBase
     // ================== وضعیت امروز همه ==================
     [HttpGet("today-status")]
     public async Task<IActionResult> TodayStatus([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => await DayStatusCore(DateTime.Today, skip, take);
+
+    // ================== گزارش وضعیت هر روز — ورود/خروج و غیبت هر پرسنل در یک سطر ==================
+    [HttpGet("day-status")]
+    public async Task<IActionResult> DayStatus([FromQuery] DateTime? date, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => await DayStatusCore(date?.Date ?? DateTime.Today, skip, take);
+
+    /// <summary>
+    /// هستهٔ مشترک «وضعیت امروز» و «گزارش روز»:
+    /// یک سطر به ازای هر پرسنل فعال — ورود، خروج، کارکرد، کسری و وضعیت نهایی روز.
+    /// برای امروز بازهٔ غیبتِ باز تا «اکنون» ارزیابی و تجمیع به‌روز می‌شود؛
+    /// برای روزهای گذشته مقادیر ذخیره‌شدهٔ نهایی رکورد نمایش داده می‌شود.
+    /// </summary>
+    private async Task<IActionResult> DayStatusCore(DateTime day, int skip = 0, int? take = null)
     {
         if (!await IsAdminAsync()) return Forbid();
-        var today = DateTime.Today;
+        day = day.Date;
+        var isToday = day == DateTime.Today;
         var users = await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive).ToListAsync();
         var recs = await _db.AttendanceRecords.Include(a => a.ShiftGroup)
-            .Where(a => a.WorkDate == today).ToDictionaryAsync(a => a.UserId);
+            .Where(a => a.WorkDate == day).ToDictionaryAsync(a => a.UserId);
         var allSegs = await _db.AttendanceSegments
-            .Where(s => s.WorkDate == today)
+            .Where(s => s.WorkDate == day)
             .OrderBy(s => s.Seq)
             .ToListAsync();
+
+        // مرخصی‌های تاییدشدهٔ هم‌پوشان با این روز — یک کوئری به‌جای به‌ازای هر پرسنل؛
+        // بازهٔ کوئری عام است و فیلتر دقیق (مانند HasApprovedLeaveAsync) در حافظه انجام می‌شود.
+        var leaves = await _db.LeaveRequests
+            .Where(l => l.Status == "Approved" && (l.Type == "Daily" || l.Type == "Hourly")
+                        && l.StartDate < day.AddDays(1) && l.EndDate >= day)
+            .ToListAsync();
+        leaves = leaves.Where(l =>
+            (l.Type == "Daily" && day >= l.StartDate.Date && day <= l.EndDate.Date) ||
+            (l.Type == "Hourly" && l.StartDate.Date == day)).ToList();
+
+        // قاعدهٔ کاری روز (تقویم کاری > تعطیلی شرکتی > شیفت > پیش‌فرض) — یک‌بار برای همه
+        var cal = await _db.WorkCalendarDays.AsNoTracking().FirstOrDefaultAsync(d => d.Date.Date == day);
+        var hol = await _db.CompanyHolidays.AsNoTracking().FirstOrDefaultAsync(h => h.HolidayDate.Date == day);
+        var settings = await GetSettingsAsync();
 
         var items = new List<object>();
         var now = DateTime.Now;
         foreach (var u in users)
         {
             recs.TryGetValue(u.Id, out var r);
-            var hasLeave = await HasApprovedLeaveAsync(u.Id, today);
+            var hasLeave = leaves.Any(l => l.RequesterUserId == u.Id);
             var uSegs = allSegs.Where(s => s.UserId == u.Id).OrderBy(s => s.Seq).ToList();
-            if (r != null)
+            var rule = WorkRules.Resolve(day, u.ShiftGroup, cal, hol, settings);
+            // بازمحاسبهٔ زنده فقط برای «امروز» و فقط برای رکوردهایی که بازهٔ ورود/خروج (Segment)
+            // دارند. رکوردهای بدون بازه (داده‌های قدیمی یا اصلاح‌شدهٔ دستی) باید با مقادیر
+            // ذخیره‌شده نمایش داده شوند — Recompute با بازهٔ خالی ورود/خروج و کارکرد را پاک می‌کند.
+            if (r != null && isToday && uSegs.Count > 0)
             {
                 // بازه‌ی غیبتِ بازِ آخر را تا «اکنون» ارزیابی و تجمیعی را به‌روز می‌کنیم
                 var uLast = uSegs.LastOrDefault();
                 if (uLast != null && uLast.ExitAt.HasValue)
                     await EvaluateGapAsync(uLast, now);
-                var ruleTs = await ResolveRuleAsync(u.Id, today, u.ShiftGroup);
+                var ruleTs = await ResolveRuleAsync(u.Id, day, u.ShiftGroup);
                 await AggregateAsync(r, uSegs, ruleTs, now);
             }
 
-            // تعیین وضعیت نهایی با درنظر گرفتن زمان فعلی (قبل از پایان شیفت، غیبت قطعی نیست)
+            // تعیین وضعیت نهایی با درنظر گرفتن زمان فعلی (قبل از پایان مهلت ورود، غیبت قطعی نیست)
             string? finalStatus = r?.FinalStatus;
+            var deficitMinutes = r?.DeficitMinutes ?? 0;
             if (r == null)
             {
+                var shiftStart = u.ShiftGroup?.StartTime ?? new TimeSpan(8, 0, 0);
+                var grace = u.ShiftGroup?.GraceMinutes ?? 10;
+                var deadline = day.Add(shiftStart).AddMinutes(grace + 30); // ۳۰ دقیقه فرصت اضافه
                 if (hasLeave) finalStatus = "LeaveDay";
+                else if (!rule.IsWorkday) finalStatus = "Holiday";      // جمعه/تعطیلی شرکتی/تقویم کاری
+                else if (day > DateTime.Today) finalStatus = "Pending"; // روز آینده هنوز نرسیده
+                else if (isToday && now < deadline) finalStatus = "Pending";
                 else
                 {
-                    // اگر هنوز شیفت شروع نشده (یا شروع+تاخیر مجاز نگذشته)، وضعیت «در انتظار»
-                    var shiftEnd = u.ShiftGroup?.EndTime ?? new TimeSpan(16, 30, 0);
-                    var grace = u.ShiftGroup?.GraceMinutes ?? 10;
-                    var shiftStart = u.ShiftGroup?.StartTime ?? new TimeSpan(8, 0, 0);
-                    var deadline = today.Add(shiftStart).AddMinutes(grace + 30); // ۳۰ دقیقه فرصت اضافه
-                    finalStatus = now < deadline ? "Pending" : "Absent";
+                    finalStatus = "Absent";
+                    // غیبتِ کامل در روزِ کاری = کسریِ کل موظفی آن روز (هم‌راستا با گزارش خلاصه ماهانه)
+                    deficitMinutes = AttendanceMath.ScheduledMinutes(rule);
                 }
             }
 
@@ -1790,13 +1935,14 @@ public class AttendanceController : ControllerBase
                 LateMinutes = r?.LateMinutes ?? 0,
                 EarlyLeaveMinutes = r?.EarlyLeaveMinutes ?? 0,
                 WorkMinutes = r?.WorkMinutes ?? 0,
-                DeficitMinutes = r?.DeficitMinutes ?? 0,
+                DeficitMinutes = deficitMinutes,
                 CoveredGapMinutes = r?.CoveredGapMinutes ?? 0,
+                OvertimeMinutes = r?.OvertimeMinutes ?? 0,
                 FinalStatus = finalStatus,
                 HasApprovedLeave = r?.HasApprovedLeave ?? hasLeave,
                 Note = r?.Note,
                 InOutCount = uSegs.Count(s => s.EnterAt.HasValue),
-                IsInNow = uSegs.LastOrDefault() is { EnterAt: not null, ExitAt: null },
+                IsInNow = isToday && uSegs.LastOrDefault() is { EnterAt: not null, ExitAt: null },
                 UncoveredGaps = uSegs.Count(s => s.ExitAt.HasValue && !s.ExitCovered),
                 Segments = uSegs.Where(s => s.EnterAt.HasValue).OrderBy(s => s.Seq).Select(MapSegment).ToList()
             });
@@ -1812,9 +1958,19 @@ public class AttendanceController : ControllerBase
             Pending = items.Count(x => ((dynamic)x).FinalStatus == "Pending"),
             Late = items.Count(x => ((dynamic)x).EnterStatus == "Late"),
             OnLeave = items.Count(x => ((dynamic)x).HasApprovedLeave),
+            Holiday = items.Count(x => ((dynamic)x).FinalStatus == "Holiday"),
         };
-        if (Paging.Requested(skip, take)) return Ok(new { stats, total = items.Count, items = Paging.Slice(items, skip, take) });
-        return Ok(new { stats, items });
+        // pagination (سازگار با استاندارد بقیهٔ endpointها) + فیلدهای روز برای گزارش تاریخ‌دار
+        if (Paging.Requested(skip, take))
+            return Ok(new { date = day, isToday, weekday = PersianDate.WeekdayName(day), stats, total = items.Count, items = Paging.Slice(items, skip, take) });
+        return Ok(new
+        {
+            date = day,
+            isToday,
+            weekday = PersianDate.WeekdayName(day),
+            stats,
+            items
+        });
     }
 
     // ================== اصلاح رکورد ==================

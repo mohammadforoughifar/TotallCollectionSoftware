@@ -50,6 +50,17 @@ else
             else if (tab == "cal")
             {
                 @* ================== تب تقویم سال ================== *@
+                @if (!string.IsNullOrEmpty(calError))
+                {
+                    <div class="alert alert-danger d-flex align-items-center gap-2">
+                        <i class="bi bi-exclamation-triangle-fill"></i>
+                        <div>
+                            <b>تقویم از سرور دریافت نشد.</b>
+                            <div class="small">@calError</div>
+                            <div class="small text-muted mt-1">اگر بعد از انتشار (پابلیش) این خطا را می‌بینید، احتمالاً ساختار دیتابیس سرور به‌روز نیست؛ یک‌بار API را ری‌استارت کنید تا جدول‌های تقویم خودکار ساخته شوند، سپس صفحه را با Ctrl+Shift+R نوسازی کنید.</div>
+                        </div>
+                    </div>
+                }
                 <div class="row g-2 mb-3">
                     <div class="col-6 col-md-2"><div class="wc-stat wc-stat-work"><span class="wc-stat-num">@Fa.Digits(summary?.TotalWorkDays ?? 0)</span><span class="wc-stat-lbl">روز کاری</span></div></div>
                     <div class="col-6 col-md-2"><div class="wc-stat"><span class="wc-stat-num">@Num(summary?.TotalWorkHours ?? 0)</span><span class="wc-stat-lbl">ساعت کاری سال</span></div></div>
@@ -340,6 +351,10 @@ else
 
                     <div class="col-lg-7">
                         <div class="wc-panel">
+                            @if (!string.IsNullOrEmpty(holError))
+                            {
+                                <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle-fill me-1"></i>دریافت تعطیلات ناموفق بود — @holError</div>
+                            }
                             <div class="fw-800 mb-2"><i class="bi bi-list-ul text-primary"></i> تعطیلات سال @Fa.Digits(vmYear)</div>
                             @if (holidayRows.Count == 0)
                             {
@@ -559,6 +574,8 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
 @code {
     // ================== وضعیت ==================
     private bool loading = true;
+    private string calError = "";
+    private string holError = "";
     private bool saving, saveError, dirty;
     private bool savingSet;
     private bool importing, importError;
@@ -597,18 +614,20 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
         await LoadYear();
     }
 
-    private void SetTab(string t)
+    // نکته: بارگذاری باید await شود (نه `_ = Load...()`); وگرنه بعد از پایان دانلود رندر مجدد
+    // انجام نمی‌شود و اسپینر برای همیشه می‌ماند.
+    private async Task SetTab(string t)
     {
         tab = t;
-        if (t == "hol") _ = LoadHolidays();
+        if (t == "hol") await LoadHolidays();
     }
 
-    private void PrevYear() { vmYear--; _ = LoadYear(); }
-    private void NextYear() { vmYear++; _ = LoadYear(); }
-    private void GoCurrentYear() { (vmYear, _, _) = PersianDate.FromGregorian(DateTime.Now); _ = LoadYear(); }
-    private void JumpYear(Microsoft.AspNetCore.Components.ChangeEventArgs e)
+    private async Task PrevYear() { vmYear--; await LoadYear(); }
+    private async Task NextYear() { vmYear++; await LoadYear(); }
+    private async Task GoCurrentYear() { (vmYear, _, _) = PersianDate.FromGregorian(DateTime.Now); await LoadYear(); }
+    private async Task JumpYear(Microsoft.AspNetCore.Components.ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var y) && y is >= 1300 and <= 1500) { vmYear = y; _ = LoadYear(); }
+        if (int.TryParse(e.Value?.ToString(), out var y) && y is >= 1300 and <= 1500) { vmYear = y; await LoadYear(); }
     }
 
     // ================== بارگذاری ==================
@@ -618,6 +637,7 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
         saveMsg = "";
         dirty = false;
         sel = null;
+        calError = "";
         try
         {
             var r = await Http.GetFromJsonAsync<YearResp>($"/api/Attendance/calendar-year?jy={vmYear}");
@@ -688,16 +708,18 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
                 bulkEnd = set.DefaultEnd;
             }
         }
-        catch
+        catch (Exception ex)
         {
             months = new();
             summary = null;
+            calError = "پیام سرور: " + ex.Message;
         }
         loading = false;
     }
 
     private async Task LoadHolidays()
     {
+        holError = "";
         try
         {
             var from = PersianDate.ToGregorian(vmYear, 1, 1);
@@ -708,7 +730,7 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
                 .Select(h => new HolRow { Id = h.id, Date = h.holidayDate, Name = h.name, IsOfficial = h.isOfficial, CreatedByName = h.createdByName })
                 .OrderBy(h => h.Date).ToList();
         }
-        catch { holidayRows = new List<HolRow>(); }
+        catch (Exception ex) { holidayRows = new List<HolRow>(); holError = "پیام سرور: " + ex.Message; }
     }
 
     // ================== نمای روز ==================

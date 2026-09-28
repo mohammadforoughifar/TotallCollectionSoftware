@@ -49,6 +49,10 @@ public static class DbInitializer
                     MigrateSqlServer(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);
+                    // جداول/ستون‌های تقویم کاری و حضور — دیتابیس‌های قدیمی SQL Server این‌ها را ندارند:
+                    // مایگریشن squash شده روی دیتابیسِ موجود «stamp و رد» می‌شود و جدول‌های جدید هرگز ساخته
+                    // نمی‌شوند؛ نتیجه: صفحهٔ تقویم کاری بعد از انتشار خالی می‌ماند (معادل SQLite این خودتعمیر موجود است).
+                    EnsureSqlServerWorkCalendarSchema(db);
                     // امکانات امنیتی آرشیو: لاگ دانلود/مشاهده، تایید رمز برای دانلود، دسترسی گروهی
                     await DocArchiveSecuritySchemaV1.EnsureAsync(db);
                     // موج دوم: واترمارک پیش‌نمایش، درخواست دسترسی، شماره‌گذار خودکار کد مدرک
@@ -1068,6 +1072,120 @@ IF NOT EXISTS (SELECT 1 FROM [dbo].[__EFMigrationsHistory] WHERE [MigrationId] =
             db.SaveChanges();
             Console.WriteLine("[DB] قواعد پیش‌فرض سند خودکار خزانه ساخته شد.");
         }
+    }
+
+    /// <summary>
+    /// خودتعمیر جداول/ستون‌های «تقویم کاری، تعطیلات و شیفت‌ها» روی SQL Server — معادل EnsureSqliteWorkCalendarSchema.
+    /// برای دیتابیس‌های قدیمی ضروری است: مایگریشن squash شده وقتی جدولی مثل Users از قبل باشد stamp و رد می‌شود،
+    /// پس جدول‌ها/ستون‌های بعدی (WorkCalendarSettings، CompanyHolidays.IsOfficial، OvertimeMode و...) هرگز ساخته نمی‌شوند
+    /// و endpoint تقویم با خطای «Invalid object name / Invalid column name» از کار می‌افتد.
+    /// همهٔ دستورها idempotent هستند (IF OBJECT_ID / COL_LENGTH) و خطای هر کدام فقط ثبت می‌شود.
+    /// </summary>
+    private static void EnsureSqlServerWorkCalendarSchema(AppDbContext db)
+    {
+        void Run(string sql, string what)
+        {
+            try { db.Database.ExecuteSqlRaw(sql); }
+            catch (Exception ex) { Console.WriteLine($"[DB] هشدار: {what}: {ex.Message}"); }
+        }
+
+        // ---- WorkCalendarDays: جدول کامل (اگر نبود) ----
+        Run(@"
+IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.WorkCalendarDays (
+        Id int IDENTITY(1,1) NOT NULL,
+        Date datetime2 NOT NULL,
+        IsWorkday bit NOT NULL,
+        StartTime time NULL,
+        EndTime time NULL,
+        GraceMinutes int NOT NULL CONSTRAINT DF_WorkCalendarDays_GraceMinutes DEFAULT 0,
+        OvertimeHours float NOT NULL CONSTRAINT DF_WorkCalendarDays_OvertimeHours DEFAULT 0,
+        OvertimeMode int NOT NULL CONSTRAINT DF_WorkCalendarDays_OvertimeMode DEFAULT 0,
+        OvertimeStart time NULL,
+        OvertimeEnd time NULL,
+        Note nvarchar(100) NULL,
+        CreatedAt datetime2 NOT NULL,
+        UpdatedAt datetime2 NULL,
+        CONSTRAINT PK_WorkCalendarDays PRIMARY KEY (Id)
+    );
+    CREATE UNIQUE INDEX IX_WorkCalendarDays_Date ON dbo.WorkCalendarDays (Date);
+END", "ساخت جدول WorkCalendarDays");
+
+        // ---- WorkCalendarDays: ستون‌های اضافه‌شدهٔ بعدی (جدول قدیمی) ----
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'StartTime') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD StartTime time NULL;", "ستون StartTime");
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'EndTime') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD EndTime time NULL;", "ستون EndTime");
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'GraceMinutes') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD GraceMinutes int NOT NULL DEFAULT 0;", "ستون GraceMinutes");
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'OvertimeHours') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD OvertimeHours float NOT NULL DEFAULT 0;", "ستون OvertimeHours");
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'OvertimeMode') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD OvertimeMode int NOT NULL DEFAULT 0;", "ستون OvertimeMode");
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'OvertimeStart') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD OvertimeStart time NULL;", "ستون OvertimeStart");
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'OvertimeEnd') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD OvertimeEnd time NULL;", "ستون OvertimeEnd");
+        Run(@"IF OBJECT_ID(N'dbo.WorkCalendarDays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.WorkCalendarDays', N'Note') IS NULL ALTER TABLE dbo.WorkCalendarDays ADD Note nvarchar(100) NULL;", "ستون Note");
+
+        // ---- CompanyHolidays: جدول (اگر نبود) + ستون IsOfficial ----
+        Run(@"
+IF OBJECT_ID(N'dbo.CompanyHolidays', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.CompanyHolidays (
+        Id int IDENTITY(1,1) NOT NULL,
+        HolidayDate datetime2 NOT NULL,
+        Name nvarchar(100) NOT NULL,
+        CreatedByName nvarchar(150) NULL,
+        CreatedAt datetime2 NOT NULL,
+        CONSTRAINT PK_CompanyHolidays PRIMARY KEY (Id)
+    );
+    CREATE INDEX IX_CompanyHolidays_HolidayDate ON dbo.CompanyHolidays (HolidayDate);
+END", "ساخت جدول CompanyHolidays");
+        Run(@"IF OBJECT_ID(N'dbo.CompanyHolidays', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.CompanyHolidays', N'IsOfficial') IS NULL ALTER TABLE dbo.CompanyHolidays ADD IsOfficial bit NOT NULL DEFAULT 0;", "ستون IsOfficial");
+
+        // ---- WorkCalendarSettings: جدول تنظیمات تقویم کاری ----
+        Run(@"
+IF OBJECT_ID(N'dbo.WorkCalendarSettings', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.WorkCalendarSettings (
+        Id int IDENTITY(1,1) NOT NULL,
+        DefaultStart time NOT NULL,
+        DefaultEnd time NOT NULL,
+        GraceMinutes int NOT NULL CONSTRAINT DF_WorkCalendarSettings_GraceMinutes DEFAULT 10,
+        RestDayFlags int NOT NULL CONSTRAINT DF_WorkCalendarSettings_RestDayFlags DEFAULT 32,
+        ApplyOfficialHolidays bit NOT NULL CONSTRAINT DF_WorkCalendarSettings_ApplyOfficialHolidays DEFAULT 1,
+        UpdatedAt datetime2 NOT NULL,
+        CONSTRAINT PK_WorkCalendarSettings PRIMARY KEY (Id)
+    );
+    CREATE UNIQUE INDEX IX_WorkCalendarSettings_Id ON dbo.WorkCalendarSettings (Id);
+END", "ساخت جدول WorkCalendarSettings");
+
+        // ---- ShiftGroups: ستون‌های شیفت دوپاره ----
+        Run(@"IF OBJECT_ID(N'dbo.ShiftGroups', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.ShiftGroups', N'StartTime2') IS NULL ALTER TABLE dbo.ShiftGroups ADD StartTime2 time NULL;", "ستون StartTime2");
+        Run(@"IF OBJECT_ID(N'dbo.ShiftGroups', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.ShiftGroups', N'EndTime2') IS NULL ALTER TABLE dbo.ShiftGroups ADD EndTime2 time NULL;", "ستون EndTime2");
+
+        // ---- AttendanceSegments: ستون دستگاه ورود ----
+        Run(@"IF OBJECT_ID(N'dbo.AttendanceSegments', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.AttendanceSegments', N'EnterDevice') IS NULL ALTER TABLE dbo.AttendanceSegments ADD EnterDevice nvarchar(250) NULL;", "ستون EnterDevice");
+
+        // ---- AuditLogs: جدول لاگ عملیات ----
+        Run(@"
+IF OBJECT_ID(N'dbo.AuditLogs', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.AuditLogs (
+        Id bigint IDENTITY(1,1) NOT NULL,
+        At datetime2 NOT NULL,
+        UserId int NULL,
+        Username nvarchar(100) NULL,
+        Module nvarchar(80) NOT NULL,
+        Action nvarchar(80) NOT NULL,
+        HttpMethod nvarchar(10) NOT NULL,
+        Path nvarchar(300) NULL,
+        Summary nvarchar(200) NULL,
+        Payload nvarchar(4000) NULL,
+        Ip nvarchar(64) NULL,
+        Device nvarchar(250) NULL,
+        StatusCode int NOT NULL CONSTRAINT DF_AuditLogs_StatusCode DEFAULT 0,
+        DurationMs int NOT NULL CONSTRAINT DF_AuditLogs_DurationMs DEFAULT 0,
+        CONSTRAINT PK_AuditLogs PRIMARY KEY (Id)
+    );
+    CREATE INDEX IX_AuditLogs_At ON dbo.AuditLogs (At);
+    CREATE INDEX IX_AuditLogs_UserId ON dbo.AuditLogs (UserId);
+END", "ساخت جدول AuditLogs");
     }
 
     private static void EnsureSqliteWorkCalendarSchema(AppDbContext db)

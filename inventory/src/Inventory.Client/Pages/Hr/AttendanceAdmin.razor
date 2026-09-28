@@ -49,17 +49,17 @@
 
 <!-- ===== تب‌ها ===== -->
 <div class="lv-tabs d-flex gap-2 mb-3 flex-wrap">
-    <button class="lv-tab @(tab == "today" ? "active" : "")" @onclick='() => tab = "today"'><i class="bi bi-people"></i> وضعیت امروز</button>
+    <button class="lv-tab @(tab == "today" ? "active" : "")" @onclick='() => tab = "today"'><i class="bi bi-people"></i> وضعیت روز</button>
     @if (Auth.Has("Attendance.ManageShifts") || Auth.IsAdmin)
     {
         <button class="lv-tab @(tab == "shifts" ? "active" : "")" @onclick='() => tab = "shifts"'><i class="bi bi-clock-history"></i> مدیریت شیفت‌ها</button>
         <button class="lv-tab @(tab == "assign" ? "active" : "")" @onclick='() => tab = "assign"'><i class="bi bi-person-gear"></i> تخصیص شیفت</button>
     }
-    <button class="lv-tab @(tab == "report" ? "active" : "")" @onclick='() => { tab = "report"; _ = LoadReport(); }'><i class="bi bi-journal-text"></i> گزارش روزانه</button>
-    <button class="lv-tab @(tab == "monthly" ? "active" : "")" @onclick='() => { tab = "monthly"; _ = LoadMonthly(); }'><i class="bi bi-bar-chart-fill"></i> گزارش خلاصه ماه</button>
+    <button class="lv-tab @(tab == "report" ? "active" : "")" @onclick="ShowReportTab"><i class="bi bi-journal-text"></i> گزارش روزانه</button>
+    <button class="lv-tab @(tab == "monthly" ? "active" : "")" @onclick="ShowMonthlyTab"><i class="bi bi-bar-chart-fill"></i> گزارش خلاصه ماه</button>
     @if (Auth.IsAdmin || Auth.Has("Attendance.ManageShifts"))
     {
-        <button class="lv-tab @(tab == "security" ? "active" : "")" @onclick='() => { tab = "security"; _ = LoadSecurity(); }'><i class="bi bi-shield-check"></i> امنیت حضور و غیاب</button>
+        <button class="lv-tab @(tab == "security" ? "active" : "")" @onclick="ShowSecurityTab"><i class="bi bi-shield-check"></i> امنیت حضور و غیاب</button>
     }
 </div>
 
@@ -68,9 +68,47 @@
 {
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <b><i class="bi bi-calendar2-day text-primary"></i> وضعیت امروز — @PersianDate.ToLong(DateTime.Now)</b>
-            <button class="btn btn-sm btn-outline-primary" @onclick="LoadToday"><i class="bi bi-arrow-clockwise"></i> به‌روزرسانی</button>
+            <b>
+                <i class="bi bi-calendar2-day text-primary"></i> گزارش روزانه — @PersianDate.ToLong(dayDate)
+                <span class="badge bg-light text-dark border">@PersianDate.WeekdayName(dayDate)</span>
+                @if (dayDate.Date == DateTime.Today)
+                {
+                    <span class="badge bg-success"><i class="bi bi-dot"></i>امروز</span>
+                }
+            </b>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <div class="att-day-picker">
+                    <DatePicker Value="dayDate" ValueChanged="OnPickDay" AllowClear="false" Placeholder="انتخاب تاریخ" />
+                </div>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="GoToday" disabled="@(dayDate.Date == DateTime.Today)"><i class="bi bi-calendar-event me-1"></i>امروز</button>
+                <button class="btn btn-sm btn-outline-primary" @onclick="LoadToday" title="به‌روزرسانی"><i class="bi bi-arrow-clockwise"></i></button>
+                <button class="btn btn-sm btn-outline-success" @onclick="ExportDayCsv" disabled="@(!todayItems.Any())"><i class="bi bi-download me-1"></i> CSV</button>
+            </div>
         </div>
+        @if (!string.IsNullOrEmpty(todayError))
+        {
+            <div class="alert alert-warning py-2 px-3 mb-0 rounded-0 border-start-0 border-end-0">
+                <i class="bi bi-exclamation-triangle me-1"></i>@todayError
+            </div>
+        }
+        @if (todayStats != null)
+        {
+            <div class="card-body py-2 border-bottom d-flex flex-wrap gap-2 align-items-center att-day-stats">
+                <span class="badge bg-light text-dark border">کل پرسنل: <b>@Fa.Digits(todayStats.Total)</b></span>
+                <span class="badge bg-success"><i class="bi bi-check2 me-1"></i>حاضر: <b>@Fa.Digits(todayStats.Present)</b></span>
+                <span class="badge bg-danger"><i class="bi bi-x me-1"></i>غایب: <b>@Fa.Digits(todayStats.Absent)</b></span>
+                <span class="badge bg-warning text-dark"><i class="bi bi-clock me-1"></i>با تاخیر: <b>@Fa.Digits(todayStats.Late)</b></span>
+                <span class="badge bg-primary"><i class="bi bi-calendar2-check me-1"></i>مرخصی: <b>@Fa.Digits(todayStats.OnLeave)</b></span>
+                @if (todayStats.Pending > 0)
+                {
+                    <span class="badge bg-secondary"><i class="bi bi-hourglass-split me-1"></i>در انتظار: <b>@Fa.Digits(todayStats.Pending)</b></span>
+                }
+                @if (todayStats.Holiday > 0)
+                {
+                    <span class="badge bg-info text-dark"><i class="bi bi-calendar-x me-1"></i>تعطیل: <b>@Fa.Digits(todayStats.Holiday)</b></span>
+                }
+            </div>
+        }
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0 att-table">
@@ -79,7 +117,7 @@
                     </thead>
                     <tbody>
                         @if (todayLoading) { <tr><td colspan="9" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
-                        else if (!todayItems.Any()) { <tr><td colspan="9" class="text-center text-muted py-4">پرسنلی ثبت نشده.</td></tr> }
+                        else if (!todayItems.Any()) { <tr><td colspan="9" class="text-center text-muted py-4">@(string.IsNullOrEmpty(todayError) ? "پرسنلی ثبت نشده." : "گزارش این روز در دسترس نیست.")</td></tr> }
                         else
                         {
                             @foreach (var u in todayItems)
@@ -111,10 +149,26 @@
                                         @if (u.UncoveredGaps > 0) { <span class="badge bg-warning ms-1" title="خروجی که با مرخصی/ماموریت ساعتی پوشش ندارد">بدون پوشش</span> }
                                     </td>
                                     <td>@WorkText(u.WorkMinutes)</td>
-                                    <td class="@(u.DeficitMinutes>0?"text-danger fw-700":"")">@(u.DeficitMinutes>0?WorkText(u.DeficitMinutes):"—")</td>
+                                    <td>
+                                        <span class="@(u.DeficitMinutes>0?"text-danger fw-700":"")">@(u.DeficitMinutes>0?WorkText(u.DeficitMinutes):"—")</span>
+                                        @if (u.DeficitMinutes > 0 && CanSendDeficitLetter && u.UserId != Auth.UserId)
+                                        {
+                                            @if (deficitSent.Contains(DeficitKey(u.UserId, dayDate)))
+                                            {
+                                                <button class="btn btn-sm btn-outline-success py-0 px-1 ms-1" title="نامه کسری کار برای این نفر در همین نشست ارسال شده است" disabled>
+                                                    <i class="bi bi-envelope-check"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-outline-danger py-0 px-1 ms-1" title="ارسال نامه کسری کار به @(u.FullName)" @onclick="() => OpenDeficitLetter(new DeficitLetterTarget(u.UserId, u.FullName, dayDate, u.DeficitMinutes, u.LateMinutes, u.EnterAt))">
+                                                    <i class="bi bi-envelope-exclamation"></i>
+                                                </button>
+                                            }
+                                        }
+                                    </td>
                                     <td>
                                         @TodayStatusBadge(u.FinalStatus, u.EnterStatus, u.HasApprovedLeave)
-                                        @if (u.HasApprovedLeave) { <span class="badge bg-primary ms-1">مرخصی</span> }
                                     </td>
                                     <td class="small text-muted">@(u.Note ?? "—")</td>
                                 </tr>
@@ -211,8 +265,12 @@
 {
     <div class="card border-0 shadow-sm">
         <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <b><i class="bi bi-journal-text text-primary"></i> گزارش روزانه</b>
-            <div class="d-flex gap-2">
+            <b><i class="bi bi-journal-text text-primary"></i> گزارش روزانه — @PersianDate.MonthName(reportMonth) @Fa.Digits(reportYear)</b>
+            <div class="d-flex gap-2 align-items-center flex-wrap">
+                <label class="form-check mb-0 small fw-800" title="فقط سطرهایی که کسری کار دارند">
+                    <input type="checkbox" class="form-check-input" @bind="reportOnlyDeficit" @bind:after="LoadReport" />
+                    <span class="form-check-label">فقط روزهای دارای کسری</span>
+                </label>
                 <select class="form-select form-select-sm" style="width:auto" @bind="reportUser" @bind:after="LoadReport">
                     <option value="0">همه پرسنل</option>
                     @foreach (var p in personnel) { <option value="@p.Id">@p.FullName</option> }
@@ -228,31 +286,56 @@
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0 att-table">
+                <table class="table table-hover align-middle mb-0 att-table att-report-table">
                     <thead>
-                        <tr><th>تاریخ</th><th>پرسنل</th><th>شیفت</th><th>ورود</th><th>خروج</th><th>ورود/خروج</th><th>کارکرد</th><th>تاخیر</th><th>کسری</th><th>وضعیت</th></tr>
+                        <tr><th>تاریخ</th><th>پرسنل</th><th>شیفت</th><th>ورود</th><th>خروج</th><th>کارکرد</th><th>تاخیر</th><th>کسری</th><th>وضعیت</th><th>نامه</th></tr>
                     </thead>
                     <tbody>
                         @if (reportLoading) { <tr><td colspan="10" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
-                        else if (!reportItems.Any()) { <tr><td colspan="10" class="text-center text-muted py-4">رکوردی در این ماه ثبت نشده.</td></tr> }
+                        else if (!reportItems.Any()) { <tr><td colspan="10" class="text-center text-muted py-4">داده‌ای برای نمایش نیست.</td></tr> }
                         else
                         {
                             @foreach (var r in reportItems)
                             {
-                                <tr>
-                                    <td dir="ltr">@PersianDate.ToShort(r.WorkDate) <div class="small text-muted">@PersianDate.WeekdayName(r.WorkDate)</div></td>
-                                    <td><div class="d-flex align-items-center gap-2"><UserAvatar LoginUserId="@r.UserId" Size="26" /><span>@r.UserName</span></div></td>
-                                    <td>@(r.ShiftName ?? "—")</td>
-                                    <td dir="ltr">@(r.EnterAt.HasValue ? r.EnterAt.Value.ToString("HH:mm") : "—")</td>
-                                    <td dir="ltr">@(r.ExitAt.HasValue ? r.ExitAt.Value.ToString("HH:mm") : "—")</td>
-                                    <td>
-                                        @if (r.InOutCount > 1) { <span class="badge bg-light text-dark border">@Fa.Digits(r.InOutCount) بار</span> }
+                                var clickable = r.deficitMinutes > 0 && CanSendDeficitLetter && r.userId != Auth.UserId;
+                                var sentKey = DeficitKey(r.userId, r.date);
+                                var rowTitle = clickable ? "برای ارسال نامهٔ کسری کار کلیک کنید" : null;
+                                <tr class="att-report-row @(r.deficitMinutes>0?"att-row-deficit":"") @(clickable?"clickable":"")"
+                                    title="@rowTitle"
+                                    @onclick="() => OpenDeficitLetter(new DeficitLetterTarget(r.userId, r.fullName, r.date, r.deficitMinutes, r.lateMinutes, r.enterAt))">
+                                    <td dir="ltr" class="text-nowrap">@PersianDate.ToShort(r.date) <div class="small text-muted">@r.weekday</div></td>
+                                    <td><div class="d-flex align-items-center gap-2"><UserAvatar LoginUserId="@r.userId" Size="26" /><span>@r.fullName</span></div></td>
+                                    <td>@(r.shiftName ?? "—")</td>
+                                    <td dir="ltr">
+                                        @if (r.enterAt.HasValue)
+                                        {
+                                            <span class="fw-bold @(r.enterStatus=="Late"?"text-danger":"text-success")">@r.enterAt.Value.ToString("HH:mm")</span>
+                                        }
                                         else { <span class="text-muted">—</span> }
                                     </td>
-                                    <td>@WorkText(r.WorkMinutes)</td>
-                                    <td>@if (r.LateMinutes > 0) { <span class="text-danger">@Fa.Digits(r.LateMinutes) دقیقه</span> } else { <span class="text-success">بدون تاخیر</span> }</td>
-                                    <td class="@(r.DeficitMinutes>0?"text-danger fw-700":"")">@(r.DeficitMinutes>0?WorkText(r.DeficitMinutes):"—")</td>
-                                    <td>@TodayStatusBadge(r.FinalStatus, r.EnterStatus, r.HasApprovedLeave)</td>
+                                    <td dir="ltr">@(r.exitAt.HasValue ? r.exitAt.Value.ToString("HH:mm") : "—")</td>
+                                    <td>@WorkText(r.workMinutes)</td>
+                                    <td>@if (r.lateMinutes > 0) { <span class="text-danger">@Fa.Digits(r.lateMinutes) دقیقه</span> } else { <span class="text-muted">—</span> }</td>
+                                    <td class="@(r.deficitMinutes>0?"text-danger fw-700":"")">@(r.deficitMinutes>0?WorkText(r.deficitMinutes):"—")</td>
+                                    <td>@TodayStatusBadge(r.finalStatus, r.enterStatus, r.hasApprovedLeave)</td>
+                                    <td>
+                                        @if (clickable)
+                                        {
+                                            @if (deficitSent.Contains(sentKey))
+                                            {
+                                                <button class="btn btn-sm btn-outline-success py-0 px-1" title="نامه کسری کار این روز در همین نشست ارسال شده است" disabled>
+                                                    <i class="bi bi-envelope-check"></i>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-outline-danger py-0 px-1" title="ارسال نامه کسری کار به @(r.fullName)" @onclick:stopPropagation="true" @onclick="() => OpenDeficitLetter(new DeficitLetterTarget(r.userId, r.fullName, r.date, r.deficitMinutes, r.lateMinutes, r.enterAt))">
+                                                    <i class="bi bi-envelope-exclamation"></i>
+                                                </button>
+                                            }
+                                        }
+                                        else { <span class="text-muted">—</span> }
+                                    </td>
                                 </tr>
                             }
                         }
@@ -513,6 +596,38 @@
     </div>
 }
 
+<!-- ==================== مودال نامه کسری کار ==================== -->
+@if (deficitTarget != null)
+{
+    <div class="modal fade show d-block" style="background:rgba(0,0,0,.5)">
+        <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-envelope-exclamation text-danger"></i> ارسال نامه کسری کار</h5>
+                    <button type="button" class="btn-close" @onclick="() => deficitTarget = null"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="small text-muted mb-2">
+                        گیرنده: <b>@deficitTarget.FullName</b>
+                        — تاریخ: <b>@PersianDate.ToLong(deficitTarget.Date)</b>
+                        — کسری: <b class="text-danger">@WorkText(deficitTarget.DeficitMinutes)</b>
+                    </div>
+                    <label class="form-label small fw-800">متن نامه</label>
+                    <textarea class="form-control form-control-sm" rows="5" @bind="deficitLetterText"></textarea>
+                    <div class="small text-muted mt-2"><i class="bi bi-info-circle"></i> نامه در «اتوماسیون اداری ← کارتابل نامه داخلی» گیرنده قرار می‌گیرد.</div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-light" @onclick="() => deficitTarget = null" disabled="@deficitSending">انصراف</button>
+                    <button class="btn btn-danger" @onclick="SendDeficitLetter" disabled="@deficitSending">
+                        @if (deficitSending) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                        <i class="bi bi-send ms-1"></i> ارسال نامه
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
     .att-stat-card { border-radius:16px; border:1px solid #e8e2fb; }
     .at-num { font-size:1.6rem; font-weight:900; color:#1c2130; line-height:1.2; }
@@ -522,6 +637,13 @@
     .lv-tab:hover { background:#f1edfc; color:#5b21b6; }
     .lv-tab.active { background:#efeaff; color:#5b21b6; box-shadow:inset 0 -2px 0 #8e5cff; }
     .lv-tabs { border-bottom:2px solid #e8e2fb; padding-bottom:.6rem; }
+    .att-day-stats { background:#f8f7fd; }
+    .att-day-stats .badge { font-size:.78rem; font-weight:700; }
+    .att-day-picker { width:200px; }
+    .att-day-picker .date-picker { width:100%; }
+    .att-report-row.clickable { cursor: pointer; }
+    .att-report-row.clickable:hover td { background:#fff5f5 !important; }
+    .att-row-deficit td { background:#fffafb; }
 </style>
 
 @code {
@@ -530,10 +652,11 @@
     private bool todayLoading;
     private TodayStats? todayStats;
     private List<TodayItem> todayItems = new();
+    private DateTime dayDate = DateTime.Today;
     private List<ShiftDto> shifts = new();
     private List<PersonnelItem> personnel = new();
-    private bool reportLoading, monthlyLoading;
-    private List<ReportItem> reportItems = new();
+    private bool reportLoading, monthlyLoading, reportOnlyDeficit;
+    private List<MonthDayRow> reportItems = new();
     private List<MonthlyRow> monthlyItems = new();
     private int reportYear, reportMonth, reportUser;
     private (int jy, int jm) _now;
@@ -586,16 +709,153 @@
     }
     public void Dispose() => Rt.DataChanged -= OnRtChanged;
 
+    private string todayError = "";
+
     private async Task LoadToday()
     {
         todayLoading = true;
+        todayError = "";
         try
         {
-            var r = await Http.GetFromJsonAsync<TodayResponse>("/api/Attendance/today-status");
-            if (r != null) { todayStats = r.stats; todayItems = r.items ?? new(); }
+            // گزارش وضعیت روزِ انتخاب‌شده (پیش‌فرض امروز) — یک سطر به ازای هر پرسنل
+            var url = $"/api/Attendance/day-status?date={dayDate:yyyy-MM-dd}";
+            var r = await Http.GetFromJsonAsync<TodayResponse>(url);
+            if (r != null)
+            {
+                todayStats = r.stats;
+                todayItems = r.items ?? new();
+                if (r.date != default) dayDate = r.date.Date;
+            }
+            else
+            {
+                todayStats = null; todayItems = new();
+                todayError = "پاسخی از سرور دریافت نشد.";
+            }
         }
-        catch { todayStats = null; todayItems = new(); }
+        catch (System.Net.Http.HttpRequestException httpEx)
+        {
+            todayStats = null; todayItems = new();
+            var code = (int?)httpEx.StatusCode;
+            todayError = code == 404
+                ? "گزارش روز دریافت نشد (۴۰۴) — نسخهٔ سرور (API) قدیمی است؛ سرور را با آخرین کد به‌روز و راه‌اندازی مجدد کنید."
+                : code == 403
+                    ? "گزارش روز دریافت نشد (۴۰۳) — دسترسی مشاهدهٔ حضور و غیاب برای نقش شما فعال نیست."
+                    : $"گزارش روز دریافت نشد{(code.HasValue ? $" ({Fa.Digits(code.Value)})" : "")} — اتصال به سرور را بررسی کنید.";
+        }
+        catch
+        {
+            todayStats = null; todayItems = new();
+            todayError = "گزارش روز دریافت نشد؛ اتصال به سرور را بررسی کنید.";
+        }
         todayLoading = false;
+    }
+
+    /// <summary>انتخاب تاریخ از تقویم شمسی — بارگذاری مجدد گزارش همان روز</summary>
+    private async Task OnPickDay(DateTime? dt)
+    {
+        if (dt is { } d && d.Date != dayDate)
+        {
+            dayDate = d.Date;
+            await LoadToday();
+        }
+    }
+
+    private async Task GoToday()
+    {
+        dayDate = DateTime.Today;
+        await LoadToday();
+    }
+
+    // ==================== نامه کسری کار (ارسال به‌صورت نامه داخلی) ====================
+    /// <summary>هدف نامهٔ کسری — هم از «وضعیت روز» و هم از «گزارش روزانه» پر می‌شود</summary>
+    private sealed record DeficitLetterTarget(int UserId, string FullName, DateTime Date, int DeficitMinutes, int LateMinutes, DateTime? EnterAt);
+    private DeficitLetterTarget? deficitTarget;
+    private string deficitLetterText = "";
+    private bool deficitSending;
+    private readonly HashSet<string> deficitSent = new();
+
+    /// <summary>ارسال نامه داخلی نیازمند مجوز «ایجاد نامه داخلی» یا دسترسی مدیر است</summary>
+    private bool CanSendDeficitLetter => Auth.IsAdmin || Auth.Has("InnerLetters.Create");
+
+    private static string DeficitKey(int userId, DateTime date) => $"{userId}:{date:yyyyMMdd}";
+
+    private void OpenDeficitLetter(DeficitLetterTarget t)
+    {
+        // فقط سطرهای دارای کسری، برای دیگران و با مجوز نامه داخلی
+        if (t.DeficitMinutes <= 0 || !CanSendDeficitLetter || t.UserId == Auth.UserId) return;
+        deficitTarget = t;
+        var lateNote = t.LateMinutes > 0 ? $"\nساعت ورود ثبت‌شده: {(t.EnterAt.HasValue ? t.EnterAt.Value.ToString("HH:mm") : "—")} (تأخیر {Fa.Digits(t.LateMinutes)} دقیقه)." : "";
+        deficitLetterText =
+            $"{t.FullName} گرامی؛\n\n" +
+            $"طبق گزارش حضور و غیاب، شما در روز {PersianDate.ToLong(t.Date)} ({PersianDate.WeekdayName(t.Date)}) " +
+            $"کسری کار به میزان {WorkText(t.DeficitMinutes)} داشته‌اید.{lateNote}\n\n" +
+            $"لطفاً مورد را بررسی کرده و در صورت وجود توضیح، به همین نامه پاسخ دهید.";
+    }
+
+    private async Task SendDeficitLetter()
+    {
+        if (deficitTarget == null || deficitSending) return;
+        deficitSending = true;
+        try
+        {
+            var t = deficitTarget;
+            var dto = new
+            {
+                title = $"اعلام کسری کار — {t.FullName} — {PersianDate.ToShort(t.Date)}",
+                text = deficitLetterText,
+                mahramanegi = "عادی",
+                foriat = "عادی",
+                reciversGirande = new[] { t.UserId }
+            };
+            var resp = await Http.PostAsJsonAsync("/api/letters", dto);
+            if (resp.IsSuccessStatusCode)
+            {
+                deficitSent.Add(DeficitKey(t.UserId, t.Date));
+                Toast.Success($"نامه کسری کار برای {t.FullName} ارسال شد.");
+                deficitTarget = null;
+            }
+            else
+            {
+                Toast.Error(await ExtractError(resp));
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        deficitSending = false;
+    }
+
+    /// <summary>متن فارسی وضعیت روز برای خروجی CSV</summary>
+    private static string DayStatusText(string? final, string? enter, bool onLeave)
+    {
+        if (onLeave || final == "LeaveDay") return "مرخصی";
+        if (final == "Present" && enter == "Late") return "حاضر (با تاخیر)";
+        return final switch
+        {
+            "Present" => "حاضر",
+            "Absent" => "غایب",
+            "Pending" => "وارد نشده",
+            "HalfDay" => "نیم روز",
+            "Holiday" => "تعطیل",
+            _ => "—"
+        };
+    }
+
+    /// <summary>خروجی CSV گزارش روزانه — ورود/خروج و وضعیت هر پرسنل در یک سطر</summary>
+    private async Task ExportDayCsv()
+    {
+        if (!todayItems.Any()) return;
+        var sb = new System.Text.StringBuilder();
+        sb.Append('\uFEFF');
+        sb.AppendLine($"گزارش روزانه {PersianDate.ToShort(dayDate)} ({PersianDate.WeekdayName(dayDate)})");
+        sb.AppendLine("پرسنل,شیفت,ورود,خروج,تعداد تردد,کارکرد(دقیقه),تاخیر(دقیقه),کسری(دقیقه),وضعیت");
+        foreach (var u in todayItems)
+        {
+            var enter = u.EnterAt.HasValue ? u.EnterAt.Value.ToString("HH:mm") : "";
+            var exit = u.ExitAt.HasValue ? u.ExitAt.Value.ToString("HH:mm") : "";
+            sb.AppendLine($"{u.FullName},{u.ShiftName},{enter},{exit},{u.InOutCount},{u.WorkMinutes},{u.LateMinutes},{u.DeficitMinutes},{DayStatusText(u.FinalStatus, u.EnterStatus, u.HasApprovedLeave)}");
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        await JS.InvokeVoidAsync("saveAsFile", $"attendance-day-{dayDate:yyyyMMdd}.csv", Convert.ToBase64String(bytes));
+        Toast.Success("گزارش روز دانلود شد.");
     }
 
     private async Task LoadShifts()
@@ -604,13 +864,23 @@
     private async Task LoadPersonnel()
     { try { personnel = await Http.GetFromJsonAsync<List<PersonnelItem>>("/api/Attendance/personnel") ?? new(); } catch { personnel = new(); } }
 
+    // ================== تب‌ها ==================
+    // نکته: بارگذاری باید await شود (نه `_ = Load()`); وگرنه بعد از پایانِ دانلود
+    // رندر مجدد رخ نمی‌دهد و اسپینر برای همیشه باقی می‌ماند (باگ قدیمی گزارش روزانه).
+    private async Task ShowReportTab() { tab = "report"; await LoadReport(); }
+    private async Task ShowMonthlyTab() { tab = "monthly"; await LoadMonthly(); }
+    private async Task ShowSecurityTab() { tab = "security"; await LoadSecurity(); }
+
     private async Task LoadReport()
     {
         reportLoading = true;
         try
         {
-            var r = await Http.GetFromJsonAsync<ReportResponse>($"/api/Attendance/report?jy={reportYear}&jm={reportMonth}&userId={reportUser}");
-            reportItems = r?.items?.ToList() ?? new();
+            // گزارش روزانهٔ کامل ماه: همهٔ پرسنل در همهٔ روزها — غایب/تعطیل/مرخصی هم دیده می‌شوند
+            var url = $"/api/Attendance/month-day-report?jy={reportYear}&jm={reportMonth}&userId={reportUser}"
+                      + (reportOnlyDeficit ? "&onlyDeficit=true" : "");
+            var r = await Http.GetFromJsonAsync<MonthDayResponse>(url);
+            reportItems = r?.items ?? new();
         }
         catch { reportItems = new(); }
         reportLoading = false;
@@ -856,15 +1126,16 @@
     {
         var sb = new System.Text.StringBuilder();
         sb.Append('\uFEFF');
-        sb.AppendLine("تاریخ,نام کاربر,شیفت,ورود,خروج,کارکرد(دقیقه),تاخیر(دقیقه),کسری(دقیقه),وضعیت");
+        sb.AppendLine($"گزارش روزانه {PersianDate.MonthName(reportMonth)} {Fa.Digits(reportYear)}{(reportOnlyDeficit ? " — فقط روزهای دارای کسری" : "")}");
+        sb.AppendLine("تاریخ,روز,پرسنل,شیفت,ورود,خروج,کارکرد(دقیقه),تاخیر(دقیقه),کسری(دقیقه),وضعیت");
         foreach (var r in reportItems)
         {
-            var enter = r.EnterAt.HasValue ? r.EnterAt.Value.ToString("HH:mm") : "";
-            var exit = r.ExitAt.HasValue ? r.ExitAt.Value.ToString("HH:mm") : "";
-            sb.AppendLine($"{PersianDate.ToShort(r.WorkDate)},{r.UserName},{r.ShiftName},{enter},{exit},{r.WorkMinutes},{r.LateMinutes},{r.DeficitMinutes},{r.FinalStatus}");
+            var enter = r.enterAt.HasValue ? r.enterAt.Value.ToString("HH:mm") : "";
+            var exit = r.exitAt.HasValue ? r.exitAt.Value.ToString("HH:mm") : "";
+            sb.AppendLine($"{PersianDate.ToShort(r.date)},{r.weekday},{r.fullName},{r.shiftName},{enter},{exit},{r.workMinutes},{r.lateMinutes},{r.deficitMinutes},{DayStatusText(r.finalStatus, r.enterStatus, r.hasApprovedLeave)}");
         }
         var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
-        await JS.InvokeVoidAsync("saveAsFile", $"attendance-{reportYear}-{reportMonth}.csv", Convert.ToBase64String(bytes));
+        await JS.InvokeVoidAsync("saveAsFile", $"attendance-day-report-{reportYear}-{reportMonth}.csv", Convert.ToBase64String(bytes));
         Toast.Success("گزارش دانلود شد.");
     }
 
@@ -915,6 +1186,7 @@
             "Absent" => new("<span class=\"badge bg-danger\"><i class=\"bi bi-x\"></i> غایب</span>"),
             "Pending" => new("<span class=\"badge bg-secondary\"><i class=\"bi bi-hourglass-split\"></i> وارد نشده</span>"),
             "HalfDay" => new("<span class=\"badge bg-info text-dark\"><i class=\"bi bi-pie-chart\"></i> نیم روز</span>"),
+            "Holiday" => new("<span class=\"badge bg-info text-dark\"><i class=\"bi bi-calendar-x\"></i> تعطیل</span>"),
             _ => new("<span class=\"badge bg-light text-dark\">—</span>")
         };
     }
@@ -928,17 +1200,18 @@
     }
 
     // ====== Models ======
-    public class TodayStats { public int Total { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Pending { get; set; } public int Late { get; set; } public int OnLeave { get; set; } }
-    public class TodayItem { public int UserId { get; set; } public string FullName { get; set; } = ""; public string? ShiftName { get; set; } public TimeSpan? ShiftStart { get; set; } public TimeSpan? ShiftEnd { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int EarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int CoveredGapMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public bool IsInNow { get; set; } public int UncoveredGaps { get; set; } public List<object> Segments { get; set; } = new(); }
-    public class TodayResponse { public TodayStats stats { get; set; } = new(); public List<TodayItem> items { get; set; } = new(); }
+    public class TodayStats { public int Total { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Pending { get; set; } public int Late { get; set; } public int OnLeave { get; set; } public int Holiday { get; set; } }
+    public class TodayItem { public int UserId { get; set; } public string FullName { get; set; } = ""; public string? ShiftName { get; set; } public TimeSpan? ShiftStart { get; set; } public TimeSpan? ShiftEnd { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int EarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int CoveredGapMinutes { get; set; } public int OvertimeMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public bool IsInNow { get; set; } public int UncoveredGaps { get; set; } public List<object> Segments { get; set; } = new(); }
+    public class TodayResponse { public DateTime date { get; set; } public bool isToday { get; set; } public string weekday { get; set; } = ""; public TodayStats stats { get; set; } = new(); public List<TodayItem> items { get; set; } = new(); }
 
     public class ShiftDto { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public TimeSpan? StartTime2 { get; set; } public TimeSpan? EndTime2 { get; set; } public int GraceMinutes { get; set; } public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
     public class ShiftForm { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public string StartTime { get; set; } = "08:00"; public string EndTime { get; set; } = "16:30"; public string? StartTime2 { get; set; } = ""; public string? EndTime2 { get; set; } = ""; public int GraceMinutes { get; set; } = 10; public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
 
     public class PersonnelItem { public int Id { get; set; } public string Username { get; set; } = ""; public string FullName { get; set; } = ""; public int? ShiftGroupId { get; set; } public string? ShiftName { get; set; } public bool Saved { get; set; } }
 
-    public class ReportItem { public int Id { get; set; } public DateTime WorkDate { get; set; } public int UserId { get; set; } public string UserName { get; set; } = ""; public int? ShiftGroupId { get; set; } public string? ShiftName { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public List<object> Segments { get; set; } = new(); }
-    public class ReportResponse { public List<ReportItem> items { get; set; } = new(); }
+    /// <summary>سطر گزارش روزانهٔ ماه — هر پرسنل در هر روز (شامل غایب/تعطیل/مرخصی)</summary>
+    public class MonthDayRow { public DateTime date { get; set; } public string weekday { get; set; } = ""; public int userId { get; set; } public string fullName { get; set; } = ""; public string? shiftName { get; set; } public DateTime? enterAt { get; set; } public DateTime? exitAt { get; set; } public string? enterStatus { get; set; } public int lateMinutes { get; set; } public int earlyLeaveMinutes { get; set; } public int workMinutes { get; set; } public int deficitMinutes { get; set; } public int overtimeMinutes { get; set; } public bool hasApprovedLeave { get; set; } public string? finalStatus { get; set; } public string? note { get; set; } public int inOutCount { get; set; } }
+    public class MonthDayResponse { public int year { get; set; } public int month { get; set; } public string monthName { get; set; } = ""; public List<MonthDayRow> items { get; set; } = new(); }
 
     public class MonthlyRow { public int UserId { get; set; } public string UserName { get; set; } = ""; public string ShiftName { get; set; } = ""; public int Workdays { get; set; } public int Present { get; set; } public int Absent { get; set; } public double LeaveDays { get; set; } public int LateDays { get; set; } public int TotalLateMinutes { get; set; } public int TotalEarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public double DeficitHours { get; set; } public int OvertimeMinutes { get; set; } public int UnauthorizedMinutes { get; set; } }
     public class MonthlyResponse { public int year { get; set; } public int month { get; set; } public string monthName { get; set; } = ""; public int days { get; set; } public List<MonthlyRow> items { get; set; } = new(); }

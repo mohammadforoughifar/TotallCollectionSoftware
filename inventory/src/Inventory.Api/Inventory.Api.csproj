@@ -58,6 +58,9 @@
     <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="7.3.0.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.1" />
+    <!-- رفع تعارض نسخه: Stimulsoft به CodeAnalysis &gt;= 4.8 نیاز دارد و EF.Design 8.0.1 روی 4.5 پین است (NU1107) -->
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.8.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.1">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
