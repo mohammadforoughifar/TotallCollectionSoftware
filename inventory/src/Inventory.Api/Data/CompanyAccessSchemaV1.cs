@@ -10,6 +10,8 @@ public static class CompanyAccessSchemaV1
         if (db.Database.IsSqlite())
         {
             await db.Database.ExecuteSqlRawAsync(@"CREATE TABLE IF NOT EXISTS UserCompanyAccesses (UserId INTEGER NOT NULL, CompanyId INTEGER NOT NULL, IsDefault INTEGER NOT NULL DEFAULT 0, CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (UserId, CompanyId));");
+            try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE WorkOrders ADD COLUMN CompanyId INTEGER NULL;"); } catch { }
+            try { await db.Database.ExecuteSqlRawAsync("ALTER TABLE MeetingMinutes ADD COLUMN CompanyId INTEGER NULL;"); } catch { }
             return;
         }
         if (!db.Database.IsSqlServer()) return;
@@ -24,6 +26,10 @@ BEGIN
         CONSTRAINT [PK_UserCompanyAccesses] PRIMARY KEY ([UserId], [CompanyId])
     );
     CREATE INDEX [IX_UserCompanyAccesses_CompanyId] ON [UserCompanyAccesses]([CompanyId]);
-END");
+END
+
+IF COL_LENGTH(N'dbo.WorkOrders', N'CompanyId') IS NULL ALTER TABLE [WorkOrders] ADD [CompanyId] int NULL;
+IF COL_LENGTH(N'dbo.MeetingMinutes', N'CompanyId') IS NULL ALTER TABLE [MeetingMinutes] ADD [CompanyId] int NULL;
+");
     }
 }

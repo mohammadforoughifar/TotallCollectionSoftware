@@ -32,6 +32,13 @@ public class MeetingMinutesController : RbacControllerBase
     private readonly IEmailService _email;
     private readonly IMeetingMinutesPrintService _print;
 
+    private async Task<int?> ActiveCompanyIdAsync()
+    {
+        if (!int.TryParse(Request.Headers["X-Company-Id"].FirstOrDefault(), out var id) || id <= 0) return null;
+        return await Db.UserCompanyAccesses.AnyAsync(x => x.UserId == MyUserId && x.CompanyId == id)
+            ? id : null;
+    }
+
     public MeetingMinutesController(
         AppDbContext db,
         IMeetingMinutesService svc,
@@ -53,7 +60,9 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> List([FromQuery] string? search, [FromQuery] string? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "View") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetListAsync(search, status, MyUserId), skip, take));
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        return Ok(Paging.Result(await _svc.GetListAsync(search, status, MyUserId, companyId.Value), skip, take));
     }
 
     // ================== جزئیات ==================
@@ -62,7 +71,9 @@ public class MeetingMinutesController : RbacControllerBase
     public async Task<IActionResult> Detail(int id)
     {
         if (await ForbiddenUnlessAsync(Module, "View") is { } f) return f;
-        var d = await _svc.GetDetailAsync(id, MyUserId);
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        var d = await _svc.GetDetailAsync(id, MyUserId, companyId.Value);
         return d is null ? NotFound(new { message = "صورتجلسه پیدا نشد." }) : Ok(d);
     }
 
@@ -75,6 +86,8 @@ public class MeetingMinutesController : RbacControllerBase
     {
         var need = dto.Id > 0 ? "Update" : "Create";
         if (await ForbiddenUnlessAsync(Module, need) is { } f) return f;
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         if (dto.Id > 0)
         {
             var existing = await Db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == dto.Id && !x.IsDeleted);
@@ -84,7 +97,7 @@ public class MeetingMinutesController : RbacControllerBase
         }
         try
         {
-            var id = await _svc.SaveAsync(dto, MyUserId, MyUsername);
+            var id = await _svc.SaveAsync(dto, MyUserId, MyUsername, companyId.Value);
             return Ok(new { id });
         }
         catch (Exception ex)

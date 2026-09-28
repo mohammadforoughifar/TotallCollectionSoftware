@@ -45,6 +45,9 @@ public class WorkOrder
 {
     public int Id { get; set; }
 
+    /// <summary>شرکت فعال مالک این دستور کار</summary>
+    public int? CompanyId { get; set; }
+
     /// <summary>شماره منحصربه‌فرد: WO/سال شمسی/سریال</summary>
     [MaxLength(30)]
     public string Number { get; set; } = "";

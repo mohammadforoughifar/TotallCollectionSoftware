@@ -26,6 +26,12 @@ public class WorkOrdersController : ControllerBase
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
     private bool IsLegacyAdmin => User.IsInRole("Admin");
 
+    private async Task<int?> ActiveCompanyIdAsync()
+    {
+        if (!int.TryParse(Request.Headers["X-Company-Id"].FirstOrDefault(), out var id) || id <= 0) return null;
+        return await _db.UserCompanyAccesses.AnyAsync(x => x.UserId == MyUserId && x.CompanyId == id) ? id : null;
+    }
+
     private async Task<string> MyDisplayNameAsync()
     {
         var me = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == MyUserId);
@@ -174,6 +180,8 @@ public class WorkOrdersController : ControllerBase
     public async Task<IActionResult> Create([FromBody] CreateDto dto)
     {
         if (!await HasAsync("Create")) return Forbid();
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
         if (string.IsNullOrWhiteSpace(dto.Title))
             return BadRequest(new { message = "عنوان دستور کار را وارد کنید." });
@@ -256,6 +264,7 @@ public class WorkOrdersController : ControllerBase
         var wo = new WorkOrder
         {
             Title = dto.Title.Trim(), Description = dto.Description ?? "",
+            CompanyId = companyId.Value,
             OwnerUserId = MyUserId, OwnerName = await MyDisplayNameAsync(), DueAt = dto.DueAt,
             Priority = dto.Priority, Recurrence = dto.Recurrence, SourceModule = dto.SourceModule,
             SourceId = dto.SourceId, SourceRefId = dto.SourceRefId, Tags = NormalizeTags(dto.Tags), ParentOrderId = parent?.Id
@@ -516,8 +525,9 @@ public class WorkOrdersController : ControllerBase
         public int PageSize { get; set; }
     }
 
-    private async Task<IActionResult> BuildPage(IQueryable<WorkOrder> query, ListFilterDto filter)
+    private async Task<IActionResult> BuildPage(IQueryable<WorkOrder> query, ListFilterDto filter, int companyId)
     {
+        query = query.Where(w => w.CompanyId == companyId);
         var page = Math.Max(1, filter.Page);
         var pageSize = Math.Clamp(filter.PageSize <= 0 ? 10 : filter.PageSize, 1, 100);
         var filtered = ApplyFilter(query, filter);
@@ -528,24 +538,32 @@ public class WorkOrdersController : ControllerBase
     }
 
     [HttpGet("mine")]
-    public async Task<IActionResult> Mine([FromQuery] ListFilterDto filter) =>
-        await BuildPage(_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), filter);
+    public async Task<IActionResult> Mine([FromQuery] ListFilterDto filter)
+    {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
+        return await BuildPage(_db.WorkOrders.Where(w => w.OwnerUserId == MyUserId && w.Status == "Open"), filter, companyId.Value);
+    }
 
     /// <summary>دستورهای محول به من (باز) — با فیلتر اختیاری.</summary>
     [HttpGet("assigned")]
     public async Task<IActionResult> Assigned([FromQuery] ListFilterDto filter)
     {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
-        return await BuildPage(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), filter);
+        return await BuildPage(_db.WorkOrders.Where(w => myOrderIds.Contains(w.Id) && w.Status == "Open"), filter, companyId.Value);
     }
 
     /// <summary>بایگانی — دستورهای بسته‌شده (من دستور داده‌ام یا به من محول شده) — با فیلتر اختیاری.</summary>
     [HttpGet("archive")]
     public async Task<IActionResult> Archive([FromQuery] ListFilterDto filter)
     {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
         return await BuildPage(_db.WorkOrders.Where(w =>
-            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), filter);
+            w.Status == "Closed" && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))), filter, companyId.Value);
     }
 
     /// <summary>دستورهای کارِ ساخته‌شده از یک مبدأ (سورس) — مثلاً نامه داخلی. برای لینک/نشان «دستورکار شده».</summary>
@@ -553,10 +571,12 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("for-source")]
     public async Task<IActionResult> ForSource([FromQuery] string? module, [FromQuery] int? sourceId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0)
             return Ok(new List<object>());
         var list = await _db.WorkOrders
-            .Where(w => w.SourceModule == module && w.SourceId == sourceId)
+            .Where(w => w.CompanyId == companyId.Value && w.SourceModule == module && w.SourceId == sourceId)
             .OrderByDescending(w => w.Id)
             .Select(w => new { w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId })
             .ToListAsync();
@@ -567,8 +587,10 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Detail(int id)
     {
+        var companyId = await ActiveCompanyIdAsync();
+        if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         if (!await HasAsync("View") && !await CanSeeOrderAsync(id)) return Forbid();
-        var list = await BuildList(_db.WorkOrders.Where(w => w.Id == id));
+        var list = await BuildList(_db.WorkOrders.Where(w => w.Id == id && w.CompanyId == companyId.Value));
         return list.Count == 0 ? NotFound() : Ok(list[0]);
     }
 
