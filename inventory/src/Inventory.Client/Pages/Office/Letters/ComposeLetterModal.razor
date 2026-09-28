@@ -245,7 +245,7 @@
                            @bind="relSearch" @bind:event="oninput" @bind:after="SearchRel" />
                     @foreach (var rl in relResults.Where(x => x.SourceType == relSourceType))
                     {
-                        <div class="rl-row @(relSel.Contains(rl.LetterId) ? "on" : "")" @onclick="() => ToggleRelSel(rl.LetterId)">
+                        <div class="rl-row @(relSel.Contains(rl.SelectionKey) ? "on" : "")" @onclick="() => ToggleRelSel(rl.SelectionKey)">
                             <span class="chk"><i class="bi bi-check"></i></span>
                             <div class="inf"><b>@rl.Title</b><small class="num"># @rl.LetterNumber.FaDigits() · @rl.Date.ToFa()</small></div>
                             <span class="rl-dir @(rl.SourceType == 2 ? "out" : "in")"><i class="bi @(rl.SourceType == 2 ? "bi-send" : rl.SourceType == 3 ? "bi-box-arrow-in-down" : "bi-file-earmark-text")"></i> @rl.SourceTypeTitle</span>
@@ -366,6 +366,7 @@
     private sealed class RelatedPick
     {
         public int LetterId { get; set; }
+        public string SelectionKey => $"{SourceType}:{LetterId}";
         public string LetterNumber { get; set; } = "";
         public string Title { get; set; } = "";
         public DateTime Date { get; set; }
@@ -373,7 +374,7 @@
         public string SourceTypeTitle => SourceType == 1 ? "داخلی" : SourceType == 2 ? "صادره" : "وارده";
     }
     private List<RelatedPick> relResults = new();
-    private HashSet<int> relSel = new();
+    private HashSet<string> relSel = new();
 
     private string SheetTitle => isEditLetter ? "ویرایش نامه" : draftId is > 0 ? "ادامه پیش‌نویس" : "ایجاد نامه جدید";
 
@@ -565,30 +566,38 @@
 
     private async Task SearchRel()
     {
+        var term = string.IsNullOrWhiteSpace(relSearch) ? null : relSearch;
+        var all = new List<RelatedPick>();
         try
         {
-            var term = string.IsNullOrWhiteSpace(relSearch) ? null : relSearch;
-            var innerTask = LetterSvc.PickAsync(term);
-            var outgoingTask = OutgoingSvc.PickAsync(term);
-            var incomingTask = IncomingSvc.PickAsync(term, 1, 100);
-            await Task.WhenAll(innerTask, outgoingTask, incomingTask);
-            var all = new List<RelatedPick>();
-            all.AddRange((await innerTask).Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 1 }));
-            all.AddRange((await outgoingTask).Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 2 }));
-            all.AddRange((await incomingTask).Items.Select(x => new RelatedPick { LetterId = x.SourceId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 3 }));
-            relResults = all.Where(r => related.All(x => x.RelateLetterId != r.LetterId)).GroupBy(x => x.LetterId).Select(g => g.First()).OrderByDescending(x => x.Date).ToList();
+            var items = await LetterSvc.PickAsync(term);
+            all.AddRange(items.Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 1 }));
         }
-        catch { relResults = new(); }
+        catch { }
+        try
+        {
+            var items = await OutgoingSvc.PickAsync(term);
+            all.AddRange(items.Select(x => new RelatedPick { LetterId = x.LetterId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 2 }));
+        }
+        catch { }
+        try
+        {
+            var result = await IncomingSvc.PickAsync(term, 1, 100);
+            all.AddRange(result.Items.Select(x => new RelatedPick { LetterId = x.SourceId, LetterNumber = x.LetterNumber, Title = x.Title, Date = x.Date, SourceType = 3 }));
+        }
+        catch { }
+        relResults = all.Where(r => related.All(x => x.RelateLetterId != r.LetterId))
+            .GroupBy(x => x.SelectionKey).Select(g => g.First()).OrderByDescending(x => x.Date).ToList();
     }
 
-    private void ToggleRelSel(int id) { if (!relSel.Remove(id)) relSel.Add(id); }
+    private void ToggleRelSel(string key) { if (!relSel.Remove(key)) relSel.Add(key); }
 
     private void AddRel()
     {
         if (relSel.Count == 0) { Toast.Error("هیچ نامه‌ای انتخاب نشده است."); return; }
-        foreach (var id in relSel)
+        foreach (var key in relSel)
         {
-            var l = relResults.FirstOrDefault(x => x.LetterId == id);
+            var l = relResults.FirstOrDefault(x => x.SelectionKey == key);
             if (l == null) continue;
             related.Add(new RelatedLetterDto
             {
