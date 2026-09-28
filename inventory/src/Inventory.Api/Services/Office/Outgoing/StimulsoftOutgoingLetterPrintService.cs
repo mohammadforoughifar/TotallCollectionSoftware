@@ -16,7 +16,7 @@ namespace Inventory.Api.Services.Office.Outgoing;
 public interface IStimulsoftOutgoingLetterPrintService
 {
     /// <returns>PDF یا null اگر موتور غیرفعال/قالب ناموجود/رندر ناموفق باشد.</returns>
-    Task<byte[]?> TryGeneratePdfAsync(int letterId, string size, CancellationToken cancellationToken = default);
+    Task<byte[]?> TryGeneratePdfAsync(int letterId, string size, bool withCopy = true, CancellationToken cancellationToken = default);
 }
 
 public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLetterPrintService
@@ -47,6 +47,7 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
     public async Task<byte[]?> TryGeneratePdfAsync(
         int letterId,
         string size,
+        bool withCopy = true,
         CancellationToken cancellationToken = default)
     {
         if (!_configuration.GetValue("Reporting:Stimulsoft:Enabled", true))
@@ -101,17 +102,20 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
         var hasAttachment = await _db.AppAttachments.AsNoTracking()
             .AnyAsync(x => x.Module == "OutgoingLetters" && x.RefId == letterId, cancellationToken);
 
-        var hamesh = await _db.Erjas.AsNoTracking()
-            .Include(x => x.UserReciver)
-            .Where(x => x.SourceId == letterId && !x.IsDelete && x.Type == "هامش")
-            .OrderBy(x => x.ErjaId)
-            .Take(5)
-            .Select(x => new HameshPrintRow
-            {
-                Name = x.UserReciver == null ? string.Empty : ($"{x.UserReciver.FirstName} {x.UserReciver.LastName}").Trim(),
-                Desc = x.MatnErja ?? string.Empty
-            })
-            .ToListAsync(cancellationToken);
+        // هامش/رونوشت نامه صادره از جدول مستقل CopyTo خوانده می‌شود.
+        // Erja برای گردش داخلی نامه است و منبع هامش چاپ نامه صادره نیست.
+        var hamesh = withCopy
+            ? await _db.OutgoingLetterCopyToes.AsNoTracking()
+                .Where(x => x.OutgoingLetterId == letterId && !x.IsDelete)
+                .OrderBy(x => x.RowNo).ThenBy(x => x.Id)
+                .Take(5)
+                .Select(x => new HameshPrintRow
+                {
+                    Name = x.Name ?? string.Empty,
+                    Desc = x.Desc ?? string.Empty
+                })
+                .ToListAsync(cancellationToken)
+            : new List<HameshPrintRow>();
 
         try
         {
