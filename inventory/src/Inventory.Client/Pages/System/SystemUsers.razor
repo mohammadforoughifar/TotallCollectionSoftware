@@ -291,7 +291,7 @@
         cpError = "";
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > long.MaxValue) { formError = "حداکثر حجم عکس ۵ مگابایت است."; StateHasChanged(); return; }
+        if (file.Size > 5 * 1024 * 1024) { formError = "حداکثر حجم عکس ۵ مگابایت است."; StateHasChanged(); return; }
         var buf = new byte[file.Size];
         await file.OpenReadStream(long.MaxValue).ReadAsync(buf);
         pendingPhoto = buf;
@@ -352,7 +352,7 @@
         cpError = "";
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > long.MaxValue) { cpError = "حداکثر حجم عکس ۵ مگابایت است."; StateHasChanged(); return; }
+        if (file.Size > 5 * 1024 * 1024) { cpError = "حداکثر حجم عکس ۵ مگابایت است."; StateHasChanged(); return; }
         var buf = new byte[file.Size];
         await file.OpenReadStream(long.MaxValue).ReadAsync(buf);
         cpBytes = buf;

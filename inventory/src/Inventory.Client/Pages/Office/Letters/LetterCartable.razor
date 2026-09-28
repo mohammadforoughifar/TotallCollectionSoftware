@@ -1156,7 +1156,7 @@
             foreach (var f in e.GetMultipleFiles(int.MaxValue))
             {
                 if (f.Size <= 0) { Toast.Error($"فایل «{f.Name}» خالی است."); continue; }
-                if (f.Size > long.MaxValue) { Toast.Error($"فایل «{f.Name}» بزرگ‌تر از ۲۰ مگابایت است."); continue; }
+                if (f.Size > 20 * 1024 * 1024) { Toast.Error($"فایل «{f.Name}» بزرگ‌تر از ۲۰ مگابایت است."); continue; }
                 try
                 {
                     await using var stream = f.OpenReadStream(long.MaxValue);

@@ -36,6 +36,15 @@ public class InvCategoriesController : RbacControllerBase
         return Ok(await _svc.SaveCategoryAsync(dto));
     }
 
+    /// <summary>اعمال ارزش افزوده به گروه کالا و کلیه کالاهای زیرمجموعه.</summary>
+    [HttpPost("apply-vat")]
+    public async Task<ActionResult<ApplyCategoryVatResponse>> ApplyVat([FromBody] ApplyCategoryVatRequest req)
+    {
+        if (await ForbiddenUnlessAsync("Products", "Update") is ObjectResult forbidden) return forbidden;
+        var count = await _svc.ApplyCategoryVatAsync(req.CategoryId, req.IsVatIncluded, req.VatRate);
+        return Ok(new ApplyCategoryVatResponse { UpdatedCount = count });
+    }
+
     /// <summary>جابه‌جایی گروه در درخت (تغییر والد / ترتیب).</summary>
     [HttpPost("move")]
     public async Task<IActionResult> Move([FromBody] InvCategoryMove cmd)

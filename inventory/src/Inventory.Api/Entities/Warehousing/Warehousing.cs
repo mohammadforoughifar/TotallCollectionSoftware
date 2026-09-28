@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Inventory.Shared;
 
 namespace Inventory.Api.Data;
@@ -55,6 +56,7 @@ public class ProductAttributeValue
     public int AttributeId { get; set; }
 
     /// <summary>الزام ویژگی در سطح این کالا (دارد / ندارد)</summary>
+    [NotMapped]
     public bool IsRequired { get; set; }
 
     public int? OptionId { get; set; }
@@ -142,6 +144,9 @@ public class InvDocLine
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal Discount { get; set; }
+    [NotMapped] public bool IsVatIncluded { get; set; }
+    [NotMapped] public decimal VatRate { get; set; }
+    [NotMapped] public decimal VatAmount { get; set; }
 
     [MaxLength(50)] public string? BatchNo { get; set; }
     [MaxLength(80)] public string? SerialNo { get; set; }

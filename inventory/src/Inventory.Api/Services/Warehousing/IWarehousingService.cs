@@ -20,6 +20,9 @@ public interface IWarehousingService
     Task<InvCategory> SaveCategoryAsync(InvCategory dto);
     Task DeleteCategoryAsync(int id);
 
+    /// <summary>اعمال ارزش افزوده به یک گروه کالا و کلیه کالاهای زیرمجموعه آن.</summary>
+    Task<int> ApplyCategoryVatAsync(int categoryId, bool isVatIncluded, decimal vatRate);
+
     /// <summary>جابه‌جایی گروه در درخت (تغییر والد یا ترتیب).</summary>
     Task MoveCategoryAsync(InvCategoryMove cmd);
 

@@ -34,6 +34,17 @@ public class WarehousingService : IWarehousingService
             .Select(g => new { Id = g.Key, N = g.Count() })
             .ToDictionaryAsync(x => x.Id, x => x.N);
 
+        var vatStats = await _db.Products.AsNoTracking()
+            .Where(p => p.CategoryId != null)
+            .GroupBy(p => p.CategoryId!.Value)
+            .Select(g => new
+            {
+                Id = g.Key,
+                HasVat = g.Any(p => p.IsVatIncluded),
+                Rate = g.Where(p => p.IsVatIncluded).Select(p => p.VatRate).FirstOrDefault()
+            })
+            .ToDictionaryAsync(x => x.Id);
+
         var settingsMethod = await GetSettingsMethodAsync();
         var byParent = all.GroupBy(c => c.ParentId ?? 0).ToDictionary(g => g.Key, g => g.OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ToList());
 
@@ -47,6 +58,7 @@ public class WarehousingService : IWarehousingService
                 var eff = c.Valuation ?? inherited;
                 var isInherited = c.Valuation is null;
                 var full = string.IsNullOrEmpty(path) ? c.Name : $"{path} ← {c.Name}";
+                var vat = vatStats.TryGetValue(c.Id, out var vs) ? (vs.HasVat, vs.Rate > 0 ? vs.Rate : 10m) : (true, 10m);
 
                 result.Add(new InvCategory
                 {
@@ -58,6 +70,8 @@ public class WarehousingService : IWarehousingService
                     IsActive = c.IsActive,
                     SortOrder = c.SortOrder,
                     Valuation = c.Valuation,
+                    IsVatIncluded = vat.Item1,
+                    VatRate = vat.Item2,
                     EffectiveValuation = eff,
                     ValuationInherited = isInherited,
                     CreatedAt = c.CreatedAt,
@@ -140,6 +154,8 @@ public class WarehousingService : IWarehousingService
         entity.IsActive = dto.IsActive;
         entity.SortOrder = dto.SortOrder;
         entity.Valuation = dto.Valuation;
+        entity.IsVatIncluded = dto.IsVatIncluded;
+        entity.VatRate = dto.VatRate;
 
         await _db.SaveChangesAsync();
 
@@ -153,6 +169,51 @@ public class WarehousingService : IWarehousingService
 
         var flat = await GetCategoriesFlatAsync();
         return flat.First(c => c.Id == entity.Id);
+    }
+
+    public async Task<int> ApplyCategoryVatAsync(int categoryId, bool isVatIncluded, decimal vatRate)
+    {
+        var cat = await _db.ProductCategories.FindAsync(categoryId);
+        if (cat is not null)
+        {
+            cat.IsVatIncluded = isVatIncluded;
+            cat.VatRate = vatRate;
+        }
+
+        var subtreeIds = await CategorySubtreeIdsAsync(categoryId);
+        var products = await _db.Products
+            .Where(p => p.CategoryId.HasValue && subtreeIds.Contains(p.CategoryId.Value))
+            .ToListAsync();
+
+        foreach (var p in products)
+        {
+            p.IsVatIncluded = isVatIncluded;
+            p.VatRate = vatRate;
+        }
+
+        await _db.SaveChangesAsync();
+        return products.Count;
+    }
+
+    private async Task<List<int>> CategorySubtreeIdsAsync(int categoryId)
+    {
+        var all = await _db.ProductCategories.AsNoTracking()
+            .Select(c => new { c.Id, c.ParentId }).ToListAsync();
+        var result = new HashSet<int> { categoryId };
+        bool added;
+        do
+        {
+            added = false;
+            foreach (var c in all)
+            {
+                if (c.ParentId.HasValue && result.Contains(c.ParentId.Value) && !result.Contains(c.Id))
+                {
+                    result.Add(c.Id);
+                    added = true;
+                }
+            }
+        } while (added);
+        return result.ToList();
     }
 
     public async Task DeleteCategoryAsync(int id)
@@ -677,7 +738,8 @@ public class WarehousingService : IWarehousingService
         Dictionary<int, (string Name, ValuationMethod? Valuation)> whMap, ValuationMethod settingsMethod)
     {
         InvCategory? cat = p.CategoryId is > 0 && catMap.TryGetValue(p.CategoryId.Value, out var c) ? c : null;
-        var hasWh = p.WarehouseId is > 0 && whMap.TryGetValue(p.WarehouseId.Value, out var whInfo);
+        (string Name, ValuationMethod? Valuation) whInfo = default;
+        var hasWh = p.WarehouseId is > 0 && whMap.TryGetValue(p.WarehouseId.Value, out whInfo);
 
         // اولویت قیمت‌گذاری: ۱) کالا ← ۲) گروه کالا ← ۳) انبار ← ۴) تنظیمات کلی سیستم
         ValuationMethod eff;
@@ -1078,6 +1140,8 @@ public class WarehousingService : IWarehousingService
             Quantity = l.Quantity,
             UnitPrice = l.UnitPrice,
             Discount = l.Discount,
+            IsVatIncluded = l.IsVatIncluded,
+            VatRate = l.VatRate,
             BatchNo = l.BatchNo,
             SerialNo = l.SerialNo,
             ExpiryDate = l.ExpiryDate,
@@ -1171,6 +1235,9 @@ public class WarehousingService : IWarehousingService
             row.Quantity = l.Quantity;
             row.UnitPrice = l.UnitPrice;
             row.Discount = l.Discount;
+            row.IsVatIncluded = l.IsVatIncluded;
+            row.VatRate = l.VatRate;
+            row.VatAmount = l.VatAmount;
             row.BatchNo = NullIfEmpty(l.BatchNo);
             row.SerialNo = NullIfEmpty(l.SerialNo);
             row.ExpiryDate = l.ExpiryDate;
@@ -1178,7 +1245,7 @@ public class WarehousingService : IWarehousingService
         }
 
         entity.TotalQuantity = lines.Sum(l => l.Quantity);
-        entity.TotalValue = lines.Sum(l => l.Quantity * l.UnitPrice - l.Discount);
+        entity.TotalValue = lines.Sum(l => l.Amount);
 
         await _db.SaveChangesAsync();
 

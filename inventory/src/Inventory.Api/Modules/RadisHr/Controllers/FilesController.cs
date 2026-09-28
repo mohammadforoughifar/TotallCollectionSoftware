@@ -30,7 +30,7 @@ public class FilesController : ControllerBase
     {
         if (file == null || file.Length == 0)
             return BadRequest(new ApiMessage(false, "فایلی انتخاب نشده است."));
-        if (file.Length > long.MaxValue)
+        if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new ApiMessage(false, "حجم فایل نباید بیش از ۲۰ مگابایت باشد."));
 
         using var stream = new MemoryStream();

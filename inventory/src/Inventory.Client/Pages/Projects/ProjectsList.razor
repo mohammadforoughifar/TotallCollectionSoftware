@@ -1794,7 +1794,7 @@
         {
             if (!ImageExts.Contains(Path.GetExtension(f.Name)?.ToLowerInvariant())) { Toast.Error($"«{f.Name}» فایل تصویری نیست."); continue; }
             if (pendingImages.Any(x => x.Name == f.Name && x.Size == f.Size)) continue; // تکراری نباشد
-            if (pendingImages.Count >= int.MaxValue) { Toast.Error("حداکثر ۶ تصویر در هر ثبت."); break; }
+            if (pendingImages.Count >= 6) { Toast.Error("حداکثر ۶ تصویر در هر ثبت."); break; }
             pendingImages.Add(f);
         }
     }
@@ -1804,7 +1804,7 @@
         foreach (var f in e.GetMultipleFiles(int.MaxValue))
         {
             if (pendingDocs.Any(x => x.Name == f.Name && x.Size == f.Size)) continue;
-            if (pendingDocs.Count >= int.MaxValue) { Toast.Error("حداکثر ۶ سند در هر ثبت."); break; }
+            if (pendingDocs.Count >= 6) { Toast.Error("حداکثر ۶ سند در هر ثبت."); break; }
             pendingDocs.Add(f);
         }
     }

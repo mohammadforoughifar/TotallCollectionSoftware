@@ -112,6 +112,9 @@ public static class DbInitializer
                 // سازمان‌ها و سمت‌ها — مبنای جزء «واحد» در شماره اندیکاتور نامه‌ها
                 await OrganizationSchemaV1.EnsureAsync(db);
 
+                // ماژول انبارداری: ستون‌های جدید قیمت‌گذاری انبار، ارزش افزوده گروه و خطوط سند
+                await WarehousingSchemaV1.EnsureAsync(db);
+
                 // منابع انسانی اصلی — مدیریت پایه سازمانی (HrMain) + پیوند پرسنل به ساختار جدید
                 await HrMainSchemaV1.EnsureAsync(db);
 

@@ -227,19 +227,43 @@
     </div>
 
     <script>
-        // ---------- کلیدهای میانبر سراسری ----------
-        // F1 = ذخیره / ثبت | F2 = افزودن سطر | Esc = خروج / بستن
+        // ---------- کلیدهای میانبر سراسری و ناوبری بین فیلدها با اینتر ----------
+        // F2 / F1 = ذخیره / ثبت | Esc = خروج / بستن | Enter = جابه‌جایی بین فیلدها
         document.addEventListener('keydown', function (e) {
             var key = null;
-            if (e.key === 'F1') key = 'f1';
-            else if (e.key === 'F2') key = 'f2';
+            if (e.key === 'F2') key = 'f2';
+            else if (e.key === 'F1') key = 'f1';
             else if (e.key === 'Escape') key = 'esc';
-            if (!key) return;
-            var els = document.querySelectorAll('[data-hotkey="' + key + '"]');
-            if (els.length) {
-                e.preventDefault();
-                // آخرین المنت = بالاترین مودال باز
-                els[els.length - 1].click();
+            if (key) {
+                var els = document.querySelectorAll('[data-hotkey="' + key + '"]');
+                if (els.length) {
+                    e.preventDefault();
+                    els[els.length - 1].click();
+                    return;
+                }
+            }
+
+            // ناوبری با کلید Enter بین المان‌ها
+            if (e.key === 'Enter') {
+                var target = e.target;
+                if (!target) return;
+                var tag = (target.tagName || '').toUpperCase();
+                if (tag === 'TEXTAREA') return;
+                if (tag === 'BUTTON' || (tag === 'INPUT' && (target.type === 'submit' || target.type === 'button'))) return;
+
+                var container = target.closest('.doc-grid') || target.closest('.modal-content') || target.closest('form') || target.closest('.card-body') || document.body;
+                var focusables = Array.from(container.querySelectorAll('input:not([disabled]):not([type="hidden"]), select:not([disabled])'));
+                focusables = focusables.filter(function (el) { return el.offsetParent !== null && !el.readOnly; });
+
+                var idx = focusables.indexOf(target);
+                if (idx > -1 && idx < focusables.length - 1) {
+                    e.preventDefault();
+                    var next = focusables[idx + 1];
+                    next.focus();
+                    if (next.select && typeof next.select === 'function') {
+                        next.select();
+                    }
+                }
             }
         }, true);
     </script>

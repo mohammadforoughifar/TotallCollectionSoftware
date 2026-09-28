@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Inventory.Shared;
 namespace Inventory.Api.Data;
 
@@ -35,5 +36,6 @@ public class Warehouse
     public bool AllowNegative { get; set; }
 
     /// <summary>روش قیمت‌گذاری پیش‌فرض انبار (اختیاری — اولویت پس از گروه کالا)</summary>
+    [NotMapped]
     public ValuationMethod? Valuation { get; set; }
 }

@@ -38,7 +38,7 @@ public class UserPhotoService
             input = ms.ToArray();
         }
         if (input.Length == 0) throw new InvalidOperationException("فایل خالی است.");
-        if (input.Length > long.MaxValue) throw new InvalidOperationException("حداکثر حجم عکس ۵ مگابایت است.");
+        if (input.Length > 5 * 1024 * 1024) throw new InvalidOperationException("حداکثر حجم عکس ۵ مگابایت است.");
 
         // فرمت مجاز (از امتداد یا magic bytes)
         var ext = Path.GetExtension(originalName ?? "");

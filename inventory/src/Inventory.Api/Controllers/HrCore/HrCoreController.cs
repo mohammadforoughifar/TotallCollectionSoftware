@@ -612,7 +612,7 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
         if (file is null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
-        if (file.Length > long.MaxValue) return BadRequest(new { message = "حداکثر حجم فایل ۲۰ مگابایت است." });
+        if (file.Length > 20 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم فایل ۲۰ مگابایت است." });
         // محدودیت نوع/پسوند فایل برداشته شد — هر نوع فایلی مجاز است
         var doc = await _svc.GetDocumentAsync(docId);
         if (doc is null) return NotFound(new { message = "سند یافت نشد." });
@@ -653,7 +653,7 @@ public class HrCoreController : RbacControllerBase
     {
         if (await ForbiddenUnlessAsync(Mod, "Update") is { } f) return f;
         if (file is null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
-        if (file.Length > long.MaxValue) return BadRequest(new { message = "حداکثر حجم عکس ۵ مگابایت است." });
+        if (file.Length > 5 * 1024 * 1024) return BadRequest(new { message = "حداکثر حجم عکس ۵ مگابایت است." });
         // محدودیت نوع/پسوند فایل برداشته شد — هر نوع فایلی مجاز است
         var e = await _svc.GetEmployeeAsync(id);
         if (e is null) return NotFound(new { message = "پرسنل یافت نشد." });

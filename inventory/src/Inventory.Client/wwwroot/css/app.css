@@ -1479,6 +1479,114 @@ button.nav-toggle > span:first-child > i.bi { width: 20px; text-align: center; f
 .hr-navigation .hr-nav-legacy button.hr-nav-toggle{opacity:.72;}
 .hr-navigation .hr-nav-legacy .hr-nav-children{border-inline-start-color:rgba(148,163,184,.25);}
 
+/* ---------- منوی دومرحله‌ای ERP: دکمه‌ی هر بخش + فرزندانش (یکپارچه با سایدبار تیره) ----------
+   ساختار: erp-navigation > nav-group-items > erp-nav-section > erp-nav-toggle + erp-nav-children */
+.erp-navigation button.erp-nav-toggle {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    font-size: .88rem;
+    font-weight: 600;
+    color: #cbd5e1;
+    padding: .45rem .6rem;
+    padding-inline-start: .85rem;
+    margin-top: .15rem;
+    margin-bottom: 2px;
+    border: 0 !important;
+    border-radius: 10px;
+    background: transparent !important;
+    cursor: pointer;
+    transition: all .2s cubic-bezier(.4, 0, .2, 1);
+    text-align: right;
+    box-shadow: none !important;
+}
+.erp-navigation button.erp-nav-toggle > span:first-child {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex: 1;
+}
+.erp-navigation button.erp-nav-toggle > span:first-child > i.bi {
+    width: 20px;
+    font-size: .95rem;
+    text-align: center;
+    color: #f472b6;
+    flex-shrink: 0;
+    transition: transform .2s ease;
+}
+.erp-navigation button.erp-nav-toggle .nav-chevron {
+    font-size: .65rem;
+    color: #94a3b8;
+    transition: transform .25s ease, color .2s ease;
+}
+.erp-navigation button.erp-nav-toggle.open .nav-chevron {
+    transform: rotate(180deg);
+    color: #f472b6;
+}
+.erp-navigation button.erp-nav-toggle:hover {
+    background: rgba(255, 255, 255, .06) !important;
+    color: #f1f5f9;
+    transform: translateX(-3px);
+}
+.erp-navigation button.erp-nav-toggle:hover > span:first-child > i.bi {
+    transform: scale(1.1);
+}
+/* بخشِ حاوی صفحه‌ی جاری: ته‌رنگ ملایم صورتی + خط نشانگر */
+.erp-navigation button.erp-nav-toggle.current {
+    background: rgba(244, 114, 182, .10) !important;
+    color: #f472b6;
+}
+.erp-navigation button.erp-nav-toggle.current::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: 20%;
+    bottom: 20%;
+    width: 3px;
+    border-radius: 3px;
+    background: linear-gradient(180deg, #f472b6, #db2777);
+}
+/* فهرست فرزندان: ریل با حاشیه رنگی ERP */
+.erp-navigation .erp-nav-children {
+    overflow: hidden;
+    margin-inline-start: 1rem;
+    margin-top: .15rem;
+    margin-bottom: .25rem;
+    border-inline-start: 2px solid rgba(244, 114, 182, .24);
+    border-radius: 2px;
+}
+.erp-navigation .erp-nav-children .nav-link {
+    padding: .38rem .6rem;
+    padding-inline-start: .95rem;
+    font-size: .85rem;
+    color: #a5b4c8;
+    border-radius: 8px;
+    animation: navOpen .18s ease both;
+    background: transparent !important;
+    border: none;
+}
+.erp-navigation .erp-nav-children .nav-link i {
+    font-size: .92rem;
+    width: 18px;
+    color: #f472b6;
+}
+.erp-navigation .erp-nav-children .nav-link:hover {
+    background: rgba(255, 255, 255, .06) !important;
+    color: #fff;
+    transform: translateX(-3px);
+}
+.erp-navigation .erp-nav-children .nav-link.active {
+    background: linear-gradient(135deg, #f472b6, #db2777) !important;
+    color: #fff !important;
+    box-shadow: 0 4px 14px rgba(244, 114, 182, .38);
+    font-weight: 600;
+}
+.erp-navigation .erp-nav-children .nav-link.active i {
+    color: #fff !important;
+}
+
 /* ============================================================================
    فضای کاری «منابع انسانی اصلی» — استایل‌های یکپارچه (منبع یگانه: app.css)
    این قواعد قبلاً در فایل‌های .razor.css (CSS ایزوله) بودند که فقط از مسیر

@@ -290,7 +290,7 @@ public class IncomingLettersController : RbacControllerBase
         if (!await HasDabirkhaneAsync()) return StatusCode(403, new { message = "افزودن پیوست نامه وارده فقط از طریق دبیرخانه مجاز است." });
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است." });
-        if (file.Length > long.MaxValue)
+        if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
         using var ms = new MemoryStream();

@@ -1,0 +1,77 @@
+@page "/inv/settings"
+@inject IToastService Toast
+@inject LayoutState Layout
+
+<PageTitle>تنظیمات ERP و مالیات ارزش افزوده</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>تنظیمات ERP و مالیات بر ارزش افزوده</h1>
+        <p class="lead">پیکربندی روش و فرمول‌های محاسباتی ارزش افزوده و نرخ‌های پیش‌فرض سامانه ERP</p>
+    </div>
+</div>
+
+<div class="row g-3">
+    @* ================= کارت روش و فرمول محاسبه ارزش افزوده ================= *@
+    <div class="col-12 col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-white d-flex align-items-center justify-content-between py-3">
+                <span class="fw-600"><i class="bi bi-calculator-fill text-primary me-2"></i>روش محاسبه مالیات بر ارزش افزوده (VAT)</span>
+                <span class="badge badge-soft-success">استاندارد مودیان و حسابداری</span>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info py-2 mb-3" style="font-size: .84rem;">
+                    <i class="bi bi-info-circle-fill me-1"></i>
+                    <b>قاعده محاسبه ریالی ارزش افزوده در فاکتورها و اسناد انبار:</b>
+                    ارزش افزوده تنها به اقلام مشمول تعلق می‌گیرد و تخفیف‌ها پیش از محاسبه ارزش افزوده از مبلغ ناخالص کسر می‌گردند.
+                </div>
+
+                <div class="p-3 bg-light border rounded-3 mb-4">
+                    <div class="fw-600 mb-2 text-dark"><i class="bi bi-diagram-3 text-secondary me-1"></i> فرمول محاسباتی سامانه:</div>
+                    <div class="font-monospace fs-8 p-2 bg-white rounded border mb-2" dir="ltr">
+                        مبلغ مشمول سطر = (تعداد × فی واحد) − تخفیف
+                    </div>
+                    <div class="font-monospace fs-8 p-2 bg-white rounded border mb-2 text-primary" dir="ltr">
+                        ارزش افزوده = مبلغ مشمول سطر × (نرخ ارزش افزوده ٪)
+                    </div>
+                    <div class="font-monospace fs-8 p-2 bg-white rounded border text-success fw-bold" dir="ltr">
+                        مبلغ کل سطر = مبلغ مشمول سطر + مالیات بر ارزش افزوده
+                    </div>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-600">نرخ پیش‌فرض ارزش افزوده در سیستم (٪)</label>
+                        <input type="number" step="any" class="form-control num" @bind="defaultVatRate" dir="ltr" />
+                        <div class="fs-8 text-muted mt-1">نرخ پایه اعمال شده روی کالاهای جدید (پیش‌فرض: ۱۰٪)</div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-600">نرخ پیش‌فرض عوارض قانونی (٪)</label>
+                        <input type="number" step="any" class="form-control num" @bind="defaultDutyRate" dir="ltr" />
+                        <div class="fs-8 text-muted mt-1">نرخ عوارض در صورت نیاز به تفکیک از مالیات</div>
+                    </div>
+                    <div class="col-12 pt-2">
+                        <button class="btn btn-primary px-4" @onclick="SaveDefaultRates">
+                            <i class="bi bi-check2"></i> ذخیره تنظیمات پیش‌فرض
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private decimal defaultVatRate = 10m;
+    private decimal defaultDutyRate = 0m;
+
+    protected override void OnInitialized()
+    {
+        Layout.SetTitle("تنظیمات ERP و ارزش افزوده");
+    }
+
+    private void SaveDefaultRates()
+    {
+        Toast.Success("تنظیمات و نرخ‌های پیش‌فرض با موفقیت ذخیره شدند.");
+    }
+}

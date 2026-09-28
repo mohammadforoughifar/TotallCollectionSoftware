@@ -154,10 +154,9 @@
                                     }
                                 </td>
                                 <td class="text-end text-nowrap">
-                                    <a class="btn btn-sm btn-light" title="اسناد این نوع" href="@($"/inv/docs?docTypeId={t.Id}")"><i class="bi bi-journal-text text-info"></i></a>
-                                    <a class="btn btn-sm btn-light" title="سند جدید" href="@($"/inv/docs/new?docTypeId={t.Id}")"><i class="bi bi-plus-lg text-success"></i></a>
                                     <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(t)"><i class="bi bi-pencil text-primary"></i></button>
                                     <button class="btn btn-sm btn-light" title="حذف" disabled="@t.IsSystem" @onclick="() => Delete(t)"><i class="bi bi-trash @(t.IsSystem ? "text-muted" : "text-danger")"></i></button>
+                                    <button class="btn btn-sm btn-outline-secondary" title="شابلون سند حسابداری" @onclick="() => ShowTemplateNotice(t)"><i class="bi bi-file-earmark-spreadsheet me-1"></i> شابلون سند حسابداری</button>
                                 </td>
                             </tr>
                         }
@@ -197,6 +196,7 @@
                         <div class="m-card-actions">
                             <button class="btn btn-light text-primary" @onclick="() => OpenEdit(t)"><i class="bi bi-pencil"></i> ویرایش</button>
                             <button class="btn btn-light text-danger" disabled="@t.IsSystem" @onclick="() => Delete(t)"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-light text-secondary" @onclick="() => ShowTemplateNotice(t)"><i class="bi bi-file-earmark-spreadsheet"></i> شابلون سند حسابداری</button>
                         </div>
                     </div>
                 }
@@ -362,9 +362,14 @@
         (fNature is null ? items : items.Where(t => t.Nature == fNature))
         .OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ThenBy(t => t.Name).ToList();
 
-    private bool CanSeeCode => Auth.IsAdmin ||
-                               string.Equals(Auth.Role, "Admin", StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(Auth.Role, "مدیر", StringComparison.OrdinalIgnoreCase);
+    private bool CanSeeCode => Auth.Has("InvDocTypes.ViewCode") ||
+                               Auth.Has("InvDocTypes.Code") ||
+                               Auth.IsAdmin;
+
+    private void ShowTemplateNotice(InvDocType t)
+    {
+        Toast.Info("به زودی دیتا قرار می‌گیرد.");
+    }
 
     private void SetNature(StockNature? n) => fNature = n;
 

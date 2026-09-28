@@ -462,7 +462,7 @@
         var files = e.GetMultipleFiles(int.MaxValue).ToList();
 
         // پیش‌چک حجم/تعداد با پیام واضح
-        var oversized = files.Where(f => f.Size > long.MaxValue).Select(f => f.Name).ToList();
+        var oversized = files.Where(f => f.Size > 20 * 1024 * 1024).Select(f => f.Name).ToList();
         foreach (var n in oversized) files.RemoveAll(f => f.Name == n);
         if (oversized.Count > 0)
             Toast.Error($"{string.Join("، ", oversized.Take(3))}{(oversized.Count > 3 ? " و …" : "")} حذف شد: هر فایل حداکثر ۱۰ مگابایت.");

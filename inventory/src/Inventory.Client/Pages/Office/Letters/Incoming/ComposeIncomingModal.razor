@@ -333,7 +333,7 @@
         showScanModal = false;
         foreach (var file in e.GetMultipleFiles(int.MaxValue))
         {
-            if (file.Size > long.MaxValue)
+            if (file.Size > 20 * 1024 * 1024)
             {
                 Toast.Error($"فایل {file.Name} بیش از ۲۰ مگابایت است.");
                 continue;

@@ -94,7 +94,7 @@ public class EmailController : RbacControllerBase
         foreach (var f in files ?? new List<IFormFile>())
         {
             if (f == null || f.Length <= 0) continue;
-            if (f.Length > long.MaxValue)
+            if (f.Length > 20 * 1024 * 1024)
                 return BadRequest(new { message = $"حجم فایل {f.FileName} بیش از ۲۰ مگابایت است." });
             using var ms = new MemoryStream();
             await f.CopyToAsync(ms);

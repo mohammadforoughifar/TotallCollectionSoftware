@@ -33,6 +33,12 @@ public class InvCategory
     /// <summary>روش قیمت‌گذاری این گروه (null = ارث‌بری از والد یا تنظیمات کلی)</summary>
     public ValuationMethod? Valuation { get; set; }
 
+    /// <summary>مشمول مالیات بر ارزش افزوده برای کالاهای این گروه</summary>
+    public bool? IsVatIncluded { get; set; }
+
+    /// <summary>نرخ مالیات بر ارزش افزوده گروه کالا (درصد)</summary>
+    public decimal? VatRate { get; set; }
+
     /// <summary>روش موثر (پس از ارث‌بری) — پر شده توسط سرور</summary>
     public ValuationMethod EffectiveValuation { get; set; }
 
@@ -63,6 +69,19 @@ public class InvCategoryMove
     public int Id { get; set; }
     public int? NewParentId { get; set; }
     public int SortOrder { get; set; }
+}
+
+/// <summary>درخواست اعمال ارزش افزوده به یک گروه کالا و کالاهای آن</summary>
+public class ApplyCategoryVatRequest
+{
+    public int CategoryId { get; set; }
+    public bool IsVatIncluded { get; set; } = true;
+    public decimal VatRate { get; set; } = 10m;
+}
+
+public class ApplyCategoryVatResponse
+{
+    public int UpdatedCount { get; set; }
 }
 
 // ============================ ۲) ویژگی کالا ============================
@@ -346,8 +365,22 @@ public class InvDocLine
     public decimal UnitPrice { get; set; }
     public decimal Discount { get; set; }
 
-    /// <summary>مبلغ سطر = تعداد × فی − تخفیف</summary>
-    public decimal Amount => Quantity * UnitPrice - Discount;
+    /// <summary>ورودی تخفیف (تا ۱۰۰ = درصد، بیشتر از ۱۰۰ = ریال)</summary>
+    public decimal DiscountInput { get; set; }
+
+    /// <summary>مشمول مالیات بر ارزش افزوده</summary>
+    public bool IsVatIncluded { get; set; }
+
+    /// <summary>نرخ مالیات بر ارزش افزوده (درصد)</summary>
+    public decimal VatRate { get; set; }
+
+    /// <summary>مبلغ مالیات بر ارزش افزوده سطر</summary>
+    public decimal VatAmount => IsVatIncluded && VatRate > 0
+        ? Math.Round((Quantity * UnitPrice - Discount) * (VatRate / 100m), 0)
+        : 0;
+
+    /// <summary>مبلغ سطر = تعداد × فی − تخفیف + ارزش افزوده</summary>
+    public decimal Amount => (Quantity * UnitPrice - Discount) + VatAmount;
 
     public string? BatchNo { get; set; }
     public string? SerialNo { get; set; }

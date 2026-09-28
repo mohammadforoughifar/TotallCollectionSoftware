@@ -27,6 +27,17 @@ public class InvCategoryService : IInvCategoryService
 
     public Task DeleteAsync(int id)
         => _api.DeleteAsync($"api/inv/categories/{id}");
+
+    public async Task<int> ApplyCategoryVatAsync(int categoryId, bool isVatIncluded, decimal vatRate)
+    {
+        var res = await _api.PostAsync<ApplyCategoryVatResponse>("api/inv/categories/apply-vat", new ApplyCategoryVatRequest
+        {
+            CategoryId = categoryId,
+            IsVatIncluded = isVatIncluded,
+            VatRate = vatRate
+        });
+        return res?.UpdatedCount ?? 0;
+    }
 }
 
 /// <summary>پیاده‌سازی سرویس ویژگی‌های کالا.</summary>

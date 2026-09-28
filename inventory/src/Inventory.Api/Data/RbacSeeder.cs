@@ -43,7 +43,7 @@ public static class RbacSeeder
         // InvDocs: اسناد رسید و حواله — Confirm: قطعی‌سازی | Cancel: ابطال
         ["InvDocs"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
         // InvDocTypes: مدیریت انواع رسید/حواله و ماهیت آن‌ها
-        ["InvDocTypes"] = CrudActions,
+        ["InvDocTypes"] = new[] { "Create", "Read", "Update", "Delete", "Export", "ViewCode" },
         // ================== ماژول حسابداری ==================
         // AccAccounts: کدینگ حساب‌ها، سال مالی و قواعد سند خودکار
         ["AccAccounts"] = CrudActions,

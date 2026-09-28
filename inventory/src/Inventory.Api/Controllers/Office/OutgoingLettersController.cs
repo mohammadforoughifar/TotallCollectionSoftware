@@ -680,7 +680,7 @@ public class OutgoingLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > long.MaxValue)
+        if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
         // پیوست‌های صادره روی دیسک در «wwwroot/فایل های صادره/{شناسه نامه}/» ذخیره می‌شوند
@@ -766,7 +766,7 @@ public class OutgoingLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > long.MaxValue)
+        if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
 
         // پیوست پیش‌نویس صادره هم در «فایل های صادره» ذخیره می‌شود و بعد از ارسال،

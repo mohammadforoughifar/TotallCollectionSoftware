@@ -483,7 +483,7 @@ public class InnerLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > long.MaxValue)
+        if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
         // محدودیت پسوند فایل و بررسی امضای محتوا برداشته شد — هر نوع فایلی مجاز است
         using var ms = new MemoryStream();
@@ -573,7 +573,7 @@ public class InnerLettersController : RbacControllerBase
 
         if (file == null || file.Length <= 0)
             return BadRequest(new { message = "فایل خالی است و قابل بارگذاری نیست." });
-        if (file.Length > long.MaxValue)
+        if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم هر فایل ۲۰ مگابایت است." });
         // محدودیت پسوند فایل و بررسی امضای محتوا برداشته شد — هر نوع فایلی مجاز است
         using var ms = new MemoryStream();

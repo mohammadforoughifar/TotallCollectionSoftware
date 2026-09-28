@@ -440,7 +440,7 @@ else
     {
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > long.MaxValue) { saveError = "حداکثر حجم عکس ۵ مگابایت است."; StateHasChanged(); return; }
+        if (file.Size > 5 * 1024 * 1024) { saveError = "حداکثر حجم عکس ۵ مگابایت است."; StateHasChanged(); return; }
         var buf = new byte[file.Size];
         await file.OpenReadStream(long.MaxValue).ReadAsync(buf);
         luPhotoBytes = buf;
@@ -452,7 +452,7 @@ else
     {
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > long.MaxValue) { saveError = "حداکثر حجم امضا ۲ مگابایت است."; return; }
+        if (file.Size > 2 * 1024 * 1024) { saveError = "حداکثر حجم امضا ۲ مگابایت است."; return; }
         if (file.ContentType is not ("image/png" or "image/jpeg")) { saveError = "امضا باید PNG یا JPG باشد."; return; }
         luSignatureBytes = new byte[file.Size];
         await file.OpenReadStream(long.MaxValue).ReadAsync(luSignatureBytes);

@@ -16,7 +16,8 @@ public static class ErpNavigation
             E("inv/categories", "گروه‌بندی کالا", "bi-diagram-3", "Products"),
             E("inv/attributes", "ویژگی‌های کالا", "bi-sliders", "Products"),
             E("inv/warehouses", "مدیریت انبارها", "bi-building-gear", "Warehouses"),
-            E("inv/doc-types", "نوع رسید و حواله", "bi-journals", "InvDocTypes")]),
+            E("inv/doc-types", "نوع رسید و حواله", "bi-journals", "InvDocTypes"),
+            E("inv/settings", "تنظیمات ERP و ارزش افزوده", "bi-gear-wide-connected", "Products")]),
         new("inv-ops", "عملیات انبار", "bi-arrow-left-right", [
             E("inv/docs", "رسید و حواله", "bi-journal-text", "InvDocs"),
             E("inv/docs/new", "سند جدید انبار", "bi-file-earmark-plus", "InvDocs")]),

@@ -1762,7 +1762,7 @@ window.sigClear = function (canvasId) {
     {
         var file = e.File;
         if (file == null || file.Size == 0) return;
-        if (file.Size > long.MaxValue) return;
+        if (file.Size > 20 * 1024 * 1024) return;
         var buf = new byte[file.Size];
         await file.OpenReadStream(long.MaxValue).ReadAsync(buf);
         quickUserPhoto = buf;

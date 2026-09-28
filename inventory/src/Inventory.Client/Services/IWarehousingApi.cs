@@ -16,6 +16,7 @@ public interface IInvCategoryService
     Task<InvCategory> SaveAsync(InvCategory category);
     Task MoveAsync(InvCategoryMove cmd);
     Task DeleteAsync(int id);
+    Task<int> ApplyCategoryVatAsync(int categoryId, bool isVatIncluded, decimal vatRate);
 }
 
 /// <summary>ویژگی‌های کالا.</summary>

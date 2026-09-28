@@ -28,7 +28,7 @@ public class FilesController : ControllerBase
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "فایلی ارسال نشده است." });
 
-        if (file.Length > long.MaxValue)
+        if (file.Length > 20 * 1024 * 1024)
             return BadRequest(new { message = "حداکثر حجم مجاز ۲۰ مگابایت است." });
 
         using var stream = file.OpenReadStream();

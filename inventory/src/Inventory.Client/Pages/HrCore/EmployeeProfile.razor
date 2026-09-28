@@ -926,7 +926,7 @@ else
     {
         var file = e.File;
         if (file is null) return;
-        if (file.Size > long.MaxValue) { Toast.Error("حداکثر حجم عکس ۵ مگابایت است."); return; }
+        if (file.Size > 5 * 1024 * 1024) { Toast.Error("حداکثر حجم عکس ۵ مگابایت است."); return; }
         try
         {
             await using var stream = file.OpenReadStream(long.MaxValue);
@@ -1140,7 +1140,7 @@ else
     {
         var file = e.File;
         if (file is null) return;
-        if (file.Size > long.MaxValue) { Toast.Error("حداکثر حجم فایل ۲۰ مگابایت است."); return; }
+        if (file.Size > 20 * 1024 * 1024) { Toast.Error("حداکثر حجم فایل ۲۰ مگابایت است."); return; }
         try
         {
             await using var stream = file.OpenReadStream(long.MaxValue);

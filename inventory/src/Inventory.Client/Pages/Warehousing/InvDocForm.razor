@@ -45,15 +45,15 @@
         }
         else
         {
-            <button class="btn btn-outline-primary" disabled="@saving" @onclick="() => Save(false)">
+            <button class="btn btn-outline-primary" data-hotkey="f1" title="کلید میانبر: F1" disabled="@saving" @onclick="() => Save(false)">
                 <i class="bi bi-save"></i> ذخیره پیش‌نویس
             </button>
-            <button class="btn btn-primary" data-hotkey="f1" disabled="@saving" @onclick="() => Save(true)">
+            <button class="btn btn-primary" data-hotkey="f2" title="کلید میانبر: F2" disabled="@saving" @onclick="() => Save(true)">
                 @if (saving)
                 {
                     <span class="spinner-border spinner-border-sm ms-1"></span>
                 }
-                <i class="bi bi-check2-circle"></i> ذخیره و قطعی کردن
+                <i class="bi bi-check2-circle"></i> ذخیره و قطعی کردن (F2)
             </button>
         }
     </div>
@@ -190,9 +190,9 @@ else
                                 <th style="width:80px">واحد</th>
                                 <th style="width:110px">موجودی فعلی</th>
                                 <th style="width:110px">مقدار</th>
-                                <th style="width:130px">مبلغ واحد</th>
-                                <th style="width:120px">تخفیف</th>
-                                <th style="width:140px">مبلغ کل</th>
+                                <th style="width:130px">مبلغ واحد (فی)</th>
+                                <th style="width:150px">تخفیف (درصد یا ریال)</th>
+                                <th style="width:150px">مبلغ کل</th>
                                 @if (NeedsBatch)
                                 {
                                     <th style="width:120px">سری ساخت</th>
@@ -247,10 +247,31 @@ else
                                     </td>
                                     <td>
                                         <input class="form-control text-start num" dir="ltr" inputmode="decimal" disabled="@ReadOnly"
-                                               value="@(l.Discount == 0 ? "" : Fa.Money(l.Discount))"
+                                               value="@(l.DiscountInput > 0 ? Fa.Money(l.DiscountInput) : (l.Discount > 0 ? Fa.Money(l.Discount) : ""))"
+                                               placeholder="تا ۱۰۰=٪ ، بیشتر=ریال"
                                                @onchange="e => SetDiscount(l, e)" />
+                                        @if (l.DiscountInput > 0 && l.DiscountInput <= 100)
+                                        {
+                                            <div class="fs-8 text-success num mt-1 fw-500">
+                                                @l.Discount.Money() ریال (@l.DiscountInput.Num()٪)
+                                            </div>
+                                        }
+                                        else if (l.Discount > 0)
+                                        {
+                                            <div class="fs-8 text-muted num mt-1">
+                                                مبلغ ریالی: @l.Discount.Money()
+                                            </div>
+                                        }
                                     </td>
-                                    <td class="num fw-600">@l.Amount.Money()</td>
+                                    <td class="num fw-600">
+                                        <div>@l.Amount.Money()</div>
+                                        @if (l.IsVatIncluded && l.VatRate > 0)
+                                        {
+                                            <div class="fs-8 text-muted fw-normal">
+                                                +@l.VatAmount.Money() <span class="badge badge-soft-info fs-9">ارزش افزوده @l.VatRate.Num()٪</span>
+                                            </div>
+                                        }
+                                    </td>
                                     @if (NeedsBatch)
                                     {
                                         <td><input class="form-control num" dir="ltr" disabled="@ReadOnly" @bind="l.BatchNo" /></td>
@@ -271,26 +292,49 @@ else
                                 </tr>
                             }
                         </tbody>
+                        <tfoot>
+                            <tr class="table-light border-top border-2">
+                                <td colspan="4" class="fw-700 text-end">ته‌جمع:</td>
+                                <td class="fw-700 num text-start">@doc.Lines.Sum(l => l.Quantity).Num()</td>
+                                <td class="fw-700 text-muted fs-8">جمع کالا</td>
+                                <td class="fw-700 num text-start text-success">
+                                    <div>@doc.Lines.Sum(l => l.Discount).Money()</div>
+                                    <div class="fs-8 text-muted fw-normal">جمع تخفیف</div>
+                                </td>
+                                <td class="fw-700 num text-start text-primary fs-6">
+                                    <div>@doc.Lines.Sum(l => l.Amount).Money()</div>
+                                    <div class="fs-8 text-muted fw-normal">مبلغ کل (ریال)</div>
+                                </td>
+                                <td colspan="@(1 + (NeedsBatch ? 1 : 0) + (NeedsExpiry ? 1 : 0) + (!ReadOnly ? 1 : 0))"></td>
+                            </tr>
+                        </tfoot>
                     </table>
                 </div>
 
                 @* ---------- جمع سند ---------- *@
                 <div class="doc-total-bar mt-3">
                     <div>
-                        <div class="lbl">تعداد ردیف</div>
+                        <div class="lbl">تعداد اقلام</div>
                         <div class="val num">@doc.Lines.Count.Num()</div>
                     </div>
                     <div>
-                        <div class="lbl">جمع مقدار</div>
+                        <div class="lbl">جمع کالا (تعداد)</div>
                         <div class="val num">@doc.Lines.Sum(l => l.Quantity).Num()</div>
                     </div>
                     <div>
                         <div class="lbl">جمع تخفیف</div>
-                        <div class="val num">@doc.Lines.Sum(l => l.Discount).Money()</div>
+                        <div class="val num text-success">@doc.Lines.Sum(l => l.Discount).Money() <small class="fs-8 text-muted">ریال</small></div>
                     </div>
+                    @if (doc.Lines.Any(l => l.VatAmount > 0))
+                    {
+                        <div>
+                            <div class="lbl">جمع ارزش افزوده</div>
+                            <div class="val num text-info">@doc.Lines.Sum(l => l.VatAmount).Money() <small class="fs-8 text-muted">ریال</small></div>
+                        </div>
+                    }
                     <div class="ms-auto text-start">
-                        <div class="lbl">جمع کل سند (ریال)</div>
-                        <div class="val num text-primary" style="font-size:1.15rem">@doc.Lines.Sum(l => l.Amount).Money()</div>
+                        <div class="lbl">مبلغ کل سند (ریال)</div>
+                        <div class="val num text-primary fs-5">@doc.Lines.Sum(l => l.Amount).Money()</div>
                     </div>
                 </div>
             }
@@ -445,8 +489,11 @@ else
             line.ProductCode = p.Code;
             line.Unit = p.Unit;
             line.CurrentStock = p.TotalStock;
+            line.IsVatIncluded = p.IsVatIncluded;
+            line.VatRate = p.VatRate;
             if (line.UnitPrice == 0)
                 line.UnitPrice = SelectedType?.Nature == StockNature.Decrease ? p.SalePrice : p.PurchasePrice;
+            RecalculateLineDiscount(line);
             if (p.TrackBatch || p.TrackSerial) batchProducts = true;
             if (p.TrackExpiry) expiryProducts = true;
         }
@@ -469,9 +516,42 @@ else
         }
     }
 
-    private static void SetQty(InvDocLine l, ChangeEventArgs e) => l.Quantity = Fa.ParseDecimal(e.Value?.ToString());
-    private static void SetPrice(InvDocLine l, ChangeEventArgs e) => l.UnitPrice = Fa.ParseDecimal(e.Value?.ToString());
-    private static void SetDiscount(InvDocLine l, ChangeEventArgs e) => l.Discount = Fa.ParseDecimal(e.Value?.ToString());
+    private static void SetQty(InvDocLine l, ChangeEventArgs e)
+    {
+        l.Quantity = Fa.ParseDecimal(e.Value?.ToString());
+        RecalculateLineDiscount(l);
+    }
+
+    private static void SetPrice(InvDocLine l, ChangeEventArgs e)
+    {
+        l.UnitPrice = Fa.ParseDecimal(e.Value?.ToString());
+        RecalculateLineDiscount(l);
+    }
+
+    private static void SetDiscount(InvDocLine l, ChangeEventArgs e)
+    {
+        l.DiscountInput = Fa.ParseDecimal(e.Value?.ToString());
+        RecalculateLineDiscount(l);
+    }
+
+    private static void RecalculateLineDiscount(InvDocLine l)
+    {
+        var gross = l.Quantity * l.UnitPrice;
+        if (l.DiscountInput <= 0)
+        {
+            l.Discount = 0;
+        }
+        else if (l.DiscountInput <= 100)
+        {
+            // درصد تخفیف: اگر عدد تا ۱۰۰ باشد یعنی باید به صورت درصد محاسبه بشه
+            l.Discount = Math.Round(gross * (l.DiscountInput / 100m), 0);
+        }
+        else
+        {
+            // تخفیف ریالی: اگر بیشتر از ۱۰۰ شد باید به ریال تخفیف محاسبه بشه
+            l.Discount = l.DiscountInput;
+        }
+    }
 
     // ---------- ذخیره ----------
     private async Task Save(bool confirm)

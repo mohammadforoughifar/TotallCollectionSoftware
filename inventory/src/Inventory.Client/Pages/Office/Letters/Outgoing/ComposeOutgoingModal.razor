@@ -496,7 +496,7 @@
         foreach (var f in e.GetMultipleFiles(int.MaxValue))
         {
             if (f.Size <= 0) { rejected.Add($"{f.Name} (خالی)"); continue; }
-            if (f.Size > long.MaxValue) { rejected.Add($"{f.Name} (بیش از ۲۰MB)"); continue; }
+            if (f.Size > 20 * 1024 * 1024) { rejected.Add($"{f.Name} (بیش از ۲۰MB)"); continue; }
             if (pendingFiles.Any(x => x.Name == f.Name && x.Size == f.Size) ||
                 savedAtts.Any(x => x.FileName == f.Name && x.Size == f.Size))
             { rejected.Add($"{f.Name} (تکراری)"); continue; }

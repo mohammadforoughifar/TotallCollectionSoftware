@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Inventory.Shared;
 namespace Inventory.Api.Data;
 
@@ -26,4 +27,12 @@ public class ProductCategory
 
     /// <summary>روش قیمت‌گذاری گروه (null = ارث‌بری از والد یا تنظیمات کلی)</summary>
     public ValuationMethod? Valuation { get; set; }
+
+    /// <summary>مشمول مالیات بر ارزش افزوده برای کالاهای این گروه</summary>
+    [NotMapped]
+    public bool? IsVatIncluded { get; set; }
+
+    /// <summary>نرخ مالیات بر ارزش افزوده گروه کالا (درصد)</summary>
+    [NotMapped]
+    public decimal? VatRate { get; set; }
 }

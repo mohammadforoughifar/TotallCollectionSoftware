@@ -182,6 +182,19 @@
                                 <td class="num">@items.Count(c => c.ParentId == selected.Id).Num()</td>
                             </tr>
                             <tr>
+                                <td class="text-muted">وضعیت ارزش افزوده</td>
+                                <td>
+                                    @if (selected.IsVatIncluded ?? true)
+                                    {
+                                        <span class="badge badge-soft-success">مشمول (@((selected.VatRate ?? 10m).Num())٪)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge badge-soft-muted">غیرمشمول</span>
+                                    }
+                                </td>
+                            </tr>
+                            <tr>
                                 <td class="text-muted">تاریخ ایجاد</td>
                                 <td class="num fs-8">@selected.CreatedAt.ToFaDateTime()</td>
                             </tr>
@@ -191,6 +204,33 @@
                             </tr>
                         </tbody>
                     </table>
+
+                    @* ---------- اعمال گروهی ارزش افزوده به کالاهای گروه ---------- *@
+                    <div class="p-3 bg-light rounded-3 border mb-3">
+                        <div class="fw-600 fs-8 mb-2"><i class="bi bi-tags-fill text-warning me-1"></i>اعمال ارزش افزوده به کالاهای این گروه:</div>
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <div class="form-check form-check-inline mb-0">
+                                <input class="form-check-input cursor-pointer" type="checkbox" id="catVatInc" @bind="panelVatIncluded" />
+                                <label class="form-check-label fs-8 cursor-pointer" for="catVatInc">مشمول ارزش افزوده</label>
+                            </div>
+                            <div class="input-group input-group-sm" style="max-width: 140px;">
+                                <input type="number" step="any" class="form-control num" dir="ltr" @bind="panelVatRate" disabled="@(!panelVatIncluded)" />
+                                <span class="input-group-text">٪</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-warning w-100" @onclick="() => ApplyVatToSelected(selected)" disabled="@applyingVat">
+                            @if (applyingVat)
+                            {
+                                <span class="spinner-border spinner-border-sm ms-1"></span>
+                                <span>در حال اعمال ارزش افزوده…</span>
+                            }
+                            else
+                            {
+                                <i class="bi bi-check2-all me-1"></i>
+                                <span>اعمال به تمام کالاهای این گروه (@selected.TotalProductCount.Num() کالا)</span>
+                            }
+                        </button>
+                    </div>
 
                     <div class="d-flex gap-2">
                         <button class="btn btn-primary flex-grow-1" @onclick="() => OpenEdit(selected)">
@@ -264,6 +304,37 @@
                     <label class="form-check-label" for="catInactive">غیرفعال</label>
                 </div>
             </div>
+            <div class="col-md-6">
+                <label class="form-label">مشمول مالیات بر ارزش افزوده</label>
+                <div class="d-flex align-items-center gap-3 mt-1">
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input cursor-pointer" type="radio" name="formVatInc" id="fVatYes"
+                               checked="@formIsVatIncluded" @onchange="() => formIsVatIncluded = true" />
+                        <label class="form-check-label cursor-pointer text-success fw-500" for="fVatYes">مشمول (بله)</label>
+                    </div>
+                    <div class="form-check form-check-inline mb-0">
+                        <input class="form-check-input cursor-pointer" type="radio" name="formVatInc" id="fVatNo"
+                               checked="@(!formIsVatIncluded)" @onchange="() => formIsVatIncluded = false" />
+                        <label class="form-check-label cursor-pointer text-muted" for="fVatNo">غیرمشمول (خیر)</label>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">نرخ ارزش افزوده (٪)</label>
+                <input type="number" step="any" class="form-control num" dir="ltr" @bind="formVatRate" disabled="@(!formIsVatIncluded)" />
+            </div>
+            @if (editing)
+            {
+                <div class="col-12">
+                    <div class="form-check p-2 bg-light rounded border">
+                        <input class="form-check-input cursor-pointer" type="checkbox" id="propagateVat" @bind="propagateVatToProducts" />
+                        <label class="form-check-label cursor-pointer fw-600 text-primary fs-8" for="propagateVat">
+                            <i class="bi bi-arrow-repeat me-1"></i>
+                            اعمال این تنظیم ارزش افزوده به تمام کالاهای موجود در این گروه و زیرگروه‌ها پس از ذخیره
+                        </label>
+                    </div>
+                </div>
+            }
             <div class="col-12">
                 <label class="form-label">شرح</label>
                 <textarea class="form-control" rows="2" @bind="form.Description"></textarea>
@@ -291,6 +362,14 @@
     private string valuationStr = "";
     private bool editing => form.Id != 0;
 
+    private bool formIsVatIncluded = true;
+    private decimal formVatRate = 10m;
+    private bool propagateVatToProducts;
+
+    private bool panelVatIncluded = true;
+    private decimal panelVatRate = 10m;
+    private bool applyingVat;
+
     protected override async Task OnInitializedAsync()
     {
         Layout.SetTitle("مدیریت گروه کالا");
@@ -303,7 +382,15 @@
         try
         {
             items = await CategorySvc.GetFlatAsync();
-            if (selected is not null) selected = items.FirstOrDefault(c => c.Id == selected.Id);
+            if (selected is not null)
+            {
+                selected = items.FirstOrDefault(c => c.Id == selected.Id);
+                if (selected != null)
+                {
+                    panelVatIncluded = selected.IsVatIncluded ?? true;
+                    panelVatRate = (selected.VatRate ?? 0) > 0 ? selected.VatRate.Value : 10m;
+                }
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -365,14 +452,29 @@
         return false;
     }
 
-    private void Select(InvCategory n) => selected = n;
+    private void Select(InvCategory n)
+    {
+        selected = n;
+        panelVatIncluded = n.IsVatIncluded ?? true;
+        panelVatRate = (n.VatRate ?? 0) > 0 ? n.VatRate.Value : 10m;
+    }
 
     // ---------- عملیات ----------
     private void OpenNew(int? parentId)
     {
-        form = new InvCategory { IsActive = true, ParentId = parentId, Valuation = ValuationMethod.Average };
+        form = new InvCategory
+        {
+            IsActive = true,
+            ParentId = parentId,
+            Valuation = ValuationMethod.Average,
+            IsVatIncluded = true,
+            VatRate = 10m
+        };
         parentIdStr = (parentId ?? 0).ToString();
         valuationStr = parentId > 0 ? "" : "0";
+        formIsVatIncluded = true;
+        formVatRate = 10m;
+        propagateVatToProducts = false;
         showModal = true;
     }
 
@@ -382,10 +484,14 @@
         {
             Id = c.Id, Name = c.Name, Code = c.Code, ParentId = c.ParentId,
             Description = c.Description, IsActive = c.IsActive, SortOrder = c.SortOrder,
-            Valuation = c.Valuation, CreatedAt = c.CreatedAt
+            Valuation = c.Valuation, IsVatIncluded = c.IsVatIncluded, VatRate = c.VatRate,
+            CreatedAt = c.CreatedAt
         };
         parentIdStr = (c.ParentId ?? 0).ToString();
         valuationStr = c.Valuation is null ? "" : ((int)c.Valuation.Value).ToString();
+        formIsVatIncluded = c.IsVatIncluded ?? true;
+        formVatRate = (c.VatRate ?? 0) > 0 ? c.VatRate.Value : 10m;
+        propagateVatToProducts = false;
         showModal = true;
     }
 
@@ -401,18 +507,62 @@
             valuationStr = "0";
         }
         form.Valuation = int.TryParse(valuationStr, out var v) ? (ValuationMethod)v : null;
+        form.IsVatIncluded = formIsVatIncluded;
+        form.VatRate = formIsVatIncluded ? formVatRate : 0m;
 
         saving = true;
         try
         {
             var saved = await CategorySvc.SaveAsync(form);
-            Toast.Success(editing ? "گروه کالا ویرایش شد." : "گروه کالا ثبت شد.");
+            if (propagateVatToProducts && saved.Id > 0)
+            {
+                var updatedCount = await CategorySvc.ApplyCategoryVatAsync(saved.Id, formIsVatIncluded, formIsVatIncluded ? formVatRate : 0m);
+                Toast.Success($"گروه کالا ویرایش شد و ارزش افزوده به {updatedCount.Num()} کالا اعمال گردید.");
+            }
+            else
+            {
+                Toast.Success(editing ? "گروه کالا ویرایش شد." : "گروه کالا ثبت شد.");
+            }
             showModal = false;
             await Load();
             selected = items.FirstOrDefault(c => c.Id == saved.Id);
+            if (selected != null)
+            {
+                panelVatIncluded = selected.IsVatIncluded ?? true;
+                panelVatRate = (selected.VatRate ?? 0) > 0 ? selected.VatRate.Value : 10m;
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { saving = false; }
+    }
+
+    private async Task ApplyVatToSelected(InvCategory cat)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm",
+            $"آیا از اعمال ارزش افزوده ({(panelVatIncluded ? $"{panelVatRate}%" : "غیرمشمول")}) به کلیه کالاهای گروه «{cat.Name}» (شامل {cat.TotalProductCount.Num()} کالا) اطمینان دارید؟");
+        if (!confirmed) return;
+
+        applyingVat = true;
+        try
+        {
+            var updated = await CategorySvc.ApplyCategoryVatAsync(cat.Id, panelVatIncluded, panelVatIncluded ? panelVatRate : 0m);
+            Toast.Success($"ارزش افزوده با موفقیت به {updated.Num()} قلم کالا در گروه «{cat.Name}» اعمال شد و در فاکتورهای ریالی لحاظ می‌گردد.");
+            await Load();
+            selected = items.FirstOrDefault(c => c.Id == cat.Id);
+            if (selected != null)
+            {
+                panelVatIncluded = selected.IsVatIncluded ?? true;
+                panelVatRate = (selected.VatRate ?? 0) > 0 ? selected.VatRate.Value : 10m;
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            applyingVat = false;
+        }
     }
 
     private async Task Delete(InvCategory c)
