@@ -2916,3 +2916,12 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     text-align: left !important;
     direction: ltr;
 }
+
+/* لوگوی سازمان در بارگذاری اولیه */
+.app-loading-logo {
+    width: 150px;
+    height: 150px;
+    object-fit: contain;
+    border-radius: 18px;
+    display: block;
+}
