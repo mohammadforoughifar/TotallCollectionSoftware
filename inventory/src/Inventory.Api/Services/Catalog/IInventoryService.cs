@@ -21,13 +21,13 @@ public interface IInventoryService
 
     // ---------------- کیف پول و پرداخت معرف ----------------
     /// <summary>فهرست کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance، desc)</summary>
-    Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc);
+    Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc, Paging.Request? pagination = null);
     Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId, Paging.Request? pagination = null);
     Task<ReferrerPayment> AddReferrerPaymentAsync(ReferrerPayment dto);
     Task DeleteReferrerPaymentAsync(int id);
 
     // ---------------- گروه کالا (درختی) ----------------
-    Task<List<ProductCategory>> GetCategoriesAsync(bool activeOnly = false);
+    Task<List<ProductCategory>> GetCategoriesAsync(bool activeOnly = false, Paging.Request? pagination = null);
     Task<ProductCategory> SaveCategoryAsync(ProductCategory dto);
     Task DeleteCategoryAsync(int id);
 

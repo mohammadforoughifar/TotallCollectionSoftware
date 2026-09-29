@@ -163,7 +163,10 @@ public class HrPerfController : ControllerBase
     public async Task<IActionResult> Results(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        try { return Ok(Paging.Result(await _svc.ResultsAsync(id), skip, take)); }
+        try
+        {
+            return Ok(await Paging.ResultAsync(pagination => _svc.ResultsAsync(id, pagination), skip, take));
+        }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 

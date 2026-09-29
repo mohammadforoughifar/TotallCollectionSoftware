@@ -283,7 +283,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> Results(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.AppraisalResultsAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _svc.AppraisalResultsAsync(id, pagination), skip, take));
     }
 
     /// <summary>صدور حکم افزایش حقوق/ارتقا برای نفرات برتر این ارزیابی (گرید A یا A+B)</summary>

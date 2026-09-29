@@ -23,8 +23,8 @@ public class WarehousingService : IWarehousingService
     //  گروه کالا (درختی)
     // =====================================================================
 
-    public Task<List<InvCategory>> GetCategoriesFlatAsync(bool activeOnly = false)
-        => BuildCategoriesAsync(activeOnly, null);
+    public Task<List<InvCategory>> GetCategoriesFlatAsync(bool activeOnly = false, Paging.Request? pagination = null)
+        => BuildCategoriesAsync(activeOnly, pagination);
 
     private async Task<List<InvCategory>> BuildCategoriesAsync(bool activeOnly, Paging.Request? pagination)
     {
@@ -1885,7 +1885,8 @@ public class WarehousingService : IWarehousingService
     //  کاردکس و موجودی
     // =====================================================================
 
-    public async Task<InvKardexResult> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to)
+    public async Task<InvKardexResult> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to,
+        Paging.Request? pagination = null)
     {
         var product = await _db.Products.AsNoTracking().FirstOrDefaultAsync(p => p.Id == productId)
                       ?? throw new InvalidOperationException("کالا یافت نشد.");
@@ -1895,14 +1896,81 @@ public class WarehousingService : IWarehousingService
         var q = _db.InvLedger.AsNoTracking().Where(e => e.ProductId == productId);
         if (warehouseId is > 0) q = q.Where(e => e.WarehouseId == warehouseId);
 
-        var all = await q.OrderBy(e => e.Date).ThenBy(e => e.DocId).ThenBy(e => e.Seq).ToListAsync();
+        // بازهٔ نمایش [from, to) — ترتیب پایدار Date → DocId → Seq (و Id به‌عنوان tie-breaker).
+        var window = q;
+        if (from.HasValue) { var start = from.Value.Date; window = window.Where(e => e.Date >= start); }
+        if (to.HasValue && to.Value.Date < DateTime.MaxValue.Date)
+        {
+            var end = to.Value.Date.AddDays(1);
+            window = window.Where(e => e.Date < end);
+        }
+        window = window.OrderBy(e => e.Date).ThenBy(e => e.DocId).ThenBy(e => e.Seq).ThenBy(e => e.Id);
 
-        var whNames = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
-        var docIds = all.Select(e => e.DocId).Distinct().ToList();
-        var docs = await _db.InvDocs.AsNoTracking().Where(d => docIds.Contains(d.Id))
-            .Select(d => new { d.Id, d.PartyId }).ToDictionaryAsync(d => d.Id, d => d.PartyId);
-        var partyNames = await _db.Parties.AsNoTracking().ToDictionaryAsync(p => p.Id, p => p.Name);
-        var typeNames = await _db.InvDocTypes.AsNoTracking().ToDictionaryAsync(t => t.Id, t => t.Name);
+        // فقط ردیف‌های صفحهٔ جاری materialize می‌شوند (COUNT + SKIP/TAKE در SQL).
+        var pageRows = await window.ToPageListAsync(pagination);
+
+        // ماندهٔ ماشینی پس از پردازش «دقیقاً» ردیف‌های یک prefix از دفتر:
+        // runQty جمع سادهٔ دلتاهاست؛ runValue با قاعدهٔ صفر شدن ماندهٔ ریالی هنگام رسیدن ماندهٔ مقداری به صفر.
+        // مقدار ماشینی = جمع دلتای مقدار تا آخرین تقاطع صفر (V(p) − V(z))؛ تقاطع با کوئری همبسته پیدا می‌شود.
+        async Task<(decimal Qty, decimal Value)> MachineStateAsync(IQueryable<Db.InvLedgerEntry> before)
+        {
+            decimal qty, value;
+            if (_db.Database.IsSqlite())
+            {
+                // SQLite جمع decimal ندارد؛ مانند بقیهٔ متدهای پروژه با double و گردکردن ۳ رقمی.
+                qty = (decimal)Math.Round(await before.Select(x => x.QtyIn - x.QtyOut).SumAsync(x => (double?)x) ?? 0, 3);
+                value = (decimal)Math.Round(await before.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (double?)x) ?? 0, 3);
+            }
+            else
+            {
+                qty = await before.Select(x => x.QtyIn - x.QtyOut).SumAsync(x => (decimal?)x) ?? 0m;
+                value = await before.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (decimal?)x) ?? 0m;
+            }
+
+            // آخرین ردیفِ prefix که جمع مقدار تا آن ردیف دقیقاً صفر شده است (همان لحظهٔ صفر شدن ماندهٔ ریالی).
+            Db.InvLedgerEntry? zero;
+            if (_db.Database.IsSqlite())
+            {
+                zero = await before.Where(s => Math.Round(q
+                        .Where(x => x.Date < s.Date
+                            || (x.Date == s.Date && x.DocId < s.DocId)
+                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq < s.Seq)
+                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq == s.Seq && x.Id <= s.Id))
+                        .Select(x => x.QtyIn - x.QtyOut).Sum(x => (double?)x) ?? 0, 3) == 0)
+                    .OrderByDescending(s => s.Date).ThenByDescending(s => s.DocId)
+                    .ThenByDescending(s => s.Seq).ThenByDescending(s => s.Id)
+                    .FirstOrDefaultAsync();
+            }
+            else
+            {
+                zero = await before.Where(s => (q
+                        .Where(x => x.Date < s.Date
+                            || (x.Date == s.Date && x.DocId < s.DocId)
+                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq < s.Seq)
+                            || (x.Date == s.Date && x.DocId == s.DocId && x.Seq == s.Seq && x.Id <= s.Id))
+                        .Select(x => x.QtyIn - x.QtyOut).Sum(x => (decimal?)x) ?? 0m) == 0m)
+                    .OrderByDescending(s => s.Date).ThenByDescending(s => s.DocId)
+                    .ThenByDescending(s => s.Seq).ThenByDescending(s => s.Id)
+                    .FirstOrDefaultAsync();
+            }
+            if (zero != null)
+            {
+                // جمع دلتای مقدار تا «خود» ردیف تقاطع؛ ماشین در آن ردیف ماندهٔ ریالی را صفر می‌کند.
+                var throughZero = q.Where(x => x.Date < zero.Date
+                    || (x.Date == zero.Date && x.DocId < zero.DocId)
+                    || (x.Date == zero.Date && x.DocId == zero.DocId && x.Seq < zero.Seq)
+                    || (x.Date == zero.Date && x.DocId == zero.DocId && x.Seq == zero.Seq && x.Id <= zero.Id));
+                if (_db.Database.IsSqlite())
+                    value -= (decimal)Math.Round(await throughZero.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (double?)x) ?? 0, 3);
+                else
+                    value -= await throughZero.Select(x => x.ValueIn - x.ValueOut).SumAsync(x => (decimal?)x) ?? 0m;
+            }
+            return (qty, value);
+        }
+
+        var whName = warehouseId is > 0
+            ? await _db.Warehouses.AsNoTracking().Where(w => w.Id == warehouseId.Value).Select(w => w.Name).FirstOrDefaultAsync()
+            : null;
 
         var result = new InvKardexResult
         {
@@ -1910,7 +1978,7 @@ public class WarehousingService : IWarehousingService
             ProductCode = product.Code,
             ProductName = product.Name,
             Unit = product.Unit,
-            WarehouseName = warehouseId is > 0 && whNames.TryGetValue(warehouseId.Value, out var wn) ? wn : "همه انبارها",
+            WarehouseName = warehouseId is > 0 && whName != null ? whName : "همه انبارها",
             Method = method,
             MethodTitle = method switch
             {
@@ -1920,50 +1988,91 @@ public class WarehousingService : IWarehousingService
             }
         };
 
-        decimal runQty = 0, runValue = 0;
-        foreach (var e in all)
+        // ماندهٔ ابتدای بازه: وضعیت ماشین پس از آخرین ردیفِ قبل از from — مستقل از صفحه.
+        if (from.HasValue)
+            (result.OpeningQty, result.OpeningValue) = await MachineStateAsync(
+                q.Where(x => x.Date < from.Value.Date));
+
+        // خلاصه‌های مالی بازه با Aggregate سطح دیتابیس — مستقل از صفحه.
+        if (_db.Database.IsSqlite())
         {
-            runQty += e.QtyIn - e.QtyOut;
-            runValue += e.ValueIn - e.ValueOut;
-            if (runQty == 0) runValue = 0;
-
-            if (from.HasValue && e.Date < from.Value.Date)
-            {
-                result.OpeningQty = runQty;
-                result.OpeningValue = runValue;
-                continue;
-            }
-            if (to.HasValue && e.Date >= to.Value.Date.AddDays(1)) continue;
-
-            docs.TryGetValue(e.DocId, out var partyId);
-
-            result.Rows.Add(new InvKardexRow
-            {
-                Date = e.Date,
-                DocId = e.DocId,
-                Number = e.Number,
-                DocTypeName = typeNames.TryGetValue(e.DocTypeId, out var tn) ? tn : "—",
-                Nature = e.Nature,
-                WarehouseName = whNames.TryGetValue(e.WarehouseId, out var w) ? w : null,
-                PartyName = partyId is > 0 && partyNames.TryGetValue(partyId.Value, out var pn) ? pn : null,
-                Description = e.Description,
-                InQty = e.QtyIn,
-                InPrice = e.QtyIn > 0 ? e.UnitCost : 0,
-                InValue = e.ValueIn,
-                OutQty = e.QtyOut,
-                OutPrice = e.QtyOut > 0 ? e.UnitCost : 0,
-                OutValue = e.ValueOut,
-                BalanceQty = runQty,
-                BalanceValue = runValue
-            });
+            result.TotalInQty = (decimal)Math.Round(await window.Select(x => x.QtyIn).SumAsync(x => (double?)x) ?? 0, 3);
+            result.TotalInValue = (decimal)Math.Round(await window.Select(x => x.ValueIn).SumAsync(x => (double?)x) ?? 0, 3);
+            result.TotalOutQty = (decimal)Math.Round(await window.Select(x => x.QtyOut).SumAsync(x => (double?)x) ?? 0, 3);
+            result.TotalOutValue = (decimal)Math.Round(await window.Select(x => x.ValueOut).SumAsync(x => (double?)x) ?? 0, 3);
+        }
+        else
+        {
+            result.TotalInQty = await window.Select(x => x.QtyIn).SumAsync(x => (decimal?)x) ?? 0m;
+            result.TotalInValue = await window.Select(x => x.ValueIn).SumAsync(x => (decimal?)x) ?? 0m;
+            result.TotalOutQty = await window.Select(x => x.QtyOut).SumAsync(x => (decimal?)x) ?? 0m;
+            result.TotalOutValue = await window.Select(x => x.ValueOut).SumAsync(x => (decimal?)x) ?? 0m;
         }
 
-        result.TotalInQty = result.Rows.Sum(r => r.InQty);
-        result.TotalInValue = result.Rows.Sum(r => r.InValue);
-        result.TotalOutQty = result.Rows.Sum(r => r.OutQty);
-        result.TotalOutValue = result.Rows.Sum(r => r.OutValue);
-        result.ClosingQty = runQty;
-        result.ClosingValue = runValue;
+        // ماندهٔ پایانی: وضعیت ماشین پس از کل دفتر (آخرین ردیف) — مستقل از صفحه و بازه.
+        (result.ClosingQty, result.ClosingValue) = await MachineStateAsync(q);
+
+        if (pageRows.Count > 0)
+        {
+            // واکشی اطلاعات تکمیلی فقط با شناسه‌های صفحهٔ جاری.
+            var docIds = pageRows.Select(e => e.DocId).Distinct().ToList();
+            var docs = docIds.Count == 0
+                ? new Dictionary<int, int?>()
+                : await _db.InvDocs.AsNoTracking().Where(d => docIds.Contains(d.Id))
+                    .Select(d => new { d.Id, d.PartyId }).ToDictionaryAsync(d => d.Id, d => (int?)d.PartyId);
+            var partyIds = docs.Values.Where(p => p is > 0).Select(p => p!.Value).Distinct().ToList();
+            var partyNames = partyIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await _db.Parties.AsNoTracking().Where(p => partyIds.Contains(p.Id))
+                    .ToDictionaryAsync(p => p.Id, p => p.Name);
+            var whIds = pageRows.Select(e => e.WarehouseId).Distinct().ToList();
+            if (warehouseId is > 0 && !whIds.Contains(warehouseId.Value)) whIds.Add(warehouseId.Value);
+            var whNames = whIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await _db.Warehouses.AsNoTracking().Where(w => whIds.Contains(w.Id))
+                    .ToDictionaryAsync(w => w.Id, w => w.Name);
+            var typeIds = pageRows.Select(e => e.DocTypeId).Distinct().ToList();
+            var typeNames = typeIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await _db.InvDocTypes.AsNoTracking().Where(t => typeIds.Contains(t.Id))
+                    .ToDictionaryAsync(t => t.Id, t => t.Name);
+
+            // ماندهٔ ابتدای صفحه: وضعیت ماشین پس از آخرین ردیفِ قبل از اولین ردیف صفحه.
+            var first = pageRows[0];
+            var (runQty, runValue) = await MachineStateAsync(q.Where(x => x.Date < first.Date
+                || (x.Date == first.Date && x.DocId < first.DocId)
+                || (x.Date == first.Date && x.DocId == first.DocId && x.Seq < first.Seq)
+                || (x.Date == first.Date && x.DocId == first.DocId && x.Seq == first.Seq && x.Id < first.Id)));
+
+            foreach (var e in pageRows)
+            {
+                runQty += e.QtyIn - e.QtyOut;
+                runValue += e.ValueIn - e.ValueOut;
+                if (runQty == 0) runValue = 0;
+
+                docs.TryGetValue(e.DocId, out var partyId);
+
+                result.Rows.Add(new InvKardexRow
+                {
+                    Date = e.Date,
+                    DocId = e.DocId,
+                    Number = e.Number,
+                    DocTypeName = typeNames.TryGetValue(e.DocTypeId, out var tn) ? tn : "—",
+                    Nature = e.Nature,
+                    WarehouseName = whNames.TryGetValue(e.WarehouseId, out var w) ? w : null,
+                    PartyName = partyId is > 0 && partyNames.TryGetValue(partyId.Value, out var pn) ? pn : null,
+                    Description = e.Description,
+                    InQty = e.QtyIn,
+                    InPrice = e.QtyIn > 0 ? e.UnitCost : 0,
+                    InValue = e.ValueIn,
+                    OutQty = e.QtyOut,
+                    OutPrice = e.QtyOut > 0 ? e.UnitCost : 0,
+                    OutValue = e.ValueOut,
+                    BalanceQty = runQty,
+                    BalanceValue = runValue
+                });
+            }
+        }
 
         return result;
     }

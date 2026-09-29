@@ -26,7 +26,7 @@ public class InvCategoriesController : RbacControllerBase
     /// <summary>فهرست تخت گروه‌ها (برای کمبوها و انتخاب والد).</summary>
     [HttpGet]
     public async Task<ActionResult<List<InvCategory>>> Flat([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetCategoriesFlatAsync(activeOnly), skip, take));
+        => Ok(await Paging.ResultAsync(pagination => _svc.GetCategoriesFlatAsync(activeOnly, pagination), skip, take));
 
     /// <summary>ایجاد یا ویرایش گروه کالا.</summary>
     [HttpPost]

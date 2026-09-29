@@ -173,7 +173,7 @@ public class HrPerfService
     public record ResultRow(int EmployeeId, string EmployeeName, decimal BaseSalary, int KpiCount, int ScoredCount,
         double TotalScore, string Grade, decimal BonusAmount, int? PayYear, int? PayMonth, string Status);
 
-    public async Task<List<ResultRow>> ResultsAsync(int periodId)
+    public async Task<List<ResultRow>> ResultsAsync(int periodId, Paging.Request? pagination = null)
     {
         var p = await _db.HrPerfPeriods.AsNoTracking().FirstOrDefaultAsync(x => x.Id == periodId)
             ?? throw new InvalidOperationException("دوره پیدا نشد.");
@@ -181,29 +181,39 @@ public class HrPerfService
         var b = await GradeCutAsync("perf.grade.b", 75);
         var c = await GradeCutAsync("perf.grade.c", 60);
         var kpis = await _db.HrPerfKpis.AsNoTracking().Where(k => k.PeriodId == periodId && k.IsActive).ToListAsync();
-        var scores = await _db.HrPerfScores.AsNoTracking().Where(s => s.PeriodId == periodId).ToListAsync();
-        var results = await _db.HrPerfResults.AsNoTracking().Where(r => r.PeriodId == periodId).ToDictionaryAsync(r => r.EmployeeId);
-        var empIds = scores.Select(s => s.EmployeeId).Concat(results.Keys).Distinct().ToList();
-        var emps = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
+
+        // ترتیب الزامی گزارش: Filter → Aggregate/Rank → Order → Count → Page → Materialize.
+        // نمرهٔ وزنی هر پرسنل با زیرمجموعهٔ همبسته در SQL جمع می‌شود؛ رکوردهای ذخیره‌شده
+        // (کارنامهٔ قطعی) بر نمرهٔ محاسبه‌شده مقدم‌اند. فقط ردیف‌های صفحه materialize می‌شوند.
+        var scoreQ = _db.HrPerfScores.AsNoTracking().Where(s => s.PeriodId == periodId);
+        var resultQ = _db.HrPerfResults.AsNoTracking().Where(r => r.PeriodId == periodId);
+        var kpiQ = _db.HrPerfKpis.AsNoTracking().Where(k => k.PeriodId == periodId && k.IsActive && k.MaxScore > 0);
+
+        var rankQuery =
+            from e in _db.HrEmployees.AsNoTracking()
+            where scoreQ.Any(s => s.EmployeeId == e.Id) || resultQ.Any(r => r.EmployeeId == e.Id)
+            let saved = resultQ.FirstOrDefault(r => r.EmployeeId == e.Id)
+            let computed = scoreQ.Where(s => s.EmployeeId == e.Id)
+                .Join(kpiQ, s => s.KpiId, k => k.Id, (s, k) => s.Score / k.MaxScore * k.Weight)
+                .Sum(x => (double?)x) ?? 0
+            let scoredCount = scoreQ.Count(s => s.EmployeeId == e.Id)
+            orderby (saved == null ? computed : saved.TotalScore) descending, e.Id
+            select new { e, saved, computed, scoredCount };
+
+        var page = await rankQuery.ToPageListAsync(pagination);
+
         var rows = new List<ResultRow>();
-        foreach (var eid in empIds)
+        foreach (var x in page)
         {
-            if (!emps.TryGetValue(eid, out var emp)) continue;
-            var mine = scores.Where(s => s.EmployeeId == eid).ToList();
-            double total = 0;
-            foreach (var k in kpis)
-            {
-                var sc = mine.FirstOrDefault(s => s.KpiId == k.Id);
-                if (sc != null && k.MaxScore > 0) total += sc.Score / k.MaxScore * k.Weight;
-            }
-            total = Math.Round(total, 2);
-            results.TryGetValue(eid, out var r);
+            // نمایش و گرید/پاداش مانند قبل با نمرهٔ گردشدهٔ ۲ رقمی محاسبه می‌شود.
+            var total = Math.Round(x.computed, 2);
+            var r = x.saved;
             var bonus = r?.BonusAmount ?? (total >= p.MinScoreForBonus
-                ? Math.Round(emp.BaseSalary * p.BonusMonthSalary * (decimal)(total / 100)) : 0);
-            rows.Add(new(eid, $"{emp.FirstName} {emp.LastName}".Trim(), emp.BaseSalary, kpis.Count, mine.Count,
+                ? Math.Round(x.e.BaseSalary * p.BonusMonthSalary * (decimal)(total / 100)) : 0);
+            rows.Add(new(x.e.Id, $"{x.e.FirstName} {x.e.LastName}".Trim(), x.e.BaseSalary, kpis.Count, x.scoredCount,
                 r?.TotalScore ?? total, r?.Grade ?? GradeOf(total, a, b, c), bonus, r?.PayYear, r?.PayMonth, r?.Status ?? "—"));
         }
-        return rows.OrderByDescending(r => r.TotalScore).ToList();
+        return rows;
     }
 
     public async Task<HrPerfResult> ComputeResultAsync(int periodId, int employeeId)

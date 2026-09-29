@@ -392,7 +392,8 @@ public class FaAttController : RbacControllerBase
         [FromQuery] int? employeeId, [FromQuery] int? orgUnitId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.AbsenceCalendarAsync(from, to, employeeId, orgUnitId), skip, take));
+        return Ok(await Paging.ResultAsync(
+            pagination => _svc.AbsenceCalendarAsync(from, to, employeeId, orgUnitId, pagination), skip, take));
     }
 
     [HttpGet("balances/my")]

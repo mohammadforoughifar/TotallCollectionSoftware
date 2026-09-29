@@ -38,10 +38,9 @@ public class ChatController : ControllerBase
     /// <summary>فهرست گفتگوهای کاربر جاری</summary>
     [HttpGet("conversations")]
     public async Task<ActionResult<List<ChatConversationDto>>> GetConversations([FromQuery] string? search, [FromQuery] ChatTypeDto? type, [FromQuery] bool onlyUnread = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-    {
-        var list = await _chatService.GetConversationsAsync(CurrentUserId, search, type, onlyUnread);
-        return Ok(Paging.Result(list, skip, take));
-    }
+        => Ok(await Paging.ResultAsync(
+            pagination => _chatService.GetConversationsAsync(CurrentUserId, search, type, onlyUnread, pagination),
+            skip, take));
 
     /// <summary>جزئیات یک گفتگو</summary>
     [HttpGet("conversations/{id}")]
@@ -168,10 +167,9 @@ public class ChatController : ControllerBase
     /// <summary>فهرست تمامی کاربران نرم‌افزار جهت شروع چت</summary>
     [HttpGet("users")]
     public async Task<ActionResult<List<ChatUserDto>>> GetUsers([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-    {
-        var users = await _chatService.GetSoftwareUsersForChatAsync(CurrentUserId, search);
-        return Ok(Paging.Result(users, skip, take));
-    }
+        => Ok(await Paging.ResultAsync(
+            pagination => _chatService.GetSoftwareUsersForChatAsync(CurrentUserId, search, pagination),
+            skip, take));
 
     /// <summary>خلاصه اعلان‌های چت برای هدر نرم‌افزار</summary>
     [HttpGet("summary")]

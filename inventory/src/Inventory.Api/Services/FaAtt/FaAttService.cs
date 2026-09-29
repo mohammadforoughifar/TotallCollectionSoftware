@@ -86,7 +86,7 @@ public interface IFaAttService
     Task<FaAttBatchResultDto> HrDecideBatchAsync(List<int> ids, bool approve, int byUserId, string byName);
     Task<FaAttBatchResultDto> DecideMissionBatchAsync(List<int> ids, bool approve, int byUserId, string byName);
     Task<List<FaAttLeaveDto>> LeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to, Paging.Request? pagination = null);
-    Task<List<FaAttCalendarEventDto>> AbsenceCalendarAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId);
+    Task<List<FaAttCalendarEventDto>> AbsenceCalendarAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId, Paging.Request? pagination = null);
     Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId, int? year, int? leaveTypeId, Paging.Request? pagination = null);
     Task<FaAttLeaveBalanceDto> SaveBalanceAsync(int employeeId, int year, int leaveTypeId, FaAttLeaveBalanceSaveDto dto);
     Task<FaAttLeaveBalanceDto> CarryOverAsync(int employeeId, int leaveTypeId, FaAttLeaveCarryDto dto);
@@ -1583,7 +1583,7 @@ public class FaAttService : IFaAttService
 
     /// <summary>مرخصی + مأموریت + شیفت + آموزش + تعطیلات در یک نما (سقف بازه ۶۲ روز).</summary>
     public async Task<List<FaAttCalendarEventDto>> AbsenceCalendarAsync(
-        DateTime from, DateTime to, int? employeeId, int? orgUnitId)
+        DateTime from, DateTime to, int? employeeId, int? orgUnitId, Paging.Request? pagination = null)
     {
         from = from.Date; to = to.Date;
         if (to < from) (from, to) = (to, from);
@@ -1602,7 +1602,7 @@ public class FaAttService : IFaAttService
             .Where(l => empIds.Contains(l.EmployeeId)
                 && l.Status != FaAttRequestStatus.Rejected
                 && l.FromDate.Date <= to && l.ToDate.Date >= from)
-            .OrderBy(l => l.FromDate).Take(2000).ToListAsync();
+            .OrderBy(l => l.FromDate).ThenBy(l => l.Id).Take(2000).ToListAsync();
         var typeNames = await _db.FaAttLeaveTypes.AsNoTracking()
             .ToDictionaryAsync(x => x.Id, x => x.Name);
         foreach (var l in leaves)
@@ -1621,7 +1621,7 @@ public class FaAttService : IFaAttService
             .Where(m => empIds.Contains(m.EmployeeId)
                 && m.Status != FaAttRequestStatus.Rejected
                 && m.FromDate.Date <= to && m.ToDate.Date >= from)
-            .OrderBy(m => m.FromDate).Take(1000).ToListAsync();
+            .OrderBy(m => m.FromDate).ThenBy(m => m.Id).Take(1000).ToListAsync();
         foreach (var m in missions)
             ev.Add(new FaAttCalendarEventDto
             {
@@ -1636,7 +1636,7 @@ public class FaAttService : IFaAttService
         var assigns = await _db.FaAttShiftAssigns.AsNoTracking()
             .Where(a => empIds.Contains(a.EmployeeId)
                 && a.FromDate.Date <= to && (a.ToDate == null || a.ToDate.Value.Date >= from))
-            .Take(1000).ToListAsync();
+            .OrderBy(a => a.Id).Take(1000).ToListAsync();
         var shiftIds = assigns.Select(a => a.ShiftId).Distinct().ToList();
         var shifts = shiftIds.Count == 0 ? new Dictionary<int, FaAttShift>()
             : await _db.FaAttShifts.AsNoTracking().Where(s => shiftIds.Contains(s.Id))
@@ -1659,7 +1659,7 @@ public class FaAttService : IFaAttService
 
         var sessions = await _db.FaLmsSessions.AsNoTracking()
             .Where(s => s.SessionDate.Date >= from && s.SessionDate.Date <= to)
-            .Take(500).ToListAsync();
+            .OrderBy(s => s.Id).Take(500).ToListAsync();
         if (sessions.Count > 0)
         {
             var courseIds = sessions.Select(s => s.CourseId).Distinct().ToList();
@@ -1668,7 +1668,7 @@ public class FaAttService : IFaAttService
             var enrolls = await _db.FaLmsEnrollments.AsNoTracking()
                 .Where(x => courseIds.Contains(x.CourseId) && empIds.Contains(x.EmployeeId)
                     && x.Status == FaLmsEnrollStatus.Approved)
-                .Take(2000).ToListAsync();
+                .OrderBy(x => x.Id).Take(2000).ToListAsync();
             foreach (var s in sessions)
                 foreach (var g in enrolls.Where(x => x.CourseId == s.CourseId))
                     ev.Add(new FaAttCalendarEventDto
@@ -1685,7 +1685,7 @@ public class FaAttService : IFaAttService
 
         var holidays = await _db.CompanyHolidays.AsNoTracking()
             .Where(h => h.HolidayDate.Date >= from && h.HolidayDate.Date <= to)
-            .OrderBy(h => h.HolidayDate).Take(100).ToListAsync();
+            .OrderBy(h => h.HolidayDate).ThenBy(h => h.Id).Take(100).ToListAsync();
         foreach (var h in holidays)
             ev.Add(new FaAttCalendarEventDto
             {
@@ -1693,7 +1693,18 @@ public class FaAttService : IFaAttService
                 Title = h.Name ?? "تعطیل رسمی", Color = "#dc2626", Status = 1
             });
 
-        return ev.OrderBy(e => e.FromDate).ToList();
+        // صفحه‌بندی «کل Dataset ترکیبی» (همهٔ نوع‌های رویداد با هم)، نه یکی از منابع؛
+        // منابع بالا با سقف‌های ایمنی محدود شده‌اند و این سقف‌ها مستقل از total و صفحه‌بندی‌اند.
+        // ترتیب پایدار: تاریخ، نوع رویداد، پرسنل، عنوان.
+        ev = ev.OrderBy(e => e.FromDate).ThenBy(e => e.Kind).ThenBy(e => e.EmployeeId ?? 0)
+            .ThenBy(e => e.Title).ToList();
+        if (pagination is { IsPaged: true })
+        {
+            pagination.SetTotal(ev.Count);
+            if (pagination.Skip > 0) ev = ev.Skip(pagination.Skip).ToList();
+            if (pagination.Take is > 0) ev = ev.Take(pagination.Take.Value).ToList();
+        }
+        return ev;
     }
 
     // ==================== تأیید/رد گروهی ====================

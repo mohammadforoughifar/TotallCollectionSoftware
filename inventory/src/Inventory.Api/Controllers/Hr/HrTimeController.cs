@@ -64,8 +64,10 @@ public class HrTimeController : ControllerBase
         var uid = userId ?? MyUserId;
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
         var jy = year ?? HrTimeService.JalaliYear(DateTime.Now);
-        var items = await _svc.GetBalancesAsync(uid, jy);
-        if (Paging.Requested(skip, take)) return Ok(new { year = jy, total = items.Count, items = Paging.Slice(items, skip, take) });
+        // صفحه‌بندی در سرویس انجام می‌شود؛ شکل پاسخ { year, items } و در حالت صفحه‌بندی { year, total, items } است.
+        var pagination = new Paging.Request(skip, take);
+        var items = await _svc.GetBalancesAsync(uid, jy, pagination);
+        if (pagination.IsPaged) return Ok(new { year = jy, total = pagination.Total ?? items.Count, items });
         return Ok(new { year = jy, items });
     }
 

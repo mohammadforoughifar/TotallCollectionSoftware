@@ -1213,9 +1213,11 @@ public class WorkOrdersController : ControllerBase
     /// <summary>
     /// برچسب‌های پرکاربرد کاربر جاری (از دستورهای خودش یا محول به خودش) —
     /// برای پیشنهاد در فرم و چیپ‌های فیلتر. مرتب بر اساس بیشترین استفاده.
+    /// این endpoint ذاتاً Top-N است (۳۰ برچسب پرکاربرد) و صفحه‌بندی کلاسیک ندارد؛
+    /// همیشه همان فهرست کامل برگزیده برمی‌گردد.
     /// </summary>
     [HttpGet("my-tags")]
-    public async Task<IActionResult> MyTags([FromQuery] int skip = 0, [FromQuery] int? take = null)
+    public async Task<IActionResult> MyTags()
     {
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
         var tagStrings = await _db.WorkOrders.AsNoTracking()
@@ -1229,7 +1231,7 @@ public class WorkOrdersController : ControllerBase
             .Take(30)
             .Select(g => g.Key)
             .ToList();
-        return Ok(Paging.Result(top, skip, take));
+        return Ok(top);
     }
 
     // ================== قالب‌های آمادهٔ دستور کار (موج ۷) ==================

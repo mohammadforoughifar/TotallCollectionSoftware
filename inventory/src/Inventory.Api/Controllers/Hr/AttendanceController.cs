@@ -1858,11 +1858,16 @@ public class AttendanceController : ControllerBase
         => await DayStatusCore(date?.Date ?? DateTime.Today, skip, take);
 
     /// <summary>
-    /// هستهٔ مشترک «وضعیت امروز» و «گزارش روز»:
-    /// یک سطر به ازای هر پرسنل فعال — ورود، خروج، کارکرد، کسری و وضعیت نهایی روز.
-    /// برای امروز بازهٔ غیبتِ باز تا «اکنون» ارزیابی و تجمیع به‌روز می‌شود؛
-    /// برای روزهای گذشته مقادیر ذخیره‌شدهٔ نهایی رکورد نمایش داده می‌شود.
+    /// سطر «سبک» وضعیت روز — همهٔ فیلدها به‌جز Segments (بخش سنگین/نمایشی) که فقط
+    /// برای سطرهای صفحهٔ جاری ساخته می‌شود. ارجاع uSegs برای همان mapping نگه داشته می‌شود.
     /// </summary>
+    private sealed record DayStatusLightRow(
+        int UserId, string FullName, string ShiftName, TimeSpan? ShiftStart, TimeSpan? ShiftEnd,
+        DateTime? EnterAt, DateTime? ExitAt, string? EnterStatus, int LateMinutes, int EarlyLeaveMinutes,
+        int WorkMinutes, int DeficitMinutes, int CoveredGapMinutes, int OvertimeMinutes,
+        string? FinalStatus, bool HasApprovedLeave, string? Note, int InOutCount, bool IsInNow,
+        int UncoveredGaps, List<AttendanceSegment> Segs);
+
     private async Task<IActionResult> DayStatusCore(DateTime day, int skip = 0, int? take = null)
     {
         if (!await IsAdminAsync()) return Forbid();
@@ -1891,7 +1896,9 @@ public class AttendanceController : ControllerBase
         var hol = await _db.CompanyHolidays.AsNoTracking().FirstOrDefaultAsync(h => h.HolidayDate.Date == day);
         var settings = await GetSettingsAsync();
 
-        var items = new List<object>();
+        // سطرهای «سبک» برای همهٔ پرسنل فعال (بازمحاسبهٔ امروز و تجمیع برای همه انجام می‌شود؛
+        // فقط ساخت Segments نمایشی به صفحهٔ جاری موکول شده است).
+        var lightRows = new List<DayStatusLightRow>();
         var now = DateTime.Now;
         foreach (var u in users)
         {
@@ -1932,47 +1939,79 @@ public class AttendanceController : ControllerBase
                 }
             }
 
-            items.Add(new
-            {
-                UserId = u.Id,
-                FullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim(),
-                ShiftName = u.ShiftGroup?.Name ?? "—",
-                ShiftStart = (TimeSpan?)u.ShiftGroup?.StartTime,
-                ShiftEnd = (TimeSpan?)u.ShiftGroup?.EndTime,
-                EnterAt = r?.EnterAt,
-                ExitAt = r?.ExitAt,
-                EnterStatus = r?.EnterStatus,
-                LateMinutes = r?.LateMinutes ?? 0,
-                EarlyLeaveMinutes = r?.EarlyLeaveMinutes ?? 0,
-                WorkMinutes = r?.WorkMinutes ?? 0,
-                DeficitMinutes = deficitMinutes,
-                CoveredGapMinutes = r?.CoveredGapMinutes ?? 0,
-                OvertimeMinutes = r?.OvertimeMinutes ?? 0,
-                FinalStatus = finalStatus,
-                HasApprovedLeave = r?.HasApprovedLeave ?? hasLeave,
-                Note = r?.Note,
-                InOutCount = uSegs.Count(s => s.EnterAt.HasValue),
-                IsInNow = isToday && uSegs.LastOrDefault() is { EnterAt: not null, ExitAt: null },
-                UncoveredGaps = uSegs.Count(s => s.ExitAt.HasValue && !s.ExitCovered),
-                Segments = uSegs.Where(s => s.EnterAt.HasValue).OrderBy(s => s.Seq).Select(MapSegment).ToList()
-            });
+            lightRows.Add(new DayStatusLightRow(
+                u.Id,
+                string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim(),
+                u.ShiftGroup?.Name ?? "—",
+                (TimeSpan?)u.ShiftGroup?.StartTime,
+                (TimeSpan?)u.ShiftGroup?.EndTime,
+                r?.EnterAt,
+                r?.ExitAt,
+                r?.EnterStatus,
+                r?.LateMinutes ?? 0,
+                r?.EarlyLeaveMinutes ?? 0,
+                r?.WorkMinutes ?? 0,
+                deficitMinutes,
+                r?.CoveredGapMinutes ?? 0,
+                r?.OvertimeMinutes ?? 0,
+                finalStatus,
+                r?.HasApprovedLeave ?? hasLeave,
+                r?.Note,
+                uSegs.Count(s => s.EnterAt.HasValue),
+                isToday && uSegs.LastOrDefault() is { EnterAt: not null, ExitAt: null },
+                uSegs.Count(s => s.ExitAt.HasValue && !s.ExitCovered),
+                uSegs));
         }
-        items = items.OrderBy(x => ((dynamic)x).FinalStatus == "Present" ? 0 : 1)
-                     .ThenBy(x => ((dynamic)x).FullName).ToList();
 
+        // ترتیب پایدار: حاضرها اول، سپس نام؛ برابری‌ها با UserId قطعی می‌شود.
+        lightRows = lightRows
+            .OrderBy(x => x.FinalStatus == "Present" ? 0 : 1)
+            .ThenBy(x => x.FullName)
+            .ThenBy(x => x.UserId)
+            .ToList();
+
+        // آمار کل روز — روی «همهٔ سطرها» (نه فقط صفحهٔ جاری)، مانند قبل.
         var stats = new
         {
-            Total = items.Count,
-            Present = items.Count(x => ((dynamic)x).FinalStatus == "Present"),
-            Absent = items.Count(x => ((dynamic)x).FinalStatus == "Absent"),
-            Pending = items.Count(x => ((dynamic)x).FinalStatus == "Pending"),
-            Late = items.Count(x => ((dynamic)x).EnterStatus == "Late"),
-            OnLeave = items.Count(x => ((dynamic)x).HasApprovedLeave),
-            Holiday = items.Count(x => ((dynamic)x).FinalStatus == "Holiday"),
+            Total = lightRows.Count,
+            Present = lightRows.Count(x => x.FinalStatus == "Present"),
+            Absent = lightRows.Count(x => x.FinalStatus == "Absent"),
+            Pending = lightRows.Count(x => x.FinalStatus == "Pending"),
+            Late = lightRows.Count(x => x.EnterStatus == "Late"),
+            OnLeave = lightRows.Count(x => x.HasApprovedLeave),
+            Holiday = lightRows.Count(x => x.FinalStatus == "Holiday"),
         };
+
+        // Segments (بخش سنگین) فقط برای سطرهای صفحهٔ جاری ساخته می‌شود.
+        var pageRows = Paging.Slice(lightRows, skip, take);
+        var items = pageRows.Select(x => new
+        {
+            x.UserId,
+            x.FullName,
+            x.ShiftName,
+            x.ShiftStart,
+            x.ShiftEnd,
+            x.EnterAt,
+            x.ExitAt,
+            x.EnterStatus,
+            x.LateMinutes,
+            x.EarlyLeaveMinutes,
+            x.WorkMinutes,
+            x.DeficitMinutes,
+            x.CoveredGapMinutes,
+            x.OvertimeMinutes,
+            x.FinalStatus,
+            x.HasApprovedLeave,
+            x.Note,
+            x.InOutCount,
+            x.IsInNow,
+            x.UncoveredGaps,
+            Segments = x.Segs.Where(s => s.EnterAt.HasValue).OrderBy(s => s.Seq).Select(MapSegment).ToList()
+        }).ToList();
+
         // pagination (سازگار با استاندارد بقیهٔ endpointها) + فیلدهای روز برای گزارش تاریخ‌دار
         if (Paging.Requested(skip, take))
-            return Ok(new { date = day, isToday, weekday = PersianDate.WeekdayName(day), stats, total = items.Count, items = Paging.Slice(items, skip, take) });
+            return Ok(new { date = day, isToday, weekday = PersianDate.WeekdayName(day), stats, total = lightRows.Count, items });
         return Ok(new
         {
             date = day,

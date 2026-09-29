@@ -47,7 +47,7 @@ public interface IHrTalentService
     Task DeleteKpiAsync(int id);
     Task SaveScoreAsync(HrAppraisalScoreSaveDto dto);
     Task<List<HrAppraisalScoreDto>> ListScoresAsync(int appraisalId, int? employeeId, Paging.Request? pagination = null);
-    Task<List<HrAppraisalResultDto>> AppraisalResultsAsync(int appraisalId);
+    Task<List<HrAppraisalResultDto>> AppraisalResultsAsync(int appraisalId, Paging.Request? pagination = null);
     /// <summary>صدور حکم افزایش حقوق/ارتقا برای نفرات برترِ یک ارزیابی (گرید A یا A+B با پوشش کافی)</summary>
     Task<HrAppraisalDecreeProposalResultDto> ProposeDecreesFromAppraisalAsync(HrAppraisalDecreeProposalDto dto, int byUserId, string byName);
     Task<HrAppraisalDto> SetAppraisalStatusAsync(int id, int status, string? by);
@@ -599,39 +599,54 @@ public class HrTalentService : IHrTalentService
         }).ToList();
     }
 
-    public async Task<List<HrAppraisalResultDto>> AppraisalResultsAsync(int appraisalId)
+    public async Task<List<HrAppraisalResultDto>> AppraisalResultsAsync(int appraisalId, Paging.Request? pagination = null)
     {
         var kpis = await _db.HrAppraisalKpis.AsNoTracking()
             .Where(k => k.AppraisalId == appraisalId).ToListAsync();
         if (kpis.Count == 0) return new();
         var wSum = kpis.Sum(k => k.Weight);
         if (wSum <= 0) wSum = kpis.Count;
-        var scores = await _db.HrAppraisalScores.AsNoTracking()
-            .Where(s => s.AppraisalId == appraisalId).ToListAsync();
-        var names = await EmpNamesAsync(scores.Select(s => s.EmployeeId));
+
+        // ترتیب الزامی گزارش: Filter → Aggregate/Rank → Order → Count → Page → Materialize.
+        // نمرهٔ هر پرسنل (درصد وزنی با سقف ۰..۱۰۰) با زیرمجموعهٔ همبسته در SQL جمع می‌شود؛
+        // نام‌ها و گردکردن/گرید فقط برای ردیف‌های صفحهٔ جاری انجام می‌شود.
+        var scoreQ = _db.HrAppraisalScores.AsNoTracking().Where(s => s.AppraisalId == appraisalId);
+        var kpiQ = _db.HrAppraisalKpis.AsNoTracking()
+            .Where(k => k.AppraisalId == appraisalId && k.MaxScore > 0);
+
+        var rankQuery =
+            from e in _db.HrEmployees.AsNoTracking()
+            where scoreQ.Any(s => s.EmployeeId == e.Id)
+            let computed = (from s in scoreQ
+                            where s.EmployeeId == e.Id
+                            join k in kpiQ on s.KpiId equals k.Id
+                            let v = s.ManagerScore ?? s.SelfScore
+                            where v != null
+                            let raw = v.Value / k.MaxScore * 100.0
+                            select k.Weight / wSum * (raw < 0 ? 0.0 : raw > 100 ? 100.0 : raw))
+                .Sum(x => (double?)x) ?? 0
+            let scored = scoreQ.Count(s => s.EmployeeId == e.Id
+                && (s.ManagerScore != null || s.SelfScore != null)
+                && kpiQ.Any(k => k.Id == s.KpiId))
+            orderby computed descending, e.Id
+            select new { e, computed, scored };
+
+        var page = await rankQuery.ToPageListAsync(pagination);
+        var names = await EmpNamesAsync(page.Select(x => x.e.Id));
+
         var list = new List<HrAppraisalResultDto>();
-        foreach (var g in scores.GroupBy(s => s.EmployeeId))
+        foreach (var x in page)
         {
-            var total = 0.0;
-            var scored = 0;
-            foreach (var k in kpis)
-            {
-                var s = g.FirstOrDefault(x => x.KpiId == k.Id);
-                var v = s?.ManagerScore ?? s?.SelfScore;
-                if (v == null) continue;
-                var pct = k.MaxScore > 0 ? Math.Clamp(v.Value / k.MaxScore * 100.0, 0, 100) : 0;
-                total += k.Weight / wSum * pct;
-                scored++;
-            }
+            var total = x.computed;
             list.Add(new HrAppraisalResultDto
             {
-                EmployeeId = g.Key, EmployeeName = NameOf(names, g.Key),
+                EmployeeId = x.e.Id, EmployeeName = NameOf(names, x.e.Id),
                 Total = Math.Round(total, 1),
                 Grade = total >= 90 ? "A" : total >= 75 ? "B" : total >= 60 ? "C" : "D",
-                ScoredKpis = scored, KpiCount = kpis.Count
+                ScoredKpis = x.scored, KpiCount = kpis.Count
             });
         }
-        return list.OrderByDescending(x => x.Total).ToList();
+        return list;
     }
 
     /// <summary>

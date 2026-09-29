@@ -158,6 +158,83 @@ var rankedPage = await ranking.ToPageListAsync(rankingRequest);
 Check(rankingRequest.Total == 4 && rankedPage.Select(x => x.Percent).SequenceEqual(new[] { 62, 38 }),
     "SQL grouped page preserves midpoint-to-even percentage ranking");
 
+// Categories/bayegani rewrite: orphan-inclusive roots (null/0/missing parent), children
+// of the selected page only, and page-scoped name-keyed enrichment (product counts).
+db.Nodes.AddRange(
+    new TreeNode { Id = 100, TenantId = 3, ParentId = 0, Name = "c-root" },
+    new TreeNode { Id = 101, TenantId = 3, ParentId = 100, Name = "c-child" },
+    new TreeNode { Id = 102, TenantId = 3, ParentId = 0, Name = "d-root" },
+    new TreeNode { Id = 103, TenantId = 3, ParentId = 99, Name = "e-orphan" });
+db.Rows.AddRange(
+    new Row { Id = 50, TenantId = 3, Name = "c-root", Active = true },
+    new Row { Id = 51, TenantId = 3, Name = "c-child", Active = true },
+    new Row { Id = 52, TenantId = 3, Name = "c-child", Active = true },
+    new Row { Id = 53, TenantId = 3, Name = "d-root", Active = true },
+    new Row { Id = 54, TenantId = 3, Name = "unrelated", Active = true });
+await db.SaveChangesAsync();
+db.ChangeTracker.Clear();
+var catScope = db.Nodes.AsNoTracking().Where(n => n.TenantId == 3);
+var catRoots = catScope.Where(n => n.ParentId == null || n.ParentId == 0 || !catScope.Any(p => p.Id == n.ParentId))
+    .OrderBy(n => n.Name).ThenBy(n => n.Id);
+IQueryable<TreeNode> CatChildren(int[] ids) => catScope
+    .Where(n => n.ParentId != null && n.ParentId != 0 && ids.Contains(n.ParentId.Value))
+    .OrderBy(n => n.Name).ThenBy(n => n.Id);
+var catRequest = new Paging.Request(0, 2);
+var catPage = await catScope.OrderBy(n => n.Name).ThenBy(n => n.Id).ReadTreePageAsync(catRoots, CatChildren, n => n.Id, catRequest);
+Check(catRequest.Total == 3, "category roots include zero-parent and orphan nodes");
+Check(catPage.Select(n => n.Name).SequenceEqual(new[] { "c-root", "c-child", "d-root" }), "category page keeps first subtree complete");
+var catNames = catPage.Select(n => n.Name).Distinct().ToList();
+recorder.Commands.Clear();
+var counts = await db.Rows.AsNoTracking().Where(r => catNames.Contains(r.Name))
+    .GroupBy(r => r.Name).Select(g => new { Name = g.Key, Count = g.Count() })
+    .ToDictionaryAsync(x => x.Name, x => x.Count);
+Check(recorder.Commands.Single().Contains("IN"), "product counts query is scoped to page names only");
+Check(counts.Count == 3 && counts["c-child"] == 2 && counts["c-root"] == 1 && !counts.ContainsKey("unrelated"),
+    "counts keyed by page name, other products never read");
+
+// Page-scoped enrichment for list endpoints (wallets/reorder pattern): the extra query
+// must run only against the ids of the current page, never the whole filtered set.
+var enrichRequest = new Paging.Request(1, 2);
+var pageRows = await db.Rows.AsNoTracking().Where(r => r.TenantId == 3).OrderBy(r => r.Id).ThenBy(r => r.Name)
+    .ToPageListAsync(enrichRequest);
+Check(enrichRequest.Total == 5 && pageRows.Select(r => r.Id).SequenceEqual(new[] { 51, 52 }), "enrichment base page");
+var pageIds = pageRows.Select(r => r.Id).ToList();
+recorder.Commands.Clear();
+var enriched = await db.Nodes.AsNoTracking().Where(n => pageIds.Contains(n.Id)).ToListAsync();
+Check(recorder.Commands.Single().Contains("IN") && enriched.Count == 0, "enrichment restricted to page ids");
+
+// Leave report rewrite: per-user correlated double sums in SQL, order by computed quota,
+// page via ToPageListAsync; report totals come from a separate light query (sum of the
+// rounded row values, exactly like the legacy in-memory Report).
+db.Leaves.AddRange(
+    new LeaveRow { Id = 1, UserId = 2, Type = "Daily", Status = "Approved", Days = 1.5 },
+    new LeaveRow { Id = 2, UserId = 2, Type = "Hourly", Status = "Approved", Hours = 8 },
+    new LeaveRow { Id = 3, UserId = 4, Type = "Daily", Status = "Approved", Days = 3 },
+    new LeaveRow { Id = 4, UserId = 6, Type = "Daily", Status = "Approved", Days = 0.5 },
+    new LeaveRow { Id = 5, UserId = 6, Type = "Hourly", Status = "Approved", Hours = 4 },
+    new LeaveRow { Id = 6, UserId = 10, Type = "Daily", Status = "Approved", Days = 2 },
+    new LeaveRow { Id = 7, UserId = 10, Type = "Daily", Status = "Pending", Days = 1 },
+    new LeaveRow { Id = 8, UserId = 10, Type = "Hourly", Status = "Approved", Hours = 16 });
+await db.SaveChangesAsync();
+db.ChangeTracker.Clear();
+var leaveQ = db.Leaves.AsNoTracking();
+var reportQuery =
+    from u in db.Rows.AsNoTracking()
+    where u.TenantId == 1 && u.Active
+    let daily = leaveQ.Where(l => l.UserId == u.Id && l.Type == "Daily" && l.Status == "Approved")
+        .Sum(l => (double?)l.Days) ?? 0
+    let hourly = leaveQ.Where(l => l.UserId == u.Id && l.Type == "Hourly" && l.Status == "Approved")
+        .Sum(l => (double?)l.Hours) ?? 0
+    orderby (daily + hourly / 8.0) descending, u.Id
+    select new { u.Id, daily, hourly };
+var reportRequest = new Paging.Request(0, 2);
+var reportPage = await reportQuery.ToPageListAsync(reportRequest);
+Check(reportRequest.Total == 5, "report counts every active user once");
+Check(reportPage.Select(x => x.Id).SequenceEqual(new[] { 10, 4 }), "report pages by computed quota descending");
+var light = await reportQuery.Select(x => new { x.daily, x.hourly }).ToListAsync();
+var totalUsed = Math.Round(light.Sum(x => Math.Round(x.daily + x.hourly / 8.0, 2)), 2);
+Check(light.Count == 5 && totalUsed == 10.5, "report totals replicate the legacy sum of rounded rows");
+
 // SQL Server translation can be checked without a running SQL Server.
 await using var sqlServer = new TestDb(new DbContextOptionsBuilder<TestDb>()
     .UseSqlServer("Server=unused;Database=paging;Integrated Security=true;TrustServerCertificate=true").Options);
@@ -197,6 +274,7 @@ public sealed class TreeNode
     public int Id { get; set; }
     public int TenantId { get; set; }
     public int? ParentId { get; set; }
+    public string Name { get; set; } = "";
 }
 public sealed class Reply
 {
@@ -204,11 +282,21 @@ public sealed class Reply
     public int UserId { get; set; }
     public bool OnTime { get; set; }
 }
+public sealed class LeaveRow
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public string Type { get; set; } = "Daily";
+    public string Status { get; set; } = "Approved";
+    public double Days { get; set; }
+    public double Hours { get; set; }
+}
 public sealed class TestDb(DbContextOptions<TestDb> options) : DbContext(options)
 {
     public DbSet<Row> Rows => Set<Row>();
     public DbSet<TreeNode> Nodes => Set<TreeNode>();
     public DbSet<Reply> Replies => Set<Reply>();
+    public DbSet<LeaveRow> Leaves => Set<LeaveRow>();
 }
 public sealed class SqlRecorder : DbCommandInterceptor
 {
