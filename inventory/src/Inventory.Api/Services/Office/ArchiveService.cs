@@ -12,8 +12,8 @@ namespace Inventory.Api.Services;
 /// </summary>
 public interface IArchiveService
 {
-    /// <summary>درخت کامل بایگانی کاربر (پوشه‌ها + نامه‌های بایگانی‌شده)</summary>
-    Task<List<BayeganiNodeDto>> GetTreeAsync(int userId);
+    /// <summary>درخت کامل بایگانی کاربر (پوشه‌ها + نامه‌های بایگانی‌شده) — صفحه‌بندی ریشه‌ها در SQL</summary>
+    Task<List<BayeganiNodeDto>> GetTreeAsync(int userId, Paging.Request? pagination = null);
 
     /// <summary>ایجاد دسته اصلی (ریشه — ParentId=0)</summary>
     Task<BayeganiNodeDto> AddMainCategoryAsync(int userId, SaveBayeganiFolderDto dto);
@@ -46,8 +46,8 @@ public interface IArchiveService
     // بایگانی دبیرخانه درخت پوشه‌های مستقل خودش را دارد تا با بایگانی شخصی
     // نامه‌های داخلی قاطی نشود.
 
-    /// <summary>درخت بایگانی دبیرخانه (پوشه‌ها + نامه‌های صادرهٔ بایگانی‌شده)</summary>
-    Task<List<BayeganiNodeDto>> GetOutgoingTreeAsync(int userId);
+    /// <summary>درخت بایگانی دبیرخانه (پوشه‌ها + نامه‌های صادرهٔ بایگانی‌شده) — صفحه‌بندی ریشه‌ها در SQL</summary>
+    Task<List<BayeganiNodeDto>> GetOutgoingTreeAsync(int userId, Paging.Request? pagination = null);
 
     /// <summary>ایجاد دسته اصلی در ریشهٔ بایگانی دبیرخانه</summary>
     Task<BayeganiNodeDto> AddOutgoingMainCategoryAsync(int userId, SaveBayeganiFolderDto dto);
@@ -151,7 +151,7 @@ public class ArchiveService : IArchiveService
 
     // ==================== درخت ====================
 
-    public async Task<List<BayeganiNodeDto>> GetTreeAsync(int userId)
+    public async Task<List<BayeganiNodeDto>> GetTreeAsync(int userId, Paging.Request? pagination = null)
     {
         // مهاجرت تنبل: نامه‌هایی که با toggle قدیمی بایگانی شده‌اند ولی رکورد درختی ندارند
         var loose = await _db.Erjas
@@ -179,10 +179,16 @@ public class ArchiveService : IArchiveService
 
         // فقط بایگانی شخصی (نامه‌های داخلی) — نامه‌های صادرهٔ بایگانی‌شده در
         // درخت جداگانهٔ دبیرخانه (TypeBayegani=2) نمایش داده می‌شوند.
-        var rows = await _db.LetterBayeganis.AsNoTracking()
-            .Where(b => b.UserId == userId && !b.IsDelete && b.TypeBayegani != TypeOutgoing)
-            .OrderBy(b => b.BayeganiId)
-            .ToListAsync();
+        // الگوی DatabaseTreePaging: ریشه‌ها در SQL شمارش/صفحه‌بندی می‌شوند (total = تعداد ریشه‌ها)
+        // و فقط زیرشاخه‌های ریشه‌های منتخب واکشی می‌شود؛ اطلاعات نامه‌ها هم فقط برای همین گره‌ها hydrate می‌شود.
+        var scope = _db.LetterBayeganis.AsNoTracking()
+            .Where(b => b.UserId == userId && !b.IsDelete && b.TypeBayegani != TypeOutgoing);
+        IOrderedQueryable<LetterBayegani> Order(IQueryable<LetterBayegani> q) => q
+            .OrderByDescending(b => b.IsFolder).ThenBy(b => b.Title).ThenBy(b => b.BayeganiId);
+        var rows = await Order(scope).ReadTreePageAsync(
+            Order(scope.Where(b => b.ParentId == 0 || !scope.Any(p => p.Id == b.ParentId && p.IsFolder))),
+            ids => Order(scope.Where(b => ids.Contains(b.ParentId))),
+            b => b.BayeganiId, pagination);
 
         // اطلاعات نامه برای برگ‌ها
         var erjaIds = rows.Where(r => r.ErjaId.HasValue).Select(r => r.ErjaId!.Value).ToList();
@@ -670,12 +676,18 @@ public class ArchiveService : IArchiveService
         SourceType = 2
     };
 
-    public async Task<List<BayeganiNodeDto>> GetOutgoingTreeAsync(int userId)
+    public async Task<List<BayeganiNodeDto>> GetOutgoingTreeAsync(int userId, Paging.Request? pagination = null)
     {
-        var rows = await _db.LetterBayeganis.AsNoTracking()
-            .Where(b => b.UserId == userId && !b.IsDelete && b.TypeBayegani == TypeOutgoing)
-            .OrderBy(b => b.BayeganiId)
-            .ToListAsync();
+        // الگوی DatabaseTreePaging: ریشه‌ها در SQL شمارش/صفحه‌بندی می‌شوند (total = تعداد ریشه‌ها)
+        // و فقط زیرشاخه‌های ریشه‌های منتخب واکشی می‌شود؛ اطلاعات نامه‌ها هم فقط برای همین گره‌ها hydrate می‌شود.
+        var scope = _db.LetterBayeganis.AsNoTracking()
+            .Where(b => b.UserId == userId && !b.IsDelete && b.TypeBayegani == TypeOutgoing);
+        IOrderedQueryable<LetterBayegani> Order(IQueryable<LetterBayegani> q) => q
+            .OrderByDescending(b => b.IsFolder).ThenBy(b => b.Title).ThenBy(b => b.BayeganiId);
+        var rows = await Order(scope).ReadTreePageAsync(
+            Order(scope.Where(b => b.ParentId == 0 || !scope.Any(p => p.Id == b.ParentId && p.IsFolder))),
+            ids => Order(scope.Where(b => ids.Contains(b.ParentId))),
+            b => b.BayeganiId, pagination);
 
         // اطلاعات نامه‌های صادرهٔ بایگانی‌شده
         var letterIds = rows.Where(r => r.LetterId.HasValue).Select(r => r.LetterId!.Value).Distinct().ToList();

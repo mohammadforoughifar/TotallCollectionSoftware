@@ -2,6 +2,7 @@ using Inventory.Api.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Inventory.Api.Data;
@@ -18,7 +19,7 @@ namespace Inventory.Api.Services.Chat;
 
 public interface IChatService
 {
-    Task<List<ChatConversationDto>> GetConversationsAsync(int currentUserId, string? search = null, ChatTypeDto? typeFilter = null, bool onlyUnread = false);
+    Task<List<ChatConversationDto>> GetConversationsAsync(int currentUserId, string? search = null, ChatTypeDto? typeFilter = null, bool onlyUnread = false, Paging.Request? pagination = null);
     Task<ChatConversationDto> GetConversationByIdAsync(int currentUserId, int conversationId);
     Task<ChatConversationDto> GetOrCreateDirectConversationAsync(int currentUserId, string currentUserName, int targetUserId);
     Task<ChatConversationDto> CreateGroupConversationAsync(int currentUserId, string currentUserName, CreateGroupChatRequest request);
@@ -29,7 +30,7 @@ public interface IChatService
     Task<Dictionary<string, List<ChatReactionUserDto>>> ToggleReactionAsync(int currentUserId, string currentUserName, int messageId, string emoji);
     Task MarkConversationAsReadAsync(int currentUserId, int conversationId, int? lastReadMessageId = null);
     Task<ChatMessageDto> TogglePinMessageAsync(int currentUserId, int messageId);
-    Task<List<ChatUserDto>> GetSoftwareUsersForChatAsync(int currentUserId, string? search = null);
+    Task<List<ChatUserDto>> GetSoftwareUsersForChatAsync(int currentUserId, string? search = null, Paging.Request? pagination = null);
     Task<ChatSummaryDto> GetChatSummaryAsync(int currentUserId);
     Task<List<ChatMemberDto>> GetGroupMembersAsync(int currentUserId, int conversationId, Paging.Request? pagination = null);
     Task AddMembersToGroupAsync(int currentUserId, string currentUserName, int conversationId, List<int> newUserIds);
@@ -55,7 +56,8 @@ public class ChatService : IChatService
         _aiQueue = aiQueue;
     }
 
-    public async Task<List<ChatConversationDto>> GetConversationsAsync(int currentUserId, string? search = null, ChatTypeDto? typeFilter = null, bool onlyUnread = false)
+    public async Task<List<ChatConversationDto>> GetConversationsAsync(int currentUserId, string? search = null,
+        ChatTypeDto? typeFilter = null, bool onlyUnread = false, Paging.Request? pagination = null)
     {
         var myMemberships = await _db.ChatMembers
             .AsNoTracking()
@@ -65,39 +67,68 @@ public class ChatService : IChatService
         if (myMemberships.Count == 0) return new List<ChatConversationDto>();
 
         var conversationIds = myMemberships.Select(m => m.ConversationId).ToList();
+        var pinnedIds = myMemberships.Where(m => m.IsPinned).Select(m => m.ConversationId).ToList();
 
-        var q = _db.ChatConversations
-            .AsNoTracking()
-            .Where(c => conversationIds.Contains(c.Id));
+        // فیلترها، مرتب‌سازی، شمارش و صفحه‌بندی در SQL؛ اطلاعات سنگین (اعضا/مخاطب/خوانده‌نشده)
+        // فقط برای گفتگوهای صفحهٔ جاری واکشی می‌شود.
+        var q = _db.ChatConversations.AsNoTracking().Where(c => conversationIds.Contains(c.Id));
 
         if (typeFilter.HasValue)
         {
-            q = q.Where(c => c.Type == typeFilter.Value);
+            var type = typeFilter.Value;
+            q = q.Where(c => c.Type == type);
         }
 
-        var list = await q
-            .OrderByDescending(c => c.LastMessageAt)
-            .ToListAsync();
+        if (onlyUnread)
+            q = q.Where(c => UnreadMessagesFor(currentUserId).Any(m => m.ConversationId == c.Id));
 
-        // واکشی اعضای تمامی این مکالمات جهت استخراج اطلاعات چت‌های دونفره
-        var allMembers = await _db.ChatMembers
-            .AsNoTracking()
-            .Where(m => conversationIds.Contains(m.ConversationId))
-            .ToListAsync();
+        var normalizedSearch = ChatSearchText.Normalize(search);
+        if (normalizedSearch.Length > 0)
+        {
+            // در چت خصوصی عنوانِ نمایش‌داده‌شده نام مخاطب مقابل است؛ جست‌وجو همان نام یا
+            // آخرین پیام را می‌بیند. برای بقیهٔ انواع، عنوان خود گفتگو جست‌وجو می‌شود.
+            var title = ChatSqlSearch.FieldMatches<ChatConversation>(c => c.Title, normalizedSearch);
+            var snippet = ChatSqlSearch.FieldMatches<ChatConversation>(c => c.LastMessageSnippet, normalizedSearch);
+            var peerName = ChatSqlSearch.FieldMatches<ChatMember>(
+                m => string.IsNullOrWhiteSpace(m.UserDisplayName) ? m.UserName : m.UserDisplayName, normalizedSearch);
+            var peer = peerName.And((Expression<Func<ChatMember, bool>>)(m => m.UserId != currentUserId));
+            var directPeer = ChatSqlSearch.AnyMatches<ChatConversation, ChatMember>(c => c.Members, peer);
+            var isDirect = (Expression<Func<ChatConversation, bool>>)(c => c.Type == ChatTypeDto.Direct);
+            var notDirect = (Expression<Func<ChatConversation, bool>>)(c => c.Type != ChatTypeDto.Direct);
+            q = q.Where(snippet.Or(isDirect.And(directPeer)).Or(notDirect.And(title)));
+        }
 
-        var unreadCounts = await UnreadMessagesFor(currentUserId)
-            .Where(m => conversationIds.Contains(m.ConversationId))
-            .GroupBy(m => m.ConversationId)
-            .Select(g => new { ConversationId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(g => g.ConversationId, g => g.Count);
+        // مرتب‌سازی پایدار: اول پین‌شده‌ها، سپس جدیدترین پیام.
+        var page = await q
+            .OrderByDescending(c => pinnedIds.Contains(c.Id))
+            .ThenByDescending(c => c.LastMessageAt)
+            .ThenByDescending(c => c.Id)
+            .ToPageListAsync(pagination);
+
+        var pageIds = page.Select(c => c.Id).ToList();
+
+        // واکشی اعضای همین صفحه جهت استخراج اطلاعات چت‌های دونفره و تعداد اعضا
+        var allMembers = pageIds.Count == 0
+            ? new List<ChatMember>()
+            : await _db.ChatMembers
+                .AsNoTracking()
+                .Where(m => pageIds.Contains(m.ConversationId))
+                .ToListAsync();
+
+        var unreadCounts = pageIds.Count == 0
+            ? new Dictionary<int, int>()
+            : await UnreadMessagesFor(currentUserId)
+                .Where(m => pageIds.Contains(m.ConversationId))
+                .GroupBy(m => m.ConversationId)
+                .Select(g => new { ConversationId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(g => g.ConversationId, g => g.Count);
 
         var membershipMap = myMemberships.ToDictionary(m => m.ConversationId);
         var membersGrouped = allMembers.GroupBy(m => m.ConversationId).ToDictionary(g => g.Key, g => g.ToList());
 
         var result = new List<ChatConversationDto>();
-        var normalizedSearch = ChatSearchText.Normalize(search);
 
-        foreach (var conv in list)
+        foreach (var conv in page)
         {
             membershipMap.TryGetValue(conv.Id, out var myMem);
             if (myMem == null) continue;
@@ -143,21 +174,10 @@ public class ChatService : IChatService
                 dto.DirectPeerLastSeen = ChatHub.GetLastSeen(peer.UserId);
             }
 
-            if (normalizedSearch.Length > 0)
-            {
-                bool matches = ChatSearchText.Normalize(dto.Title).Contains(normalizedSearch) ||
-                               ChatSearchText.Normalize(dto.LastMessageSnippet).Contains(normalizedSearch);
-                if (!matches) continue;
-            }
-
             result.Add(dto);
         }
 
-        // مرتب‌سازی: اول پین‌شده‌ها، سپس جدیدترین پیام
-        return result
-            .OrderByDescending(c => c.IsPinned)
-            .ThenByDescending(c => c.LastMessageAt)
-            .ToList();
+        return result;
     }
 
     public async Task<ChatConversationDto> GetConversationByIdAsync(int currentUserId, int conversationId)
@@ -662,37 +682,60 @@ public class ChatService : IChatService
         return dto;
     }
 
-    public async Task<List<ChatUserDto>> GetSoftwareUsersForChatAsync(int currentUserId, string? search = null)
+    public async Task<List<ChatUserDto>> GetSoftwareUsersForChatAsync(int currentUserId, string? search = null,
+        Paging.Request? pagination = null)
     {
         // شناسهٔ چت همیشه از حساب ورود (Users) است، نه شناسهٔ مستقل SystemUsers.
         // کاربر فعال حتی بدون گفتگوی قبلی و در حالت آفلاین باید قابل پیدا شدن باشد.
-        var users = await _db.Users
+        // فیلتر/مرتب‌سازی/شمارش/صفحه‌بندی در SQL؛ اطلاعات تکمیلی فقط برای صفحهٔ جاری hydrate می‌شود.
+        var q = _db.Users
             .AsNoTracking()
-            .Where(u => u.IsActive && u.Id != currentUserId)
-            .OrderBy(u => u.LastName)
-            .ThenBy(u => u.FirstName)
-            .ThenBy(u => u.Username)
-            .Select(u => new { u.Id, u.Username, u.FirstName, u.LastName, u.PhotoPath, u.Role })
-            .ToListAsync();
+            .Where(u => u.IsActive && u.Id != currentUserId);
 
-        if (users.Count == 0) return new();
+        // نرمال‌سازی جست‌وجو (حروف فارسی/عربی، فاصله و ارقام) با معادل SQL روی همان ستون‌ها
+        // انجام می‌شود تا COUNT و صفحه‌بندی روی نتیجهٔ فیلترشده در دیتابیس بماند.
+        var normalizedSearch = ChatSearchText.Normalize(search);
+        if (normalizedSearch.Length > 0)
+        {
+            var byName = ChatSqlSearch.FieldMatches<User>(
+                u => (u.FirstName ?? "") + " " + (u.LastName ?? ""), normalizedSearch);
+            var byUsername = ChatSqlSearch.FieldMatches<User>(u => u.Username, normalizedSearch);
+            // واحد سازمانی در پروفایل پرسنلی نگهداری می‌شود؛ اتصال فقط با نام کاربری،
+            // نه با Id (دو جدول شناسه‌های متفاوت دارند). این اتصال اختیاری است.
+            Expression<Func<User, string?>> departmentName = u => _db.SystemUsers
+                .Where(p => p.IsActive && p.Username != "" && p.DepartmentId != null
+                    && p.Username.Trim().ToLower() == u.Username.Trim().ToLower())
+                .OrderBy(p => p.Id)
+                .Select(p => _db.SystemDepartments
+                    .Where(d => d.Id == p.DepartmentId && d.IsActive)
+                    .Select(d => d.Name)
+                    .FirstOrDefault())
+                .FirstOrDefault();
+            var byDepartment = ChatSqlSearch.FieldMatches(departmentName, normalizedSearch);
+            q = q.Where(byName.Or(byUsername).Or(byDepartment));
+        }
 
-        // واحد سازمانی در پروفایل پرسنلی نگهداری می‌شود؛ اتصال فقط با نام کاربری،
-        // نه با Id (دو جدول شناسه‌های متفاوت دارند). این اتصال اختیاری است.
+        // نتیجهٔ خالی واقعاً خالی است؛ هرگز به کل فهرست کاربران fallback نمی‌کنیم.
+        var page = await q
+            .OrderBy(u => u.LastName ?? "").ThenBy(u => u.FirstName ?? "")
+            .ThenBy(u => u.Username).ThenBy(u => u.Id)
+            .ToPageListAsync(pagination);
+        if (page.Count == 0) return new();
+
+        // واحد سازمانی فقط برای کاربران همین صفحه خوانده می‌شود.
+        var usernames = page.Select(u => u.Username.Trim().ToLower()).Distinct().ToList();
         var departments = await (from profile in _db.SystemUsers.AsNoTracking()
                                  join department in _db.SystemDepartments.AsNoTracking()
                                      on profile.DepartmentId equals (int?)department.Id
                                  where profile.IsActive && department.IsActive && profile.Username != ""
+                                       && usernames.Contains(profile.Username.Trim().ToLower())
                                  orderby profile.Id
                                  select new { profile.Username, department.Name }).ToListAsync();
         var departmentMap = departments
             .GroupBy(p => p.Username.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Name, StringComparer.OrdinalIgnoreCase);
 
-        // نرمال‌سازی بعد از واکشی ستون‌های عمومی انجام می‌شود تا رفتار جست‌وجوی
-        // نام کامل و حروف فارسی/عربی در SQL Server و SQLite یکسان باشد.
-        var normalizedSearch = ChatSearchText.Normalize(search);
-        var result = users.Select(u =>
+        var result = page.Select(u =>
         {
             var displayName = $"{u.FirstName} {u.LastName}".Trim();
             if (string.IsNullOrWhiteSpace(displayName)) displayName = u.Username;
@@ -709,14 +752,9 @@ public class ChatService : IChatService
                 IsOnline = ChatHub.IsUserOnline(u.Id),
                 LastSeen = ChatHub.GetLastSeen(u.Id)
             };
-        }).Where(u => normalizedSearch.Length == 0 ||
-                      ChatSearchText.Normalize(u.DisplayName).Contains(normalizedSearch) ||
-                      ChatSearchText.Normalize(u.Username).Contains(normalizedSearch) ||
-                      ChatSearchText.Normalize(u.Department).Contains(normalizedSearch)).ToList();
+        }).ToList();
 
-        // نتیجهٔ خالی واقعاً خالی است؛ هرگز به کل فهرست کاربران fallback نمی‌کنیم.
-        if (result.Count == 0) return result;
-
+        // گفتگوی موجود فقط برای کاربران همین صفحه محاسبه می‌شود.
         var userIds = result.Select(u => u.Id).ToList();
         var existingDirects = await (from me in _db.ChatMembers.AsNoTracking()
                                      join peer in _db.ChatMembers.AsNoTracking()

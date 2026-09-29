@@ -15,7 +15,7 @@ public interface IWarehousingService
     Task<List<InvCategory>> GetCategoryTreeAsync(bool activeOnly = false, Paging.Request? pagination = null);
 
     /// <summary>گروه‌های کالا به‌صورت فهرست تخت مرتب‌شده (برای کمبوها).</summary>
-    Task<List<InvCategory>> GetCategoriesFlatAsync(bool activeOnly = false);
+    Task<List<InvCategory>> GetCategoriesFlatAsync(bool activeOnly = false, Paging.Request? pagination = null);
 
     Task<InvCategory> SaveCategoryAsync(InvCategory dto);
     Task DeleteCategoryAsync(int id);
@@ -69,7 +69,8 @@ public interface IWarehousingService
     Task<InvDoc> CancelDocAsync(int id, string? user);
 
     // ---------------- کاردکس و موجودی ----------------
-    Task<InvKardexResult> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to);
+    Task<InvKardexResult> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to,
+        Paging.Request? pagination = null);
     Task<PagedResult<InvStockRow>> GetStockAsync(int? warehouseId, int? categoryId, string? search,
         bool belowOnly, int page, int pageSize);
 

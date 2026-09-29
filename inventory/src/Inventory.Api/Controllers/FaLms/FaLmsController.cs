@@ -556,7 +556,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Conflicts(int id, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.CheckConflictsAsync(id, employeeId), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _svc.CheckConflictsAsync(id, employeeId, pagination), skip, take));
     }
 
     [HttpDelete("certificates/{id:int}")]

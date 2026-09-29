@@ -344,7 +344,7 @@ public class OutgoingLettersController : RbacControllerBase
     {
         if (!await HasDabirkhaneAsync())
             return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
-        return Ok(Paging.Result(await _archive.GetOutgoingTreeAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _archive.GetOutgoingTreeAsync(MyUserId, pagination), skip, take));
     }
 
     /// <summary>ایجاد دسته اصلی در ریشهٔ بایگانی دبیرخانه</summary>

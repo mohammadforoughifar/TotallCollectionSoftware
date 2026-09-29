@@ -87,7 +87,7 @@ public interface IFaLmsService
     Task SaveSurveyAnswerAsync(FaLmsSurveyAnswerSaveDto dto);
     Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId, Paging.Request? pagination = null);
     // تداخل‌یابی
-    Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId);
+    Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId, Paging.Request? pagination = null);
     Task DeleteCertificateAsync(int id);
     // بودجه
     Task<List<FaLmsBudgetDto>> ListBudgetsAsync(Paging.Request? pagination = null);
@@ -1648,16 +1648,16 @@ public class FaLmsService : IFaLmsService
 
     // ==================== تداخل‌یابی آموزشی ====================
 
-    public async Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId)
+    public async Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId, Paging.Request? pagination = null)
     {
         var sessions = await _db.FaLmsSessions.AsNoTracking()
-            .Where(s => s.CourseId == courseId).OrderBy(s => s.SessionDate).Take(200).ToListAsync();
+            .Where(s => s.CourseId == courseId).OrderBy(s => s.SessionDate).ThenBy(s => s.Id).Take(200).ToListAsync();
         if (sessions.Count == 0) return new();
         List<int> empIds;
         if (employeeId is > 0) empIds = new List<int> { employeeId.Value };
         else empIds = await _db.FaLmsEnrollments.AsNoTracking()
             .Where(e => e.CourseId == courseId && e.Status == FaLmsEnrollStatus.Approved)
-            .Select(e => e.EmployeeId).Distinct().Take(500).ToListAsync();
+            .Select(e => e.EmployeeId).Distinct().OrderBy(x => x).Take(500).ToListAsync();
         if (empIds.Count == 0) return new();
         var names = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id))
             .ToDictionaryAsync(e => e.Id, e => e.FirstName + " " + e.LastName);
@@ -1665,14 +1665,14 @@ public class FaLmsService : IFaLmsService
         var maxD = sessions.Max(s => s.SessionDate).Date;
         var leaves = await _db.FaAttLeaves.AsNoTracking()
             .Where(l => empIds.Contains(l.EmployeeId) && l.Status != FaAttRequestStatus.Rejected
-                && l.FromDate.Date <= maxD && l.ToDate.Date >= minD).Take(2000).ToListAsync();
+                && l.FromDate.Date <= maxD && l.ToDate.Date >= minD).OrderBy(l => l.Id).Take(2000).ToListAsync();
         var missions = await _db.FaAttMissions.AsNoTracking()
             .Where(m => empIds.Contains(m.EmployeeId) && m.Status != FaAttRequestStatus.Rejected
-                && m.FromDate.Date <= maxD && m.ToDate.Date >= minD).Take(1000).ToListAsync();
+                && m.FromDate.Date <= maxD && m.ToDate.Date >= minD).OrderBy(m => m.Id).Take(1000).ToListAsync();
         var assigns = await _db.FaAttShiftAssigns.AsNoTracking()
             .Where(a => empIds.Contains(a.EmployeeId)
                 && a.FromDate.Date <= maxD && (a.ToDate == null || a.ToDate.Value.Date >= minD))
-            .Take(2000).ToListAsync();
+            .OrderBy(a => a.Id).Take(2000).ToListAsync();
         var shiftIds = assigns.Select(a => a.ShiftId).Distinct().ToList();
         var shifts = shiftIds.Count == 0 ? new Dictionary<int, FaAttShift>()
             : await _db.FaAttShifts.AsNoTracking().Where(s => shiftIds.Contains(s.Id))
@@ -1709,8 +1709,24 @@ public class FaLmsService : IFaLmsService
                             Kind = "Shift", Detail = $"هم‌پوشانی با شیفت {sh.Name}"
                         });
                 }
-                if (out_.Count >= 200) return out_;
             }
+        }
+
+        // ترتیب پایدار نتیجه: تاریخ جلسه، پرسنل، نوع تداخل.
+        out_ = out_.OrderBy(c => c.SessionDate).ThenBy(c => c.EmployeeId).ThenBy(c => c.Kind)
+            .ThenBy(c => c.Topic ?? "").ToList();
+
+        // صفحه‌بندی روی «نتیجهٔ نهایی تداخل‌ها»؛ سقف‌های ورودی (200/500/…) مستقل از total
+        // و صفحه‌بندی‌اند. در حالت legacy بدون صفحه‌بندی، سقف ایمنی ۲۰۰ سطری خروجی حفظ می‌شود.
+        if (pagination is { IsPaged: true })
+        {
+            pagination.SetTotal(out_.Count);
+            if (pagination.Skip > 0) out_ = out_.Skip(pagination.Skip).ToList();
+            if (pagination.Take is > 0) out_ = out_.Take(pagination.Take.Value).ToList();
+        }
+        else if (out_.Count > 200)
+        {
+            out_ = out_.Take(200).ToList();
         }
         return out_;
     }

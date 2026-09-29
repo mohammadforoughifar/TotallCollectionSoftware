@@ -54,7 +54,8 @@ public class ReferrersController : ApiControllerBase
     [HttpGet("wallets")]
     public async Task<ActionResult<List<Referrer>>> GetWallets(
         [FromQuery] string? search, [FromQuery] string? sortBy = "name", [FromQuery] bool desc = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _service.GetReferrerWalletsAsync(search, sortBy, desc), skip, take));
+        => Ok(await Paging.ResultAsync(
+            pagination => _service.GetReferrerWalletsAsync(search, sortBy, desc, pagination), skip, take));
 
     /// <summary>فهرست اسناد پرداخت (اختیاری: فقط یک معرف).</summary>
     [HttpGet("payments")]

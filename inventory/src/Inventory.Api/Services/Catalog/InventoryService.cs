@@ -174,40 +174,120 @@ public class InventoryService : IInventoryService
         return total;
     }
 
-    public async Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc)
+    /// <summary>نگاشت سبک معرف به DTO کیف پول (بدون مبالغ).</summary>
+    private static Referrer MapWallet(Db.Referrer r, int orderCount = 0) => new()
     {
-        var list = await GetReferrersAsync();
+        Id = r.Id,
+        Name = r.Name,
+        CompanyName = r.CompanyName,
+        Phone = r.Phone,
+        GoodsCommissionPercent = r.GoodsCommissionPercent,
+        ServiceCommissionPercent = r.ServiceCommissionPercent,
+        CardNumber = r.CardNumber,
+        Iban = r.Iban,
+        CanViewProducts = r.CanViewProducts,
+        IsActive = r.IsActive,
+        CreatedAt = r.CreatedAt,
+        OrderCount = orderCount
+    };
 
+    public async Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc,
+        Paging.Request? pagination = null)
+    {
+        // فیلتر جست‌وجو در SQL.
+        var q = _db.Referrers.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
-            list = list.Where(r => r.Name.Contains(s) ||
-                                   (r.CompanyName != null && r.CompanyName.Contains(s))).ToList();
+            q = q.Where(r => r.Name.Contains(s) || (r.CompanyName != null && r.CompanyName.Contains(s)));
         }
 
-        // جمع پرداختی‌ها در حافظه (SQLite جمع decimal را در SQL پشتیبانی نمی‌کند)
-        var allPayments = await _db.ReferrerPayments.ToListAsync();
-        var payments = allPayments
-            .GroupBy(p => p.ReferrerId)
-            .Select(g => new { Id = g.Key, Paid = g.Sum(x => x.Amount) })
-            .ToList();
+        var mode = sortBy?.ToLowerInvariant();
+        if (mode != "commission" && mode != "paid" && mode != "balance") mode = "name";
 
-        foreach (var r in list)
+        if (mode is "commission" or "balance")
         {
-            r.TotalCommission = await ComputeReferrerCommissionAsync(r.Id);
-            r.TotalPaid = payments.FirstOrDefault(p => p.Id == r.Id)?.Paid ?? 0;
-            r.WalletBalance = r.TotalCommission - r.TotalPaid;
+            // کلید این دو مرتب‌سازی (پورسانت/مانده) به محاسبهٔ پورسانت روی زنجیرهٔ بهای تمام‌شدهٔ
+            // FIFO/LIFO/میانگین وابسته است و در SQL قابل بیان نیست؛ بنابراین فقط برای این دو حالت،
+            // مبالغ همهٔ معرف‌ها محاسبه و در حافظه مرتب می‌شود و سپس صفحهٔ درخواستی برش می‌خورد.
+            // راه‌حل بلندمدتِ Database-level: ذخیرهٔ پورسانت روی سند فروش هنگام ثبت است.
+            var all = await q.OrderBy(r => r.Name).ThenBy(r => r.Id).ToListAsync();
+            var allIds = all.Select(r => r.Id).ToList();
+            var orderCounts = allIds.Count == 0
+                ? new Dictionary<int, int>()
+                : await _db.Transactions
+                    .Where(t => t.ReferrerId != null && allIds.Contains(t.ReferrerId.Value))
+                    .GroupBy(t => t.ReferrerId!.Value)
+                    .Select(g => new { Id = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.Id, x => x.Count);
+            var paidMap = (await _db.ReferrerPayments.AsNoTracking().ToListAsync())
+                .GroupBy(p => p.ReferrerId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+            var walletList = new List<Referrer>();
+            foreach (var r in all)
+            {
+                var dto = MapWallet(r, orderCounts.TryGetValue(r.Id, out var oc) ? oc : 0);
+                dto.TotalCommission = await ComputeReferrerCommissionAsync(r.Id);
+                dto.TotalPaid = paidMap.TryGetValue(r.Id, out var paid) ? paid : 0;
+                dto.WalletBalance = dto.TotalCommission - dto.TotalPaid;
+                walletList.Add(dto);
+            }
+
+            var sorted = mode == "commission"
+                ? (desc ? walletList.OrderByDescending(r => r.TotalCommission) : walletList.OrderBy(r => r.TotalCommission))
+                : (desc ? walletList.OrderByDescending(r => r.WalletBalance) : walletList.OrderBy(r => r.WalletBalance));
+            var list = sorted.ThenBy(r => r.Name).ThenBy(r => r.Id).ToList();
+            if (pagination is { IsPaged: true })
+            {
+                pagination.SetTotal(list.Count);
+                if (pagination.Skip > 0) list = list.Skip(pagination.Skip).ToList();
+                if (pagination.Take is > 0) list = list.Take(pagination.Take.Value).ToList();
+            }
+            return list;
         }
 
-        list = (sortBy?.ToLowerInvariant()) switch
+        // name/paid: فیلتر → ترتیب → شمارش → صفحه در SQL؛ مبالغ فقط برای رکوردهای صفحه محاسبه می‌شود.
+        // مرتب‌سازی paid روی SUM پرداختی‌ها در SQL (به‌خاطر نبود Sum دسیمال در SQLite با معادل double).
+        IOrderedQueryable<Db.Referrer> ordered;
+        if (mode == "paid")
         {
-            "commission" => desc ? list.OrderByDescending(r => r.TotalCommission).ToList() : list.OrderBy(r => r.TotalCommission).ToList(),
-            "paid" => desc ? list.OrderByDescending(r => r.TotalPaid).ToList() : list.OrderBy(r => r.TotalPaid).ToList(),
-            "balance" => desc ? list.OrderByDescending(r => r.WalletBalance).ToList() : list.OrderBy(r => r.WalletBalance).ToList(),
-            _ => desc ? list.OrderByDescending(r => r.Name).ToList() : list.OrderBy(r => r.Name).ToList()
-        };
+            ordered = _db.Database.IsSqlite()
+                ? (desc
+                    ? q.OrderByDescending(r => _db.ReferrerPayments.Where(p => p.ReferrerId == r.Id).Sum(p => (double?)p.Amount) ?? 0)
+                    : q.OrderBy(r => _db.ReferrerPayments.Where(p => p.ReferrerId == r.Id).Sum(p => (double?)p.Amount) ?? 0))
+                : (desc
+                    ? q.OrderByDescending(r => _db.ReferrerPayments.Where(p => p.ReferrerId == r.Id).Sum(p => (decimal?)p.Amount) ?? 0m)
+                    : q.OrderBy(r => _db.ReferrerPayments.Where(p => p.ReferrerId == r.Id).Sum(p => (decimal?)p.Amount) ?? 0m));
+        }
+        else
+        {
+            ordered = desc ? q.OrderByDescending(r => r.Name) : q.OrderBy(r => r.Name);
+        }
 
-        return list;
+        var page = await ordered.ThenBy(r => r.Name).ThenBy(r => r.Id).ToPageListAsync(pagination);
+        var pageIds = page.Select(r => r.Id).ToList();
+        var pageOrderCounts = pageIds.Count == 0
+            ? new Dictionary<int, int>()
+            : await _db.Transactions
+                .Where(t => t.ReferrerId != null && pageIds.Contains(t.ReferrerId.Value))
+                .GroupBy(t => t.ReferrerId!.Value)
+                .Select(g => new { Id = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Id, x => x.Count);
+        var pagePaid = pageIds.Count == 0
+            ? new List<Db.ReferrerPayment>()
+            : await _db.ReferrerPayments.AsNoTracking().Where(p => pageIds.Contains(p.ReferrerId)).ToListAsync();
+        var pagePaidMap = pagePaid.GroupBy(p => p.ReferrerId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        var result = new List<Referrer>();
+        foreach (var r in page)
+        {
+            var dto = MapWallet(r, pageOrderCounts.TryGetValue(r.Id, out var pc) ? pc : 0);
+            dto.TotalCommission = await ComputeReferrerCommissionAsync(r.Id);
+            dto.TotalPaid = pagePaidMap.TryGetValue(r.Id, out var paid) ? paid : 0;
+            dto.WalletBalance = dto.TotalCommission - dto.TotalPaid;
+            result.Add(dto);
+        }
+        return result;
     }
 
     public async Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId, Paging.Request? pagination = null)
@@ -435,18 +515,29 @@ public class InventoryService : IInventoryService
 
     // =============================== گروه کالا ===============================
 
-    public async Task<List<ProductCategory>> GetCategoriesAsync(bool activeOnly = false)
+    public async Task<List<ProductCategory>> GetCategoriesAsync(bool activeOnly = false, Paging.Request? pagination = null)
     {
-        var q = _db.ProductCategories.AsQueryable();
-        if (activeOnly) q = q.Where(c => c.IsActive);
-        var cats = await q.OrderBy(c => c.Name).ToListAsync();
+        var scope = _db.ProductCategories.AsNoTracking().AsQueryable();
+        if (activeOnly) scope = scope.Where(c => c.IsActive);
+        IOrderedQueryable<Db.ProductCategory> Order(IQueryable<Db.ProductCategory> q) => q
+            .OrderBy(c => c.Name).ThenBy(c => c.Id);
 
-        // شمارش کالاهای هر گروه (بر اساس نام گروه ذخیره‌شده روی کالا)
-        var counts = await _db.Products
-            .Where(p => p.Category != null)
-            .GroupBy(p => p.Category!)
-            .Select(g => new { Name = g.Key, Count = g.Count() })
-            .ToListAsync();
+        // الگوی DatabaseTreePaging: شمارش و صفحه‌بندی ریشه‌ها در SQL و واکشی کامل
+        // زیرشاخه‌های ریشه‌های منتخب؛ total تعداد ریشه‌هاست و ساختار درختی حفظ می‌شود.
+        var cats = await Order(scope).ReadTreePageAsync(
+            Order(scope.Where(c => c.ParentId == null || c.ParentId == 0 || !scope.Any(p => p.Id == c.ParentId))),
+            ids => Order(scope.Where(c => c.ParentId != null && ids.Contains(c.ParentId.Value))),
+            c => c.Id, pagination);
+
+        // شمارش کالاهای هر گروه (بر اساس نام گروه ذخیره‌شده روی کالا) — فقط برای گره‌های صفحهٔ جاری
+        var catNames = cats.Select(c => c.Name).Distinct().ToList();
+        var counts = catNames.Count == 0
+            ? new Dictionary<string, int>()
+            : await _db.Products
+                .Where(p => p.Category != null && catNames.Contains(p.Category))
+                .GroupBy(p => p.Category!)
+                .Select(g => new { Name = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Name, x => x.Count);
 
         // ---------- چینش درختی: والدها اول، فرزندان زیر والد با محاسبه عمق ----------
         var byParent = cats.GroupBy(c => c.ParentId).ToDictionary(g => g.Key ?? 0, g => g.OrderBy(c => c.Name).ToList());
@@ -466,7 +557,7 @@ public class InventoryService : IInventoryService
                     Description = c.Description,
                     IsActive = c.IsActive,
                     CreatedAt = c.CreatedAt,
-                    ProductCount = counts.FirstOrDefault(x => x.Name == c.Name)?.Count ?? 0,
+                    ProductCount = counts.TryGetValue(c.Name, out var pc) ? pc : 0,
                     Depth = depth,
                     FullPath = path
                 });
@@ -483,7 +574,7 @@ public class InventoryService : IInventoryService
             {
                 Id = c.Id, Name = c.Name, ParentId = c.ParentId, Description = c.Description,
                 IsActive = c.IsActive, CreatedAt = c.CreatedAt,
-                ProductCount = counts.FirstOrDefault(x => x.Name == c.Name)?.Count ?? 0,
+                ProductCount = counts.TryGetValue(c.Name, out var pc2) ? pc2 : 0,
                 Depth = 0, FullPath = c.Name
             });
 

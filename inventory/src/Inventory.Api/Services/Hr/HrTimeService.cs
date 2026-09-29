@@ -87,7 +87,7 @@ public class HrTimeService
 
     public record BalanceRow(string Category, double Granted, double Used, double Pending, double Remaining, double Carryover);
 
-    public async Task<List<BalanceRow>> GetBalancesAsync(int userId, int year)
+    public async Task<List<BalanceRow>> GetBalancesAsync(int userId, int year, Paging.Request? pagination = null)
     {
         var rules = await GetRulesAsync();
         double G(string k, double fb) => rules.TryGetValue(k, out var v) && double.TryParse(v, out var d) ? d : fb;
@@ -116,7 +116,7 @@ public class HrTimeService
                 .ToDictionaryAsync(x => x.LeaveRequestId, x => x.Category);
         string CatOf(LeaveRequest l) => catMap.TryGetValue(l.Id, out var c) && !string.IsNullOrWhiteSpace(c) ? c : "Annual";
         var cats = new[] { "Annual", "Sick", "Maternity", "Marriage", "Bereavement", "Hajj", "Unpaid" };
-        return cats.Select(c =>
+        var rows = cats.Select(c =>
         {
             var mine = reqs.Where(l => CatOf(l) == c && JalaliYear(l.StartDate) == year).ToList();
             var used = Math.Round(mine.Where(l => l.Status == "Approved").Sum(QuotaOf), 2);
@@ -126,6 +126,15 @@ public class HrTimeService
             var carry = c == "Annual" ? Math.Min(Math.Max(rem, 0), carryCap) : 0;
             return new BalanceRow(c, g, used, pend, rem, Math.Round(carry, 2));
         }).ToList();
+
+        // صفحه‌بندی در سرویس (تعداد دسته‌های موجودی محدود است؛ برای یکدستی با استاندارد لیست‌ها).
+        if (pagination is { IsPaged: true })
+        {
+            pagination.SetTotal(rows.Count);
+            if (pagination.Skip > 0) rows = rows.Skip(pagination.Skip).ToList();
+            if (pagination.Take is > 0) rows = rows.Take(pagination.Take.Value).ToList();
+        }
+        return rows;
     }
 
     public async Task SetGrantAsync(int userId, int year, string category, double days)

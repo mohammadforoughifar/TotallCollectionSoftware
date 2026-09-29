@@ -140,16 +140,19 @@ public class InvReportsController : RbacControllerBase
         [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync("ReportPages", "Kardex") is ObjectResult forbidden) return forbidden;
-        var r = await _svc.GetKardexAsync(productId, warehouseId, from, to);
-        if (Paging.Requested(skip, take))
+        // COUNT و Skip/Take در SQL و قبل از materialize شدن ردیف‌ها؛ ماندهٔ ابتدای/پایانی و
+        // خلاصه‌های مالی مستقل از صفحه محاسبه می‌شوند و فقط ردیف‌های صفحه واکشی می‌شوند.
+        var pagination = new Paging.Request(skip, take);
+        var r = await _svc.GetKardexAsync(productId, warehouseId, from, to, pagination);
+        if (pagination.IsPaged)
             return Ok(new
             {
                 r.ProductId, r.ProductCode, r.ProductName, r.Unit, r.WarehouseName,
                 r.Method, r.MethodTitle, r.OpeningQty, r.OpeningValue,
                 r.TotalInQty, r.TotalInValue, r.TotalOutQty, r.TotalOutValue,
                 r.ClosingQty, r.ClosingValue,
-                total = r.Rows.Count,
-                rows = Paging.Slice(r.Rows, skip, take)
+                total = pagination.Total ?? r.Rows.Count,
+                rows = r.Rows
             });
         return Ok(r);
     }

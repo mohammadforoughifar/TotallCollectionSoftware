@@ -262,7 +262,8 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>درخت کامل بایگانی کاربر جاری (پوشه‌ها + نامه‌ها)</summary>
     [HttpGet("bayegani/tree")]
-    public async Task<IActionResult> BayeganiTree([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _archive.GetTreeAsync(MyUserId), skip, take));
+    public async Task<IActionResult> BayeganiTree([FromQuery] int skip = 0, [FromQuery] int? take = null)
+        => Ok(await Paging.ResultAsync(pagination => _archive.GetTreeAsync(MyUserId, pagination), skip, take));
 
     /// <summary>ایجاد دسته اصلی بایگانی (ریشه)</summary>
     [HttpPost("bayegani/main-category")]

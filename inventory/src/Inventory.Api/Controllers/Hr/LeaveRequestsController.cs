@@ -571,37 +571,50 @@ public class LeaveRequestsController : ControllerBase
         if (s == default) return BadRequest(new { message = "ماه نامعتبر است." });
         var (ys, ye) = YearRange(jy);
 
-        var users = await _db.Users.AsNoTracking().Where(u => u.IsActive).ToListAsync();
-        var leaves = await _db.LeaveRequests.AsNoTracking()
-            .Where(l => l.StartDate >= s && l.StartDate < e).ToListAsync();
-        var yearLeaves = await _db.LeaveRequests.AsNoTracking()
-            .Where(l => l.StartDate >= ys && l.StartDate < ye && l.Status == "Approved" && (l.Type == "Daily" || l.Type == "Hourly")).ToListAsync();
+        // ترتیب الزامی: Filter → Aggregate → Order → Count → Page؛ Aggregate هر کاربر با
+        // زیرمجموعهٔ همبسته در SQL محاسبه و فقط ردیف‌های صفحه materialize می‌شوند.
+        var monthQ = _db.LeaveRequests.AsNoTracking().Where(l => l.StartDate >= s && l.StartDate < e);
+        var yearQ = _db.LeaveRequests.AsNoTracking()
+            .Where(l => l.StartDate >= ys && l.StartDate < ye && l.Status == "Approved"
+                        && (l.Type == "Daily" || l.Type == "Hourly"));
 
-        var rows = new List<ReportRow>();
-        foreach (var u in users)
+        var rowQuery =
+            from u in _db.Users.AsNoTracking()
+            where u.IsActive
+            let daily = monthQ.Where(l => l.RequesterUserId == u.Id && l.Type == "Daily" && l.Status == "Approved")
+                .Sum(l => (double?)l.Days) ?? 0
+            let hourly = monthQ.Where(l => l.RequesterUserId == u.Id && l.Type == "Hourly" && l.Status == "Approved")
+                .Sum(l => (double?)l.Hours) ?? 0
+            let missionDays = monthQ.Where(l => l.RequesterUserId == u.Id
+                    && (l.Type == "Mission" || l.Type == "HourlyMission") && l.Status == "Approved")
+                .Sum(l => (double?)(l.Type == "Mission" ? l.Days : l.Hours / HourlyWorkdayHours)) ?? 0
+            let missionCount = monthQ.Count(l => l.RequesterUserId == u.Id
+                && (l.Type == "Mission" || l.Type == "HourlyMission") && l.Status == "Approved")
+            let pendingCount = monthQ.Count(l => l.RequesterUserId == u.Id && l.Status == "Pending")
+            let yearlyUsed = yearQ.Where(l => l.RequesterUserId == u.Id)
+                .Sum(l => (double?)(l.Type == "Hourly" ? l.Hours / HourlyWorkdayHours : l.Days)) ?? 0
+            orderby (daily + hourly / HourlyWorkdayHours) descending, missionDays ascending, u.Id
+            select new { u, daily, hourly, missionDays, missionCount, pendingCount, yearlyUsed };
+
+        var pagination = new Paging.Request(skip, take);
+        var page = await rowQuery.ToPageListAsync(pagination);
+
+        // آگریگیت‌های کل گزارش مستقل از صفحه (جمعِ مقادیر گردشدهٔ سطرها — مانند قبل).
+        var light = await rowQuery.Select(x => new { x.daily, x.hourly, x.missionCount }).ToListAsync();
+
+        var rows = page.Select(x => new ReportRow
         {
-            var mine = leaves.Where(l => l.RequesterUserId == u.Id).ToList();
-            var daily = mine.Where(l => l.Type == "Daily" && l.Status == "Approved").Sum(l => l.Days);
-            var hourly = mine.Where(l => l.Type == "Hourly" && l.Status == "Approved").Sum(l => l.Hours);
-            var missions = mine.Where(l => (l.Type == "Mission" || l.Type == "HourlyMission") && l.Status == "Approved");
-            var yUsed = yearLeaves.Where(l => l.RequesterUserId == u.Id)
-                .Sum(l => l.Type == "Hourly" ? l.Hours / (double)HourlyWorkdayHours : l.Days);
-
-            rows.Add(new ReportRow
-            {
-                UserId = u.Id,
-                Name = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : $"{u.FirstName} {u.LastName}",
-                Role = u.Role,
-                DailyDays = daily,
-                HourlyHours = hourly,
-                TotalQuotaDays = Math.Round(daily + hourly / (double)HourlyWorkdayHours, 2),
-                MissionDays = Math.Round(missions.Sum(m => m.Type == "Mission" ? m.Days : m.Hours / (double)HourlyWorkdayHours), 2),
-                MissionCount = missions.Count(),
-                PendingCount = mine.Count(l => l.Status == "Pending"),
-                YearlyUsed = Math.Round(yUsed, 2)
-            });
-        }
-        rows = rows.OrderByDescending(r => r.TotalQuotaDays).ThenBy(r => r.MissionDays).ToList();
+            UserId = x.u.Id,
+            Name = string.IsNullOrWhiteSpace(x.u.FirstName) ? x.u.Username : $"{x.u.FirstName} {x.u.LastName}",
+            Role = x.u.Role,
+            DailyDays = x.daily,
+            HourlyHours = x.hourly,
+            TotalQuotaDays = Math.Round(x.daily + x.hourly / (double)HourlyWorkdayHours, 2),
+            MissionDays = Math.Round(x.missionDays, 2),
+            MissionCount = x.missionCount,
+            PendingCount = x.pendingCount,
+            YearlyUsed = Math.Round(x.yearlyUsed, 2)
+        }).ToList();
 
         var res = new ReportResult
         {
@@ -609,11 +622,11 @@ public class LeaveRequestsController : ControllerBase
             Month = jm,
             MonthName = PersianDate.MonthName(jm),
             Rows = rows,
-            TotalUsed = Math.Round(rows.Sum(r => r.TotalQuotaDays), 2),
-            TotalMissions = rows.Sum(r => r.MissionCount)
+            TotalUsed = Math.Round(light.Sum(x => Math.Round(x.daily + x.hourly / (double)HourlyWorkdayHours, 2)), 2),
+            TotalMissions = light.Sum(x => x.missionCount)
         };
-        if (Paging.Requested(skip, take))
-            return Ok(new { res.Year, res.Month, res.MonthName, res.Quota, res.TotalUsed, res.TotalMissions, total = res.Rows.Count, rows = Paging.Slice(res.Rows, skip, take) });
+        if (pagination.IsPaged)
+            return Ok(new { res.Year, res.Month, res.MonthName, res.Quota, res.TotalUsed, res.TotalMissions, total = pagination.Total ?? res.Rows.Count, rows = res.Rows });
         return Ok(res);
     }
 
