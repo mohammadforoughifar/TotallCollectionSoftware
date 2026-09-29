@@ -161,6 +161,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
                     .FirstOrDefaultAsync(x => x.Id == mrtLetter.CompanyId && x.IsActive)
                 : null;
             var mrtLetterhead = ResolveLetterheadPath(mrtCompany?.LetterheadFileName);
+            if (mrtLetterhead == null && (string.IsNullOrWhiteSpace(mrtCompany?.LetterheadFileName) || mrtCompany!.LetterheadFileName!.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
+                mrtLetterhead = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
             if (mrtLetterhead != null)
                 return OverlayOnLetterhead(stimulsoftPdf, mrtLetterhead);
 
@@ -212,6 +214,8 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
         // SystemCompany فیلدی به نام LogoPath ندارد و استفاده از لوگوی ماژول HR
         // یا پوشهٔ ثابت شرکت 1 می‌تواند باعث چاپ سربرگ شرکت اشتباه شود.
         var letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
+        if (letterheadPath == null && (string.IsNullOrWhiteSpace(company?.LetterheadFileName) || company!.LetterheadFileName!.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
+            letterheadPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
         if (letterheadPath == null)
         {
             // fallback نسخه فعلی مخزن: لوگوی سازمان اصلی HR

@@ -55,6 +55,8 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
 
         var content = BuildContent(letter, receivers, hasAttachment, size == "A5");
         var headerPath = ResolveLetterheadPath(header);
+        if (headerPath == null && (string.IsNullOrWhiteSpace(header) || header.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
+            headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
         if (headerPath == null)
         {
             _log.LogWarning("سربرگ نامه داخلی پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, File={File}", letterId, companyId, header);
