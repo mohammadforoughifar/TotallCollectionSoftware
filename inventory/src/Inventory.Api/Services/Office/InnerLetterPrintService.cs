@@ -23,12 +23,13 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
 {
     private readonly AppDbContext _db;
     private readonly FileStore _files;
+    private readonly IWebHostEnvironment _env;
     private readonly IHttpContextAccessor _http;
     private readonly ILogger<InnerLetterPrintService> _log;
 
-    public InnerLetterPrintService(AppDbContext db, FileStore files, IHttpContextAccessor http, ILogger<InnerLetterPrintService> log)
+    public InnerLetterPrintService(AppDbContext db, FileStore files, IWebHostEnvironment env, IHttpContextAccessor http, ILogger<InnerLetterPrintService> log)
     {
-        _db = db; _files = files; _http = http; _log = log;
+        _db = db; _files = files; _env = env; _http = http; _log = log;
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -53,10 +54,31 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
             : null;
 
         var content = BuildContent(letter, receivers, hasAttachment, size == "A5");
-        var headerPath = _files.ToFull(header);
-        if (headerPath == null || !File.Exists(headerPath)) return content;
+        var headerPath = ResolveLetterheadPath(header);
+        if (headerPath == null)
+        {
+            _log.LogWarning("سربرگ نامه داخلی پیدا نشد. LetterId={LetterId}, CompanyId={CompanyId}, File={File}", letterId, companyId, header);
+            return content;
+        }
         try { return Overlay(content, headerPath); }
         catch (Exception ex) { _log.LogError(ex, "چاپ نامه داخلی روی سربرگ ناموفق بود. LetterId={LetterId}", letterId); return content; }
+    }
+
+    private string? ResolveLetterheadPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var clean = value.Replace('\\', '/').TrimStart('/');
+        if (clean.Contains("..", StringComparison.Ordinal)) return null;
+        var noUploads = clean.StartsWith("uploads/", StringComparison.OrdinalIgnoreCase) ? clean["uploads/".Length..] : clean;
+        var candidates = new[]
+        {
+            _files.ToFull(clean), _files.ToFull(noUploads),
+            Path.Combine(_env.WebRootPath ?? Path.Combine(_env.ContentRootPath, "wwwroot"), clean),
+            Path.Combine(_env.ContentRootPath, clean),
+            Path.Combine(AppContext.BaseDirectory, clean),
+            Path.Combine(AppContext.BaseDirectory, Path.GetFileName(clean))
+        };
+        return candidates.FirstOrDefault(x => x != null && File.Exists(x));
     }
 
     private async Task<int?> ActiveCompanyIdAsync(int userId, CancellationToken ct)
