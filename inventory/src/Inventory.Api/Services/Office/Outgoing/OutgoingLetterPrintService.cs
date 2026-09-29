@@ -151,7 +151,22 @@ public class OutgoingLetterPrintService : IOutgoingLetterPrintService
             ? null
             : await _stimulsoft.TryGeneratePdfAsync(letterId, size, withCopy);
         if (stimulsoftPdf is { Length: > 0 })
+        {
+            // خروجی MRT شامل متن/امضاست، اما سربرگ شرکت باید مانند مسیر QuestPDF
+            // روی تک‌تک صفحات آن overlay شود.
+            var mrtLetter = await _db.OutgoingLetters.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == letterId && !x.IsDelete);
+            var mrtCompany = mrtLetter?.CompanyId is > 0
+                ? await _db.SystemCompanies.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Id == mrtLetter.CompanyId && x.IsActive)
+                : null;
+            var mrtLetterhead = ResolveLetterheadPath(mrtCompany?.LetterheadFileName);
+            if (mrtLetterhead != null)
+                return OverlayOnLetterhead(stimulsoftPdf, mrtLetterhead);
+
+            _logger.LogWarning("سربرگ شرکت برای خروجی MRT نامه {LetterId} پیدا نشد؛ PDF بدون overlay برگردانده شد.", letterId);
             return stimulsoftPdf;
+        }
 
         _logger.LogWarning(
             "چاپ نامه {LetterId} با MRT انجام نشد؛ QuestPDF به‌عنوان fallback استفاده می‌شود.",
