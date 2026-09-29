@@ -16,20 +16,15 @@ public class RolesController : ControllerBase
 
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
-        Ok(await Paging.ResultAsync(_db.Roles.AsNoTracking(), skip, take));
+        Ok(await Paging.ResultAsync(_db.Roles.AsNoTracking().OrderBy(r => r.Id), skip, take));
 
     [HttpGet("{id}/permissions")]
     public async Task<IActionResult> GetPermissions(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var role = await _db.Roles
-            .Include(r => r.RolePermissions)
-            .ThenInclude(rp => rp.Permission)
-            .FirstOrDefaultAsync(r => r.Id == id);
-
-        if (role == null) return NotFound();
-
-        var permissionIds = role.RolePermissions.Select(rp => rp.PermissionId).ToList();
-        return Ok(Paging.Result(permissionIds, skip, take));
+        if (!await _db.Roles.AnyAsync(r => r.Id == id)) return NotFound();
+        return Ok(await Paging.ResultAsync(_db.RolePermissions.AsNoTracking()
+            .Where(rp => rp.RoleId == id).OrderBy(rp => rp.PermissionId)
+            .Select(rp => rp.PermissionId), skip, take));
     }
 
     [HttpPost]

@@ -17,8 +17,8 @@ public class HrPerfService
 
     // ================= دوره =================
 
-    public async Task<List<HrPerfPeriod>> PeriodsAsync()
-        => await _db.HrPerfPeriods.AsNoTracking().OrderByDescending(p => p.Year).ThenByDescending(p => p.Id).ToListAsync();
+    public async Task<List<HrPerfPeriod>> PeriodsAsync(Paging.Request? pagination = null)
+        => await _db.HrPerfPeriods.AsNoTracking().OrderByDescending(p => p.Year).ThenByDescending(p => p.Id).ToPageListAsync(pagination);
 
     public async Task<HrPerfPeriod> CreatePeriodAsync(string title, int year, DateTime start, DateTime end,
         decimal bonusMonth, double minScore, string byName)
@@ -77,8 +77,8 @@ public class HrPerfService
 
     // ================= شاخص =================
 
-    public async Task<List<HrPerfKpi>> KpisAsync(int periodId)
-        => await _db.HrPerfKpis.AsNoTracking().Where(k => k.PeriodId == periodId).OrderBy(k => k.Id).ToListAsync();
+    public async Task<List<HrPerfKpi>> KpisAsync(int periodId, Paging.Request? pagination = null)
+        => await _db.HrPerfKpis.AsNoTracking().Where(k => k.PeriodId == periodId).OrderBy(k => k.Id).ToPageListAsync(pagination);
 
     public async Task<HrPerfKpi> SaveKpiAsync(int periodId, int id, string code, string title, string? description,
         double weight, double maxScore, string category, bool isActive)
@@ -155,9 +155,9 @@ public class HrPerfService
         return n;
     }
 
-    public async Task<List<HrPerfScore>> ScoresAsync(int periodId, int employeeId)
+    public async Task<List<HrPerfScore>> ScoresAsync(int periodId, int employeeId, Paging.Request? pagination = null)
         => await _db.HrPerfScores.AsNoTracking()
-            .Where(s => s.PeriodId == periodId && s.EmployeeId == employeeId).OrderBy(s => s.KpiId).ToListAsync();
+            .Where(s => s.PeriodId == periodId && s.EmployeeId == employeeId).OrderBy(s => s.KpiId).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
     // ================= کارنامه =================
 

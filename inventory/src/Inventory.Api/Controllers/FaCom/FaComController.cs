@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaCom;
 using Inventory.Shared.Dtos;
@@ -25,14 +26,14 @@ public class FaComController : RbacControllerBase
     public async Task<IActionResult> Feed([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetFeedAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.GetFeedAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpGet("announcements")]
     public async Task<IActionResult> Announcements([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListAnnouncementsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListAnnouncementsAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("announcements")]
@@ -85,7 +86,7 @@ public class FaComController : RbacControllerBase
     public async Task<IActionResult> MySuggestions([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.MySuggestionsAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.MySuggestionsAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpPost("suggestions")]
@@ -100,7 +101,7 @@ public class FaComController : RbacControllerBase
     public async Task<IActionResult> Suggestions([FromQuery] int? status, [FromQuery] int? category, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListSuggestionsAsync(status, category), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListSuggestionsAsync(status, category, pagination: pagination), skip, take));
     }
 
     [HttpPost("suggestions/{id:int}/respond")]
@@ -125,14 +126,14 @@ public class FaComController : RbacControllerBase
     public async Task<IActionResult> Polls([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListPollsAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListPollsAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpGet("polls/manage")]
     public async Task<IActionResult> ManagePolls([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ManagePollsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ManagePollsAsync(pagination: pagination), skip, take));
     }
 
     [HttpGet("polls/{id:int}")]
@@ -181,7 +182,7 @@ public class FaComController : RbacControllerBase
     public async Task<IActionResult> MyTickets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetMyTicketsAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.GetMyTicketsAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpGet("tickets/my/{id:int}")]
@@ -211,7 +212,7 @@ public class FaComController : RbacControllerBase
     public async Task<IActionResult> Tickets([FromQuery] int? status, [FromQuery] int? category, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListTicketsAsync(status, category), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListTicketsAsync(status, category, pagination: pagination), skip, take));
     }
 
     [HttpGet("tickets/{id:int}")]

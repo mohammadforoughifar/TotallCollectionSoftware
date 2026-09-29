@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaLms;
 using Inventory.Shared.Dtos;
@@ -27,7 +28,7 @@ public class FaLmsController : RbacControllerBase
         [FromQuery] int? kind, [FromQuery] string? q, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListCoursesAsync(year, status, kind, q), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListCoursesAsync(year, status, kind, q, pagination: pagination), skip, take));
     }
 
     [HttpGet("courses/{id:int}")]
@@ -71,7 +72,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Calendar([FromQuery] int year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetCalendarAsync(year), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _svc.GetCalendarAsync(year, pagination), skip, take));
     }
 
     [HttpGet("courses/{id:int}/report")]
@@ -89,14 +90,14 @@ public class FaLmsController : RbacControllerBase
         [FromQuery] int? source, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListNeedsAsync(year, status, source, employeeId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListNeedsAsync(year, status, source, employeeId, pagination: pagination), skip, take));
     }
 
     [HttpGet("needs/my")]
     public async Task<IActionResult> MyNeeds([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.MyNeedsAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.MyNeedsAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpPost("needs")]
@@ -131,18 +132,19 @@ public class FaLmsController : RbacControllerBase
     [HttpGet("perf/periods")]
     public async Task<IActionResult> PerfPeriods([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
         var list = await Db.HrPerfPeriods.OrderByDescending(p => p.Id)
             .Select(p => new FaLmsPerfPeriodDto { Id = p.Id, Title = p.Title, Year = p.Year, Status = p.Status })
-            .ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     [HttpGet("perf/weak")]
     public async Task<IActionResult> WeakScores([FromQuery] int periodId, [FromQuery] double threshold = 60, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.WeakScoresAsync(periodId, threshold), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.WeakScoresAsync(periodId, threshold, pagination: pagination), skip, take));
     }
 
     [HttpPost("perf/suggest")]
@@ -158,14 +160,14 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Enrollments([FromQuery] int? courseId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListEnrollmentsAsync(courseId, status), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListEnrollmentsAsync(courseId, status, pagination: pagination), skip, take));
     }
 
     [HttpGet("enrollments/my")]
     public async Task<IActionResult> MyEnrollments([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.MyEnrollmentsAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.MyEnrollmentsAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpPost("enrollments")]
@@ -205,7 +207,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Sessions([FromQuery] int courseId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListSessionsAsync(courseId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListSessionsAsync(courseId, pagination: pagination), skip, take));
     }
 
     [HttpPost("sessions")]
@@ -234,7 +236,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Attendance(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetAttendanceAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.GetAttendanceAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("sessions/{id:int}/attendance")]
@@ -252,7 +254,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Exams([FromQuery] int courseId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListExamsAsync(courseId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListExamsAsync(courseId, pagination: pagination), skip, take));
     }
 
     [HttpPost("exams")]
@@ -281,7 +283,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Questions(int examId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListQuestionsAsync(examId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListQuestionsAsync(examId, pagination: pagination), skip, take));
     }
 
     [HttpPost("exams/{examId:int}/questions")]
@@ -325,7 +327,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Attempts(int examId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListAttemptsAsync(examId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListAttemptsAsync(examId, pagination: pagination), skip, take));
     }
 
     // ------------------- بانک سؤال مشترک -------------------
@@ -334,7 +336,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Banks([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListBanksAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListBanksAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("banks")]
@@ -365,7 +367,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> BankQuestions(int bankId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListBankQuestionsAsync(bankId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListBankQuestionsAsync(bankId, pagination: pagination), skip, take));
     }
 
     [HttpPost("banks/{bankId:int}/questions")]
@@ -407,9 +409,10 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> GradingPending([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        var r = await _svc.GradingInboxAsync(MyUserId);
+        var pagination = new Paging.Request(skip, take);
+        var r = await _svc.GradingInboxAsync(MyUserId, pagination);
         if (Paging.Requested(skip, take))
-            return Ok(new { r.MyInstructorId, total = r.Items.Count, items = Paging.Slice(r.Items, skip, take) });
+            return Ok(new { r.MyInstructorId, total = pagination.Total, items = r.Items });
         return Ok(r);
     }
 
@@ -417,7 +420,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> AttemptTexts(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        try { return Ok(Paging.Result(await _svc.ListTextAnswersAsync(id), skip, take)); }
+        try { return Ok(await Paging.ResultAsync(async pagination => await _svc.ListTextAnswersAsync(id, pagination: pagination), skip, take)); }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
@@ -435,14 +438,14 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Certificates([FromQuery] int? courseId, [FromQuery] int? employeeId, [FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListCertificatesAsync(courseId, employeeId, year), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListCertificatesAsync(courseId, employeeId, year, pagination: pagination), skip, take));
     }
 
     [HttpGet("certificates/my")]
     public async Task<IActionResult> MyCertificates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.MyCertificatesAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.MyCertificatesAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpPost("certificates/issue")]
@@ -480,7 +483,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Instructors([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListInstructorsAsync(onlyActive), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListInstructorsAsync(onlyActive, pagination: pagination), skip, take));
     }
 
     [HttpPost("instructors")]
@@ -505,7 +508,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> SurveyQuestions(int id, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListSurveyQuestionsAsync(id, employeeId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListSurveyQuestionsAsync(id, employeeId, pagination: pagination), skip, take));
     }
 
     [HttpPost("courses/{id:int}/survey")]
@@ -540,9 +543,10 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> SurveyResults(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var r = await _svc.SurveyResultsAsync(id);
+        var pagination = new Paging.Request(skip, take);
+        var r = await _svc.SurveyResultsAsync(id, pagination);
         if (Paging.Requested(skip, take))
-            return Ok(new { r.QuestionCount, r.RespondentCount, r.OverallAvg, total = r.Questions.Count, questions = Paging.Slice(r.Questions, skip, take) });
+            return Ok(new { r.QuestionCount, r.RespondentCount, r.OverallAvg, total = pagination.Total, questions = r.Questions });
         return Ok(r);
     }
 
@@ -569,7 +573,7 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Budgets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListBudgetsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListBudgetsAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("budgets")]
@@ -598,9 +602,10 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> BudgetReport([FromQuery] int year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        var r = await _svc.BudgetReportAsync(year);
+        var pagination = new Paging.Request(skip, take);
+        var r = await _svc.BudgetReportAsync(year, pagination);
         if (Paging.Requested(skip, take))
-            return Ok(new { r.Year, r.BudgetAmount, r.SpentAmount, r.Remaining, total = r.Rows.Count, rows = Paging.Slice(r.Rows, skip, take) });
+            return Ok(new { r.Year, r.BudgetAmount, r.SpentAmount, r.Remaining, total = pagination.Total, rows = r.Rows });
         return Ok(r);
     }
 
@@ -610,14 +615,15 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> Dashboard([FromQuery] int year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var r = await _svc.GetDashboardAsync(year);
+        var pagination = new Paging.Request(skip, take);
+        var r = await _svc.GetDashboardAsync(year, pagination);
         if (r is null || !Paging.Requested(skip, take)) return Ok(r);
         return Ok(new
         {
             r.Year, r.OpenCourses, r.RunningCourses, r.FinishedThisYear,
             r.PendingNeeds, r.PendingEnrolls, r.UpcomingSessions,
             r.BudgetAmount, r.SpentAmount,
-            total = r.RecentCerts.Count, recentCerts = Paging.Slice(r.RecentCerts, skip, take)
+            total = pagination.Total, recentCerts = r.RecentCerts
         });
     }
 
@@ -625,10 +631,11 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> EmployeeReport(int employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        var r = await _svc.EmployeeReportAsync(employeeId);
+        var pagination = new Paging.Request(skip, take);
+        var r = await _svc.EmployeeReportAsync(employeeId, pagination);
         if (r == null) return NotFound();
         if (Paging.Requested(skip, take))
-            return Ok(new { r.EmployeeId, r.EmployeeName, r.CoursesCount, r.HoursTotal, r.AvgScore, r.CertsCount, r.AvgAttendance, total = r.Rows.Count, rows = Paging.Slice(r.Rows, skip, take) });
+            return Ok(new { r.EmployeeId, r.EmployeeName, r.CoursesCount, r.HoursTotal, r.AvgScore, r.CertsCount, r.AvgAttendance, total = pagination.Total, rows = r.Rows });
         return Ok(r);
     }
 
@@ -636,10 +643,11 @@ public class FaLmsController : RbacControllerBase
     public async Task<IActionResult> MyReport([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        var r = await _svc.MyReportAsync(MyUserId);
+        var pagination = new Paging.Request(skip, take);
+        var r = await _svc.MyReportAsync(MyUserId, pagination);
         if (r == null) return NotFound();
         if (Paging.Requested(skip, take))
-            return Ok(new { r.EmployeeId, r.EmployeeName, r.CoursesCount, r.HoursTotal, r.AvgScore, r.CertsCount, r.AvgAttendance, total = r.Rows.Count, rows = Paging.Slice(r.Rows, skip, take) });
+            return Ok(new { r.EmployeeId, r.EmployeeName, r.CoursesCount, r.HoursTotal, r.AvgScore, r.CertsCount, r.AvgAttendance, total = pagination.Total, rows = r.Rows });
         return Ok(r);
     }
 }

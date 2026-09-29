@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.HrTalent;
 using Inventory.Shared.Dtos;
@@ -41,7 +42,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> ProfileRequests([FromQuery] bool? onlyPending, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListProfileRequestsAsync(onlyPending), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListProfileRequestsAsync(onlyPending, pagination: pagination), skip, take));
     }
 
     /// <summary>تأیید (و اعمال روی پرونده) یا رد درخواست ویرایش</summary>
@@ -58,7 +59,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> Onboarding([FromQuery] bool? onlyOpen, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListOnboardingAsync(onlyOpen), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListOnboardingAsync(onlyOpen, pagination: pagination), skip, take));
     }
 
     [HttpPost("onboarding")]
@@ -107,7 +108,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> ExitCases([FromQuery] bool? onlyOpen, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListExitCasesAsync(onlyOpen), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListExitCasesAsync(onlyOpen, pagination: pagination), skip, take));
     }
 
     [HttpPost("exit")]
@@ -156,7 +157,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> History(int employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.EmployeeHistoryAsync(employeeId), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _svc.EmployeeHistoryAsync(employeeId, pagination), skip, take));
     }
 
     [HttpPost("history")]
@@ -181,7 +182,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> Trials([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListTrialsAsync(onlyActive), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListTrialsAsync(onlyActive, pagination: pagination), skip, take));
     }
 
     [HttpPost("trials")]
@@ -221,7 +222,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> Appraisals([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListAppraisalsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListAppraisalsAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("appraisals")]
@@ -244,7 +245,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> Kpis(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListKpisAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListKpisAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("appraisals/{id:int}/kpis")]
@@ -275,7 +276,7 @@ public class HrTalentController : RbacControllerBase
     public async Task<IActionResult> Scores(int id, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListScoresAsync(id, employeeId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListScoresAsync(id, employeeId, pagination: pagination), skip, take));
     }
 
     [HttpGet("appraisals/{id:int}/results")]

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -85,11 +86,12 @@ public class OrganizationController : ControllerBase
     [HttpGet("matrix")]
     public async Task<ActionResult<object>> Matrix([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var departments = await _db.Departments.Include(d => d.Stations).AsNoTracking()
-            .OrderBy(d => d.Ordinal).ToListAsync();
+            .OrderBy(d => d.Ordinal).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var employees = await _db.Employees.AsNoTracking().ToListAsync();
 
-        return Paging.Result(departments.Select(d => new
+        return pagination.Result(departments.Select(d => new
         {
             unit = d.Name,
             stations = d.Stations.Select(s => new
@@ -104,7 +106,7 @@ public class OrganizationController : ControllerBase
                 .Where(e => e.Unit == d.Name && !d.Stations.Select(s => s.Name).Contains(e.WorkStation))
                 .Select(e => new { e.Code, name = $"{e.First} {e.Last}", e.ResponsibilityLevel })
                 .ToList()
-        }).ToList(), skip, take);
+        }).ToList());
     }
 
     // ───────── برنامهٔ کاری واحدها ─────────

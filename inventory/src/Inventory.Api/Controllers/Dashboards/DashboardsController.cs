@@ -174,6 +174,10 @@ public class DashboardsController : ControllerBase
         if (await ForbiddenUnlessAsync("View") is ObjectResult fb) return fb;
         if (await EnsureDashDbAsync() is ObjectResult dbErr) return dbErr;
 
+        var pagination = new Paging.Request(skip, take);
+        var defaultId = await _db.UserDashboards.AsNoTracking().Where(d => d.UserId == MyUserId)
+            .OrderByDescending(d => d.IsDefault).ThenBy(d => d.SortOrder).ThenBy(d => d.Id)
+            .Select(d => (int?)d.Id).FirstOrDefaultAsync();
         var list = await _db.UserDashboards.AsNoTracking()
             .Where(d => d.UserId == MyUserId)
             .OrderBy(d => d.SortOrder).ThenBy(d => d.Id)
@@ -199,7 +203,7 @@ public class DashboardsController : ControllerBase
                         Range = (DashRange)w.Range
                     }).ToList()
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         // پیکربندی آزاد هر ویجت (JSON) جدا خوانده می‌شود تا در projection EF مشکل‌ساز نشود
         var ids = list.SelectMany(d => d.Widgets).Select(w => w.Id).ToList();
@@ -215,8 +219,9 @@ public class DashboardsController : ControllerBase
         }
 
         // اولین داشبورد، پیش‌فرض تلقی می‌شود
-        if (list.Count > 0 && !list.Any(d => d.IsDefault)) list[0].IsDefault = true;
-        return Ok(Paging.Result(list, skip, take));
+        foreach (var dashboard in list)
+            if (dashboard.Id == defaultId) dashboard.IsDefault = true;
+        return Ok(pagination.Result(list));
     }
 
     public record SaveDashboardRequest(string? Name, bool IsDefault, List<UserDashWidgetDto>? Widgets);

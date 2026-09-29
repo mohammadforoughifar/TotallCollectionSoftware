@@ -26,6 +26,7 @@ public interface IOutgoingLetterService
     Task<bool> ToggleBayeganiAsync(int erjaId);
     Task<int> BatchBayeganiAsync(List<int> erjaIds, string? description = null);
     Task<List<AmalgarDto>> GetAmalgarsAsync();
+    Task<PagedResult<OutgoingPishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null);
     Task<List<OutgoingPishnevisDto>> GetPishnevisListAsync(string? search = null);
     Task<OutgoingPishnevisDto> GetPishnevisAsync(int id);
     Task<int> SavePishnevisAsync(OutgoingPishnevisDto dto);
@@ -163,6 +164,9 @@ public class OutgoingLetterService : IOutgoingLetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/outgoing-letters/amalgars");
+
+    public Task<PagedResult<OutgoingPishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null)
+        => ListOrPaged.GetPagedAsync<OutgoingPishnevisDto>(_api, $"api/outgoing-letters/pishnevis?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");
 
     public Task<List<OutgoingPishnevisDto>> GetPishnevisListAsync(string? search = null) =>
         ListOrPaged.GetAsync<OutgoingPishnevisDto>(_api,

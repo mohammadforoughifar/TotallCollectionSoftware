@@ -18,7 +18,7 @@ public class InvDocTypesController : RbacControllerBase
     [HttpGet]
     public async Task<ActionResult<List<InvDocType>>> GetAll(
         [FromQuery] bool activeOnly = false, [FromQuery] StockNature? nature = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetDocTypesAsync(activeOnly, nature), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetDocTypesAsync(activeOnly, nature, pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<InvDocType>> Save([FromBody] InvDocType dto)

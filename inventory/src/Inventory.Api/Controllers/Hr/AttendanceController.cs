@@ -68,7 +68,7 @@ public class AttendanceController : ControllerBase
 
     // ================== شیفت‌ها ==================
     [HttpGet("shifts")]
-    public async Task<IActionResult> GetShifts([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result((await _db.ShiftGroups.ToListAsync()).OrderBy(s => s.StartTime).ToList(), skip, take));
+    public async Task<IActionResult> GetShifts([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(_db.ShiftGroups.OrderBy(s => s.StartTime).ThenBy(s => s.Id), skip, take));
 
     [HttpPost("shifts")]
     public async Task<IActionResult> SaveShift([FromBody] ShiftInput input)
@@ -230,6 +230,7 @@ public class AttendanceController : ControllerBase
     [HttpGet("official-holidays")]
     public async Task<IActionResult> GetOfficialHolidays([FromQuery] int jy, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         DateTime from, to;
         if (jy > 0)
         {
@@ -245,8 +246,8 @@ public class AttendanceController : ControllerBase
 
         var list = await _db.CompanyHolidays.AsNoTracking()
             .Where(h => h.IsOfficial && h.HolidayDate >= from && h.HolidayDate < to)
-            .OrderBy(h => h.HolidayDate).ToListAsync();
-        return Ok(Paging.Result(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt }).ToList(), skip, take));
+            .OrderBy(h => h.HolidayDate).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        return Ok(pagination.Result(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt }).ToList()));
     }
 
     /// <summary>افزودن دستی یک تعطیل رسمی (یا اصلاح عنوان تاریخ تکراری)</summary>
@@ -648,19 +649,20 @@ public class AttendanceController : ControllerBase
     [HttpGet("personnel")]
     public async Task<IActionResult> GetPersonnel([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var canManage = await HasAsync("ManageShifts") || User.IsInRole("Admin");
         var canView = await IsAdminAsync();
         if (!canManage && !canView) return Forbid();
-        var list = await _db.Users.Where(u => u.IsActive).OrderBy(u => u.Username).ToListAsync();
+        var list = await _db.Users.Where(u => u.IsActive).OrderBy(u => u.Username).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var shifts = await _db.ShiftGroups.ToDictionaryAsync(s => s.Id);
-        return Ok(Paging.Result(list.Select(u => new
+        return Ok(pagination.Result(list.Select(u => new
         {
             u.Id,
             u.Username,
             FullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : $"{u.FirstName} {u.LastName}".Trim(),
             u.ShiftGroupId,
             ShiftName = u.ShiftGroupId.HasValue && shifts.TryGetValue(u.ShiftGroupId.Value, out var s) ? s.Name : null,
-        }), skip, take));
+        })));
     }
 
     // ================== شیفت پیش‌فرض کاربر جاری ==================
@@ -1237,17 +1239,19 @@ public class AttendanceController : ControllerBase
         from = PersianDate.ToGregorian(y, m, 1);
         to = m == 12 ? PersianDate.ToGregorian(y + 1, 1, 1) : PersianDate.ToGregorian(y, m + 1, 1);
 
+        var pagination = new Paging.Request(skip, take);
         var list = await _db.AttendanceRecords.Include(a => a.ShiftGroup)
             .Where(a => a.UserId == MyUserId && a.WorkDate >= from && a.WorkDate < to)
-            .OrderByDescending(a => a.WorkDate)
-            .ToListAsync();
+            .OrderByDescending(a => a.WorkDate).ThenBy(a => a.Id)
+            .ToPageListAsync(pagination);
+        var dates = list.Select(a => a.WorkDate).ToList();
         var segs = await _db.AttendanceSegments
-            .Where(s => s.UserId == MyUserId && s.WorkDate >= from && s.WorkDate < to)
+            .Where(s => s.UserId == MyUserId && dates.Contains(s.WorkDate))
             .OrderBy(s => s.Seq)
             .ToListAsync();
         var byDate = segs.GroupBy(s => s.WorkDate).ToDictionary(g => g.Key, g => g.ToList());
         var items = list.Select(r => Map(r, byDate.GetValueOrDefault(r.WorkDate))).ToList();
-        if (Paging.Requested(skip, take)) return Ok(new { year = y, month = m, total = items.Count, items = Paging.Slice(items, skip, take) });
+        if (Paging.Requested(skip, take)) return Ok(new { year = y, month = m, total = pagination.Total, items });
         return Ok(new { year = y, month = m, items });
     }
 
@@ -1610,13 +1614,16 @@ public class AttendanceController : ControllerBase
 
         var q = _db.AttendanceRecords.Include(a => a.ShiftGroup).Where(a => a.WorkDate >= from && a.WorkDate < to);
         if (userId.HasValue && userId > 0) q = q.Where(a => a.UserId == userId);
-        var list = await q.OrderByDescending(a => a.WorkDate).ThenBy(a => a.UserId).ToListAsync();
-        var segq = _db.AttendanceSegments.Where(s => s.WorkDate >= from && s.WorkDate < to);
+        var pagination = new Paging.Request(skip, take);
+        var list = await q.OrderByDescending(a => a.WorkDate).ThenBy(a => a.UserId).ThenBy(a => a.Id).ToPageListAsync(pagination);
+        var userIds = list.Select(a => a.UserId).Distinct().ToList();
+        var dates = list.Select(a => a.WorkDate).Distinct().ToList();
+        var segq = _db.AttendanceSegments.Where(s => userIds.Contains(s.UserId) && dates.Contains(s.WorkDate));
         if (userId.HasValue && userId > 0) segq = segq.Where(s => s.UserId == userId);
         var segs = await segq.OrderBy(s => s.Seq).ToListAsync();
         var byDateUser = segs.GroupBy(s => (s.UserId, s.WorkDate)).ToDictionary(g => g.Key, g => g.ToList());
         var items = list.Select(r => Map(r, byDateUser.GetValueOrDefault((r.UserId, r.WorkDate)))).ToList();
-        if (Paging.Requested(skip, take)) return Ok(new { year = y, month = m, total = items.Count, items = Paging.Slice(items, skip, take) });
+        if (Paging.Requested(skip, take)) return Ok(new { year = y, month = m, total = pagination.Total, items });
         return Ok(new { year = y, month = m, items });
     }
 
@@ -1739,11 +1746,14 @@ public class AttendanceController : ControllerBase
         var to = m == 12 ? PersianDate.ToGregorian(y + 1, 1, 1) : PersianDate.ToGregorian(y, m + 1, 1);
         var daysInMonth = PersianDate.DaysInMonth(y, m);
 
-        var users = await _db.Users.Where(u => u.IsActive).OrderBy(u => u.Username).ToListAsync();
+        var pagination = new Paging.Request(skip, take);
+        var users = await _db.Users.Include(u => u.ShiftGroup).Where(u => u.IsActive)
+            .OrderBy(u => u.Username).ThenBy(u => u.Id).ToPageListAsync(pagination);
+        var userIds = users.Select(u => u.Id).ToList();
         var recsAll = await _db.AttendanceRecords.Include(a => a.ShiftGroup)
-            .Where(a => a.WorkDate >= from && a.WorkDate < to).ToListAsync();
+            .Where(a => userIds.Contains(a.UserId) && a.WorkDate >= from && a.WorkDate < to).ToListAsync();
         var leavesAll = await _db.LeaveRequests
-            .Where(l => l.Status == "Approved" && (l.Type == "Daily" || l.Type == "Hourly") && l.StartDate < to && l.EndDate >= from).ToListAsync();
+            .Where(l => userIds.Contains(l.RequesterUserId) && l.Status == "Approved" && (l.Type == "Daily" || l.Type == "Hourly") && l.StartDate < to && l.EndDate >= from).ToListAsync();
         var holidaysAll = await _db.CompanyHolidays.AsNoTracking()
             .Where(h => h.HolidayDate >= from && h.HolidayDate < to).ToListAsync();
         var holidayDates = holidaysAll.Select(h => h.HolidayDate).ToHashSet();
@@ -1824,8 +1834,8 @@ public class AttendanceController : ControllerBase
                 month = m,
                 monthName = PersianDate.MonthName(m),
                 days = daysInMonth,
-                total = rows.Count,
-                items = Paging.Slice(rows, skip, take)
+                total = pagination.Total,
+                items = rows
             });
         return Ok(new
         {

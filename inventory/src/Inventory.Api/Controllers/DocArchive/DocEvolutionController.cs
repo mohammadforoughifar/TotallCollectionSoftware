@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
@@ -68,13 +69,14 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
         if (!await Full(id)) return Forbid();
         var p = await Db.DocRenewalPolicies.AsNoTracking().FirstOrDefaultAsync(p => p.DocumentId == id);
         var result = new DocRenewalPolicyDto { Enabled = p?.Enabled ?? false, AssigneeUserId = p?.AssigneeUserId ?? 0, LeadDays = p?.LeadDays ?? 30 };
+        var pagination = new Paging.Request(skip, take);
         result.Orders = await (from r in Db.DocRenewalRuns
                                join w in Db.WorkOrders.IgnoreQueryFilters() on r.WorkOrderId equals w.Id
                                where r.DocumentId == id && (w.OwnerUserId == MyUserId || Db.WorkOrderAssignees.Any(a => a.OrderId == w.Id && a.UserId == MyUserId))
                                orderby r.Id descending
-                               select new DocRenewalOrderDto { Id = w.Id, Number = w.Number, Status = w.DeletedAt != null ? "Deleted" : w.Status, ExpiryDate = r.ExpiryDate }).Take(20).ToListAsync();
+                               select new DocRenewalOrderDto { Id = w.Id, Number = w.Number, Status = w.DeletedAt != null ? "Deleted" : w.Status, ExpiryDate = r.ExpiryDate }).ToPageListAsync(pagination, defaultCap: 20);
         if (Paging.Requested(skip, take))
-            return Ok(new { result.Enabled, result.AssigneeUserId, result.LeadDays, total = result.Orders.Count, orders = Paging.Slice(result.Orders, skip, take) });
+            return Ok(new { result.Enabled, result.AssigneeUserId, result.LeadDays, total = pagination.Total, orders = result.Orders });
         return Ok(result);
     }
     [HttpPut("documents/{id:int}/renewal")]
@@ -101,6 +103,7 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
     {
         if (!await HasAsync("DocArchive", "Manage")) return Forbid();
         var q = Db.DocIndexJobs.AsNoTracking();
+        var pagination = new Paging.Request(skip, take);
         var dto = new DocIndexQueueDto
         {
             Pending = await q.CountAsync(j => j.Status == "Pending"),
@@ -110,11 +113,11 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
             Failures = await (from j in q
                               join a in Db.AppAttachments on j.AttachmentId equals a.Id
                               where j.Status == "Failed"
-                              orderby j.UpdatedAtUtc descending
-                              select new DocIndexFailureDto { AttachmentId = j.AttachmentId, FileName = a.FileName, Error = j.Error }).Take(30).ToListAsync()
+                              orderby j.UpdatedAtUtc descending, j.Id descending
+                              select new DocIndexFailureDto { AttachmentId = j.AttachmentId, FileName = a.FileName, Error = j.Error }).ToPageListAsync(pagination, defaultCap: 30)
         };
         if (Paging.Requested(skip, take))
-            return Ok(new { dto.Pending, dto.Working, dto.Failed, dto.Done, total = dto.Failures.Count, failures = Paging.Slice(dto.Failures, skip, take) });
+            return Ok(new { dto.Pending, dto.Working, dto.Failed, dto.Done, total = pagination.Total, failures = dto.Failures });
         return Ok(dto);
     }
     [HttpPost("index-queue/{attachmentId:int}/retry")]

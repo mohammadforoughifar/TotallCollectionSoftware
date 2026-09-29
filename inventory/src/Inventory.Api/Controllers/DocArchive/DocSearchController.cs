@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
@@ -233,6 +234,7 @@ public class DocSearchController : RbacControllerBase
     [HttpGet("documents/{id:int}/extracted-texts")]
     public async Task<IActionResult> GetExtractedTexts(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
@@ -246,7 +248,7 @@ public class DocSearchController : RbacControllerBase
             return StatusCode(403, new { message = "برای مشاهده متن، تأیید رمز لازم است.", code = "PASSWORD_CONFIRM_REQUIRED" });
         var texts = await Db.DocExtractedTexts.AsNoTracking()
             .Where(e => e.DocumentId == id)
-            .OrderByDescending(e => e.IndexedAt)
+            .OrderByDescending(e => e.IndexedAt).ThenBy(x => x.Id)
             .Select(e => new DocExtractedTextDto
             {
                 Id = e.Id,
@@ -262,9 +264,9 @@ public class DocSearchController : RbacControllerBase
                 CharacterCount = e.CharacterCount,
                 IndexedAt = e.IndexedAt
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
-        return Ok(Paging.Result(texts, skip, take));
+        return Ok(pagination.Result(texts));
     }
 
     // =========================================================================

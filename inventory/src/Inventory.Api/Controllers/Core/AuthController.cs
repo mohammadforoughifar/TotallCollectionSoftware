@@ -127,7 +127,7 @@ public class UsersController : ApiControllerBase
     /// <summary>فهرست کاربران.</summary>
     [HttpGet]
     public async Task<ActionResult<List<UserDto>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _auth.GetUsersAsync(), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _auth.GetUsersAsync(pagination: pagination), skip, take));
 
     /// <summary>ایجاد یا ویرایش کاربر (رمز فقط در صورت پر بودن تغییر می‌کند).
     /// اپراتور نمی‌تواند کاربر ادمین بسازد، نقش کسی را به ادمین تغییر دهد یا کاربر ادمین را ویرایش کند.</summary>
@@ -191,7 +191,7 @@ public class MyPanelController : ControllerBase
         if (MyReferrerId <= 0) return Forbid();
         // مجوز مشاهده کالاها: یا پرمیشن RBAC (ReferrerPanel.MyProducts) یا فلگ مشاهده کالا روی خود معرف
         var hasRbac = await HasRbacAsync("ReferrerPanel", "MyProducts");
-        return Ok(Paging.Result(await _inventory.GetReferrerProductsAsync(MyReferrerId, search, bypassFlag: hasRbac), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _inventory.GetReferrerProductsAsync(MyReferrerId, search, bypassFlag: hasRbac, pagination: pagination), skip, take));
     }
 
     /// <summary>اسناد پرداخت معرف جاری.</summary>
@@ -199,7 +199,7 @@ public class MyPanelController : ControllerBase
     public async Task<ActionResult<List<ReferrerPayment>>> Payments([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (MyReferrerId <= 0) return Forbid();
-        return Ok(Paging.Result(await _inventory.GetReferrerPaymentsAsync(MyReferrerId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _inventory.GetReferrerPaymentsAsync(MyReferrerId, pagination: pagination), skip, take));
     }
 
 }

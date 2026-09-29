@@ -44,7 +44,7 @@ public class ExpenseCategoriesController : ApiControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<ExpenseCategoryDto>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetCategoriesAsync(activeOnly), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetCategoriesAsync(activeOnly, pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<ExpenseCategoryDto>> Save([FromBody] ExpenseCategoryDto category)

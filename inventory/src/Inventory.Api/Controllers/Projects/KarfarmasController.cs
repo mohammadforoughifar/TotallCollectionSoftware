@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,7 @@ public class KarfarmasController : RbacControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
         var query = Db.KarFarmas.AsNoTracking().Where(k => !k.IsDelete);
@@ -26,7 +28,7 @@ public class KarfarmasController : RbacControllerBase
                                      (k.ShomareSabt != null && k.ShomareSabt.Contains(search)) ||
                                      (k.ModirAmelPhone != null && k.ModirAmelPhone.Contains(search)));
 
-        var items = await query.OrderByDescending(k => k.CreatedAt)
+        var items = await query.OrderByDescending(k => k.CreatedAt).ThenBy(x => x.Id)
             .Select(k => new KarFarmaDto
             {
                 Id = k.Id,
@@ -39,8 +41,8 @@ public class KarfarmasController : RbacControllerBase
                 CreatedAt = k.CreatedAt,
                 ProjectCount = k.Projects.Count(p => !p.IsDelete)
             })
-            .ToListAsync();
-        return Ok(Paging.Result(items, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(items));
     }
 
     [HttpGet("{id:int}")]

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 
@@ -33,7 +34,7 @@ public interface IInvoicingService
     Task<FacInvoiceLine> BuildLineAsync(int productId, InvoiceKind kind, int warehouseId);
 
     // ---------- قواعد ----------
-    Task<List<FacRule>> GetRulesAsync();
+    Task<List<FacRule>> GetRulesAsync(Paging.Request? pagination = null);
     Task<FacRule> SaveRuleAsync(FacRule dto);
 
     // ---------- گزارش‌ها ----------

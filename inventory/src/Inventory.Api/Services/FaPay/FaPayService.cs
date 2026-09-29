@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Services.FaAtt;
@@ -27,19 +28,19 @@ public interface IFaPayService
     Task<FaPaySettingsDto> GetSettingsAsync();
     Task<FaPaySettingsDto> SaveSettingsAsync(FaPaySettingsSaveDto dto);
 
-    Task<List<FaPayTaxBracketDto>> ListBracketsAsync();
+    Task<List<FaPayTaxBracketDto>> ListBracketsAsync(Paging.Request? pagination = null);
     Task<FaPayTaxBracketDto> SaveBracketAsync(int? id, FaPayTaxBracketSaveDto dto);
     Task DeleteBracketAsync(int id);
 
-    Task<List<FaPayItemTypeDto>> ListItemTypesAsync();
+    Task<List<FaPayItemTypeDto>> ListItemTypesAsync(Paging.Request? pagination = null);
     Task<FaPayItemTypeDto> SaveItemTypeAsync(int? id, FaPayItemTypeSaveDto dto);
     Task DeleteItemTypeAsync(int id);
 
-    Task<List<FaPayAdjustmentDto>> ListAdjustmentsAsync(int? year, int? month, int? employeeId);
+    Task<List<FaPayAdjustmentDto>> ListAdjustmentsAsync(int? year, int? month, int? employeeId, Paging.Request? pagination = null);
     Task<FaPayAdjustmentDto> SaveAdjustmentAsync(int? id, FaPayAdjustmentSaveDto dto, int byUserId, string byName);
     Task DeleteAdjustmentAsync(int id);
 
-    Task<List<FaPayRunDto>> ListRunsAsync();
+    Task<List<FaPayRunDto>> ListRunsAsync(Paging.Request? pagination = null);
     Task<FaPayRunDto?> GetRunAsync(int id);
     Task<FaPayRunDto> CreateRunAsync(FaPayRunSaveDto dto, int byUserId, string byName);
     Task<int> CalculateRunAsync(int id);
@@ -47,11 +48,11 @@ public interface IFaPayService
     Task<FaPayRunDto> ReopenRunAsync(int id);
     Task DeleteRunAsync(int id);
 
-    Task<List<FaPaySlipDto>> RunSlipsAsync(int runId);
+    Task<List<FaPaySlipDto>> RunSlipsAsync(int runId, Paging.Request? pagination = null);
     Task<FaPayBankCheckDto> BankCheckAsync(int runId);
     Task<(byte[] Data, string FileName, string ContentType)> BankFileAsync(int runId, string format);
     Task<FaPaySlipDto?> GetSlipAsync(int id);
-    Task<List<FaPaySlipDto>> MySlipsAsync(int userId);
+    Task<List<FaPaySlipDto>> MySlipsAsync(int userId, Paging.Request? pagination = null);
     Task<FaPaySlipDto?> GetMySlipAsync(int id, int userId);
     Task SetPaidAsync(int id, bool paid);
     Task<byte[]> SlipPdfAsync(int id);
@@ -144,13 +145,13 @@ public class FaPayService : IFaPayService
 
     // ==================== پلکان مالیاتی ====================
 
-    public async Task<List<FaPayTaxBracketDto>> ListBracketsAsync()
-        => await _db.FaPayTaxBrackets.AsNoTracking().OrderBy(b => b.SortOrder).ThenBy(b => b.FromAmount)
+    public async Task<List<FaPayTaxBracketDto>> ListBracketsAsync(Paging.Request? pagination = null)
+        => await _db.FaPayTaxBrackets.AsNoTracking().OrderBy(b => b.SortOrder).ThenBy(b => b.FromAmount).ThenBy(x => x.Id)
             .Select(b => new FaPayTaxBracketDto
             {
                 Id = b.Id, FromAmount = b.FromAmount, ToAmount = b.ToAmount,
                 Rate = b.Rate, SortOrder = b.SortOrder, IsActive = b.IsActive
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
 
     public async Task<FaPayTaxBracketDto> SaveBracketAsync(int? id, FaPayTaxBracketSaveDto dto)
     {
@@ -178,14 +179,14 @@ public class FaPayService : IFaPayService
 
     // ==================== اقلام حقوقی ====================
 
-    public async Task<List<FaPayItemTypeDto>> ListItemTypesAsync()
-        => await _db.FaPayItemTypes.AsNoTracking().OrderBy(t => t.SortOrder)
+    public async Task<List<FaPayItemTypeDto>> ListItemTypesAsync(Paging.Request? pagination = null)
+        => await _db.FaPayItemTypes.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(x => x.Id)
             .Select(t => new FaPayItemTypeDto
             {
                 Id = t.Id, Code = t.Code, Name = t.Name, Kind = (int)t.Kind,
                 IsFixed = t.IsFixed, DefaultAmount = t.DefaultAmount,
                 SortOrder = t.SortOrder, IsActive = t.IsActive
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
 
     public async Task<FaPayItemTypeDto> SaveItemTypeAsync(int? id, FaPayItemTypeSaveDto dto)
     {
@@ -219,13 +220,13 @@ public class FaPayService : IFaPayService
 
     // ==================== ثبت‌های ماهانه ====================
 
-    public async Task<List<FaPayAdjustmentDto>> ListAdjustmentsAsync(int? year, int? month, int? employeeId)
+    public async Task<List<FaPayAdjustmentDto>> ListAdjustmentsAsync(int? year, int? month, int? employeeId, Paging.Request? pagination = null)
     {
         var q = _db.FaPayAdjustments.AsNoTracking().AsQueryable();
         if (year != null) q = q.Where(a => a.Year == year.Value);
         if (month != null) q = q.Where(a => a.Month == month.Value);
         if (employeeId != null) q = q.Where(a => a.EmployeeId == employeeId.Value);
-        var rows = await q.OrderByDescending(a => a.Id).Take(2000).ToListAsync();
+        var rows = await q.OrderByDescending(a => a.Id).ToPageListAsync(pagination, defaultCap: 2000);
         var names = await _db.HrEmployees.AsNoTracking()
             .ToDictionaryAsync(e => e.Id, e => e.FirstName + " " + e.LastName);
         var types = await _db.FaPayItemTypes.AsNoTracking().ToDictionaryAsync(t => t.Id);
@@ -280,9 +281,9 @@ public class FaPayService : IFaPayService
 
     // ==================== دوره‌ها ====================
 
-    public async Task<List<FaPayRunDto>> ListRunsAsync()
+    public async Task<List<FaPayRunDto>> ListRunsAsync(Paging.Request? pagination = null)
     {
-        var runs = await _db.FaPayRuns.AsNoTracking().OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).ToListAsync();
+        var runs = await _db.FaPayRuns.AsNoTracking().OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var ids = runs.Select(r => r.Id).ToList();
         var slips = ids.Count == 0 ? new List<FaPaySlip>()
             : await _db.FaPaySlips.AsNoTracking().Where(s => ids.Contains(s.RunId)).ToListAsync();
@@ -580,11 +581,11 @@ public class FaPayService : IFaPayService
 
     // ==================== فیش‌ها ====================
 
-    public async Task<List<FaPaySlipDto>> RunSlipsAsync(int runId)
+    public async Task<List<FaPaySlipDto>> RunSlipsAsync(int runId, Paging.Request? pagination = null)
     {
         var run = await _db.FaPayRuns.FindAsync(runId)
             ?? throw new InvalidOperationException("دوره یافت نشد.");
-        var slips = await _db.FaPaySlips.AsNoTracking().Where(s => s.RunId == runId).ToListAsync();
+        var slips = await _db.FaPaySlips.AsNoTracking().Where(s => s.RunId == runId).OrderBy(x => x.Id).ToPageListAsync(pagination);
         return await MapSlipsAsync(slips, run, withItems: false);
     }
 
@@ -705,21 +706,25 @@ public class FaPayService : IFaPayService
         return (await MapSlipsAsync(new List<FaPaySlip> { s }, run, withItems: true))[0];
     }
 
-    public async Task<List<FaPaySlipDto>> MySlipsAsync(int userId)
+    public async Task<List<FaPaySlipDto>> MySlipsAsync(int userId, Paging.Request? pagination = null)
     {
         var empId = await _db.HrEmployees.AsNoTracking()
             .Where(e => e.SystemUserId == userId).Select(e => e.Id).FirstOrDefaultAsync();
         if (empId == 0) return new();
-        var slips = await _db.FaPaySlips.AsNoTracking().Where(s => s.EmployeeId == empId).ToListAsync();
+        var slips = await _db.FaPaySlips.AsNoTracking().Where(s => s.EmployeeId == empId)
+            .OrderByDescending(s => _db.FaPayRuns.Where(r => r.Id == s.RunId).Select(r => (int?)r.Year).FirstOrDefault() ?? 0)
+            .ThenByDescending(s => _db.FaPayRuns.Where(r => r.Id == s.RunId).Select(r => (int?)r.Month).FirstOrDefault() ?? 0)
+            .ThenBy(s => s.Id).ToPageListAsync(pagination);
         if (slips.Count == 0) return new();
-        var runs = await _db.FaPayRuns.AsNoTracking().ToDictionaryAsync(r => r.Id);
+        var runIds = slips.Select(s => s.RunId).ToList();
+        var runs = await _db.FaPayRuns.AsNoTracking().Where(r => runIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id);
         var out_ = new List<FaPaySlipDto>();
         foreach (var g in slips.GroupBy(s => s.RunId))
         {
             runs.TryGetValue(g.Key, out var run);
             out_.AddRange(await MapSlipsAsync(g.ToList(), run, withItems: false));
         }
-        return out_.OrderByDescending(d => d.RunYear).ThenByDescending(d => d.RunMonth).ToList();
+        return out_.OrderByDescending(d => d.RunYear).ThenByDescending(d => d.RunMonth).ThenBy(d => d.Id).ToList();
     }
 
     public async Task<FaPaySlipDto?> GetMySlipAsync(int id, int userId)
@@ -736,7 +741,8 @@ public class FaPayService : IFaPayService
     {
         var empIds = slips.Select(s => s.EmployeeId).Distinct().ToList();
         var emps = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id);
-        var units = await _db.HrMainOrgNodes.AsNoTracking().ToDictionaryAsync(u => u.Id, u => u.Name);
+        var unitIds = emps.Values.Where(e => e.OrgUnitId.HasValue).Select(e => e.OrgUnitId!.Value).ToList();
+        var units = await _db.HrMainOrgNodes.AsNoTracking().Where(u => unitIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name);
         var items = new Dictionary<int, List<FaPaySlipItem>>();
         if (withItems && slips.Count > 0)
         {

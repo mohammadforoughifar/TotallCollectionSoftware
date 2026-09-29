@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using RadisHr.Api.Data;
 using RadisHr.Shared.Calculations;
@@ -56,9 +57,9 @@ public class PayrollService
     }
 
     /// <summary>محاسبهٔ کل ماه از روی ردیف‌های حضور و غیاب ذخیره‌شده</summary>
-    public async Task<List<PayrollRow>> MonthRowsAsync(string month)
+    public async Task<List<PayrollRow>> MonthRowsAsync(string month, Paging.Request? pagination = null)
     {
         return await _db.PayrollRows.Where(r => r.Month == month)
-            .OrderBy(r => r.Code).ToListAsync();
+            .OrderBy(r => r.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
     }
 }

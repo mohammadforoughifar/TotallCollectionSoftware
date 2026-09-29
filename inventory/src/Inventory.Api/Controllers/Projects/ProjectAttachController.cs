@@ -26,13 +26,14 @@ public class ProjectAttachController : RbacControllerBase
     [HttpGet("project/{projectId:int}")]
     public async Task<IActionResult> GetForProject(int projectId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
         var list = await Db.ProjectAttaches.AsNoTracking()
             .Include(a => a.User)
             .Where(a => a.ProjectId == projectId && !a.IsDelete)
             .OrderByDescending(a => a.Id)
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         var result = list.Select(a => new ProjectAttachDto
         {
@@ -44,7 +45,7 @@ public class ProjectAttachController : RbacControllerBase
             ProjectId = a.ProjectId,
             UserName = a.User is null ? null : DisplayOf(a.User)
         }).ToList();
-        return Ok(Paging.Result(result, skip, take));
+        return Ok(pagination.Result(result));
     }
 
     /// <summary>آپلود یک یا چند فایل برای یک پروژه (multipart)</summary>

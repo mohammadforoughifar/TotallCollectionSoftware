@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -38,10 +39,11 @@ public class AnalyticsController : ControllerBase
     [HttpGet("months")]
     public async Task<ActionResult<object>> Months([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var keys = await _db.PayrollRows.AsNoTracking()
-            .Select(r => r.Month).Distinct().ToListAsync();
-        return Paging.Result(keys.OrderBy(k => k, StringComparer.Ordinal)
-            .Select(k => new { key = k, label = LabelFor(k) }).ToList(), skip, take);
+            .Select(r => r.Month).Distinct().OrderBy(m => m).ToPageListAsync(pagination);
+        return pagination.Result(keys.OrderBy(k => k, StringComparer.Ordinal)
+            .Select(k => new { key = k, label = LabelFor(k) }).ToList());
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -11,16 +12,16 @@ namespace Inventory.Api.Services.Accounting;
 /// </summary>
 public interface IFixedAssetService
 {
-    Task<List<FixedAssetCategory>> GetCategoriesAsync();
+    Task<List<FixedAssetCategory>> GetCategoriesAsync(Paging.Request? pagination = null);
     Task<FixedAssetCategory> SaveCategoryAsync(FixedAssetCategory dto);
     Task DeleteCategoryAsync(int id);
 
-    Task<List<FixedAsset>> GetAssetsAsync(FixedAssetStatus? status = null, int? categoryId = null, string? search = null);
+    Task<List<FixedAsset>> GetAssetsAsync(FixedAssetStatus? status = null, int? categoryId = null, string? search = null, Paging.Request? pagination = null);
     Task<FixedAsset> GetAssetAsync(int id);
     Task<FixedAsset> SaveAssetAsync(FixedAsset dto);
     Task DeleteAssetAsync(int id);
 
-    Task<List<FixedAssetDepreciationRun>> GetRunsAsync();
+    Task<List<FixedAssetDepreciationRun>> GetRunsAsync(Paging.Request? pagination = null);
     Task<FixedAssetDepreciationRun> RunDepreciationAsync(FixedAssetDepreciationRequest req, string? user);
     Task DeleteRunAsync(int id);
     Task<FixedAssetDepreciationRun?> PostRunToAccountingAsync(int runId, string? user);
@@ -34,10 +35,10 @@ public class FixedAssetService : IFixedAssetService
     // =====================================================================
     // گروه‌ها
     // =====================================================================
-    public async Task<List<FixedAssetCategory>> GetCategoriesAsync()
+    public async Task<List<FixedAssetCategory>> GetCategoriesAsync(Paging.Request? pagination = null)
     {
         var cats = await _db.FixedAssetCategories.AsNoTracking()
-            .OrderBy(c => c.SortOrder).ThenBy(c => c.Code).ToListAsync();
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var counts = await _db.FixedAssets.AsNoTracking()
             .GroupBy(a => a.CategoryId)
             .Select(g => new { Id = g.Key, Count = g.Count() })
@@ -106,7 +107,7 @@ public class FixedAssetService : IFixedAssetService
     // =====================================================================
     // دارایی‌ها
     // =====================================================================
-    public async Task<List<FixedAsset>> GetAssetsAsync(FixedAssetStatus? status = null, int? categoryId = null, string? search = null)
+    public async Task<List<FixedAsset>> GetAssetsAsync(FixedAssetStatus? status = null, int? categoryId = null, string? search = null, Paging.Request? pagination = null)
     {
         var q = _db.FixedAssets.AsNoTracking().Include(a => a.Category).Include(a => a.DimensionValue)
             .AsQueryable();
@@ -115,7 +116,7 @@ public class FixedAssetService : IFixedAssetService
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(a => a.Code.Contains(search) || a.Name.Contains(search) || (a.SerialNo != null && a.SerialNo.Contains(search)));
 
-        var list = await q.OrderByDescending(a => a.Id).ToListAsync();
+        var list = await q.OrderByDescending(a => a.Id).ToPageListAsync(pagination);
         return list.Select(ToAssetDto).ToList();
     }
 
@@ -206,10 +207,10 @@ public class FixedAssetService : IFixedAssetService
     // =====================================================================
     // استهلاک
     // =====================================================================
-    public async Task<List<FixedAssetDepreciationRun>> GetRunsAsync()
+    public async Task<List<FixedAssetDepreciationRun>> GetRunsAsync(Paging.Request? pagination = null)
         => await _db.FixedAssetDepreciationRuns.AsNoTracking()
             .Include(r => r.Lines).ThenInclude(l => l.Asset)
-            .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month)
+            .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).ThenBy(x => x.Id)
             .Select(r => new FixedAssetDepreciationRun
             {
                 Id = r.Id, Year = r.Year, Month = r.Month, RunDate = r.RunDate,
@@ -224,7 +225,7 @@ public class FixedAssetService : IFixedAssetService
                     BookValueAfter = l.BookValueAfter
                 }).ToList()
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
     public async Task<FixedAssetDepreciationRun> RunDepreciationAsync(FixedAssetDepreciationRequest req, string? user)
     {

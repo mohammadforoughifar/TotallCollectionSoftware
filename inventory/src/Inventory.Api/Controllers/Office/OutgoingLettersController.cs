@@ -219,7 +219,7 @@ public class OutgoingLettersController : RbacControllerBase
             var isSigner = await Db.OutgoingLetterSigners.AnyAsync(s => s.SourceId == id && s.UserId == MyUserId && !s.IsDelete);
             if (!isSigner) return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
         }
-        return Ok(Paging.Result(await _letters.GetSignersAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _letters.GetSignersAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("{id:int}/sign")]
@@ -244,7 +244,7 @@ public class OutgoingLettersController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         try
         {
-            return Ok(Paging.Result(await _letters.GetCopyTosAsync(id, MyUserId, isAdmin), skip, take));
+            return Ok(await Paging.ResultAsync(async pagination => await _letters.GetCopyTosAsync(id, MyUserId, isAdmin, pagination: pagination), skip, take));
         }
         catch (Exception ex)
         {
@@ -276,7 +276,7 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> AvailableSigners([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _letters.GetAvailableSignersAsync(search), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _letters.GetAvailableSignersAsync(search, pagination: pagination), skip, take));
     }
 
     // ==================== دبیرخانه نامه صادره ====================
@@ -323,7 +323,7 @@ public class OutgoingLettersController : RbacControllerBase
             ToDate = toDate
         };
 
-        return Ok(Paging.Result(await _letters.GetDabirkhaneAsync(filter), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _letters.GetDabirkhaneAsync(filter, pagination: pagination), skip, take));
     }
 
     /// <summary>فهرست ثبت‌کنندگان نامه — برای فیلتر «فرستنده» در جستجوی پیشرفته</summary>
@@ -332,7 +332,7 @@ public class OutgoingLettersController : RbacControllerBase
     {
         if (!await HasDabirkhaneAsync())
             return StatusCode(403, new { message = "شما به دبیرخانه نامه صادره دسترسی ندارید." });
-        return Ok(Paging.Result(await _letters.GetDabirkhaneCreatorsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _letters.GetDabirkhaneCreatorsAsync(pagination: pagination), skip, take));
     }
 
     // ==================== بایگانی دبیرخانه (نامه صادره) ====================
@@ -450,7 +450,7 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Companies([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _letters.GetCompaniesAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _letters.GetCompaniesAsync(pagination: pagination), skip, take));
     }
 
     // ==================== چاپ نامه روی سربرگ شرکت (A4 / A5) ====================
@@ -521,7 +521,7 @@ public class OutgoingLettersController : RbacControllerBase
         if (!hasDabirkhane && !isAdmin && await ForbiddenUnlessAsync(Module, "Read") is { } forbid)
             return forbid;
 
-        return Ok(Paging.Result(await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, isAdmin || hasDabirkhane, pagination), skip, take));
     }
 
     [HttpPost("erja")]
@@ -588,7 +588,7 @@ public class OutgoingLettersController : RbacControllerBase
     }
 
     [HttpGet("amalgars")]
-    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _erja.GetAmalgarsAsync(), skip, take));
+    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
 
     // ==================== پیش‌نویس ====================
 
@@ -596,7 +596,7 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> PishnevisList([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _pishnevis.GetAllAsync(MyUserId, search), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _pishnevis.GetAllAsync(MyUserId, search, pagination: pagination), skip, take));
     }
 
     [HttpGet("pishnevis/{id:int}")]
@@ -633,10 +633,11 @@ public class OutgoingLettersController : RbacControllerBase
     [HttpGet("recivers")]
     public async Task<IActionResult> Recivers([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var users = await Db.Users.AsNoTracking()
             .Where(u => u.IsActive && u.Id != MyUserId)
-            .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
+            .OrderBy(u => u.FirstName).ThenBy(u => u.Username).ThenBy(x => x.Id)
             .Select(u => new LetterReciverDto
             {
                 UserId = u.Id,
@@ -644,8 +645,8 @@ public class OutgoingLettersController : RbacControllerBase
                     ? u.Username
                     : (u.FirstName + " " + u.LastName).Trim()
             })
-            .ToListAsync();
-        return Ok(Paging.Result(users, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(users));
     }
 
     // ==================== گروه‌های گیرندگان ====================
@@ -654,7 +655,7 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Groups([FromQuery] bool withMembers = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _groups.GetAllAsync(withMembers), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _groups.GetAllAsync(withMembers, pagination: pagination), skip, take));
     }
 
     // ==================== پیوست‌ها ====================
@@ -673,6 +674,7 @@ public class OutgoingLettersController : RbacControllerBase
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync())
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
@@ -690,8 +692,8 @@ public class OutgoingLettersController : RbacControllerBase
                 UploaderUserId = a.UploaderUserId,
                 UploadedAt = a.UploadedAt
             })
-            .ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     [HttpPost("{id:int}/attachments")]
@@ -759,6 +761,7 @@ public class OutgoingLettersController : RbacControllerBase
     [HttpGet("pishnevis/{id:int}/attachments")]
     public async Task<IActionResult> PishnevisAttachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var owns = await Db.OutgoingPishnevisLetters.AnyAsync(p => p.PishnevisId == id && p.UserId == MyUserId && !p.IsDelete);
         if (!owns) return StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." });
@@ -776,8 +779,8 @@ public class OutgoingLettersController : RbacControllerBase
                 UploaderUserId = a.UploaderUserId,
                 UploadedAt = a.UploadedAt
             })
-            .ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     [HttpPost("pishnevis/{id:int}/attachments")]

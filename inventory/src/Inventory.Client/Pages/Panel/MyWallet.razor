@@ -96,7 +96,7 @@ else
                     </table>
                 </div>
 
-                <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+                <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
             }
         </div>
     </div>
@@ -109,14 +109,24 @@ else
 
     private int page = 1;
     private const int PageSize = 12;
-    private int PageCount => Math.Max(1, (int)Math.Ceiling(payments.Count / (double)PageSize));
-    private List<ReferrerPayment> Paged
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+    private List<ReferrerPayment> Paged => payments;
+    private int total;
+    private async Task ChangePage(int value)
     {
-        get
-        {
-            if (page > PageCount) page = PageCount;
-            return payments.Skip((page - 1) * PageSize).Take(PageSize).ToList();
-        }
+        page = value;
+        loading = true;
+        try { await LoadPayments(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task LoadPayments()
+    {
+        var result = await AuthApi.GetMyPaymentsPagedAsync((page - 1) * PageSize, PageSize);
+        payments = result.Items;
+        total = result.TotalCount;
+        if (page > PageCount) { page = PageCount; await LoadPayments(); }
     }
 
     protected override async Task OnInitializedAsync()
@@ -127,7 +137,7 @@ else
         try
         {
             dash = await AuthApi.GetMyDashboardAsync();
-            payments = await AuthApi.GetMyPaymentsAsync();
+            await LoadPayments();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }

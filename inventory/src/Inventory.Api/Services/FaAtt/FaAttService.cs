@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -39,17 +40,17 @@ public static class FaAttTexts
 public interface IFaAttService
 {
     // شیفت‌ها
-    Task<List<FaAttShiftDto>> ListShiftsAsync(bool? onlyActive);
+    Task<List<FaAttShiftDto>> ListShiftsAsync(bool? onlyActive, Paging.Request? pagination = null);
     Task<FaAttShiftDto> SaveShiftAsync(int? id, FaAttShiftSaveDto dto);
     Task DeleteShiftAsync(int id);
-    Task<List<FaAttShiftAssignDto>> ListAssignsAsync(int? employeeId, int? shiftId);
+    Task<List<FaAttShiftAssignDto>> ListAssignsAsync(int? employeeId, int? shiftId, Paging.Request? pagination = null);
     Task<FaAttShiftAssignDto> SaveAssignAsync(int? id, FaAttShiftAssignSaveDto dto);
     Task DeleteAssignAsync(int id);
     /// <summary>برنامه‌ریزی روزانه‌ی شیفت: برای هر آیتم، تخصیص‌های هم‌پوشانِ همان روز برش/حذف و شیفت جدید درج می‌شود</summary>
     Task<FaAttShiftPlanResultDto> PlanShiftsAsync(FaAttShiftPlanSaveDto dto);
 
     // دستگاه‌ها
-    Task<List<FaAttDeviceDto>> ListDevicesAsync(bool? onlyActive);
+    Task<List<FaAttDeviceDto>> ListDevicesAsync(bool? onlyActive, Paging.Request? pagination = null);
     Task<FaAttDeviceDto> SaveDeviceAsync(int? id, FaAttDeviceSaveDto dto);
     Task DeleteDeviceAsync(int id);
 
@@ -59,24 +60,24 @@ public interface IFaAttService
     Task<FaAttImportResultDto> ImportLogsAsync(Stream stream, string fileName, int? deviceId, int byUserId, string byName);
     Task<(byte[] Data, string FileName, string ContentType)> ImportTemplateAsync();
     Task DeleteLogAsync(int id);
-    Task<List<FaAttLogDto>> EmployeeLogsAsync(int employeeId, DateTime from, DateTime to);
+    Task<List<FaAttLogDto>> EmployeeLogsAsync(int employeeId, DateTime from, DateTime to, Paging.Request? pagination = null);
 
     // محاسبه روزانه
     Task<FaAttDailyDto> RecalcAsync(int employeeId, DateTime date);
     Task<int> RecalcRangeAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId);
-    Task<List<FaAttDailyDto>> DailyListAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId, int? status);
+    Task<List<FaAttDailyDto>> DailyListAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId, int? status, Paging.Request? pagination = null);
     Task<FaAttMyTodayDto> MyTodayAsync(int userId);
 
     // ماموریت
-    Task<List<FaAttMissionDto>> ListMissionsAsync(int? employeeId, int? status);
+    Task<List<FaAttMissionDto>> ListMissionsAsync(int? employeeId, int? status, Paging.Request? pagination = null);
     Task<FaAttMissionDto> SaveMissionAsync(int? id, FaAttMissionSaveDto dto);
     Task<FaAttMissionDto> DecideMissionAsync(int id, bool approve, int byUserId, string byName);
     Task DeleteMissionAsync(int id);
 
     // مرخصی
-    Task<List<FaAttLeaveTypeDto>> ListLeaveTypesAsync();
+    Task<List<FaAttLeaveTypeDto>> ListLeaveTypesAsync(Paging.Request? pagination = null);
     Task<FaAttLeaveTypeDto> SaveLeaveTypeAsync(int? id, FaAttLeaveTypeSaveDto dto);
-    Task<List<FaAttLeaveDto>> ListLeavesAsync(int? employeeId, int? status);
+    Task<List<FaAttLeaveDto>> ListLeavesAsync(int? employeeId, int? status, Paging.Request? pagination = null);
     Task<FaAttLeaveDto> SaveLeaveAsync(int? id, FaAttLeaveSaveDto dto);
     Task<FaAttLeaveDto> RequestMyLeaveAsync(int userId, string userName, FaAttLeaveSaveDto dto);
     Task<FaAttLeaveDto> ManagerDecideAsync(int id, bool approve, int byUserId, string byName, bool isHr);
@@ -84,25 +85,25 @@ public interface IFaAttService
     Task<FaAttBatchResultDto> ManagerDecideBatchAsync(List<int> ids, bool approve, int byUserId, string byName, bool isHr);
     Task<FaAttBatchResultDto> HrDecideBatchAsync(List<int> ids, bool approve, int byUserId, string byName);
     Task<FaAttBatchResultDto> DecideMissionBatchAsync(List<int> ids, bool approve, int byUserId, string byName);
-    Task<List<FaAttLeaveDto>> LeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to);
+    Task<List<FaAttLeaveDto>> LeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to, Paging.Request? pagination = null);
     Task<List<FaAttCalendarEventDto>> AbsenceCalendarAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId);
-    Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId, int? year, int? leaveTypeId);
+    Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId, int? year, int? leaveTypeId, Paging.Request? pagination = null);
     Task<FaAttLeaveBalanceDto> SaveBalanceAsync(int employeeId, int year, int leaveTypeId, FaAttLeaveBalanceSaveDto dto);
     Task<FaAttLeaveBalanceDto> CarryOverAsync(int employeeId, int leaveTypeId, FaAttLeaveCarryDto dto);
     Task<FaAttLeaveBalanceDto> CashOutAsync(int balanceId, FaAttLeaveCashDto dto);
     Task DeleteLeaveAsync(int id);
-    Task<List<FaAttLeaveDto>> MyLeavesAsync(int userId);
-    Task<List<FaAttLeaveDto>> TeamLeavesAsync(int userId);
+    Task<List<FaAttLeaveDto>> MyLeavesAsync(int userId, Paging.Request? pagination = null);
+    Task<List<FaAttLeaveDto>> TeamLeavesAsync(int userId, Paging.Request? pagination = null);
     Task CancelMyLeaveAsync(int id, int userId);
-    Task<List<FaAttLeaveBalanceDto>> MyBalancesAsync(int userId, int? year);
+    Task<List<FaAttLeaveBalanceDto>> MyBalancesAsync(int userId, int? year, Paging.Request? pagination = null);
     Task<int> InitYearBalancesAsync(int year, int? leaveTypeId);
-    Task<List<FaAttMissionDto>> MyMissionsAsync(int userId);
+    Task<List<FaAttMissionDto>> MyMissionsAsync(int userId, Paging.Request? pagination = null);
     Task<FaAttMissionDto> RequestMyMissionAsync(int userId, FaAttMissionSaveDto dto);
     Task<FaAttLeaveDto> UpdateMyLeaveAsync(int id, int userId, FaAttLeaveSaveDto dto);
     Task<FaAttMissionDto> UpdateMyMissionAsync(int id, int userId, FaAttMissionSaveDto dto);
 
     // گزارش‌ها (مبنای حقوق)
-    Task<List<FaAttMonthSummaryDto>> MonthSummaryAsync(int year, int month, int? orgUnitId);
+    Task<List<FaAttMonthSummaryDto>> MonthSummaryAsync(int year, int month, int? orgUnitId, Paging.Request? pagination = null);
     Task<byte[]> ExportMonthExcelAsync(int year, int month, int? orgUnitId);
 }
 
@@ -113,11 +114,11 @@ public class FaAttService : IFaAttService
 
     // ==================== شیفت‌ها ====================
 
-    public async Task<List<FaAttShiftDto>> ListShiftsAsync(bool? onlyActive)
+    public async Task<List<FaAttShiftDto>> ListShiftsAsync(bool? onlyActive, Paging.Request? pagination = null)
     {
         var q = _db.FaAttShifts.AsNoTracking().AsQueryable();
         if (onlyActive == true) q = q.Where(s => s.IsActive);
-        return await q.OrderBy(s => s.SortOrder).ThenBy(s => s.Name)
+        return await q.OrderBy(s => s.SortOrder).ThenBy(s => s.Name).ThenBy(x => x.Id)
             .Select(s => new FaAttShiftDto
             {
                 Id = s.Id, Code = s.Code, Name = s.Name, Type = (int)s.Type,
@@ -126,7 +127,7 @@ public class FaAttService : IFaAttService
                 OvertimeGraceMin = s.OvertimeGraceMin, RequiredMinutes = s.RequiredMinutes,
                 OffDays = s.OffDays, Color = s.Color, IsActive = s.IsActive,
                 AllowancePercent = s.AllowancePercent, SortOrder = s.SortOrder
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task<FaAttShiftDto> SaveShiftAsync(int? id, FaAttShiftSaveDto dto)
@@ -166,12 +167,12 @@ public class FaAttService : IFaAttService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<FaAttShiftAssignDto>> ListAssignsAsync(int? employeeId, int? shiftId)
+    public async Task<List<FaAttShiftAssignDto>> ListAssignsAsync(int? employeeId, int? shiftId, Paging.Request? pagination = null)
     {
         var q = _db.FaAttShiftAssigns.AsNoTracking().AsQueryable();
         if (employeeId is > 0) q = q.Where(a => a.EmployeeId == employeeId.Value);
         if (shiftId is > 0) q = q.Where(a => a.ShiftId == shiftId.Value);
-        var rows = await q.OrderByDescending(a => a.FromDate).Take(2000).ToListAsync();
+        var rows = await q.OrderByDescending(a => a.FromDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 2000);
         var list = new List<FaAttShiftAssignDto>();
         foreach (var a in rows)
         {
@@ -280,11 +281,11 @@ public class FaAttService : IFaAttService
 
     // ==================== دستگاه‌ها ====================
 
-    public async Task<List<FaAttDeviceDto>> ListDevicesAsync(bool? onlyActive)
+    public async Task<List<FaAttDeviceDto>> ListDevicesAsync(bool? onlyActive, Paging.Request? pagination = null)
     {
         var q = _db.FaAttDevices.AsNoTracking().AsQueryable();
         if (onlyActive == true) q = q.Where(d => d.IsActive);
-        var rows = await q.OrderBy(d => d.Code).ToListAsync();
+        var rows = await q.OrderBy(d => d.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var list = new List<FaAttDeviceDto>();
         foreach (var d in rows)
         {
@@ -595,12 +596,12 @@ public class FaAttService : IFaAttService
         await RecalcAsync(empId, date);
     }
 
-    public async Task<List<FaAttLogDto>> EmployeeLogsAsync(int employeeId, DateTime from, DateTime to)
+    public async Task<List<FaAttLogDto>> EmployeeLogsAsync(int employeeId, DateTime from, DateTime to, Paging.Request? pagination = null)
     {
         from = from.Date; to = to.Date.AddDays(1);
         var rows = await _db.FaAttLogs.AsNoTracking()
             .Where(l => l.EmployeeId == employeeId && l.Timestamp >= from && l.Timestamp < to)
-            .OrderBy(l => l.Timestamp).Take(2000).ToListAsync();
+            .OrderBy(l => l.Timestamp).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 2000);
         var list = new List<FaAttLogDto>();
         foreach (var l in rows) list.Add(await MapLogAsync(l));
         return list;
@@ -859,7 +860,7 @@ public class FaAttService : IFaAttService
         return count;
     }
 
-    public async Task<List<FaAttDailyDto>> DailyListAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId, int? status)
+    public async Task<List<FaAttDailyDto>> DailyListAsync(DateTime from, DateTime to, int? employeeId, int? orgUnitId, int? status, Paging.Request? pagination = null)
     {
         from = from.Date; to = to.Date;
         var q = _db.FaAttDailies.AsNoTracking()
@@ -872,7 +873,7 @@ public class FaAttService : IFaAttService
                 .Where(e => e.OrgUnitId == orgUnitId.Value).Select(e => e.Id).ToListAsync();
             q = q.Where(d => ids.Contains(d.EmployeeId));
         }
-        var rows = await q.OrderBy(d => d.Date).ThenBy(d => d.EmployeeId).Take(5000).ToListAsync();
+        var rows = await q.OrderBy(d => d.Date).ThenBy(d => d.EmployeeId).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 5000);
         var list = new List<FaAttDailyDto>();
         foreach (var d in rows) list.Add(await MapDailyAsync(d));
         return list;
@@ -923,12 +924,12 @@ public class FaAttService : IFaAttService
 
     // ==================== ماموریت ====================
 
-    public async Task<List<FaAttMissionDto>> ListMissionsAsync(int? employeeId, int? status)
+    public async Task<List<FaAttMissionDto>> ListMissionsAsync(int? employeeId, int? status, Paging.Request? pagination = null)
     {
         var q = _db.FaAttMissions.AsNoTracking().AsQueryable();
         if (employeeId is > 0) q = q.Where(m => m.EmployeeId == employeeId.Value);
         if (status is >= 0) q = q.Where(m => (int)m.Status == status.Value);
-        var rows = await q.OrderByDescending(m => m.FromDate).Take(1000).ToListAsync();
+        var rows = await q.OrderByDescending(m => m.FromDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 1000);
         var list = new List<FaAttMissionDto>();
         foreach (var m in rows)
         {
@@ -996,14 +997,14 @@ public class FaAttService : IFaAttService
 
     // ==================== مرخصی ====================
 
-    public async Task<List<FaAttLeaveTypeDto>> ListLeaveTypesAsync()
+    public async Task<List<FaAttLeaveTypeDto>> ListLeaveTypesAsync(Paging.Request? pagination = null)
     {
-        return await _db.FaAttLeaveTypes.AsNoTracking().OrderBy(t => t.SortOrder)
+        return await _db.FaAttLeaveTypes.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(x => x.Id)
             .Select(t => new FaAttLeaveTypeDto
             {
                 Id = t.Id, Name = t.Name, AnnualLimitDays = t.AnnualLimitDays,
                 IsActive = t.IsActive, SortOrder = t.SortOrder
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task<FaAttLeaveTypeDto> SaveLeaveTypeAsync(int? id, FaAttLeaveTypeSaveDto dto)
@@ -1022,12 +1023,12 @@ public class FaAttService : IFaAttService
         return (await ListLeaveTypesAsync()).First(x => x.Id == t.Id);
     }
 
-    public async Task<List<FaAttLeaveDto>> ListLeavesAsync(int? employeeId, int? status)
+    public async Task<List<FaAttLeaveDto>> ListLeavesAsync(int? employeeId, int? status, Paging.Request? pagination = null)
     {
         var q = _db.FaAttLeaves.AsNoTracking().AsQueryable();
         if (employeeId is > 0) q = q.Where(l => l.EmployeeId == employeeId.Value);
         if (status is >= 0) q = q.Where(l => (int)l.Status == status.Value);
-        var rows = await q.OrderByDescending(l => l.FromDate).Take(1000).ToListAsync();
+        var rows = await q.OrderByDescending(l => l.FromDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 1000);
         var list = new List<FaAttLeaveDto>();
         foreach (var l in rows)
         {
@@ -1169,12 +1170,12 @@ public class FaAttService : IFaAttService
         return (from, from.AddDays(pc.GetDaysInMonth(jy, jm) - 1));
     }
 
-    public async Task<List<FaAttMonthSummaryDto>> MonthSummaryAsync(int year, int month, int? orgUnitId)
+    public async Task<List<FaAttMonthSummaryDto>> MonthSummaryAsync(int year, int month, int? orgUnitId, Paging.Request? pagination = null)
     {
         var (from, to) = JalaliMonthRange(year, month);
         var empQ = _db.HrEmployees.AsNoTracking().Where(e => e.IsActive);
         if (orgUnitId is > 0) empQ = empQ.Where(e => e.OrgUnitId == orgUnitId.Value);
-        var emps = await empQ.OrderBy(e => e.Code).Take(2000).ToListAsync();
+        var emps = await empQ.OrderBy(e => e.Code).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 2000);
         var empIds = emps.Select(e => e.Id).ToList();
         var dailies = await _db.FaAttDailies.AsNoTracking()
             .Where(d => d.Date >= from && d.Date <= to && empIds.Contains(d.EmployeeId))
@@ -1259,26 +1260,26 @@ public class FaAttService : IFaAttService
         return await SaveLeaveAsync(null, dto);
     }
 
-    public async Task<List<FaAttLeaveDto>> LeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to)
+    public async Task<List<FaAttLeaveDto>> LeavesByUnitAsync(int orgUnitId, DateTime from, DateTime to, Paging.Request? pagination = null)
     {
         from = from.Date; to = to.Date;
         var empIds = await _db.HrEmployees.AsNoTracking()
             .Where(e => e.IsActive && e.OrgUnitId == orgUnitId).Select(e => e.Id).ToListAsync();
         var rows = await _db.FaAttLeaves.AsNoTracking()
             .Where(l => empIds.Contains(l.EmployeeId) && l.FromDate.Date <= to && l.ToDate.Date >= from)
-            .OrderBy(l => l.FromDate).Take(2000).ToListAsync();
+            .OrderBy(l => l.FromDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 2000);
         var list = new List<FaAttLeaveDto>();
         foreach (var l in rows) list.Add(await MapLeaveAsync(l));
         return list;
     }
 
-    public async Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId, int? year, int? leaveTypeId)
+    public async Task<List<FaAttLeaveBalanceDto>> GetBalancesAsync(int? employeeId, int? year, int? leaveTypeId, Paging.Request? pagination = null)
     {
         var q = _db.FaAttLeaveBalances.AsNoTracking().AsQueryable();
         if (employeeId is > 0) q = q.Where(b => b.EmployeeId == employeeId.Value);
         if (year is > 1000) q = q.Where(b => b.Year == year.Value);
         if (leaveTypeId is > 0) q = q.Where(b => b.LeaveTypeId == leaveTypeId.Value);
-        var rows = await q.OrderBy(b => b.Year).ThenBy(b => b.LeaveTypeId).Take(2000).ToListAsync();
+        var rows = await q.OrderBy(b => b.Year).ThenBy(b => b.LeaveTypeId).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 2000);
         var list = new List<FaAttLeaveBalanceDto>();
         foreach (var b in rows) list.Add(await MapBalanceAsync(b));
         return list;
@@ -1446,14 +1447,14 @@ public class FaAttService : IFaAttService
 
     // ==================== §۷ حرفه‌ای: سلف‌سرویس + تیم + صدور گروهی ====================
 
-    public async Task<List<FaAttLeaveDto>> MyLeavesAsync(int userId)
+    public async Task<List<FaAttLeaveDto>> MyLeavesAsync(int userId, Paging.Request? pagination = null)
     {
         var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.SystemUserId == userId);
         if (emp == null) return new();
-        return await ListLeavesAsync(emp.Id, null);
+        return await ListLeavesAsync(emp.Id, null, pagination: pagination);
     }
 
-    public async Task<List<FaAttLeaveDto>> TeamLeavesAsync(int userId)
+    public async Task<List<FaAttLeaveDto>> TeamLeavesAsync(int userId, Paging.Request? pagination = null)
     {
         var me = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.SystemUserId == userId);
         if (me == null) return new();
@@ -1462,7 +1463,7 @@ public class FaAttService : IFaAttService
         if (reportIds.Count == 0) return new();
         var rows = await _db.FaAttLeaves.AsNoTracking()
             .Where(l => reportIds.Contains(l.EmployeeId) && l.Status == FaAttRequestStatus.Pending && l.WorkflowStep == 0)
-            .OrderBy(l => l.FromDate).Take(500).ToListAsync();
+            .OrderBy(l => l.FromDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
         var list = new List<FaAttLeaveDto>();
         foreach (var l in rows) list.Add(await MapLeaveAsync(l));
         return list;
@@ -1484,11 +1485,11 @@ public class FaAttService : IFaAttService
         await RecalcRangeAsync(from, CappedTo(from, to), empId, null);
     }
 
-    public async Task<List<FaAttLeaveBalanceDto>> MyBalancesAsync(int userId, int? year)
+    public async Task<List<FaAttLeaveBalanceDto>> MyBalancesAsync(int userId, int? year, Paging.Request? pagination = null)
     {
         var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.SystemUserId == userId);
         if (emp == null) return new();
-        return await GetBalancesAsync(emp.Id, year, null);
+        return await GetBalancesAsync(emp.Id, year, null, pagination: pagination);
     }
 
     public async Task<int> InitYearBalancesAsync(int year, int? leaveTypeId)
@@ -1520,11 +1521,11 @@ public class FaAttService : IFaAttService
         return created;
     }
 
-    public async Task<List<FaAttMissionDto>> MyMissionsAsync(int userId)
+    public async Task<List<FaAttMissionDto>> MyMissionsAsync(int userId, Paging.Request? pagination = null)
     {
         var emp = await _db.HrEmployees.AsNoTracking().FirstOrDefaultAsync(e => e.SystemUserId == userId);
         if (emp == null) return new();
-        return await ListMissionsAsync(emp.Id, null);
+        return await ListMissionsAsync(emp.Id, null, pagination: pagination);
     }
 
     public async Task<FaAttMissionDto> RequestMyMissionAsync(int userId, FaAttMissionSaveDto dto)

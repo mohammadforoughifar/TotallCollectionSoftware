@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -315,18 +316,15 @@ public class WorkflowsController : ControllerBase
     [HttpGet("announcements")]
     public async Task<ActionResult<List<Announcement>>> Announcements([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
+        var now = DateTime.UtcNow;
         var all = await _db.Announcements
+            .Where(a => a.Recipients.Any(r => (r.RoleKey == role || role == "ceo" || role == "hr")
+                && (r.FirstSeenAt == null || r.FirstSeenAt.Value.AddDays(a.DurationDays) >= now)))
             .Include(a => a.Recipients).Include(a => a.Attachments)
-            .AsNoTracking().OrderByDescending(a => a.CreatedAt).ToListAsync();
-
-        // مدت اعتبار از نخستین مشاهده شمرده می‌شود
-        return Ok(Paging.Result(all.Where(a => a.Recipients.Any(r =>
-        {
-            if (r.RoleKey != role && role != "ceo" && role != "hr") return false;
-            if (r.FirstSeenAt == null) return true;
-            return (DateTime.UtcNow - r.FirstSeenAt.Value).TotalDays <= a.DurationDays;
-        })).ToList(), skip, take));
+            .AsNoTracking().OrderByDescending(a => a.CreatedAt).ThenBy(a => a.Id).ToPageListAsync(pagination);
+        return Ok(pagination.Result(all));
     }
 
     [Authorize(Roles = "hr,ceo")]

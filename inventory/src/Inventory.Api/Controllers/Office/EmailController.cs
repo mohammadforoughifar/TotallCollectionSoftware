@@ -45,7 +45,7 @@ public class EmailController : RbacControllerBase
     public async Task<IActionResult> Accounts([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _email.GetMyAccountsAsync(MyUserId, await IsDabirkhaneAsync()), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _email.GetMyAccountsAsync(MyUserId, await IsDabirkhaneAsync(), pagination: pagination), skip, take));
     }
 
     /// <summary>حساب‌های فعال دبیرخانه — برای انتخاب در ثبت دبیرخانه نامه صادره</summary>
@@ -54,7 +54,7 @@ public class EmailController : RbacControllerBase
     {
         if (!await IsDabirkhaneAsync())
             return StatusCode(403, new { message = "شما به حساب‌های دبیرخانه دسترسی ندارید." });
-        return Ok(Paging.Result(await _email.GetDabirkhaneAccountsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _email.GetDabirkhaneAccountsAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("accounts")]
@@ -252,7 +252,7 @@ public class EmailController : RbacControllerBase
     public async Task<IActionResult> Folders([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _email.GetFoldersAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _email.GetFoldersAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     [HttpPost("folders")]

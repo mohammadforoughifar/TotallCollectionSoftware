@@ -11,7 +11,7 @@
     <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2" 
          style="background:linear-gradient(135deg,#8e5cff,#c084fc);color:#fff;border-radius:14px 14px 0 0;">
         <span><i class="bi bi-rulers me-2"></i>واحدهای شمارش
-            <span class="badge bg-light text-dark ms-1">@Filtered.Count</span>
+            <span class="badge bg-light text-dark ms-1">@total</span>
         </span>
         <button class="btn btn-light btn-sm fw-700 shadow-sm" style="border-radius:8px;color:#4f5b8a;" @onclick="OpenNew">
             <i class="bi bi-plus-lg"></i> واحد جدید
@@ -24,7 +24,7 @@
             <div class="col-md-4">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="جستجوی نام واحد…" @bind="search" @bind:event="oninput" />
+                    <input class="form-control" placeholder="جستجوی نام واحد…" @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
                 </div>
             </div>
             <div class="col-md-auto">
@@ -33,7 +33,7 @@
                     <label class="form-check-label" for="activeChk">فقط فعال‌ها</label>
                 </div>
             </div>
-            <div class="col-auto ms-auto fs-8 text-muted">@Filtered.Count.Num() واحد</div>
+            <div class="col-auto ms-auto fs-8 text-muted">@total.Num() واحد</div>
         </div>
     </div>
     </div>
@@ -45,7 +45,7 @@
         {
             <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
         }
-        else if (Filtered.Count == 0)
+        else if (items.Count == 0)
         {
             <div class="empty-state"><i class="bi bi-rulers"></i><h5>واحدی یافت نشد</h5></div>
         }
@@ -119,7 +119,7 @@
                 }
             </div>
 
-            <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+            <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
         }
     </div>
 </div>
@@ -172,22 +172,15 @@
     private bool showModal, saving;
     private bool editing => form.Id != 0;
 
-    private List<MeasureUnit> Filtered =>
-        items.Where(u => string.IsNullOrWhiteSpace(search) || u.Name.Contains(search.Trim()))
-             .ToList();
 
     // ---------- صفحه‌بندی ----------
     private int page = 1;
     private const int PageSize = 12;
-    private int PageCount => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)PageSize));
-    private List<MeasureUnit> Paged
-    {
-        get
-        {
-            if (page > PageCount) page = PageCount;
-            return Filtered.Skip((page - 1) * PageSize).Take(PageSize).ToList();
-        }
-    }
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+    private List<MeasureUnit> Paged => items;
+    private int total, loadVersion;
+    private async Task ChangePage(int value) { page = value; await Load(); }
+    private async Task SearchChanged() { page = 1; await Load(); }
 
     protected override async Task OnInitializedAsync()
     {
@@ -197,15 +190,24 @@
 
     private async Task Load()
     {
+        var version = ++loadVersion;
         loading = true;
-        try { items = await UnitSvc.GetAllAsync(activeOnly); }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        try
+        {
+            var result = await UnitSvc.GetPagedAsync((page - 1) * PageSize, PageSize, activeOnly, search);
+            if (version != loadVersion) return;
+            items = result.Items;
+            total = result.TotalCount;
+            if (page > PageCount) { page = PageCount; await Load(); }
+        }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 
     private async Task OnActiveChanged(ChangeEventArgs e)
     {
         activeOnly = e.Value is bool b && b;
+        page = 1;
         await Load();
     }
 

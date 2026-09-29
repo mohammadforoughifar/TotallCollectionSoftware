@@ -9,6 +9,7 @@ namespace Inventory.Client.Services;
 /// <summary>سرویس کارفرماها.</summary>
 public interface IKarfarmaService
 {
+    Task<PagedResult<KarFarmaDto>> GetPagedAsync(int skip, int take, string? search = null);
     Task<List<KarFarmaDto>> GetAllAsync(string? search = null);
     Task<KarFarmaDto> GetAsync(int id);
     Task<KarFarmaDto> CreateAsync(KarFarmaDto dto);
@@ -19,6 +20,7 @@ public interface IKarfarmaService
 /// <summary>سرویس انواع فاکتور.</summary>
 public interface ITypeFactorService
 {
+    Task<PagedResult<TypeFactorDto>> GetPagedAsync(int skip, int take, string? search = null);
     Task<List<TypeFactorDto>> GetAllAsync(string? search = null);
     Task<TypeFactorDto> CreateAsync(TypeFactorDto dto);
     Task<TypeFactorDto> UpdateAsync(int id, TypeFactorDto dto);
@@ -85,6 +87,9 @@ public class KarfarmaService : IKarfarmaService
     private readonly IApiClient _api;
     public KarfarmaService(IApiClient api) => _api = api;
 
+    public Task<PagedResult<KarFarmaDto>> GetPagedAsync(int skip, int take, string? search = null)
+        => ListOrPaged.GetPagedAsync<KarFarmaDto>(_api, $"api/karfarmas?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");
+
     public Task<List<KarFarmaDto>> GetAllAsync(string? search = null)
         => _api.GetAsync<List<KarFarmaDto>>($"api/karfarmas?search={Uri.EscapeDataString(search ?? "")}");
 
@@ -105,6 +110,9 @@ public class TypeFactorService : ITypeFactorService
 {
     private readonly IApiClient _api;
     public TypeFactorService(IApiClient api) => _api = api;
+
+    public Task<PagedResult<TypeFactorDto>> GetPagedAsync(int skip, int take, string? search = null)
+        => ListOrPaged.GetPagedAsync<TypeFactorDto>(_api, $"api/typefactors?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");
 
     public Task<List<TypeFactorDto>> GetAllAsync(string? search = null)
         => _api.GetAsync<List<TypeFactorDto>>($"api/typefactors?search={Uri.EscapeDataString(search ?? "")}");

@@ -23,7 +23,7 @@ public interface IIncomingLetterService
     Task<PagedResult<IncomingLetterPickDto>> PickListAsync(int userId, string? search, int page = 1, int pageSize = 15);
 
     // رزرو شماره
-    Task<List<LetterNumberReservationDto>> GetReservationsAsync(int userId, int typeForm = 3);
+    Task<List<LetterNumberReservationDto>> GetReservationsAsync(int userId, int typeForm = 3, Paging.Request? pagination = null);
     Task<List<LetterNumberReservationDto>> ReserveNumberAsync(int userId, int typeForm = 3, int count = 1);
 }
 
@@ -126,6 +126,26 @@ public class IncomingLetterService : IIncomingLetterService
                              || e.Source.IncomingLetter!.Ferestande.Contains(s));
         }
 
+        var direct = _db.IncomingLetters.AsNoTracking()
+            .Where(l => l.CreateUserId == userId && l.IsBayegani && !l.IsDelete && !l.Source.IsDelete);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            direct = direct.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.Ferestande.Contains(s));
+        }
+        // Page the UNION of lightweight keys in SQL; hydrate only those keys.
+        var keys = q.Select(e => new { LetterId = e.SourceId, ErjaId = (int?)e.ErjaId,
+                NumberSabt = e.Source.IncomingLetter!.NumberSabt })
+            .Concat(direct.Select(l => new { LetterId = l.Id, ErjaId = (int?)null, NumberSabt = l.NumberSabt }));
+        var totalCount = await keys.CountAsync();
+        var pageKeys = await keys.OrderByDescending(k => k.NumberSabt)
+            .ThenByDescending(k => k.LetterId).ThenBy(k => k.ErjaId)
+            .Skip(Paging.Offset(page, pageSize)).Take(pageSize).ToListAsync();
+        var erjaIds = pageKeys.Where(k => k.ErjaId.HasValue).Select(k => k.ErjaId!.Value).ToList();
+        var directIds = pageKeys.Where(k => !k.ErjaId.HasValue).Select(k => k.LetterId).ToList();
+        q = q.Where(e => erjaIds.Contains(e.ErjaId));
+        direct = direct.Where(l => directIds.Contains(l.Id));
+
         var erjaItems = await q
             .Select(e => new IncomingLetterListItemDto
             {
@@ -142,13 +162,6 @@ public class IncomingLetterService : IIncomingLetterService
                 HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == e.SourceId)
             }).ToListAsync();
 
-        var direct = _db.IncomingLetters.AsNoTracking()
-            .Where(l => l.CreateUserId == userId && l.IsBayegani && !l.IsDelete && !l.Source.IsDelete);
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var s = search.Trim();
-            direct = direct.Where(l => l.Title.Contains(s) || (l.LetterNumber ?? "").Contains(s) || l.Ferestande.Contains(s));
-        }
         var directItems = await direct.Select(l => new IncomingLetterListItemDto
         {
             LetterId = l.Id, LetterNumber = l.LetterNumber ?? "", NumberSabt = l.NumberSabt,
@@ -159,9 +172,8 @@ public class IncomingLetterService : IIncomingLetterService
             HasAttachment = _db.AppAttachments.Any(a => a.Module == "IncomingLetters" && a.RefId == l.Id)
         }).ToListAsync();
 
-        var allItems = erjaItems.Concat(directItems).OrderByDescending(x => x.NumberSabt).ToList();
-        var totalCount = allItems.Count;
-        var items = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        var items = erjaItems.Concat(directItems).OrderByDescending(x => x.NumberSabt)
+            .ThenByDescending(x => x.LetterId).ThenBy(x => x.ErjaId).ToList();
 
         return new PagedResult<IncomingLetterListItemDto>
         {
@@ -510,7 +522,7 @@ public class IncomingLetterService : IIncomingLetterService
         };
     }
 
-    public async Task<List<LetterNumberReservationDto>> GetReservationsAsync(int userId, int typeForm = 3)
+    public async Task<List<LetterNumberReservationDto>> GetReservationsAsync(int userId, int typeForm = 3, Paging.Request? pagination = null)
     {
         try
         {
@@ -518,9 +530,8 @@ public class IncomingLetterService : IIncomingLetterService
 
             var list = await _db.LetterNumberReservations.AsNoTracking()
                 .Where(r => r.TypeForm == typeForm && !r.IsUsed && !r.IsDelete)
-                .OrderByDescending(r => r.NumberSabt)
-                .Take(50)
-                .ToListAsync();
+                .OrderByDescending(r => r.NumberSabt).ThenBy(x => x.Id)
+                .ToPageListAsync(pagination, defaultCap: 50);
 
             var userIds = list.Select(r => r.UserId).Distinct().ToList();
             var users = await _db.Users.AsNoTracking().Where(u => userIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id);

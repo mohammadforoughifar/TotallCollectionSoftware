@@ -43,6 +43,7 @@ public interface ILetterService
     Task<List<AmalgarDto>> GetAmalgarsAsync();
 
     // پیش‌نویس
+    Task<PagedResult<PishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null);
     Task<List<PishnevisDto>> GetPishnevisListAsync(string? search = null);
     Task<PishnevisDto> GetPishnevisAsync(int id);
     Task<int> SavePishnevisAsync(PishnevisDto dto);
@@ -194,6 +195,9 @@ public class LetterService : ILetterService
 
     public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
         ListOrPaged.GetAsync<AmalgarDto>(_api, "api/letters/amalgars");
+
+    public Task<PagedResult<PishnevisDto>> GetPishnevisPageAsync(int skip, int take, string? search = null)
+        => ListOrPaged.GetPagedAsync<PishnevisDto>(_api, $"api/letters/pishnevis?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");
 
     public Task<List<PishnevisDto>> GetPishnevisListAsync(string? search = null) =>
         ListOrPaged.GetAsync<PishnevisDto>(_api,

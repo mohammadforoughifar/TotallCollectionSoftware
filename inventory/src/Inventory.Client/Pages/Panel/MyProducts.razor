@@ -100,7 +100,7 @@ else
                     }
                 </div>
 
-                <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+                <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
             }
         </div>
     </div>
@@ -114,15 +114,11 @@ else
 
     private int page = 1;
     private const int PageSize = 15;
-    private int PageCount => Math.Max(1, (int)Math.Ceiling(items.Count / (double)PageSize));
-    private List<ReferrerProductItem> Paged
-    {
-        get
-        {
-            if (page > PageCount) page = PageCount;
-            return items.Skip((page - 1) * PageSize).Take(PageSize).ToList();
-        }
-    }
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+    private List<ReferrerProductItem> Paged => items;
+    private int total, loadVersion;
+    private async Task ChangePage(int value) { page = value; await Load(); }
+    private async Task SearchChanged() { page = 1; await Load(); }
 
     protected override async Task OnInitializedAsync()
     {
@@ -134,20 +130,24 @@ else
 
     private async Task Load()
     {
+        var version = ++loadVersion;
         loading = true;
         try
         {
-            items = await AuthApi.GetMyProductsAsync(search);
+            var result = await AuthApi.GetMyProductsPagedAsync((page - 1) * PageSize, PageSize, search);
+            if (version != loadVersion) return;
+            items = result.Items;
+            total = result.TotalCount;
+            if (page > PageCount) { page = PageCount; await Load(); }
             noAccess = false;
         }
         catch (Exception ex)
         {
-            if (ex.Message.Contains("فعال نشده"))
-                noAccess = true;
-            else
-                Toast.Error(ex.Message);
+            if (version != loadVersion) return;
+            if (ex.Message.Contains("فعال نشده")) noAccess = true;
+            else Toast.Error(ex.Message);
         }
-        finally { loading = false; }
+        finally { if (version == loadVersion) loading = false; }
     }
 
     private void OnSearch(ChangeEventArgs e)

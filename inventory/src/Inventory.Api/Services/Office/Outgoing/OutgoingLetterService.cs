@@ -30,25 +30,25 @@ public interface IOutgoingLetterService
     Task DeleteAsync(int letterId, int userId, bool isAdmin);
     Task EditAsync(int letterId, EditOutgoingLetterDto dto, int userId, bool isAdmin);
     Task UpdateStatusAsync(int letterId, int newStatus, int userId, bool isAdmin);
-    Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId);
+    Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId, Paging.Request? pagination = null);
     Task SignAsync(int letterId, int userId, string? signNote);
     Task<bool> ToggleLetterNeshanAsync(int letterId, int userId);
-    Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search);
+    Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search, Paging.Request? pagination = null);
 
     // ==================== دبیرخانه نامه صادره ====================
-    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto filter);
+    Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto filter, Paging.Request? pagination = null);
     Task<DabirkhaneStatsDto> GetDabirkhaneStatsAsync();
     Task DabirkhaneRegisterAsync(int letterId, DabirkhaneRegisterDto dto, int userId, string userName);
 
     /// <summary>فهرست ثبت‌کنندگان نامه (برای فیلتر جستجوی پیشرفتهٔ دبیرخانه)</summary>
-    Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync();
+    Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync(Paging.Request? pagination = null);
 
-    Task<List<LetterCompanyDto>> GetCompaniesAsync();
+    Task<List<LetterCompanyDto>> GetCompaniesAsync(Paging.Request? pagination = null);
 
     // ==================== رونوشت‌گیرندگان (جدول مستقل) ====================
 
     /// <summary>فهرست رونوشت‌گیرندگان یک نامه صادره</summary>
-    Task<List<OutgoingLetterCopyToDto>> GetCopyTosAsync(int letterId, int userId, bool isAdmin);
+    Task<List<OutgoingLetterCopyToDto>> GetCopyTosAsync(int letterId, int userId, bool isAdmin, Paging.Request? pagination = null);
 
     /// <summary>جایگزینی کامل فهرست رونوشت‌های یک نامه</summary>
     Task<List<OutgoingLetterCopyToDto>> ReplaceCopyTosAsync(
@@ -395,6 +395,38 @@ public class OutgoingLetterService : IOutgoingLetterService
                              || e.UserSender!.Username.Contains(s));
         }
 
+        // بخش 2: امضایی‌ها (حتی اگر ارجاع نداشته باشد)
+        var qSign = _db.OutgoingLetterSigners.AsNoTracking()
+            .Where(s => s.UserId == userId && !s.IsDelete && !s.Source.IsDelete && s.Source.OutgoingLetter != null && !s.Source.OutgoingLetter.IsDelete);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim();
+            qSign = qSign.Where(sg => sg.Source.OutgoingLetter!.Title.Contains(s)
+                                   || (sg.Source.OutgoingLetter!.LetterNumber ?? "").Contains(s)
+                                   || sg.Source.OutgoingLetter!.ReceiverOrganization.Contains(s)
+                                   || (sg.Source.OutgoingLetter!.SadereNumber ?? "").Contains(s));
+        }
+        if (unreadOnly == true)
+        {
+            qSign = qSign.Where(s => !s.IsSigned);
+        }
+
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 20 : pageSize;
+        // The previous dictionary kept the lowest ErjaId for each letter.
+        // Preserve that rule explicitly before unioning signer-only letters.
+        var matchingErjas = qErja;
+        qErja = qErja.Where(e => !matchingErjas.Any(other => other.SourceId == e.SourceId && other.ErjaId < e.ErjaId));
+        var keys = qErja.Select(e => new { LetterId = e.SourceId, Date = e.Date })
+            .Concat(qSign.Where(s => !qErja.Any(e => e.SourceId == s.SourceId))
+                .Select(s => new { LetterId = s.SourceId, Date = s.Source.OutgoingLetter!.DateSabt }).Distinct());
+        var totalCount = await keys.CountAsync();
+        var pageIds = await keys.OrderByDescending(k => k.Date).ThenByDescending(k => k.LetterId)
+            .Skip(Paging.Offset(page, pageSize)).Take(pageSize).Select(k => k.LetterId).ToListAsync();
+        qErja = qErja.Where(e => pageIds.Contains(e.SourceId));
+        qSign = qSign.Where(s => pageIds.Contains(s.SourceId));
+
         var erjaList = await qErja
             .OrderByDescending(e => e.ErjaId)
             .Select(e => new OutgoingLetterListItemDto
@@ -431,23 +463,6 @@ public class OutgoingLetterService : IOutgoingLetterService
                 SignersSigned = e.Source.OutgoingSigners.Count(s => !s.IsDelete && s.IsSigned)
             })
             .ToListAsync();
-
-        // بخش 2: امضایی‌ها (حتی اگر ارجاع نداشته باشد)
-        var qSign = _db.OutgoingLetterSigners.AsNoTracking()
-            .Where(s => s.UserId == userId && !s.IsDelete && !s.Source.IsDelete && s.Source.OutgoingLetter != null && !s.Source.OutgoingLetter.IsDelete);
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var s = search.Trim();
-            qSign = qSign.Where(sg => sg.Source.OutgoingLetter!.Title.Contains(s)
-                                   || (sg.Source.OutgoingLetter!.LetterNumber ?? "").Contains(s)
-                                   || sg.Source.OutgoingLetter!.ReceiverOrganization.Contains(s)
-                                   || (sg.Source.OutgoingLetter!.SadereNumber ?? "").Contains(s));
-        }
-        if (unreadOnly == true)
-        {
-            qSign = qSign.Where(s => !s.IsSigned);
-        }
 
         var signerLetters = await qSign
             .OrderByDescending(s => s.Source.OutgoingLetter!.DateSabt)
@@ -514,11 +529,7 @@ public class OutgoingLetterService : IOutgoingLetterService
             }
         }
 
-        var combined = dict.Values.OrderByDescending(x => x.Date).ThenByDescending(x => x.LetterId).ToList();
-        var totalCount = combined.Count;
-        page = Math.Max(1, page);
-        pageSize = pageSize <= 0 ? 20 : pageSize;
-        var items = combined.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        var items = dict.Values.OrderByDescending(x => x.Date).ThenByDescending(x => x.LetterId).ToList();
 
         return new PagedResult<OutgoingLetterListItemDto>
         {
@@ -1164,7 +1175,7 @@ public class OutgoingLetterService : IOutgoingLetterService
         await _notify.BroadcastChangedAsync("outgoing-letters");
     }
 
-    public async Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId)
+    public async Task<List<OutgoingSignerDto>> GetSignersAsync(int letterId, Paging.Request? pagination = null)
     {
         return await _db.OutgoingLetterSigners.AsNoTracking()
             .Include(s => s.User)
@@ -1184,7 +1195,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 IsSigned = s.IsSigned,
                 DateSigned = s.DateSigned,
                 SignNote = s.SignNote
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task SignAsync(int letterId, int userId, string? signNote)
@@ -1250,7 +1261,7 @@ public class OutgoingLetterService : IOutgoingLetterService
         return letter.IsNeshan;
     }
 
-    public async Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search)
+    public async Task<List<LetterReciverDto>> GetAvailableSignersAsync(string? search, Paging.Request? pagination = null)
     {
         var allowed = await GetUsersWithSignPermissionAsync();
 
@@ -1267,12 +1278,12 @@ public class OutgoingLetterService : IOutgoingLetterService
             q = q.Where(u => u.Username.Contains(s) || (u.FirstName + " " + u.LastName).Contains(s) || (u.FirstName ?? "").Contains(s) || (u.LastName ?? "").Contains(s));
         }
 
-        return await q.OrderBy(u => u.Username).Take(100)
+        return await q.OrderBy(u => u.Username).ThenBy(x => x.Id)
             .Select(u => new LetterReciverDto
             {
                 UserId = u.Id,
                 FullName = string.IsNullOrWhiteSpace((u.FirstName ?? "") + (u.LastName ?? "")) ? u.Username : $"{u.FirstName} {u.LastName}".Trim()
-            }).ToListAsync();
+            }).ToPageListAsync(pagination, defaultCap: 100);
     }
 
     // ============================================================
@@ -1285,7 +1296,7 @@ public class OutgoingLetterService : IOutgoingLetterService
     /// <summary>
     /// لیست دبیرخانه — نامه‌های امضا شده (SadereNumber دار) با جستجوی پیشرفته.
     /// </summary>
-    public async Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto filter)
+    public async Task<List<DabirkhaneListItemDto>> GetDabirkhaneAsync(DabirkhaneSearchDto filter, Paging.Request? pagination = null)
     {
         filter ??= new DabirkhaneSearchDto();
 
@@ -1400,7 +1411,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 CopyTo = l.CopyTo,
                 HasCopyTo = l.CopyTo != null && l.CopyTo != ""
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         // شناسه گره بایگانی + عنوان پوشه (جدا از کوئری اصلی برای سادگی ترجمهٔ EF)
         var archivedIds = list.Where(x => x.IsArchived).Select(x => x.LetterId).ToList();
@@ -1496,7 +1507,7 @@ public class OutgoingLetterService : IOutgoingLetterService
     }
 
     /// <summary>فهرست ثبت‌کنندگان نامه‌های صادره — برای فیلتر جستجوی پیشرفتهٔ دبیرخانه</summary>
-    public async Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync()
+    public async Task<List<LetterReciverDto>> GetDabirkhaneCreatorsAsync(Paging.Request? pagination = null)
     {
         var ids = await _db.OutgoingLetters.AsNoTracking()
             .Where(l => !l.IsDelete && !l.Source.IsDelete)
@@ -1508,7 +1519,7 @@ public class OutgoingLetterService : IOutgoingLetterService
 
         return await _db.Users.AsNoTracking()
             .Where(u => ids.Contains(u.Id))
-            .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
+            .OrderBy(u => u.FirstName).ThenBy(u => u.Username).ThenBy(x => x.Id)
             .Select(u => new LetterReciverDto
             {
                 UserId = u.Id,
@@ -1516,7 +1527,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                     ? u.Username
                     : $"{u.FirstName} {u.LastName}".Trim()
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
     }
 
     /// <summary>ثبت دبیرخانه: شماره ثبت مقصد + روش ارسال — فقط برای نامه‌های امضا شده</summary>
@@ -1615,24 +1626,24 @@ public class OutgoingLetterService : IOutgoingLetterService
     }
 
     /// <summary>شرکت‌های فعال برای انتخاب سربرگ نامه صادره</summary>
-    public async Task<List<LetterCompanyDto>> GetCompaniesAsync()
+    public async Task<List<LetterCompanyDto>> GetCompaniesAsync(Paging.Request? pagination = null)
     {
         return await _db.SystemCompanies.AsNoTracking()
             .Where(c => c.IsActive)
-            .OrderBy(c => c.Name)
+            .OrderBy(c => c.Name).ThenBy(x => x.Id)
             .Select(c => new LetterCompanyDto
             {
                 Id = c.Id,
                 Name = c.Name,
                 LetterheadFileName = c.LetterheadFileName,
                 HasLetterhead = c.LetterheadFileName != null && c.LetterheadFileName != ""
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     // ==================== رونوشت‌گیرندگان (جدول مستقل) ====================
 
     /// <summary>فهرست رونوشت‌گیرندگان یک نامه صادره</summary>
-    public async Task<List<OutgoingLetterCopyToDto>> GetCopyTosAsync(int letterId, int userId, bool isAdmin)
+    public async Task<List<OutgoingLetterCopyToDto>> GetCopyTosAsync(int letterId, int userId, bool isAdmin, Paging.Request? pagination = null)
     {
         var letter = await _db.OutgoingLetters.AsNoTracking()
             .FirstOrDefaultAsync(l => l.Id == letterId && !l.IsDelete);
@@ -1651,7 +1662,7 @@ public class OutgoingLetterService : IOutgoingLetterService
                 Name = c.Name,
                 Desc = c.Desc,
                 RefNo = c.RefNo
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     /// <summary>

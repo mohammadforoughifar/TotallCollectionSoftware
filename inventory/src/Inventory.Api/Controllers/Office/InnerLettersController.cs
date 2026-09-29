@@ -185,7 +185,7 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        try { return Ok(Paging.Result(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()), skip, take)); }
+        try { return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync(), pagination), skip, take)); }
         catch (Exception ex) { return BadRequest(new { message = PersianError(ex, "گردش نامه قابل دریافت نیست.") }); }
     }
 
@@ -323,7 +323,7 @@ public class InnerLettersController : RbacControllerBase
 
     /// <summary>لیست عملگرهای ارجاع</summary>
     [HttpGet("amalgars")]
-    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _erja.GetAmalgarsAsync(), skip, take));
+    public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
 
     // ==================== پیش‌نویس ====================
 
@@ -331,7 +331,7 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> PishnevisList([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _pishnevis.GetAllAsync(MyUserId, search), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _pishnevis.GetAllAsync(MyUserId, search, pagination: pagination), skip, take));
     }
 
     [HttpGet("pishnevis/{id:int}")]
@@ -369,10 +369,11 @@ public class InnerLettersController : RbacControllerBase
     [HttpGet("recivers")]
     public async Task<IActionResult> Recivers([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var users = await Db.Users.AsNoTracking()
             .Where(u => u.IsActive && u.Id != MyUserId)
-            .OrderBy(u => u.FirstName).ThenBy(u => u.Username)
+            .OrderBy(u => u.FirstName).ThenBy(u => u.Username).ThenBy(x => x.Id)
             .Select(u => new LetterReciverDto
             {
                 UserId = u.Id,
@@ -380,8 +381,8 @@ public class InnerLettersController : RbacControllerBase
                     ? u.Username
                     : (u.FirstName + " " + u.LastName).Trim()
             })
-            .ToListAsync();
-        return Ok(Paging.Result(users, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(users));
     }
 
     // ==================== گروه‌های گیرندگان (پورت Groups کارفرما) ====================
@@ -391,7 +392,7 @@ public class InnerLettersController : RbacControllerBase
     public async Task<IActionResult> Groups([FromQuery] bool withMembers = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _groups.GetAllAsync(withMembers), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _groups.GetAllAsync(withMembers, pagination: pagination), skip, take));
     }
 
     /// <summary>ایجاد/ویرایش گروه گیرندگان</summary>
@@ -447,6 +448,7 @@ public class InnerLettersController : RbacControllerBase
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         if (!await InFlowAsync(id) && !await IsAdminAsync())
             return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
@@ -455,7 +457,7 @@ public class InnerLettersController : RbacControllerBase
             .Where(a => a.Module == Module && a.RefId == id)
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         var list = rows.Select(a => new LetterAttachmentDto
         {
@@ -467,7 +469,7 @@ public class InnerLettersController : RbacControllerBase
             UploaderUserId = a.UploaderUserId,
             UploadedAt = a.UploadedAt
         }).ToList();
-        return Ok(Paging.Result(list, skip, take));
+        return Ok(pagination.Result(list));
     }
 
     /// <summary>
@@ -552,6 +554,7 @@ public class InnerLettersController : RbacControllerBase
     [HttpGet("pishnevis/{id:int}/attachments")]
     public async Task<IActionResult> PishnevisAttachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var owns = await Db.PishnevisLetters.AnyAsync(p => p.PishnevisId == id && p.UserId == MyUserId && !p.IsDelete);
         if (!owns) return StatusCode(403, new { message = "پیش‌نویس متعلق به شما نیست." });
@@ -560,7 +563,7 @@ public class InnerLettersController : RbacControllerBase
             .Where(a => a.Module == "Pishnevis" && a.RefId == id)
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         var list = rows.Select(a => new LetterAttachmentDto
         {
@@ -568,7 +571,7 @@ public class InnerLettersController : RbacControllerBase
             Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length, UploaderName = a.UploaderName,
             UploaderUserId = a.UploaderUserId, UploadedAt = a.UploadedAt
         }).ToList();
-        return Ok(Paging.Result(list, skip, take));
+        return Ok(pagination.Result(list));
     }
 
     /// <summary>

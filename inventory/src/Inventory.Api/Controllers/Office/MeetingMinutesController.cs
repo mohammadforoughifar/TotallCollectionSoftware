@@ -62,7 +62,7 @@ public class MeetingMinutesController : RbacControllerBase
         if (await ForbiddenUnlessAsync(Module, "View") is { } f) return f;
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
-        return Ok(Paging.Result(await _svc.GetListAsync(search, status, MyUserId, companyId.Value), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.GetListAsync(search, status, MyUserId, companyId.Value, pagination: pagination), skip, take));
     }
 
     // ================== جزئیات ==================

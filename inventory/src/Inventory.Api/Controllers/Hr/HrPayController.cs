@@ -243,11 +243,18 @@ public class HrPayController : ControllerBase
     [HttpGet("brackets")]
     public async Task<IActionResult> Brackets([FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!await CanReadAsync()) return Forbid();
         var y = year ?? 1405;
         await _svc.EnsureTaxSeedAsync(y);
-        var rows = await _db.HrPayTaxBrackets.AsNoTracking().Where(b => b.Year == y).ToListAsync();
-        return Ok(Paging.Result(rows.OrderBy(b => b.FromAmount).ToList(), skip, take));
+        var query = _db.HrPayTaxBrackets.AsNoTracking().Where(b => b.Year == y);
+        // SQLite cannot ORDER BY decimal; this conversion is only a sort key.
+        // The original decimal amounts returned to the client are not converted.
+        var ordered = _db.Database.IsSqlite()
+            ? query.OrderBy(b => (double)b.FromAmount)
+            : query.OrderBy(b => b.FromAmount);
+        var rows = await ordered.ThenBy(b => b.Id).ToPageListAsync(pagination);
+        return Ok(pagination.Result(rows));
     }
 
     public class BracketInput { public int Year { get; set; } public decimal FromAmount { get; set; } public decimal ToAmount { get; set; } public decimal Rate { get; set; } }
@@ -290,7 +297,9 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Rules([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(Paging.Result(await _svc.GetPayRulesAsync(), skip, take));
+        var pagination = new Paging.Request(skip, take);
+        var rules = await _svc.GetPayRulesAsync(pagination);
+        return Ok(pagination.DictionaryResult(rules));
     }
 
     [HttpPut("rules")]
@@ -505,7 +514,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Compare(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        try { return Ok(Paging.Result(await _svc.CompareAsync(id), skip, take)); }
+        try { return Ok(await Paging.ResultAsync(async pagination => await _svc.CompareAsync(id, pagination: pagination), skip, take)); }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
@@ -695,7 +704,7 @@ public class HrPayController : ControllerBase
     public async Task<IActionResult> Filings([FromQuery] int? runId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await CanReadAsync()) return Forbid();
-        return Ok(Paging.Result(await _svc.FilingsAsync(runId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.FilingsAsync(runId, pagination: pagination), skip, take));
     }
 
     [HttpGet("filings/verify")]

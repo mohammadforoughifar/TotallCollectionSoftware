@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -64,13 +65,12 @@ public class AiConversationService
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.Title, title));
     }
 
-    public async Task<List<AiConversationDto>> ListAsync(int userId, string channel = "web")
+    public async Task<List<AiConversationDto>> ListAsync(int userId, string channel = "web", Paging.Request? pagination = null)
     {
         channel = NormalizeChannel(channel);
         return await _db.AiConversations.AsNoTracking()
             .Where(c => c.UserId == userId && c.Channel == channel && !c.IsArchived)
-            .OrderByDescending(c => c.LastMessageAtUtc)
-            .Take(30)
+            .OrderByDescending(c => c.LastMessageAtUtc).ThenBy(x => x.Id)
             .Select(c => new AiConversationDto
             {
                 Id = c.Id,
@@ -78,7 +78,7 @@ public class AiConversationService
                 Channel = c.Channel,
                 LastMessageAtUtc = c.LastMessageAtUtc,
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination, defaultCap: 30);
     }
 
     public async Task<AiConversationDto?> GetAsync(int userId, int id)

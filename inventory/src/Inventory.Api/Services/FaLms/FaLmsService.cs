@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaCom;
 using Inventory.Shared.Dtos;
@@ -20,83 +21,83 @@ namespace Inventory.Api.Services.FaLms;
 public interface IFaLmsService
 {
     // دوره‌ها
-    Task<List<FaLmsCourseDto>> ListCoursesAsync(int? year, int? status, int? kind, string? q);
+    Task<List<FaLmsCourseDto>> ListCoursesAsync(int? year, int? status, int? kind, string? q, Paging.Request? pagination = null);
     Task<FaLmsCourseDto?> GetCourseAsync(int id);
     Task<FaLmsCourseDto> SaveCourseAsync(int? id, FaLmsCourseSaveDto dto);
     Task DeleteCourseAsync(int id);
     Task<FaLmsCourseDto> SetCourseStatusAsync(int id, int status, int byUserId);
-    Task<List<FaLmsCalendarItemDto>> GetCalendarAsync(int year);
+    Task<List<FaLmsCalendarItemDto>> GetCalendarAsync(int year, Paging.Request? pagination = null);
     Task<FaLmsCourseReportDto?> GetCourseReportAsync(int id);
     // نیازسنجی
-    Task<List<FaLmsNeedDto>> ListNeedsAsync(int? year, int? status, int? source, int? employeeId);
-    Task<List<FaLmsNeedDto>> MyNeedsAsync(int userId);
+    Task<List<FaLmsNeedDto>> ListNeedsAsync(int? year, int? status, int? source, int? employeeId, Paging.Request? pagination = null);
+    Task<List<FaLmsNeedDto>> MyNeedsAsync(int userId, Paging.Request? pagination = null);
     Task<FaLmsNeedDto> SaveNeedAsync(int? id, FaLmsNeedSaveDto dto, int byUserId, string byName);
     Task<FaLmsNeedDto> DecideNeedAsync(int id, int status, int? linkedCourseId, string byName);
     Task DeleteNeedAsync(int id);
-    Task<List<FaLmsWeakScoreDto>> WeakScoresAsync(int periodId, double threshold);
+    Task<List<FaLmsWeakScoreDto>> WeakScoresAsync(int periodId, double threshold, Paging.Request? pagination = null);
     Task<int> SuggestFromPerfAsync(int periodId, double threshold, int year, int byUserId, string byName);
     // ثبت‌نام
-    Task<List<FaLmsEnrollmentDto>> ListEnrollmentsAsync(int? courseId, int? status);
-    Task<List<FaLmsEnrollmentDto>> MyEnrollmentsAsync(int userId);
+    Task<List<FaLmsEnrollmentDto>> ListEnrollmentsAsync(int? courseId, int? status, Paging.Request? pagination = null);
+    Task<List<FaLmsEnrollmentDto>> MyEnrollmentsAsync(int userId, Paging.Request? pagination = null);
     Task<FaLmsEnrollmentDto> EnrollAsync(int courseId, int? employeeId, int userId, string userName);
     Task<FaLmsEnrollmentDto> DecideEnrollmentAsync(int id, bool approve, int byUserId, string byName);
     Task CancelEnrollmentAsync(int id, int userId, bool isHr);
     Task DeleteEnrollmentAsync(int id);
     // جلسات و حضور
-    Task<List<FaLmsSessionDto>> ListSessionsAsync(int courseId);
+    Task<List<FaLmsSessionDto>> ListSessionsAsync(int courseId, Paging.Request? pagination = null);
     Task<FaLmsSessionDto> SaveSessionAsync(int? id, FaLmsSessionSaveDto dto);
     Task DeleteSessionAsync(int id);
-    Task<List<FaLmsAttendanceDto>> GetAttendanceAsync(int sessionId);
+    Task<List<FaLmsAttendanceDto>> GetAttendanceAsync(int sessionId, Paging.Request? pagination = null);
     Task SaveAttendanceAsync(FaLmsAttendanceSaveDto dto);
     // آزمون
-    Task<List<FaLmsExamDto>> ListExamsAsync(int courseId);
+    Task<List<FaLmsExamDto>> ListExamsAsync(int courseId, Paging.Request? pagination = null);
     Task<FaLmsExamDto> SaveExamAsync(int? id, FaLmsExamSaveDto dto, int byUserId);
     Task DeleteExamAsync(int id);
-    Task<List<FaLmsQuestionDto>> ListQuestionsAsync(int examId);
+    Task<List<FaLmsQuestionDto>> ListQuestionsAsync(int examId, Paging.Request? pagination = null);
     Task<FaLmsQuestionDto> SaveQuestionAsync(int? id, FaLmsQuestionSaveDto dto);
     Task DeleteQuestionAsync(int id);
     Task<FaLmsExamPlayDto> StartAttemptAsync(int examId, int userId);
     Task<FaLmsAttemptDto> SubmitAttemptAsync(int examId, FaLmsSubmitDto dto, int userId);
-    Task<List<FaLmsAttemptDto>> ListAttemptsAsync(int examId);
-    Task<FaLmsGradingInboxDto> GradingInboxAsync(int userId);
-    Task<List<FaLmsBankDto>> ListBanksAsync();
+    Task<List<FaLmsAttemptDto>> ListAttemptsAsync(int examId, Paging.Request? pagination = null);
+    Task<FaLmsGradingInboxDto> GradingInboxAsync(int userId, Paging.Request? pagination = null);
+    Task<List<FaLmsBankDto>> ListBanksAsync(Paging.Request? pagination = null);
     Task<FaLmsBankDto> SaveBankAsync(int? id, FaLmsBankSaveDto dto);
     Task DeleteBankAsync(int id);
-    Task<List<FaLmsBankQuestionDto>> ListBankQuestionsAsync(int bankId);
+    Task<List<FaLmsBankQuestionDto>> ListBankQuestionsAsync(int bankId, Paging.Request? pagination = null);
     Task<FaLmsBankQuestionDto> SaveBankQuestionAsync(int? id, FaLmsBankQuestionSaveDto dto);
     Task DeleteBankQuestionAsync(int id);
     Task<int> CopyFromBankAsync(int examId, List<int> bankQuestionIds);
-    Task<List<FaLmsTextAnswerDto>> ListTextAnswersAsync(int attemptId);
+    Task<List<FaLmsTextAnswerDto>> ListTextAnswersAsync(int attemptId, Paging.Request? pagination = null);
     Task<FaLmsAttemptDto> GradeAttemptAsync(int attemptId, FaLmsGradeSaveDto dto, int byUserId);
     // گواهی
-    Task<List<FaLmsCertificateDto>> ListCertificatesAsync(int? courseId, int? employeeId, int? year);
-    Task<List<FaLmsCertificateDto>> MyCertificatesAsync(int userId);
+    Task<List<FaLmsCertificateDto>> ListCertificatesAsync(int? courseId, int? employeeId, int? year, Paging.Request? pagination = null);
+    Task<List<FaLmsCertificateDto>> MyCertificatesAsync(int userId, Paging.Request? pagination = null);
     Task<FaLmsCertificateDto> IssueCertificateAsync(int courseId, int employeeId, int byUserId, string byName);
     Task<int> IssueMissingAsync(int courseId, int byUserId, string byName);
     Task<FaLmsVerifyResultDto> VerifyAsync(string certNo, string code);
     Task<byte[]> CertificatePdfAsync(int id);
     // مدرس‌ها
-    Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive);
+    Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive, Paging.Request? pagination = null);
     Task<FaLmsInstructorDto> SaveInstructorAsync(int? id, FaLmsInstructorSaveDto dto);
     Task DeleteInstructorAsync(int id);
     // نظرسنجی اثربخشی
-    Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId);
+    Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId, Paging.Request? pagination = null);
     Task<FaLmsSurveyQuestionDto> SaveSurveyQuestionAsync(FaLmsSurveyQuestionSaveDto dto);
     Task DeleteSurveyQuestionAsync(int id);
     Task SaveSurveyAnswerAsync(FaLmsSurveyAnswerSaveDto dto);
-    Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId);
+    Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId, Paging.Request? pagination = null);
     // تداخل‌یابی
     Task<List<FaLmsConflictDto>> CheckConflictsAsync(int courseId, int? employeeId);
     Task DeleteCertificateAsync(int id);
     // بودجه
-    Task<List<FaLmsBudgetDto>> ListBudgetsAsync();
+    Task<List<FaLmsBudgetDto>> ListBudgetsAsync(Paging.Request? pagination = null);
     Task<FaLmsBudgetDto> SaveBudgetAsync(int? id, FaLmsBudgetSaveDto dto);
     Task DeleteBudgetAsync(int id);
-    Task<FaLmsBudgetReportDto> BudgetReportAsync(int year);
+    Task<FaLmsBudgetReportDto> BudgetReportAsync(int year, Paging.Request? pagination = null);
     // گزارش‌ها
-    Task<FaLmsDashboardDto> GetDashboardAsync(int year);
-    Task<FaLmsEmployeeReportDto?> EmployeeReportAsync(int employeeId);
-    Task<FaLmsEmployeeReportDto?> MyReportAsync(int userId);
+    Task<FaLmsDashboardDto> GetDashboardAsync(int year, Paging.Request? pagination = null);
+    Task<FaLmsEmployeeReportDto?> EmployeeReportAsync(int employeeId, Paging.Request? pagination = null);
+    Task<FaLmsEmployeeReportDto?> MyReportAsync(int userId, Paging.Request? pagination = null);
 }
 
 public class FaLmsService : IFaLmsService
@@ -108,6 +109,15 @@ public class FaLmsService : IFaLmsService
     public FaLmsService(AppDbContext db, IFaComService com) { _db = db; _com = com; }
 
     private static int Jy(DateTime d) { try { return Pc.GetYear(d); } catch { return d.Year; } }
+
+    // Inclusive end avoids overflow at the final year supported by PersianCalendar.
+    private static (DateTime Start, DateTime End) YearRange(int year)
+    {
+        var lastYear = Pc.GetYear(Pc.MaxSupportedDateTime);
+        if (year < 1 || year > lastYear) return (DateTime.MaxValue, DateTime.MinValue);
+        return (Pc.ToDateTime(year, 1, 1, 0, 0, 0, 0), year == lastYear
+            ? Pc.MaxSupportedDateTime : Pc.ToDateTime(year + 1, 1, 1, 0, 0, 0, 0).AddTicks(-1));
+    }
 
     private Task<Dictionary<int, string>> EmpNamesAsync()
         => _db.HrEmployees.ToDictionaryAsync(e => e.Id, e => (e.FirstName + " " + e.LastName).Trim());
@@ -127,7 +137,7 @@ public class FaLmsService : IFaLmsService
 
     // ==================== دوره‌ها ====================
 
-    public async Task<List<FaLmsCourseDto>> ListCoursesAsync(int? year, int? status, int? kind, string? q)
+    public async Task<List<FaLmsCourseDto>> ListCoursesAsync(int? year, int? status, int? kind, string? q, Paging.Request? pagination = null)
     {
         var query = _db.FaLmsCourses.AsQueryable();
         if (status != null) query = query.Where(c => (int)c.Status == status.Value);
@@ -137,9 +147,13 @@ public class FaLmsService : IFaLmsService
             var s = q.Trim();
             query = query.Where(c => c.Title.Contains(s) || c.Code.Contains(s));
         }
-        var list = await query.OrderByDescending(c => c.Id).ToListAsync();
         if (year != null)
-            list = list.Where(c => c.StartDate != null && Jy(c.StartDate.Value) == year.Value).ToList();
+        {
+            var start = Pc.ToDateTime(year.Value, 1, 1, 0, 0, 0, 0);
+            var end = Pc.ToDateTime(year.Value + 1, 1, 1, 0, 0, 0, 0);
+            query = query.Where(c => c.StartDate >= start && c.StartDate < end);
+        }
+        var list = await query.OrderByDescending(c => c.Id).ToPageListAsync(pagination);
         var ids = list.Select(c => c.Id).ToList();
         var ecounts = ids.Count == 0 ? new Dictionary<int, int>()
             : await _db.FaLmsEnrollments.Where(e => ids.Contains(e.CourseId))
@@ -240,29 +254,34 @@ public class FaLmsService : IFaLmsService
         return (await GetCourseAsync(id))!;
     }
 
-    public async Task<List<FaLmsCalendarItemDto>> GetCalendarAsync(int year)
+    public async Task<List<FaLmsCalendarItemDto>> GetCalendarAsync(int year, Paging.Request? pagination = null)
     {
-        var items = new List<FaLmsCalendarItemDto>();
-        var courses = await _db.FaLmsCourses.Where(c => c.StartDate != null).ToListAsync();
-        foreach (var c in courses.Where(c => Jy(c.StartDate!.Value) == year))
-            items.Add(new FaLmsCalendarItemDto { Date = c.StartDate!.Value, Kind = 0, Title = $"شروع دوره: {c.Title}", CourseId = c.Id, CourseTitle = c.Title, RefId = c.Id });
-        var titles = await _db.FaLmsCourses.ToDictionaryAsync(c => c.Id, c => c.Title);
-        var sessions = await _db.FaLmsSessions.ToListAsync();
-        foreach (var s in sessions.Where(s => Jy(s.SessionDate) == year))
-            items.Add(new FaLmsCalendarItemDto
-            {
-                Date = s.SessionDate, Kind = 1,
-                Title = string.IsNullOrWhiteSpace(s.Topic) ? "جلسه آموزشی" : $"جلسه: {s.Topic}",
-                CourseId = s.CourseId, CourseTitle = titles.TryGetValue(s.CourseId, out var t) ? t : null, RefId = s.Id
-            });
-        var exams = await _db.FaLmsExams.Where(e => e.ExamDate != null).ToListAsync();
-        foreach (var e in exams.Where(e => Jy(e.ExamDate!.Value) == year))
-            items.Add(new FaLmsCalendarItemDto
-            {
-                Date = e.ExamDate!.Value, Kind = 2, Title = $"آزمون: {e.Title}",
-                CourseId = e.CourseId, CourseTitle = titles.TryGetValue(e.CourseId, out var t2) ? t2 : null, RefId = e.Id
-            });
-        return items.OrderBy(i => i.Date).ToList();
+        var (start, end) = YearRange(year);
+        // UNION ALL keys avoids set operations after client-only DTO formatting.
+        var keys = await _db.FaLmsCourses.Where(c => c.StartDate >= start && c.StartDate <= end)
+            .Select(c => new { Date = c.StartDate!.Value, Kind = 0, c.Id })
+            .Concat(_db.FaLmsSessions.Where(x => x.SessionDate >= start && x.SessionDate <= end)
+                .Select(x => new { Date = x.SessionDate, Kind = 1, x.Id }))
+            .Concat(_db.FaLmsExams.Where(x => x.ExamDate >= start && x.ExamDate <= end)
+                .Select(x => new { Date = x.ExamDate!.Value, Kind = 2, x.Id }))
+            .OrderBy(x => x.Date).ThenBy(x => x.Kind).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        var courseIds = keys.Where(x => x.Kind == 0).Select(x => x.Id).ToList();
+        var sessionIds = keys.Where(x => x.Kind == 1).Select(x => x.Id).ToList();
+        var examIds = keys.Where(x => x.Kind == 2).Select(x => x.Id).ToList();
+        var sessions = await _db.FaLmsSessions.AsNoTracking().Where(x => sessionIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        var exams = await _db.FaLmsExams.AsNoTracking().Where(x => examIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id);
+        courseIds.AddRange(sessions.Values.Select(x => x.CourseId));
+        courseIds.AddRange(exams.Values.Select(x => x.CourseId));
+        var courses = await _db.FaLmsCourses.AsNoTracking().Where(x => courseIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Title);
+        return keys.Select(x =>
+        {
+            var courseId = x.Kind == 0 ? x.Id : x.Kind == 1 ? sessions[x.Id].CourseId : exams[x.Id].CourseId;
+            courses.TryGetValue(courseId, out var courseTitle);
+            var title = x.Kind == 0 ? $"شروع دوره: {courseTitle}" : x.Kind == 2 ? $"آزمون: {exams[x.Id].Title}"
+                : string.IsNullOrWhiteSpace(sessions[x.Id].Topic) ? "جلسه آموزشی" : $"جلسه: {sessions[x.Id].Topic}";
+            return new FaLmsCalendarItemDto { Date = x.Date, Kind = x.Kind, Title = title,
+                CourseId = courseId, CourseTitle = courseTitle, RefId = x.Id };
+        }).ToList();
     }
 
     public async Task<FaLmsCourseReportDto?> GetCourseReportAsync(int id)
@@ -298,23 +317,23 @@ public class FaLmsService : IFaLmsService
 
     // ==================== نیازسنجی ====================
 
-    public async Task<List<FaLmsNeedDto>> ListNeedsAsync(int? year, int? status, int? source, int? employeeId)
+    public async Task<List<FaLmsNeedDto>> ListNeedsAsync(int? year, int? status, int? source, int? employeeId, Paging.Request? pagination = null)
     {
         var q = _db.FaLmsNeeds.AsQueryable();
         if (year != null) q = q.Where(n => n.Year == year.Value);
         if (status != null) q = q.Where(n => (int)n.Status == status.Value);
         if (source != null) q = q.Where(n => (int)n.Source == source.Value);
         if (employeeId != null) q = q.Where(n => n.EmployeeId == employeeId.Value);
-        var list = await q.OrderByDescending(n => n.Id).ToListAsync();
+        var list = await q.OrderByDescending(n => n.Id).ToPageListAsync(pagination);
         return await MapNeedsAsync(list);
     }
 
-    public async Task<List<FaLmsNeedDto>> MyNeedsAsync(int userId)
+    public async Task<List<FaLmsNeedDto>> MyNeedsAsync(int userId, Paging.Request? pagination = null)
     {
         var me = await MyEmployeeAsync(userId);
         if (me == null) return new();
         var list = await _db.FaLmsNeeds.Where(n => n.EmployeeId == me.Id)
-            .OrderByDescending(n => n.Id).ToListAsync();
+            .OrderByDescending(n => n.Id).ToPageListAsync(pagination);
         return await MapNeedsAsync(list);
     }
 
@@ -409,13 +428,13 @@ public class FaLmsService : IFaLmsService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<FaLmsWeakScoreDto>> WeakScoresAsync(int periodId, double threshold)
+    public async Task<List<FaLmsWeakScoreDto>> WeakScoresAsync(int periodId, double threshold, Paging.Request? pagination = null)
     {
         var period = await _db.HrPerfPeriods.FindAsync(periodId)
             ?? throw new InvalidOperationException("دوره ارزیابی یافت نشد.");
         var scores = await _db.HrPerfScores
             .Where(s => s.PeriodId == periodId && s.Score < threshold)
-            .OrderBy(s => s.Score).ToListAsync();
+            .OrderBy(s => s.Score).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var kpis = await _db.HrPerfKpis.Where(k => k.PeriodId == periodId)
             .ToDictionaryAsync(k => k.Id);
         var names = await EmpNamesAsync();
@@ -461,21 +480,21 @@ public class FaLmsService : IFaLmsService
 
     // ==================== ثبت‌نام ====================
 
-    public async Task<List<FaLmsEnrollmentDto>> ListEnrollmentsAsync(int? courseId, int? status)
+    public async Task<List<FaLmsEnrollmentDto>> ListEnrollmentsAsync(int? courseId, int? status, Paging.Request? pagination = null)
     {
         var q = _db.FaLmsEnrollments.AsQueryable();
         if (courseId != null) q = q.Where(e => e.CourseId == courseId.Value);
         if (status != null) q = q.Where(e => (int)e.Status == status.Value);
-        var list = await q.OrderByDescending(e => e.Id).ToListAsync();
+        var list = await q.OrderByDescending(e => e.Id).ToPageListAsync(pagination);
         return await MapEnrollmentsAsync(list);
     }
 
-    public async Task<List<FaLmsEnrollmentDto>> MyEnrollmentsAsync(int userId)
+    public async Task<List<FaLmsEnrollmentDto>> MyEnrollmentsAsync(int userId, Paging.Request? pagination = null)
     {
         var me = await MyEmployeeAsync(userId);
         if (me == null) return new();
         var list = await _db.FaLmsEnrollments.Where(e => e.EmployeeId == me.Id)
-            .OrderByDescending(e => e.Id).ToListAsync();
+            .OrderByDescending(e => e.Id).ToPageListAsync(pagination);
         return await MapEnrollmentsAsync(list);
     }
 
@@ -587,10 +606,10 @@ public class FaLmsService : IFaLmsService
 
     // ==================== جلسات و حضور ====================
 
-    public async Task<List<FaLmsSessionDto>> ListSessionsAsync(int courseId)
+    public async Task<List<FaLmsSessionDto>> ListSessionsAsync(int courseId, Paging.Request? pagination = null)
     {
         var list = await _db.FaLmsSessions.Where(s => s.CourseId == courseId)
-            .OrderBy(s => s.SessionDate).ThenBy(s => s.Id).ToListAsync();
+            .OrderBy(s => s.SessionDate).ThenBy(s => s.Id).ToPageListAsync(pagination);
         var ids = list.Select(s => s.Id).ToList();
         var counts = ids.Count == 0 ? new Dictionary<int, int>()
             : await _db.FaLmsAttendances.Where(a => ids.Contains(a.SessionId) && a.Present)
@@ -639,13 +658,14 @@ public class FaLmsService : IFaLmsService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<FaLmsAttendanceDto>> GetAttendanceAsync(int sessionId)
+    public async Task<List<FaLmsAttendanceDto>> GetAttendanceAsync(int sessionId, Paging.Request? pagination = null)
     {
         var s = await _db.FaLmsSessions.FindAsync(sessionId)
             ?? throw new InvalidOperationException("جلسه یافت نشد.");
         var empIds = await _db.FaLmsEnrollments
             .Where(e => e.CourseId == s.CourseId && e.Status == FaLmsEnrollStatus.Approved)
-            .Select(e => e.EmployeeId).ToListAsync();
+            .OrderBy(e => e.EmployeeId).ThenBy(e => e.Id)
+            .Select(e => e.EmployeeId).ToPageListAsync(pagination);
         var marks = await _db.FaLmsAttendances.Where(a => a.SessionId == sessionId)
             .ToDictionaryAsync(a => a.EmployeeId);
         var names = await EmpNamesAsync();
@@ -687,10 +707,10 @@ public class FaLmsService : IFaLmsService
 
     // ==================== آزمون ====================
 
-    public async Task<List<FaLmsExamDto>> ListExamsAsync(int courseId)
+    public async Task<List<FaLmsExamDto>> ListExamsAsync(int courseId, Paging.Request? pagination = null)
     {
         var list = await _db.FaLmsExams.Where(e => e.CourseId == courseId)
-            .OrderByDescending(e => e.Id).ToListAsync();
+            .OrderByDescending(e => e.Id).ToPageListAsync(pagination);
         var ids = list.Select(e => e.Id).ToList();
         var qs = ids.Count == 0 ? new List<FaLmsQuestion>()
             : await _db.FaLmsQuestions.Where(q => ids.Contains(q.ExamId)).ToListAsync();
@@ -755,9 +775,9 @@ public class FaLmsService : IFaLmsService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<FaLmsQuestionDto>> ListQuestionsAsync(int examId)
+    public async Task<List<FaLmsQuestionDto>> ListQuestionsAsync(int examId, Paging.Request? pagination = null)
         => (await _db.FaLmsQuestions.Where(q => q.ExamId == examId)
-            .OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToListAsync())
+            .OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToPageListAsync(pagination))
             .Select(q => new FaLmsQuestionDto
             {
                 Id = q.Id, ExamId = q.ExamId, Text = q.Text, OptA = q.OptA, OptB = q.OptB,
@@ -903,10 +923,10 @@ public class FaLmsService : IFaLmsService
         };
     }
 
-    public async Task<List<FaLmsAttemptDto>> ListAttemptsAsync(int examId)
+    public async Task<List<FaLmsAttemptDto>> ListAttemptsAsync(int examId, Paging.Request? pagination = null)
     {
         var list = await _db.FaLmsAttempts.Where(a => a.ExamId == examId)
-            .OrderByDescending(a => a.Id).ToListAsync();
+            .OrderByDescending(a => a.Id).ToPageListAsync(pagination);
         var names = await EmpNamesAsync();
         var hasDesc = await _db.FaLmsQuestions.AnyAsync(q => q.ExamId == examId && q.Type == 1);
         return list.Select(a => new FaLmsAttemptDto
@@ -928,7 +948,7 @@ public class FaLmsService : IFaLmsService
         if (passed) en.Passed = true;
     }
 
-    public async Task<FaLmsGradingInboxDto> GradingInboxAsync(int userId)
+    public async Task<FaLmsGradingInboxDto> GradingInboxAsync(int userId, Paging.Request? pagination = null)
     {
         var result = new FaLmsGradingInboxDto();
         var empId = await _db.HrEmployees.Where(e => e.SystemUserId == userId).Select(e => (int?)e.Id).FirstOrDefaultAsync();
@@ -936,17 +956,19 @@ public class FaLmsService : IFaLmsService
             result.MyInstructorId = await _db.FaLmsInstructors.Where(i => i.EmployeeId == empId && i.IsActive).Select(i => (int?)i.Id).FirstOrDefaultAsync();
         var atts = await _db.FaLmsAttempts.AsNoTracking()
             .Where(a => a.SubmittedAt != null && a.Score == null)
-            .OrderBy(a => a.SubmittedAt).ToListAsync();
+            .OrderBy(a => a.SubmittedAt).ThenBy(a => a.Id).ToPageListAsync(pagination);
         if (atts.Count == 0) return result;
         var examIds = atts.Select(a => a.ExamId).Distinct().ToList();
         var exams = await _db.FaLmsExams.AsNoTracking().Where(e => examIds.Contains(e.Id)).ToListAsync();
         var courseIds = exams.Select(e => e.CourseId).Distinct().ToList();
         var courses = await _db.FaLmsCourses.AsNoTracking().Where(c => courseIds.Contains(c.Id)).ToListAsync();
-        var instructors = await _db.FaLmsInstructors.AsNoTracking().ToDictionaryAsync(i => i.Id, i => i.Name);
+        var instructorIds = courses.Where(c => c.InstructorId.HasValue).Select(c => c.InstructorId!.Value).ToList();
+        var instructors = await _db.FaLmsInstructors.AsNoTracking().Where(i => instructorIds.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.Name);
         var qMap = (await _db.FaLmsQuestions.AsNoTracking().Where(q => examIds.Contains(q.ExamId))
             .GroupBy(q => q.ExamId).Select(g => new { ExamId = g.Key, Total = g.Count(), Texts = g.Count(q => q.Type == 1) }).ToListAsync())
             .ToDictionary(x => x.ExamId);
-        var names = await EmpNamesAsync();
+        var employeeIds = atts.Select(a => a.EmployeeId).ToList();
+        var names = await _db.HrEmployees.AsNoTracking().Where(e => employeeIds.Contains(e.Id)).ToDictionaryAsync(e => e.Id, e => (e.FirstName + " " + e.LastName).Trim());
         foreach (var a in atts)
         {
             var e = exams.FirstOrDefault(x => x.Id == a.ExamId);
@@ -971,12 +993,12 @@ public class FaLmsService : IFaLmsService
         return result;
     }
 
-    public async Task<List<FaLmsTextAnswerDto>> ListTextAnswersAsync(int attemptId)
+    public async Task<List<FaLmsTextAnswerDto>> ListTextAnswersAsync(int attemptId, Paging.Request? pagination = null)
     {
         var att = await _db.FaLmsAttempts.FindAsync(attemptId)
             ?? throw new InvalidOperationException("پاسخ‌نامه یافت نشد.");
         var qs = await _db.FaLmsQuestions.Where(q => q.ExamId == att.ExamId && q.Type == 1)
-            .OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToListAsync();
+            .OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToPageListAsync(pagination);
         var tas = await _db.FaLmsTextAnswers.Where(x => x.AttemptId == attemptId).ToListAsync();
         return qs.Select(q =>
         {
@@ -1047,9 +1069,9 @@ public class FaLmsService : IFaLmsService
 
     // ==================== بانک سؤال مشترک ====================
 
-    public async Task<List<FaLmsBankDto>> ListBanksAsync()
+    public async Task<List<FaLmsBankDto>> ListBanksAsync(Paging.Request? pagination = null)
     {
-        var list = await _db.FaLmsBanks.OrderByDescending(b => b.Id).ToListAsync();
+        var list = await _db.FaLmsBanks.OrderByDescending(b => b.Id).ToPageListAsync(pagination);
         var counts = await _db.FaLmsBankQuestions.GroupBy(q => q.BankId)
             .ToDictionaryAsync(g => g.Key, g => g.Count());
         return list.Select(b => new FaLmsBankDto
@@ -1088,9 +1110,9 @@ public class FaLmsService : IFaLmsService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<FaLmsBankQuestionDto>> ListBankQuestionsAsync(int bankId)
+    public async Task<List<FaLmsBankQuestionDto>> ListBankQuestionsAsync(int bankId, Paging.Request? pagination = null)
         => (await _db.FaLmsBankQuestions.Where(q => q.BankId == bankId)
-            .OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToListAsync())
+            .OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToPageListAsync(pagination))
             .Select(q => new FaLmsBankQuestionDto
             {
                 Id = q.Id, BankId = q.BankId, Text = q.Text, OptA = q.OptA, OptB = q.OptB,
@@ -1158,21 +1180,26 @@ public class FaLmsService : IFaLmsService
 
     // ==================== گواهی ====================
 
-    public async Task<List<FaLmsCertificateDto>> ListCertificatesAsync(int? courseId, int? employeeId, int? year)
+    public async Task<List<FaLmsCertificateDto>> ListCertificatesAsync(int? courseId, int? employeeId, int? year, Paging.Request? pagination = null)
     {
         var q = _db.FaLmsCertificates.AsQueryable();
         if (courseId != null) q = q.Where(x => x.CourseId == courseId.Value);
         if (employeeId != null) q = q.Where(x => x.EmployeeId == employeeId.Value);
-        var list = await q.OrderByDescending(x => x.Id).ToListAsync();
-        if (year != null) list = list.Where(x => Jy(x.IssueDate) == year.Value).ToList();
+        if (year != null)
+        {
+            var start = Pc.ToDateTime(year.Value, 1, 1, 0, 0, 0, 0);
+            var end = Pc.ToDateTime(year.Value + 1, 1, 1, 0, 0, 0, 0);
+            q = q.Where(x => x.IssueDate >= start && x.IssueDate < end);
+        }
+        var list = await q.OrderByDescending(x => x.Id).ToPageListAsync(pagination);
         return await MapCertsAsync(list);
     }
 
-    public async Task<List<FaLmsCertificateDto>> MyCertificatesAsync(int userId)
+    public async Task<List<FaLmsCertificateDto>> MyCertificatesAsync(int userId, Paging.Request? pagination = null)
     {
         var me = await MyEmployeeAsync(userId);
         if (me == null) return new();
-        return await ListCertificatesAsync(null, me.Id, null);
+        return await ListCertificatesAsync(null, me.Id, null, pagination: pagination);
     }
 
     private async Task<List<FaLmsCertificateDto>> MapCertsAsync(List<FaLmsCertificate> list)
@@ -1269,9 +1296,9 @@ public class FaLmsService : IFaLmsService
 
     // ==================== بودجه ====================
 
-    public async Task<List<FaLmsBudgetDto>> ListBudgetsAsync()
+    public async Task<List<FaLmsBudgetDto>> ListBudgetsAsync(Paging.Request? pagination = null)
     {
-        var list = await _db.FaLmsBudgets.OrderByDescending(b => b.Year).ToListAsync();
+        var list = await _db.FaLmsBudgets.OrderByDescending(b => b.Year).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var out_ = new List<FaLmsBudgetDto>();
         foreach (var b in list)
             out_.Add(new FaLmsBudgetDto
@@ -1316,62 +1343,54 @@ public class FaLmsService : IFaLmsService
         await _db.SaveChangesAsync();
     }
 
-    private async Task<double> SpendAsync(int year)
+    private Task<double> SpendAsync(int year)
     {
-        var costs = (await _db.FaLmsCourses.ToListAsync())
-            .Where(c => c.StartDate != null && Jy(c.StartDate.Value) == year)
-            .ToDictionary(c => c.Id, c => c.CostPerPerson);
-        if (costs.Count == 0) return 0;
-        var keys = costs.Keys.ToList();
-        var counts = await _db.FaLmsEnrollments
-            .Where(e => keys.Contains(e.CourseId) && e.Status == FaLmsEnrollStatus.Approved)
-            .GroupBy(e => e.CourseId).ToDictionaryAsync(g => g.Key, g => g.Count());
-        return counts.Sum(kv => kv.Value * costs[kv.Key]);
+        var (start, end) = YearRange(year);
+        return (from e in _db.FaLmsEnrollments
+                join c in _db.FaLmsCourses on e.CourseId equals c.Id
+                where e.Status == FaLmsEnrollStatus.Approved && c.StartDate >= start && c.StartDate <= end
+                select c.CostPerPerson).SumAsync();
     }
 
-    public async Task<FaLmsBudgetReportDto> BudgetReportAsync(int year)
+    public async Task<FaLmsBudgetReportDto> BudgetReportAsync(int year, Paging.Request? pagination = null)
     {
-        var b = await _db.FaLmsBudgets.FirstOrDefaultAsync(x => x.Year == year);
-        var courses = (await _db.FaLmsCourses.ToListAsync())
-            .Where(c => c.StartDate != null && Jy(c.StartDate.Value) == year).ToList();
-        var ids = courses.Select(c => c.Id).ToList();
-        var counts = ids.Count == 0 ? new Dictionary<int, int>()
-            : await _db.FaLmsEnrollments
-                .Where(e => ids.Contains(e.CourseId) && e.Status == FaLmsEnrollStatus.Approved)
-                .GroupBy(e => e.CourseId).ToDictionaryAsync(g => g.Key, g => g.Count());
-        var rows = courses.Select(c =>
-        {
-            var n = counts.TryGetValue(c.Id, out var k) ? k : 0;
-            return new FaLmsBudgetReportRowDto
+        var (start, end) = YearRange(year);
+        var b = await _db.FaLmsBudgets.AsNoTracking().FirstOrDefaultAsync(x => x.Year == year);
+        var courses = await _db.FaLmsCourses.AsNoTracking().Where(c => c.StartDate >= start && c.StartDate <= end)
+            .OrderBy(c => c.Id).Select(c => new
             {
-                CourseId = c.Id, CourseTitle = c.Title, ApprovedCount = n,
-                CostPerPerson = c.CostPerPerson, TotalCost = n * c.CostPerPerson
-            };
-        }).ToList();
+                c.Id, c.Title, c.CostPerPerson,
+                ApprovedCount = _db.FaLmsEnrollments.Count(e => e.CourseId == c.Id && e.Status == FaLmsEnrollStatus.Approved)
+            }).ToPageListAsync(pagination);
         return new FaLmsBudgetReportDto
         {
-            Year = year, BudgetAmount = b?.Amount ?? 0,
-            SpentAmount = rows.Sum(r => r.TotalCost), Rows = rows
+            Year = year, BudgetAmount = b?.Amount ?? 0, SpentAmount = await SpendAsync(year),
+            Rows = courses.Select(c => new FaLmsBudgetReportRowDto
+            {
+                CourseId = c.Id, CourseTitle = c.Title, ApprovedCount = c.ApprovedCount,
+                CostPerPerson = c.CostPerPerson, TotalCost = c.ApprovedCount * c.CostPerPerson
+            }).ToList()
         };
     }
 
     // ==================== گزارش‌ها ====================
 
-    public async Task<FaLmsDashboardDto> GetDashboardAsync(int year)
+    public async Task<FaLmsDashboardDto> GetDashboardAsync(int year, Paging.Request? pagination = null)
     {
-        var courses = await _db.FaLmsCourses.ToListAsync();
+        var courses = _db.FaLmsCourses.AsNoTracking();
+        var (start, end) = YearRange(year);
         var today = DateTime.Today;
         var upcoming = await _db.FaLmsSessions
             .CountAsync(s => s.SessionDate >= today && s.SessionDate <= today.AddDays(7));
         var b = await _db.FaLmsBudgets.FirstOrDefaultAsync(x => x.Year == year);
-        var recent = await _db.FaLmsCertificates.OrderByDescending(x => x.Id).Take(5).ToListAsync();
+        var recent = await _db.FaLmsCertificates.OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 5);
         return new FaLmsDashboardDto
         {
             Year = year,
-            OpenCourses = courses.Count(c => c.Status == FaLmsCourseStatus.Open && c.IsActive),
-            RunningCourses = courses.Count(c => c.Status == FaLmsCourseStatus.Running),
-            FinishedThisYear = courses.Count(c => c.Status == FaLmsCourseStatus.Finished
-                && c.StartDate != null && Jy(c.StartDate.Value) == year),
+            OpenCourses = await courses.CountAsync(c => c.Status == FaLmsCourseStatus.Open && c.IsActive),
+            RunningCourses = await courses.CountAsync(c => c.Status == FaLmsCourseStatus.Running),
+            FinishedThisYear = await courses.CountAsync(c => c.Status == FaLmsCourseStatus.Finished
+                && c.StartDate >= start && c.StartDate <= end),
             PendingNeeds = await _db.FaLmsNeeds.CountAsync(n => n.Status == FaLmsNeedStatus.New),
             PendingEnrolls = await _db.FaLmsEnrollments.CountAsync(e => e.Status == FaLmsEnrollStatus.Pending),
             UpcomingSessions = upcoming,
@@ -1381,16 +1400,23 @@ public class FaLmsService : IFaLmsService
         };
     }
 
-    public async Task<FaLmsEmployeeReportDto?> EmployeeReportAsync(int employeeId)
+    public async Task<FaLmsEmployeeReportDto?> EmployeeReportAsync(int employeeId, Paging.Request? pagination = null)
     {
         var emp = await _db.HrEmployees.FindAsync(employeeId);
         if (emp == null) return null;
-        var enrolls = await _db.FaLmsEnrollments.Where(e => e.EmployeeId == employeeId)
-            .OrderByDescending(e => e.Id).ToListAsync();
-        var courses = await _db.FaLmsCourses.ToDictionaryAsync(c => c.Id);
-        var certs = await _db.FaLmsCertificates.Where(x => x.EmployeeId == employeeId)
-            .Select(x => x.CourseId).ToListAsync();
-        var certSet = new HashSet<int>(certs);
+        var query = _db.FaLmsEnrollments.AsNoTracking().Where(e => e.EmployeeId == employeeId);
+        var approved = query.Where(e => e.Status == FaLmsEnrollStatus.Approved);
+        var coursesCount = await approved.CountAsync();
+        var hours = await (from e in approved join c in _db.FaLmsCourses on e.CourseId equals c.Id
+                           select c.DurationHours).SumAsync();
+        var avgScore = await approved.AverageAsync(e => e.FinalScore);
+        var avgAttendance = await approved.AverageAsync(e => e.AttendancePercent);
+        var certQuery = _db.FaLmsCertificates.AsNoTracking().Where(x => x.EmployeeId == employeeId);
+        var certCount = await certQuery.CountAsync();
+        var enrolls = await query.OrderByDescending(e => e.Id).ToPageListAsync(pagination);
+        var courseIds = enrolls.Select(e => e.CourseId).ToList();
+        var courses = await _db.FaLmsCourses.AsNoTracking().Where(c => courseIds.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
+        var certSet = (await certQuery.Where(x => courseIds.Contains(x.CourseId)).Select(x => x.CourseId).ToListAsync()).ToHashSet();
         var rows = enrolls.Select(e =>
         {
             courses.TryGetValue(e.CourseId, out var c);
@@ -1403,27 +1429,24 @@ public class FaLmsService : IFaLmsService
                 HasCert = certSet.Contains(e.CourseId)
             };
         }).ToList();
-        var approved = rows.Where(r => r.Status == (int)FaLmsEnrollStatus.Approved).ToList();
-        var scored = approved.Where(r => r.Score != null).Select(r => r.Score!.Value).ToList();
-        var atts = approved.Where(r => r.Attendance != null).Select(r => r.Attendance!.Value).ToList();
         return new FaLmsEmployeeReportDto
         {
             EmployeeId = employeeId,
             EmployeeName = (emp.FirstName + " " + emp.LastName).Trim(),
-            CoursesCount = approved.Count,
-            HoursTotal = approved.Sum(r => r.Hours),
-            AvgScore = scored.Count > 0 ? Math.Round(scored.Average(), 1) : null,
-            CertsCount = certs.Count,
-            AvgAttendance = atts.Count > 0 ? Math.Round(atts.Average(), 1) : null,
+            CoursesCount = coursesCount,
+            HoursTotal = hours,
+            AvgScore = avgScore.HasValue ? Math.Round(avgScore.Value, 1) : null,
+            CertsCount = certCount,
+            AvgAttendance = avgAttendance.HasValue ? Math.Round(avgAttendance.Value, 1) : null,
             Rows = rows
         };
     }
 
-    public async Task<FaLmsEmployeeReportDto?> MyReportAsync(int userId)
+    public async Task<FaLmsEmployeeReportDto?> MyReportAsync(int userId, Paging.Request? pagination = null)
     {
         var me = await MyEmployeeAsync(userId);
         if (me == null) return null;
-        return await EmployeeReportAsync(me.Id);
+        return await EmployeeReportAsync(me.Id, pagination);
     }
 
     // ==================== چاپ رسمی گواهی ====================
@@ -1487,11 +1510,11 @@ public class FaLmsService : IFaLmsService
 
     // ==================== مدرس‌ها ====================
 
-    public async Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive)
+    public async Task<List<FaLmsInstructorDto>> ListInstructorsAsync(bool? onlyActive, Paging.Request? pagination = null)
     {
         var q = _db.FaLmsInstructors.AsNoTracking().AsQueryable();
         if (onlyActive == true) q = q.Where(x => x.IsActive);
-        var rows = await q.OrderBy(x => x.Name).Take(500).ToListAsync();
+        var rows = await q.OrderBy(x => x.Name).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
         var ids = rows.Select(x => x.Id).ToList();
         var courses = ids.Count == 0 ? new List<FaLmsCourse>()
             : await _db.FaLmsCourses.AsNoTracking().Where(c => c.InstructorId != null && ids.Contains(c.InstructorId.Value)).ToListAsync();
@@ -1545,10 +1568,10 @@ public class FaLmsService : IFaLmsService
 
     // ==================== نظرسنجی اثربخشی ====================
 
-    public async Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId)
+    public async Task<List<FaLmsSurveyQuestionDto>> ListSurveyQuestionsAsync(int courseId, int? employeeId, Paging.Request? pagination = null)
     {
         var qs = await _db.FaLmsSurveyQuestions.AsNoTracking()
-            .Where(q => q.CourseId == courseId).OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToListAsync();
+            .Where(q => q.CourseId == courseId).OrderBy(q => q.SortOrder).ThenBy(q => q.Id).ToPageListAsync(pagination);
         if (qs.Count == 0) return new();
         var qids = qs.Select(q => q.Id).ToList();
         var answers = await _db.FaLmsSurveyAnswers.AsNoTracking()
@@ -1602,17 +1625,23 @@ public class FaLmsService : IFaLmsService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId)
+    public async Task<FaLmsSurveyResultDto> SurveyResultsAsync(int courseId, Paging.Request? pagination = null)
     {
-        var qs = await ListSurveyQuestionsAsync(courseId, null);
-        var qids = qs.Select(q => q.Id).ToList();
-        var respondents = qids.Count == 0 ? 0 : await _db.FaLmsSurveyAnswers.AsNoTracking()
-            .Where(a => qids.Contains(a.QuestionId)).Select(a => a.EmployeeId).Distinct().CountAsync();
-        var all = qs.SelectMany(q => Enumerable.Repeat(q.AvgScore, q.AnswerCount)).ToList();
+        var questionQuery = _db.FaLmsSurveyQuestions.AsNoTracking().Where(q => q.CourseId == courseId);
+        var questionIds = questionQuery.Select(q => q.Id);
+        var answerQuery = _db.FaLmsSurveyAnswers.AsNoTracking().Where(a => questionIds.Contains(a.QuestionId));
+        var respondents = await answerQuery.Select(a => a.EmployeeId).Distinct().CountAsync();
+        // This is aggregate metadata for the global summary, never question/answer rows.
+        // Round each mean as before, rather than changing to an unrounded global AVG.
+        var aggregates = await answerQuery.GroupBy(a => a.QuestionId)
+            .Select(g => new { Count = g.Count(), Average = g.Average(a => (double)a.Score) }).ToListAsync();
+        var answerCount = aggregates.Sum(g => g.Count);
+        var questionCount = await questionQuery.CountAsync();
+        var qs = await ListSurveyQuestionsAsync(courseId, null, pagination);
         return new FaLmsSurveyResultDto
         {
-            QuestionCount = qs.Count, RespondentCount = respondents,
-            OverallAvg = all.Count == 0 ? 0 : Math.Round(all.Average(), 1),
+            QuestionCount = questionCount, RespondentCount = respondents,
+            OverallAvg = answerCount == 0 ? 0 : Math.Round(aggregates.Sum(g => Math.Round(g.Average, 1) * g.Count) / answerCount, 1),
             Questions = qs
         };
     }

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -232,12 +233,14 @@ public class AttendanceController : ControllerBase
     [HttpGet("daily-report")]
     public async Task<ActionResult<List<DailyReportRow>>> DailyReport([FromQuery] string date, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var month = PersianCalendarUtil.MonthOf(date);
-        var dayRows = await _db.AttendanceDays.AsNoTracking().Where(d => d.Date == date).ToListAsync();
-        var monthRows = await _db.AttendanceDays.AsNoTracking().Where(d => d.Month == month).ToListAsync();
+        var dayRows = await _db.AttendanceDays.AsNoTracking().Where(d => d.Date == date).OrderBy(d => d.Code).ThenBy(d => d.Id).ToPageListAsync(pagination);
+        var codes = dayRows.Select(d => d.Code).ToList();
+        var monthRows = await _db.AttendanceDays.AsNoTracking().Where(d => d.Month == month && codes.Contains(d.Code)).ToListAsync();
         var monthByCode = monthRows.GroupBy(d => d.Code).ToDictionary(g => g.Key, g => g.ToList());
 
-        return Ok(Paging.Result(dayRows.Select(d =>
+        return Ok(pagination.Result(dayRows.Select(d =>
         {
             var m = monthByCode.TryGetValue(d.Code, out var list) ? list : new List<AttendanceDay>();
             return new DailyReportRow(
@@ -248,6 +251,6 @@ public class AttendanceController : ControllerBase
                 AttendanceEngine.Hm(m.Sum(x => x.Leave)),
                 AttendanceEngine.Hm(m.Sum(x => x.Shortfall)),
                 AttendanceEngine.Hm(m.Sum(x => x.Ot)));
-        }).OrderBy(r => r.Code).ToList(), skip, take));
+        }).OrderBy(r => r.Code).ToList()));
     }
 }

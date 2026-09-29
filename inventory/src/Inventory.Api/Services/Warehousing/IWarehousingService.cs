@@ -12,7 +12,7 @@ public interface IWarehousingService
 {
     // ---------------- گروه کالا (درختی) ----------------
     /// <summary>گروه‌های کالا به‌صورت درخت (هر گره شامل فرزندانش).</summary>
-    Task<List<InvCategory>> GetCategoryTreeAsync(bool activeOnly = false);
+    Task<List<InvCategory>> GetCategoryTreeAsync(bool activeOnly = false, Paging.Request? pagination = null);
 
     /// <summary>گروه‌های کالا به‌صورت فهرست تخت مرتب‌شده (برای کمبوها).</summary>
     Task<List<InvCategory>> GetCategoriesFlatAsync(bool activeOnly = false);
@@ -27,7 +27,7 @@ public interface IWarehousingService
     Task MoveCategoryAsync(InvCategoryMove cmd);
 
     // ---------------- ویژگی‌های کالا ----------------
-    Task<List<InvAttribute>> GetAttributesAsync(bool activeOnly = false, int? categoryId = null);
+    Task<List<InvAttribute>> GetAttributesAsync(bool activeOnly = false, int? categoryId = null, Paging.Request? pagination = null);
     Task<InvAttribute> SaveAttributeAsync(InvAttribute dto);
     Task DeleteAttributeAsync(int id);
 
@@ -40,15 +40,15 @@ public interface IWarehousingService
     Task<InvProduct> NewProductAsync(int? categoryId);
     Task<InvProduct> SaveProductAsync(InvProduct dto);
     Task DeleteProductAsync(int id);
-    Task<List<LookupItem>> GetProductLookupsAsync(string? search = null, int? warehouseId = null);
+    Task<List<LookupItem>> GetProductLookupsAsync(string? search = null, int? warehouseId = null, Paging.Request? pagination = null);
 
     // ---------------- انبار ----------------
-    Task<List<InvWarehouse>> GetWarehousesAsync(bool activeOnly = false);
+    Task<List<InvWarehouse>> GetWarehousesAsync(bool activeOnly = false, Paging.Request? pagination = null);
     Task<InvWarehouse> SaveWarehouseAsync(InvWarehouse dto);
     Task DeleteWarehouseAsync(int id);
 
     // ---------------- نوع رسید و حواله ----------------
-    Task<List<InvDocType>> GetDocTypesAsync(bool activeOnly = false, StockNature? nature = null);
+    Task<List<InvDocType>> GetDocTypesAsync(bool activeOnly = false, StockNature? nature = null, Paging.Request? pagination = null);
     Task<InvDocType> SaveDocTypeAsync(InvDocType dto);
     Task DeleteDocTypeAsync(int id);
 

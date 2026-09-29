@@ -109,6 +109,8 @@ public class AuthState : IAuthState
 /// <summary>قرارداد سرویس احراز هویت.</summary>
 public interface IAuthApi
 {
+    Task<PagedResult<ReferrerProductItem>> GetMyProductsPagedAsync(int skip, int take, string? search = null);
+    Task<PagedResult<ReferrerPayment>> GetMyPaymentsPagedAsync(int skip, int take);
     Task<LoginResponse> LoginAsync(LoginRequest request);
     Task<List<UserDto>> GetUsersAsync();
     Task<UserDto> SaveUserAsync(UserDto user);
@@ -124,6 +126,13 @@ public class AuthApi : IAuthApi
 {
     private readonly IApiClient _api;
     public AuthApi(IApiClient api) => _api = api;
+
+    public Task<PagedResult<ReferrerProductItem>> GetMyProductsPagedAsync(int skip, int take, string? search = null)
+        => ListOrPaged.GetPagedAsync<ReferrerProductItem>(_api, $"api/my/products?skip={skip}&take={take}&search={Uri.EscapeDataString(search ?? "")}");
+
+    public Task<PagedResult<ReferrerPayment>> GetMyPaymentsPagedAsync(int skip, int take)
+        => ListOrPaged.GetPagedAsync<ReferrerPayment>(_api, $"api/my/payments?skip={skip}&take={take}");
+
 
     public Task<LoginResponse> LoginAsync(LoginRequest request)
         => _api.PostAsync<LoginResponse>("api/auth/login", request);

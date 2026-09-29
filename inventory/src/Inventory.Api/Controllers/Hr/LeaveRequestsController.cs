@@ -324,12 +324,12 @@ public class LeaveRequestsController : ControllerBase
     [HttpGet("mine")]
     public async Task<IActionResult> Mine([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var list = await _db.LeaveRequests
             .Where(l => l.RequesterUserId == MyUserId)
-            .OrderByDescending(l => l.CreatedAt)
-            .Take(200)
-            .ToListAsync();
-        return Ok(Paging.Result(await PopulateUserNamesAndToDtoAsync(list), skip, take));
+            .OrderByDescending(l => l.CreatedAt).ThenBy(x => x.Id)
+            .ToPageListAsync(pagination, defaultCap: 200);
+        return Ok(pagination.Result(await PopulateUserNamesAndToDtoAsync(list)));
     }
 
     // ================== همه‌ی درخواست‌ها (مدیر) ==================
@@ -337,6 +337,7 @@ public class LeaveRequestsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> All([FromQuery] string? status, [FromQuery] int? jy, [FromQuery] int? jm, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!await CanManageAsync()) return Forbid();
         var q = _db.LeaveRequests.AsQueryable();
         if (!string.IsNullOrWhiteSpace(status) && status != "All")
@@ -346,8 +347,8 @@ public class LeaveRequestsController : ControllerBase
             var (s, e) = MonthRange(jy.Value, jm.Value);
             q = q.Where(l => l.StartDate >= s && l.StartDate < e);
         }
-        var list = await q.OrderByDescending(l => l.CreatedAt).Take(300).ToListAsync();
-        return Ok(Paging.Result(await PopulateUserNamesAndToDtoAsync(list), skip, take));
+        var list = await q.OrderByDescending(l => l.CreatedAt).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 300);
+        return Ok(pagination.Result(await PopulateUserNamesAndToDtoAsync(list)));
     }
 
     // ================== ثبت درخواست ==================
@@ -713,8 +714,9 @@ public class LeaveRequestsController : ControllerBase
     [HttpGet("holidays")]
     public async Task<IActionResult> GetHolidays([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var list = await _db.CompanyHolidays.AsNoTracking().OrderByDescending(h => h.HolidayDate).ToListAsync();
-        return Ok(Paging.Result(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt, h.IsOfficial }).ToList(), skip, take));
+        var pagination = new Paging.Request(skip, take);
+        var list = await _db.CompanyHolidays.AsNoTracking().OrderByDescending(h => h.HolidayDate).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        return Ok(pagination.Result(list.Select(h => new { h.Id, h.HolidayDate, h.Name, h.CreatedByName, h.CreatedAt, h.IsOfficial }).ToList()));
     }
 
     [HttpPost("holidays")]

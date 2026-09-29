@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Invoicing;
 using Inventory.Shared;
@@ -97,7 +98,7 @@ public class FacRulesController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<FacRule>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetRulesAsync(), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetRulesAsync(pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<FacRule>> Save([FromBody] FacRule dto)

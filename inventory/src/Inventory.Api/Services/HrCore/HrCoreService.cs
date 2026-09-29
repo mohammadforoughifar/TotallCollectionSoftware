@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
@@ -46,7 +47,7 @@ public interface IHrCoreService
 {
     // پرسنل
     Task<(List<HrEmployeeDto> Items, int Total)> SearchEmployeesAsync(string? q, int? orgUnitId, int? status, int skip, int take, int? hrMainNodeId = null, HrTeamScopeDto? scope = null);
-    Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive, HrTeamScopeDto? scope = null);
+    Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive, HrTeamScopeDto? scope = null, Paging.Request? pagination = null);
     Task<HrEmployeeDto?> GetEmployeeAsync(int id, HrTeamScopeDto? scope = null);
     /// <summary>
     /// دامنه‌ی دید «تیم من» برای کاربر فاقد HrCore.Manage: گره سازمانی (HrMain) خود او + زیرمجموعه‌ها،
@@ -59,15 +60,15 @@ public interface IHrCoreService
     Task<string> NextEmployeeCodeAsync();
 
     // ساختار سازمانی
-    Task<List<HrOrgUnitDto>> GetTreeAsync();
-    Task<List<HrOrgUnitDto>> ListUnitsAsync();
+    Task<List<HrOrgUnitDto>> GetTreeAsync(Paging.Request? pagination = null);
+    Task<List<HrOrgUnitDto>> ListUnitsAsync(Paging.Request? pagination = null);
     Task<HrOrgUnitDto> SaveUnitAsync(int? id, HrOrgUnitSaveDto dto);
     Task DeleteUnitAsync(int id);
 
     // قراردادها
-    Task<List<HrContractDto>> EmployeeContractsAsync(int employeeId);
-    Task<List<HrContractDto>> ListContractsAsync(bool? onlyActive);
-    Task<List<HrContractDto>> ExpiringContractsAsync(int days);
+    Task<List<HrContractDto>> EmployeeContractsAsync(int employeeId, Paging.Request? pagination = null);
+    Task<List<HrContractDto>> ListContractsAsync(bool? onlyActive, Paging.Request? pagination = null);
+    Task<List<HrContractDto>> ExpiringContractsAsync(int days, Paging.Request? pagination = null);
     Task<HrContractDto> SaveContractAsync(int? id, HrContractSaveDto dto, int byUserId, string byName);
     Task<HrBulkResultDto> SaveContractsBulkAsync(HrContractBulkDto dto, int byUserId, string byName);
     Task DeleteContractAsync(int id);
@@ -87,7 +88,7 @@ public interface IHrCoreService
     Task<HrDataQualityReportDto> GetDataQualityReportAsync();
 
     // قالب‌های قرارداد (§۹)
-    Task<List<HrContractTemplateDto>> ListTemplatesAsync();
+    Task<List<HrContractTemplateDto>> ListTemplatesAsync(Paging.Request? pagination = null);
     Task<HrContractTemplateDto> SaveTemplateAsync(int? id, HrContractTemplateSaveDto dto);
     Task DeleteTemplateAsync(int id);
 
@@ -95,16 +96,16 @@ public interface IHrCoreService
     Task<HrContractDto> SubmitForSignAsync(int id);
     Task<HrContractDto> SignEmployeeAsync(int id, string name);
     Task<HrContractDto> SignEmployerAsync(int id, int byUserId, string byName);
-    Task<List<HrContractVersionDto>> ListVersionsAsync(int contractId);
+    Task<List<HrContractVersionDto>> ListVersionsAsync(int contractId, Paging.Request? pagination = null);
 
     // هشدارهای انقضا (§۹)
     Task<int> CheckAlertsAsync(int days);
-    Task<List<HrContractAlertDto>> ListAlertsAsync();
+    Task<List<HrContractAlertDto>> ListAlertsAsync(Paging.Request? pagination = null);
     Task DismissAlertAsync(int id);
 
     // احکام
-    Task<List<HrDecreeDto>> EmployeeDecreesAsync(int employeeId);
-    Task<List<HrDecreeDto>> ListDecreesAsync(int? employeeId, bool? onlyPending);
+    Task<List<HrDecreeDto>> EmployeeDecreesAsync(int employeeId, Paging.Request? pagination = null);
+    Task<List<HrDecreeDto>> ListDecreesAsync(int? employeeId, bool? onlyPending, Paging.Request? pagination = null);
     Task<HrDecreeDto> SaveDecreeAsync(int? id, HrDecreeSaveDto dto, int byUserId, string byName);
     Task<HrBulkResultDto> SaveDecreesBulkAsync(HrDecreeBulkDto dto, int byUserId, string byName);
     Task<HrDecreeDto> ApplyDecreeAsync(int id);
@@ -119,24 +120,24 @@ public interface IHrCoreService
 
     // پرونده کارمندان — تحت‌تکفل، دوره‌ها، مهارت‌ها، زبان‌ها، اسناد، عکس
     Task<HrEmployeeDossierDto> GetDossierAsync(int employeeId, int expiringDays = 30);
-    Task<List<HrEmployeeDependentDto>> ListDependentsAsync(int employeeId);
+    Task<List<HrEmployeeDependentDto>> ListDependentsAsync(int employeeId, Paging.Request? pagination = null);
     Task<HrEmployeeDependentDto> SaveDependentAsync(int employeeId, int? id, HrEmployeeDependentSaveDto dto);
     Task DeleteDependentAsync(int id);
-    Task<List<HrEmployeeCourseDto>> ListCoursesAsync(int employeeId);
+    Task<List<HrEmployeeCourseDto>> ListCoursesAsync(int employeeId, Paging.Request? pagination = null);
     Task<HrEmployeeCourseDto> SaveCourseAsync(int employeeId, int? id, HrEmployeeCourseSaveDto dto);
     Task DeleteCourseAsync(int id);
-    Task<List<HrEmployeeSkillDto>> ListSkillsAsync(int employeeId);
+    Task<List<HrEmployeeSkillDto>> ListSkillsAsync(int employeeId, Paging.Request? pagination = null);
     Task<HrEmployeeSkillDto> SaveSkillAsync(int employeeId, int? id, HrEmployeeSkillSaveDto dto);
     Task DeleteSkillAsync(int id);
-    Task<List<HrEmployeeLanguageDto>> ListLanguagesAsync(int employeeId);
+    Task<List<HrEmployeeLanguageDto>> ListLanguagesAsync(int employeeId, Paging.Request? pagination = null);
     Task<HrEmployeeLanguageDto> SaveLanguageAsync(int employeeId, int? id, HrEmployeeLanguageSaveDto dto);
     Task DeleteLanguageAsync(int id);
-    Task<List<HrEmployeeDocumentDto>> ListDocumentsAsync(int employeeId, int expiringDays = 30);
+    Task<List<HrEmployeeDocumentDto>> ListDocumentsAsync(int employeeId, int expiringDays = 30, Paging.Request? pagination = null);
     Task<HrEmployeeDocumentDto?> GetDocumentAsync(int id);
     Task<HrEmployeeDocumentDto> SaveDocumentAsync(int employeeId, int? id, HrEmployeeDocumentSaveDto dto);
     Task<HrEmployeeDocumentDto> AttachDocumentFileAsync(int id, string filePath, string fileName, string contentType, long fileSize);
     Task DeleteDocumentAsync(int id);
-    Task<List<HrEmployeeDocumentDto>> ExpiringDocumentsAsync(int days);
+    Task<List<HrEmployeeDocumentDto>> ExpiringDocumentsAsync(int days, Paging.Request? pagination = null);
     Task<HrEmployeeDto> SetEmployeePhotoAsync(int employeeId, string? photoPath);
 
     // داشبورد
@@ -412,17 +413,25 @@ public class HrCoreService : IHrCoreService
 
     // ==================== ساختار سازمانی ====================
 
-    public async Task<List<HrOrgUnitDto>> ListUnitsAsync()
+    public async Task<List<HrOrgUnitDto>> ListUnitsAsync(Paging.Request? pagination = null)
     {
-        var units = await _db.HrOrgUnits.AsNoTracking().OrderBy(u => u.SortOrder).ThenBy(u => u.Name).ToListAsync();
+        var units = await _db.HrOrgUnits.AsNoTracking().OrderBy(u => u.SortOrder).ThenBy(u => u.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var list = new List<HrOrgUnitDto>();
         foreach (var u in units) list.Add(await MapUnitAsync(u, false));
         return list;
     }
 
-    public async Task<List<HrOrgUnitDto>> GetTreeAsync()
+    public async Task<List<HrOrgUnitDto>> GetTreeAsync(Paging.Request? pagination = null)
     {
-        var flat = await ListUnitsAsync();
+        var scope = _db.HrOrgUnits.AsNoTracking();
+        IOrderedQueryable<HrOrgUnit> Order(IQueryable<HrOrgUnit> q) => q
+            .OrderBy(u => u.SortOrder).ThenBy(u => u.Name).ThenBy(u => u.Id);
+        var units = await Order(scope).ReadTreePageAsync(
+            Order(scope.Where(u => u.ParentId == null || u.ParentId <= 0 || !scope.Any(p => p.Id == u.ParentId))),
+            ids => Order(scope.Where(u => u.ParentId != null && ids.Contains(u.ParentId.Value))),
+            u => u.Id, pagination);
+        var flat = new List<HrOrgUnitDto>();
+        foreach (var u in units) flat.Add(await MapUnitAsync(u, false));
         var byId = flat.ToDictionary(u => u.Id);
         var roots = new List<HrOrgUnitDto>();
         foreach (var u in flat)
@@ -506,28 +515,28 @@ public class HrCoreService : IHrCoreService
 
     // ==================== قراردادها ====================
 
-    public async Task<List<HrContractDto>> EmployeeContractsAsync(int employeeId) =>
-        await ListContractsQuery(_db.HrContracts.Where(c => c.EmployeeId == employeeId));
+    public async Task<List<HrContractDto>> EmployeeContractsAsync(int employeeId, Paging.Request? pagination = null) =>
+        await ListContractsQuery(_db.HrContracts.Where(c => c.EmployeeId == employeeId), pagination: pagination);
 
-    public async Task<List<HrContractDto>> ListContractsAsync(bool? onlyActive)
+    public async Task<List<HrContractDto>> ListContractsAsync(bool? onlyActive, Paging.Request? pagination = null)
     {
         var q = _db.HrContracts.AsQueryable();
         if (onlyActive == true) q = q.Where(c => c.IsActive);
-        return await ListContractsQuery(q);
+        return await ListContractsQuery(q, pagination: pagination);
     }
 
-    public async Task<List<HrContractDto>> ExpiringContractsAsync(int days)
+    public async Task<List<HrContractDto>> ExpiringContractsAsync(int days, Paging.Request? pagination = null)
     {
         days = Math.Clamp(days, 1, 365);
         var horizon = DateTime.Today.AddDays(days);
         return await ListContractsQuery(_db.HrContracts
             .Where(c => c.IsActive && c.EndDate != null && c.EndDate.Value.Date <= horizon)
-            .Join(_db.HrEmployees.Where(e => e.IsActive), c => c.EmployeeId, e => e.Id, (c, e) => c));
+            .Join(_db.HrEmployees.Where(e => e.IsActive), c => c.EmployeeId, e => e.Id, (c, e) => c), pagination: pagination);
     }
 
-    private async Task<List<HrContractDto>> ListContractsQuery(IQueryable<HrContract> q)
+    private async Task<List<HrContractDto>> ListContractsQuery(IQueryable<HrContract> q, Paging.Request? pagination = null)
     {
-        var rows = await q.AsNoTracking().OrderByDescending(c => c.StartDate).Take(500).ToListAsync();
+        var rows = await q.AsNoTracking().OrderByDescending(c => c.StartDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
         var tmplIds = rows.Where(c => c.TemplateId != null).Select(c => c.TemplateId!.Value).Distinct().ToList();
         var tmplNames = tmplIds.Count == 0 ? new Dictionary<int, string>()
             : await _db.HrContractTemplates.Where(x => tmplIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.Name);
@@ -563,7 +572,7 @@ public class HrCoreService : IHrCoreService
         return list;
     }
 
-    public async Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive, HrTeamScopeDto? scope = null)
+    public async Task<List<HrEmployeeLiteDto>> ListEmployeeLiteAsync(bool onlyActive, HrTeamScopeDto? scope = null, Paging.Request? pagination = null)
     {
         var query = _db.HrEmployees.AsNoTracking().AsQueryable();
         if (onlyActive) query = query.Where(e => e.IsActive);
@@ -571,7 +580,7 @@ public class HrCoreService : IHrCoreService
         var emps = await query
             .OrderBy(e => e.Code).ThenBy(e => e.Id)
             .Select(e => new { e.Id, e.Code, e.FirstName, e.LastName, e.HrMainNodeId, e.IsActive })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
         var nodeIds = emps.Where(e => e.HrMainNodeId is > 0).Select(e => e.HrMainNodeId!.Value).Distinct().ToList();
         var names = await _db.HrMainOrgNodes.AsNoTracking()
             .Where(n => nodeIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id, n => n.Name);
@@ -668,13 +677,13 @@ public class HrCoreService : IHrCoreService
 
     // ==================== قالب‌های قرارداد (§۹) ====================
 
-    public async Task<List<HrContractTemplateDto>> ListTemplatesAsync()
+    public async Task<List<HrContractTemplateDto>> ListTemplatesAsync(Paging.Request? pagination = null)
         => await _db.HrContractTemplates.AsNoTracking().OrderBy(t => t.SortOrder).ThenBy(t => t.Id)
             .Select(t => new HrContractTemplateDto
             {
                 Id = t.Id, Name = t.Name, Type = (int)t.Type, DurationMonths = t.DurationMonths,
                 JobTitle = t.JobTitle, Terms = t.Terms, SortOrder = t.SortOrder, IsActive = t.IsActive
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
 
     public async Task<HrContractTemplateDto> SaveTemplateAsync(int? id, HrContractTemplateSaveDto dto)
     {
@@ -740,15 +749,15 @@ public class HrCoreService : IHrCoreService
         return (await EmployeeContractsAsync(c.EmployeeId)).First(x => x.Id == c.Id);
     }
 
-    public async Task<List<HrContractVersionDto>> ListVersionsAsync(int contractId)
+    public async Task<List<HrContractVersionDto>> ListVersionsAsync(int contractId, Paging.Request? pagination = null)
         => await _db.HrContractVersions.AsNoTracking().Where(v => v.ContractId == contractId)
-            .OrderByDescending(v => v.VersionNo).Select(v => new HrContractVersionDto
+            .OrderByDescending(v => v.VersionNo).ThenBy(x => x.Id).Select(v => new HrContractVersionDto
             {
                 Id = v.Id, ContractId = v.ContractId, VersionNo = v.VersionNo, ContractNo = v.ContractNo,
                 Type = (int)v.Type, StartDate = v.StartDate, EndDate = v.EndDate, BaseSalary = v.BaseSalary,
                 JobTitle = v.JobTitle, OrgUnitId = v.OrgUnitId, Description = v.Description, IsActive = v.IsActive,
                 ChangedByName = v.ChangedByName, ChangedAt = v.ChangedAt, ChangeNote = v.ChangeNote
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
 
     // ==================== هشدارهای انقضای قرارداد (§۹) ====================
 
@@ -801,9 +810,9 @@ public class HrCoreService : IHrCoreService
         return n;
     }
 
-    public async Task<List<HrContractAlertDto>> ListAlertsAsync()
+    public async Task<List<HrContractAlertDto>> ListAlertsAsync(Paging.Request? pagination = null)
     {
-        var alerts = await _db.HrContractExpiryAlerts.AsNoTracking().OrderBy(a => a.ExpireDate).Take(200).ToListAsync();
+        var alerts = await _db.HrContractExpiryAlerts.AsNoTracking().OrderBy(a => a.ExpireDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 200);
         if (alerts.Count == 0) return new();
         var cids = alerts.Select(a => a.ContractId).Distinct().ToList();
         var contracts = await _db.HrContracts.AsNoTracking().Where(c => cids.Contains(c.Id)).ToDictionaryAsync(c => c.Id);
@@ -834,20 +843,20 @@ public class HrCoreService : IHrCoreService
 
     // ==================== احکام ====================
 
-    public async Task<List<HrDecreeDto>> EmployeeDecreesAsync(int employeeId) =>
-        await ListDecreesQuery(_db.HrDecrees.Where(d => d.EmployeeId == employeeId));
+    public async Task<List<HrDecreeDto>> EmployeeDecreesAsync(int employeeId, Paging.Request? pagination = null) =>
+        await ListDecreesQuery(_db.HrDecrees.Where(d => d.EmployeeId == employeeId), pagination: pagination);
 
-    public async Task<List<HrDecreeDto>> ListDecreesAsync(int? employeeId, bool? onlyPending)
+    public async Task<List<HrDecreeDto>> ListDecreesAsync(int? employeeId, bool? onlyPending, Paging.Request? pagination = null)
     {
         var q = _db.HrDecrees.AsQueryable();
         if (employeeId is > 0) q = q.Where(d => d.EmployeeId == employeeId.Value);
         if (onlyPending == true) q = q.Where(d => !d.IsApplied);
-        return await ListDecreesQuery(q);
+        return await ListDecreesQuery(q, pagination: pagination);
     }
 
-    private async Task<List<HrDecreeDto>> ListDecreesQuery(IQueryable<HrDecree> q)
+    private async Task<List<HrDecreeDto>> ListDecreesQuery(IQueryable<HrDecree> q, Paging.Request? pagination = null)
     {
-        var rows = await q.AsNoTracking().OrderByDescending(d => d.EffectiveDate).ThenByDescending(d => d.Id).Take(500).ToListAsync();
+        var rows = await q.AsNoTracking().OrderByDescending(d => d.EffectiveDate).ThenByDescending(d => d.Id).ToPageListAsync(pagination, defaultCap: 500);
         var list = new List<HrDecreeDto>();
         foreach (var d in rows)
         {
@@ -1375,7 +1384,7 @@ public class HrCoreService : IHrCoreService
 
     // ---------- تحت‌تکفل ----------
 
-    public async Task<List<HrEmployeeDependentDto>> ListDependentsAsync(int employeeId)
+    public async Task<List<HrEmployeeDependentDto>> ListDependentsAsync(int employeeId, Paging.Request? pagination = null)
     {
         await EnsureEmployeeAsync(employeeId);
         return await _db.HrEmployeeDependents.AsNoTracking()
@@ -1384,7 +1393,7 @@ public class HrCoreService : IHrCoreService
             {
                 Id = x.Id, EmployeeId = x.EmployeeId, FullName = x.FullName, Relation = x.Relation,
                 BirthDate = x.BirthDate, NationalCode = x.NationalCode, IsActive = x.IsActive
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task<HrEmployeeDependentDto> SaveDependentAsync(int employeeId, int? id, HrEmployeeDependentSaveDto dto)
@@ -1415,7 +1424,7 @@ public class HrCoreService : IHrCoreService
 
     // ---------- دوره‌های آموزشی ----------
 
-    public async Task<List<HrEmployeeCourseDto>> ListCoursesAsync(int employeeId)
+    public async Task<List<HrEmployeeCourseDto>> ListCoursesAsync(int employeeId, Paging.Request? pagination = null)
     {
         await EnsureEmployeeAsync(employeeId);
         return await _db.HrEmployeeCourses.AsNoTracking()
@@ -1424,7 +1433,7 @@ public class HrCoreService : IHrCoreService
             {
                 Id = x.Id, EmployeeId = x.EmployeeId, Title = x.Title, Institute = x.Institute,
                 Year = x.Year, DurationHours = x.DurationHours, HasCertificate = x.HasCertificate
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task<HrEmployeeCourseDto> SaveCourseAsync(int employeeId, int? id, HrEmployeeCourseSaveDto dto)
@@ -1454,7 +1463,7 @@ public class HrCoreService : IHrCoreService
 
     // ---------- مهارت‌ها ----------
 
-    public async Task<List<HrEmployeeSkillDto>> ListSkillsAsync(int employeeId)
+    public async Task<List<HrEmployeeSkillDto>> ListSkillsAsync(int employeeId, Paging.Request? pagination = null)
     {
         await EnsureEmployeeAsync(employeeId);
         return await _db.HrEmployeeSkills.AsNoTracking()
@@ -1462,7 +1471,7 @@ public class HrCoreService : IHrCoreService
             .Select(x => new HrEmployeeSkillDto
             {
                 Id = x.Id, EmployeeId = x.EmployeeId, Title = x.Title, Level = (int)x.Level
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task<HrEmployeeSkillDto> SaveSkillAsync(int employeeId, int? id, HrEmployeeSkillSaveDto dto)
@@ -1491,7 +1500,7 @@ public class HrCoreService : IHrCoreService
 
     // ---------- زبان‌های خارجی ----------
 
-    public async Task<List<HrEmployeeLanguageDto>> ListLanguagesAsync(int employeeId)
+    public async Task<List<HrEmployeeLanguageDto>> ListLanguagesAsync(int employeeId, Paging.Request? pagination = null)
     {
         await EnsureEmployeeAsync(employeeId);
         return await _db.HrEmployeeLanguages.AsNoTracking()
@@ -1499,7 +1508,7 @@ public class HrCoreService : IHrCoreService
             .Select(x => new HrEmployeeLanguageDto
             {
                 Id = x.Id, EmployeeId = x.EmployeeId, Language = x.Language, Level = (int)x.Level
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task<HrEmployeeLanguageDto> SaveLanguageAsync(int employeeId, int? id, HrEmployeeLanguageSaveDto dto)
@@ -1528,10 +1537,10 @@ public class HrCoreService : IHrCoreService
 
     // ---------- اسناد ----------
 
-    public async Task<List<HrEmployeeDocumentDto>> ListDocumentsAsync(int employeeId, int expiringDays = 30)
+    public async Task<List<HrEmployeeDocumentDto>> ListDocumentsAsync(int employeeId, int expiringDays = 30, Paging.Request? pagination = null)
     {
         await EnsureEmployeeAsync(employeeId);
-        return await ListDocumentsQuery(_db.HrEmployeeDocuments.Where(d => d.EmployeeId == employeeId), expiringDays);
+        return await ListDocumentsQuery(_db.HrEmployeeDocuments.Where(d => d.EmployeeId == employeeId), expiringDays, pagination: pagination);
     }
 
     public async Task<HrEmployeeDocumentDto?> GetDocumentAsync(int id)
@@ -1576,20 +1585,20 @@ public class HrCoreService : IHrCoreService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<HrEmployeeDocumentDto>> ExpiringDocumentsAsync(int days)
+    public async Task<List<HrEmployeeDocumentDto>> ExpiringDocumentsAsync(int days, Paging.Request? pagination = null)
     {
         days = Math.Clamp(days, 1, 365);
         var horizon = DateTime.Today.AddDays(days);
         var list = await ListDocumentsQuery(_db.HrEmployeeDocuments
             .Where(d => d.ExpiryDate != null && d.ExpiryDate.Value.Date <= horizon)
-            .Join(_db.HrEmployees.Where(e => e.IsActive), d => d.EmployeeId, e => e.Id, (d, e) => d), days);
+            .Join(_db.HrEmployees.Where(e => e.IsActive), d => d.EmployeeId, e => e.Id, (d, e) => d), days, pagination: pagination);
         return list;
     }
 
-    private async Task<List<HrEmployeeDocumentDto>> ListDocumentsQuery(IQueryable<HrEmployeeDocument> q, int expiringDays)
+    private async Task<List<HrEmployeeDocumentDto>> ListDocumentsQuery(IQueryable<HrEmployeeDocument> q, int expiringDays, Paging.Request? pagination = null)
     {
         expiringDays = Math.Clamp(expiringDays, 1, 365);
-        var rows = await q.AsNoTracking().OrderByDescending(x => x.Id).Take(500).ToListAsync();
+        var rows = await q.AsNoTracking().OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
         var today = DateTime.Today;
         var empIds = rows.Select(r => r.EmployeeId).Distinct().ToList();
         var names = await _db.HrEmployees.Where(e => empIds.Contains(e.Id))

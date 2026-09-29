@@ -15,18 +15,18 @@ public interface IHrMainService
     Task DeleteLogoAsync();
 
     // شعب و دفاتر
-    Task<List<HrMainBranchDto>> ListBranchesAsync();
+    Task<List<HrMainBranchDto>> ListBranchesAsync(Paging.Request? pagination = null);
     Task<HrMainBranchDto> SaveBranchAsync(int? id, HrMainBranchSaveDto dto);
     Task DeleteBranchAsync(int id);
 
     // ساختار سازمانی
-    Task<List<HrMainOrgNodeDto>> GetTreeAsync();
-    Task<List<HrMainOrgNodeDto>> ListNodesAsync();
+    Task<List<HrMainOrgNodeDto>> GetTreeAsync(Paging.Request? pagination = null);
+    Task<List<HrMainOrgNodeDto>> ListNodesAsync(Paging.Request? pagination = null, bool tree = false);
     Task<HrMainOrgNodeDto> SaveNodeAsync(int? id, HrMainOrgNodeSaveDto dto, int? byUserId = null, string? byUsername = null);
     Task DeleteNodeAsync(int id, int? byUserId = null, string? byUsername = null);
 
     // پست‌های سازمانی
-    Task<List<HrMainPositionDto>> ListPositionsAsync(int? orgNodeId);
+    Task<List<HrMainPositionDto>> ListPositionsAsync(int? orgNodeId, Paging.Request? pagination = null);
     Task<HrMainPositionDto> SavePositionAsync(int? id, HrMainPositionSaveDto dto, int? byUserId = null, string? byUsername = null);
     Task DeletePositionAsync(int id, int? byUserId = null, string? byUsername = null);
 
@@ -45,7 +45,7 @@ public interface IHrMainService
     Task<HrMainRulesDto> SaveRulesAsync(HrMainRulesDto dto);
 
     // تعطیلات رسمی/شرکتی (روی جدول موجود CompanyHoliday)
-    Task<List<HrMainHolidayDto>> ListHolidaysAsync(int? jalaliYear);
+    Task<List<HrMainHolidayDto>> ListHolidaysAsync(int? jalaliYear, Paging.Request? pagination = null);
     Task<HrMainHolidayDto> SaveHolidayAsync(HrMainHolidaySaveDto dto, string createdBy);
     Task DeleteHolidayAsync(int id);
 
@@ -135,10 +135,10 @@ public class HrMainService : IHrMainService
 
     // ==================== شعب و دفاتر ====================
 
-    public async Task<List<HrMainBranchDto>> ListBranchesAsync()
+    public async Task<List<HrMainBranchDto>> ListBranchesAsync(Paging.Request? pagination = null)
     {
         var rows = await _db.HrMainBranches.AsNoTracking()
-            .OrderBy(b => b.SortOrder).ThenBy(b => b.Name).ToListAsync();
+            .OrderBy(b => b.SortOrder).ThenBy(b => b.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var counts = await _db.HrMainOrgNodes.AsNoTracking()
             .Where(n => n.BranchId != null)
             .GroupBy(n => n.BranchId!.Value)
@@ -194,9 +194,9 @@ public class HrMainService : IHrMainService
 
     // ==================== ساختار سازمانی ====================
 
-    public async Task<List<HrMainOrgNodeDto>> GetTreeAsync()
+    public async Task<List<HrMainOrgNodeDto>> GetTreeAsync(Paging.Request? pagination = null)
     {
-        var flat = await ListNodesAsync();
+        var flat = await ListNodesAsync(pagination, tree: true);
         var byId = flat.ToDictionary(n => n.Id);
         var roots = new List<HrMainOrgNodeDto>();
         foreach (var n in flat)
@@ -207,20 +207,31 @@ public class HrMainService : IHrMainService
         return roots;
     }
 
-    public async Task<List<HrMainOrgNodeDto>> ListNodesAsync()
+    public async Task<List<HrMainOrgNodeDto>> ListNodesAsync(Paging.Request? pagination = null, bool tree = false)
     {
-        var rows = await _db.HrMainOrgNodes.AsNoTracking()
-            .OrderBy(n => n.Level).ThenBy(n => n.SortOrder).ThenBy(n => n.Name).ToListAsync();
-        var names = rows.ToDictionary(n => n.Id, n => n.Name);
-        var branches = await _db.HrMainBranches.AsNoTracking()
+        var scope = _db.HrMainOrgNodes.AsNoTracking();
+        IOrderedQueryable<HrMainOrgNode> Order(IQueryable<HrMainOrgNode> q) => q
+            .OrderBy(n => n.Level).ThenBy(n => n.SortOrder).ThenBy(n => n.Name).ThenBy(n => n.Id);
+        var rows = tree
+            ? await Order(scope).ReadTreePageAsync(
+                Order(scope.Where(n => n.ParentId == null || n.ParentId <= 0 || !scope.Any(p => p.Id == n.ParentId))),
+                ids => Order(scope.Where(n => n.ParentId != null && ids.Contains(n.ParentId.Value))),
+                n => n.Id, pagination)
+            : await Order(scope).ToPageListAsync(pagination);
+        var parentIds = rows.Where(n => n.ParentId.HasValue).Select(n => n.ParentId!.Value).ToList();
+        var names = await _db.HrMainOrgNodes.AsNoTracking().Where(n => parentIds.Contains(n.Id))
+            .ToDictionaryAsync(n => n.Id, n => n.Name);
+        var rowIds = rows.Select(n => n.Id).ToList();
+        var branchIds = rows.Where(n => n.BranchId.HasValue).Select(n => n.BranchId!.Value).ToList();
+        var branches = await _db.HrMainBranches.AsNoTracking().Where(b => branchIds.Contains(b.Id))
             .ToDictionaryAsync(b => b.Id, b => b.Name);
         var posCounts = await _db.HrMainPositions.AsNoTracking()
-            .Where(p => p.OrgNodeId != null)
+            .Where(p => p.OrgNodeId != null && rowIds.Contains(p.OrgNodeId.Value))
             .GroupBy(p => p.OrgNodeId!.Value)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count);
         var empCounts = await _db.HrEmployees.AsNoTracking()
-            .Where(e => e.IsActive && e.HrMainNodeId != null)
+            .Where(e => e.IsActive && e.HrMainNodeId != null && rowIds.Contains(e.HrMainNodeId.Value))
             .GroupBy(e => e.HrMainNodeId!.Value)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count);
@@ -448,11 +459,11 @@ public class HrMainService : IHrMainService
 
     // ==================== پست‌های سازمانی ====================
 
-    public async Task<List<HrMainPositionDto>> ListPositionsAsync(int? orgNodeId)
+    public async Task<List<HrMainPositionDto>> ListPositionsAsync(int? orgNodeId, Paging.Request? pagination = null)
     {
         var q = _db.HrMainPositions.AsNoTracking().AsQueryable();
         if (orgNodeId is > 0) q = q.Where(p => p.OrgNodeId == orgNodeId.Value);
-        var rows = await q.OrderBy(p => p.Title).ToListAsync();
+        var rows = await q.OrderBy(p => p.Title).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var nodeNames = await _db.HrMainOrgNodes.AsNoTracking()
             .ToDictionaryAsync(n => n.Id, n => n.Name);
         // تعداد پرسنل فعالِ منصوب‌شده به هر پست — برای محاسبه ظرفیت خالی (Vacancy)
@@ -643,7 +654,7 @@ public class HrMainService : IHrMainService
 
     // ==================== تعطیلات (جدول موجود CompanyHoliday) ====================
 
-    public async Task<List<HrMainHolidayDto>> ListHolidaysAsync(int? jalaliYear)
+    public async Task<List<HrMainHolidayDto>> ListHolidaysAsync(int? jalaliYear, Paging.Request? pagination = null)
     {
         var jy = jalaliYear is >= 1300 and <= 1500
             ? jalaliYear.Value
@@ -654,13 +665,13 @@ public class HrMainService : IHrMainService
         if (end == DateTime.MinValue) end = start.AddYears(1);
         return await _db.CompanyHolidays.AsNoTracking()
             .Where(h => h.HolidayDate >= start && h.HolidayDate < end)
-            .OrderBy(h => h.HolidayDate)
+            .OrderBy(h => h.HolidayDate).ThenBy(x => x.Id)
             .Select(h => new HrMainHolidayDto
             {
                 Id = h.Id, Date = h.HolidayDate, Name = h.Name,
                 IsOfficial = h.IsOfficial, CreatedByName = h.CreatedByName
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
     }
 
     public async Task<HrMainHolidayDto> SaveHolidayAsync(HrMainHolidaySaveDto dto, string createdBy)

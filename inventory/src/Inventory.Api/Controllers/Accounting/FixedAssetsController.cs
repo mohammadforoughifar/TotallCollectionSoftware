@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared;
@@ -22,7 +23,7 @@ public class FixedAssetCategoriesController : RbacControllerBase
     public FixedAssetCategoriesController(Db.AppDbContext db, IFixedAssetService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<FixedAssetCategory>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _svc.GetCategoriesAsync(), skip, take));
+    public async Task<ActionResult<List<FixedAssetCategory>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(async pagination => await _svc.GetCategoriesAsync(pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<FixedAssetCategory>> Save([FromBody] FixedAssetCategory dto)
@@ -50,7 +51,7 @@ public class FixedAssetsController : RbacControllerBase
     [HttpGet]
     public async Task<ActionResult<List<FixedAsset>>> GetAll(
         [FromQuery] FixedAssetStatus? status = null, [FromQuery] int? categoryId = null, [FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetAssetsAsync(status, categoryId, search), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetAssetsAsync(status, categoryId, search, pagination: pagination), skip, take));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<FixedAsset>> Get(int id) => Ok(await _svc.GetAssetAsync(id));
@@ -80,7 +81,7 @@ public class FixedAssetRunsController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<FixedAssetDepreciationRun>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetRunsAsync(), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetRunsAsync(pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<FixedAssetDepreciationRun>> Run(

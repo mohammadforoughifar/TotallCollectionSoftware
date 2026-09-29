@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaPay;
 using Inventory.Shared.Dtos;
@@ -41,7 +42,7 @@ public class FaPayExtraController : RbacControllerBase
     public async Task<IActionResult> Loans([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListLoansAsync(employeeId, status), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListLoansAsync(employeeId, status, pagination: pagination), skip, take));
     }
 
     [HttpGet("loans/{id:int}")]
@@ -81,7 +82,7 @@ public class FaPayExtraController : RbacControllerBase
     public async Task<IActionResult> Arrears([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListArrearsAsync(employeeId, status), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListArrearsAsync(employeeId, status, pagination: pagination), skip, take));
     }
 
     [HttpPost("arrears")]
@@ -129,7 +130,7 @@ public class FaPayExtraController : RbacControllerBase
     public async Task<IActionResult> Settlements([FromQuery] int? employeeId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListSettlementsAsync(employeeId, status), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListSettlementsAsync(employeeId, status, pagination: pagination), skip, take));
     }
 
     [HttpGet("settlements/{id:int}")]

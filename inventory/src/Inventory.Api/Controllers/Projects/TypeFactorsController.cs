@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -17,13 +18,14 @@ public class TypeFactorsController : RbacControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
 
         var query = Db.TypeFactors.AsNoTracking().Where(t => !t.IsDelete);
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(t => t.Name.Contains(search));
 
-        var items = await query.OrderByDescending(t => t.CreatedAt)
+        var items = await query.OrderByDescending(t => t.CreatedAt).ThenBy(x => x.Id)
             .Select(t => new TypeFactorDto
             {
                 Id = t.Id,
@@ -31,8 +33,8 @@ public class TypeFactorsController : RbacControllerBase
                 CreatedAt = t.CreatedAt,
                 ProjectCount = t.Projects.Count(p => !p.IsDelete)
             })
-            .ToListAsync();
-        return Ok(Paging.Result(items, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(items));
     }
 
     [HttpGet("{id:int}")]

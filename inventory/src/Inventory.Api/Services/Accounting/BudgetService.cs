@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -13,12 +14,12 @@ namespace Inventory.Api.Services.Accounting;
 /// </summary>
 public interface IBudgetService
 {
-    Task<List<Budget>> GetBudgetsAsync(bool activeOnly = false);
+    Task<List<Budget>> GetBudgetsAsync(bool activeOnly = false, Paging.Request? pagination = null);
     Task<Budget> GetBudgetAsync(int id);
     Task<Budget> SaveBudgetAsync(Budget dto);
     Task DeleteBudgetAsync(int id);
 
-    Task<List<BudgetTransaction>> GetTransactionsAsync(int budgetId, int? budgetItemId = null);
+    Task<List<BudgetTransaction>> GetTransactionsAsync(int budgetId, int? budgetItemId = null, Paging.Request? pagination = null);
     Task<BudgetTransaction> AddTransactionAsync(BudgetTransaction dto);
     Task DeleteTransactionAsync(int id);
 
@@ -31,7 +32,7 @@ public class BudgetService : IBudgetService
     public BudgetService(Db.AppDbContext db) => _db = db;
 
     // =====================================================================
-    public async Task<List<Budget>> GetBudgetsAsync(bool activeOnly = false)
+    public async Task<List<Budget>> GetBudgetsAsync(bool activeOnly = false, Paging.Request? pagination = null)
     {
         var q = _db.Budgets.AsNoTracking()
             .Include(b => b.FiscalYear).Include(b => b.DimensionValue)
@@ -39,7 +40,7 @@ public class BudgetService : IBudgetService
             .AsQueryable();
         if (activeOnly) q = q.Where(b => b.IsActive);
 
-        var list = await q.OrderByDescending(b => b.Id).ToListAsync();
+        var list = await q.OrderByDescending(b => b.Id).ToPageListAsync(pagination);
         return list.Select(b => ToDto(b, includeItems: true)).ToList();
     }
 
@@ -122,7 +123,7 @@ public class BudgetService : IBudgetService
     }
 
     // =====================================================================
-    public async Task<List<BudgetTransaction>> GetTransactionsAsync(int budgetId, int? budgetItemId = null)
+    public async Task<List<BudgetTransaction>> GetTransactionsAsync(int budgetId, int? budgetItemId = null, Paging.Request? pagination = null)
     {
         var q = _db.BudgetTransactions.AsNoTracking()
             .Include(t => t.Budget).Include(t => t.BudgetItem)
@@ -136,7 +137,7 @@ public class BudgetService : IBudgetService
                 SourceId = t.SourceId, SourceTitle = t.SourceTitle, Amount = t.Amount,
                 Date = t.Date, Description = t.Description
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
     }
 
     public async Task<BudgetTransaction> AddTransactionAsync(BudgetTransaction dto)
