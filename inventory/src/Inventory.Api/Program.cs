@@ -39,15 +39,34 @@ if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
 
 // ================== تنظیمات دیتابیس ==================
 // پیش‌فرض: SQL Server — برای توسعه/تست می‌توان Provider را روی Sqlite گذاشت.
+// روی لینوکس/مک بدون SQL Server، مقداردهی خودکار SQLite انجام می‌شود تا
+// اجرای پروژه با یک کلیک (./RUN.sh یا RUN.ps1) نتیجه بدهد.
 var provider = builder.Configuration["Database:Provider"] ?? "SqlServer";
 var connectionString = builder.Configuration.GetConnectionString("Default");
+var sqliteFallbackApplied = false;
+
+// اگر روی لینوکس هستیم و رشته اتصال «Server=.;Database=InventoryDb» (محلی ویندوز) است،
+ // به SQLite تغییر مسیر می‌دهیم؛ کاربر ویندوز همچنان SQL Server را خواهد داشت.
+if (!OperatingSystem.IsWindows()
+    && (connectionString?.Contains("Server=.", StringComparison.OrdinalIgnoreCase) == true
+        || connectionString?.Contains("Server=localhost", StringComparison.OrdinalIgnoreCase) == true)
+    && (provider.Equals("SqlServer", StringComparison.OrdinalIgnoreCase))
+    && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("Database__Provider")))
+{
+    Console.WriteLine("[DB] ⚠ روی لینوکس/مک SQL Server محلی در دسترس نیست؛ استفاده خودکار از SQLite (inventory.db).");
+    Console.WriteLine("[DB]    برای SQL Server واقعی، متغیر محیط Database__Provider=SqlServer و ConnectionStrings__Default را تنظیم کنید.");
+    provider = "Sqlite";
+    connectionString = "Data Source=inventory.db";
+    sqliteFallbackApplied = true;
+}
 
 if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException(
-        "رشته اتصال دیتابیس پیدا نشد. لطفاً مقدار ConnectionStrings:Default را در appsettings.json تنظیم کنید.");
+        "رشته اتصال دیتابیس پیدا نشد. لطفاً مقدار ConnectionStrings:Default را در appsettings.json تنظیم کنید."
+        + " برای اجرای بدون SQL Server: Database__Provider=Sqlite ConnectionStrings__Default=\"Data Source=inventory.db\" dotnet run");
 
 // لاگ راه‌اندازی (رمز عبور پوشیده می‌شود) برای اشکال‌زدایی اتصال
-Console.WriteLine($"[DB] Provider = {provider}");
+Console.WriteLine($"[DB] Provider = {provider}" + (sqliteFallbackApplied ? " (auto-fallback)" : ""));
 Console.WriteLine($"[DB] ConnectionString = {Mask(connectionString)}");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -55,7 +74,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     if (provider.Equals("Sqlite", StringComparison.OrdinalIgnoreCase))
         options.UseSqlite(connectionString);
     else
-        options.UseSqlServer(connectionString);
+        options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(3));
 });
 
 // RADIS-HR از همان Connection String و همان دیتابیس استفاده می‌کند، ولی DbContext و

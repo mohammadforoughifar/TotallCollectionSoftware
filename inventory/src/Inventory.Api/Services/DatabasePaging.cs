@@ -79,9 +79,22 @@ public static class DatabasePagingExtensions
         if (pagination?.IsPaged != true)
             return await (defaultCap is > 0 ? query.Take(defaultCap.Value) : query).ToListAsync(cancellationToken);
 
+        // هشدار: اگر کوئری بدون OrderBy باشد، نتایج صفحه‌بندی در SQL Server غیرقطعی است
+        // و ممکن است ردیف‌ها تکراری یا جاافتاده باشند. تمام فراخوانی‌ها باید قبل از
+        // ToPageListAsync یک OrderBy قطعی داشته باشند (بررسی در validate.sh).
         pagination.SetTotal(await query.CountAsync(cancellationToken));
         if (pagination.Skip > 0) query = query.Skip(pagination.Skip);
         if (pagination.Take is > 0) query = query.Take(pagination.Take.Value);
         return await query.ToListAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// اعتبارسنجی نظم صفحه‌بندی در حالت توسعه: اگر کوئری بدون OrderBy باشد، هشدار لاگ می‌دهد
+    /// اما اجرا را متوقف نمی‌کند (ناسازگاری با برخی کوئری‌های قدیمی که OrderBy در Select دارند).
+    /// </summary>
+    public static bool HasDeterministicOrder<T>(IQueryable<T> query)
+    {
+        var expr = query.Expression.ToString();
+        return expr.Contains("OrderBy", StringComparison.Ordinal);
     }
 }

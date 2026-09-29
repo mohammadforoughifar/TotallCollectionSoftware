@@ -23,7 +23,7 @@
             <div class="col-md-4">
                 <div class="input-group">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                    <input class="form-control" placeholder="جستجوی نام گروه…" @bind="search" @bind:event="oninput" />
+                    <input class="form-control" placeholder="جستجوی نام گروه…" value="@search" @oninput="OnSearchInput" />
                 </div>
             </div>
             <div class="col-md-auto">
@@ -230,9 +230,16 @@
         finally { loading = false; }
     }
 
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        search = e.Value?.ToString() ?? "";
+        page = 1; // هنگام تغییر فیلتر، بازگشت به صفحهٔ اول (رفع باگ صفحهٔ خالی)
+    }
+
     private async Task OnActiveChanged(ChangeEventArgs e)
     {
         activeOnly = e.Value is bool b && b;
+        page = 1;
         await Load();
     }
 
