@@ -2,6 +2,7 @@ using System.Data;
 using System.Drawing;
 using System.Globalization;
 using Inventory.Api.Data;
+using Inventory.Api.Services.System;
 using Microsoft.EntityFrameworkCore;
 using Stimulsoft.Report;
 using Stimulsoft.Report.Dictionary;
@@ -30,17 +31,20 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _configuration;
+    private readonly FileStore _files;
     private readonly ILogger<StimulsoftOutgoingLetterPrintService> _logger;
 
     public StimulsoftOutgoingLetterPrintService(
         AppDbContext db,
         IWebHostEnvironment env,
         IConfiguration configuration,
+        FileStore files,
         ILogger<StimulsoftOutgoingLetterPrintService> logger)
     {
         _db = db;
         _env = env;
         _configuration = configuration;
+        _files = files;
         _logger = logger;
     }
 
@@ -151,10 +155,11 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
             {
                 var signer = signers[index];
                 if (!signer.IsSigned || string.IsNullOrWhiteSpace(signer.User?.SignaturePath)) continue;
-                var signaturePath = ResolveUserFile(signer.User.SignaturePath);
-                if (signaturePath == null) continue;
+                var signatureBytes = _files.ReadBytes(signer.User.SignaturePath);
+                if (signatureBytes is not { Length: > 0 }) continue;
                 var suffix = index == 0 ? string.Empty : (index + 1).ToString(CultureInfo.InvariantCulture);
-                using var source = Image.FromFile(signaturePath);
+                using var signatureStream = new MemoryStream(signatureBytes);
+                using var source = Image.FromStream(signatureStream);
                 SetVariable(report, $"ImageSignature{suffix}", new Bitmap(source));
             }
 
@@ -198,8 +203,8 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
             letter.Text ?? string.Empty,
             letter.Title,
             BuildReceiver(letter),
-            string.Join(Environment.NewLine, hamesh.Select(x => x.Name)),
-            string.Join(Environment.NewLine, hamesh.Select(x => x.Desc)),
+            string.Join(Environment.NewLine, hamesh.Select((x, index) => $"{index + 1}. {x.Name}")),
+            string.Join(Environment.NewLine, hamesh.Select((x, index) => $"{index + 1}. {x.Desc}")),
             ToPersianDate(letter.DateSadere ?? letter.DateSabt),
             hasAttachment ? "دارد" : "ندارد");
 

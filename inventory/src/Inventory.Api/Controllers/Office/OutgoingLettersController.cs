@@ -480,7 +480,8 @@ public class OutgoingLettersController : RbacControllerBase
             .OrderBy(x => x.Order).ThenBy(x => x.Id)
             .ToListAsync();
         var missingSignature = signers
-            .Where(x => !x.IsSigned || string.IsNullOrWhiteSpace(x.User?.SignaturePath))
+            .Where(x => !x.IsSigned || string.IsNullOrWhiteSpace(x.User?.SignaturePath)
+                || _store.ReadBytes(x.User.SignaturePath) is not { Length: > 0 })
             .Select(x =>
             {
                 var name = x.User == null
