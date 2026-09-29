@@ -33,6 +33,7 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
     private readonly IConfiguration _configuration;
     private readonly FileStore _files;
     private readonly ILogger<StimulsoftOutgoingLetterPrintService> _logger;
+    private static int _fontsRegistered;
 
     public StimulsoftOutgoingLetterPrintService(
         AppDbContext db,
@@ -123,6 +124,7 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
 
         try
         {
+            RegisterStimulsoftFonts();
             using var report = new StiReport();
             report.Load(templatePath);
 
@@ -177,6 +179,18 @@ public sealed class StimulsoftOutgoingLetterPrintService : IStimulsoftOutgoingLe
                 "رندر Stimulsoft ناموفق بود. LetterId={LetterId}, CompanyId={CompanyId}, Size={Size}, Template={Template}",
                 letterId, company.Id, size, templatePath);
             return null;
+        }
+    }
+
+    private void RegisterStimulsoftFonts()
+    {
+        if (Interlocked.Exchange(ref _fontsRegistered, 1) != 0) return;
+        var root = Path.Combine(AppContext.BaseDirectory, "Resources", "fonts");
+        foreach (var file in new[] { "Vazirmatn-Regular.ttf", "Vazirmatn-Bold.ttf" })
+        {
+            var path = Path.Combine(root, file);
+            if (File.Exists(path))
+                Stimulsoft.Base.StiFontCollection.AddFontFile(path);
         }
     }
 
