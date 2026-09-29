@@ -239,7 +239,8 @@
                         </button>
                     }
                     <button class="icb" title="@(folder == "archive" ? "خروج از بایگانی (Ctrl+Shift+B)" : "بایگانی (Ctrl+Shift+B)")" data-hotkey="ctrl+shift+b" @onclick="ArchiveCurrent"><i class="bi bi-archive"></i></button>
-                    <button class="icb" title="چاپ" @onclick="Print"><i class="bi bi-printer"></i></button>
+                    <button class="icb" title="چاپ A4 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A4")'><i class="bi bi-printer"></i></button>
+                    <button class="icb" title="چاپ A5 روی سربرگ" disabled="@printingPdf" @onclick='() => PrintPdf("A5")'><i class="bi bi-printer-fill"></i></button>
                     <button class="icb" title="کپی نامه" @onclick="CopyLetter"><i class="bi bi-files"></i></button>
                     @if (selected.CanEdit)
                     {
@@ -1093,12 +1094,21 @@
     {
         openMenuId = 0;
         await OpenLetter(l);
-        await Print();
+        await PrintPdf("A4");
     }
 
-    private async Task Print()
+    private bool printingPdf;
+    private async Task PrintPdf(string size)
     {
-        try { await JS.InvokeVoidAsync("ltxPrint"); } catch { }
+        if (selected == null) return;
+        printingPdf = true;
+        try
+        {
+            var bytes = await LetterSvc.GetPrintPdfAsync(selected.LetterId, size);
+            await JS.InvokeVoidAsync("ltxOpenPdf", Convert.ToBase64String(bytes), $"inner-letter-{selected.LetterNumber}-{size}.pdf");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { printingPdf = false; }
     }
 
     /// <summary>

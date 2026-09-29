@@ -1,5 +1,6 @@
 using Inventory.Api.Data;
 using Inventory.Api.Services;
+using Inventory.Api.Services.Office;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,8 +28,9 @@ public class InnerLettersController : RbacControllerBase
     private readonly ILetterGroupService _groups;
     private readonly IArchiveService _archive;
     private readonly FileStore _store;
+    private readonly IInnerLetterPrintService _print;
 
-    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups, IArchiveService archive, FileStore store)
+    public InnerLettersController(AppDbContext db, IInnerLetterService letters, IErjaService erja, IPishnevisService pishnevis, ILetterGroupService groups, IArchiveService archive, FileStore store, IInnerLetterPrintService print)
         : base(db)
     {
         _letters = letters;
@@ -37,9 +39,19 @@ public class InnerLettersController : RbacControllerBase
         _groups = groups;
         _archive = archive;
         _store = store;
+        _print = print;
     }
 
     private async Task<bool> IsAdminAsync() => await HasAsync(Module, "Delete");
+
+    [HttpGet("{id:int}/print")]
+    public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4")
+    {
+        if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
+        if (size is not ("A4" or "A5")) return BadRequest(new { message = "سایز چاپ فقط A4 یا A5 است." });
+        var pdf = await _print.GeneratePdfAsync(id, size, MyUserId);
+        return pdf == null ? NotFound(new { message = "نامه پیدا نشد یا دسترسی چاپ ندارید." }) : File(pdf, "application/pdf", $"inner-letter-{id}-{size}.pdf");
+    }
 
     /// <summary>نام نمایشی کاربر جاری (نام و نام خانوادگی، وگرنه نام کاربری)</summary>
     private async Task<string> MyDisplayNameAsync()

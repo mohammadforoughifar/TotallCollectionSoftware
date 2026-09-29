@@ -110,6 +110,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingPishn
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IStimulsoftOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.StimulsoftOutgoingLetterPrintService>();
 builder.Services.AddScoped<Inventory.Api.Services.Office.Outgoing.IOutgoingLetterPrintService, Inventory.Api.Services.Office.Outgoing.OutgoingLetterPrintService>();
+builder.Services.AddScoped<Inventory.Api.Services.Office.IInnerLetterPrintService, Inventory.Api.Services.Office.InnerLetterPrintService>();
 // ایمیل سازمانی (پست الکترونیک) — SMTP/IMAP با MailKit + حساب‌های دبیرخانه
 builder.Services.AddScoped<Inventory.Api.Services.Office.Email.IEmailService, Inventory.Api.Services.Office.Email.EmailService>();
 

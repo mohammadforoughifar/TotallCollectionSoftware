@@ -17,6 +17,7 @@ public interface ILetterService
     Task<int> SendAsync(AddInnerLetterDto dto);
     Task DeleteAsync(int letterId);
     Task<List<LetterPickDto>> PickAsync(string? search = null);
+    Task<byte[]> GetPrintPdfAsync(int letterId, string size);
 
     // گردش / ارجاع
     Task<List<ErjaTreeNodeDto>> GetGardeshAsync(int letterId);
@@ -115,6 +116,15 @@ public class LetterService : ILetterService
         (await _api.PostAsync<IdResponse>("api/letters", dto)).Id;
 
     public Task DeleteAsync(int letterId) => _api.DeleteAsync($"api/letters/{letterId}");
+
+    public async Task<byte[]> GetPrintPdfAsync(int letterId, string size)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, _api.BuildUrl($"api/letters/{letterId}/print?size={Uri.EscapeDataString(size)}"));
+        if (!string.IsNullOrWhiteSpace(_auth.Token)) req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _auth.Token);
+        var resp = await _http.SendAsync(req);
+        if (!resp.IsSuccessStatusCode) throw new InvalidOperationException(await resp.Content.ReadAsStringAsync());
+        return await resp.Content.ReadAsByteArrayAsync();
+    }
 
     public Task<List<LetterPickDto>> PickAsync(string? search = null) =>
         ListOrPaged.GetAsync<LetterPickDto>(_api,
