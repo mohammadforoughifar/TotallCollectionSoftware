@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Shared.Dtos;
@@ -59,6 +60,7 @@ public class ProjectCartableController : RbacControllerBase
     [HttpGet("queue")]
     public async Task<IActionResult> Queue([FromQuery] string? kind, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(CCModule, "Read") is { } forbid) return forbid;
 
         var isManager = string.Equals(kind, "manager", StringComparison.OrdinalIgnoreCase);
@@ -71,10 +73,10 @@ public class ProjectCartableController : RbacControllerBase
             .Include(p => p.Attaches.Where(a => !a.IsDelete))
             .Where(p => !p.IsDelete && p.FlowStatus == status)
             .OrderBy(p => p.CreatedAt).ThenBy(p => p.Id)
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         var today = DateTime.Today;
-        return Ok(Paging.Result(list.Select(p => new
+        return Ok(pagination.Result(list.Select(p => new
         {
             p.Id,
             p.CodeProject,
@@ -88,7 +90,7 @@ public class ProjectCartableController : RbacControllerBase
             RegisterUser = p.User is null ? null : DisplayOf(p.User),
             DaysWaiting = Math.Max(0, (today - p.CreatedAt.Date).Days),
             AttachCount = p.Attaches.Count
-        }).ToList(), skip, take));
+        }).ToList()));
     }
 
     // ==================== اکشن‌های مدیر ====================
@@ -256,6 +258,7 @@ public class ProjectCartableController : RbacControllerBase
     [HttpGet("changes")]
     public async Task<IActionResult> Changes([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(CCModule, "Read") is { } forbid) return forbid;
 
         var list = await Db.ProjectChangeRequests.AsNoTracking()
@@ -263,10 +266,10 @@ public class ProjectCartableController : RbacControllerBase
             .Include(c => c.RequestedBy)
             .Where(c => c.Status == 0)
             .OrderBy(c => c.RequestedAt).ThenBy(c => c.Id)
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         var today = DateTime.Today;
-        return Ok(Paging.Result(list.Select(c => new ProjectChangeRequestDto
+        return Ok(pagination.Result(list.Select(c => new ProjectChangeRequestDto
         {
             Id = c.Id,
             ProjectId = c.ProjectId,
@@ -282,7 +285,7 @@ public class ProjectCartableController : RbacControllerBase
             RequestedAt = c.RequestedAt,
             ManagerActionAt = c.ManagerActionAt,
             DaysWaiting = Math.Max(0, (today - c.RequestedAt.Date).Days)
-        }).ToList(), skip, take));
+        }).ToList()));
     }
 
     /// <summary>تایید مدیر → تغییر واقعاً اعمال می‌شود (ویرایش ذخیره یا پروژه حذف نرم می‌شود)</summary>

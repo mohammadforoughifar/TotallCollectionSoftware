@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 
@@ -10,15 +11,15 @@ namespace Inventory.Api.Services.Accounting;
 public interface IAccountingService
 {
     // ---------- سال مالی ----------
-    Task<List<AccFiscalYear>> GetFiscalYearsAsync();
+    Task<List<AccFiscalYear>> GetFiscalYearsAsync(Paging.Request? pagination = null);
     Task<AccFiscalYear> SaveFiscalYearAsync(AccFiscalYear dto);
     Task SetCurrentFiscalYearAsync(int id);
     Task DeleteFiscalYearAsync(int id);
 
     // ---------- حساب‌ها ----------
-    Task<List<AccAccount>> GetAccountsFlatAsync(bool activeOnly = false, bool withBalances = false);
-    Task<List<AccAccount>> GetAccountTreeAsync(bool activeOnly = false, bool withBalances = false);
-    Task<List<LookupItem>> GetPostableAccountLookupsAsync(string? search = null);
+    Task<List<AccAccount>> GetAccountsFlatAsync(bool activeOnly = false, bool withBalances = false, Paging.Request? pagination = null);
+    Task<List<AccAccount>> GetAccountTreeAsync(bool activeOnly = false, bool withBalances = false, Paging.Request? pagination = null);
+    Task<List<LookupItem>> GetPostableAccountLookupsAsync(string? search = null, Paging.Request? pagination = null);
     Task<AccAccount> SaveAccountAsync(AccAccount dto);
     Task MoveAccountAsync(AccAccountMove cmd);
     Task DeleteAccountAsync(int id);
@@ -41,7 +42,7 @@ public interface IAccountingService
     Task<AccDashboard> GetDashboardAsync();
 
     // ---------- سند خودکار انبار ----------
-    Task<List<AccInvRule>> GetInvRulesAsync();
+    Task<List<AccInvRule>> GetInvRulesAsync(Paging.Request? pagination = null);
     Task<AccInvRule> SaveInvRuleAsync(AccInvRule dto);
     Task DeleteInvRuleAsync(int id);
 

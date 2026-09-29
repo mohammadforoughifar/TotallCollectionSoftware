@@ -4,8 +4,8 @@ namespace Inventory.Api.Services;
 
 /// <summary>
 /// کمک‌صفحه‌بندی یکپارچهٔ بک‌اند بر پایهٔ الگوی skip/take.
-/// تمام endpointهای «جمع‌آوری» (GET فهرست‌ها) از این کلاس استفاده می‌کنند تا رفتار
-/// صفحه‌بندی در کل پروژه یکسان باشد.
+/// برای فهرست‌های دیتابیسی از ResultAsync / QueryAsync یا Request همراه ToPageListAsync استفاده شود.
+/// Result و Slice قدیمی فقط برای مسیرهای هنوز مهاجرت‌نکرده و داده‌های غیر دیتابیسی باقی مانده‌اند.
 ///
 /// قرارداد پاسخ (سازگار با کلاینت موجود):
 /// • اگر کلاینت skip/take نفرستد (take تهی یا صفر و skip صفر) ← همان «آرایهٔ کامل» قبلی برگردانده می‌شود؛
@@ -15,7 +15,7 @@ namespace Inventory.Api.Services;
 ///   items = فقط ردیف‌های همان صفحه (Skip/Take).
 ///   لایهٔ ListOrPaged در کلاینت این شکل پاسخ را می‌فهمد.
 /// </summary>
-public static class Paging
+public static partial class Paging
 {
     /// <summary>آیا صفحه‌بندی درخواست شده است؟ (take مثبت یا skip مثبت)</summary>
     public static bool Requested(int skip, int? take) => take is > 0 || skip > 0;
@@ -49,7 +49,9 @@ public static class Paging
     }
 
     /// <summary>
-    /// صفحه‌بندی روی فهرست materialize شده (خروجی آمادهٔ سرویس‌ها) با همان Skip/Take.
+    /// Legacy in-memory paging. Do not use for new database-backed endpoints.
+    /// Use ResultAsync(request => service.ListAsync(pagination: request), skip, take) instead.
+    /// صفحه‌بندی روی فهرست materialize شده (مسیرهای هنوز مهاجرت‌نکرده) با همان Skip/Take.
     /// بدون درخواست صفحه‌بندی ← همان فهرست کامل (بدون تغییر شکل پاسخ).
     /// </summary>
     public static object Result<T>(IEnumerable<T> all, int skip, int? take)

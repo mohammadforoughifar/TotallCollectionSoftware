@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System.Text.Json;
 using Inventory.Api.Data;
 using Inventory.Api.Services.HrCore;
@@ -11,7 +12,7 @@ public interface IHrReportService
 {
     List<HrReportColumnDto> Meta(string entity);
     Task<HrReportResultDto> RunAsync(HrReportRunDto dto);
-    Task<List<HrReportTemplateDto>> ListTemplatesAsync(int userId);
+    Task<List<HrReportTemplateDto>> ListTemplatesAsync(int userId, Paging.Request? pagination = null);
     Task<HrReportTemplateDto> SaveTemplateAsync(int userId, HrReportTemplateSaveDto dto);
     Task DeleteTemplateAsync(int userId, int id);
 }
@@ -271,10 +272,10 @@ public class HrReportService : IHrReportService
 
     // ==================== قالب‌های شخصی ====================
 
-    public async Task<List<HrReportTemplateDto>> ListTemplatesAsync(int userId)
+    public async Task<List<HrReportTemplateDto>> ListTemplatesAsync(int userId, Paging.Request? pagination = null)
     {
         var rows = await _db.HrReportTemplates.AsNoTracking()
-            .Where(x => x.UserId == userId).OrderBy(x => x.Name).Take(100).ToListAsync();
+            .Where(x => x.UserId == userId).OrderBy(x => x.Name).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 100);
         return rows.Select(MapTemplate).ToList();
     }
 

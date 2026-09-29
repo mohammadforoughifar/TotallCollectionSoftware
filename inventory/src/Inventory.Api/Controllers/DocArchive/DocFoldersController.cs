@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
@@ -30,6 +31,7 @@ public class DocFoldersController : RbacControllerBase
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
@@ -40,13 +42,13 @@ public class DocFoldersController : RbacControllerBase
             .Select(g => new { FolderId = g.Key, C = g.Count() })
             .ToDictionaryAsync(x => x.FolderId, x => x.C);
 
+        var visibleIds = map.Where(x => x.Value.Level > DocAccessLevel.None).Select(x => x.Key).ToList();
         var rows = await Db.DocFolders.AsNoTracking()
-            .Where(x => x.IsActive)
-            .OrderBy(x => x.Name)
-            .ToListAsync();
+            .Where(x => x.IsActive && visibleIds.Contains(x.Id))
+            .OrderBy(x => x.Name).ThenBy(x => x.Id)
+            .ToPageListAsync(pagination);
 
         var result = rows
-            .Where(x => map.TryGetValue(x.Id, out var a) && a.Level > DocAccessLevel.None)
             .Select(x => new DocFolderDto
             {
                 Id = x.Id,
@@ -63,7 +65,7 @@ public class DocFoldersController : RbacControllerBase
                 MyCanDownload = map[x.Id].Download
             }).ToList();
 
-        return Ok(Paging.Result(result, skip, take));
+        return Ok(pagination.Result(result));
     }
 
     /// <summary>یک پوشه با فهرست دسترسی‌ها (برای فرم مدیریت دسترسی).</summary>

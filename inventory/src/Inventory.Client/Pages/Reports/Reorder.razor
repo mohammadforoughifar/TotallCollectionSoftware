@@ -28,7 +28,7 @@ else
     <div class="alert alert-warning d-flex align-items-center gap-2" role="alert">
         <i class="bi bi-exclamation-triangle-fill"></i>
         <div>
-            <strong>@items.Count.Num() کالا</strong> زیر نقطه سفارش قرار دارد و نیاز به خرید مجدد دارد.
+            <strong>@totalCount.Num() کالا</strong> زیر نقطه سفارش قرار دارد و نیاز به خرید مجدد دارد.
         </div>
     </div>
 }
@@ -75,7 +75,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var r in Paged)
+                        @foreach (var r in items)
                         {
                             <tr>
                                 <td class="doc-number text-muted">@r.ProductCode</td>
@@ -95,7 +95,7 @@ else
                 </table>
             </div>
 
-            <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+            <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
         }
     </div>
 </div>
@@ -108,15 +108,9 @@ else
     // ---------- صفحه‌بندی ----------
     private int page = 1;
     private const int PageSize = 12;
-    private int PageCount => Math.Max(1, (int)Math.Ceiling(items.Count / (double)PageSize));
-    private List<ReorderItem> Paged
-    {
-        get
-        {
-            if (page > PageCount) page = PageCount;
-            return items.Skip((page - 1) * PageSize).Take(PageSize).ToList();
-        }
-    }
+    private int totalCount;
+    private int loadVersion;
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(totalCount / (double)PageSize));
     private List<LookupItem> whLookup = new();
     private int warehouseId;
     private bool loading = true;
@@ -134,13 +128,33 @@ else
 
     private async Task Load()
     {
+        page = 1;
+        await LoadPage();
+    }
+
+    private async Task ChangePage(int value)
+    {
+        page = Math.Clamp(value, 1, PageCount);
+        await LoadPage();
+    }
+
+    private async Task LoadPage()
+    {
+        var version = ++loadVersion;
         loading = true;
         try
         {
-            items = await ReportSvc.GetReorderAsync(warehouseId);
-            page = 1;
+            var result = await ReportSvc.GetReorderPageAsync((page - 1) * PageSize, PageSize, warehouseId);
+            if (version != loadVersion) return;
+            items = result.Items;
+            totalCount = result.TotalCount;
+            if (page > PageCount)
+            {
+                page = PageCount;
+                await LoadPage();
+            }
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 }

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -39,7 +40,7 @@ public class StocktakingService : IStocktakingService
     // ۱) بارکد
     // =====================================================================
 
-    public async Task<List<BcdBarcode>> GetBarcodesAsync(int? productId = null, string? search = null)
+    public async Task<List<BcdBarcode>> GetBarcodesAsync(int? productId = null, string? search = null, Paging.Request? pagination = null)
     {
         var q = _db.BcdBarcodes.AsNoTracking().Include(b => b.Product).AsQueryable();
 
@@ -53,9 +54,8 @@ public class StocktakingService : IStocktakingService
         }
 
         var rows = await q
-            .OrderBy(b => b.ProductId).ThenByDescending(b => b.IsPrimary).ThenBy(b => b.Code)
-            .Take(500)
-            .ToListAsync();
+            .OrderBy(b => b.ProductId).ThenByDescending(b => b.IsPrimary).ThenBy(b => b.Code).ThenBy(x => x.Id)
+            .ToPageListAsync(pagination, defaultCap: 500);
 
         return rows.Select(MapBarcode).ToList();
     }

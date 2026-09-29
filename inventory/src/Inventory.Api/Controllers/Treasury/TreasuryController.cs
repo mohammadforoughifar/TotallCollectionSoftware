@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
@@ -28,11 +29,11 @@ public class TrsAccountsController : RbacControllerBase
     public async Task<ActionResult<List<TrsAccount>>> GetAll(
         [FromQuery] bool activeOnly = false,
         [FromQuery] bool withBalances = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetAccountsAsync(activeOnly, withBalances), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetAccountsAsync(activeOnly, withBalances, pagination: pagination), skip, take));
 
     [HttpGet("lookups")]
     public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] bool activeOnly = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetAccountLookupsAsync(activeOnly), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetAccountLookupsAsync(activeOnly, pagination: pagination), skip, take));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<TrsAccount>> Get(int id)
@@ -193,7 +194,7 @@ public class TrsRulesController : RbacControllerBase
     public TrsRulesController(Db.AppDbContext db, ITreasuryService svc) : base(db) => _svc = svc;
 
     [HttpGet]
-    public async Task<ActionResult<List<TrsRule>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(Paging.Result(await _svc.GetRulesAsync(), skip, take));
+    public async Task<ActionResult<List<TrsRule>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null) => Ok(await Paging.ResultAsync(async pagination => await _svc.GetRulesAsync(pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<TrsRule>> Save([FromBody] TrsRule dto)

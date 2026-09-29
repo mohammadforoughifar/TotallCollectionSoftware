@@ -18,6 +18,7 @@ public interface ISettingsService
 /// <summary>سرویس معرف‌ها (بازاریاب‌ها) + کیف پول و پرداخت‌ها.</summary>
 public interface IReferrerService
 {
+    Task<PagedResult<Referrer>> GetPagedAsync(int skip, int take, bool activeOnly = false, string? search = null);
     Task<List<Referrer>> GetAllAsync(bool activeOnly = false);
     Task<Referrer> SaveAsync(Referrer referrer);
     Task DeleteAsync(int id);
@@ -40,6 +41,7 @@ public interface ICategoryService
 /// <summary>سرویس واحدهای شمارش.</summary>
 public interface IUnitService
 {
+    Task<PagedResult<MeasureUnit>> GetPagedAsync(int skip, int take, bool activeOnly = false, string? search = null);
     Task<List<MeasureUnit>> GetAllAsync(bool activeOnly = false);
     Task<MeasureUnit> SaveAsync(MeasureUnit unit);
     Task DeleteAsync(int id);
@@ -63,6 +65,7 @@ public interface IProductService
 /// <summary>سرویس انبارها.</summary>
 public interface IWarehouseService
 {
+    Task<PagedResult<Warehouse>> GetPagedAsync(int skip, int take);
     Task<List<Warehouse>> GetAllAsync();
     Task<List<LookupItem>> GetLookupsAsync(bool activeOnly = false);
     Task<Warehouse> SaveAsync(Warehouse warehouse);
@@ -72,6 +75,7 @@ public interface IWarehouseService
 /// <summary>سرویس طرف حساب‌ها.</summary>
 public interface IPartyService
 {
+    Task<PagedResult<Party>> GetPagedAsync(PartyType type, int skip, int take);
     Task<List<Party>> GetAsync(PartyType type);
     Task<List<LookupItem>> GetLookupsAsync(PartyType type, bool activeOnly = false);
     Task<Party> SaveAsync(Party party);
@@ -104,6 +108,7 @@ public interface IReportService
 {
     Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId = null, DateTime? from = null, DateTime? to = null);
     Task<List<ReorderItem>> GetReorderAsync(int? warehouseId = null);
+    Task<PagedResult<ReorderItem>> GetReorderPageAsync(int skip, int take, int? warehouseId = null);
 }
 
 /// <summary>سرویس داشبورد.</summary>

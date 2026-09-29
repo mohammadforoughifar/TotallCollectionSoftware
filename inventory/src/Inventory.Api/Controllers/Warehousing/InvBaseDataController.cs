@@ -21,7 +21,7 @@ public class InvCategoriesController : RbacControllerBase
     /// <summary>درخت گروه‌های کالا (هر گره شامل زیرگروه‌هایش).</summary>
     [HttpGet("tree")]
     public async Task<ActionResult<List<InvCategory>>> Tree([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetCategoryTreeAsync(activeOnly), skip, take));
+        => Ok(await Paging.ResultAsync(pagination => _svc.GetCategoryTreeAsync(activeOnly, pagination), skip, take));
 
     /// <summary>فهرست تخت گروه‌ها (برای کمبوها و انتخاب والد).</summary>
     [HttpGet]
@@ -75,7 +75,7 @@ public class InvAttributesController : RbacControllerBase
     [HttpGet]
     public async Task<ActionResult<List<InvAttribute>>> GetAll(
         [FromQuery] bool activeOnly = false, [FromQuery] int? categoryId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetAttributesAsync(activeOnly, categoryId), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetAttributesAsync(activeOnly, categoryId, pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<InvAttribute>> Save([FromBody] InvAttribute dto)
@@ -103,13 +103,14 @@ public class InvWarehousesController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<InvWarehouse>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetWarehousesAsync(activeOnly), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetWarehousesAsync(activeOnly, pagination: pagination), skip, take));
 
     [HttpGet("lookups")]
     public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] bool activeOnly = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var list = await _svc.GetWarehousesAsync(activeOnly);
-        return Ok(Paging.Result(list.Select(w => new LookupItem { Id = w.Id, Name = w.Name }).ToList(), skip, take));
+        var pagination = new Paging.Request(skip, take);
+        var list = await _svc.GetWarehousesAsync(activeOnly, pagination);
+        return Ok(pagination.Result(list.Select(w => new LookupItem { Id = w.Id, Name = w.Name })));
     }
 
     [HttpPost]

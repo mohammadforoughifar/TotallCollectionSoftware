@@ -669,9 +669,7 @@
         }
     }
 
-    private List<PishnevisDto> FilteredDrafts =>
-        string.IsNullOrWhiteSpace(search) ? drafts
-        : drafts.Where(d => (d.Title + d.Text).Contains(search.Trim())).ToList();
+    private List<PishnevisDto> FilteredDrafts => drafts;
 
     // ==================== صفحه‌بندی ====================
 
@@ -679,13 +677,13 @@
     private int page = 1;
     private int totalServerCount = 0;
 
-    private int TotalCount => folder == "draft" ? FilteredDrafts.Count : totalServerCount;
+    private int TotalCount => totalServerCount;
     private int PageCount => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)PageSize));
 
     private List<InnerLetterListItemDto> Paged => Filtered;
 
     private List<PishnevisDto> PagedDrafts =>
-        FilteredDrafts.Skip((page - 1) * PageSize).Take(PageSize).ToList();
+        drafts;
 
     private IEnumerable<int> PageNumbers
     {
@@ -798,7 +796,9 @@
             var unread = filter == "unread" ? (bool?)true : null;
             if (folder == "draft")
             {
-                drafts = await LetterSvc.GetPishnevisListAsync(s);
+                var draftPage = await LetterSvc.GetPishnevisPageAsync((page - 1) * PageSize, PageSize, s);
+                drafts = draftPage.Items;
+                totalServerCount = draftPage.TotalCount;
             }
             else
             {

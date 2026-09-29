@@ -29,17 +29,21 @@ public sealed class CompanyContextController : ControllerBase
             if (legacyCompany > 0)
                 access = _db.SystemCompanies.AsNoTracking().Where(c => c.Id == legacyCompany && c.IsActive).Select(c => new UserCompanyAccess { UserId = UserId, CompanyId = c.Id, Company = c });
         }
+        var pagination = new Paging.Request(skip, take);
         if (IsAdmin && !await access.AnyAsync())
         {
-            var allCompanies = await _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive).OrderBy(c => c.Name).ToListAsync();
-            if (Paging.Requested(skip, take))
-                return Ok(new { activeCompanyId = requested, total = allCompanies.Count, companies = Paging.Slice(allCompanies, skip, take) });
+            var allCompanies = await _db.SystemCompanies.AsNoTracking().Where(c => c.IsActive)
+                .OrderBy(c => c.Name).ThenBy(c => c.Id).ToPageListAsync(pagination);
+            if (pagination.IsPaged)
+                return Ok(new { activeCompanyId = requested, total = pagination.Total, companies = allCompanies });
             return Ok(new { activeCompanyId = requested, companies = allCompanies });
         }
-        var companies = await access.OrderBy(x => x.Company.Name).Select(x => x.Company).ToListAsync();
-        var active = requested is > 0 && companies.Any(c => c.Id == requested) ? requested : companies.FirstOrDefault()?.Id;
-        if (Paging.Requested(skip, take))
-            return Ok(new { activeCompanyId = active, total = companies.Count, companies = Paging.Slice(companies, skip, take) });
+        var query = access.OrderBy(x => x.Company.Name).ThenBy(x => x.CompanyId).Select(x => x.Company);
+        var active = requested is > 0 && await query.AnyAsync(c => c.Id == requested)
+            ? requested : await query.Select(c => (int?)c.Id).FirstOrDefaultAsync();
+        var companies = await query.ToPageListAsync(pagination);
+        if (pagination.IsPaged)
+            return Ok(new { activeCompanyId = active, total = pagination.Total, companies });
         return Ok(new { activeCompanyId = active, companies });
     }
 
@@ -62,8 +66,9 @@ public sealed class CompanyContextController : ControllerBase
     [HttpGet("users/{userId:int}")]
     public async Task<IActionResult> GetUserCompanies(int userId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!IsAdmin && userId != UserId) return Forbid();
-        return Ok(Paging.Result(await _db.UserCompanyAccesses.AsNoTracking().Where(x => x.UserId == userId).Select(x => x.CompanyId).ToListAsync(), skip, take));
+        return Ok(pagination.Result(await _db.UserCompanyAccesses.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.CompanyId).Select(x => x.CompanyId).ToPageListAsync(pagination)));
     }
 
     public sealed class CompanyAssignmentDto { public List<int> CompanyIds { get; set; } = new(); }

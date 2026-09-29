@@ -43,7 +43,7 @@ public class InvProductsController : RbacControllerBase
     [HttpGet("lookups")]
     public async Task<ActionResult<List<LookupItem>>> Lookups(
         [FromQuery] string? search = null, [FromQuery] int? warehouseId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetProductLookupsAsync(search, warehouseId), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetProductLookupsAsync(search, warehouseId, pagination: pagination), skip, take));
 
     /// <summary>ایجاد یا ویرایش کالا.</summary>
     [HttpPost]

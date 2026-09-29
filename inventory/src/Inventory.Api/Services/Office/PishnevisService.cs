@@ -11,7 +11,7 @@ namespace Inventory.Api.Services;
 
 public interface IPishnevisService
 {
-    Task<List<PishnevisDto>> GetAllAsync(int userId, string? search);
+    Task<List<PishnevisDto>> GetAllAsync(int userId, string? search, Paging.Request? pagination = null);
     Task<PishnevisDto?> GetByIdAsync(int id, int userId);
     Task<int> AddAsync(PishnevisDto dto, int userId);
     Task EditAsync(PishnevisDto dto, int userId);
@@ -23,7 +23,7 @@ public class PishnevisService : IPishnevisService
     private readonly AppDbContext _db;
     public PishnevisService(AppDbContext db) => _db = db;
 
-    public async Task<List<PishnevisDto>> GetAllAsync(int userId, string? search)
+    public async Task<List<PishnevisDto>> GetAllAsync(int userId, string? search, Paging.Request? pagination = null)
     {
         var q = _db.PishnevisLetters.AsNoTracking()
             .Where(p => p.UserId == userId && !p.IsDelete);
@@ -44,7 +44,7 @@ public class PishnevisService : IPishnevisService
                 Text = p.Text,
                 IsNeshan = p.IsNeshan
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
     }
 
     public Task<PishnevisDto?> GetByIdAsync(int id, int userId) =>

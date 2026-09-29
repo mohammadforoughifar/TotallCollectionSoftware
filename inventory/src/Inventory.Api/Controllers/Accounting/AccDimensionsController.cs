@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared.Dtos;
@@ -22,7 +23,7 @@ public class AccDimensionsController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<AccDimension>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetDimensionsAsync(), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetDimensionsAsync(pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccDimension>> Save([FromBody] AccDimension dto)
@@ -42,7 +43,7 @@ public class AccDimensionsController : RbacControllerBase
     // -------------------- مقادیر --------------------
     [HttpGet("{dimensionId:int}/values")]
     public async Task<ActionResult<List<AccDimensionValue>>> GetValues(int dimensionId, [FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetValuesAsync(dimensionId, activeOnly), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetValuesAsync(dimensionId, activeOnly, pagination: pagination), skip, take));
 
     [HttpPost("{dimensionId:int}/values")]
     public async Task<ActionResult<AccDimensionValue>> SaveValue(int dimensionId, [FromBody] AccDimensionValue dto)
@@ -62,5 +63,5 @@ public class AccDimensionsController : RbacControllerBase
 
     [HttpGet("{dimensionId:int}/values/lookups")]
     public async Task<ActionResult<List<LookupItem>>> GetValueLookups(int dimensionId, [FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetValueLookupsAsync(dimensionId, search), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetValueLookupsAsync(dimensionId, search, pagination: pagination), skip, take));
 }

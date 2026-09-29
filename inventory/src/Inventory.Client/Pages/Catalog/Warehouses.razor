@@ -104,7 +104,7 @@
                 }
             </div>
 
-            <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+            <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
         }
     </div>
 </div>
@@ -151,15 +151,11 @@
     // ---------- صفحه‌بندی ----------
     private int page = 1;
     private const int PageSize = 12;
-    private int PageCount => Math.Max(1, (int)Math.Ceiling(items.Count / (double)PageSize));
-    private List<Warehouse> Paged
-    {
-        get
-        {
-            if (page > PageCount) page = PageCount;
-            return items.Skip((page - 1) * PageSize).Take(PageSize).ToList();
-        }
-    }
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+    private List<Warehouse> Paged => items;
+    private int total, loadVersion;
+    private async Task ChangePage(int value) { page = value; await Load(); }
+    private async Task SearchChanged() { page = 1; await Load(); }
     private bool loading = true;
     private Warehouse form = new();
     private bool showModal, saving;
@@ -173,10 +169,18 @@
 
     private async Task Load()
     {
+        var version = ++loadVersion;
         loading = true;
-        try { items = await WarehouseSvc.GetAllAsync(); }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        try
+        {
+            var result = await WarehouseSvc.GetPagedAsync((page - 1) * PageSize, PageSize);
+            if (version != loadVersion) return;
+            items = result.Items;
+            total = result.TotalCount;
+            if (page > PageCount) { page = PageCount; await Load(); }
+        }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 
     private void OpenNew() { form = new Warehouse { IsActive = true }; showModal = true; }

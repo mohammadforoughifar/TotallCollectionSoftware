@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared.Dtos;
@@ -22,7 +23,7 @@ public class BudgetsController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<Budget>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetBudgetsAsync(activeOnly), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetBudgetsAsync(activeOnly, pagination: pagination), skip, take));
 
     [HttpGet("dashboard")]
     public async Task<ActionResult<BudgetDashboard>> GetDashboard()
@@ -49,7 +50,7 @@ public class BudgetsController : RbacControllerBase
     // -------------------- رویدادها --------------------
     [HttpGet("{budgetId:int}/transactions")]
     public async Task<ActionResult<List<BudgetTransaction>>> GetTransactions(int budgetId, [FromQuery] int? budgetItemId = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetTransactionsAsync(budgetId, budgetItemId), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetTransactionsAsync(budgetId, budgetItemId, pagination: pagination), skip, take));
 
     [HttpPost("transactions")]
     public async Task<ActionResult<BudgetTransaction>> AddTransaction([FromBody] BudgetTransaction dto)

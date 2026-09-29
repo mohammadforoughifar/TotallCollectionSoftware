@@ -26,6 +26,9 @@ public class ReferrerService : IReferrerService
     private readonly IApiClient _api;
     public ReferrerService(IApiClient api) => _api = api;
 
+    public Task<PagedResult<Referrer>> GetPagedAsync(int skip, int take, bool activeOnly = false, string? search = null)
+        => ListOrPaged.GetPagedAsync<Referrer>(_api, $"api/referrers?skip={skip}&take={take}&activeOnly={activeOnly}&search={Uri.EscapeDataString(search ?? "")}");
+
     public Task<List<Referrer>> GetAllAsync(bool activeOnly = false)
         => _api.GetAsync<List<Referrer>>($"api/referrers?activeOnly={activeOnly}");
 
@@ -101,6 +104,9 @@ public class UnitService : IUnitService
     private readonly IApiClient _api;
     public UnitService(IApiClient api) => _api = api;
 
+    public Task<PagedResult<MeasureUnit>> GetPagedAsync(int skip, int take, bool activeOnly = false, string? search = null)
+        => ListOrPaged.GetPagedAsync<MeasureUnit>(_api, $"api/units?skip={skip}&take={take}&activeOnly={activeOnly}&search={Uri.EscapeDataString(search ?? "")}");
+
     public Task<List<MeasureUnit>> GetAllAsync(bool activeOnly = false)
         => _api.GetAsync<List<MeasureUnit>>($"api/units?activeOnly={activeOnly}");
 
@@ -116,6 +122,9 @@ public class WarehouseService : IWarehouseService
 {
     private readonly IApiClient _api;
     public WarehouseService(IApiClient api) => _api = api;
+
+    public Task<PagedResult<Warehouse>> GetPagedAsync(int skip, int take)
+        => ListOrPaged.GetPagedAsync<Warehouse>(_api, $"api/warehouses?skip={skip}&take={take}");
 
     public Task<List<Warehouse>> GetAllAsync()
         => _api.GetAsync<List<Warehouse>>("api/warehouses");
@@ -139,6 +148,9 @@ public class PartyService : IPartyService
 {
     private readonly IApiClient _api;
     public PartyService(IApiClient api) => _api = api;
+
+    public Task<PagedResult<Party>> GetPagedAsync(PartyType type, int skip, int take)
+        => ListOrPaged.GetPagedAsync<Party>(_api, $"api/parties?skip={skip}&take={take}&type={(int)type}");
 
     public Task<List<Party>> GetAsync(PartyType type)
         => _api.GetAsync<List<Party>>($"api/parties?type={(int)type}");
@@ -224,6 +236,10 @@ public class ReportService : IReportService
         if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
         return _api.GetAsync<List<KardexRow>>(q);
     }
+
+    public Task<PagedResult<ReorderItem>> GetReorderPageAsync(int skip, int take, int? warehouseId = null)
+        => ListOrPaged.GetPagedAsync<ReorderItem>(_api, $"api/reorder?skip={skip}&take={take}" +
+            (warehouseId is > 0 ? $"&warehouseId={warehouseId}" : ""));
 
     public Task<List<ReorderItem>> GetReorderAsync(int? warehouseId = null)
     {

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Stocktaking;
 using Inventory.Shared;
@@ -27,7 +28,7 @@ public class BcdBarcodesController : RbacControllerBase
     public async Task<ActionResult<List<BcdBarcode>>> GetAll(
         [FromQuery] int? productId = null,
         [FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetBarcodesAsync(productId, search), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetBarcodesAsync(productId, search, pagination: pagination), skip, take));
 
     /// <summary>یافتن کالا از روی بارکد — قلب صفحه اسکنر.</summary>
     [HttpGet("scan")]

@@ -6,7 +6,7 @@ namespace Inventory.Api.Services;
 public interface IExpenseService
 {
     // ---------------- دسته‌های هزینه ----------------
-    Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false);
+    Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false, Paging.Request? pagination = null);
     Task<ExpenseCategoryDto> SaveCategoryAsync(ExpenseCategoryDto dto);
     Task DeleteCategoryAsync(int id);
 

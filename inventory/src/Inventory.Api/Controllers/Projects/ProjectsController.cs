@@ -643,11 +643,12 @@ public class ProjectsController : RbacControllerBase
         if (parent is null) return NotFound(new { message = "پروژه پیدا نشد." });
 
         var suffix = "-" + parent.CodeProject;
+        var pagination = new Paging.Request(skip, take);
         var codes = await Db.ProjectEntryExits.AsNoTracking()
             .Where(p => !p.IsDelete && p.ReturnProjectId > 0 && p.CodeProject.EndsWith(suffix))
-            .OrderBy(p => p.ReturnProjectId)
+            .OrderBy(p => p.ReturnProjectId).ThenBy(p => p.Id)
             .Select(p => p.CodeProject)
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         if (Paging.Requested(skip, take))
             return Ok(new
@@ -656,8 +657,8 @@ public class ProjectsController : RbacControllerBase
                 parentName = parent.ProjectName,
                 parentReceiver = parent.ProjectReceiver,
                 karFarmaId = parent.KarFarmaId,
-                total = codes.Count,
-                codes = Paging.Slice(codes, skip, take)
+                total = pagination.Total,
+                codes
             });
         return Ok(new
         {

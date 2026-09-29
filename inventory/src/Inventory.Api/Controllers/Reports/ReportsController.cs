@@ -17,7 +17,7 @@ public class KardexController : ApiControllerBase
     public async Task<ActionResult<List<KardexRow>>> Get(
         [FromQuery] int productId, [FromQuery] int? warehouseId,
         [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _service.GetKardexAsync(productId, warehouseId, from, to), skip, take));
+        => Ok(await Paging.ResultAsync(pagination => _service.GetKardexAsync(productId, warehouseId, from, to, pagination), skip, take));
 }
 
 /// <summary>گزارش نقطه سفارش.</summary>
@@ -31,5 +31,5 @@ public class ReorderController : ApiControllerBase
     /// <summary>کالاهایی که موجودی‌شان به نقطه سفارش رسیده است.</summary>
     [HttpGet]
     public async Task<ActionResult<List<ReorderItem>>> Get([FromQuery] int? warehouseId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _service.GetReorderAsync(warehouseId), skip, take));
+        => Ok(await Paging.ResultAsync(pagination => _service.GetReorderAsync(warehouseId, pagination), skip, take));
 }

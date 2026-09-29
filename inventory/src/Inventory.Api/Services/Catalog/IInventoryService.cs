@@ -15,14 +15,14 @@ public interface IInventoryService
     Task<AppSettings> SaveSettingsAsync(AppSettings dto);
 
     // ---------------- معرف (بازاریاب) ----------------
-    Task<List<Referrer>> GetReferrersAsync(bool activeOnly = false);
+    Task<List<Referrer>> GetReferrersAsync(bool activeOnly = false, Paging.Request? pagination = null, string? search = null);
     Task<Referrer> SaveReferrerAsync(Referrer dto);
     Task DeleteReferrerAsync(int id);
 
     // ---------------- کیف پول و پرداخت معرف ----------------
     /// <summary>فهرست کیف پول معرف‌ها با فیلتر و مرتب‌سازی (sortBy: name|commission|paid|balance، desc)</summary>
     Task<List<Referrer>> GetReferrerWalletsAsync(string? search, string? sortBy, bool desc);
-    Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId);
+    Task<List<ReferrerPayment>> GetReferrerPaymentsAsync(int? referrerId, Paging.Request? pagination = null);
     Task<ReferrerPayment> AddReferrerPaymentAsync(ReferrerPayment dto);
     Task DeleteReferrerPaymentAsync(int id);
 
@@ -32,7 +32,7 @@ public interface IInventoryService
     Task DeleteCategoryAsync(int id);
 
     // ---------------- واحد شمارش ----------------
-    Task<List<MeasureUnit>> GetUnitsAsync(bool activeOnly = false);
+    Task<List<MeasureUnit>> GetUnitsAsync(bool activeOnly = false, Paging.Request? pagination = null, string? search = null);
     Task<MeasureUnit> SaveUnitAsync(MeasureUnit dto);
     Task DeleteUnitAsync(int id);
 
@@ -43,17 +43,18 @@ public interface IInventoryService
     // ---------------- کالا ----------------
     /// <summary>فهرست کالاها؛ warehouseId = فقط کالاهای آن انبار (کالاهای بدون انبار و خدمات همیشه می‌آیند).</summary>
     Task<PagedResult<Product>> GetProductsAsync(string? search, bool belowReorderOnly, int page, int pageSize, int? warehouseId = null);
+    Task<List<LookupItem>> GetProductLookupsAsync(Paging.Request? pagination = null);
     Task<Product?> GetProductAsync(int id);
     Task<Product> SaveProductAsync(Product dto);
     Task DeleteProductAsync(int id);
 
     // ---------------- انبار ----------------
-    Task<List<Warehouse>> GetWarehousesAsync();
+    Task<List<Warehouse>> GetWarehousesAsync(Paging.Request? pagination = null);
     Task<Warehouse> SaveWarehouseAsync(Warehouse dto);
     Task DeleteWarehouseAsync(int id);
 
     // ---------------- طرف حساب ----------------
-    Task<List<Party>> GetPartiesAsync(PartyType type);
+    Task<List<Party>> GetPartiesAsync(PartyType type, Paging.Request? pagination = null);
     Task<Party> SavePartyAsync(Party dto);
     Task DeletePartyAsync(int id);
 
@@ -73,7 +74,7 @@ public interface IInventoryService
     Task SettleCreditAsync(int transactionId, decimal amount);
 
     /// <summary>کالاهای موجود برای پنل معرف (نیازمند دسترسی CanViewProducts).</summary>
-    Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false);
+    Task<List<ReferrerProductItem>> GetReferrerProductsAsync(int referrerId, string? search, bool bypassFlag = false, Paging.Request? pagination = null);
     Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from, DateTime? to, int? partyId, int? warehouseId, int page, int pageSize);
     Task DeleteOrderAsync(int id);
     Task<decimal> SuggestPriceAsync(int productId, TransactionType type);
@@ -82,8 +83,8 @@ public interface IInventoryService
     Task<Order?> GetLastPurchaseAsync(int productId);
 
     // ---------------- گزارش‌ها ----------------
-    Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to);
-    Task<List<ReorderItem>> GetReorderAsync(int? warehouseId);
+    Task<List<KardexRow>> GetKardexAsync(int productId, int? warehouseId, DateTime? from, DateTime? to, Paging.Request? pagination = null);
+    Task<List<ReorderItem>> GetReorderAsync(int? warehouseId, Paging.Request? pagination = null);
 
     // ---------------- داشبورد ----------------
     Task<DashboardSummary> GetDashboardAsync();

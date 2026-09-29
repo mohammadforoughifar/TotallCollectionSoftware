@@ -29,9 +29,7 @@ public class ProductsController : ApiControllerBase
     [HttpGet("lookups")]
     public async Task<ActionResult<List<LookupItem>>> GetLookups([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var res = await _service.GetProductsAsync(null, false, 1, 100000);
-        return Ok(Paging.Result(res.Items.OrderBy(p => p.Name)
-            .Select(p => new LookupItem { Id = p.Id, Name = $"{p.Code} — {p.Name}" }).ToList(), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _service.GetProductLookupsAsync(pagination), skip, take));
     }
 
     /// <summary>دریافت یک کالا.</summary>

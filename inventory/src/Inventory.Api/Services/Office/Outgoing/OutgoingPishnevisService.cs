@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +13,7 @@ namespace Inventory.Api.Services.Office.Outgoing;
 
 public interface IOutgoingPishnevisService
 {
-    Task<List<OutgoingPishnevisDto>> GetAllAsync(int userId, string? search);
+    Task<List<OutgoingPishnevisDto>> GetAllAsync(int userId, string? search, Paging.Request? pagination = null);
     Task<OutgoingPishnevisDto?> GetByIdAsync(int id, int userId);
     Task<int> AddAsync(OutgoingPishnevisDto dto, int userId);
     Task EditAsync(OutgoingPishnevisDto dto, int userId);
@@ -24,7 +25,7 @@ public class OutgoingPishnevisService : IOutgoingPishnevisService
     private readonly AppDbContext _db;
     public OutgoingPishnevisService(AppDbContext db) => _db = db;
 
-    public async Task<List<OutgoingPishnevisDto>> GetAllAsync(int userId, string? search)
+    public async Task<List<OutgoingPishnevisDto>> GetAllAsync(int userId, string? search, Paging.Request? pagination = null)
     {
         var q = _db.OutgoingPishnevisLetters.AsNoTracking()
             .Where(p => p.UserId == userId && !p.IsDelete);
@@ -49,7 +50,7 @@ public class OutgoingPishnevisService : IOutgoingPishnevisService
                 ReceiverTitle = p.ReceiverTitle,
                 IsNeshan = p.IsNeshan
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
     }
 
     public Task<OutgoingPishnevisDto?> GetByIdAsync(int id, int userId) =>

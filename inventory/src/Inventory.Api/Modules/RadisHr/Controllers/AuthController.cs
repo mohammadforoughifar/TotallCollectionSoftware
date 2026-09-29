@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -26,10 +27,11 @@ public class AuthController : ControllerBase
     [HttpGet("roles")]
     public async Task<ActionResult<List<UserAccountInfo>>> Roles([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var users = await _db.Users.Where(u => u.IsActive).ToListAsync();
-        return Ok(Paging.Result(users.Select(u => new UserAccountInfo(
+        var pagination = new Paging.Request(skip, take);
+        var users = await _db.Users.Where(u => u.IsActive).OrderBy(x => x.Id).ToPageListAsync(pagination);
+        return Ok(pagination.Result(users.Select(u => new UserAccountInfo(
             u.UserKey, u.DisplayName, u.RoleTitle, u.MustChangePassword, u.PasswordChangedAt, u.LastLoginAt))
-            .ToList(), skip, take));
+            .ToList()));
     }
 
     [HttpPost("login")]

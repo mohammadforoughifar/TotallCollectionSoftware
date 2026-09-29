@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,7 +31,7 @@ public interface IChatService
     Task<ChatMessageDto> TogglePinMessageAsync(int currentUserId, int messageId);
     Task<List<ChatUserDto>> GetSoftwareUsersForChatAsync(int currentUserId, string? search = null);
     Task<ChatSummaryDto> GetChatSummaryAsync(int currentUserId);
-    Task<List<ChatMemberDto>> GetGroupMembersAsync(int currentUserId, int conversationId);
+    Task<List<ChatMemberDto>> GetGroupMembersAsync(int currentUserId, int conversationId, Paging.Request? pagination = null);
     Task AddMembersToGroupAsync(int currentUserId, string currentUserName, int conversationId, List<int> newUserIds);
     Task RemoveMemberFromGroupAsync(int currentUserId, string currentUserName, int conversationId, int targetUserId);
     Task TogglePinConversationAsync(int currentUserId, int conversationId);
@@ -743,7 +744,7 @@ public class ChatService : IChatService
         return new ChatSummaryDto { TotalUnreadMessages = counts.Sum(), UnreadConversationsCount = counts.Count };
     }
 
-    public async Task<List<ChatMemberDto>> GetGroupMembersAsync(int currentUserId, int conversationId)
+    public async Task<List<ChatMemberDto>> GetGroupMembersAsync(int currentUserId, int conversationId, Paging.Request? pagination = null)
     {
         var isMember = await _db.ChatMembers.AnyAsync(m => m.ConversationId == conversationId && m.UserId == currentUserId);
         if (!isMember) throw new UnauthorizedAccessException("شما عضو این گفتگو نیستید.");
@@ -752,8 +753,8 @@ public class ChatService : IChatService
             .AsNoTracking()
             .Where(m => m.ConversationId == conversationId)
             .OrderBy(m => m.Role)
-            .ThenBy(m => m.UserDisplayName)
-            .ToListAsync();
+            .ThenBy(m => m.UserDisplayName).ThenBy(m => m.Id)
+            .ToPageListAsync(pagination);
 
         return members.Select(m => new ChatMemberDto
         {

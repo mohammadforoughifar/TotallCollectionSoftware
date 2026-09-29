@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
@@ -23,11 +24,11 @@ public interface IMoadianService
     Task<MoadianSetting> GetSettingAsync();
     Task<MoadianSetting> SaveSettingAsync(MoadianSetting dto);
 
-    Task<List<MoadianFiscalPeriod>> GetPeriodsAsync();
+    Task<List<MoadianFiscalPeriod>> GetPeriodsAsync(Paging.Request? pagination = null);
     Task<MoadianFiscalPeriod> SavePeriodAsync(MoadianFiscalPeriod dto);
     Task DeletePeriodAsync(int id);
 
-    Task<List<MoadianInvoice>> GetInvoicesAsync(int? periodId = null, MoadianInvoiceStatus? status = null, string? search = null);
+    Task<List<MoadianInvoice>> GetInvoicesAsync(int? periodId = null, MoadianInvoiceStatus? status = null, string? search = null, Paging.Request? pagination = null);
     Task<MoadianInvoice> GetInvoiceAsync(int id);
     Task<MoadianInvoice> CreateFromFacInvoiceAsync(int facInvoiceId, string? user);
     Task<MoadianInvoice> CreateManualAsync(MoadianInvoiceRequest req, string? user);
@@ -40,8 +41,8 @@ public interface IMoadianService
     Task<int> SendPendingAsync();
     Task<MoadianPayloadResult> BuildPayloadAsync(int id);
 
-    Task<List<MoadianLog>> GetLogsAsync(int? invoiceId = null);
-    Task<List<MoadianCpc>> GetCpcAsync(string? search = null);
+    Task<List<MoadianLog>> GetLogsAsync(int? invoiceId = null, Paging.Request? pagination = null);
+    Task<List<MoadianCpc>> GetCpcAsync(string? search = null, Paging.Request? pagination = null);
     Task<MoadianCpc> SaveCpcAsync(MoadianCpc dto);
     Task DeleteCpcAsync(int id);
 
@@ -115,14 +116,14 @@ public class MoadianService : IMoadianService
     // =====================================================================
     // دوره‌های مالیاتی
     // =====================================================================
-    public async Task<List<MoadianFiscalPeriod>> GetPeriodsAsync()
+    public async Task<List<MoadianFiscalPeriod>> GetPeriodsAsync(Paging.Request? pagination = null)
     {
         var periods = await _db.MoadianFiscalPeriods.AsNoTracking()
-            .OrderByDescending(p => p.Year).ThenByDescending(p => p.Month).ToListAsync();
+            .OrderByDescending(p => p.Year).ThenByDescending(p => p.Month).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         // توجه: تجمیع decimal روی SQLite ترجمه نمی‌شود؛ ابتدا داده را می‌آوریم و تجمیع در حافظه انجام می‌شود
         var stats = (await _db.MoadianInvoices.AsNoTracking()
-                .Where(i => i.Status != MoadianInvoiceStatus.Voided)
+                .Where(i => i.Status != MoadianInvoiceStatus.Voided && periods.Select(p => p.Id).Contains(i.FiscalPeriodId))
                 .Select(i => new { i.FiscalPeriodId, i.TotalNet })
                 .ToListAsync())
             .GroupBy(i => i.FiscalPeriodId)
@@ -181,7 +182,7 @@ public class MoadianService : IMoadianService
     // =====================================================================
     // فاکتورها
     // =====================================================================
-    public async Task<List<MoadianInvoice>> GetInvoicesAsync(int? periodId = null, MoadianInvoiceStatus? status = null, string? search = null)
+    public async Task<List<MoadianInvoice>> GetInvoicesAsync(int? periodId = null, MoadianInvoiceStatus? status = null, string? search = null, Paging.Request? pagination = null)
     {
         var q = _db.MoadianInvoices.AsNoTracking()
             .Include(i => i.FiscalPeriod).Include(i => i.Lines).AsQueryable();
@@ -190,7 +191,7 @@ public class MoadianService : IMoadianService
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(i => i.Number.ToString().Contains(search) || (i.BuyerName != null && i.BuyerName.Contains(search)));
 
-        return (await q.OrderByDescending(i => i.Id).ToListAsync()).Select(ToDto).ToList();
+        return (await q.OrderByDescending(i => i.Id).ToPageListAsync(pagination)).Select(ToDto).ToList();
     }
 
     public async Task<MoadianInvoice> GetInvoiceAsync(int id)
@@ -657,31 +658,31 @@ public class MoadianService : IMoadianService
     // =====================================================================
     // لاگ / CPC / داشبورد
     // =====================================================================
-    public async Task<List<MoadianLog>> GetLogsAsync(int? invoiceId = null)
+    public async Task<List<MoadianLog>> GetLogsAsync(int? invoiceId = null, Paging.Request? pagination = null)
     {
         var q = _db.MoadianLogs.AsNoTracking().Include(l => l.Invoice).AsQueryable();
         if (invoiceId is not null) q = q.Where(l => l.InvoiceId == invoiceId);
-        return await q.OrderByDescending(l => l.Id).Take(300)
+        return await q.OrderByDescending(l => l.Id)
             .Select(l => new MoadianLog
             {
                 Id = l.Id, InvoiceId = l.InvoiceId,
                 InvoiceNumber = l.Invoice != null ? l.Invoice.Number : 0,
                 Action = l.Action, Message = l.Message, Detail = l.Detail, CreatedAt = l.CreatedAt
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination, defaultCap: 300);
     }
 
-    public async Task<List<MoadianCpc>> GetCpcAsync(string? search = null)
+    public async Task<List<MoadianCpc>> GetCpcAsync(string? search = null, Paging.Request? pagination = null)
     {
         var q = _db.MoadianCpcList.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(c => c.Code.Contains(search) || c.Title.Contains(search));
-        return await q.OrderBy(c => c.Code).Take(500)
+        return await q.OrderBy(c => c.Code).ThenBy(x => x.Id)
             .Select(c => new MoadianCpc
             {
                 Id = c.Id, Code = c.Code, Title = c.Title, EnTitle = c.EnTitle,
                 IsActive = c.IsActive, Unit = c.Unit
-            }).ToListAsync();
+            }).ToPageListAsync(pagination, defaultCap: 500);
     }
 
     public async Task<MoadianCpc> SaveCpcAsync(MoadianCpc dto)

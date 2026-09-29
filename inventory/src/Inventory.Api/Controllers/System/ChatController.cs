@@ -144,8 +144,9 @@ public class ChatController : ControllerBase
     [HttpGet("conversations/{id}/members")]
     public async Task<ActionResult<List<ChatMemberDto>>> GetMembers(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var members = await _chatService.GetGroupMembersAsync(CurrentUserId, id);
-        return Ok(Paging.Result(members, skip, take));
+        var pagination = new Paging.Request(skip, take);
+        var members = await _chatService.GetGroupMembersAsync(CurrentUserId, id, pagination);
+        return Ok(pagination.Result(members));
     }
 
     /// <summary>افزودن عضو جدید به گروه</summary>

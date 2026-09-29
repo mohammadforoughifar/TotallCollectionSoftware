@@ -17,12 +17,12 @@ public interface IErjaService
 {
     Task AddErjaAsync(AddErjaDto dto, int senderUserId, string senderName);
     Task AnswerAsync(int erjaId, AnswerErjaDto dto, int userId, string userName);
-    Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin);
+    Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin, Paging.Request? pagination = null);
     Task MarkReadAsync(int erjaId, int userId);
     Task<bool> ToggleNeshanAsync(int erjaId, int userId);
     Task<bool> ToggleBayeganiAsync(int erjaId, int userId);
     Task<int> BatchBayeganiAsync(List<int> erjaIds, int userId, string? description = null);
-    Task<List<AmalgarDto>> GetAmalgarsAsync();
+    Task<List<AmalgarDto>> GetAmalgarsAsync(Paging.Request? pagination = null);
 }
 
 public class ErjaService : IErjaService
@@ -206,7 +206,7 @@ public class ErjaService : IErjaService
         await _notify.BroadcastChangedAsync(answerRoute);
     }
 
-    public async Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin)
+    public async Task<List<ErjaTreeNodeDto>> GetGardeshTreeAsync(int sourceId, int userId, bool isAdmin, Paging.Request? pagination = null)
     {
         var source = await _db.LetterSources.AsNoTracking()
             .Include(s => s.InnerLetter)
@@ -230,13 +230,13 @@ public class ErjaService : IErjaService
         if (!inFlow && !isAdmin)
             throw new Exception("شما در گردش این نامه نیستید.");
 
-        var erjas = await _db.Erjas.AsNoTracking()
-            .Include(e => e.UserSender)
-            .Include(e => e.UserReciver)
-            .Include(e => e.Amalgar)
-            .Where(e => e.SourceId == sourceId && !e.IsDelete)
-            .OrderBy(e => e.ErjaId)
-            .ToListAsync();
+        var scope = _db.Erjas.AsNoTracking()
+            .Include(e => e.UserSender).Include(e => e.UserReciver).Include(e => e.Amalgar)
+            .Where(e => e.SourceId == sourceId && !e.IsDelete);
+        var erjas = await scope.OrderBy(e => e.ErjaId).ReadTreePageAsync(
+            scope.Where(e => e.ParentErjaId == null || !scope.Any(p => p.ErjaId == e.ParentErjaId)).OrderBy(e => e.ErjaId),
+            ids => scope.Where(e => e.ParentErjaId != null && ids.Contains(e.ParentErjaId.Value)).OrderBy(e => e.ErjaId),
+            e => e.ErjaId, pagination);
 
         static string FullName(Inventory.Api.Data.User? u) =>
             u == null ? "" :
@@ -365,10 +365,10 @@ public class ErjaService : IErjaService
         return erjas.Count;
     }
 
-    public Task<List<AmalgarDto>> GetAmalgarsAsync() =>
+    public Task<List<AmalgarDto>> GetAmalgarsAsync(Paging.Request? pagination = null) =>
         _db.Amalgars.AsNoTracking()
             .Where(a => !a.IsDelete)
             .OrderBy(a => a.AmalgarId)
             .Select(a => new AmalgarDto { AmalgarId = a.AmalgarId, Title = a.Title, TaeedEmza = a.TaeedEmza })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 }

@@ -46,19 +46,21 @@ public class HrTimeService
         ("mission.allowance.outer", "1000000", "حق ماموریت خارج شهر (ریال/روز)"),
     ];
 
-    public async Task<Dictionary<string, string>> GetRulesAsync()
+    public async Task<Dictionary<string, string>> GetRulesAsync(Paging.Request? pagination = null, string? prefix = null)
     {
-        var rows = await _db.HrTimeRules.AsNoTracking().ToListAsync();
-        var map = rows.ToDictionary(r => r.Key, r => r.Value);
-        var missing = DefaultRules.Where(d => !map.ContainsKey(d.Key)).ToList();
+        var defaultKeys = DefaultRules.Select(r => r.Key).ToList();
+        var keys = await _db.HrTimeRules.AsNoTracking().Where(r => defaultKeys.Contains(r.Key)).Select(r => r.Key).ToListAsync();
+        var missing = DefaultRules.Where(d => !keys.Contains(d.Key)).ToList();
         if (missing.Count > 0)
         {
             foreach (var (k, v, t) in missing)
                 _db.HrTimeRules.Add(new HrTimeRule { Key = k, Value = v, Title = t });
             await _db.SaveChangesAsync();
-            foreach (var (k, v, _) in missing) map[k] = v;
         }
-        return map;
+        var query = _db.HrTimeRules.AsNoTracking().AsQueryable();
+        if (prefix != null) query = query.Where(r => r.Key.StartsWith(prefix));
+        var rows = await query.OrderBy(r => r.Key).ToPageListAsync(pagination);
+        return rows.ToDictionary(r => r.Key, r => r.Value);
     }
 
     public async Task SaveRulesAsync(Dictionary<string, string> values)
@@ -806,11 +808,11 @@ public class HrTimeService
         return pr;
     }
 
-    public async Task<List<HrProbation>> ProbationsEndingSoonAsync(int withinDays)
+    public async Task<List<HrProbation>> ProbationsEndingSoonAsync(int withinDays, Paging.Request? pagination = null)
     {
         var to = DateTime.Today.AddDays(Math.Max(0, withinDays));
         return await _db.HrProbations.AsNoTracking()
-            .Where(x => x.Status == "Active" && x.EndDate <= to).OrderBy(x => x.EndDate).ToListAsync();
+            .Where(x => x.Status == "Active" && x.EndDate <= to).OrderBy(x => x.EndDate).ThenBy(x => x.Id).ToPageListAsync(pagination);
     }
 
     // ---------- اعتبارسنجی کد ملی (الگوریتم check-digit) ----------
@@ -1055,13 +1057,13 @@ public class HrTimeService
         return rows.Count;
     }
 
-    public async Task<List<HrOtApproval>> OtApprovalsAsync(int? userId, int jy, int jm)
+    public async Task<List<HrOtApproval>> OtApprovalsAsync(int? userId, int jy, int jm, Paging.Request? pagination = null)
     {
         var start = Pc.ToDateTime(jy, jm, 1, 0, 0, 0, 0);
         var end = start.AddDays(Pc.GetDaysInMonth(jy, jm));
         var q = _db.HrOtApprovals.AsNoTracking().Where(x => x.WorkDate >= start && x.WorkDate < end);
         if (userId != null) q = q.Where(x => x.UserId == userId);
-        return await q.OrderBy(x => x.WorkDate).Take(2000).ToListAsync();
+        return await q.OrderBy(x => x.WorkDate).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 2000);
     }
 
     private async Task UpsertManualOtApprovalAsync(HrOvertimeRequest o, int byId, string byName)

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -25,13 +26,13 @@ public class AccountingService : IAccountingService
     // ۱) سال مالی
     // =====================================================================
 
-    public async Task<List<AccFiscalYear>> GetFiscalYearsAsync()
+    public async Task<List<AccFiscalYear>> GetFiscalYearsAsync(Paging.Request? pagination = null)
     {
         var years = await _db.AccFiscalYears.AsNoTracking()
-            .OrderByDescending(f => f.StartDate).ToListAsync();
+            .OrderByDescending(f => f.StartDate).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         var stats = (await _db.AccVouchers.AsNoTracking()
-                .Where(v => v.Status == VoucherStatus.Confirmed)
+                .Where(v => v.Status == VoucherStatus.Confirmed && years.Select(f => f.Id).Contains(v.FiscalYearId))
                 .Select(v => new { v.FiscalYearId, v.TotalDebit, v.TotalCredit })
                 .ToListAsync())
             .GroupBy(v => v.FiscalYearId)
@@ -123,23 +124,64 @@ public class AccountingService : IAccountingService
     // ۲) کدینگ حساب‌ها
     // =====================================================================
 
-    public async Task<List<AccAccount>> GetAccountsFlatAsync(bool activeOnly = false, bool withBalances = false)
+    public Task<List<AccAccount>> GetAccountsFlatAsync(bool activeOnly = false, bool withBalances = false, Paging.Request? pagination = null)
+        => BuildAccountsAsync(activeOnly, withBalances, pagination, tree: false);
+
+    private async Task<List<AccAccount>> BuildAccountsAsync(bool activeOnly, bool withBalances, Paging.Request? pagination, bool tree = true)
     {
         var q = _db.AccAccounts.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(a => a.IsActive);
 
-        var all = await q.OrderBy(a => a.Code).ToListAsync();
+        IOrderedQueryable<Db.AccAccount> Order(IQueryable<Db.AccAccount> source) => source.OrderBy(a => a.Code).ThenBy(a => a.Id);
+        var all = tree
+            ? await Order(q).ReadTreePageAsync(
+                Order(q.Where(a => a.ParentId == null || !q.Any(p => p.Id == a.ParentId))),
+                ids => Order(q.Where(a => a.ParentId != null && ids.Contains(a.ParentId.Value))),
+                a => a.Id, pagination)
+            : await Order(q).ToPageListAsync(pagination);
+        var selectedIds = all.Select(a => a.Id).ToHashSet();
+        if (!tree && pagination?.IsPaged == true)
+        {
+            var seen = new HashSet<int>(selectedIds);
+            // FullPath and Depth require ancestors, not the entire account chart.
+            var frontier = all.Where(a => a.ParentId.HasValue).Select(a => a.ParentId!.Value).Distinct().ToArray();
+            while (frontier.Length > 0)
+            {
+                var parents = new List<Db.AccAccount>();
+                foreach (var batch in frontier.Where(id => !seen.Contains(id)).Chunk(500))
+                    parents.AddRange(await q.Where(a => batch.Contains(a.Id)).ToListAsync());
+                var added = parents.Where(a => seen.Add(a.Id)).ToList();
+                all.AddRange(added);
+                frontier = added.Where(a => a.ParentId.HasValue).Select(a => a.ParentId!.Value).Distinct().ToArray();
+            }
+            if (withBalances)
+            {
+                // Only selected accounts' descendants contribute to their rollups.
+                // Ancestors included above must not suppress traversal of a selected subtree.
+                var traversed = new HashSet<int>();
+                frontier = selectedIds.ToArray();
+                while (frontier.Length > 0)
+                {
+                    var children = new List<Db.AccAccount>();
+                    foreach (var batch in frontier.Where(traversed.Add).Chunk(500))
+                        children.AddRange(await q.Where(a => a.ParentId != null && batch.Contains(a.ParentId.Value)).ToListAsync());
+                    all.AddRange(children.Where(a => seen.Add(a.Id)));
+                    frontier = children.Select(a => a.Id).Where(id => !traversed.Contains(id)).Distinct().ToArray();
+                }
+            }
+        }
+        var accountIds = all.Select(a => a.Id).ToList();
         var byId = all.ToDictionary(a => a.Id);
-        var childCount = all.Where(a => a.ParentId is not null)
+        var childCount = await q.Where(a => a.ParentId != null && accountIds.Contains(a.ParentId.Value))
             .GroupBy(a => a.ParentId!.Value)
-            .ToDictionary(g => g.Key, g => g.Count());
+            .Select(g => new { Id = g.Key, Count = g.Count() }).ToDictionaryAsync(g => g.Id, g => g.Count);
 
         // ---------- گردش حساب‌های قابل ثبت (فقط اسناد قطعی) ----------
         Dictionary<int, (decimal D, decimal C)> turnover = new();
         if (withBalances)
         {
             turnover = (await _db.AccVoucherLines.AsNoTracking()
-                    .Where(l => l.Voucher!.Status == VoucherStatus.Confirmed)
+                    .Where(l => l.Voucher!.Status == VoucherStatus.Confirmed && accountIds.Contains(l.AccountId))
                     .Select(l => new { l.AccountId, l.Debit, l.Credit })
                     .ToListAsync())
                 .GroupBy(x => x.AccountId)
@@ -205,12 +247,12 @@ public class AccountingService : IAccountingService
             }
         }
 
-        return result.OrderBy(a => a.Code, StringComparer.Ordinal).ToList();
+        return result.Where(a => selectedIds.Contains(a.Id)).OrderBy(a => a.Code, StringComparer.Ordinal).ThenBy(a => a.Id).ToList();
     }
 
-    public async Task<List<AccAccount>> GetAccountTreeAsync(bool activeOnly = false, bool withBalances = false)
+    public async Task<List<AccAccount>> GetAccountTreeAsync(bool activeOnly = false, bool withBalances = false, Paging.Request? pagination = null)
     {
-        var flat = await GetAccountsFlatAsync(activeOnly, withBalances);
+        var flat = await BuildAccountsAsync(activeOnly, withBalances, pagination);
         var map = flat.ToDictionary(a => a.Id);
         var roots = new List<AccAccount>();
 
@@ -224,7 +266,7 @@ public class AccountingService : IAccountingService
         return roots;
     }
 
-    public async Task<List<LookupItem>> GetPostableAccountLookupsAsync(string? search = null)
+    public async Task<List<LookupItem>> GetPostableAccountLookupsAsync(string? search = null, Paging.Request? pagination = null)
     {
         var q = _db.AccAccounts.AsNoTracking().Where(a => a.IsActive && a.IsPostable);
         if (!string.IsNullOrWhiteSpace(search))
@@ -232,9 +274,8 @@ public class AccountingService : IAccountingService
             var s = search.Trim();
             q = q.Where(a => a.Name.Contains(s) || a.Code.Contains(s));
         }
-        return await q.OrderBy(a => a.Code)
-            .Select(a => new LookupItem { Id = a.Id, Name = a.Code + " — " + a.Name })
-            .Take(300).ToListAsync();
+        return await q.OrderBy(a => a.Code).ThenBy(x => x.Id)
+            .Select(a => new LookupItem { Id = a.Id, Name = a.Code + " — " + a.Name }).ToPageListAsync(pagination, defaultCap: 300);
     }
 
     public async Task<AccAccount> SaveAccountAsync(AccAccount dto)
@@ -955,9 +996,9 @@ public class AccountingService : IAccountingService
     // ۵) سند خودکار از روی اسناد انبار
     // =====================================================================
 
-    public async Task<List<AccInvRule>> GetInvRulesAsync()
+    public async Task<List<AccInvRule>> GetInvRulesAsync(Paging.Request? pagination = null)
     {
-        var types = await _db.InvDocTypes.AsNoTracking().OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ToListAsync();
+        var types = await _db.InvDocTypes.AsNoTracking().OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var rules = await _db.AccInvRules.AsNoTracking().ToListAsync();
         var accounts = await _db.AccAccounts.AsNoTracking().ToDictionaryAsync(a => a.Id, a => a.Code + " — " + a.Name);
 

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -19,6 +20,7 @@ public class DocTagsController : RbacControllerBase
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var counts = await Db.DocumentTags.AsNoTracking()
@@ -27,10 +29,10 @@ public class DocTagsController : RbacControllerBase
             .ToDictionaryAsync(x => x.TagId, x => x.Count);
 
         var tags = await Db.DocTags.AsNoTracking()
-            .OrderBy(t => t.Name)
-            .ToListAsync();
+            .OrderBy(t => t.Name).ThenBy(x => x.Id)
+            .ToPageListAsync(pagination);
 
-        return Ok(Paging.Result(tags.Select(t => new DocTagDto
+        return Ok(pagination.Result(tags.Select(t => new DocTagDto
         {
             Id = t.Id,
             Name = t.Name,
@@ -38,7 +40,7 @@ public class DocTagsController : RbacControllerBase
             Description = t.Description,
             CreatedAt = t.CreatedAt,
             DocumentCount = counts.TryGetValue(t.Id, out var c) ? c : 0
-        }), skip, take));
+        })));
     }
 
     [HttpPost]

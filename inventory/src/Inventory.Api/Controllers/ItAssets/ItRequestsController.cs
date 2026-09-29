@@ -81,6 +81,7 @@ public class ItRequestsController : ControllerBase
     [HttpGet("systems")]
     public async Task<IActionResult> Systems([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var viewCompany = await HasAsync("ViewCompany");
         var viewDepartment = await HasAsync("ViewDepartment");
         var me = await MySystemUserAsync();
@@ -102,7 +103,7 @@ public class ItRequestsController : ControllerBase
             q = q.Where(s => s.UserId == myId);
         }
 
-        var systems = await q
+        var systems = await q.OrderBy(x => x.Id)
             .Select(s => new
             {
                 s.Id,
@@ -115,15 +116,16 @@ public class ItRequestsController : ControllerBase
                 DepartmentName = _db.SystemDepartments.Where(d => d.Id == s.DepartmentId)
                     .Select(d => d.Name).FirstOrDefault()
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
-        return Ok(Paging.Result(systems, skip, take));
+        return Ok(pagination.Result(systems));
     }
 
     // ================== کارشناسان (برای ارجاع) ==================
     [HttpGet("experts")]
     public async Task<IActionResult> Experts([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!await HasAsync("Manage")) return Forbid();
 
         var expertUserIds = await _db.UserRoles
@@ -132,9 +134,9 @@ public class ItRequestsController : ControllerBase
             .Where(x => x.Module == "ItRequests" && x.Action == "Expert")
             .Select(x => x.UserId).Distinct().ToListAsync();
 
-        var experts = await _db.Users.Where(u => expertUserIds.Contains(u.Id) && u.IsActive)
-            .Select(u => new { u.Id, u.Username }).ToListAsync();
-        return Ok(Paging.Result(experts, skip, take));
+        var experts = await _db.Users.Where(u => expertUserIds.Contains(u.Id) && u.IsActive).OrderBy(x => x.Id)
+            .Select(u => new { u.Id, u.Username }).ToPageListAsync(pagination);
+        return Ok(pagination.Result(experts));
     }
 
     // ================== ثبت درخواست ==================
@@ -208,9 +210,9 @@ public class ItRequestsController : ControllerBase
             : new List<object>()
     };
 
-    private async Task<List<object>> BuildList(IQueryable<ItRequest> q, bool internalView)
+    private async Task<List<object>> BuildList(IQueryable<ItRequest> q, bool internalView, Paging.Request? pagination = null)
     {
-        var reqs = await q.OrderByDescending(r => r.Id).ToListAsync();
+        var reqs = await q.OrderByDescending(r => r.Id).ToPageListAsync(pagination);
         var ids = reqs.Select(r => r.Id).ToList();
         var asgs = await _db.ItRequestAssignments.Where(a => ids.Contains(a.RequestId)).ToListAsync();
         var attCounts = await _db.ItRequestAttachments.Where(a => ids.Contains(a.RequestId))
@@ -238,14 +240,14 @@ public class ItRequestsController : ControllerBase
     /// <summary>کارتابل درخواست‌دهنده — بدون جزئیات داخلی واحد IT.</summary>
     [HttpGet("mine")]
     public async Task<IActionResult> Mine([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
-        Ok(Paging.Result(await BuildList(_db.ItRequests.Where(r => r.RequesterUserId == MyUserId), internalView: false), skip, take));
+        Ok(await Paging.ResultAsync(pagination => BuildList(_db.ItRequests.Where(r => r.RequesterUserId == MyUserId), internalView: false, pagination: pagination), skip, take));
 
     /// <summary>کارتابل مدیر آی‌تی.</summary>
     [HttpGet("manager")]
     public async Task<IActionResult> ManagerInbox([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("Manage")) return Forbid();
-        return Ok(Paging.Result(await BuildList(_db.ItRequests, internalView: true), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => BuildList(_db.ItRequests, internalView: true, pagination: pagination), skip, take));
     }
 
     /// <summary>کارتابل کارشناس.</summary>
@@ -254,7 +256,7 @@ public class ItRequestsController : ControllerBase
     {
         if (!await HasAsync("Expert")) return Forbid();
         var myReqIds = _db.ItRequestAssignments.Where(a => a.ExpertUserId == MyUserId).Select(a => a.RequestId);
-        return Ok(Paging.Result(await BuildList(_db.ItRequests.Where(r => myReqIds.Contains(r.Id)), internalView: true), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => BuildList(_db.ItRequests.Where(r => myReqIds.Contains(r.Id)), internalView: true, pagination: pagination), skip, take));
     }
 
     // ================== آرشیو رفت‌وبرگشت‌ها ==================

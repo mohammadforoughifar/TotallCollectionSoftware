@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared;
@@ -26,7 +27,7 @@ public class AccFiscalYearsController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<AccFiscalYear>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetFiscalYearsAsync(), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetFiscalYearsAsync(pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccFiscalYear>> Save([FromBody] AccFiscalYear dto)
@@ -63,16 +64,16 @@ public class AccAccountsController : RbacControllerBase
     [HttpGet("tree")]
     public async Task<ActionResult<List<AccAccount>>> GetTree(
         [FromQuery] bool activeOnly = false, [FromQuery] bool withBalances = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetAccountTreeAsync(activeOnly, withBalances), skip, take));
+        => Ok(await Paging.ResultAsync(pagination => _svc.GetAccountTreeAsync(activeOnly, withBalances, pagination), skip, take));
 
     [HttpGet]
     public async Task<ActionResult<List<AccAccount>>> GetFlat(
         [FromQuery] bool activeOnly = false, [FromQuery] bool withBalances = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetAccountsFlatAsync(activeOnly, withBalances), skip, take));
+        => Ok(await Paging.ResultAsync(pagination => _svc.GetAccountsFlatAsync(activeOnly, withBalances, pagination), skip, take));
 
     [HttpGet("lookups")]
     public async Task<ActionResult<List<LookupItem>>> Lookups([FromQuery] string? search = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetPostableAccountLookupsAsync(search), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetPostableAccountLookupsAsync(search, pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccAccount>> Save([FromBody] AccAccount dto)
@@ -213,7 +214,7 @@ public class AccInvRulesController : RbacControllerBase
 
     [HttpGet]
     public async Task<ActionResult<List<AccInvRule>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _svc.GetInvRulesAsync(), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _svc.GetInvRulesAsync(pagination: pagination), skip, take));
 
     [HttpPost]
     public async Task<ActionResult<AccInvRule>> Save([FromBody] AccInvRule dto)

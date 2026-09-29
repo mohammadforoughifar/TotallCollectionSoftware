@@ -23,11 +23,11 @@ public class RepairService : IRepairService
 
     // =============================== تعمیرکارها ===============================
 
-    public async Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false)
+    public async Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false, Paging.Request? pagination = null)
     {
         var q = _db.Technicians.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(t => t.IsActive);
-        var list = await q.OrderBy(t => t.Name).ToListAsync();
+        var list = await q.OrderBy(t => t.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         var active = await _db.RepairOrders
             .Where(r => r.TechnicianId != null &&

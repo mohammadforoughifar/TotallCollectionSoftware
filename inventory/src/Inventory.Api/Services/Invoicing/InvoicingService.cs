@@ -570,7 +570,7 @@ public class InvoicingService : IInvoicingService
     // ۵) قواعد فاکتور
     // =====================================================================
 
-    public async Task<List<FacRule>> GetRulesAsync()
+    public async Task<List<FacRule>> GetRulesAsync(Paging.Request? pagination = null)
     {
         var rules = await _db.FacRules.AsNoTracking().ToListAsync();
 
@@ -583,6 +583,7 @@ public class InvoicingService : IInvoicingService
             rules.Add(created);
         }
         if (_db.ChangeTracker.HasChanges()) await _db.SaveChangesAsync();
+        rules = await _db.FacRules.AsNoTracking().OrderBy(r => r.Kind).ThenBy(r => r.Id).ToPageListAsync(pagination);
 
         var accIds = rules.SelectMany(r => new[] { r.PartyAccountId, r.MainAccountId, r.VatAccountId, r.CashAccountId, r.ShippingAccountId })
             .Where(x => x is not null).Select(x => x!.Value).Distinct().ToList();

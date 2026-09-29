@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.HrMain;
 using Inventory.Shared.Dtos;
@@ -74,7 +75,7 @@ public class HrMainController : RbacControllerBase
     public async Task<IActionResult> Branches([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Branches") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListBranchesAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListBranchesAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("branches")]
@@ -107,14 +108,14 @@ public class HrMainController : RbacControllerBase
     public async Task<IActionResult> OrgTree([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Org") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetTreeAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _svc.GetTreeAsync(pagination), skip, take));
     }
 
     [HttpGet("org/nodes")]
     public async Task<IActionResult> OrgNodes([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Org") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListNodesAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListNodesAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("org/nodes")]
@@ -146,7 +147,7 @@ public class HrMainController : RbacControllerBase
     public async Task<IActionResult> Positions([FromQuery] int? orgNodeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Positions") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListPositionsAsync(orgNodeId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListPositionsAsync(orgNodeId, pagination: pagination), skip, take));
     }
 
     [HttpPost("positions")]
@@ -234,7 +235,7 @@ public class HrMainController : RbacControllerBase
     public async Task<IActionResult> Holidays([FromQuery] int? year, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", "Calendar") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListHolidaysAsync(year), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListHolidaysAsync(year, pagination: pagination), skip, take));
     }
 
     [HttpPost("holidays")]

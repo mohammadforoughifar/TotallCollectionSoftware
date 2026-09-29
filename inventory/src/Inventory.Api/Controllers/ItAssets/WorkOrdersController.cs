@@ -74,30 +74,19 @@ public class WorkOrdersController : ControllerBase
     public async Task<IActionResult> Targets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         var canOthers = await HasAsync("AssignOthers");
-        var me = await _db.Users.FindAsync(MyUserId);
-        var myFull = $"{me?.FirstName} {me?.LastName}".Trim();
-        var result = new List<object> { new { Id = MyUserId, Username = (string.IsNullOrWhiteSpace(myFull) ? MyUsername : myFull) + " (خودم)" } };
-
-        if (canOthers)
+        var query = _db.Users.AsNoTracking().Where(u => u.Id == MyUserId ||
+            (canOthers && u.IsActive && (IsLegacyAdmin || _db.WorkOrderAllowedAssignees
+                .Any(a => a.OwnerUserId == MyUserId && a.TargetUserId == u.Id))));
+        var pagination = new Paging.Request(skip, take);
+        var users = await query.OrderBy(u => u.Id != MyUserId).ThenBy(u => u.Id).ToPageListAsync(pagination);
+        return Ok(pagination.Result(users.Select(u => new
         {
-            List<int> allowedIds;
-            if (IsLegacyAdmin)
-                allowedIds = await _db.Users.Where(u => u.IsActive && u.Id != MyUserId).Select(u => u.Id).ToListAsync();
-            else
-                allowedIds = await _db.WorkOrderAllowedAssignees.Where(a => a.OwnerUserId == MyUserId)
-                    .Select(a => a.TargetUserId).ToListAsync();
+            u.Id,
+            Username = u.Id == MyUserId
+                ? (string.IsNullOrWhiteSpace((u.FirstName + " " + u.LastName).Trim()) ? MyUsername : (u.FirstName + " " + u.LastName).Trim()) + " (خودم)"
+                : (string.IsNullOrWhiteSpace((u.FirstName + " " + u.LastName).Trim()) ? u.Username : (u.FirstName + " " + u.LastName).Trim() + $" ({u.Username})")
+        })));
 
-            var users = await _db.Users.Where(u => allowedIds.Contains(u.Id) && u.IsActive && u.Id != MyUserId)
-                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Username }).ToListAsync();
-            // نمایش با نام و نام خانوادگی (بند ۲)
-            result.AddRange(users.Select(u => (object)new
-            {
-                u.Id,
-                Username = string.IsNullOrWhiteSpace($"{u.FirstName} {u.LastName}".Trim())
-                    ? u.Username : $"{u.FirstName} {u.LastName}".Trim() + $" ({u.Username})"
-            }));
-        }
-        return Ok(Paging.Result(result, skip, take));
     }
 
     /// <summary>لیست مجاز یک کاربر (پیکربندی — فقط مدیر).</summary>
@@ -577,6 +566,7 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("for-source")]
     public async Task<IActionResult> ForSource([FromQuery] string? module, [FromQuery] int? sourceId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var companyId = await ActiveCompanyIdAsync();
         if (companyId is null) return BadRequest(new { message = "شرکت فعال انتخاب نشده است." });
         if (string.IsNullOrWhiteSpace(module) || sourceId is not > 0)
@@ -585,8 +575,8 @@ public class WorkOrdersController : ControllerBase
             .Where(w => w.CompanyId == companyId.Value && w.SourceModule == module && w.SourceId == sourceId)
             .OrderByDescending(w => w.Id)
             .Select(w => new { w.Id, w.Number, w.Title, w.OwnerName, w.Status, w.SourceModule, w.SourceId })
-            .ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     /// <summary>جزئیات یک دستور کار به‌صورت مستقیم — برای لینک عمیق (مثلاً از نشان «دستورکار شده» نامه).</summary>
@@ -604,14 +594,15 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("calendar")]
     public async Task<IActionResult> Calendar([FromQuery] DateTime from, [FromQuery] DateTime to, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var myOrderIds = _db.WorkOrderAssignees.Where(a => a.UserId == MyUserId).Select(a => a.OrderId);
         var orders = await _db.WorkOrders
-            .Where(w => w.DueAt >= from && w.DueAt < to && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id)))
-            .ToListAsync();
+            .Where(w => w.DueAt >= from && w.DueAt < to && (w.OwnerUserId == MyUserId || myOrderIds.Contains(w.Id))).OrderBy(x => x.Id)
+            .ToPageListAsync(pagination);
         var ids = orders.Select(o => o.Id).ToList();
         var asgs = await _db.WorkOrderAssignees.Where(a => ids.Contains(a.OrderId)).ToListAsync();
 
-        return Ok(Paging.Result(orders.Select(w =>
+        return Ok(pagination.Result(orders.Select(w =>
         {
             var mine = w.OwnerUserId == MyUserId;
             var list = asgs.Where(a => a.OrderId == w.Id).ToList();
@@ -635,7 +626,7 @@ public class WorkOrdersController : ControllerBase
             else tone = "none";
 
             return new { w.Id, w.Number, w.Title, w.DueAt, w.Status, Kind = kind, Tone = tone };
-        }), skip, take));
+        })));
     }
 
     // ================== رویت (بند ۸) ==================
@@ -1052,7 +1043,7 @@ public class WorkOrdersController : ControllerBase
     /// خروجی برای رتبه‌بندی مرتب می‌شود: درصد به‌موقع ↓ سپس تعداد کل ↓.
     /// <paramref name="days"/>: بازهٔ روزهای اخیر بر اساس تاریخ ایجاد دستور — 0 یعنی همه.
     /// </summary>
-    private async Task<List<PerfRow>> BuildPerformanceAsync(int days)
+    private async Task<List<PerfRow>> BuildPerformanceAsync(int days, Paging.Request? pagination = null)
     {
         var q = _db.WorkOrders.AsNoTracking().Where(w => w.OwnerUserId == MyUserId);
         if (days > 0)
@@ -1060,43 +1051,46 @@ public class WorkOrdersController : ControllerBase
             var from = DateTime.Now.AddDays(-days);
             q = q.Where(w => w.CreatedAt >= from);
         }
-        var orders = await q.ToListAsync();
-        var ids = orders.Select(o => o.Id).ToList();
-        var dueMap = orders.ToDictionary(o => o.Id, o => o.DueAt);
-        var statusMap = orders.ToDictionary(o => o.Id, o => o.Status);
-        var asgs = await _db.WorkOrderAssignees.AsNoTracking()
-            .Where(a => ids.Contains(a.OrderId)).ToListAsync();
-
         var now = DateTime.Now;
-        var rows = asgs.GroupBy(a => new { a.UserId, a.Name })
-            .Select(g =>
-            {
-                var done = g.Where(x => x.Done == true).ToList();
-                var onTime = done.Count(x => x.RepliedAt != null && x.RepliedAt <= dueMap[x.OrderId]);
-                var doneLate = done.Count - onTime;
-                // میانگین تاخیر (ساعت) — فقط برای انجام‌های با تاخیر
-                var delays = done.Where(x => x.RepliedAt != null && x.RepliedAt > dueMap[x.OrderId])
-                    .Select(x => (x.RepliedAt!.Value - dueMap[x.OrderId]).TotalHours).ToList();
-                var pending = g.Count(x => x.RepliedAt == null && statusMap[x.OrderId] == "Open");
-                return new PerfRow
-                {
-                    UserId = g.Key.UserId,
-                    Name = g.Key.Name,
-                    Total = g.Count(),
-                    Done = done.Count,
-                    OnTime = onTime,
-                    DoneLate = doneLate,
-                    NotDone = g.Count(x => x.Done == false),
-                    Pending = pending,
-                    OverdueOpen = g.Count(x => x.RepliedAt == null && statusMap[x.OrderId] == "Open" && dueMap[x.OrderId] < now),
-                    AvgDelayHours = delays.Count > 0 ? Math.Round(delays.Average(), 1) : 0,
-                    OnTimePercent = g.Count() > 0 ? (int)Math.Round(onTime * 100.0 / g.Count()) : 0
-                };
-            })
-            .OrderByDescending(r => r.OnTimePercent).ThenByDescending(r => r.Total).ThenBy(r => r.Name)
-            .ToList();
-
-        for (var i = 0; i < rows.Count; i++) rows[i].Rank = i + 1;
+        var source = from assignee in _db.WorkOrderAssignees.AsNoTracking()
+                     join order in q on assignee.OrderId equals order.Id
+                     select new { assignee.UserId, assignee.Name, assignee.Done, assignee.RepliedAt, order.DueAt, order.Status };
+        var grouped = source.GroupBy(x => new { x.UserId, x.Name }).Select(g => new
+        {
+            g.Key.UserId, g.Key.Name,
+            Total = g.Count(),
+            Done = g.Count(x => x.Done == true),
+            OnTime = g.Count(x => x.Done == true && x.RepliedAt != null && x.RepliedAt <= x.DueAt),
+            NotDone = g.Count(x => x.Done == false),
+            Pending = g.Count(x => x.RepliedAt == null && x.Status == "Open"),
+            OverdueOpen = g.Count(x => x.RepliedAt == null && x.Status == "Open" && x.DueAt < now)
+        });
+        // Preserve .NET's midpoint-to-even rounding rather than SQL ROUND's
+        // midpoint-away-from-zero behavior. All operands here are positive integers.
+        var ranked = grouped.Select(g => new PerfRow
+        {
+            UserId = g.UserId, Name = g.Name, Total = g.Total, Done = g.Done,
+            OnTime = g.OnTime, DoneLate = g.Done - g.OnTime, NotDone = g.NotDone,
+            Pending = g.Pending, OverdueOpen = g.OverdueOpen,
+            OnTimePercent = (int)(g.OnTime * 100L / g.Total +
+                ((g.OnTime * 100L % g.Total * 2 > g.Total ||
+                  (g.OnTime * 100L % g.Total * 2 == g.Total && g.OnTime * 100L / g.Total % 2 != 0)) ? 1 : 0))
+        });
+        var rows = await ranked.OrderByDescending(r => r.OnTimePercent).ThenByDescending(r => r.Total)
+            .ThenBy(r => r.Name).ThenBy(r => r.UserId).ToPageListAsync(pagination);
+        var userIds = rows.Select(r => r.UserId).ToList();
+        // Date subtraction is provider-specific; hydrate only late replies for
+        // the selected assignees, never the complete order/assignee tables.
+        var delays = await source.Where(x => userIds.Contains(x.UserId) && x.Done == true &&
+            x.RepliedAt != null && x.RepliedAt > x.DueAt)
+            .Select(x => new { x.UserId, x.Name, x.RepliedAt, x.DueAt }).ToListAsync();
+        var averages = delays.GroupBy(x => (x.UserId, x.Name)).ToDictionary(g => g.Key,
+            g => Math.Round(g.Average(x => (x.RepliedAt!.Value - x.DueAt).TotalHours), 1));
+        for (var i = 0; i < rows.Count; i++)
+        {
+            rows[i].Rank = (int)Math.Min(int.MaxValue, (long)(pagination?.Skip ?? 0) + i + 1);
+            rows[i].AvgDelayHours = averages.TryGetValue((rows[i].UserId, rows[i].Name), out var avg) ? avg : 0;
+        }
         return rows;
     }
 
@@ -1122,7 +1116,7 @@ public class WorkOrdersController : ControllerBase
     {
         if (!await HasAsync("View")) return Forbid();
         if (days is < 0 or > 3660) return BadRequest(new { message = "بازهٔ زمانی نامعتبر است." });
-        return Ok(Paging.Result(await BuildPerformanceAsync(days), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => BuildPerformanceAsync(days, pagination), skip, take));
     }
 
     /// <summary>خروجی Excel/PDF گزارش عملکرد افراد — همان داده با رتبه‌بندی.</summary>
@@ -1256,12 +1250,13 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("templates")]
     public async Task<IActionResult> Templates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!await HasAsync("Create")) return Forbid();
         var rows = await _db.WorkOrderTemplates.AsNoTracking()
             .Where(t => t.OwnerUserId == MyUserId)
             .OrderByDescending(t => t.UsageCount).ThenByDescending(t => t.Id)
-            .ToListAsync();
-        return Ok(Paging.Result(rows.Select(t => new
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(rows.Select(t => new
         {
             t.Id, t.Name, t.Title, t.Description, t.Priority, t.Recurrence, t.UsageCount, t.CreatedAt,
             AssigneeUserIds = (t.AssigneeUserIds ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -1269,7 +1264,7 @@ public class WorkOrdersController : ControllerBase
             ChecklistItems = (t.ChecklistItems ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(s => s.Trim()).Where(s => s.Length > 0).ToList(),
             Tags = TagsToList(t.Tags)
-        }), skip, take));
+        })));
     }
 
     /// <summary>ذخیرهٔ قالب جدید — حداکثر ۲۰ قالب برای هر کاربر تا فهرست شلوغ نشود.</summary>
@@ -1337,17 +1332,18 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("{id:int}/comments")]
     public async Task<IActionResult> Comments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!await CanSeeOrderAsync(id)) return Forbid();
         var items = await _db.WorkOrderComments.AsNoTracking()
             .Where(c => c.OrderId == id)
             .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
-            .ToListAsync();
-        return Ok(Paging.Result(items.Select(c => new
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(items.Select(c => new
         {
             c.Id, c.AuthorUserId, c.AuthorName,
             Text = c.IsDeleted ? "" : c.Text,
             c.ReplyToId, c.IsDeleted, c.CreatedAt, c.EditedAt
-        }), skip, take));
+        })));
     }
 
     public class CommentDto { public string Text { get; set; } = ""; public int? ReplyToId { get; set; } }
@@ -1555,12 +1551,13 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!await CanSeeOrderAsync(id)) return Forbid();
-        var rows = await _db.WorkOrderAttachments.Where(a => a.OrderId == id)
+        var rows = await _db.WorkOrderAttachments.Where(a => a.OrderId == id).OrderBy(x => x.Id)
             .Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt, a.FilePath, a.Data })
-            .ToListAsync();
-        return Ok(Paging.Result(rows.Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt,
-            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length }), skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(rows.Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt,
+            Size = a.FilePath is not null ? _store.Size(a.FilePath) : (long)a.Data.Length })));
     }
 
     [HttpPost("{id:int}/attachments")]

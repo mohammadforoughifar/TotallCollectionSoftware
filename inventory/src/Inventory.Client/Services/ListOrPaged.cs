@@ -27,15 +27,9 @@ public static class ListOrPaged
 
     public static async Task<PagedResult<T>> GetPagedAsync<T>(IApiClient api, string path)
     {
-        try
-        {
-            var el = await api.GetAsync<JsonElement>(path);
-            return NormalizePaged<T>(el);
-        }
-        catch
-        {
-            return new PagedResult<T>();
-        }
+        // Do not turn authorization/network errors into an apparently empty page.
+        var el = await api.GetAsync<JsonElement>(path);
+        return NormalizePaged<T>(el);
     }
 
     /// <summary>آرایه → همان آرایه؛ آبجکت دارای items/Items → items؛ در غیر این صورت فهرست خالی.</summary>
@@ -72,7 +66,7 @@ public static class ListOrPaged
                 {
                     res.Items = prop.Value.Deserialize<List<T>>(Opts) ?? new List<T>();
                 }
-                else if (string.Equals(prop.Name, "totalCount", StringComparison.OrdinalIgnoreCase) && prop.Value.ValueKind == JsonValueKind.Number)
+                else if ((string.Equals(prop.Name, "totalCount", StringComparison.OrdinalIgnoreCase) || string.Equals(prop.Name, "total", StringComparison.OrdinalIgnoreCase)) && prop.Value.ValueKind == JsonValueKind.Number)
                 {
                     res.TotalCount = prop.Value.GetInt32();
                 }

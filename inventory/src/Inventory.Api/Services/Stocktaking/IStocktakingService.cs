@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 
@@ -10,7 +11,7 @@ namespace Inventory.Api.Services.Stocktaking;
 public interface IStocktakingService
 {
     // ---------- بارکد ----------
-    Task<List<BcdBarcode>> GetBarcodesAsync(int? productId = null, string? search = null);
+    Task<List<BcdBarcode>> GetBarcodesAsync(int? productId = null, string? search = null, Paging.Request? pagination = null);
     Task<BcdBarcode> SaveBarcodeAsync(BcdBarcode dto);
     Task DeleteBarcodeAsync(int id);
 

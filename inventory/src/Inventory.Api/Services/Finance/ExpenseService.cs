@@ -13,14 +13,15 @@ public class ExpenseService : IExpenseService
 
     // =============================== دسته‌ها ===============================
 
-    public async Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false)
+    public async Task<List<ExpenseCategoryDto>> GetCategoriesAsync(bool activeOnly = false, Paging.Request? pagination = null)
     {
         var q = _db.ExpenseCategories.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(c => c.IsActive);
-        var cats = await q.OrderBy(c => c.Name).ToListAsync();
+        var cats = await q.OrderBy(c => c.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         // آمار در حافظه (SQLite جمع decimal در SQL ندارد)
-        var expenses = await _db.Expenses.AsNoTracking().ToListAsync();
+        var ids = cats.Select(c => c.Id).ToList();
+        var expenses = await _db.Expenses.AsNoTracking().Where(e => ids.Contains(e.CategoryId)).ToListAsync();
         var stats = expenses.GroupBy(e => e.CategoryId)
             .ToDictionary(g => g.Key, g => new { Count = g.Count(), Total = g.Sum(x => x.Amount) });
 

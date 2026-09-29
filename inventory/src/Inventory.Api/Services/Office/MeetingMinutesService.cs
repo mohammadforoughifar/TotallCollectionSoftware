@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
@@ -18,7 +19,7 @@ namespace Inventory.Api.Services.Office;
 
 public interface IMeetingMinutesService
 {
-    Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId);
+    Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId, Paging.Request? pagination = null);
     Task<MinutesDetailDto?> GetDetailAsync(int id, int userId, int companyId);
     Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName, int companyId);
     Task SubmitAsync(int id, bool includeAbsentees, int userId, string userName);
@@ -152,7 +153,7 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     // ------------------------------ فهرست ------------------------------
 
-    public async Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId)
+    public async Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId, Paging.Request? pagination = null)
     {
         // کاربر فقط صورتجلسه‌ای را می‌بیند که ایجادکننده آن است یا در گردش
         // صورتجلسه به‌عنوان حاضر/غایب قرار گرفته است.
@@ -167,7 +168,7 @@ public class MeetingMinutesService : IMeetingMinutesService
         if (!string.IsNullOrWhiteSpace(status))
             q = q.Where(m => m.Status == status);
 
-        var rows = await q.OrderByDescending(m => m.Id).Take(500).Select(m => new
+        var rows = await q.OrderByDescending(m => m.Id).Select(m => new
         {
             m.Id, m.Title, m.MeetingDate, m.DateRegistered, m.Status, m.ClosedAt,
             m.CreatedByUserId, m.CreatedByName,
@@ -176,7 +177,7 @@ public class MeetingMinutesService : IMeetingMinutesService
             Items = _db.MeetingMinutesItems.Count(i => i.MinutesId == m.Id),
             Done = _db.MeetingMinutesItems.Count(i => i.MinutesId == m.Id && i.ItemStatus == MinutesItemStatus.Done),
             Atts = _db.AppAttachments.Count(a => a.Module == "MeetingMinutes" && a.RefId == m.Id)
-        }).ToListAsync();
+        }).ToPageListAsync(pagination, defaultCap: 500);
 
         return rows.Select(r => new MinutesListItemDto
         {

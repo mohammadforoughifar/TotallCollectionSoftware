@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System.Text;
 using Inventory.Api.Data;
 using Inventory.Shared;
@@ -98,34 +99,37 @@ public class AuditLogsController : ControllerBase
     [HttpGet("modules")]
     public async Task<IActionResult> Modules([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!IsAdmin) return Forbid();
         var list = await _db.AuditLogs.AsNoTracking()
-            .Select(l => l.Module).Distinct().OrderBy(m => m).ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .Select(l => l.Module).Distinct().OrderBy(m => m).ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     /// <summary>کاربران ثبت‌شده در لاگ (برای کمبوی سرچ‌دار)</summary>
     [HttpGet("users")]
     public async Task<IActionResult> Users([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!IsAdmin) return Forbid();
         var list = await _db.AuditLogs.AsNoTracking()
             .Where(l => l.UserId != null)
             .GroupBy(l => new { l.UserId, l.Username })
             .Select(g => new { Id = g.Key.UserId, Name = g.Key.Username })
-            .OrderBy(u => u.Name).ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .OrderBy(u => u.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     /// <summary>اکشن‌های یک ماژول (برای فیلتر دوم)</summary>
     [HttpGet("actions")]
     public async Task<IActionResult> Actions([FromQuery] string? module = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!IsAdmin) return Forbid();
         var q = _db.AuditLogs.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(module)) q = q.Where(l => l.Module == module);
-        var list = await q.Select(l => l.Action).Distinct().OrderBy(a => a).ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+        var list = await q.Select(l => l.Action).Distinct().OrderBy(a => a).ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     /// <summary>خروجی CSV با همان فیلترهای فعال</summary>

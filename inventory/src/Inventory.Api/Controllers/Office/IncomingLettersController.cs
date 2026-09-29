@@ -152,7 +152,7 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Gardesh(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync()), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _erja.GetGardeshTreeAsync(id, MyUserId, await IsAdminAsync(), pagination), skip, take));
     }
 
     [HttpPost("erja/{erjaId:int}/answer")]
@@ -252,23 +252,24 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> Groups([FromQuery] bool withMembers = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _groups.GetAllAsync(withMembers), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _groups.GetAllAsync(withMembers, pagination: pagination), skip, take));
     }
 
     /// <summary>عملگرهای ارجاع (جهت اقدام، جهت اطلاع و …)</summary>
     [HttpGet("amalgars")]
     public async Task<IActionResult> Amalgars([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
-        Ok(Paging.Result(await _erja.GetAmalgarsAsync(), skip, take));
+        Ok(await Paging.ResultAsync(async pagination => await _erja.GetAmalgarsAsync(pagination: pagination), skip, take));
 
     [HttpGet("{id:int}/attachments")]
     public async Task<IActionResult> Attachments(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
         var rows = await Db.AppAttachments.AsNoTracking()
             .Where(a => a.Module == "IncomingLetters" && a.RefId == id)
             .OrderBy(a => a.Id)
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.FilePath, a.Data, a.UploaderName, a.UploaderUserId, a.UploadedAt })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         var list = rows.Select(a => new LetterAttachmentDto
         {
@@ -280,7 +281,7 @@ public class IncomingLettersController : RbacControllerBase
             UploaderUserId = a.UploaderUserId,
             UploadedAt = a.UploadedAt
         }).ToList();
-        return Ok(Paging.Result(list, skip, take));
+        return Ok(pagination.Result(list));
     }
 
     [HttpPost("{id:int}/attachments")]
@@ -355,7 +356,7 @@ public class IncomingLettersController : RbacControllerBase
     public async Task<IActionResult> GetReservations([FromQuery] int typeForm = 3, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        return Ok(Paging.Result(await _letters.GetReservationsAsync(MyUserId, typeForm), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _letters.GetReservationsAsync(MyUserId, typeForm, pagination: pagination), skip, take));
     }
 
     [HttpPost("reserve-number")]

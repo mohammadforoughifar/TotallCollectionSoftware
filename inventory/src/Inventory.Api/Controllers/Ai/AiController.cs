@@ -94,7 +94,7 @@ public class AiController : RbacControllerBase
     public async Task<IActionResult> Conversations([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
-        return Ok(Paging.Result(await _conversations.ListAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _conversations.ListAsync(MyUserId, pagination: pagination), skip, take));
     }
 
     /// <summary>یک گفتگو با پیام‌ها.</summary>

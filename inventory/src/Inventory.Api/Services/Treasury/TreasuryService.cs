@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
@@ -32,12 +33,12 @@ public class TreasuryService : ITreasuryService
     // ۱) صندوق و بانک
     // =====================================================================
 
-    public async Task<List<TrsAccount>> GetAccountsAsync(bool activeOnly = false, bool withBalances = false)
+    public async Task<List<TrsAccount>> GetAccountsAsync(bool activeOnly = false, bool withBalances = false, Paging.Request? pagination = null)
     {
         var q = _db.TrsAccounts.AsNoTracking().Include(a => a.Account).AsQueryable();
         if (activeOnly) q = q.Where(a => a.IsActive);
 
-        var rows = await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Code).ToListAsync();
+        var rows = await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var list = rows.Select(MapAccount).ToList();
 
         if (!withBalances || list.Count == 0) return list;
@@ -57,12 +58,12 @@ public class TreasuryService : ITreasuryService
         return dto;
     }
 
-    public async Task<List<LookupItem>> GetAccountLookupsAsync(bool activeOnly = true)
+    public async Task<List<LookupItem>> GetAccountLookupsAsync(bool activeOnly = true, Paging.Request? pagination = null)
     {
         var q = _db.TrsAccounts.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(a => a.IsActive);
 
-        return await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Code)
+        return await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Code).ThenBy(x => x.Id)
             .Select(a => new LookupItem
             {
                 Id = a.Id,
@@ -70,7 +71,7 @@ public class TreasuryService : ITreasuryService
                     ? a.Name
                     : a.Name + " — " + a.BankName
             })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
     }
 
     public async Task<TrsAccount> SaveAccountAsync(TrsAccount dto)
@@ -1393,7 +1394,7 @@ public class TreasuryService : ITreasuryService
     // ۷) قواعد
     // =====================================================================
 
-    public async Task<List<TrsRule>> GetRulesAsync()
+    public async Task<List<TrsRule>> GetRulesAsync(Paging.Request? pagination = null)
     {
         var kinds = new[] { TreasuryKind.Receipt, TreasuryKind.Payment };
         var rows = await _db.TrsRules.ToListAsync();
@@ -1407,6 +1408,7 @@ public class TreasuryService : ITreasuryService
             rows.Add(created);
         }
         await _db.SaveChangesAsync();
+        rows = await _db.TrsRules.AsNoTracking().OrderBy(r => r.Kind).ThenBy(r => r.Id).ToPageListAsync(pagination);
 
         var accounts = await _db.AccAccounts.AsNoTracking()
             .ToDictionaryAsync(a => a.Id, a => a.Code + " — " + a.Name);

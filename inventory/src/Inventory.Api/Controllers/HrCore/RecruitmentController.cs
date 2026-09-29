@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.HrCore;
 using Inventory.Shared.Dtos;
@@ -23,7 +24,7 @@ public class RecruitmentController : RbacControllerBase
     public async Task<IActionResult> Postings([FromQuery] bool? onlyOpen, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", Sec) is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListPostingsAsync(onlyOpen), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListPostingsAsync(onlyOpen, pagination: pagination), skip, take));
     }
 
     [HttpGet("postings/{id:int}")]
@@ -64,7 +65,7 @@ public class RecruitmentController : RbacControllerBase
     public async Task<IActionResult> Applicants([FromQuery] int? postingId, [FromQuery] int? status, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", Sec) is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListApplicantsAsync(postingId, status), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListApplicantsAsync(postingId, status, pagination: pagination), skip, take));
     }
 
     [HttpGet("applicants/{id:int}")]
@@ -121,7 +122,7 @@ public class RecruitmentController : RbacControllerBase
     public async Task<IActionResult> Interviews(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAnyAsync(Mod, "Read", Sec) is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListInterviewsAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListInterviewsAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("interviews")]

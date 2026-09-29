@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Db = Inventory.Api.Data;
@@ -11,15 +12,15 @@ namespace Inventory.Api.Services.Accounting;
 /// </summary>
 public interface IAnalyticalDimensionService
 {
-    Task<List<AccDimension>> GetDimensionsAsync();
+    Task<List<AccDimension>> GetDimensionsAsync(Paging.Request? pagination = null);
     Task<AccDimension> SaveDimensionAsync(AccDimension dto);
     Task DeleteDimensionAsync(int id);
 
-    Task<List<AccDimensionValue>> GetValuesAsync(int dimensionId, bool activeOnly = false);
+    Task<List<AccDimensionValue>> GetValuesAsync(int dimensionId, bool activeOnly = false, Paging.Request? pagination = null);
     Task<AccDimensionValue> SaveValueAsync(AccDimensionValue dto);
     Task DeleteValueAsync(int id);
 
-    Task<List<LookupItem>> GetValueLookupsAsync(int dimensionId, string? search = null);
+    Task<List<LookupItem>> GetValueLookupsAsync(int dimensionId, string? search = null, Paging.Request? pagination = null);
 }
 
 public class AnalyticalDimensionService : IAnalyticalDimensionService
@@ -30,10 +31,10 @@ public class AnalyticalDimensionService : IAnalyticalDimensionService
     // =====================================================================
     // ابعاد
     // =====================================================================
-    public async Task<List<AccDimension>> GetDimensionsAsync()
+    public async Task<List<AccDimension>> GetDimensionsAsync(Paging.Request? pagination = null)
     {
         var dims = await _db.AccDimensions.AsNoTracking()
-            .OrderBy(d => d.SortOrder).ThenBy(d => d.Code).ToListAsync();
+            .OrderBy(d => d.SortOrder).ThenBy(d => d.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         var counts = await _db.AccDimensionValues.AsNoTracking()
             .Where(v => v.IsActive)
@@ -103,13 +104,13 @@ public class AnalyticalDimensionService : IAnalyticalDimensionService
     // =====================================================================
     // مقادیر
     // =====================================================================
-    public async Task<List<AccDimensionValue>> GetValuesAsync(int dimensionId, bool activeOnly = false)
+    public async Task<List<AccDimensionValue>> GetValuesAsync(int dimensionId, bool activeOnly = false, Paging.Request? pagination = null)
     {
         var q = _db.AccDimensionValues.AsNoTracking()
             .Where(v => v.DimensionId == dimensionId);
         if (activeOnly) q = q.Where(v => v.IsActive);
 
-        var list = await q.OrderBy(v => v.SortOrder).ThenBy(v => v.Code).ToListAsync();
+        var list = await q.OrderBy(v => v.SortOrder).ThenBy(v => v.Code).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         var parents = await _db.AccDimensionValues.AsNoTracking()
             .Where(v => list.Select(x => x.ParentId).Contains(v.Id))
@@ -192,14 +193,14 @@ public class AnalyticalDimensionService : IAnalyticalDimensionService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<LookupItem>> GetValueLookupsAsync(int dimensionId, string? search = null)
+    public async Task<List<LookupItem>> GetValueLookupsAsync(int dimensionId, string? search = null, Paging.Request? pagination = null)
     {
         var q = _db.AccDimensionValues.AsNoTracking()
             .Where(v => v.DimensionId == dimensionId && v.IsActive);
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(v => v.Code.Contains(search) || v.Name.Contains(search));
-        return await q.OrderBy(v => v.Code).Take(200)
+        return await q.OrderBy(v => v.Code).ThenBy(x => x.Id)
             .Select(v => new LookupItem { Id = v.Id, Name = $"{v.Code} — {v.Name}" })
-            .ToListAsync();
+            .ToPageListAsync(pagination, defaultCap: 200);
     }
 }

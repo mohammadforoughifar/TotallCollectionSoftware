@@ -23,19 +23,28 @@ public class WarehousingService : IWarehousingService
     //  گروه کالا (درختی)
     // =====================================================================
 
-    public async Task<List<InvCategory>> GetCategoriesFlatAsync(bool activeOnly = false)
+    public Task<List<InvCategory>> GetCategoriesFlatAsync(bool activeOnly = false)
+        => BuildCategoriesAsync(activeOnly, null);
+
+    private async Task<List<InvCategory>> BuildCategoriesAsync(bool activeOnly, Paging.Request? pagination)
     {
-        var all = await _db.ProductCategories.AsNoTracking().ToListAsync();
-        if (activeOnly) all = all.Where(c => c.IsActive).ToList();
+        var scope = _db.ProductCategories.AsNoTracking().Where(c => !activeOnly || c.IsActive);
+        IOrderedQueryable<Db.ProductCategory> Order(IQueryable<Db.ProductCategory> q) => q
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id);
+        var all = await Order(scope).ReadTreePageAsync(
+            Order(scope.Where(c => c.ParentId == null || c.ParentId == 0)),
+            ids => Order(scope.Where(c => c.ParentId != null && ids.Contains(c.ParentId.Value))),
+            c => c.Id, pagination);
+        var categoryIds = all.Select(c => c.Id).ToList();
 
         var counts = await _db.Products
-            .Where(p => p.CategoryId != null)
+            .Where(p => p.CategoryId != null && categoryIds.Contains(p.CategoryId.Value))
             .GroupBy(p => p.CategoryId!.Value)
             .Select(g => new { Id = g.Key, N = g.Count() })
             .ToDictionaryAsync(x => x.Id, x => x.N);
 
         var vatStats = await _db.Products.AsNoTracking()
-            .Where(p => p.CategoryId != null)
+            .Where(p => p.CategoryId != null && categoryIds.Contains(p.CategoryId.Value))
             .GroupBy(p => p.CategoryId!.Value)
             .Select(g => new
             {
@@ -49,7 +58,7 @@ public class WarehousingService : IWarehousingService
         var whSettings = await GetWarehousingSettingsAsync();
         var catCodeLen = whSettings.CategoryCodeLength > 0 ? whSettings.CategoryCodeLength : 2;
         var delim = whSettings.CodeDelimiter ?? "";
-        var byParent = all.GroupBy(c => c.ParentId ?? 0).ToDictionary(g => g.Key, g => g.OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ToList());
+        var byParent = all.GroupBy(c => c.ParentId ?? 0).ToDictionary(g => g.Key, g => g.OrderBy(c => c.SortOrder).ThenBy(c => c.Name).ThenBy(c => c.Id).ToList());
 
         var result = new List<InvCategory>();
 
@@ -120,9 +129,9 @@ public class WarehousingService : IWarehousingService
         return result;
     }
 
-    public async Task<List<InvCategory>> GetCategoryTreeAsync(bool activeOnly = false)
+    public async Task<List<InvCategory>> GetCategoryTreeAsync(bool activeOnly = false, Paging.Request? pagination = null)
     {
-        var flat = await GetCategoriesFlatAsync(activeOnly);
+        var flat = await BuildCategoriesAsync(activeOnly, pagination);
         var map = flat.ToDictionary(c => c.Id, c => c);
         var roots = new List<InvCategory>();
 
@@ -288,18 +297,17 @@ public class WarehousingService : IWarehousingService
     //  ویژگی‌های کالا
     // =====================================================================
 
-    public async Task<List<InvAttribute>> GetAttributesAsync(bool activeOnly = false, int? categoryId = null)
+    public async Task<List<InvAttribute>> GetAttributesAsync(bool activeOnly = false, int? categoryId = null, Paging.Request? pagination = null)
     {
         var q = _db.ProductAttributeDefs.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(a => a.IsActive);
 
-        var list = await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Name).ToListAsync();
-
         if (categoryId is > 0)
         {
             var chain = await CategoryChainAsync(categoryId.Value);
-            list = list.Where(a => a.CategoryId is null || chain.Contains(a.CategoryId.Value)).ToList();
+            q = q.Where(a => a.CategoryId == null || chain.Contains(a.CategoryId.Value));
         }
+        var list = await q.OrderBy(a => a.SortOrder).ThenBy(a => a.Name).ThenBy(a => a.Id).ToPageListAsync(pagination);
 
         var ids = list.Select(a => a.Id).ToList();
         var options = await _db.ProductAttributeOptions.AsNoTracking()
@@ -454,12 +462,26 @@ public class WarehousingService : IWarehousingService
         if (warehouseId is > 0)
             q = q.Where(p => p.WarehouseId == null || p.WarehouseId == warehouseId);
 
-        var list = await q.OrderBy(p => p.Name).ToListAsync();
-
-        // ---------- موجودی ----------
-        var stocks = await _db.InvStocks.AsNoTracking()
-            .Where(s => warehouseId == null || warehouseId == 0 || s.WarehouseId == warehouseId)
-            .ToListAsync();
+        var stockQuery = _db.InvStocks.AsNoTracking()
+            .Where(s => warehouseId == null || warehouseId == 0 || s.WarehouseId == warehouseId);
+        if (belowOnly)
+        {
+            // SQLite 8 cannot SUM decimal. Only the quantity predicate uses REAL,
+            // rounded to the model's 3 decimal places; monetary values stay decimal.
+            if (_db.Database.IsSqlite())
+                q = q.Where(p => p.ReorderPoint > 0 && Math.Round(stockQuery
+                    .Where(s => s.ProductId == p.Id).Sum(s => (double?)s.Quantity) ?? 0, 3) <= (double)p.ReorderPoint);
+            else
+                q = q.Where(p => p.ReorderPoint > 0 && (stockQuery
+                    .Where(s => s.ProductId == p.Id).Sum(s => (decimal?)s.Quantity) ?? 0) <= p.ReorderPoint);
+        }
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 15 : pageSize;
+        var total = await q.CountAsync();
+        var list = await q.OrderBy(p => p.Name).ThenBy(p => p.Id)
+            .Skip(Paging.Offset(page, pageSize)).Take(pageSize).ToListAsync();
+        var productIds = list.Select(p => p.Id).ToList();
+        var stocks = await stockQuery.Where(s => productIds.Contains(s.ProductId)).ToListAsync();
 
         var qtyMap = stocks.GroupBy(s => s.ProductId)
             .ToDictionary(g => g.Key, g => new { Qty = g.Sum(x => x.Quantity), Val = g.Sum(x => x.Value) });
@@ -482,12 +504,7 @@ public class WarehousingService : IWarehousingService
             items.Add(dto);
         }
 
-        if (belowOnly) items = items.Where(p => p.BelowReorder).ToList();
-
-        var total = items.Count;
-        var paged = items.Skip((Math.Max(1, page) - 1) * pageSize).Take(pageSize).ToList();
-
-        return new PagedResult<InvProduct> { Items = paged, TotalCount = total };
+        return new PagedResult<InvProduct> { Items = items, TotalCount = total, Page = page, PageSize = pageSize };
     }
 
     public async Task<InvProduct?> GetProductAsync(int id)
@@ -700,7 +717,7 @@ public class WarehousingService : IWarehousingService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<LookupItem>> GetProductLookupsAsync(string? search = null, int? warehouseId = null)
+    public async Task<List<LookupItem>> GetProductLookupsAsync(string? search = null, int? warehouseId = null, Paging.Request? pagination = null)
     {
         var q = _db.Products.AsNoTracking().Where(p => p.IsActive && !p.IsService);
 
@@ -712,9 +729,9 @@ public class WarehousingService : IWarehousingService
         if (warehouseId is > 0)
             q = q.Where(p => p.WarehouseId == null || p.WarehouseId == warehouseId);
 
-        return await q.OrderBy(p => p.Name).Take(500)
+        return await q.OrderBy(p => p.Name).ThenBy(x => x.Id)
             .Select(p => new LookupItem { Id = p.Id, Name = p.Code + " — " + p.Name })
-            .ToListAsync();
+            .ToPageListAsync(pagination, defaultCap: 500);
     }
 
     private static bool IsEmptyValue(InvProductAttrValue v) =>
@@ -996,13 +1013,14 @@ public class WarehousingService : IWarehousingService
     //  انبارها
     // =====================================================================
 
-    public async Task<List<InvWarehouse>> GetWarehousesAsync(bool activeOnly = false)
+    public async Task<List<InvWarehouse>> GetWarehousesAsync(bool activeOnly = false, Paging.Request? pagination = null)
     {
         var q = _db.Warehouses.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(w => w.IsActive);
-        var list = await q.OrderByDescending(w => w.IsDefault).ThenBy(w => w.Name).ToListAsync();
+        var list = await q.OrderByDescending(w => w.IsDefault).ThenBy(w => w.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
-        var stocks = await _db.InvStocks.AsNoTracking().ToListAsync();
+        var ids = list.Select(w => w.Id).ToList();
+        var stocks = await _db.InvStocks.AsNoTracking().Where(s => ids.Contains(s.WarehouseId)).ToListAsync();
         var docCounts = await _db.InvDocs.GroupBy(d => d.WarehouseId)
             .Select(g => new { Id = g.Key, N = g.Count() })
             .ToDictionaryAsync(x => x.Id, x => x.N);
@@ -1103,13 +1121,13 @@ public class WarehousingService : IWarehousingService
     //  انواع رسید و حواله
     // =====================================================================
 
-    public async Task<List<InvDocType>> GetDocTypesAsync(bool activeOnly = false, StockNature? nature = null)
+    public async Task<List<InvDocType>> GetDocTypesAsync(bool activeOnly = false, StockNature? nature = null, Paging.Request? pagination = null)
     {
         var q = _db.InvDocTypes.AsNoTracking().AsQueryable();
         if (activeOnly) q = q.Where(t => t.IsActive);
         if (nature.HasValue) q = q.Where(t => t.Nature == nature.Value);
 
-        var list = await q.OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ThenBy(t => t.Name).ToListAsync();
+        var list = await q.OrderBy(t => t.Nature).ThenBy(t => t.SortOrder).ThenBy(t => t.Name).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         var counts = await _db.InvDocs.GroupBy(d => d.DocTypeId)
             .Select(g => new { Id = g.Key, N = g.Count() })
@@ -1953,54 +1971,39 @@ public class WarehousingService : IWarehousingService
     public async Task<PagedResult<InvStockRow>> GetStockAsync(int? warehouseId, int? categoryId, string? search,
         bool belowOnly, int page, int pageSize)
     {
-        var q = _db.InvStocks.AsNoTracking().AsQueryable();
-        if (warehouseId is > 0) q = q.Where(s => s.WarehouseId == warehouseId);
-
-        var stocks = await q.ToListAsync();
-        var productIds = stocks.Select(s => s.ProductId).Distinct().ToList();
-
-        var pq = _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id));
+        var stocks = _db.InvStocks.AsNoTracking().AsQueryable();
+        if (warehouseId is > 0) stocks = stocks.Where(s => s.WarehouseId == warehouseId);
+        var products = _db.Products.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim();
-            pq = pq.Where(p => p.Name.Contains(s) || p.Code.Contains(s) || (p.Barcode != null && p.Barcode.Contains(s)));
+            var term = search.Trim();
+            products = products.Where(p => p.Name.Contains(term) || p.Code.Contains(term)
+                || (p.Barcode != null && p.Barcode.Contains(term)));
         }
         if (categoryId is > 0)
         {
             var ids = await DescendantCategoryIdsAsync(categoryId.Value);
-            pq = pq.Where(p => p.CategoryId != null && ids.Contains(p.CategoryId.Value));
+            products = products.Where(p => p.CategoryId != null && ids.Contains(p.CategoryId.Value));
         }
-
-        var products = await pq.ToDictionaryAsync(p => p.Id);
-        var whNames = await _db.Warehouses.AsNoTracking().ToDictionaryAsync(w => w.Id, w => w.Name);
-
-        var rows = stocks
-            .Where(s => products.ContainsKey(s.ProductId))
-            .Select(s =>
-            {
-                var p = products[s.ProductId];
-                return new InvStockRow
-                {
-                    ProductId = p.Id,
-                    ProductCode = p.Code,
-                    ProductName = p.Name,
-                    Unit = p.Unit,
-                    CategoryName = p.Category,
-                    WarehouseId = s.WarehouseId,
-                    WarehouseName = whNames.TryGetValue(s.WarehouseId, out var wn) ? wn : null,
-                    Quantity = s.Quantity,
-                    AvgCost = s.AvgCost,
-                    Value = s.Value,
-                    ReorderPoint = p.ReorderPoint
-                };
-            })
-            .OrderBy(r => r.ProductName).ToList();
-
-        if (belowOnly) rows = rows.Where(r => r.BelowReorder).ToList();
-
-        var total = rows.Count;
-        var paged = rows.Skip((Math.Max(1, page) - 1) * pageSize).Take(pageSize).ToList();
-        return new PagedResult<InvStockRow> { Items = paged, TotalCount = total };
+        var query = from stock in stocks
+                    join product in products on stock.ProductId equals product.Id
+                    join warehouse in _db.Warehouses on stock.WarehouseId equals warehouse.Id into warehouses
+                    from warehouse in warehouses.DefaultIfEmpty()
+                    select new InvStockRow
+                    {
+                        ProductId = product.Id, ProductCode = product.Code, ProductName = product.Name,
+                        Unit = product.Unit, CategoryName = product.Category,
+                        WarehouseId = stock.WarehouseId, WarehouseName = warehouse == null ? null : warehouse.Name,
+                        Quantity = stock.Quantity, AvgCost = stock.AvgCost, Value = stock.Value,
+                        ReorderPoint = product.ReorderPoint
+                    };
+        if (belowOnly) query = query.Where(r => r.ReorderPoint > 0 && r.Quantity <= r.ReorderPoint);
+        page = Math.Max(1, page);
+        pageSize = pageSize <= 0 ? 15 : pageSize;
+        var total = await query.CountAsync();
+        var rows = await query.OrderBy(r => r.ProductName).ThenBy(r => r.ProductId).ThenBy(r => r.WarehouseId)
+            .Skip(Paging.Offset(page, pageSize)).Take(pageSize).ToListAsync();
+        return new PagedResult<InvStockRow> { Items = rows, TotalCount = total, Page = page, PageSize = pageSize };
     }
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 
@@ -10,9 +11,9 @@ namespace Inventory.Api.Services.Treasury;
 public interface ITreasuryService
 {
     // ---------- صندوق / بانک ----------
-    Task<List<TrsAccount>> GetAccountsAsync(bool activeOnly = false, bool withBalances = false);
+    Task<List<TrsAccount>> GetAccountsAsync(bool activeOnly = false, bool withBalances = false, Paging.Request? pagination = null);
     Task<TrsAccount?> GetAccountAsync(int id);
-    Task<List<LookupItem>> GetAccountLookupsAsync(bool activeOnly = true);
+    Task<List<LookupItem>> GetAccountLookupsAsync(bool activeOnly = true, Paging.Request? pagination = null);
     Task<TrsAccount> SaveAccountAsync(TrsAccount dto);
     Task DeleteAccountAsync(int id);
 
@@ -40,7 +41,7 @@ public interface ITreasuryService
     Task DeleteChequeAsync(int id);
 
     // ---------- قواعد ----------
-    Task<List<TrsRule>> GetRulesAsync();
+    Task<List<TrsRule>> GetRulesAsync(Paging.Request? pagination = null);
     Task<TrsRule> SaveRuleAsync(TrsRule dto);
 
     // ---------- گزارش‌ها ----------

@@ -192,13 +192,14 @@ public class AuthService : IAuthService
 
     // ---------------- مدیریت کاربران ----------------
 
-    public async Task<List<UserDto>> GetUsersAsync()
+    public async Task<List<UserDto>> GetUsersAsync(Paging.Request? pagination = null)
     {
-        var users = await _db.Users.OrderBy(u => u.Username).ToListAsync();
+        var users = await _db.Users.OrderBy(u => u.Username).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var refNames = await _db.Referrers.ToDictionaryAsync(r => r.Id, r => r.Name);
         // نقش‌های RBAC هر کاربر لاگین
         var roleNames = await _db.Roles.ToDictionaryAsync(r => r.Id, r => r.Name);
-        var userRoles = await _db.UserRoles.ToListAsync();
+        var ids = users.Select(u => u.Id).ToList();
+        var userRoles = await _db.UserRoles.Where(ur => ids.Contains(ur.UserId)).ToListAsync();
         return users.Select(u => new UserDto
         {
             Id = u.Id,

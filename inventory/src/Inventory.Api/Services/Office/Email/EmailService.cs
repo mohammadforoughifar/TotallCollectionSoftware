@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.Office.Outgoing;
 using Inventory.Shared;
@@ -22,8 +23,8 @@ namespace Inventory.Api.Services.Office.Email;
 public interface IEmailService
 {
     // ---------- حساب‌ها ----------
-    Task<List<EmailAccountDto>> GetMyAccountsAsync(int userId, bool isDabirkhaneAdmin);
-    Task<List<EmailAccountDto>> GetDabirkhaneAccountsAsync();
+    Task<List<EmailAccountDto>> GetMyAccountsAsync(int userId, bool isDabirkhaneAdmin, Paging.Request? pagination = null);
+    Task<List<EmailAccountDto>> GetDabirkhaneAccountsAsync(Paging.Request? pagination = null);
     Task<int> SaveAccountAsync(SaveEmailAccountDto dto, int userId, bool isDabirkhaneAdmin);
     Task DeleteAccountAsync(int emailId, int userId);
     Task<EmailTestResultDto> TestAccountAsync(SaveEmailAccountDto dto);
@@ -70,7 +71,7 @@ public interface IEmailService
     Task<byte[]?> ReadAttachmentAsync(int attachmentId, int userId, bool isDabirkhaneAdmin);
 
     // ---------- پوشه‌های بایگانی ----------
-    Task<List<EmailFolderDto>> GetFoldersAsync(int userId);
+    Task<List<EmailFolderDto>> GetFoldersAsync(int userId, Paging.Request? pagination = null);
     Task<int> SaveFolderAsync(SaveEmailFolderDto dto, int userId);
     Task DeleteFolderAsync(int folderId, int userId);
 }
@@ -176,7 +177,7 @@ public class EmailService : IEmailService
 
     // ==================== حساب‌ها ====================
 
-    public async Task<List<EmailAccountDto>> GetMyAccountsAsync(int userId, bool isDabirkhaneAdmin)
+    public async Task<List<EmailAccountDto>> GetMyAccountsAsync(int userId, bool isDabirkhaneAdmin, Paging.Request? pagination = null)
     {
         // حساب‌های شخصی کاربر + (برای دستیار دبیرخانه) حساب‌های رسمی دبیرخانه
         var q = _db.OtoEmails.AsNoTracking()
@@ -204,10 +205,10 @@ public class EmailService : IEmailService
                     ? (string.IsNullOrWhiteSpace((e.User.FirstName ?? "") + (e.User.LastName ?? "")) ? e.User.Username : ((e.User.FirstName ?? "") + " " + (e.User.LastName ?? "")).Trim())
                     : "",
                 IsMine = e.UserId == userId
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
-    public async Task<List<EmailAccountDto>> GetDabirkhaneAccountsAsync()
+    public async Task<List<EmailAccountDto>> GetDabirkhaneAccountsAsync(Paging.Request? pagination = null)
     {
         return await _db.OtoEmails.AsNoTracking()
             .Where(e => e.IsDabirkhane && e.IsActive)
@@ -220,7 +221,7 @@ public class EmailService : IEmailService
                 DisplayName = e.DisplayName,
                 IsActive = e.IsActive,
                 IsDabirkhane = true
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
     }
 
     public async Task<int> SaveAccountAsync(SaveEmailAccountDto dto, int userId, bool isDabirkhaneAdmin)
@@ -1293,12 +1294,12 @@ public class EmailService : IEmailService
 
     // ==================== پوشه‌های بایگانی ====================
 
-    public async Task<List<EmailFolderDto>> GetFoldersAsync(int userId) =>
+    public async Task<List<EmailFolderDto>> GetFoldersAsync(int userId, Paging.Request? pagination = null) =>
         await _db.OtoEmailFolders.AsNoTracking()
             .Where(f => f.UserId == userId && f.IsFolder && !f.IsDelete)
             .OrderBy(f => f.EmailFolderId)
             .Select(f => new EmailFolderDto { EmailFolderId = f.EmailFolderId, Title = f.Title, ParentId = f.ParentId, TypeEmail = f.TypeEmail })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
     public async Task<int> SaveFolderAsync(SaveEmailFolderDto dto, int userId)
     {

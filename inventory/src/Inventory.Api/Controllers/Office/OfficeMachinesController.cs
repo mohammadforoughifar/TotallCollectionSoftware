@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
@@ -32,18 +33,19 @@ public class OfficeMachinesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Get([FromQuery] string? q, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var machines = await _db.OfficeMachines.AsNoTracking().ToListAsync();
-        var repairs = await _db.OfficeMachineRepairs.AsNoTracking().ToListAsync();
-        var costs = await _db.OfficeMachineCosts.AsNoTracking().ToListAsync();
-
+        var pagination = new Paging.Request(skip, take);
+        var query = _db.OfficeMachines.AsNoTracking().AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
         {
-            q = q.Trim();
-            machines = machines.Where(m =>
-                m.Model.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                (m.SerialNumber ?? "").Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                (m.Location ?? "").Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+            var term = q.Trim().ToUpper();
+            query = query.Where(m => m.Model.ToUpper().Contains(term)
+                || (m.SerialNumber ?? "").ToUpper().Contains(term)
+                || (m.Location ?? "").ToUpper().Contains(term));
         }
+        var machines = await query.OrderBy(m => m.Id).ToPageListAsync(pagination);
+        var ids = machines.Select(m => m.Id).ToList();
+        var repairs = await _db.OfficeMachineRepairs.AsNoTracking().Where(r => ids.Contains(r.MachineId)).ToListAsync();
+        var costs = await _db.OfficeMachineCosts.AsNoTracking().Where(c => ids.Contains(c.MachineId)).ToListAsync();
 
         var dto = machines.OrderBy(m => m.Id).Select(m => new MachineDto
         {
@@ -62,7 +64,7 @@ public class OfficeMachinesController : ControllerBase
                            + repairs.Where(r => r.MachineId == m.Id).Sum(r => r.Cost)
         }).ToList();
 
-        return Ok(Paging.Result(dto, skip, take));
+        return Ok(pagination.Result(dto));
     }
 
     [HttpPost]

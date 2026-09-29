@@ -11,7 +11,7 @@
     <div class="card-header fw-700 d-flex justify-content-between align-items-center flex-wrap gap-2"
          style="background:linear-gradient(135deg,#10b981,#0ea5e9);color:#fff;border-radius:14px 14px 0 0;">
         <span><i class="bi bi-card-list me-2"></i>انواع فاکتور
-            <span class="badge bg-light text-dark ms-1">@items.Count</span>
+            <span class="badge bg-light text-dark ms-1">@total</span>
         </span>
         @if (Auth.Has("TypeFactors.Create"))
         {
@@ -28,10 +28,10 @@
                 <div class="col-md-4">
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-search"></i></span>
-                        <input class="form-control" placeholder="جستجوی نام…" @bind="search" @bind:event="oninput" />
+                        <input class="form-control" placeholder="جستجوی نام…" @bind="search" @bind:event="oninput" @bind:after="SearchChanged" />
                     </div>
                 </div>
-                <div class="col-auto ms-auto fs-8 text-muted">@Filtered.Count.Num() نوع فاکتور</div>
+                <div class="col-auto ms-auto fs-8 text-muted">@total.Num() نوع فاکتور</div>
             </div>
         </div>
     </div>
@@ -82,7 +82,7 @@
                 </table>
             </div>
 
-            <Pager Page="page" PageCount="PageCount" OnPageChanged="p => page = p" />
+            <Pager Page="page" PageCount="PageCount" OnPageChanged="ChangePage" />
         }
     </div>
 </div>
@@ -114,20 +114,14 @@
     private bool showModal, saving;
     private bool editing => form.Id != 0;
 
-    private List<TypeFactorDto> Filtered =>
-        items.Where(t => string.IsNullOrWhiteSpace(search) || t.Name.Contains(search.Trim())).ToList();
 
     private int page = 1;
     private const int PageSize = 12;
-    private int PageCount => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)PageSize));
-    private List<TypeFactorDto> Paged
-    {
-        get
-        {
-            if (page > PageCount) page = PageCount;
-            return Filtered.Skip((page - 1) * PageSize).Take(PageSize).ToList();
-        }
-    }
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+    private List<TypeFactorDto> Paged => items;
+    private int total, loadVersion;
+    private async Task ChangePage(int value) { page = value; await Load(); }
+    private async Task SearchChanged() { page = 1; await Load(); }
 
     protected override async Task OnInitializedAsync()
     {
@@ -137,10 +131,18 @@
 
     private async Task Load()
     {
+        var version = ++loadVersion;
         loading = true;
-        try { items = await TypeFactorSvc.GetAllAsync(); }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { loading = false; }
+        try
+        {
+            var result = await TypeFactorSvc.GetPagedAsync((page - 1) * PageSize, PageSize, search);
+            if (version != loadVersion) return;
+            items = result.Items;
+            total = result.TotalCount;
+            if (page > PageCount) { page = PageCount; await Load(); }
+        }
+        catch (Exception ex) { if (version == loadVersion) Toast.Error(ex.Message); }
+        finally { if (version == loadVersion) loading = false; }
     }
 
     private void OpenNew()

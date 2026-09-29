@@ -10,8 +10,8 @@ namespace Inventory.Api.Services.FaCom;
 public interface IFaComService
 {
     // اطلاعیه‌ها
-    Task<List<FaComAnnouncementDto>> GetFeedAsync(int userId);
-    Task<List<FaComAnnouncementDto>> ListAnnouncementsAsync();
+    Task<List<FaComAnnouncementDto>> GetFeedAsync(int userId, Paging.Request? pagination = null);
+    Task<List<FaComAnnouncementDto>> ListAnnouncementsAsync(Paging.Request? pagination = null);
     Task<FaComAnnouncementDto> SaveAnnouncementAsync(int? id, FaComAnnouncementSaveDto dto, int byUserId, string byName);
     Task DeleteAnnouncementAsync(int id);
     Task<int> BroadcastAsync(int id, bool email, bool push, bool sms, int byUserId);
@@ -19,17 +19,17 @@ public interface IFaComService
     Task<int> CheckDueAnnouncementsAsync();
 
     // نظرسنجی‌ها
-    Task<List<FaComPollDto>> ListPollsAsync(int userId);
-    Task<List<FaComPollDto>> ManagePollsAsync();
+    Task<List<FaComPollDto>> ListPollsAsync(int userId, Paging.Request? pagination = null);
+    Task<List<FaComPollDto>> ManagePollsAsync(Paging.Request? pagination = null);
     Task<FaComPollDto> GetPollAsync(int id, int userId);
     Task<FaComPollDto> SavePollAsync(int? id, FaComPollSaveDto dto, int byUserId, string byName);
     Task DeletePollAsync(int id);
     Task<FaComPollDto> VoteAsync(int pollId, int optionId, int userId);
 
     // تیکت‌ها
-    Task<List<FaComTicketDto>> GetMyTicketsAsync(int userId);
+    Task<List<FaComTicketDto>> GetMyTicketsAsync(int userId, Paging.Request? pagination = null);
     Task<FaComTicketDto> GetMyTicketAsync(int id, int userId);
-    Task<List<FaComTicketDto>> ListTicketsAsync(int? status, int? category);
+    Task<List<FaComTicketDto>> ListTicketsAsync(int? status, int? category, Paging.Request? pagination = null);
     Task<FaComTicketDto> GetTicketAsync(int id);
     Task<FaComTicketDto> CreateTicketAsync(int userId, FaComTicketSaveDto dto, bool asAdmin);
     Task<FaComTicketDto> ReplyMyAsync(int userId, string userName, FaComReplySaveDto dto);
@@ -44,9 +44,9 @@ public interface IFaComService
     Task<int> CheckWorkAnniversariesAsync();
 
     // صندوق پیشنهادها
-    Task<List<FaComSuggestionDto>> MySuggestionsAsync(int userId);
+    Task<List<FaComSuggestionDto>> MySuggestionsAsync(int userId, Paging.Request? pagination = null);
     Task<FaComSuggestionDto> CreateSuggestionAsync(int userId, FaComSuggestionSaveDto dto);
-    Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status, int? category);
+    Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status, int? category, Paging.Request? pagination = null);
     Task<FaComSuggestionDto> RespondSuggestionAsync(int id, FaComSuggestionRespondDto dto, string byName);
     Task DeleteSuggestionAsync(int id);
 }
@@ -69,7 +69,7 @@ public class FaComService : IFaComService
 
     // ==================== اطلاعیه‌ها ====================
 
-    public async Task<List<FaComAnnouncementDto>> GetFeedAsync(int userId)
+    public async Task<List<FaComAnnouncementDto>> GetFeedAsync(int userId, Paging.Request? pagination = null)
     {
         var now = DateTime.Now;
         var emp = await _db.HrEmployees.AsNoTracking()
@@ -87,16 +87,16 @@ public class FaComService : IFaComService
                 || (a.Audience == FaComAudience.Unit && a.OrgUnitId != null && chain.Contains(a.OrgUnitId.Value)));
         else
             q = q.Where(a => a.Audience == FaComAudience.All);
-        var rows = await q.OrderByDescending(a => a.CreatedAt).Take(50).ToListAsync();
+        var rows = await q.OrderByDescending(a => a.CreatedAt).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 50);
         var list = new List<FaComAnnouncementDto>();
         foreach (var a in rows) list.Add(await MapAnnouncementAsync(a));
         return list;
     }
 
-    public async Task<List<FaComAnnouncementDto>> ListAnnouncementsAsync()
+    public async Task<List<FaComAnnouncementDto>> ListAnnouncementsAsync(Paging.Request? pagination = null)
     {
         var rows = await _db.FaComAnnouncements.AsNoTracking()
-            .OrderByDescending(a => a.CreatedAt).Take(500).ToListAsync();
+            .OrderByDescending(a => a.CreatedAt).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
         var list = new List<FaComAnnouncementDto>();
         foreach (var a in rows) list.Add(await MapAnnouncementAsync(a));
         return list;
@@ -297,23 +297,26 @@ public class FaComService : IFaComService
 
     // ==================== نظرسنجی‌ها ====================
 
-    public async Task<List<FaComPollDto>> ListPollsAsync(int userId)
+    public async Task<List<FaComPollDto>> ListPollsAsync(int userId, Paging.Request? pagination = null)
     {
-        var polls = await _db.FaComPolls.AsNoTracking().OrderByDescending(x => x.Id).Take(100).ToListAsync();
         var emp = await _db.HrEmployees.AsNoTracking()
             .FirstOrDefaultAsync(e => e.SystemUserId == userId && e.IsActive);
+        var orgUnitId = emp?.OrgUnitId;
+        var polls = await _db.FaComPolls.AsNoTracking()
+            .Where(x => x.Audience == FaComAudience.All || (x.Audience == FaComAudience.Unit
+                && orgUnitId > 0 && x.OrgUnitId == orgUnitId))
+            .OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 100);
         var list = new List<FaComPollDto>();
         foreach (var x in polls)
         {
-            if (!PollVisibleTo(x, emp?.OrgUnitId)) continue;
             list.Add(await MapPollAsync(x, userId));
         }
         return list;
     }
 
-    public async Task<List<FaComPollDto>> ManagePollsAsync()
+    public async Task<List<FaComPollDto>> ManagePollsAsync(Paging.Request? pagination = null)
     {
-        var polls = await _db.FaComPolls.AsNoTracking().OrderByDescending(x => x.Id).Take(200).ToListAsync();
+        var polls = await _db.FaComPolls.AsNoTracking().OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 200);
         var list = new List<FaComPollDto>();
         foreach (var x in polls) list.Add(await MapPollAsync(x, null));
         return list;
@@ -455,12 +458,12 @@ public class FaComService : IFaComService
         return (emp.Id, emp.FirstName + " " + emp.LastName);
     }
 
-    public async Task<List<FaComTicketDto>> GetMyTicketsAsync(int userId)
+    public async Task<List<FaComTicketDto>> GetMyTicketsAsync(int userId, Paging.Request? pagination = null)
     {
         var me = await RequireMyEmployeeAsync(userId);
         var rows = await _db.FaComTickets.AsNoTracking()
             .Where(t => t.EmployeeId == me.Id)
-            .OrderByDescending(t => t.CreatedAt).Take(500).ToListAsync();
+            .OrderByDescending(t => t.CreatedAt).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
         var list = new List<FaComTicketDto>();
         foreach (var t in rows) list.Add(await MapTicketAsync(t, false));
         return list;
@@ -475,12 +478,12 @@ public class FaComService : IFaComService
         return await MapTicketAsync(t, true);
     }
 
-    public async Task<List<FaComTicketDto>> ListTicketsAsync(int? status, int? category)
+    public async Task<List<FaComTicketDto>> ListTicketsAsync(int? status, int? category, Paging.Request? pagination = null)
     {
         var q = _db.FaComTickets.AsNoTracking().AsQueryable();
         if (status is >= 0) q = q.Where(t => (int)t.Status == status.Value);
         if (category is >= 0) q = q.Where(t => (int)t.Category == category.Value);
-        var rows = await q.OrderBy(t => t.Status).ThenByDescending(t => t.CreatedAt).Take(1000).ToListAsync();
+        var rows = await q.OrderBy(t => t.Status).ThenByDescending(t => t.CreatedAt).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 1000);
         var list = new List<FaComTicketDto>();
         foreach (var t in rows) list.Add(await MapTicketAsync(t, false));
         return list;
@@ -737,13 +740,13 @@ public class FaComService : IFaComService
         CreatedAt = s.CreatedAt
     };
 
-    public async Task<List<FaComSuggestionDto>> MySuggestionsAsync(int userId)
+    public async Task<List<FaComSuggestionDto>> MySuggestionsAsync(int userId, Paging.Request? pagination = null)
     {
         var me = await _db.HrEmployees.AsNoTracking()
             .FirstOrDefaultAsync(e => e.SystemUserId == userId);
         if (me == null) return new();
         var rows = await _db.FaComSuggestions.AsNoTracking()
-            .Where(s => s.EmployeeId == me.Id).OrderByDescending(s => s.Id).Take(200).ToListAsync();
+            .Where(s => s.EmployeeId == me.Id).OrderByDescending(s => s.Id).ToPageListAsync(pagination, defaultCap: 200);
         var name = (me.FirstName + " " + me.LastName).Trim();
         return rows.Select(s => MapSuggestion(s, name)).ToList();
     }
@@ -766,12 +769,12 @@ public class FaComService : IFaComService
         return MapSuggestion(s, name);
     }
 
-    public async Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status, int? category)
+    public async Task<List<FaComSuggestionDto>> ListSuggestionsAsync(int? status, int? category, Paging.Request? pagination = null)
     {
         var q = _db.FaComSuggestions.AsNoTracking().AsQueryable();
         if (status is >= 0) q = q.Where(s => (int)s.Status == status.Value);
         if (category is >= 0) q = q.Where(s => s.Category == category.Value);
-        var rows = await q.OrderBy(s => s.Status).ThenByDescending(s => s.Id).Take(500).ToListAsync();
+        var rows = await q.OrderBy(s => s.Status).ThenByDescending(s => s.Id).ToPageListAsync(pagination, defaultCap: 500);
         var empIds = rows.Where(s => s.EmployeeId != null).Select(s => s.EmployeeId!.Value).Distinct().ToList();
         var names = empIds.Count == 0 ? new Dictionary<int, string>()
             : await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id))

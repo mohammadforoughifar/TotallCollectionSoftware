@@ -12,7 +12,7 @@ namespace Inventory.Api.Services;
 
 public interface ILetterGroupService
 {
-    Task<List<LetterGroupDto>> GetAllAsync(bool includeMembers);
+    Task<List<LetterGroupDto>> GetAllAsync(bool includeMembers, Paging.Request? pagination = null);
     Task<LetterGroupDto?> GetAsync(int groupId);
     Task<int> SaveAsync(SaveLetterGroupDto dto, int userId);
     Task DeleteAsync(int groupId, int userId, bool isAdmin);
@@ -35,11 +35,11 @@ public class LetterGroupService : ILetterGroupService
             ? u.Username
             : $"{u.FirstName} {u.LastName}".Trim();
 
-    public async Task<List<LetterGroupDto>> GetAllAsync(bool includeMembers)
+    public async Task<List<LetterGroupDto>> GetAllAsync(bool includeMembers, Paging.Request? pagination = null)
     {
         var q = _db.LetterGroups.AsNoTracking()
             .Where(g => !g.IsDelete && g.Condition)
-            .OrderBy(g => g.NameGroup);
+            .OrderBy(g => g.NameGroup).ThenBy(g => g.GroupId);
 
         if (!includeMembers)
             return await q.Select(g => new LetterGroupDto
@@ -48,9 +48,9 @@ public class LetterGroupService : ILetterGroupService
                 NameGroup = g.NameGroup,
                 Condition = g.Condition,
                 MemberCount = g.Members.Count
-            }).ToListAsync();
+            }).ToPageListAsync(pagination);
 
-        var groups = await q.Include(g => g.Members).ThenInclude(m => m.User).ToListAsync();
+        var groups = await q.Include(g => g.Members).ThenInclude(m => m.User).ToPageListAsync(pagination);
         return groups.Select(g => new LetterGroupDto
         {
             GroupId = g.GroupId,

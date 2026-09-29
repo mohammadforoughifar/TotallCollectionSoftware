@@ -289,19 +289,20 @@ public class AttachmentsController : ControllerBase
     [HttpGet("{module}/{refId:int}")]
     public async Task<IActionResult> List(string module, int refId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var access = await _guard.CheckAsync(module, refId, MyUserId, IsAdmin);
         if (access == AttachmentAccess.None)
             return StatusCode(403, new { message = "شما به پیوست‌های این مورد دسترسی ندارید." });
 
-        var rows = await _db.AppAttachments.Where(a => a.Module == module && a.RefId == refId)
+        var rows = await _db.AppAttachments.Where(a => a.Module == module && a.RefId == refId).OrderBy(x => x.Id)
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
         // اگر مدرک فلگ‌های امنیتی (محرمانه/واترمارک) داشته باشد، کلاینت از این فیلدها برای UX متناسب استفاده می‌کند
         var flags = await DocSecurityFlagsAsync(module, refId);
         var needsConfirm = flags is { RequireConfirm: true } f0 && !_confirm.IsConfirmed(MyUserId, f0.DocId);
 
-        return Ok(Paging.Result(rows.Select(a =>
+        return Ok(pagination.Result(rows.Select(a =>
         {
             var ct = GuessContentType(a.FileName, a.ContentType);
             return new
@@ -315,7 +316,7 @@ public class AttachmentsController : ControllerBase
                 NeedsConfirm = needsConfirm,
                 Watermark = flags?.Watermark ?? false
             };
-        }), skip, take));
+        })));
     }
 
     [HttpPost("{module}/{refId:int}")]

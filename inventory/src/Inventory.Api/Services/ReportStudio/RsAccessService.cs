@@ -25,7 +25,7 @@ public interface IRsAccessService
 {
     Task<RsAccessInfo> EvaluateAsync(ClaimsPrincipal user, RsReport report);
     /// <summary>گزارش‌هایی که کاربر حق دیدنشان را دارد.</summary>
-    Task<List<RsReport>> VisibleReportsAsync(ClaimsPrincipal user);
+    Task<List<RsReport>> VisibleReportsAsync(ClaimsPrincipal user, Paging.Request? pagination = null);
     /// <summary>آیا کاربر به همهٔ ماژول‌های این گزارش دسترسی داده دارد؟</summary>
     Task<(bool Ok, string? Missing)> HasDataAccessAsync(ClaimsPrincipal user, IEnumerable<string> modules);
 }
@@ -134,7 +134,7 @@ public sealed class RsAccessService : IRsAccessService
         return (true, null);
     }
 
-    public async Task<List<RsReport>> VisibleReportsAsync(ClaimsPrincipal user)
+    public async Task<List<RsReport>> VisibleReportsAsync(ClaimsPrincipal user, Paging.Request? pagination = null)
     {
         var uid = UserId(user);
         var admin = IsAdmin(user);
@@ -152,18 +152,17 @@ public sealed class RsAccessService : IRsAccessService
                 || r.UserShares.Any(s => s.UserId == uid)
                 || r.RoleShares.Any(s => myRoles.Contains(s.RoleId)));
 
-        var list = await q.OrderByDescending(r => r.UpdatedAt).ToListAsync();
-
-        // فیلتر نهایی بر اساس دسترسی داده — گزارشی که دادهٔ آن را نمی‌بیند نشان داده نمی‌شود
-        if (admin) return list;
-
-        var result = new List<RsReport>();
-        foreach (var r in list)
+        if (!admin)
         {
-            var (ok, _) = await HasDataAccessAsync(user, SplitModules(r.ModulesCsv));
-            if (ok) result.Add(r);
+            // Permissions are application policy, not translatable SQL. Resolve distinct
+            // policy keys, then apply the allowed-key predicate BEFORE count/offset.
+            var policies = await q.Select(r => r.ModulesCsv).Distinct().ToListAsync();
+            var allowed = new List<string?>();
+            foreach (var policy in policies)
+                if ((await HasDataAccessAsync(user, SplitModules(policy))).Ok) allowed.Add(policy);
+            q = q.Where(r => allowed.Contains(r.ModulesCsv));
         }
-        return result;
+        return await q.OrderByDescending(r => r.UpdatedAt).ThenBy(r => r.Id).ToPageListAsync(pagination);
     }
 
     public static string[] SplitModules(string? csv) =>

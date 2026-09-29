@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,7 +28,7 @@ public class PayrollController : ControllerBase
     /// <summary>ردیف‌های محاسبه‌شدهٔ یک ماه (۱۴۰۵/۰۳)</summary>
     [HttpGet("month/{month}")]
     public async Task<ActionResult<List<PayrollRow>>> Month(string month, [FromQuery] int skip = 0, [FromQuery] int? take = null) =>
-        Ok(Paging.Result(await _payroll.MonthRowsAsync(month), skip, take));
+        Ok(await Paging.ResultAsync(async pagination => await _payroll.MonthRowsAsync(month, pagination: pagination), skip, take));
 
     [HttpGet("months")]
     public async Task<ActionResult<List<string>>> Months([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
@@ -54,7 +55,8 @@ public class PayrollController : ControllerBase
     [HttpGet("preview")]
     public async Task<ActionResult<List<PayrollRow>>> Preview([FromQuery] int year, [FromQuery] int month, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
-        var employees = await _db.Employees.AsNoTracking().Where(e => e.IsActive).ToListAsync();
+        var pagination = new Paging.Request(skip, take);
+        var employees = await _db.Employees.AsNoTracking().Where(e => e.IsActive).OrderBy(e => e.Code).ThenBy(e => e.Id).ToPageListAsync(pagination);
         var rules = await _payroll.RulesForAsync(year);
         var monthKey = $"{year}/{month:00}";
         var rows = new List<PayrollRow>();
@@ -82,7 +84,7 @@ public class PayrollController : ControllerBase
                 Tax = r.Tax, Net = r.Net
             });
         }
-        return Ok(Paging.Result(rows.OrderBy(r => r.Code).ToList(), skip, take));
+        return Ok(pagination.Result(rows.OrderBy(r => r.Code).ToList()));
     }
 
     /// <summary>جمع‌های ماه برای داشبورد و حسابداری</summary>

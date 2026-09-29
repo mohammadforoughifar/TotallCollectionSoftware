@@ -34,8 +34,8 @@ public class ReferrersController : ApiControllerBase
 
     /// <summary>فهرست معرف‌ها.</summary>
     [HttpGet]
-    public async Task<ActionResult<List<Referrer>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _service.GetReferrersAsync(activeOnly), skip, take));
+    public async Task<ActionResult<List<Referrer>>> GetAll([FromQuery] bool activeOnly = false, [FromQuery] int skip = 0, [FromQuery] int? take = null, [FromQuery] string? search = null)
+        => Ok(await Paging.ResultAsync(async pagination => await _service.GetReferrersAsync(activeOnly, pagination: pagination, search: search), skip, take));
 
     /// <summary>ایجاد یا ویرایش معرف.</summary>
     [HttpPost]
@@ -59,7 +59,7 @@ public class ReferrersController : ApiControllerBase
     /// <summary>فهرست اسناد پرداخت (اختیاری: فقط یک معرف).</summary>
     [HttpGet("payments")]
     public async Task<ActionResult<List<ReferrerPayment>>> GetPayments([FromQuery] int? referrerId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _service.GetReferrerPaymentsAsync(referrerId), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _service.GetReferrerPaymentsAsync(referrerId, pagination: pagination), skip, take));
 
     /// <summary>ثبت سند پرداخت پورسانت به معرف.</summary>
     [HttpPost("payments")]

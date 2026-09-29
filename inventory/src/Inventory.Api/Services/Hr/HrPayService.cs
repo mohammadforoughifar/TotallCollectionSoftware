@@ -171,13 +171,18 @@ public class HrPayService
         ("pay.acc.otherDed", "", "کد حساب سایر کسورات"),
     ];
 
-    public async Task<Dictionary<string, string>> GetPayRulesAsync()
+    public async Task<Dictionary<string, string>> GetPayRulesAsync(Paging.Request? pagination = null)
     {
-        var map = await _hrtime.GetRulesAsync();
-        var missing = DefaultPayRules.Where(d => !map.ContainsKey(d.Key)).ToList();
+        var defaultKeys = DefaultPayRules.Select(r => r.Key).ToList();
+        var existing = await _db.HrTimeRules.AsNoTracking().Where(r => defaultKeys.Contains(r.Key)).Select(r => r.Key).ToListAsync();
+        var missing = DefaultPayRules.Where(d => !existing.Contains(d.Key)).ToList();
         if (missing.Count > 0)
-            await _hrtime.SaveRulesAsync(missing.ToDictionary(d => d.Key, d => d.Value));
-        return (await _hrtime.GetRulesAsync()).Where(kv => kv.Key.StartsWith("pay.")).ToDictionary(kv => kv.Key, kv => kv.Value);
+        {
+            foreach (var rule in missing)
+                _db.HrTimeRules.Add(new HrTimeRule { Key = rule.Key, Value = rule.Value, Title = rule.Title });
+            await _db.SaveChangesAsync();
+        }
+        return await _hrtime.GetRulesAsync(pagination, "pay.");
     }
 
     public Task SavePayRulesAsync(Dictionary<string, string> values)
@@ -583,19 +588,19 @@ public class HrPayService
 
     public record CompareRow(int EmployeeId, string Name, decimal PrevNet, decimal CurNet, decimal Diff, double Pct, bool Flag);
 
-    public async Task<List<CompareRow>> CompareAsync(int runId)
+    public async Task<List<CompareRow>> CompareAsync(int runId, Paging.Request? pagination = null)
     {
         var run = await _db.HrPayRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == runId)
             ?? throw new InvalidOperationException("دوره پیدا نشد.");
         var prev = await _db.HrPayRuns.AsNoTracking()
             .Where(r => r.Id != runId && (r.Year < run.Year || (r.Year == run.Year && r.Month < run.Month)))
             .OrderByDescending(r => r.Year).ThenByDescending(r => r.Month).FirstOrDefaultAsync();
-        var cur = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).ToListAsync();
+        var cur = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == runId).OrderBy(x => x.Id).ToPageListAsync(pagination);
         var rules = await GetPayRulesAsync();
         var thr = (double)R(rules, "pay.variance.pct", 10);
         if (prev == null)
             return cur.Select(s => new CompareRow(s.EmployeeId, s.EmployeeName, 0, s.NetPay, s.NetPay, 100, true)).ToList();
-        var ps = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == prev.Id).ToDictionaryAsync(s => s.EmployeeId);
+        var ps = await _db.HrPaySlips.AsNoTracking().Where(s => s.RunId == prev.Id && cur.Select(c => c.EmployeeId).Contains(s.EmployeeId)).ToDictionaryAsync(s => s.EmployeeId);
         return cur.Select(s =>
         {
             var pn = ps.TryGetValue(s.EmployeeId, out var p) ? p.NetPay : 0;
@@ -945,10 +950,10 @@ public class HrPayService
         return new(diffs.Count == 0, hash, diffs);
     }
 
-    public async Task<List<HrPayFiling>> FilingsAsync(int? runId)
+    public async Task<List<HrPayFiling>> FilingsAsync(int? runId, Paging.Request? pagination = null)
     {
         var q = _db.HrPayFilings.AsNoTracking().AsQueryable();
         if (runId != null) q = q.Where(x => x.RunId == runId);
-        return await q.OrderByDescending(x => x.FiledAt).Take(500).ToListAsync();
+        return await q.OrderByDescending(x => x.FiledAt).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
     }
 }

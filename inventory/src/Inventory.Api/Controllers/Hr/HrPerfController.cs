@@ -40,7 +40,7 @@ public class HrPerfController : ControllerBase
     public async Task<IActionResult> Periods([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(Paging.Result(await _svc.PeriodsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.PeriodsAsync(pagination: pagination), skip, take));
     }
 
     public class PeriodInput
@@ -89,7 +89,7 @@ public class HrPerfController : ControllerBase
     public async Task<IActionResult> Kpis(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(Paging.Result(await _svc.KpisAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.KpisAsync(id, pagination: pagination), skip, take));
     }
 
     public class KpiInput
@@ -154,7 +154,7 @@ public class HrPerfController : ControllerBase
     public async Task<IActionResult> Scores([FromQuery] int periodId, [FromQuery] int employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(Paging.Result(await _svc.ScoresAsync(periodId, employeeId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ScoresAsync(periodId, employeeId, pagination: pagination), skip, take));
     }
 
     // ================= کارنامه =================

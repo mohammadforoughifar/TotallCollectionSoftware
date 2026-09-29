@@ -70,7 +70,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> EmployeeLite([FromQuery] bool onlyActive = true, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListEmployeeLiteAsync(onlyActive, await TeamScopeAsync()), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListEmployeeLiteAsync(onlyActive, await TeamScopeAsync(), pagination: pagination), skip, take));
     }
 
     [HttpGet("employees/import-template")]
@@ -123,14 +123,14 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> OrgTree([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.GetTreeAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _svc.GetTreeAsync(pagination), skip, take));
     }
 
     [HttpGet("org/units")]
     public async Task<IActionResult> OrgUnits([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListUnitsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListUnitsAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("org/units")]
@@ -161,21 +161,21 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Contracts([FromQuery] bool? onlyActive, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListContractsAsync(onlyActive), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListContractsAsync(onlyActive, pagination: pagination), skip, take));
     }
 
     [HttpGet("contracts/expiring")]
     public async Task<IActionResult> Expiring([FromQuery] int days = 30, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ExpiringContractsAsync(days), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ExpiringContractsAsync(days, pagination: pagination), skip, take));
     }
 
     [HttpGet("employees/{id:int}/contracts")]
     public async Task<IActionResult> EmployeeContracts(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.EmployeeContractsAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.EmployeeContractsAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("contracts")]
@@ -213,7 +213,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Templates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListTemplatesAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListTemplatesAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("contract-templates")]
@@ -265,7 +265,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> ContractVersions(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListVersionsAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListVersionsAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpGet("contracts/{id:int}/pdf")]
@@ -346,7 +346,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Alerts([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListAlertsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListAlertsAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("contract-alerts/check")]
@@ -370,14 +370,14 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Decrees([FromQuery] int? employeeId, [FromQuery] bool? onlyPending, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListDecreesAsync(employeeId, onlyPending), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListDecreesAsync(employeeId, onlyPending, pagination: pagination), skip, take));
     }
 
     [HttpGet("employees/{id:int}/decrees")]
     public async Task<IActionResult> EmployeeDecrees(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.EmployeeDecreesAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.EmployeeDecreesAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpGet("decrees/{id:int}/pdf")]
@@ -448,7 +448,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Dependents(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListDependentsAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListDependentsAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("employees/{id:int}/dependents")]
@@ -479,7 +479,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Courses(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListCoursesAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListCoursesAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("employees/{id:int}/courses")]
@@ -510,7 +510,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Skills(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListSkillsAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListSkillsAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("employees/{id:int}/skills")]
@@ -541,7 +541,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Languages(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListLanguagesAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListLanguagesAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpPost("employees/{id:int}/languages")]
@@ -572,7 +572,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> Documents(int id, [FromQuery] int expiringDays = 30, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListDocumentsAsync(id, expiringDays), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListDocumentsAsync(id, expiringDays, pagination: pagination), skip, take));
     }
 
     [HttpPost("employees/{id:int}/documents")]
@@ -603,7 +603,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> ExpiringDocuments([FromQuery] int days = 30, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ExpiringDocumentsAsync(days), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ExpiringDocumentsAsync(days, pagination: pagination), skip, take));
     }
 
     [HttpPost("documents/{docId:int}/file")]
@@ -749,7 +749,7 @@ public class HrCoreController : RbacControllerBase
     public async Task<IActionResult> ListTemplates([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Manage") is { } f) return f;
-        return Ok(Paging.Result(await _reports.ListTemplatesAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _reports.ListTemplatesAsync(MyUserId, pagination), skip, take));
     }
 
     [HttpPost("reports/templates")]

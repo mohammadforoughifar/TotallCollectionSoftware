@@ -15,7 +15,7 @@ public class WarehousesController : ApiControllerBase
     /// <summary>فهرست انبارها.</summary>
     [HttpGet]
     public async Task<ActionResult<List<Warehouse>>> GetAll([FromQuery] int skip = 0, [FromQuery] int? take = null)
-        => Ok(Paging.Result(await _service.GetWarehousesAsync(), skip, take));
+        => Ok(await Paging.ResultAsync(async pagination => await _service.GetWarehousesAsync(pagination: pagination), skip, take));
 
     /// <summary>ایجاد یا ویرایش انبار.</summary>
     [HttpPost]

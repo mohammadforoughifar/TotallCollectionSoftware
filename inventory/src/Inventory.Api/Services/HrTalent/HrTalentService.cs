@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using System.Globalization;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
@@ -7,14 +8,14 @@ namespace Inventory.Api.Services.HrTalent;
 
 public interface IHrTalentService
 {
-    Task<List<HrOnboardingDto>> ListOnboardingAsync(bool? onlyOpen);
+    Task<List<HrOnboardingDto>> ListOnboardingAsync(bool? onlyOpen, Paging.Request? pagination = null);
     Task<HrOnboardingDto> CreateOnboardingAsync(HrTalentCaseSaveDto dto);
     Task<HrOnboardingDto> SetOnboardingItemAsync(int itemId, int status, string? doneBy);
     Task<HrOnboardingDto> AddOnboardingItemAsync(int caseId, HrTalentItemSaveDto dto);
     Task DeleteOnboardingItemAsync(int itemId);
     Task<HrOnboardingDto> CompleteOnboardingAsync(int id, string? by);
 
-    Task<List<HrExitCaseDto>> ListExitCasesAsync(bool? onlyOpen);
+    Task<List<HrExitCaseDto>> ListExitCasesAsync(bool? onlyOpen, Paging.Request? pagination = null);
     Task<HrExitCaseDto> CreateExitCaseAsync(HrTalentCaseSaveDto dto);
     Task<HrExitCaseDto> SetExitItemAsync(int itemId, int status, string? doneBy);
     Task<HrExitCaseDto> AddExitItemAsync(int caseId, HrTalentItemSaveDto dto);
@@ -25,27 +26,27 @@ public interface IHrTalentService
     /// <summary>پرونده‌ی خود کاربر (بر اساس حساب سیستمی متصل) — بدون نیاز به مجوز کارگزینی</summary>
     Task<HrMyProfileDto?> GetMyProfileAsync(int userId);
     Task<int> SubmitMyProfileEditAsync(int userId, HrProfileEditRequestSaveDto dto);
-    Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending);
+    Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending, Paging.Request? pagination = null);
     Task<HrProfileEditRequestDto> DecideProfileRequestAsync(int id, bool approve, string? by, string? note);
 
-    Task<List<HrJobHistoryDto>> EmployeeHistoryAsync(int employeeId);
+    Task<List<HrJobHistoryDto>> EmployeeHistoryAsync(int employeeId, Paging.Request? pagination = null);
     Task<HrJobHistoryDto> SaveHistoryAsync(HrJobHistorySaveDto dto);
     Task DeleteHistoryAsync(int id);
 
-    Task<List<HrTrialPeriodDto>> ListTrialsAsync(bool? onlyActive);
+    Task<List<HrTrialPeriodDto>> ListTrialsAsync(bool? onlyActive, Paging.Request? pagination = null);
     Task<HrTrialPeriodDto> SaveTrialAsync(HrTrialSaveDto dto);
     Task<HrTrialPeriodDto> DecideTrialAsync(int id, HrTrialDecideDto dto);
     Task DeleteTrialAsync(int id);
     Task<int> AutoCreateTrialsAsync();
 
-    Task<List<HrAppraisalDto>> ListAppraisalsAsync();
+    Task<List<HrAppraisalDto>> ListAppraisalsAsync(Paging.Request? pagination = null);
     Task<HrAppraisalDto> SaveAppraisalAsync(int? id, HrAppraisalSaveDto dto);
     Task DeleteAppraisalAsync(int id);
-    Task<List<HrAppraisalKpiDto>> ListKpisAsync(int appraisalId);
+    Task<List<HrAppraisalKpiDto>> ListKpisAsync(int appraisalId, Paging.Request? pagination = null);
     Task<HrAppraisalKpiDto> SaveKpiAsync(int appraisalId, int? id, HrAppraisalKpiSaveDto dto);
     Task DeleteKpiAsync(int id);
     Task SaveScoreAsync(HrAppraisalScoreSaveDto dto);
-    Task<List<HrAppraisalScoreDto>> ListScoresAsync(int appraisalId, int? employeeId);
+    Task<List<HrAppraisalScoreDto>> ListScoresAsync(int appraisalId, int? employeeId, Paging.Request? pagination = null);
     Task<List<HrAppraisalResultDto>> AppraisalResultsAsync(int appraisalId);
     /// <summary>صدور حکم افزایش حقوق/ارتقا برای نفرات برترِ یک ارزیابی (گرید A یا A+B با پوشش کافی)</summary>
     Task<HrAppraisalDecreeProposalResultDto> ProposeDecreesFromAppraisalAsync(HrAppraisalDecreeProposalDto dto, int byUserId, string byName);
@@ -93,11 +94,11 @@ public class HrTalentService : IHrTalentService
 
     // ==================== آنبوردینگ ====================
 
-    public async Task<List<HrOnboardingDto>> ListOnboardingAsync(bool? onlyOpen)
+    public async Task<List<HrOnboardingDto>> ListOnboardingAsync(bool? onlyOpen, Paging.Request? pagination = null)
     {
         var q = _db.HrOnboardings.AsNoTracking().AsQueryable();
         if (onlyOpen == true) q = q.Where(x => x.Status == HrTalentCaseStatus.Open);
-        var rows = await q.OrderByDescending(x => x.Id).Take(300).ToListAsync();
+        var rows = await q.OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 300);
         var names = await EmpNamesAsync(rows.Select(x => x.EmployeeId));
         var caseIds = rows.Select(x => x.Id).ToList();
         var items = caseIds.Count == 0 ? new List<HrOnboardingItem>()
@@ -195,11 +196,11 @@ public class HrTalentService : IHrTalentService
 
     // ==================== ترک‌کار ====================
 
-    public async Task<List<HrExitCaseDto>> ListExitCasesAsync(bool? onlyOpen)
+    public async Task<List<HrExitCaseDto>> ListExitCasesAsync(bool? onlyOpen, Paging.Request? pagination = null)
     {
         var q = _db.HrExitCases.AsNoTracking().AsQueryable();
         if (onlyOpen == true) q = q.Where(x => x.Status == HrTalentCaseStatus.Open);
-        var rows = await q.OrderByDescending(x => x.Id).Take(300).ToListAsync();
+        var rows = await q.OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 300);
         var names = await EmpNamesAsync(rows.Select(x => x.EmployeeId));
         var caseIds = rows.Select(x => x.Id).ToList();
         var items = caseIds.Count == 0 ? new List<HrExitItem>()
@@ -318,11 +319,25 @@ public class HrTalentService : IHrTalentService
 
     // ==================== سوابق شغلی ====================
 
-    public async Task<List<HrJobHistoryDto>> EmployeeHistoryAsync(int employeeId)
+    public async Task<List<HrJobHistoryDto>> EmployeeHistoryAsync(int employeeId, Paging.Request? pagination = null)
     {
+        var manualQuery = _db.HrJobHistories.AsNoTracking().Where(x => x.EmployeeId == employeeId);
+        var decreeQuery = _db.HrDecrees.AsNoTracking().Where(x => x.EmployeeId == employeeId);
+        var contractQuery = _db.HrContracts.AsNoTracking().Where(x => x.EmployeeId == employeeId);
+        if (pagination?.IsPaged != true)
+        {
+            decreeQuery = decreeQuery.OrderByDescending(x => x.EffectiveDate).ThenBy(x => x.Id).Take(100);
+            contractQuery = contractQuery.OrderByDescending(x => x.StartDate).ThenBy(x => x.Id).Take(100);
+        }
+        var keys = await manualQuery.Select(x => new { x.Id, Date = x.FromDate, Kind = 0 })
+            .Concat(decreeQuery.Select(x => new { x.Id, Date = x.EffectiveDate, Kind = 1 }))
+            .Concat(contractQuery.Select(x => new { x.Id, Date = x.StartDate, Kind = 2 }))
+            .OrderByDescending(x => x.Date).ThenBy(x => x.Kind).ThenBy(x => x.Id).ToPageListAsync(pagination);
+        var manualIds = keys.Where(x => x.Kind == 0).Select(x => x.Id).ToList();
+        var decreeIds = keys.Where(x => x.Kind == 1).Select(x => x.Id).ToList();
+        var contractIds = keys.Where(x => x.Kind == 2).Select(x => x.Id).ToList();
         var list = new List<HrJobHistoryDto>();
-        var manual = await _db.HrJobHistories.AsNoTracking()
-            .Where(x => x.EmployeeId == employeeId).OrderByDescending(x => x.FromDate).ToListAsync();
+        var manual = await manualQuery.Where(x => manualIds.Contains(x.Id)).ToListAsync();
         foreach (var x in manual)
             list.Add(new HrJobHistoryDto
             {
@@ -332,8 +347,7 @@ public class HrTalentService : IHrTalentService
                     .Where(s => !string.IsNullOrWhiteSpace(s))),
                 Source = (int)HrHistorySource.Manual
             });
-        var decrees = await _db.HrDecrees.AsNoTracking()
-            .Where(x => x.EmployeeId == employeeId).OrderByDescending(x => x.EffectiveDate).Take(100).ToListAsync();
+        var decrees = await _db.HrDecrees.AsNoTracking().Where(x => decreeIds.Contains(x.Id)).ToListAsync();
         foreach (var x in decrees)
             list.Add(new HrJobHistoryDto
             {
@@ -341,8 +355,7 @@ public class HrTalentService : IHrTalentService
                 Title = $"حکم {x.DecreeNo}" + (x.NewPostTitle == null ? "" : $" — {x.NewPostTitle}"),
                 Subtitle = x.Description, Source = (int)HrHistorySource.Decree
             });
-        var contracts = await _db.HrContracts.AsNoTracking()
-            .Where(x => x.EmployeeId == employeeId).OrderByDescending(x => x.StartDate).Take(100).ToListAsync();
+        var contracts = await _db.HrContracts.AsNoTracking().Where(x => contractIds.Contains(x.Id)).ToListAsync();
         foreach (var x in contracts)
             list.Add(new HrJobHistoryDto
             {
@@ -351,7 +364,13 @@ public class HrTalentService : IHrTalentService
                 Title = $"قرارداد {x.ContractNo}" + (x.JobTitle == null ? "" : $" — {x.JobTitle}"),
                 Subtitle = x.Description, Source = (int)HrHistorySource.Contract
             });
-        return list.OrderByDescending(x => x.FromDate).ToList();
+                var mapped = list.ToDictionary(x => (x.Source, x.Id));
+        return keys.Select(x => x.Kind switch
+        {
+            0 => mapped[((int)HrHistorySource.Manual, x.Id)],
+            1 => mapped[((int)HrHistorySource.Decree, -x.Id)],
+            _ => mapped[((int)HrHistorySource.Contract, -100000 - x.Id)]
+        }).ToList();
     }
 
     public async Task<HrJobHistoryDto> SaveHistoryAsync(HrJobHistorySaveDto dto)
@@ -379,11 +398,11 @@ public class HrTalentService : IHrTalentService
 
     // ==================== دوره آزمایشی ====================
 
-    public async Task<List<HrTrialPeriodDto>> ListTrialsAsync(bool? onlyActive)
+    public async Task<List<HrTrialPeriodDto>> ListTrialsAsync(bool? onlyActive, Paging.Request? pagination = null)
     {
         var q = _db.HrTrialPeriods.AsNoTracking().AsQueryable();
         if (onlyActive == true) q = q.Where(x => x.Result == HrTrialResult.Active);
-        var rows = await q.OrderByDescending(x => x.Id).Take(500).ToListAsync();
+        var rows = await q.OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
         var names = await EmpNamesAsync(rows.Select(x => x.EmployeeId));
         var today = DateTime.Today;
         return rows.Select(x => new HrTrialPeriodDto
@@ -454,9 +473,9 @@ public class HrTalentService : IHrTalentService
 
     // ==================== ارزیابی عملکرد ====================
 
-    public async Task<List<HrAppraisalDto>> ListAppraisalsAsync()
+    public async Task<List<HrAppraisalDto>> ListAppraisalsAsync(Paging.Request? pagination = null)
     {
-        var rows = await _db.HrAppraisals.AsNoTracking().OrderByDescending(x => x.Year).ThenByDescending(x => x.Id).Take(100).ToListAsync();
+        var rows = await _db.HrAppraisals.AsNoTracking().OrderByDescending(x => x.Year).ThenByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 100);
         var ids = rows.Select(x => x.Id).ToList();
         var kpis = ids.Count == 0 ? new List<HrAppraisalKpi>()
             : await _db.HrAppraisalKpis.AsNoTracking().Where(k => ids.Contains(k.AppraisalId)).ToListAsync();
@@ -504,11 +523,11 @@ public class HrTalentService : IHrTalentService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<HrAppraisalKpiDto>> ListKpisAsync(int appraisalId)
+    public async Task<List<HrAppraisalKpiDto>> ListKpisAsync(int appraisalId, Paging.Request? pagination = null)
         => await _db.HrAppraisalKpis.AsNoTracking().Where(k => k.AppraisalId == appraisalId)
             .OrderBy(k => k.SortOrder).ThenBy(k => k.Id)
             .Select(k => new HrAppraisalKpiDto { Id = k.Id, Title = k.Title, Weight = k.Weight, MaxScore = k.MaxScore })
-            .ToListAsync();
+            .ToPageListAsync(pagination);
 
     public async Task<HrAppraisalKpiDto> SaveKpiAsync(int appraisalId, int? id, HrAppraisalKpiSaveDto dto)
     {
@@ -567,11 +586,11 @@ public class HrTalentService : IHrTalentService
         await _db.SaveChangesAsync();
     }
 
-    public async Task<List<HrAppraisalScoreDto>> ListScoresAsync(int appraisalId, int? employeeId)
+    public async Task<List<HrAppraisalScoreDto>> ListScoresAsync(int appraisalId, int? employeeId, Paging.Request? pagination = null)
     {
         var q = _db.HrAppraisalScores.AsNoTracking().Where(s => s.AppraisalId == appraisalId);
         if (employeeId is > 0) q = q.Where(s => s.EmployeeId == employeeId.Value);
-        var rows = await q.Take(5000).ToListAsync();
+        var rows = await q.OrderBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 5000);
         var names = await EmpNamesAsync(rows.Select(x => x.EmployeeId));
         return rows.Select(s => new HrAppraisalScoreDto
         {
@@ -760,11 +779,11 @@ public class HrTalentService : IHrTalentService
         return r.Id;
     }
 
-    public async Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending)
+    public async Task<List<HrProfileEditRequestDto>> ListProfileRequestsAsync(bool? onlyPending, Paging.Request? pagination = null)
     {
         var q = _db.HrProfileEditRequests.AsNoTracking().AsQueryable();
         if (onlyPending == true) q = q.Where(r => r.Status == HrProfileEditRequestStatus.Pending);
-        var rows = await q.OrderByDescending(r => r.Id).Take(500).ToListAsync();
+        var rows = await q.OrderByDescending(r => r.Id).ToPageListAsync(pagination, defaultCap: 500);
         var names = await EmpNamesAsync(rows.Select(r => r.EmployeeId));
         var codes = await _db.HrEmployees.AsNoTracking()
             .Where(e => rows.Select(r => r.EmployeeId).Contains(e.Id))

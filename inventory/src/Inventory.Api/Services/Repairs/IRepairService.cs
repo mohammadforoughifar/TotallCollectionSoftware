@@ -7,7 +7,7 @@ namespace Inventory.Api.Services;
 public interface IRepairService
 {
     // ---------------- تعمیرکارها ----------------
-    Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false);
+    Task<List<Technician>> GetTechniciansAsync(bool activeOnly = false, Paging.Request? pagination = null);
     Task<Technician> SaveTechnicianAsync(Technician dto);
     Task DeleteTechnicianAsync(int id);
 

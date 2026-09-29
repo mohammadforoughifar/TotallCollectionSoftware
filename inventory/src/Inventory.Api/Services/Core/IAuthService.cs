@@ -9,7 +9,7 @@ public interface IAuthService
     Task<LoginResponse?> LoginAsync(LoginRequest request);
 
     // ---------------- مدیریت کاربران (فقط مدیر) ----------------
-    Task<List<UserDto>> GetUsersAsync();
+    Task<List<UserDto>> GetUsersAsync(Paging.Request? pagination = null);
     /// <summary>ایجاد/ویرایش کاربر. callerIsAdmin=false یعنی درخواست از اپراتور است و عملیات مرتبط با ادمین ممنوع.</summary>
     Task<UserDto> SaveUserAsync(UserDto dto, bool callerIsAdmin = true);
     Task DeleteUserAsync(int id, int currentUserId, bool callerIsAdmin = true);

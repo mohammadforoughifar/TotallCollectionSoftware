@@ -18,23 +18,23 @@ public interface IDevTeamService
     Task<DtDashboardDto> GetDashboardAsync(int? sprintId = null);
 
     // Statuses
-    Task<List<DtWorkflowStatusDto>> GetStatusesAsync(bool includeInactive = false);
+    Task<List<DtWorkflowStatusDto>> GetStatusesAsync(bool includeInactive = false, Paging.Request? pagination = null);
     Task<DtWorkflowStatusDto> UpsertStatusAsync(DtWorkflowStatusDto dto);
     Task DeleteStatusAsync(int id);
 
     // Modules
-    Task<List<DtProductModuleDto>> GetModulesAsync(bool includeInactive = false);
+    Task<List<DtProductModuleDto>> GetModulesAsync(bool includeInactive = false, Paging.Request? pagination = null);
     Task<DtProductModuleDto> UpsertModuleAsync(DtProductModuleDto dto);
     Task DeleteModuleAsync(int id);
 
     // Sprints
-    Task<List<DtSprintDto>> GetSprintsAsync();
+    Task<List<DtSprintDto>> GetSprintsAsync(Paging.Request? pagination = null);
     Task<DtSprintDto> UpsertSprintAsync(DtSprintDto dto, int userId, string userName);
     Task DeleteSprintAsync(int id);
 
     // Tasks
-    Task<DtPagedResult<DtTaskListItemDto>> QueryTasksAsync(DtTaskQuery q, int currentUserId);
-    Task<List<DtTaskListItemDto>> BoardTasksAsync(int? sprintId, int? moduleId, int? assigneeUserId);
+    Task<DtPagedResult<DtTaskListItemDto>> QueryTasksAsync(DtTaskQuery q, int currentUserId, Paging.Request? pagination = null);
+    Task<List<DtTaskListItemDto>> BoardTasksAsync(int? sprintId, int? moduleId, int? assigneeUserId, Paging.Request? pagination = null);
     Task<DtTaskDetailDto?> GetTaskAsync(int id);
     Task<DtTaskDetailDto> CreateTaskAsync(DtTaskUpsertDto dto, int userId, string userName);
     Task<DtTaskDetailDto> UpdateTaskAsync(int id, DtTaskUpsertDto dto, int userId, string userName);
@@ -75,7 +75,7 @@ public interface IDevTeamService
     Task UnlinkWorkOrderAsync(int taskId, int userId, string userName);
 
     // Problems
-    Task<List<DtProblemDto>> QueryProblemsAsync(string? severity, string? status, int? moduleId, int? taskId);
+    Task<List<DtProblemDto>> QueryProblemsAsync(string? severity, string? status, int? moduleId, int? taskId, Paging.Request? pagination = null);
     Task<DtProblemDto> UpsertProblemAsync(int? id, DtProblemUpsertDto dto, int userId, string userName);
     Task DeleteProblemAsync(int id);
 
@@ -663,17 +663,17 @@ public class DevTeamService : IDevTeamService
     }
 
     // ---------- statuses ----------
-    public async Task<List<DtWorkflowStatusDto>> GetStatusesAsync(bool includeInactive = false)
+    public async Task<List<DtWorkflowStatusDto>> GetStatusesAsync(bool includeInactive = false, Paging.Request? pagination = null)
     {
         var q = _db.DtWorkflowStatuses.AsNoTracking().AsQueryable();
         if (!includeInactive) q = q.Where(s => s.IsActive);
-        return await q.OrderBy(s => s.SortOrder).Select(s => new DtWorkflowStatusDto
+        return await q.OrderBy(s => s.SortOrder).ThenBy(x => x.Id).Select(s => new DtWorkflowStatusDto
         {
             Id = s.Id, Key = s.Key, NameFa = s.NameFa, Color = s.Color,
             SortOrder = s.SortOrder, IsInitial = s.IsInitial, IsDone = s.IsDone,
             IsBlocked = s.IsBlocked, IsActive = s.IsActive,
             WipLimit = s.WipLimit
-        }).ToListAsync();
+        }).ToPageListAsync(pagination);
     }
 
     public async Task<DtWorkflowStatusDto> UpsertStatusAsync(DtWorkflowStatusDto dto)
@@ -727,11 +727,11 @@ public class DevTeamService : IDevTeamService
     }
 
     // ---------- modules ----------
-    public async Task<List<DtProductModuleDto>> GetModulesAsync(bool includeInactive = false)
+    public async Task<List<DtProductModuleDto>> GetModulesAsync(bool includeInactive = false, Paging.Request? pagination = null)
     {
         var q = _db.DtProductModules.AsNoTracking().AsQueryable();
         if (!includeInactive) q = q.Where(m => m.IsActive);
-        var list = await q.OrderBy(m => m.SortOrder).ToListAsync();
+        var list = await q.OrderBy(m => m.SortOrder).ThenBy(x => x.Id).ToPageListAsync(pagination);
 
         var doneIds = await _db.DtWorkflowStatuses.AsNoTracking().Where(s => s.IsDone).Select(s => s.Id).ToListAsync();
         var openTasks = await TasksBase().Where(t => !doneIds.Contains(t.StatusId) && t.ModuleId != null)
@@ -802,9 +802,9 @@ public class DevTeamService : IDevTeamService
     }
 
     // ---------- sprints ----------
-    public async Task<List<DtSprintDto>> GetSprintsAsync()
+    public async Task<List<DtSprintDto>> GetSprintsAsync(Paging.Request? pagination = null)
     {
-        var list = await _db.DtSprints.AsNoTracking().OrderByDescending(s => s.StartDate).ToListAsync();
+        var list = await _db.DtSprints.AsNoTracking().OrderByDescending(s => s.StartDate).ThenBy(x => x.Id).ToPageListAsync(pagination);
         var doneIds = await _db.DtWorkflowStatuses.AsNoTracking().Where(s => s.IsDone).Select(s => s.Id).ToListAsync();
         var tasks = await TasksBase().Where(t => t.SprintId != null)
             .Select(t => new { t.SprintId, t.StatusId, t.EstimateHours, t.SpentHours }).ToListAsync();
@@ -883,7 +883,7 @@ public class DevTeamService : IDevTeamService
     }
 
     // ---------- tasks ----------
-    public async Task<DtPagedResult<DtTaskListItemDto>> QueryTasksAsync(DtTaskQuery q, int currentUserId)
+    public async Task<DtPagedResult<DtTaskListItemDto>> QueryTasksAsync(DtTaskQuery q, int currentUserId, Paging.Request? pagination = null)
     {
         var page = Math.Max(1, q.Page);
         var size = Math.Clamp(q.PageSize, 1, 200);
@@ -920,13 +920,14 @@ public class DevTeamService : IDevTeamService
         query = query.Where(t => t.ParentTaskId == null);
 
         var total = await query.CountAsync();
-        var items = await query
+        var ordered = query
             .OrderBy(t => t.SortOrder)
             .ThenByDescending(t => t.Priority)
             .ThenBy(t => t.DueAt ?? DateTime.MaxValue)
-            .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt)
-            .Skip((page - 1) * size).Take(size)
-            .ToListAsync();
+            .ThenByDescending(t => t.UpdatedAt ?? t.CreatedAt).ThenBy(t => t.Id);
+        var items = pagination?.IsPaged == true
+            ? await ordered.ToPageListAsync(pagination)
+            : await ordered.Skip(Paging.Offset(page, size)).Take(size).ToListAsync();
 
         var ids = items.Select(t => t.Id).ToList();
         var commentCounts = await _db.DtTaskComments.AsNoTracking().Where(c => ids.Contains(c.TaskId))
@@ -967,7 +968,7 @@ public class DevTeamService : IDevTeamService
         };
     }
 
-    public async Task<List<DtTaskListItemDto>> BoardTasksAsync(int? sprintId, int? moduleId, int? assigneeUserId)
+    public async Task<List<DtTaskListItemDto>> BoardTasksAsync(int? sprintId, int? moduleId, int? assigneeUserId, Paging.Request? pagination = null)
     {
         var q = new DtTaskQuery
         {
@@ -978,7 +979,7 @@ public class DevTeamService : IDevTeamService
             Page = 1,
             PageSize = 500
         };
-        var result = await QueryTasksAsync(q, 0);
+        var result = await QueryTasksAsync(q, 0, pagination);
         return result.Items;
     }
 
@@ -2132,7 +2133,7 @@ public class DevTeamService : IDevTeamService
         ResolutionNote = p.ResolutionNote
     };
 
-    public async Task<List<DtProblemDto>> QueryProblemsAsync(string? severity, string? status, int? moduleId, int? taskId)
+    public async Task<List<DtProblemDto>> QueryProblemsAsync(string? severity, string? status, int? moduleId, int? taskId, Paging.Request? pagination = null)
     {
         var q = _db.DtProblems.AsNoTracking().Where(p => !p.IsDeleted);
         if (!string.IsNullOrWhiteSpace(severity)) q = q.Where(p => p.Severity == severity);
@@ -2140,7 +2141,7 @@ public class DevTeamService : IDevTeamService
         if (moduleId is int mid) q = q.Where(p => p.ModuleId == mid);
         if (taskId is int tid) q = q.Where(p => p.TaskId == tid);
 
-        var list = await q.OrderByDescending(p => p.CreatedAt).Take(200).ToListAsync();
+        var list = await q.OrderByDescending(p => p.CreatedAt).ThenBy(x => x.Id).ToPageListAsync(pagination, defaultCap: 200);
         var mods = await _db.DtProductModules.AsNoTracking().ToListAsync();
         var taskIds = list.Where(p => p.TaskId != null).Select(p => p.TaskId!.Value).Distinct().ToList();
         var tasks = await _db.DtTasks.AsNoTracking().Where(t => taskIds.Contains(t.Id)).ToListAsync();

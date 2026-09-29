@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
 using Inventory.Api.Hubs;
@@ -63,7 +64,20 @@ public class DocumentsController : RbacControllerBase
                           || (d.CustomerCode ?? "").Contains(s) || (d.Description ?? "").Contains(s));
         }
 
-        var docs = await q.OrderByDescending(d => d.Id).ToListAsync();
+        var today = DateTime.Today;
+        var horizon = today.AddDays((double)expiringDays + 1);
+        var expiryFilter = expiry?.ToLowerInvariant();
+        if (onlyExpiring && expiryFilter == null) expiryFilter = "expiring";
+        q = expiryFilter switch
+        {
+            "expiring" => q.Where(d => d.ExpireDate >= today && d.ExpireDate < horizon),
+            "expired" => q.Where(d => d.ExpireDate < today),
+            "all" => q.Where(d => d.ExpireDate < today || (d.ExpireDate >= today && d.ExpireDate < horizon)),
+            _ => q
+        };
+        var pagination = new Paging.Request(skip, take);
+        var docs = await q.OrderByDescending(d => d.Id).ToPageListAsync(pagination);
+
         var ids = docs.Select(d => d.Id).ToList();
 
         var folders = await Db.DocFolders.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
@@ -124,13 +138,6 @@ public class DocumentsController : RbacControllerBase
             int? daysLeft = d.ExpireDate.HasValue ? (d.ExpireDate.Value.Date - DateTime.Today).Days : null;
             var expiringSoon = daysLeft is >= 0 && daysLeft <= expiringDays;
 
-            // فیلتر انقضا: expiring = رو به انقضا | expired = منقضی‌شده | all = هر دو
-            var expiryFilter = expiry?.ToLowerInvariant();
-            if (onlyExpiring && expiryFilter is null) expiryFilter = "expiring"; // سازگاری با پارامتر قدیمی
-            if (expiryFilter is "expiring" && !expiringSoon) continue;
-            if (expiryFilter is "expired" && !expired) continue;
-            if (expiryFilter is "all" && !(expired || expiringSoon)) continue;
-
             result.Add(new DocumentListDto
             {
                 Id = d.Id,
@@ -167,7 +174,7 @@ public class DocumentsController : RbacControllerBase
             });
         }
 
-        return Ok(Paging.Result(result, skip, take));
+        return Ok(pagination.Result(result));
     }
 
     // ---------------------------- جزئیات ----------------------------
@@ -487,6 +494,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("{id:int}/access-logs")]
     public async Task<IActionResult> AccessLogs(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
@@ -499,7 +507,7 @@ public class DocumentsController : RbacControllerBase
 
         var logs = await Db.AppAttachmentAccessLogs.AsNoTracking()
             .Where(l => l.Module == "DocVersion" && versionIds.Contains(l.RefId))
-            .OrderByDescending(l => l.Id).Take(200)
+            .OrderByDescending(l => l.Id)
             .Select(l => new DocAttachmentAccessLogDto
             {
                 AttachmentId = l.AttachmentId,
@@ -508,9 +516,9 @@ public class DocumentsController : RbacControllerBase
                 UserName = l.UserName,
                 Ip = l.Ip,
                 At = l.At
-            }).ToListAsync();
+            }).ToPageListAsync(pagination, defaultCap: 200);
 
-        return Ok(Paging.Result(logs, skip, take));
+        return Ok(pagination.Result(logs));
     }
 
     /// <summary>آیا این کد مدرک قبلاً ثبت شده است؟ — برای هشدار زنده در فرم ساخت/ویرایش.</summary>
@@ -595,6 +603,7 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("{id:int}/access-requests")]
     public async Task<IActionResult> AccessRequests(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
@@ -607,22 +616,23 @@ public class DocumentsController : RbacControllerBase
             .OrderBy(r => r.Status != DocAccessRequestStatus.Pending)
             .ThenByDescending(r => r.Id)
             .Select(r => ToRequestDto(r))
-            .ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     /// <summary>درخواست‌های من برای این مدرک — برای نمایش وضعیت به خودِ درخواست‌کننده.</summary>
     [HttpGet("{id:int}/access-requests/mine")]
     public async Task<IActionResult> MyAccessRequests(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var list = await Db.DocAccessRequests.AsNoTracking()
             .Where(r => r.DocumentId == id && r.RequesterUserId == MyUserId)
             .OrderByDescending(r => r.Id)
             .Select(r => ToRequestDto(r))
-            .ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+            .ToPageListAsync(pagination);
+        return Ok(pagination.Result(list));
     }
 
     private static DocAccessRequestDto ToRequestDto(DocAccessRequest r) => new()
@@ -1099,12 +1109,13 @@ public class DocumentsController : RbacControllerBase
     [HttpGet("/api/doc-archive/cartable")]
     public async Task<IActionResult> Cartable(bool includeDone = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var q = Db.DocCartableTasks.AsNoTracking().Where(t => t.UserId == MyUserId);
         if (!includeDone) q = q.Where(t => t.Status == 0);
 
-        var rows = await q.OrderByDescending(t => t.Id).Take(300).ToListAsync();
+        var rows = await q.OrderByDescending(t => t.Id).ToPageListAsync(pagination, defaultCap: 300);
         var docIds = rows.Select(t => t.DocumentId)
             .Concat(rows.Where(t => t.SourceDocumentId != null).Select(t => t.SourceDocumentId!.Value))
             .Distinct().ToList();
@@ -1130,7 +1141,7 @@ public class DocumentsController : RbacControllerBase
             CreatedAt = t.CreatedAt
         }).ToList();
 
-        return Ok(Paging.Result(result, skip, take));
+        return Ok(pagination.Result(result));
     }
 
     /// <summary>بستن دستی یک کار کارتابل (اعلان ورژن / بررسی مدرک مرتبط).</summary>

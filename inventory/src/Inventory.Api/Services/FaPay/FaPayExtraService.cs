@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Hubs;
 using Inventory.Api.Services.FaCom;
@@ -24,20 +25,20 @@ public interface IFaPayExtraService
     Task<FaPayExtraSettingsDto> GetExtraSettingsAsync();
     Task<FaPayExtraSettingsDto> SaveExtraSettingsAsync(FaPayExtraSettingsSaveDto dto);
 
-    Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId, int? status);
+    Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId, int? status, Paging.Request? pagination = null);
     Task<FaPayLoanDto?> GetLoanAsync(int id);
     Task<FaPayLoanDto> CreateLoanAsync(FaPayLoanSaveDto dto, int byUserId, string byName);
     Task CancelLoanAsync(int id);
     Task DeleteLoanAsync(int id);
 
-    Task<List<FaPayArrearDto>> ListArrearsAsync(int? employeeId, int? status);
+    Task<List<FaPayArrearDto>> ListArrearsAsync(int? employeeId, int? status, Paging.Request? pagination = null);
     Task<FaPayArrearDto> SaveArrearAsync(int? id, FaPayArrearSaveDto dto, int byUserId, string byName);
     Task DeleteArrearAsync(int id);
 
     Task<int> CalculateYearEndAsync(int runId);
 
     Task<FaPaySettlementDto> PreviewSettlementAsync(int employeeId, DateTime leaveDate, int reason, double otherEarnings, double otherDeductions);
-    Task<List<FaPaySettlementDto>> ListSettlementsAsync(int? employeeId, int? status);
+    Task<List<FaPaySettlementDto>> ListSettlementsAsync(int? employeeId, int? status, Paging.Request? pagination = null);
     Task<FaPaySettlementDto?> GetSettlementAsync(int id);
     Task<FaPaySettlementDto> SaveSettlementAsync(int? id, FaPaySettlementSaveDto dto, int byUserId, string byName);
     Task<FaPaySettlementDto> FinalizeSettlementAsync(int id);
@@ -132,12 +133,12 @@ public class FaPayExtraService : IFaPayExtraService
 
     // ==================== وام و مساعده ====================
 
-    public async Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId, int? status)
+    public async Task<List<FaPayLoanDto>> ListLoansAsync(int? employeeId, int? status, Paging.Request? pagination = null)
     {
         var q = _db.FaPayLoans.AsNoTracking().AsQueryable();
         if (employeeId is > 0) q = q.Where(l => l.EmployeeId == employeeId.Value);
         if (status is >= 0) q = q.Where(l => (int)l.Status == status.Value);
-        var loans = await q.OrderByDescending(l => l.Id).Take(1000).ToListAsync();
+        var loans = await q.OrderByDescending(l => l.Id).ToPageListAsync(pagination, defaultCap: 1000);
         if (loans.Count == 0) return new();
         var names = await _db.HrEmployees.AsNoTracking()
             .ToDictionaryAsync(e => e.Id, e => new { N = e.FirstName + " " + e.LastName, e.Code });
@@ -229,12 +230,12 @@ public class FaPayExtraService : IFaPayExtraService
 
     // ==================== معوقات ====================
 
-    public async Task<List<FaPayArrearDto>> ListArrearsAsync(int? employeeId, int? status)
+    public async Task<List<FaPayArrearDto>> ListArrearsAsync(int? employeeId, int? status, Paging.Request? pagination = null)
     {
         var q = _db.FaPayArrears.AsNoTracking().AsQueryable();
         if (employeeId is > 0) q = q.Where(a => a.EmployeeId == employeeId.Value);
         if (status is >= 0) q = q.Where(a => (int)a.Status == status.Value);
-        var rows = await q.OrderByDescending(a => a.Id).Take(1000).ToListAsync();
+        var rows = await q.OrderByDescending(a => a.Id).ToPageListAsync(pagination, defaultCap: 1000);
         var names = await _db.HrEmployees.AsNoTracking()
             .ToDictionaryAsync(e => e.Id, e => new { N = e.FirstName + " " + e.LastName, e.Code });
         return rows.Select(a => new FaPayArrearDto
@@ -449,13 +450,13 @@ public class FaPayExtraService : IFaPayExtraService
         };
     }
 
-    public async Task<List<FaPaySettlementDto>> ListSettlementsAsync(int? employeeId, int? status)
+    public async Task<List<FaPaySettlementDto>> ListSettlementsAsync(int? employeeId, int? status, Paging.Request? pagination = null)
     {
         var q = _db.FaPaySettlements.AsNoTracking().AsQueryable();
         if (employeeId is > 0) q = q.Where(x => x.EmployeeId == employeeId.Value);
         if (status is >= 0) q = q.Where(x => (int)x.Status == status.Value);
-        var rows = await q.OrderByDescending(x => x.Id).Take(500).ToListAsync();
-        var emps = await _db.HrEmployees.AsNoTracking().ToDictionaryAsync(e => e.Id);
+        var rows = await q.OrderByDescending(x => x.Id).ToPageListAsync(pagination, defaultCap: 500);
+        var emps = await _db.HrEmployees.AsNoTracking().Where(e => rows.Select(r => r.EmployeeId).Contains(e.Id)).ToDictionaryAsync(e => e.Id);
         return rows.Select(x => MapSettlement(x, emps.TryGetValue(x.EmployeeId, out var e) ? e : null)).ToList();
     }
 

@@ -140,7 +140,8 @@ public class ReportStudioController : ControllerBase
         if (await GuardAsync("View") is ObjectResult fb) return fb;
         await EnsureDbAsync();
 
-        var reports = await _access.VisibleReportsAsync(User);
+        var pagination = new Paging.Request(skip, take);
+        var reports = await _access.VisibleReportsAsync(User, pagination);
         var owners = await OwnerNamesAsync(reports.Select(r => r.OwnerUserId));
 
         var list = new List<RsReportDto>();
@@ -150,7 +151,7 @@ public class ReportStudioController : ControllerBase
             if (!acc.CanView) continue;
             list.Add(ToDto(r, acc, owners, includeQuery: false));
         }
-        return Ok(Paging.Result(list, skip, take));
+        return Ok(pagination.Result(list));
     }
 
     [HttpGet("reports/{id:int}")]

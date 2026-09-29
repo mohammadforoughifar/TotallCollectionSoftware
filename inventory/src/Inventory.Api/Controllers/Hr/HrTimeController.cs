@@ -43,7 +43,9 @@ public class HrTimeController : ControllerBase
     public async Task<IActionResult> Rules([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await IsHrAsync()) return Forbid();
-        return Ok(Paging.Result(await _svc.GetRulesAsync(), skip, take));
+        var pagination = new Paging.Request(skip, take);
+        var rules = await _svc.GetRulesAsync(pagination);
+        return Ok(pagination.DictionaryResult(rules));
     }
 
     [HttpPut("rules")]
@@ -84,28 +86,21 @@ public class HrTimeController : ControllerBase
     [HttpGet("steps/pending")]
     public async Task<IActionResult> PendingSteps([FromQuery] bool all = false, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var hr = await IsHrAsync();
         var q = _db.HrRequestSteps.AsNoTracking().Where(s => s.Status == "Pending");
         if (all && hr) { /* همه */ }
         else if (hr) q = q.Where(s => s.Role == "Hr" || s.ApproverUserId == MyUserId);
         else q = q.Where(s => s.ApproverUserId == MyUserId);
-        var steps = await q.OrderBy(s => s.CreatedAt).Take(200).ToListAsync();
-        // مرحله‌های درخواست‌هایی که از مسیر قبلی تعیین‌تکلیف شده‌اند، نمایش داده نشوند
-        var pendLeaveIds = steps.Where(s => s.RequestType == "Leave").Select(s => s.RequestId).Distinct().ToList();
-        if (pendLeaveIds.Count > 0)
-        {
-            var stillPend = await _db.LeaveRequests.AsNoTracking()
-                .Where(l => pendLeaveIds.Contains(l.Id) && l.Status == "Pending")
-                .Select(l => l.Id).ToListAsync();
-            steps = steps.Where(x => x.RequestType != "Leave" || stillPend.Contains(x.RequestId)).ToList();
-        }
+        q = q.Where(s => s.RequestType != "Leave" || _db.LeaveRequests.Any(l => l.Id == s.RequestId && l.Status == "Pending"));
+        var steps = await q.OrderBy(s => s.CreatedAt).ThenBy(s => s.Id).ToPageListAsync(pagination, defaultCap: 200);
         var leaveIds = steps.Where(s => s.RequestType == "Leave").Select(s => s.RequestId).Distinct().ToList();
         var otIds = steps.Where(s => s.RequestType == "Overtime").Select(s => s.RequestId).Distinct().ToList();
         var leaves = await _db.LeaveRequests.AsNoTracking().Where(l => leaveIds.Contains(l.Id))
             .ToDictionaryAsync(l => l.Id);
         var ots = await _db.HrOvertimeRequests.AsNoTracking().Where(o => otIds.Contains(o.Id))
             .ToDictionaryAsync(o => o.Id);
-        return Ok(Paging.Result(steps.Select(s =>
+        return Ok(pagination.Result(steps.Select(s =>
         {
             leaves.TryGetValue(s.RequestId, out var l);
             ots.TryGetValue(s.RequestId, out var o);
@@ -122,25 +117,27 @@ public class HrTimeController : ControllerBase
                     ? $"{l?.StartDate:yyyy/MM/dd} تا {l?.EndDate:yyyy/MM/dd}" + (string.IsNullOrWhiteSpace(l?.Destination) ? "" : $" — {l.Destination}")
                     : $"{o?.WorkDate:yyyy/MM/dd} {o?.StartTime:hh\\:mm}–{o?.EndTime:hh\\:mm}",
             };
-        }), skip, take));
+        })));
     }
 
     [HttpGet("steps")]
     public async Task<IActionResult> Timeline([FromQuery] string requestType, [FromQuery] int requestId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         var hr = await IsHrAsync();
         var steps = await _db.HrRequestSteps.AsNoTracking()
             .Where(s => s.RequestType == requestType && s.RequestId == requestId)
-            .OrderBy(s => s.StepNo).ToListAsync();
+            .OrderBy(s => s.StepNo).ThenBy(x => x.Id).ToPageListAsync(pagination);
         if (!hr)
         {
             var mine = requestType == "Overtime"
                 ? await _db.HrOvertimeRequests.AnyAsync(o => o.Id == requestId && o.RequesterUserId == MyUserId)
                 : await _db.LeaveRequests.AnyAsync(l => l.Id == requestId && l.RequesterUserId == MyUserId);
-            var involved = steps.Any(s => s.ApproverUserId == MyUserId);
+            var involved = await _db.HrRequestSteps.AnyAsync(s => s.RequestType == requestType
+                && s.RequestId == requestId && s.ApproverUserId == MyUserId);
             if (!mine && !involved) return Forbid();
         }
-        return Ok(Paging.Result(steps, skip, take));
+        return Ok(pagination.Result(steps));
     }
 
     public class DecideInput { public bool Approve { get; set; } public string? Note { get; set; } }
@@ -364,11 +361,11 @@ public class HrTimeController : ControllerBase
     [HttpGet("users")]
     public async Task<IActionResult> Users([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        var pagination = new Paging.Request(skip, take);
         if (!await IsHrAsync()) return Forbid();
-        var list = await _db.Users.AsNoTracking().Where(u => u.IsActive).OrderBy(u => u.Username)
-            .Select(u => new { u.Id, u.Username, FullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim() })
-            .Take(2000).ToListAsync();
-        return Ok(Paging.Result(list, skip, take));
+        var list = await _db.Users.AsNoTracking().Where(u => u.IsActive).OrderBy(u => u.Username).ThenBy(x => x.Id)
+            .Select(u => new { u.Id, u.Username, FullName = string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim() }).ToPageListAsync(pagination, defaultCap: 2000);
+        return Ok(pagination.Result(list));
     }
 
     [HttpGet("manager")]
@@ -528,11 +525,12 @@ public class HrTimeController : ControllerBase
         if (!await IsHrAsync()) return Forbid();
         if (endingWithinDays > 0)
         {
-            var soon = await _svc.ProbationsEndingSoonAsync(endingWithinDays);
+            var pagination = new Paging.Request(skip, take);
+            var soon = await _svc.ProbationsEndingSoonAsync(endingWithinDays, pagination);
             var empIds = soon.Select(x => x.EmployeeId).Distinct().ToList();
             var names = await _db.HrEmployees.AsNoTracking().Where(e => empIds.Contains(e.Id))
                 .ToDictionaryAsync(e => e.Id, e => $"{e.FirstName} {e.LastName}".Trim());
-            return Ok(Paging.Result(soon.Select(x => new { x.Id, x.EmployeeId, Name = names.TryGetValue(x.EmployeeId, out var n) ? n : "", x.StartDate, x.EndDate, x.Months, x.SkillLevel, x.Status }).ToList(), skip, take));
+            return Ok(pagination.Result(soon.Select(x => new { x.Id, x.EmployeeId, Name = names.TryGetValue(x.EmployeeId, out var n) ? n : "", x.StartDate, x.EndDate, x.Months, x.SkillLevel, x.Status }).ToList()));
         }
         var q = _db.HrProbations.AsNoTracking().AsQueryable();
         if (employeeId != null) q = q.Where(x => x.EmployeeId == employeeId);
@@ -644,8 +642,9 @@ public class HrTimeController : ControllerBase
         if (uid != MyUserId && !await IsHrAsync()) return Forbid();
         if (jy is < 1300 or > 1500 || jm is < 1 or > 12)
             return BadRequest(new { message = "سال/ماه نامعتبر است." });
-        var rows = await _svc.OtApprovalsAsync(uid == MyUserId && !await IsHrAsync() ? MyUserId : uid, jy, jm);
-        return Ok(Paging.Result(rows, skip, take));
+        var pagination = new Paging.Request(skip, take);
+        var rows = await _svc.OtApprovalsAsync(uid == MyUserId && !await IsHrAsync() ? MyUserId : uid, jy, jm, pagination);
+        return Ok(pagination.Result(rows));
     }
 
     public class OtDecideInput

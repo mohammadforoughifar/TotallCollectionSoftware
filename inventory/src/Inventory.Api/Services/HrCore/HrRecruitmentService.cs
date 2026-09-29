@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
@@ -7,19 +8,19 @@ namespace Inventory.Api.Services.HrCore;
 /// <summary>جذب و استخدام (§۴.۱): آگهی، متقاضی، مصاحبه و تبدیل یک‌کلیکه به پرسنل.</summary>
 public interface IHrRecruitmentService
 {
-    Task<List<HrJobPostingDto>> ListPostingsAsync(bool? onlyOpen);
+    Task<List<HrJobPostingDto>> ListPostingsAsync(bool? onlyOpen, Paging.Request? pagination = null);
     Task<HrJobPostingDto?> GetPostingAsync(int id);
     Task<HrJobPostingDto> SavePostingAsync(int? id, HrJobPostingSaveDto dto);
     Task DeletePostingAsync(int id);
 
-    Task<List<HrApplicantDto>> ListApplicantsAsync(int? postingId, int? status);
+    Task<List<HrApplicantDto>> ListApplicantsAsync(int? postingId, int? status, Paging.Request? pagination = null);
     Task<HrApplicantDto?> GetApplicantAsync(int id);
     Task<HrApplicantDto> SaveApplicantAsync(int? id, HrApplicantSaveDto dto);
     Task<HrApplicantDto> MoveApplicantAsync(int id, int status);
     Task DeleteApplicantAsync(int id);
     Task<HrApplicantDto> ConvertToEmployeeAsync(int id, string nationalCode, DateTime? hireDate);
 
-    Task<List<HrInterviewDto>> ListInterviewsAsync(int applicantId);
+    Task<List<HrInterviewDto>> ListInterviewsAsync(int applicantId, Paging.Request? pagination = null);
     Task<HrInterviewDto> SaveInterviewAsync(int? id, HrInterviewSaveDto dto);
     Task DeleteInterviewAsync(int id);
 }
@@ -33,11 +34,11 @@ public class HrRecruitmentService : IHrRecruitmentService
 
     // ================== آگهی ==================
 
-    public async Task<List<HrJobPostingDto>> ListPostingsAsync(bool? onlyOpen)
+    public async Task<List<HrJobPostingDto>> ListPostingsAsync(bool? onlyOpen, Paging.Request? pagination = null)
     {
         var q = _db.HrJobPostings.AsNoTracking().AsQueryable();
         if (onlyOpen == true) q = q.Where(p => p.Status == 1);
-        var rows = await q.OrderByDescending(p => p.Id).Take(200).ToListAsync();
+        var rows = await q.OrderByDescending(p => p.Id).ToPageListAsync(pagination, defaultCap: 200);
         var list = new List<HrJobPostingDto>();
         foreach (var p in rows)
         {
@@ -112,12 +113,12 @@ public class HrRecruitmentService : IHrRecruitmentService
 
     // ================== متقاضی ==================
 
-    public async Task<List<HrApplicantDto>> ListApplicantsAsync(int? postingId, int? status)
+    public async Task<List<HrApplicantDto>> ListApplicantsAsync(int? postingId, int? status, Paging.Request? pagination = null)
     {
         var q = _db.HrApplicants.AsNoTracking().AsQueryable();
         if (postingId is > 0) q = q.Where(a => a.JobPostingId == postingId.Value);
         if (status is >= 0) q = q.Where(a => a.Status == status.Value);
-        var rows = await q.OrderByDescending(a => a.Id).Take(500).ToListAsync();
+        var rows = await q.OrderByDescending(a => a.Id).ToPageListAsync(pagination, defaultCap: 500);
         var posts = await _db.HrJobPostings.AsNoTracking().ToDictionaryAsync(p => p.Id, p => p.Title);
         return rows.Select(a => new HrApplicantDto
         {
@@ -212,10 +213,10 @@ public class HrRecruitmentService : IHrRecruitmentService
 
     // ================== مصاحبه ==================
 
-    public async Task<List<HrInterviewDto>> ListInterviewsAsync(int applicantId)
+    public async Task<List<HrInterviewDto>> ListInterviewsAsync(int applicantId, Paging.Request? pagination = null)
     {
         var rows = await _db.HrInterviews.AsNoTracking().Where(i => i.ApplicantId == applicantId)
-            .OrderBy(i => i.InterviewDate).ThenBy(i => i.Id).Take(100).ToListAsync();
+            .OrderBy(i => i.InterviewDate).ThenBy(i => i.Id).ToPageListAsync(pagination, defaultCap: 100);
         return rows.Select(i => new HrInterviewDto
         {
             Id = i.Id, ApplicantId = i.ApplicantId, InterviewDate = i.InterviewDate,

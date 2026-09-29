@@ -1,3 +1,4 @@
+using Inventory.Api.Services;
 using Inventory.Api.Data;
 using Inventory.Api.Services.FaPay;
 using Inventory.Shared.Dtos;
@@ -41,7 +42,7 @@ public class FaPayController : RbacControllerBase
     public async Task<IActionResult> Brackets([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListBracketsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListBracketsAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("brackets")]
@@ -72,7 +73,7 @@ public class FaPayController : RbacControllerBase
     public async Task<IActionResult> ItemTypes([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListItemTypesAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListItemTypesAsync(pagination: pagination), skip, take));
     }
 
     [HttpPost("itemtypes")]
@@ -103,7 +104,7 @@ public class FaPayController : RbacControllerBase
     public async Task<IActionResult> Adjustments([FromQuery] int? year, [FromQuery] int? month, [FromQuery] int? employeeId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListAdjustmentsAsync(year, month, employeeId), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListAdjustmentsAsync(year, month, employeeId, pagination: pagination), skip, take));
     }
 
     [HttpPost("adjustments")]
@@ -134,7 +135,7 @@ public class FaPayController : RbacControllerBase
     public async Task<IActionResult> Runs([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.ListRunsAsync(), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.ListRunsAsync(pagination: pagination), skip, take));
     }
 
     [HttpGet("runs/{id:int}")]
@@ -185,7 +186,7 @@ public class FaPayController : RbacControllerBase
     public async Task<IActionResult> RunSlips(int id, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.RunSlipsAsync(id), skip, take));
+        return Ok(await Paging.ResultAsync(async pagination => await _svc.RunSlipsAsync(id, pagination: pagination), skip, take));
     }
 
     [HttpGet("runs/{id:int}/bank-check")]
@@ -216,7 +217,7 @@ public class FaPayController : RbacControllerBase
     public async Task<IActionResult> MySlips([FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (await ForbiddenUnlessAsync(Mod, "Read") is { } f) return f;
-        return Ok(Paging.Result(await _svc.MySlipsAsync(MyUserId), skip, take));
+        return Ok(await Paging.ResultAsync(pagination => _svc.MySlipsAsync(MyUserId, pagination), skip, take));
     }
 
     [HttpGet("slips/my/{id:int}")]
