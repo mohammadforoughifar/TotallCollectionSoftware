@@ -1,6 +1,5 @@
 package com.totall.messenger.data
 
-import android.content.Context
 import com.totall.messenger.data.model.ChatConversationDto
 import com.totall.messenger.data.model.ChatMemberDto
 import com.totall.messenger.data.model.ChatMessageDto
@@ -73,7 +72,6 @@ class ChatRepository(
     /** آپلود فایل (حداکثر ۵۰MB) و برگرداندن fileUrl برای ارسال پیام */
     suspend fun uploadAttachment(
         conversationId: Int,
-        context: Context,
         file: File,
         mimeType: String,
     ): ChatUploadResultDto {

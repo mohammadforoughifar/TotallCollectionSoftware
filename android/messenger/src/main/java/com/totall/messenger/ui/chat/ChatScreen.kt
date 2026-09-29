@@ -1,5 +1,15 @@
 package com.totall.messenger.ui.chat
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +50,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -55,12 +66,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.totall.messenger.data.VoiceRecorder
 import com.totall.messenger.data.model.ChatConversationDto
 import com.totall.messenger.data.model.ChatMessageDto
 import com.totall.messenger.data.model.ChatType
@@ -69,6 +82,7 @@ import com.totall.messenger.ui.components.ChatAvatar
 import com.totall.messenger.ui.components.formatDayLabel
 import com.totall.messenger.ui.theme.MessengerChat
 import com.totall.messenger.ui.theme.TotallMessengerTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
@@ -83,6 +97,127 @@ fun ChatScreen(
     var input by remember { mutableStateOf("") }
     var attachOpen by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    // ===================== پیام صوتی: مجوز + ضبط =====================
+    val recorder = remember { VoiceRecorder(context.applicationContext) }
+    var recording by remember { mutableStateOf(false) }
+    var recSeconds by remember { mutableStateOf(0) }
+    var pendingAudioAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val audioPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val action = pendingAudioAction
+        pendingAudioAction = null
+        if (granted) action?.invoke()
+        else Toast.makeText(
+            context,
+            "برای ضبط صدا و گفتار به نوشتار، مجوز میکروفون لازم است.",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
+    val withAudioPermission: (() -> Unit) -> Unit = { action ->
+        if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            action()
+        } else {
+            pendingAudioAction = action
+            audioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    // تایمر زندهٔ ضبط
+    LaunchedEffect(recording) {
+        if (recording) {
+            recSeconds = 0
+            while (recording) {
+                delay(1000)
+                recSeconds++
+            }
+        }
+    }
+
+    fun startRecordingVoice() {
+        if (recorder.start()) {
+            recording = true
+            recSeconds = 0
+        } else {
+            Toast.makeText(context, "ضبط صدا شروع نشد؛ میکروفون در دسترس نیست.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun finishRecording(send: Boolean) {
+        if (!recording && !recorder.isRecording) return
+        val file = if (send) recorder.stop() else { recorder.cancel(); null }
+        recording = false
+        recSeconds = 0
+        if (!send) return
+        if (file != null) vm.sendVoice(file)
+        else Toast.makeText(context, "ضبط انجام نشد؛ دوباره تلاش کنید.", Toast.LENGTH_SHORT).show()
+    }
+
+    // ===================== گفتار به نوشتار =====================
+    var dictating by remember { mutableStateOf(false) }
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else null
+    }
+    val speechListener = remember {
+        object : RecognitionListener {
+            override fun onResults(results: Bundle?) {
+                val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                if (!text.isNullOrBlank()) input = if (input.isBlank()) text else "$input $text"
+                dictating = false
+            }
+            override fun onError(error: Int) { dictating = false }
+            override fun onReadyForSpeech(params: Bundle?) { }
+            override fun onBeginningOfSpeech() { }
+            override fun onRmsChanged(rmsdB: Float) { }
+            override fun onBufferReceived(buffer: ByteArray?) { }
+            override fun onEndOfSpeech() { }
+            override fun onPartialResults(partialResults: Bundle?) { }
+            override fun onEvent(eventType: Int, params: Bundle?) { }
+        }
+    }
+
+    fun startDictation() {
+        val recognizer = speechRecognizer
+        if (recognizer == null) {
+            Toast.makeText(context, "گفتار به نوشتار در این دستگاه در دسترس نیست.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (dictating) return
+        try {
+            recognizer.setRecognitionListener(speechListener)
+            recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, "fa-IR")
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            })
+            dictating = true
+        } catch (e: Exception) {
+            dictating = false
+            Toast.makeText(context, "گفتار به نوشتار قابل شروع نیست.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // خطاهای ارسال (از جمله پیام صوتی) وقتی لیست پیام باز است به‌صورت Toast نمایش داده می‌شوند؛
+    // خطای لیست خالی برای UI حالت خطا می‌ماند.
+    LaunchedEffect(state.error, state.messages.isNotEmpty()) {
+        val err = state.error
+        if (err != null && state.messages.isNotEmpty()) {
+            Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+            vm.clearError()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            recorder.cancel()
+            dictating = false
+            speechRecognizer?.destroy()
+        }
+    }
 
     ChatContent(
         state = state,
@@ -103,10 +238,20 @@ fun ChatScreen(
         },
         onCancelReply = { vm.setReplyTo(null) },
         onAttach = { attachOpen = true },
-        onRecord = { /* ضبط صدا: MediaRecorder + آپلود */ },
+        onRecord = { withAudioPermission { startRecordingVoice() } },
+        recording = recording,
+        recSeconds = recSeconds,
+        onCancelRecord = { finishRecording(send = false) },
+        onSendRecorded = { finishRecording(send = true) },
+        onDictate = { withAudioPermission { startDictation() } },
+        dictating = dictating,
     )
     if (attachOpen) {
-        AttachmentSheet(onDismiss = { attachOpen = false }, onPick = { attachOpen = false })
+        AttachmentSheet(onDismiss = { attachOpen = false }, onPick = { kind ->
+            attachOpen = false
+            // «🎵 صدا» از همان مسیر ضبط پیام صوتی می‌رود؛ فایل/تصویر فعلاً فقط بسته می‌شود.
+            if (kind == "audio") withAudioPermission { startRecordingVoice() }
+        })
     }
 }
 
@@ -125,6 +270,12 @@ fun ChatContent(
     onCancelReply: () -> Unit,
     onAttach: () -> Unit,
     onRecord: () -> Unit,
+    recording: Boolean = false,
+    recSeconds: Int = 0,
+    onCancelRecord: () -> Unit = {},
+    onSendRecorded: () -> Unit = {},
+    onDictate: () -> Unit = {},
+    dictating: Boolean = false,
 ) {
     val conv = state.conversation
     val listState = rememberLazyListState()
@@ -165,6 +316,12 @@ fun ChatContent(
                 onRecord = onRecord,
                 replyTo = state.replyTo,
                 onCancelReply = onCancelReply,
+                recording = recording,
+                recSeconds = recSeconds,
+                onCancelRecord = onCancelRecord,
+                onSendRecorded = onSendRecorded,
+                onDictate = onDictate,
+                dictating = dictating,
             )
         },
         floatingActionButton = {

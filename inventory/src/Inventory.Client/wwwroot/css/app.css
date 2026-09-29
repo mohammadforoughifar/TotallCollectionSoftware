@@ -2925,3 +2925,20 @@ label .text-danger { --bs-danger-rgb: 176, 42, 55; }          /* ستارهٔ ا
     border-radius: 18px;
     display: block;
 }
+
+/* ===== پیام صوتی و گفتار به نوشتار چت ===== */
+.voice-rec-row {
+    display: flex; align-items: center; gap: 0.5rem;
+    background: #fee2e2; border: 1px solid #fecaca; border-radius: 20px;
+    padding: 0.35rem 0.85rem; min-height: 40px; min-width: 0;
+}
+.voice-rec-row .rec-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: #dc2626; flex-shrink: 0;
+    animation: chatRecBlink 1s infinite;
+}
+.voice-rec-row .rec-time {
+    font-weight: 700; color: #b91c1c; font-variant-numeric: tabular-nums; direction: ltr;
+}
+.voice-rec-row .rec-hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@keyframes chatRecBlink { 50% { opacity: 0.2; } }
+.btn-icon.mic-live { color: #dc2626; animation: chatRecBlink 1s infinite; }

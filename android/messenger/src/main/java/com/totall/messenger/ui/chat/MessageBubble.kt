@@ -1,5 +1,7 @@
 package com.totall.messenger.ui.chat
 
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,9 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Forward
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +47,7 @@ import androidx.compose.material3.Text
 import coil.compose.AsyncImage
 import com.totall.messenger.data.model.ChatMessageDto
 import com.totall.messenger.data.model.ChatMessageType
+import com.totall.messenger.data.remote.NetworkProvider
 import com.totall.messenger.ui.SampleData
 import com.totall.messenger.ui.components.ReadTicks
 import com.totall.messenger.ui.components.formatFileSize
@@ -50,6 +56,7 @@ import com.totall.messenger.ui.components.toFaDigits
 import com.totall.messenger.ui.theme.MessengerChat
 import com.totall.messenger.ui.theme.SystemChipBg
 import com.totall.messenger.ui.theme.TotallMessengerTheme
+import kotlinx.coroutines.delay
 
 /**
  * یک ردیف پیام — راست‌چین برای خودم، چپ‌چین برای دیگران (در چیدمان RTL برعکس دیده می‌شود).
@@ -299,6 +306,86 @@ private fun FileBody(message: ChatMessageDto, textColor: Color) {
 
 @Composable
 private fun AudioBody(message: ChatMessageDto, textColor: Color) {
+    // پخش‌کننده واقعی پیام صوتی (MediaPlayer) — URL دانلود با توکن مثل نسخه وب
+    var player by remember(message.id) { mutableStateOf<MediaPlayer?>(null) }
+    var playing by remember(message.id) { mutableStateOf(false) }
+    var positionMs by remember(message.id) { mutableStateOf(0) }
+    var durationMs by remember(message.id) { mutableStateOf(0) }
+    val mediaUrl = remember(message.id) {
+        NetworkProvider.authedMediaUrl(message.id, preview = false)
+    }
+
+    fun releasePlayer() {
+        try { player?.release() } catch (_: Exception) { }
+        player = null
+        playing = false
+        positionMs = 0
+        durationMs = 0
+    }
+
+    fun togglePlayback() {
+        val existing = player
+        if (existing != null) {
+            try {
+                if (playing) {
+                    existing.pause()
+                    playing = false
+                } else {
+                    existing.start()
+                    playing = true
+                }
+            } catch (_: Exception) {
+                releasePlayer()
+            }
+        } else {
+            try {
+                player = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .build()
+                    )
+                    setDataSource(mediaUrl)
+                    setOnPreparedListener { mp ->
+                        durationMs = mp.duration.coerceAtLeast(0)
+                        positionMs = 0
+                        mp.start()
+                        playing = true
+                    }
+                    setOnCompletionListener {
+                        playing = false
+                        positionMs = 0
+                    }
+                    setOnErrorListener { _, _, _ ->
+                        releasePlayer()
+                        true
+                    }
+                    prepareAsync()
+                }
+            } catch (_: Exception) {
+                releasePlayer()
+            }
+        }
+    }
+
+    DisposableEffect(message.id) {
+        onDispose { releasePlayer() }
+    }
+
+    // به‌روزرسانی موقعیت پخش
+    LaunchedEffect(playing, player) {
+        while (playing) {
+            try {
+                player?.let {
+                    positionMs = it.currentPosition.coerceAtLeast(0)
+                    if (durationMs <= 0) durationMs = it.duration.coerceAtLeast(0)
+                }
+            } catch (_: Exception) { }
+            delay(300)
+        }
+    }
+
     Row(
         modifier = Modifier.width(220.dp).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -307,10 +394,14 @@ private fun AudioBody(message: ChatMessageDto, textColor: Color) {
             modifier = Modifier.size(38.dp)
                 .clip(androidx.compose.foundation.shape.CircleShape)
                 .background(textColor.copy(alpha = .18f))
-                .clickable { },
+                .clickable { togglePlayback() },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.PlayArrow, null, tint = textColor)
+            Icon(
+                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                contentDescription = if (playing) "توقف" else "پخش",
+                tint = textColor,
+            )
         }
         Spacer(Modifier.width(8.dp))
         // موج صوتی نمایشی
@@ -323,12 +414,23 @@ private fun AudioBody(message: ChatMessageDto, textColor: Color) {
             bars.forEach { h ->
                 Box(Modifier.width(3.dp).height(h.dp)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(textColor.copy(alpha = .55f)))
+                    .background(textColor.copy(alpha = if (playing) .8f else .55f)))
             }
         }
         Spacer(Modifier.width(8.dp))
-        Text("۰:۴۵", style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = .75f))
+        val timeLabel = if (durationMs > 0) {
+            "${audioTimeLabel(positionMs)} / ${audioTimeLabel(durationMs)}"
+        } else {
+            audioTimeLabel(if (playing || positionMs > 0) positionMs else 0)
+        }
+        Text(timeLabel, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = .75f))
     }
+}
+
+/** برچسب زمان m:ss با ارقام فارسی. */
+private fun audioTimeLabel(ms: Int): String {
+    val totalSec = (ms / 1000).coerceAtLeast(0)
+    return "%02d:%02d".format(java.util.Locale.ROOT, totalSec / 60, totalSec % 60).toFaDigits()
 }
 
 @Composable

@@ -1,5 +1,7 @@
 package com.totall.messenger.ui.chat
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Hearing
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -30,8 +33,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.totall.messenger.data.model.ChatMessageDto
+import com.totall.messenger.ui.components.toFaDigits
 
-/** نوار ورودی پیام: ضمیمه + متن + ارسال/ضبط + نوار ریپلای */
+/**
+ * نوار ورودی پیام: ضمیمه + متن + ارسال/ضبط + نوار ریپلای
+ * حالت‌ها:
+ *  - recording: نوار قرمز «در حال ضبط» با لغو/ارسال
+ *  - دکمهٔ میکروفون وقتی متن خالی است → پیام صوتی
+ *  - دکمهٔ Hearing وقتی متن داریم → گفتار به نوشتار
+ */
 @Composable
 fun MessageInputBar(
     text: String,
@@ -42,6 +52,12 @@ fun MessageInputBar(
     replyTo: ChatMessageDto?,
     onCancelReply: () -> Unit,
     modifier: Modifier = Modifier,
+    recording: Boolean = false,
+    recSeconds: Int = 0,
+    onCancelRecord: () -> Unit = {},
+    onSendRecorded: () -> Unit = {},
+    onDictate: () -> Unit = {},
+    dictating: Boolean = false,
 ) {
     Surface(shadowElevation = 8.dp) {
         Column(modifier = modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
@@ -71,34 +87,83 @@ fun MessageInputBar(
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.Bottom) {
-                IconButton(onClick = onAttach) {
-                    Icon(Icons.Default.AttachFile, contentDescription = "ضمیمه")
-                }
-                TextField(
-                    value = text,
-                    onValueChange = onTextChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("پیام بنویسید…") },
-                    shape = RoundedCornerShape(24.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                    ),
-                    maxLines = 5,
-                )
-                Spacer(Modifier.width(6.dp))
-                if (text.isBlank()) {
-                    FilledIconButton(onClick = onRecord, modifier = Modifier.size(48.dp)) {
-                        Icon(Icons.Default.Mic, contentDescription = "پیام صوتی")
+            if (recording) {
+                // حالت ضبط پیام صوتی: لغو یا ارسال
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = onCancelRecord) {
+                        Icon(Icons.Default.Close, contentDescription = "لغو ضبط",
+                            tint = MaterialTheme.colorScheme.error)
                     }
-                } else {
+                    Box(
+                        modifier = Modifier.size(10.dp)
+                            .background(Color(0xFFDC2626), CircleShape),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        java.util.Locale.ROOT.let { "%02d:%02d".format(it, recSeconds / 60, recSeconds % 60) }.toFaDigits(),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFDC2626),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "در حال ضبط…",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                    )
                     FilledIconButton(
-                        onClick = onSend,
+                        onClick = onSendRecorded,
                         modifier = Modifier.size(48.dp),
                         shape = CircleShape,
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "ارسال")
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "ارسال پیام صوتی")
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    IconButton(onClick = onAttach) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "ضمیمه")
+                    }
+                    TextField(
+                        value = text,
+                        onValueChange = onTextChange,
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("پیام بنویسید…") },
+                        shape = RoundedCornerShape(24.dp),
+                        colors = TextFieldDefaults.colors(
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                        ),
+                        maxLines = 5,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    // گفتار به نوشتار — تبدیل حرف‌ها به متن در همین کادر
+                    if (text.isNotBlank()) {
+                        IconButton(onClick = onDictate) {
+                            Icon(
+                                Icons.Default.Hearing,
+                                contentDescription = "گفتار به نوشتار",
+                                tint = if (dictating) Color(0xFFDC2626)
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (text.isBlank()) {
+                        FilledIconButton(onClick = onRecord, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Default.Mic, contentDescription = "پیام صوتی")
+                        }
+                    } else {
+                        FilledIconButton(
+                            onClick = onSend,
+                            modifier = Modifier.size(48.dp),
+                            shape = CircleShape,
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "ارسال")
+                        }
                     }
                 }
             }

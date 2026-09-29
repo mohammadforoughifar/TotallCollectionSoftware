@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 data class ChatUiState(
     val conversation: ChatConversationDto? = null,
@@ -59,7 +60,7 @@ class ChatViewModel(
                 val msgs = repo.messages(conversationId).sortedBy { it.id }
                 _uiState.update {
                     it.copy(conversation = conv, messages = msgs, isLoading = false,
-                        hasMore = msgs.size >= 50)
+                        hasMore = msgs.size >= 50, error = null)
                 }
                 markRead(msgs.lastOrNull()?.id)
             } catch (e: Exception) {
@@ -108,6 +109,38 @@ class ChatViewModel(
             }
         }
     }
+
+    /**
+     * آپلود و ارسال پیام صوتی ضبط‌شده: اول فایل صدا به endpoint پیوست می‌رود،
+     * سپس پیامی با MessageType=AUDIO و fileUrl برگشتی ارسال می‌شود.
+     */
+    fun sendVoice(file: File) {
+        val replyId = _uiState.value.replyTo?.id
+        _uiState.update { it.copy(replyTo = null) }
+        viewModelScope.launch {
+            try {
+                val up = repo.uploadAttachment(conversationId, file, "audio/mp4")
+                val sent = repo.send(
+                    SendChatMessageRequest(
+                        conversationId = conversationId,
+                        messageType = ChatMessageType.AUDIO,
+                        fileUrl = up.fileUrl,
+                        fileName = up.fileName,
+                        fileSizeBytes = up.fileSizeBytes,
+                        fileContentType = up.fileContentType,
+                        replyToMessageId = replyId,
+                    ),
+                )
+                appendIfNew(sent)
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = e.message ?: "ارسال پیام صوتی ناموفق بود") }
+            } finally {
+                file.delete()
+            }
+        }
+    }
+
+    fun clearError() = _uiState.update { it.copy(error = null) }
 
     fun sendReaction(messageId: Int, emoji: String) {
         viewModelScope.launch {

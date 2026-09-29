@@ -33,6 +33,7 @@ public interface IChatClientService
     Task<List<ChatUserDto>> GetSoftwareUsersAsync(string? search = null);
     Task<ChatSummaryDto> GetSummaryAsync();
     Task<ChatUploadResultDto> UploadAttachmentAsync(int conversationId, IBrowserFile file);
+    Task<ChatUploadResultDto> UploadVoiceNoteAsync(int conversationId, byte[] data, string fileName, string contentType);
     string GetFileUrl(int messageId, bool preview = false);
     bool IsConnected { get; }
     Task StopAsync();
@@ -204,6 +205,17 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
         using var stream = file.OpenReadStream(maxFileBytes);
         return await _api.PostFileAsync<ChatUploadResultDto>($"api/chat/conversations/{conversationId}/attachments",
             stream, file.Name, "file", file.ContentType);
+    }
+
+    /// <summary>آپلود پیام صوتی ضبط‌شده در مرورگر (بایت خام MediaRecorder).</summary>
+    public async Task<ChatUploadResultDto> UploadVoiceNoteAsync(int conversationId, byte[] data, string fileName, string contentType)
+    {
+        if (data == null || data.Length == 0) throw new ApiException("فایل صوتی خالی است.");
+        const long maxFileBytes = 50L * 1024L * 1024L;
+        if (data.Length > maxFileBytes) throw new ApiException("حداکثر حجم هر فایل ۵۰ مگابایت است.");
+        using var stream = new MemoryStream(data, writable: false);
+        return await _api.PostFileAsync<ChatUploadResultDto>($"api/chat/conversations/{conversationId}/attachments",
+            stream, fileName, "file", contentType);
     }
 
     // همیشه مبدأ API؛ در استقرار دو سروره هم فایل از سرور Client درخواست نمی‌شود.

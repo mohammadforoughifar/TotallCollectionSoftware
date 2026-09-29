@@ -24,6 +24,15 @@ public sealed class ChatAttachmentService
     private readonly string? _configuredLegacyRoot;
     private static readonly FileExtensionContentTypeProvider MimeTypes = new();
 
+    static ChatAttachmentService()
+    {
+        // پسوندهای رایج ضبط صدا که در فهرست پیش‌فرض provider نیستند یا نوع بهتری دارند.
+        MimeTypes.Mappings[".m4a"] = "audio/mp4";
+        MimeTypes.Mappings[".3gp"] = "audio/3gpp";
+        MimeTypes.Mappings[".oga"] = "audio/ogg";
+        MimeTypes.Mappings[".opus"] = "audio/ogg";
+    }
+
     public ChatAttachmentService(AppDbContext db, IWebHostEnvironment env, IConfiguration config, ILogger<ChatAttachmentService> logger)
     {
         _db = db;
@@ -157,7 +166,7 @@ public sealed class ChatAttachmentService
         var attachment = new ChatAttachment
         {
             Id = Guid.NewGuid(), UploadedByUserId = userId, ConversationId = conversationId,
-            FileName = name, ContentType = ContentTypeFor(name), SizeBytes = file.Length
+            FileName = name, ContentType = ContentTypeFor(name, file.ContentType), SizeBytes = file.Length
         };
         Directory.CreateDirectory(_root);
         var path = PathFor(attachment.Id);
@@ -356,13 +365,24 @@ public sealed class ChatAttachmentService
 
     private static string JoinCandidates(IEnumerable<string> candidates) => string.Join("  ⨯  ", candidates.Distinct());
 
-    private static string ContentTypeFor(string name) => MimeTypes.TryGetContentType(name, out var type)
-        ? type : "application/octet-stream";
+    private static string ContentTypeFor(string name, string? declaredContentType = null)
+    {
+        var byExtension = MimeTypes.TryGetContentType(name, out var type) ? type : "application/octet-stream";
+        // ضبط پیام صوتی در مرورگر/گوشی ممکن است webm یا mp4 «صوتی» باشد که از روی پسوند video تشخیص داده می‌شود.
+        // فقط وقتی نوع اعلامی‌شده audio/* باشد و پسوند از کانتینرهای صوتی/ویدیویی باشد همان نوع صوتی پذیرفته می‌شود؛
+        // نوع اعلامی هرگز به‌تنهایی معتبر نمی‌شود تا ارسال HTML با محتوای audio امکان‌پذیر نباشد.
+        if (declaredContentType != null &&
+            declaredContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) &&
+            byExtension is "video/webm" or "video/mp4" or "application/octet-stream" or "application/ogg")
+            return declaredContentType;
+        return byExtension;
+    }
 
     public static ChatMessageTypeDto MessageTypeFor(string contentType) => contentType switch
     {
         "image/png" or "image/jpeg" or "image/gif" or "image/webp" => ChatMessageTypeDto.Image,
-        "audio/mpeg" or "audio/wav" or "audio/x-wav" or "audio/ogg" or "audio/mp4" or "audio/aac" => ChatMessageTypeDto.Audio,
+        "audio/mpeg" or "audio/wav" or "audio/x-wav" or "audio/ogg" or "audio/mp4" or "audio/aac"
+            or "audio/webm" or "audio/3gpp" => ChatMessageTypeDto.Audio,
         "video/mp4" or "video/webm" or "video/quicktime" => ChatMessageTypeDto.Video,
         _ => ChatMessageTypeDto.File // HTML/SVG and unknown types are downloads, never active inline content.
     };
