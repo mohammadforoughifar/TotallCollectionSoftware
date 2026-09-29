@@ -508,10 +508,10 @@ a { text-decoration: none; }
     min-height: 100vh;
     display: grid;
     place-items: center;
-    background: linear-gradient(180deg, #0f172a, #131d31);
+    background: linear-gradient(180deg, #ffffff, #fff7f5);
 }
 .app-loading-card {
-    color: #fff;
+    color: #1f2937;
     display: flex;
     flex-direction: column;
     align-items: center;
