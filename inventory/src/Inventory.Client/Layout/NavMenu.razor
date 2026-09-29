@@ -321,6 +321,12 @@
                         <i class="bi bi-cart3"></i><span>فروش</span>
                     </NavLink>
                 }
+                @if (Auth.CanSee("GoodsIssues"))
+                {
+                    <NavLink class="nav-link" href="goods-issues" @onclick="NotifyClose">
+                        <i class="bi bi-box-seam"></i><span>بیجک</span>
+                    </NavLink>
+                }
                 @if (Auth.CanSee("Stock"))
                 {
                     <NavLink class="nav-link" href="stock" @onclick="NotifyClose">
@@ -636,7 +642,7 @@
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
-    private bool ShowOpsGroup => ModuleAccess.CanSeeAny(Auth, "Orders", "Stock", "Repairs", "Expenses");
+    private bool ShowOpsGroup => ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties",

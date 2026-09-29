@@ -144,6 +144,48 @@
         // چاپ نامه (اتوماسیون اداری)
         window.ltxPrint = function () { window.print(); };
         window.printWorkOrderDetail = function () { window.print(); };
+        // ---------- چاپ سند در یک iframe جداگانه ----------
+        // سند چاپ باید مستقل از استایل‌های صفحه و پوستهٔ اپ باشد؛ وگرنه قواعد
+        // @media print اپ (مخفی‌کردن سایدبار/محتوا و …) محتوای سند را هم می‌پوشاند
+        // و خروجی سفید می‌شود. اینجا یک سند کامل و خودبسنده در iframe می‌سازیم و
+        // پنجرهٔ چاپِ همان iframe را باز می‌کنیم.
+        // __FONT_BASE__ در سند با آدرس واقعی پوشهٔ فونت‌ها جایگزین می‌شود.
+        window.giPrint = function (html) {
+            try {
+                var base = document.baseURI.replace(/[^/]*$/, '');
+                html = (html || '').split('__FONT_BASE__').join(base);
+
+                var f = document.getElementById('gi-print-frame');
+                if (!f) {
+                    f = document.createElement('iframe');
+                    f.id = 'gi-print-frame';
+                    f.setAttribute('aria-hidden', 'true');
+                    // صفر-بعد اما نه display:none — مرورگرهای Some از iframe پنهان چاپ نمی‌کنند
+                    f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
+                    document.body.appendChild(f);
+                }
+                var w = f.contentWindow;
+                w.document.open();
+                w.document.write(html);
+                w.document.close();
+                w.focus();
+                // کمی صبر تا مرورگر چیدمان و فونت‌ها را آماده کند
+                setTimeout(function () { try { w.print(); } catch (e) { } }, 80);
+                return true;
+            } catch (e) {
+                console.error('giPrint:', e);
+                return false;
+            }
+        };
+        // فوکوس روی یک المان با شناسه — ناوبری جدول سطرهای حواله با کلید Enter
+        // (select=true متن موجود را انتخاب می‌کند تا تایپ قدرت، قالب را جعل کند)
+        window.focusById = function (id, select) {
+            var el = document.getElementById(id);
+            if (!el || el.disabled) return false;
+            el.focus();
+            if (select && el.select) { try { el.select(); } catch (e) { } }
+            return true;
+        };
         // باز کردن PDF نامه (چاپ روی سربرگ) در تب جدید — ورودی base64
         window.ltxOpenPdf = function (base64, fileName) {
             try {

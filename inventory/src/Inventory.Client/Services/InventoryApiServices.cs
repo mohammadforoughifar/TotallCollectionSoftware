@@ -344,3 +344,29 @@ public class ExpenseService : IExpenseService
     public Task DeleteExpenseAsync(int id)
         => _api.DeleteAsync($"api/expenses/{id}");
 }
+
+/// <summary>پیاده‌سازی سرویس حواله تحویل کالا (بدون قیمت).</summary>
+public class GoodsIssueService : IGoodsIssueService
+{
+    private readonly IApiClient _api;
+    public GoodsIssueService(IApiClient api) => _api = api;
+
+    public Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null)
+    {
+        var url = "api/goods-issues?";
+        if (partyId is > 0) url += $"partyId={partyId}&";
+        if (from.HasValue) url += $"from={from:yyyy-MM-dd}&";
+        if (to.HasValue) url += $"to={to:yyyy-MM-dd}&";
+        url += $"search={Uri.EscapeDataString(search ?? "")}";
+        return _api.GetAsync<List<GoodsIssueDto>>(url);
+    }
+
+    public Task<GoodsIssueDto?> GetAsync(int id)
+        => _api.GetAsync<GoodsIssueDto?>($"api/goods-issues/{id}");
+
+    public Task<GoodsIssueDto> SaveAsync(GoodsIssueCommand cmd)
+        => _api.PostAsync<GoodsIssueDto>("api/goods-issues", cmd);
+
+    public Task DeleteAsync(int id)
+        => _api.DeleteAsync($"api/goods-issues/{id}");
+}

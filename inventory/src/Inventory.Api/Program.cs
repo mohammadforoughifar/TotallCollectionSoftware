@@ -64,6 +64,7 @@ builder.Services.AddRadisHrModule(builder.Configuration, provider, connectionStr
 
 // ثبت سرویس‌ها با اینترفیس (اصل وارونگی وابستگی — DIP)
 builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<Inventory.Api.Services.Catalog.IGoodsIssueService, Inventory.Api.Services.Catalog.GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
 builder.Services.AddScoped<IWarehousingService, WarehousingService>(); // ماژول انبارداری
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAccountingService, Inventory.Api.Services.Accounting.AccountingService>(); // ماژول حسابداری
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAnalyticalDimensionService, Inventory.Api.Services.Accounting.AnalyticalDimensionService>(); // ابعاد تحلیلی (مرکز هزینه/شعبه)

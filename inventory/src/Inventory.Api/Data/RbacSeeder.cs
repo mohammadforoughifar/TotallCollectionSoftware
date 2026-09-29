@@ -16,6 +16,8 @@ public static class RbacSeeder
         ["Stock"] = CrudActions,
         // فروش: + دسترسی «مشاهده سود» — قابل مدیریت به ازای هر نقش
         ["Orders"] = new[] { "Create", "Read", "Update", "Delete", "Export", "ViewProfit" },
+        // حواله تحویل کالا — سند «فقط مقدار» (بدون قیمت)
+        ["GoodsIssues"] = CrudActions,
         ["Repairs"] = CrudActions,
         ["CctvCameras"] = CrudActions,
         ["CctvNvrs"] = CrudActions,

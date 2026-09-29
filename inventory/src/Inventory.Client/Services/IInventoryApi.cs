@@ -162,3 +162,12 @@ public interface IExpenseService
     Task<ExpenseDto> SaveExpenseAsync(ExpenseDto expense);
     Task DeleteExpenseAsync(int id);
 }
+
+/// <summary>سرویس حواله تحویل کالا — سند «فقط مقدار» (بدون قیمت/ریال).</summary>
+public interface IGoodsIssueService
+{
+    Task<List<GoodsIssueDto>> GetAsync(int? partyId = null, DateTime? from = null, DateTime? to = null, string? search = null);
+    Task<GoodsIssueDto?> GetAsync(int id);
+    Task<GoodsIssueDto> SaveAsync(GoodsIssueCommand cmd);
+    Task DeleteAsync(int id);
+}

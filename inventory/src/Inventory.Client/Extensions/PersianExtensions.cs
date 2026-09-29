@@ -1,3 +1,4 @@
+using System.Globalization;
 using Inventory.Shared;
 
 namespace Inventory.Client.Extensions;
@@ -32,6 +33,31 @@ public static class PersianExtensions
     public static string Num(this decimal v) => Fa.Number(v);
 
     public static string Num(this int v) => Fa.Number(v);
+
+    /// <summary>
+    /// مقدار/تعداد با ارقام فارسی و جداکننده هزارگان، با حفظ اعشار — مثلاً ۶٫۵ یا ۱۲۳۴٫۲۵.
+    /// برخلاف <see cref="Num(decimal)"/> عدد را گرد نمی‌کند (برای مقدارهای کسری مثل ۲٫۵ لازم است).
+    /// </summary>
+    public static string Qty(this decimal v)
+    {
+        var s = decimal.Round(v, 3, MidpointRounding.AwayFromZero)
+                      .ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        var dot = s.IndexOf('.');
+        var intPart = dot < 0 ? s : s.Substring(0, dot);
+        var frac = dot < 0 ? "" : s.Substring(dot).Replace('.', '\u066b');   // جداکننده اعشار فارسی
+
+        if (intPart.Length > 4)
+        {
+            var sb = new System.Text.StringBuilder();
+            for (var i = 0; i < intPart.Length; i++)
+            {
+                if (i > 0 && (intPart.Length - i) % 3 == 0) sb.Append(',');
+                sb.Append(intPart[i]);
+            }
+            intPart = sb.ToString();
+        }
+        return Fa.Digits(intPart + frac);
+    }
     /// <summary>درصد با ارقام فارسی — مثلاً ۸۵٫۵٪</summary>
     public static string Percent(this decimal v) => $"{Fa.Number(Math.Round(v, 1))}٪";
 

@@ -34,6 +34,8 @@ public class AppDbContext : DbContext
     public DbSet<Stock> Stocks => Set<Stock>();
     public DbSet<Transaction> Transactions => Set<Transaction>();
     public DbSet<TransactionLine> TransactionLines => Set<TransactionLine>();
+    public DbSet<GoodsIssue> GoodsIssues => Set<GoodsIssue>();
+    public DbSet<GoodsIssueLine> GoodsIssueLines => Set<GoodsIssueLine>();
     public DbSet<ExpenseCategory> ExpenseCategories => Set<ExpenseCategory>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<Cheque> Cheques => Set<Cheque>();
@@ -411,6 +413,16 @@ public class AppDbContext : DbContext
         mb.Entity<Transaction>().HasIndex(t => t.Type);
         mb.Entity<Transaction>().HasIndex(t => t.Date);
         mb.Entity<TransactionLine>().HasIndex(l => l.ProductId);
+
+        // ==================== حواله تحویل کالا (بدون قیمت) ====================
+        mb.Entity<GoodsIssue>().HasIndex(g => g.Number).IsUnique();
+        mb.Entity<GoodsIssue>().HasIndex(g => g.PartyId);
+        mb.Entity<GoodsIssue>().HasIndex(g => g.Date);
+        mb.Entity<GoodsIssueLine>().HasIndex(l => l.IssueId);
+        mb.Entity<GoodsIssueLine>().HasIndex(l => l.ProductId);
+        // حذف حواله = حذف سطرهایش (بدون FK به Parties/Products تا حذف طرف حساب یا کالا ممکن بماند)
+        mb.Entity<GoodsIssue>().HasMany(g => g.Lines).WithOne()
+            .HasForeignKey(l => l.IssueId).OnDelete(DeleteBehavior.Cascade);
 
         // ==================== آرشیو اسناد و مدارک ====================
         // کد مدرک در کل سیستم یکتاست

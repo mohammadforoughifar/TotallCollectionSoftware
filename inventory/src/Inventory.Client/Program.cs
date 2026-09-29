@@ -39,6 +39,7 @@ builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IPartyService, PartyService>();
 builder.Services.AddScoped<IStockService, StockService>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+builder.Services.AddScoped<IGoodsIssueService, GoodsIssueService>(); // حواله تحویل کالا (بدون قیمت)
 builder.Services.AddScoped<IReportService, ReportService>();
 // ---------- ماژول انبارداری ----------
 builder.Services.AddScoped<IInvCategoryService, InvCategoryService>();

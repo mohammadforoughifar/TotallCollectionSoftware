@@ -43,6 +43,8 @@ public static class DbInitializer
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
                     await WorkOrderSchemaV1.EnsureAsync(db);
+                    // حواله تحویل کالا (بدون قیمت) — جدول‌های سند «فقط مقدار»
+                    await GoodsIssueSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
@@ -63,6 +65,8 @@ public static class DbInitializer
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
                     await WorkOrderSchemaV1.EnsureAsync(db);
+                    // حواله تحویل کالا (بدون قیمت) — جدول‌های سند «فقط مقدار»
+                    await GoodsIssueSchemaV1.EnsureAsync(db);
                 }
 
                 await WorkOrderSchemaV2.EnsureAsync(db);
