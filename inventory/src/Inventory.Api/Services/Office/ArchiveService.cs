@@ -186,7 +186,7 @@ public class ArchiveService : IArchiveService
         IOrderedQueryable<LetterBayegani> Order(IQueryable<LetterBayegani> q) => q
             .OrderByDescending(b => b.IsFolder).ThenBy(b => b.Title).ThenBy(b => b.BayeganiId);
         var rows = await Order(scope).ReadTreePageAsync(
-            Order(scope.Where(b => b.ParentId == 0 || !scope.Any(p => p.Id == b.ParentId && p.IsFolder))),
+            Order(scope.Where(b => b.ParentId == 0 || !scope.Any(p => p.BayeganiId == b.ParentId && p.IsFolder))),
             ids => Order(scope.Where(b => ids.Contains(b.ParentId))),
             b => b.BayeganiId, pagination);
 
@@ -685,7 +685,7 @@ public class ArchiveService : IArchiveService
         IOrderedQueryable<LetterBayegani> Order(IQueryable<LetterBayegani> q) => q
             .OrderByDescending(b => b.IsFolder).ThenBy(b => b.Title).ThenBy(b => b.BayeganiId);
         var rows = await Order(scope).ReadTreePageAsync(
-            Order(scope.Where(b => b.ParentId == 0 || !scope.Any(p => p.Id == b.ParentId && p.IsFolder))),
+            Order(scope.Where(b => b.ParentId == 0 || !scope.Any(p => p.BayeganiId == b.ParentId && p.IsFolder))),
             ids => Order(scope.Where(b => ids.Contains(b.ParentId))),
             b => b.BayeganiId, pagination);
 
