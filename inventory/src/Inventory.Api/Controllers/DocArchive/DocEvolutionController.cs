@@ -113,7 +113,7 @@ public class DocEvolutionController(AppDbContext db, IDocAccessService access, D
             Failures = await (from j in q
                               join a in Db.AppAttachments on j.AttachmentId equals a.Id
                               where j.Status == "Failed"
-                              orderby j.UpdatedAtUtc descending, j.Id descending
+                              orderby j.UpdatedAtUtc descending, j.AttachmentId descending
                               select new DocIndexFailureDto { AttachmentId = j.AttachmentId, FileName = a.FileName, Error = j.Error }).ToPageListAsync(pagination, defaultCap: 30)
         };
         if (Paging.Requested(skip, take))

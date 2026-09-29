@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using Inventory.Api.Data;
+using Inventory.Api.Services;
 using Inventory.Api.Services.Core;
 using Inventory.Api.Services.Dashboards;
 using Inventory.Shared.Dtos;
