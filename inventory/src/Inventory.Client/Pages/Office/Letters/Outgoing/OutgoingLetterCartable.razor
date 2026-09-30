@@ -13,7 +13,7 @@
 
 <PageTitle>کارتابل نامه صادره</PageTitle>
 
-<div class="ltx @(readerOpen ? "rd-open" : "")" style="animation:none;transform:none">
+<div class="ltx @(!showGuide && readerOpen ? "rd-open" : "") @(showGuide ? "guide-open" : "")" style="animation:none;transform:none">
     <div class="shell" @onclick="CloseMenus">
 
         <nav class="rail">
@@ -21,26 +21,37 @@
             <button class="compose" title="نامه صادره جدید" @onclick="OpenCompose"><i class="bi bi-plus-lg"></i></button>
             <div style="height:8px"></div>
 
-            <button class="@(folder == "inbox" ? "on" : "")" title="دریافتی (شامل امضا)" @onclick='() => SetFolder("inbox")'>
+            <button class="@(!showGuide && folder == "inbox" ? "on" : "")" title="دریافتی (شامل امضا)" @onclick='() => SetFolder("inbox")'>
                 <i class="bi bi-inbox-fill"></i>
                 @if (stats.InboxUnread > 0) { <span class="rbadge">@stats.InboxUnread.FaDigits()</span> }
             </button>
             <span class="rlbl">دریافتی</span>
-            <button class="@(folder == "signing" ? "on" : "")" title="امضایی‌های من" @onclick='() => SetFolder("signing")'>
+            <button class="@(!showGuide && folder == "signing" ? "on" : "")" title="امضایی‌های من" @onclick='() => SetFolder("signing")'>
                 <i class="bi bi-pen-fill"></i>
                 @if (signingUnsigned > 0) { <span class="rbadge" style="background:#f59e0b">@signingUnsigned.FaDigits()</span> }
             </button>
             <span class="rlbl">امضا</span>
-            <button class="@(folder == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetFolder("sent")'><i class="bi bi-send"></i></button>
+            <button class="@(!showGuide && folder == "sent" ? "on" : "")" title="ارسالی" @onclick='() => SetFolder("sent")'><i class="bi bi-send"></i></button>
             <span class="rlbl">صادره</span>
-            <button class="@(folder == "draft" ? "on" : "")" title="پیش‌نویس" @onclick='() => SetFolder("draft")'><i class="bi bi-pencil-square"></i></button>
+            <button class="@(!showGuide && folder == "draft" ? "on" : "")" title="پیش‌نویس" @onclick='() => SetFolder("draft")'><i class="bi bi-pencil-square"></i></button>
             <span class="rlbl">پیش‌نویس</span>
-            <button class="@(folder == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetFolder("starred")'><i class="bi bi-star"></i></button>
+            <button class="@(!showGuide && folder == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetFolder("starred")'><i class="bi bi-star"></i></button>
             <span class="rlbl">نشان‌شده</span>
-            <button class="@(folder == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetFolder("archive")'><i class="bi bi-archive"></i></button>
+            <button class="@(!showGuide && folder == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetFolder("archive")'><i class="bi bi-archive"></i></button>
             <span class="rlbl">بایگانی</span>
+            <button type="button" class="@(showGuide ? "on" : "")" title="راهنمای نامه صادره" aria-label="راهنمای نامه صادره" aria-pressed="@showGuide" @onclick="OpenGuide"><i class="bi bi-journal-check"></i></button>
+            <span class="rlbl">راهنما</span>
             <div class="grow"></div>
         </nav>
+
+        @if (showGuide)
+        {
+            <section class="guide-workspace">
+                <OutgoingLetterGuide OnBack="BackFromGuide" />
+            </section>
+        }
+        else
+        {
 
         <section class="pane">
             <div class="pane-head">
@@ -462,6 +473,7 @@
                 }
             </div>
         </main>
+        }
     </div>
 
     @if (replyOpen)
@@ -544,6 +556,14 @@
 <OutgoingGardeshModal @ref="gardesh" />
 
 @code {
+    private bool showGuide;
+    private void OpenGuide()
+    {
+        CloseMenus();
+        showGuide = true;
+    }
+    private void BackFromGuide() => showGuide = false;
+
     [Parameter] public string? Tab { get; set; }
 
     private HashSet<int> selectedLetterIds = new();
@@ -735,6 +755,7 @@
     {
         if (!string.IsNullOrEmpty(Tab) && Tab != folder && Tab is "inbox" or "sent" or "draft" or "starred" or "archive" or "signing")
         {
+            showGuide = false;
             folder = Tab;
             await ReloadAsync();
         }
@@ -809,6 +830,7 @@
 
     private async Task SetFolder(string f)
     {
+        showGuide = false;
         folder = f; filter = "all"; search = ""; openMenuId = 0; page = 1;
         selected = null; selectedItem = null; readerOpen = false;
         await ReloadAsync();

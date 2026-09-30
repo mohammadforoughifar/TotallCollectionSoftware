@@ -30,10 +30,16 @@
 .ltx .rail { overflow-y:auto; scrollbar-width:none; }
 .ltx .rail::-webkit-scrollbar { display:none; }
 
-/* ---------- راهنمای داخلی کارتابل ---------- */
+/* ---------- راهنمای مشترک بخش‌های اتوماسیون اداری ---------- */
 .ltx .guide-workspace {
-    grid-column:2 / -1; min-width:0; min-height:0; overflow:auto;
+    grid-column:2 / -1; flex:1; min-width:0; min-height:0; overflow:auto;
     padding:14px; background:var(--bg);
+}
+
+/* Email uses a flex shell rather than the three-column letter workspace. */
+.ltx .email-shell {
+    display:flex; height:calc(100vh - 130px); min-height:540px; background:var(--card);
+    border:1px solid var(--line); border-radius:18px; overflow:hidden;
 }
 
 /* ---------- ستون لیست ---------- */
@@ -366,9 +372,10 @@
     .ltx .paper { position:absolute; inset:0; border:0; }
 
     /* چاپ راهنمای تعبیه‌شده در کارتابل */
-    .ltx.guide-open .shell { height:auto !important; max-height:none !important; min-height:0; overflow:visible; border:0; }
+    .ltx.guide-open .shell, .ltx.guide-open .email-shell { height:auto !important; max-height:none !important; min-height:0; overflow:visible; border:0; }
     .ltx.guide-open .rail { display:none !important; }
     .ltx.guide-open .guide-workspace { grid-column:1 / -1; overflow:visible; padding:0; }
+    .ltx.guide-open .email-shell { display:block; }
     .ltx.guide-open .guide-workspace,
     .ltx.guide-open .guide-workspace * { visibility:visible !important; }
 }

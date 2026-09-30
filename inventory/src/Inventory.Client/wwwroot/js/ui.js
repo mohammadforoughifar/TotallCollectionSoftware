@@ -41,3 +41,32 @@ window.focusLastProductInput = function () {
         }
     }, 60);
 };
+
+// Print the whole guide, including collapsed FAQ answers, without changing the
+// reader's open/closed choices when the print dialog is dismissed.
+window.officeGuides = {
+    // Workspace tabs remain mounted when hidden. Search only this guide,
+    // not a same-id section in another tab's copy of the guide.
+    scrollTo: function (root, id) {
+        const section = root && Array.from(root.querySelectorAll('section[id]'))
+            .find(element => element.id === id);
+        if (section) section.scrollIntoView({ block: 'start', inline: 'nearest',
+            behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    },
+    print: function (root) {
+        if (!root) return;
+        const collapsed = Array.from(root.querySelectorAll('details:not([open])'));
+        const restore = function () {
+            collapsed.forEach(detail => detail.open = false);
+            window.removeEventListener('afterprint', restore);
+        };
+        collapsed.forEach(detail => detail.open = true);
+        window.addEventListener('afterprint', restore, { once: true });
+        try {
+            window.print();
+        } catch (error) {
+            restore();
+            throw error;
+        }
+    }
+};

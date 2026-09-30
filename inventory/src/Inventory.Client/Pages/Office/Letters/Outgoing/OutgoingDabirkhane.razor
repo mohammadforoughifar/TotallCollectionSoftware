@@ -23,13 +23,13 @@
 
 <PageTitle>دبیرخانه یکپارچه</PageTitle>
 
-<div class="ltx" style="animation:none;transform:none">
+<div class="ltx @(showGuide ? "guide-open" : "")" style="animation:none;transform:none">
     <div class="shell" style="grid-template-columns:72px 1fr">
         <nav class="rail">
             @if (dabirType == "varede")
             {
                 <div class="logo"><i class="bi bi-inbox-fill"></i></div>
-                <button class="on" title="نامه‌های ثبت‌شده" @onclick='() => OpenIncomingView("registered")'><i class="bi bi-check2-circle"></i></button>
+                <button class="@(!showGuide ? "on" : "")" title="نامه‌های ثبت‌شده" @onclick='() => OpenIncomingView("registered")'><i class="bi bi-check2-circle"></i></button>
                 <span class="rlbl">ثبت‌شده</span>
                 <button title="نامه‌های بایگانی‌شده" @onclick='() => OpenIncomingView("archived")'><i class="bi bi-archive"></i></button>
                 <span class="rlbl">بایگانی</span>
@@ -43,22 +43,22 @@
             {
                 <div class="logo"><i class="bi bi-mailbox"></i></div>
 
-                <button class="@(tab == "pending" ? "on" : "")" title="در انتظار ثبت" @onclick='() => SetTab("pending")'>
+                <button class="@(!showGuide && tab == "pending" ? "on" : "")" title="در انتظار ثبت" @onclick='() => SetTab("pending")'>
                     <i class="bi bi-hourglass-split"></i>
                 </button>
                 <span class="rlbl">انتظار</span>
 
-                <button class="@(tab == "registered" ? "on" : "")" title="ثبت شده" @onclick='() => SetTab("registered")'>
+                <button class="@(!showGuide && tab == "registered" ? "on" : "")" title="ثبت شده" @onclick='() => SetTab("registered")'>
                     <i class="bi bi-check2-circle"></i>
                 </button>
                 <span class="rlbl">ثبت شده</span>
 
-                <button class="@(tab == "archived" ? "on" : "")" title="بایگانی‌شده" @onclick='() => SetTab("archived")'>
+                <button class="@(!showGuide && tab == "archived" ? "on" : "")" title="بایگانی‌شده" @onclick='() => SetTab("archived")'>
                     <i class="bi bi-archive"></i>
                 </button>
                 <span class="rlbl">بایگانی</span>
 
-                <button class="@(tab == "all" ? "on" : "")" title="همه نامه‌ها" @onclick='() => SetTab("all")'>
+                <button class="@(!showGuide && tab == "all" ? "on" : "")" title="همه نامه‌ها" @onclick='() => SetTab("all")'>
                     <i class="bi bi-collection"></i>
                 </button>
                 <span class="rlbl">همه</span>
@@ -68,8 +68,17 @@
                 <button title="بروزرسانی فهرست" @onclick="ReloadAsync"><i class="bi bi-arrow-clockwise"></i></button>
                 <span class="rlbl">بروزرسانی</span>
             }
+            <button type="button" class="@(showGuide ? "on" : "")" title="راهنمای دبیرخانه" aria-label="راهنمای دبیرخانه" aria-pressed="@showGuide" @onclick="() => showGuide = true"><i class="bi bi-journal-check"></i></button>
+            <span class="rlbl">راهنما</span>
         </nav>
-        <section class="pane" style="overflow:auto">
+        @if (showGuide)
+        {
+            <section class="guide-workspace">
+                <DabirkhaneGuide OnBack="BackFromGuide" />
+            </section>
+        }
+        @* Keep this pane mounted so incoming filters, selections and component references survive help. *@
+        <section class="pane" style="@(showGuide ? "display:none" : "overflow:auto")">
         <div style="padding:14px;width:100%;box-sizing:border-box">
 
         <div class="rd-top" style="border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
@@ -574,6 +583,9 @@
 <DabirkhaneArchivePicker @ref="archivePicker" />
 
 @code {
+    private bool showGuide;
+    private void BackFromGuide() => showGuide = false;
+
     private List<DabirkhaneListItemDto> items = new();
     private List<BayeganiNodeDto> archiveTree = new();
     private DabirkhaneStatsDto stats = new();
@@ -585,12 +597,14 @@
 
     private async Task OpenIncomingCreate()
     {
+        showGuide = false;
         if (incomingPanel is not null)
             await incomingPanel.OpenCreateFromNavigation();
     }
 
     private async Task OpenIncomingView(string view)
     {
+        showGuide = false;
         if (incomingPanel is not null)
             await incomingPanel.SetViewFromNavigation(view);
     }
@@ -688,6 +702,7 @@
 
     private async Task SetTab(string t)
     {
+        showGuide = false;
         tab = t;
         await ReloadAsync();
     }

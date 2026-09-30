@@ -1,85 +1,8 @@
-@inject IJSRuntime JS
-
-<div class="inner-letter-guide" dir="rtl">
-    <header class="guide-hero">
-        <div class="guide-hero-copy">
-            <div class="guide-eyebrow"><i class="bi bi-stars"></i> اتوماسیون اداری / راهنمای کاربری</div>
-            <h1>راهنمای کارتابل نامه داخلی</h1>
-            <p>
-                از ایجاد و ارسال نامه تا پاسخ، ارجاع، پیگیری گردش و بایگانی؛
-                همه مراحل کار با نامه داخلی را گام‌به‌گام در این صفحه ببینید.
-            </p>
-            <div class="guide-actions no-print">
-                <button type="button" class="guide-button primary" @onclick="BackToLetters">
-                    <i class="bi bi-arrow-right"></i>
-                    بازگشت به نامه‌ها
-                </button>
-                <button type="button" class="guide-button secondary" @onclick="PrintGuide">
-                    <i class="bi bi-printer"></i>
-                    چاپ یا ذخیره PDF
-                </button>
-            </div>
-            <div class="guide-meta">
-                <span><i class="bi bi-check2-circle"></i> مطابق نسخه فعلی سامانه</span>
-                <span><i class="bi bi-phone"></i> قابل استفاده در رایانه و موبایل</span>
-            </div>
-        </div>
-        <div class="guide-hero-art" aria-hidden="true">
-            <span class="art-orbit orbit-one"><i class="bi bi-send-fill"></i></span>
-            <span class="art-orbit orbit-two"><i class="bi bi-paperclip"></i></span>
-            <span class="art-orbit orbit-three"><i class="bi bi-check2-all"></i></span>
-            <div class="art-envelope"><i class="bi bi-envelope-paper-heart-fill"></i></div>
-        </div>
-    </header>
-
-    <section class="quick-start" aria-labelledby="quick-start-title">
-        <div class="quick-start-head">
-            <span class="section-kicker">شروع سریع</span>
-            <h2 id="quick-start-title">ارسال اولین نامه در سه گام</h2>
-        </div>
-        <div class="quick-steps">
-            <div class="quick-step">
-                <span class="step-number">۱</span>
-                <div><strong>نامه جدید</strong><small>در کارتابل روی دکمه «+» بزنید.</small></div>
-            </div>
-            <i class="bi bi-chevron-left step-arrow" aria-hidden="true"></i>
-            <div class="quick-step">
-                <span class="step-number">۲</span>
-                <div><strong>تکمیل نامه</strong><small>گیرنده، عنوان و متن را وارد کنید.</small></div>
-            </div>
-            <i class="bi bi-chevron-left step-arrow" aria-hidden="true"></i>
-            <div class="quick-step">
-                <span class="step-number">۳</span>
-                <div><strong>ارسال</strong><small>اطلاعات را بازبینی و «ارسال» را انتخاب کنید.</small></div>
-            </div>
-        </div>
-    </section>
-
-    <div class="guide-layout">
-        <aside class="guide-toc no-print" aria-label="فهرست راهنما">
-            <div class="toc-title"><i class="bi bi-list-check"></i> فهرست مطالب</div>
-            <nav>
-                <button type="button" @onclick='() => ScrollTo("overview")'><span>۱</span> آشنایی با کارتابل</button>
-                <button type="button" @onclick='() => ScrollTo("folders")'><span>۲</span> پوشه‌های نامه</button>
-                <button type="button" @onclick='() => ScrollTo("compose")'><span>۳</span> ایجاد و ارسال نامه</button>
-                <button type="button" @onclick='() => ScrollTo("drafts")'><span>۴</span> کار با پیش‌نویس‌ها</button>
-                <button type="button" @onclick='() => ScrollTo("reading")'><span>۵</span> مشاهده و عملیات نامه</button>
-                <button type="button" @onclick='() => ScrollTo("reply")'><span>۶</span> پاسخ، تأیید و رد</button>
-                <button type="button" @onclick='() => ScrollTo("referral")'><span>۷</span> ارجاع و هامش</button>
-                <button type="button" @onclick='() => ScrollTo("search")'><span>۸</span> جستجو و فیلتر</button>
-                <button type="button" @onclick='() => ScrollTo("archive")'><span>۹</span> بایگانی نامه‌ها</button>
-                <button type="button" @onclick='() => ScrollTo("tracking")'><span>۱۰</span> گردش و پیگیری</button>
-                <button type="button" @onclick='() => ScrollTo("advanced")'><span>۱۱</span> امکانات تکمیلی</button>
-                <button type="button" @onclick='() => ScrollTo("faq")'><span>۱۲</span> پرسش‌های متداول</button>
-            </nav>
-            <div class="toc-tip">
-                <i class="bi bi-lightbulb-fill"></i>
-                <span>نمایش بعضی دکمه‌ها به سطح دسترسی شما بستگی دارد.</span>
-            </div>
-        </aside>
-
-        <main class="guide-content">
-            <section id="overview" class="guide-section">
+<OfficeGuide Title="راهنمای کارتابل نامه داخلی"
+             Description="از ایجاد و ارسال نامه تا پاسخ، ارجاع، پیگیری گردش و بایگانی؛ همه مراحل کار با نامه داخلی را گام‌به‌گام در این صفحه ببینید."
+             BackLabel="بازگشت به نامه‌ها" QuickStartTitle="ارسال اولین نامه در سه گام"
+             Steps="QuickSteps" Sections="GuideSections" OnBack="OnBack">
+            <section id="inner-overview" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۱</span>
                     <div>
@@ -114,7 +37,7 @@
                 </div>
             </section>
 
-            <section id="folders" class="guide-section">
+            <section id="inner-folders" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۲</span>
                     <div>
@@ -146,7 +69,7 @@
                 </div>
             </section>
 
-            <section id="compose" class="guide-section">
+            <section id="inner-compose" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۳</span>
                     <div>
@@ -190,7 +113,7 @@
                 </div>
             </section>
 
-            <section id="drafts" class="guide-section">
+            <section id="inner-drafts" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۴</span>
                     <div>
@@ -210,7 +133,7 @@
                 </div>
             </section>
 
-            <section id="reading" class="guide-section">
+            <section id="inner-reading" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۵</span>
                     <div>
@@ -233,7 +156,7 @@
                 </div>
             </section>
 
-            <section id="reply" class="guide-section">
+            <section id="inner-reply" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۶</span>
                     <div>
@@ -252,7 +175,7 @@
                 </div>
             </section>
 
-            <section id="referral" class="guide-section">
+            <section id="inner-referral" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۷</span>
                     <div>
@@ -288,7 +211,7 @@
                 </ol>
             </section>
 
-            <section id="search" class="guide-section">
+            <section id="inner-search" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۸</span>
                     <div>
@@ -315,7 +238,7 @@
                 </div>
             </section>
 
-            <section id="archive" class="guide-section">
+            <section id="inner-archive" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۹</span>
                     <div>
@@ -339,7 +262,7 @@
                 <div class="shortcut"><kbd>Ctrl</kbd><b>+</b><kbd>Shift</kbd><b>+</b><kbd>B</kbd><span>میانبر بایگانی یا خروج از بایگانیِ نامه باز</span></div>
             </section>
 
-            <section id="tracking" class="guide-section">
+            <section id="inner-tracking" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۱۰</span>
                     <div>
@@ -361,7 +284,7 @@
                 </div>
             </section>
 
-            <section id="advanced" class="guide-section">
+            <section id="inner-advanced" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۱۱</span>
                     <div>
@@ -389,7 +312,7 @@
                 </div>
             </section>
 
-            <section id="faq" class="guide-section">
+            <section id="inner-faq" class="guide-section">
                 <div class="section-heading">
                     <span class="section-index">۱۲</span>
                     <div>
@@ -421,23 +344,29 @@
                 </div>
             </section>
 
-            <footer class="guide-footer">
-                <div><i class="bi bi-check2-circle"></i><span><b>پایان راهنمای نامه داخلی</b><small>اکنون می‌توانید به کارتابل برگردید و کار را شروع کنید.</small></span></div>
-                <button type="button" class="guide-button primary no-print" @onclick="BackToLetters"><i class="bi bi-arrow-right"></i> بازگشت به نامه‌ها</button>
-            </footer>
-        </main>
-    </div>
-</div>
+</OfficeGuide>
 
 @code {
     [Parameter] public EventCallback OnBack { get; set; }
-
-    private Task BackToLetters()
-        => OnBack.InvokeAsync();
-
-    private async Task ScrollTo(string sectionId)
-        => await JS.InvokeVoidAsync("scrollIntoViewById", sectionId, "start", "smooth");
-
-    private async Task PrintGuide()
-        => await JS.InvokeVoidAsync("print");
+    private static readonly GuideStep[] QuickSteps =
+    [
+        new("نامه جدید", "در کارتابل روی دکمه «+» بزنید."),
+        new("تکمیل نامه", "گیرنده، عنوان و متن را وارد کنید."),
+        new("ارسال", "اطلاعات را بازبینی و «ارسال» را انتخاب کنید.")
+    ];
+    private static readonly GuideLink[] GuideSections =
+    [
+        new("inner-overview", "آشنایی با کارتابل"),
+        new("inner-folders", "پوشه‌های نامه"),
+        new("inner-compose", "ایجاد و ارسال نامه"),
+        new("inner-drafts", "کار با پیش‌نویس‌ها"),
+        new("inner-reading", "مشاهده و عملیات نامه"),
+        new("inner-reply", "پاسخ، تأیید و رد"),
+        new("inner-referral", "ارجاع و هامش"),
+        new("inner-search", "جستجو و فیلتر"),
+        new("inner-archive", "بایگانی نامه‌ها"),
+        new("inner-tracking", "گردش و پیگیری"),
+        new("inner-advanced", "امکانات تکمیلی"),
+        new("inner-faq", "پرسش‌های متداول")
+    ];
 }
