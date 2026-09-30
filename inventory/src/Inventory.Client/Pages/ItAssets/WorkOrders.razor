@@ -28,13 +28,13 @@
 @* ================== تب‌ها ================== *@
 <div class="wo-tabs mb-3">
     <button class="wo-tab @(tab == "mine" ? "active" : "")" @onclick='() => SwitchTab("mine")'>
-        <i class="bi bi-send"></i> دستورهای من <span class="wo-tab-badge">@mineItems.Count</span>
+        <i class="bi bi-send"></i> دستورهای من <span class="wo-tab-badge">@mineAll</span>
     </button>
     <button class="wo-tab @(tab == "assigned" ? "active" : "")" @onclick='() => SwitchTab("assigned")'>
-        <i class="bi bi-inbox"></i> محول به من <span class="wo-tab-badge">@assignedItems.Count</span>
+        <i class="bi bi-inbox"></i> محول به من <span class="wo-tab-badge">@assignedAll</span>
     </button>
     <button class="wo-tab @(tab == "archive" ? "active" : "")" @onclick='() => SwitchTab("archive")'>
-        <i class="bi bi-archive"></i> بایگانی <span class="wo-tab-badge">@archiveItems.Count</span>
+        <i class="bi bi-archive"></i> بایگانی <span class="wo-tab-badge">@archiveAll</span>
     </button>
     <button class="wo-tab @(tab == "kanban" ? "active" : "")" @onclick='() => SwitchTab("kanban")'>
         <i class="bi bi-kanban"></i> کانبان
@@ -2053,6 +2053,8 @@ else
     private AccessInfo access = new();
     private List<WoItem> mineItems = new(), assignedItems = new(), archiveItems = new();
     private int mineTotal, assignedTotal, archiveTotal;
+    // تعداد کل هر تب (بدون اثر فیلتر/جستجو و بدون وابستگی به اندازهٔ صفحه) — برای نشان کنار نام تب
+    private int mineAll, assignedAll, archiveAll;
     private List<CalItem> calItems = new();
     private List<TargetOpt> targets = new();
     private HashSet<int> expanded = new();
@@ -2531,6 +2533,16 @@ else
         return await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?{qs}") ?? new();
     }
 
+    private async Task<int> CountAll(string endpoint)
+    {
+        try
+        {
+            var r = await Http.GetFromJsonAsync<WorkOrderPage>($"/api/workorders/{endpoint}?page=1&pageSize=1");
+            return r?.TotalCount ?? 0;
+        }
+        catch { return 0; }
+    }
+
     private async Task LoadAll()
     {
         try
@@ -2538,6 +2550,18 @@ else
             var m = await LoadWorkOrderPage("mine"); mineItems = m.Items; mineTotal = m.TotalCount;
             var a = await LoadWorkOrderPage("assigned"); assignedItems = a.Items; assignedTotal = a.TotalCount;
             var ar = await LoadWorkOrderPage("archive"); archiveItems = ar.Items; archiveTotal = ar.TotalCount;
+
+            if (string.IsNullOrWhiteSpace(fltQ) && fltPriority < 0 && fltTag == null)
+            {
+                mineAll = mineTotal; assignedAll = assignedTotal; archiveAll = archiveTotal;
+            }
+            else
+            {
+                // فیلتر فعال است؛ عدد تب‌ها باید همچنان کل واقعی باشد، نه نتیجهٔ فیلتر
+                mineAll = await CountAll("mine");
+                assignedAll = await CountAll("assigned");
+                archiveAll = await CountAll("archive");
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
