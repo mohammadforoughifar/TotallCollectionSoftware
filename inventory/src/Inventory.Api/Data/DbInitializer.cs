@@ -30,6 +30,8 @@ public static class DbInitializer
                     // دیتابیس‌های قدیمی با EnsureCreated جدول چت دریافت نمی‌کنند.
                     await ChatSchemaV1.EnsureSqliteAsync(db);
                     await ChatAttachmentSchemaV1.EnsureSqliteAsync(db);
+                    // ستون‌های تبدیل ویس به متن (رونویسی پیام صوتی)
+                    await ChatTranscriptSchemaV1.EnsureSqliteAsync(db);
                     // EnsureCreated ستون‌های جدید را به دیتابیسِ موجود اضافه نمی‌کند؛ اینجا خودتعمیر می‌کنیم
                     EnsureSqliteWorkCalendarSchema(db);
                     EnsureSqliteUserSignatureColumn(db);
@@ -51,6 +53,8 @@ public static class DbInitializer
                     MigrateSqlServer(db);
                     EnsureSystemUserPhoneColumn(db);
                     EnsureUserSignatureColumn(db);
+                    // ستون‌های تبدیل ویس به متن (رونویسی پیام صوتی) — مایگریشن squash شده این‌ها را نمی‌سازد
+                    await ChatTranscriptSchemaV1.EnsureSqlServerAsync(db);
                     // جداول/ستون‌های تقویم کاری و حضور — دیتابیس‌های قدیمی SQL Server این‌ها را ندارند:
                     // مایگریشن squash شده روی دیتابیسِ موجود «stamp و رد» می‌شود و جدول‌های جدید هرگز ساخته
                     // نمی‌شوند؛ نتیجه: صفحهٔ تقویم کاری بعد از انتشار خالی می‌ماند (معادل SQLite این خودتعمیر موجود است).

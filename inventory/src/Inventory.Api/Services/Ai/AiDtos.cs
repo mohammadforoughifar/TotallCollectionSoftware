@@ -10,6 +10,12 @@ public class AiHealthDto
     public bool ModelReachable { get; set; }
     public string ChatModel { get; set; } = "";
     public string? Error { get; set; }
+    /// <summary>آیا سرویس «تبدیل ویس به متن» تنظیم شده است؟ (Ai:TranscriptionModel + BaseUrl)</summary>
+    public bool TranscriptionConfigured { get; set; }
+
+    /// <summary>مدل گفتار به متن (خالی = تنظیم نشده).</summary>
+    public string? TranscriptionModel { get; set; }
+
 }
 
 public class AiChatRequest

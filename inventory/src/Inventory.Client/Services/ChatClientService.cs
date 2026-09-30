@@ -34,6 +34,8 @@ public interface IChatClientService
     Task<ChatSummaryDto> GetSummaryAsync();
     Task<ChatUploadResultDto> UploadAttachmentAsync(int conversationId, IBrowserFile file);
     Task<ChatUploadResultDto> UploadVoiceNoteAsync(int conversationId, byte[] data, string fileName, string contentType);
+    /// <summary>تبدیل پیام صوتی به متن؛ force=true رونویسی قبلی را دوباره انجام می‌دهد.</summary>
+    Task<ChatMessageDto> TranscribeVoiceMessageAsync(int messageId, bool force = false);
     string GetFileUrl(int messageId, bool preview = false);
     Task EnsureFileTokenAsync();
     bool IsConnected { get; }
@@ -210,6 +212,13 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
     }
 
     /// <summary>آپلود پیام صوتی ضبط‌شده در مرورگر (بایت خام MediaRecorder).</summary>
+    /// <summary>
+    /// تبدیل ویس به متن: رونویسی سمت سرور انجام و روی همان پیام ذخیره می‌شود؛
+    /// پیام به‌روزشده برمی‌گردد (شامل Transcript) تا فوراً در حباب نمایش داده شود.
+    /// </summary>
+    public Task<ChatMessageDto> TranscribeVoiceMessageAsync(int messageId, bool force = false) =>
+        _api.PostLongAsync<ChatMessageDto>($"api/chat/messages/{messageId}/transcribe" + (force ? "?force=true" : ""), new { });
+
     public async Task<ChatUploadResultDto> UploadVoiceNoteAsync(int conversationId, byte[] data, string fileName, string contentType)
     {
         if (data == null || data.Length == 0) throw new ApiException("فایل صوتی خالی است.");

@@ -2954,3 +2954,31 @@ button.nav-toggle.nav-sub-toggle > span:first-child { color: inherit; }
 button.nav-toggle.nav-sub-toggle.open > span:first-child { color: #7dd3fc; }
 .nav-sub-items { overflow: hidden; border-inline-start: 2px solid rgba(96, 165, 250, .28); margin-inline-start: 1.1rem; margin-inline-end: .2rem; }
 .nav-sub-items .nav-link { padding-inline-start: .9rem; animation: navOpen .18s ease both; }
+
+/* ===== تبدیل ویس به متن (رونویسی پیام صوتی) ===== */
+.voice-transcript-block { margin-top: .25rem; }
+.voice-stt-btn {
+    display: inline-flex; align-items: center; gap: .35rem;
+    border-radius: 14px; font-size: .78rem; padding: .2rem .7rem;
+    border-color: #cbd5e1; color: #475569; background: #fff;
+}
+.voice-stt-btn:hover { background: #f1f5f9; }
+.voice-transcript {
+    border: 1px solid #dbeafe; background: #f8fafc;
+    border-inline-start: 3px solid #2563eb;
+    border-radius: 12px; padding: .45rem .6rem; margin-top: .2rem;
+}
+.voice-transcript .vt-head {
+    display: flex; align-items: center; justify-content: space-between; gap: .4rem;
+    font-size: .72rem; color: #2563eb; margin-bottom: .15rem;
+}
+.voice-transcript .vt-title { display: inline-flex; align-items: center; gap: .3rem; font-weight: 700; }
+.voice-transcript .vt-actions { display: inline-flex; align-items: center; gap: .15rem; }
+.voice-transcript .vt-text { font-size: .84rem; line-height: 1.9; color: #0f172a; white-space: pre-wrap; word-break: break-word; }
+.voice-transcript .vt-time { margin-top: .15rem; }
+.btn-icon-xs {
+    border: 0; background: transparent; color: #64748b; padding: .1rem .25rem;
+    border-radius: 8px; line-height: 1;
+}
+.btn-icon-xs:hover { background: #e2e8f0; color: #0f172a; }
+.btn-icon-xs:disabled { opacity: .55; }

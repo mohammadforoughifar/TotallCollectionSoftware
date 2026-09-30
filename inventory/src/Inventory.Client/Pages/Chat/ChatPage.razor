@@ -367,6 +367,59 @@
                                         else if (msg.MessageType == ChatMessageTypeDto.Audio)
                                         {
                                             <audio controls preload="none" class="w-100 mt-1" src="@Chat.GetFileUrl(msg.Id, true)"></audio>
+                                            @* تبدیل ویس به متن: متن رونویسی‌شده + دکمهٔ تبدیل/تبدیل دوباره *@
+                                            <div class="voice-transcript-block">
+                                                @if (!string.IsNullOrWhiteSpace(msg.Transcript))
+                                                {
+                                                    <div class="voice-transcript" data-testid="voice-transcript">
+                                                        <div class="vt-head">
+                                                            <span class="vt-title"><i class="bi bi-file-text"></i> متن پیام صوتی</span>
+                                                            <span class="vt-actions">
+                                                                <button type="button" class="btn-icon-xs" title="کپی متن"
+                                                                        @onclick="() => CopyTranscript(msg.Transcript!)">
+                                                                    <i class="bi bi-clipboard"></i>
+                                                                </button>
+                                                                <button type="button" class="btn-icon-xs" title="تبدیل دوباره به متن"
+                                                                        disabled="@IsTranscribing(msg.Id)"
+                                                                        @onclick="() => TranscribeVoice(msg, force: true)">
+                                                                    @if (IsTranscribing(msg.Id))
+                                                                    {
+                                                                        <span class="spinner-border spinner-border-sm"></span>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <i class="bi bi-arrow-repeat"></i>
+                                                                    }
+                                                                </button>
+                                                            </span>
+                                                        </div>
+                                                        <div class="vt-text">@msg.Transcript</div>
+                                                        @if (msg.TranscribedAt.HasValue)
+                                                        {
+                                                            <div class="vt-time fs-9 text-muted">تبدیل‌شده: @msg.TranscribedAt.Value.ToString("HH:mm")</div>
+                                                        }
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="btn btn-sm btn-outline-secondary voice-stt-btn"
+                                                            disabled="@IsTranscribing(msg.Id)"
+                                                            @onclick="() => TranscribeVoice(msg, force: false)"
+                                                            data-testid="@($"voice-transcribe-{msg.Id}")"
+                                                            title="تبدیل این پیام صوتی به متن">
+                                                        @if (IsTranscribing(msg.Id))
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm ms-1"></span>
+                                                            <span>در حال تبدیل…</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-file-earmark-text"></i>
+                                                            <span>تبدیل به متن</span>
+                                                        }
+                                                    </button>
+                                                }
+                                            </div>
                                         }
                                         else if (msg.MessageType == ChatMessageTypeDto.Video)
                                         {
@@ -888,6 +941,11 @@
     private int recordingSeconds;
     private bool sttListening;
     private DotNetObjectReference<ChatPage>? voiceSelf;
+
+    // ---- تبدیل ویس به متن (رونویسی) ----
+    /// <summary>پیام‌هایی که همین حالا در حال تبدیل به متن هستند (برای اسپینر و قفل دکمه).</summary>
+    private readonly HashSet<int> transcribingIds = new();
+    private bool IsTranscribing(int messageId) => transcribingIds.Contains(messageId);
 
     /// <summary>خروجی JSON ضبط صدا از chat-interop.js (کلیدها باید camelCase بمانند).</summary>
     private sealed class VoiceRecordingDto
@@ -1441,6 +1499,54 @@
             isSending = false;
             recordingSeconds = 0;
             if (!disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// تبدیل پیام صوتی به متن (رونویسی سمت سرور با مدل گفتار به متن).
+    /// force=true برای «تبدیل دوباره» است. متن روی همان پیام ذخیره می‌شود و برای
+    /// بقیهٔ اعضای گفتگو هم به‌صورت زنده (MessageUpdated) نمایش داده می‌شود.
+    /// </summary>
+    private async Task TranscribeVoice(ChatMessageDto msg, bool force)
+    {
+        if (disposed || msg == null || msg.MessageType != ChatMessageTypeDto.Audio) return;
+        if (!transcribingIds.Add(msg.Id)) return;
+        try
+        {
+            await InvokeAsync(StateHasChanged);
+            var updated = await Chat.TranscribeVoiceMessageAsync(msg.Id, force);
+            if (disposed) return;
+            UpsertMessage(updated);
+            var text = updated.Transcript ?? string.Empty;
+            Toast.Success(text.Length > 0 ? "متن پیام صوتی ساخته شد." : "متنی برای این پیام صوتی پیدا نشد.");
+        }
+        catch (ApiException ex)
+        {
+            if (!disposed) Toast.Error(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            if (!disposed) Toast.Error("تبدیل به متن ناموفق بود: " + ex.Message);
+        }
+        finally
+        {
+            transcribingIds.Remove(msg.Id);
+            if (!disposed) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>کپی متن رونویسی‌شده در کلیپ‌بورد (مثل بقیهٔ صفحه‌های سامانه).</summary>
+    private async Task CopyTranscript(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Toast.Success("متن پیام صوتی کپی شد.");
+        }
+        catch
+        {
+            // مرورگرهای بدون مجوز کلیپ‌بورد: متن را در یک برچسب انتخاب‌شده بگذار
+            Toast.Info(text);
         }
     }
 

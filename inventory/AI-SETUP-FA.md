@@ -79,6 +79,48 @@ ollama pull bge-m3
 
 ---
 
+
+---
+
+## ۲.۵. تبدیل ویس پیام‌رسان به متن (اختیاری ولی پیشنهادی)
+
+پیام‌های صوتی چت با یک دکمهٔ «تبدیل به متن» رونویسی می‌شوند. این قابلیت **از مدل گفتگو جدا
+است**؛ چون Ollama فعلاً endpoint رونویسی ندارد، سه کلید اختصاصی دارد:
+
+```jsonc
+"Ai": {
+  "TranscriptionModel": "whisper-1",                     // اجباری برای فعال شدن
+  "TranscriptionBaseUrl": "https://api.openai.com/v1",   // خالی = همان BaseUrl
+  "TranscriptionApiKey": "sk-...",                       // خالی = همان ApiKey
+  "TranscriptionLanguage": "fa",                         // خالی = تشخیص خودکار
+  "TranscriptionMaxMegabytes": 24
+}
+```
+
+معادل متغیر محیطی (برای استقرار بدون فایل تنظیمات):
+
+```
+Ai__TranscriptionModel=whisper-1
+Ai__TranscriptionBaseUrl=https://api.openai.com/v1
+Ai__TranscriptionApiKey=sk-...
+```
+
+### گزینه‌های پیشنهادی
+
+| گزینه | مقدارها | توضیح |
+|---|---|---|
+| **لوکال و رایگان** (پیشنهاد برای داده‌ی سازمانی) | `TranscriptionBaseUrl = http://localhost:8000/v1` و مدل مثل `Systran/faster-whisper-large-v3` | سرور `faster-whisper-server` یا `speaches` با قرارداد OpenAI؛ صدا از سازمان خارج نمی‌شود. اجرای داکری نمونه: `docker run -p 8000:8000 fedirz/faster-whisper-server:latest-cpu` |
+| OpenAI | مدل `whisper-1` یا `gpt-4o-transcribe` | کیفیت بالا، نیاز به اینترنت و کلید |
+| Groq | مدل `whisper-large-v3` | سریع و ارزان |
+
+### نکته‌های عملی
+
+- زبان پیش‌فرض `fa` است؛ برای فایل‌های انگلیسی مقدار را خالی (تشخیص خودکار) بگذارید.
+- رونویسی فقط **یک‌بار** انجام و در دیتابیس ذخیره می‌شود؛ دکمهٔ «تبدیل دوباره» برای اصلاح وجود دارد.
+- متن رونویسی‌شده در جست‌وجوی پیام‌ها هم می‌آید.
+- وضعیت تنظیم بودن سرویس: `GET /api/ai/health` → فیلدهای `transcriptionConfigured` و `transcriptionModel`.
+- حجم فایل صوتی برای رونویسی محدود است (پیش‌فرض ۲۴MB)؛ سرویس‌های ابری معمولاً سقف ۲۵MB دارند.
+
 ## ۳. تنظیمات
 
 بخش `Ai` در `src/Inventory.Api/appsettings.json` (مقادیر پیش‌فرض برای Ollama لوکال آماده است):

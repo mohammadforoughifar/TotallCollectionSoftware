@@ -37,6 +37,8 @@ public interface IChatService
     Task RemoveMemberFromGroupAsync(int currentUserId, string currentUserName, int conversationId, int targetUserId);
     Task TogglePinConversationAsync(int currentUserId, int conversationId);
     Task ToggleMuteConversationAsync(int currentUserId, int conversationId);
+    /// <summary>تبدیل پیام صوتی به متن (رونویسی). force=true رونویسی قبلی را نادیده می‌گیرد.</summary>
+    Task<ChatMessageDto> TranscribeVoiceMessageAsync(int currentUserId, int messageId, bool force = false, CancellationToken ct = default);
 }
 
 public class ChatService : IChatService
@@ -46,14 +48,17 @@ public class ChatService : IChatService
     private readonly ILogger<ChatService> _logger;
     private readonly ChatAttachmentService _files;
     private readonly AiReplyQueue _aiQueue;
+    private readonly IAiTranscriptionClient _transcriber;
 
-    public ChatService(AppDbContext db, IChatRealtimeNotifier notifier, ILogger<ChatService> logger, ChatAttachmentService files, AiReplyQueue aiQueue)
+    public ChatService(AppDbContext db, IChatRealtimeNotifier notifier, ILogger<ChatService> logger, ChatAttachmentService files,
+        AiReplyQueue aiQueue, IAiTranscriptionClient transcriber)
     {
         _db = db;
         _notifier = notifier;
         _logger = logger;
         _files = files;
         _aiQueue = aiQueue;
+        _transcriber = transcriber;
     }
 
     public async Task<List<ChatConversationDto>> GetConversationsAsync(int currentUserId, string? search = null,
@@ -423,8 +428,10 @@ public class ChatService : IChatService
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim().ToLowerInvariant();
+            // متنِ رونویسی‌شدهٔ پیام‌های صوتی هم جست‌وجو می‌شود تا وویس‌ها هم قابل پیدا شدن باشند.
             q = q.Where(m => (m.Text != null && m.Text.ToLower().Contains(s)) ||
                              (m.FileName != null && m.FileName.ToLower().Contains(s)) ||
+                             (m.Transcript != null && m.Transcript.ToLower().Contains(s)) ||
                              (m.ErpEntityTitle != null && m.ErpEntityTitle.ToLower().Contains(s)));
         }
 
@@ -927,6 +934,80 @@ public class ChatService : IChatService
         await _db.SaveChangesAsync();
     }
 
+    /// <summary>
+    /// تبدیل پیام صوتی به متن (رونویسی) و ذخیره روی همان پیام.
+    /// • دسترسی با همان قاعدهٔ دانلود فایل بررسی می‌شود (عضو بودن در گفتگو).
+    /// • اگر متن قبلاً ساخته شده باشد، بدون تماس دوباره با مدل برگردانده می‌شود (force=false).
+    /// • بعد از ذخیره، رویداد MessageUpdated برای همهٔ اعضا منتشر می‌شود تا متن برای
+    ///   بقیه هم بدون رفرش دیده شود.
+    /// </summary>
+    public async Task<ChatMessageDto> TranscribeVoiceMessageAsync(int currentUserId, int messageId, bool force = false, CancellationToken ct = default)
+    {
+        var msg = await _db.ChatMessages.FirstOrDefaultAsync(m => m.Id == messageId && !m.IsDeleted, ct)
+            ?? throw new KeyNotFoundException("پیام پیدا نشد.");
+
+        var myMem = await _db.ChatMembers.AsNoTracking()
+            .FirstOrDefaultAsync(m => m.ConversationId == msg.ConversationId && m.UserId == currentUserId, ct);
+        if (myMem == null) throw new UnauthorizedAccessException("شما عضو این گفتگو نیستید.");
+
+        if (msg.MessageType != ChatMessageTypeDto.Audio)
+            throw new ArgumentException("تبدیل به متن فقط برای پیام‌های صوتی انجام می‌شود.");
+
+        // کش: تبدیل قبلی موجود است و کاربر «تبدیل دوباره» نخواسته.
+        if (!force && !string.IsNullOrWhiteSpace(msg.Transcript))
+            return MapToMessageDto(msg, currentUserId, await PeerLastReadIdAsync(msg.ConversationId, currentUserId, ct));
+
+        // مسیر فایل با کنترل عضویت (همان تابعی که برای پیش‌نمایش/دانلود استفاده می‌شود).
+        ChatFileResult file;
+        try
+        {
+            file = await _files.GetMessageFileAsync(currentUserId, messageId);
+        }
+        catch (KeyNotFoundException)
+        {
+            throw new InvalidOperationException("فایل صوتی این پیام روی سرور پیدا نشد؛ امکان تبدیل به متن نیست.");
+        }
+
+        var info = new FileInfo(file.Path);
+        if (!info.Exists) throw new InvalidOperationException("فایل صوتی این پیام روی سرور پیدا نشد؛ امکان تبدیل به متن نیست.");
+        if (info.Length > _transcriber.MaxBytes)
+            throw new InvalidOperationException($"حجم فایل صوتی برای تبدیل به متن زیاد است (بیشتر از {_transcriber.MaxBytes / 1024 / 1024} مگابایت).");
+
+        var audio = await File.ReadAllBytesAsync(file.Path, ct);
+        var result = await _transcriber.TranscribeAsync(audio, file.FileName, file.ContentType, ct);
+        if (!result.Ok)
+            throw new InvalidOperationException(result.Error ?? "تبدیل پیام صوتی به متن ناموفق بود.");
+
+        msg.Transcript = result.Text!.Trim();
+        msg.TranscribedAt = DateTime.Now;
+        await _db.SaveChangesAsync(ct);
+
+        var dto = MapToMessageDto(msg, currentUserId, 0);
+        try
+        {
+            var memberUserIds = await _db.ChatMembers.AsNoTracking()
+                .Where(m => m.ConversationId == msg.ConversationId)
+                .Select(m => m.UserId)
+                .ToListAsync(ct);
+            await _notifier.NotifyMessageUpdatedAsync(msg.ConversationId, memberUserIds, dto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "رونویسی پیام {MessageId} ذخیره شد ولی انتشار رویداد ناموفق بود.", msg.Id);
+        }
+
+        return dto;
+    }
+
+    private async Task<int> PeerLastReadIdAsync(int conversationId, int currentUserId, CancellationToken ct)
+    {
+        var peer = await _db.ChatMembers.AsNoTracking()
+            .Where(m => m.ConversationId == conversationId && m.UserId != currentUserId)
+            .OrderByDescending(m => m.LastReadMessageId)
+            .FirstOrDefaultAsync(ct);
+        return peer?.LastReadMessageId ?? 0;
+    }
+
     private static ChatMessageDto MapToMessageDto(ChatMessage m, int currentUserId, int peerLastReadId)
     {
         return new ChatMessageDto
@@ -942,6 +1023,8 @@ public class ChatService : IChatService
             FileName = m.FileName,
             FileSizeBytes = m.FileSizeBytes,
             FileContentType = m.FileContentType,
+            Transcript = m.Transcript,
+            TranscribedAt = m.TranscribedAt,
             ReplyToMessageId = m.ReplyToMessageId,
             ReplyToSenderName = m.ReplyToSenderName,
             ReplyToSnippet = m.ReplyToSnippet,

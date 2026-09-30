@@ -116,6 +116,13 @@ public class ChatMessage
     [MaxLength(100)]
     public string? FileContentType { get; set; }
 
+    // ---- تبدیل ویس به متن (رونویسی پیام صوتی) ----
+    /// <summary>متنِ رونویسی‌شدهٔ پیام صوتی؛ خالی = هنوز تبدیل نشده.</summary>
+    public string? Transcript { get; set; }
+
+    /// <summary>زمان آخرین رونویسی (برای نمایش «آخرین تبدیل» و تبدیل دوباره).</summary>
+    public DateTime? TranscribedAt { get; set; }
+
     // ریپلای و فوروارد
     public int? ReplyToMessageId { get; set; }
 

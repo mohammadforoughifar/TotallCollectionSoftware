@@ -223,7 +223,23 @@ public class ChatController : ControllerBase
         FileResponseAsync(() => _files.GetAttachmentAsync(CurrentUserId, id), false);
 
     /// <summary>
-    /// ابزار تشخیصی فایل‌های پیام‌رسان (فقط مدیر): مسیر مؤثر ذخیره، دسترسی نوشتن، شمارش فایل‌ها
+    /// تبدیل پیام صوتی به متن (رونویسی). با <c>?force=true</c> رونویسی قبلی دوباره انجام می‌شود.
+    /// خطاها با پیام فارسیِ قابل‌نمایش برمی‌گردند تا کاربر بداند مشکل تنظیمات است یا فایل.
+    /// </summary>
+    [HttpPost("messages/{id:int}/transcribe")]
+    public async Task<ActionResult<ChatMessageDto>> TranscribeMessage(int id, [FromQuery] bool force = false, CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _chatService.TranscribeVoiceMessageAsync(CurrentUserId, id, force, ct));
+        }
+        catch (UnauthorizedAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
+        catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
+        catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
+        catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    /// <summary>ابزار تشخیصی فایل‌های پیام‌رسان (فقط مدیر): مسیر مؤثر ذخیره، دسترسی نوشتن، شمارش فایل‌ها
     /// و نمونهٔ آخرین پیوست‌ها همراه با اینکه در کدام مسیر موجودند. برای یافتن علت
     /// «فایل پیوست روی سرور یافت نشد.» بدون دسترسی به سرور.
     /// </summary>

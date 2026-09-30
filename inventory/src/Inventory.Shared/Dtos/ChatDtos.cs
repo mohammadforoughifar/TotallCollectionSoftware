@@ -84,6 +84,10 @@ public class ChatMessageDto
     public long? FileSizeBytes { get; set; }
     public string? FileContentType { get; set; }
 
+    // تبدیل ویس به متن (فقط برای پیام‌های صوتی پر می‌شود)
+    public string? Transcript { get; set; }
+    public DateTime? TranscribedAt { get; set; }
+
     // ریپلای و فوروارد
     public int? ReplyToMessageId { get; set; }
     public string? ReplyToSenderName { get; set; }
@@ -224,6 +228,16 @@ public class ChatUploadResultDto
     public long FileSizeBytes { get; set; }
     public string FileContentType { get; set; } = "";
     public ChatMessageTypeDto MessageType { get; set; } = ChatMessageTypeDto.File;
+}
+
+/// <summary>نتیجهٔ «تبدیل ویس به متن» برای یک پیام صوتی.</summary>
+public class ChatTranscriptResultDto
+{
+    public int MessageId { get; set; }
+    public string Transcript { get; set; } = "";
+    public DateTime TranscribedAt { get; set; }
+    /// <summary>اگر متن قبلاً وجود داشت و از دیتابیس برگشت (بدون تماس دوباره با مدل).</summary>
+    public bool FromCache { get; set; }
 }
 
 public static class ChatFileLimits

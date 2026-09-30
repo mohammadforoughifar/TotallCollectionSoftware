@@ -61,7 +61,14 @@ public class AiController : RbacControllerBase
     public async Task<IActionResult> Health(CancellationToken ct)
     {
         if (await ForbiddenUnlessAsync(Module, "Use") is { } forbidden) return forbidden;
-        var dto = new AiHealthDto { Enabled = _options.Enabled, ChatModel = _options.ChatModel };
+        var dto = new AiHealthDto
+        {
+            Enabled = _options.Enabled,
+            ChatModel = _options.ChatModel,
+            // وضعیت «تبدیل ویس پیام‌رسان به متن»: برای نمایش در تنظیمات/عیب‌یابی
+            TranscriptionConfigured = _options.TranscriptionReady,
+            TranscriptionModel = string.IsNullOrWhiteSpace(_options.TranscriptionModel) ? null : _options.TranscriptionModel
+        };
         if (_options.Enabled)
         {
             var (ok, error) = await _chat.CheckHealthAsync(ct);

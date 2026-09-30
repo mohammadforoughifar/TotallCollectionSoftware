@@ -340,6 +340,7 @@ builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
 builder.Services.AddHttpClient("ai", c => c.Timeout = Timeout.InfiniteTimeSpan);
 builder.Services.AddScoped<IAiChatClient, OpenAiCompatibleChatClient>();
 builder.Services.AddScoped<IAiEmbeddingClient, OpenAiCompatibleEmbeddingClient>();
+builder.Services.AddScoped<IAiTranscriptionClient, OpenAiCompatibleTranscriptionClient>(); // تبدیل ویس پیام‌رسان به متن
 builder.Services.AddScoped<AiConversationService>();
 builder.Services.AddScoped<AiKnowledgeService>();
 builder.Services.AddScoped<AiToolRegistry>();

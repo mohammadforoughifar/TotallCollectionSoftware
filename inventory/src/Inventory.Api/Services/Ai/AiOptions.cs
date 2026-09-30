@@ -26,6 +26,43 @@ public class AiOptions
     /// <summary>مدل امبدینگ برای جستجوی معنایی — پیشنهاد لوکال: bge-m3 (چندزبانه، فارسی خوب).</summary>
     public string EmbeddingModel { get; set; } = "bge-m3";
 
+    /// <summary>
+    /// مدل تبدیل گفتار به متن (رونویسی پیام‌های صوتی پیام‌رسان).
+    /// قرارداد OpenAI: <c>POST {BaseUrl}/audio/transcriptions</c> — نمونه‌ها:
+    /// OpenAI: whisper-1 یا gpt-4o-transcribe | Groq: whisper-large-v3 |
+    /// سرور لوکال faster-whisper/speaches: هر نام مدلی که آن سرویس قبول کند.
+    /// ⚠️ Ollama فعلی endpoint رونویسی ندارد؛ اگر سرور شما فقط Ollama دارد،
+    /// این سه مقدار Transcription* را به یک سرویس رونویسی جدا وصل کنید.
+    /// </summary>
+    public string TranscriptionModel { get; set; } = "";
+
+    /// <summary>آدرس پایهٔ سرویس رونویسی؛ خالی = همان BaseUrl گفتگو استفاده می‌شود.</summary>
+    public string TranscriptionBaseUrl { get; set; } = "";
+
+    /// <summary>کلید سرویس رونویسی؛ خالی = همان ApiKey گفتگو استفاده می‌شود.</summary>
+    public string TranscriptionApiKey { get; set; } = "";
+
+    /// <summary>
+    /// زبان اجباری رونویسی (ISO-639-1). پیش‌فرض fa برای فارسی؛
+    /// خالی بگذارید تا مدل خودش زبان را تشخیص دهد.
+    /// </summary>
+    public string TranscriptionLanguage { get; set; } = "fa";
+
+    /// <summary>سقف حجم فایل صوتی برای رونویسی (مگابایت) — سرویس‌های ابری معمولاً ~۲۵MB.</summary>
+    public int TranscriptionMaxMegabytes { get; set; } = 24;
+
+    /// <summary>آدرس مؤثر سرویس رونویسی (پایهٔ جدا یا همان گفتگو).</summary>
+    public string NormalizedTranscriptionBaseUrl =>
+        ((string.IsNullOrWhiteSpace(TranscriptionBaseUrl) ? BaseUrl : TranscriptionBaseUrl) ?? "").Trim().TrimEnd('/');
+
+    /// <summary>کلید مؤثر سرویس رونویسی (کلید جدا یا همان کلید گفتگو).</summary>
+    public string EffectiveTranscriptionApiKey =>
+        string.IsNullOrWhiteSpace(TranscriptionApiKey) ? (ApiKey ?? "") : TranscriptionApiKey.Trim();
+
+    /// <summary>آیا رونویسی عملاً قابل استفاده است؟ (سرویس و مدل معرفی شده باشند)</summary>
+    public bool TranscriptionReady =>
+        Enabled && !string.IsNullOrWhiteSpace(TranscriptionModel) && NormalizedTranscriptionBaseUrl.Length > 0;
+
     /// <summary>تایم‌اوت هر درخواست به مدل (ثانیه). مدل لوکال روی CPU ممکن است کند باشد.</summary>
     public int TimeoutSeconds { get; set; } = 180;
 
