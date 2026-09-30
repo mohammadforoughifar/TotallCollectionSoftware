@@ -19,7 +19,7 @@
    ریل پوشه‌ها | لیست نامه‌ها با چیپ فیلتر | صفحه خواندن
    ============================================================ *@
 
-<div class="ltx @(readerOpen ? "rd-open" : "")" style="animation:none;transform:none">
+<div class="ltx @(readerOpen ? "rd-open" : "") @(folder == "guide" ? "guide-open" : "")" style="animation:none;transform:none">
     <div class="shell" @onclick="CloseMenus">
 
         @* ---------- ریل پوشه‌ها ---------- *@
@@ -41,9 +41,20 @@
             <span class="rlbl">نشان‌شده</span>
             <button class="@(folder == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetFolder("archive")'><i class="bi bi-archive"></i></button>
             <span class="rlbl">بایگانی</span>
+            <button class="@(folder == "guide" ? "on" : "")" title="راهنمای نامه داخلی" @onclick='() => SetFolder("guide")'><i class="bi bi-journal-check"></i></button>
+            <span class="rlbl">راهنما</span>
             <div class="grow"></div>
         </nav>
 
+        @if (folder == "guide")
+        {
+            @* راهنمای نامه داخلی داخل خود کارتابل و هم‌سطح پوشه‌های آن *@
+            <section class="guide-workspace">
+                <InnerLetterGuide OnBack="BackFromGuide" />
+            </section>
+        }
+        else
+        {
         @* ---------- لیست ---------- *@
         <section class="pane">
             <div class="pane-head">
@@ -493,6 +504,7 @@
                 }
             </div>
         </main>
+        }
     </div>
 
     @* ---------- مودال پاسخ ---------- *@
@@ -646,7 +658,8 @@
 
     private string FolderTitle => folder switch
     {
-        "sent" => "ارسالی", "draft" => "پیش‌نویس‌ها", "starred" => "نشان‌شده‌ها", "archive" => "بایگانی", _ => "دریافتی"
+        "sent" => "ارسالی", "draft" => "پیش‌نویس‌ها", "starred" => "نشان‌شده‌ها",
+        "archive" => "بایگانی", "guide" => "راهنما", _ => "دریافتی"
     };
 
     private List<InnerLetterListItemDto> BaseItems =>
@@ -711,7 +724,7 @@
 
         var uri = new Uri(Nav.Uri);
         var qs = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        if (!string.IsNullOrEmpty(Tab) && Tab is "inbox" or "sent" or "draft" or "starred" or "archive")
+        if (!string.IsNullOrEmpty(Tab) && Tab is "inbox" or "sent" or "draft" or "starred" or "archive" or "guide")
             folder = Tab;
 
         await ReloadAsync();
@@ -771,7 +784,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrEmpty(Tab) && Tab != folder && Tab is "inbox" or "sent" or "draft" or "starred" or "archive")
+        if (!string.IsNullOrEmpty(Tab) && Tab != folder && Tab is "inbox" or "sent" or "draft" or "starred" or "archive" or "guide")
         {
             folder = Tab;
             await ReloadAsync();
@@ -792,6 +805,14 @@
         loading = true;
         try
         {
+            if (folder == "guide")
+            {
+                // راهنما دادهٔ کارتابل ندارد؛ فقط شمارنده ریل را تازه نگه می‌داریم.
+                stats = await LetterSvc.GetStatsAsync();
+                totalServerCount = 0;
+                return;
+            }
+
             var s = string.IsNullOrWhiteSpace(search) ? null : search;
             var unread = filter == "unread" ? (bool?)true : null;
             if (folder == "draft")
@@ -871,10 +892,17 @@
         };
     }
 
+    private Task BackFromGuide() => SetFolder("inbox");
+
     private async Task SetFolder(string f)
     {
         folder = f; filter = "all"; search = ""; openMenuId = 0; page = 1;
         selected = null; selectedItem = null; readerOpen = false;
+        if (f == "guide")
+        {
+            loading = false;
+            return;
+        }
         await ReloadAsync();
     }
 
