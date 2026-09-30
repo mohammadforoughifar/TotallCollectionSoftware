@@ -1,3 +1,4 @@
+@page "/personal-settings/letter-groups"
 @page "/settings/letter-groups"
 @using Inventory.Shared.Dtos
 @inject ILetterService Letters
@@ -6,7 +7,7 @@
 
 <PageTitle>گروه‌های گیرندگان نامه</PageTitle>
 
-@if (!Auth.Has("InnerLetters.Create"))
+@if (!Auth.Has("PersonalSettings.ManageLetterGroups") && !Auth.Has("InnerLetters.Create"))
 {
     <div class="alert alert-danger">شما مجوز مدیریت گروه‌های گیرندگان را ندارید.</div>
     return;

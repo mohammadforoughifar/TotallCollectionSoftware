@@ -42,6 +42,31 @@
         </div>
     }
 
+    @* ============ تنظیمات شخصی کاربر ============ *@
+    @if (Auth.CanSee("PersonalSettings"))
+    {
+        <div class="nav-group group-personal-settings">
+            <button type="button" class="nav-section-title nav-toggle @(gMisc ? "open" : "")" @onclick="() => gMisc = !gMisc">
+                <span><i class="bi bi-person-gear"></i> تنظیمات شخصی کاربر</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gMisc)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="personal-settings" @onclick="NotifyClose">
+                        <i class="bi bi-person-gear"></i><span>تنظیمات شخصی</span>
+                    </NavLink>
+                    @if (Auth.Has("PersonalSettings.ManageLetterGroups"))
+                    {
+                        <NavLink class="nav-link" href="personal-settings/letter-groups" @onclick="NotifyClose">
+                            <i class="bi bi-people"></i><span>گروه‌های گیرندگان نامه</span>
+                        </NavLink>
+                    }
+                </div>
+            }
+        </div>
+    }
+
     @* ============ داشبوردها — گروه فقط وقتی رندر می‌شود که حداقل یک آیتمش مجوز مشاهده داشته باشد ============ *@
     @if (ShowDashGroup)
     {
@@ -599,12 +624,6 @@
                     {
                         <NavLink class="nav-link" href="settings/letter-structure" @onclick="NotifyClose">
                             <i class="bi bi-diagram-2"></i><span>ساختار شماره نامه</span>
-                        </NavLink>
-                    }
-                    @if (Auth.Has("InnerLetters.Create"))
-                    {
-                        <NavLink class="nav-link" href="settings/letter-groups" @onclick="NotifyClose">
-                            <i class="bi bi-people"></i><span>گروه‌های گیرندگان نامه</span>
                         </NavLink>
                     }
                     <NavLink class="nav-link" href="settings/audit-log" @onclick="NotifyClose">

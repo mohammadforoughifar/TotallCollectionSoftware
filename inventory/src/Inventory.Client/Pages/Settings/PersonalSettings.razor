@@ -1,0 +1,88 @@
+@page "/personal-settings"
+@using Inventory.Shared.Dtos
+@inject IAuthState Auth
+@inject IAuthApi AuthApi
+@inject IToastService Toast
+@inject NavigationManager Nav
+
+<PageTitle>تنظیمات شخصی کاربر</PageTitle>
+
+@if (!Auth.CanSee("PersonalSettings"))
+{
+    <div class="alert alert-danger">شما مجوز دسترسی به تنظیمات شخصی را ندارید.</div>
+    return;
+}
+
+<div class="page-head">
+    <div>
+        <h1><i class="bi bi-person-gear text-primary me-2"></i>تنظیمات شخصی کاربر</h1>
+        <p class="lead">تنظیمات مربوط به حساب کاربری و گروه‌های شخصی گیرندگان نامه</p>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-6">
+        <div class="card shadow-sm border-0">
+            <div class="card-header fw-bold"><i class="bi bi-key me-2"></i>تغییر رمز عبور</div>
+            <div class="card-body">
+                <label class="form-label">رمز عبور فعلی</label>
+                <input class="form-control mb-3" type="password" autocomplete="current-password" @bind="currentPassword" />
+                <label class="form-label">رمز عبور جدید</label>
+                <input class="form-control mb-3" type="password" autocomplete="new-password" @bind="newPassword" />
+                <label class="form-label">تکرار رمز عبور جدید</label>
+                <input class="form-control mb-3" type="password" autocomplete="new-password" @bind="confirmPassword" />
+                <button class="btn btn-primary" disabled="@saving" @onclick="ChangePassword">
+                    @(saving ? "در حال ذخیره..." : "تغییر رمز عبور")
+                </button>
+            </div>
+        </div>
+    </div>
+    @if (Auth.Has("PersonalSettings.ManageLetterGroups"))
+    {
+        <div class="col-12 col-lg-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header fw-bold"><i class="bi bi-people me-2"></i>گروه‌های گیرندگان نامه</div>
+                <div class="card-body d-flex flex-column">
+                    <p class="text-muted">گروه‌های شخصی خود را برای استفاده سریع در نامه‌ها مدیریت کنید.</p>
+                    <button class="btn btn-outline-primary mt-auto align-self-start" @onclick="() => Nav.NavigateTo("/personal-settings/letter-groups")">
+                        مدیریت گروه‌های گیرندگان
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private string currentPassword = "";
+    private string newPassword = "";
+    private string confirmPassword = "";
+    private bool saving;
+
+    private async Task ChangePassword()
+    {
+        if (string.IsNullOrWhiteSpace(currentPassword) || string.IsNullOrWhiteSpace(newPassword))
+        {
+            Toast.Error("رمز فعلی و رمز جدید را وارد کنید.");
+            return;
+        }
+        if (newPassword != confirmPassword)
+        {
+            Toast.Error("رمز جدید و تکرار آن یکسان نیستند.");
+            return;
+        }
+        saving = true;
+        try
+        {
+            await AuthApi.ChangePasswordAsync(new ChangePasswordRequest
+            {
+                CurrentPassword = currentPassword,
+                NewPassword = newPassword
+            });
+            Toast.Success("رمز عبور با موفقیت تغییر کرد.");
+            currentPassword = newPassword = confirmPassword = "";
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+}

@@ -40,6 +40,8 @@ public static class RbacSeeder
         // Delete: حذف | Manage: تنظیم وضعیت‌ها/ماژول‌ها/اسپرینت | Assign: تخصیص به دیگران
         ["DevTeam"] = new[] { "View", "Create", "Update", "Delete", "Manage", "Assign" },
         ["Settings"] = CrudActions,
+        // تنظیمات شخصی کاربر: مشاهده صفحه، تغییر رمز و مدیریت گروه‌های شخصی گیرندگان نامه
+        ["PersonalSettings"] = new[] { "Read", "ChangePassword", "ManageLetterGroups" },
         ["Warehouses"] = CrudActions,
         // ================== ماژول انبارداری ==================
         // InvDocs: اسناد رسید و حواله — Confirm: قطعی‌سازی | Cancel: ابطال
