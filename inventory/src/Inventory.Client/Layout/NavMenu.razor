@@ -345,6 +345,52 @@
                         <i class="bi bi-cash-coin"></i><span>هزینه‌ها</span>
                     </NavLink>
                 }
+
+                @* ---------- زیرمنوی اطلاعات پایه (داخل عملیات) ---------- *@
+                @if (ShowOpsBaseSub)
+                {
+                    <div class="nav-sub">
+                        <button type="button" class="nav-toggle nav-sub-toggle @(gOpsBase ? "open" : "")" @onclick="() => gOpsBase = !gOpsBase">
+                            <span><i class="bi bi-database"></i>اطلاعات پایه</span>
+                            <i class="bi bi-chevron-down nav-chevron"></i>
+                        </button>
+                        @if (gOpsBase)
+                        {
+                            <div class="nav-sub-items">
+                                @if (Auth.CanSee("Products"))
+                                {
+                                    <NavLink class="nav-link" href="products" @onclick="NotifyClose">
+                                        <i class="bi bi-box-seam"></i><span>کالاها</span>
+                                    </NavLink>
+                                    <NavLink class="nav-link" href="categories" @onclick="NotifyClose">
+                                        <i class="bi bi-tags"></i><span>گروه‌های کالا</span>
+                                    </NavLink>
+                                    <NavLink class="nav-link" href="units" @onclick="NotifyClose">
+                                        <i class="bi bi-rulers"></i><span>واحدهای شمارش</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.CanSee("Warehouses"))
+                                {
+                                    <NavLink class="nav-link" href="warehouses" @onclick="NotifyClose">
+                                        <i class="bi bi-building"></i><span>انبارها</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.CanSee("Parties"))
+                                {
+                                    <NavLink class="nav-link" href="parties" @onclick="NotifyClose">
+                                        <i class="bi bi-people"></i><span>طرف حساب‌ها</span>
+                                    </NavLink>
+                                }
+                                @if (Auth.CanSee("Referrers"))
+                                {
+                                    <NavLink class="nav-link" href="referrers" @onclick="NotifyClose">
+                                        <i class="bi bi-person-badge"></i><span>معرف‌ها</span>
+                                    </NavLink>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
             </div>
         }
     </div>
@@ -504,42 +550,12 @@
     {
     <div class="nav-group group-base">
         <button type="button" class="nav-section-title nav-toggle @(gBase ? "open" : "")" @onclick="() => gBase = !gBase">
-            <span><i class="bi bi-database"></i>اطلاعات پایه</span>
+            <span><i class="bi bi-database"></i>سازمان و کیف پول</span>
             <i class="bi bi-chevron-down nav-chevron"></i>
         </button>
         @if (gBase)
         {
             <div class="nav-group-items">
-                @if (Auth.CanSee("Products"))
-                {
-                    <NavLink class="nav-link" href="products" @onclick="NotifyClose">
-                        <i class="bi bi-box-seam"></i><span>کالاها</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="categories" @onclick="NotifyClose">
-                        <i class="bi bi-tags"></i><span>گروه‌های کالا</span>
-                    </NavLink>
-                    <NavLink class="nav-link" href="units" @onclick="NotifyClose">
-                        <i class="bi bi-rulers"></i><span>واحدهای شمارش</span>
-                    </NavLink>
-                }
-                @if (Auth.CanSee("Warehouses"))
-                {
-                    <NavLink class="nav-link" href="warehouses" @onclick="NotifyClose">
-                        <i class="bi bi-building"></i><span>انبارها</span>
-                    </NavLink>
-                }
-                @if (Auth.CanSee("Parties"))
-                {
-                    <NavLink class="nav-link" href="parties" @onclick="NotifyClose">
-                        <i class="bi bi-people"></i><span>طرف حساب‌ها</span>
-                    </NavLink>
-                }
-                @if (Auth.CanSee("Referrers"))
-                {
-                    <NavLink class="nav-link" href="referrers" @onclick="NotifyClose">
-                        <i class="bi bi-person-badge"></i><span>معرف‌ها</span>
-                    </NavLink>
-                }
                 @if (Auth.CanSee("ReferrerWallets"))
                 {
                     <NavLink class="nav-link" href="referrer-wallets" @onclick="NotifyClose">
@@ -613,6 +629,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
+    private bool gOpsBase;
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
@@ -642,11 +659,13 @@
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
-    private bool ShowOpsGroup => ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses");
+    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers");
+    private bool ShowOpsGroup => ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
+                                                        "Products", "Warehouses", "Parties", "Referrers");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
-    private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties",
-                                                         "Referrers", "ReferrerWallets",
+    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «عملیات» رفتند.
+    private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");
     private bool ShowSysGroup => CanSeeSettings || Auth.CanSee("SystemUsers");
 
@@ -671,11 +690,13 @@
         gMisc = p.StartsWith("misc");
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
-        gOps = p.StartsWith("orders") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses");
+        gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
+                   p.StartsWith("warehouses") || p.StartsWith("parties") ||
+                   (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
+        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || gOpsBase;
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests");
         gReports = p.StartsWith("reports");
-        gBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
-                p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("referrer") ||
+        gBase = p.StartsWith("referrer-wallets") ||
                 p.StartsWith("system-company") || p.StartsWith("system-department");
         gSys = p.StartsWith("users") || p.StartsWith("settings") || p.StartsWith("my-");
         
