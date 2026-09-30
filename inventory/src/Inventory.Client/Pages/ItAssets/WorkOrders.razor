@@ -3162,14 +3162,14 @@ else
 
     private async Task UploadFile(int id, Microsoft.AspNetCore.Components.Forms.IBrowserFile f)
     {
-        // پیوست از طریق API جامع — /api/attachments/{module}/{refId}
+        // پیوست دستور کار: wwwroot/uploads/WorkOrders/{id}/
         try
         {
             using var content = new MultipartFormDataContent();
             var sc = new StreamContent(f.OpenReadStream(long.MaxValue));
             sc.Headers.ContentType = new MediaTypeHeaderValue(string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
             content.Add(sc, "file", f.Name);
-            await Http.PostAsync($"/api/attachments/WorkOrders/{id}", content);
+            await Http.PostAsync($"/api/workorders/{id}/attachments", content);
         }
         catch (Exception ex) { Toast.Error($"بارگذاری {f.Name} ناموفق: {ex.Message}"); }
     }

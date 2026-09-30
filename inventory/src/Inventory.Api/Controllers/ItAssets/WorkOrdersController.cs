@@ -1575,7 +1575,8 @@ public class WorkOrdersController : ControllerBase
         using var ms = new MemoryStream();
         await file.CopyToAsync(ms);
         ms.Position = 0;
-        var relPath = await _store.SaveAsync("itassets/workorders", id, ms, file.FileName);
+        // فایل‌های دستور کار در wwwroot/uploads/WorkOrders/{id}/ ذخیره می‌شوند.
+        var relPath = await _store.SaveAsync("WorkOrders", id, ms, file.FileName);
         _db.WorkOrderAttachments.Add(new WorkOrderAttachment
         {
             OrderId = id,
@@ -1591,11 +1592,11 @@ public class WorkOrdersController : ControllerBase
     }
 
     [HttpGet("attachments/{attId:int}/download")]
-    [AllowAnonymous]
     public async Task<IActionResult> Download(int attId)
     {
         var att = await _db.WorkOrderAttachments.FindAsync(attId);
-        if (att == null || !await _db.WorkOrders.AnyAsync(w => w.Id == att.OrderId)) return NotFound();
+        if (att == null) return NotFound();
+        if (!await CanSeeOrderAsync(att.OrderId)) return Forbid();
         var bytes = _store.ReadBytes(att.FilePath) ?? (att.Data is { Length: > 0 } ? att.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
         return File(bytes, att.ContentType, att.FileName);
