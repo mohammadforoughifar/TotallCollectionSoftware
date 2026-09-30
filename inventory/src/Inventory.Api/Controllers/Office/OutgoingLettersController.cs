@@ -28,7 +28,7 @@ public class OutgoingLettersController : RbacControllerBase
     private readonly ILogger<OutgoingLettersController> _logger;
 
     /// <summary>پوشه پیوست‌های نامه صادره در wwwroot/uploads/office/outgoingletter</summary>
-    private const string SadereFolder = "office/outgoingletter";
+    private const string SadereFolder = Module;
 
     public OutgoingLettersController(
         AppDbContext db,
