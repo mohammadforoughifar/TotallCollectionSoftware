@@ -718,10 +718,10 @@ public class EmailService : IEmailService
         {
             MimeMessage msg;
             try { msg = await folder.GetMessageAsync(uid); }
-            catch
+            catch (Exception ex)
             {
-                // پیامِ ناقص/حذف‌شده: شناسه را رد می‌کنیم تا نوبت‌های بعد دوباره امتحان نشود
-                if (uid.Id > maxUid) maxUid = uid.Id;
+                // خطای موقت IMAP نباید UID را جلو ببرد؛ در Sync بعدی دوباره تلاش می‌شود.
+                _log.LogWarning(ex, "دریافت ایمیل با UID {Uid} ناموفق بود؛ در Sync بعدی دوباره امتحان می‌شود.", uid.Id);
                 continue;
             }
 
@@ -733,14 +733,37 @@ public class EmailService : IEmailService
                 : box == "Junk" ? $"junk-uid-{acc.EmailId}-{uid.Id}" : $"uid-{acc.EmailId}-{uid.Id}";
             if (key.Length > 300) key = key[^300..];
 
-            if (!existingSet.Contains(key))
+            if (existingSet.Contains(key))
+            {
+                // اگر ایمیل قبلاً ثبت شده اما پیوست‌هایش در یک Sync قبلی ذخیره نشده‌اند،
+                // آن را دوباره از IMAP ترمیم می‌کنیم؛ صرفاً وجود رکورد ایمیل کافی نیست.
+                var existingId = box == "Sent"
+                    ? await _db.OtoSentEmails.Where(x => x.EmailId == acc.EmailId && x.UId == key)
+                        .Select(x => (int?)x.SentId).FirstOrDefaultAsync()
+                    : await _db.OtoInboxEmails.Where(x => x.EmailId == acc.EmailId && x.UId == key)
+                        .Select(x => (int?)x.InboxId).FirstOrDefaultAsync();
+                if (existingId is int id && HasExtractableAttachment(msg))
+                {
+                    var hasStored = await _db.OtoEmailAttachments.AnyAsync(x =>
+                        x.EmailId == id && x.Type == box);
+                    if (!hasStored)
+                    {
+                        await SaveAttachmentsAsync(msg, box, id, key);
+                        _log.LogInformation("پیوست‌های ایمیل موجود ترمیم شد؛ حساب {EmailId}، صندوق {Box}، شناسه {MessageId}",
+                            acc.EmailId, box, id);
+                    }
+                }
+                if (uid.Id > maxUid) maxUid = uid.Id;
+                continue;
+            }
+
             {
                 var body = msg.HtmlBody
                     ?? (msg.TextBody != null
                         ? "<pre style=\"white-space:pre-wrap\">" + System.Net.WebUtility.HtmlEncode(msg.TextBody) + "</pre>"
                         : "");
                 var date = msg.Date == default ? DateTime.Now : msg.Date.LocalDateTime;
-                var hasAttach = msg.Attachments.Any();
+                var hasAttach = HasExtractableAttachment(msg);
 
                 if (box == "Sent")
                 {
@@ -860,24 +883,52 @@ public class EmailService : IEmailService
         return body;
     }
 
+    private static bool HasExtractableAttachment(MimeMessage msg) =>
+        msg.BodyParts.Any(x => x is MessagePart ||
+            x is MimePart p && (p.IsAttachment || !string.IsNullOrWhiteSpace(p.FileName) || !string.IsNullOrWhiteSpace(p.ContentId)));
+
     private async Task<Dictionary<string, int>> SaveAttachmentsAsync(MimeMessage msg, string box, int messageId, string uid)
     {
         var inline = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        if (!msg.Attachments.Any()) return inline;
-
         var dir = Path.Combine(AttachmentRoot, $"{box}_{messageId}");
         var pendingInline = new List<(string ContentId, OtoEmailAttachment Attachment)>();
-        foreach (var entity in msg.Attachments)
+        var entities = msg.BodyParts.Where(x => x is MessagePart ||
+            x is MimePart p && (p.IsAttachment || !string.IsNullOrWhiteSpace(p.FileName) || !string.IsNullOrWhiteSpace(p.ContentId)));
+
+        foreach (var entity in entities)
         {
-            if (entity is not MimePart part) continue;
             try
             {
-                var name = string.IsNullOrWhiteSpace(part.FileName) ? "attachment" : part.FileName;
-                using var ms = new MemoryStream();
-                await part.Content.DecodeToAsync(ms);
+                string name;
+                byte[] data;
+                string? contentId = null;
+                if (entity is MimePart part)
+                {
+                    name = string.IsNullOrWhiteSpace(part.FileName) ? "attachment" : part.FileName;
+                    using var ms = new MemoryStream();
+                    await part.Content.DecodeToAsync(ms);
+                    data = ms.ToArray();
+                    contentId = part.ContentId;
+                }
+                else if (entity is MessagePart messagePart)
+                {
+                    name = string.IsNullOrWhiteSpace(messagePart.FileName) ? "attached-message.eml" : messagePart.FileName;
+                    using var ms = new MemoryStream();
+                    await messagePart.Message.WriteToAsync(ms);
+                    data = ms.ToArray();
+                }
+                else continue;
+
+                if (data.Length == 0) continue;
+                name = Path.GetFileName(name);
+                var duplicate = await _db.OtoEmailAttachments.AnyAsync(x =>
+                    x.EmailId == messageId && x.Type == box && x.UId == uid &&
+                    x.AttachmentRealName == name);
+                if (duplicate) continue;
+
                 Directory.CreateDirectory(dir);
                 var saved = $"{Guid.NewGuid():N}_{SafeName(name)}";
-                await File.WriteAllBytesAsync(Path.Combine(dir, saved), ms.ToArray());
+                await File.WriteAllBytesAsync(Path.Combine(dir, saved), data);
                 var attachment = new OtoEmailAttachment
                 {
                     EmailId = messageId,
@@ -888,10 +939,13 @@ public class EmailService : IEmailService
                     FilePath = $"{AttachmentFolder}/{box}_{messageId}/{saved}"
                 };
                 _db.OtoEmailAttachments.Add(attachment);
-                if (!string.IsNullOrWhiteSpace(part.ContentId))
-                    pendingInline.Add((part.ContentId.Trim('<', '>'), attachment));
+                if (!string.IsNullOrWhiteSpace(contentId))
+                    pendingInline.Add((contentId.Trim('<', '>'), attachment));
             }
-            catch (Exception ex) { _log.LogWarning(ex, "ذخیره پیوست ایمیل ناموفق بود"); }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "ذخیره پیوست ایمیل ناموفق بود؛ صندوق {Box}، شناسه {MessageId}", box, messageId);
+            }
         }
         await _db.SaveChangesAsync();
         foreach (var item in pendingInline)
