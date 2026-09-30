@@ -68,7 +68,8 @@ async function onFetch(event) {
     const isDataUrl = requestUrl.pathname.startsWith('/api/')
         || requestUrl.pathname.startsWith('/hubs/')
         || requestUrl.pathname.startsWith('/signalr/')
-        || requestUrl.searchParams.has('access_token');
+        || requestUrl.searchParams.has('access_token')
+        || requestUrl.searchParams.has('ft');   // توکن کوتاه فایل‌های چت
     if (isDataUrl) {
         return fetch(event.request);
     }

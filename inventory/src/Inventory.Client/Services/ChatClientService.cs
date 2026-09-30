@@ -35,6 +35,7 @@ public interface IChatClientService
     Task<ChatUploadResultDto> UploadAttachmentAsync(int conversationId, IBrowserFile file);
     Task<ChatUploadResultDto> UploadVoiceNoteAsync(int conversationId, byte[] data, string fileName, string contentType);
     string GetFileUrl(int messageId, bool preview = false);
+    Task EnsureFileTokenAsync();
     bool IsConnected { get; }
     Task StopAsync();
 
@@ -126,6 +127,7 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
         var url = $"api/chat/conversations/{conversationId}/messages?pageSize={pageSize}";
         if (beforeId.HasValue) url += $"&beforeId={beforeId.Value}";
         if (!string.IsNullOrWhiteSpace(search)) url += $"&search={Uri.EscapeDataString(search)}";
+        await EnsureFileTokenAsync();   // قبل از رندر لینک‌های دانلود/پیش‌نمایش
         return await _api.GetAsync<List<ChatMessageDto>>(url) ?? new();
     }
 
@@ -220,9 +222,42 @@ public class ChatClientService : IChatClientService, IAsyncDisposable
 
     // همیشه مبدأ API؛ در استقرار دو سروره هم فایل از سرور Client درخواست نمی‌شود.
     // تگ‌های img/audio/video نمی‌توانند هدر Bearer بفرستند؛ endpoint فقط برای دانلود/preview JWT را از query می‌خواند.
-    public string GetFileUrl(int messageId, bool preview = false) =>
-        _api.BuildUrl($"api/chat/messages/{messageId}/{(preview ? "preview" : "download")}") +
-        $"?access_token={Uri.EscapeDataString(_auth.Token ?? "")}";
+    // ⚠️ JWT کامل این سیستم همهٔ مجوزها را دارد (≈۱۰KB برای مدیر) و در URL باعث «414 URI Too Long»
+    // می‌شد؛ نتیجه: هیچ فایلی دانلود نمی‌شد. به‌جای آن توکن کوتاه ≈۷۰ نویسه‌ای فایل (ft) می‌رود.
+    // فقط اگر هنوز دریافت نشده بود به روش قدیمی برمی‌گردیم.
+    private string? _fileToken;
+    private DateTime _fileTokenExpiresUtc = DateTime.MinValue;
+    private int _fileTokenUserId;
+
+    private sealed class FileTokenResult
+    {
+        public string Token { get; set; } = "";
+        public DateTime ExpiresAt { get; set; }
+    }
+
+    public async Task EnsureFileTokenAsync()
+    {
+        if (!_auth.IsLoggedIn) { _fileToken = null; return; }
+        if (_fileToken != null && _fileTokenUserId == _auth.UserId &&
+            _fileTokenExpiresUtc > DateTime.UtcNow.AddHours(2)) return;
+        try
+        {
+            var r = await _api.GetAsync<FileTokenResult>("api/chat/file-token");
+            if (r == null || string.IsNullOrWhiteSpace(r.Token)) return;
+            _fileToken = r.Token;
+            _fileTokenExpiresUtc = r.ExpiresAt.Kind == DateTimeKind.Utc ? r.ExpiresAt : r.ExpiresAt.ToUniversalTime();
+            _fileTokenUserId = _auth.UserId;
+        }
+        catch { /* دانلود با روش قدیمی ادامه می‌یابد؛ خطای شبکه نباید لود پیام‌ها را خراب کند */ }
+    }
+
+    public string GetFileUrl(int messageId, bool preview = false)
+    {
+        var url = _api.BuildUrl($"api/chat/messages/{messageId}/{(preview ? "preview" : "download")}");
+        return _fileToken != null && _fileTokenUserId == _auth.UserId
+            ? $"{url}?ft={Uri.EscapeDataString(_fileToken)}"
+            : $"{url}?access_token={Uri.EscapeDataString(_auth.Token ?? "")}";
+    }
 
     public async Task EnsureHubConnectedAsync()
     {

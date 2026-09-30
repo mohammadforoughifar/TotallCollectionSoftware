@@ -199,6 +199,17 @@ public class ChatController : ControllerBase
         return Ok(await _files.UploadAsync(CurrentUserId, conversationId, file, HttpContext.RequestAborted));
     }
 
+    /// <summary>
+    /// توکن کوتاه برای لینک‌های دانلود/پیش‌نمایش (تگ‌های a/img/audio/video هدر Authorization ندارند).
+    /// JWT کامل به‌دلیل طول (≈۱۰KB) در URL جا نمی‌شود.
+    /// </summary>
+    [HttpGet("file-token")]
+    public ActionResult<object> GetFileToken()
+    {
+        var (token, exp) = ChatFileToken.Create(CurrentUserId);
+        return Ok(new { token, expiresAt = exp });
+    }
+
     [HttpGet("messages/{id:int}/download")]
     public Task<IActionResult> DownloadMessageFile(int id) =>
         FileResponseAsync(() => _files.GetMessageFileAsync(CurrentUserId, id), false);

@@ -20,6 +20,13 @@ builder.Services.AddHttpContextAccessor();
 // اعلان سیستمی و Service Worker فقط در «زمینهٔ امن» فعال می‌شوند؛ روی http://آی‌پی شبکه این امکان وجود ندارد.
 // این بخش یک گواهی داخلی می‌سازد/بارگذاری می‌کند و در صورت فعال بودن، شنوندهٔ HTTPS را هم بالا می‌آورد
 // (پیش‌فرض: پورت 5443 — قابل تغییر با Https:Port در appsettings یا متغیر محیطی HTTPS_PORT).
+// JWT این سیستم همهٔ مجوزها را داخل خودش دارد (≈ ۱۰KB برای مدیر)؛ لینک‌های دانلود قدیمی که توکن را
+// در query می‌برند با سقف پیش‌فرض Kestrel (۸KB) خطای 414 می‌گرفتند (ایمیل، نامه‌ها، آرشیو، SignalR).
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestLineSize = 64 * 1024;
+    options.Limits.MaxRequestHeadersTotalSize = 128 * 1024;
+});
 var httpsCerts = Inventory.Api.Services.HttpsCertificates.Prepare(builder.Environment, builder.Configuration);
 foreach (var message in httpsCerts.Messages) Console.WriteLine($"[HTTPS] {message}");
 if (httpsCerts.Enabled && httpsCerts.Certificate is not null)
@@ -205,8 +212,27 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         {
             OnMessageReceived = ctx =>
             {
-                var token = ctx.Request.Query["access_token"];
                 var path = ctx.Request.Path.Value ?? "";
+
+                // توکن کوتاه فایل‌های پیام‌رسان (ft): فقط روی مسیرهای download/preview چت.
+                // JWT کامل ≈ ۱۰KB است و در URL باعث 414 می‌شد؛ این توکن ≈ ۷۰ نویسه است.
+                var fileToken = ctx.Request.Query["ft"].ToString();
+                if (!string.IsNullOrEmpty(fileToken) &&
+                    path.StartsWith("/api/chat/", StringComparison.OrdinalIgnoreCase) &&
+                    (path.EndsWith("/download", StringComparison.OrdinalIgnoreCase) ||
+                     path.EndsWith("/preview", StringComparison.OrdinalIgnoreCase)) &&
+                    Inventory.Api.Services.Chat.ChatFileToken.TryValidate(fileToken, out var fileUserId))
+                {
+                    var identity = new System.Security.Claims.ClaimsIdentity(new[]
+                    {
+                        new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, fileUserId.ToString())
+                    }, JwtBearerDefaults.AuthenticationScheme);
+                    ctx.Principal = new System.Security.Claims.ClaimsPrincipal(identity);
+                    ctx.Success();
+                    return Task.CompletedTask;
+                }
+
+                var token = ctx.Request.Query["access_token"];
                 if (!string.IsNullOrEmpty(token) &&
                     (ctx.Request.Path.StartsWithSegments("/hubs/chat") ||
                      ctx.Request.Path.StartsWithSegments("/hubs/notify") ||
