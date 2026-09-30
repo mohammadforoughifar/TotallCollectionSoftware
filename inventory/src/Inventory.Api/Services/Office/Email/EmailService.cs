@@ -904,6 +904,7 @@ public class EmailService : IEmailService
                 string? contentId = null;
                 if (entity is MimePart part)
                 {
+                    if (part.Content is null) continue;
                     name = string.IsNullOrWhiteSpace(part.FileName) ? "attachment" : part.FileName;
                     using var ms = new MemoryStream();
                     await part.Content.DecodeToAsync(ms);
@@ -912,9 +913,18 @@ public class EmailService : IEmailService
                 }
                 else if (entity is MessagePart messagePart)
                 {
-                    name = string.IsNullOrWhiteSpace(messagePart.FileName) ? "attached-message.eml" : messagePart.FileName;
+                    // MessagePart (message/rfc822) از MimeEntity ارث‌بری می‌کند و FileName ندارد؛
+                    // نام فایل فقط در هدرِ Content-Disposition قرار می‌گیرد.
+                    var embeddedMessage = messagePart.Message;
+                    if (embeddedMessage is null) continue;
+
+                    var embeddedName = messagePart.ContentDisposition?.FileName;
+                    if (string.IsNullOrWhiteSpace(embeddedName))
+                        embeddedName = messagePart.ContentType.Name;
+                    name = string.IsNullOrWhiteSpace(embeddedName) ? "attached-message.eml" : embeddedName;
+
                     using var ms = new MemoryStream();
-                    await messagePart.Message.WriteToAsync(ms);
+                    await embeddedMessage.WriteToAsync(ms);
                     data = ms.ToArray();
                 }
                 else continue;
