@@ -29,3 +29,8 @@ __pycache__/
 
 # خروجی پابلیش محلی
 inventory/publish/
+
+# STT service (local speech-to-text)
+stt-service/.venv/
+stt-service/models/
+stt-service/__pycache__/
