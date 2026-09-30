@@ -465,7 +465,7 @@ public class WorkOrdersController : ControllerBase
         var ids = orders.Select(w => w.Id).ToList();
         var asgs = await _db.WorkOrderAssignees.Where(a => ids.Contains(a.OrderId)).ToListAsync();
         var attCounts = await _db.AppAttachments.Where(a => a.Module == "WorkOrders" && ids.Contains(a.RefId))
-            .GroupBy(a => a.OrderId).Select(g => new { g.Key, C = g.Count() }).ToListAsync();
+            .GroupBy(a => a.RefId).Select(g => new { g.Key, C = g.Count() }).ToListAsync();
         var clStats = await _db.WorkOrderChecklistItems.Where(c => ids.Contains(c.OrderId))
             .GroupBy(c => c.OrderId)
             .Select(g => new { g.Key, Total = g.Count(), Done = g.Count(x => x.IsDone) }).ToListAsync();
