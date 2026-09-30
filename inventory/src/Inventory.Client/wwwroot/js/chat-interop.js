@@ -64,9 +64,99 @@ export function isRecordingSupported() {
     return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
 }
 
+// ---------------------------------------------------------------------
+// تشخیص وضعیت میکروفون و مجوز دسترسی
+// مرورگرها اجازهٔ میکروفون را فقط در «زمینهٔ امن» می‌دهند: HTTPS یا localhost.
+// روی http://192.168.x.x هیچ پیغام مجوزی نشان داده نمی‌شود و getUserMedia
+// در دسترس نیست؛ قبلاً همین باعث خطای مبهم «دسترسی به میکروفون ممکن نشد» می‌شد.
+// ---------------------------------------------------------------------
+
+/** آدرس امن پیشنهادی (HTTPS) برای همین صفحه — سرور سامانه روی پورت 5443 هم گوش می‌دهد. */
+function suggestedSecureUrl() {
+    try {
+        const url = new URL(window.location.href);
+        if (url.protocol === 'https:') return null;
+        url.protocol = 'https:';
+        url.port = '5443';
+        return url.toString();
+    } catch (e) {
+        return null;
+    }
+}
+
+/** وضعیت کامل میکروفون برای نمایش راهنمای درست به کاربر. */
+export async function micStatus() {
+    const status = {
+        secure: !!window.isSecureContext,
+        supported: isRecordingSupported(),
+        permission: 'unknown',   // granted | denied | prompt | unknown
+        hasInputDevice: null,    // true | false | null (نامعلوم)
+        secureUrl: suggestedSecureUrl()
+    };
+    try {
+        if (navigator.permissions && navigator.permissions.query) {
+            const st = await navigator.permissions.query({ name: 'microphone' });
+            status.permission = st.state;
+        }
+    } catch (e) { /* فایرفاکس/سافاری: پرس‌وجوی مجوز میکروفون پشتیبانی نمی‌شود */ }
+    try {
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            status.hasInputDevice = devices.some(d => d.kind === 'audioinput');
+        }
+    } catch (e) { /* نادیده */ }
+    return status;
+}
+
+/** پیام فارسی متناسب با خطای getUserMedia — تا کاربر بداند دقیقاً مشکل چیست. */
+function describeMicError(err) {
+    const name = (err && err.name) || '';
+    if (!window.isSecureContext)
+        return { reason: 'insecure', message: 'مرورگر اجازهٔ میکروفون را فقط روی آدرس امن (HTTPS) می‌دهد؛ روی HTTP هیچ پیغام مجوزی هم نشان داده نمی‌شود.' };
+    if (!navigator.mediaDevices)
+        return { reason: 'unsupported', message: 'این مرورگر از ضبط صدا پشتیبانی نمی‌کند؛ از کروم/اِج نسخهٔ جدید استفاده کنید.' };
+    switch (name) {
+        case 'NotAllowedError':
+        case 'PermissionDeniedError':
+        case 'SecurityError':
+            return { reason: 'denied', message: 'دسترسی به میکروفون رد شده است. با کلیک روی قفل/آیکون کنار نوار آدرس، میکروفون را روی «اجازه» بگذارید و صفحه را بازخوانی کنید.' };
+        case 'NotFoundError':
+        case 'DevicesNotFoundError':
+        case 'OverconstrainedError':
+            return { reason: 'no-device', message: 'میکروفونی روی این دستگاه پیدا نشد.' };
+        case 'NotReadableError':
+        case 'TrackStartError':
+            return { reason: 'busy', message: 'میکروفون در اختیار برنامهٔ دیگری است؛ آن برنامه را ببندید و دوباره تلاش کنید.' };
+        case 'AbortError':
+            return { reason: 'aborted', message: 'درخواست ضبط لغو شد؛ دوباره تلاش کنید.' };
+        case 'NotSupportedError':
+            return { reason: 'unsupported', message: 'این مرورگر اجازهٔ دسترسی به میکروفون را در این حالت نمی‌دهد (مثلاً حالت ناشناس یا مرورگر قدیمی).' };
+        default:
+            return { reason: 'error', message: 'ضبط صدا ممکن نشد' + (err && err.message ? ' (خطای مرورگر: ' + err.message + ')' : '') + '. اگر پیغام مجوز نشان داده نمی‌شود، در منوی مرورگر (آیکون قفل کنار آدرس ← تنظیمات سایت) مجوز میکروفون را روی «اجازه» بگذارید و صفحه را بازخوانی کنید.' };
+    }
+}
+
+/**
+ * درخواست مجوز میکروفون بدون ضبط — با کلیک کاربر اجرا شود تا مرورگر
+ * پیغام «اجازه می‌دهید؟» را نشان دهد. خروجی: {ok, reason, message}
+ */
+export async function requestMicPermission() {
+    if (!window.isSecureContext || !isRecordingSupported()) return describeMicError(null);
+    let stream = null;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        return { ok: true, reason: 'granted', message: 'مجوز میکروفون داده شد.' };
+    } catch (err) {
+        return describeMicError(err);
+    } finally {
+        try { if (stream) stream.getTracks().forEach(t => t.stop()); } catch (e) { /* نادیده */ }
+    }
+}
+
 export async function startRecording() {
-    if (recRecorder && recRecorder.state === 'recording') return true;
-    if (!isRecordingSupported()) return false;
+    if (recRecorder && recRecorder.state === 'recording') return { ok: true, reason: 'recording' };
+    // روی HTTP (بدون HTTPS/localhost) مرورگر getUserMedia ندارد و پیغام مجوز هم نمی‌دهد.
+    if (!window.isSecureContext || !isRecordingSupported()) return describeMicError(null);
     try {
         recRelease();
         recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -76,10 +166,10 @@ export async function startRecording() {
         recRecorder.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
         recRecorder.start(250);
         recStartedAt = Date.now();
-        return true;
+        return { ok: true, reason: 'started' };
     } catch (err) {
         recRelease();
-        return false;
+        return describeMicError(err);
     }
 }
 

@@ -575,6 +575,41 @@
                     </div>
                 }
 
+                @* راهنمای میکروفون: وقتی مجوز/امنیت آدرس مشکل دارد، به‌جای خطای مبهم، راهِ درست را نشان می‌دهیم *@
+                @if (micIssue != null && !isRecording)
+                {
+                    <div class="mic-help" data-testid="mic-help" role="status">
+                        <div class="mic-help-icon"><i class="bi bi-mic-mute-fill"></i></div>
+                        <div class="mic-help-body">
+                            <div class="mic-help-title">@micIssueTitle</div>
+                            <div class="mic-help-text">@micIssue.Message</div>
+                            @if (micIssue.Reason == "denied")
+                            {
+                                <ol class="mic-help-steps">
+                                    <li>روی آیکون <b>قفل</b> (یا «تنظیمات سایت») کنار نوار آدرس بزنید.</li>
+                                    <li>گزینهٔ <b>میکروفون</b> را روی <b>اجازه (Allow)</b> بگذارید.</li>
+                                    <li>صفحه را بازخوانی کنید (F5) و دوباره میکروفون را بزنید.</li>
+                                </ol>
+                            }
+                        </div>
+                        <div class="mic-help-actions">
+                            @if (micIssue.Reason == "insecure" && !string.IsNullOrWhiteSpace(micIssue.SecureUrl))
+                            {
+                                <a class="btn btn-sm btn-success" href="@micIssue.SecureUrl">
+                                    <i class="bi bi-shield-lock"></i> رفتن به نسخهٔ امن (HTTPS)
+                                </a>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn btn-sm btn-success" @onclick="EnableMicrophone" data-testid="mic-enable">
+                                    <i class="bi bi-mic-fill"></i> فعال‌سازی میکروفون
+                                </button>
+                            }
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="DismissMicIssue">بستن</button>
+                        </div>
+                    </div>
+                }
+
                 <div class="input-row">
                     @if (isRecording)
                     {
@@ -942,6 +977,87 @@
     private bool sttListening;
     private DotNetObjectReference<ChatPage>? voiceSelf;
 
+    // ---- وضعیت میکروفون (مجوز/امنیت آدرس) ----
+    /// <summary>مشکل فعلی میکروفون برای نمایش راهنمای فارسی؛ null یعنی مشکلی نیست.</summary>
+    private MicIssueDto? micIssue;
+    private bool micStatusChecked;
+
+    /// <summary>خروجی micStatus/startRecording از chat-interop.js (کلیدها camelCase می‌مانند).</summary>
+    private sealed class MicIssueDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("reason")] public string Reason { get; set; } = "";
+        [System.Text.Json.Serialization.JsonPropertyName("message")] public string Message { get; set; } = "";
+        [System.Text.Json.Serialization.JsonPropertyName("secureUrl")] public string? SecureUrl { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("ok")] public bool Ok { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("secure")] public bool Secure { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("supported")] public bool Supported { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("permission")] public string Permission { get; set; } = "unknown";
+        [System.Text.Json.Serialization.JsonPropertyName("hasInputDevice")] public bool? HasInputDevice { get; set; }
+    }
+
+    private string micIssueTitle => micIssue?.Reason switch
+    {
+        "insecure" => "ضبط صدا روی این آدرس ممکن نیست (نیاز به HTTPS)",
+        "denied" => "دسترسی میکروفون بسته است",
+        "no-device" => "میکروفون پیدا نشد",
+        "busy" => "میکروفون در اختیار برنامهٔ دیگری است",
+        "unsupported" => "مرورگر پشتیبانی نمی‌کند",
+        _ => "ضبط صدا ممکن نشد"
+    };
+
+    /// <summary>
+    /// بررسی وضعیت میکروفون بعد از باز شدن چت: اگر مجوز رد شده یا آدرس امن نیست،
+    /// همان اول راهنما نشان داده می‌شود تا کاربر با خطای مبهم روبه‌رو نشود.
+    /// </summary>
+    private async Task CheckMicrophoneStatusAsync()
+    {
+        if (disposed || chatJs == null || micStatusChecked) return;
+        micStatusChecked = true;
+        try
+        {
+            var status = await chatJs.InvokeAsync<MicIssueDto>("micStatus");
+            if (disposed || status == null) return;
+            if (!status.Secure)
+                micIssue = new MicIssueDto { Reason = "insecure", SecureUrl = status.SecureUrl, Supported = status.Supported };
+            else if (!status.Supported)
+                micIssue = new MicIssueDto { Reason = "unsupported" };
+            else if (status.Permission == "denied")
+                micIssue = new MicIssueDto { Reason = "denied" };
+            else if (status.HasInputDevice == false)
+                micIssue = new MicIssueDto { Reason = "no-device" };
+            else
+                micIssue = null;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSException) { /* نسخهٔ قدیمی کش‌شدهٔ interop: بدون راهنما ادامه می‌دهیم */ }
+        catch (Exception) { /* ناموفق بودن این بررسی نباید چیزی را خراب کند */ }
+    }
+
+    /// <summary>درخواست مجوز میکروفون با کلیک کاربر (مرورگر پیغام «اجازه می‌دهید؟» را نشان می‌دهد).</summary>
+    private async Task EnableMicrophone()
+    {
+        if (disposed || chatJs == null) return;
+        try
+        {
+            var result = await chatJs.InvokeAsync<MicIssueDto>("requestMicPermission");
+            if (disposed) return;
+            if (result != null && result.Ok)
+            {
+                micIssue = null;
+                Toast.Success("مجوز میکروفون داده شد؛ حالا می‌توانید وویس بفرستید.");
+            }
+            else
+            {
+                micIssue = result ?? new MicIssueDto { Reason = "error", Message = "درخواست مجوز میکروفون ناموفق بود." };
+                Toast.Error(micIssueTitle);
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex) { if (!disposed) Toast.Error(ex.Message); }
+    }
+
+    private void DismissMicIssue() => micIssue = null;
+
     // ---- تبدیل ویس به متن (رونویسی) ----
     /// <summary>پیام‌هایی که همین حالا در حال تبدیل به متن هستند (برای اسپینر و قفل دکمه).</summary>
     private readonly HashSet<int> transcribingIds = new();
@@ -1107,7 +1223,7 @@
             {
                 // ?v= کش‌شکن: بعد از هر انتشار، مرورگر/PWA نسخهٔ قدیمی ماژول را لود نکند
                 // (خطای «Could not find 'isMobileView'» از کش‌شدن نسخهٔ قدیمی همین فایل بود).
-                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js?v=3");
+                chatJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/chat-interop.js?v=4");
                 if (disposed) { await chatJs.DisposeAsync(); return; }
                 chatSelf = DotNetObjectReference.Create(this);
                 interopId = await chatJs.InvokeAsync<int>("initialize", chatSelf);
@@ -1116,6 +1232,7 @@
                 try
                 {
                     isMobileView = await chatJs.InvokeAsync<bool>("isMobileView");
+                await CheckMicrophoneStatusAsync();   // راهنمای مجوز/HTTPS قبل از اولین تلاش ضبط
                     await chatJs.InvokeVoidAsync("watchMobile", interopId);
                 }
                 catch (JSException) { /* نسخهٔ قدیمی کش‌شده — با رفرش بعدی درست می‌شود */ }
@@ -1423,13 +1540,17 @@
         if (disposed || chatJs == null || activeConv == null || isSending || isUploading || isRecording) return;
         try
         {
-            var ok = await chatJs.InvokeAsync<bool>("startRecording");
+            var result = await chatJs.InvokeAsync<MicIssueDto>("startRecording");
             if (disposed) return;
-            if (!ok)
+            if (result == null || !result.Ok)
             {
-                Toast.Error("ضبط صدا ممکن نشد؛ به میکروفون مرورگر دسترسی دهید و دوباره تلاش کنید.");
+                // علت واقعی (رد مجوز / نبود HTTPS / اشغال‌بودن میکروفون) به کاربر گفته می‌شود
+                micIssue = result ?? new MicIssueDto { Reason = "error", Message = "ضبط صدا ممکن نشد؛ دوباره تلاش کنید." };
+                Toast.Error(micIssue.Message);
+                await InvokeAsync(StateHasChanged);
                 return;
             }
+            micIssue = null;
             isRecording = true;
             recordingSeconds = 0;
             _ = RunRecordingTimerAsync();
