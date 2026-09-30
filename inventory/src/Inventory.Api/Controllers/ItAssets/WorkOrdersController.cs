@@ -464,7 +464,7 @@ public class WorkOrdersController : ControllerBase
         var orders = await q.OrderByDescending(w => w.Priority).ThenByDescending(w => w.Id).ToListAsync();
         var ids = orders.Select(w => w.Id).ToList();
         var asgs = await _db.WorkOrderAssignees.Where(a => ids.Contains(a.OrderId)).ToListAsync();
-        var attCounts = await _db.WorkOrderAttachments.Where(a => ids.Contains(a.OrderId))
+        var attCounts = await _db.AppAttachments.Where(a => a.Module == "WorkOrders" && ids.Contains(a.RefId))
             .GroupBy(a => a.OrderId).Select(g => new { g.Key, C = g.Count() }).ToListAsync();
         var clStats = await _db.WorkOrderChecklistItems.Where(c => ids.Contains(c.OrderId))
             .GroupBy(c => c.OrderId)
@@ -788,9 +788,9 @@ public class WorkOrdersController : ControllerBase
         if (await _db.WorkOrders.AnyAsync(w => w.ParentOrderId == id))
             return BadRequest(new { message = "این دستور زیر‌دستور دارد؛ ابتدا زیر‌دستورها را بررسی و حذف کنید. حذف آبشاری انجام نمی‌شود." });
         // حذف واقعی پیوست‌ها از دیسک؛ رکوردهای قدیمیِ دیتابیسی نیز پاک می‌شوند.
-        var attachments = await _db.WorkOrderAttachments.Where(a => a.OrderId == id).ToListAsync();
+        var attachments = await _db.AppAttachments.Where(a => a.Module == "WorkOrders" && a.RefId == id).ToListAsync();
         foreach (var attachment in attachments) _store.Delete(attachment.FilePath);
-        _db.WorkOrderAttachments.RemoveRange(attachments);
+        _db.AppAttachments.RemoveRange(attachments);
         wo.DeletedAt = DateTime.Now;
         wo.DeletedByUserId = MyUserId;
         Log(id, "Deleted", $"حذف نوبت {wo.Number} توسط {await MyDisplayNameAsync()} (شناسه کاربر {MyUserId})؛ سوابق محفوظ است.");
@@ -817,9 +817,9 @@ public class WorkOrdersController : ControllerBase
         {
             foreach (var wo in orders)
             {
-                var attachments = await _db.WorkOrderAttachments.Where(a => a.OrderId == wo.Id).ToListAsync();
+                var attachments = await _db.AppAttachments.Where(a => a.Module == "WorkOrders" && a.RefId == wo.Id).ToListAsync();
                 foreach (var a in attachments) _store.Delete(a.FilePath);
-                _db.WorkOrderAttachments.RemoveRange(attachments);
+                _db.AppAttachments.RemoveRange(attachments);
                 wo.DeletedAt = DateTime.Now; wo.DeletedByUserId = MyUserId;
                 Log(wo.Id, "Deleted", "حذف گروهی دستور کار");
             }
@@ -1555,7 +1555,7 @@ public class WorkOrdersController : ControllerBase
     {
         var pagination = new Paging.Request(skip, take);
         if (!await CanSeeOrderAsync(id)) return Forbid();
-        var rows = await _db.WorkOrderAttachments.Where(a => a.OrderId == id).OrderBy(x => x.Id)
+        var rows = await _db.AppAttachments.Where(a => a.Module == "WorkOrders" && a.RefId == id).OrderBy(x => x.Id)
             .Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt, a.FilePath, a.Data })
             .ToPageListAsync(pagination);
         return Ok(pagination.Result(rows.Select(a => new { a.Id, a.FileName, a.UploaderName, a.UploadedAt,
@@ -1577,9 +1577,10 @@ public class WorkOrdersController : ControllerBase
         ms.Position = 0;
         // فایل‌های دستور کار در wwwroot/uploads/WorkOrders/{id}/ ذخیره می‌شوند.
         var relPath = await _store.SaveAsync("WorkOrders", id, ms, file.FileName);
-        _db.WorkOrderAttachments.Add(new WorkOrderAttachment
+        _db.AppAttachments.Add(new AppAttachment
         {
-            OrderId = id,
+            Module = "WorkOrders",
+            RefId = id,
             FileName = Path.GetFileName(file.FileName),
             ContentType = file.ContentType ?? "application/octet-stream",
             FilePath = relPath,
@@ -1594,9 +1595,9 @@ public class WorkOrdersController : ControllerBase
     [HttpGet("attachments/{attId:int}/download")]
     public async Task<IActionResult> Download(int attId)
     {
-        var att = await _db.WorkOrderAttachments.FindAsync(attId);
+        var att = await _db.AppAttachments.FirstOrDefaultAsync(a => a.Id == attId && a.Module == "WorkOrders");
         if (att == null) return NotFound();
-        if (!await CanSeeOrderAsync(att.OrderId)) return Forbid();
+        if (!await CanSeeOrderAsync(att.RefId)) return Forbid();
         var bytes = _store.ReadBytes(att.FilePath) ?? (att.Data is { Length: > 0 } ? att.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
         return File(bytes, att.ContentType, att.FileName);

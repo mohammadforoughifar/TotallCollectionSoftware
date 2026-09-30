@@ -1220,12 +1220,12 @@ public sealed class RsRowSource : IRsRowSource
             return rows;
         }
 
-        var atts = await _db.WorkOrderAttachments.AsNoTracking()
-            .Where(c => visible.Contains(c.OrderId))
+        var atts = await _db.AppAttachments.AsNoTracking()
+            .Where(c => c.Module == "WorkOrders" && visible.Contains(c.RefId))
             .OrderByDescending(c => c.Id).Take(limit)
             .Select(c => new WoAttSnap
             {
-                Id = c.Id, OrderId = c.OrderId, FileName = c.FileName, ContentType = c.ContentType,
+                Id = c.Id, OrderId = c.RefId, FileName = c.FileName, ContentType = c.ContentType,
                 UploaderName = c.UploaderName, UploadedAt = c.UploadedAt
             }).ToListAsync(ct);
         var attOrders = await OrderMapAsync(atts.Select(c => c.OrderId), ct);
@@ -1307,11 +1307,11 @@ public sealed class RsRowSource : IRsRowSource
         var logBy = logs.GroupBy(c => c.OrderId).ToDictionary(g => g.Key, g => g.ToList());
 
         var atts = wanted.Contains("wo_attachment") || wanted.Contains("workorder")
-            ? await _db.WorkOrderAttachments.AsNoTracking()
-                .Where(c => ids.Contains(c.OrderId))
+            ? await _db.AppAttachments.AsNoTracking()
+                .Where(c => c.Module == "WorkOrders" && ids.Contains(c.RefId))
                 .Select(c => new WoAttSnap
                 {
-                    Id = c.Id, OrderId = c.OrderId, FileName = c.FileName, ContentType = c.ContentType,
+                    Id = c.Id, OrderId = c.RefId, FileName = c.FileName, ContentType = c.ContentType,
                     UploaderName = c.UploaderName, UploadedAt = c.UploadedAt
                 }).ToListAsync(ct)
             : new List<WoAttSnap>();
