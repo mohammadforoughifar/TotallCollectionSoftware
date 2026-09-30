@@ -18,11 +18,16 @@ window.uiRect = function (el) {
     };
 };
 
-// اسکرول نرم یا فوری گزینه هایلایت‌شده در منوهای کمبوباکس (SearchSelect)
-window.scrollIntoViewById = function (id) {
+// اسکرول یک المان با شناسه؛ حالت پیش‌فرض برای گزینه هایلایت‌شده در کمبوباکس‌ها
+// است و صفحات راهنما می‌توانند block و behavior دلخواه (مثلاً start/smooth) بفرستند.
+window.scrollIntoViewById = function (id, block, behavior) {
     var el = document.getElementById(id);
     if (el && typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        el.scrollIntoView({
+            block: block || 'nearest',
+            inline: 'nearest',
+            behavior: behavior || 'auto'
+        });
     }
 };
 

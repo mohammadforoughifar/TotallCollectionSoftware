@@ -549,7 +549,7 @@ a { text-decoration: none; }
 
 /* ---------- چاپ کاردکس ---------- */
 @media print {
-    .app-sidebar, .app-topbar, .sidebar-backdrop, .no-print { display: none !important; }
+    .app-sidebar, .app-topbar, .sidebar-backdrop, .tabbar, .app-bottom-nav, .no-print { display: none !important; }
     .app-main { margin: 0 !important; }
     .app-content { padding: 0; }
     .card { border: none; box-shadow: none; }

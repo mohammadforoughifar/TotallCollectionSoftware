@@ -26,6 +26,15 @@
                      background:#f43f5e; color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; }
 .ltx .rail .grow { flex:1; }
 .ltx .rail .rlbl { font-size:9px; color:#a5b4fc; margin-top:-4px; margin-bottom:2px; }
+.ltx .rail .logo, .ltx .rail button, .ltx .rail .rlbl { flex-shrink:0; }
+.ltx .rail { overflow-y:auto; scrollbar-width:none; }
+.ltx .rail::-webkit-scrollbar { display:none; }
+
+/* ---------- راهنمای داخلی کارتابل ---------- */
+.ltx .guide-workspace {
+    grid-column:2 / -1; min-width:0; min-height:0; overflow:auto;
+    padding:14px; background:var(--bg);
+}
 
 /* ---------- ستون لیست ---------- */
 .ltx .pane { border-inline-start:1px solid var(--line); display:flex; flex-direction:column; min-width:0; min-height:0; background:#fafaff; }
@@ -355,6 +364,13 @@
     body * { visibility:hidden !important; }
     .ltx .paper, .ltx .paper * { visibility:visible !important; }
     .ltx .paper { position:absolute; inset:0; border:0; }
+
+    /* چاپ راهنمای تعبیه‌شده در کارتابل */
+    .ltx.guide-open .shell { height:auto !important; max-height:none !important; min-height:0; overflow:visible; border:0; }
+    .ltx.guide-open .rail { display:none !important; }
+    .ltx.guide-open .guide-workspace { grid-column:1 / -1; overflow:visible; padding:0; }
+    .ltx.guide-open .guide-workspace,
+    .ltx.guide-open .guide-workspace * { visibility:visible !important; }
 }
 
 /* ---------- صفحه‌بندی لیست نامه‌ها ---------- */
@@ -555,6 +571,7 @@
 
     /* شل: ارتفاع کامل موبایل */
     .ltx .shell { height:calc(100dvh - 120px); min-height:420px; border-radius:14px; }
+    .ltx .guide-workspace { padding:8px; }
 
     /* درخت بایگانی */
     .ltx .arv-bar { flex-wrap:wrap; }
