@@ -401,8 +401,11 @@ a { text-decoration: none; }
     flex-direction: column;
     gap: .6rem;
     max-width: 360px;
+    /* بوت‌استرپ برای .toast-container مقدار pointer-events:none می‌گذارد و به فرزندان ارث می‌رسد */
+    pointer-events: none;
 }
 .toast-item {
+    pointer-events: auto; /* بدون این، کلیک روی اعلان و دکمهٔ ✕ اصلاً به دکمه نمی‌رسد */
     display: flex;
     gap: .8rem;
     align-items: flex-start;
@@ -421,7 +424,8 @@ a { text-decoration: none; }
 .toast-item.error .toast-icon { color: var(--danger); }
 .toast-item.info { border-right: 4px solid var(--info); }
 .toast-item.info .toast-icon { color: var(--info); }
-.toast-item .toast-close { color: var(--text-soft); cursor: pointer; margin-right: auto; border: 0; line-height: 1; text-decoration: none; }
+.toast-item .toast-close { color: var(--text-soft); cursor: pointer; margin-right: auto; border: 0; line-height: 1; text-decoration: none; pointer-events: auto; font-size: 1.35rem; padding: .1rem .25rem !important; border-radius: 8px; }
+.toast-item .toast-close:hover { background: rgba(239, 68, 68, .1); }
 .toast-item .toast-close:hover { color: var(--danger); }
 @keyframes toastIn {
     from { opacity: 0; transform: translateY(14px); }
