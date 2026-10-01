@@ -52,8 +52,8 @@
             <nav>
                 @for (var i = 0; i < Sections.Count; i++)
                 {
-                    var section = Sections[i];
-                    <button type="button" @onclick="() => ScrollTo(section.Id)"><span>@((i + 1).FaDigits())</span> @section.Title</button>
+                    var tocSection = Sections[i];
+                    <button type="button" @onclick="() => ScrollTo(tocSection.Id)"><span>@((i + 1).FaDigits())</span> @tocSection.Title</button>
                 }
             </nav>
             <div class="toc-tip"><i class="bi bi-lightbulb-fill"></i><span>نمایش بعضی دکمه‌ها به سطح دسترسی شما بستگی دارد.</span></div>
