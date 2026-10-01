@@ -14,7 +14,7 @@
 
 <PageTitle>کارتابل نامه وارده — اتوماسیون اداری</PageTitle>
 
-<div class="ltx @(readerOpen ? "rd-open" : "")" style="animation:none;transform:none">
+<div class="ltx @(!showGuide && readerOpen ? "rd-open" : "") @(showGuide ? "guide-open" : "")" style="animation:none;transform:none">
     <div class="shell" @onclick="CloseMenus">
 
         @* ---------- ریل پوشه‌ها (Folder Rail) ---------- *@
@@ -22,22 +22,24 @@
             <div class="logo" title="اتوماسیون اداری — نامه وارده"><i class="bi bi-inbox-fill"></i></div>
             <div style="height:8px"></div>
 
-            <button class="@(folder == "inbox" ? "on" : "")" title="دریافتی (کارتابل جاری)" @onclick='() => SetFolder("inbox")'>
+            <button class="@(!showGuide && folder == "inbox" ? "on" : "")" title="دریافتی (کارتابل جاری)" @onclick='() => SetFolder("inbox")'>
                 <i class="bi bi-inbox-fill"></i>
                 @if (stats.InboxUnread > 0) { <span class="rbadge">@stats.InboxUnread.FaDigits()</span> }
             </button>
             <span class="rlbl">دریافتی</span>
 
-            <button class="@(folder == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetFolder("starred")'>
+            <button class="@(!showGuide && folder == "starred" ? "on" : "")" title="نشان‌شده" @onclick='() => SetFolder("starred")'>
                 <i class="bi bi-star-fill"></i>
             </button>
             <span class="rlbl">نشان‌شده</span>
 
-            <button class="@(folder == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetFolder("archive")'>
+            <button class="@(!showGuide && folder == "archive" ? "on" : "")" title="بایگانی" @onclick='() => SetFolder("archive")'>
                 <i class="bi bi-archive-fill"></i>
             </button>
             <span class="rlbl">بایگانی</span>
 
+            <button type="button" class="@(showGuide ? "on" : "")" title="راهنمای نامه وارده" aria-label="راهنمای نامه وارده" aria-pressed="@showGuide" @onclick="OpenGuide"><i class="bi bi-journal-check"></i></button>
+            <span class="rlbl">راهنما</span>
             <div class="grow"></div>
             @if (CanDabirkhane)
             {
@@ -47,6 +49,15 @@
             <button title="بروزرسانی" @onclick="ReloadDataAsync"><i class="bi bi-arrow-clockwise"></i></button>
             <span class="rlbl">بروزرسانی</span>
         </nav>
+
+        @if (showGuide)
+        {
+            <section class="guide-workspace">
+                <IncomingLetterGuide OnBack="BackFromGuide" />
+            </section>
+        }
+        else
+        {
 
         @* ---------- لیست اصلی نامه‌ها ---------- *@
         <section class="pane">
@@ -230,6 +241,7 @@
                 </div>
             </aside>
         }
+        }
     </div>
 </div>
 
@@ -244,6 +256,14 @@
 <ComposeIncomingModal @ref="composeModal" OnSaved="ReloadDataAsync" />
 
 @code {
+    private bool showGuide;
+    private void OpenGuide()
+    {
+        CloseMenus();
+        showGuide = true;
+    }
+    private void BackFromGuide() => showGuide = false;
+
     [Parameter] public string? Tab { get; set; }
 
     private string folder = "inbox";
@@ -299,6 +319,7 @@
 
     private async Task SetFolder(string f)
     {
+        showGuide = false;
         folder = f;
         currentPage = 1;
         selectedErjaIds.Clear();
