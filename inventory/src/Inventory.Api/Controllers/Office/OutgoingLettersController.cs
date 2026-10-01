@@ -465,8 +465,9 @@ public class OutgoingLettersController : RbacControllerBase
     public async Task<IActionResult> Print(int id, [FromQuery] string size = "A4", [FromQuery] bool withCopy = true)
     {
         if (await ForbiddenUnlessAsync(Module, "Read") is { } forbid) return forbid;
-        if (!await InFlowAsync(id) && !await IsAdminAsync() && !await HasDabirkhaneAsync())
-            return StatusCode(403, new { message = "شما در گردش این نامه نیستید." });
+        // چاپ نامه صادره فقط برای کاربران دبیرخانه مجاز است.
+        if (!await HasDabirkhaneAsync())
+            return StatusCode(403, new { message = "چاپ نامه صادره فقط برای دبیرخانه مجاز است." });
 
         if (!string.Equals(size, "A4", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(size, "A5", StringComparison.OrdinalIgnoreCase))
