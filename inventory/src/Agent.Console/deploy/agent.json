@@ -4,6 +4,9 @@
   "intervalMinutes": 60,
   "agentId": "",
   "token": "",
+
+  // کلید مشترک ایجنت — اگر روی سرور Agent:Key تنظیم شده باشد، همان مقدار اینجا لازم است
+  "key": "",
   "username": "",
   "password": "",
   "insecure": false

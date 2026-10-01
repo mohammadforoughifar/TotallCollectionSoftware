@@ -13,6 +13,9 @@ chcp 65001 >nul
 setlocal EnableExtensions
 set "SERVER=http://192.168.30.104:8181"
 set "SERVERIP=192.168.30.104"
+set "AGENTKEY="
+rem  اگر سرور کلید مشترک دارد، متغیر محیطی AGENT_KEY را ست کنید یا مقدار را زیر بگذارید
+if defined AGENT_KEY set "AGENTKEY=--key %AGENT_KEY%"
 rem  اگر آدرس سرور عوض شد، SERVER و SERVERIP را با هم تغییر دهید.
 title Inventory Agent
 
@@ -50,11 +53,11 @@ echo.
 rem ---------- انتخاب دستور ----------
 set "ARGS="
 if /i "%MODE%"=="install" goto install
-if /i "%MODE%"=="watch" set "ARGS=watch -s %SERVER% -i 60"
+if /i "%MODE%"=="watch" set "ARGS=watch -s %SERVER% -i 60 %AGENTKEY%"
 if /i "%MODE%"=="dry" set "ARGS=dry-run"
 if /i "%MODE%"=="dry-run" set "ARGS=dry-run"
-if /i "%MODE%"=="commands" set "ARGS=commands -s %SERVER%"
-if /i "%MODE%"=="run" set "ARGS=run -s %SERVER%"
+if /i "%MODE%"=="commands" set "ARGS=commands -s %SERVER% %AGENTKEY%"
+if /i "%MODE%"=="run" set "ARGS=run -s %SERVER% %AGENTKEY%"
 if not defined ARGS set "ARGS=%* -s %SERVER%"
 
 rem ---------- بررسی سریع دسترسی به سرور ----------
@@ -90,8 +93,8 @@ rem ---------- نصب اجرای خودکار ----------
 :install
 echo در حال ساخت دو تسک زمان بندی شده ...
 echo.
-schtasks /create /tn "InventoryAgent-Boot" /tr "\"%EXE%\" run -s %SERVER%" /sc onstart /ru SYSTEM /rl highest /f
-schtasks /create /tn "InventoryAgent-Hourly" /tr "\"%EXE%\" run -s %SERVER%" /sc hourly /mo 1 /ru SYSTEM /rl highest /f
+schtasks /create /tn "InventoryAgent-Boot" /tr "\"%EXE%\" run -s %SERVER% %AGENTKEY%" /sc onstart /ru SYSTEM /rl highest /f
+schtasks /create /tn "InventoryAgent-Hourly" /tr "\"%EXE%\" run -s %SERVER% %AGENTKEY%" /sc hourly /mo 1 /ru SYSTEM /rl highest /f
 echo.
 schtasks /query /tn "InventoryAgent-Boot" >nul 2>&1 && echo [OK] تسک هنگام روشن شدن سیستم نصب شد.
 schtasks /query /tn "InventoryAgent-Hourly" >nul 2>&1 && echo [OK] تسک هر ساعت نصب شد.

@@ -20,6 +20,12 @@ public sealed class AgentConfig
     /// <summary>توکن JWT (اختیاری — فعلاً لازم نیست چون endpoint ایجنت باز است)</summary>
     public string Token { get; set; } = "";
 
+    /// <summary>
+    /// کلید مشترک ایجنت — اگر سرور مقدار Agent:Key داشته باشد، همین مقدار باید اینجا
+    /// (یا با سوییچ --key) داده شود وگرنه سرور درخواست را با 401 رد می‌کند.
+    /// </summary>
+    public string Key { get; set; } = "";
+
     /// <summary>ورود با نام کاربری/رمز (اختیاری — برای آینده اگر endpoint محافظت شد)</summary>
     public string Username { get; set; } = "";
     public string Password { get; set; } = "";
@@ -66,6 +72,7 @@ public sealed class AgentConfig
         if (IntervalMinutes <= 0) IntervalMinutes = 60;
         AgentId = (AgentId ?? "").Trim();
         Token = (Token ?? "").Trim();
+        Key = (Key ?? "").Trim();
         Username = (Username ?? "").Trim();
     }
 }

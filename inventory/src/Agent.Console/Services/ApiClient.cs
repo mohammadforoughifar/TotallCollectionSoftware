@@ -13,7 +13,7 @@ public sealed class ApiClient : IDisposable
 
     public string BaseUrl { get; }
 
-    public ApiClient(string baseUrl, bool insecure = false, int timeoutSeconds = 30)
+    public ApiClient(string baseUrl, bool insecure = false, int timeoutSeconds = 30, string? agentKey = null)
     {
         BaseUrl = baseUrl.Trim().TrimEnd('/');
         HttpMessageHandler handler = new HttpClientHandler();
@@ -24,7 +24,17 @@ public sealed class ApiClient : IDisposable
         }
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(timeoutSeconds) };
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("InventoryAgent/1.0");
+        UseAgentKey(agentKey);
         _json = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+    }
+
+    /// <summary>کلید مشترک ایجنت — هدر X-Agent-Key (اگر سرور تنظیم کرده باشد لازم است).</summary>
+    public void UseAgentKey(string? key)
+    {
+        if (!string.IsNullOrWhiteSpace(key))
+            _http.DefaultRequestHeaders.Remove("X-Agent-Key");
+        if (!string.IsNullOrWhiteSpace(key))
+            _http.DefaultRequestHeaders.Add("X-Agent-Key", key.Trim());
     }
 
     public void UseToken(string token)
@@ -82,14 +92,18 @@ public sealed class ApiClient : IDisposable
                 // خطای 4xx را تکرار نکن — مشکل از داده است نه شبکه
                 if ((int)resp.StatusCode is >= 400 and < 500)
                 {
+                    var serverMsg = ExtractMessage(body);
                     var why = (int)resp.StatusCode switch
                     {
+                        401 or 403 when serverMsg.Contains("کلید ایجنت") =>
+                            " — این سرور «کلید مشترک ایجنت» دارد؛ مقدار key را در agent.json بگذارید یا با سوییچ --key بدهید " +
+                            "(همان مقدار Agent:Key در تنظیمات سرور).",
                         401 or 403 => " — سرور درخواست بدون توکن را رد کرد. نسخهٔ سرور باید به‌روزرسانی شود (اکشن api/SystemInfo باید [AllowAnonymous] باشد)، " +
                                       "یا ایجنت را با --username و --password یک کاربر معتبر اجرا کنید.",
                         404 => " — مسیر api/SystemInfo روی این سرور نیست؛ احتمالاً برنامهٔ دیگری روی این پورت پاسخ می‌دهد.",
                         _ => ""
                     };
-                    return (false, $"سرور قبول نکرد ({(int)resp.StatusCode}): {ExtractMessage(body)}{why}");
+                    return (false, $"سرور قبول نکرد ({(int)resp.StatusCode}): {serverMsg}{why}");
                 }
                 last = new Exception($"HTTP {(int)resp.StatusCode}: {ExtractMessage(body)}");
             }

@@ -20,6 +20,7 @@ namespace InventoryAgent;
 //   -i, --interval MIN   فاصله‌ی watch به دقیقه
 //       --agent-id ID    شناسه‌ی ثابت سیستم (اختیاری — خودکار ساخته می‌شود)
 //       --token T        توکن JWT (اختیاری)
+//       --key K          کلید مشترک ایجنت (X-Agent-Key) — اگر سرور تنظیم کرده باشد
 //       --username U --password P   ورود و گرفتن توکن (اختیاری)
 //       --config PATH    مسیر فایل تنظیمات (پیش‌فرض: agent.json کنار exe)
 //       --out FILE       خروجی JSON در dry-run
@@ -100,7 +101,7 @@ internal static class Program
             Console.WriteLine($"سرور    : {config.Server}");
         }
 
-        using var api = new ApiClient(config.Server, config.Insecure);
+        using var api = new ApiClient(config.Server, config.Insecure, agentKey: config.Key);
         await EnsureAuthAsync(api, config, ct);
 
         var (ok, msg) = await api.SendReportAsync(report, ct);
@@ -149,7 +150,7 @@ internal static class Program
     {
         var config = LoadConfig(opts);
         var agentId = AgentIdentity.Resolve(string.IsNullOrWhiteSpace(opts.AgentId) ? config.AgentId : opts.AgentId);
-        using var api = new ApiClient(config.Server, config.Insecure);
+        using var api = new ApiClient(config.Server, config.Insecure, agentKey: config.Key);
         await EnsureAuthAsync(api, config);
         Console.WriteLine($"AgentId: {agentId}");
         await PollAndExecuteAsync(api, agentId);
@@ -296,6 +297,7 @@ internal static class Program
               -i, --interval MIN   فاصله‌ی watch به دقیقه (پیش‌فرض ۶۰)
                   --agent-id ID    شناسه‌ی ثابت سیستم (اختیاری)
                   --token T        توکن JWT (اختیاری)
+                  --key K          کلید مشترک ایجنت (اگر سرور Agent:Key داشته باشد)
                   --username U --password P
                   --config PATH    مسیر فایل تنظیمات
                   --out FILE       ذخیره‌ی خروجی dry-run
@@ -318,6 +320,7 @@ internal static class Program
         if (opts.IntervalMinutes is > 0) config.IntervalMinutes = opts.IntervalMinutes.Value;
         if (!string.IsNullOrWhiteSpace(opts.AgentId)) config.AgentId = opts.AgentId;
         if (!string.IsNullOrWhiteSpace(opts.Token)) config.Token = opts.Token;
+        if (!string.IsNullOrWhiteSpace(opts.Key)) config.Key = opts.Key;
         if (!string.IsNullOrWhiteSpace(opts.Username)) config.Username = opts.Username;
         if (!string.IsNullOrWhiteSpace(opts.Password)) config.Password = opts.Password;
         if (opts.Insecure) config.Insecure = true;
@@ -336,6 +339,7 @@ internal static class Program
         public int? IntervalMinutes { get; set; }
         public string? AgentId { get; set; }
         public string? Token { get; set; }
+        public string? Key { get; set; }
         public string? Username { get; set; }
         public string? Password { get; set; }
         public string? ConfigPath { get; set; }
@@ -397,6 +401,9 @@ internal static class Program
                 case "--token":
                     o.Token = Next(ref i);
                     break;
+                case "--key":
+                    o.Key = Next(ref i);
+                    break;
                 case "--username":
                     o.Username = Next(ref i);
                     break;
@@ -419,6 +426,7 @@ internal static class Program
                     if (a.StartsWith("--server=")) o.Server = a["--server=".Length..];
                     else if (a.StartsWith("--agent-id=")) o.AgentId = a["--agent-id=".Length..];
                     else if (a.StartsWith("--token=")) o.Token = a["--token=".Length..];
+                    else if (a.StartsWith("--key=")) o.Key = a["--key=".Length..];
                     else if (a.StartsWith("--config=")) o.ConfigPath = a["--config=".Length..];
                     else if (a.StartsWith("--out=")) o.OutFile = a["--out=".Length..];
                     break;

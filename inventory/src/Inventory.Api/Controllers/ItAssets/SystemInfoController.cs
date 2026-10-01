@@ -14,11 +14,32 @@ public class SystemInfoController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly Hubs.DashboardBroadcaster _dash;
-    public SystemInfoController(AppDbContext db, Hubs.DashboardBroadcaster dash)
+    private readonly IConfiguration _cfg;
+    public SystemInfoController(AppDbContext db, Hubs.DashboardBroadcaster dash, IConfiguration cfg)
     {
         _db = db;
         _dash = dash;
+        _cfg = cfg;
     }
+
+    // ================= کلید مشترک ایجنت =================
+
+    /// <summary>
+    /// بررسی کلید مشترک ایجنت (هدر X-Agent-Key).
+    /// اگر در تنظیمات Agent:Key مقدار داشته باشد، درخواست‌های ایجنت فقط با همان کلید پذیرفته
+    /// می‌شوند (وگرنه 401). اگر خالی باشد، مسیرها مثل قبل باز می‌مانند تا نسخه‌های قدیمی ایجنت
+    /// بدون تغییر کار کنند.
+    /// </summary>
+    private bool AgentKeyOk()
+    {
+        var expected = (_cfg["Agent:Key"] ?? Environment.GetEnvironmentVariable("AGENT_KEY") ?? "").Trim();
+        if (expected.Length == 0) return true;
+        var got = (Request.Headers["X-Agent-Key"].FirstOrDefault() ?? "").Trim();
+        return got.Length == expected.Length &&
+               string.Equals(got, expected, StringComparison.Ordinal);
+    }
+
+    private static readonly object AgentKeyError = new { message = "کلید ایجنت نامعتبر است (هدر X-Agent-Key)." };
 
     // ================= مدل‌های کمکی =================
 
@@ -56,6 +77,7 @@ public class SystemInfoController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Post([FromBody] SystemInfo info)
     {
+        if (!AgentKeyOk()) return Unauthorized(AgentKeyError);
         info.ReceivedAt = DateTime.Now;
         var existing = await _db.SystemInfos.FirstOrDefaultAsync(x => x.AgentId == info.AgentId);
         if (existing != null)
@@ -555,6 +577,7 @@ public class SystemInfoController : ControllerBase
     [HttpGet("agent-commands")]
     public async Task<IActionResult> AgentCommands([FromQuery] string agentId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
+        if (!AgentKeyOk()) return Unauthorized(AgentKeyError);
         var pagination = new Paging.Request(skip, take);
         var pending = await _db.SystemRemoteCommands
             .AsNoTracking()
@@ -574,6 +597,7 @@ public class SystemInfoController : ControllerBase
     [HttpPost("commands/{cmdId}/result")]
     public async Task<IActionResult> CommandResult(int cmdId, [FromBody] CommandResultRequest req)
     {
+        if (!AgentKeyOk()) return Unauthorized(AgentKeyError);
         var cmd = await _db.SystemRemoteCommands.FirstOrDefaultAsync(c => c.Id == cmdId);
         if (cmd == null) return NotFound(new { message = "دستور یافت نشد." });
         var ok = req != null && req.Ok;
