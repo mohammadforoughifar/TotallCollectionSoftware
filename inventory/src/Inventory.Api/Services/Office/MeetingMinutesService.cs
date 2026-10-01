@@ -21,6 +21,12 @@ public interface IMeetingMinutesService
 {
     Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId, Paging.Request? pagination = null);
     Task<MinutesDetailDto?> GetDetailAsync(int id, int userId, int companyId);
+
+    /// <summary>
+    /// آیا این صورتجلسه «در گردش» کاربر است؟ (ایجادکننده، حاضر/غایبِ ارسال‌شده،
+    /// یا مسئول اجرا/پیگیریِ بند — پس از ارسال صورتجلسه به گردش).
+    /// </summary>
+    Task<bool> CanAccessAsync(int minutesId, int userId, int companyId);
     Task<int> SaveAsync(SaveMinutesDto dto, int userId, string userName, int companyId);
     Task SubmitAsync(int id, bool includeAbsentees, int userId, string userName);
     Task DeleteAsync(int id, int userId);
@@ -141,11 +147,33 @@ public class MeetingMinutesService : IMeetingMinutesService
         return m;
     }
 
+    // ------------------------------ «در گردش» ------------------------------
+
+    /// <summary>
+    /// صورتجلسه‌هایی که برای این کاربر «در گردش» هستند — تنها همین‌ها در فهرست
+    /// او دیده می‌شوند و فقط با حدس‌زدن شناسه (ID) در مرورگر هم قابل باز شدن نیستند:
+    ///   • ایجادکننده (همیشه)،
+    ///   • حاضر/غایبی که صورتجلسه برای او ارسال شده است (Notified)،
+    ///   • مسئول اجرا یا مسئول پیگیریِ یکی از بندها — مشروط بر اینکه صورتجلسه
+    ///     قبلاً «ارسال به گردش» شده باشد (نه پیش‌نویسِ در دستِ ثبت‌کننده).
+    /// </summary>
+    private IQueryable<MeetingMinutes> InCirculationQuery(int userId, int companyId) =>
+        _db.MeetingMinutes.AsNoTracking().Where(m => !m.IsDeleted && m.CompanyId == companyId &&
+            (m.CreatedByUserId == userId ||
+             _db.MeetingMinutesParticipants.Any(p => p.MinutesId == m.Id && p.UserId == userId && p.Notified) ||
+             (_db.MeetingMinutesParticipants.Any(p => p.MinutesId == m.Id && p.Notified) &&
+              _db.MeetingMinutesItems.Any(i => i.MinutesId == m.Id &&
+                  (i.ResponsibleUserId == userId || i.FollowUpUserId == userId)))));
+
+    public Task<bool> CanAccessAsync(int minutesId, int userId, int companyId)
+        => InCirculationQuery(userId, companyId).AnyAsync(m => m.Id == minutesId);
+
     private async Task<MeetingMinutesItem> MustGetItemAsync(int itemId, int userId)
     {
         var item = await _db.MeetingMinutesItems.FirstOrDefaultAsync(x => x.Id == itemId);
         if (item == null) throw new Exception("بند پیدا نشد.");
-        var m = await _db.MeetingMinutes.FirstAsync(x => x.Id == item.MinutesId && !x.IsDeleted);
+        var m = await _db.MeetingMinutes.FirstOrDefaultAsync(x => x.Id == item.MinutesId && !x.IsDeleted);
+        if (m == null) throw new Exception("صورتجلسه پیدا نشد.");
         if (m.Status == MeetingMinutesStatus.Closed)
             throw new Exception("صورتجلسه «اتمام نهایی» شده — تغییرات دیگر ممکن نیست.");
         return item;
@@ -155,11 +183,10 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     public async Task<List<MinutesListItemDto>> GetListAsync(string? search, string? status, int userId, int companyId, Paging.Request? pagination = null)
     {
-        // کاربر فقط صورتجلسه‌ای را می‌بیند که ایجادکننده آن است یا در گردش
-        // صورتجلسه به‌عنوان حاضر/غایب قرار گرفته است.
-        var q = _db.MeetingMinutes.AsNoTracking().Where(m => !m.IsDeleted && m.CompanyId == companyId &&
-            (m.CreatedByUserId == userId ||
-             _db.MeetingMinutesParticipants.Any(p => p.MinutesId == m.Id && p.UserId == userId)));
+        // فقط صورتجلسه‌هایی که «در گردش کاربر» هستند (ایجادکننده، حاضر/غایبِ
+        // ارسال‌شده، یا مسئول اجرا/پیگیری بند). سایر موارد — از جمله پیش‌نویس‌هایی
+        // که هنوز برای کاربر ارسال نشده‌اند — در فهرست او نمی‌آید.
+        var q = InCirculationQuery(userId, companyId);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
@@ -193,11 +220,9 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     public async Task<MinutesDetailDto?> GetDetailAsync(int id, int userId, int companyId)
     {
-        // عدم عضویت عمداً مانند «پیدا نشد» پاسخ داده می‌شود تا وجود صورتجلسه افشا نشود.
-        var m = await _db.MeetingMinutes.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == id && !x.IsDeleted && x.CompanyId == companyId &&
-                (x.CreatedByUserId == userId ||
-                 _db.MeetingMinutesParticipants.Any(p => p.MinutesId == x.Id && p.UserId == userId)));
+        // عدم گردش عمداً مانند «پیدا نشد» پاسخ داده می‌شود تا وجود صورتجلسه افشا نشود
+        // (کاربر با حدس‌زدن شناسه در مرورگر به صورتجلسهٔ دیگران دسترسی پیدا نمی‌کند).
+        var m = await InCirculationQuery(userId, companyId).FirstOrDefaultAsync(x => x.Id == id);
         if (m == null) return null;
 
         var parts = await _db.MeetingMinutesParticipants.AsNoTracking()
@@ -386,6 +411,11 @@ public class MeetingMinutesService : IMeetingMinutesService
     public async Task SubmitAsync(int id, bool includeAbsentees, int userId, string userName)
     {
         var m = await MustGetAsync(id);
+
+        // آیا قبلاً هم به گردش ارسال شده؟ (برای اینکه مسئولان بندها
+        // با هر بار ارسال مجدد نوتیف تکراری نگیرند)
+        var alreadyCirculated = await _db.MeetingMinutesParticipants.AnyAsync(p => p.MinutesId == id && p.Notified);
+
         var parts = await _db.MeetingMinutesParticipants
             .Where(p => p.MinutesId == id && !p.Notified)
             .ToListAsync();
@@ -394,12 +424,14 @@ public class MeetingMinutesService : IMeetingMinutesService
         if (includeAbsentees)
             targets = parts.ToList();
 
+        var notifiedIds = new HashSet<int>();
         if (targets.Count > 0)
         {
             var userMap = await NamesAsync(targets.Select(t => t.UserId));
             foreach (var t in targets)
             {
                 t.Notified = true;
+                notifiedIds.Add(t.UserId);
                 var myName = userMap.GetValueOrDefault(t.UserId, t.Name);
                 if (t.UserId != userId)
                 {
@@ -411,6 +443,31 @@ public class MeetingMinutesService : IMeetingMinutesService
                 }
             }
             await _db.SaveChangesAsync();
+        }
+
+        // مسئولان اجرا و پیگیری بندها هم «در گردش» این صورتجلسه‌اند؛ در اولین ارسال
+        // به گردش — اگر در فهرست حاضرین/غایبین نبودند — به آن‌ها هم اطلاع می‌دهیم.
+        if (!alreadyCirculated)
+        {
+            var itemOwners = await _db.MeetingMinutesItems.AsNoTracking()
+                .Where(i => i.MinutesId == id)
+                .Select(i => new { i.ResponsibleUserId, i.FollowUpUserId })
+                .ToListAsync();
+            var ownerIds = itemOwners
+                .SelectMany(x => new[] { x.ResponsibleUserId, x.FollowUpUserId })
+                .Where(x => x is > 0).Select(x => x!.Value)
+                .Distinct()
+                .Where(uid => uid != userId && !notifiedIds.Contains(uid))
+                .ToList();
+            if (ownerIds.Count > 0)
+            {
+                foreach (var uid in ownerIds)
+                {
+                    await _notify.SendAsync(uid, "صورتجلسه جدید 📄",
+                        $"{m.Title} — تاریخ جلسه: {FaDate(m.MeetingDate)} — بندی از این صورتجلسه به شما سپرده شده است. ثبت‌کننده: {userName}",
+                        userName, "صورتجلسه", $"misc/minutes/{m.Id}");
+                }
+            }
         }
 
         await _notify.BroadcastChangedAsync("meeting-minutes");
@@ -548,8 +605,10 @@ public class MeetingMinutesService : IMeetingMinutesService
     /// <summary>تایید انجام توسط مسئول اجرا بند</summary>
     public async Task<MinutesItemDto> RespDecisionAsync(int itemId, bool approved, string? note, int userId)
     {
-        var item = await _db.MeetingMinutesItems.Include(i => i.Minutes).FirstAsync(i => i.Id == itemId);
-        if (item.Minutes!.Status == MeetingMinutesStatus.Closed)
+        var item = await _db.MeetingMinutesItems.Include(i => i.Minutes).FirstOrDefaultAsync(i => i.Id == itemId);
+        if (item?.Minutes is null || item.Minutes.IsDeleted)
+            throw new Exception("بند پیدا نشد.");
+        if (item.Minutes.Status == MeetingMinutesStatus.Closed)
             throw new Exception("صورتجلسه «اتمام نهایی» شده — تغییرات دیگر ممکن نیست.");
         if (item.ResponsibleUserId != userId)
             throw new Exception("فقط مسئول اجرای این بند می‌تواند آن را تایید کند.");
@@ -589,8 +648,10 @@ public class MeetingMinutesService : IMeetingMinutesService
         if (decision != "Approved" && decision != "Rejected")
             throw new Exception("تصمیم نامعتبر است.");
 
-        var item = await _db.MeetingMinutesItems.Include(i => i.Minutes).FirstAsync(i => i.Id == itemId);
-        if (item.Minutes!.Status == MeetingMinutesStatus.Closed)
+        var item = await _db.MeetingMinutesItems.Include(i => i.Minutes).FirstOrDefaultAsync(i => i.Id == itemId);
+        if (item?.Minutes is null || item.Minutes.IsDeleted)
+            throw new Exception("بند پیدا نشد.");
+        if (item.Minutes.Status == MeetingMinutesStatus.Closed)
             throw new Exception("صورتجلسه «اتمام نهایی» شده — تغییرات دیگر ممکن نیست.");
         if (item.FollowUpUserId != userId)
             throw new Exception("فقط مسئول پیگیری این بند می‌تواند تایید/رد کند.");
@@ -723,7 +784,8 @@ public class MeetingMinutesService : IMeetingMinutesService
 
     public async Task<string> BuildSummaryTextAsync(int minutesId, int itemId = 0)
     {
-        var m = await _db.MeetingMinutes.AsNoTracking().FirstAsync(x => x.Id == minutesId && !x.IsDeleted);
+        var m = await _db.MeetingMinutes.AsNoTracking().FirstOrDefaultAsync(x => x.Id == minutesId && !x.IsDeleted)
+            ?? throw new Exception("صورتجلسه پیدا نشد.");
         var parts = await _db.MeetingMinutesParticipants.AsNoTracking()
             .Where(p => p.MinutesId == minutesId)
             .OrderBy(p => p.Kind).ThenBy(p => p.Name).ToListAsync();

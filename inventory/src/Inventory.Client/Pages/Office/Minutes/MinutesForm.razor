@@ -635,7 +635,8 @@
         detail = await Minutes.GetDetailAsync(minutesId);
         if (detail is null)
         {
-            Toast.Error("صورتجلسه پیدا نشد.");
+            // دسترسی با حدس‌زدن شناسه در نوار آدرس ممکن نیست — سرور «پیدا نشد» می‌دهد.
+            Toast.Error("صورتجلسه پیدا نشد یا در گردش شما نیست.");
             Nav.NavigateTo("misc/minutes");
             return;
         }
