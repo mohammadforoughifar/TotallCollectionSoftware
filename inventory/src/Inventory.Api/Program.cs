@@ -176,6 +176,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Inventory.Api.Serv
 
 // ذخیره‌سازی فایل‌ها روی دیسک (uploads/ در روت API) + عکس کاربران
 builder.Services.AddSingleton<FileStore>();
+// کانال شرکت‌های راه‌دور: احراز هویت کلید API بین نصبِ شرکت و سرور مرکزی
+builder.Services.AddScoped<Inventory.Api.Services.ItExternalAuthService>();
 // نگهبان دسترسی پیوست‌ها (بر اساس ماژول صاحب پیوست)
 builder.Services.AddScoped<IAttachmentGuard, AttachmentGuard>();
 // واترمارک سمت سرور (حک روی بایت تصویر/PDF) برای مدارکِ دارای فلگ واترمارک

@@ -490,6 +490,12 @@
                     <NavLink class="nav-link" href="it-requests" @onclick="NotifyClose">
                         <i class="bi bi-headset"></i><span>درخواست خدمت IT</span>
                     </NavLink>
+                    @if (Auth.IsAdmin)
+                    {
+                        <NavLink class="nav-link" href="settings/it-client-companies" @onclick="NotifyClose">
+                            <i class="bi bi-diagram-3"></i><span>شرکت‌های راه‌دور</span>
+                        </NavLink>
+                    }
                 }
                 @if (Auth.CanSee("SystemUsers"))
                 {
@@ -713,7 +719,7 @@
                    p.StartsWith("warehouses") || p.StartsWith("parties") ||
                    (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
         gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || gOpsBase;
-        gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests");
+        gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("settings/it-client-companies");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("referrer-wallets") ||
                 p.StartsWith("system-company") || p.StartsWith("system-department");

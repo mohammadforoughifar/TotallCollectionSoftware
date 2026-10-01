@@ -49,6 +49,8 @@ public static class DbInitializer
                     await GoodsIssueSchemaV1.EnsureAsync(db);
                     // مازادِ کارکرد: «در انتظار تصمیم مدیر» — ستون‌های تصمیم و پیش‌فرض رفتار
                     await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
+                    // کانال شرکت‌های راه‌دور (درخواست خدمات IT بین‌شرکتی)
+                    await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
@@ -75,6 +77,8 @@ public static class DbInitializer
                     await GoodsIssueSchemaV1.EnsureAsync(db);
                     // مازادِ کارکرد: «در انتظار تصمیم مدیر» — ستون‌های تصمیم و پیش‌فرض رفتار
                     await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
+                    // کانال شرکت‌های راه‌دور (درخواست خدمات IT بین‌شرکتی)
+                    await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 }
 
                 await WorkOrderSchemaV2.EnsureAsync(db);

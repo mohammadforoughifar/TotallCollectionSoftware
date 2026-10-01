@@ -52,6 +52,12 @@ public class AppDbContext : DbContext
     public DbSet<ItRequestLog> ItRequestLogs => Set<ItRequestLog>();
     public DbSet<ItRequestSeen> ItRequestSeens => Set<ItRequestSeen>();
 
+    // ---------- کانال شرکت‌های راه‌دور (نسخه‌ی نصب‌شده در شرکت مشتری ↔ سرور مرکزی) ----------
+    public DbSet<ItClientCompany> ItClientCompanies => Set<ItClientCompany>();
+    public DbSet<ItRemoteConnection> ItRemoteConnections => Set<ItRemoteConnection>();
+    public DbSet<ItRemoteRequest> ItRemoteRequests => Set<ItRemoteRequest>();
+    public DbSet<ItRemoteUserKey> ItRemoteUserKeys => Set<ItRemoteUserKey>();
+
     // ================== اعلان‌ها (نوتیفیکیشن) ==================
     public DbSet<AppNotification> AppNotifications => Set<AppNotification>();
     public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();

@@ -28,11 +28,30 @@
 @* ================== حالت شعبه: درخواست‌های ارسال‌شده به سرور مرکزی ================== *@
 @if (remoteMode)
 {
-    <div class="alert alert-info py-2 fs-8 mb-3">
+    <div class="alert @(remoteHasKey ? "alert-info" : "alert-warning") py-2 fs-8 mb-3 d-flex flex-wrap align-items-center gap-2">
         <i class="bi bi-hdd-network"></i>
-        این نرم‌افزار به‌عنوان <b>شعبه</b> پیکربندی شده — درخواست‌ها به سرور مرکزی
-        (<span class="num" dir="ltr">@remoteUrl</span>) ارسال می‌شوند.
-        <button class="btn btn-sm btn-outline-primary me-2" @onclick="LoadRemote"><i class="bi bi-arrow-clockwise"></i> بروزرسانی وضعیت</button>
+        @if (remoteHasKey)
+        {
+            <span>
+                این نرم‌افزار به شرکت <b>@(string.IsNullOrWhiteSpace(remoteCompany) ? remoteCompanyCode : remoteCompany)</b> وصل است —
+                درخواست‌ها به سرور مرکزی <span class="num" dir="ltr">@remoteUrl</span> ارسال می‌شوند.
+            </span>
+        }
+        else
+        {
+            <span>
+                ارسال به سرور مرکزی پیکربندی نشده است. برای ارسال درخواست، آدرس سرور و <b>کلید API</b> شرکت را وارد کنید
+                (این کلید را مدیر واحد IT صادر می‌کند).
+            </span>
+        }
+        <div class="ms-auto d-flex gap-2">
+            <button class="btn btn-sm btn-outline-primary" disabled="@busy" @onclick="LoadRemote">
+                <i class="bi bi-arrow-clockwise"></i> بروزرسانی وضعیت
+            </button>
+            <a class="btn btn-sm btn-outline-secondary" href="/settings/it-remote">
+                <i class="bi bi-gear"></i> تنظیمات اتصال
+            </a>
+        </div>
     </div>
 
     @if (loading)
@@ -75,10 +94,20 @@
                                     <span class="badge bg-warning-subtle text-warning border">در حال بررسی در مرکز</span>
                                 }
                             </div>
-                            <div class="itr-number num">@rr.Number</div>
+                            <div class="itr-number num">@(string.IsNullOrWhiteSpace(rr.Number) ? "ارسال‌نشده" : rr.Number)</div>
                             @if (!string.IsNullOrWhiteSpace(rr.FinalResponse))
                             {
                                 <div class="itr-desc"><i class="bi bi-chat-left-text text-primary"></i> @rr.FinalResponse</div>
+                            }
+                            @if (rr.NotSent)
+                            {
+                                <div class="alert alert-danger py-1 px-2 fs-8 mt-2 mb-0">
+                                    <i class="bi bi-exclamation-triangle"></i> ارسال نشد:
+                                    @(string.IsNullOrWhiteSpace(rr.LastError) ? "خطای نامشخص" : rr.LastError)
+                                    <button class="btn btn-sm btn-outline-danger ms-2" disabled="@busy" @onclick="() => RemoteRetry(rr)">
+                                        <i class="bi bi-send"></i> تلاش مجدد
+                                    </button>
+                                </div>
                             }
                             <div class="itr-foot">
                                 <span class="fs-8 text-muted"><i class="bi bi-calendar3"></i> @rr.CreatedAt.ToFa()</span>
@@ -118,7 +147,36 @@ else
             <span class="itr-tab-badge">@managerItems.Count(r => r.Status == "New")</span>
         </button>
     }
+    @if (access.IsManager)
+    {
+        <a class="itr-tab" href="/settings/it-client-companies" title="مدیریت شرکت‌های راه‌دور">
+            <i class="bi bi-diagram-3"></i> شرکت‌های راه‌دور
+        </a>
+    }
 </div>
+
+@* ================== فیلترهای کارتابل مدیر ================== *@
+@if (tab == "manager" && access.IsManager)
+{
+    <div class="itr-filters mb-3">
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="fExt" @bind="mgrOnlyExternal" @bind:after="() => LoadAll()" />
+            <label class="form-check-label" for="fExt">فقط درخواست‌های شرکت‌های راه‌دور</label>
+        </div>
+        <div class="ms-auto d-flex align-items-center gap-2">
+            <select class="form-select form-select-sm w-auto" @bind="mgrCompanyId" @bind:after="() => LoadAll()">
+                <option value="0">همهٔ شرکت‌ها</option>
+                @foreach (var c in clientCompanies)
+                {
+                    <option value="@c.Id">@c.Name (@c.Code)</option>
+                }
+            </select>
+            <div class="input-group input-group-sm w-auto">
+                <input class="form-control" placeholder="جستجو: شماره، موضوع، نام…" @bind="mgrSearch" @bind:event="oninput" @bind:after="() => LoadAll()" />
+            </div>
+        </div>
+    </div>
+}
 
 @if (loading)
 {
@@ -149,6 +207,12 @@ else
                                 @if (!r.Seen)
                                 {
                                     <span class="itr-new" title="رویت نشده"><i class="bi bi-circle-fill"></i> جدید</span>
+                                }
+                                @if (r.IsExternal)
+                                {
+                                    <span class="badge bg-primary-subtle text-primary border me-1" title="ارسال‌شده از شرکت راه‌دور">
+                                        <i class="bi bi-building"></i> @r.CompanyName
+                                    </span>
                                 }
                                 @r.Title
                             </div>
@@ -315,8 +379,23 @@ else
                             </div>
                             <div id="rte-desc" class="rte-editor" contenteditable="true"></div>
                         </div>
-                        <div class="col-12" hidden="@remoteMode">
-                            <label class="form-label"><i class="bi bi-paperclip"></i> فایل پیوست (اختیاری — بدون محدودیت حجم)</label>
+                        @if (remoteMode)
+                        {
+                            @* در حالت راه‌دور، راهِ تماس لازم است چون کاربرِ ما در سرور مرکزی شناخته‌شده نیست *@
+                            <div class="col-12 col-md-6">
+                                <label class="form-label"><i class="bi bi-telephone"></i> شماره تماس</label>
+                                <input class="form-control num" dir="ltr" @bind="newForm.Phone" placeholder="۰۹۱۲…" />
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label"><i class="bi bi-envelope"></i> ایمیل</label>
+                                <input class="form-control num" dir="ltr" @bind="newForm.Email" placeholder="name@company.com" />
+                            </div>
+                        }
+                        <div class="col-12">
+                            <label class="form-label">
+                                <i class="bi bi-paperclip"></i>
+                                @(remoteMode ? "فایل پیوست (اختیاری — هر فایل حداکثر ۱۰ مگابایت)" : "فایل پیوست (اختیاری — بدون محدودیت حجم)")
+                            </label>
                             <InputFile class="form-control" OnChange="OnNewFileSelected" multiple />
                             @if (newFiles.Count > 0)
                             {
@@ -649,6 +728,11 @@ else
 
     .itr-card { background: #fff; border: 1px solid #e8edf3; border-radius: 16px; overflow: hidden; cursor: pointer; transition: all .18s ease; height: 100%; display: flex; box-shadow: 0 1px 3px rgba(15,23,42,.05); }
     .itr-card:hover { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(15,23,42,.12); border-color: #c7d7f5; }
+    /* نوار فیلترهای کارتابل مدیر (فقط درخواست‌های بیرونی / انتخاب شرکت / جستجو) */
+    .itr-filters {
+        display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+        background: #fff; border: 1px solid #e2e8f0; border-radius: .6rem; padding: .5rem .75rem;
+    }
     .itr-card-strip { width: 5px; flex-shrink: 0; }
     .itr-st-new .itr-card-strip { background: linear-gradient(#94a3b8, #64748b); }
     .itr-st-assigned .itr-card-strip { background: linear-gradient(#fbbf24, #f59e0b); }
@@ -811,11 +895,54 @@ else
     private Dictionary<int, string> decideNotes = new();
     private string managerActionText = "";
 
+    // ================== فیلترهای کارتابل مدیر ==================
+    private bool mgrOnlyExternal;
+    private int mgrCompanyId;
+    private string mgrSearch = "";
+    private List<CompanyOpt> clientCompanies = new();
+    public class CompanyOpt { public int Id { get; set; } public string Code { get; set; } = ""; public string Name { get; set; } = ""; }
+
     // ================== حالت شعبه: ارسال به سرور مرکزی ==================
-    private bool remoteMode;
-    private string remoteUrl = "", remoteCompany = "";
-    private List<RemoteReq> remoteReqs = new(); // درخواست‌های ارسال‌شده به مرکز (ذخیره محلی)
-    public class RemoteReq { public string Number { get; set; } = ""; public string Title { get; set; } = ""; public DateTime CreatedAt { get; set; } public string Status { get; set; } = "New"; public string? FinalResponse { get; set; } }
+    private bool remoteMode;          // این نصب به سرور مرکزی وصل است
+    private bool remoteHasKey;        // و کلید API معتبر دارد
+    private string remoteUrl = "", remoteCompany = "", remoteCompanyCode = "";
+    private List<RemoteReq> remoteReqs = new(); // آینهٔ محلی درخواست‌های ارسالی (از دیتابیس، نه مرورگر)
+
+    public class RemoteReq
+    {
+        public int Id { get; set; }
+        public string? Number { get; set; }
+        public string Title { get; set; } = "";
+        public string? SystemLabel { get; set; }
+        public string RequestType { get; set; } = "Hardware";
+        public string Description { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+        public string Status { get; set; } = "New";
+        public string? FinalResponse { get; set; }
+        public DateTime? ApprovedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public string? LastError { get; set; }
+        public bool NotSent { get; set; }
+    }
+
+    public class RemoteConn
+    {
+        public string? ServerUrl { get; set; }
+        public string? CompanyCode { get; set; }
+        public string? CompanyName { get; set; }
+        public bool HasKey { get; set; }
+        public string? KeyHint { get; set; }
+        public bool Enabled { get; set; } = true;
+    }
+
+    public class RemoteSendRes
+    {
+        public int Id { get; set; }
+        public string? Number { get; set; }
+        public bool Sent { get; set; }
+        public bool Duplicate { get; set; }
+        public string? Error { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -824,15 +951,17 @@ else
             Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
         apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
 
-        // ================== کانفیگ سرور مرکزی (حالت شعبه) ==================
+        // ================== اتصال به سرور مرکزی (این نصب، شرکتِ راه‌دور است) ==================
         try
         {
-            var cfg = await Http.GetFromJsonAsync<ItCfg>("/api/itrequests/config");
-            if (!string.IsNullOrWhiteSpace(cfg?.ItServerUrl))
+            var c = await Http.GetFromJsonAsync<RemoteConn>("/api/itremote/connection");
+            if (!string.IsNullOrWhiteSpace(c?.ServerUrl))
             {
                 remoteMode = true;
-                remoteUrl = cfg!.ItServerUrl.TrimEnd('/');
-                remoteCompany = cfg.ItCompanyName ?? "";
+                remoteUrl = c!.ServerUrl!.TrimEnd('/');
+                remoteCompany = c.CompanyName ?? "";
+                remoteCompanyCode = c.CompanyCode ?? "";
+                remoteHasKey = c.HasKey && c.Enabled;
             }
         }
         catch { }
@@ -902,47 +1031,78 @@ else
         }
         if (access.IsManager)
         {
-            try { managerItems = await Http.GetFromJsonAsync<List<ReqItem>>("/api/itrequests/manager") ?? new(); }
+            var url = "/api/itrequests/manager"
+                   + (mgrOnlyExternal ? "?onlyExternal=true" : "?onlyExternal=false")
+                   + $"&companyId={mgrCompanyId}&q2={Uri.EscapeDataString(mgrSearch ?? "")}";
+            try { managerItems = await Http.GetFromJsonAsync<List<ReqItem>>(url) ?? new(); }
             catch { managerItems = new(); }
+
+            if (clientCompanies.Count == 0)
+            {
+                try { clientCompanies = await Http.GetFromJsonAsync<List<CompanyOpt>>("/api/itrequests/client-companies") ?? new(); }
+                catch { clientCompanies = new(); }
+            }
         }
     }
 
     private void SwitchTab(string t) { tab = t; page = 1; }
 
+    /// <summary>
+    /// فهرست «درخواست‌های من» از دیتابیسِ همین نصب خوانده می‌شود (نه از حافظهٔ مرورگر) تا
+    /// با تعویض دستگاه از بین نرود و همهٔ کاربرانِ این شرکت آن را ببینند؛ سپس وضعیت‌ها
+    /// در یک درخواستِ شبکه از سرور مرکزی به‌روز می‌شود.
+    /// </summary>
     private async Task LoadRemote()
     {
-        // لیست شماره‌های ارسال‌شده از این نرم‌افزار (ذخیره محلی)
         try
         {
-            var json = await JS.InvokeAsync<string?>("localStorage.getItem", "itRemoteReqs");
-            remoteReqs = string.IsNullOrWhiteSpace(json) ? new()
-                : System.Text.Json.JsonSerializer.Deserialize<List<RemoteReq>>(json,
-                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            remoteReqs = await Http.GetFromJsonAsync<List<RemoteReq>>("/api/itremote/requests")
+                        ?? new();
         }
         catch { remoteReqs = new(); }
 
-        // وضعیت هر کدام از سرور مرکزی
-        foreach (var rr in remoteReqs)
+        if (!remoteHasKey) return;
+        try
         {
-            try
+            var resp = await Http.PostAsync("/api/itremote/sync", null);
+            if (resp.IsSuccessStatusCode)
             {
-                var t = await Http.GetFromJsonAsync<RemoteTrack>($"{remoteUrl}/api/itrequests/track?number={Uri.EscapeDataString(rr.Number)}");
-                if (t != null) { rr.Status = t.Status; rr.FinalResponse = t.FinalResponse; }
+                var body = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("updated", out var u) && u.GetInt32() > 0)
+                {
+                    remoteReqs = await Http.GetFromJsonAsync<List<RemoteReq>>("/api/itremote/requests") ?? remoteReqs;
+                    StateHasChanged();
+                }
             }
-            catch { }
         }
+        catch { /* شبکه در دسترس نیست — وضعیت محلی نمایش داده می‌شود */ }
     }
-    public class RemoteTrack { public string Number { get; set; } = ""; public string Status { get; set; } = ""; public string? FinalResponse { get; set; } }
 
-    private async Task SaveRemoteList() =>
-        await JS.InvokeVoidAsync("localStorage.setItem", "itRemoteReqs", System.Text.Json.JsonSerializer.Serialize(remoteReqs));
+    private async Task RemoteRetry(RemoteReq rr)
+    {
+        busy = true;
+        try
+        {
+            var resp = await Http.PostAsync($"/api/itremote/requests/{rr.Id}/retry", null);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (resp.IsSuccessStatusCode)
+            {
+                Toast.Success("ارسال به سرور مرکزی انجام شد.");
+                await LoadRemote();
+            }
+            else Toast.Error(body);
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
 
     private async Task RemoteComplete(RemoteReq rr)
     {
         busy = true;
         try
         {
-            var resp = await Http.PostAsync($"{remoteUrl}/api/itrequests/track/complete?number={Uri.EscapeDataString(rr.Number)}", null);
+            var resp = await Http.PostAsync($"/api/itremote/requests/{rr.Id}/complete", null);
             if (resp.IsSuccessStatusCode) { Toast.Success("درخواست تایید و تکمیل شد. 🎉"); await LoadRemote(); }
             else Toast.Error(await resp.Content.ReadAsStringAsync());
         }
@@ -988,25 +1148,60 @@ else
 
             if (remoteMode)
             {
-                // ================== حالت شعبه: ارسال به سرور مرکزی (بدون لاگین آنجا) ==================
-                var resp2 = await Http.PostAsJsonAsync($"{remoteUrl}/api/itrequests/external", new
+                // ========== ارسال به سرور مرکزی — کاربر ما آنجا «کاربر» تعریف نشده است،
+                // هویتش با کلید پایدارِ خودش (که در همین نصب ذخیره است) منتقل می‌شود. ==========
+                if (!remoteHasKey)
                 {
-                    requesterName = newForm.RequesterName,
-                    companyName = remoteCompany,
-                    systemLabel = SysLabel(sel),
-                    requestType = newForm.RequestType,
-                    title = newForm.Title,
-                    description = desc
-                });
-                if (!resp2.IsSuccessStatusCode)
-                {
-                    formError = $"ارسال به سرور مرکزی ناموفق ({(int)resp2.StatusCode}) — آدرس سرور را در تنظیمات بررسی کنید.";
+                    formError = "کلید API شرکت تنظیم نشده است. از «تنظیمات اتصال» آن را وارد کنید.";
                     return;
                 }
-                var created2 = await resp2.Content.ReadFromJsonAsync<CreatedResNum>();
-                remoteReqs.Insert(0, new RemoteReq { Number = created2!.Number, Title = newForm.Title, CreatedAt = DateTime.Now });
-                await SaveRemoteList();
-                Toast.Success($"درخواست به سرور مرکزی ارسال شد — شماره پیگیری: {created2.Number}");
+
+                var files = new List<AttachPayload>();
+                foreach (var f in newFiles)
+                {
+                    try
+                    {
+                        using var ms = new MemoryStream();
+                        await using (var st = f.OpenReadStream(long.MaxValue)) await st.CopyToAsync(ms);
+                        if (ms.Length is > 0 and <= 10 * 1024 * 1024)
+                            files.Add(new AttachPayload
+                            {
+                                FileName = f.Name,
+                                ContentType = string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType,
+                                Base64 = Convert.ToBase64String(ms.ToArray())
+                            });
+                    }
+                    catch { }
+                }
+
+                var resp2 = await Http.PostAsJsonAsync("/api/itremote/requests", new
+                {
+                    systemLabel = SysLabel(sel),
+                    localSystemRef = sel?.Label,
+                    requestType = newForm.RequestType,
+                    title = newForm.Title,
+                    description = desc,
+                    phone = newForm.Phone,
+                    email = newForm.Email,
+                    attachments = files
+                });
+
+                if (!resp2.IsSuccessStatusCode)
+                {
+                    formError = $"ارسال ناموفق ({(int)resp2.StatusCode}): {await resp2.Content.ReadAsStringAsync()}";
+                    return;
+                }
+                var sent = await resp2.Content.ReadFromJsonAsync<RemoteSendRes>();
+                if (sent?.Sent == true)
+                {
+                    Toast.Success(sent.Duplicate
+                        ? "این درخواست قبلاً در سرور مرکزی ثبت شده بود."
+                        : $"درخواست ارسال شد — شماره پیگیری: {sent.Number}");
+                }
+                else
+                {
+                    Toast.Error($"درخواست ثبت شد ولی ارسال نشد: {sent?.Error} — از دکمهٔ «تلاش مجدد» استفاده کنید.");
+                }
                 showNew = false;
                 await LoadRemote();
                 return;
@@ -1261,13 +1456,21 @@ else
     };
 
     // ================== مدل‌ها ==================
-    public class ItCfg { public string ItServerUrl { get; set; } = ""; public string ItCompanyName { get; set; } = ""; }
+    public class AttachPayload { public string FileName { get; set; } = ""; public string ContentType { get; set; } = "application/octet-stream"; public string Base64 { get; set; } = ""; }
     public class AccessInfo { public int UserId { get; set; } public bool CanCreate { get; set; } public bool IsExpert { get; set; } public bool IsManager { get; set; } }
     public class SystemOpt { public int Id { get; set; } public string Label { get; set; } = ""; public string? Ip { get; set; } public string? UserName { get; set; } public string? DepartmentName { get; set; } }
     public class ExpertOpt { public int Id { get; set; } public string Username { get; set; } = ""; }
     public class CreatedRes { public int Id { get; set; } }
     public class CreatedResNum { public int Id { get; set; } public string Number { get; set; } = ""; }
-    public class NewForm { public string RequesterName { get; set; } = ""; public int? SystemInfoId { get; set; } public string RequestType { get; set; } = "Hardware"; public string Title { get; set; } = ""; }
+    public class NewForm
+    {
+        public string RequesterName { get; set; } = "";
+        public int? SystemInfoId { get; set; }
+        public string RequestType { get; set; } = "Hardware";
+        public string Title { get; set; } = "";
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+    }
     public class AttItem { public int Id { get; set; } public string FileName { get; set; } = ""; public string ContentType { get; set; } = ""; public string UploaderRole { get; set; } = ""; public string UploaderName { get; set; } = ""; public DateTime UploadedAt { get; set; } public long Size { get; set; } }
     public class LogItem { public int Id { get; set; } public string ActorName { get; set; } = ""; public string ActorRole { get; set; } = ""; public string Action { get; set; } = ""; public string? Text { get; set; } public DateTime CreatedAt { get; set; } }
     public class AsgItem { public int Id { get; set; } public int ExpertUserId { get; set; } public string ExpertName { get; set; } = ""; public string? ManagerInstruction { get; set; } public string? ExpertReport { get; set; } public bool ReportSubmitted { get; set; } public bool? Done { get; set; } public string? ManagerDecision { get; set; } public string? ManagerDecisionNote { get; set; } public bool IncludeInFinal { get; set; } public DateTime? RepliedAt { get; set; } }
@@ -1286,6 +1489,13 @@ else
         public string Status { get; set; } = "New";
         public string? ManagerNote { get; set; }
         public string? FinalResponse { get; set; }
+        // ---------- کانال شرکت‌های راه‌دور ----------
+        public bool IsExternal { get; set; }
+        public int? SourceCompanyId { get; set; }
+        public string? CompanyName { get; set; }
+        public string? CompanyCode { get; set; }
+        public string? RequesterPhone { get; set; }
+        public string? RequesterEmail { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime? AssignedAt { get; set; }
         public DateTime? ApprovedAt { get; set; }

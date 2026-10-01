@@ -19,7 +19,9 @@ public class ItRequestsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly FileStore _store;
-    public ItRequestsController(AppDbContext db, INotifyService notify, FileStore store) { _db = db; _notify = notify; _store = store; }
+    private readonly ItExternalAuthService _externalAuth;
+    public ItRequestsController(AppDbContext db, INotifyService notify, FileStore store, ItExternalAuthService externalAuth)
+    { _db = db; _notify = notify; _store = store; _externalAuth = externalAuth; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -57,10 +59,22 @@ public class ItRequestsController : ControllerBase
         return rbac.Concat(legacyAdmins).Distinct().ToList();
     }
 
+    /// <summary>مدیرِ واحد IT (یا ادمین سامانه) — برای مدیریت شرکت‌های مشتری و کارتابل‌ها.</summary>
+    private async Task<bool> IsManagerAsync()
+        => await HasAsync("Manage") || string.Equals(User.FindFirstValue(ClaimTypes.Role), "Admin", StringComparison.OrdinalIgnoreCase);
+
     private void Log(int reqId, string role, string action, string? text, bool internalOnly = true) =>
         _db.ItRequestLogs.Add(new ItRequestLog
         {
             RequestId = reqId, ActorName = MyUsername, ActorRole = role,
+            Action = action, Text = text, InternalOnly = internalOnly
+        });
+
+    /// <summary>ثبت لاگ روی درخواست بدون نیاز به کاربر لاگین (کانال بیرونی)</summary>
+    private void ItRequestLogSafe(int reqId, string actorName, string actorRole, string action, string text, bool internalOnly)
+        => _db.ItRequestLogs.Add(new ItRequestLog
+        {
+            RequestId = reqId, ActorName = actorName, ActorRole = actorRole,
             Action = action, Text = text, InternalOnly = internalOnly
         });
 
@@ -195,6 +209,13 @@ public class ItRequestsController : ControllerBase
         r.Id, r.Number, Seen = seenIds == null || seenIds.Contains(r.Id),
         r.RequesterName, r.RequesterUserId, r.SystemInfoId, r.SystemLabel,
         r.RequestType, r.Title, r.Description, r.Status,
+        // ---------- کانال شرکت‌های راه‌دور ----------
+        IsExternal = r.SourceCompanyId.HasValue || !string.IsNullOrEmpty(r.ExternalRequesterKey),
+        r.SourceCompanyId,
+        CompanyName = r.SourceCompany?.Name,
+        CompanyCode = r.SourceCompany?.Code,
+        r.RequesterPhone, r.RequesterEmail,
+        ExternalRequesterKey = internalView ? r.ExternalRequesterKey : null,
         // درخواست‌دهنده فرایند داخلی را نمی‌بیند
         ManagerNote = internalView ? r.ManagerNote : null,
         r.FinalResponse,
@@ -212,7 +233,7 @@ public class ItRequestsController : ControllerBase
 
     private async Task<List<object>> BuildList(IQueryable<ItRequest> q, bool internalView, Paging.Request? pagination = null)
     {
-        var reqs = await q.OrderByDescending(r => r.Id).ToPageListAsync(pagination);
+        var reqs = await q.Include(r => r.SourceCompany).OrderByDescending(r => r.Id).ToPageListAsync(pagination);
         var ids = reqs.Select(r => r.Id).ToList();
         var asgs = await _db.ItRequestAssignments.Where(a => ids.Contains(a.RequestId)).ToListAsync();
         var attCounts = await _db.ItRequestAttachments.Where(a => ids.Contains(a.RequestId))
@@ -242,12 +263,23 @@ public class ItRequestsController : ControllerBase
     public async Task<IActionResult> Mine([FromQuery] int skip = 0, [FromQuery] int? take = null) =>
         Ok(await Paging.ResultAsync(pagination => BuildList(_db.ItRequests.Where(r => r.RequesterUserId == MyUserId), internalView: false, pagination: pagination), skip, take));
 
-    /// <summary>کارتابل مدیر آی‌تی.</summary>
+    /// <summary>کارتابل مدیر آی‌تی — با فیلترِ «فقط درخواست‌های شرکت‌های راه‌دور» و انتخاب شرکت.</summary>
     [HttpGet("manager")]
-    public async Task<IActionResult> ManagerInbox([FromQuery] int skip = 0, [FromQuery] int? take = null)
+    public async Task<IActionResult> ManagerInbox([FromQuery] bool onlyExternal = false,
+        [FromQuery] int? companyId = null, [FromQuery] string? q2 = null,
+        [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("Manage")) return Forbid();
-        return Ok(await Paging.ResultAsync(pagination => BuildList(_db.ItRequests, internalView: true, pagination: pagination), skip, take));
+        var query = _db.ItRequests;
+        if (onlyExternal) query = query.Where(r => r.SourceCompanyId != null || r.ExternalRequesterKey != null);
+        if (companyId is > 0) query = query.Where(r => r.SourceCompanyId == companyId);
+        if (!string.IsNullOrWhiteSpace(q2))
+        {
+            var t = q2.Trim();
+            query = query.Where(r => r.Title.Contains(t) || r.Number.Contains(t)
+                                     || r.RequesterName.Contains(t) || (r.SystemLabel != null && r.SystemLabel.Contains(t)));
+        }
+        return Ok(await Paging.ResultAsync(pagination => BuildList(query, internalView: true, pagination: pagination), skip, take));
     }
 
     /// <summary>کارتابل کارشناس.</summary>
@@ -501,94 +533,300 @@ public class ItRequestsController : ControllerBase
         });
     }
 
-    // ================== درخواست از بیرون (شرکت‌های راه دور — بدون لاگین) ==================
+    // ======================================================================
+    //  کانال شرکت‌های راه‌دور (نسخه‌ی نرم‌افزارِ نصب‌شده در شرکت مشتری → سرور مرکزی)
+    //  احراز هویت: هدر X-It-Api-Key (کلید هر شرکت) — کاربران آن شرکت در این سرور «کاربر» نیستند.
+    // ======================================================================
+
     public class ExternalCreateDto
     {
+        /// <summary>کد شرکت فرستنده (همان کدی که سرور مرکزی تعریف کرده) — اختیاری، برای بررسی تطبیق با کلید</summary>
+        public string? CompanyCode { get; set; }
+
+        /// <summary>کلید پایدار کاربر در نرم‌افزار خودش — با آن «درخواست‌های من» را می‌بیند</summary>
+        public string? RequesterKey { get; set; }
+
+        /// <summary>شناسه یکتای درخواست در سیستم فرستنده — کلید idempotency</summary>
+        public string? ExternalId { get; set; }
+
         public string RequesterName { get; set; } = "";
-        public string CompanyName { get; set; } = "";
         public string? Phone { get; set; }
+        public string? Email { get; set; }
         public string? SystemLabel { get; set; }
+        /// <summary>کد سیستم/کامپیوتر در نرم‌افزار خودشان (اختیاری) — فقط برای نمایش</summary>
+        public string? LocalSystemRef { get; set; }
         public string RequestType { get; set; } = "Hardware";
         public string Title { get; set; } = "";
         public string Description { get; set; } = "";
     }
 
-    /// <summary>ثبت درخواست از بیرون سازمان — بدون نیاز به لاگین.
-    /// شرکت‌های راه دور از نرم‌افزار محلی خود، درخواست را به سرور مرکزی می‌فرستند.</summary>
+    /// <summary>خطای یکدست برای کانال بیرونی</summary>
+    private ActionResult ExtErr(int code, string message) => StatusCode(code, new { message, external = true });
+
+    /// <summary>احراز هویت شرکت + بررسی سقف نرخ. null = معتبر.</summary>
+    private async Task<ItClientCompany?> AuthExternalAsync()
+    {
+        var key = Request.Headers[ItExternalAuthService.HeaderName].FirstOrDefault();
+        var code = Request.Headers[ItExternalAuthService.CodeHeaderName].FirstOrDefault();
+        var (company, error) = await _externalAuth.AuthenticateAsync(key, code);
+        if (company == null)
+        {
+            ExtStatus = 401;
+            ExtError = error;
+            return null;
+        }
+        if (!_externalAuth.AllowRequest(company))
+        {
+            ExtStatus = 429;
+            ExtError = $"سقف درخواستِ ساعتیِ شرکت «{company.Name}» تکمیل شده است. کمی بعد دوباره تلاش کنید.";
+            return null;
+        }
+        _externalAuth.Touch(company);
+        return company;
+    }
+
+    private int ExtStatus;
+    private string? ExtError;
+
+    /// <summary>
+    /// تست اتصال: فقط با کلیدِ API. نرم‌افزارِ شرکت هنگام راه‌اندازی این را صدا می‌زند تا
+    /// مطمئن شود آدرس سرور و کلید درست است — هیچ داده‌ای جابه‌جا نمی‌شود.
+    /// </summary>
+    [HttpGet("ping")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ExternalPing()
+    {
+        ExtStatus = 0; ExtError = null;
+        var company = await AuthExternalAsync();
+        if (company == null) return ExtErr(ExtStatus == 0 ? 401 : ExtStatus, ExtError ?? "احراز هویت ناموفق.");
+        return Ok(new
+        {
+            ok = true,
+            companyName = company.Name,
+            companyCode = company.Code,
+            server = "واحد IT — سرور مرکزی",
+            message = $"اتصال برقرار است. شرکت «{company.Name}» معتبر شناخته شد."
+        });
+    }
+
+    /// <summary>
+    /// ثبت درخواست از شرکتِ راه‌دور. با کلیدِ API احراز هویت می‌شود و «idempotent» است:
+    /// اگر همان <c>ExternalId</c> دوباره فرستاده شود (تلاش مجدد در شبکه) درخواست تکراری ساخته نمی‌شود
+    /// و همان شمارهٔ قبلی برگردانده می‌شود.
+    /// </summary>
     [HttpPost("external")]
     [AllowAnonymous]
     public async Task<IActionResult> ExternalCreate([FromBody] ExternalCreateDto dto)
     {
+        ExtStatus = 0; ExtError = null;
+        var company = await AuthExternalAsync();
+        if (company == null) return ExtErr(ExtStatus == 0 ? 401 : ExtStatus, ExtError ?? "احراز هویت ناموفق.");
+
+        // ---------- اعتبارسنجی ورودی ----------
         if (string.IsNullOrWhiteSpace(dto.RequesterName))
-            return BadRequest(new { message = "نام درخواست‌کننده را وارد کنید." });
+            return ExtErr(422, "نام درخواست‌کننده الزامی است.");
         if (string.IsNullOrWhiteSpace(dto.Title))
-            return BadRequest(new { message = "موضوع درخواست را وارد کنید." });
+            return ExtErr(422, "موضوع درخواست الزامی است.");
+        if (dto.RequesterName.Trim().Length > 150)
+            return ExtErr(422, "نام درخواست‌کننده حداکثر ۱۵۰ کاراکتر است.");
+        if (dto.Title.Trim().Length > 200)
+            return ExtErr(422, "موضوع درخواست حداکثر ۲۰۰ کاراکتر است.");
+        if ((dto.Description ?? "").Length > 1800)
+            return ExtErr(422, "شرح درخواست حداکثر ۱۸۰۰ کاراکتر است.");
+
+        // ---------- idempotency ----------
+        var externalId = (dto.ExternalId ?? "").Trim();
+        if (externalId.Length > 40) return ExtErr(422, "شناسهٔ خارجی حداکثر ۴۰ کاراکتر است.");
+        if (externalId.Length > 0)
+        {
+            var existing = await _db.ItRequests
+                .FirstOrDefaultAsync(r => r.SourceCompanyId == company.Id && r.ExternalId == externalId);
+            if (existing != null)
+            {
+                return Ok(new
+                {
+                    id = existing.Id, number = existing.Number, trackToken = existing.TrackToken,
+                    duplicate = true, message = "این درخواست قبلاً ثبت شده است."
+                });
+            }
+        }
+
+        var requesterKey = (dto.RequesterKey ?? "").Trim();
+        if (requesterKey.Length > 40) return ExtErr(422, "کلید کاربر حداکثر ۴۰ کاراکتر است.");
+
+        var requesterName = dto.RequesterName.Trim();
+        var sysLabel = new List<string>();
+        if (!string.IsNullOrWhiteSpace(dto.SystemLabel)) sysLabel.Add(dto.SystemLabel.Trim());
+        if (!string.IsNullOrWhiteSpace(dto.LocalSystemRef)) sysLabel.Add(dto.LocalSystemRef.Trim());
+        sysLabel.Add($"شرکت: {company.Name}");
+        var systemLabel = string.Join(" — ", sysLabel);
+        if (systemLabel.Length > 250) systemLabel = systemLabel[..250];
+
+        var contact = new List<string>();
+        if (!string.IsNullOrWhiteSpace(dto.Phone)) contact.Add($"☎ تماس: {dto.Phone.Trim()}");
+        if (!string.IsNullOrWhiteSpace(dto.Email)) contact.Add($"✉ {dto.Email.Trim()}");
+        var contactHtml = contact.Count > 0 ? "<div>" + string.Join(" — ", contact) + "</div>" : "";
+
+        var desc = (dto.Description ?? "").Trim() + contactHtml;
+        if (desc.Length > 2000) desc = desc[..2000];
 
         var req = new ItRequest
         {
-            RequesterName = dto.RequesterName.Trim() +
-                            (string.IsNullOrWhiteSpace(dto.CompanyName) ? "" : $" ({dto.CompanyName.Trim()})"),
-            RequesterUserId = 0, // کاربر بیرونی — لاگین ندارد
-            SystemLabel = (string.IsNullOrWhiteSpace(dto.SystemLabel) ? "" : dto.SystemLabel.Trim() + " — ") +
-                          (string.IsNullOrWhiteSpace(dto.CompanyName) ? "درخواست بیرونی" : $"شرکت: {dto.CompanyName.Trim()}"),
+            RequesterName = requesterName,
+            RequesterUserId = 0,                 // کاربر بیرونی — در این سرور کاربر نیست
+            SourceCompanyId = company.Id,
+            SourceCompany = company,
+            ExternalRequesterKey = requesterKey.Length > 0 ? requesterKey : null,
+            ExternalId = externalId.Length > 0 ? externalId : null,
+            RequesterPhone = dto.Phone?.Trim(),
+            RequesterEmail = dto.Email?.Trim(),
+            SystemLabel = systemLabel,
             RequestType = dto.RequestType is "Software" or "Network" or "Telecom" ? dto.RequestType : "Hardware",
             Title = dto.Title.Trim(),
-            Description = (dto.Description ?? "") +
-                          (string.IsNullOrWhiteSpace(dto.Phone) ? "" : $"<div>📞 تماس: {dto.Phone.Trim()}</div>"),
-            Status = "New"
+            Description = desc,
+            Status = "New",
+            TrackToken = Guid.NewGuid().ToString("N")[..24],
         };
         _db.ItRequests.Add(req);
         await _db.SaveChangesAsync();
 
-        var pcx = new PersianCalendar();
-        var pyx = pcx.GetYear(DateTime.Now);
-        var prefixx = $"IT/{pyx}/";
-        var serialx = await _db.ItRequests.CountAsync(r => r.Number.StartsWith(prefixx)) + 1;
-        req.Number = $"{prefixx}{serialx}";
+        // شماره منحصربه‌فرد: IT/سال شمسی/سریال (سریال هر سال از ۱ شروع می‌شود)
+        var pc = new PersianCalendar();
+        var prefix = $"IT/{pc.GetYear(DateTime.Now)}/";
+        req.Number = $"{prefix}{await _db.ItRequests.CountAsync(r => r.Number.StartsWith(prefix)) + 1}";
 
         _db.ItRequestLogs.Add(new ItRequestLog
         {
             RequestId = req.Id, ActorName = req.RequesterName, ActorRole = "Requester",
-            Action = "Created", Text = $"درخواست بیرونی {req.Number} ثبت شد.", InternalOnly = false
+            Action = "Created",
+            Text = $"درخواست بیرونی {req.Number} از شرکت «{company.Name}» ثبت شد."
+                   + (requesterKey.Length > 0 ? $" (کلید کاربر: {requesterKey})" : ""),
+            InternalOnly = false
         });
         await _db.SaveChangesAsync();
 
         await _notify.SendManyAsync(await ManagerUserIdsAsync(),
-            "درخواست IT بیرونی 🌐", $"{req.Number} — «{req.Title}» از {req.RequesterName}",
+            "درخواست IT بیرونی 🌐",
+            $"{req.Number} — «{req.Title}» از {req.RequesterName} · شرکت {company.Name}",
             req.RequesterName, "درخواست خدمت IT", $"/it-requests?open={req.Id}");
         await _notify.BroadcastChangedAsync("itrequests");
 
-        // شماره پیگیری به درخواست‌دهنده برگردانده می‌شود
-        return Ok(new { id = req.Id, number = req.Number });
+        return Ok(new
+        {
+            id = req.Id, number = req.Number, trackToken = req.TrackToken,
+            duplicate = false,
+            message = "درخواست ثبت شد. برای ارسال پیوست از همین شماره و توکن استفاده کنید."
+        });
     }
 
-    /// <summary>پیگیری وضعیت درخواست با شماره — بدون لاگین.</summary>
+    /// <summary>آپلود پیوست برای درخواستِ بیرونی — با همان کلید API و توکنِ پیگیری.</summary>
+    [HttpPost("external/{number}/attachments")]
+    [AllowAnonymous]
+    [DisableRequestSizeLimit]
+    public async Task<IActionResult> ExternalUpload(string number, IFormFile file)
+    {
+        ExtStatus = 0; ExtError = null;
+        var company = await AuthExternalAsync();
+        if (company == null) return ExtErr(ExtStatus == 0 ? 401 : ExtStatus, ExtError ?? "احراز هویت ناموفق.");
+
+        var num = (number ?? "").Trim();
+        var req = await _db.ItRequests.FirstOrDefaultAsync(r => r.Number == num && r.SourceCompanyId == company.Id);
+        if (req == null) return ExtErr(404, "درخواستی با این شماره برای شرکت شما پیدا نشد.");
+        if (file == null || file.Length == 0) return ExtErr(422, "فایلی انتخاب نشده است.");
+        if (file.Length > 10 * 1024 * 1024) return ExtErr(422, "حداکثر حجم فایل ۱۰ مگابایت است.");
+
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms);
+        ms.Position = 0;
+        var relPath = await _store.SaveAsync("ItRequests", req.Id, ms, file.FileName);
+
+        _db.ItRequestAttachments.Add(new ItRequestAttachment
+        {
+            RequestId = req.Id,
+            FileName = Path.GetFileName(file.FileName),
+            ContentType = file.ContentType ?? "application/octet-stream",
+            FilePath = relPath,
+            Data = Array.Empty<byte>(),
+            UploaderRole = "Requester",
+            UploaderName = req.RequesterName,
+            UploaderUserId = 0,
+        });
+        ItRequestLogSafe(req.Id, req.RequesterName, "Requester", "Created",
+            $"پیوست «{Path.GetFileName(file.FileName)}» از شرکت {company.Name} ارسال شد.", false);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    /// <summary>«درخواست‌های من» برای کاربرِ بیرونی — فقط درخواست‌های همان کلیدِ کاربر و نمایان‌شده به مشتری.</summary>
+    [HttpGet("external/mine")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ExternalMine([FromQuery] string requesterKey,
+        [FromQuery] int skip = 0, [FromQuery] int? take = null)
+    {
+        ExtStatus = 0; ExtError = null;
+        var company = await AuthExternalAsync();
+        if (company == null) return ExtErr(ExtStatus == 0 ? 401 : ExtStatus, ExtError ?? "احراز هویت ناموفق.");
+
+        var key = (requesterKey ?? "").Trim();
+        if (key.Length == 0) return ExtErr(422, "کلید کاربر ارسال نشده است.");
+        if (key.Length > 40) return ExtErr(422, "کلید کاربر حداکثر ۴۰ کاراکتر است.");
+
+        var q = _db.ItRequests.AsNoTracking()
+            .Where(r => r.SourceCompanyId == company.Id && r.ExternalRequesterKey == key);
+
+        var pg = await Paging.QueryAsync(q.OrderByDescending(r => r.Id), skip, take, 500);
+        var rows = pg.Rows.Select(r => new
+        {
+            r.Number,
+            r.Title,
+            r.RequestType,
+            r.Status,
+            r.CreatedAt,
+            r.CompletedAt,
+            r.ApprovedAt,
+            trackToken = r.TrackToken,
+            // فقط پاسخ نهایی — فرایند داخلیِ واحد IT محرمانه می‌ماند
+            FinalResponse = r.Status is "ManagerApproved" or "Completed" or "Rejected" ? r.FinalResponse : null,
+        });
+        return Ok(pg.Result(rows));
+    }
+
+    /// <summary>پیگیری وضعیت با شماره. برای درخواست‌های بیرونی، توکنِ پیگیری هم لازم است.</summary>
     [HttpGet("track")]
     [AllowAnonymous]
-    public async Task<IActionResult> Track([FromQuery] string number)
+    public async Task<IActionResult> Track([FromQuery] string number, [FromQuery] string? token = null)
     {
-        if (string.IsNullOrWhiteSpace(number))
-            return BadRequest(new { message = "شماره درخواست را وارد کنید." });
+        var num = (number ?? "").Trim();
+        if (num.Length == 0) return BadRequest(new { message = "شماره درخواست را وارد کنید." });
 
-        var req = await _db.ItRequests.FirstOrDefaultAsync(r => r.Number == number.Trim());
+        var req = await _db.ItRequests.Include(r => r.SourceCompany).FirstOrDefaultAsync(r => r.Number == num);
         if (req == null) return NotFound(new { message = "درخواستی با این شماره پیدا نشد." });
+
+        // درخواست بیرونی: بدون توکنِ درست، هیچ چیزی فاش نمی‌شود (شماره قابل حدس است)
+        if (!string.IsNullOrEmpty(req.TrackToken) &&
+            !FixedEquals(req.TrackToken, (token ?? "").Trim()))
+            return Unauthorized(new { message = "توکنِ پیگیری نامعتبر است.", needToken = true });
 
         return Ok(new
         {
             req.Number, req.Title, req.RequestType, req.Status,
-            req.CreatedAt, req.CompletedAt,
-            // فقط پاسخ نهایی — فرایند داخلی محرمانه است
+            req.CreatedAt, req.ApprovedAt, req.CompletedAt,
+            Company = req.SourceCompanyId.HasValue ? req.SourceCompany?.Name : null,
             FinalResponse = req.Status is "ManagerApproved" or "Completed" or "Rejected" ? req.FinalResponse : null
         });
     }
 
-    // ================== تایید تکمیل با شماره (درخواست‌دهنده بیرونی — بدون لاگین) ==================
+    /// <summary>تأیید نهاییِ تکمیل توسط درخواست‌کننده (بدون لاگین) — با توکنِ پیگیری.</summary>
     [HttpPost("track/complete")]
     [AllowAnonymous]
-    public async Task<IActionResult> TrackComplete([FromQuery] string number)
+    public async Task<IActionResult> TrackComplete([FromQuery] string number, [FromQuery] string? token = null)
     {
-        var req = await _db.ItRequests.FirstOrDefaultAsync(r => r.Number == (number ?? "").Trim());
+        var num = (number ?? "").Trim();
+        var req = await _db.ItRequests.FirstOrDefaultAsync(r => r.Number == num);
         if (req == null) return NotFound(new { message = "درخواستی با این شماره پیدا نشد." });
+        if (!string.IsNullOrEmpty(req.TrackToken) &&
+            !FixedEquals(req.TrackToken, (token ?? "").Trim()))
+            return Unauthorized(new { message = "توکنِ پیگیری نامعتبر است.", needToken = true });
         if (req.Status != "ManagerApproved")
             return BadRequest(new { message = "این درخواست هنوز پاسخ نهایی نگرفته است." });
 
@@ -597,7 +835,7 @@ public class ItRequestsController : ControllerBase
         _db.ItRequestLogs.Add(new ItRequestLog
         {
             RequestId = req.Id, ActorName = req.RequesterName, ActorRole = "Requester",
-            Action = "Completed", Text = "تایید نهایی توسط درخواست‌دهنده (از راه دور).", InternalOnly = false
+            Action = "Completed", Text = "تایید نهایی توسط درخواست‌کننده (از راه دور).", InternalOnly = false
         });
         await _db.SaveChangesAsync();
 
@@ -605,7 +843,135 @@ public class ItRequestsController : ControllerBase
             "درخواست IT تکمیل شد", $"{req.Number} — «{req.Title}» توسط {req.RequesterName} تایید شد.",
             req.RequesterName, "درخواست خدمت IT", $"/it-requests?open={req.Id}");
         await _notify.BroadcastChangedAsync("itrequests");
-        return Ok();
+        return Ok(new { ok = true });
+    }
+
+    // ================== مدیریت شرکت‌های مشتری (سرور مرکزی) ==================
+
+    public class ClientCompanyDto
+    {
+        public int Id { get; set; }
+        public string Code { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? Phone { get; set; }
+        public bool IsActive { get; set; } = true;
+        public int HourlyLimit { get; set; } = 60;
+        public string? Note { get; set; }
+    }
+
+    [HttpGet("client-companies")]
+    public async Task<IActionResult> GetClientCompanies()
+    {
+        if (!await IsManagerAsync()) return Forbid();
+        var list = await _db.ItClientCompanies.AsNoTracking().OrderBy(c => c.Name).ToListAsync();
+        var counts = await _db.ItRequests.AsNoTracking()
+            .Where(r => r.SourceCompanyId != null)
+            .GroupBy(r => r.SourceCompanyId)
+            .Select(g => new { CompanyId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CompanyId, x => x.Count);
+        var openCounts = await _db.ItRequests.AsNoTracking()
+            .Where(r => r.SourceCompanyId != null && r.Status != "Completed" && r.Status != "Rejected")
+            .GroupBy(r => r.SourceCompanyId)
+            .Select(g => new { CompanyId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.CompanyId, x => x.Count);
+
+        return Ok(list.Select(c => new
+        {
+            c.Id, c.Code, c.Name, c.Phone, c.IsActive, c.HourlyLimit, c.Note,
+            c.ApiKeyHint, c.CreatedAt, c.KeyRotatedAt,
+            RequestCount = counts.TryGetValue(c.Id, out var n) ? n : 0,
+            OpenCount = openCounts.TryGetValue(c.Id, out var o) ? o : 0,
+        }));
+    }
+
+    /// <summary>ساخت/ویرایش شرکت. کلید فقط هنگام ساخت (یا تعویض) یک‌بار برگردانده می‌شود.</summary>
+    [HttpPost("client-companies")]
+    public async Task<IActionResult> SaveClientCompany([FromBody] ClientCompanyDto dto)
+    {
+        if (!await IsManagerAsync()) return Forbid();
+        var code = (dto.Code ?? "").Trim().ToUpperInvariant();
+        if (code.Length is < 2 or > 50)
+            return BadRequest(new { message = "کد شرکت باید بین ۲ تا ۵۰ کاراکتر باشد." });
+        if (string.IsNullOrWhiteSpace(dto.Name))
+            return BadRequest(new { message = "نام شرکت الزامی است." });
+        if (!System.Text.RegularExpressions.Regex.IsMatch(code, "^[A-Z0-9_-]+$"))
+            return BadRequest(new { message = "کد شرکت فقط می‌تواند شامل حروف انگلیسی بزرگ، عدد، خط تیره و زیرخط باشد." });
+
+        var dup = await _db.ItClientCompanies.AnyAsync(c => c.Code == code && c.Id != dto.Id);
+        if (dup) return BadRequest(new { message = "این کد قبلاً ثبت شده است." });
+
+        ItClientCompany c;
+        string? plainKey = null;
+        if (dto.Id > 0)
+        {
+            c = await _db.ItClientCompanies.FindAsync(dto.Id) ?? throw new NotFoundException();
+            plainKey = RotateIfEmptyKey(c);
+        }
+        else
+        {
+            plainKey = ItExternalAuthService.NewKey();
+            c = new ItClientCompany
+            {
+                ApiKeyHash = ItExternalAuthService.HashKey(plainKey),
+                ApiKeyHint = ItExternalAuthService.Hint(plainKey),
+                KeyRotatedAt = DateTime.Now,
+            };
+            _db.ItClientCompanies.Add(c);
+        }
+        c.Code = code;
+        c.Name = dto.Name.Trim();
+        c.Phone = dto.Phone?.Trim();
+        c.IsActive = dto.IsActive;
+        c.HourlyLimit = Math.Clamp(dto.HourlyLimit, 0, 10_000);
+        c.Note = dto.Note?.Trim();
+        await _db.SaveChangesAsync();
+        return Ok(new { c.Id, c.Code, c.ApiKeyHint, c.IsActive, apiKey = plainKey });
+    }
+
+    /// <summary>تعویض کلید API یک شرکت — کلید قبلی بلافاصله از کار می‌افتد.</summary>
+    [HttpPost("client-companies/{id:int}/rotate-key")]
+    public async Task<IActionResult> RotateClientKey(int id)
+    {
+        if (!await IsManagerAsync()) return Forbid();
+        var c = await _db.ItClientCompanies.FindAsync(id);
+        if (c == null) return NotFound();
+
+        var plain = ItExternalAuthService.NewKey();
+        c.ApiKeyHash = ItExternalAuthService.HashKey(plain);
+        c.ApiKeyHint = ItExternalAuthService.Hint(plain);
+        c.KeyRotatedAt = DateTime.Now;
+        await _db.SaveChangesAsync();
+        return Ok(new { apiKey = plain, c.ApiKeyHint, c.KeyRotatedAt });
+    }
+
+    [HttpDelete("client-companies/{id:int}")]
+    public async Task<IActionResult> DeleteClientCompany(int id)
+    {
+        if (!await IsManagerAsync()) return Forbid();
+        var c = await _db.ItClientCompanies.FindAsync(id);
+        if (c == null) return NotFound();
+        if (await _db.ItRequests.AnyAsync(r => r.SourceCompanyId == id))
+            return BadRequest(new { message = "این شرکت درخواست ثبت‌شده دارد و قابل حذف نیست؛ آن را غیرفعال کنید." });
+        _db.ItClientCompanies.Remove(c);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
+
+    private static string RotateIfEmptyKey(ItClientCompany c)
+    {
+        if (!string.IsNullOrEmpty(c.ApiKeyHash)) return "";
+        var k = ItExternalAuthService.NewKey();
+        c.ApiKeyHash = ItExternalAuthService.HashKey(k);
+        c.ApiKeyHint = ItExternalAuthService.Hint(k);
+        c.KeyRotatedAt = DateTime.Now;
+        return k;
+    }
+
+    private static bool FixedEquals(string a, string b)
+    {
+        var x = System.Text.Encoding.UTF8.GetBytes(a);
+        var y = System.Text.Encoding.UTF8.GetBytes(b);
+        return x.Length == y.Length && System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(x, y);
     }
 
     // ================== آمار درخواست‌ها (داشبورد سخت‌افزار) ==================

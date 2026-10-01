@@ -15,8 +15,38 @@ public class ItRequest
     [MaxLength(150)]
     public string RequesterName { get; set; } = "";
 
-    /// <summary>شناسه کاربر لاگین درخواست‌کننده</summary>
+    /// <summary>شناسه کاربر لاگین درخواست‌کننده — برای درخواستِ بیرونی صفر است (کاربرِ ما نیست)</summary>
     public int RequesterUserId { get; set; }
+
+    // ---------- درخواستِ بیرونی (از شرکتِ راه دور) ----------
+
+    /// <summary>شرکتِ فرستنده — null یعنی درخواست داخلیِ همین نصب</summary>
+    public int? SourceCompanyId { get; set; }
+    public ItClientCompany? SourceCompany { get; set; }
+
+    /// <summary>
+    /// کلید پایدارِ کاربر در نرم‌افزارِ خودش (UUID). کاربر در سرور ما «کاربر» نیست؛
+    /// با همین کلید «درخواست‌های من» را می‌بیند.
+    /// </summary>
+    [MaxLength(40)]
+    public string? ExternalRequesterKey { get; set; }
+
+    /// <summary>شناسه‌ی یکتای درخواست در سیستمِ فرستنده — کلیدِ idempotency (تلاش مجدد، درخواست تکراری نمی‌سازد)</summary>
+    [MaxLength(40)]
+    public string? ExternalId { get; set; }
+
+    [MaxLength(30)]
+    public string? RequesterPhone { get; set; }
+
+    [MaxLength(120)]
+    public string? RequesterEmail { get; set; }
+
+    /// <summary>
+    /// توکنِ محرمانه‌ی پیگیری — بدون آن، دانستن شمارهٔ درخواست برای خواندن پاسخ کافی نیست.
+    /// (درخواست‌های داخلی این مقدار را ندارند و با شماره پیگیری می‌شوند.)
+    /// </summary>
+    [MaxLength(40)]
+    public string? TrackToken { get; set; }
 
     /// <summary>سیستم انتخاب‌شده (اختیاری)</summary>
     public int? SystemInfoId { get; set; }
