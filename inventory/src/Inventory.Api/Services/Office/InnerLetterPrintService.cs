@@ -21,6 +21,12 @@ public interface IInnerLetterPrintService
 
 public sealed class InnerLetterPrintService : IInnerLetterPrintService
 {
+    private sealed class ReceiverPrintRow
+    {
+        public string Name { get; set; } = "";
+        public DateTime ReferralDate { get; set; }
+    }
+
     private readonly AppDbContext _db;
     private readonly FileStore _files;
     private readonly IWebHostEnvironment _env;
@@ -45,15 +51,23 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         var receivers = await _db.Erjas.AsNoTracking().Include(x => x.UserReciver)
             .Where(x => x.SourceId == letterId && !x.IsDelete && (x.Type == "گیرنده" || x.Type == "ارجاع"))
             .OrderBy(x => x.ErjaId).Take(20)
-            .Select(x => x.UserReciver == null ? "" : ($"{x.UserReciver.FirstName} {x.UserReciver.LastName}").Trim())
+            .Select(x => new ReceiverPrintRow
+            {
+                Name = x.UserReciver == null ? "" : ($"{x.UserReciver.FirstName} {x.UserReciver.LastName}").Trim(),
+                ReferralDate = x.Date
+            })
             .ToListAsync(ct);
+        var creator = await _db.Users.AsNoTracking()
+            .Where(x => x.Id == letter.CreatorUserId)
+            .Select(x => ($"{x.FirstName} {x.LastName}").Trim())
+            .FirstOrDefaultAsync(ct) ?? "";
         var hasAttachment = await _db.AppAttachments.AnyAsync(x => x.Module == "InnerLetters" && x.RefId == letterId, ct);
         var companyId = await ActiveCompanyIdAsync(userId, ct);
         var header = companyId is int cid
             ? await _db.SystemCompanies.AsNoTracking().Where(x => x.Id == cid && x.IsActive).Select(x => x.LetterheadFileName).FirstOrDefaultAsync(ct)
             : null;
 
-        var content = BuildContent(letter, receivers, hasAttachment, size == "A5");
+        var content = BuildContent(letter, receivers, creator, hasAttachment, size == "A5");
         var headerPath = ResolveLetterheadPath(header);
         if (headerPath == null && (string.IsNullOrWhiteSpace(header) || header.EndsWith(".mrt", StringComparison.OrdinalIgnoreCase)))
             headerPath = ResolveLetterheadPath("uploads/letterheads/forough-letterhead.pdf");
@@ -90,18 +104,20 @@ public sealed class InnerLetterPrintService : IInnerLetterPrintService
         return await _db.UserCompanyAccesses.AnyAsync(x => x.UserId == userId && x.CompanyId == id && x.Company.IsActive, ct) ? id : null;
     }
 
-    private static byte[] BuildContent(InnerLetter l, List<string> receivers, bool attachment, bool a5)
+    private static byte[] BuildContent(InnerLetter l, List<ReceiverPrintRow> receivers, string creator, bool attachment, bool a5)
     {
         var text = Regex.Replace(WebUtility.HtmlDecode(Regex.Replace(l.Text ?? "", "<[^>]+>", " ")), @"\s+", " ").Trim();
         var pc = new PersianCalendar(); var d = l.DateSabt;
         var date = $"{pc.GetYear(d):0000}/{pc.GetMonth(d):00}/{pc.GetDayOfMonth(d):00}";
+        var receiverText = string.Join("، ", receivers.Where(x => !string.IsNullOrWhiteSpace(x.Name)).Select(x => x.Name));
+        var referralDate = receivers.Count == 0 ? "—" : string.Join("، ", receivers.Select(x => $"{pc.GetYear(x.ReferralDate):0000}/{pc.GetMonth(x.ReferralDate):00}/{pc.GetDayOfMonth(x.ReferralDate):00}"));
         var doc = Document.Create(root => root.Page(page =>
         {
             page.Size(a5 ? PageSizes.A5 : PageSizes.A4);
             page.MarginTop(a5 ? 90 : 130); page.MarginBottom(a5 ? 42 : 60); page.MarginHorizontal(a5 ? 30 : 46);
             page.ContentFromRightToLeft(); page.DefaultTextStyle(x => x.FontFamily("Vazirmatn").FontSize(a5 ? 9 : 11).LineHeight(1.7f));
-            page.Header().AlignLeft().Column(c => { c.Item().Text($"شماره: {l.LetterNumber ?? "—"}"); c.Item().Text($"تاریخ: {date}"); c.Item().Text($"پیوست: {(attachment ? "دارد" : "ندارد")}"); });
-            page.Content().Column(c => { c.Item().Text($"به: {string.Join("، ", receivers.Where(x => !string.IsNullOrWhiteSpace(x)))}").Bold(); c.Item().PaddingTop(6).Text($"موضوع: {l.Title}").Bold(); c.Item().PaddingVertical(8).LineHorizontal(0.7f); c.Item().Text(text); });
+            page.Header().AlignLeft().Column(c => { c.Item().Text($"شماره نامه: {l.LetterNumber ?? "—"}"); c.Item().Text($"تاریخ ثبت: {date}"); c.Item().Text($"تاریخ ارجاع: {referralDate}"); c.Item().Text($"پیوست: {(attachment ? "دارد" : "ندارد")}"); });
+            page.Content().Column(c => { c.Item().Text($"عنوان: {l.Title}").Bold(); c.Item().Text($"گیرندگان: {(string.IsNullOrWhiteSpace(receiverText) ? "—" : receiverText)}").Bold(); c.Item().Text($"ایجادکننده: {(string.IsNullOrWhiteSpace(creator) ? "—" : creator)}"); c.Item().PaddingVertical(8).LineHorizontal(0.7f); c.Item().Text(text); });
             page.Footer().AlignCenter().Text(t => { t.CurrentPageNumber(); t.Span(" از "); t.TotalPages(); });
         }));
         return doc.GeneratePdf();
