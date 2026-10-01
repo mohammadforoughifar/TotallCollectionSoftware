@@ -184,6 +184,7 @@ else
                                             <option value="1">بازه زمانی (از-تا)</option>
                                             <option value="2">کلِ روز اضافه‌کار</option>
                                             <option value="3">سقف ساعتی</option>
+                                            <option value="4">مازادِ در انتظار تصمیم مدیر</option>
                                         </select>
                                         @if (day.OtMode == 1)
                                         {
@@ -203,6 +204,10 @@ else
                                                 <input type="number" min="0" max="24" step="0.5" class="form-control form-control-sm wc-hours" dir="ltr" value="@day.OvertimeText" @onchange='e => { day.OvertimeText = e.Value?.ToString(); MarkDirty(); }' placeholder="0" />
                                                 <span class="small text-muted">ساعت</span>
                                             </div>
+                                        }
+                                        else if (day.OtMode == 4)
+                                        {
+                                            <div class="wc-ot-hint mt-1">ماندنِ بعد از پایان شیفت «در انتظار تصمیم مدیر» می‌ماند — نه کسری، نه اضافه‌کار خودکار</div>
                                         }
                                     </div>
 
@@ -275,7 +280,7 @@ else
                             <div class="logic-card">
                                 <div class="logic-title"><i class="bi bi-list-ol"></i> اولویت قواعد هر روز</div>
                                 <ol class="logic-list">
-                                    <li><b>قانون سفارشی همین تقویم</b> — روزهایی که از ویرایشگر روز تغییر داده‌اید؛ بالاترین اولویت.</li>
+                                    <li><b>قانون سفارشی همین تقویم</b> — روزهایی که از ویرایشگر روز تغییر داده‌اید؛ بالاترین اولویت برای کاری/تعطیلی، اضافه‌کاری و یادداشت. ساعت شروع/پایان: اگر برای کسی شیفت تعریف شده، ساعتِ شیفت او مقدم است (در تنظیمات قابل تغییر).</li>
                                     <li><b>تعطیل رسمی کشور</b> — تعطیلات رسمی (نوروز، عید فطر، ۲۲ بهمن و...) از تب «تعطیلات رسمی»؛ اگر در تنظیمات «اعمال خودکار» خاموش باشد نادیده گرفته می‌شود.</li>
                                     <li><b>تعطیلی شرکتی</b> — تعطیلی خاص مجموعه از پنل مرخصی.</li>
                                     <li><b>شیفت کاربر</b> — ساعت شروع/پایان از شیفت شخص (روزهای تعطیل هفته از تنظیمات).</li>
@@ -289,6 +294,8 @@ else
                                     <li>بازه زمانی اضافه‌کاری: تردد داخل بازه = اضافه‌کاری (حتی عبور از نیمه‌شب).</li>
                                     <li>کلِ روز اضافه‌کار: همه‌ی حضور = اضافه‌کاری (برای روز کاری یعنی تاخیر/کسری حساب نمی‌شود).</li>
                                     <li>سقف ساعتی: تا سقف تعیین‌شده اضافه‌کاری مجاز است.</li>
+                                    <li><b>مازادِ در انتظار تصمیم:</b> ماندنِ بعد از پایان شیفت نه کسری می‌شود و نه خودکار اضافه‌کار؛ در «کارتابل مازاد» منتظر تأیید مدیر می‌ماند (تأیید = اضافه‌کار، رد = تردد غیرمجاز).</li>
+                                    <li><b>کسری فقط وقتی ثبت می‌شود که حضور از ساعت شیفت کمتر باشد</b>؛ ماندنِ اضافه بر ساعت شیفت هرگز کسری نمی‌شود.</li>
                                     <li><b>شیفت شب:</b> اگر پایان قبل از شروع باشد (مثلاً ۲۲:۰۰ تا ۰۶:۰۰) شیفت از نیمه‌شب عبور می‌کند و کامل محاسبه می‌شود.</li>
                                 </ul>
                             </div>
@@ -445,6 +452,34 @@ else
                                 <label class="form-check-label small" for="applyOfficial"><b>اعمال خودکار تعطیلات رسمی کشور</b></label>
                             </div>
                             <div class="small text-muted mt-1">با خاموش‌کردن آن، تعطیلات رسمی در تقویم نمایش داده می‌شوند ولی روز کاری حساب می‌شوند (برای مجموعه‌هایی که تعطیلات رسمی ندارند).</div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="wc-panel">
+                            <div class="fw-800 mb-3"><i class="bi bi-hourglass-split text-warning"></i> ماندنِ بعد از پایان شیفت (مازاد)</div>
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="requireExtra" @bind="set.RequireExtraApproval" />
+                                <label class="form-check-label small" for="requireExtra">
+                                    <b>مازاد «در انتظار تصمیم مدیر» ثبت شود</b> — نه کسری، نه اضافه‌کار خودکار
+                                </label>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                وقتی روشن باشد، ماندنِ پرسنل بعد از پایان شیفت (مثلاً شیفت ۸ تا ۱۳ و خروج ۱۳:۱۵) در
+                                «حضور و غیاب ← کارتابل مازاد» منتظر می‌ماند تا مدیر <b>تأیید</b> کند (اضافه‌کار) یا <b>رد</b> کند (تردد غیرمجاز).
+                                <b>کسری</b> فقط وقتی ثبت می‌شود که حضور از ساعت شیفت <b>کمتر</b> باشد.
+                                خاموش‌کردن = رفتار قدیمی (مازاد = اضافه‌کار خودکار). هر شیفت می‌تواند این رفتار را جداگانه بازنویسی کند.
+                            </div>
+                            <hr />
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="shiftWins" @bind="set.ShiftOverridesCalendarTimes" />
+                                <label class="form-check-label small" for="shiftWins">
+                                    <b>ساعت شیفتِ پرسنل بر ساعت تقویم کاری مقدم باشد</b>
+                                </label>
+                            </div>
+                            <div class="small text-muted mt-1">
+                                با روشن بودن (پیش‌فرض)، اگر برای کسی شیفت ۸ تا ۱۳ تعریف شده، همین ساعت ملاک است حتی اگر ساعتِ ثبت‌شده در تقویم ۸ تا ۱۶:۳۰ باشد
+                                (تقویم همچنان کاری/تعطیلی، اضافه‌کاری و یادداشت روز را تعیین می‌کند). خاموش‌کردن = اولویتِ کامل تقویم (رفتار قدیمی).
+                            </div>
                         </div>
                     </div>
                     <div class="col-12 d-flex justify-content-end align-items-center gap-3">
@@ -703,6 +738,8 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
                     GraceMinutes = r.settings.graceMinutes,
                     RestDayFlags = r.settings.restDayFlags,
                     ApplyOfficialHolidays = r.settings.applyOfficialHolidays,
+            RequireExtraApproval = r.settings.requireExtraApproval,
+            ShiftOverridesCalendarTimes = r.settings.shiftOverridesCalendarTimes,
                 };
                 bulkStart = set.DefaultStart;
                 bulkEnd = set.DefaultEnd;
@@ -1032,6 +1069,8 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
                 graceMinutes = set.GraceMinutes,
                 restDayFlags = set.RestDayFlags,
                 applyOfficialHolidays = set.ApplyOfficialHolidays,
+                requireExtraApproval = set.RequireExtraApproval,
+                shiftOverridesCalendarTimes = set.ShiftOverridesCalendarTimes,
             });
             if (resp.IsSuccessStatusCode)
             {
@@ -1102,6 +1141,8 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
         public int GraceMinutes { get; set; } = 10;
         public int RestDayFlags { get; set; } = 32;
         public bool ApplyOfficialHolidays { get; set; } = true;
+        public bool RequireExtraApproval { get; set; } = true;
+        public bool ShiftOverridesCalendarTimes { get; set; } = true;
     }
 
     public class HolRow
@@ -1167,6 +1208,8 @@ button.wc-day.d-sel { box-shadow: 0 0 0 3px #93c5fd; z-index: 3; position: relat
         public int graceMinutes { get; set; }
         public int restDayFlags { get; set; }
         public bool applyOfficialHolidays { get; set; }
+        public bool requireExtraApproval { get; set; } = true;
+        public bool shiftOverridesCalendarTimes { get; set; } = true;
     }
 
     public class YearResp

@@ -47,6 +47,8 @@ public static class DbInitializer
                     await WorkOrderSchemaV1.EnsureAsync(db);
                     // حواله تحویل کالا (بدون قیمت) — جدول‌های سند «فقط مقدار»
                     await GoodsIssueSchemaV1.EnsureAsync(db);
+                    // مازادِ کارکرد: «در انتظار تصمیم مدیر» — ستون‌های تصمیم و پیش‌فرض رفتار
+                    await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
                 }
                 else
                 {
@@ -71,6 +73,8 @@ public static class DbInitializer
                     await WorkOrderSchemaV1.EnsureAsync(db);
                     // حواله تحویل کالا (بدون قیمت) — جدول‌های سند «فقط مقدار»
                     await GoodsIssueSchemaV1.EnsureAsync(db);
+                    // مازادِ کارکرد: «در انتظار تصمیم مدیر» — ستون‌های تصمیم و پیش‌فرض رفتار
+                    await AttendanceExtraWorkSchemaV1.EnsureAsync(db);
                 }
 
                 await WorkOrderSchemaV2.EnsureAsync(db);

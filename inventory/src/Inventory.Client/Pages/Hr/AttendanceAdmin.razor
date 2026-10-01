@@ -59,6 +59,10 @@
     <button class="lv-tab @(tab == "monthly" ? "active" : "")" @onclick="ShowMonthlyTab"><i class="bi bi-bar-chart-fill"></i> گزارش خلاصه ماه</button>
     @if (Auth.IsAdmin || Auth.Has("Attendance.ManageShifts"))
     {
+        <button class="lv-tab @(tab == "extra" ? "active" : "")" @onclick="ShowExtraTab"><i class="bi bi-hourglass-split"></i> کارتابل مازاد</button>
+    }
+    @if (Auth.IsAdmin || Auth.Has("Attendance.ManageShifts"))
+    {
         <button class="lv-tab @(tab == "security" ? "active" : "")" @onclick="ShowSecurityTab"><i class="bi bi-shield-check"></i> امنیت حضور و غیاب</button>
     }
 </div>
@@ -192,7 +196,7 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0 att-table">
-                    <thead><tr><th>نام شیفت</th><th>توضیح</th><th>شروع</th><th>پایان</th><th>تاخیر مجاز</th><th>جمعه</th><th>وضعیت</th><th></th></tr></thead>
+                    <thead><tr><th>نام شیفت</th><th>توضیح</th><th>شروع</th><th>پایان</th><th>تاخیر مجاز</th><th>جمعه</th><th>مازاد</th><th>وضعیت</th><th></th></tr></thead>
                     <tbody>
                         @foreach (var s in shifts)
                         {
@@ -203,6 +207,11 @@
                                 <td dir="ltr"><span class="fw-bold text-danger">@s.EndTime.HHMM()</span>@if (s.EndTime2 != null) { <span class="small text-danger">+ @s.EndTime2?.HHMM()</span> }</td>
                                 <td>@Fa.Digits(s.GraceMinutes) دقیقه</td>
                                 <td>@if (s.IncludeFriday) { <span class="badge bg-info">بله</span> } else { <span class="text-muted">خیر</span> }</td>
+                                <td>
+                                    @if (s.RequireExtraApproval == true) { <span class="badge bg-warning text-dark" title="در انتظار تصمیم مدیر">تصمیم مدیر</span> }
+                                    else if (s.RequireExtraApproval == false) { <span class="badge bg-light text-dark" title="اضافه‌کار خودکار">خودکار</span> }
+                                    else { <span class="text-muted small" title="پیروی از تنظیم سراسری تقویم کاری">سراسری</span> }
+                                </td>
                                 <td>@if (s.IsActive) { <span class="badge bg-success">فعال</span> } else { <span class="badge bg-secondary">غیرفعال</span> }</td>
                                 <td>
                                     <button class="btn btn-sm btn-light" @onclick="() => EditShift(s)"><i class="bi bi-pencil text-primary"></i></button>
@@ -362,6 +371,12 @@
                 <button class="btn btn-sm btn-outline-primary" @onclick="ExportMonthlyCsv" disabled="@(!monthlyItems.Any())">
                     <i class="bi bi-download me-1"></i> CSV
                 </button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="RecalcMonth"
+                        title="محاسبه‌ی دوباره‌ی کارکرد/کسری/مازادِ همه‌ی روزهای این ماه با قاعده‌ی فعلی شیفت و تقویم کاری">
+                    @if (recalcBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    else { <i class="bi bi-arrow-repeat me-1"></i> }
+                    بازحساب ماه
+                </button>
             </div>
         </div>
         <div class="card-body p-0">
@@ -371,12 +386,12 @@
                         <tr>
                             <th>پرسنل</th><th>شیفت</th><th>روزکاری</th><th>حاضر</th><th>مرخصی</th>
                             <th>غایب</th><th>با تاخیر</th><th>تاخیر(دقیقه)</th><th>تعجیل(دقیقه)</th>
-                            <th>کارکرد(ساعت)</th><th>اضافه‌کاری</th><th>غیرمجاز</th><th>کسری(ساعت)</th><th>وضعیت</th>
+                            <th>کارکرد(ساعت)</th><th>اضافه‌کاری</th><th>مازادِ در انتظار</th><th>غیرمجاز</th><th>کسری(ساعت)</th><th>وضعیت</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @if (monthlyLoading) { <tr><td colspan="14" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
-                        else if (!monthlyItems.Any()) { <tr><td colspan="14" class="text-center text-muted py-4">پرسنلی یافت نشد.</td></tr> }
+                        @if (monthlyLoading) { <tr><td colspan="15" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
+                        else if (!monthlyItems.Any()) { <tr><td colspan="15" class="text-center text-muted py-4">پرسنلی یافت نشد.</td></tr> }
                         else
                         {
                             @foreach (var r in monthlyItems.OrderByDescending(x => x.DeficitMinutes))
@@ -397,10 +412,102 @@
                                     <td>@Fa.Digits(r.TotalLateMinutes)</td>
                                     <td>@Fa.Digits(r.TotalEarlyLeaveMinutes)</td>
                                     <td class="text-info">@D2(r.WorkMinutes / 60.0)</td>
-                                    <td class="@(r.OvertimeMinutes>0?"text-info fw-700":"")">@(r.OvertimeMinutes>0?WorkMin(r.OvertimeMinutes):"—")</td>
-                                    <td class="@(r.UnauthorizedMinutes>0?"text-danger fw-700":"")">@(r.UnauthorizedMinutes>0?WorkMin(r.UnauthorizedMinutes):"—")</td>
+                                    <td class="text-info fw-700">@(r.OvertimeMinutes>0?WorkMin(r.OvertimeMinutes):"—")</td>
+                                    <td class="text-warning fw-700" title="ماندن بعد از پایان شیفت که هنوز تصمیم نشده — در تب «کارتابل مازاد» تعیین تکلیف کنید">@(r.PendingOvertimeMinutes>0?WorkMin(r.PendingOvertimeMinutes):"—")</td>
+                                    <td class="text-danger fw-700">@(r.UnauthorizedMinutes>0?WorkMin(r.UnauthorizedMinutes):"—")</td>
                                     <td class="@(r.DeficitMinutes>0?"text-danger fw-700":"")">@D2(r.DeficitHours)</td>
                                     <td>@MonthlyStatusBadge(r)</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- ==================== کارتابل مازاد (تصمیم مدیر درباره‌ی ماندن بعد از پایان شیفت) ==================== -->
+@if (tab == "extra")
+{
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <b><i class="bi bi-hourglass-split text-warning"></i> کارتابل مازاد — ماندنِ بعد از پایان شیفت</b>
+            <div class="d-flex gap-2 align-items-center">
+                <input type="date" class="form-control form-control-sm" style="width:auto" @bind="extraFrom" />
+                <span class="small text-muted">تا</span>
+                <input type="date" class="form-control form-control-sm" style="width:auto" @bind="extraTo" />
+                <div class="form-check form-switch mb-0 ms-2">
+                    <input type="checkbox" class="form-check-input" id="extraPendingOnly" @bind="extraPendingOnly" />
+                    <label class="form-check-label small" for="extraPendingOnly">فقط در انتظار تصمیم</label>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" @onclick="LoadExtra" disabled="@extraLoading">
+                    @if (extraLoading) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-arrow-clockwise"></i> }
+                </button>
+            </div>
+        </div>
+        <div class="card-body py-2">
+            <div class="alert alert-info py-2 small mb-3">
+                <i class="bi bi-info-circle"></i>
+                ماندنِ پرسنل <b>بعد از پایان شیفت</b> نه «کسری» حساب می‌شود و نه خودکار «اضافه‌کار».
+                به‌عنوان <b>مازادِ در انتظار تصمیم</b> اینجا می‌آید تا شما تعیین کنید:
+                <span class="badge bg-success ms-1">تأیید → اضافه‌کار</span>
+                <span class="badge bg-danger ms-1">رد → تردد غیرمجاز</span>
+                (می‌توانید بعداً به حالت «در انتظار» برگردانید.)
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 att-table">
+                    <thead>
+                        <tr>
+                            <th>تاریخ</th><th>پرسنل</th><th>شیفت</th><th>بازه</th><th>خروج</th>
+                            <th>مازاد</th><th>کارکرد</th><th>کسری</th><th>وضعیت تصمیم</th><th>اقدام</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (extraLoading) { <tr><td colspan="10" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr> }
+                        else if (extraError != "") { <tr><td colspan="10" class="text-center text-danger py-4">@extraError</td></tr> }
+                        else if (!extraItems.Any()) { <tr><td colspan="10" class="text-center text-muted py-4">موردی برای تصمیم در این بازه نیست.</td></tr> }
+                        else
+                        {
+                            @foreach (var r in extraItems)
+                            {
+                                <tr>
+                                    <td dir="ltr" class="text-end">@r.DateFa</td>
+                                    <td class="fw-700">@r.UserName</td>
+                                    <td><span class="badge bg-light text-dark">@(r.ShiftName ?? "—")</span> <small class="text-muted" dir="ltr">@r.ShiftWindow</small></td>
+                                    <td dir="ltr" class="text-end small">@Fmt(r.EnterAt) → @Fmt(r.ExitAt)</td>
+                                    <td class="text-warning fw-700">@WorkMin(r.PendingMinutes)</td>
+                                    <td class="text-info">@WorkMin(r.WorkMinutes)</td>
+                                    <td class="@(r.DeficitMinutes > 0 ? "text-danger fw-700" : "")">@(r.DeficitMinutes > 0 ? WorkMin(r.DeficitMinutes) : "—")</td>
+                                    <td>
+                                        @if (r.ExtraDecision == 0)
+                                        { <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split"></i> در انتظار تصمیم</span> }
+                                        else if (r.ExtraDecision == 1)
+                                        { <span class="badge bg-success"><i class="bi bi-check2"></i> تأیید → اضافه‌کار</span> }
+                                        else
+                                        { <span class="badge bg-danger"><i class="bi bi-shield-x"></i> رد → تردد غیرمجاز</span> }
+                                    </td>
+                                    <td>
+                                        <div class="d-flex gap-1">
+                                            <button class="btn btn-sm btn-success" title="تأیید مازاد به‌عنوان اضافه‌کار"
+                                                    disabled="@extraBusy" @onclick="() => Decide(r, 1)">
+                                                <i class="bi bi-check2"></i> تأیید
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" title="رد مازاد = تردد غیرمجاز"
+                                                    disabled="@extraBusy" @onclick="() => Decide(r, 2)">
+                                                <i class="bi bi-x"></i> رد
+                                            </button>
+                                            @if (r.ExtraDecision != 0)
+                                            {
+                                                <button class="btn btn-sm btn-light" title="بازگشت به حالت در انتظار تصمیم"
+                                                        disabled="@extraBusy" @onclick="() => Decide(r, 0)">
+                                                    <i class="bi bi-arrow-counterclockwise"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    </td>
                                 </tr>
                             }
                         }
@@ -584,6 +691,18 @@
                                 <input type="checkbox" class="form-check-input" @bind="shiftForm.IsActive" />
                                 <span class="form-check-label">فعال باشد</span>
                             </label>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-check">
+                                <input type="checkbox" class="form-check-input" @bind="shiftForm.RequireExtraApproval" />
+                                <span class="form-check-label">ماندنِ بعد از پایان شیفت «در انتظار تصمیم مدیر» ثبت شود</span>
+                            </label>
+                            <div class="small text-muted mt-1">
+                                <i class="bi bi-info-circle"></i>
+                                با روشن بودن، ماندنِ اضافه بر ساعت شیفت <b>نه کسری</b> می‌شود و <b>نه خودکار اضافه‌کار</b>؛
+                                در تب <b>کارتابل مازاد</b> تصمیم می‌گیرید: تأیید (اضافه‌کار) یا رد (تردد غیرمجاز).
+                                خاموش = رفتار قدیمی (مازاد = اضافه‌کار خودکار).
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -869,6 +988,66 @@
     // رندر مجدد رخ نمی‌دهد و اسپینر برای همیشه باقی می‌ماند (باگ قدیمی گزارش روزانه).
     private async Task ShowReportTab() { tab = "report"; await LoadReport(); }
     private async Task ShowMonthlyTab() { tab = "monthly"; await LoadMonthly(); }
+    private async Task ShowExtraTab() { tab = "extra"; await LoadExtra(); }
+
+    // ==================== کارتابل مازاد ====================
+    private bool extraLoading, extraBusy, extraPendingOnly = true;
+    private DateTime extraFrom = DateTime.Today.AddDays(-30);
+    private DateTime extraTo = DateTime.Today;
+    private string extraError = "";
+    private List<ExtraItem> extraItems = new();
+
+    private async Task LoadExtra()
+    {
+        extraLoading = true; extraError = "";
+        try
+        {
+            var url = $"/api/Attendance/extra-worklog?pendingOnly={extraPendingOnly.ToString().ToLowerInvariant()}"
+                      + $"&from={extraFrom:yyyy-MM-dd}&to={extraTo:yyyy-MM-dd}";
+            var r = await Http.GetFromJsonAsync<List<ExtraItem>>(url);
+            extraItems = r ?? new();
+        }
+        catch (Exception ex) { extraItems = new(); extraError = "خطا در دریافت کارتابل مازاد: " + ex.Message; }
+        extraLoading = false;
+    }
+
+    private static string Fmt(DateTime? t) => t?.ToString("HH:mm") ?? "—";
+
+    private bool recalcBusy = false;
+    private async Task RecalcMonth()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"همه‌ی روزهای {PersianDate.MonthName(reportMonth)} با قاعده‌ی فعلی شیفت و تقویم کاری دوباره محاسبه شود؟\n(تصمیم‌های ثبت‌شده‌ی مازاد دست‌نخورده می‌مانند.)"))
+            return;
+        recalcBusy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("/api/Attendance/recalc-month", new { year = reportYear, month = reportMonth });
+            if (resp.IsSuccessStatusCode)
+            {
+                Toast.Success("بازحساب ماه انجام شد.");
+                await LoadMonthly();
+                await LoadReport();
+            }
+            else Toast.Error(await ExtractError(resp));
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { recalcBusy = false; }
+    }
+
+    private async Task Decide(ExtraItem r, int decision)
+    {
+        extraBusy = true;
+        try
+        {
+            var body = new { segmentId = r.SegmentId, userId = r.UserId, date = r.WorkDate, decision };
+            var resp = await Http.PostAsJsonAsync("/api/Attendance/extra-decision", body);
+            if (resp.IsSuccessStatusCode) await LoadExtra();
+            else extraError = "ثبت تصمیم ناموفق بود.";
+        }
+        catch (Exception ex) { extraError = "خطا: " + ex.Message; }
+        finally { extraBusy = false; }
+    }
     private async Task ShowSecurityTab() { tab = "security"; await LoadSecurity(); }
 
     private async Task LoadReport()
@@ -1080,7 +1259,7 @@
     private void EditShift(ShiftDto s)
     {
         editingShift = s; shiftError = "";
-        shiftForm = new ShiftForm { Id = s.Id, Name = s.Name, Description = s.Description ?? "", StartTime = s.StartTime.HHMM(), EndTime = s.EndTime.HHMM(), StartTime2 = s.StartTime2?.HHMM() ?? "", EndTime2 = s.EndTime2?.HHMM() ?? "", GraceMinutes = s.GraceMinutes, IncludeFriday = s.IncludeFriday, IsActive = s.IsActive };
+        shiftForm = new ShiftForm { Id = s.Id, Name = s.Name, Description = s.Description ?? "", StartTime = s.StartTime.HHMM(), EndTime = s.EndTime.HHMM(), StartTime2 = s.StartTime2?.HHMM() ?? "", EndTime2 = s.EndTime2?.HHMM() ?? "", GraceMinutes = s.GraceMinutes, IncludeFriday = s.IncludeFriday, IsActive = s.IsActive, RequireExtraApproval = s.RequireExtraApproval };
         ShowShiftModal = true;
     }
 
@@ -1204,8 +1383,8 @@
     public class TodayItem { public int UserId { get; set; } public string FullName { get; set; } = ""; public string? ShiftName { get; set; } public TimeSpan? ShiftStart { get; set; } public TimeSpan? ShiftEnd { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int EarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int CoveredGapMinutes { get; set; } public int OvertimeMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public bool IsInNow { get; set; } public int UncoveredGaps { get; set; } public List<object> Segments { get; set; } = new(); }
     public class TodayResponse { public DateTime date { get; set; } public bool isToday { get; set; } public string weekday { get; set; } = ""; public TodayStats stats { get; set; } = new(); public List<TodayItem> items { get; set; } = new(); }
 
-    public class ShiftDto { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public TimeSpan? StartTime2 { get; set; } public TimeSpan? EndTime2 { get; set; } public int GraceMinutes { get; set; } public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
-    public class ShiftForm { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public string StartTime { get; set; } = "08:00"; public string EndTime { get; set; } = "16:30"; public string? StartTime2 { get; set; } = ""; public string? EndTime2 { get; set; } = ""; public int GraceMinutes { get; set; } = 10; public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; }
+    public class ShiftDto { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public TimeSpan? StartTime2 { get; set; } public TimeSpan? EndTime2 { get; set; } public int GraceMinutes { get; set; } public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; public bool? RequireExtraApproval { get; set; } }
+    public class ShiftForm { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public string StartTime { get; set; } = "08:00"; public string EndTime { get; set; } = "16:30"; public string? StartTime2 { get; set; } = ""; public string? EndTime2 { get; set; } = ""; public int GraceMinutes { get; set; } = 10; public bool IncludeFriday { get; set; } public bool IsActive { get; set; } = true; public bool? RequireExtraApproval { get; set; } }
 
     public class PersonnelItem { public int Id { get; set; } public string Username { get; set; } = ""; public string FullName { get; set; } = ""; public int? ShiftGroupId { get; set; } public string? ShiftName { get; set; } public bool Saved { get; set; } }
 
@@ -1213,6 +1392,31 @@
     public class MonthDayRow { public DateTime date { get; set; } public string weekday { get; set; } = ""; public int userId { get; set; } public string fullName { get; set; } = ""; public string? shiftName { get; set; } public DateTime? enterAt { get; set; } public DateTime? exitAt { get; set; } public string? enterStatus { get; set; } public int lateMinutes { get; set; } public int earlyLeaveMinutes { get; set; } public int workMinutes { get; set; } public int deficitMinutes { get; set; } public int overtimeMinutes { get; set; } public bool hasApprovedLeave { get; set; } public string? finalStatus { get; set; } public string? note { get; set; } public int inOutCount { get; set; } }
     public class MonthDayResponse { public int year { get; set; } public int month { get; set; } public string monthName { get; set; } = ""; public List<MonthDayRow> items { get; set; } = new(); }
 
-    public class MonthlyRow { public int UserId { get; set; } public string UserName { get; set; } = ""; public string ShiftName { get; set; } = ""; public int Workdays { get; set; } public int Present { get; set; } public int Absent { get; set; } public double LeaveDays { get; set; } public int LateDays { get; set; } public int TotalLateMinutes { get; set; } public int TotalEarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public double DeficitHours { get; set; } public int OvertimeMinutes { get; set; } public int UnauthorizedMinutes { get; set; } }
+    public class MonthlyRow { public int UserId { get; set; } public string UserName { get; set; } = ""; public string ShiftName { get; set; } = ""; public int Workdays { get; set; } public int Present { get; set; } public int Absent { get; set; } public double LeaveDays { get; set; } public int LateDays { get; set; } public int TotalLateMinutes { get; set; } public int TotalEarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public double DeficitHours { get; set; } public int OvertimeMinutes { get; set; } public int PendingOvertimeMinutes { get; set; } public int PendingExtraDays { get; set; } public int UnauthorizedMinutes { get; set; } }
+
+    // ====== کارتابل مازاد ======
+    public class ExtraItem
+    {
+        public int SegmentId { get; set; }
+        public int UserId { get; set; }
+        public string UserName { get; set; } = "";
+        public DateTime WorkDate { get; set; }
+        public string DateFa { get; set; } = "";
+        public int Seq { get; set; }
+        public DateTime? EnterAt { get; set; }
+        public DateTime? ExitAt { get; set; }
+        public string? ShiftName { get; set; }
+        public string? ShiftWindow { get; set; }
+        public int PendingMinutes { get; set; }
+        public int OvertimeMinutes { get; set; }
+        public bool IsUnauthorized { get; set; }
+        public int ExtraDecision { get; set; }
+        public string DecisionFa { get; set; } = "";
+        public DateTime? ExtraDecidedAt { get; set; }
+        public string? ExtraDecisionNote { get; set; }
+        public int? RecordId { get; set; }
+        public int WorkMinutes { get; set; }
+        public int DeficitMinutes { get; set; }
+    }
     public class MonthlyResponse { public int year { get; set; } public int month { get; set; } public string monthName { get; set; } = ""; public int days { get; set; } public List<MonthlyRow> items { get; set; } = new(); }
 }

@@ -114,6 +114,7 @@ public class AttendanceController : ControllerBase
         sg.GraceMinutes = Math.Max(0, input.GraceMinutes);
         sg.IncludeFriday = input.IncludeFriday;
         sg.IsActive = input.IsActive;
+        sg.RequireExtraApproval = input.RequireExtraApproval;
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("attendance");
         return Ok(new { id = sg.Id });
@@ -147,6 +148,8 @@ public class AttendanceController : ControllerBase
         public int GraceMinutes { get; set; } = 10;
         public bool IncludeFriday { get; set; }
         public bool IsActive { get; set; } = true;
+        /// <summary>مازادِ این شیفت «در انتظار تصمیم مدیر» ثبت شود؟ null = پیروی از تنظیم سراسری تقویم کاری</summary>
+        public bool? RequireExtraApproval { get; set; }
     }
 
     // ================== تنظیمات تقویم کاری ==================
@@ -173,6 +176,10 @@ public class AttendanceController : ControllerBase
         /// <summary>بیت‌های روزهای تعطیل هفته: Sunday=1…Saturday=64 (جمعه=32)</summary>
         public int RestDayFlags { get; set; } = 32;
         public bool ApplyOfficialHolidays { get; set; } = true;
+        /// <summary>ماندن بعد از پایان شیفت «در انتظار تصمیم مدیر» ثبت شود (نه کسری، نه اضافه‌کار خودکار)</summary>
+        public bool RequireExtraApproval { get; set; } = true;
+        /// <summary>ساعت شیفتِ اختصاصیِ کاربر بر ساعتِ تقویم کاری مقدم باشد</summary>
+        public bool ShiftOverridesCalendarTimes { get; set; } = true;
     }
 
     [HttpGet("calendar-settings")]
@@ -186,6 +193,8 @@ public class AttendanceController : ControllerBase
             s.GraceMinutes,
             s.RestDayFlags,
             s.ApplyOfficialHolidays,
+            s.RequireExtraApproval,
+            s.ShiftOverridesCalendarTimes,
         });
     }
 
@@ -204,6 +213,8 @@ public class AttendanceController : ControllerBase
         s.GraceMinutes = input.GraceMinutes;
         s.RestDayFlags = input.RestDayFlags;
         s.ApplyOfficialHolidays = input.ApplyOfficialHolidays;
+        s.RequireExtraApproval = input.RequireExtraApproval;
+        s.ShiftOverridesCalendarTimes = input.ShiftOverridesCalendarTimes;
         s.UpdatedAt = DateTime.Now;
         await _db.SaveChangesAsync();
         await _notify.BroadcastChangedAsync("attendance");
@@ -884,10 +895,12 @@ public class AttendanceController : ControllerBase
             seg.EnterStatus = seq == 1 ? "Unauthorized" : "Return";
         }
         else if (ruleIn.IsWorkday && ruleIn.OvertimeMode != WorkRules.OT_WholeDay
-                 && now > dayEndIn && !WorkRules.InOvertimeWindow(now, today, ruleIn))
+                 && now > dayEndIn && !WorkRules.InOvertimeWindow(now, today, ruleIn)
+                 && !WorkRules.NeedsDecision(ruleIn))
         {
             // ورود بعد از پایان کامل روز = تردد غیرمجاز
-            // (مگر اضافه‌کاریِ «کلِ روز» باشد یا لحظه‌ی ورود داخلِ بازه‌ی اضافه‌کاریِ مشخص‌شده باشد)
+            // (مگر اضافه‌کاریِ «کلِ روز» باشد، لحظه‌ی ورود داخلِ بازه‌ی اضافه‌کاری باشد،
+            //  یا مازاد «در انتظار تصمیم» فعال باشد — آن‌وقت تصمیم با مدیر است، نه تردد قطعی)
             seg.IsUnauthorized = true;
             seg.EnterStatus = seq == 1 ? "Unauthorized" : "Return";
         }
@@ -1059,10 +1072,12 @@ public class AttendanceController : ControllerBase
         last.LinkedLeaveRequestId = null;
         last.LinkedLeaveNumber = null;
 
-        // ارزیابی بازه بر اساس قاعده‌ی کاری روز: اضافه‌کاری و تردد غیرمجاز
-        var (_, oOut, _, unauthOut) = WorkRules.EvaluateSegment(ruleOut, today, last.EnterAt.Value, now, now);
-        if (unauthOut) last.IsUnauthorized = true;
-        last.OvertimeMinutes = oOut;
+        // ارزیابی بازه بر اساس قاعده‌ی کاری روز: اضافه‌کاری، مازادِ در انتظار تصمیم و تردد غیرمجاز
+        var evOut = WorkRules.EvaluateSegment(ruleOut, today, last.EnterAt.Value, now, now,
+            (ExtraDecision)last.ExtraDecision);
+        if (evOut.IsUnauthorized) last.IsUnauthorized = true;
+        last.OvertimeMinutes = evOut.OvertimeMin;
+        last.PendingMinutes = evOut.PendingMin;
 
         rec.UpdatedAt = now;
         await AggregateAsync(rec, segs, ruleOut, now);
@@ -1083,8 +1098,10 @@ public class AttendanceController : ControllerBase
 
         var covered = last.ExitCovered;
         string msg;
-        if (unauthOut)
+        if (evOut.IsUnauthorized)
             msg = "خروج ثبت شد. توجه: این تردد خارج از بازه‌ی مجازِ تقویم کاری است و به‌عنوان «تردد غیرمجاز» ثبت شده است.";
+        else if (evOut.PendingMin > 0)
+            msg = $"خروج ثبت شد. {Fa.Digits(evOut.PendingMin)} دقیقه ماندنِ اضافه بر ساعت شیفت به‌عنوان «مازادِ در انتظار تصمیم» ثبت شد — نه کسری و نه اضافه‌کار. مدیر آن را تأیید (اضافه‌کار) یا رد (تردد غیرمجاز) می‌کند.";
         else if (covered)
             msg = "خروج ثبت شد. بازه‌ی غیبت شما با درخواست تاییدشده پوشش دارد.";
         else
@@ -1094,8 +1111,9 @@ public class AttendanceController : ControllerBase
             ok = true,
             record = Map(rec, segs),
             covered,
-            unauthorized = unauthOut,
-            overtimeMinutes = oOut,
+            unauthorized = evOut.IsUnauthorized,
+            overtimeMinutes = evOut.OvertimeMin,
+            pendingMinutes = evOut.PendingMin,
             message = msg,
         });
     }
@@ -1222,6 +1240,9 @@ public class AttendanceController : ControllerBase
             Late = list.Count(x => x.EnterStatus == "Late"),
             WorkMinutes = list.Sum(x => x.WorkMinutes),
             DeficitMinutes = list.Sum(x => x.DeficitMinutes),
+            OvertimeMinutes = list.Sum(x => x.OvertimeMinutes),
+            UnauthorizedMinutes = list.Sum(x => x.UnauthorizedMinutes),
+            PendingOvertimeMinutes = list.Sum(x => x.PendingOvertimeMinutes),
             TotalLateMinutes = list.Sum(x => x.LateMinutes),
             Workdays = workdays
         };
@@ -1379,22 +1400,19 @@ public class AttendanceController : ControllerBase
     }
 
     /// <summary>کسری زنده برای امروز (با درنظر گرفتن زمان اکنون برای بازه‌ی باز).</summary>
+    /// از همان موتور ارزیابیِ بازه‌ها استفاده می‌کند تا ماندنِ بعد از پایان شیفت
+    /// (اضافه‌کار/مازادِ در انتظار/غیرمجاز) هرگز به‌جای کسری حساب نشود.
+    /// </summary>
     private static int LiveDeficit(AttendanceRecord rec, List<AttendanceSegment> segs, WorkDayRule rule, DateTime now)
     {
         if (!rule.IsWorkday) return 0;
         var scheduled = AttendanceMath.ScheduledMinutes(rule);
-        var dayEnd = rec.WorkDate.Add(rule.End);
         int work = 0;
         foreach (var s in segs)
         {
             if (!s.EnterAt.HasValue) continue;
-            if (s.ExitAt.HasValue)
-                work += Math.Max(0, (int)(s.ExitAt.Value - s.EnterAt.Value).TotalMinutes);
-            else
-            {
-                var until = dayEnd < now ? dayEnd : now;
-                work += Math.Max(0, (int)(until - s.EnterAt.Value).TotalMinutes);
-            }
+            work += WorkRules.EvaluateSegment(rule, rec.WorkDate, s.EnterAt.Value, s.ExitAt, now,
+                (ExtraDecision)s.ExtraDecision).WorkMin;
         }
         return Math.Max(0, scheduled - work - rec.CoveredGapMinutes);
     }
@@ -1587,6 +1605,7 @@ public class AttendanceController : ControllerBase
                 deficitMinutes = deficit,
                 overtimeMinutes = rec?.OvertimeMinutes ?? 0,
                 unauthorizedMinutes = rec?.UnauthorizedMinutes ?? 0,
+                pendingOvertimeMinutes = rec?.PendingOvertimeMinutes ?? 0,
                 dayStart = dayRule.Start,
                 dayEnd = dayRule.End,
                 isWorkday = dayRule.IsWorkday,
@@ -1722,6 +1741,8 @@ public class AttendanceController : ControllerBase
                     workMinutes = r?.WorkMinutes ?? 0,
                     deficitMinutes,
                     overtimeMinutes = r?.OvertimeMinutes ?? 0,
+                    pendingOvertimeMinutes = r?.PendingOvertimeMinutes ?? 0,
+                    unauthorizedMinutes = r?.UnauthorizedMinutes ?? 0,
                     hasApprovedLeave,
                     finalStatus,
                     note = r?.Note,
@@ -1785,6 +1806,7 @@ public class AttendanceController : ControllerBase
             int earlyMin = mine.Sum(r => r.EarlyLeaveMinutes);
             int overtimeMin = mine.Sum(r => r.OvertimeMinutes);
             int unauthorizedMin = mine.Sum(r => r.UnauthorizedMinutes);
+            int pendingMin = mine.Sum(r => r.PendingOvertimeMinutes);
 
             // محاسبه کسری با درنظر گرفتن مرخصی
             int deficit = 0;
@@ -1823,7 +1845,9 @@ public class AttendanceController : ControllerBase
                 DeficitMinutes = deficit,
                 DeficitHours = Math.Round(deficit / 60.0, 2),
                 OvertimeMinutes = overtimeMin,
-                UnauthorizedMinutes = unauthorizedMin
+                UnauthorizedMinutes = unauthorizedMin,
+                PendingOvertimeMinutes = pendingMin,
+                PendingExtraDays = mine.Count(r => r.PendingOvertimeMinutes > 0)
             });
         }
 
@@ -1865,6 +1889,7 @@ public class AttendanceController : ControllerBase
         int UserId, string FullName, string ShiftName, TimeSpan? ShiftStart, TimeSpan? ShiftEnd,
         DateTime? EnterAt, DateTime? ExitAt, string? EnterStatus, int LateMinutes, int EarlyLeaveMinutes,
         int WorkMinutes, int DeficitMinutes, int CoveredGapMinutes, int OvertimeMinutes,
+        int PendingOvertimeMinutes,
         string? FinalStatus, bool HasApprovedLeave, string? Note, int InOutCount, bool IsInNow,
         int UncoveredGaps, List<AttendanceSegment> Segs);
 
@@ -1954,6 +1979,7 @@ public class AttendanceController : ControllerBase
                 deficitMinutes,
                 r?.CoveredGapMinutes ?? 0,
                 r?.OvertimeMinutes ?? 0,
+                r?.PendingOvertimeMinutes ?? 0,
                 finalStatus,
                 r?.HasApprovedLeave ?? hasLeave,
                 r?.Note,
@@ -2000,6 +2026,7 @@ public class AttendanceController : ControllerBase
             x.DeficitMinutes,
             x.CoveredGapMinutes,
             x.OvertimeMinutes,
+            x.PendingOvertimeMinutes,
             x.FinalStatus,
             x.HasApprovedLeave,
             x.Note,
@@ -2182,13 +2209,14 @@ public class AttendanceController : ControllerBase
 
         var sb = new StringBuilder();
         sb.Append('\uFEFF'); // BOM برای فارسی در Excel
-        sb.AppendLine("نام کاربر,شیفت,روزکاری,حاضر,غایب,مرخصی(روز),با تاخیر,تاخیر(دقیقه),تعجیل(دقیقه),کارکرد(دقیقه),کسری(دقیقه),کسری(ساعت)");
+        sb.AppendLine("نام کاربر,شیفت,روزکاری,حاضر,غایب,مرخصی(روز),با تاخیر,تاخیر(دقیقه),تعجیل(دقیقه),کارکرد(دقیقه),کسری(دقیقه),کسری(ساعت),اضافه‌کار(دقیقه),مازادِ در انتظار تصمیم(دقیقه),تردد غیرمجاز(دقیقه)");
         foreach (var r in items)
         {
             sb.AppendJoin(',',
                 r.UserName, r.ShiftName, r.Workdays, r.Present, r.Absent, r.LeaveDays,
                 r.LateDays, r.TotalLateMinutes, r.TotalEarlyLeaveMinutes,
-                r.WorkMinutes, r.DeficitMinutes, r.DeficitHours);
+                r.WorkMinutes, r.DeficitMinutes, r.DeficitHours,
+                r.OvertimeMinutes, r.PendingOvertimeMinutes, r.UnauthorizedMinutes);
             sb.AppendLine();
         }
         var bytes = Encoding.UTF8.GetBytes(sb.ToString());
@@ -2242,6 +2270,7 @@ public class AttendanceController : ControllerBase
         r.CoveredGapMinutes,
         r.OvertimeMinutes,
         r.UnauthorizedMinutes,
+        r.PendingOvertimeMinutes,
         r.HasApprovedLeave,
         r.FinalStatus,
         r.Note,
@@ -2261,9 +2290,209 @@ public class AttendanceController : ControllerBase
         s.ExitCovered,
         s.IsUnauthorized,
         s.OvertimeMinutes,
+        s.PendingMinutes,
+        s.ExtraDecision,
+        ExtraDecisionFa = ExtraDecisionFa(s.ExtraDecision),
+        s.ExtraDecidedAt,
+        s.ExtraDecisionNote,
         s.LinkedLeaveNumber,
         s.Note
     };
+
+    /// <summary>عنوان فارسی تصمیم مازاد (برای نمایش در رابط کاربری)</summary>
+    private static string ExtraDecisionFa(int v) => v switch
+    {
+        (int)ExtraDecision.Approved => "تأیید شد (اضافه‌کار)",
+        (int)ExtraDecision.Rejected => "رد شد (تردد غیرمجاز)",
+        _ => "در انتظار تصمیم"
+    };
+
+    // ================== تصمیم مدیر درباره‌ی «مازاد» (ماندن بعد از پایان شیفت) ==================
+
+    /// <summary>
+    /// کارتابل مازاد: بازه‌هایی که پرسنل بعد از پایان شیفت در محل مانده‌اند و هنوز تصمیمی درباره‌ی
+    /// آن‌ها گرفته نشده (نه کسری، نه اضافه‌کار، نه تردد غیرمجاز قطعی).
+    /// مدیر می‌تواند «تأیید» کند (→ اضافه‌کاری) یا «رد» کند (→ تردد غیرمجاز).
+    /// </summary>
+    [HttpGet("extra-worklog")]
+    public async Task<IActionResult> GetExtraWorklog([FromQuery] bool pendingOnly = true, [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null, [FromQuery] int skip = 0, [FromQuery] int? take = null)
+    {
+        if (!await HasAsync("ManageShifts") && !await IsAdminAsync()) return Forbid();
+
+        var f = (from ?? DateTime.Today.AddDays(-30)).Date;
+        var t = (to ?? DateTime.Today).Date.AddDays(1);
+
+        var segs = await _db.AttendanceSegments.AsNoTracking()
+            .Where(s => s.WorkDate >= f && s.WorkDate < t && s.EnterAt != null)
+            .OrderByDescending(s => s.WorkDate).ThenBy(s => s.Seq)
+            .ToListAsync();
+
+        // فقط بازه‌هایی که مازادِ بعد از پایان شیفت داشته‌اند (منتظر تصمیم یا تصمیم‌گرفته‌شده)
+        var rows = segs
+            .Where(s => s.PendingMinutes > 0
+                        || s.OvertimeMinutes > 0
+                        || s.IsUnauthorized
+                        || s.ExtraDecision != (int)ExtraDecision.Pending)
+            .Where(s => !pendingOnly || s.ExtraDecision == (int)ExtraDecision.Pending)
+            .ToList();
+
+        var recMap = await _db.AttendanceRecords.AsNoTracking()
+            .Where(r => r.WorkDate >= f && r.WorkDate < t)
+            .ToDictionaryAsync(r => new { r.UserId, r.WorkDate });
+
+        var shiftMap = await _db.ShiftGroups.AsNoTracking().ToDictionaryAsync(s => s.Id);
+
+        var items = rows.Select(s =>
+        {
+            recMap.TryGetValue(new { s.UserId, s.WorkDate }, out var rec);
+            var sgName = rec?.ShiftGroupId != null && shiftMap.TryGetValue(rec.ShiftGroupId.Value, out var sg) ? sg.Name : null;
+            var sgWindow = rec?.ShiftGroupId != null && shiftMap.TryGetValue(rec.ShiftGroupId.Value, out var sg2)
+                ? $"{Tm(sg2.StartTime)}–{Tm(sg2.EndTime)}" : null;
+            return new
+            {
+                segmentId = s.Id,
+                s.UserId,
+                s.UserName,
+                s.WorkDate,
+                dateFa = Shared.PersianDate.ToShort(s.WorkDate),
+                s.Seq,
+                s.EnterAt,
+                s.ExitAt,
+                shiftName = sgName,
+                shiftWindow = sgWindow,
+                s.PendingMinutes,
+                s.OvertimeMinutes,
+                s.IsUnauthorized,
+                s.ExtraDecision,
+                decisionFa = ExtraDecisionFa(s.ExtraDecision),
+                s.ExtraDecidedAt,
+                s.ExtraDecisionNote,
+                recordId = rec?.Id,
+                workMinutes = rec?.WorkMinutes ?? 0,
+                deficitMinutes = rec?.DeficitMinutes ?? 0,
+            };
+        }).ToList();
+
+        return Ok(Paging.Result(items, skip, take));
+    }
+
+    public class ExtraDecisionInput
+    {
+        /// <summary>شناسه‌ی بازه (اگر خالی باشد، همه‌ی بازه‌های مازادِ آن روز اعمال می‌شود)</summary>
+        public int? SegmentId { get; set; }
+        public int UserId { get; set; }
+        public DateTime Date { get; set; }
+        /// <summary>۰ = بازگشت به «در انتظار تصمیم» | ۱ = تأیید (اضافه‌کار) | ۲ = رد (تردد غیرمجاز)</summary>
+        public int Decision { get; set; }
+        public string? Note { get; set; }
+    }
+
+    /// <summary>
+    /// ثبت تصمیم مدیر روی مازاد: تأیید → اضافه‌کاری، رد → تردد غیرمجاز، بازگشت → در انتظار تصمیم.
+    /// تصمیم روی خودِ بازه ذخیره و بلافاصله رکوردِ روز بازحساب می‌شود.
+    /// </summary>
+    [HttpPost("extra-decision")]
+    public async Task<IActionResult> SetExtraDecision([FromBody] ExtraDecisionInput input)
+    {
+        if (!await HasAsync("ManageShifts") && !await IsAdminAsync()) return Forbid();
+        if (input.Decision is < 0 or > 2)
+            return BadRequest(new { message = "تصمیم نامعتبر است." });
+
+        var date = input.Date.Date;
+        var segs = await _db.AttendanceSegments
+            .Where(s => s.UserId == input.UserId && s.WorkDate == date)
+            .OrderBy(s => s.Seq)
+            .ToListAsync();
+        if (segs.Count == 0) return NotFound(new { message = "بازه‌ی ترددی برای این روز یافت نشد." });
+
+        var targets = input.SegmentId is > 0
+            ? segs.Where(s => s.Id == input.SegmentId.Value).ToList()
+            : segs.Where(s => s.ExtraDecision == (int)ExtraDecision.Pending
+                              || s.PendingMinutes > 0
+                              || s.OvertimeMinutes > 0
+                              || s.IsUnauthorized).ToList();
+        if (targets.Count == 0) return BadRequest(new { message = "بازه‌ای برای اعمال تصمیم یافت نشد." });
+
+        foreach (var s in targets)
+        {
+            s.ExtraDecision = input.Decision;
+            s.ExtraDecidedByUserId = input.Decision == (int)ExtraDecision.Pending ? null : MyUserId;
+            s.ExtraDecidedAt = input.Decision == (int)ExtraDecision.Pending ? null : DateTime.Now;
+            s.ExtraDecisionNote = string.IsNullOrWhiteSpace(input.Note) ? null : input.Note.Trim();
+        }
+        await _db.SaveChangesAsync();
+
+        await _recalc.RecalcDayAsync(input.UserId, date, DateTime.Now);
+        var rec = await _db.AttendanceRecords.FirstOrDefaultAsync(a => a.UserId == input.UserId && a.WorkDate == date);
+        var fresh = await _db.AttendanceSegments
+            .Where(s => s.UserId == input.UserId && s.WorkDate == date).OrderBy(s => s.Seq).ToListAsync();
+
+        await _notify.BroadcastChangedAsync("attendance");
+        return Ok(new
+        {
+            ok = true,
+            applied = targets.Count,
+            message = input.Decision switch
+            {
+                (int)ExtraDecision.Approved => $"مازادِ {Fa.Digits(rec?.OvertimeMinutes ?? 0)} دقیقه به اضافه‌کاری منتقل شد.",
+                (int)ExtraDecision.Rejected => $"مازاد به تردد غیرمجاز منتقل شد.",
+                _ => "مازاد به حالت «در انتظار تصمیم» بازگشت.",
+            },
+            record = rec == null ? null : Map(rec, fresh),
+        });
+    }
+
+    /// <summary>بازحساب اجباری یک روز (مثلاً بعد از تغییر شیفت یا تقویم کاری) — پرسنل و مدیر.</summary>
+    [HttpPost("recalc-day")]
+    public async Task<IActionResult> RecalcDay([FromBody] ExtraDecisionInput input)
+    {
+        if (!await HasAsync("ManageShifts") && !await IsAdminAsync()) return Forbid();
+        await _recalc.RecalcDayAsync(input.UserId, input.Date.Date, DateTime.Now);
+        var rec = await _db.AttendanceRecords.AsNoTracking()
+            .FirstOrDefaultAsync(a => a.UserId == input.UserId && a.WorkDate == input.Date.Date);
+        var segs = await _db.AttendanceSegments.AsNoTracking()
+            .Where(s => s.UserId == input.UserId && s.WorkDate == input.Date.Date).OrderBy(s => s.Seq).ToListAsync();
+        return Ok(new { ok = true, record = rec == null ? null : Map(rec, segs) });
+    }
+
+    public class RecalcMonthInput
+    {
+        public int Year { get; set; }
+        public int Month { get; set; }
+        /// <summary>خالی = همه‌ی پرسنل</summary>
+        public int? UserId { get; set; }
+    }
+
+    /// <summary>
+    /// بازحسابِ کلِ ماه — بعد از تغییرِ قاعده (مثلاً اصلاح اولویت شیفت بر تقویم یا فعال‌شدن
+    /// «مازاد در انتظار تصمیم») لازم است تا رکوردهای روزهای گذشته هم با قاعده‌ی جدید هماهنگ شوند.
+    /// تصمیم‌های ثبت‌شده‌ی مازاد دست‌نخورده می‌مانند.
+    /// </summary>
+    [HttpPost("recalc-month")]
+    public async Task<IActionResult> RecalcMonth([FromBody] RecalcMonthInput input)
+    {
+        if (!await HasAsync("ManageShifts") && !await IsAdminAsync()) return Forbid();
+        if (input.Month is < 1 or > 12) return BadRequest(new { message = "ماه نامعتبر است." });
+        var from = PersianDate.ToGregorian(input.Year, input.Month, 1);
+        if (from == DateTime.MinValue) return BadRequest(new { message = "سال/ماه نامعتبر است." });
+        var to = input.Month == 12 ? PersianDate.ToGregorian(input.Year + 1, 1, 1) : PersianDate.ToGregorian(input.Year, input.Month + 1, 1);
+        if (to <= from) return BadRequest(new { message = "بازه‌ی ماه معتبر نیست." });
+
+        var q = _db.AttendanceRecords.AsNoTracking().Where(r => r.WorkDate >= from && r.WorkDate < to);
+        if (input.UserId is > 0) q = q.Where(r => r.UserId == input.UserId);
+        var targets = await q.Select(r => new { r.UserId, r.WorkDate }).Distinct().ToListAsync();
+
+        var now = DateTime.Now;
+        var done = 0;
+        foreach (var t in targets)
+        {
+            try { await _recalc.RecalcDayAsync(t.UserId, t.WorkDate, now); done++; }
+            catch (Exception ex) { Console.WriteLine($"[Attendance] بازحساب {t.UserId}/{t.WorkDate:yyyy-MM-dd}: {ex.Message}"); }
+        }
+        await _notify.BroadcastChangedAsync("attendance");
+        return Ok(new { ok = true, recalculated = done, total = targets.Count });
+    }
 
     // ================== امنیت حضور و غیاب (مدیر) ==================
 

@@ -57,6 +57,12 @@ public class AttendanceRecord
     /// <summary>دقیقه‌های تردد غیرمجاز (حضور خارج از بازه‌ی مجاز تعریف‌شده در تقویم کاری)</summary>
     public int UnauthorizedMinutes { get; set; }
 
+    /// <summary>
+    /// دقیقه‌های «مازادِ در انتظار تصمیم مدیر» — ماندنِ بعد از پایان شیفت که نه کسری شده و نه
+    /// هنوز به اضافه‌کاری/تردد غیرمجاز تبدیل شده است (تصمیم در <c>AttendanceSegment.ExtraDecision</c> است).
+    /// </summary>
+    public int PendingOvertimeMinutes { get; set; }
+
     /// <summary>دقیقه‌های غیبتِ پوشش‌شده با مرخصی/ماموریت ساعتی تاییدشده (از مجموع کسری کم می‌شود)</summary>
     public int CoveredGapMinutes { get; set; }
 

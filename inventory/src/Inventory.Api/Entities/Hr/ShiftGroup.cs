@@ -33,6 +33,12 @@ public class ShiftGroup
     /// <summary>کار روز جمعه هم حساب شود (برای شیفت‌های چرخشی)</summary>
     public bool IncludeFriday { get; set; }
 
+    /// <summary>
+    /// ماندنِ این شیفت بعد از پایان ساعت، «در انتظار تصمیم مدیر» ثبت شود (نه کسری، نه اضافه‌کار خودکار).
+    /// null = از تنظیم سراسری تقویم کاری (<c>WorkCalendarSettings.RequireExtraApproval</c>) پیروی کند.
+    /// </summary>
+    public bool? RequireExtraApproval { get; set; }
+
     /// <summary>فعال/غیرفعال</summary>
     public bool IsActive { get; set; } = true;
 

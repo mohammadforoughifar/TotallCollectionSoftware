@@ -162,6 +162,8 @@ public static class AiDataCatalog
                 F("EnterStatus", "وضعیت ورود"),
                 F("LateMinutes", "تأخیر (دقیقه)", "number"), F("WorkMinutes", "کارکرد (دقیقه)", "number"),
                 F("OvertimeMinutes", "اضافه‌کار (دقیقه)", "number"), F("DeficitMinutes", "کسری (دقیقه)", "number"),
+                F("PendingOvertimeMinutes", "مازادِ در انتظار تصمیم مدیر (دقیقه)", "number"),
+                F("UnauthorizedMinutes", "تردد غیرمجاز (دقیقه)", "number"),
                 F("FinalStatus", "وضعیت نهایی"), F("Note", "یادداشت", truncate: 100),
             },
         },

@@ -224,7 +224,7 @@
                 <div class="table-responsive">
                     <table class="table align-middle mv-table mb-0">
                         <thead>
-                            <tr><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ورود</th><th>خروج</th><th>کسری</th><th>اقدام</th></tr>
+                            <tr><th>تاریخ</th><th>روز</th><th>وضعیت</th><th>ورود</th><th>خروج</th><th>کسری</th><th>مازاد</th><th>اقدام</th></tr>
                         </thead>
                         <tbody>
                             @foreach (var d in FilteredDays)
@@ -244,6 +244,13 @@
                                         else { <span class="text-muted">—</span> }
                                     </td>
                                     <td>
+                                        @if (d.PendingOvertimeMinutes > 0)
+                                        { <span class="text-warning fw-800" title="ماندنِ اضافه بر ساعت شیفت — منتظر تصمیم مدیر">@WorkText(d.PendingOvertimeMinutes)</span> }
+                                        else if (d.OvertimeMinutes > 0)
+                                        { <span class="text-info" title="اضافه‌کار تأییدشده">@WorkText(d.OvertimeMinutes)</span> }
+                                        else { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td>
                                         @if (d.Status == "Red")
                                         {
                                             <button class="btn btn-sm btn-outline-danger mv-req-btn" @onclick:stopPropagation
@@ -257,7 +264,7 @@
                                 @if (isOpen)
                                 {
                                     <tr class="mv-detail-row">
-                                        <td colspan="7" class="bg-light">
+                                        <td colspan="8" class="bg-light">
                                             <div class="d-flex flex-column gap-2">
                                                 @if (!string.IsNullOrWhiteSpace(d.HolidayName))
                                                 {
@@ -284,6 +291,16 @@
                                                                 @if (s.IsUnauthorized)
                                                                 {
                                                                     <span class="badge bg-purple" dir="rtl"><i class="bi bi-shield-x"></i> تردد غیرمجاز</span>
+                                                                }
+                                                                else if (s.PendingMinutes > 0)
+                                                                {
+                                                                    <span class="badge bg-warning text-dark" dir="rtl" title="ماندنِ اضافه بر ساعت شیفت — در انتظار تصمیم مدیر (نه کسری، نه اضافه‌کار)">
+                                                                        <i class="bi bi-hourglass-split"></i> مازاد @Fa.Digits(s.PendingMinutes) دقیقه — در انتظار تصمیم مدیر
+                                                                    </span>
+                                                                }
+                                                                else if (s.ExtraDecision == 1)
+                                                                {
+                                                                    <span class="badge bg-success" dir="rtl" title="مازادِ این بازه به اضافه‌کار تبدیل شد"><i class="bi bi-check2"></i> مازاد تأیید‌شده (اضافه‌کار)</span>
                                                                 }
                                                                 else if (s.ExitAt.HasValue)
                                                                 {
@@ -824,7 +841,7 @@
 
     // =========== Models ===========
     public class MyShift { public int Id { get; set; } public string Name { get; set; } = ""; public string? Description { get; set; } public TimeSpan StartTime { get; set; } public TimeSpan EndTime { get; set; } public int GraceMinutes { get; set; } public bool IncludeFriday { get; set; } }
-    public class SegmentItem { public int Id { get; set; } public int Seq { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public bool ExitCovered { get; set; } public bool IsUnauthorized { get; set; } public int OvertimeMinutes { get; set; } public string? LinkedLeaveNumber { get; set; } public string? Note { get; set; } }
+    public class SegmentItem { public int Id { get; set; } public int Seq { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public bool ExitCovered { get; set; } public bool IsUnauthorized { get; set; } public int OvertimeMinutes { get; set; } public int PendingMinutes { get; set; } public int ExtraDecision { get; set; } public string? ExtraDecisionNote { get; set; } public string? LinkedLeaveNumber { get; set; } public string? Note { get; set; } }
     public class MyToday { public int Id { get; set; } public DateTime WorkDate { get; set; } public int? ShiftGroupId { get; set; } public string? ShiftName { get; set; } public DateTime? EnterAt { get; set; } public DateTime? ExitAt { get; set; } public string? EnterStatus { get; set; } public int LateMinutes { get; set; } public int EarlyLeaveMinutes { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int CoveredGapMinutes { get; set; } public bool HasApprovedLeave { get; set; } public string? FinalStatus { get; set; } public string? Note { get; set; } public int InOutCount { get; set; } public List<SegmentItem> Segments { get; set; } = new(); }
     public class MonthSummary { public int Year { get; set; } public int Month { get; set; } public int Present { get; set; } public int Absent { get; set; } public int Leave { get; set; } public int Late { get; set; } public int WorkMinutes { get; set; } public int DeficitMinutes { get; set; } public int TotalLateMinutes { get; set; } public int Workdays { get; set; } }
     public class DeficitRange { public TimeSpan? Start { get; set; } public TimeSpan? End { get; set; } public int Minutes { get; set; } public string Kind { get; set; } = ""; public string? PendingNumber { get; set; } }
@@ -838,6 +855,7 @@
         public string? HolidayName { get; set; }
         public int DeficitMinutes { get; set; }
         public int OvertimeMinutes { get; set; }
+        public int PendingOvertimeMinutes { get; set; }
         public int UnauthorizedMinutes { get; set; }
         public bool IsWorkday { get; set; } = true;
         public string RuleSource { get; set; } = "";

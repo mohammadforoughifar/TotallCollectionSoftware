@@ -29,6 +29,12 @@ public record WorkDayRule
     /// <summary>پایانِ پنجره‌ی دومِ شیفت دوپاره — فقط همراه با Start2 معتبر است</summary>
     public TimeSpan? End2 { get; init; }
 
+    /// <summary>
+    /// ماندنِ بعد از پایان شیفت «در انتظار تصمیم مدیر» ثبت شود (نه کسری، نه اضافه‌کار خودکار).
+    /// منبع: تنظیمات تقویم کاری / پرچم شیفت / حالتِ «مازاد در انتظار تصمیم» در ویرایشگر روز.
+    /// </summary>
+    public bool ExtraRequiresApproval { get; init; }
+
     public static WorkDayRule Default() => new()
     {
         IsWorkday = true,
@@ -40,14 +46,38 @@ public record WorkDayRule
     };
 }
 
+/// <summary>تصمیم مدیر درباره‌ی «مازادِ در انتظار» (ماندنِ بعد از پایان شیفت).</summary>
+public enum ExtraDecision
+{
+    /// <summary>هنوز تصمیمی گرفته نشده — در کارتابل مدیر منتظر می‌ماند</summary>
+    Pending = 0,
+    /// <summary>تأیید شد — به اضافه‌کاری منتقل می‌شود</summary>
+    Approved = 1,
+    /// <summary>رد شد — به تردد غیرمجاز منتقل می‌شود</summary>
+    Rejected = 2,
+}
+
+/// <summary>نتیجه‌ی ارزیابی یک بازه‌ی تردد بر اساس قاعده‌ی روز.</summary>
+/// <param name="WorkMin">دقیقه‌ی کار عادی (داخل پنجره‌ی شیفت)</param>
+/// <param name="OvertimeMin">دقیقه‌ی اضافه‌کاری (تأییدشده یا خودکار)</param>
+/// <param name="PendingMin">دقیقه‌ی مازادِ «در انتظار تصمیم مدیر» (نه کسری، نه اضافه‌کار)</param>
+/// <param name="UnauthorizedMin">دقیقه‌ی تردد غیرمجاز</param>
+/// <param name="IsUnauthorized">آیا کل بازه غیرمجاز است؟</param>
+public readonly record struct SegmentEval(int WorkMin, int OvertimeMin, int PendingMin, int UnauthorizedMin, bool IsUnauthorized);
+
 public static class WorkRules
 {
     /// <summary>مقادیرِ مجازِ حالتِ اضافه‌کاری</summary>
     public const int OT_None = 0, OT_Window = 1, OT_WholeDay = 2, OT_HourCap = 3;
 
+    /// <summary>حالت ۴ — «مازاد در انتظار تصمیم»: ماندنِ بعد از پایان شیفت تا تصمیم مدیر در کارتابل می‌ماند</summary>
+    public const int OT_Pending = 4;
+
     /// <summary>
     /// حل‌شدن قاعده‌ی یک روز:
-    /// ۱) ردیف تقویم کاری (WorkCalendarDay) — کامل‌ترین منبع
+    /// ۱) ردیف تقویم کاری (WorkCalendarDay) — کاری/تعطیلی، اضافه‌کاری و یادداشت روز را تعیین می‌کند.
+    ///    «ساعت شروع/پایان»: اگر کاربر شیفتِ اختصاصی دارد، ساعتِ شیفتِ او مقدم است
+    ///    (تنظیمِ <see cref="WorkCalendarSettings.ShiftOverridesCalendarTimes"/> — پیش‌فرض روشن)
     /// ۲) تعطیل رسمی کشور (CompanyHoliday با IsOfficial=true) → تعطیل (در صورت فعال‌بودن اعمال خودکار)
     /// ۳) تعطیلی شرکتی (CompanyHoliday) → تعطیل
     /// ۴) شیفت کاربر (ShiftGroup) — روزهای تعطیل هفته بر اساس تنظیمات (پیش‌فرض: جمعه؛ IncludeFriday جمعه را شامل کار می‌کند)
@@ -58,9 +88,43 @@ public static class WorkRules
     {
         date = date.Date;
 
+        // آیا ماندنِ بعد از پایان شیفت، «در انتظار تصمیم مدیر» ثبت شود؟ (پیش‌فرض: بله)
+        var extraDefault = settings?.RequireExtraApproval ?? true;
+        var extraApproval = userShift?.RequireExtraApproval ?? extraDefault;
+        // ساعتِ شیفتِ اختصاصیِ کاربر بر ساعتِ تقویم مقدم است؟ (پیش‌فرض: بله)
+        var shiftTimesWin = userShift != null && (settings?.ShiftOverridesCalendarTimes ?? true);
+        // پنجره‌ی دومِ شیفت دوپاره فقط وقتی معتبر است که هر دو مقدار تنظیم و پایان بعد از شروع باشد
+        TimeSpan? s2 = userShift != null && userShift.StartTime2 is { } sa && userShift.EndTime2 is { } eb && eb > sa ? sa : null;
+        TimeSpan? e2 = (s2 != null && userShift != null) ? userShift.EndTime2 : null;
+
         // ۱) تقویم کاری
         if (calendarDay != null && calendarDay.Date.Date == date)
         {
+            var otMode = calendarDay.OvertimeMode;
+            // حالتِ «مازاد در انتظار تصمیم» همیشه برنده است
+            var needsApproval = otMode == OT_Pending || extraApproval;
+
+            // ساعتِ شیفتِ کاربر مقدم است؛ بقیه‌ی خواصِ روز از تقویم می‌آید
+            if (shiftTimesWin)
+            {
+                return new WorkDayRule
+                {
+                    IsWorkday = calendarDay.IsWorkday,
+                    Start = userShift!.StartTime,
+                    End = userShift.EndTime,
+                    Start2 = s2,
+                    End2 = e2,
+                    GraceMinutes = userShift.GraceMinutes,
+                    OvertimeHours = calendarDay.OvertimeHours,
+                    OvertimeMode = otMode,
+                    OvertimeStart = calendarDay.OvertimeStart,
+                    OvertimeEnd = calendarDay.OvertimeEnd,
+                    ExtraRequiresApproval = needsApproval,
+                    Source = "Calendar+Shift",
+                    Note = calendarDay.Note,
+                };
+            }
+
             return new WorkDayRule
             {
                 IsWorkday = calendarDay.IsWorkday,
@@ -68,9 +132,10 @@ public static class WorkRules
                 End = calendarDay.EndTime ?? settings?.DefaultEnd ?? new TimeSpan(16, 30, 0),
                 GraceMinutes = calendarDay.GraceMinutes > 0 ? calendarDay.GraceMinutes : (userShift?.GraceMinutes ?? settings?.GraceMinutes ?? 10),
                 OvertimeHours = calendarDay.OvertimeHours,
-                OvertimeMode = calendarDay.OvertimeMode,
+                OvertimeMode = otMode,
                 OvertimeStart = calendarDay.OvertimeStart,
                 OvertimeEnd = calendarDay.OvertimeEnd,
+                ExtraRequiresApproval = needsApproval,
                 Source = "Calendar",
                 Note = calendarDay.Note,
             };
@@ -102,9 +167,6 @@ public static class WorkRules
             var flags = settings?.RestDayFlags ?? WorkCalendarSettings.RestFriday;
             if (userShift.IncludeFriday) flags &= ~WorkCalendarSettings.RestFriday;
             var isOff = (flags & (1 << (int)date.DayOfWeek)) != 0;
-            // شیفت دوپاره: پنجره‌ی دوم فقط وقتی معتبر است که هر دو مقدار تنظیم و پایان بعد از شروع باشد
-            TimeSpan? s2 = userShift.StartTime2 is { } sa && userShift.EndTime2 is { } eb && eb > sa ? sa : null;
-            TimeSpan? e2 = s2 != null ? userShift.EndTime2 : null;
             return new WorkDayRule
             {
                 IsWorkday = !isOff,
@@ -114,6 +176,7 @@ public static class WorkRules
                 End2 = e2,
                 GraceMinutes = userShift.GraceMinutes,
                 OvertimeHours = 0,
+                ExtraRequiresApproval = extraApproval,
                 Source = "Shift",
                 Note = userShift.Name,
             };
@@ -128,6 +191,7 @@ public static class WorkRules
             End = settings?.DefaultEnd ?? new TimeSpan(16, 30, 0),
             GraceMinutes = settings?.GraceMinutes ?? 10,
             OvertimeHours = 0,
+            ExtraRequiresApproval = extraDefault,
             Source = "Default",
         };
         return WorkCalendarSettings.IsRestDay(restFlags, date)
@@ -205,20 +269,25 @@ public static class WorkRules
 
     /// <summary>
     /// ارزیابی یک بازه‌ی تردد [enterAt, exitAt] (exitAt می‌تواند null باشد = هنوز در محل)
-    /// بر اساس قاعده‌ی روز. مقدار برگشتی:
-    ///  - workMin: دقیقه‌ی حاضر در محل (کار عادی)
-    ///  - overtimeMin: دقیقه‌ی اضافه‌کاری مجاز/ثبت‌شده
-    ///  - unauthorizedMin: دقیقه‌ی تردد غیرمجاز
-    ///  - isUnauthorized: آیا کل بازه غیرمجاز است؟
+    /// بر اساس قاعده‌ی روز. مقدار برگشتی <see cref="SegmentEval"/>:
+    ///  - WorkMin: دقیقه‌ی حاضر در محل (کار عادی — فقط داخل پنجره‌ی شیفت)
+    ///  - OvertimeMin: دقیقه‌ی اضافه‌کاری مجاز/تأییدشده
+    ///  - PendingMin: دقیقه‌ی مازادِ «در انتظار تصمیم مدیر» (نه کسری، نه اضافه‌کار)
+    ///  - UnauthorizedMin: دقیقه‌ی تردد غیرمجاز
+    ///  - IsUnauthorized: آیا کل بازه غیرمجاز است؟
     ///
     /// قواعدِ اضافه‌کاری:
-    ///  - «بدون»: روز کاری → کارِ بعد از پایان = اضافه‌کاری (نامحدود)؛ تعطیل → هر تردد غیرمجاز
+    ///  - «بدون»: روز کاری → مازادِ بعد از پایان، اگر ExtraRequiresApproval باشد «در انتظار تصمیم»
+    ///    (و با تصمیم مدیر به اضافه‌کاری یا تردد غیرمجاز تبدیل می‌شود) وگرنه خودکار اضافه‌کاری؛ تعطیل → هر تردد غیرمجاز
+    ///  - «مازاد در انتظار تصمیم» (حالت ۴): مثل حالت «بدون» ولی همیشه منتظر تصمیم مدیر می‌ماند
     ///  - «بازه زمانی»: فقط حضورِ داخلِ بازه = اضافه‌کاری؛ بیرونِ بازه (خارج از شیفت) = تردد غیرمجاز
     ///  - «کل روز»: همه‌ی حضور = اضافه‌کاری (نه کار عادی، نه غیرمجاز، نه کسری)
     ///  - «سقف ساعتی»: تا سقفِ ساعتی = اضافه‌کاری؛ مازاد = تردد غیرمجاز
+    ///
+    /// نکته: مازادِ بعد از پایان شیفت هرگز وارد «کسری» نمی‌شود — کسری فقط از کمبودِ کارکردِ داخل پنجره ساخته می‌شود.
     /// </summary>
-    public static (int workMin, int overtimeMin, int unauthorizedMin, bool isUnauthorized)
-        EvaluateSegment(WorkDayRule rule, DateTime date, DateTime enterAt, DateTime? exitAt, DateTime asOf)
+    public static SegmentEval EvaluateSegment(WorkDayRule rule, DateTime date, DateTime enterAt, DateTime? exitAt,
+        DateTime asOf, ExtraDecision decision = ExtraDecision.Pending)
     {
         date = date.Date;
         var dayEnd = ShiftEnd(date, rule);
@@ -233,7 +302,7 @@ public static class WorkRules
 
         // ۰) اضافه‌کاریِ کلِ روز: همه‌ی حضورِ روز = اضافه‌کاری
         if (rule.OvertimeMode == OT_WholeDay)
-            return (0, totalMin, 0, false);
+            return new SegmentEval(0, totalMin, 0, 0, false);
 
         var win = OvertimeWindow(date, rule);
 
@@ -245,35 +314,45 @@ public static class WorkRules
                 // بازه‌ی اضافه‌کاری در تعطیل: داخلِ بازه = اضافه‌کاری، بیرونِ بازه = تردد غیرمجاز
                 var inWin = OverlapMinutes(enterAt, end, w.From, w.To);
                 var outWin = totalMin - inWin;
-                return (0, inWin, outWin, outWin > 0 && inWin == 0);
+                return new SegmentEval(0, inWin, 0, outWin, outWin > 0 && inWin == 0);
             }
             if (rule.OvertimeMode == OT_HourCap || rule.OvertimeHours > 0)
             {
                 // سقفِ ساعتی: تا سقف = اضافه‌کاری، مازاد = تردد غیرمجاز
                 var allowedMin = (int)Math.Round(rule.OvertimeHours * 60);
                 if (totalMin <= allowedMin)
-                    return (totalMin, totalMin, 0, false);
-                return (allowedMin, allowedMin, totalMin - allowedMin, false);
+                    return new SegmentEval(totalMin, totalMin, 0, 0, false);
+                return new SegmentEval(allowedMin, allowedMin, 0, totalMin - allowedMin, false);
             }
             // بدونِ اضافه‌کاری مجاز: کلِ حضور = تردد غیرمجاز
-            return (0, 0, totalMin, true);
+            return new SegmentEval(0, 0, 0, totalMin, true);
         }
 
         // ---- روز کاری ----
 
         // ورود بعد از پایان کاملِ روز (حتی با grace):
-        // اگر داخلِ بازه‌ی اضافه‌کاریِ مشخص‌شده باشد = اضافه‌کاری، وگرنه = تردد غیرمجاز
+        // بازه‌ی اضافه‌کاریِ مشخص‌شده → اضافه‌کاری؛ حالتِ «در انتظار تصمیم» → مازادِ منتظر تصمیم مدیر؛
+        // در غیر این صورت کلِ بازه = تردد غیرمجاز
         if (enterAt > dayEnd.AddMinutes(rule.GraceMinutes))
         {
             if (win is { } wEntry && enterAt >= wEntry.From && enterAt < wEntry.To)
             {
                 var inWin = OverlapMinutes(enterAt, end, wEntry.From, wEntry.To);
-                return (0, inWin, totalMin - inWin, false);
+                return new SegmentEval(0, inWin, 0, totalMin - inWin, false);
             }
-            return (0, 0, totalMin, true);
+            if (NeedsDecision(rule))
+            {
+                return decision switch
+                {
+                    ExtraDecision.Approved => new SegmentEval(0, totalMin, 0, 0, false),
+                    ExtraDecision.Rejected => new SegmentEval(0, 0, 0, totalMin, true),
+                    _ => new SegmentEval(0, 0, totalMin, 0, false),
+                };
+            }
+            return new SegmentEval(0, 0, 0, totalMin, true);
         }
 
-        int workMin = 0, rawOvertime = 0, unauthorizedMin = 0;
+        int workMin = 0, rawOvertime = 0, unauthorizedMin = 0, pendingMin = 0;
 
         // پنجره‌های کاری روز (پنجره‌ی دوم فقط در شیفت دوپاره)
         var (f1, t1) = WorkWindow1(date, rule);
@@ -316,7 +395,7 @@ public static class WorkRules
             }
         }
 
-        // ۳) حضور بعد از پایانِ شیفت
+        // ۳) حضور بعد از پایانِ شیفت — «مازاد» (هرگز کسری نمی‌شود)
         if (end > dayEnd)
         {
             var afterMin = (int)Math.Floor((end - dayEnd).TotalMinutes);
@@ -326,6 +405,16 @@ public static class WorkRules
                 var inWin = OverlapMinutes(dayEnd, end, w3.From, w3.To);
                 rawOvertime += inWin;
                 unauthorizedMin += afterMin - inWin;
+            }
+            else if (NeedsDecision(rule))
+            {
+                // مازادِ «در انتظار تصمیم مدیر» — بسته به تصمیمِ ثبت‌شده روی بازه جا می‌گیرد
+                switch (decision)
+                {
+                    case ExtraDecision.Approved: rawOvertime += afterMin; break;
+                    case ExtraDecision.Rejected: unauthorizedMin += afterMin; break;
+                    default: pendingMin += afterMin; break;
+                }
             }
             else
             {
@@ -343,8 +432,17 @@ public static class WorkRules
             unauthorizedMin += over;
         }
 
-        return (workMin, overtimeMin, unauthorizedMin, false);
+        return new SegmentEval(workMin, overtimeMin, pendingMin, unauthorizedMin, false);
     }
+
+    /// <summary>
+    /// آیا مازادِ ماندنِ بعد از پایان شیفت باید «در انتظار تصمیم مدیر» ثبت شود؟
+    /// (نه کسری، نه اضافه‌کاری خودکار — مدیر بعداً تأیید=اضافه‌کار یا رد=تردد غیرمجاز می‌زند)
+    /// حالت ۴ («مازاد در انتظار تصمیم») همیشه فعال است؛ در غیر آن، پرچم تنظیمات/شیفت تعیین می‌کند.
+    /// </summary>
+    public static bool NeedsDecision(WorkDayRule rule)
+        => rule.IsWorkday
+           && (rule.OvertimeMode == OT_Pending || (rule.OvertimeMode == OT_None && rule.ExtraRequiresApproval));
 }
 
 /// <summary>
@@ -374,6 +472,7 @@ public static class AttendanceMath
             rec.EarlyLeaveMinutes = 0;
             rec.OvertimeMinutes = 0;
             rec.UnauthorizedMinutes = 0;
+            rec.PendingOvertimeMinutes = 0;
             rec.EnterStatus = null;
         }
         else
@@ -384,17 +483,22 @@ public static class AttendanceMath
             rec.EnterStatus = segs.First().EnterStatus;
             rec.Note = segs.LastOrDefault(s => s.ExitAt.HasValue && !string.IsNullOrWhiteSpace(s.Note))?.Note;
 
-            int work = 0, overtime = 0, unauthorized = 0;
+            int work = 0, overtime = 0, unauthorized = 0, pending = 0;
             foreach (var s in segs)
             {
-                var (w, o, u, unauth) = WorkRules.EvaluateSegment(rule, rec.WorkDate, s.EnterAt!.Value, s.ExitAt, asOf);
-                work += w; overtime += o; unauthorized += u;
-                s.IsUnauthorized = unauth;
-                if (s.ExitAt.HasValue) s.OvertimeMinutes = o;
+                // تصمیم مدیر روی «مازاد» ذخیره‌شده روی خودِ بازه است، پس در هر بازحسابی باقی می‌ماند
+                var ev = WorkRules.EvaluateSegment(rule, rec.WorkDate, s.EnterAt!.Value, s.ExitAt, asOf,
+                    (ExtraDecision)s.ExtraDecision);
+                work += ev.WorkMin; overtime += ev.OvertimeMin;
+                pending += ev.PendingMin; unauthorized += ev.UnauthorizedMin;
+                s.IsUnauthorized = ev.IsUnauthorized;
+                s.PendingMinutes = ev.PendingMin;
+                if (s.ExitAt.HasValue) s.OvertimeMinutes = ev.OvertimeMin;
             }
             rec.WorkMinutes = work;
             rec.OvertimeMinutes = overtime;
             rec.UnauthorizedMinutes = unauthorized;
+            rec.PendingOvertimeMinutes = pending;
 
             // غیبت پوشش‌شده: هر بازه‌ی [خروج، ورود بعدی] که پوشش دارد + خروج آخر تا پایان شیفت (یا اکنون)
             int covered = 0;
@@ -446,6 +550,10 @@ public static class AttendanceMath
         }
         else
         {
+            // کسری = موظفی − کارکردِ داخلِ پنجره − غیبتِ پوشش‌شده
+            // نکته: WorkMinutes فقط حضورِ داخلِ پنجره‌ی شیفت را شامل می‌شود؛ پس ماندنِ بعد از پایانِ شیفت
+            // (اضافه‌کار، «مازادِ در انتظار تصمیم» یا تردد غیرمجاز) هرگز کسری نمی‌سازد.
+            // کسری فقط وقتی ثبت می‌شود که حضور از ساعتِ انتخاب‌شده‌ی شیفت کمتر باشد.
             var deficit = ScheduledMinutes(rule) - rec.WorkMinutes - rec.CoveredGapMinutes;
             rec.DeficitMinutes = Math.Max(0, deficit);
         }

@@ -1418,6 +1418,9 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("OvertimeMinutes")
                         .HasColumnType("int");
 
+                    b.Property<int>("PendingOvertimeMinutes")
+                        .HasColumnType("int");
+
                     b.Property<int?>("ShiftGroupId")
                         .HasColumnType("int");
 
@@ -1476,6 +1479,19 @@ namespace Inventory.Api.Migrations
                     b.Property<DateTime?>("ExitAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<int>("ExtraDecision")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ExtraDecidedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ExtraDecidedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExtraDecisionNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
                     b.Property<bool>("ExitCovered")
                         .HasColumnType("bit");
 
@@ -1500,6 +1516,9 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("nvarchar(500)");
 
                     b.Property<int>("OvertimeMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PendingMinutes")
                         .HasColumnType("int");
 
                     b.Property<int>("Seq")
@@ -12506,6 +12525,9 @@ namespace Inventory.Api.Migrations
                     b.Property<bool>("IncludeFriday")
                         .HasColumnType("bit");
 
+                    b.Property<bool?>("RequireExtraApproval")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
@@ -14289,8 +14311,14 @@ namespace Inventory.Api.Migrations
                     b.Property<int>("GraceMinutes")
                         .HasColumnType("int");
 
+                    b.Property<bool>("RequireExtraApproval")
+                        .HasColumnType("bit");
+
                     b.Property<int>("RestDayFlags")
                         .HasColumnType("int");
+
+                    b.Property<bool>("ShiftOverridesCalendarTimes")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("datetime2");

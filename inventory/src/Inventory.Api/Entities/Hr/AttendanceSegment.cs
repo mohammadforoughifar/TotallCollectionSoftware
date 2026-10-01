@@ -50,6 +50,26 @@ public class AttendanceSegment
     /// <summary>دقیقه‌های اضافه‌کاریِ این بازه (کارکرد بعد از پایان شیفت یا کار مجاز در تعطیلات)</summary>
     public int OvertimeMinutes { get; set; }
 
+    /// <summary>دقیقه‌های «مازادِ در انتظار تصمیم» این بازه (ماندن بعد از پایان شیفت)</summary>
+    public int PendingMinutes { get; set; }
+
+    /// <summary>
+    /// تصمیم مدیر درباره‌ی مازادِ این بازه (ExtraDecision):
+    /// 0 = در انتظار تصمیم | 1 = تأیید (→ اضافه‌کاری) | 2 = رد (→ تردد غیرمجاز).
+    /// چون تصمیم روی خودِ بازه ذخیره می‌شود، در بازحساب‌های بعدی (تغییر شیفت/مرخصی/تقویم) پاک نمی‌شود.
+    /// </summary>
+    public int ExtraDecision { get; set; }
+
+    /// <summary>شناسه‌ی کاربری که تصمیم مازاد را گرفته (null = هنوز تصمیمی گرفته نشده)</summary>
+    public int? ExtraDecidedByUserId { get; set; }
+
+    /// <summary>زمان ثبت تصمیم مازاد</summary>
+    public DateTime? ExtraDecidedAt { get; set; }
+
+    /// <summary>یادداشت مدیر درباره‌ی تصمیم مازاد (اختیاری)</summary>
+    [MaxLength(300)]
+    public string? ExtraDecisionNote { get; set; }
+
     /// <summary>درخواست مرخصی/ماموریت ساعتی که بازه را پوشش می‌دهد (در صورت وجود)</summary>
     public int? LinkedLeaveRequestId { get; set; }
     public LeaveRequest? LinkedLeaveRequest { get; set; }
