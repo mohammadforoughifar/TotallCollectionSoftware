@@ -24,6 +24,20 @@
         // تعیین آدرس سرور API در زمان اجرا
         // ================== ادیتور متن غنی ==================
         // اجرای دستور روی ادیتورِ متمرکز/اول (برای سازگاری با کدهای قبلی)
+        // ============ کپی متن (با فالبک برای http بدون گواهی) ============
+        window.invCopyText = function (text) {
+            try {
+                if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(text); return true; }
+                var ta = document.createElement('textarea');
+                ta.value = text; ta.setAttribute('readonly', '');
+                ta.style.position = 'fixed'; ta.style.top = '-1000px'; ta.style.opacity = '0';
+                document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, ta.value.length);
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return ok;
+            } catch (e) { return false; }
+        };
+
         window.rteExec = function (cmd, value) {
             document.execCommand(cmd, false, value === undefined ? null : value);
         };

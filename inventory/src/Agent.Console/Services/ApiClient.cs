@@ -81,7 +81,16 @@ public sealed class ApiClient : IDisposable
                     return (true, DescribeReportResponse(body));
                 // خطای 4xx را تکرار نکن — مشکل از داده است نه شبکه
                 if ((int)resp.StatusCode is >= 400 and < 500)
-                    return (false, $"سرور قبول نکرد ({(int)resp.StatusCode}): {ExtractMessage(body)}");
+                {
+                    var why = (int)resp.StatusCode switch
+                    {
+                        401 or 403 => " — سرور درخواست بدون توکن را رد کرد. نسخهٔ سرور باید به‌روزرسانی شود (اکشن api/SystemInfo باید [AllowAnonymous] باشد)، " +
+                                      "یا ایجنت را با --username و --password یک کاربر معتبر اجرا کنید.",
+                        404 => " — مسیر api/SystemInfo روی این سرور نیست؛ احتمالاً برنامهٔ دیگری روی این پورت پاسخ می‌دهد.",
+                        _ => ""
+                    };
+                    return (false, $"سرور قبول نکرد ({(int)resp.StatusCode}): {ExtractMessage(body)}{why}");
+                }
                 last = new Exception($"HTTP {(int)resp.StatusCode}: {ExtractMessage(body)}");
             }
             catch (Exception ex)

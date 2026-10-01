@@ -1,5 +1,6 @@
 using Inventory.Api.Services;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Inventory.Api.Data;
@@ -46,6 +47,12 @@ public class SystemInfoController : ControllerBase
 
     // ================= دریافت ایجنت (upsert + مقایسه) =================
 
+    /// <summary>
+    /// دریافت گزارش سخت‌افزار از ایجنت — بدون توکن (ایجنت روی کلاینت‌ها توکن ندارد).
+    /// ⚠️ این اکشن باید [AllowAnonymous] بماند؛ وگرنه DefaultAuthorizeConvention آن را
+    /// پشت JWT می‌برد و همهٔ ایجنت‌ها 401 می‌گیرند و هیچ سیستمی در فهرست ثبت نمی‌شود.
+    /// </summary>
+    [AllowAnonymous]
     [HttpPost]
     public async Task<IActionResult> Post([FromBody] SystemInfo info)
     {
@@ -543,6 +550,8 @@ public class SystemInfoController : ControllerBase
     }
 
     /// <summary>ایجنت: دریافت دستورهای در انتظار این سیستم.</summary>
+    /// <summary>ایجنت: دریافت دستورهای در انتظار — بدون توکن (مثل ثبت گزارش).</summary>
+    [AllowAnonymous]
     [HttpGet("agent-commands")]
     public async Task<IActionResult> AgentCommands([FromQuery] string agentId, [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
@@ -560,7 +569,8 @@ public class SystemInfoController : ControllerBase
         return Ok(pagination.Result(pending.Select(c => new { c.Id, c.Action, c.CreatedAt }).ToList()));
     }
 
-    /// <summary>ایجنت: گزارش نتیجه‌ی اجرای دستور.</summary>
+    /// <summary>ایجنت: گزارش نتیجه‌ی اجرای دستور — بدون توکن.</summary>
+    [AllowAnonymous]
     [HttpPost("commands/{cmdId}/result")]
     public async Task<IActionResult> CommandResult(int cmdId, [FromBody] CommandResultRequest req)
     {
