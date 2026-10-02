@@ -139,37 +139,6 @@
 
 <div class="card mt-3">
     <div class="card-header">
-        <i class="bi bi-hdd-network text-primary"></i>
-        <span class="card-title">سرور مرکزی درخواست‌های IT (کانفیگ IP)</span>
-    </div>
-    <div class="card-body">
-        @if (!loading)
-        {
-            <p class="fs-8 text-muted mb-3">
-                اگر این نصب، <b>شعبه/شرکت دیگری</b> است، آدرس سرور مرکزی را وارد کنید — از این پس درخواست‌های IT کاربران این نرم‌افزار
-                به‌صورت خودکار به سرور مرکزی ارسال می‌شود. <b>خالی بگذارید</b> یعنی همین سرور، مرکزی است.
-                <br />
-                <span class="text-warning">
-                    این فیلد فقط «آدرس» را نگه می‌دارد. برای ارسال واقعی درخواست‌ها، <b>کلید API شرکت</b> هم لازم است —
-                    آن را در <a href="/settings/it-remote" class="alert-link">تنظیمات ← اتصال به واحد IT مرکزی</a> وارد کنید.
-                </span>
-            </p>
-            <div class="row g-3">
-                <div class="col-md-6">
-                    <label class="form-label">آدرس سرور مرکزی</label>
-                    <input class="form-control num" dir="ltr" placeholder="http://192.168.1.10:5100" @bind="model.ItServerUrl" />
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label">نام این شرکت (همراه درخواست ارسال می‌شود)</label>
-                    <input class="form-control" placeholder="مثلاً: شرکت آریا تجارت" @bind="model.ItCompanyName" />
-                </div>
-            </div>
-        }
-    </div>
-</div>
-
-<div class="card mt-3">
-    <div class="card-header">
         <i class="bi bi-chat-dots text-primary"></i>
         <span class="card-title">پیام‌رسان‌ها (بله و ایتا)</span>
     </div>
