@@ -298,11 +298,14 @@ else
             </div>
         </div>
 
-        @* ------------------- تاریخچه ------------------- *@
-        <div class="card mt-3">
-            <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <span><i class="bi bi-clock-history ms-1"></i> تاریخچه رویدادها</span>
-                <div class="d-flex align-items-center gap-1">
+        @* ------------------- تاریخچه (بسته در حالت پیش‌فرض) ------------------- *@
+        <details class="card mt-3 doc-secondary-panel" @key="(Id, 1)" data-document-panel="history">
+            <summary class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center gap-2 doc-secondary-summary">
+                <span><i class="bi bi-clock-history ms-1"></i> تاریخچه رویدادها <span class="badge bg-secondary ms-1">@doc.Logs.Count.Num()</span></span>
+                <i class="bi bi-chevron-down doc-secondary-chevron" aria-hidden="true"></i>
+            </summary>
+            <div class="card-body p-0">
+                <div class="d-flex justify-content-end align-items-center flex-wrap gap-1 p-2 border-bottom">
                     @if (doc.MyCanDownload)
                     {
                         <ExportButtons ReportKey="doc-history" ShowText="false"
@@ -316,56 +319,59 @@ else
                         }
                     </select>
                 </div>
+                <div style="max-height:340px;overflow:auto;">
+                    @if (FilteredLogs.Count == 0)
+                    {
+                        <div class="text-center text-muted py-3 fs-8">رویدادی ثبت نشده است.</div>
+                    }
+                    else
+                    {
+                        <table class="table table-sm table-hover mb-0 fs-8 align-middle">
+                            <tbody>
+                                @foreach (var l in FilteredLogs)
+                                {
+                                    <tr>
+                                        <td style="width:118px" class="num text-muted" title="@l.CreatedAt.ToString("yyyy/MM/dd HH:mm:ss")">
+                                            @l.CreatedAt.ToFa()
+                                            <div class="fs-9">@l.CreatedAt.ToString("HH:mm")</div>
+                                        </td>
+                                        <td style="width:108px">
+                                            <span class="badge @ActionClass(l.Action)">@ActionName(l.Action)</span>
+                                        </td>
+                                        <td style="width:112px" class="text-truncate" title="@l.UserName">
+                                            <i class="bi bi-person-circle text-muted ms-1"></i>@l.UserName
+                                        </td>
+                                        <td>
+                                            @l.Detail
+                                            @if (l.VersionId is int vid && VersionNoOf(vid) is int vno)
+                                            {
+                                                <span class="badge bg-light text-secondary ms-1">v@(vno.Num())</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
             </div>
-            <div class="card-body p-0" style="max-height:340px;overflow:auto;">
-                @if (FilteredLogs.Count == 0)
-                {
-                    <div class="text-center text-muted py-3 fs-8">رویدادی ثبت نشده است.</div>
-                }
-                else
-                {
-                    <table class="table table-sm table-hover mb-0 fs-8 align-middle">
-                        <tbody>
-                            @foreach (var l in FilteredLogs)
-                            {
-                                <tr>
-                                    <td style="width:118px" class="num text-muted" title="@l.CreatedAt.ToString("yyyy/MM/dd HH:mm:ss")">
-                                        @l.CreatedAt.ToFa()
-                                        <div class="fs-9">@l.CreatedAt.ToString("HH:mm")</div>
-                                    </td>
-                                    <td style="width:108px">
-                                        <span class="badge @ActionClass(l.Action)">@ActionName(l.Action)</span>
-                                    </td>
-                                    <td style="width:112px" class="text-truncate" title="@l.UserName">
-                                        <i class="bi bi-person-circle text-muted ms-1"></i>@l.UserName
-                                    </td>
-                                    <td>
-                                        @l.Detail
-                                        @if (l.VersionId is int vid && VersionNoOf(vid) is int vno)
-                                        {
-                                            <span class="badge bg-light text-secondary ms-1">v@(vno.Num())</span>
-                                        }
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                }
-            </div>
-        </div>
+        </details>
 
-        @* ------------------- متن استخراج‌شده و OCR ------------------- *@
-        <div class="card mt-3">
-            <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        @* ------------------- متن استخراج‌شده و OCR (بسته در حالت پیش‌فرض) ------------------- *@
+        <details class="card mt-3 doc-secondary-panel" @key="(Id, 2)" data-document-panel="extracted-text">
+            <summary class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center gap-2 doc-secondary-summary">
                 <span>
                     <i class="bi bi-file-earmark-font ms-1"></i> متن استخراج‌شده و نتایج OCR پیوست‌ها
                     <span class="badge bg-secondary ms-1">@extractedTexts.Count.Num()</span>
                 </span>
-                <button class="btn btn-sm btn-outline-primary py-0 fs-8" @onclick="LoadExtractedTexts">
-                    <i class="bi bi-arrow-clockwise"></i> تازه‌سازی
-                </button>
-            </div>
+                <i class="bi bi-chevron-down doc-secondary-chevron" aria-hidden="true"></i>
+            </summary>
             <div class="card-body p-2">
+                <div class="d-flex justify-content-end mb-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0 fs-8" @onclick="LoadExtractedTexts">
+                        <i class="bi bi-arrow-clockwise"></i> تازه‌سازی
+                    </button>
+                </div>
                 @if (loadingExtracted)
                 {
                     <div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary"></div></div>
@@ -420,7 +426,7 @@ else
                     </div>
                 }
             </div>
-        </div>
+        </details>
     </div>
 
     @* ------------------- کناری: لینک‌ها و دسترسی‌ها ------------------- *@
@@ -902,6 +908,13 @@ else
                    OnClose="() => showEdit = false" OnSaved="OnEdited" />
 
 <style>
+    .doc-secondary-summary { cursor:pointer; list-style:none; user-select:none; }
+    .doc-secondary-summary::-webkit-details-marker { display:none; }
+    .doc-secondary-summary::marker { content:""; }
+    .doc-secondary-summary:focus-visible { outline:2px solid #4338ca; outline-offset:-3px; }
+    .doc-secondary-chevron { flex-shrink:0; transition:transform .15s ease; }
+    .doc-secondary-panel[open] > .doc-secondary-summary .doc-secondary-chevron { transform:rotate(180deg); }
+    .doc-secondary-panel:not([open]) > .card-body { display:none; }
     .ver-card { border:1px solid #e8edf3; border-radius:12px; padding:.7rem .85rem; margin-bottom:.6rem; background:#fff; }
     .ver-card.active { border-color:#22c55e; background:#f0fdf4; }
     .ver-card.frozen { border-color:#f59e0b; background:#fffbeb; }
