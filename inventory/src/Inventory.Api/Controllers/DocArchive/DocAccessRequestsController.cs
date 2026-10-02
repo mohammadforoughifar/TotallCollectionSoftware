@@ -52,7 +52,7 @@ public class DocAccessRequestsController : RbacControllerBase
             .Select(u => string.IsNullOrWhiteSpace(u.FirstName) ? u.Username : (u.FirstName + " " + u.LastName).Trim())
             .FirstOrDefaultAsync() ?? MyUsername;
 
-        // ردیف فردی قبلی کاربر (در صورت وجود) جایگزین می‌شود — اجتماع دسترسی‌ها در سرویس دسترسی بیشترین سطح را می‌گیرد
+        // مجوز فردی جایگزین قبلی و مقدم بر مجوز گروه/والد است؛ دانلود جداگانه تعیین می‌شود.
         var old = await Db.DocumentPermissions
             .Where(p => p.DocumentId == req.DocumentId && p.UserId == req.RequesterUserId && p.RoleId == 0)
             .ToListAsync();

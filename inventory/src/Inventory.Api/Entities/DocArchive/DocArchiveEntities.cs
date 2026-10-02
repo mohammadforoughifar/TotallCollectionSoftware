@@ -171,7 +171,7 @@ public class ArchiveDocument
     public string? DeletedByName { get; set; }
 }
 
-/// <summary>دسترسی مستقیم یک کاربر روی یک مدرک (مکمل دسترسی پوشه — بیشترین سطح برنده است).</summary>
+/// <summary>دسترسی مستقیم یک کاربر روی مدرک؛ مقدم بر گروه و پوشه، حتی اگر محدودتر باشد.</summary>
 public class DocumentPermission
 {
     public int Id { get; set; }

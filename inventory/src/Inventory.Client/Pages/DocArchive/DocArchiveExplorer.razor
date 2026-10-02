@@ -26,7 +26,10 @@
                 <button type="button" class="da-tools-backdrop" tabindex="-1" aria-label="بستن ابزارها" @onclick="() => showTools = false"></button>
                 <div class="da-tools-menu" id="da-tools-menu">
                     <button type="button" @onclick="() => { showTools = false; showTagsModal = true; }"><i class="bi bi-tags"></i> برچسب‌ها</button>
-                    <button type="button" @onclick="() => { showTools = false; OpenZipModal(selectedFolderId); }"><i class="bi bi-file-earmark-zip"></i> دانلود ZIP</button>
+                    @if (CanDownloadZip)
+                    {
+                        <button type="button" @onclick="() => { showTools = false; OpenZipModal(selectedFolderId); }"><i class="bi bi-file-earmark-zip"></i> دانلود ZIP</button>
+                    }
                     @if (Auth.Has("DocArchive.Manage"))
                     {
                         <button type="button" @onclick="async () => { showTools = false; await OpenCodeSettings(); }"><i class="bi bi-gear"></i> تنظیمات</button>
@@ -136,7 +139,10 @@
                     <button type="button" class="btn @(viewMode == "cards" ? "btn-primary" : "btn-outline-secondary")" title="نمای کارتی" aria-label="نمای کارتی" @onclick='() => SetViewMode("cards")'><i class="bi bi-grid"></i></button>
                 </div>
                 <button type="button" class="btn btn-sm @(showFoldersPane ? "btn-outline-secondary" : "btn-secondary")" title="پوشه‌ها" aria-label="نمایش یا پنهان‌کردن پوشه‌ها" aria-expanded="@(showFoldersPane ? "true" : "false")" @onclick="() => showFoldersPane = !showFoldersPane"><i class="bi bi-layout-sidebar"></i></button>
-                <ExportButtons ReportKey="@(expiryFilter is null ? "doc-list" : "doc-expiring")" ShowText="false" Query="@(new { status = statusFilter, search = search, id = selectedFolderId })" />
+                @if (documents.Any(d => d.MyLevel >= DocAccessLevelDto.Read && d.MyCanDownload))
+                {
+                    <ExportButtons ReportKey="@(expiryFilter is null ? "doc-list" : "doc-expiring")" ShowText="false" Query="@(new { status = statusFilter, search = search, id = selectedFolderId })" />
+                }
             </div>
         </div>
         <div class="da-location-bar">
@@ -969,6 +975,10 @@
     private List<DocPermissionDto> folderPerms = new();
 
     private bool IsManager => Auth.Has("DocArchive.Manage");
+    // مجوز جاریِ برگشتی از سرور مبناست؛ claim قدیمی نباید دانلود را باز کند.
+    private bool CanDownloadZip => selectedFolderId is int id
+        ? folders.Any(f => f.Id == id && f.MyLevel >= DocAccessLevelDto.Read && f.MyCanDownload)
+        : folders.Any(f => f.MyLevel >= DocAccessLevelDto.Read && f.MyCanDownload);
 
     private int ActiveFilterCount =>
         (!string.IsNullOrWhiteSpace(contentSearch) ? 1 : 0) +
@@ -982,15 +992,13 @@
     /// برای پوشهٔ تازه (Id=0) فقط مدیر آرشیو — چون دسترسی کامل از grant های خود پوشه می‌آید
     /// و بعد از ساخت، از چرخ‌دندهٔ کنار پوشه قابل مدیریت است.
     /// </summary>
-    private bool CanManageFolderAccess =>
-        IsManager || (folderForm.Id > 0 &&
-                      folders.FirstOrDefault(f => f.Id == folderForm.Id)?.MyLevel >= DocAccessLevelDto.Full);
+    private bool CanManageFolderAccess => folderForm.Id == 0 ? IsManager :
+        folders.FirstOrDefault(f => f.Id == folderForm.Id)?.MyLevel >= DocAccessLevelDto.Full;
 
     private bool CanWriteHere
     {
         get
         {
-            if (IsManager) return true;
             if (selectedFolderId is int fid)
             {
                 var f = folders.FirstOrDefault(x => x.Id == fid);
@@ -1010,7 +1018,6 @@
     {
         get
         {
-            if (IsManager) return true;
             var targetFolder = selectedFolderId is int fid
                 ? folders.FirstOrDefault(x => x.Id == fid)
                 : folders.FirstOrDefault(f => f.MyLevel >= DocAccessLevelDto.Write);

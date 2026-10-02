@@ -303,8 +303,11 @@ else
             <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <span><i class="bi bi-clock-history ms-1"></i> تاریخچه رویدادها</span>
                 <div class="d-flex align-items-center gap-1">
-                    <ExportButtons ReportKey="doc-history" ShowText="false"
-                                   Query="@(new { id = Id })" />
+                    @if (doc.MyCanDownload)
+                    {
+                        <ExportButtons ReportKey="doc-history" ShowText="false"
+                                       Query="@(new { id = Id })" />
+                    }
                     <select class="form-select form-select-sm fs-8" style="width:auto" @bind="logFilter">
                         <option value="">همه رویدادها (@doc.Logs.Count.Num())</option>
                         @foreach (var g in doc.Logs.GroupBy(x => x.Action).OrderByDescending(x => x.Count()))
@@ -1332,7 +1335,7 @@ else
     private List<DocAccessRequestDto> myRequests = new();
     private List<DocAccessRequestDto> accessRequests = new();
     private int actingReqId, approveLevel = 2;
-    private bool approveDownload = true, rejectMode, reqActBusy;
+    private bool approveDownload, rejectMode, reqActBusy;
     private string? rejectNote;
 
     private static string LevelFa(DocAccessLevelDto lvl) => lvl switch
@@ -1407,7 +1410,7 @@ else
         rejectMode = reject;
         rejectNote = null;
         approveLevel = Math.Max((int)r.RequestedLevel, 1);
-        approveDownload = true;
+        approveDownload = false;
     }
 
     private async Task ApplyRequest()

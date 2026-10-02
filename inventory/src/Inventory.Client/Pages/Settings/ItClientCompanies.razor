@@ -5,6 +5,7 @@
 @inject IAuthState Auth
 @inject IToastService Toast
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 @inject LayoutState Layout
 
 <PageTitle>شرکت‌های راه‌دور — واحد IT</PageTitle>
@@ -78,7 +79,16 @@ else
                             { <span class="badge bg-secondary-subtle text-secondary border">غیرفعال</span> }
                         </td>
                         <td class="text-center">@c.RequestCount</td>
-                        <td class="text-center">@(c.OpenCount > 0 ? <span class="badge bg-warning-subtle text-warning border">@c.OpenCount</span> : "0")</td>
+                        <td class="text-center">
+                            @if (c.OpenCount > 0)
+                            {
+                                <span class="badge bg-warning-subtle text-warning border">@c.OpenCount</span>
+                            }
+                            else
+                            {
+                                <span>0</span>
+                            }
+                        </td>
                         <td class="fs-8 text-muted">@(c.LastSeenAt?.ToFa() ?? "—")</td>
                         <td class="text-center fs-8">@(c.HourlyLimit > 0 ? c.HourlyLimit.ToString() : "بدون سقف")</td>
                         <td class="text-end text-nowrap">
@@ -180,7 +190,6 @@ else
 }
 
 @code {
-    @inject IJSRuntime JS
 
     private bool loading = true, busy;
     private List<CompanyItem> items = new();

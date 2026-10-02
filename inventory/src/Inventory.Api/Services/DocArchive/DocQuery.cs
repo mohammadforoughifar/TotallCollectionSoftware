@@ -5,19 +5,8 @@ namespace Inventory.Api.Services.DocArchive;
 
 public static class DocQuery
 {
-    public static async Task<IQueryable<ArchiveDocument>> AccessibleAsync(AppDbContext db, IDocAccessService access, int userId, bool manager, DocAccessLevel minimum = DocAccessLevel.View)
-    {
-        var q = db.Documents.AsNoTracking();
-        if (manager) return q;
-        var map = await access.FolderAccessMapAsync(userId, false);
-        var folderIds = map.Where(x => x.Value.Level >= minimum).Select(x => x.Key).ToArray();
-        var roles = await db.UserRoles.Where(x => x.UserId == userId).Select(x => x.RoleId).ToListAsync();
-        var now = DateTime.UtcNow;
-        return q.Where(d => d.CreatedByUserId == userId || (d.IsPublic && minimum <= DocAccessLevel.Read)
-            || folderIds.Contains(d.FolderId)
-            || db.DocumentPermissions.Any(p => p.DocumentId == d.Id && p.Level >= minimum && (p.UserId == userId || (p.RoleId != 0 && roles.Contains(p.RoleId))))
-            || (minimum <= DocAccessLevel.Read && db.DocTemporaryGrants.Any(g => g.DocumentId == d.Id && g.UserId == userId && g.RevokedAtUtc == null && g.ExpiresAtUtc > now)));
-    }
+    public static Task<IQueryable<ArchiveDocument>> AccessibleAsync(AppDbContext db, IDocAccessService access, int userId, bool manager, DocAccessLevel minimum = DocAccessLevel.View)
+        => access.AccessibleDocumentsAsync(userId, manager, minimum);
 
     public static IQueryable<ArchiveDocument> ApplyFilters(AppDbContext db, IQueryable<ArchiveDocument> q, DocSearchFilterDto f, DateTime today)
     {

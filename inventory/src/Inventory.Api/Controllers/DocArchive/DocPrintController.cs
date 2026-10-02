@@ -38,7 +38,6 @@ public class DocPrintController : RbacControllerBase
     }
 
     private Task<bool> IsManagerAsync() => HasAsync(Mod, "Manage");
-    private bool IsAdmin => User.IsInRole("Admin");
 
     // ---------------------------- دریافت نسخه چاپی ----------------------------
 
@@ -67,14 +66,14 @@ public class DocPrintController : RbacControllerBase
 
         var doc = await Db.Documents.AsNoTracking()
             .Where(d => d.Id == version.DocumentId)
-            .Select(d => new { d.Id, d.Code, d.Title, d.RequireDownloadConfirm, d.IsActive })
+            .Select(d => new { d.Id, d.Code, d.Title, d.RequireDownloadConfirm, d.IsActive, d.IsDeleted })
             .FirstOrDefaultAsync();
-        if (doc == null) return NotFound(new { message = "مدرک یافت نشد." });
+        if (doc == null || doc.IsDeleted) return NotFound(new { message = "مدرک یافت نشد." });
 
         // چاپ = در اختیار گرفتن کامل فایل؛ پس دقیقاً هم‌سطح دانلود مجوز می‌خواهد
         var manager = await IsManagerAsync();
-        var (_, canDownload) = await _access.DocumentAccessAsync(MyUserId, manager, doc.Id);
-        if (!canDownload)
+        var (level, canDownload) = await _access.DocumentAccessAsync(MyUserId, manager, doc.Id);
+        if (level < DocAccessLevel.Read || !canDownload)
             return StatusCode(403, new { message = "شما اجازه چاپ این فایل را ندارید؛ فقط امکان مشاهده دارید." });
 
         // مدرک محرمانه: مثل دانلود، نیازمند اعطای معتبر «تایید مجدد رمز»
@@ -234,7 +233,7 @@ public class DocPrintController : RbacControllerBase
         [FromQuery] DateTime? to = null, [FromQuery] int take = 200, [FromQuery] int skip = 0)
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
-        if (!IsAdmin && !await IsManagerAsync())
+        if (!await IsManagerAsync())
             return StatusCode(403, new { message = "گزارش سراسری چاپ‌ها فقط برای مدیر آرشیو است." });
 
         take = Math.Clamp(take, 1, 500);

@@ -270,7 +270,7 @@ public class ItRequestsController : ControllerBase
         [FromQuery] int skip = 0, [FromQuery] int? take = null)
     {
         if (!await HasAsync("Manage")) return Forbid();
-        var query = _db.ItRequests;
+        IQueryable<ItRequest> query = _db.ItRequests;
         if (onlyExternal) query = query.Where(r => r.SourceCompanyId != null || r.ExternalRequesterKey != null);
         if (companyId is > 0) query = query.Where(r => r.SourceCompanyId == companyId);
         if (!string.IsNullOrWhiteSpace(q2))
@@ -904,7 +904,9 @@ public class ItRequestsController : ControllerBase
         string? plainKey = null;
         if (dto.Id > 0)
         {
-            c = await _db.ItClientCompanies.FindAsync(dto.Id) ?? throw new NotFoundException();
+            var existing = await _db.ItClientCompanies.FindAsync(dto.Id);
+            if (existing == null) return NotFound(new { message = "شرکت یافت نشد." });
+            c = existing;
             plainKey = RotateIfEmptyKey(c);
         }
         else

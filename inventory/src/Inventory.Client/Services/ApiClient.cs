@@ -180,7 +180,20 @@ public class ApiClient : IApiClient
             if (resp.StatusCode == System.Net.HttpStatusCode.Unauthorized)
                 throw new ApiException("نشست شما معتبر نیست یا منقضی شده است؛ لطفاً دوباره وارد سامانه شوید.");
             if (resp.StatusCode == System.Net.HttpStatusCode.Forbidden)
-                throw new ApiException("شما مجوز انجام این عملیات را ندارید.");
+            {
+                // A confidential-password failure is also HTTP 403. Do not turn the
+                // server's "wrong password" into a misleading "no permission" message.
+                var forbiddenMessage = "شما مجوز انجام این عملیات را ندارید.";
+                try
+                {
+                    using var problem = JsonDocument.Parse(text);
+                    if (problem.RootElement.ValueKind == JsonValueKind.Object && problem.RootElement.TryGetProperty("message", out var message) && message.ValueKind == JsonValueKind.String
+                        && !string.IsNullOrWhiteSpace(message.GetString()))
+                        forbiddenMessage = message.GetString()![..Math.Min(message.GetString()!.Length, 600)];
+                }
+                catch (JsonException) { }
+                throw new ApiException(forbiddenMessage);
+            }
             string msg;
             try
             {

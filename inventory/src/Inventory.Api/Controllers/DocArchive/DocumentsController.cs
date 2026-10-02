@@ -43,7 +43,6 @@ public class DocumentsController : RbacControllerBase
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
         var manager = await IsManagerAsync();
-        var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
 
         var q = await DocQuery.AccessibleAsync(Db, _access, MyUserId, manager);
 
@@ -81,18 +80,8 @@ public class DocumentsController : RbacControllerBase
         var ids = docs.Select(d => d.Id).ToList();
 
         var folders = await Db.DocFolders.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
-        // دسترسی مستقیم مدرک: ردیف فردی (UserId == خودم) + ردیف گروهیِ نقش‌های کاربر (RoleId)
-        // — بدون نقش‌ها، کاربری که از طریق «گروه/نقش» دسترسی دارد، مدرک را در فهرست نمی‌دید.
-        var roleIds = await Db.UserRoles.AsNoTracking()
-            .Where(r => r.UserId == MyUserId)
-            .Select(r => r.RoleId)
-            .ToListAsync();
-        var directPerms = await Db.DocumentPermissions.AsNoTracking()
-            .Where(p => ids.Contains(p.DocumentId) &&
-                        (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
-            .ToListAsync();
-        var utcNow = DateTime.UtcNow;
-        var grants = await Db.DocTemporaryGrants.AsNoTracking().Where(g => ids.Contains(g.DocumentId) && g.UserId == MyUserId && g.RevokedAtUtc == null && g.ExpiresAtUtc > utcNow).ToListAsync();
+        // منبع واحد: اولویت مجوزها باید در لیست، جزئیات و عملیات سرور یکسان باشد.
+        var documentAccess = await _access.DocumentAccessMapAsync(MyUserId, manager, ids);
         var versions = await Db.DocumentVersions.AsNoTracking().Where(v => ids.Contains(v.DocumentId)).ToListAsync();
         var links = await Db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId))
             .GroupBy(l => l.DocumentId).Select(g => new { g.Key, C = g.Count() })
@@ -117,18 +106,8 @@ public class DocumentsController : RbacControllerBase
         var result = new List<DocumentListDto>();
         foreach (var d in docs)
         {
-            var level = DocAccessLevel.None; var dl = false;
-            if (manager) { level = DocAccessLevel.Full; dl = true; }
-            else
-            {
-                if (d.CreatedByUserId == MyUserId) { level = DocAccessLevel.Full; dl = true; }
-                if (d.IsPublic && level < DocAccessLevel.Read) { level = DocAccessLevel.Read; dl |= d.PublicCanDownload; }
-                foreach (var p in directPerms.Where(p => p.DocumentId == d.Id))
-                { if (p.Level > level) level = p.Level; dl |= p.CanDownload; }
-                if (folderMap.TryGetValue(d.FolderId, out var fa))
-                { if (fa.Level > level) level = fa.Level; dl |= fa.Download; }
-            }
-            foreach (var g in grants.Where(g => g.DocumentId == d.Id)) { if (level < DocAccessLevel.Read) level = DocAccessLevel.Read; dl |= g.CanDownload; }
+            var (level, dl) = documentAccess.TryGetValue(d.Id, out var grant)
+                ? grant : (DocAccessLevel.None, false);
             if (level == DocAccessLevel.None) continue;
 
             var vs = versions.Where(v => v.DocumentId == d.Id).ToList();
@@ -358,12 +337,26 @@ public class DocumentsController : RbacControllerBase
         if (lvl < DocAccessLevel.Write)
             return StatusCode(403, new { message = "ویرایش مدرک نیازمند دسترسی نوشتن است." });
 
+        var existing = await Db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == id && !d.IsDeleted);
+        if (existing == null) return NotFound(new { message = "مدرک یافت نشد." });
+        if (dto.FolderId != existing.FolderId)
+        {
+            var (destinationLevel, _) = await _access.FolderAccessAsync(MyUserId, manager, dto.FolderId);
+            if (destinationLevel < DocAccessLevel.Write)
+                return StatusCode(403, new { message = "انتقال مدرک نیازمند دسترسی نوشتن روی پوشه مقصد است." });
+        }
+
         // مدیریت دسترسی فقط با «دسترسی کامل» ممکن است. کاربر بدون دسترسی کامل حتی با
         // ارسال دستی فهرست دسترسی‌ها نمی‌تواند دسترسی‌های موجود را پاک یا تغییر دهد:
         // null یعنی «دست نزن» (در سرویس، ردیف‌های موجود حفظ می‌شوند).
         if (lvl < DocAccessLevel.Full)
         {
             dto.Permissions = null!;
+            // Write اجازه عمومی‌کردن مدرک، بازکردن دانلود یا برداشتن حفاظت فایل را نمی‌دهد.
+            dto.IsPublic = existing.IsPublic;
+            dto.PublicCanDownload = existing.PublicCanDownload;
+            dto.RequireDownloadConfirm = existing.RequireDownloadConfirm;
+            dto.WatermarkPreview = existing.WatermarkPreview;
         }
         else
         {
@@ -1059,39 +1052,12 @@ public class DocumentsController : RbacControllerBase
     {
         if (await ForbiddenUnlessDocArchiveAsync(Mod, "Read") is { } f) return f;
 
-        var manager = await IsManagerAsync();
-        var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
         var today = DateTime.Today;
-        var horizon = today.AddDays(expiringDays);
-
-        var docs = await Db.Documents.AsNoTracking()
-            .Where(d => d.IsActive && !d.IsDeleted && d.ExpireDate != null && d.ExpireDate.Value.Date <= horizon)
-            .Select(d => new { d.Id, d.FolderId, d.CreatedByUserId, d.IsPublic, d.ExpireDate })
-            .ToListAsync();
-
-        var ids = docs.Select(d => d.Id).ToList();
-        // ردیف فردی + گروهیِ نقش‌های کاربر — بدون نقش‌ها، شمارش انقضا برای دارندگان
-        // دسترسی «گروهی/نقشی» روی خود مدرک ناقص بود.
-        var roleIds = await Db.UserRoles.AsNoTracking()
-            .Where(r => r.UserId == MyUserId)
-            .Select(r => r.RoleId)
-            .ToListAsync();
-        var perms = await Db.DocumentPermissions.AsNoTracking()
-            .Where(p => ids.Contains(p.DocumentId) &&
-                        (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
-            .ToListAsync();
-
-        int expired = 0, soon = 0;
-        foreach (var d in docs)
-        {
-            var visible = manager || d.CreatedByUserId == MyUserId || d.IsPublic
-                || perms.Any(p => p.DocumentId == d.Id && p.Level > DocAccessLevel.None)
-                || (folderMap.TryGetValue(d.FolderId, out var fa) && fa.Item1 > DocAccessLevel.None);
-            if (!visible) continue;
-
-            if (d.ExpireDate!.Value.Date < today) expired++; else soon++;
-        }
-
+        var horizon = today.AddDays((double)expiringDays + 1);
+        var q = await DocQuery.AccessibleAsync(Db, _access, MyUserId, await IsManagerAsync());
+        q = q.Where(d => d.IsActive && !d.IsDeleted && d.ExpireDate != null && d.ExpireDate < horizon);
+        var expired = await q.CountAsync(d => d.ExpireDate < today);
+        var soon = await q.CountAsync(d => d.ExpireDate >= today);
         return Ok(new { expired, expiringSoon = soon, expiringDays });
     }
 

@@ -24,6 +24,8 @@ public abstract class RbacControllerBase : ApiControllerBase
     /// <summary>آیا کاربر جاری این مجوز را دارد؟ (مثال: HasAsync("Projects", "Create"))</summary>
     protected async Task<bool> HasAsync(string module, string action)
     {
+        if (module == "DocArchive" && action == "Manage")
+            return await Services.DocArchive.DocArchiveAuthorization.IsManagerAsync(Db, MyUserId, User.IsInRole("Admin"));
         var hasRoles = await Db.UserRoles.AnyAsync(ur => ur.UserId == MyUserId && Db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive));
         if (!hasRoles)
         {

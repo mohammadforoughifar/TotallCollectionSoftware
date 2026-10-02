@@ -57,7 +57,6 @@ public class DocSearchController : RbacControllerBase
         if (filter.CreatedTo?.Year == 9999 || filter.ExpiryTo?.Year == 9999 || (filter.CreatedFrom > filter.CreatedTo) || (filter.ExpiryFrom > filter.ExpiryTo))
             return BadRequest(new { message = "بازه تاریخ معتبر نیست." });
         var manager = await IsManagerAsync();
-        var folderMap = await _access.FolderAccessMapAsync(MyUserId, manager);
         var q = await DocQuery.AccessibleAsync(Db, _access, MyUserId, manager);
         q = DocQuery.ApplyFilters(Db, q, filter, DocClock.Today);
         if (filter.FolderId is > 0)
@@ -112,18 +111,8 @@ public class DocSearchController : RbacControllerBase
         var ids = docs.Select(d => d.Id).ToList();
 
         var folders = await Db.DocFolders.AsNoTracking().ToDictionaryAsync(x => x.Id, x => x.Name);
-        // دسترسی مستقیم مدرک: ردیف فردی + گروهیِ نقش‌های کاربر — بدون نقش‌ها، جستجو
-        // مدارکی که کاربر از طریق «گروه/نقش» به آن‌ها دسترسی دارد را برنمی‌گرداند.
-        var roleIds = await Db.UserRoles.AsNoTracking()
-            .Where(r => r.UserId == MyUserId)
-            .Select(r => r.RoleId)
-            .ToListAsync();
-        var directPerms = await Db.DocumentPermissions.AsNoTracking()
-            .Where(p => ids.Contains(p.DocumentId) &&
-                        (p.UserId == MyUserId || (p.RoleId != 0 && roleIds.Contains(p.RoleId))))
-            .ToListAsync();
-        var utcNow = DateTime.UtcNow;
-        var grants = await Db.DocTemporaryGrants.AsNoTracking().Where(g => ids.Contains(g.DocumentId) && g.UserId == MyUserId && g.RevokedAtUtc == null && g.ExpiresAtUtc > utcNow).ToListAsync();
+        // منبع واحد: اولویت مجوزها باید در لیست، جزئیات و عملیات سرور یکسان باشد.
+        var documentAccess = await _access.DocumentAccessMapAsync(MyUserId, manager, ids);
         var versions = await Db.DocumentVersions.AsNoTracking().Where(v => ids.Contains(v.DocumentId)).ToListAsync();
         var links = await Db.DocumentLinks.AsNoTracking().Where(l => ids.Contains(l.DocumentId))
             .GroupBy(l => l.DocumentId).Select(g => new { g.Key, C = g.Count() })
@@ -149,18 +138,8 @@ public class DocSearchController : RbacControllerBase
         var result = new List<DocumentListDto>();
         foreach (var d in docs)
         {
-            var level = DocAccessLevel.None; var dl = false;
-            if (manager) { level = DocAccessLevel.Full; dl = true; }
-            else
-            {
-                if (d.CreatedByUserId == MyUserId) { level = DocAccessLevel.Full; dl = true; }
-                if (d.IsPublic && level < DocAccessLevel.Read) { level = DocAccessLevel.Read; dl |= d.PublicCanDownload; }
-                foreach (var p in directPerms.Where(p => p.DocumentId == d.Id))
-                { if (p.Level > level) level = p.Level; dl |= p.CanDownload; }
-                if (folderMap.TryGetValue(d.FolderId, out var fa))
-                { if (fa.Level > level) level = fa.Level; dl |= fa.Download; }
-            }
-            foreach (var g in grants.Where(g => g.DocumentId == d.Id)) { if (level < DocAccessLevel.Read) level = DocAccessLevel.Read; dl |= g.CanDownload; }
+            var (level, dl) = documentAccess.TryGetValue(d.Id, out var grant)
+                ? grant : (DocAccessLevel.None, false);
             if (level == DocAccessLevel.None) continue;
 
             var vs = versions.Where(v => v.DocumentId == d.Id).ToList();

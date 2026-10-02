@@ -1,8 +1,9 @@
 @* ================== کامپوننت پیوست جامع ==================
    استفاده در هر فرم: <AttachmentBox Module="WorkOrders" RefId="123" CanUpload="true" />
    بک‌اند مشترک: /api/attachments/{module}/{refId} — بدون کد جدید برای فرم‌های بعدی
-   پیش‌نمایش داخل برنامه: PDF/عکس/متن + (در آرشیو اسناد) متن استخراج‌شدهٔ Word/Excel *@
+   پیش‌نمایش داخل برنامه: PDF/عکس/متن و محتوای Word/Excel/PowerPoint *@
 @using System.Net.Http.Headers
+@using Inventory.Shared.Files
 @inject HttpClient Http
 @inject IAuthState Auth
 @inject IToastService Toast
@@ -26,13 +27,13 @@
                 <div class="attx-main">
                     @if (CanPreviewOf(a))
                     {
-                        <a href="javascript:void(0)" @onclick="() => Preview(a)" class="attx-name" title="پیش‌نمایش داخل برنامه">
+                        <button type="button" @onclick="() => Preview(a)" class="attx-name attx-name-btn" title="پیش‌نمایش داخل برنامه">
                             @a.FileName
-                        </a>
+                        </button>
                     }
                     else if (a.CanDownload)
                     {
-                        <button class="attx-name attx-name-btn" type="button" title="دانلود" disabled="@downloading.Contains(a.Id)" @onclick="() => Download(a)">
+                        <button class="attx-name attx-name-btn" title="دانلود" disabled="@downloading.Contains(a.Id)" @onclick="() => Download(a)">
                             @a.FileName
                         </button>
                     }
@@ -73,25 +74,25 @@
                 <div class="attx-actions">
                     @if (CanPreviewOf(a))
                     {
-                        <button class="btn btn-sm btn-light py-0" title="پیش‌نمایش" @onclick="() => Preview(a)">
+                        <button type="button" class="btn btn-sm btn-light py-0" title="پیش‌نمایش" @onclick="() => Preview(a)">
                             <i class="bi bi-eye text-primary"></i>
                         </button>
                     }
                     @if (a.CanDownload)
                     {
-                        <button class="btn btn-sm btn-light py-0" type="button" title="دانلود" disabled="@downloading.Contains(a.Id)" @onclick="() => Download(a)">
+                        <button type="button" class="btn btn-sm btn-light py-0" title="دانلود" disabled="@downloading.Contains(a.Id)" @onclick="() => Download(a)">
                             <i class="@(downloading.Contains(a.Id) ? "spinner-border spinner-border-sm text-primary" : "bi bi-download text-success")"></i>
                         </button>
                     }
                     @if (Module == "DocVersion" && a.CanDownload && CanPrintOf(a))
                     {
-                        <button class="btn btn-sm btn-light py-0" title="\u0686\u0627\u067e \u0628\u0627 \u0644\u0627\u06af \u0648 \u0648\u0627\u062a\u0631\u0645\u0627\u0631\u06a9 \u0646\u0627\u0645 \u0634\u0645\u0627" @onclick="() => Print(a)">
+                        <button type="button" class="btn btn-sm btn-light py-0" title="\u0686\u0627\u067e \u0628\u0627 \u0644\u0627\u06af \u0648 \u0648\u0627\u062a\u0631\u0645\u0627\u0631\u06a9 \u0646\u0627\u0645 \u0634\u0645\u0627" @onclick="() => Print(a)">
                             <i class="bi bi-printer text-info"></i>
                         </button>
                     }
-                    @if (CanUpload && a.CanDownload && (a.UploaderUserId == MyUserId || Auth.IsAdmin))
+                    @if (CanUpload && a.CanDelete)
                     {
-                        <button class="btn btn-sm btn-light py-0" title="حذف" @onclick="() => Delete(a.Id)">
+                        <button type="button" class="btn btn-sm btn-light py-0" title="حذف" @onclick="() => Delete(a.Id)">
                             <i class="bi bi-trash text-danger"></i>
                         </button>
                     }
@@ -138,7 +139,7 @@
     </div>
 </div>
 
-<FilePreviewModal @ref="previewModal" DownloadRequested="DownloadFromPreview" />
+<FilePreviewModal @ref="previewModal" DownloadRequested="DownloadFromPreview" ConfirmationRequired="PreviewConfirmationRequired" />
 
 @* مودال تایید مجدد رمز برای فایل‌های مدرک محرمانه *@
 @if (Module == "DocVersion")
@@ -159,8 +160,8 @@
             <div class="fs-9 text-muted mt-2">پس از تایید، تا ۱۵ دقیقه نیازی به ورود مجدد رمز نیست.</div>
         </ChildContent>
         <Footer>
-            <button class="btn btn-sm btn-light" @onclick="CloseConfirm" disabled="@confirmBusy">انصراف</button>
-            <button class="btn btn-sm btn-primary" @onclick="DoConfirm" disabled="@confirmBusy">
+            <button type="button" class="btn btn-sm btn-light" @onclick="CloseConfirm" disabled="@confirmBusy">انصراف</button>
+            <button type="button" class="btn btn-sm btn-primary" @onclick="DoConfirm" disabled="@confirmBusy">
                 @if (confirmBusy)
                 {
                     <span class="spinner-border spinner-border-sm"></span>
@@ -234,7 +235,7 @@
     private int MyUserId => Auth.UserId;
 
     // ---------- مدرک محرمانه (تایید مجدد رمز) ----------
-    private readonly HashSet<int> confirmedDocs = new();
+    private readonly Dictionary<int, DateTimeOffset> confirmedDocs = new();
     private bool showConfirm;
     private AttItem? pendingItem;
     private bool pendingDownload;
@@ -243,8 +244,8 @@
     private bool confirmBusy;
     private string? confirmError;
 
-    private bool NeedsConfirmNow(AttItem a) =>
-        a.DocumentId > 0 && a.NeedsConfirm && !confirmedDocs.Contains(a.DocumentId);
+    private bool NeedsConfirmNow(AttItem a) => a.DocumentId > 0 && a.NeedsConfirm &&
+        (!confirmedDocs.TryGetValue(a.DocumentId, out var until) || until <= DateTimeOffset.UtcNow);
 
     private void OnDragEnter() { dragDepth++; dragOver = true; }
     private void OnDragLeave() { if (--dragDepth <= 0) { dragDepth = 0; dragOver = false; } }
@@ -262,7 +263,9 @@
         /// <summary>قابل نمایش داخل برنامه (PDF/عکس/آفیس/متن) — از سمت سرور</summary>
         public bool CanPreview { get; set; }
         /// <summary>کاربر جاری حق دانلود دارد</summary>
-        public bool CanDownload { get; set; } = true;
+        public bool CanDownload { get; set; }
+        /// <summary>اجازه حذفِ محاسبه‌شده توسط سرور؛ خواندن/دانلود به‌تنهایی اجازه حذف نیست.</summary>
+        public bool CanDelete { get; set; }
         /// <summary>شناسه مدرک — برای پیوست‌های DocVersion وقتی مدرک «محرمانه» است (0 یعنی محرمانه نیست)</summary>
         public int DocumentId { get; set; }
         /// <summary>قفل تایید رمز برای این کاربر هنوز باز نشده است</summary>
@@ -272,34 +275,10 @@
     }
 
     /// <summary>ورد/اکسل — پیش‌نمایش HTML + متن استخراج‌شده</summary>
-    private static bool IsOffice(AttItem a)
-    {
-        var fn = a.FileName.ToLowerInvariant();
-        var ct = (a.ContentType ?? "").ToLowerInvariant();
-        return fn.EndsWith(".docx") || fn.EndsWith(".doc") || fn.EndsWith(".xlsx") || fn.EndsWith(".xls") || fn.EndsWith(".csv")
-               || ct.Contains("wordprocessingml") || ct.Contains("spreadsheetml")
-               || ct.Contains("msword") || ct.Contains("ms-excel") || ct.Contains("csv");
-    }
-
-    private static bool IsImage(AttItem a)
-    {
-        var fn = a.FileName.ToLowerInvariant();
-        var ct = (a.ContentType ?? "").ToLowerInvariant();
-        if (ct.StartsWith("image/")) return true;
-        return fn.EndsWith(".png") || fn.EndsWith(".jpg") || fn.EndsWith(".jpeg") || fn.EndsWith(".jfif")
-            || fn.EndsWith(".gif") || fn.EndsWith(".webp") || fn.EndsWith(".bmp") || fn.EndsWith(".svg")
-            || fn.EndsWith(".tif") || fn.EndsWith(".tiff") || fn.EndsWith(".ico") || fn.EndsWith(".avif")
-            || fn.EndsWith(".heic") || fn.EndsWith(".heif");
-    }
-
-    private static bool IsPdf(AttItem a)
-    {
-        var fn = a.FileName.ToLowerInvariant();
-        var ct = (a.ContentType ?? "").ToLowerInvariant();
-        return fn.EndsWith(".pdf") || ct.Contains("pdf");
-    }
-
-    private bool CanPreviewOf(AttItem a) => a.CanPreview || IsOffice(a) || IsImage(a) || IsPdf(a);
+    private static bool IsOffice(AttItem a) => AttachmentPreviewFormats.Kind(a.FileName, a.ContentType) == "office";
+    private static bool IsImage(AttItem a) => AttachmentPreviewFormats.Kind(a.FileName, a.ContentType) == "image";
+    private static bool IsPdf(AttItem a) => AttachmentPreviewFormats.Kind(a.FileName, a.ContentType) == "pdf";
+    private bool CanPreviewOf(AttItem a) => a.CanPreview || AttachmentPreviewFormats.Kind(a.FileName, a.ContentType) != "other";
 
     private string DownloadUrl(AttItem a) =>
         $"{apiBase}/api/attachments/download/{a.Id}";
@@ -319,6 +298,7 @@
             || fn.EndsWith(".gif") || fn.EndsWith(".webp") || fn.EndsWith(".bmp") || fn.EndsWith(".svg")
             || fn.EndsWith(".tif") || fn.EndsWith(".tiff") || fn.EndsWith(".ico")) return "bi-file-earmark-image";
         if (fn.EndsWith(".docx") || fn.EndsWith(".doc") || ct.Contains("wordprocessingml") || ct.Contains("msword")) return "bi-file-earmark-word";
+        if (fn.EndsWith(".pptx") || fn.EndsWith(".ppt") || fn.EndsWith(".ppsx") || fn.EndsWith(".pptm") || ct.Contains("presentationml") || ct.Contains("ms-powerpoint")) return "bi-file-earmark-ppt";
         if (fn.EndsWith(".xlsx") || fn.EndsWith(".xls") || fn.EndsWith(".csv") || ct.Contains("spreadsheetml") || ct.Contains("ms-excel")) return "bi-file-earmark-excel";
         return "bi-file-earmark-text";
     }
@@ -334,6 +314,19 @@
             var wm = a.Watermark ? $"{Auth.DisplayName} — {DateTime.Now:yyyy/MM/dd HH:mm}" : null;
             await previewModal.ShowAsync(a.Id, a.FileName, a.ContentType, a.CanDownload, textApi, wm);
         }
+        else Toast.Error("پیش‌نمایش هنوز آماده نیست؛ صفحه را تازه کنید و دوباره تلاش کنید.");
+    }
+
+    private async Task PreviewConfirmationRequired(AttachmentPreviewResult result)
+    {
+        // The server remains authoritative even if a local confirmation cache is stale.
+        var a = items.FirstOrDefault(x => x.Id == previewModal?.CurrentAttachmentId);
+        if (a == null || Module != "DocVersion" || result.DocumentId <= 0) return;
+        a.DocumentId = result.DocumentId;
+        a.NeedsConfirm = true;
+        confirmedDocs.Remove(a.DocumentId);
+        if (previewModal != null) await previewModal.Close();
+        ShowConfirm(a, false);
     }
 
     private async Task DownloadFromPreview(int id)
@@ -377,6 +370,7 @@
     /// <summary>باز کردن نسخه چاپی (واترمارک‌دار با نام چاپ‌کننده + تاریخ) در تب جدید — چاپ در لاگ ثبت می‌شود.</summary>
     private async Task Print(AttItem a)
     {
+        if (!a.CanDownload || !CanPrintOf(a)) return;
         if (NeedsConfirmNow(a)) { ShowConfirm(a, false, true); return; }
         await JS.InvokeVoidAsync("open", PrintUrl(a), "_blank");
         Toast.Info("نسخه چاپی با واترمارک نام شما باز شد — با Ctrl+P چاپ کنید. این چاپ در لاگ ثبت می‌شود.");
@@ -420,7 +414,7 @@
         try
         {
             await DocArchiveSvc.ConfirmDownloadAsync(pendingItem.DocumentId, confirmPassword);
-            confirmedDocs.Add(pendingItem.DocumentId);
+            confirmedDocs[pendingItem.DocumentId] = DateTimeOffset.UtcNow.AddMinutes(14);
             var item = pendingItem;
             var wasDownload = pendingDownload;
             var wasPrint = pendingPrint;
@@ -430,6 +424,8 @@
             await Reload();
             StateHasChanged();
             Toast.Success("تایید شد — تا ۱۵ دقیقه فایل‌های این مدرک باز هستند.");
+            // Use refreshed server flags, not a stale instance from before confirmation.
+            item = items.FirstOrDefault(a => a.Id == item.Id) ?? item;
             if (wasPrint) await Print(item);
             else if (wasDownload) await Download(item);
             else await Preview(item);
@@ -444,8 +440,7 @@
     protected override async Task OnParametersSetAsync()
     {
         apiBase = Http.BaseAddress?.ToString().TrimEnd('/') ?? "";
-        if (!string.IsNullOrWhiteSpace(Auth.Token))
-            Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
+        Http.DefaultRequestHeaders.Authorization = string.IsNullOrWhiteSpace(Auth.Token) ? null : new AuthenticationHeaderValue("Bearer", Auth.Token);
         await Reload();
     }
 
@@ -458,6 +453,7 @@
 
     private async Task OnFiles(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
+        if (!CanUpload) return;
         OnDropReset();
         var files = e.GetMultipleFiles(int.MaxValue).ToList();
 

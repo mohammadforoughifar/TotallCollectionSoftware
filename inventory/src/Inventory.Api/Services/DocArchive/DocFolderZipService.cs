@@ -56,7 +56,7 @@ public class DocFolderZipService : IDocFolderZipService
                 throw new KeyNotFoundException("پوشه مورد نظر در آرشیو یافت نشد.");
 
             if (!folderAccessMap.TryGetValue(targetRoot.Id, out var access) ||
-                access.Level <= DocAccessLevel.None || !access.Download)
+                access.Level < DocAccessLevel.Read || !access.Download)
             {
                 throw new UnauthorizedAccessException("شما اجازه دانلود محتوای این پوشه را ندارید.");
             }
@@ -71,7 +71,7 @@ public class DocFolderZipService : IDocFolderZipService
                     foreach (var ch in allFolders.Where(f => f.ParentId == pid))
                     {
                         if (folderAccessMap.TryGetValue(ch.Id, out var a) &&
-                            a.Level > DocAccessLevel.None && a.Download)
+                            a.Level >= DocAccessLevel.Read && a.Download)
                         {
                             collected.Add(ch);
                             CollectChildren(ch.Id);
@@ -90,9 +90,12 @@ public class DocFolderZipService : IDocFolderZipService
         {
             // کل پوشه‌های مجاز
             targetFolders = allFolders
-                .Where(f => folderAccessMap.TryGetValue(f.Id, out var a) && a.Level > DocAccessLevel.None && a.Download)
+                .Where(f => folderAccessMap.TryGetValue(f.Id, out var a) && a.Level >= DocAccessLevel.Read && a.Download)
                 .ToList();
         }
+
+        if (targetFolders.Count == 0)
+            throw new UnauthorizedAccessException("برای دریافت ZIP، مجوز جداگانه دانلود روی پوشه لازم است.");
 
         var targetFolderIds = targetFolders.Select(f => f.Id).ToHashSet();
 
@@ -131,16 +134,12 @@ public class DocFolderZipService : IDocFolderZipService
             .OrderBy(d => d.FolderId).ThenBy(d => d.Code)
             .ToListAsync();
 
-        // بررسی دسترسی سندها
-        var docs = new List<ArchiveDocument>();
-        foreach (var d in rawDocs)
-        {
-            var (lvl, dl) = await _access.DocumentAccessAsync(userId, isManager, d.Id);
-            if (lvl > DocAccessLevel.None && dl)
-            {
-                docs.Add(d);
-            }
-        }
+        // محاسبه دسته‌ای؛ دانلود پوشه نباید محدودیت اختصاصی خود مدرک را باز کند.
+        var documentAccess = await _access.DocumentAccessMapAsync(userId, isManager, rawDocs.Select(d => d.Id));
+        var docs = rawDocs.Where(d => documentAccess.TryGetValue(d.Id, out var grant)
+            && grant.Level >= DocAccessLevel.Read && grant.Download).ToList();
+        if (rawDocs.Count > 0 && docs.Count == 0)
+            throw new UnauthorizedAccessException("برای مدارک این پوشه مجوز دانلود ندارید.");
 
         var docIds = docs.Select(d => d.Id).ToList();
 

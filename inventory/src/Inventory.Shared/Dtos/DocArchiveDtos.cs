@@ -384,7 +384,8 @@ public class DocAccessRequestSaveDto
 public class DocAccessRequestApproveDto
 {
     public DocAccessLevelDto Level { get; set; } = DocAccessLevelDto.Read;
-    public bool CanDownload { get; set; } = true;
+    /// <summary>دانلود مستقل از خواندن است و باید صریحاً اعطا شود.</summary>
+    public bool CanDownload { get; set; }
 }
 
 /// <summary>تنظیمات شماره‌گذار خودکار کد مدرک</summary>

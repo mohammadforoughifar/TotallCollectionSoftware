@@ -44,8 +44,7 @@ public class DocArchiveExportService : IDocArchiveExportService
     // ------------------------------------------------------------------
     private async Task<List<ArchiveDocument>> VisibleDocsAsync(int userId, bool isManager, string? status)
     {
-        var q = _db.Documents.AsNoTracking().AsQueryable();
-
+        var q = await DocQuery.AccessibleAsync(_db, _access, userId, isManager, DocAccessLevel.Read);
         q = status?.ToLowerInvariant() switch
         {
             "deleted" => q.Where(d => d.IsDeleted),
@@ -53,22 +52,13 @@ public class DocArchiveExportService : IDocArchiveExportService
             "all" => q.Where(d => !d.IsDeleted),
             _ => q.Where(d => !d.IsDeleted && d.IsActive)
         };
-
         var docs = await q.OrderBy(d => d.Code).ToListAsync();
-        if (isManager) return docs;
-
-        // فیلتر بر اساس دسترسی — پوشه‌ها یک‌بار خوانده می‌شوند
-        var folderMap = await _access.FolderAccessMapAsync(userId, isManager);
-        var docPerms = await _db.DocumentPermissions.AsNoTracking()
-            .Where(p => p.UserId == userId)
-            .ToDictionaryAsync(p => p.DocumentId, p => p.Level);
-
-        return docs.Where(d =>
-        {
-            if (d.IsPublic) return true;
-            if (docPerms.TryGetValue(d.Id, out var lvl) && lvl > DocAccessLevel.None) return true;
-            return folderMap.TryGetValue(d.FolderId, out var f) && f.Level > DocAccessLevel.None;
-        }).ToList();
+        var map = await _access.DocumentAccessMapAsync(userId, isManager, docs.Select(d => d.Id));
+        var allowed = docs.Where(d => map.TryGetValue(d.Id, out var grant)
+            && grant.Level >= DocAccessLevel.Read && grant.Download).ToList();
+        if (docs.Count > 0 && allowed.Count == 0)
+            throw new UnauthorizedAccessException("برای خروجی گرفتن از مدارک، مجوز جداگانه دانلود لازم است.");
+        return allowed;
     }
 
     private async Task<Dictionary<int, string>> FolderNamesAsync()
@@ -248,16 +238,21 @@ public class DocArchiveExportService : IDocArchiveExportService
         if (q.Id is not > 0)
             throw new InvalidOperationException("برای گزارش تاریخچه، مدرک را انتخاب کنید.");
 
-        var (lvl, _) = await _access.DocumentAccessAsync(userId, isManager, q.Id.Value);
-        if (lvl < DocAccessLevel.Read)
-            throw new InvalidOperationException("شما به تاریخچه این مدرک دسترسی ندارید.");
+        var (lvl, download) = await _access.DocumentAccessAsync(userId, isManager, q.Id.Value);
+        if (lvl < DocAccessLevel.Read || !download)
+            throw new UnauthorizedAccessException("خروجی تاریخچه نیازمند خواندن و مجوز جداگانه دانلود است.");
 
         var doc = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == q.Id.Value)
                   ?? throw new InvalidOperationException("مدرک یافت نشد.");
 
-        var logs = await _db.DocumentLogs.AsNoTracking()
-            .Where(l => l.DocumentId == doc.Id)
-            .OrderBy(l => l.Id).Take(q.MaxRows).ToListAsync();
+        var logQuery = _db.DocumentLogs.AsNoTracking().Where(l => l.DocumentId == doc.Id);
+        if (lvl < DocAccessLevel.Full)
+        {
+            // حق دانلود تاریخچه، مجوز مشاهده درخواست‌ها و مدیریت دسترسی دیگران نیست.
+            string[] hiddenActions = { "Permissions", "AccessRequest", "AccessRequestApproved", "AccessRequestRejected", "TemporaryAccess", "TemporaryAccessRevoked", "RenewalPolicy" };
+            logQuery = logQuery.Where(l => !hiddenActions.Contains(l.Action));
+        }
+        var logs = await logQuery.OrderBy(l => l.Id).Take(q.MaxRows).ToListAsync();
 
         var vers = await _db.DocumentVersions.AsNoTracking()
             .Where(v => v.DocumentId == doc.Id)

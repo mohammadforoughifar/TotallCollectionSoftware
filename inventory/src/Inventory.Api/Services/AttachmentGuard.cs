@@ -85,11 +85,12 @@ public class AttachmentGuard : IAttachmentGuard
                 .FirstOrDefaultAsync();
             if (doc == null || doc.IsDeleted) return AttachmentAccess.None;
 
-            var (level, canDownload) = await _docAccess.DocumentAccessAsync(userId, isAdmin, ver.DocumentId);
+            var manager = await DocArchiveAuthorization.IsManagerAsync(_db, userId, isAdmin);
+            var (level, canDownload) = await _docAccess.DocumentAccessAsync(userId, manager, ver.DocumentId);
 
-            // «مشاهده» فقط پیش‌نمایش؛ از «خواندن» به بالا اگر حق دانلود داشته باشد، دانلود مجاز است
-            if (level <= DocAccessLevel.None) return AttachmentAccess.None;
-            if (level == DocAccessLevel.View) return AttachmentAccess.PreviewOnly;
+            // View فقط سرفصل است؛ حتی لینک مستقیم نباید محتوا را باز کند.
+            // Read فقط پیش‌نمایش می‌دهد؛ دانلود یک مجوز مستقل است.
+            if (level < DocAccessLevel.Read) return AttachmentAccess.None;
             return canDownload ? AttachmentAccess.Download : AttachmentAccess.PreviewOnly;
         }
 

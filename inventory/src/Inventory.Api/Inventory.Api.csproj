@@ -10,7 +10,11 @@
     <NoWarn>CS1998</NoWarn>
     <!-- کاهش حجم خروجی انتشار: باندل تک‌فایل فشرده (فقط روی publish اثر دارد) -->
     <PublishSingleFile>true</PublishSingleFile>
-    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <!-- IIS in-process hosting cannot load single-file apps. -->
+    <AspNetCoreHostingModel Condition="'$(PublishSingleFile)' == 'true'">OutOfProcess</AspNetCoreHostingModel>
+    <!-- .NET 8 allows bundle compression only for self-contained publish.
+         Keep the existing framework-dependent IIS deployment valid. -->
+    <EnableCompressionInSingleFile Condition="'$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
   </PropertyGroup>
 
   <ItemGroup>

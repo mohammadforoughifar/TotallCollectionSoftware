@@ -517,46 +517,9 @@
     <script src="js/project-interop.js?v=3"></script>
     <script src="js/push-notifications.js?v=4"></script>
     <script src="js/stocktaking.js"></script>
-    <script src="js/file-preview.js?v=4"></script>
+    <script src="js/file-preview.js?v=5"></script>
     <script src="js/dashboard.js?v=2"></script>
     <script src="js/ai-voice.js?v=1"></script>
-    <script>
-        (function () {
-            async function fpFetch(url, token, mimeHint) {
-                var h = {};
-                if (token) h['Authorization'] = 'Bearer ' + token;
-                var r = await fetch(url, { headers: h });
-                if (!r.ok) {
-                    var t = '';
-                    try { t = await r.text(); } catch (e) { }
-                    var msg = t || ('خطای ' + r.status);
-                    try { var j = JSON.parse(t); if (j && j.message) msg = j.message; } catch (e) { }
-                    throw new Error(msg);
-                }
-                var buf = await r.arrayBuffer();
-                var mime = ((r.headers.get('content-type') || mimeHint || 'application/octet-stream').split(';')[0] || '').trim();
-                return URL.createObjectURL(new Blob([buf], { type: mime || 'application/octet-stream' }));
-            }
-            async function fpText(url, token) {
-                var h = {};
-                if (token) h['Authorization'] = 'Bearer ' + token;
-                var r = await fetch(url, { headers: h });
-                if (!r.ok) throw new Error('خطای ' + r.status);
-                return await r.text();
-            }
-            window.filePreview = window.filePreview || {};
-            window.filePreview.fetchBlobUrl = fpFetch;
-            window.filePreview.fetchText = fpText;
-            window.filePreview.htmlToBlobUrl = window.filePreview.htmlToBlobUrl || function (html) {
-                return URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-            };
-            window.filePreview.revoke = window.filePreview.revoke || function (u) { try { if (u) URL.revokeObjectURL(u); } catch (e) { } };
-            window.fpFetchBlobUrl = window.filePreview.fetchBlobUrl;
-            window.fpFetchText = window.filePreview.fetchText;
-            window.fpHtmlToBlobUrl = window.filePreview.htmlToBlobUrl;
-            window.fpRevoke = window.filePreview.revoke;
-        })();
-    </script>
     <script src="_framework/blazor.webassembly.js"></script>
     <script>
         // ثبت سرویس‌ورکر + به‌روزرسانی خودکار بعد از هر پابلیش:

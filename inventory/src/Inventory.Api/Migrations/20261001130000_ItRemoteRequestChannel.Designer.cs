@@ -10,14 +10,15 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Inventory.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001130000_ItRemoteRequestChannel")]
+    partial class ItRemoteRequestChannel
     {
         /// <summary>
-        /// مدل از روی کد تولید شده است (نه با `dotnet ef`) تا مهاجرتِ
-        /// «کانال شرکت‌های راه‌دور» بدون نیاز به SDK روی سرور قابل اعمال باشد.
-        /// هر تغییر بعدی در مدل باید با `dotnet ef migrations add` هم در snapshot تازه‌سازی شود.
+        /// مدلِ هدفِ مهاجرت کانال شرکت‌های راه‌دور؛ این فایل ادامهٔ کلاس migration است،
+        /// نه تعریف دومِ AppDbContextModelSnapshot. snapshot اصلی در فایل خودش باقی می‌ماند.
+        /// دستورهای SQL موجود در Up/Down تغییر نکرده‌اند.
         /// </summary>
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
             modelBuilder.HasAnnotation("ProductVersion", "8.0.0");
 

@@ -15,7 +15,7 @@
         <h1>اتصال به واحد IT مرکزی</h1>
         <p class="lead">ارسال درخواست خدمات IT از این شرکت به سرور مرکزی</p>
     </div>
-    <button class="btn btn-secondary me-auto" @onclick="() => Nav.NavigateTo("/it-requests")">
+    <button class="btn btn-secondary me-auto" @onclick="GoToRequests">
         <i class="bi bi-arrow-right"></i> بازگشت به درخواست‌ها
     </button>
 </div>
@@ -154,6 +154,8 @@
 
 
 @code {
+    private void GoToRequests() => Nav.NavigateTo("/it-requests");
+
     private bool loading = true, busy;
     private string? myKey;
     private string? lastTest;

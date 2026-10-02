@@ -633,8 +633,13 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
         await next();
     });
     app.UseDefaultFiles();
+    var previewContentTypes = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    previewContentTypes.Mappings[".bcmap"] = "application/octet-stream";
+    previewContentTypes.Mappings[".pfb"] = "application/octet-stream";
+    previewContentTypes.Mappings[".wasm"] = "application/wasm";
     app.UseStaticFiles(new StaticFileOptions
     {
+        ContentTypeProvider = previewContentTypes,
         // جلوگیری از کش‌شدن نسخه‌ی قدیمی کلاینت (service worker مرورگر)
         OnPrepareResponse = ctx =>
         {

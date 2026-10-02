@@ -3,6 +3,7 @@ using Inventory.Api.Data;
 using Inventory.Api.Services.DocArchive;
 using Inventory.Api.Services.Watermark;
 using Inventory.Shared;
+using Inventory.Shared.Files;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
@@ -149,21 +150,24 @@ public class AttachmentsController : ControllerBase
     private readonly Inventory.Api.Services.DocArchive.IDocIndexService _docIndex;
     private readonly Inventory.Api.Services.DocArchive.IDocDownloadConfirmService _confirm;
     private readonly IServerWatermarkService _watermark;
+    private readonly IDocAccessService _docAccess;
     public AttachmentsController(AppDbContext db, FileStore store, IAttachmentGuard guard,
         Inventory.Api.Services.DocArchive.IDocIndexService docIndex,
         Inventory.Api.Services.DocArchive.IDocDownloadConfirmService confirm,
-        IServerWatermarkService watermark)
-    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; _confirm = confirm; _watermark = watermark; }
+        IServerWatermarkService watermark, IDocAccessService docAccess)
+    { _db = db; _store = store; _guard = guard; _docIndex = docIndex; _confirm = confirm; _watermark = watermark; _docAccess = docAccess; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
     private bool IsAdmin => User.IsInRole("Admin");
 
+    private Task<bool> IsDocArchiveManagerAsync() => DocArchiveAuthorization.IsManagerAsync(_db, MyUserId, IsAdmin);
+
     private async Task<bool> CanWriteDocVersion(int versionId)
     {
         var version = await _db.DocumentVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == versionId && !v.IsFrozen);
         if (version == null || !await _db.Documents.AnyAsync(d => d.Id == version.DocumentId && d.IsActive && !d.IsDeleted)) return false;
-        var level = await new Inventory.Api.Services.DocArchive.DocAccessService(_db).DocumentAccessAsync(MyUserId, IsAdmin, version.DocumentId);
+        var level = await _docAccess.DocumentAccessAsync(MyUserId, await IsDocArchiveManagerAsync(), version.DocumentId);
         return level.Item1 >= DocAccessLevel.Write;
     }
 
@@ -177,52 +181,9 @@ public class AttachmentsController : ControllerBase
         "text/plain", "text/csv", "text/html", "application/json", "application/xml", "text/xml"
     };
 
-    private static string GuessContentType(string fileName, string stored)
-    {
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        if (!string.IsNullOrWhiteSpace(stored) && stored != "application/octet-stream")
-        {
-            if (stored.Equals("image/jpg", StringComparison.OrdinalIgnoreCase)) return "image/jpeg";
-            if (stored.Equals("image/pjpeg", StringComparison.OrdinalIgnoreCase)) return "image/jpeg";
-            return stored;
-        }
-        return ext switch
-        {
-            ".pdf" => "application/pdf",
-            ".png" => "image/png",
-            ".jpg" or ".jpeg" or ".jfif" => "image/jpeg",
-            ".gif" => "image/gif",
-            ".webp" => "image/webp",
-            ".bmp" => "image/bmp",
-            ".svg" => "image/svg+xml",
-            ".tif" or ".tiff" => "image/tiff",
-            ".ico" => "image/x-icon",
-            ".avif" => "image/avif",
-            ".heic" or ".heif" => "image/heic",
-            ".txt" or ".log" or ".md" => "text/plain",
-            ".csv" => "text/csv",
-            ".json" => "application/json",
-            ".xml" => "application/xml",
-            ".html" or ".htm" => "text/html",
-            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            ".doc" => "application/msword",
-            ".xls" => "application/vnd.ms-excel",
-            _ => stored ?? "application/octet-stream"
-        };
-    }
+    private static string GuessContentType(string fileName, string stored) => AttachmentPreviewFormats.Mime(fileName, stored);
 
-    private static bool IsPreviewable(string fileName, string ct)
-    {
-        if (InlineTypes.Contains(ct)) return true;
-        if (ct.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) return true;
-        var ext = Path.GetExtension(fileName).ToLowerInvariant();
-        return ext is ".pdf"
-            or ".png" or ".jpg" or ".jpeg" or ".jfif" or ".gif" or ".webp" or ".bmp"
-            or ".svg" or ".tif" or ".tiff" or ".ico" or ".avif" or ".heic" or ".heif"
-            or ".docx" or ".doc" or ".xlsx" or ".xls" or ".csv"
-            or ".txt" or ".json" or ".xml" or ".md" or ".log" or ".html" or ".htm";
-    }
+    private static bool IsPreviewable(string fileName, string ct) => AttachmentPreviewFormats.Kind(fileName, ct) != "other";
 
     private static bool NeedsImageConvert(string fileName, string ct)
     {
@@ -294,6 +255,9 @@ public class AttachmentsController : ControllerBase
         if (access == AttachmentAccess.None)
             return StatusCode(403, new { message = "شما به پیوست‌های این مورد دسترسی ندارید." });
 
+        var docVersion = string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase);
+        var canModify = docVersion ? await CanWriteDocVersion(refId) : access == AttachmentAccess.Download;
+        var manager = docVersion ? await IsDocArchiveManagerAsync() : IsAdmin;
         var rows = await _db.AppAttachments.Where(a => a.Module == module && a.RefId == refId).OrderBy(x => x.Id)
             .Select(a => new { a.Id, a.FileName, a.ContentType, a.UploaderName, a.UploaderUserId, a.UploadedAt, a.FilePath, a.Data })
             .ToPageListAsync(pagination);
@@ -312,7 +276,8 @@ public class AttachmentsController : ControllerBase
                 ContentType = ct,
                 CanPreview = IsPreviewable(a.FileName, ct),
                 CanDownload = access == AttachmentAccess.Download,
-                DocumentId = flags?.DocId ?? 0,
+                CanDelete = canModify && (a.UploaderUserId == MyUserId || manager),
+                DocumentId = flags is { RequireConfirm: true } confidential ? confidential.DocId : 0,
                 NeedsConfirm = needsConfirm,
                 Watermark = flags?.Watermark ?? false
             };
@@ -323,10 +288,12 @@ public class AttachmentsController : ControllerBase
     [DisableRequestSizeLimit]
     public async Task<IActionResult> Upload(string module, int refId, IFormFile file)
     {
-        if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase) && !await CanWriteDocVersion(refId))
-            return StatusCode(403, new { message = "افزودن پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
-        var access = await _guard.CheckAsync(module, refId, MyUserId, IsAdmin);
-        if (access != AttachmentAccess.Download)
+        if (string.Equals(module, "DocVersion", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!await CanWriteDocVersion(refId))
+                return StatusCode(403, new { message = "افزودن پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
+        }
+        else if (await _guard.CheckAsync(module, refId, MyUserId, IsAdmin) != AttachmentAccess.Download)
             return StatusCode(403, new { message = "شما اجازه افزودن پیوست به این مورد را ندارید." });
 
         if (file == null || file.Length == 0) return BadRequest(new { message = "فایلی انتخاب نشده است." });
@@ -437,10 +404,8 @@ public class AttachmentsController : ControllerBase
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
 
-        await LogAccessAsync(a, "Preview");
-
         // پیش‌فرض: همان فایلِ inline (تصویر/PDF/متن)
-        var servedCt = ct;
+        var servedCt = AttachmentPreviewFormats.Kind(a.FileName, ct) == "text" ? "text/plain; charset=utf-8" : ct;
         var previewName = "preview";
 
         // TIFF / HEIC (یا هر image/ خارج از لیست inline) را به PNG تبدیل کن تا در همه مرورگرها دیده شود
@@ -448,6 +413,9 @@ public class AttachmentsController : ControllerBase
         {
             try
             {
+                var info = Image.Identify(bytes);
+                if (info == null || (long)info.Width * info.Height > 50_000_000)
+                    return BadRequest(new { code = "IMAGE_TOO_LARGE", message = "ابعاد تصویر برای پیش‌نمایش ایمن بیش از حد مجاز است." });
                 using var image = Image.Load(bytes);
                 image.Mutate(x => x.AutoOrient());
                 if (image.Width > 2400 || image.Height > 2400)
@@ -464,12 +432,12 @@ public class AttachmentsController : ControllerBase
                 servedCt = "image/png";
                 previewName = "preview.png";
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return BadRequest(new { message = "تبدیل تصویر برای پیش‌نمایش ممکن نشد: " + ex.Message });
+                return BadRequest(new { code = "IMAGE_FORMAT_UNSUPPORTED", message = "این تصویر خراب است یا رمزگشای فرمت آن روی سرور موجود نیست؛ برای پیش‌نمایش یک نسخه PNG یا JPEG تهیه کنید. HEIC/HEIF بدون رمزگشای اضافی تضمین نمی‌شود." });
             }
         }
-        else if (!InlineTypes.Contains(servedCt) && !servedCt.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        else if (!InlineTypes.Contains(servedCt.Split(';')[0]) && !servedCt.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
         {
             return BadRequest(new { message = "این نوع فایل را از پیش‌نمایش HTML باز کنید." });
         }
@@ -491,6 +459,12 @@ public class AttachmentsController : ControllerBase
             }
         }
 
+        await LogAccessAsync(a, "Preview");
+        Response.Headers["Cache-Control"] = "no-store, private";
+        // SVG must not become an active same-origin document if the API URL is opened directly.
+        if (servedCt == "image/svg+xml")
+            Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'";
+
         // inline تا مرورگر داخل iframe/img نمایش دهد و پنجره دانلود باز نشود
         Response.Headers["Content-Disposition"] = "inline; filename=\"" + previewName + "\"";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
@@ -498,7 +472,7 @@ public class AttachmentsController : ControllerBase
     }
 
     /// <summary>
-    /// پیش‌نمایش Word/Excel به‌صورت HTML (جداول و پاراگراف‌ها، بدون نیاز به دانلود).
+    /// پیش‌نمایش Word/Excel/PowerPoint به‌صورت HTML (جداول و پاراگراف‌ها، بدون نیاز به دانلود).
     /// </summary>
     [HttpGet("preview-html/{id:int}")]
     public async Task<IActionResult> PreviewHtml(int id)
@@ -516,9 +490,18 @@ public class AttachmentsController : ControllerBase
         var bytes = _store.ReadBytes(a.FilePath) ?? (a.Data is { Length: > 0 } ? a.Data : null);
         if (bytes is null) return NotFound(new { message = "فایل در دسترس نیست." });
 
+        if (!OfficePreviewHtml.CanHandle(a.FileName, a.ContentType))
+            return BadRequest(new { code = "PREVIEW_FORMAT_UNSUPPORTED", message = "این فایل از خانوادهٔ آفیس نیست." });
         if (!OfficePreviewHtml.TryBuild(bytes, a.FileName, a.ContentType, out var html, out var error))
-            return BadRequest(new { message = error ?? "تبدیل پیش‌نمایش ممکن نشد." });
-
+            return BadRequest(new { code = "OFFICE_PREVIEW_UNSUPPORTED", message = error ?? "تبدیل پیش‌نمایش ممکن نشد." });
+        if (flags is { Watermark: true })
+        {
+            var line = await BuildWatermarkLineAsync();
+            if (!string.IsNullOrWhiteSpace(line)) html = OfficePreviewHtml.AddWatermark(html, line);
+        }
+        await LogAccessAsync(a, "Preview");
+        Response.Headers["Cache-Control"] = "no-store, private";
+        Response.Headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
         Response.Headers["Content-Disposition"] = "inline; filename=\"preview.html\"";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         return Content(html, "text/html; charset=utf-8");
@@ -531,13 +514,17 @@ public class AttachmentsController : ControllerBase
         var a = await _db.AppAttachments.FindAsync(id);
         if (a == null) return NotFound();
 
-        if (string.Equals(a.Module, "DocVersion", StringComparison.OrdinalIgnoreCase) && !await CanWriteDocVersion(a.RefId))
-            return StatusCode(403, new { message = "حذف پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
-        var access = await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin);
-        if (access != AttachmentAccess.Download)
+        var docVersion = string.Equals(a.Module, "DocVersion", StringComparison.OrdinalIgnoreCase);
+        if (docVersion)
+        {
+            if (!await CanWriteDocVersion(a.RefId))
+                return StatusCode(403, new { message = "حذف پیوست نیازمند دسترسی نوشتن و نسخه خارج از گردش تأیید است." });
+        }
+        else if (await _guard.CheckAsync(a.Module, a.RefId, MyUserId, IsAdmin) != AttachmentAccess.Download)
             return StatusCode(403, new { message = "شما اجازه حذف پیوست این مورد را ندارید." });
-        if (a.UploaderUserId != MyUserId && !IsAdmin)
-            return StatusCode(403, new { message = "فقط آپلودکننده یا مدیر می‌تواند این پیوست را حذف کند." });
+        var manager = docVersion ? await IsDocArchiveManagerAsync() : IsAdmin;
+        if (a.UploaderUserId != MyUserId && !manager)
+            return StatusCode(403, new { message = "فقط آپلودکننده یا مدیر مجاز می‌تواند این پیوست را حذف کند." });
         _store.Delete(a.FilePath);
         if (string.Equals(a.Module, "DocVersion", StringComparison.OrdinalIgnoreCase))
         {

@@ -30,7 +30,7 @@
         </div>
         <div class="col-12 col-sm-6">
             <label class="form-label fs-8 mb-1">سطح دسترسی</label>
-            <select class="form-select form-select-sm" @bind="pickLevel">
+            <select class="form-select form-select-sm" @bind="pickLevel" @bind:after="PickLevelChanged">
                 <option value="1">مشاهده</option>
                 <option value="2">خواندن</option>
                 <option value="3">نوشتن</option>
@@ -39,7 +39,7 @@
         </div>
         <div class="col-6 col-sm-3 d-flex align-items-end">
             <div class="form-check form-switch mb-1">
-                <input class="form-check-input" type="checkbox" id="pickDl" @bind="pickDownload" />
+                <input class="form-check-input" type="checkbox" id="pickDl" @bind="pickDownload" disabled="@(pickLevel < (int)DocAccessLevelDto.Read)" />
                 <label class="form-check-label fs-8" for="pickDl">دانلود</label>
             </div>
         </div>
@@ -48,6 +48,11 @@
                 <i class="bi bi-plus-lg"></i> افزودن
             </button>
         </div>
+    </div>
+
+    <div class="fs-8 text-muted mb-2">
+        «خواندن» فقط برای مشاهده است؛ ویرایش و ورژن جدید نیازمند «نوشتن» است.
+        دانلود باید جداگانه انتخاب شود. مجوز اختصاصی فرد بر گروه و پوشهٔ والد اولویت دارد.
     </div>
 
     @if (Items.Count == 0)
@@ -92,7 +97,7 @@
                                 </select>
                             </td>
                             <td class="text-center">
-                                <input class="form-check-input" type="checkbox" @bind="p.CanDownload" />
+                                <input class="form-check-input" type="checkbox" @bind="p.CanDownload" disabled="@(p.Level < DocAccessLevelDto.Read)" />
                             </td>
                             <td>
                                 <button class="btn btn-sm btn-light" type="button" @onclick="() => Items.Remove(p)">
@@ -119,7 +124,7 @@
     private int pickUserId;
     private int pickRoleId;
     private int pickLevel = 2;
-    private bool pickDownload = true;
+    private bool pickDownload;
 
     private List<LookupItem> AvailableUsers =>
         Users.Where(u => !Items.Any(i => i.RoleId == 0 && i.UserId == u.Id)).ToList();
@@ -135,7 +140,16 @@
 
     private static void SetLevel(DocPermissionDto p, ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var v)) p.Level = (DocAccessLevelDto)v;
+        if (int.TryParse(e.Value?.ToString(), out var v) && Enum.IsDefined(typeof(DocAccessLevelDto), v))
+        {
+            p.Level = (DocAccessLevelDto)v;
+            if (p.Level <= DocAccessLevelDto.Read) p.CanDownload = false;
+        }
+    }
+
+    private void PickLevelChanged()
+    {
+        if (pickLevel <= (int)DocAccessLevelDto.Read) pickDownload = false;
     }
 
     private void Add()
@@ -150,7 +164,7 @@
                 RoleId = 0,
                 UserName = NameOf(pickUserId),
                 Level = (DocAccessLevelDto)pickLevel,
-                CanDownload = pickDownload
+                CanDownload = pickLevel >= (int)DocAccessLevelDto.Read && pickDownload
             });
             pickUserId = 0;
         }
@@ -164,9 +178,10 @@
                 RoleId = pickRoleId,
                 RoleName = NameOfRole(pickRoleId),
                 Level = (DocAccessLevelDto)pickLevel,
-                CanDownload = pickDownload
+                CanDownload = pickLevel >= (int)DocAccessLevelDto.Read && pickDownload
             });
             pickRoleId = 0;
         }
+        pickDownload = false;
     }
 }

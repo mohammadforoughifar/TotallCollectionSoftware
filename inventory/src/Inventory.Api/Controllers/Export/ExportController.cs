@@ -76,6 +76,10 @@ public class ExportController : RbacControllerBase
                 spec = await _svc.BuildAsync(key, query);
             }
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
