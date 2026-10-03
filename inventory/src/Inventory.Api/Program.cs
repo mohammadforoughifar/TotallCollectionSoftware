@@ -138,6 +138,8 @@ builder.Services.AddScoped<Inventory.Api.Services.HrMain.IHrMainService, Invento
 builder.Services.AddScoped<Inventory.Api.Services.FaAtt.IFaAttService, Inventory.Api.Services.FaAtt.FaAttService>(); // FaAtt — حضور و غیاب فروغ آریا
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.IFaComService, Inventory.Api.Services.FaCom.FaComService>(); // FaCom — ارتباطات داخلی
 builder.Services.AddScoped<Inventory.Api.Services.FaCom.ISmsSender, Inventory.Api.Services.FaCom.ConfigSmsSender>(); // پیامک وب‌هوکی
+builder.Services.Configure<Inventory.Api.Services.ItAssets.KavenegarSmsOptions>(builder.Configuration.GetSection("KavenegarSms"));
+builder.Services.AddScoped<Inventory.Api.Services.ItAssets.IWorkOrderSmsService, Inventory.Api.Services.ItAssets.WorkOrderSmsService>();
 builder.Services.AddScoped<Inventory.Api.Services.FaLms.IFaLmsService, Inventory.Api.Services.FaLms.FaLmsService>(); // FaLms — آموزش و توسعه
 builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayService, Inventory.Api.Services.FaPay.FaPayService>(); // FaPay — حقوق و دستمزد
 builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayExtraService, Inventory.Api.Services.FaPay.FaPayExtraService>(); // FaPay — افزونه‌های §۲

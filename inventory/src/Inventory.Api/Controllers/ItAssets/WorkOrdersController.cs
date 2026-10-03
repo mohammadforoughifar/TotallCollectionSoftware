@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Inventory.Api.Services;
 using Inventory.Api.Services.ItAssets;
 using Inventory.Shared;
+using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Api.Controllers;
@@ -20,7 +21,9 @@ public class WorkOrdersController : ControllerBase
     private readonly AppDbContext _db;
     private readonly INotifyService _notify;
     private readonly FileStore _store;
-    public WorkOrdersController(AppDbContext db, INotifyService notify, FileStore store) { _db = db; _notify = notify; _store = store; }
+    private readonly IWorkOrderSmsService _sms;
+    public WorkOrdersController(AppDbContext db, INotifyService notify, FileStore store, IWorkOrderSmsService sms)
+    { _db = db; _notify = notify; _store = store; _sms = sms; }
 
     private int MyUserId => int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var v) ? v : 0;
     private string MyUsername => User.FindFirstValue(ClaimTypes.Name) ?? "";
@@ -66,7 +69,8 @@ public class WorkOrdersController : ControllerBase
         canView = await HasAsync("View"),
         canCreate = await HasAsync("Create"),
         canAssignOthers = await HasAsync("AssignOthers"),
-        canDelete = await HasAsync("Delete")
+        canDelete = await HasAsync("Delete"),
+        smsConfigured = _sms.IsConfigured
     });
 
     /// <summary>افرادی که کاربر جاری می‌تواند به آن‌ها دستور کار بدهد (بند ۶).</summary>
@@ -117,6 +121,8 @@ public class WorkOrdersController : ControllerBase
         public string Description { get; set; } = "";
         public DateTime DueAt { get; set; }
         public List<int> AssigneeUserIds { get; set; } = new();
+        /// <summary>ارسال پیامک اطلاع‌رسانی به شماره موبایل گیرندگان پس از ثبت موفق دستور کار.</summary>
+        public bool SendSms { get; set; }
 
         /// <summary>اولویت: 0=کم | 1=عادی | 2=بالا | 3=فوری (پیش‌فرض: عادی).</summary>
         public int Priority { get; set; } = WorkOrderPriority.Normal;
@@ -289,8 +295,15 @@ public class WorkOrdersController : ControllerBase
             await _notify.SendAsync(uid, wo.Priority == WorkOrderPriority.Urgent ? "دستور کار فوری 🔴" : "دستور کار جدید 📋",
                 $"{wo.Number} — «{wo.Title}» — مهلت: {ToFa(wo.DueAt)}{prTag}{scheduleTag}",
                 wo.OwnerName, "دستور کار", $"/work-orders?open={wo.Id}");
+
+        // The order is committed before calling the external gateway. SMS failures are returned as
+        // a per-recipient result and must not make the client retry work-order creation.
+        WorkOrderSmsResult? smsResult = dto.SendSms
+            ? await _sms.SendNewWorkOrderAsync(wo, users)
+            : null;
+
         await _notify.BroadcastChangedAsync("workorders");
-        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1 });
+        return Ok(new { id = wo.Id, number = wo.Number, occurrenceCount = added + 1, sms = smsResult });
     }
 
     /// <summary>ویرایش دستور کار باز توسط دستوردهنده — عنوان، شرح، مهلت و گیرندگان.</summary>
