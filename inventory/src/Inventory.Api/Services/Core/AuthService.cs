@@ -105,17 +105,14 @@ public class AuthService : IAuthService
                     .Where(p => (p.Module != "SystemUsers" && p.Module != "Settings" && p.Module != "DocArchive" && p.Module != "ItRequests")
                                 || p.Module == "Dashboards" || p.Module == "ReportPages"
                                 || (p.Module == "ItRequests" && (p.Action == "Create" || p.Action == "ViewDepartment"))
-                                || (p.Module == "LeaveRequests" && p.Action == "Request")
-                                || (p.Module == "Attendance" && p.Action == "SelfCheckin"))
+                                )
                     .Select(p => p.Module + "." + p.Action).ToListAsync(),
                 // سایر نقش‌های قدیمی: پنل معرف + کارتابل شخصی منابع انسانی
                 // + صفحه‌های شخصی (کارتابل من / بایگانی شخصی / داشبورد من) که برای همهٔ کاربران است
                 _ => await _db.Permissions.Where(p => p.Module == "ReferrerPanel"
                                                       || p.Module == "MyCartable"
                                                       || p.Module == "MyArchive"
-                                                      || p.Module == "MyDashboards"
-                                                      || (p.Module == "LeaveRequests" && p.Action == "Request")
-                                                      || (p.Module == "Attendance" && p.Action == "SelfCheckin"))
+                                                      || p.Module == "MyDashboards")
                     .Select(p => p.Module + "." + p.Action).ToListAsync()
             };
         }

@@ -323,27 +323,8 @@ public static class RbacSeeder
             db.RolePermissions.Add(new RolePermission { RoleId = hrManagerRole.Id, PermissionId = perm.Id });
         await db.SaveChangesAsync();
 
-        // ================== دسترسی پیش‌فرض منابع انسانی برای نقش‌های موجود ==================
-        // نقش‌های Operator / Accountant / Referrer هم باید بتوانند برای خودشان درخواست مرخصی و ورود/خروج ثبت کنند
-        // (مگر اینکه مدیر بعداً این دسترسی را از صفحه‌ی نقش‌ها و دسترسی‌ها حذف کند).
-        var defaultHrAccessRoleNames = new[] { "Operator", "Accountant", "Referrer" };
-        var defaultHrRoles = await db.Roles.Where(r => defaultHrAccessRoleNames.Contains(r.Name)).ToListAsync();
-        var defaultHrPerms = await db.Permissions
-            .Where(p => (p.Module == "LeaveRequests" && p.Action == "Request") ||
-                        (p.Module == "Attendance" && p.Action == "SelfCheckin") ||
-                        (p.Module == "FaAtt" && (p.Action == "Read" || p.Action == "Create")) ||
-                        (p.Module == "FaPay" && p.Action == "Read") ||
-                        (p.Module == "FaLms" && (p.Action == "Read" || p.Action == "Create")) ||
-                        (p.Module == "FaCom" && (p.Action == "Read" || p.Action == "Create"))).ToListAsync();
-        foreach (var perm in defaultHrPerms)
-        {
-            var existingRp = await db.RolePermissions
-                .Where(rp => rp.PermissionId == perm.Id && defaultHrRoles.Select(r => r.Id).Contains(rp.RoleId))
-                .Select(rp => rp.RoleId).ToListAsync();
-            foreach (var r in defaultHrRoles.Where(r => !existingRp.Contains(r.Id)))
-                db.RolePermissions.Add(new RolePermission { RoleId = r.Id, PermissionId = perm.Id });
-        }
-        await db.SaveChangesAsync();
+        // دسترسی‌های منابع انسانی فقط از RolePermissions انتخاب‌شده توسط مدیر اعمال می‌شوند.
+        // برای نقش‌های Operator/Accountant/Referrer هیچ دسترسی HR خودکار اضافه نمی‌شود.
 
         // ================== پیام‌رسان سازمانی — دسترسی پیش‌فرض برای همهٔ نقش‌های فعال ==================
         // پرمیشن‌های جدید چت فقط به Admin داده می‌شوند؛ برای حفظ رفتار فعلی (همه بتوانند چت کنند)
