@@ -22,6 +22,8 @@ public interface IMoadianClientService
     Task<MoadianInvoice> GetInvoiceAsync(int id);
     Task<MoadianInvoice> CreateManualAsync(MoadianInvoiceRequest req);
     Task<MoadianInvoice> CreateFromFacInvoiceAsync(int facInvoiceId);
+    Task<MoadianInvoice> CreateFromOperationsTransactionAsync(int transactionId);
+    Task<MoadianInvoice> UpdateDraftAsync(int id, MoadianInvoiceRequest req);
     Task DeleteInvoiceAsync(int id);
 
     Task<MoadianInvoice> EnqueueAsync(int id);
@@ -70,6 +72,10 @@ public class MoadianClientService : IMoadianClientService
         => _api.PostAsync<MoadianInvoice>("api/moadian/invoices", req);
     public Task<MoadianInvoice> CreateFromFacInvoiceAsync(int facInvoiceId)
         => _api.PostAsync<MoadianInvoice>($"api/moadian/invoices/from-fac/{facInvoiceId}", new { });
+    public Task<MoadianInvoice> CreateFromOperationsTransactionAsync(int transactionId)
+        => _api.PostAsync<MoadianInvoice>($"api/moadian/invoices/from-operations/{transactionId}", new { });
+    public Task<MoadianInvoice> UpdateDraftAsync(int id, MoadianInvoiceRequest req)
+        => _api.PutAsync<MoadianInvoice>($"api/moadian/invoices/{id}", req);
     public Task DeleteInvoiceAsync(int id) => _api.DeleteAsync($"api/moadian/invoices/{id}");
 
     public Task<MoadianInvoice> EnqueueAsync(int id)

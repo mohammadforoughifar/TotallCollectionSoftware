@@ -1882,7 +1882,7 @@
     private AccSection acc = AccSection.None;  // بخش بازِ مودال تسک
     private string quickTitle = "";
     private string quickType = "Feature";
-    private int quickPriority = 1, quickAssigneeId, quickStatusId;
+    private int quickPriority = 1, quickAssigneeId;
     private bool quickSaving, setupSaving;
 
     // task modal
@@ -2943,7 +2943,6 @@
         try
         {
             int? statusId = forceStatusId
-                ?? (quickStatusId > 0 ? quickStatusId : (int?)null)
                 ?? lookups.Statuses.FirstOrDefault(x => x.IsInitial)?.Id
                 ?? lookups.Statuses.FirstOrDefault()?.Id;
 

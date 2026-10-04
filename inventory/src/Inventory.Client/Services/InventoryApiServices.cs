@@ -203,6 +203,17 @@ public class OrderService : IOrderService
         return _api.GetAsync<PagedResult<Order>>(q);
     }
 
+    public Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
+        int? partyId = null, int? warehouseId = null)
+    {
+        var q = $"api/operations/reports/orders?type={(int)type}";
+        if (from.HasValue) q += $"&from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += $"&to={to.Value:yyyy-MM-dd}";
+        if (partyId is > 0) q += $"&partyId={partyId}";
+        if (warehouseId is > 0) q += $"&warehouseId={warehouseId}";
+        return _api.GetAsync<OperationsOrderReportDto>(q);
+    }
+
     public Task<Order?> GetAsync(int id)
         => _api.GetAsync<Order?>($"api/orders/{id}");
 
@@ -257,6 +268,14 @@ public class DashboardService : IDashboardService
 
     public Task<DashboardSummary> GetSummaryAsync()
         => _api.GetAsync<DashboardSummary>("api/dashboard");
+
+    public Task<OperationsDashboardDto> GetOperationsDashboardAsync(DateTime? from = null, DateTime? to = null)
+    {
+        var q = "api/operations/reports/dashboard";
+        if (from.HasValue) q += $"?from={from.Value:yyyy-MM-dd}";
+        if (to.HasValue) q += (q.Contains('?') ? "&" : "?") + $"to={to.Value:yyyy-MM-dd}";
+        return _api.GetAsync<OperationsDashboardDto>(q);
+    }
 
     public Task<List<RecentActivity>> GetRecentAsync(int count = 8)
         => _api.GetAsync<List<RecentActivity>>($"api/dashboard/recent?count={count}");

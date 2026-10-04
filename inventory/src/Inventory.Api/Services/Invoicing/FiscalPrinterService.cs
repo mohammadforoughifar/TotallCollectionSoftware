@@ -157,6 +157,8 @@ public class FiscalPrinterService : IFiscalPrinterService
         sb.AppendLine(Center($"شناسه مالیاتی: {inv.TaxId}"));
         if (!string.IsNullOrWhiteSpace(inv.EconomicCode)) sb.AppendLine(Center($"کد اقتصادی: {inv.EconomicCode}"));
         sb.AppendLine(Divider());
+        // No submission can be verified by this build; even legacy statuses do not authorize an official QR.
+        sb.AppendLine(Center("*** پیش‌نویس داخلی — صورتحساب/رسید رسمی نیست ***"));
         sb.AppendLine(Center($"** {kindFa} **"));
         sb.AppendLine(Center($"شماره: {Fa.Digits(inv.Number.ToString("D6"))}   تاریخ: {faDate}"));
         if (inv.TrackingId is not null) sb.AppendLine(Center($"پیگیری: {inv.TrackingId}"));
@@ -185,8 +187,8 @@ public class FiscalPrinterService : IFiscalPrinterService
         sb.AppendLine(Row("*** مبلغ قابل پرداخت ***", inv.TotalNet));
         sb.AppendLine(Divider());
 
-        // ----- QR -----
-        var qr = QrContent(inv);
+        // No QR is emitted until the official payload/QR specification is verified.
+        string? qr = null;
 
         // ----- پابرگ -----
         if (!string.IsNullOrWhiteSpace(setting.FooterLines))
@@ -196,23 +198,15 @@ public class FiscalPrinterService : IFiscalPrinterService
         }
         sb.AppendLine(Center("*** سپاس از خرید شما ***"));
 
-        var html = BuildPreviewHtml(inv, kindFa, faDate, qr);
+        var html = BuildPreviewHtml(inv, kindFa, faDate);
         return new FiscalPrintResult
         {
             Success = true,
-            Message = "رسید آماده چاپ است.",
+            Message = "برگهٔ داخلیِ پیش‌نویس آماده چاپ است؛ سند رسمی نیست.",
             TicketText = sb.ToString(),
             PreviewHtml = html,
             QrContent = qr
         };
-    }
-
-    private static string QrContent(Db.MoadianInvoice inv)
-    {
-        // JSON استاندارد QR فاکتور الکترونیکی (برای استعلام در سامانه)
-        // {"m":{"i":<taxid>,"n":<number>,"d":<yyyyMMdd>,"f":<pattern>},"s":<uid>}
-        var inner = $"{{\"i\":\"{inv.TaxId}\",\"n\":\"{inv.Number}\",\"d\":\"{inv.Date:yyyyMMdd}\",\"f\":{(int)inv.Kind}}}";
-        return $"{{\"m\":{inner},\"s\":\"{inv.ReferenceId ?? string.Empty}\"}}";
     }
 
     private static byte[] BuildPosBytes(string ticket, int copies, bool cut)
@@ -251,7 +245,7 @@ public class FiscalPrinterService : IFiscalPrinterService
         _ => ""
     };
 
-    private static string BuildPreviewHtml(Db.MoadianInvoice inv, string kindFa, string faDate, string qr)
+    private static string BuildPreviewHtml(Db.MoadianInvoice inv, string kindFa, string faDate)
     {
         var rows = new StringBuilder();
         foreach (var l in inv.Lines.OrderBy(x => x.RowNo))
@@ -265,6 +259,7 @@ public class FiscalPrinterService : IFiscalPrinterService
         }
 
         return "<div style='direction:rtl;font-family:Tahoma,Arial,sans-serif;font-size:11px;color:#111;max-width:300px;margin:0 auto;border:1px dashed #999;padding:10px;background:#fff'>"
+            + "<div style='text-align:center;color:#b45309;border:1px solid #f59e0b;padding:4px;font-weight:bold'>پیش‌نویس داخلی — سند رسمی نیست</div>"
             + "<div style='text-align:center;font-weight:bold;font-size:13px'>" + ServerH(inv.SellerName) + "</div>"
             + "<div style='text-align:center'>شماره مالیاتی: " + ServerH(inv.TaxId) + "</div>"
             + "<div style='text-align:center'>کد اقتصادی: " + ServerH(inv.EconomicCode ?? "—") + "</div>"

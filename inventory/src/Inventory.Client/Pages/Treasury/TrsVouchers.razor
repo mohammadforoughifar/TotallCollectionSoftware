@@ -109,6 +109,7 @@ else
                             <th>نوع</th>
                             <th>تاریخ</th>
                             <th>طرف حساب / حساب</th>
+                            <th>فاکتورهای مرتبط</th>
                             <th>شرح</th>
                             <th class="text-center">نقد</th>
                             <th class="text-center">چک</th>
@@ -140,6 +141,24 @@ else
                                     else
                                     {
                                         <span>@(row.PartyName ?? "—")</span>
+                                    }
+                                </td>
+                                <td class="fs-8">
+                                    @if (row.InvoiceAllocations.Count == 1)
+                                    {
+                                        <a href="@($"/fac/invoices/edit/{row.InvoiceAllocations[0].InvoiceId}")">
+                                            <span class="num">#@row.InvoiceAllocations[0].InvoiceNumber.Num()</span>
+                                        </a>
+                                        <div class="text-muted num">@row.InvoiceAllocations[0].Amount.Money()</div>
+                                    }
+                                    else if (row.InvoiceAllocations.Count > 1)
+                                    {
+                                        <span class="badge badge-soft-info" title="@InvoiceSummary(row)">@row.InvoiceAllocations.Count.Num() فاکتور</span>
+                                        <div class="text-muted num">@row.InvoiceAllocations.Sum(a => a.Amount).Money()</div>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
                                     }
                                 </td>
                                 <td class="fs-8 text-muted text-truncate" style="max-width:200px">@row.Description</td>
@@ -224,6 +243,10 @@ else
                     {
                         <div class="m-card-row"><span>شرح</span><span>@row.Description</span></div>
                     }
+                    @if (row.InvoiceAllocations.Count > 0)
+                    {
+                        <div class="m-card-row"><span>فاکتورها</span><span>@InvoiceSummary(row)</span></div>
+                    }
                     @if (row.ChequeAmount > 0)
                     {
                         <div class="m-card-row"><span>چک</span><span class="num">@row.ChequeAmount.Money()</span></div>
@@ -265,6 +288,24 @@ else
     private bool loading = true;
 
     private int PageCount => total == 0 ? 1 : (int)Math.Ceiling(total / (double)pageSize);
+
+    private static string InvoiceSummary(TrsVoucher voucher)
+    {
+        if (voucher.InvoiceAllocations.Count == 0) return "—";
+        if (voucher.InvoiceAllocations.Count == 1)
+        {
+            var allocation = voucher.InvoiceAllocations[0];
+            var kindTitle = allocation.InvoiceKind switch
+            {
+                InvoiceKind.Sale => "فروش",
+                InvoiceKind.Purchase => "خرید",
+                InvoiceKind.PurchaseReturn => "برگشت از خرید",
+                _ => "برگشت از فروش"
+            };
+            return $"{kindTitle} #{allocation.InvoiceNumber.Num()} — {allocation.Amount.Money()}";
+        }
+        return string.Join("، ", voucher.InvoiceAllocations.Select(a => $"#{a.InvoiceNumber.Num()} ({a.Amount.Money()})"));
+    }
 
     protected override async Task OnInitializedAsync()
     {

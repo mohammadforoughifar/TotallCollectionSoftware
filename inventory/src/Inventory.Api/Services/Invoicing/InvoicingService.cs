@@ -1,8 +1,10 @@
 using Inventory.Api.Services;
 using Inventory.Api.Services.Accounting;
+using Inventory.Api.Services.Treasury;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Db = Inventory.Api.Data;
 
 namespace Inventory.Api.Services.Invoicing;
@@ -20,12 +22,17 @@ public class InvoicingService : IInvoicingService
     private readonly Db.AppDbContext _db;
     private readonly IWarehousingService _wh;
     private readonly IAccountingService _acc;
+    private readonly IMoadianService _moadian;
+    private readonly ILogger<InvoicingService> _log;
 
-    public InvoicingService(Db.AppDbContext db, IWarehousingService wh, IAccountingService acc)
+    public InvoicingService(Db.AppDbContext db, IWarehousingService wh, IAccountingService acc,
+        IMoadianService moadian, ILogger<InvoicingService> log)
     {
         _db = db;
         _wh = wh;
         _acc = acc;
+        _moadian = moadian;
+        _log = log;
     }
 
     // =====================================================================
@@ -80,6 +87,7 @@ public class InvoicingService : IInvoicingService
             r.Inv.InvDocId is not null && docNumbers.ContainsKey(r.Inv.InvDocId.Value) ? docNumbers[r.Inv.InvDocId.Value] : null,
             r.Inv.VoucherId is not null && vNumbers.ContainsKey(r.Inv.VoucherId.Value) ? vNumbers[r.Inv.VoucherId.Value] : null))
             .ToList();
+        await FillSettlementBalancesAsync(items);
 
         return new PagedResult<FacInvoice> { Items = items, TotalCount = total };
     }
@@ -99,6 +107,7 @@ public class InvoicingService : IInvoicingService
             : await _db.AccVouchers.AsNoTracking().Where(v => v.Id == e.VoucherId).Select(v => (int?)v.Number).FirstOrDefaultAsync();
 
         var dto = Map(e, e.Party?.Name, e.Warehouse?.Name, e.Lines.Count, e.Lines.Sum(l => l.Quantity), docNumber, voucherNumber);
+        await FillSettlementBalancesAsync(new List<FacInvoice> { dto });
 
         // موجودی فعلی هر کالا در انبار فاکتور
         var productIds = e.Lines.Select(l => l.ProductId).Distinct().ToList();
@@ -126,6 +135,112 @@ public class InvoicingService : IInvoicingService
         }).ToList();
 
         return dto;
+    }
+
+    /// <summary>ماندهٔ فاکتور از روی تخصیص‌های قطعی، پس از کسر چک‌های برگشتی/باطل‌شده محاسبه می‌شود.</summary>
+    private async Task FillSettlementBalancesAsync(List<FacInvoice> invoices)
+    {
+        if (invoices.Count == 0) return;
+
+        var creditIds = invoices
+            .Where(i => i.Status == InvoiceStatus.Confirmed && i.Settlement == SettlementType.Credit)
+            .Select(i => i.Id).Where(id => id > 0).Distinct().ToList();
+        var settled = new Dictionary<int, decimal>();
+
+        if (creditIds.Count > 0)
+        {
+            var allocationVoucherIds = new List<int>();
+            foreach (var idChunk in creditIds.Chunk(1000))
+            {
+                var found = await _db.TrsInvoiceAllocations.AsNoTracking()
+                    .Where(a => idChunk.Contains(a.InvoiceId)
+                                && a.TrsVoucher != null
+                                && a.TrsVoucher.Status == TreasuryStatus.Confirmed)
+                    .Select(a => a.TrsVoucherId).Distinct().ToListAsync();
+                allocationVoucherIds.AddRange(found);
+            }
+            allocationVoucherIds = allocationVoucherIds.Distinct().ToList();
+
+            var sources = new List<InvoiceSettlementSource>();
+            // A bounced cheque can affect a voucher split across several invoices; load all rows
+            // for those vouchers before calculating each invoice's proportional reversal.
+            foreach (var voucherChunk in allocationVoucherIds.Chunk(1000))
+            {
+                var allocationRows = await _db.TrsInvoiceAllocations.AsNoTracking()
+                    .Where(a => voucherChunk.Contains(a.TrsVoucherId))
+                    .Select(a => new
+                    {
+                        a.TrsVoucherId,
+                        a.InvoiceId,
+                        a.Amount,
+                        VoucherTotal = a.TrsVoucher!.TotalAmount
+                    })
+                    .ToListAsync();
+                sources.AddRange(allocationRows.Select(a => new InvoiceSettlementSource
+                {
+                    VoucherId = a.TrsVoucherId,
+                    InvoiceId = a.InvoiceId,
+                    Amount = a.Amount,
+                    VoucherTotal = a.VoucherTotal
+                }));
+            }
+
+            // سازگاری با داده‌های قدیمی که هنوز پیوندشان فقط در TrsVouchers.InvoiceId است.
+            foreach (var idChunk in creditIds.Chunk(1000))
+            {
+                var legacyRows = await _db.TrsVouchers.AsNoTracking()
+                    .Where(v => v.InvoiceId.HasValue
+                                && idChunk.Contains(v.InvoiceId.Value)
+                                && v.Status == TreasuryStatus.Confirmed
+                                && !v.InvoiceAllocations.Any())
+                    .Select(v => new { VoucherId = v.Id, InvoiceId = v.InvoiceId!.Value, v.TotalAmount })
+                    .ToListAsync();
+                sources.AddRange(legacyRows.Select(v => new InvoiceSettlementSource
+                {
+                    VoucherId = v.VoucherId,
+                    InvoiceId = v.InvoiceId,
+                    Amount = v.TotalAmount,
+                    VoucherTotal = v.TotalAmount
+                }));
+            }
+
+            if (sources.Count > 0)
+            {
+                var voucherIds = sources.Select(s => s.VoucherId).Distinct().ToList();
+                var reversed = new Dictionary<int, decimal>();
+                foreach (var voucherChunk in voucherIds.Chunk(1000))
+                {
+                    var reversedRows = await _db.TrsCheques.AsNoTracking()
+                        .Where(c => c.TrsVoucherId.HasValue
+                                    && voucherChunk.Contains(c.TrsVoucherId.Value)
+                                    && (c.Status == ChequeStatus.Bounced || c.Status == ChequeStatus.Cancelled))
+                        .GroupBy(c => c.TrsVoucherId!.Value)
+                        .Select(g => new { VoucherId = g.Key, Amount = g.Sum(c => c.Amount) })
+                        .ToListAsync();
+                    foreach (var row in reversedRows) reversed[row.VoucherId] = row.Amount;
+                }
+                settled = InvoiceSettlementMath.Calculate(sources, reversed);
+            }
+        }
+
+        foreach (var invoice in invoices)
+        {
+            if (invoice.Status != InvoiceStatus.Confirmed)
+            {
+                invoice.SettledAmount = 0;
+                invoice.RemainingAmount = Math.Max(0, invoice.TotalNet);
+            }
+            else if (invoice.Settlement == SettlementType.Cash)
+            {
+                invoice.SettledAmount = invoice.TotalNet;
+                invoice.RemainingAmount = 0;
+            }
+            else
+            {
+                invoice.SettledAmount = Math.Min(invoice.TotalNet, settled.GetValueOrDefault(invoice.Id));
+                invoice.RemainingAmount = Math.Max(0, invoice.TotalNet - invoice.SettledAmount);
+            }
+        }
     }
 
     public async Task<FacInvoice> NewInvoiceAsync(InvoiceKind kind)
@@ -214,7 +329,14 @@ public class InvoicingService : IInvoicingService
 
             if (entity.Status != InvoiceStatus.Draft)
                 throw new InvalidOperationException("فقط فاکتور پیش‌نویس قابل ویرایش است.");
+            await EnsureNoLinkedMoadianInvoiceAsync(entity.Id);
         }
+
+        var originalLineQuantities = entity.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
+        if (lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)
+                            && (!originalLineQuantities.TryGetValue(l.Id, out var original)
+                                || original.ProductId != l.ProductId || original.Quantity != l.Quantity)))
+            throw new InvalidOperationException("مقدار هر قلم حداکثر تا دو رقم اعشار قابل ثبت است؛ مقدار قدیمیِ بدون تغییر قابل حفظ است.");
 
         // شماره تکراری در همان نوع فاکتور
         if (await _db.FacInvoices.AnyAsync(i => i.Kind == entity.Kind && i.Number == entity.Number && i.Id != entity.Id))
@@ -369,6 +491,18 @@ public class InvoicingService : IInvoicingService
         e.ConfirmedAt = DateTime.Now;
 
         await _db.SaveChangesAsync();
+        if (e.Kind is InvoiceKind.Sale or InvoiceKind.SaleReturn)
+        {
+            try
+            {
+                await _moadian.CreateFromFacInvoiceIfEnabledAsync(e.Id, user);
+            }
+            catch (Exception ex)
+            {
+                // Failure to prepare a tax draft must never undo or block the ordinary ERP sale.
+                _log.LogWarning(ex, "Could not create an optional Moadian draft for ERP invoice {InvoiceId}", e.Id);
+            }
+        }
         return (await GetInvoiceAsync(e.Id))!;
     }
 
@@ -379,7 +513,9 @@ public class InvoicingService : IInvoicingService
 
         if (e.Status != InvoiceStatus.Confirmed)
             throw new InvalidOperationException("فقط فاکتور قطعی به پیش‌نویس برمی‌گردد.");
+        await EnsureNoLinkedMoadianInvoiceAsync(e.Id);
 
+        await EnsureNoActiveTreasurySettlementsAsync(e.Id);
         await ReverseDocumentsAsync(e, user);
 
         e.Status = InvoiceStatus.Draft;
@@ -398,6 +534,8 @@ public class InvoicingService : IInvoicingService
         if (e.Status == InvoiceStatus.Cancelled)
             throw new InvalidOperationException("این فاکتور قبلاً ابطال شده است.");
 
+        await EnsureNoLinkedMoadianInvoiceAsync(e.Id);
+        await EnsureNoActiveTreasurySettlementsAsync(e.Id);
         await ReverseDocumentsAsync(e, user);
 
         e.Status = InvoiceStatus.Cancelled;
@@ -412,10 +550,35 @@ public class InvoicingService : IInvoicingService
 
         if (e.Status == InvoiceStatus.Confirmed)
             throw new InvalidOperationException("ابتدا فاکتور را از حالت قطعی خارج کنید.");
+        await EnsureNoLinkedMoadianInvoiceAsync(e.Id);
+        if (await _db.TrsInvoiceAllocations.AnyAsync(a => a.InvoiceId == e.Id)
+            || await _db.TrsVouchers.AnyAsync(v => v.InvoiceId == e.Id))
+            throw new InvalidOperationException("این فاکتور در سوابق دریافت/پرداخت خزانه استفاده شده است؛ برای حفظ سابقه قابل حذف نیست.");
 
         _db.FacInvoiceLines.RemoveRange(e.Lines);
         _db.FacInvoices.Remove(e);
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>تا حذف پیش‌نویس پیوندخوردهٔ مودیان، تغییر منبع ERP مجاز نیست تا سند مالیاتی کهنه نماند.</summary>
+    private async Task EnsureNoLinkedMoadianInvoiceAsync(int invoiceId)
+    {
+        if (await _db.MoadianInvoices.AnyAsync(i => i.FacInvoiceId == invoiceId && i.Status != MoadianInvoiceStatus.Voided))
+            throw new InvalidOperationException("ابتدا پیش‌نویس پیوندخوردهٔ مودیان را حذف کنید؛ سپس فاکتور ERP را ویرایش، ابطال یا حذف کنید.");
+    }
+
+    /// <summary>فاکتور دارای سند خزانهٔ فعال نباید از دفاتر حذف یا از قطعیت خارج شود.</summary>
+    private async Task EnsureNoActiveTreasurySettlementsAsync(int invoiceId)
+    {
+        var hasAllocations = await _db.TrsInvoiceAllocations
+            .AnyAsync(a => a.InvoiceId == invoiceId && a.TrsVoucher!.Status != TreasuryStatus.Cancelled);
+        var hasLegacySettlement = await _db.TrsVouchers
+            .AnyAsync(v => v.InvoiceId == invoiceId
+                           && v.Status != TreasuryStatus.Cancelled
+                           && !v.InvoiceAllocations.Any());
+        if (hasAllocations || hasLegacySettlement)
+            throw new InvalidOperationException(
+                "برای این فاکتور سند دریافت/پرداخت خزانه وجود دارد؛ ابتدا سندهای مرتبط را ابطال یا حذف کنید، سپس فاکتور را برگردانید.");
     }
 
     /// <summary>حذف سند حسابداری فاکتور و سند انبارِ صادرشده (به‌همراه سند حسابداری آن).</summary>
@@ -743,6 +906,18 @@ public class InvoicingService : IInvoicingService
             .Include(i => i.Party).Include(i => i.Lines).ThenInclude(l => l.Product)
             .ToListAsync();
 
+        var balanceRows = confirmed.Select(i => new FacInvoice
+        {
+            Id = i.Id,
+            Status = i.Status,
+            Settlement = i.Settlement,
+            TotalNet = i.TotalNet
+        }).ToList();
+        await FillSettlementBalancesAsync(balanceRows);
+        var remainingByInvoice = balanceRows.ToDictionary(i => i.Id, i => i.RemainingAmount);
+        decimal Outstanding(Db.FacInvoice invoice)
+            => remainingByInvoice.GetValueOrDefault(invoice.Id);
+
         decimal Sum(InvoiceKind k) => confirmed.Where(i => i.Kind == k).Sum(i => i.TotalNet);
         decimal Vat(InvoiceKind k) => confirmed.Where(i => i.Kind == k).Sum(i => i.TotalVat);
 
@@ -794,10 +969,10 @@ public class InvoicingService : IInvoicingService
             DraftCount = await q.CountAsync(i => i.Status == InvoiceStatus.Draft),
             VatPayable = Vat(InvoiceKind.Sale) - Vat(InvoiceKind.SaleReturn)
                          - (Vat(InvoiceKind.Purchase) - Vat(InvoiceKind.PurchaseReturn)),
-            Receivable = confirmed.Where(i => i.Kind == InvoiceKind.Sale && i.Settlement == SettlementType.Credit).Sum(i => i.TotalNet)
-                         - confirmed.Where(i => i.Kind == InvoiceKind.SaleReturn && i.Settlement == SettlementType.Credit).Sum(i => i.TotalNet),
-            Payable = confirmed.Where(i => i.Kind == InvoiceKind.Purchase && i.Settlement == SettlementType.Credit).Sum(i => i.TotalNet)
-                      - confirmed.Where(i => i.Kind == InvoiceKind.PurchaseReturn && i.Settlement == SettlementType.Credit).Sum(i => i.TotalNet),
+            Receivable = confirmed.Where(i => i.Kind == InvoiceKind.Sale && i.Settlement == SettlementType.Credit).Sum(Outstanding)
+                         - confirmed.Where(i => i.Kind == InvoiceKind.SaleReturn && i.Settlement == SettlementType.Credit).Sum(Outstanding),
+            Payable = confirmed.Where(i => i.Kind == InvoiceKind.Purchase && i.Settlement == SettlementType.Credit).Sum(Outstanding)
+                      - confirmed.Where(i => i.Kind == InvoiceKind.PurchaseReturn && i.Settlement == SettlementType.Credit).Sum(Outstanding),
             GrossProfit = netSales - cogs,
             TopProducts = topProducts,
             TopParties = topParties

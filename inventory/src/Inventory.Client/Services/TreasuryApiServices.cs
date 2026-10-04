@@ -59,6 +59,10 @@ public class TrsVoucherService : ITrsVoucherService
     public Task<TrsVoucher> NewSettlementAsync(int invoiceId)
         => _api.GetAsync<TrsVoucher>($"api/trs/vouchers/settle/{invoiceId}");
 
+    public Task<List<TrsSettlementInvoice>> GetOpenInvoicesAsync(int partyId, TreasuryKind kind)
+        => _api.GetAsync<List<TrsSettlementInvoice>>(
+            $"api/trs/vouchers/open-invoices?partyId={partyId}&kind={kind}");
+
     public Task<TrsVoucher> SaveAsync(TrsVoucher voucher)
         => _api.PostAsync<TrsVoucher>("api/trs/vouchers", voucher);
 

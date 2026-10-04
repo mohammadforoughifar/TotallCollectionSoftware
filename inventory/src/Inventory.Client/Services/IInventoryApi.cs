@@ -93,6 +93,8 @@ public interface IStockService
 public interface IOrderService
 {
     Task<PagedResult<Order>> GetOrdersAsync(TransactionType type, DateTime? from = null, DateTime? to = null, int? partyId = null, int? warehouseId = null, int page = 1, int pageSize = 20);
+    Task<OperationsOrderReportDto> GetReportSummaryAsync(TransactionType type, DateTime? from = null, DateTime? to = null,
+        int? partyId = null, int? warehouseId = null);
     Task<Order?> GetAsync(int id);
     Task<Order> CreateAsync(OrderCommand cmd);
     Task<Order> UpdateAsync(int id, OrderCommand cmd);
@@ -115,6 +117,7 @@ public interface IReportService
 public interface IDashboardService
 {
     Task<DashboardSummary> GetSummaryAsync();
+    Task<OperationsDashboardDto> GetOperationsDashboardAsync(DateTime? from = null, DateTime? to = null);
     Task<List<RecentActivity>> GetRecentAsync(int count = 8);
     Task<AdminDashboard> GetAdminDashboardAsync();
     Task ClearChequeAsync(int chequeId);

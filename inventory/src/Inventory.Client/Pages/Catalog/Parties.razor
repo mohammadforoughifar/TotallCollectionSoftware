@@ -163,6 +163,17 @@
         </div>
         @if (type == PartyType.Customer)
         {
+            <div class="col-md-6">
+                <label class="form-label">شناسه ملی خریدار</label>
+                <input class="form-control" dir="ltr" inputmode="numeric" maxlength="14" @bind="form.TaxId" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">کد پستی خریدار</label>
+                <input class="form-control" dir="ltr" inputmode="numeric" @bind="form.PostalCode" />
+            </div>
+        }
+        @if (type == PartyType.Customer)
+        {
             <div class="col-12">
                 <label class="form-label">معرف</label>
                 <select class="form-select" @bind="referrerIdStr">
@@ -262,7 +273,7 @@
     private async Task OpenEdit(Party p)
     {
         if (type == PartyType.Customer) await LoadReferrers();
-        form = new Party { Id = p.Id, Type = p.Type, Name = p.Name, Mobile = p.Mobile, Phone = p.Phone, Address = p.Address, Note = p.Note, IsActive = p.IsActive, ReferrerId = p.ReferrerId };
+        form = new Party { Id = p.Id, Type = p.Type, Name = p.Name, Mobile = p.Mobile, Phone = p.Phone, Address = p.Address, TaxId = p.TaxId, PostalCode = p.PostalCode, Note = p.Note, IsActive = p.IsActive, ReferrerId = p.ReferrerId };
         referrerIdStr = (p.ReferrerId ?? 0).ToString();
         showModal = true;
     }

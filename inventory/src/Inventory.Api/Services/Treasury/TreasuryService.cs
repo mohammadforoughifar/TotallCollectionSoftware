@@ -1,3 +1,4 @@
+using System.Data;
 using Inventory.Api.Services;
 using Inventory.Api.Services.Accounting;
 using Inventory.Shared;
@@ -20,6 +21,20 @@ namespace Inventory.Api.Services.Treasury;
 /// </summary>
 public class TreasuryService : ITreasuryService
 {
+    private sealed class TrsInvoiceAllocationDtoWithVoucher
+    {
+        public int TrsVoucherId { get; set; }
+        public TrsInvoiceAllocationDto Allocation { get; set; } = new();
+    }
+
+    private sealed class TrsInvoiceInfo
+    {
+        public int Number { get; set; }
+        public InvoiceKind Kind { get; set; }
+        public DateTime Date { get; set; }
+        public decimal Total { get; set; }
+    }
+
     private readonly Db.AppDbContext _db;
     private readonly IAccountingService _acc;
 
@@ -293,6 +308,78 @@ public class TreasuryService : ITreasuryService
             })
             .ToListAsync();
 
+        // بارگذاریِ پیوندهای فاکتور به‌صورت جداگانه تا فهرست سندها سبک بماند.
+        var voucherIds = rows.Select(v => v.Id).ToList();
+        var allocationRows = voucherIds.Count == 0
+            ? new List<TrsInvoiceAllocationDtoWithVoucher>()
+            : await _db.TrsInvoiceAllocations.AsNoTracking()
+                .Where(a => voucherIds.Contains(a.TrsVoucherId))
+                .Select(a => new TrsInvoiceAllocationDtoWithVoucher
+                {
+                    TrsVoucherId = a.TrsVoucherId,
+                    Allocation = new TrsInvoiceAllocationDto
+                    {
+                        InvoiceId = a.InvoiceId,
+                        InvoiceNumber = a.Invoice != null ? a.Invoice.Number : 0,
+                        InvoiceKind = a.Invoice != null ? a.Invoice.Kind : InvoiceKind.Sale,
+                        InvoiceDate = a.Invoice != null ? a.Invoice.Date : DateTime.MinValue,
+                        InvoiceTotal = a.Invoice != null ? a.Invoice.TotalNet : 0,
+                        Amount = a.Amount
+                    }
+                }).ToListAsync();
+
+        var allocationGroups = allocationRows.GroupBy(a => a.TrsVoucherId)
+            .ToDictionary(g => g.Key, g => g.Select(a => a.Allocation).OrderBy(a => a.InvoiceNumber).ToList());
+        var legacyInvoiceIds = rows.Where(v => v.InvoiceId is > 0 && !allocationGroups.ContainsKey(v.Id))
+            .Select(v => v.InvoiceId!.Value).Distinct().ToList();
+        var legacyInvoiceInfo = new Dictionary<int, TrsInvoiceInfo>();
+        if (legacyInvoiceIds.Count > 0)
+        {
+            var legacyInfoRows = await _db.FacInvoices.AsNoTracking()
+                .Where(i => legacyInvoiceIds.Contains(i.Id))
+                .Select(i => new { i.Id, i.Number, i.Kind, i.Date, i.TotalNet })
+                .ToListAsync();
+            legacyInvoiceInfo = legacyInfoRows.ToDictionary(i => i.Id, i => new TrsInvoiceInfo
+            {
+                Number = i.Number,
+                Kind = i.Kind,
+                Date = i.Date,
+                Total = i.TotalNet
+            });
+        }
+
+        foreach (var row in rows)
+        {
+            if (allocationGroups.TryGetValue(row.Id, out var allocations))
+            {
+                row.InvoiceAllocations = allocations;
+                if (allocations.Count == 1)
+                {
+                    row.InvoiceId = allocations[0].InvoiceId;
+                    row.InvoiceNumber = allocations[0].InvoiceNumber;
+                }
+                else
+                {
+                    row.InvoiceId = null;
+                    row.InvoiceNumber = null;
+                }
+            }
+            else if (row.InvoiceId is > 0 && legacyInvoiceInfo.TryGetValue(row.InvoiceId.Value, out var info))
+            {
+                row.InvoiceNumber = info.Number;
+                if (row.TotalAmount > 0)
+                    row.InvoiceAllocations.Add(new TrsInvoiceAllocationDto
+                    {
+                        InvoiceId = row.InvoiceId.Value,
+                        InvoiceNumber = info.Number,
+                        InvoiceKind = info.Kind,
+                        InvoiceDate = info.Date,
+                        InvoiceTotal = info.Total,
+                        Amount = row.TotalAmount
+                    });
+            }
+        }
+
         await FillVoucherNumbersAsync(rows);
         return new PagedResult<TrsVoucher> { Items = rows, TotalCount = total };
     }
@@ -305,6 +392,7 @@ public class TreasuryService : ITreasuryService
             .Include(v => v.ToAccount)
             .Include(v => v.Lines).ThenInclude(l => l.TrsAccount)
             .Include(v => v.Lines).ThenInclude(l => l.Cheque)
+            .Include(v => v.InvoiceAllocations).ThenInclude(a => a.Invoice)
             .FirstOrDefaultAsync(v => v.Id == id);
 
         if (e is null) return null;
@@ -358,9 +446,88 @@ public class TreasuryService : ITreasuryService
             }).ToList()
         };
 
-        if (e.InvoiceId is > 0)
-            dto.InvoiceNumber = await _db.FacInvoices.Where(i => i.Id == e.InvoiceId)
-                .Select(i => (int?)i.Number).FirstOrDefaultAsync();
+        if (e.InvoiceAllocations.Count > 0)
+        {
+            dto.InvoiceAllocations = e.InvoiceAllocations.OrderBy(a => a.Invoice?.Number).Select(a => new TrsInvoiceAllocationDto
+            {
+                InvoiceId = a.InvoiceId,
+                InvoiceNumber = a.Invoice?.Number ?? 0,
+                InvoiceKind = a.Invoice?.Kind ?? InvoiceKind.Sale,
+                InvoiceDate = a.Invoice?.Date ?? DateTime.MinValue,
+                InvoiceTotal = a.Invoice?.TotalNet ?? 0,
+                Amount = a.Amount
+            }).ToList();
+
+            if (dto.InvoiceAllocations.Count == 1)
+            {
+                dto.InvoiceId = dto.InvoiceAllocations[0].InvoiceId;
+                dto.InvoiceNumber = dto.InvoiceAllocations[0].InvoiceNumber;
+            }
+            else
+            {
+                dto.InvoiceId = null;
+                dto.InvoiceNumber = null;
+            }
+        }
+        else if (e.InvoiceId is > 0)
+        {
+            var info = await _db.FacInvoices.AsNoTracking().Where(i => i.Id == e.InvoiceId)
+                .Select(i => new { i.Number, i.Kind, i.Date, i.TotalNet }).FirstOrDefaultAsync();
+            if (info is not null)
+            {
+                dto.InvoiceNumber = info.Number;
+                if (e.TotalAmount > 0)
+                    dto.InvoiceAllocations.Add(new TrsInvoiceAllocationDto
+                    {
+                        InvoiceId = e.InvoiceId.Value,
+                        InvoiceNumber = info.Number,
+                        InvoiceKind = info.Kind,
+                        InvoiceDate = info.Date,
+                        InvoiceTotal = info.TotalNet,
+                        Amount = e.TotalAmount
+                    });
+            }
+        }
+
+        if (dto.InvoiceAllocations.Count > 0)
+        {
+            var priorSettlements = await GetConfirmedInvoiceSettlementsAsync(
+                dto.InvoiceAllocations.Select(a => a.InvoiceId), e.Id);
+
+            Dictionary<int, decimal> effectiveAmounts;
+            if (e.Status == TreasuryStatus.Confirmed)
+            {
+                var reversedChequeAmount = e.Lines
+                    .Where(l => l.Method == PayMethod.Cheque && l.Cheque != null
+                                && (l.Cheque.Status == ChequeStatus.Bounced
+                                    || l.Cheque.Status == ChequeStatus.Cancelled))
+                    .Sum(l => l.Amount);
+                var currentSources = dto.InvoiceAllocations.Select(a => new InvoiceSettlementSource
+                {
+                    VoucherId = e.Id,
+                    InvoiceId = a.InvoiceId,
+                    Amount = a.Amount,
+                    VoucherTotal = e.TotalAmount
+                });
+                effectiveAmounts = InvoiceSettlementMath.Calculate(currentSources,
+                    new Dictionary<int, decimal> { [e.Id] = reversedChequeAmount });
+            }
+            else if (e.Status == TreasuryStatus.Cancelled)
+            {
+                effectiveAmounts = new Dictionary<int, decimal>();
+            }
+            else
+            {
+                effectiveAmounts = dto.InvoiceAllocations.ToDictionary(a => a.InvoiceId, a => a.Amount);
+            }
+
+            foreach (var allocation in dto.InvoiceAllocations)
+            {
+                allocation.RemainingBeforeSettlement = Math.Max(0,
+                    allocation.InvoiceTotal - priorSettlements.GetValueOrDefault(allocation.InvoiceId));
+                allocation.EffectiveAmount = effectiveAmounts.GetValueOrDefault(allocation.InvoiceId);
+            }
+        }
 
         await FillVoucherNumbersAsync(new List<TrsVoucher> { dto });
         return dto;
@@ -420,13 +587,19 @@ public class TreasuryService : ITreasuryService
 
         if (inv.Status != InvoiceStatus.Confirmed)
             throw new InvalidOperationException("فقط فاکتور قطعی قابل تسویه است.");
+        if (inv.Settlement != SettlementType.Credit)
+            throw new InvalidOperationException("فاکتور نقدی قبلاً در زمان صدور ثبت شده و در خزانه مانده‌ای برای تسویه ندارد.");
+        if (inv.PartyId is not > 0)
+            throw new InvalidOperationException("برای تسویه، فاکتور باید طرف حساب داشته باشد.");
 
-        // فروش و برگشت از خرید → پول می‌گیریم | خرید و برگشت از فروش → پول می‌دهیم
-        var kind = inv.Kind is InvoiceKind.Sale or InvoiceKind.PurchaseReturn
-            ? TreasuryKind.Receipt
-            : TreasuryKind.Payment;
-
+        // فروش و برگشت از خرید → دریافت | خرید و برگشت از فروش → پرداخت
+        var kind = KindForInvoice(inv.Kind);
         var dto = await NewVoucherAsync(kind);
+        var settled = await GetConfirmedInvoiceSettlementsAsync(new[] { inv.Id });
+        var paid = settled.GetValueOrDefault(inv.Id);
+        var remaining = Math.Max(0, inv.TotalNet - paid);
+        if (remaining <= 0)
+            throw new InvalidOperationException("این فاکتور قبلاً به‌طور کامل تسویه شده است.");
 
         dto.PartyId = inv.PartyId;
         dto.PartyName = inv.Party?.Name;
@@ -434,21 +607,156 @@ public class TreasuryService : ITreasuryService
         dto.InvoiceNumber = inv.Number;
         dto.RefNumber = inv.Number.ToString();
         dto.Description = $"تسویه {KindTitle(inv.Kind)} شماره {inv.Number}";
-
-        // مانده تسویه‌نشده فاکتور
-        var settled = await _db.TrsVouchers
-            .Where(v => v.InvoiceId == inv.Id && v.Status == TreasuryStatus.Confirmed)
-            .SumAsync(v => (decimal?)v.TotalAmount) ?? 0;
-
-        var remaining = inv.TotalNet - settled;
-        if (remaining < 0) remaining = 0;
+        dto.InvoiceAllocations.Add(new TrsInvoiceAllocationDto
+        {
+            InvoiceId = inv.Id,
+            InvoiceNumber = inv.Number,
+            InvoiceKind = inv.Kind,
+            InvoiceDate = inv.Date,
+            InvoiceTotal = inv.TotalNet,
+            RemainingBeforeSettlement = remaining,
+            EffectiveAmount = remaining,
+            Amount = remaining
+        });
 
         if (dto.Lines.Count > 0) dto.Lines[0].Amount = remaining;
         dto.TotalAmount = remaining;
         dto.CashAmount = remaining;
-
         return dto;
     }
+
+    public async Task<List<TrsSettlementInvoice>> GetOpenInvoicesAsync(int partyId, TreasuryKind kind)
+    {
+        if (partyId <= 0 || kind == TreasuryKind.Transfer) return new List<TrsSettlementInvoice>();
+
+        var invoiceKinds = kind == TreasuryKind.Receipt
+            ? new[] { InvoiceKind.Sale, InvoiceKind.PurchaseReturn }
+            : new[] { InvoiceKind.Purchase, InvoiceKind.SaleReturn };
+
+        // فقط فاکتورهای قطعیِ نسیه قابل تخصیص به دریافت/پرداخت خزانه هستند.
+        var invoices = await _db.FacInvoices.AsNoTracking()
+            .Where(i => i.PartyId == partyId
+                        && i.Status == InvoiceStatus.Confirmed
+                        && i.Settlement == SettlementType.Credit
+                        && invoiceKinds.Contains(i.Kind)
+                        && i.TotalNet > 0)
+            .OrderBy(i => i.DueDate ?? i.Date).ThenBy(i => i.Number)
+            .Select(i => new TrsSettlementInvoice
+            {
+                InvoiceId = i.Id,
+                InvoiceNumber = i.Number,
+                InvoiceKind = i.Kind,
+                InvoiceDate = i.Date,
+                DueDate = i.DueDate,
+                InvoiceTotal = i.TotalNet
+            })
+            .ToListAsync();
+
+        if (invoices.Count == 0) return invoices;
+
+        var settled = await GetConfirmedInvoiceSettlementsAsync(invoices.Select(i => i.InvoiceId).ToList());
+        foreach (var invoice in invoices)
+        {
+            invoice.SettledAmount = Math.Min(invoice.InvoiceTotal, settled.GetValueOrDefault(invoice.InvoiceId));
+            invoice.RemainingAmount = Math.Max(0, invoice.InvoiceTotal - invoice.SettledAmount);
+        }
+
+        return invoices.Where(i => i.RemainingAmount > 0).ToList();
+    }
+
+    /// <summary>
+    /// جمع تخصیص‌های اسناد قطعی را محاسبه می‌کند. برای اسناد تک‌فاکتوری قدیمی که هنوز جدول
+    /// تخصیص برایشان ساخته نشده، ستون قدیمی InvoiceId/TotalAmount نیز به‌عنوان fallback خوانده می‌شود.
+    /// </summary>
+    private async Task<Dictionary<int, decimal>> GetConfirmedInvoiceSettlementsAsync(
+        IEnumerable<int> invoiceIds, int? excludeVoucherId = null)
+    {
+        var ids = invoiceIds.Where(id => id > 0).Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<int, decimal>();
+
+        var allocationVoucherIds = new List<int>();
+        foreach (var idChunk in ids.Chunk(1000))
+        {
+            var allocationVoucherQuery = _db.TrsInvoiceAllocations.AsNoTracking()
+                .Where(a => idChunk.Contains(a.InvoiceId)
+                            && a.TrsVoucher != null
+                            && a.TrsVoucher.Status == TreasuryStatus.Confirmed);
+            if (excludeVoucherId is > 0)
+                allocationVoucherQuery = allocationVoucherQuery.Where(a => a.TrsVoucherId != excludeVoucherId.Value);
+            allocationVoucherIds.AddRange(await allocationVoucherQuery.Select(a => a.TrsVoucherId)
+                .Distinct().ToListAsync());
+        }
+        allocationVoucherIds = allocationVoucherIds.Distinct().ToList();
+
+        var sources = new List<InvoiceSettlementSource>();
+        // Load every invoice row for each relevant voucher so returned cheques can be apportioned
+        // across a multi-invoice voucher consistently, even when this call requested only one invoice.
+        foreach (var voucherChunk in allocationVoucherIds.Chunk(1000))
+        {
+            var allocationRows = await _db.TrsInvoiceAllocations.AsNoTracking()
+                .Where(a => voucherChunk.Contains(a.TrsVoucherId))
+                .Select(a => new
+                {
+                    a.TrsVoucherId,
+                    a.InvoiceId,
+                    a.Amount,
+                    VoucherTotal = a.TrsVoucher!.TotalAmount
+                })
+                .ToListAsync();
+            sources.AddRange(allocationRows.Select(a => new InvoiceSettlementSource
+            {
+                VoucherId = a.TrsVoucherId,
+                InvoiceId = a.InvoiceId,
+                Amount = a.Amount,
+                VoucherTotal = a.VoucherTotal
+            }));
+        }
+
+        foreach (var idChunk in ids.Chunk(1000))
+        {
+            var legacyQuery = _db.TrsVouchers.AsNoTracking()
+                .Where(v => v.InvoiceId.HasValue
+                            && idChunk.Contains(v.InvoiceId.Value)
+                            && v.Status == TreasuryStatus.Confirmed
+                            && !v.InvoiceAllocations.Any());
+            if (excludeVoucherId is > 0)
+                legacyQuery = legacyQuery.Where(v => v.Id != excludeVoucherId.Value);
+
+            var legacyRows = await legacyQuery
+                .Select(v => new { VoucherId = v.Id, InvoiceId = v.InvoiceId!.Value, v.TotalAmount })
+                .ToListAsync();
+            sources.AddRange(legacyRows.Select(v => new InvoiceSettlementSource
+            {
+                VoucherId = v.VoucherId,
+                InvoiceId = v.InvoiceId,
+                Amount = v.TotalAmount,
+                VoucherTotal = v.TotalAmount
+            }));
+        }
+
+        if (sources.Count == 0) return new Dictionary<int, decimal>();
+
+        var voucherIds = sources.Select(s => s.VoucherId).Distinct().ToList();
+        var reversed = new Dictionary<int, decimal>();
+        foreach (var voucherChunk in voucherIds.Chunk(1000))
+        {
+            var reversedRows = await _db.TrsCheques.AsNoTracking()
+                .Where(c => c.TrsVoucherId.HasValue
+                            && voucherChunk.Contains(c.TrsVoucherId.Value)
+                            && (c.Status == ChequeStatus.Bounced || c.Status == ChequeStatus.Cancelled))
+                .GroupBy(c => c.TrsVoucherId!.Value)
+                .Select(g => new { VoucherId = g.Key, Amount = g.Sum(c => c.Amount) })
+                .ToListAsync();
+            foreach (var row in reversedRows) reversed[row.VoucherId] = row.Amount;
+        }
+
+        return InvoiceSettlementMath.Calculate(sources, reversed);
+    }
+
+    private static TreasuryKind KindForInvoice(InvoiceKind kind)
+        => kind is InvoiceKind.Sale or InvoiceKind.PurchaseReturn
+            ? TreasuryKind.Receipt
+            : TreasuryKind.Payment;
 
     private static string KindTitle(InvoiceKind k) => k switch
     {
@@ -467,7 +775,8 @@ public class TreasuryService : ITreasuryService
         Validate(dto);
 
         var e = dto.Id > 0
-            ? await _db.TrsVouchers.Include(v => v.Lines).FirstOrDefaultAsync(v => v.Id == dto.Id)
+            ? await _db.TrsVouchers.Include(v => v.Lines).Include(v => v.InvoiceAllocations)
+                .FirstOrDefaultAsync(v => v.Id == dto.Id)
               ?? throw new InvalidOperationException("سند خزانه یافت نشد.")
             : new Db.TrsVoucher { Kind = dto.Kind, CreatedBy = user, CreatedAt = DateTime.Now };
 
@@ -475,6 +784,14 @@ public class TreasuryService : ITreasuryService
             throw new InvalidOperationException("سند قطعی قابل ویرایش نیست؛ ابتدا آن را به پیش‌نویس برگردانید.");
         if (e.Status == TreasuryStatus.Cancelled)
             throw new InvalidOperationException("سند ابطال‌شده قابل ویرایش نیست.");
+        if (dto.Id > 0 && e.Kind != dto.Kind)
+            throw new InvalidOperationException("نوع سند خزانه قابل تغییر نیست.");
+
+        var expectedTotal = dto.Kind == TreasuryKind.Transfer
+            ? dto.TotalAmount
+            : dto.Lines.Where(l => l.Amount != 0).Sum(l => l.Amount);
+        var allocations = NormalizeInvoiceAllocations(dto, expectedTotal);
+        await ValidateInvoiceAllocationsAsync(dto.Kind, dto.PartyId, allocations, expectedTotal, dto.Id);
 
         if (dto.Id == 0)
         {
@@ -493,7 +810,7 @@ public class TreasuryService : ITreasuryService
         e.PartyId = dto.Kind == TreasuryKind.Transfer ? null : (dto.PartyId is > 0 ? dto.PartyId : null);
         e.Description = Trim(dto.Description);
         e.RefNumber = Trim(dto.RefNumber);
-        e.InvoiceId = dto.InvoiceId is > 0 ? dto.InvoiceId : null;
+        e.InvoiceId = allocations.Count == 1 ? allocations[0].InvoiceId : null;
 
         if (dto.Kind == TreasuryKind.Transfer)
         {
@@ -516,15 +833,20 @@ public class TreasuryService : ITreasuryService
             await SyncLinesAsync(e, dto, user);
         }
 
+        SyncInvoiceAllocations(e, allocations);
+
         if (dto.Id == 0) _db.TrsVouchers.Add(e);
         await _db.SaveChangesAsync();
 
         return (await GetVoucherAsync(e.Id))!;
     }
 
-    /// <summary>اعتبارسنجی سند پیش از ذخیره</summary>
+    /// <summary>اعتبارسنجی عمومی سند خزانه پیش از ذخیره</summary>
     private static void Validate(TrsVoucher dto)
     {
+        if (dto.Lines is null)
+            throw new InvalidOperationException("سطرهای سند معتبر نیستند.");
+
         if (dto.Kind == TreasuryKind.Transfer)
         {
             if (dto.FromAccountId is not > 0 || dto.ToAccountId is not > 0)
@@ -533,6 +855,8 @@ public class TreasuryService : ITreasuryService
                 throw new InvalidOperationException("حساب مبدأ و مقصد نمی‌توانند یکی باشند.");
             if (dto.TotalAmount <= 0)
                 throw new InvalidOperationException("مبلغ انتقال باید بزرگ‌تر از صفر باشد.");
+            if (dto.InvoiceId is > 0 || (dto.InvoiceAllocations?.Count ?? 0) > 0)
+                throw new InvalidOperationException("انتقال بین حساب‌ها به فاکتور تخصیص داده نمی‌شود.");
             return;
         }
 
@@ -555,6 +879,131 @@ public class TreasuryService : ITreasuryService
                 if (l.DueDate is null)
                     throw new InvalidOperationException("تاریخ سررسید چک الزامی است.");
             }
+        }
+    }
+
+    /// <summary>تبدیل پیوند تک‌فاکتوری قدیمی به تخصیص جدید، بدون شکستن API قبلی.</summary>
+    private static List<TrsInvoiceAllocationDto> NormalizeInvoiceAllocations(TrsVoucher dto, decimal totalAmount)
+    {
+        var allocations = (dto.InvoiceAllocations ?? new List<TrsInvoiceAllocationDto>())
+            .Where(a => a.InvoiceId > 0 || a.Amount != 0)
+            .Select(a => new TrsInvoiceAllocationDto
+            {
+                InvoiceId = a.InvoiceId,
+                InvoiceNumber = a.InvoiceNumber,
+                InvoiceKind = a.InvoiceKind,
+                InvoiceDate = a.InvoiceDate,
+                InvoiceTotal = a.InvoiceTotal,
+                RemainingBeforeSettlement = a.RemainingBeforeSettlement,
+                Amount = a.Amount
+            })
+            .ToList();
+
+        if (allocations.Count == 0 && dto.InvoiceId is > 0 && totalAmount > 0)
+            allocations.Add(new TrsInvoiceAllocationDto
+            {
+                InvoiceId = dto.InvoiceId.Value,
+                InvoiceNumber = dto.InvoiceNumber ?? 0,
+                Amount = totalAmount
+            });
+
+        return allocations;
+    }
+
+    private static List<TrsInvoiceAllocationDto> AllocationDtos(Db.TrsVoucher voucher)
+    {
+        if (voucher.InvoiceAllocations.Count > 0)
+            return voucher.InvoiceAllocations.OrderBy(a => a.Invoice?.Number).Select(a => new TrsInvoiceAllocationDto
+            {
+                InvoiceId = a.InvoiceId,
+                InvoiceNumber = a.Invoice?.Number ?? 0,
+                InvoiceKind = a.Invoice?.Kind ?? InvoiceKind.Sale,
+                InvoiceDate = a.Invoice?.Date ?? DateTime.MinValue,
+                InvoiceTotal = a.Invoice?.TotalNet ?? 0,
+                Amount = a.Amount
+            }).ToList();
+
+        // سازگاری با سطرهای تک‌فاکتوری قدیمی قبل/حین اجرای مهاجرت.
+        return voucher.InvoiceId is > 0 && voucher.TotalAmount > 0
+            ? new List<TrsInvoiceAllocationDto>
+            {
+                new()
+                {
+                    InvoiceId = voucher.InvoiceId.Value,
+                    InvoiceNumber = voucher.InvoiceAllocations.FirstOrDefault()?.Invoice?.Number ?? 0,
+                    Amount = voucher.TotalAmount
+                }
+            }
+            : new List<TrsInvoiceAllocationDto>();
+    }
+
+    /// <summary>کنترل طرف حساب، نوع، ماندهٔ باز و سقف مبلغ تخصیص‌یافته به فاکتورها.</summary>
+    private async Task ValidateInvoiceAllocationsAsync(TreasuryKind kind, int? partyId,
+        IReadOnlyCollection<TrsInvoiceAllocationDto> allocations, decimal totalAmount, int? excludeVoucherId)
+    {
+        if (allocations.Count == 0) return;
+        if (kind == TreasuryKind.Transfer)
+            throw new InvalidOperationException("انتقال بین حساب‌ها به فاکتور تخصیص داده نمی‌شود.");
+        if (partyId is not > 0)
+            throw new InvalidOperationException("برای تخصیص به فاکتور، طرف حساب را انتخاب کنید.");
+        if (allocations.Any(a => a.InvoiceId <= 0 || a.Amount <= 0))
+            throw new InvalidOperationException("برای هر فاکتور، مبلغ تخصیص‌یافته باید بیشتر از صفر باشد.");
+        if (allocations.GroupBy(a => a.InvoiceId).Any(g => g.Count() > 1))
+            throw new InvalidOperationException("هر فاکتور فقط یک‌بار در فهرست تخصیص وارد شود.");
+
+        var allocatedTotal = allocations.Sum(a => a.Amount);
+        if (allocatedTotal > totalAmount)
+            throw new InvalidOperationException(
+                $"جمع تخصیص فاکتورها ({allocatedTotal:N0}) از جمع سند ({totalAmount:N0}) بیشتر است.");
+
+        var ids = allocations.Select(a => a.InvoiceId).Distinct().ToList();
+        var invoices = await _db.FacInvoices.AsNoTracking().Where(i => ids.Contains(i.Id))
+            .ToDictionaryAsync(i => i.Id);
+        if (invoices.Count != ids.Count)
+            throw new InvalidOperationException("یکی از فاکتورهای انتخاب‌شده یافت نشد.");
+
+        var settled = await GetConfirmedInvoiceSettlementsAsync(ids, excludeVoucherId);
+        foreach (var allocation in allocations)
+        {
+            var invoice = invoices[allocation.InvoiceId];
+            if (invoice.Status != InvoiceStatus.Confirmed)
+                throw new InvalidOperationException($"فاکتور شماره {invoice.Number} قطعی نیست و قابل تسویه نمی‌باشد.");
+            if (invoice.Settlement != SettlementType.Credit)
+                throw new InvalidOperationException($"فاکتور شماره {invoice.Number} نقدی است و ماندهٔ نسیه ندارد.");
+            if (invoice.PartyId != partyId)
+                throw new InvalidOperationException("تمام فاکتورهای یک سند تسویه باید متعلق به همان طرف حساب باشند.");
+            if (KindForInvoice(invoice.Kind) != kind)
+                throw new InvalidOperationException($"نوع دریافت/پرداخت با فاکتور شماره {invoice.Number} هم‌خوانی ندارد.");
+
+            var remaining = Math.Max(0, invoice.TotalNet - settled.GetValueOrDefault(invoice.Id));
+            if (remaining <= 0)
+                throw new InvalidOperationException($"فاکتور شماره {invoice.Number} قبلاً کامل تسویه شده است.");
+            if (allocation.Amount > remaining)
+                throw new InvalidOperationException(
+                    $"مبلغ تخصیص به فاکتور شماره {invoice.Number} ({allocation.Amount:N0}) از ماندهٔ آن ({remaining:N0}) بیشتر است.");
+        }
+    }
+
+    /// <summary>سطرهای تخصیص فاکتور را با وضعیت سند خزانه همگام می‌کند.</summary>
+    private void SyncInvoiceAllocations(Db.TrsVoucher e, IReadOnlyCollection<TrsInvoiceAllocationDto> incoming)
+    {
+        var keepInvoiceIds = incoming.Select(a => a.InvoiceId).ToHashSet();
+        var removed = e.InvoiceAllocations.Where(a => !keepInvoiceIds.Contains(a.InvoiceId)).ToList();
+        if (removed.Count > 0)
+        {
+            _db.TrsInvoiceAllocations.RemoveRange(removed);
+            foreach (var row in removed) e.InvoiceAllocations.Remove(row);
+        }
+
+        foreach (var allocation in incoming)
+        {
+            var row = e.InvoiceAllocations.FirstOrDefault(a => a.InvoiceId == allocation.InvoiceId);
+            if (row is null)
+            {
+                row = new Db.TrsInvoiceAllocation { TrsVoucher = e, InvoiceId = allocation.InvoiceId };
+                e.InvoiceAllocations.Add(row);
+            }
+            row.Amount = allocation.Amount;
         }
     }
 
@@ -666,7 +1115,12 @@ public class TreasuryService : ITreasuryService
 
     public async Task<TrsVoucher> ConfirmVoucherAsync(int id, string? user)
     {
-        var e = await _db.TrsVouchers.Include(v => v.Lines).ThenInclude(l => l.Cheque)
+        // Serializable transaction prevents two parallel confirmations from over-allocating one invoice.
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var e = await _db.TrsVouchers
+            .Include(v => v.Lines).ThenInclude(l => l.Cheque)
+            .Include(v => v.InvoiceAllocations).ThenInclude(a => a.Invoice)
             .FirstOrDefaultAsync(v => v.Id == id)
             ?? throw new InvalidOperationException("سند خزانه یافت نشد.");
 
@@ -681,6 +1135,9 @@ public class TreasuryService : ITreasuryService
             throw new InvalidOperationException("مبلغ سند باید بزرگ‌تر از صفر باشد.");
         if (e.Kind != TreasuryKind.Transfer && e.PartyId is not > 0)
             throw new InvalidOperationException("برای قطعی کردن سند، طرف حساب را مشخص کنید.");
+
+        var allocations = AllocationDtos(e);
+        await ValidateInvoiceAllocationsAsync(e.Kind, e.PartyId, allocations, e.TotalAmount, e.Id);
 
         // برداشت بیش از موجودی صندوق مجاز نیست
         if (e.Kind is TreasuryKind.Payment or TreasuryKind.Transfer)
@@ -717,6 +1174,7 @@ public class TreasuryService : ITreasuryService
         e.ConfirmedAt = DateTime.Now;
 
         await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return (await GetVoucherAsync(e.Id))!;
     }
 
@@ -911,11 +1369,40 @@ public class TreasuryService : ITreasuryService
                     desc, l.RefNumber ?? e.RefNumber, e.PartyId));
             }
 
-            // طرف حساب — به جمع سند
-            voucher.Lines.Add(Line(row, rule.PartyAccountId.Value,
-                cashDebit ? 0 : e.TotalAmount,
-                cashDebit ? e.TotalAmount : 0,
-                title, e.RefNumber, e.PartyId));
+            // طرف حساب: در تسویهٔ فاکتوری یک آرتیکل به‌ازای هر فاکتور می‌زنیم تا دفتر معین
+            // و خود سند حسابداری هم شمارهٔ فاکتور/مبلغ هر تخصیص را نگه دارد.
+            var invoiceAllocations = AllocationDtos(e);
+            if (invoiceAllocations.Count == 0)
+            {
+                voucher.Lines.Add(Line(row++, rule.PartyAccountId.Value,
+                    cashDebit ? 0 : e.TotalAmount,
+                    cashDebit ? e.TotalAmount : 0,
+                    title, e.RefNumber, e.PartyId));
+            }
+            else
+            {
+                foreach (var allocation in invoiceAllocations.OrderBy(a => a.InvoiceNumber))
+                {
+                    var invoiceTitle = allocation.InvoiceNumber > 0
+                        ? $"{KindTitle(allocation.InvoiceKind)} شماره {allocation.InvoiceNumber}"
+                        : "تخصیص فاکتور";
+                    voucher.Lines.Add(Line(row++, rule.PartyAccountId.Value,
+                        cashDebit ? 0 : allocation.Amount,
+                        cashDebit ? allocation.Amount : 0,
+                        $"تسویه {invoiceTitle} — {title}",
+                        allocation.InvoiceNumber > 0 ? allocation.InvoiceNumber.ToString() : e.RefNumber,
+                        e.PartyId));
+                }
+
+                var unapplied = e.TotalAmount - invoiceAllocations.Sum(a => a.Amount);
+                if (unapplied > 0)
+                {
+                    voucher.Lines.Add(Line(row++, rule.PartyAccountId.Value,
+                        cashDebit ? 0 : unapplied,
+                        cashDebit ? unapplied : 0,
+                        $"مبلغ تخصیص‌نیافته / پیش‌پرداخت — {title}", e.RefNumber, e.PartyId));
+                }
+            }
         }
 
         return await SaveAccVoucherAsync(voucher);
@@ -1264,10 +1751,11 @@ public class TreasuryService : ITreasuryService
     /// واگذاری (دریافتی): در جریان وصول بدهکار | اسناد دریافتنی بستانکار
     /// وصول   (دریافتی): بانک بدهکار | در جریان وصول (یا اسناد دریافتنی) بستانکار
     /// وصول   (صادره)  : اسناد پرداختنی بدهکار | بانک بستانکار
-    /// برگشت  (دریافتی): دریافتنی طرف حساب بدهکار | در جریان وصول بستانکار
-    /// برگشت  (صادره)  : بانک بدهکار | اسناد پرداختنی بستانکار  ← اثر وصول برگردانده می‌شود
+    /// برگشت  (دریافتی): دریافتنی طرف حساب بدهکار | در جریان وصول/اسناد دریافتنی بستانکار
+    /// برگشت  (صادره)  : اسناد پرداختنی بدهکار | پرداختنی طرف حساب بستانکار
+    /// واگذاری مجددِ چک برگشتی: دریافتنی طرف حساب بستانکار | در جریان وصول بدهکار
     /// خرج    (دریافتی): پرداختنی طرف حساب بدهکار | اسناد دریافتنی بستانکار
-    /// ابطال            : عکس ثبت اولیه
+    /// ابطال            : عکس ثبت اولیه؛ ابطالِ چک برگشتی اثر مالی تازه ندارد
     /// </summary>
     private async Task<int?> PostChequeActionAsync(Db.TrsCheque e, TrsChequeCommand cmd, Db.TrsRule rule,
         int? bankId, string? user)
@@ -1291,6 +1779,10 @@ public class TreasuryService : ITreasuryService
         };
         var full = $"{actionTitle} — {title}";
 
+        // A bounced cheque already reopened the party balance; cancelling it afterwards is only a status close.
+        if (cmd.Status == ChequeStatus.Cancelled && e.Status == ChequeStatus.Bounced)
+            return null;
+
         var voucher = await NewAccVoucherAsync(cmd.Date, full, e.Number, user);
         var row = 1;
 
@@ -1312,10 +1804,24 @@ public class TreasuryService : ITreasuryService
 
         switch (cmd.Status)
         {
+            case ChequeStatus.InCollection when received && e.Status == ChequeStatus.Bounced:
+                // Re-lodging a bounced customer cheque restores the party settlement and moves it to collection.
+                voucher.Lines.Add(Line(row++, collectionAcc, e.Amount, 0, full, e.Number, e.PartyId));
+                voucher.Lines.Add(Line(row, PartyAcc(), 0, e.Amount, full, e.Number, e.PartyId));
+                break;
+
             case ChequeStatus.InCollection:
                 voucher.Lines.Add(Line(row++, collectionAcc, e.Amount, 0, full, e.Number, e.PartyId));
                 voucher.Lines.Add(Line(row, chequeAcc, 0, e.Amount, full, e.Number, e.PartyId));
                 break;
+
+            case ChequeStatus.Cleared when received && e.Status == ChequeStatus.Bounced:
+            {
+                // Direct re-clear after a bounce: restore the party settlement against the bank.
+                voucher.Lines.Add(Line(row++, await BankAccAsync(), e.Amount, 0, full, e.Number, e.PartyId));
+                voucher.Lines.Add(Line(row, PartyAcc(), 0, e.Amount, full, e.Number, e.PartyId));
+                break;
+            }
 
             case ChequeStatus.Cleared when received:
             {
@@ -1324,6 +1830,12 @@ public class TreasuryService : ITreasuryService
                 voucher.Lines.Add(Line(row, source, 0, e.Amount, full, e.Number, e.PartyId));
                 break;
             }
+
+            case ChequeStatus.Cleared when !received && e.Status == ChequeStatus.Bounced:
+                // Direct re-clear after a returned issued cheque settles the reopened payable against the bank.
+                voucher.Lines.Add(Line(row++, PartyAcc(), e.Amount, 0, full, e.Number, e.PartyId));
+                voucher.Lines.Add(Line(row, await BankAccAsync(), 0, e.Amount, full, e.Number, e.PartyId));
+                break;
 
             case ChequeStatus.Cleared: // چک صادره پاس شد
                 voucher.Lines.Add(Line(row++, chequeAcc, e.Amount, 0, full, e.Number, e.PartyId));

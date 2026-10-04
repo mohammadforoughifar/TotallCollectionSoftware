@@ -49,7 +49,6 @@ public static class ErpNavigation
             E("fac/reports/summary", "گزارش فروش و خرید", "bi-bar-chart-line", "FacInvoices"),
             E("fac/rules", "تنظیمات فاکتور", "bi-gear-wide-connected", "FacInvoices")]),
         new("trs", "خزانه‌داری", "bi-bank", [
-            E("trs/vouchers", "دریافت و پرداخت", "bi-cash-coin", "TrsVouchers"),
             E("trs/cheques", "دفتر چک", "bi-card-checklist", "TrsCheques"),
             E("trs/accounts", "صندوق و بانک", "bi-wallet2", "TrsAccounts"),
             E("trs/reports/flow", "گردش صندوق و بانک", "bi-list-columns", "TrsAccounts"),
@@ -63,8 +62,7 @@ public static class ErpNavigation
             E("stk/labels", "چاپ برچسب", "bi-tags", "StkBarcodes")]),
         new("moadian", "سامانه مودیان", "bi-cloud-check", [
             E("moadian", "داشبورد مودیان", "bi-cloud-arrow-up", "Moadian"),
-            E("moadian/invoices", "فاکتورهای الکترونیکی", "bi-receipt", "Moadian"),
-            E("moadian/settings", "تنظیمات مودیان و چاپگر", "bi-sliders", "Moadian")])
+            E("moadian/invoices", "فاکتورهای الکترونیکی", "bi-receipt", "Moadian")])
     ];
     public static Section[] Visible(Func<string, bool> hasModule) => Sections
         .Select(s => s with { Items = s.Items.Where(i => i.Allowed(hasModule)).ToArray() }).Where(s => s.Items.Length > 0).ToArray();
@@ -74,6 +72,8 @@ public static class ErpNavigation
     public static bool IsWorkspace(string path)
     {
         path = Path(path);
+        // دریافت/پرداخت و تسویهٔ فاکتورها و تنظیمات مودیان از منوی اصلی «عملیات» باز می‌شوند، نه فضای کاری ERP.
+        if (At(path, "trs/vouchers") || At(path, "moadian/settings")) return false;
         return new[] { "inv", "acc", "fac", "trs", "stk", "moadian" }.Any(p => At(path, p));
     }
     public static Entry? Find(string path)

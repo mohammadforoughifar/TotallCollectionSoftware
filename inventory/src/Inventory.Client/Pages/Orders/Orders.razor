@@ -3,6 +3,7 @@
 @inject IOrderService OrderSvc
 @inject IWarehouseService WarehouseSvc
 @inject IPartyService PartySvc
+@inject IMoadianClientService MoadianSvc
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
@@ -99,6 +100,10 @@
                                 }
                                 <td class="text-end">
                                     <button class="btn btn-sm btn-light" title="مشاهده" @onclick="() => View(o)"><i class="bi bi-eye text-primary"></i></button>
+                                    @if (!isPurchase)
+                                    {
+                                        <button class="btn btn-sm btn-light" title="ساخت/بازبینی پیش‌نویس مودیان" @onclick="() => CreateMoadianDraft(o.Id)"><i class="bi bi-file-earmark-check text-success"></i></button>
+                                    }
                                     <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil text-primary"></i></button>
                                     <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(o)"><i class="bi bi-trash text-danger"></i></button>
                                 </td>
@@ -141,6 +146,10 @@
                         </div>
                         <div class="m-card-actions">
                             <button class="btn btn-light" @onclick="() => View(o)"><i class="bi bi-eye"></i> مشاهده</button>
+                            @if (!isPurchase)
+                            {
+                                <button class="btn btn-light text-success" @onclick="() => CreateMoadianDraft(o.Id)"><i class="bi bi-file-earmark-check"></i> پیش‌نویس مودیان</button>
+                            }
                             <button class="btn btn-light text-primary" @onclick="() => OpenEdit(o)"><i class="bi bi-pencil"></i> ویرایش</button>
                             <button class="btn btn-light text-danger" @onclick="() => Delete(o)"><i class="bi bi-trash"></i></button>
                         </div>
@@ -296,6 +305,8 @@
     </ChildContent>
 </Modal>
 
+<MoadianDraftModal Visible="showMoadianDraft" VisibleChanged="OnMoadianDraftVisibilityChanged" Draft="moadianDraft" />
+
 @code {
     /// <summary>دسترسی «مشاهده سود» — Orders.ViewProfit از بخش نقش‌ها و دسترسی‌ها</summary>
     private bool CanSeeProfit => Auth.Has("Orders.ViewProfit");
@@ -322,6 +333,8 @@
     private List<LookupItem> whLookup = new();
     private List<LookupItem> partyLookup = new();
     private Order? viewing;
+    private MoadianInvoice? moadianDraft;
+    private bool showMoadianDraft;
 
     protected override void OnInitialized()
     {
@@ -405,6 +418,31 @@
     }
 
     private void View(Order o) => viewing = o;
+
+    private async Task CreateMoadianDraft(int transactionId)
+    {
+        try
+        {
+            var draft = await MoadianSvc.CreateFromOperationsTransactionAsync(transactionId);
+            if (draft.Status != MoadianInvoiceStatus.Draft)
+            {
+                Toast.Error("این فاکتور دیگر پیش‌نویس نیست و از این بخش قابل ویرایش نیست.");
+                return;
+            }
+
+            moadianDraft = draft;
+            showMoadianDraft = true;
+            Toast.Success($"پیش‌نویس مودیان {draft.Number} برای بازبینی آماده است.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private Task OnMoadianDraftVisibilityChanged(bool visible)
+    {
+        showMoadianDraft = visible;
+        if (!visible) moadianDraft = null;
+        return Task.CompletedTask;
+    }
 
     private async Task Delete(Order o)
     {

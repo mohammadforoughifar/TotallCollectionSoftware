@@ -19,6 +19,14 @@ public class Party
     [MaxLength(250)]
     public string? Address { get; set; }
 
+    /// <summary>شناسه مالیاتی خریدار (کد ملی/شناسه اقتصادی)، برای صورتحساب نوع اول</summary>
+    [MaxLength(20)]
+    public string? TaxId { get; set; }
+
+    /// <summary>کد پستی خریدار (۱۰ رقم)</summary>
+    [MaxLength(20)]
+    public string? PostalCode { get; set; }
+
     public string? Note { get; set; }
     public bool IsActive { get; set; } = true;
 

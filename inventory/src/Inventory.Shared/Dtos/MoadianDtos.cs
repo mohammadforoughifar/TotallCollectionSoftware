@@ -9,6 +9,7 @@ public class MoadianSetting
 {
     public int Id { get; set; }
     public string TaxId { get; set; } = "";
+    public string? FiscalMemoryId { get; set; }
     public string? EconomicCode { get; set; }
     public string SellerName { get; set; } = "";
     public string? SellerAddress { get; set; }
@@ -17,8 +18,12 @@ public class MoadianSetting
     public string? TaxCardToken { get; set; }
     public string? BaseUrl { get; set; }
     public string? PrivateKeyPem { get; set; }
+    public string? SigningCertificatePem { get; set; }
     public string? PublicKeyPem { get; set; }
+    /// <summary>Legacy setting; server forcibly disables it.</summary>
     public bool AutoSend { get; set; }
+    public bool AutoDraftFromOperations { get; set; }
+    public bool AutoDraftFromFacInvoices { get; set; }
     public int SendIntervalMinutes { get; set; } = 5;
     public decimal DefaultVatRate { get; set; } = 9;
     public bool LoggingEnabled { get; set; } = true;
@@ -48,11 +53,24 @@ public class MoadianInvoice
 {
     public int Id { get; set; }
     public int Number { get; set; }
+    /// <summary>آیا Number در سوابق سایر دوره‌ها نیز تکرار شده است؛ null یعنی این بررسی در پاسخ انجام نشده.</summary>
+    public bool? HasDuplicateNumberAcrossPeriods { get; set; }
+    /// <summary>جهت سند داخلی؛ از نوع/الگو/موضوع رسمی مستقل است.</summary>
     public MoadianInvoiceKind Kind { get; set; } = MoadianInvoiceKind.Sale;
+    /// <summary>نوع رسمی صورتحساب (inty): نوع ۱ یا ۲.</summary>
+    public MoadianTaxInvoiceType InvoiceType { get; set; } = MoadianTaxInvoiceType.Unselected;
+    /// <summary>الگوی رسمی (inp).</summary>
+    public MoadianInvoicePattern InvoicePattern { get; set; } = MoadianInvoicePattern.Unselected;
+    /// <summary>موضوع رسمی (ins).</summary>
+    public MoadianInvoiceSubject InvoiceSubject { get; set; } = MoadianInvoiceSubject.Unselected;
+    /// <summary>شناسه مالیاتی صورتحساب مرجع برای موضوع اصلاحی/ابطالی/برگشت.</summary>
+    public string? ReferenceTaxId { get; set; }
+    /// <summary>تاریخ‌وزمان محلی صدور؛ فرمت رسمی indatim در این DTO ادعا نمی‌شود.</summary>
     public DateTime Date { get; set; }
     public int FiscalPeriodId { get; set; }
     public string? FiscalPeriodTitle { get; set; }
     public int? FacInvoiceId { get; set; }
+    public int? OperationsTransactionId { get; set; }
     public string? FacInvoiceRef { get; set; }
     public string? Settlement { get; set; }
 
@@ -94,6 +112,7 @@ public class MoadianInvoiceLine
     public int Id { get; set; }
     public int RowNo { get; set; }
     public string SstId { get; set; } = "";
+    public string? UnitCode { get; set; }
     public string SstTitle { get; set; } = "";
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
@@ -130,7 +149,18 @@ public class MoadianCpc
 /// <summary>درخواست ثبت دستی فاکتور الکترونیکی.</summary>
 public class MoadianInvoiceRequest
 {
+    public int Id { get; set; }
+    /// <summary>جهت سند داخلی؛ مستقل از فیلدهای رسمی type/pattern/subject است.</summary>
     public MoadianInvoiceKind Kind { get; set; } = MoadianInvoiceKind.Sale;
+    /// <summary>نوع رسمی صورتحساب (inty).</summary>
+    public MoadianTaxInvoiceType InvoiceType { get; set; } = MoadianTaxInvoiceType.Unselected;
+    /// <summary>الگوی رسمی صورتحساب (inp).</summary>
+    public MoadianInvoicePattern InvoicePattern { get; set; } = MoadianInvoicePattern.Unselected;
+    /// <summary>موضوع رسمی صورتحساب (ins).</summary>
+    public MoadianInvoiceSubject InvoiceSubject { get; set; } = MoadianInvoiceSubject.Unselected;
+    /// <summary>شناسه مالیاتی صورتحساب مرجع برای موضوع‌های ارجاعی.</summary>
+    public string? ReferenceTaxId { get; set; }
+    /// <summary>تاریخ‌وزمان محلی صدور؛ قالب رسمی indatim باید هنگام ساخت payload اعمال شود.</summary>
     public DateTime Date { get; set; } = DateTime.Now;
     public int FiscalPeriodId { get; set; }
     public string? BuyerTaxId { get; set; }

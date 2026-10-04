@@ -18,8 +18,11 @@ public class MoadianSetting
 {
     public int Id { get; set; }
 
-    /// <summary>شماره ملی/شناسه ملی (شماره مالیاتی فروشنده) — ۱۱ رقم</summary>
+    /// <summary>شماره مالیاتی فروشنده</summary>
     [MaxLength(20)] public string TaxId { get; set; } = "";
+
+    /// <summary>شناسه/کد حافظه مالیاتی (فرمت نهایی باید با مرجع رسمی تطبیق شود)</summary>
+    [MaxLength(20)] public string? FiscalMemoryId { get; set; }
 
     /// <summary>کد اقتصادی</summary>
     [MaxLength(20)] public string? EconomicCode { get; set; }
@@ -34,16 +37,25 @@ public class MoadianSetting
     /// <summary>شناسه کارتابل سامانه (توکن حافظه مالیاتی) — از پرتال مودیان</summary>
     [MaxLength(200)] public string? TaxCardToken { get; set; }
 
-    /// <summary>آدرس سرویس (آزمایشی/عملیاتی) — خالی = حالت شبیه‌سازی ارسال</summary>
+    /// <summary>نشانی سرویس رسمی برای اتصال آینده؛ در این نسخه فقط ذخیره می‌شود و ارسال غیرفعال است</summary>
     [MaxLength(300)] public string? BaseUrl { get; set; }
 
     /// <summary>کلید خصوصی امضای فاکتور (PEM) — از پرتال مودیان دریافت می‌شود</summary>
     public string? PrivateKeyPem { get; set; }
 
+    /// <summary>گواهی عمومی امضای مؤدی (PEM)</summary>
+    public string? SigningCertificatePem { get; set; }
+
     /// <summary>گواهی سرور/کلید عمومی (اختیاری برای اعتبارسنجی)</summary>
     public string? PublicKeyPem { get; set; }
 
-    /// <summary>ارسال خودکار صف (با سرویس پس‌زمینه)</summary>
+    /// <summary>ساخت خودکار پیش‌نویس از فروش‌های عملیات، بدون ارسال</summary>
+    public bool AutoDraftFromOperations { get; set; }
+
+    /// <summary>ساخت خودکار پیش‌نویس از فاکتورهای قطعی ERP، بدون ارسال</summary>
+    public bool AutoDraftFromFacInvoices { get; set; }
+
+    /// <summary>ارسال خودکار صف؛ همیشه باید false باقی بماند</summary>
     public bool AutoSend { get; set; }
 
     /// <summary>بازه ارسال خودکار (دقیقه)</summary>
@@ -82,21 +94,36 @@ public class MoadianInvoice
 {
     public int Id { get; set; }
 
-    /// <summary>شماره فاکتور در دوره مالیاتی — یکتا در هر دوره</summary>
+    /// <summary>شماره داخلی صورتحساب؛ برای پیش‌نویس‌های جدید به‌صورت سراسری افزایشی تخصیص می‌یابد و مبنای سریال داخلی خواهد بود. شماره‌های تاریخیِ دوره‌ای بازنویسی نمی‌شوند.</summary>
     public int Number { get; set; }
 
-    /// <summary>نوع فاکتور (فروش/فروش برگشتی/خرید/…)</summary>
+    /// <summary>جهت سند داخلی؛ مستقل از شناسه‌های رسمی inty/inp/ins.</summary>
     public MoadianInvoiceKind Kind { get; set; } = MoadianInvoiceKind.Sale;
 
-    /// <summary>تاریخ صدور (شمسی در UI، میلادی ذخیره)</summary>
+    /// <summary>نوع رسمی صورتحساب (inty).</summary>
+    public MoadianTaxInvoiceType InvoiceType { get; set; } = MoadianTaxInvoiceType.Unselected;
+
+    /// <summary>الگوی رسمی صورتحساب (inp).</summary>
+    public MoadianInvoicePattern InvoicePattern { get; set; } = MoadianInvoicePattern.Unselected;
+
+    /// <summary>موضوع رسمی صورتحساب (ins).</summary>
+    public MoadianInvoiceSubject InvoiceSubject { get; set; } = MoadianInvoiceSubject.Unselected;
+
+    /// <summary>شناسه منحصر به فرد مالیاتی صورتحساب مرجع برای موضوع‌های ارجاعی.</summary>
+    [MaxLength(22)] public string? ReferenceTaxId { get; set; }
+
+    /// <summary>تاریخ‌وزمان صدور (در UI محلی/شمسی؛ قالب رسمی indatim در payload جداگانه اعمال می‌شود).</summary>
     public DateTime Date { get; set; } = DateTime.Now;
 
     /// <summary>دوره مالیاتی</summary>
     public int FiscalPeriodId { get; set; }
     public MoadianFiscalPeriod? FiscalPeriod { get; set; }
 
-    /// <summary>فاکتور داخلی مبدأ (اختیاری — فاکتور فروش/خرید سیستم)</summary>
+    /// <summary>فاکتور ERP مبدأ، در صورت وجود</summary>
     public int? FacInvoiceId { get; set; }
+
+    /// <summary>سند فروش عملیات مبدأ، در صورت وجود</summary>
+    public int? OperationsTransactionId { get; set; }
 
     /// <summary>مرجع فاکتور داخلی مبدأ (نمایشی)</summary>
     [MaxLength(60)] public string? FacInvoiceRef { get; set; }
@@ -161,8 +188,11 @@ public class MoadianInvoiceLine
 
     public int RowNo { get; set; }
 
-    /// <summary>شناسه کالا/خدمت (کد CPC سامانه)</summary>
+    /// <summary>شناسه کالا/خدمت مالیاتی؛ هنگام ارسال باید با شناسه معتبر سامانه جایگزین/تأیید شده باشد</summary>
     [MaxLength(40)] public string SstId { get; set; } = "";
+
+    /// <summary>واحد اندازه‌گیری مالیاتی (کد واحد)</summary>
+    [MaxLength(20)] public string? UnitCode { get; set; }
 
     /// <summary>شرح کالا/خدمت</summary>
     [MaxLength(400)] public string SstTitle { get; set; } = "";

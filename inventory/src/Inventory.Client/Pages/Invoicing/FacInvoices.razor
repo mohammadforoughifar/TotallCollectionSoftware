@@ -1,7 +1,7 @@
 @page "/fac/invoices"
 @inject IFacInvoiceService InvoiceSvc
+@inject IMoadianClientService MoadianSvc
 @inject IInvWarehouseService WarehouseSvc
-@inject NavigationManager Nav
 @inject IToastService Toast
 @inject LayoutState Layout
 @inject IJSRuntime JS
@@ -134,7 +134,13 @@
                                 <td class="text-center num">@f.LineCount.Num()</td>
                                 <td class="text-center num">@f.TotalTaxable.Money()</td>
                                 <td class="text-center num text-muted">@f.TotalVat.Money()</td>
-                                <td class="text-center num fw-600">@f.TotalNet.Money()</td>
+                                <td class="text-center num fw-600">
+                                    @f.TotalNet.Money()
+                                    @if (f.Status == InvoiceStatus.Confirmed && f.Settlement == SettlementType.Credit)
+                                    {
+                                        <div class="small text-muted">مانده: @f.RemainingAmount.Money()</div>
+                                    }
+                                </td>
                                 <td>
                                     <span class="badge @StatusBadge(f.Status)">@f.StatusTitle</span>
                                     @if (f.InvDocId is > 0)
@@ -148,6 +154,10 @@
                                 </td>
                                 <td class="text-end text-nowrap">
                                     <a class="btn btn-sm btn-light" title="مشاهده / ویرایش" href="@($"/fac/invoices/edit/{f.Id}")"><i class="bi bi-pencil text-primary"></i></a>
+                                    @if (f.Status == InvoiceStatus.Confirmed && (f.Kind == InvoiceKind.Sale || f.Kind == InvoiceKind.SaleReturn))
+                                    {
+                                        <button class="btn btn-sm btn-light" title="ساخت/بازبینی پیش‌نویس مودیان" @onclick="() => CreateMoadianDraft(f.Id)"><i class="bi bi-file-earmark-check text-success"></i></button>
+                                    }
                                     @if (f.Status == InvoiceStatus.Draft)
                                     {
                                         <button class="btn btn-sm btn-light" title="قطعی کردن" @onclick="() => Confirm(f)"><i class="bi bi-check2-circle text-success"></i></button>
@@ -191,9 +201,17 @@
                             </div>
                             <div class="m-card-row"><span><i class="bi bi-list-ol text-muted"></i> اقلام</span><b class="num">@f.LineCount.Num()</b></div>
                             <div class="m-card-row"><span><i class="bi bi-percent text-muted"></i> مالیات</span><b class="num">@f.TotalVat.Money()</b></div>
+                            @if (f.Status == InvoiceStatus.Confirmed && f.Settlement == SettlementType.Credit)
+                            {
+                                <div class="m-card-row"><span><i class="bi bi-wallet2 text-muted"></i> مانده تسویه</span><b class="num">@f.RemainingAmount.Money()</b></div>
+                            }
                         </div>
                         <div class="m-card-actions">
                             <a class="btn btn-light text-primary" href="@($"/fac/invoices/edit/{f.Id}")"><i class="bi bi-pencil"></i> مشاهده</a>
+                            @if (f.Status == InvoiceStatus.Confirmed && (f.Kind == InvoiceKind.Sale || f.Kind == InvoiceKind.SaleReturn))
+                            {
+                                <button class="btn btn-light text-success" @onclick="() => CreateMoadianDraft(f.Id)"><i class="bi bi-file-earmark-check"></i> پیش‌نویس مودیان</button>
+                            }
                             @if (f.Status == InvoiceStatus.Draft)
                             {
                                 <button class="btn btn-light text-success" @onclick="() => Confirm(f)"><i class="bi bi-check2-circle"></i></button>
@@ -208,6 +226,8 @@
     </div>
 </div>
 
+<MoadianDraftModal Visible="showMoadianDraft" VisibleChanged="OnMoadianDraftVisibilityChanged" Draft="moadianDraft" />
+
 @code {
     private List<FacInvoice> items = new();
     private List<LookupItem> warehouses = new();
@@ -221,6 +241,8 @@
     private int? fWarehouseId;
     private DateTime? fFrom, fTo;
     private string search = "";
+    private MoadianInvoice? moadianDraft;
+    private bool showMoadianDraft;
 
     private int PageCount => total == 0 ? 1 : (int)Math.Ceiling(total / (double)PageSize);
 
@@ -243,6 +265,31 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+    }
+
+    private async Task CreateMoadianDraft(int invoiceId)
+    {
+        try
+        {
+            var draft = await MoadianSvc.CreateFromFacInvoiceAsync(invoiceId);
+            if (draft.Status != MoadianInvoiceStatus.Draft)
+            {
+                Toast.Error("این فاکتور دیگر پیش‌نویس نیست و از این بخش قابل ویرایش نیست.");
+                return;
+            }
+
+            moadianDraft = draft;
+            showMoadianDraft = true;
+            Toast.Success($"پیش‌نویس مودیان {draft.Number} برای بازبینی آماده است.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private Task OnMoadianDraftVisibilityChanged(bool visible)
+    {
+        showMoadianDraft = visible;
+        if (!visible) moadianDraft = null;
+        return Task.CompletedTask;
     }
 
     private async Task Reload()

@@ -83,10 +83,16 @@ public class TrsVouchersController : RbacControllerBase
     public async Task<ActionResult<TrsVoucher>> New([FromQuery] TreasuryKind kind = TreasuryKind.Receipt)
         => Ok(await _svc.NewVoucherAsync(kind));
 
-    /// <summary>سند تسویه آماده برای یک فاکتور قطعی (با مانده تسویه‌نشده).</summary>
+    /// <summary>سند تسویه آماده برای یک فاکتور قطعی (با ماندهٔ تسویه‌نشده).</summary>
     [HttpGet("settle/{invoiceId:int}")]
     public async Task<ActionResult<TrsVoucher>> Settle(int invoiceId)
         => Ok(await _svc.NewSettlementAsync(invoiceId));
+
+    /// <summary>فاکتورهای باز و قابل تسویهٔ یک طرف حساب</summary>
+    [HttpGet("open-invoices")]
+    public async Task<ActionResult<List<TrsSettlementInvoice>>> OpenInvoices(
+        [FromQuery] int partyId, [FromQuery] TreasuryKind kind = TreasuryKind.Receipt)
+        => Ok(await _svc.GetOpenInvoicesAsync(partyId, kind));
 
     [HttpGet("{id:int}")]
     public async Task<ActionResult<TrsVoucher>> Get(int id)

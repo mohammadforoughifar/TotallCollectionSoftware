@@ -27,8 +27,10 @@ public interface ITrsVoucherService
     Task<TrsVoucher> GetAsync(int id);
     Task<TrsVoucher> NewAsync(TreasuryKind kind);
 
-    /// <summary>سند تسویه آماده برای یک فاکتور قطعی، با مانده تسویه‌نشده</summary>
+    /// <summary>سند تسویه آماده برای یک فاکتور قطعی، با ماندهٔ تسویه‌نشده</summary>
     Task<TrsVoucher> NewSettlementAsync(int invoiceId);
+    /// <summary>فاکتورهای قطعیِ نسیه و دارای مانده برای طرف حساب و نوع دریافت/پرداخت</summary>
+    Task<List<TrsSettlementInvoice>> GetOpenInvoicesAsync(int partyId, TreasuryKind kind);
 
     Task<TrsVoucher> SaveAsync(TrsVoucher voucher);
     Task<TrsVoucher> ConfirmAsync(int id);

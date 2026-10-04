@@ -17,7 +17,7 @@
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item"><button class='nav-link @(tab == 1 ? "active" : "")' @onclick="() => tab = 1">اتصال سامانه</button></li>
     <li class="nav-item"><button class='nav-link @(tab == 2 ? "active" : "")' @onclick="() => tab = 2">دوره‌های مالیاتی</button></li>
-    <li class="nav-item"><button class='nav-link @(tab == 3 ? "active" : "")' @onclick="() => tab = 3">شناسه کالا/خدمت</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 3 ? "active" : "")' @onclick="() => tab = 3">فهرست داخلی شناسه‌ها</button></li>
     <li class="nav-item"><button class='nav-link @(tab == 4 ? "active" : "")' @onclick="() => tab = 4">چاپگر مالی</button></li>
     <li class="nav-item"><button class='nav-link @(tab == 5 ? "active" : "")' @onclick="() => tab = 5">لاگ ارسال</button></li>
 </ul>
@@ -26,17 +26,19 @@
 {
     <div class="card">
         <div class="card-body">
-            <div class='alert @(setting.IsSimulation ? "alert-warning" : "alert-success") py-2 small'>
-                <i class='bi @(setting.IsSimulation ? "bi-flask" : "bi-plug")'></i>
-                @(setting.IsSimulation
-                    ? "حالت شبیه‌سازی: آدرس سرویس خالی است؛ ارسال‌ها محلی شبیه‌سازی و موفق ثبت می‌شوند (برای تست)."
-                    : "اتصال عملیاتی: فاکتورها با payload و امضای RSA به آدرس سرویس ارسال می‌شوند.")
+            <div class="alert alert-warning py-2 small">
+                <i class="bi bi-shield-exclamation"></i>
+                این بخش فعلاً پیش‌نویس و بازبینی را مدیریت می‌کند. ارسال آزمایشی/واقعی غیرفعال است؛ تا تأیید مستندات رسمی و آزمون با دسترسی مجاز، هیچ فاکتوری به‌عنوان «ارسال‌شده» ثبت نخواهد شد.
             </div>
 
             <div class="row g-3">
                 <div class="col-md-3">
-                    <label class="form-label small">شماره ملی/شناسه مالیاتی <span class="text-danger">*</span></label>
+                    <label class="form-label small">شناسه مالیاتی فروشنده <span class="text-danger">*</span></label>
                     <input class="form-control" dir="ltr" @bind="setting.TaxId" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small">شناسه/کد حافظه مالیاتی (در صورت دریافت)</label>
+                    <input class="form-control" dir="ltr" maxlength="20" @bind="setting.FiscalMemoryId" />
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small">کد اقتصادی</label>
@@ -59,39 +61,40 @@
                     <input class="form-control" dir="ltr" @bind="setting.SellerPostalCode" />
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small">شناسه کارتابل سامانه (توکن مالیاتی)</label>
-                    <input class="form-control" dir="ltr" type="password" @bind="setting.TaxCardToken" />
+                    <label class="form-label small">نشانی پایهٔ API (تنظیم اتصال آینده)</label>
+                    <input class="form-control" dir="ltr" placeholder="https://tp.tax.gov.ir/requestsmanager" @bind="setting.BaseUrl" />
+                    <div class="form-text">ثبت نشانی به‌تنهایی ارسال را فعال نمی‌کند.</div>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small">آدرس سرویس (آزمایشی/عملیاتی) — خالی = شبیه‌سازی</label>
-                    <input class="form-control" dir="ltr" placeholder="https://tp.tax.gov.ir/..." @bind="setting.BaseUrl" />
+                    <label class="form-label small">کلید خصوصی امضا (PEM)</label>
+                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" placeholder="کلید هنگام ذخیره به‌صورت محافظت‌شده نگهداری می‌شود." @bind="setting.PrivateKeyPem"></textarea>
+                    <div class="form-text">مقدار ماسک‌شده را برای حفظ کلید قبلی دست‌نخورده بگذارید؛ برای جایگزینی، کل مقدار را با PEM جدید عوض کنید.</div>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label small">کلید خصوصی امضا (PEM) — از پرتال مودیان</label>
-                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" placeholder="-----BEGIN PRIVATE KEY-----..." @bind="setting.PrivateKeyPem"></textarea>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label small">کلید عمومی/گواهی (اختیاری)</label>
-                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" @bind="setting.PublicKeyPem"></textarea>
+                    <label class="form-label small">گواهی امضای مؤدی (PEM)</label>
+                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" placeholder="گواهی هنگام ذخیره به‌صورت محافظت‌شده نگهداری می‌شود." @bind="setting.SigningCertificatePem"></textarea>
+                    <div class="form-text">مقدار ماسک‌شده را برای حفظ گواهی قبلی دست‌نخورده بگذارید.</div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small">نرخ پیش‌فرض مالیات (٪)</label>
                     <input class="form-control text-end num" @bind="setting.DefaultVatRate" />
                 </div>
-                <div class="col-md-3">
-                    <label class="form-label small">بازه ارسال خودکار (دقیقه)</label>
-                    <input class="form-control text-end num" @bind="setting.SendIntervalMinutes" />
-                </div>
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-6">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="cb-auto" @bind="setting.AutoSend" />
-                        <label class="form-check-label small" for="cb-auto">ارسال خودکار صف (سرویس پس‌زمینه)</label>
+                        <input class="form-check-input" type="checkbox" id="cb-autodraft-operations" @bind="setting.AutoDraftFromOperations" />
+                        <label class="form-check-label small" for="cb-autodraft-operations">ساخت خودکار پیش‌نویس از فروش‌های ثبت‌شده در «عملیات»</label>
                     </div>
                 </div>
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="cb-autodraft-fac" @bind="setting.AutoDraftFromFacInvoices" />
+                        <label class="form-check-label small" for="cb-autodraft-fac">ساخت خودکار پیش‌نویس پس از قطعی‌شدن فاکتور فروش ERP</label>
+                    </div>
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="cb-log" @bind="setting.LoggingEnabled" />
-                        <label class="form-check-label small" for="cb-log">ثبت لاگ کامل ارسال</label>
+                        <label class="form-check-label small" for="cb-log">ثبت رویدادهای پیش‌نویس و بازبینی</label>
                     </div>
                 </div>
                 <div class="col-12">
@@ -150,10 +153,13 @@
 {
     <div class="card">
         <div class="card-header fw-bold d-flex align-items-center">
-            <span>شناسه‌های کالا/خدمت (CPC)</span>
+            <span>فهرست داخلی شناسه‌های کالا/خدمت</span>
             <button class="btn btn-sm btn-outline-primary ms-auto" @onclick="OpenCpc"><i class="bi bi-plus-lg"></i> شناسه جدید</button>
         </div>
         <div class="card-body">
+            <div class="alert alert-warning py-2 small">
+                این فهرست دادهٔ داخلی است و هنوز با آخرین مرجع رسمی تطبیق نشده؛ در هر پیش‌نویس، شناسه و واحد مالیاتی را با مرجع معتبر مؤدی تطبیق دهید.
+            </div>
             <div class="input-group mb-3">
                 <input class="form-control form-control-sm" placeholder="جستجوی کد یا شرح..." @bind="cpcSearch" @bind:event="oninput" @bind:after="LoadCpc" />
             </div>
@@ -242,8 +248,8 @@
                     <ul class="mb-0">
                         <li>چاپگری که از ESC/POS پشتیبانی می‌کند: پورت شبکه <code dir="ltr">IP:9100</code> یا مسیر دستگاه <code dir="ltr">/dev/usb/lp0</code>.</li>
                         <li>برای تست بدون سخت‌افزار: <code dir="ltr">FILE:/tmp/pos.txt</code> — خروجی بایت‌های ESC/POS ذخیره می‌شود.</li>
-                        <li>رسید شامل سربرگ فروشنده، مشخصه‌های مالیاتی، اقلام، جمع‌ها، وضعیت و QR استاندارد است.</li>
-                        <li>چاپ از دکمه «چاپ رسید» روی هر فاکتور در صفحه فاکتورها.</li>
+                        <li>پیش‌نویس چاپ‌شده با واترمارک «سند رسمی نیست» مشخص می‌شود و QR/UID سامانه برای آن ساخته نمی‌شود.</li>
+                        <li>چاپ رسید رسمی تا تأیید اتصال مستقیم مودیان غیرفعال است.</li>
                     </ul>
                 </div>
             </div>
@@ -457,6 +463,7 @@
         Inventory.Shared.MoadianLogAction.Failed => "خطا",
         Inventory.Shared.MoadianLogAction.Returned => "برگشت",
         Inventory.Shared.MoadianLogAction.Voided => "ابطال",
+        Inventory.Shared.MoadianLogAction.Updated => "ویرایش پیش‌نویس",
         _ => a.ToString()
     };
 }

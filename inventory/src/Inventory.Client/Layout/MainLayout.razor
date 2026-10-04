@@ -1325,6 +1325,8 @@ else
         ("my-dashboards",       "MyDashboards.View",       "داشبورد من"),
         ("dashboard-cctv",      "Dashboards.Management",   "داشبورد مدیریت"),
         ("dashboard-hardware",  "Dashboards.Hardware",     "داشبورد سخت‌افزار"),
+        ("operations/reports/kardex-quantity", "ReportPages.Kardex", "کاردکس تعداد کالاها"),
+        ("operations/reports/kardex-rial",     "ReportPages.Kardex", "کاردکس ریالی کالاها"),
         ("orders",              "Orders.",                 "خرید و فروش"),
         ("stock",               "Stock.",                  "موجودی انبار"),
         ("repairs",             "Repairs.",                "تعمیرات"),
@@ -1372,6 +1374,20 @@ else
         var q = p.IndexOf('?');
         if (q >= 0) p = p[..q];
         if (p == "") return true; // صفحه‌ی اصلی خودش دسترسی داشبورد مالی را کنترل می‌کند
+
+        if (p.StartsWith("operations/reports/orders"))
+        {
+            var allowed = Auth.CanSee("Orders");
+            if (!allowed) deniedTitle = "گزارش خرید و فروش";
+            return allowed;
+        }
+
+        if (p.StartsWith("operations/reports/dashboard"))
+        {
+            var allowed = Auth.CanSee("Orders") || Auth.CanSee("Repairs");
+            if (!allowed) deniedTitle = "داشبورد جامع عملیات";
+            return allowed;
+        }
 
         foreach (var (prefix, perm, title) in RouteGuards)
         {

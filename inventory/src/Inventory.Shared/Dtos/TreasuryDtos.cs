@@ -163,9 +163,12 @@ public class TrsVoucher
     /// <summary>کارمزد انتقال (بر عهده ما — به حساب هزینه می‌رود)</summary>
     public decimal FeeAmount { get; set; }
 
-    /// <summary>فاکتور مرتبط (تسویه فاکتور)</summary>
+    /// <summary>فاکتور مرتبط قدیمی؛ برای سازگاری با سندهای تک‌فاکتوری قبلی نگه داشته شده است</summary>
     public int? InvoiceId { get; set; }
     public int? InvoiceNumber { get; set; }
+
+    /// <summary>تخصیص به یک یا چند فاکتور؛ مبلغ هر ردیف می‌تواند جزئی باشد</summary>
+    public List<TrsInvoiceAllocationDto> InvoiceAllocations { get; set; } = new();
 
     public List<TrsVoucherLine> Lines { get; set; } = new();
 
@@ -210,6 +213,42 @@ public class TrsVoucher
 
     /// <summary>آیا پول وارد خزانه می‌شود؟</summary>
     public bool IsIncoming => Kind == TreasuryKind.Receipt;
+}
+
+/// <summary>تخصیص یک سند خزانه به یک فاکتور</summary>
+public class TrsInvoiceAllocationDto
+{
+    public int InvoiceId { get; set; }
+    public int InvoiceNumber { get; set; }
+    public InvoiceKind InvoiceKind { get; set; }
+    public DateTime InvoiceDate { get; set; }
+    public decimal InvoiceTotal { get; set; }
+    /// <summary>ماندهٔ فاکتور با حذف اثر این سند؛ برای نمایش مانده با اثر تخصیص</summary>
+    public decimal RemainingBeforeSettlement { get; set; }
+    /// <summary>مبلغ تسویهٔ مؤثر؛ پس از برگشت چک ممکن است از مبلغ تخصیص اولیه کمتر باشد</summary>
+    public decimal EffectiveAmount { get; set; }
+    public decimal Amount { get; set; }
+}
+
+/// <summary>یک فاکتور قطعی با مانده‌ی باز، قابل انتخاب برای تسویه</summary>
+public class TrsSettlementInvoice
+{
+    public int InvoiceId { get; set; }
+    public int InvoiceNumber { get; set; }
+    public InvoiceKind InvoiceKind { get; set; }
+    public DateTime InvoiceDate { get; set; }
+    public DateTime? DueDate { get; set; }
+    public decimal InvoiceTotal { get; set; }
+    public decimal SettledAmount { get; set; }
+    public decimal RemainingAmount { get; set; }
+
+    public string KindTitle => InvoiceKind switch
+    {
+        InvoiceKind.Purchase => "فاکتور خرید",
+        InvoiceKind.Sale => "فاکتور فروش",
+        InvoiceKind.PurchaseReturn => "برگشت از خرید",
+        _ => "برگشت از فروش"
+    };
 }
 
 // ============================ ۳) چک ============================

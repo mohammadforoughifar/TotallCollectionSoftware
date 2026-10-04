@@ -385,6 +385,7 @@ public class AppDbContext : DbContext
     public DbSet<TrsAccount> TrsAccounts => Set<TrsAccount>();
     public DbSet<TrsVoucher> TrsVouchers => Set<TrsVoucher>();
     public DbSet<TrsVoucherLine> TrsVoucherLines => Set<TrsVoucherLine>();
+    public DbSet<TrsInvoiceAllocation> TrsInvoiceAllocations => Set<TrsInvoiceAllocation>();
     public DbSet<TrsCheque> TrsCheques => Set<TrsCheque>();
     public DbSet<TrsChequeAction> TrsChequeActions => Set<TrsChequeAction>();
     public DbSet<TrsRule> TrsRules => Set<TrsRule>();
@@ -1003,6 +1004,7 @@ public class AppDbContext : DbContext
 
         // ---------- سامانه مودیان ----------
         mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalPeriodId, i.Number }).IsUnique();
+        mb.Entity<MoadianInvoice>().HasIndex(i => i.Number);
         // حذف دوره نباید فاکتورهای آن را آبشار بزند
         mb.Entity<MoadianInvoice>()
           .HasOne(i => i.FiscalPeriod).WithMany()
@@ -1011,6 +1013,8 @@ public class AppDbContext : DbContext
         mb.Entity<MoadianInvoice>().HasIndex(i => i.Status);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.ReferenceId);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.FacInvoiceId);
+        mb.Entity<MoadianInvoice>().HasIndex(i => i.OperationsTransactionId).IsUnique()
+          .HasFilter("[OperationsTransactionId] IS NOT NULL");
         mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.Year, p.Month }).IsUnique();
         mb.Entity<MoadianCpc>().HasIndex(c => c.Code).IsUnique();
         mb.Entity<MoadianLog>().HasIndex(l => l.InvoiceId);
@@ -1145,6 +1149,19 @@ public class AppDbContext : DbContext
           .HasOne(l => l.Cheque).WithMany()
           .HasForeignKey(l => l.ChequeId)
           .OnDelete(DeleteBehavior.SetNull);
+
+        // ---------- تخصیص سند خزانه به فاکتور (چند فاکتور / تسویه جزئی) ----------
+        mb.Entity<TrsInvoiceAllocation>().HasIndex(a => a.InvoiceId);
+        mb.Entity<TrsInvoiceAllocation>().HasIndex(a => new { a.TrsVoucherId, a.InvoiceId }).IsUnique();
+        mb.Entity<TrsInvoiceAllocation>().Property(a => a.Amount).HasPrecision(18, 2);
+        mb.Entity<TrsInvoiceAllocation>()
+          .HasOne(a => a.TrsVoucher).WithMany(v => v.InvoiceAllocations)
+          .HasForeignKey(a => a.TrsVoucherId)
+          .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<TrsInvoiceAllocation>()
+          .HasOne(a => a.Invoice).WithMany()
+          .HasForeignKey(a => a.InvoiceId)
+          .OnDelete(DeleteBehavior.Restrict);
 
         // ---------- چک ----------
         mb.Entity<TrsCheque>().HasIndex(c => new { c.Kind, c.Number });

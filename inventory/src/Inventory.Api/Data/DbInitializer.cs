@@ -81,6 +81,12 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 }
 
+                // Per-source Moadian draft linkage and secret/settings columns (SQLite and SQL Server).
+                await MoadianSchemaV2.EnsureAsync(db);
+                // Independent official type/pattern/subject selection and reference-tax-id fields.
+                await MoadianSchemaV3.EnsureAsync(db);
+                // Number index for serializable global numbering of new drafts; existing numbers are preserved.
+                await MoadianSchemaV4.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
@@ -225,7 +231,7 @@ public static class DbInitializer
                 }
 
                 // ==================== سامانه مودیان (فاکتور الکترونیکی) ====================
-                // تنظیمات پیش‌فرض بدون BaseUrl = حالت شبیه‌سازی ارسال (برای تست)
+                // تنظیمات پیش‌فرض بدون BaseUrl؛ ارسال واقعی و شبیه‌سازی ارسال در این نسخه غیرفعال‌اند.
                 if (!db.MoadianSettings.Any())
                 {
                     db.MoadianSettings.Add(new MoadianSetting
@@ -236,7 +242,7 @@ public static class DbInitializer
                         SendIntervalMinutes = 5
                     });
                     db.SaveChanges();
-                    Console.WriteLine("[DB] تنظیمات پیش‌فرض مودیان (حالت آزمایشی) ساخته شد.");
+                    Console.WriteLine("[DB] تنظیمات پیش‌فرض مودیان ساخته شد؛ ارسال در این نسخه غیرفعال است.");
                 }
 
                 if (!db.MoadianCpcList.Any())

@@ -479,10 +479,10 @@
 
     private static readonly List<PermCategory> ModuleCategories = new()
     {
-        new() { Title = "فروش و مالی", Icon = "bi-cash-coin", Modules = new[] { "Orders", "GoodsIssues", "Expenses", "Parties" } },
+        new() { Title = "عملیات — فروش و مالی", Icon = "bi-cash-coin", Modules = new[] { "Orders", "GoodsIssues", "Expenses", "Parties", "Moadian" } },
         new() { Title = "معرف‌ها و پنل معرف", Icon = "bi-person-badge", Modules = new[] { "Referrers", "ReferrerWallets", "ReferrerPanel" } },
         new() { Title = "اطلاعات پایه و انبار", Icon = "bi-box-seam", Modules = new[] { "Products", "Stock", "Warehouses", "SystemCompanies", "SystemDepartments" } },
-        new() { Title = "ERP — انبارداری و حسابداری", Icon = "bi-diagram-3", Modules = new[] { "InvDocs", "InvDocTypes", "AccAccounts", "AccVouchers", "AccDimensions", "FixedAssets", "Budgets", "FacInvoices", "Moadian", "FiscalPrinter", "TrsAccounts", "TrsVouchers", "TrsCheques", "StkSessions", "StkBarcodes" } },
+        new() { Title = "ERP — انبارداری و حسابداری", Icon = "bi-diagram-3", Modules = new[] { "InvDocs", "InvDocTypes", "AccAccounts", "AccVouchers", "AccDimensions", "FixedAssets", "Budgets", "FacInvoices", "FiscalPrinter", "TrsAccounts", "TrsVouchers", "TrsCheques", "StkSessions", "StkBarcodes" } },
         new() { Title = "آرشیو اسناد و مدارک", Icon = "bi-folder2-open", Modules = new[] { "DocArchive" } },
         new() { Title = "پیام‌رسان سازمانی", Icon = "bi-chat-dots", Modules = new[] { "Chat" } },
         new() { Title = "داشبوردها و صفحات شخصی", Icon = "bi-speedometer2", Modules = new[] { "Dashboards", "MyCartable", "MyArchive", "MyDashboards" } },
@@ -505,6 +505,7 @@
         ["Products"] = "کالاها",
         ["Stock"] = "موجودی انبار",
         ["Orders"] = "فروش / فاکتورها",
+        ["Moadian"] = "سامانه مودیان",
         ["GoodsIssues"] = "بیجک (بدون قیمت)",
         ["Repairs"] = "تعمیرات",
         ["CctvCameras"] = "دوربین‌ها",
@@ -552,7 +553,6 @@
         ["FixedAssets"] = "دارایی ثابت",
         ["Budgets"] = "بودجه و کنترل بودجه",
         ["FacInvoices"] = "فاکتور خرید و فروش",
-        ["Moadian"] = "سامانه مودیان",
         ["FiscalPrinter"] = "چاپگر مالی",
         ["TrsAccounts"] = "صندوق، بانک و تنخواه",
         ["TrsVouchers"] = "اسناد خزانه (دریافت / پرداخت / انتقال)",

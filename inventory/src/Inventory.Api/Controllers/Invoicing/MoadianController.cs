@@ -79,6 +79,20 @@ public class MoadianController : RbacControllerBase
         return Ok(await _svc.CreateFromFacInvoiceAsync(facInvoiceId, MyUsername));
     }
 
+    [HttpPost("invoices/from-operations/{transactionId:int}")]
+    public async Task<ActionResult<MoadianInvoice>> CreateFromOperations(int transactionId)
+    {
+        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        return Ok(await _svc.CreateFromOperationsTransactionAsync(transactionId, MyUsername));
+    }
+
+    [HttpPut("invoices/{id:int}")]
+    public async Task<ActionResult<MoadianInvoice>> UpdateDraft(int id, [FromBody] MoadianInvoiceRequest req)
+    {
+        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        return Ok(await _svc.UpdateDraftAsync(id, req, MyUsername));
+    }
+
     [HttpDelete("invoices/{id:int}")]
     public async Task<IActionResult> DeleteInvoice(int id)
     {
@@ -89,41 +103,45 @@ public class MoadianController : RbacControllerBase
 
     // ---------------------- صف ارسال ----------------------
     [HttpPost("invoices/{id:int}/enqueue")]
-    public async Task<ActionResult<MoadianInvoice>> Enqueue(int id)
+    public async Task<IActionResult> Enqueue(int id)
     {
         if (await ForbiddenUnlessAsync("Moadian", "Send") is ObjectResult forbidden) return forbidden;
-        return Ok(await _svc.EnqueueAsync(id, MyUsername));
+        return SendingDisabled();
     }
 
     [HttpPost("invoices/{id:int}/cancel")]
-    public async Task<ActionResult<MoadianInvoice>> Cancel(int id)
+    public async Task<IActionResult> Cancel(int id)
     {
         if (await ForbiddenUnlessAsync("Moadian", "Send") is ObjectResult forbidden) return forbidden;
-        return Ok(await _svc.CancelAsync(id, MyUsername));
+        return SendingDisabled();
     }
 
     [HttpPost("invoices/{id:int}/retry")]
-    public async Task<ActionResult<MoadianInvoice>> Retry(int id)
+    public async Task<IActionResult> Retry(int id)
     {
         if (await ForbiddenUnlessAsync("Moadian", "Send") is ObjectResult forbidden) return forbidden;
-        return Ok(await _svc.RetryAsync(id, MyUsername));
+        return SendingDisabled();
     }
 
     [HttpPost("invoices/{id:int}/send")]
-    public async Task<ActionResult<object>> SendNow(int id)
+    public async Task<IActionResult> SendNow(int id)
     {
         if (await ForbiddenUnlessAsync("Moadian", "Send") is ObjectResult forbidden) return forbidden;
-        await _svc.EnqueueAsync(id, MyUsername);
-        var sent = await _svc.SendPendingAsync();
-        return Ok(new { sent, invoice = await _svc.GetInvoiceAsync(id) });
+        return SendingDisabled();
     }
 
     [HttpPost("send-pending")]
-    public async Task<ActionResult<object>> SendPending()
+    public async Task<IActionResult> SendPending()
     {
         if (await ForbiddenUnlessAsync("Moadian", "Send") is ObjectResult forbidden) return forbidden;
-        return Ok(new { sent = await _svc.SendPendingAsync() });
+        return SendingDisabled();
     }
+
+    private ObjectResult SendingDisabled()
+        => StatusCode(StatusCodes.Status503ServiceUnavailable, new
+        {
+            message = "ارسال سامانه مودیان تا بررسی قالب رسمی جاری، گواهی و دسترسی مجاز عمداً غیرفعال است."
+        });
 
     [HttpGet("invoices/{id:int}/payload")]
     public async Task<ActionResult<MoadianPayloadResult>> Payload(int id)

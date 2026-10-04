@@ -110,6 +110,12 @@ public class FacInvoice
     /// <summary>مبلغ قابل پرداخت</summary>
     public decimal TotalNet { get; set; }
 
+    /// <summary>جمع تخصیص‌های اسناد دریافت/پرداخت قطعی‌شده به این فاکتور</summary>
+    public decimal SettledAmount { get; set; }
+
+    /// <summary>ماندهٔ باز فاکتور؛ برای فاکتور نقدی صفر است</summary>
+    public decimal RemainingAmount { get; set; }
+
     // ---------- اسناد خودکار ----------
     /// <summary>سند انبار صادرشده (رسید یا حواله)</summary>
     public int? InvDocId { get; set; }

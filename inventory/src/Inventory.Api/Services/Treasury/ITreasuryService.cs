@@ -28,8 +28,10 @@ public interface ITreasuryService
     Task<TrsVoucher> CancelVoucherAsync(int id, string? user);
     Task DeleteVoucherAsync(int id);
 
-    /// <summary>مانده باز فاکتور و پیشنهاد سند تسویه برای آن</summary>
+    /// <summary>ماندهٔ باز فاکتور و پیشنهاد سند تسویه برای آن</summary>
     Task<TrsVoucher> NewSettlementAsync(int invoiceId);
+    /// <summary>فهرست فاکتورهای نسیهٔ قطعی با مانده، برای تخصیص به سند خزانه</summary>
+    Task<List<TrsSettlementInvoice>> GetOpenInvoicesAsync(int partyId, TreasuryKind kind);
 
     // ---------- چک ----------
     Task<PagedResult<TrsCheque>> GetChequesAsync(ChequeKind? kind, ChequeStatus? status, int? partyId,

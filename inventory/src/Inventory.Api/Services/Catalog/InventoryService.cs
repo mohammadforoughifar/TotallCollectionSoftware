@@ -1,8 +1,10 @@
 using System.Globalization;
+using Inventory.Api.Services.Invoicing;
 using Db = Inventory.Api.Data;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Inventory.Api.Services;
 
@@ -12,8 +14,15 @@ namespace Inventory.Api.Services;
 public class InventoryService : IInventoryService
 {
     private readonly Db.AppDbContext _db;
+    private readonly IMoadianService _moadian;
+    private readonly ILogger<InventoryService> _log;
 
-    public InventoryService(Db.AppDbContext db) => _db = db;
+    public InventoryService(Db.AppDbContext db, IMoadianService moadian, ILogger<InventoryService> log)
+    {
+        _db = db;
+        _moadian = moadian;
+        _log = log;
+    }
 
     // =============================== تنظیمات ===============================
 
@@ -886,7 +895,7 @@ public class InventoryService : IInventoryService
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
-            q = q.Where(p => p.Name.Contains(s) || p.Code.Contains(s) || (p.Category != null && p.Category.Contains(s)) || (p.Barcode != null && p.Barcode.Contains(s)));
+            q = q.Where(p => p.Name.Contains(s) || p.Code.Contains(s) || (p.Category != null && p.Category.Contains(s)) || (p.Barcode != null && p.Barcode.Contains(s)) || (p.TaxCode != null && p.TaxCode.Contains(s)));
         }
 
         // Filtering belongs to the same SQL query as COUNT and OFFSET/LIMIT.
@@ -936,6 +945,7 @@ public class InventoryService : IInventoryService
             Unit = p.Unit,
             Category = p.Category,
             Barcode = p.Barcode,
+            TaxCode = p.TaxCode,
             SalePrice = p.SalePrice,
             PurchasePrice = p.PurchasePrice,
             ReorderPoint = p.ReorderPoint,
@@ -1008,6 +1018,12 @@ public class InventoryService : IInventoryService
         }
 
         entity.Description = NullIfEmpty(dto.Description);
+        var taxCode = NullIfEmpty(dto.TaxCode)?.Trim();
+        if (taxCode is { Length: < 5 or > 20 })
+            throw new InvalidOperationException("شناسه مالیاتی کالا باید بین ۵ تا ۲۰ نویسه باشد.");
+        if (taxCode is not null && await _db.Products.AnyAsync(p => p.TaxCode == taxCode && p.Id != entity.Id))
+            throw new InvalidOperationException($"شناسه مالیاتی «{taxCode}» برای کالای دیگری ثبت شده است.");
+        entity.TaxCode = taxCode;
         entity.IsActive = dto.IsActive;
 
         if (string.IsNullOrWhiteSpace(dto.Code))
@@ -1112,6 +1128,8 @@ public class InventoryService : IInventoryService
             Phone = p.Phone,
             Mobile = p.Mobile,
             Address = p.Address,
+            TaxId = p.TaxId,
+            PostalCode = p.PostalCode,
             Note = p.Note,
             IsActive = p.IsActive,
             ReferrerId = p.ReferrerId,
@@ -1132,6 +1150,12 @@ public class InventoryService : IInventoryService
         entity.Phone = NullIfEmpty(dto.Phone);
         entity.Mobile = NullIfEmpty(dto.Mobile);
         entity.Address = NullIfEmpty(dto.Address);
+        entity.TaxId = NullIfEmpty(dto.TaxId)?.Trim();
+        entity.PostalCode = NullIfEmpty(dto.PostalCode)?.Trim();
+        if (entity.TaxId is not null && (entity.TaxId.Length is not (10 or 11 or 12 or 14) || entity.TaxId.Any(c => !char.IsAsciiDigit(c))))
+            throw new InvalidOperationException("شناسه مالیاتی خریدار باید ۱۰، ۱۱، ۱۲ یا ۱۴ رقم لاتین باشد.");
+        if (entity.PostalCode is not null && (entity.PostalCode.Length != 10 || entity.PostalCode.Any(c => !char.IsAsciiDigit(c))))
+            throw new InvalidOperationException("کد پستی خریدار باید دقیقاً ۱۰ رقم لاتین باشد.");
         entity.Note = NullIfEmpty(dto.Note);
         entity.IsActive = dto.IsActive;
         // معرف فقط برای مشتری معنا دارد؛ مقدار 0/null = بدون معرف
@@ -1215,6 +1239,8 @@ public class InventoryService : IInventoryService
     {
         if (cmd.Lines.Count == 0) throw new InvalidOperationException("حداقل یک سطر کالا وارد کنید.");
         if (cmd.Lines.Any(l => l.Quantity <= 0)) throw new InvalidOperationException("مقدار هر سطر باید بزرگ‌تر از صفر باشد.");
+        if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)))
+            throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
         if (cmd.WarehouseId == 0) throw new InvalidOperationException("انبار را انتخاب کنید.");
         if (cmd.PartyId == 0) throw new InvalidOperationException("طرف حساب را انتخاب کنید.");
 
@@ -1321,6 +1347,19 @@ public class InventoryService : IInventoryService
 
         await trx.CommitAsync();
 
+        if (txn.Type == TransactionType.Sale)
+        {
+            try
+            {
+                await _moadian.CreateFromOperationsTransactionIfEnabledAsync(txn.Id, null);
+            }
+            catch (Exception ex)
+            {
+                // Tax draft creation is optional and must not roll back an already-committed sale.
+                _log.LogWarning(ex, "Could not create an optional Moadian draft for operations sale {TransactionId}", txn.Id);
+            }
+        }
+
         return await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
     }
 
@@ -1425,6 +1464,15 @@ public class InventoryService : IInventoryService
             ?? throw new InvalidOperationException("سند یافت نشد.");
         if (txn.Type is not (TransactionType.Purchase or TransactionType.Sale))
             throw new InvalidOperationException("فقط اسناد خرید و فروش قابل ویرایش هستند.");
+        if (txn.Type == TransactionType.Sale && await _db.MoadianInvoices.AnyAsync(i =>
+                i.OperationsTransactionId == txn.Id && i.Status != MoadianInvoiceStatus.Voided))
+            throw new InvalidOperationException("برای جلوگیری از مغایرت، ابتدا پیش‌نویس پیوندخوردهٔ مودیان را حذف کنید؛ سپس سند فروش را ویرایش کنید.");
+
+        var existingLineQuantities = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
+        if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)
+                               && (!existingLineQuantities.TryGetValue(l.Id, out var original)
+                                   || original.ProductId != l.ProductId || original.Quantity != l.Quantity)))
+            throw new InvalidOperationException("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است؛ فقط مقدار قدیمیِ بدون تغییر قابل حفظ است.");
 
         if (txn.Type is TransactionType.Sale or TransactionType.Purchase)
             ApplyPayment(txn, cmd);
@@ -1498,6 +1546,9 @@ public class InventoryService : IInventoryService
     {
         var t = await _db.Transactions.Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("سند یافت نشد.");
+        if (t.Type == TransactionType.Sale && await _db.MoadianInvoices.AnyAsync(i =>
+                i.OperationsTransactionId == t.Id && i.Status != MoadianInvoiceStatus.Voided))
+            throw new InvalidOperationException("ابتدا پیش‌نویس پیوندخوردهٔ مودیان را حذف کنید؛ سپس سند فروش را حذف کنید.");
 
         var productIds = t.Lines.Select(l => l.ProductId).Distinct().ToList();
         var wh = t.WarehouseId;

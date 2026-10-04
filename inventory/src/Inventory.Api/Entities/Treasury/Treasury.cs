@@ -91,6 +91,24 @@ public class TrsVoucher
     public DateTime? ConfirmedAt { get; set; }
 
     public List<TrsVoucherLine> Lines { get; set; } = new();
+
+    /// <summary>تخصیص مبلغ سند به یک یا چند فاکتور؛ برای تسویه کامل یا جزئی</summary>
+    public List<TrsInvoiceAllocation> InvoiceAllocations { get; set; } = new();
+}
+
+/// <summary>مبلغ تخصیص‌یافته از یک سند دریافت/پرداخت به یک فاکتور</summary>
+public class TrsInvoiceAllocation
+{
+    public int Id { get; set; }
+
+    public int TrsVoucherId { get; set; }
+    public TrsVoucher? TrsVoucher { get; set; }
+
+    public int InvoiceId { get; set; }
+    public FacInvoice? Invoice { get; set; }
+
+    /// <summary>مبلغی از بدهی فاکتور که با این سند تسویه می‌شود</summary>
+    public decimal Amount { get; set; }
 }
 
 /// <summary>سطر (ابزار) سند خزانه</summary>

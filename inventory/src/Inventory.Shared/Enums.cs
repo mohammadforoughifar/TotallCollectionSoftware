@@ -295,7 +295,7 @@ public enum BudgetTransactionType
 
 // ===================== سامانه مودیان (فاکتور الکترونیکی) =====================
 
-/// <summary>نوع فاکتور الکترونیکی (InvoicePattern سامانه مودیان)</summary>
+/// <summary>جهت/ماهیت سند داخلی؛ مستقل از کدهای رسمی inty، inp و ins است.</summary>
 public enum MoadianInvoiceKind
 {
     /// <summary>فروش</summary>
@@ -312,6 +312,47 @@ public enum MoadianInvoiceKind
 
     /// <summary>پیش‌فاکتور</summary>
     Proforma = 5
+}
+
+/// <summary>نوع صورتحساب فروش مودیان که کاربر برای هر پیش‌نویس انتخاب می‌کند.</summary>
+public enum MoadianTaxInvoiceType
+{
+    /// <summary>هنوز برای این پیش‌نویس انتخاب نشده است.</summary>
+    Unselected = 0,
+
+    /// <summary>صورتحساب نوع اول — inty=1.</summary>
+    Type1 = 1,
+
+    /// <summary>صورتحساب نوع دوم — inty=2.</summary>
+    Type2 = 2
+}
+
+/// <summary>الگوی رسمی صورتحساب الکترونیکی (inp)؛ مقادیر عددی همان کد الگو هستند.</summary>
+public enum MoadianInvoicePattern
+{
+    Unselected = 0,
+    Sale = 1,
+    CurrencySale = 2,
+    GoldJewelryPlatinum = 3,
+    Contracting = 4,
+    UtilityBills = 5,
+    AirlineTicket = 6,
+    Export = 7,
+    Waybill = 8,
+    PetroleumProducts = 9,
+    CommodityExchange = 11,
+    InsuranceServices = 13,
+    ChainSales = 14
+}
+
+/// <summary>موضوع رسمی صورتحساب الکترونیکی (ins)؛ مقادیر عددی همان کد موضوع هستند.</summary>
+public enum MoadianInvoiceSubject
+{
+    Unselected = 0,
+    Original = 1,
+    Corrective = 2,
+    Void = 3,
+    SaleReturn = 4
 }
 
 /// <summary>وضعیت فاکتور الکترونیکی در چرخه‌ی مودیان</summary>
@@ -358,7 +399,10 @@ public enum MoadianLogAction
     Returned = 4,
 
     /// <summary>ابطال / اصلاح</summary>
-    Voided = 5
+    Voided = 5,
+
+    /// <summary>ویرایش پیش‌نویس</summary>
+    Updated = 6
 }
 
 // ===================== ماژول فاکتور =====================

@@ -1,0 +1,833 @@
+@inject IMoadianClientService MoadianSvc
+@inject IToastService Toast
+
+<Modal Visible="@Visible" Title="@ModalTitle" Size="modal-xl" OnClose="CloseAsync">
+    <ChildContent>
+        @if (loadingRefs)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="small text-muted mt-2">در حال بارگذاری دوره‌ها، شناسه‌ها و تنظیمات فروشنده...</div>
+            </div>
+        }
+        else if (Draft is null)
+        {
+            <div class="alert alert-warning mb-0">پیش‌نویسی برای بازبینی انتخاب نشده است.</div>
+        }
+        else if (Draft.Status != MoadianInvoiceStatus.Draft)
+        {
+            <div class="alert alert-warning mb-0">این فاکتور دیگر در وضعیت پیش‌نویس نیست و از این فرم قابل ویرایش نیست.</div>
+        }
+        else
+        {
+            <div class="moadian-review-scroll" dir="rtl">
+                <div class="moadian-review-hero mb-3">
+                    <div class="d-flex flex-wrap align-items-center gap-3">
+                        <div class="moadian-review-hero-icon"><i class="bi bi-clipboard2-check"></i></div>
+                        <div class="flex-grow-1">
+                            <div class="small fw-semibold text-primary mb-1">بازبینی مرحله‌به‌مرحله</div>
+                            <h5 class="mb-1">پیش‌نویس شماره @Draft.Number</h5>
+                            <div class="small text-muted">اطلاعات را کامل کنید، کنترل‌ها را ببینید و پیش‌نویس را ذخیره کنید.</div>
+                        </div>
+                        <div class="moadian-review-counts">
+                            <span class="badge bg-success">تأیید محلی: @PassedCheckCount</span>
+                            <span class="badge bg-warning text-dark">نیازمند بررسی: @WarningCheckCount</span>
+                            <span class="badge bg-danger">مانع ارسال: @BlockedCheckCount</span>
+                        </div>
+                    </div>
+                    <div class="moadian-review-flow mt-3">
+                        <span><i class="bi bi-1-circle-fill"></i> تکمیل اطلاعات</span>
+                        <i class="bi bi-chevron-left text-muted"></i>
+                        <span><i class="bi bi-2-circle-fill"></i> بازبینی</span>
+                        <i class="bi bi-chevron-left text-muted"></i>
+                        <span class="text-muted"><i class="bi bi-3-circle"></i> ارسال دستی — فعلاً غیرفعال</span>
+                    </div>
+                </div>
+
+                <div class="alert alert-info d-flex gap-2 align-items-start py-2 small mb-2">
+                    <i class="bi bi-info-circle-fill mt-1"></i>
+                    <div>
+                        <strong>این صفحه برای پیش‌نویس و بازبینی است.</strong>
+                        ارسال واقعی یا خودکار در این نسخه فعال نیست. کنترل‌های سبز فقط داده‌های موجود در برنامه را بررسی می‌کنند؛
+                        مواردی که به الگو/فیلدهای رسمی یا دسترسی سامانه نیاز دارند، صریحاً به‌عنوان مانع یا نیازمند بررسی نمایش داده می‌شوند.
+                    </div>
+                </div>
+                @if (Draft.HasDuplicateNumberAcrossPeriods == true)
+                {
+                    <div class="alert alert-danger py-2 small mb-2">
+                        <i class="bi bi-exclamation-octagon-fill"></i>
+                        <strong>شمارهٔ داخلی تکراری در دوره‌های مختلف:</strong> شمارهٔ این سابقه با فاکتور دیگری مشترک است. شمارهٔ تاریخی تغییر نمی‌کند و تا بازبینی، برای استفاده به‌عنوان سریال حافظه/`inno` تأیید نیست.
+                    </div>
+                }
+                <div class="moadian-field-semantics small mb-3">
+                    <i class="bi bi-tags"></i>
+                    <span><b>وضعیت فیلد در قواعد رسمی:</b> «اجباری»، «اختیاری»، «مشروط» و «Ignore» با هم فرق دارند؛ Ignore را اختیاری حساب نمی‌کنیم. الزام دقیق باید با نوع، الگو و موضوع همان صورتحساب تطبیق داده شود.</span>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(referenceLoadError))
+                {
+                    <div class="alert alert-warning py-2 small">
+                        <i class="bi bi-exclamation-triangle"></i>
+                        بخشی از اطلاعات مرجع بارگذاری نشد؛ کنترل‌های وابسته به آن قطعی نیستند. @referenceLoadError
+                    </div>
+                }
+
+                <section class="moadian-review-section mb-3">
+                    <div class="moadian-section-heading">
+                        <span class="moadian-section-number">۱</span>
+                        <div>
+                            <h6 class="mb-0">مشخصات صورتحساب</h6>
+                            <div class="small text-muted">نوع رسمی، الگو و موضوع جدا هستند؛ جهت سند داخلی هم فیلد مستقلی است.</div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-1">
+                        <div class="col-lg-3 col-md-6">
+                            <label class="form-label small">جهت سند داخلی</label>
+                            <select class="form-select" @bind="New.Kind">
+                                @foreach (var k in KindOptions)
+                                {
+                                    <option value="@k.Key">@k.Value</option>
+                                }
+                            </select>
+                            <div class="form-text">دسته‌بندی سند مبدأ است؛ جایگزین نوع، الگو یا موضوع رسمی نیست.</div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <label class="form-label small">نوع صورتحساب (inty) <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="New.InvoiceType">
+                                <option value="Unselected">— نوع ۱ یا ۲ را انتخاب کنید —</option>
+                                <option value="Type1">نوع ۱ — اطلاعات خریدار طبق الگو</option>
+                                <option value="Type2">نوع ۲ — اطلاعات خریدار معمولاً اختیاری</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <label class="form-label small">الگوی صورتحساب (inp) <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="New.InvoicePattern">
+                                <option value="Unselected">— ابتدا نوع صورتحساب را انتخاب کنید —</option>
+                                @if (New.InvoicePattern != MoadianInvoicePattern.Unselected && !MoadianInvoiceRules.IsPatternAllowed(New.InvoiceType, New.InvoicePattern))
+                                {
+                                    <option value="@New.InvoicePattern">@((int)New.InvoicePattern) — @MoadianInvoiceRules.PatternTitle(New.InvoicePattern) (ناسازگار با نوع انتخاب‌شده)</option>
+                                }
+                                @foreach (var pattern in MoadianInvoiceRules.AvailablePatterns(New.InvoiceType))
+                                {
+                                    <option value="@pattern">الگوی @((int)pattern) — @MoadianInvoiceRules.PatternTitle(pattern)</option>
+                                }
+                            </select>
+                            <div class="form-text">گزینه‌های مجاز بر اساس نوع صورتحساب محدود می‌شوند.</div>
+                        </div>
+                        <div class="col-lg-3 col-md-6">
+                            <label class="form-label small">موضوع صورتحساب (ins) <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="New.InvoiceSubject">
+                                <option value="Unselected">— موضوع را انتخاب کنید —</option>
+                                @if (New.InvoiceSubject != MoadianInvoiceSubject.Unselected && !MoadianInvoiceRules.IsSubjectAllowed(New.InvoicePattern, New.InvoiceSubject))
+                                {
+                                    <option value="@New.InvoiceSubject">@((int)New.InvoiceSubject) — @MoadianInvoiceRules.SubjectTitle(New.InvoiceSubject) (ناسازگار با الگو)</option>
+                                }
+                                @foreach (var subject in MoadianInvoiceRules.AvailableSubjects(New.InvoicePattern))
+                                {
+                                    <option value="@subject">موضوع @((int)subject) — @MoadianInvoiceRules.SubjectTitle(subject)</option>
+                                }
+                            </select>
+                            <div class="form-text">اصلی، اصلاحی، ابطالی یا برگشت از فروش.</div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">تاریخ صدور <span class="text-danger">*</span></label>
+                            <DatePicker Value="@((DateTime?)New.Date)" ValueChanged="OnInvoiceDateChanged" MinYear="1390" MaxYear="1430" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">زمان صدور (indatim) <span class="text-danger">*</span></label>
+                            <TimeInput Value="@IssueTime" ValueChanged="OnIssueTimeChanged" Suffix="زمان محلی ثبت‌شده برای صورتحساب" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">دوره مالیاتی <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="New.FiscalPeriodId">
+                                <option value="0">— انتخاب کنید —</option>
+                                @foreach (var p in periods)
+                                {
+                                    <option value="@p.Id">@p.Title@(p.IsClosed ? " (بسته)" : "")</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">روش تسویه ثبت‌شده</label>
+                            <input class="form-control" @bind="New.Settlement" @bind:event="oninput" placeholder="مثلاً نقدی / نسیه" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">توضیحات</label>
+                            <input class="form-control" @bind="New.Description" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-6">
+                            @if (MoadianInvoiceRules.RequiresReference(New.InvoiceSubject) || !string.IsNullOrWhiteSpace(New.ReferenceTaxId))
+                            {
+                                <label class="form-label small">شناسهٔ مالیاتی صورتحساب مرجع <span class="text-danger">@(MoadianInvoiceRules.RequiresReference(New.InvoiceSubject) ? "*" : "")</span></label>
+                                <input class="form-control" dir="ltr" maxlength="22" @bind="New.ReferenceTaxId" @bind:event="oninput" placeholder="شناسهٔ ۲۲ نویسه‌ای صورتحساب مرجع" />
+                                <div class="form-text">
+                                    @if (MoadianInvoiceRules.RequiresReference(New.InvoiceSubject))
+                                    {
+                                        <span>برای اصلاحی، ابطالی و برگشت از فروش لازم است؛ وجود و وضعیت مرجع از این فرم استعلام نمی‌شود.</span>
+                                    }
+                                    else
+                                    {
+                                        <span>برای موضوع اصلی نباید شناسه مرجع ثبت شود؛ اگر موضوع اصلی را انتخاب می‌کنید، این مقدار را پاک کنید.</span>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="moadian-field-hint h-100"><i class="bi bi-link-45deg"></i><span>شناسه مرجع فقط برای موضوع‌های اصلاحی، ابطالی یا برگشت از فروش وارد می‌شود.</span></div>
+                            }
+                        </div>
+                        <div class="col-md-6">
+                            <div class="moadian-separation-note small h-100">
+                                <i class="bi bi-diagram-3"></i>
+                                <span><b>نوع</b> (inty)، <b>الگو</b> (inp) و <b>موضوع</b> (ins) سه فیلد مستقل و جداگانه ذخیره می‌شوند. «جهت سند داخلی» هم با هیچ‌کدام از آن‌ها یکی نیست.</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="moadian-review-section mb-3">
+                    <div class="moadian-section-heading">
+                        <span class="moadian-section-number">۲</span>
+                        <div>
+                            <h6 class="mb-0">اطلاعات خریدار</h6>
+                            <div class="small text-muted">در نوع ۲ معمولاً اختیاری است؛ اگر وارد شود، قالب و اعتبار آن هم باید بررسی شود.</div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mt-1">
+                        <div class="col-md-3">
+                            <label class="form-label small">شناسه مالیاتی/ملی خریدار</label>
+                            <input class="form-control" dir="ltr" inputmode="numeric" @bind="New.BuyerTaxId" @bind:event="oninput" placeholder="فقط ارقام" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">نام خریدار</label>
+                            <input class="form-control" @bind="New.BuyerName" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">کد پستی</label>
+                            <input class="form-control" dir="ltr" inputmode="numeric" @bind="New.BuyerPostalCode" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">تلفن</label>
+                            <input class="form-control" dir="ltr" inputmode="tel" @bind="New.BuyerPhone" @bind:event="oninput" />
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small">نشانی</label>
+                            <input class="form-control" @bind="New.BuyerAddress" @bind:event="oninput" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="moadian-review-section mb-3">
+                    <div class="moadian-section-heading">
+                        <span class="moadian-section-number">۳</span>
+                        <div>
+                            <h6 class="mb-0">اقلام، شناسه و مالیات</h6>
+                            <div class="small text-muted">مقادیر ردیف و جمع‌ها محلی دوباره محاسبه می‌شوند؛ نرخ/شناسه نهایی باید با مرجع رسمی همان الگو تطبیق داده شود.</div>
+                        </div>
+                        <div class="ms-auto d-flex gap-2">
+                            <button class="btn btn-sm btn-outline-primary" @onclick="AddLine"><i class="bi bi-plus-lg"></i> افزودن قلم</button>
+                            <button class="btn btn-sm btn-outline-secondary" @onclick="RemoveLast" disabled="@(New.Lines.Count <= 1)"><i class="bi bi-dash-lg"></i> حذف آخر</button>
+                        </div>
+                    </div>
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm table-hover align-middle moadian-line-table">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:190px">شناسه کالا/خدمت</th>
+                                    <th style="min-width:160px">شرح</th>
+                                    <th style="min-width:150px">واحد مالیاتی</th>
+                                    <th style="min-width:95px">تعداد</th>
+                                    <th style="min-width:120px">فی (ریال)</th>
+                                    <th style="min-width:100px">تخفیف</th>
+                                    <th style="min-width:85px">مالیات ٪</th>
+                                    <th style="min-width:115px">مبلغ مالیات</th>
+                                    <th style="min-width:120px">جمع ردیف</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var l in New.Lines)
+                                {
+                                    <tr>
+                                        <td>
+                                            <input class="form-control form-control-sm mb-1" dir="ltr" inputmode="numeric" @bind="l.SstId" @bind:event="oninput" placeholder="کد مالیاتی" />
+                                            <select class="form-select form-select-sm" value="@l.SstId" @onchange="@(e => ApplyCpc(l, e.Value?.ToString() ?? string.Empty))">
+                                                <option value="">انتخاب از فهرست داخلی</option>
+                                                @foreach (var c in cpcList.Where(x => x.IsActive))
+                                                {
+                                                    <option value="@c.Code">@c.Code — @c.Title</option>
+                                                }
+                                            </select>
+                                        </td>
+                                        <td><input class="form-control form-control-sm" @bind="l.SstTitle" @bind:event="oninput" /></td>
+                                        <td><input class="form-control form-control-sm" dir="ltr" @bind="l.UnitCode" @bind:event="oninput" placeholder="کد واحد" /></td>
+                                        <td><input class="form-control form-control-sm text-end num" inputmode="decimal" @bind="l.Quantity" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                                        <td><input class="form-control form-control-sm text-end num" inputmode="decimal" @bind="l.UnitPrice" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                                        <td><input class="form-control form-control-sm text-end num" inputmode="decimal" @bind="l.Discount" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                                        <td><input class="form-control form-control-sm text-end num" inputmode="decimal" @bind="l.VatRate" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                                        <td class="text-end num">@l.VatAmount.Money()</td>
+                                        <td class="text-end num fw-semibold">@l.Total.Money()</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="small text-muted mb-3">مأخذ = (تعداد × فی) − تخفیف &nbsp; | &nbsp; مالیات = مأخذ × نرخ &nbsp; | &nbsp; جمع ردیف = مأخذ + مالیات</div>
+                    <div class="row g-2">
+                        <div class="col-6 col-lg-3">
+                            <div class="moadian-total-tile"><span>تعداد کل</span><strong class="num">@New.Lines.Sum(x => x.Quantity).Num()</strong></div>
+                        </div>
+                        <div class="col-6 col-lg-3">
+                            <div class="moadian-total-tile"><span>مأخذ پس از تخفیف</span><strong class="num">@New.Lines.Sum(x => x.Taxable).Money()</strong></div>
+                        </div>
+                        <div class="col-6 col-lg-3">
+                            <div class="moadian-total-tile"><span>مالیات ردیف‌ها</span><strong class="num">@New.Lines.Sum(x => x.VatAmount).Money()</strong></div>
+                        </div>
+                        <div class="col-6 col-lg-3">
+                            <div class="moadian-total-tile moadian-total-highlight"><span>جمع نهایی محلی</span><strong class="num">@New.Lines.Sum(x => x.Total).Money()</strong></div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="moadian-preflight mb-2">
+                    <div class="d-flex flex-wrap align-items-start gap-3">
+                        <div class="moadian-preflight-icon"><i class="bi bi-shield-check"></i></div>
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1">۴. چک‌لیست پیش از ارسال</h6>
+                            <div class="small text-muted">کنترل‌ها دسته‌بندی شده‌اند تا مورد ناقص با مورد اختیاری اشتباه نشود.</div>
+                        </div>
+                        <button class="btn btn-sm btn-outline-primary" @onclick="() => showDetailedChecks = !showDetailedChecks">
+                            <i class="bi @(showDetailedChecks ? "bi-chevron-up" : "bi-list-check")"></i>
+                            @(showDetailedChecks ? "پنهان‌کردن جزئیات" : "نمایش همه بررسی‌ها")
+                        </button>
+                    </div>
+
+                    <div class="moadian-status-legend small mt-3">
+                        <span><i class="bi bi-check-circle-fill text-success"></i> دادهٔ موجود بررسی شد</span>
+                        <span><i class="bi bi-exclamation-circle-fill text-warning"></i> به تطبیق یا تأیید انسانی نیاز دارد</span>
+                        <span><i class="bi bi-x-circle-fill text-danger"></i> داده/قابلیت لازم در فرم فعلی موجود نیست</span>
+                        <span><i class="bi bi-dash-circle text-secondary"></i> فعلاً کاربرد ندارد</span>
+                    </div>
+
+                    @if (showDetailedChecks)
+                    {
+                        <div class="row g-3 mt-2">
+                            @foreach (var group in ValidationGroups)
+                            {
+                                <div class="col-xl-6">
+                                    <div class="moadian-check-group h-100">
+                                        <div class="d-flex align-items-center gap-2 mb-2">
+                                            <i class="bi @group.Icon text-primary"></i>
+                                            <strong class="flex-grow-1">@group.Title</strong>
+                                            <span class="badge @CheckGroupBadgeClass(group)">@CheckGroupStatusLabel(group)</span>
+                                        </div>
+                                        @foreach (var check in group.Items)
+                                        {
+                                            <div class="moadian-check-row">
+                                                <i class="bi @CheckIcon(check.State) @CheckIconTone(check.State)"></i>
+                                                <div>
+                                                    <div class="small fw-semibold">@check.Title</div>
+                                                    <div class="small text-muted">@check.Detail</div>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                        <div class="alert alert-warning small mt-3 mb-0">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
+                            <strong>مرز اعتبارسنجی:</strong> نوع (inty)، الگو (inp) و موضوع (ins) جدا ذخیره می‌شوند و شناسه مرجع هم برای موضوع‌های ارجاعی ثبت می‌شود؛ اما این فرم هنوز وجود/وضعیت رسمی صورتحساب مرجع را استعلام نمی‌کند.
+                            نوع شخص خریدار، تفکیک مبلغ نقد/نسیه و جزئیات اختصاصی هر الگو هنوز در مدل نیستند. فهرست CPC نیز داخلی است و رسمی/به‌روز بودن آن از اینجا قابل اثبات نیست.
+                        </div>
+                    }
+                </section>
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="SaveDraft" disabled="@(saving || Draft is null || Draft.Status != MoadianInvoiceStatus.Draft)">
+            <i class="bi bi-save"></i> @(saving ? "در حال ذخیره..." : "ذخیره پیش‌نویس")
+        </button>
+        <button type="button" class="btn btn-success" disabled title="ارسال واقعی تا تکمیل الگوی رسمی، تأیید گواهی/دسترسی و فعال‌سازی مجازِ اتصال غیرفعال است.">
+            <i class="bi bi-send"></i> ارسال به سامانه (فعلاً غیرفعال)
+        </button>
+        <button class="btn btn-light" @onclick="CloseAsync">انصراف</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public MoadianInvoice? Draft { get; set; }
+
+    private List<MoadianFiscalPeriod> periods = new();
+    private List<MoadianCpc> cpcList = new();
+    private MoadianSetting? setting;
+    private MoadianInvoiceRequest New = new();
+    private TimeOnly IssueTime => TimeOnly.FromDateTime(New.Date == default ? DateTime.Now : New.Date);
+    private bool saving;
+    private bool loadingRefs;
+    private bool refsLoaded;
+    private bool showDetailedChecks;
+    private int? loadedDraftId;
+    private string? referenceLoadError;
+
+    private string ModalTitle => Draft is null
+        ? "بازبینی پیش‌نویس سامانه مؤدیان"
+        : $"بازبینی پیش‌نویس مودیان — شماره {Draft.Number}";
+
+    private readonly Dictionary<MoadianInvoiceKind, string> KindOptions = new()
+    {
+        [MoadianInvoiceKind.Sale] = "فروش",
+        [MoadianInvoiceKind.SaleReturn] = "برگشت از فروش",
+        [MoadianInvoiceKind.Purchase] = "خرید",
+        [MoadianInvoiceKind.PurchaseReturn] = "برگشت از خرید",
+        [MoadianInvoiceKind.Proforma] = "پیش‌فاکتور"
+    };
+
+    private enum CheckState { Passed, Warning, Blocked, Info }
+    private sealed record CheckItem(string Title, string Detail, CheckState State);
+    private sealed record CheckGroup(string Title, string Icon, List<CheckItem> Items);
+
+    private List<CheckGroup> ValidationGroups => BuildValidationGroups();
+    private int PassedCheckCount => ValidationGroups.SelectMany(g => g.Items).Count(x => x.State == CheckState.Passed);
+    private int WarningCheckCount => ValidationGroups.SelectMany(g => g.Items).Count(x => x.State == CheckState.Warning);
+    private int BlockedCheckCount => ValidationGroups.SelectMany(g => g.Items).Count(x => x.State == CheckState.Blocked);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Visible || Draft is null || Draft.Id <= 0 || Draft.Id == loadedDraftId)
+            return;
+
+        loadedDraftId = Draft.Id;
+        showDetailedChecks = false;
+        referenceLoadError = null;
+        setting = null;
+
+        if (!refsLoaded)
+        {
+            loadingRefs = true;
+            try
+            {
+                periods = await MoadianSvc.GetPeriodsAsync();
+                cpcList = await MoadianSvc.GetCpcAsync();
+                setting = await MoadianSvc.GetSettingAsync();
+                refsLoaded = true;
+            }
+            catch (Exception ex)
+            {
+                referenceLoadError = ex.Message;
+                Toast.Error("بارگذاری بخشی از اطلاعات مرجع مودیان ناموفق بود.");
+            }
+            finally
+            {
+                loadingRefs = false;
+            }
+        }
+
+        LoadDraft(Draft);
+    }
+
+    private void LoadDraft(MoadianInvoice invoice)
+    {
+        if (invoice.Status != MoadianInvoiceStatus.Draft)
+            return;
+
+        New = new MoadianInvoiceRequest
+        {
+            Id = invoice.Id,
+            Kind = invoice.Kind,
+            InvoiceType = invoice.InvoiceType,
+            InvoicePattern = invoice.InvoicePattern,
+            InvoiceSubject = invoice.InvoiceSubject,
+            ReferenceTaxId = invoice.ReferenceTaxId,
+            Date = invoice.Date,
+            FiscalPeriodId = invoice.FiscalPeriodId,
+            BuyerTaxId = invoice.BuyerTaxId,
+            BuyerName = invoice.BuyerName,
+            BuyerAddress = invoice.BuyerAddress,
+            BuyerPostalCode = invoice.BuyerPostalCode,
+            BuyerPhone = invoice.BuyerPhone,
+            Settlement = invoice.Settlement,
+            Description = invoice.Description,
+            Lines = invoice.Lines.Select(l => new MoadianInvoiceLine
+            {
+                RowNo = l.RowNo,
+                SstId = l.SstId,
+                UnitCode = l.UnitCode,
+                SstTitle = l.SstTitle,
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                Discount = l.Discount,
+                VatRate = l.VatRate,
+                VatAmount = l.VatAmount,
+                Total = l.Total
+            }).ToList()
+        };
+
+        if (New.Lines.Count == 0)
+            New.Lines.Add(NewLine());
+    }
+
+    private static MoadianInvoiceLine NewLine() => new()
+    {
+        RowNo = 1,
+        SstId = "",
+        UnitCode = "",
+        SstTitle = "",
+        Quantity = 1,
+        VatRate = 0
+    };
+
+    private void AddLine()
+    {
+        var line = NewLine();
+        line.RowNo = New.Lines.Count + 1;
+        New.Lines.Add(line);
+    }
+
+    private void RemoveLast()
+    {
+        if (New.Lines.Count <= 1)
+            return;
+
+        New.Lines.RemoveAt(New.Lines.Count - 1);
+        for (var i = 0; i < New.Lines.Count; i++)
+            New.Lines[i].RowNo = i + 1;
+    }
+
+    private void OnInvoiceDateChanged(DateTime? date)
+    {
+        if (!date.HasValue) return;
+        var currentTime = TimeOnly.FromDateTime(New.Date == default ? DateTime.Now : New.Date);
+        New.Date = date.Value.Date.Add(currentTime.ToTimeSpan());
+    }
+
+    private void OnIssueTimeChanged(TimeOnly time)
+    {
+        var issueDate = New.Date == default ? DateTime.Now.Date : New.Date.Date;
+        New.Date = issueDate.Add(time.ToTimeSpan());
+    }
+
+    private void RecalcLine(MoadianInvoiceLine line)
+    {
+        line.VatAmount = Math.Round(line.Taxable * line.VatRate / 100m, 2, MidpointRounding.AwayFromZero);
+        line.Total = line.Taxable + line.VatAmount;
+    }
+
+    private void RecalcAll()
+    {
+        foreach (var line in New.Lines)
+            RecalcLine(line);
+    }
+
+    private void ApplyCpc(MoadianInvoiceLine line, string code)
+    {
+        var cpc = cpcList.FirstOrDefault(x => x.Code == code && x.IsActive);
+        if (cpc is null)
+            return;
+
+        line.SstId = cpc.Code;
+        if (string.IsNullOrWhiteSpace(line.UnitCode))
+            line.UnitCode = cpc.Unit;
+        if (string.IsNullOrWhiteSpace(line.SstTitle))
+            line.SstTitle = cpc.Title;
+    }
+
+    private List<CheckGroup> BuildValidationGroups()
+    {
+        var groups = new List<CheckGroup>();
+        var period = periods.FirstOrDefault(x => x.Id == New.FiscalPeriodId);
+        var activeLines = New.Lines.Where(x => x.Quantity > 0).ToList();
+        var faDate = New.Date == default ? (Year: 0, Month: 0, Day: 0) : PersianDate.FromGregorian(New.Date);
+        var dateMatchesPeriod = period is not null && New.Date != default && faDate.Year == period.Year && faDate.Month == period.Month;
+        var issueDateError = MoadianInvoiceRules.ValidateIssueDate(New.Date);
+        var periodState = issueDateError is not null || period is null || period.IsClosed || !dateMatchesPeriod ? CheckState.Blocked : CheckState.Passed;
+        var periodDetail = issueDateError is not null
+            ? issueDateError
+            : period is null
+                ? "دوره انتخاب نشده یا در فهرست موجود نیست."
+                : period.IsClosed
+                    ? "دوره انتخابی بسته است؛ دوره باز را انتخاب کنید."
+                    : !dateMatchesPeriod
+                        ? "ماه و سال شمسی تاریخ با دوره انتخابی هم‌خوان نیست."
+                        : "تاریخ صدور معتبر است و دورهٔ باز با ماه/سال صورتحساب هم‌خوانی دارد.";
+
+        var typeIsValid = New.InvoiceType is MoadianTaxInvoiceType.Type1 or MoadianTaxInvoiceType.Type2;
+        var patternIsSelected = New.InvoicePattern != MoadianInvoicePattern.Unselected;
+        var patternIsAllowed = MoadianInvoiceRules.IsPatternAllowed(New.InvoiceType, New.InvoicePattern);
+        var patternState = !patternIsSelected || !patternIsAllowed ? CheckState.Blocked : CheckState.Passed;
+        var patternDetail = !patternIsSelected
+            ? "الگوی inp را مستقل از نوع ۱/۲ انتخاب کنید."
+            : !patternIsAllowed
+                ? $"الگوی {MoadianInvoiceRules.PatternTitle(New.InvoicePattern)} با نوع انتخاب‌شده سازگار نیست."
+                : $"الگوی {MoadianInvoiceRules.PatternTitle(New.InvoicePattern)} (کد {(int)New.InvoicePattern}) با نوع انتخاب‌شده در فهرست مجاز است.";
+        var subjectIsSelected = New.InvoiceSubject != MoadianInvoiceSubject.Unselected;
+        var subjectIsAllowed = MoadianInvoiceRules.IsSubjectAllowed(New.InvoicePattern, New.InvoiceSubject);
+        var subjectState = !subjectIsSelected || !subjectIsAllowed ? CheckState.Blocked : CheckState.Passed;
+        var subjectDetail = !subjectIsSelected
+            ? "موضوع ins را مستقل از نوع و الگو انتخاب کنید."
+            : !subjectIsAllowed
+                ? "موضوع انتخاب‌شده با الگوی انتخابی سازگار نیست."
+                : $"موضوع {MoadianInvoiceRules.SubjectTitle(New.InvoiceSubject)} (کد {(int)New.InvoiceSubject}) انتخاب شده است.";
+        var referenceRequired = MoadianInvoiceRules.RequiresReference(New.InvoiceSubject);
+        var referenceIdPresent = !string.IsNullOrWhiteSpace(New.ReferenceTaxId);
+        var referenceIdValid = MoadianInvoiceRules.IsValidReferenceTaxId(New.ReferenceTaxId);
+        var referenceState = !subjectIsSelected ? CheckState.Info
+            : referenceRequired ? referenceIdValid ? CheckState.Warning : CheckState.Blocked
+            : referenceIdPresent ? CheckState.Blocked : CheckState.Passed;
+        var referenceDetail = !subjectIsSelected
+            ? "پس از انتخاب موضوع مشخص می‌شود که شناسه مرجع لازم است یا نه."
+            : referenceRequired && referenceIdValid
+                ? "طول ۲۲ نویسه کنترل شد؛ وجود، وضعیت و سازگاری صورتحساب مرجع با سامانه رسمی قابل استعلام نیست."
+                : referenceRequired
+                    ? "برای اصلاحی/ابطالی/برگشت، شناسه مرجع ۲۲ نویسه‌ای لازم است."
+                    : referenceIdPresent
+                        ? "برای موضوع اصلی، شناسه مرجع را پاک کنید."
+                        : "موضوع اصلی است؛ شناسه مرجع لازم نیست.";
+
+        groups.Add(new CheckGroup("نوع، الگو، موضوع و تاریخ صورتحساب", "bi-receipt-cutoff", new List<CheckItem>
+        {
+            new("جهت سند داخلی", KindOptions.TryGetValue(New.Kind, out var kindLabel) ? $"انتخاب شده: {kindLabel}؛ این فیلد رسمی inty/inp/ins نیست." : "مقدار سند داخلی در فهرست شناخته‌شده نیست.", KindOptions.ContainsKey(New.Kind) ? CheckState.Passed : CheckState.Blocked),
+            new("نوع رسمی صورتحساب (inty)", typeIsValid ? $"نوع {(int)New.InvoiceType} برای این پیش‌نویس انتخاب شده است." : "نوع ۱ یا ۲ را انتخاب کنید.", typeIsValid ? CheckState.Passed : CheckState.Blocked),
+            new("الگوی رسمی صورتحساب (inp)", patternDetail, patternState),
+            new("موضوع رسمی صورتحساب (ins)", subjectDetail, subjectState),
+            new("شناسه صورتحساب مرجع", referenceDetail, referenceState),
+            new("تاریخ و دوره مالیاتی", periodDetail, periodState),
+            new("تاریخ‌وزمان رسمی (indatim)", issueDateError is not null ? issueDateError : "تاریخ‌وزمان محلی ثبت می‌شود و آینده نیست؛ تبدیل به قالب wire و منطقه‌زمانی رسمی هنوز با مستند جاری تطبیق نشده است.", issueDateError is not null ? CheckState.Blocked : CheckState.Warning),
+            new("شمارهٔ مالیاتی یکتای فاکتور (taxid)", "تولید taxid رسمی و کنترل غیرتکراری‌بودن آن هنوز پیاده نشده است؛ taxid با شناسه مالیاتی فروشنده یکی نیست.", CheckState.Blocked),
+            new("سریال داخلی صورتحساب (inno)", Draft?.HasDuplicateNumberAcrossPeriods == true
+                ? "این Number در سوابق دوره‌های دیگر هم وجود دارد؛ طبق تصمیم، شماره تاریخی تغییر نمی‌کند و پیش از استفاده به‌عنوان inno باید تعیین تکلیف شود. شمارهٔ پیش‌نویس‌های جدید به‌صورت سراسری افزایشی است."
+                : Draft?.HasDuplicateNumberAcrossPeriods == false
+                    ? "این Number در سوابق موجود تکراری نیست؛ برای پیش‌نویس‌های جدید تخصیص سراسری/افزایشی فعال است، اما نگاشت رسمی به inno هنوز تأیید نشده است."
+                    : "برای سوابق قدیمی، تکرار Number بین دوره‌ها هنوز بررسی نشده است؛ پیش‌نویس‌های جدید به‌صورت سراسری افزایشی شماره می‌گیرند. نگاشت رسمی به inno تأیید نشده است.", CheckState.Blocked)
+        }));
+
+        var sellerTaxId = setting?.TaxId?.Trim();
+        var sellerTaxIdValid = IsDigitsOnly(sellerTaxId) && sellerTaxId!.Length is 10 or 11 or 14;
+        var sellerTaxIdMatchesDraft = sellerTaxIdValid && string.Equals(Draft?.TaxId?.Trim(), sellerTaxId, StringComparison.Ordinal);
+        var sellerTaxIdDetail = !sellerTaxIdValid
+            ? "شناسه مالیاتی فروشنده در تنظیمات موجود نیست یا قالب پایه آن معتبر نیست."
+            : sellerTaxIdMatchesDraft
+                ? "شناسه تنظیمات با شناسه ثبت‌شده روی همین پیش‌نویس یکسان است؛ اعتبار رسمی نهایی نشده است."
+                : "شناسه مالیاتی فعلی تنظیمات با شناسه ذخیره‌شده روی این پیش‌نویس هم‌خوان نیست؛ پیش از ارسال باید بررسی شود.";
+        var sellerTaxIdState = sellerTaxIdMatchesDraft ? CheckState.Passed : CheckState.Blocked;
+        var hasFiscalMemory = !string.IsNullOrWhiteSpace(setting?.FiscalMemoryId);
+        var hasPrivateKey = !string.IsNullOrWhiteSpace(setting?.PrivateKeyPem);
+        var hasCertificate = !string.IsNullOrWhiteSpace(setting?.SigningCertificatePem);
+        groups.Add(new CheckGroup("فروشنده و آماده‌سازی اتصال", "bi-shop", new List<CheckItem>
+        {
+            new("شناسه مالیاتی فروشنده", sellerTaxIdDetail, sellerTaxIdState),
+            new("نام فروشنده", !string.IsNullOrWhiteSpace(setting?.SellerName) ? "نام فروشنده در تنظیمات ثبت شده است." : "نام فروشنده در تنظیمات ثبت نشده است.", !string.IsNullOrWhiteSpace(setting?.SellerName) ? CheckState.Passed : CheckState.Warning),
+            new("شناسه حافظه مالیاتی", hasFiscalMemory ? "در تنظیمات ثبت شده است؛ قالب/طول رسمی و فعال‌بودن آن هنوز استعلام نمی‌شود." : "در تنظیمات ثبت نشده است.", hasFiscalMemory ? CheckState.Warning : CheckState.Blocked),
+            new("تطبیق شناسهٔ حافظه با این فاکتور", hasFiscalMemory ? "تنظیمات فعلی وجود دارد؛ شناسهٔ حافظه در خود پیش‌نویس snapshot نشده و سازگاری taxid/سریال قابل اثبات نیست." : "بدون شناسهٔ حافظهٔ مالیاتی، taxid رسمی قابل تولید/اعتبارسنجی نیست.", CheckState.Blocked),
+            new("کلید خصوصی امضا", hasPrivateKey ? "وجود مقدار محافظت‌شده بررسی شد؛ صحت رمزنگاری/جفت‌بودن کلید قابل تأیید نیست." : "کلید خصوصی در تنظیمات ثبت نشده است.", hasPrivateKey ? CheckState.Warning : CheckState.Blocked),
+            new("گواهی امضای مؤدی", hasCertificate ? "وجود مقدار محافظت‌شده بررسی شد؛ انقضا و اعتبار گواهی در این فرم بررسی نمی‌شود." : "گواهی امضا در تنظیمات ثبت نشده است.", hasCertificate ? CheckState.Warning : CheckState.Blocked),
+            new("کد اقتصادی و مشخصات تکمیلی فروشنده", !string.IsNullOrWhiteSpace(setting?.EconomicCode) && !string.IsNullOrWhiteSpace(setting?.SellerAddress) && !string.IsNullOrWhiteSpace(setting?.SellerPostalCode)
+                ? "کد اقتصادی، نشانی و کد پستی ثبت شده‌اند؛ الزام دقیق تابع الگو است."
+                : "یک یا چند مورد (کد اقتصادی، نشانی یا کد پستی) ثبت نشده؛ الزام نهایی تابع الگو است.",
+                !string.IsNullOrWhiteSpace(setting?.EconomicCode) && !string.IsNullOrWhiteSpace(setting?.SellerAddress) && !string.IsNullOrWhiteSpace(setting?.SellerPostalCode) ? CheckState.Passed : CheckState.Warning),
+            new("تلفن فروشنده", !string.IsNullOrWhiteSpace(setting?.SellerPhone) ? "تلفن در تنظیمات ثبت شده؛ قالب رسمی/مالکیت آن بررسی نشده است." : "تلفن فروشنده ثبت نشده؛ الزام دقیق تابع الگو است.", !string.IsNullOrWhiteSpace(setting?.SellerPhone) ? CheckState.Passed : CheckState.Warning),
+            new("اتصال مجاز به سامانه رسمی", "ارسال آزمایشی و واقعی در نسخه فعلی عمداً بسته است؛ ثبت نشانی یا کلید به‌تنهایی مجوز ارسال نیست.", CheckState.Blocked)
+        }));
+
+        var buyerHasAnyData = !string.IsNullOrWhiteSpace(New.BuyerTaxId) || !string.IsNullOrWhiteSpace(New.BuyerName)
+            || !string.IsNullOrWhiteSpace(New.BuyerAddress) || !string.IsNullOrWhiteSpace(New.BuyerPostalCode) || !string.IsNullOrWhiteSpace(New.BuyerPhone);
+        var buyerIdValid = IsDigitsOnly(New.BuyerTaxId) && New.BuyerTaxId!.Trim().Length is 10 or 11 or 12 or 14;
+        var buyerNamePresent = !string.IsNullOrWhiteSpace(New.BuyerName);
+        var isType1 = New.InvoiceType == MoadianTaxInvoiceType.Type1;
+        var buyerIdentityState = isType1
+            ? (buyerIdValid && buyerNamePresent ? CheckState.Passed : CheckState.Warning)
+            : !buyerHasAnyData ? CheckState.Info
+            : !string.IsNullOrWhiteSpace(New.BuyerTaxId) && !buyerIdValid ? CheckState.Warning
+            : CheckState.Passed;
+        var buyerTypeState = New.InvoiceType == MoadianTaxInvoiceType.Type2 && !buyerHasAnyData ? CheckState.Info : CheckState.Warning;
+        var buyerTypeDetail = buyerTypeState == CheckState.Info
+            ? "برای نوع ۲ و بدون اطلاعات خریدار فعلاً کاربرد ندارد."
+            : "حقیقی/حقوقی/مصرف‌کننده/خارجی در فیلد مستقلی ذخیره نمی‌شود؛ شرط اجباری بودن شناسه را نمی‌توان برای همه حالت‌ها قطعی کرد.";
+        var buyerIdentityDetail = isType1
+            ? buyerIdValid && buyerNamePresent
+                ? "نام و شناسه پایه وارد شده‌اند؛ الزام/قالب نهایی را با نوع شخص و الگوی رسمی تطبیق دهید."
+                : "نام یا شناسه تکمیل/قابل‌شناسایی نیست؛ چون نوع شخص و الگو در این فرم ثبت نمی‌شوند، الزام نهایی باید بازبینی شود."
+            : !buyerHasAnyData
+                ? "برای نوع ۲ معمولاً اختیاری است؛ چون خالی است، کنترل شناسه لازم نیست."
+                : !string.IsNullOrWhiteSpace(New.BuyerTaxId) && !buyerIdValid
+                    ? "شناسه واردشده قالب پایه قابل‌شناسایی ندارد؛ اصلاح یا حذف آن را بررسی کنید."
+                    : "در صورت درج، قالب پایه شناسه کنترل شد؛ الزام آن به قواعد جاری وابسته است.";
+        var postalProvided = !string.IsNullOrWhiteSpace(New.BuyerPostalCode);
+        var postalValid = IsDigitsOnly(New.BuyerPostalCode) && New.BuyerPostalCode!.Trim().Length == 10;
+        var phoneProvided = !string.IsNullOrWhiteSpace(New.BuyerPhone);
+        var phoneDigits = CountDigits(New.BuyerPhone);
+        var phoneValid = IsDigitsOnly(New.BuyerPhone) && phoneDigits is >= 7 and <= 15;
+
+        groups.Add(new CheckGroup("خریدار و اعتبار اطلاعات", "bi-person-vcard", new List<CheckItem>
+        {
+            new("نام و شناسه خریدار", buyerIdentityDetail, buyerIdentityState),
+            new("نوع شخص خریدار", buyerTypeDetail, buyerTypeState),
+            new("کد پستی", !postalProvided ? "وارد نشده است؛ اختیاری/مشروط بودن به الگو بستگی دارد." : postalValid ? "قالب پایه ۱۰ رقمی کنترل شد؛ تطبیق رسمی انجام نشده است." : "قالب کد پستی باید بازبینی شود.", !postalProvided ? CheckState.Info : postalValid ? CheckState.Passed : CheckState.Warning),
+            new("تلفن", !phoneProvided ? "وارد نشده است؛ الزام آن به الگو و نوع خریدار بستگی دارد." : phoneValid ? "طول و ارقام پایه قابل قبول است؛ صحت مالکیت/قالب رسمی بررسی نشده است." : "قالب تلفن را بازبینی کنید.", !phoneProvided ? CheckState.Info : phoneValid ? CheckState.Passed : CheckState.Warning),
+            new("نشانی خریدار", !string.IsNullOrWhiteSpace(New.BuyerAddress) ? "مقدار ثبت شده است؛ الزام آن وابسته به الگو است." : "نشانی وارد نشده؛ الزام آن وابسته به الگو و نوع خریدار است.", !string.IsNullOrWhiteSpace(New.BuyerAddress) ? CheckState.Passed : CheckState.Info)
+        }));
+
+        var activeLineCountState = activeLines.Count > 0 ? CheckState.Passed : CheckState.Blocked;
+        var codeComplete = activeLines.Count > 0 && activeLines.All(x => !string.IsNullOrWhiteSpace(x.SstId));
+        var codeInLocalList = codeComplete && activeLines.All(x => cpcList.Any(c => c.IsActive && c.Code == x.SstId));
+        var lineTitlesPresent = activeLines.Count > 0 && activeLines.All(x => !string.IsNullOrWhiteSpace(x.SstTitle));
+        var unitsPresent = activeLines.Count > 0 && activeLines.All(x => !string.IsNullOrWhiteSpace(x.UnitCode));
+        var hasNegativeQuantity = New.Lines.Any(x => x.Quantity < 0);
+        var lineNumbersValid = activeLines.Count > 0 && !hasNegativeQuantity && activeLines.All(x => x.UnitPrice >= 0 && x.Discount >= 0
+            && x.Discount <= x.Quantity * x.UnitPrice && x.VatRate is >= 0 and <= 100);
+        var lineMathValid = lineNumbersValid && activeLines.All(x =>
+        {
+            var taxable = x.Quantity * x.UnitPrice - x.Discount;
+            var expectedVat = Math.Round(taxable * x.VatRate / 100m, 2, MidpointRounding.AwayFromZero);
+            return x.VatAmount == expectedVat && x.Total == taxable + expectedVat;
+        });
+        var vatRangeValid = activeLines.Count > 0 && activeLines.All(x => x.VatRate is >= 0 and <= 100);
+        var calculatedGross = New.Lines.Sum(x => x.Quantity * x.UnitPrice);
+        var calculatedDiscount = New.Lines.Sum(x => x.Discount);
+        var calculatedTaxable = New.Lines.Sum(x => x.Taxable);
+        var calculatedVat = New.Lines.Sum(x => x.VatAmount);
+        var calculatedNet = New.Lines.Sum(x => x.Total);
+        var savedTotalsMatch = Draft is not null
+            && Math.Abs(Draft.TotalGross - calculatedGross) <= 0.01m
+            && Math.Abs(Draft.TotalDiscount - calculatedDiscount) <= 0.01m
+            && Math.Abs(Draft.TotalTaxable - calculatedTaxable) <= 0.01m
+            && Math.Abs(Draft.TotalVat - calculatedVat) <= 0.01m
+            && Math.Abs(Draft.TotalNet - calculatedNet) <= 0.01m;
+
+        groups.Add(new CheckGroup("اقلام، شناسه کالا/خدمت و مالیات", "bi-box-seam", new List<CheckItem>
+        {
+            new("وجود قلم معتبر", activeLines.Count > 0 ? $"{activeLines.Count} قلم با تعداد مثبت ثبت شده است." : "حداقل یک قلم با تعداد مثبت لازم است.", activeLineCountState),
+            new("شناسه کالا/خدمت", !codeComplete ? "شناسه یک یا چند قلم خالی است." : codeInLocalList ? "در فهرست داخلی فعال پیدا شد؛ این فهرست هنوز مرجع رسمی تأییدشده نیست." : "شناسه در فهرست داخلیِ بارشده پیدا نشد؛ کد را با مرجع معتبر تطبیق دهید.", !codeComplete ? CheckState.Blocked : CheckState.Warning),
+            new("شرح و واحد مالیاتی", !lineTitlesPresent ? "شرح یک یا چند قلم خالی است." : !unitsPresent ? "شرح موجود است؛ کد واحد یک یا چند قلم خالی است و الزام آن وابسته به الگو است." : "شرح و واحد برای همه اقلام وارد شده؛ اعتبار رسمی واحد بررسی نشده است.", !lineTitlesPresent ? CheckState.Blocked : !unitsPresent ? CheckState.Warning : CheckState.Passed),
+            new("تعداد، فی، تخفیف و نرخ", lineNumbersValid ? "مقادیر منفی، تخفیف بیش از ناخالص و نرخ خارج از ۰ تا ۱۰۰ پیدا نشد." : "یک یا چند مقدار قلم نامعتبر است؛ تعداد باید مثبت و تخفیف در محدوده ناخالص باشد.", lineNumbersValid ? CheckState.Passed : CheckState.Blocked),
+            new("محاسبه مالیات و جمع ردیف", lineMathValid ? "مالیات و جمع ردیف با فرمول محلی دوباره کنترل شدند." : "مقادیر محاسباتی یک یا چند ردیف با فرمول محلی سازگار نیستند.", lineMathValid ? CheckState.Passed : CheckState.Blocked),
+            new("تطبیق نرخ مالیات با کالا/الگو", vatRangeValid ? "فقط محدوده عددی نرخ کنترل شد؛ نرخ قانونی متناسب با شناسه/الگو از مرجع رسمی بررسی نشده است." : "نرخ یکی از اقلام خارج از محدوده عددی ۰ تا ۱۰۰ است.", vatRangeValid ? CheckState.Warning : CheckState.Blocked),
+            new("سایر عوارض، معافیت‌ها و جزئیات مالیاتی", "مدل فعلی مالیات ارزش افزوده هر قلم را دارد؛ فیلدهای سایر عوارض/معافیت‌ها و قواعد وابسته به الگو جداگانه مدل نشده‌اند.", CheckState.Warning),
+            new("جمع‌های کلی", !lineMathValid ? "ابتدا خطاهای محاسباتی اقلام را برطرف کنید." : savedTotalsMatch ? $"جمع ناخالص {calculatedGross.Money()}، تخفیف {calculatedDiscount.Money()}، مالیات {calculatedVat.Money()} و خالص {calculatedNet.Money()} با آخرین نسخه ذخیره‌شده هم‌خوان است." : $"جمع محلی خالص {calculatedNet.Money()} است؛ با آخرین نسخه ذخیره‌شده تفاوت دارد و پس از ذخیره دوباره محاسبه می‌شود.", !lineMathValid ? CheckState.Blocked : savedTotalsMatch ? CheckState.Passed : CheckState.Warning)
+        }));
+
+        var settlementPresent = !string.IsNullOrWhiteSpace(New.Settlement);
+        var needsReference = New.Kind is MoadianInvoiceKind.SaleReturn or MoadianInvoiceKind.PurchaseReturn;
+        var referenceKindSupported = New.Kind is MoadianInvoiceKind.Sale or MoadianInvoiceKind.SaleReturn;
+        groups.Add(new CheckGroup("تسویه، موضوع خاص و صورتحساب مرجع", "bi-arrow-left-right", new List<CheckItem>
+        {
+            new("روش تسویه", settlementPresent ? "یک مقدار متنی ثبت شده؛ تبدیل به کد رسمی و اعتبار روش از اینجا قابل تأیید نیست." : "روش تسویه ثبت نشده است؛ مقدار را تکمیل کنید و آن را با قواعد همان الگو تطبیق دهید.", CheckState.Warning),
+            new("مبلغ نقد/نسیه و تفکیک پرداخت", "فیلدهای جدا برای سهم نقدی، نسیه یا مبلغ پرداخت در مدل فعلی وجود ندارند.", CheckState.Blocked),
+            new("صورتحساب مرجع برای برگشت", needsReference ? "این سند از نوع برگشت است، اما شناسه مالیاتی صورتحساب مرجع فیلد مستقلی ندارد." : "برای سند عادیِ انتخاب‌شده ارجاع برگشت ثبت نشده است؛ نوع موضوع رسمی همچنان جداگانه تکمیل نشده.", needsReference ? CheckState.Blocked : CheckState.Info),
+            new("مرجع صورتحساب اصلاحی/ابطالی", "اگر موضوع صورتحساب اصلاحی یا ابطالی باشد، شناسه صورتحساب اصلی لازم است؛ این فیلد وجود ندارد و چون موضوع جداگانه انتخاب نمی‌شود، شرط آن قابل تعیین نیست.", CheckState.Warning),
+            new("پشتیبانی جهت سند", referenceKindSupported ? "جهت فروش/برگشت فروش در این فرم قابل انتخاب است؛ قواعد مرجع برای برگشت هنوز کامل نیست." : "خرید، برگشت خرید یا پیش‌فاکتور در مدل فروش فعلی به‌طور کامل نگاشت نشده است.", referenceKindSupported ? (needsReference ? CheckState.Warning : CheckState.Passed) : CheckState.Blocked),
+            new("فیلدهای ویژه الگو", "فیلدهای ارز، صادرات، طلا/جواهر، پیمانکاری و سایر الگوهای تخصصی در این فرم وجود ندارند؛ چون الگو انتخاب نمی‌شود، الزام هرکدام هم مشخص نیست.", CheckState.Warning)
+        }));
+
+        groups.Add(new CheckGroup("کنترل نهایی، اقدام دستی و پاسخ سامانه", "bi-send-check", new List<CheckItem>
+        {
+            new("وضعیت پیش‌نویس", Draft?.Status == MoadianInvoiceStatus.Draft ? "این فاکتور هنوز پیش‌نویس است و در صف ارسال قرار ندارد." : "وضعیت فاکتور دیگر پیش‌نویس نیست.", Draft?.Status == MoadianInvoiceStatus.Draft ? CheckState.Passed : CheckState.Blocked),
+            new("قالب payload و امضا", "خروجی موجود در نسخه فعلی snapshot محلی است، نه payload رسمی امضاشده و قابل ارسال.", CheckState.Blocked),
+            new("تأیید صریح کاربر برای ارسال", "ارسال فقط باید پس از بازبینی و کلیک صریح کاربر انجام شود؛ هیچ ارسال خودکاری در این فرم اجرا نمی‌شود.", CheckState.Passed),
+            new("وضعیت تلاش و جلوگیری از ارسال تکراری", Draft?.Attempts == 0 && string.IsNullOrWhiteSpace(Draft?.ReferenceId) && string.IsNullOrWhiteSpace(Draft?.TrackingId)
+                ? "تلاش/شناسه ارسال قبلی روی این پیش‌نویس ثبت نشده است؛ این کنترل محلی است و جایگزین قفل تکرارِ زمان ارسال نیست."
+                : "سابقه تلاش یا شناسه ارسال وجود دارد؛ باید پاسخ و وضعیت سامانه بررسی شود.",
+                Draft?.Attempts == 0 && string.IsNullOrWhiteSpace(Draft?.ReferenceId) && string.IsNullOrWhiteSpace(Draft?.TrackingId) ? CheckState.Passed : CheckState.Warning),
+            new("پاسخ و شناسه پیگیری سامانه", "این موارد فقط پس از اتصال مجاز و پاسخ واقعی سامانه قابل ثبت/کنترل‌اند؛ هنوز پاسخی دریافت نشده است.", CheckState.Info)
+        }));
+
+        return groups;
+    }
+
+    private static bool IsDigitsOnly(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        var text = value.Trim();
+        return text.All(ch => ch is >= '0' and <= '9' or >= '۰' and <= '۹' or >= '٠' and <= '٩');
+    }
+
+    private static int CountDigits(string? value)
+        => string.IsNullOrWhiteSpace(value) ? 0 : value.Count(ch => ch is >= '0' and <= '9' or >= '۰' and <= '۹' or >= '٠' and <= '٩');
+
+    private static string CheckIcon(CheckState state) => state switch
+    {
+        CheckState.Passed => "bi-check-circle-fill",
+        CheckState.Warning => "bi-exclamation-circle-fill",
+        CheckState.Blocked => "bi-x-circle-fill",
+        _ => "bi-dash-circle"
+    };
+
+    private static string CheckIconTone(CheckState state) => state switch
+    {
+        CheckState.Passed => "text-success",
+        CheckState.Warning => "text-warning",
+        CheckState.Blocked => "text-danger",
+        _ => "text-secondary"
+    };
+
+    private static string CheckGroupBadgeClass(CheckGroup group)
+    {
+        if (group.Items.Any(x => x.State == CheckState.Blocked)) return "bg-danger";
+        if (group.Items.Any(x => x.State == CheckState.Warning)) return "bg-warning text-dark";
+        if (group.Items.All(x => x.State is CheckState.Passed or CheckState.Info)) return "bg-success";
+        return "bg-secondary";
+    }
+
+    private static string CheckGroupStatusLabel(CheckGroup group)
+    {
+        if (group.Items.Any(x => x.State == CheckState.Blocked)) return "نیازمند تکمیل";
+        if (group.Items.Any(x => x.State == CheckState.Warning)) return "نیازمند بازبینی";
+        if (group.Items.All(x => x.State is CheckState.Passed or CheckState.Info)) return "بررسی شد";
+        return "در انتظار";
+    }
+
+    private async Task SaveDraft()
+    {
+        if (Draft is null || Draft.Status != MoadianInvoiceStatus.Draft)
+            return;
+        if (New.FiscalPeriodId == 0)
+        {
+            Toast.Error("دوره مالیاتی را انتخاب کنید.");
+            return;
+        }
+        var issueDateError = MoadianInvoiceRules.ValidateIssueDate(New.Date);
+        if (issueDateError is not null) { Toast.Error(issueDateError); showDetailedChecks = true; return; }
+        if (New.InvoiceType is not (MoadianTaxInvoiceType.Type1 or MoadianTaxInvoiceType.Type2))
+        {
+            Toast.Error("نوع صورتحساب را برای همین پیش‌نویس انتخاب کنید.");
+            return;
+        }
+        var selectionError = MoadianInvoiceRules.ValidateSelection(New.InvoiceType, New.InvoicePattern, New.InvoiceSubject, New.ReferenceTaxId);
+        if (selectionError is not null)
+        {
+            Toast.Error(selectionError);
+            showDetailedChecks = true;
+            return;
+        }
+        if (New.Lines.Count == 0 || New.Lines.All(x => x.Quantity <= 0))
+        {
+            Toast.Error("حداقل یک قلم معتبر لازم است.");
+            return;
+        }
+
+        saving = true;
+        try
+        {
+            RecalcAll();
+            var saved = await MoadianSvc.UpdateDraftAsync(New.Id, New);
+            Toast.Success($"پیش‌نویس {saved.Number} ذخیره شد.");
+            await CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task CloseAsync()
+    {
+        loadedDraftId = null;
+        await VisibleChanged.InvokeAsync(false);
+    }
+}

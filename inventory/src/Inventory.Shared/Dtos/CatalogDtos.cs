@@ -198,6 +198,9 @@ public class Product
     /// <summary>بارکد</summary>
     public string? Barcode { get; set; }
 
+    /// <summary>شناسه مالیاتی کالا/خدمت برای صورتحساب مودیان</summary>
+    public string? TaxCode { get; set; }
+
     /// <summary>قیمت فروش (ریال)</summary>
     public decimal SalePrice { get; set; }
 
@@ -259,6 +262,8 @@ public class Party
     public string? Phone { get; set; }
     public string? Mobile { get; set; }
     public string? Address { get; set; }
+    public string? TaxId { get; set; }
+    public string? PostalCode { get; set; }
     public string? Note { get; set; }
     public bool IsActive { get; set; } = true;
 

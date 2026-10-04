@@ -1,23 +1,18 @@
 using Inventory.Api.Services;
-using System.Net.Http.Json;
-using System.Security.Cryptography;
-using System.Text;
+using System.Data;
 using System.Text.Json;
 using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using Db = Inventory.Api.Data;
 
 namespace Inventory.Api.Services.Invoicing;
 
 /// <summary>
-/// سرویس سامانه مودیان (فاکتور الکترونیکی):
-///   • تنظیمات اتصال (شماره مالیاتی، توکن، کلید امضا، آدرس سرویس)
-///   • دوره‌های مالیاتی ماهانه
-///   • ساخت فاکتور الکترونیکی از فاکتور فروش/خرید سیستم یا ثبت دستی
-///   • ساخت Payload استاندارد مودیان + امضای RSA (در صورت وجود کلید)
-///   • چرخه‌ی ارسال (صف ← ارسال ← پاسخ سامانه/خطا/برگشت) + شبیه‌سازی برای تست
-///   • شناسه‌های کالا/خدمت (CPC) و لاگ کامل
+/// سرویس پیش‌نویس‌های مودیان: تنظیمات امن، دوره‌های مالیاتی، اتصال به دو منبع فروش،
+/// ویرایش/بازبینی و نگهداری رویدادها. ارسال مستقیم و خودکار عمداً fail-closed است؛
+/// خروجی نمایشی JSON صرفاً snapshot محلی است و قالب رسمی محسوب نمی‌شود.
 /// </summary>
 public interface IMoadianService
 {
@@ -31,7 +26,11 @@ public interface IMoadianService
     Task<List<MoadianInvoice>> GetInvoicesAsync(int? periodId = null, MoadianInvoiceStatus? status = null, string? search = null, Paging.Request? pagination = null);
     Task<MoadianInvoice> GetInvoiceAsync(int id);
     Task<MoadianInvoice> CreateFromFacInvoiceAsync(int facInvoiceId, string? user);
+    Task<MoadianInvoice?> CreateFromFacInvoiceIfEnabledAsync(int facInvoiceId, string? user);
+    Task<MoadianInvoice> CreateFromOperationsTransactionAsync(int transactionId, string? user);
+    Task<MoadianInvoice?> CreateFromOperationsTransactionIfEnabledAsync(int transactionId, string? user);
     Task<MoadianInvoice> CreateManualAsync(MoadianInvoiceRequest req, string? user);
+    Task<MoadianInvoice> UpdateDraftAsync(int id, MoadianInvoiceRequest req, string? user);
     Task DeleteInvoiceAsync(int id);
 
     Task<MoadianInvoice> EnqueueAsync(int id, string? user);
@@ -52,12 +51,14 @@ public interface IMoadianService
 public class MoadianService : IMoadianService
 {
     private readonly Db.AppDbContext _db;
-    private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<MoadianService> _log;
+    private readonly IDataProtector _secrets;
 
-    public MoadianService(Db.AppDbContext db, IHttpClientFactory httpFactory, ILogger<MoadianService> log)
+    public MoadianService(Db.AppDbContext db, ILogger<MoadianService> log, IDataProtectionProvider protectionProvider)
     {
-        _db = db; _httpFactory = httpFactory; _log = log;
+        _db = db;
+        _log = log;
+        _secrets = protectionProvider.CreateProtector("Inventory.Moadian.Settings.v1");
     }
 
     // =====================================================================
@@ -68,8 +69,10 @@ public class MoadianService : IMoadianService
         var s = await _db.MoadianSettings.AsNoTracking().OrderBy(x => x.Id).FirstOrDefaultAsync()
                 ?? new Db.MoadianSetting();
         var dto = ToDto(s);
-        // هرگز کلید خصوصی را در پاسخ عمومی برنگردان (فقط برای ویرایش UI)
-        dto.PrivateKeyPem = string.IsNullOrWhiteSpace(s.PrivateKeyPem) ? null : "*****" + s.PrivateKeyPem.Length + "*****";
+        // رازها هرگز از API به مرورگر برگردانده نمی‌شوند؛ فقط وضعیت «تنظیم شده» نمایش داده می‌شود.
+        dto.PrivateKeyPem = MaskSecret(s.PrivateKeyPem);
+        dto.SigningCertificatePem = MaskSecret(s.SigningCertificatePem);
+        dto.TaxCardToken = MaskSecret(s.TaxCardToken);
         return dto;
     }
 
@@ -87,21 +90,33 @@ public class MoadianService : IMoadianService
             _db.MoadianSettings.Add(entity);
         }
 
-        // اگر کلید خصوصی از UI دست‌نخورده برگشت، مقدار قبلی حفظ شود
-        if (dto.PrivateKeyPem is null || dto.PrivateKeyPem.StartsWith("*****"))
-            dto.PrivateKeyPem = entity.PrivateKeyPem;
+        var fiscalMemoryId = NullIfEmpty(dto.FiscalMemoryId);
+        if (fiscalMemoryId is { Length: > 20 })
+            throw new InvalidOperationException("شناسه/کد حافظه مالیاتی بیش از ۲۰ نویسه است.");
+
+        var submittedPrivateKey = dto.PrivateKeyPem;
+        var submittedCertificate = dto.SigningCertificatePem;
+        var submittedToken = dto.TaxCardToken;
+        var preservePrivateKey = string.IsNullOrWhiteSpace(submittedPrivateKey) || submittedPrivateKey.StartsWith("*****", StringComparison.Ordinal);
+        var preserveCertificate = string.IsNullOrWhiteSpace(submittedCertificate) || submittedCertificate.StartsWith("*****", StringComparison.Ordinal);
+        var preserveToken = string.IsNullOrWhiteSpace(submittedToken) || submittedToken.StartsWith("*****", StringComparison.Ordinal);
 
         entity.TaxId = dto.TaxId.Trim();
-        entity.EconomicCode = dto.EconomicCode;
-        entity.SellerName = dto.SellerName;
-        entity.SellerAddress = dto.SellerAddress;
-        entity.SellerPostalCode = dto.SellerPostalCode;
-        entity.SellerPhone = dto.SellerPhone;
-        entity.TaxCardToken = dto.TaxCardToken;
+        entity.FiscalMemoryId = fiscalMemoryId;
+        entity.EconomicCode = string.IsNullOrWhiteSpace(dto.EconomicCode) ? null : dto.EconomicCode.Trim();
+        entity.SellerName = (dto.SellerName ?? "").Trim();
+        entity.SellerAddress = string.IsNullOrWhiteSpace(dto.SellerAddress) ? null : dto.SellerAddress.Trim();
+        entity.SellerPostalCode = string.IsNullOrWhiteSpace(dto.SellerPostalCode) ? null : dto.SellerPostalCode.Trim();
+        entity.SellerPhone = string.IsNullOrWhiteSpace(dto.SellerPhone) ? null : dto.SellerPhone.Trim();
+        entity.TaxCardToken = preserveToken ? ProtectLegacySecretIfNeeded(entity.TaxCardToken) : ProtectSecret(submittedToken);
         entity.BaseUrl = string.IsNullOrWhiteSpace(dto.BaseUrl) ? null : dto.BaseUrl.Trim();
-        entity.PrivateKeyPem = string.IsNullOrWhiteSpace(dto.PrivateKeyPem) ? null : dto.PrivateKeyPem.Trim();
+        // رازهای موجود به‌صورت خودکار از متن آشکار قدیمی به Data Protection منتقل می‌شوند.
+        entity.PrivateKeyPem = preservePrivateKey ? ProtectLegacySecretIfNeeded(entity.PrivateKeyPem) : ProtectSecret(submittedPrivateKey);
+        entity.SigningCertificatePem = preserveCertificate ? ProtectLegacySecretIfNeeded(entity.SigningCertificatePem) : ProtectSecret(submittedCertificate);
         entity.PublicKeyPem = dto.PublicKeyPem;
-        entity.AutoSend = dto.AutoSend;
+        entity.AutoSend = false; // سیاست صریح محصول: هیچ ارسال خودکاری مجاز نیست.
+        entity.AutoDraftFromOperations = dto.AutoDraftFromOperations;
+        entity.AutoDraftFromFacInvoices = dto.AutoDraftFromFacInvoices;
         entity.SendIntervalMinutes = Math.Max(1, dto.SendIntervalMinutes);
         entity.DefaultVatRate = Math.Clamp(dto.DefaultVatRate, 0, 100);
         entity.LoggingEnabled = dto.LoggingEnabled;
@@ -110,7 +125,7 @@ public class MoadianService : IMoadianService
         entity.UpdatedAt = DateTime.Now;
 
         await _db.SaveChangesAsync();
-        return ToDto(entity);
+        return await GetSettingAsync();
     }
 
     // =====================================================================
@@ -191,7 +206,14 @@ public class MoadianService : IMoadianService
         if (!string.IsNullOrWhiteSpace(search))
             q = q.Where(i => i.Number.ToString().Contains(search) || (i.BuyerName != null && i.BuyerName.Contains(search)));
 
-        return (await q.OrderByDescending(i => i.Id).ToPageListAsync(pagination)).Select(ToDto).ToList();
+        var rows = await q.OrderByDescending(i => i.Id).ToPageListAsync(pagination);
+        var duplicateNumbers = (await _db.MoadianInvoices.AsNoTracking()
+            .GroupBy(i => i.Number)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToListAsync()).ToHashSet();
+
+        return rows.Select(i => ToDto(i, duplicateNumbers.Contains(i.Number))).ToList();
     }
 
     public async Task<MoadianInvoice> GetInvoiceAsync(int id)
@@ -200,7 +222,9 @@ public class MoadianService : IMoadianService
             .Include(i => i.FiscalPeriod).Include(i => i.Lines)
             .FirstOrDefaultAsync(i => i.Id == id)
             ?? throw new InvalidOperationException("فاکتور الکترونیکی یافت نشد.");
-        return ToDto(entity);
+        var hasDuplicateNumber = await _db.MoadianInvoices.AsNoTracking()
+            .AnyAsync(i => i.Number == entity.Number && i.Id != entity.Id);
+        return ToDto(entity, hasDuplicateNumber);
     }
 
     public async Task<MoadianInvoice> CreateFromFacInvoiceAsync(int facInvoiceId, string? user)
@@ -208,44 +232,36 @@ public class MoadianService : IMoadianService
         var fac = await _db.FacInvoices.AsNoTracking()
             .Include(f => f.Party)
             .FirstOrDefaultAsync(f => f.Id == facInvoiceId)
-            ?? throw new InvalidOperationException("فاکتور داخلی یافت نشد.");
-        // اقلام جداگانه خوانده می‌شوند تا کالاهای حذف‌شده/بدون کالا حذف نشوند
-        // (ThenInclude(Product) با join داخلی، سطرهای بدون کالای معتبر را حذف می‌کرد)
-        var facLines = await _db.FacInvoiceLines.AsNoTracking()
-            .Where(l => l.InvoiceId == fac.Id).OrderBy(l => l.RowNo).ToListAsync();
+            ?? throw new InvalidOperationException("فاکتور ERP یافت نشد.");
         if (fac.Status != InvoiceStatus.Confirmed)
-            throw new InvalidOperationException("فقط فاکتور «قطعی» قابل تبدیل به فاکتور الکترونیکی است.");
-        if (fac.Kind != InvoiceKind.Sale && fac.Kind != InvoiceKind.SaleReturn && fac.Kind != InvoiceKind.Purchase)
-            throw new InvalidOperationException("این نوع فاکتور برای مودیان پشتیبانی نمی‌شود.");
-
-        var already = await _db.MoadianInvoices.AnyAsync(i => i.FacInvoiceId == facInvoiceId);
-        if (already)
-            throw new InvalidOperationException("این فاکتور قبلاً به فاکتور الکترونیکی تبدیل شده است.");
+            throw new InvalidOperationException("فقط فاکتور قطعی ERP قابل تبدیل به پیش‌نویس مودیان است.");
+        if (fac.Kind is not (InvoiceKind.Sale or InvoiceKind.SaleReturn))
+            throw new InvalidOperationException("از ERP فقط فاکتور فروش یا برگشت از فروش به مودیان تبدیل می‌شود.");
+        var existingDraft = await _db.MoadianInvoices.AsNoTracking().Include(i => i.Lines).Include(i => i.FiscalPeriod)
+            .FirstOrDefaultAsync(i => i.FacInvoiceId == facInvoiceId);
+        if (existingDraft is not null) return await GetInvoiceAsync(existingDraft.Id);
 
         var setting = await _db.MoadianSettings.OrderBy(x => x.Id).FirstOrDefaultAsync()
                       ?? throw new InvalidOperationException("ابتدا تنظیمات مودیان را تکمیل کنید.");
         if (string.IsNullOrWhiteSpace(setting.TaxId))
-            throw new InvalidOperationException("شماره مالیاتی فروشنده در تنظیمات ثبت نشده است.");
+            throw new InvalidOperationException("شناسه مالیاتی فروشنده در تنظیمات ثبت نشده است.");
 
-        var period = await GetOrCreatePeriodAsync(DateTime.Now);
+        var period = await GetOrCreatePeriodAsync(fac.Date);
         if (period.IsClosed)
-            throw new InvalidOperationException("دوره مالیاتی جاری بسته است؛ ابتدا دوره را باز کنید.");
+            throw new InvalidOperationException("دوره مالیاتی مربوط به تاریخ فاکتور بسته است.");
 
-        var nextNo = await _db.MoadianInvoices.Where(i => i.FiscalPeriodId == period.Id)
-            .Select(i => (int?)i.Number).MaxAsync() ?? 0;
 
-        var kind = fac.Kind switch
-        {
-            InvoiceKind.Sale => MoadianInvoiceKind.Sale,
-            InvoiceKind.SaleReturn => MoadianInvoiceKind.SaleReturn,
-            InvoiceKind.Purchase => MoadianInvoiceKind.Purchase,
-            _ => MoadianInvoiceKind.Sale
-        };
+        var facLines = await _db.FacInvoiceLines.AsNoTracking()
+            .Where(l => l.InvoiceId == fac.Id).OrderBy(l => l.RowNo).ToListAsync();
+        if (facLines.Count == 0)
+            throw new InvalidOperationException("فاکتور ERP قلمی ندارد.");
+        var productIds = facLines.Select(l => l.ProductId).Distinct().ToList();
+        var products = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
 
         var entity = new Db.MoadianInvoice
         {
-            Number = nextNo + 1,
-            Kind = kind,
+            Kind = fac.Kind == InvoiceKind.SaleReturn ? MoadianInvoiceKind.SaleReturn : MoadianInvoiceKind.Sale,
+            InvoiceType = MoadianTaxInvoiceType.Unselected,
             Date = fac.Date,
             FiscalPeriodId = period.Id,
             FacInvoiceId = fac.Id,
@@ -254,9 +270,10 @@ public class MoadianService : IMoadianService
             TaxId = setting.TaxId,
             SellerName = setting.SellerName,
             EconomicCode = setting.EconomicCode,
-            BuyerTaxId = null, // بخش‌بندی تأمین‌کننده/مشتری در MoadianCpc از صفحه مودیان تکمیل می‌شود
+            BuyerTaxId = fac.Party?.TaxId,
             BuyerName = fac.Party?.Name,
             BuyerAddress = fac.Party?.Address,
+            BuyerPostalCode = fac.Party?.PostalCode,
             BuyerPhone = fac.Party?.Mobile ?? fac.Party?.Phone,
             Status = MoadianInvoiceStatus.Draft,
             CreatedBy = user,
@@ -266,107 +283,244 @@ public class MoadianService : IMoadianService
         var row = 1;
         foreach (var l in facLines)
         {
-            var vatRate = l.VatRate > 0 ? l.VatRate : setting.DefaultVatRate;
-            var taxable = l.Taxable > 0 ? l.Taxable : (l.Quantity * l.UnitPrice - l.Discount);
-            var vat = l.VatAmount > 0 ? l.VatAmount : Math.Round(taxable * vatRate / 100m, 2);
+            var product = products.GetValueOrDefault(l.ProductId);
+            var rowNo = row++;
+            var gross = l.Quantity * l.UnitPrice;
+            var taxable = l.Taxable;
+            if (taxable == 0 && gross - l.Discount != 0)
+                taxable = gross - l.Discount;
+            var discount = Math.Clamp(gross - taxable, 0, gross);
+            entity.Lines.Add(new Db.MoadianInvoiceLine
+            {
+                RowNo = rowNo,
+                SstId = NullIfEmpty(l.TaxCode) ?? NullIfEmpty(product?.TaxCode) ?? "",
+                UnitCode = NullIfEmpty(product?.TaxUnitCode),
+                SstTitle = NullIfEmpty(l.Description) ?? NullIfEmpty(product?.Name) ?? $"قلم {rowNo}",
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                Discount = discount,
+                VatRate = l.VatRate,
+                VatAmount = l.VatAmount,
+                Total = taxable + l.VatAmount
+            });
+        }
+
+        if (fac.ShippingCost > 0)
+        {
+            entity.Lines.Add(new Db.MoadianInvoiceLine
+            {
+                RowNo = row,
+                SstId = "",
+                SstTitle = "هزینه حمل — شناسه مالیاتی را هنگام بازبینی تکمیل کنید",
+                Quantity = 1,
+                UnitPrice = fac.ShippingCost,
+                Discount = 0,
+                VatRate = 0,
+                VatAmount = 0,
+                Total = fac.ShippingCost
+            });
+        }
+
+        RecalculateTotals(entity);
+        await SaveNewInvoiceWithGlobalNumberAsync(entity);
+        await LogAsync(entity.Id, MoadianLogAction.Created, $"پیش‌نویس مودیان {entity.Number} از فاکتور فروش ERP {fac.Id} ساخته شد.");
+        return ToDto(entity, hasDuplicateNumberAcrossPeriods: false);
+    }
+
+    public async Task<MoadianInvoice?> CreateFromFacInvoiceIfEnabledAsync(int facInvoiceId, string? user)
+    {
+        var setting = await _db.MoadianSettings.AsNoTracking().OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (setting?.AutoDraftFromFacInvoices != true) return null;
+        var existing = await _db.MoadianInvoices.AsNoTracking().Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.FacInvoiceId == facInvoiceId);
+        if (existing is not null) return await GetInvoiceAsync(existing.Id);
+        return await CreateFromFacInvoiceAsync(facInvoiceId, user);
+    }
+
+    public async Task<MoadianInvoice> CreateFromOperationsTransactionAsync(int transactionId, string? user)
+    {
+        var txn = await _db.Transactions.AsNoTracking().Include(t => t.Lines)
+            .FirstOrDefaultAsync(t => t.Id == transactionId)
+            ?? throw new InvalidOperationException("سند عملیات یافت نشد.");
+        if (txn.Type != TransactionType.Sale)
+            throw new InvalidOperationException("از بخش عملیات فقط سند فروش به مودیان تبدیل می‌شود.");
+        var existingDraft = await _db.MoadianInvoices.AsNoTracking().Include(i => i.Lines).Include(i => i.FiscalPeriod)
+            .FirstOrDefaultAsync(i => i.OperationsTransactionId == transactionId);
+        if (existingDraft is not null) return await GetInvoiceAsync(existingDraft.Id);
+        if (txn.Lines.Count == 0)
+            throw new InvalidOperationException("سند فروش عملیات قلمی ندارد.");
+
+        var setting = await _db.MoadianSettings.OrderBy(x => x.Id).FirstOrDefaultAsync()
+                      ?? throw new InvalidOperationException("ابتدا تنظیمات مودیان را تکمیل کنید.");
+        if (string.IsNullOrWhiteSpace(setting.TaxId))
+            throw new InvalidOperationException("شناسه مالیاتی فروشنده در تنظیمات ثبت نشده است.");
+        var period = await GetOrCreatePeriodAsync(txn.Date);
+        if (period.IsClosed)
+            throw new InvalidOperationException("دوره مالیاتی مربوط به تاریخ سند عملیات بسته است.");
+
+
+        var productIds = txn.Lines.Select(l => l.ProductId).Distinct().ToList();
+        var products = await _db.Products.AsNoTracking().Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+        var party = txn.PartyId is > 0 ? await _db.Parties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == txn.PartyId) : null;
+
+        var entity = new Db.MoadianInvoice
+        {
+            Kind = MoadianInvoiceKind.Sale,
+            InvoiceType = MoadianTaxInvoiceType.Unselected,
+            Date = txn.Date,
+            FiscalPeriodId = period.Id,
+            OperationsTransactionId = txn.Id,
+            FacInvoiceRef = $"OPS-{txn.Number}",
+            Settlement = txn.PaymentMethod.ToString(),
+            TaxId = setting.TaxId,
+            SellerName = setting.SellerName,
+            EconomicCode = setting.EconomicCode,
+            BuyerTaxId = party?.TaxId,
+            BuyerName = party?.Name,
+            BuyerAddress = party?.Address,
+            BuyerPostalCode = party?.PostalCode,
+            BuyerPhone = party?.Mobile ?? party?.Phone,
+            Status = MoadianInvoiceStatus.Draft,
+            CreatedBy = user,
+            Description = txn.Description
+        };
+
+        var row = 1;
+        foreach (var l in txn.Lines.OrderBy(l => l.Id))
+        {
+            var product = products.GetValueOrDefault(l.ProductId);
+            var vatRate = product?.IsVatIncluded == true ? product.VatRate : 0m;
+            var taxable = l.Quantity * l.Price;
+            var vat = Math.Round(taxable * vatRate / 100m, 2, MidpointRounding.AwayFromZero);
             entity.Lines.Add(new Db.MoadianInvoiceLine
             {
                 RowNo = row++,
-                SstId = l.TaxCode ?? $"GENERAL-{row:000}",
-                SstTitle = l.Description ?? $"قلم {row}",
+                SstId = product?.TaxCode ?? "",
+                UnitCode = product?.TaxUnitCode,
+                SstTitle = product?.Name ?? l.Description ?? $"قلم {row}",
                 Quantity = l.Quantity,
-                UnitPrice = l.UnitPrice,
-                Discount = l.Discount,
+                UnitPrice = l.Price,
+                Discount = 0,
                 VatRate = vatRate,
                 VatAmount = vat,
                 Total = taxable + vat
             });
         }
-
-        entity.TotalGross = entity.Lines.Sum(x => x.Quantity * x.UnitPrice);
-        entity.TotalDiscount = fac.TotalLineDiscount + fac.InvoiceDiscount;
-        entity.TotalTaxable = entity.Lines.Sum(x => x.Taxable);
-        entity.TotalVat = entity.Lines.Sum(x => x.VatAmount);
-        entity.TotalNet = entity.Lines.Sum(x => x.Total);
-
-        _db.MoadianInvoices.Add(entity);
-        await _db.SaveChangesAsync();
-        await LogAsync(entity.Id, MoadianLogAction.Created, $"فاکتور الکترونیکی {entity.Number} از فاکتور داخلی {fac.Id} ساخته شد.");
-
-        return ToDto(entity);
+        RecalculateTotals(entity);
+        await SaveNewInvoiceWithGlobalNumberAsync(entity);
+        await LogAsync(entity.Id, MoadianLogAction.Created, $"پیش‌نویس مودیان {entity.Number} از سند فروش عملیات {txn.Id} ساخته شد.");
+        return ToDto(entity, hasDuplicateNumberAcrossPeriods: false);
     }
+
+    public async Task<MoadianInvoice?> CreateFromOperationsTransactionIfEnabledAsync(int transactionId, string? user)
+    {
+        var setting = await _db.MoadianSettings.AsNoTracking().OrderBy(x => x.Id).FirstOrDefaultAsync();
+        if (setting?.AutoDraftFromOperations != true) return null;
+        var existing = await _db.MoadianInvoices.AsNoTracking().Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.OperationsTransactionId == transactionId);
+        if (existing is not null) return await GetInvoiceAsync(existing.Id);
+        return await CreateFromOperationsTransactionAsync(transactionId, user);
+    }
+
 
     public async Task<MoadianInvoice> CreateManualAsync(MoadianInvoiceRequest req, string? user)
     {
-        if (req.Lines.Count == 0 || req.Lines.All(l => l.Quantity <= 0))
-            throw new InvalidOperationException("فاکتور الکترونیکی حداقل یک قلم معتبر لازم دارد.");
-
         var setting = await _db.MoadianSettings.OrderBy(x => x.Id).FirstOrDefaultAsync()
                       ?? throw new InvalidOperationException("ابتدا تنظیمات مودیان را تکمیل کنید.");
-        if (string.IsNullOrWhiteSpace(setting.TaxId))
-            throw new InvalidOperationException("شماره مالیاتی فروشنده در تنظیمات ثبت نشده است.");
-
+        EnsureSellerIdentity(setting);
         var period = await _db.MoadianFiscalPeriods.FindAsync(req.FiscalPeriodId)
                      ?? throw new InvalidOperationException("دوره مالیاتی انتخاب نشده است.");
         if (period.IsClosed)
             throw new InvalidOperationException("دوره مالیاتی انتخابی بسته است.");
-        if (req.Date.Year < 2020)
-            req.Date = DateTime.Now;
+        var issueDateError = MoadianInvoiceRules.ValidateIssueDate(req.Date);
+        if (issueDateError is not null) throw new InvalidOperationException(issueDateError);
+        EnsurePeriodMatchesDate(req.Date, period);
+        ValidateInvoiceType(req.InvoiceType);
+        ValidateInvoiceSelection(req);
+        var lines = BuildDraftLines(req.Lines);
+        if (lines.Count == 0)
+            throw new InvalidOperationException("پیش‌نویس باید حداقل یک قلم با تعداد مثبت داشته باشد.");
 
-        var nextNo = await _db.MoadianInvoices.Where(i => i.FiscalPeriodId == period.Id)
-            .Select(i => (int?)i.Number).MaxAsync() ?? 0;
 
         var entity = new Db.MoadianInvoice
         {
-            Number = nextNo + 1,
             Kind = req.Kind,
-            Date = req.Date.Date,
+            InvoiceType = req.InvoiceType,
+            InvoicePattern = req.InvoicePattern,
+            InvoiceSubject = req.InvoiceSubject,
+            ReferenceTaxId = NullIfEmpty(req.ReferenceTaxId),
+            Date = req.Date,
             FiscalPeriodId = period.Id,
             Settlement = req.Settlement,
             TaxId = setting.TaxId,
             SellerName = setting.SellerName,
             EconomicCode = setting.EconomicCode,
-            BuyerTaxId = req.BuyerTaxId,
-            BuyerName = req.BuyerName,
-            BuyerAddress = req.BuyerAddress,
-            BuyerPostalCode = req.BuyerPostalCode,
-            BuyerPhone = req.BuyerPhone,
+            BuyerTaxId = NullIfEmpty(req.BuyerTaxId),
+            BuyerName = NullIfEmpty(req.BuyerName),
+            BuyerAddress = NullIfEmpty(req.BuyerAddress),
+            BuyerPostalCode = NullIfEmpty(req.BuyerPostalCode),
+            BuyerPhone = NullIfEmpty(req.BuyerPhone),
             Status = MoadianInvoiceStatus.Draft,
             CreatedBy = user,
-            Description = req.Description
+            Description = req.Description,
+            Lines = lines
         };
+        RecalculateTotals(entity);
+        await SaveNewInvoiceWithGlobalNumberAsync(entity);
+        await LogAsync(entity.Id, MoadianLogAction.Created, $"پیش‌نویس مودیان {entity.Number} به‌صورت دستی ساخته شد.");
+        return ToDto(entity, hasDuplicateNumberAcrossPeriods: false);
+    }
 
-        var row = 1;
-        foreach (var l in req.Lines)
+    public async Task<MoadianInvoice> UpdateDraftAsync(int id, MoadianInvoiceRequest req, string? user)
+    {
+        var entity = await _db.MoadianInvoices.Include(i => i.Lines)
+            .FirstOrDefaultAsync(i => i.Id == id)
+            ?? throw new InvalidOperationException("پیش‌نویس مودیان یافت نشد.");
+        if (entity.Status != MoadianInvoiceStatus.Draft)
+            throw new InvalidOperationException("فقط پیش‌نویسِ ارسال‌نشده قابل ویرایش است.");
+        var setting = await _db.MoadianSettings.OrderBy(x => x.Id).FirstOrDefaultAsync()
+                      ?? throw new InvalidOperationException("ابتدا تنظیمات مودیان را تکمیل کنید.");
+        EnsureSellerIdentity(setting);
+        var period = await _db.MoadianFiscalPeriods.FindAsync(req.FiscalPeriodId)
+                     ?? throw new InvalidOperationException("دوره مالیاتی انتخاب نشده است.");
+        if (period.IsClosed) throw new InvalidOperationException("دوره مالیاتی انتخابی بسته است.");
+        var issueDateError = MoadianInvoiceRules.ValidateIssueDate(req.Date);
+        if (issueDateError is not null) throw new InvalidOperationException(issueDateError);
+        EnsurePeriodMatchesDate(req.Date, period);
+        ValidateInvoiceType(req.InvoiceType);
+        ValidateInvoiceSelection(req);
+        var lines = BuildDraftLines(req.Lines);
+        if (lines.Count == 0) throw new InvalidOperationException("پیش‌نویس باید حداقل یک قلم با تعداد مثبت داشته باشد.");
+
+        // Number is now the internal serial candidate, not a per-period document number.
+        // Moving an unsent draft between periods must therefore not change its Number.
+        if (entity.FiscalPeriodId != period.Id)
         {
-            var vatRate = l.VatRate > 0 ? l.VatRate : setting.DefaultVatRate;
-            // مبالغ از سمت سرور محاسبه می‌شوند تا داده ارسالی به سامانه همیشه سازگار باشد
-            var taxable = (l.Quantity * l.UnitPrice) - l.Discount;
-            var vat = l.VatAmount > 0 ? l.VatAmount : Math.Round(taxable * vatRate / 100m, 2);
-            entity.Lines.Add(new Db.MoadianInvoiceLine
-            {
-                RowNo = row++,
-                SstId = string.IsNullOrWhiteSpace(l.SstId) ? $"GENERAL-{row:000}" : l.SstId.Trim(),
-                SstTitle = l.SstTitle,
-                Quantity = l.Quantity,
-                UnitPrice = l.UnitPrice,
-                Discount = l.Discount,
-                VatRate = vatRate,
-                VatAmount = vat,
-                Total = taxable + vat
-            });
+            var numberConflict = await _db.MoadianInvoices.AsNoTracking()
+                .AnyAsync(i => i.FiscalPeriodId == period.Id && i.Number == entity.Number && i.Id != entity.Id);
+            if (numberConflict)
+                throw new InvalidOperationException("شمارهٔ تاریخی این پیش‌نویس با فاکتور دیگری در دورهٔ مقصد برخورد دارد؛ برای حفظ شماره‌های ثبت‌شده، دوره را تغییر ندهید تا سوابق به‌صورت دستی بازبینی شوند.");
         }
-
-        entity.TotalGross = entity.Lines.Sum(x => x.Quantity * x.UnitPrice);
-        entity.TotalDiscount = entity.Lines.Sum(x => x.Discount);
-        entity.TotalTaxable = entity.Lines.Sum(x => x.Taxable);
-        entity.TotalVat = entity.Lines.Sum(x => x.VatAmount);
-        entity.TotalNet = entity.TotalTaxable + entity.TotalVat;
-
-        _db.MoadianInvoices.Add(entity);
+        entity.FiscalPeriodId = period.Id;
+        entity.Kind = req.Kind;
+        entity.InvoiceType = req.InvoiceType;
+        entity.InvoicePattern = req.InvoicePattern;
+        entity.InvoiceSubject = req.InvoiceSubject;
+        entity.ReferenceTaxId = NullIfEmpty(req.ReferenceTaxId);
+        entity.Date = req.Date;
+        entity.Settlement = NullIfEmpty(req.Settlement);
+        entity.BuyerTaxId = NullIfEmpty(req.BuyerTaxId);
+        entity.BuyerName = NullIfEmpty(req.BuyerName);
+        entity.BuyerAddress = NullIfEmpty(req.BuyerAddress);
+        entity.BuyerPostalCode = NullIfEmpty(req.BuyerPostalCode);
+        entity.BuyerPhone = NullIfEmpty(req.BuyerPhone);
+        entity.Description = NullIfEmpty(req.Description);
+        _db.MoadianInvoiceLines.RemoveRange(entity.Lines);
+        entity.Lines = lines;
+        RecalculateTotals(entity);
         await _db.SaveChangesAsync();
-        await LogAsync(entity.Id, MoadianLogAction.Created, $"فاکتور الکترونیکی {entity.Number} به‌صورت دستی ثبت شد.");
-        return ToDto(entity);
+        await LogAsync(entity.Id, MoadianLogAction.Updated, $"پیش‌نویس مودیان {entity.Number} ویرایش شد.");
+        return await GetInvoiceAsync(entity.Id);
     }
 
     public async Task DeleteInvoiceAsync(int id)
@@ -384,274 +538,74 @@ public class MoadianService : IMoadianService
     // =====================================================================
     // صف و چرخه ارسال
     // =====================================================================
-    public async Task<MoadianInvoice> EnqueueAsync(int id, string? user)
-    {
-        var entity = await _db.MoadianInvoices.FindAsync(id)
-                     ?? throw new InvalidOperationException("فاکتور الکترونیکی یافت نشد.");
-        if (entity.Status != MoadianInvoiceStatus.Draft && entity.Status != MoadianInvoiceStatus.Returned
-            && entity.Status != MoadianInvoiceStatus.Failed)
-            throw new InvalidOperationException("فقط فاکتور پیش‌نویس/برگشتی/ناموفق قابل ارسال به صف است.");
+    public Task<MoadianInvoice> EnqueueAsync(int id, string? user)
+        => Task.FromException<MoadianInvoice>(new InvalidOperationException(
+            "ارسال مودیان عمداً غیرفعال است؛ پیش‌نویس‌ها در صف ارسال قرار نمی‌گیرند."));
 
-        entity.Status = MoadianInvoiceStatus.Queued;
-        entity.QueuedAt = DateTime.Now;
-        await _db.SaveChangesAsync();
-        await LogAsync(entity.Id, MoadianLogAction.Enqueued, "به صف ارسال سامانه اضافه شد.");
-        return ToDto(entity);
-    }
+    public Task<MoadianInvoice> CancelAsync(int id, string? user)
+        => Task.FromException<MoadianInvoice>(new InvalidOperationException(
+            "ابطال سامانه‌ای تا راه‌اندازی و تأیید رسمی اتصال غیرفعال است. برای حذف پیش‌نویس از گزینهٔ حذف استفاده کنید."));
 
-    public async Task<MoadianInvoice> CancelAsync(int id, string? user)
-    {
-        var entity = await _db.MoadianInvoices.FindAsync(id)
-                     ?? throw new InvalidOperationException("فاکتور الکترونیکی یافت نشد.");
-        if (entity.Status == MoadianInvoiceStatus.Voided)
-            return ToDto(entity);
-        if (entity.Status == MoadianInvoiceStatus.Sent)
-            throw new InvalidOperationException("برای ابطال فاکتور ارسال‌شده، از سامانه مودیان «ابطال فاکتور» ثبت کنید.");
-        if (entity.Status == MoadianInvoiceStatus.Sending)
-            throw new InvalidOperationException("فاکتور در حال ارسال است؛ چند لحظه بعد دوباره تلاش کنید.");
+    public Task<MoadianInvoice> RetryAsync(int id, string? user)
+        => Task.FromException<MoadianInvoice>(new InvalidOperationException(
+            "ارسال مجدد مودیان عمداً غیرفعال است تا ارسال رسمی تأیید شود."));
 
-        entity.Status = MoadianInvoiceStatus.Voided;
-        await _db.SaveChangesAsync();
-        await LogAsync(entity.Id, MoadianLogAction.Voided, "فاکتور ابطال شد.");
-        return ToDto(entity);
-    }
+    /// <summary>ارسال صف عمداً تا تأیید رسمی غیرفعال است.</summary>
+    public Task<int> SendPendingAsync()
+        => Task.FromException<int>(new InvalidOperationException(
+            "ارسال مودیان عمداً غیرفعال است تا قالب رسمی جاری، امضا و دسترسی مجاز تأیید شوند."));
 
-    public async Task<MoadianInvoice> RetryAsync(int id, string? user)
-    {
-        var entity = await _db.MoadianInvoices.FindAsync(id)
-                     ?? throw new InvalidOperationException("فاکتور الکترونیکی یافت نشد.");
-        if (entity.Status is not (MoadianInvoiceStatus.Failed or MoadianInvoiceStatus.Returned))
-            throw new InvalidOperationException("فقط فاکتور ناموفق/برگشتی قابل ارسال مجدد است.");
-        entity.Status = MoadianInvoiceStatus.Queued;
-        entity.QueuedAt = DateTime.Now;
-        entity.ErrorCode = null;
-        entity.ErrorMessage = null;
-        await _db.SaveChangesAsync();
-        await LogAsync(entity.Id, MoadianLogAction.Enqueued, $"ارسال مجدد (تلاش {entity.Attempts + 1}).");
-        return ToDto(entity);
-    }
-
-    /// <summary>ارسال همه‌ی فاکتورهای صف به سامانه (یا شبیه‌سازی). تعداد ارسال‌شده را برمی‌گرداند.</summary>
-    public async Task<int> SendPendingAsync()
-    {
-        var setting = await _db.MoadianSettings.OrderBy(x => x.Id).FirstOrDefaultAsync();
-        var queued = await _db.MoadianInvoices
-            .Where(i => i.Status == MoadianInvoiceStatus.Queued)
-            .OrderBy(i => i.Id).ToListAsync();
-
-        int sent = 0;
-        foreach (var invoice in queued)
-        {
-            invoice.Status = MoadianInvoiceStatus.Sending;
-            invoice.Attempts++;
-            await _db.SaveChangesAsync();
-
-            try
-            {
-                var result = await BuildPayloadAsync(invoice.Id);
-
-                // ===== شبیه‌سازی (بدون آدرس سرویس) =====
-                if (setting is null || string.IsNullOrWhiteSpace(setting.BaseUrl))
-                {
-                    invoice.ReferenceId = SimulatedUid(invoice);
-                    invoice.TrackingId = "SIM-" + Guid.NewGuid().ToString("N")[..12].ToUpper();
-                    invoice.Status = MoadianInvoiceStatus.Sent;
-                    invoice.SendAt = DateTime.Now;
-                    invoice.ErrorCode = null;
-                    invoice.ErrorMessage = null;
-                    await _db.SaveChangesAsync();
-                    await LogAsync(invoice.Id, MoadianLogAction.Sent,
-                        $"ارسال آزمایشی (شبیه‌سازی) موفق — شماره پیگیری {invoice.TrackingId}");
-                    sent++;
-                    continue;
-                }
-
-                // ===== ارسال واقعی به سرویس مودیان =====
-                if (string.IsNullOrWhiteSpace(setting.TaxCardToken))
-                    throw new InvalidOperationException("شناسه کارتابل (توکن) در تنظیمات ثبت نشده است.");
-
-                var client = _httpFactory.CreateClient("moadian");
-                var req = new HttpRequestMessage(HttpMethod.Post, setting.BaseUrl)
-                {
-                    Content = new StringContent(result.Json, Encoding.UTF8, "application/json")
-                };
-                req.Headers.TryAddWithoutValidation("Authorization", $"Bearer {setting.TaxCardToken}");
-                if (!string.IsNullOrWhiteSpace(result.Signature))
-                    req.Headers.TryAddWithoutValidation("X-Signature", result.Signature);
-
-                var resp = await client.SendAsync(req);
-                var body = await resp.Content.ReadAsStringAsync();
-
-                // پاسخ سامانه باید JSON باشد. پاسخ HTML (که با < شروع می‌شود)
-                // معمولاً یعنی BaseUrl به صفحه وب/پروکسی/مسیر اشتباه اشاره می‌کند
-                // و فاکتور هنوز به کارپوشه ارسال نشده است.
-                if (string.IsNullOrWhiteSpace(body))
-                    throw new InvalidOperationException($"پاسخ خالی از سرویس مودیان دریافت شد (HTTP {(int)resp.StatusCode}). آدرس BaseUrl و دسترسی شبکه را بررسی کنید.");
-                var trimmedBody = body.TrimStart();
-                if (trimmedBody.StartsWith("<", StringComparison.Ordinal))
-                {
-                    var preview = trimmedBody.Length > 180 ? trimmedBody[..180] : trimmedBody;
-                    throw new InvalidOperationException($"سرویس مودیان پاسخ HTML برگرداند، نه JSON (HTTP {(int)resp.StatusCode}). احتمالاً BaseUrl یا مسیر API اشتباه است. پاسخ: {preview}");
-                }
-
-                // پاسخ سامانه: {"code": ..., "message": ..., "data": {...}}
-                using var doc = JsonDocument.Parse(body);
-                var root = doc.RootElement;
-                var code = 1;
-                if (root.TryGetProperty("code", out var c))
-                {
-                    if (c.ValueKind == JsonValueKind.Number) code = c.GetInt32();
-                    else if (c.ValueKind == JsonValueKind.String && int.TryParse(c.GetString(), out var ci)) code = ci;
-                }
-                else if (resp.IsSuccessStatusCode) code = 0;
-                var msg = root.TryGetProperty("message", out var m) ? m.GetString() : resp.StatusCode.ToString();
-
-                if (code == 0 && resp.IsSuccessStatusCode)
-                {
-                    invoice.ReferenceId = root.TryGetProperty("uid", out var uid) ? uid.GetString()
-                        : (root.TryGetProperty("data", out var data) && data.TryGetProperty("uid", out var uid2) ? uid2.GetString() : null)
-                          ?? invoice.ReferenceId;
-                    invoice.TrackingId = root.TryGetProperty("referenceNumber", out var rn) ? rn.GetString()
-                        : (root.TryGetProperty("data", out var data2) && data2.TryGetProperty("referenceNumber", out var rn2) ? rn2.GetString() : null)
-                          ?? invoice.TrackingId;
-                    invoice.Status = MoadianInvoiceStatus.Sent;
-                    invoice.SendAt = DateTime.Now;
-                    invoice.ErrorCode = null;
-                    invoice.ErrorMessage = null;
-                    await _db.SaveChangesAsync();
-                    await LogAsync(invoice.Id, MoadianLogAction.Sent, $"ارسال موفق — پیگیری {invoice.TrackingId ?? "—"}", body);
-                    sent++;
-                }
-                else
-                {
-                    invoice.Status = MoadianInvoiceStatus.Returned;
-                    invoice.ReturnedAt = DateTime.Now;
-                    invoice.ErrorCode = code.ToString();
-                    invoice.ErrorMessage = msg;
-                    await _db.SaveChangesAsync();
-                    await LogAsync(invoice.Id, MoadianLogAction.Returned, $"برگشت از سامانه (کد {code}): {msg}", body);
-                }
-            }
-            catch (Exception ex)
-            {
-                invoice.Status = MoadianInvoiceStatus.Failed;
-                invoice.ErrorCode = "CLIENT";
-                invoice.ErrorMessage = ex.Message;
-                await _db.SaveChangesAsync();
-                await LogAsync(invoice.Id, MoadianLogAction.Failed, $"خطا در ارسال: {ex.Message}");
-                _log.LogError(ex, "Moadian send failed for invoice {Id}", invoice.Id);
-            }
-        }
-        return sent;
-    }
-
-    /// <summary>ساخت Payload استاندارد مودیان برای یک فاکتور + امضا (در صورت وجود کلید).</summary>
+    /// <summary>نمایش خلاصهٔ محلی پیش‌نویس؛ این JSON قالب رسمی یا قابل ارسال نیست.</summary>
     public async Task<MoadianPayloadResult> BuildPayloadAsync(int id)
     {
-        var inv = await _db.MoadianInvoices.AsNoTracking().Include(i => i.Lines)
+        var inv = await _db.MoadianInvoices.AsNoTracking().Include(i => i.FiscalPeriod).Include(i => i.Lines)
             .FirstOrDefaultAsync(i => i.Id == id)
             ?? throw new InvalidOperationException("فاکتور الکترونیکی یافت نشد.");
-        var setting = await _db.MoadianSettings.AsNoTracking().OrderBy(x => x.Id).FirstOrDefaultAsync();
-
-        var header = new Dictionary<string, object?>
+        var localSnapshot = new
         {
-            ["taxid"] = inv.TaxId,
-            ["indatim"] = new DateTimeOffset(inv.Date).ToUnixTimeMilliseconds(),
-            ["inp"] = (int)inv.Kind, // الگوی مالیاتی ۱..۵ (فروش/فروش برگشتی/خرید/خرید برگشتی/پیش‌فاکتور)
-            ["inno"] = inv.Number,
-            ["inct"] = 1,   // نوع شناسه: ملی
-            ["inty"] = inv.Kind == MoadianInvoiceKind.Purchase ? 3 : 1, // نوع فاکتور (کالا/خدمت)
-            ["ins"] = 1,    // شماره نسخه
-            ["tins"] = new[] { inv.TaxId },
-            ["bpc"] = 1,
-            ["bbc"] = 0,
-            ["billid"] = Guid.NewGuid().ToString("N"),
-            ["tpr"] = new Dictionary<string, object?>
+            previewOnly = true,
+            warning = "Local review snapshot only; not an official Moadian payload.",
+            invoice = new
             {
-                ["tins"] = inv.TaxId,
-                ["nam"] = inv.SellerName,
-                ["adr"] = setting?.SellerAddress,
-                ["pcn"] = setting?.SellerPostalCode,
-                ["cpn"] = setting?.SellerPhone,
-                ["tel"] = setting?.SellerPhone
+                inv.Id,
+                inv.Number,
+                kind = inv.Kind.ToString(),
+                invoiceType = (int)inv.InvoiceType,
+                invoiceTypeName = inv.InvoiceType.ToString(),
+                invoicePattern = (int)inv.InvoicePattern,
+                invoicePatternName = MoadianInvoiceRules.PatternTitle(inv.InvoicePattern),
+                invoiceSubject = (int)inv.InvoiceSubject,
+                invoiceSubjectName = MoadianInvoiceRules.SubjectTitle(inv.InvoiceSubject),
+                inv.ReferenceTaxId,
+                date = inv.Date.ToString("O"),
+                fiscalPeriod = inv.FiscalPeriod is null ? null : $"{inv.FiscalPeriod.Year}/{inv.FiscalPeriod.Month:00}",
+                status = inv.Status.ToString(),
+                inv.Description
             },
-            ["setm"] = 1,
-            ["flg"] = (int)(inv.Kind is MoadianInvoiceKind.SaleReturn or MoadianInvoiceKind.PurchaseReturn ? 1 : 0)
+            seller = new { inv.TaxId, inv.SellerName, inv.EconomicCode },
+            buyer = new { inv.BuyerTaxId, inv.BuyerName, inv.BuyerAddress, inv.BuyerPostalCode, inv.BuyerPhone },
+            lines = inv.Lines.OrderBy(l => l.RowNo).Select(l => new
+            {
+                l.RowNo,
+                l.SstId,
+                l.SstTitle,
+                l.UnitCode,
+                l.Quantity,
+                l.UnitPrice,
+                l.Discount,
+                l.VatRate,
+                l.VatAmount,
+                l.Total
+            }).ToList(),
+            totals = new { inv.TotalGross, inv.TotalDiscount, inv.TotalTaxable, inv.TotalVat, inv.TotalNet }
         };
-
-        // خریدار — برای فروش الزامی است
-        if (!string.IsNullOrWhiteSpace(inv.BuyerTaxId) || !string.IsNullOrWhiteSpace(inv.BuyerName))
-        {
-            header["cust"] = new Dictionary<string, object?>
-            {
-                ["tins"] = inv.BuyerTaxId,
-                ["nam"] = inv.BuyerName,
-                ["adr"] = inv.BuyerAddress,
-                ["pcn"] = inv.BuyerPostalCode,
-                ["cpn"] = inv.BuyerPhone,
-                ["tel"] = inv.BuyerPhone,
-                ["cno"] = 1
-            };
-        }
-
-        var body = inv.Lines.OrderBy(l => l.RowNo).Select(l => (object)new Dictionary<string, object?>
-        {
-            ["sstid"] = l.SstId,
-            ["sstt"] = l.SstTitle,
-            ["am"] = l.Quantity,
-            ["fee"] = l.Quantity * l.UnitPrice,
-            ["di"] = l.Discount,
-            ["vra"] = l.VatRate,
-            ["vam"] = l.VatAmount,
-            ["tsstam"] = l.Taxable + l.VatAmount
-        }).ToList();
-
-        var payload = new Dictionary<string, object?>
-        {
-            ["header"] = header,
-            ["body"] = body,
-            ["payments"] = new List<Dictionary<string, object?>>
-            {
-                new() { ["i"] = 1, ["t"] = inv.TotalNet }
-            }
-        };
-
-        var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = null,
-            WriteIndented = false,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-        });
-
-        // امضای RSA (PKCS#1 v1.5 SHA-256) — در صورت موجود بودن کلید خصوصی
-        string? signature = null;
-        string? warning = null;
-        var pem = setting?.PrivateKeyPem;
-        if (!string.IsNullOrWhiteSpace(pem) && !pem.StartsWith("*****"))
-        {
-            try
-            {
-                using var rsa = RSA.Create();
-                rsa.ImportFromPem(pem);
-                signature = Convert.ToBase64String(rsa.SignData(Encoding.UTF8.GetBytes(json), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
-            }
-            catch (Exception ex)
-            {
-                warning = $"امضا ناموفق بود (کلید PEM معتبر نیست؟): {ex.Message}";
-            }
-        }
-        else if (inv.Status != MoadianInvoiceStatus.Draft && setting is not null && !string.IsNullOrWhiteSpace(setting.BaseUrl))
-        {
-            warning = "کلید خصوصی امضا تنظیم نشده است — در حالت عملیاتی ارسال بدون امضا پذیرفته نمی‌شود.";
-        }
-
         return new MoadianPayloadResult
         {
             InvoiceId = inv.Id,
-            Json = json,
-            Signature = signature,
-            Uid = inv.ReferenceId,
-            Warning = warning
+            Json = JsonSerializer.Serialize(localSnapshot, new JsonSerializerOptions { WriteIndented = true }),
+            Signature = null,
+            Uid = null,
+            Warning = "این نمایش، خلاصهٔ محلی برای بازبینی است؛ قالب رسمی مودیان، امضا یا شناسهٔ ارسال نیست و نباید ارسال شود."
         };
     }
 
@@ -743,11 +697,138 @@ public class MoadianService : IMoadianService
             TaxId = setting?.TaxId,
             SellerName = setting?.SellerName,
             AutoSendMinutes = setting?.SendIntervalMinutes ?? 0,
-            RecentIssues = recentIssues.Select(ToDto).ToList()
+            RecentIssues = recentIssues.Select(i => ToDto(i)).ToList()
         };
     }
 
     // =====================================================================
+    private static void EnsureSellerIdentity(Db.MoadianSetting setting)
+    {
+        if (string.IsNullOrWhiteSpace(setting.TaxId))
+            throw new InvalidOperationException("شناسه مالیاتی فروشنده در تنظیمات ثبت نشده است.");
+    }
+
+    private static void EnsurePeriodMatchesDate(DateTime date, Db.MoadianFiscalPeriod period)
+    {
+        var faDate = PersianDate.FromGregorian(date);
+        if (faDate.Year != period.Year || faDate.Month != period.Month)
+            throw new InvalidOperationException("تاریخ صورتحساب با دوره مالیاتی انتخاب‌شده هم‌خوانی ندارد.");
+    }
+
+    private static void ValidateInvoiceType(MoadianTaxInvoiceType type)
+    {
+        if (type is not (MoadianTaxInvoiceType.Type1 or MoadianTaxInvoiceType.Type2))
+            throw new InvalidOperationException("نوع صورتحساب باید ۱ یا ۲ باشد.");
+    }
+
+    private static void ValidateInvoiceSelection(MoadianInvoiceRequest request)
+    {
+        var error = MoadianInvoiceRules.ValidateSelection(
+            request.InvoiceType,
+            request.InvoicePattern,
+            request.InvoiceSubject,
+            request.ReferenceTaxId);
+        if (error is not null)
+            throw new InvalidOperationException(error);
+    }
+
+    private static string? NullIfEmpty(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static List<Db.MoadianInvoiceLine> BuildDraftLines(List<Inventory.Shared.Dtos.MoadianInvoiceLine>? requestLines)
+    {
+        if (requestLines is null) return new List<Db.MoadianInvoiceLine>();
+        if (requestLines.Any(x => x.Quantity < 0))
+            throw new InvalidOperationException("تعداد قلم نمی‌تواند منفی باشد.");
+        var rows = new List<Db.MoadianInvoiceLine>();
+        foreach (var line in requestLines.Where(x => x.Quantity > 0))
+        {
+            if (line.UnitPrice < 0 || line.Discount < 0 || line.VatRate is < 0 or > 100)
+                throw new InvalidOperationException($"مقادیر قلم {line.RowNo} معتبر نیست.");
+            if ((line.SstId?.Length ?? 0) > 40 || (line.UnitCode?.Length ?? 0) > 20 || (line.SstTitle?.Length ?? 0) > 400)
+                throw new InvalidOperationException($"شناسه، واحد یا شرح قلم {line.RowNo} بیش از حد مجاز است.");
+            var gross = line.Quantity * line.UnitPrice;
+            if (line.Discount > gross)
+                throw new InvalidOperationException($"تخفیف قلم {line.RowNo} از مبلغ ناخالص بیشتر است.");
+            var taxable = gross - line.Discount;
+            var vat = Math.Round(taxable * line.VatRate / 100m, 2, MidpointRounding.AwayFromZero);
+            rows.Add(new Db.MoadianInvoiceLine
+            {
+                RowNo = rows.Count + 1,
+                SstId = NullIfEmpty(line.SstId) ?? "",
+                UnitCode = NullIfEmpty(line.UnitCode),
+                SstTitle = NullIfEmpty(line.SstTitle) ?? "",
+                Quantity = line.Quantity,
+                UnitPrice = line.UnitPrice,
+                Discount = line.Discount,
+                VatRate = line.VatRate,
+                VatAmount = vat,
+                Total = taxable + vat
+            });
+        }
+        return rows;
+    }
+
+    private static void RecalculateTotals(Db.MoadianInvoice invoice)
+    {
+        invoice.TotalGross = invoice.Lines.Sum(x => x.Quantity * x.UnitPrice);
+        invoice.TotalDiscount = invoice.Lines.Sum(x => x.Discount);
+        invoice.TotalTaxable = invoice.Lines.Sum(x => x.Taxable);
+        invoice.TotalVat = invoice.Lines.Sum(x => x.VatAmount);
+        invoice.TotalNet = invoice.TotalTaxable + invoice.TotalVat;
+    }
+
+    private string? ProtectSecret(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("dp:v1:", StringComparison.Ordinal)) return trimmed;
+        return "dp:v1:" + _secrets.Protect(trimmed);
+    }
+
+    private string? ProtectLegacySecretIfNeeded(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return value.StartsWith("dp:v1:", StringComparison.Ordinal) ? value : ProtectSecret(value);
+    }
+
+    private string? UnprotectSecret(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!value.StartsWith("dp:v1:", StringComparison.Ordinal)) return value; // legacy value until next settings save
+        try { return _secrets.Unprotect(value[6..]); }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Unable to decrypt stored Moadian credential.");
+            throw new InvalidOperationException("کلیدهای رمزگذاری تنظیمات مودیان در دسترس نیستند؛ از پشتیبان سامانه کمک بگیرید.");
+        }
+    }
+
+    private static string? MaskSecret(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : "*****تنظیم‌شده*****";
+
+    /// <summary>
+    /// تخصیص Number سراسری به پیش‌نویس جدید، با حفظ سوابق تکراریِ دوره‌ای موجود.
+    /// تراکنش Serializable همراه با ایندکس Number از تخصیص هم‌زمانِ یک عدد به دو دوره جلوگیری می‌کند.
+    /// این فقط تخصیص سریال داخلی است؛ فرمت inno و تولید taxid تا تأیید مستند رسمی مسدود می‌مانند.
+    /// </summary>
+    private async Task SaveNewInvoiceWithGlobalNumberAsync(Db.MoadianInvoice invoice)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var maximum = await _db.MoadianInvoices
+            .Select(i => (int?)i.Number)
+            .MaxAsync() ?? 0;
+        if (maximum < 0) maximum = 0;
+        if (maximum == int.MaxValue)
+            throw new InvalidOperationException("ظرفیت شماره داخلی صورتحساب تمام شده است.");
+
+        invoice.Number = maximum + 1;
+        _db.MoadianInvoices.Add(invoice);
+        await _db.SaveChangesAsync();
+        await transaction.CommitAsync();
+    }
+
     private async Task<Db.MoadianFiscalPeriod> GetOrCreatePeriodAsync(DateTime dt)
     {
         var fa = PersianDate.FromGregorian(dt);
@@ -771,29 +852,27 @@ public class MoadianService : IMoadianService
         await _db.SaveChangesAsync();
     }
 
-    private static string SimulatedUid(Db.MoadianInvoice inv)
-    {
-        // UID آزمایشی (در حالت عملیاتی از پاسخ سامانه خوانده می‌شود)
-        var fa = PersianDate.FromGregorian(inv.Date);
-        return $"SIM-{inv.Number:D6}-{fa.Year}{fa.Month:D2}";
-    }
-
     private static MoadianSetting ToDto(Db.MoadianSetting s) => new()
     {
-        Id = s.Id, TaxId = s.TaxId, EconomicCode = s.EconomicCode, SellerName = s.SellerName,
+        Id = s.Id, TaxId = s.TaxId, FiscalMemoryId = s.FiscalMemoryId, EconomicCode = s.EconomicCode, SellerName = s.SellerName,
         SellerAddress = s.SellerAddress, SellerPostalCode = s.SellerPostalCode, SellerPhone = s.SellerPhone,
         TaxCardToken = s.TaxCardToken, BaseUrl = s.BaseUrl, PrivateKeyPem = s.PrivateKeyPem,
-        PublicKeyPem = s.PublicKeyPem, AutoSend = s.AutoSend, SendIntervalMinutes = s.SendIntervalMinutes,
+        SigningCertificatePem = s.SigningCertificatePem, PublicKeyPem = s.PublicKeyPem,
+        AutoSend = false, AutoDraftFromOperations = s.AutoDraftFromOperations,
+        AutoDraftFromFacInvoices = s.AutoDraftFromFacInvoices, SendIntervalMinutes = s.SendIntervalMinutes,
         DefaultVatRate = s.DefaultVatRate, LoggingEnabled = s.LoggingEnabled, IsActive = s.IsActive,
         Notes = s.Notes
     };
 
-    private static MoadianInvoice ToDto(Db.MoadianInvoice i) => new()
+    private static MoadianInvoice ToDto(Db.MoadianInvoice i, bool? hasDuplicateNumberAcrossPeriods = null) => new()
     {
-        Id = i.Id, Number = i.Number, Kind = i.Kind, Date = i.Date,
+        Id = i.Id, Number = i.Number, HasDuplicateNumberAcrossPeriods = hasDuplicateNumberAcrossPeriods,
+        Kind = i.Kind, InvoiceType = i.InvoiceType,
+        InvoicePattern = i.InvoicePattern, InvoiceSubject = i.InvoiceSubject, ReferenceTaxId = i.ReferenceTaxId, Date = i.Date,
         FiscalPeriodId = i.FiscalPeriodId,
         FiscalPeriodTitle = i.FiscalPeriod != null ? $"{i.FiscalPeriod.Year}/{i.FiscalPeriod.Month:00}" : null,
-        FacInvoiceId = i.FacInvoiceId, FacInvoiceRef = i.FacInvoiceRef, Settlement = i.Settlement,
+        FacInvoiceId = i.FacInvoiceId, OperationsTransactionId = i.OperationsTransactionId,
+        FacInvoiceRef = i.FacInvoiceRef, Settlement = i.Settlement,
         TaxId = i.TaxId, SellerName = i.SellerName, EconomicCode = i.EconomicCode,
         BuyerTaxId = i.BuyerTaxId, BuyerName = i.BuyerName, BuyerAddress = i.BuyerAddress,
         BuyerPostalCode = i.BuyerPostalCode, BuyerPhone = i.BuyerPhone,
@@ -805,7 +884,7 @@ public class MoadianService : IMoadianService
         CreatedBy = i.CreatedBy, CreatedAt = i.CreatedAt, Description = i.Description,
         Lines = i.Lines.OrderBy(l => l.RowNo).Select(l => new MoadianInvoiceLine
         {
-            Id = l.Id, RowNo = l.RowNo, SstId = l.SstId, SstTitle = l.SstTitle,
+            Id = l.Id, RowNo = l.RowNo, SstId = l.SstId, UnitCode = l.UnitCode, SstTitle = l.SstTitle,
             Quantity = l.Quantity, UnitPrice = l.UnitPrice, Discount = l.Discount,
             VatRate = l.VatRate, VatAmount = l.VatAmount, Total = l.Total
         }).ToList()

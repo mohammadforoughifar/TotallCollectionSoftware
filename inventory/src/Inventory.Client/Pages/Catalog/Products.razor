@@ -265,6 +265,11 @@
                 <input class="form-control num" value="@fSale" @oninput="@(e => fSale = FormatMoney(e.Value))" inputmode="decimal" dir="ltr" />
             </div>
         }
+        <div class="col-md-6">
+            <label class="form-label">شناسه مالیاتی @(form.IsService ? "خدمت" : "کالا")</label>
+            <input class="form-control font-monospace" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="شناسه رسمی کالا/خدمت" />
+            <div class="fs-8 text-muted mt-1">برای استفاده در پیش‌نویس‌های سامانه مودیان؛ شناسه را با مرجع مالیاتی معتبر تطبیق دهید.</div>
+        </div>
         <div class="col-md-4">
             <label class="form-label d-block">وضعیت</label>
             <div class="form-check form-check-inline">
@@ -540,7 +545,7 @@
         {
             Id = p.Id, Code = p.Code, Name = p.Name, Category = p.Category, Barcode = p.Barcode,
             Unit = p.Unit, SalePrice = p.SalePrice, PurchasePrice = p.PurchasePrice,
-            ReorderPoint = p.ReorderPoint, MaxStock = p.MaxStock, Description = p.Description,
+            TaxCode = p.TaxCode, ReorderPoint = p.ReorderPoint, MaxStock = p.MaxStock, Description = p.Description,
             IsActive = p.IsActive, IsService = p.IsService, WarehouseId = p.WarehouseId, CreatedAt = p.CreatedAt
         };
         prodWarehouseIdStr = (p.WarehouseId ?? 0).ToString();

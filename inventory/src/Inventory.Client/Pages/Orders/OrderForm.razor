@@ -269,7 +269,7 @@
                     <thead>
                         <tr>
                             <th style="width: @(Type == TransactionType.Sale ? "36%" : "42%")">کالا</th>
-                            <th style="width: 13%">مقدار</th>
+                            <th style="width: 13%">مقدار (تا ۲ رقم اعشار)</th>
                             <th style="width: 20%">قیمت واحد (ریال)</th>
                             <th class="text-start">جمع</th>
                             @if (Type == TransactionType.Sale)
@@ -301,8 +301,9 @@
                                     }
                                 </td>
                                 <td>
-                                    <input class="form-control num" inputmode="decimal" dir="ltr"
-                                           value="@l.QtyText" @oninput="@(e => l.QtyText = FormatNum(e.Value))" />
+                                    <input class="form-control num" inputmode="decimal" dir="ltr" placeholder="1.25"
+                                           title="مقدار می‌تواند اعشاری و تا دو رقم اعشار باشد"
+                                           value="@l.QtyText" @oninput="@(e => l.QtyText = FormatQuantity(e.Value))" />
                                 </td>
                                 <td>
                                     <input class="form-control num" inputmode="decimal" dir="ltr"
@@ -548,7 +549,9 @@
     private class LineVm
     {
         public Guid Key { get; } = Guid.NewGuid();
+        public int Id { get; set; }
         public int ProductId { get; set; }
+        public decimal? OriginalQty { get; set; }
         public string QtyText { get; set; } = "1";
         public string PriceText { get; set; } = "";
         public string Unit { get; set; } = "";
@@ -843,8 +846,10 @@
                 instCount = Math.Max(1, installments.Count);
                 lines = o.Lines.Select(l => new LineVm
                 {
+                    Id = l.Id,
                     ProductId = l.ProductId,
-                    QtyText = FormatNum(l.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)),
+                    OriginalQty = l.Quantity,
+                    QtyText = FormatQuantity(l.Quantity.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)),
                     PriceText = FormatNum(l.Price.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)),
                     Unit = l.Unit
                 }).ToList();
@@ -915,6 +920,11 @@
 
     private void OnProductPicked(LineVm l, int id)
     {
+        if (l.ProductId != id)
+        {
+            l.OriginalQty = null;
+            l.Id = 0;
+        }
         l.ProductId = id;
         var p = products.FirstOrDefault(x => x.Id == id);
         if (p is not null)
@@ -923,6 +933,49 @@
             var price = Type == TransactionType.Sale ? p.SalePrice : p.PurchasePrice;
             if (price > 0) l.PriceText = FormatNum(((long)price).ToString());
         }
+    }
+
+    /// <summary>قالب‌بندی مقدار کالا؛ نقطه، ممیز فارسی و ویرگول اعشاری را می‌پذیرد.</summary>
+    private static string FormatQuantity(object? value)
+    {
+        var raw = Fa.ToEn(value?.ToString() ?? "").Trim()
+            .Replace('\u066B', '.') // ممیز فارسی
+            .Replace('\u066C', ','); // جداکنندهٔ هزارگان عربی
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+
+        var dot = raw.LastIndexOf('.');
+        var comma = raw.LastIndexOf(',');
+        if (dot >= 0 && comma >= 0)
+        {
+            // وقتی هر دو جداکننده حاضرند، جداکنندهٔ راستین ممیز اعشار است.
+            // بنابراین 1,234.50 و 1.234,50 هر دو درست خوانده می‌شوند.
+            raw = comma > dot
+                ? raw[..comma].Replace(".", "").Replace(",", "") + "." + raw[(comma + 1)..]
+                : raw.Replace(",", "");
+        }
+        else if (dot < 0 && comma >= 0)
+        {
+            // در کیبوردهای بعضی زبان‌ها ویرگول ممیز اعشار است؛ آخرین ویرگول با حداکثر دو
+            // رقم پس از آن ممیز در نظر گرفته می‌شود. ویرگول‌های قبلی جداکنندهٔ هزارگان‌اند.
+            var fractionDigits = raw[(comma + 1)..].Count(char.IsDigit);
+            raw = fractionDigits <= 2
+                ? raw[..comma].Replace(",", "") + "." + raw[(comma + 1)..]
+                : raw.Replace(",", "");
+        }
+
+        var parts = raw.Split('.', 2);
+        var wholeDigits = new string(parts[0].Where(char.IsDigit).ToArray());
+        if (wholeDigits.Length == 0) wholeDigits = "0";
+        if (!decimal.TryParse(wholeDigits, System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var whole)) return "";
+
+        var formatted = whole.ToString("#,##0", System.Globalization.CultureInfo.InvariantCulture);
+        if (parts.Length == 2)
+        {
+            var fraction = new string(parts[1].Where(char.IsDigit).ToArray());
+            return $"{formatted}.{fraction}";
+        }
+        return formatted;
     }
 
     /// <summary>قالب‌بندی زنده ورودی عددی با جداکننده سه‌رقمی (با حفظ اعشار و پشتیبانی از ارقام فارسی).</summary>
@@ -954,6 +1007,12 @@
 
         var validLines = lines.Where(l => l.ProductId > 0 && l.Qty > 0).ToList();
         if (validLines.Count == 0) { Toast.Error("حداقل یک سطر کالای معتبر وارد کنید."); return; }
+        if (validLines.Any(l => l.Qty != decimal.Round(l.Qty, 2, MidpointRounding.AwayFromZero)
+                                && (!l.OriginalQty.HasValue || l.Qty != l.OriginalQty.Value)))
+        {
+            Toast.Error("مقدار هر سطر حداکثر تا دو رقم اعشار قابل ثبت است.");
+            return;
+        }
 
         var cmd = new OrderCommand
         {
@@ -963,7 +1022,7 @@
             Date = date.Value,
             Description = description,
             ReferrerId = Type == TransactionType.Sale && referrerId > 0 ? referrerId : null,
-            Lines = validLines.Select(l => new OrderLineInput { ProductId = l.ProductId, Quantity = l.Qty, Price = l.Price }).ToList()
+            Lines = validLines.Select(l => new OrderLineInput { Id = l.Id, ProductId = l.ProductId, Quantity = l.Qty, Price = l.Price }).ToList()
         };
 
         // اطلاعات پرداخت (خرید و فروش)

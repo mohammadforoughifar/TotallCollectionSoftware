@@ -91,13 +91,20 @@ else
                         <label class="form-label">شماره عطف</label>
                         <input class="form-control num" @bind="doc.RefNumber" disabled="@IsLocked" />
                     </div>
-                    @if (doc.InvoiceId is > 0)
+                    @if (doc.InvoiceAllocations.Count == 1 && doc.InvoiceAllocations[0].InvoiceId > 0)
                     {
                         <div class="col-6 col-md-2">
                             <label class="form-label">فاکتور مرتبط</label>
-                            <a class="btn btn-outline-primary w-100" href="@($"/fac/invoices/edit/{doc.InvoiceId}")">
-                                <i class="bi bi-receipt"></i> <span class="num">@doc.InvoiceNumber.GetValueOrDefault().Num()</span>
+                            <a class="btn btn-outline-primary w-100" href="@($"/fac/invoices/edit/{doc.InvoiceAllocations[0].InvoiceId}")">
+                                <i class="bi bi-receipt"></i> <span class="num">@doc.InvoiceAllocations[0].InvoiceNumber.Num()</span>
                             </a>
+                        </div>
+                    }
+                    else if (doc.InvoiceAllocations.Count > 1)
+                    {
+                        <div class="col-6 col-md-2">
+                            <label class="form-label">فاکتورهای مرتبط</label>
+                            <span class="btn btn-outline-primary w-100 disabled">@doc.InvoiceAllocations.Count.Num() فاکتور</span>
                         </div>
                     }
                 }
@@ -110,6 +117,149 @@ else
             </div>
         </div>
     </div>
+
+    @if (doc.Kind != TreasuryKind.Transfer)
+    {
+        <!-- ===================== تخصیص به فاکتورها ===================== -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-receipt-cutoff text-primary"></i>
+                <span class="card-title">تخصیص به فاکتورها</span>
+                <span class="badge badge-soft-primary ms-2 num">@doc.InvoiceAllocations.Count.Num() فاکتور</span>
+            </div>
+            <div class="card-body">
+                <p class="fs-8 text-muted mb-3">
+                    یک سند می‌تواند چند فاکتورِ یک طرف حساب را پوشش دهد. برای پرداخت قسطی، هر پرداخت را در یک سند جدا ثبت کنید و مبلغ تخصیص‌یافته را کمتر از ماندهٔ فاکتور بگذارید.
+                </p>
+                @if (doc.Status == TreasuryStatus.Cancelled && doc.InvoiceAllocations.Count > 0)
+                {
+                    <div class="alert alert-warning fs-8">این سند ابطال شده است؛ تخصیص‌های آن در ماندهٔ فعلی فاکتورها محاسبه نمی‌شوند.</div>
+                }
+
+                @if (doc.PartyId is not > 0)
+                {
+                    <div class="alert alert-light border mb-0">ابتدا طرف حساب را انتخاب کنید تا فاکتورهای باز او نمایش داده شوند.</div>
+                }
+                else if (!IsLocked)
+                {
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-12 col-lg-7">
+                            <label class="form-label">فاکتور باز</label>
+                            <select class="form-select num" value="@selectedInvoiceId" @onchange="OnCandidateInvoice">
+                                <option value="0">— انتخاب فاکتور برای تخصیص —</option>
+                                @foreach (var invoice in AvailableInvoices)
+                                {
+                                    <option value="@invoice.InvoiceId">
+                                        @invoice.KindTitle شماره @invoice.InvoiceNumber.Num() — مانده @invoice.RemainingAmount.Money()
+                                    </option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-8 col-lg-3">
+                            <label class="form-label">مبلغ تخصیص</label>
+                            <input class="form-control num" value="@allocationAmountText" @onchange="OnAllocationAmountText" />
+                        </div>
+                        <div class="col-4 col-lg-2 d-grid">
+                            <button class="btn btn-outline-primary" @onclick="AddInvoiceAllocation" disabled="@(!CanAddInvoiceAllocation)">
+                                <i class="bi bi-plus-lg"></i> افزودن
+                            </button>
+                        </div>
+                    </div>
+
+                    @if (openInvoices.Count == 0)
+                    {
+                        <div class="alert alert-light border mb-3">برای این طرف حساب، فاکتور نسیهٔ باز و قابل تسویه‌ای پیدا نشد.</div>
+                    }
+                    else if (AvailableInvoices.Count == 0)
+                    {
+                        <div class="alert alert-light border mb-3">همهٔ فاکتورهای بازِ قابل انتخاب به این سند اضافه شده‌اند.</div>
+                    }
+                }
+
+                @if (doc.InvoiceAllocations.Count > 0)
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle mb-2">
+                            <thead>
+                                <tr>
+                                    <th>فاکتور</th>
+                                    <th class="text-end">کل فاکتور</th>
+                                    <th class="text-end">مانده بدون این سند</th>
+                                    <th class="text-end">مبلغ تخصیص اولیه</th>
+                                    <th class="text-end">مانده با اثر این سند</th>
+                                    @if (!IsLocked)
+                                    {
+                                        <th style="width:52px"></th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var allocation in doc.InvoiceAllocations.OrderBy(a => a.InvoiceNumber))
+                                {
+                                    var currentAllocation = allocation;
+                                    <tr>
+                                        <td>
+                                            <a href="@($"/fac/invoices/edit/{currentAllocation.InvoiceId}")">
+                                                @InvoiceKindTitle(currentAllocation.InvoiceKind)
+                                                <span class="num">#@currentAllocation.InvoiceNumber.Num()</span>
+                                            </a>
+                                            @if (currentAllocation.InvoiceDate != DateTime.MinValue)
+                                            {
+                                                <div class="small text-muted num">@currentAllocation.InvoiceDate.ToFaDate()</div>
+                                            }
+                                        </td>
+                                        <td class="text-end num">@currentAllocation.InvoiceTotal.Money()</td>
+                                        <td class="text-end num">@currentAllocation.RemainingBeforeSettlement.Money()</td>
+                                        <td class="text-end" style="min-width:150px">
+                                            @if (IsLocked)
+                                            {
+                                                <span class="num fw-600">@currentAllocation.Amount.Money()</span>
+                                                @if (doc.Status == TreasuryStatus.Confirmed
+                                                     && currentAllocation.EffectiveAmount < currentAllocation.Amount)
+                                                {
+                                                    <div class="small text-danger">مؤثر پس از برگشت چک: @currentAllocation.EffectiveAmount.Money()</div>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <input class="form-control form-control-sm num text-end" value="@AllocationAmountText(currentAllocation)"
+                                                       @onchange="e => OnInvoiceAllocationAmount(currentAllocation, e)" />
+                                            }
+                                        </td>
+                                        <td class="text-end num">@RemainingAfter(currentAllocation).Money()</td>
+                                        @if (!IsLocked)
+                                        {
+                                            <td class="text-end">
+                                                <button class="btn btn-sm btn-outline-danger" title="حذف تخصیص" @onclick="() => RemoveInvoiceAllocation(currentAllocation)">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <div class="d-flex flex-wrap gap-3 justify-content-end small">
+                    <span>جمع سند: <b class="num">@Total.Money()</b></span>
+                    <span>تخصیص‌یافته به فاکتورها: <b class="num">@InvoiceAllocatedTotal.Money()</b></span>
+                    <span>تخصیص‌نیافته / پیش‌پرداخت: <b class="num">@UnallocatedAmount.Money()</b></span>
+                </div>
+                @if (InvoiceAllocatedTotal > Total)
+                {
+                    <div class="alert alert-danger mt-2 mb-0">جمع تخصیص از مبلغ ابزارهای این سند بیشتر است؛ مبلغ ابزارها را تکمیل کنید یا تخصیص‌ها را کاهش دهید.</div>
+                }
+                else if (UnallocatedAmount > 0 && doc.InvoiceAllocations.Count > 0)
+                {
+                    <div class="alert alert-info mt-2 mb-0 fs-8">
+                        مبلغ باقی‌مانده به هیچ فاکتوری وصل نمی‌شود و به‌عنوان بستانکاری/پیش‌پرداخت همین طرف حساب باقی می‌ماند.
+                    </div>
+                }
+            </div>
+        </div>
+    }
 
     @if (doc.Kind == TreasuryKind.Transfer)
     {
@@ -385,13 +535,22 @@ else
     private TrsVoucher doc = new();
     private List<TrsAccount> accounts = new();
     private List<LookupItem> parties = new();
+    private List<TrsSettlementInvoice> openInvoices = new();
 
+    private int selectedInvoiceId;
+    private string allocationAmountText = "";
     private string amountText = "", feeText = "";
     private bool loading = true, saving;
 
     private bool IsLocked => doc.Status != TreasuryStatus.Draft;
 
     private decimal Total => doc.Lines.Sum(l => l.Amount);
+    private decimal InvoiceAllocatedTotal => doc.InvoiceAllocations.Sum(a => a.Amount);
+    private decimal UnallocatedAmount => Math.Max(0, Total - InvoiceAllocatedTotal);
+    private List<TrsSettlementInvoice> AvailableInvoices => openInvoices
+        .Where(i => !doc.InvoiceAllocations.Any(a => a.InvoiceId == i.InvoiceId)).ToList();
+    private bool CanAddInvoiceAllocation => !IsLocked && selectedInvoiceId > 0
+        && Fa.ParseDecimal(allocationAmountText) > 0;
 
     private string StatusBadge => doc.Status switch
     {
@@ -434,8 +593,10 @@ else
                 doc = await VoucherSvc.NewAsync(kind);
             }
 
+            doc.InvoiceAllocations ??= new();
             amountText = doc.TotalAmount == 0 ? "" : doc.TotalAmount.ToString("0.##");
             feeText = doc.FeeAmount == 0 ? "" : doc.FeeAmount.ToString("0.##");
+            await LoadOpenInvoicesAsync();
 
             Layout.SetTitle(doc.KindTitle);
         }
@@ -447,11 +608,135 @@ else
 
     private void OnDate(DateTime? d) => doc.Date = d ?? DateTime.Now;
 
-    private void OnParty(int id)
+    private async Task OnParty(int id)
     {
-        doc.PartyId = id > 0 ? id : null;
+        var nextPartyId = id > 0 ? id : (int?)null;
+        if (doc.PartyId != nextPartyId && doc.InvoiceAllocations.Count > 0)
+        {
+            if (!await JS.InvokeAsync<bool>("confirm",
+                "با تغییر طرف حساب، تخصیص‌های فاکتور فعلی پاک می‌شوند. ادامه می‌دهید؟")) return;
+            doc.InvoiceAllocations.Clear();
+            doc.InvoiceId = null;
+            doc.InvoiceNumber = null;
+        }
+
+        doc.PartyId = nextPartyId;
         doc.PartyName = parties.FirstOrDefault(p => p.Id == id)?.Name;
+        selectedInvoiceId = 0;
+        allocationAmountText = "";
+        await LoadOpenInvoicesAsync();
     }
+
+    private async Task LoadOpenInvoicesAsync()
+    {
+        openInvoices = new();
+        if (doc.PartyId is not > 0 || doc.Kind == TreasuryKind.Transfer || IsLocked) return;
+        try
+        {
+            openInvoices = await VoucherSvc.GetOpenInvoicesAsync(doc.PartyId.Value, doc.Kind);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void OnCandidateInvoice(ChangeEventArgs e)
+    {
+        selectedInvoiceId = int.TryParse(e.Value?.ToString(), out var id) ? id : 0;
+        var invoice = openInvoices.FirstOrDefault(i => i.InvoiceId == selectedInvoiceId);
+        if (invoice is null)
+        {
+            allocationAmountText = "";
+            return;
+        }
+
+        var capacity = Math.Max(0, Total - InvoiceAllocatedTotal);
+        var suggested = capacity > 0 ? Math.Min(invoice.RemainingAmount, capacity) : invoice.RemainingAmount;
+        allocationAmountText = suggested.ToString("0.##");
+    }
+
+    private void OnAllocationAmountText(ChangeEventArgs e)
+        => allocationAmountText = e.Value?.ToString() ?? "";
+
+    private void AddInvoiceAllocation()
+    {
+        var invoice = openInvoices.FirstOrDefault(i => i.InvoiceId == selectedInvoiceId);
+        if (invoice is null) return;
+        if (doc.InvoiceAllocations.Any(a => a.InvoiceId == invoice.InvoiceId))
+        {
+            Toast.Info("این فاکتور قبلاً به سند اضافه شده است.");
+            return;
+        }
+
+        var amount = Math.Max(0, Fa.ParseDecimal(allocationAmountText));
+        if (amount <= 0)
+        {
+            Toast.Info("مبلغ تخصیص باید بیشتر از صفر باشد.");
+            return;
+        }
+        if (amount > invoice.RemainingAmount)
+        {
+            Toast.Error($"مبلغ تخصیص از ماندهٔ فاکتور بیشتر است ({invoice.RemainingAmount:N0}).");
+            return;
+        }
+        doc.InvoiceAllocations.Add(new TrsInvoiceAllocationDto
+        {
+            InvoiceId = invoice.InvoiceId,
+            InvoiceNumber = invoice.InvoiceNumber,
+            InvoiceKind = invoice.InvoiceKind,
+            InvoiceDate = invoice.InvoiceDate,
+            InvoiceTotal = invoice.InvoiceTotal,
+            RemainingBeforeSettlement = invoice.RemainingAmount,
+            Amount = amount,
+            EffectiveAmount = amount
+        });
+        SyncLegacyInvoiceLink();
+        selectedInvoiceId = 0;
+        allocationAmountText = "";
+    }
+
+    private void OnInvoiceAllocationAmount(TrsInvoiceAllocationDto allocation, ChangeEventArgs e)
+    {
+        allocation.Amount = Math.Max(0, Fa.ParseDecimal(e.Value?.ToString()));
+        allocation.EffectiveAmount = allocation.Amount;
+    }
+
+    private void RemoveInvoiceAllocation(TrsInvoiceAllocationDto allocation)
+    {
+        doc.InvoiceAllocations.Remove(allocation);
+        SyncLegacyInvoiceLink();
+    }
+
+    private void SyncLegacyInvoiceLink()
+    {
+        if (doc.InvoiceAllocations.Count == 1)
+        {
+            doc.InvoiceId = doc.InvoiceAllocations[0].InvoiceId;
+            doc.InvoiceNumber = doc.InvoiceAllocations[0].InvoiceNumber;
+        }
+        else
+        {
+            doc.InvoiceId = null;
+            doc.InvoiceNumber = null;
+        }
+    }
+
+    private static string AllocationAmountText(TrsInvoiceAllocationDto allocation)
+        => allocation.Amount.ToString("0.##");
+
+    private decimal RemainingAfter(TrsInvoiceAllocationDto allocation)
+        => doc.Status == TreasuryStatus.Cancelled
+            ? allocation.RemainingBeforeSettlement
+            : Math.Max(0, allocation.RemainingBeforeSettlement - allocation.EffectiveAmount);
+
+    private static string InvoiceKindTitle(InvoiceKind kind) => kind switch
+    {
+        InvoiceKind.Sale => "فروش",
+        InvoiceKind.Purchase => "خرید",
+        InvoiceKind.PurchaseReturn => "برگشت از خرید",
+        _ => "برگشت از فروش"
+    };
 
     private void OnFromAccount(ChangeEventArgs e)
     {
@@ -509,6 +794,7 @@ else
     {
         doc.Lines.Remove(line);
         Renumber();
+        AdjustSingleInvoiceAllocationToTotal();
     }
 
     private void Renumber()
@@ -521,7 +807,19 @@ else
     private static string LineText(TrsVoucherLine l) => l.Amount == 0 ? "" : l.Amount.ToString("0.##");
 
     private void OnLineAmount(TrsVoucherLine line, ChangeEventArgs e)
-        => line.Amount = Math.Max(0, Fa.ParseDecimal(e.Value?.ToString()));
+    {
+        line.Amount = Math.Max(0, Fa.ParseDecimal(e.Value?.ToString()));
+        AdjustSingleInvoiceAllocationToTotal();
+    }
+
+    // در تسویهٔ تک‌فاکتوری، کم‌کردن مبلغ پرداخت به‌صورت خودکار همان مبلغ تخصیص را هم قسطی می‌کند.
+    private void AdjustSingleInvoiceAllocationToTotal()
+    {
+        if (doc.InvoiceAllocations.Count != 1) return;
+        var allocation = doc.InvoiceAllocations[0];
+        allocation.Amount = Math.Min(Total, allocation.RemainingBeforeSettlement);
+        allocation.EffectiveAmount = allocation.Amount;
+    }
 
     private void OnLineAccount(TrsVoucherLine line, ChangeEventArgs e)
     {
@@ -545,10 +843,12 @@ else
             doc.TotalAmount = doc.Kind == TreasuryKind.Transfer ? doc.TotalAmount : Total;
 
             var saved = await VoucherSvc.SaveAsync(doc);
+            // Keep the new draft/id if confirmation validation fails, so a retry updates rather than duplicates it.
+            doc = saved;
 
             if (confirm)
             {
-                saved = await VoucherSvc.ConfirmAsync(saved.Id);
+                doc = await VoucherSvc.ConfirmAsync(saved.Id);
                 Toast.Success("سند ثبت و قطعی شد.");
             }
             else
@@ -556,7 +856,6 @@ else
                 Toast.Success("پیش‌نویس ذخیره شد.");
             }
 
-            doc = saved;
             amountText = doc.TotalAmount == 0 ? "" : doc.TotalAmount.ToString("0.##");
             feeText = doc.FeeAmount == 0 ? "" : doc.FeeAmount.ToString("0.##");
 
