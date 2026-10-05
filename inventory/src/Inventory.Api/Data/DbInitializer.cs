@@ -81,6 +81,9 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 }
 
+                // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
+                await UserContactSchemaV1.EnsureAsync(db);
+
                 // Per-source Moadian draft linkage and secret/settings columns (SQLite and SQL Server).
                 await MoadianSchemaV2.EnsureAsync(db);
                 // Independent official type/pattern/subject selection and reference-tax-id fields.

@@ -123,6 +123,8 @@ public class UsersController : ApiControllerBase
     public UsersController(IAuthService auth) => _auth = auth;
 
     private bool IsAdmin => User.IsInRole("Admin");
+    private int CurrentUserId =>
+        int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : 0;
 
     /// <summary>فهرست کاربران.</summary>
     [HttpGet]
@@ -133,7 +135,10 @@ public class UsersController : ApiControllerBase
     /// اپراتور نمی‌تواند کاربر ادمین بسازد، نقش کسی را به ادمین تغییر دهد یا کاربر ادمین را ویرایش کند.</summary>
     [HttpPost]
     public async Task<ActionResult<UserDto>> Save([FromBody] UserDto user)
-        => Ok(await _auth.SaveUserAsync(user, callerIsAdmin: IsAdmin));
+    {
+        if (CurrentUserId <= 0) return Unauthorized();
+        return Ok(await _auth.SaveUserAsync(user, currentUserId: CurrentUserId, callerIsAdmin: IsAdmin));
+    }
 
     /// <summary>حذف کاربر — اپراتور نمی‌تواند کاربر ادمین را حذف کند.</summary>
     [HttpDelete("{id:int}")]

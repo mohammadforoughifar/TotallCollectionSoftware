@@ -231,9 +231,10 @@ public class AuthService : IAuthService
         return fallback;
     }
 
-    public async Task<UserDto> SaveUserAsync(UserDto dto, bool callerIsAdmin = true)
+    public async Task<UserDto> SaveUserAsync(UserDto dto, int currentUserId, bool callerIsAdmin = true)
     {
         var username = (dto.Username ?? "").Trim();
+        var requestedMobile = string.IsNullOrWhiteSpace(dto.Mobile) ? null : dto.Mobile.Trim();
         if (string.IsNullOrWhiteSpace(username))
             throw new InvalidOperationException("نام کاربری را وارد کنید.");
 
@@ -274,13 +275,41 @@ public class AuthService : IAuthService
             // اپراتور نمی‌تواند کاربر ادمین موجود را ویرایش کند (نه نقش، نه رمز، نه وضعیت)
             if (!callerIsAdmin && entity.Role == "Admin")
                 throw new InvalidOperationException("اپراتور اجازه ویرایش کاربران «مدیر» را ندارد.");
+
+            // هر تغییر شمارهٔ خودِ کاربر باید از مسیر OTP انجام شود؛ وگرنه API مدیریت کاربران
+            // می‌تواند هم تأییدِ شمارهٔ قطعی و هم مرحلهٔ تأییدِ شمارهٔ جدید را دور بزند.
+            if (entity.Id == currentUserId
+                && !string.Equals(entity.Mobile, requestedMobile, StringComparison.Ordinal))
+                throw new InvalidOperationException(entity.MobileVerified
+                    ? "شمارهٔ موبایلِ تأییدشدهٔ خودتان قابل تغییر نیست."
+                    : "برای تغییر شمارهٔ موبایل خود از تنظیمات شخصی و تأیید OTP استفاده کنید.");
         }
 
         entity.Username = username;
         entity.Role = dto.Role;
         entity.FirstName = string.IsNullOrWhiteSpace(dto.FirstName) ? null : dto.FirstName.Trim();
         entity.LastName = string.IsNullOrWhiteSpace(dto.LastName) ? null : dto.LastName.Trim();
-        entity.Mobile = string.IsNullOrWhiteSpace(dto.Mobile) ? null : dto.Mobile.Trim();
+        if (!string.Equals(entity.Mobile, requestedMobile, StringComparison.Ordinal))
+        {
+            entity.Mobile = requestedMobile;
+            entity.MobileVerified = false;
+
+            // تغییر شماره از پنل مدیریت، کد قبلیِ در انتظار را باطل می‌کند؛
+            // تأییدِ یک درخواست قدیمی نباید شمارهٔ تازهٔ مدیر را بی‌خبر جایگزین کند.
+            if (entity.Id > 0)
+            {
+                var pendingMobileOtp = await _db.UserContactOtpChallenges.FirstOrDefaultAsync(c =>
+                    c.UserId == entity.Id && c.Purpose == Db.UserContactOtpChallenge.MobilePurpose);
+                if (pendingMobileOtp is not null)
+                {
+                    pendingMobileOtp.Destination = "";
+                    pendingMobileOtp.ProtectedCode = "";
+                    pendingMobileOtp.ExpiresAt = DateTime.UtcNow;
+                    pendingMobileOtp.FailedAttempts = 0;
+                    pendingMobileOtp.LockedUntil = null;
+                }
+            }
+        }
         entity.BaleChatId = string.IsNullOrWhiteSpace(dto.BaleChatId) ? null : dto.BaleChatId.Trim();
         entity.EitaaChatId = string.IsNullOrWhiteSpace(dto.EitaaChatId) ? null : dto.EitaaChatId.Trim();
         entity.ReferrerId = dto.Role == "Referrer" ? dto.ReferrerId : null;

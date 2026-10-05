@@ -18,6 +18,15 @@ public class User
     /// <summary>شماره موبایل — برای ارسال پیام بله/ایتا</summary>
     [MaxLength(20)] public string? Mobile { get; set; }
 
+    /// <summary>آیا شماره موبایل کاربر با کد یک‌بارمصرف تأیید شده است؟</summary>
+    public bool MobileVerified { get; set; }
+
+    /// <summary>ایمیل اختیاری کاربر؛ فقط پس از تأیید OTP ثبت می‌شود.</summary>
+    [MaxLength(254)] public string? Email { get; set; }
+
+    /// <summary>آیا ایمیل کاربر با کد یک‌بارمصرف تأیید شده است؟</summary>
+    public bool EmailVerified { get; set; }
+
     /// <summary>شناسه چت کاربر در پیام‌رسان بله (بعد از استارت ربات)</summary>
     [MaxLength(50)] public string? BaleChatId { get; set; }
 
