@@ -31,11 +31,13 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
 
     private readonly AppDbContext _db;
     private readonly IWebHostEnvironment _env;
+    private readonly IHttpContextAccessor _http;
 
-    public MeetingMinutesPrintService(AppDbContext db, IWebHostEnvironment env)
+    public MeetingMinutesPrintService(AppDbContext db, IWebHostEnvironment env, IHttpContextAccessor http)
     {
         _db = db;
         _env = env;
+        _http = http;
         QuestPDF.Settings.License = LicenseType.Community;
     }
 
@@ -143,11 +145,16 @@ public class MeetingMinutesPrintService : IMeetingMinutesPrintService
         string? letterheadPath = null;
         try
         {
-            var company = await _db.SystemCompanies.AsNoTracking()
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.Id)
-                .Select(c => new { c.Name, c.LetterheadFileName })
-                .FirstOrDefaultAsync();
+            var rawCompanyId = _http.HttpContext?.Request.Headers["X-Company-Id"].FirstOrDefault();
+            var companyId = int.TryParse(rawCompanyId, out var parsedCompanyId) && parsedCompanyId > 0
+                ? parsedCompanyId
+                : 0;
+            var company = companyId > 0
+                ? await _db.SystemCompanies.AsNoTracking()
+                    .Where(c => c.Id == companyId && c.IsActive)
+                    .Select(c => new { c.Name, c.LetterheadFileName })
+                    .FirstOrDefaultAsync()
+                : null;
             companyName = company?.Name;
             letterheadPath = ResolveLetterheadPath(company?.LetterheadFileName);
         }
