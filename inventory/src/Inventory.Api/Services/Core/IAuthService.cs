@@ -10,8 +10,8 @@ public interface IAuthService
 
     // ---------------- مدیریت کاربران (فقط مدیر) ----------------
     Task<List<UserDto>> GetUsersAsync(Paging.Request? pagination = null);
-    /// <summary>ایجاد/ویرایش کاربر. callerIsAdmin=false یعنی درخواست از اپراتور است و عملیات مرتبط با ادمین ممنوع.</summary>
-    Task<UserDto> SaveUserAsync(UserDto dto, bool callerIsAdmin = true);
+    /// <summary>ایجاد/ویرایش کاربر؛ callerIsAdmin=false یعنی اپراتور است و تغییر شمارهٔ خودش در این مسیر ممنوع است.</summary>
+    Task<UserDto> SaveUserAsync(UserDto dto, int currentUserId, bool callerIsAdmin = true);
     Task DeleteUserAsync(int id, int currentUserId, bool callerIsAdmin = true);
 
     /// <summary>تغییر رمز عبور توسط خود کاربر (با تأیید رمز فعلی).</summary>

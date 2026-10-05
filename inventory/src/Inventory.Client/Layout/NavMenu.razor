@@ -43,18 +43,18 @@
     }
 
     @* ============ تنظیمات شخصی کاربر ============ *@
-    @if (Auth.CanSee("PersonalSettings"))
+    @if (Auth.IsLoggedIn)
     {
         <div class="nav-group group-personal-settings">
-            <button type="button" class="nav-section-title nav-toggle @(gMisc ? "open" : "")" @onclick="() => gMisc = !gMisc">
+            <button type="button" class="nav-section-title nav-toggle @(gPersonal ? "open" : "")" @onclick="() => gPersonal = !gPersonal">
                 <span><i class="bi bi-person-gear"></i> تنظیمات شخصی کاربر</span>
                 <i class="bi bi-chevron-down nav-chevron"></i>
             </button>
-            @if (gMisc)
+            @if (gPersonal)
             {
                 <div class="nav-group-items">
                     <NavLink class="nav-link" href="personal-settings" @onclick="NotifyClose">
-                        <i class="bi bi-person-gear"></i><span>تنظیمات شخصی</span>
+                        <i class="bi bi-person-gear"></i><span>پروفایل و تنظیمات شخصی</span>
                     </NavLink>
                     @if (Auth.Has("PersonalSettings.ManageLetterGroups"))
                     {
@@ -713,7 +713,7 @@
     [Parameter] public EventCallback OnNavigate { get; set; }
 
     private bool gOpsBase, gOpsReports;
-    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc;
+    private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
     private HrNavigation.Entry[] FaHrItems = [];
@@ -731,6 +731,8 @@
         {
             RefreshFaHr();
             var path = NavManager.ToBaseRelativePath(NavManager.Uri).TrimEnd('/').ToLowerInvariant();
+            gPersonal = path.StartsWith("personal-settings");
+            gMisc = path.StartsWith("misc");
             if (path.StartsWith("trs/vouchers")) gOps = true;
             if (path.StartsWith("operations/reports")) { gOps = true; gOpsReports = true; }
             if (path.StartsWith("moadian")) gOps = true;
@@ -781,6 +783,7 @@
         gFaHr = ForoughAryaHrNavigation.IsWorkspace(p);
         gLetters = p.StartsWith("letters");
         gMisc = p.StartsWith("misc");
+        gPersonal = p.StartsWith("personal-settings");
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||

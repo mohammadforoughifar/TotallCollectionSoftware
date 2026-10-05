@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<DocRenewalRun> DocRenewalRuns => Set<DocRenewalRun>();
     public DbSet<DocIndexJob> DocIndexJobs => Set<DocIndexJob>();
     public DbSet<User> Users => Set<User>();
+    public DbSet<UserContactOtpChallenge> UserContactOtpChallenges => Set<UserContactOtpChallenge>();
 
     // ---------- گزارش‌ساز حرفه‌ای ----------
     public DbSet<RsReport> RsReports => Set<RsReport>();
@@ -410,6 +411,12 @@ public class AppDbContext : DbContext
         AiSchemaV1.Configure(mb);
 
         mb.Entity<User>().HasIndex(u => u.Username).IsUnique();
+        mb.Entity<UserContactOtpChallenge>().HasIndex(c => new { c.UserId, c.Purpose }).IsUnique();
+        mb.Entity<UserContactOtpChallenge>()
+            .HasOne(c => c.User)
+            .WithMany()
+            .HasForeignKey(c => c.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasKey(x => new { x.UserId, x.CompanyId });
         mb.Entity<UserCompanyAccess>().HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserCompanyAccess>().HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Cascade);

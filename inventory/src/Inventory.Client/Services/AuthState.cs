@@ -119,6 +119,12 @@ public interface IAuthApi
     Task<List<ReferrerPayment>> GetMyPaymentsAsync();
     Task<List<ReferrerProductItem>> GetMyProductsAsync(string? search = null);
     Task ChangePasswordAsync(ChangePasswordRequest request);
+    Task<UserProfileDto> GetMyProfileAsync();
+    Task RequestMobileOtpAsync(string mobile);
+    Task VerifyMobileOtpAsync(string code);
+    Task RequestEmailOtpAsync(string email);
+    Task VerifyEmailOtpAsync(string code);
+    Task ClearMyEmailAsync();
 }
 
 /// <summary>پیاده‌سازی سرویس احراز هویت سمت کلاینت.</summary>
@@ -157,4 +163,22 @@ public class AuthApi : IAuthApi
 
     public Task ChangePasswordAsync(ChangePasswordRequest request)
         => _api.PostAsync<object>("api/auth/change-password", request);
+
+    public Task<UserProfileDto> GetMyProfileAsync()
+        => _api.GetAsync<UserProfileDto>("api/profile");
+
+    public Task RequestMobileOtpAsync(string mobile)
+        => _api.PostAsync<object>("api/profile/mobile/otp", new UserContactOtpRequestDto { Destination = mobile });
+
+    public Task VerifyMobileOtpAsync(string code)
+        => _api.PostAsync<object>("api/profile/mobile/verify", new UserContactOtpVerifyDto { Code = code });
+
+    public Task RequestEmailOtpAsync(string email)
+        => _api.PostAsync<object>("api/profile/email/otp", new UserContactOtpRequestDto { Destination = email });
+
+    public Task VerifyEmailOtpAsync(string code)
+        => _api.PostAsync<object>("api/profile/email/verify", new UserContactOtpVerifyDto { Code = code });
+
+    public Task ClearMyEmailAsync()
+        => _api.DeleteAsync("api/profile/email");
 }
