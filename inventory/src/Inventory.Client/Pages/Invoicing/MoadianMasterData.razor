@@ -1,0 +1,1190 @@
+@page "/moadian/master-data"
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@inject IMoadianMasterDataClientService MoadianMasterDataSvc
+@inject IToastService Toast
+@inject IJSRuntime JS
+
+<PageTitle>اطلاعات پایه مودیان</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>اطلاعات پایه مودیان</h1>
+        <p class="lead">فرم‌ها بر اساس مدل‌های CPInfo، ConnectInfo، Customer، GoodsOrService و UnitOfMeasurement</p>
+    </div>
+</div>
+
+<div class="alert alert-info py-2 small">
+    «خدمات‌دهنده» و «اتصال» دو رکورد جدا هستند. با هر بار ذخیرهٔ اتصال، یک نسخهٔ جدید ثبت و نسخهٔ فعال قبلی همان خدمات‌دهنده غیرفعال می‌شود.
+    اطلاعات اتصال شامل نشانی وب‌سرویس، شناسهٔ یکتای حافظهٔ مالیاتی و فایل کلید خصوصی با پسوند .key است. فایل باید کلید خصوصی PKCS#8 PEM باشد و در ذخیره‌گاه خصوصی خارج از پوشهٔ وب نگهداری می‌شود؛ محتوا و مسیر ذخیره‌سازی هرگز در نرم‌افزار یا سرویس‌های وب نمایش داده نمی‌شوند.
+    دکمهٔ «تست اتصال» برای هر نسخه، ارتباط با سامانه و اعتبار احراز هویت همان خدمات‌دهنده را با کلید خصوصی همان نسخه بررسی می‌کند (بدون ارسال فاکتور). نتیجهٔ آخرین تست در همین جدول نگه داشته می‌شود.
+    CRUD مشتری، کالا/خدمت و واحد نیز در همین صفحه مدیریت می‌شود. پیکربندی سراسری Moadian (BaseUrl/ApiVersion/ClientType) در App_Data/MoadianSettings.json و متغیرهای محیطی حفظ شده است؛ به‌جز دکمهٔ تست اتصال، فرم‌ها ذخیره‌محور هستند و فراخوانی شبکه انجام نمی‌دهند.
+</div>
+
+<ul class="nav nav-tabs mb-3 flex-wrap">
+    <li class="nav-item"><button class='nav-link @(tab == 1 ? "active" : "")' @onclick="() => tab = 1">خدمات‌دهنده</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 2 ? "active" : "")' @onclick="() => tab = 2">اتصال</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 3 ? "active" : "")' @onclick="() => tab = 3">مشتری</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 4 ? "active" : "")' @onclick="() => tab = 4">کالا و خدمت</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 5 ? "active" : "")' @onclick="() => tab = 5">واحد اندازه‌گیری</button></li>
+</ul>
+
+@if (loading)
+{
+    <div class="card"><div class="card-body text-center py-5"><div class="spinner-border text-primary" role="status"></div><div class="mt-2 text-muted">در حال دریافت اطلاعات...</div></div></div>
+}
+else if (tab == 1)
+{
+    <div class="card">
+        <div class="card-header fw-bold d-flex align-items-center gap-2">
+            <span>خدمات‌دهندگان / صادرکنندگان</span>
+            <span class="badge bg-secondary">@providers.Count</span>
+            <button class="btn btn-sm btn-primary ms-auto" @onclick="OpenNewProvider"><i class="bi bi-plus-lg"></i> خدمات‌دهنده جدید</button>
+        </div>
+        <div class="card-body p-0">
+            @if (providers.Count == 0)
+            {
+                <div class="empty-state"><i class="bi bi-building-add"></i><h5>خدمات‌دهنده‌ای ثبت نشده است</h5><div class="text-muted">پس از ثبت خدمات‌دهنده، اتصال آن را در زبانهٔ «اتصال» اضافه کنید.</div></div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle text-center mb-0">
+                        <thead><tr><th>نام / نوع شخص</th><th>شناسهٔ ملی</th><th>شمارهٔ اقتصادی</th><th>کدپستی</th><th>وضعیت</th><th class="text-center">عملیات</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in providers)
+                            {
+                                <tr class="@(p.IsDeleted ? "text-muted" : "")">
+                                    <td><div class="fw-600">@ProviderTitle(p)</div><div class="small text-muted">@p.Type</div></td>
+                                    <td class="num" dir="ltr">@p.NationalId</td>
+                                    <td class="num" dir="ltr">@(p.EconomicNumber ?? "—")</td>
+                                    <td class="num" dir="ltr">@(p.PostalCode ?? "—")</td>
+                                    <td>@StateBadge(p.IsDeleted)</td>
+                                    <td class="text-center text-nowrap">
+                                        <button class="btn btn-sm btn-light" title="ویرایش CPInfo" @onclick="() => OpenEditProvider(p)"><i class="bi bi-pencil text-primary"></i></button>
+                                        @if (p.IsDeleted)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SetProviderDeleted(p, false)"><i class="bi bi-arrow-counterclockwise"></i> بازیابی</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-light" title="غیرفعال‌کردن" @onclick="() => SetProviderDeleted(p, true)"><i class="bi bi-trash text-danger"></i></button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (tab == 2)
+{
+    <div class="card">
+        <div class="card-header fw-bold d-flex align-items-center gap-2 flex-wrap">
+            <span>اتصال‌های خدمات‌دهندگان</span>
+            <span class="badge bg-secondary">@FilteredConnections.Count()</span>
+            <select class="form-select form-select-sm ms-auto" style="max-width:280px" @bind="providerFilter">
+                <option value="0">همه خدمات‌دهندگان</option>
+                @foreach (var p in ActiveProviders)
+                {
+                    <option value="@p.Id">@ProviderTitle(p)</option>
+                }
+            </select>
+            <button class="btn btn-sm btn-primary" @onclick="OpenNewConnection" disabled="@(ActiveProviders.Count == 0)"><i class="bi bi-plus-lg"></i> اتصال جدید / نسخه جدید</button>
+        </div>
+        <div class="card-body p-0">
+            @if (ActiveProviders.Count == 0)
+            {
+                <div class="alert alert-warning m-3 mb-0">ابتدا یک خدمات‌دهندهٔ فعال در فرم CPInfo تعریف کنید.</div>
+            }
+            else if (!FilteredConnections.Any())
+            {
+                <div class="empty-state"><i class="bi bi-plug"></i><h5>اتصالی ثبت نشده است</h5><div class="text-muted">نشانی وب‌سرویس، شناسهٔ یکتای حافظهٔ مالیاتی و فایل کلید خصوصی (.key) در زبانهٔ «اتصال» ثبت می‌شوند.</div></div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle text-center mb-0">
+                        <thead><tr><th>خدمات‌دهنده</th><th>شناسهٔ حافظهٔ مالیاتی</th><th>کلید خصوصی</th><th>نشانی وب‌سرویس</th><th>وضعیت</th><th>آخرین تست اتصال</th><th class="text-center">عملیات</th></tr></thead>
+                        <tbody>
+                            @foreach (var c in FilteredConnections)
+                            {
+                                <tr class="@(c.IsDeleted ? "text-muted" : "")">
+                                    <td><div>@c.ProviderName</div><div class="small text-muted">نسخه #@c.Id</div></td>
+                                    <td class="num" dir="ltr">@c.TaxMemoryId</td>
+                                    <td><span class="badge @(c.HasPrivateKey ? "bg-success" : "bg-warning text-dark")">@(c.HasPrivateKey ? "بارگذاری شده" : "بارگذاری نشده")</span></td>
+                                    <td class="small" dir="ltr">@c.WebServiceAddress</td>
+                                    <td>@StateBadge(c.IsDeleted)</td>
+                                    <td class="small">
+                                        @if (c.LastTestAt is null)
+                                        {
+                                            <span class="text-muted">تست نشده</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge @(c.LastTestSucceeded == true ? "bg-success" : "bg-danger")">@(c.LastTestSucceeded == true ? "موفق" : "ناموفق")</span>
+                                            <div class="text-muted num">@c.LastTestAt.Value.ToFaDateTime()</div>
+                                            @if (!string.IsNullOrWhiteSpace(c.LastTestMessage))
+                                            {
+                                                <div class="text-muted" title="@c.LastTestMessage">@Shorten(c.LastTestMessage!, 70)</div>
+                                            }
+                                        }
+                                    </td>
+                                    <td class="text-center text-nowrap">
+                                        <button class="btn btn-sm @(c.LastTestSucceeded == true ? "btn-outline-success" : "btn-outline-primary")"
+                                                title="@(c.HasPrivateKey ? "تست اتصال به سامانه و بررسی اعتبار احراز هویت" : "ابتدا کلید خصوصی این نسخه را بارگذاری کنید")"
+                                                @onclick="() => TestConnection(c)"
+                                                disabled="@(testBusy || c.IsDeleted || !c.HasPrivateKey || ProviderIsDeleted(c.ServiceProviderId))">
+                                            @if (testBusyConnectionId == c.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                                <span>در حال تست...</span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-plug"></i>
+                                                <span>تست اتصال</span>
+                                            }
+                                        </button>
+                                        <button class="btn btn-sm btn-light" title="ثبت نسخهٔ جدید" @onclick="() => OpenEditConnection(c)" disabled="@ProviderIsDeleted(c.ServiceProviderId)"><i class="bi bi-files text-primary"></i></button>
+                                        @if (c.IsDeleted)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SetConnectionDeleted(c, false)" disabled="@ProviderIsDeleted(c.ServiceProviderId)"><i class="bi bi-arrow-counterclockwise"></i> بازیابی</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-light" title="غیرفعال‌کردن" @onclick="() => SetConnectionDeleted(c, true)"><i class="bi bi-pause-circle text-warning"></i></button>
+                                        }
+                                        <button class="btn btn-sm btn-outline-danger" title="حذف کامل اتصال و فایل کلید خصوصی آن"
+                                                @onclick="() => DeleteConnectionPermanently(c)" disabled="@(saving || testBusy || connectionBusy)">
+                                            <i class="bi bi-trash"></i> حذف
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (tab == 3)
+{
+    <div class="card">
+        <div class="card-header fw-bold d-flex align-items-center gap-2 flex-wrap">
+            <span>مشتریان / خریداران</span>
+            <span class="badge bg-secondary">@FilteredCustomers.Count()</span>
+            <select class="form-select form-select-sm ms-auto" style="max-width:280px" @bind="providerFilter">
+                <option value="0">همه خدمات‌دهندگان</option>
+                @foreach (var p in ActiveProviders)
+                {
+                    <option value="@p.Id">@ProviderTitle(p)</option>
+                }
+            </select>
+            <button class="btn btn-sm btn-primary" @onclick="OpenNewCustomer" disabled="@(ActiveProviders.Count == 0)"><i class="bi bi-plus-lg"></i> مشتری جدید</button>
+        </div>
+        <div class="card-body p-0">
+            @if (ActiveProviders.Count == 0)
+            {
+                <div class="alert alert-warning m-3 mb-0">ابتدا یک خدمات‌دهندهٔ فعال تعریف کنید.</div>
+            }
+            else if (!FilteredCustomers.Any())
+            {
+                <div class="empty-state"><i class="bi bi-people"></i><h5>مشتری‌ای ثبت نشده است</h5></div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle text-center mb-0">
+                        <thead><tr><th>خدمات‌دهنده</th><th>نام مشتری</th><th>شناسه‌های خریدار</th><th>تلفن</th><th>کدپستی و نشانی</th><th>وضعیت</th><th class="text-center">عملیات</th></tr></thead>
+                        <tbody>
+                            @foreach (var c in FilteredCustomers)
+                            {
+                                <tr class="@(c.IsDeleted ? "text-muted" : "")">
+                                    <td>@c.ProviderName</td>
+                                    <td><div class="fw-600">@c.Name</div><div class="small text-muted">@c.Type</div></td>
+                                    <td class="small"><div>شناسهٔ ملی: <span class="num" dir="ltr">@(c.NationalId ?? "—")</span></div><div>شمارهٔ اقتصادی: <span class="num" dir="ltr">@(c.EconomicNumber ?? "—")</span></div></td>
+                                    <td class="num" dir="ltr">@(c.Phone ?? "—")</td>
+                                    <td class="small"><div class="num" dir="ltr">@(c.PostalCode ?? "—")</div><div class="text-muted">@(c.Address ?? "—")</div></td>
+                                    <td>@StateBadge(c.IsDeleted)</td>
+                                    <td class="text-center text-nowrap">
+                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEditCustomer(c)"><i class="bi bi-pencil text-primary"></i></button>
+                                        @if (c.IsDeleted)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SetCustomerDeleted(c, false)"><i class="bi bi-arrow-counterclockwise"></i> بازیابی</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-light" title="غیرفعال‌کردن" @onclick="() => SetCustomerDeleted(c, true)"><i class="bi bi-trash text-danger"></i></button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (tab == 4)
+{
+    <div class="card">
+        <div class="card-header fw-bold d-flex align-items-center gap-2 flex-wrap">
+            <span>کالاها و خدمات</span>
+            <span class="badge bg-secondary">@FilteredGoods.Count()</span>
+            <select class="form-select form-select-sm ms-auto" style="max-width:280px" @bind="providerFilter">
+                <option value="0">همه خدمات‌دهندگان</option>
+                @foreach (var p in ActiveProviders)
+                {
+                    <option value="@p.Id">@ProviderTitle(p)</option>
+                }
+            </select>
+            <button class="btn btn-sm btn-primary" @onclick="OpenNewGoods" disabled="@(ActiveProviders.Count == 0 || ActiveUnits.Count == 0)"><i class="bi bi-plus-lg"></i> کالا و خدمت جدید</button>
+            <button class="btn btn-sm btn-outline-primary" @onclick="OpenGoodsImport" disabled="@(ActiveProviders.Count == 0)">
+                <i class="bi bi-file-earmark-excel"></i> ورود از اکسل
+            </button>
+        </div>
+        <div class="card-body p-0">
+            @if (ActiveProviders.Count == 0)
+            {
+                <div class="alert alert-warning m-3 mb-0">ابتدا یک خدمات‌دهندهٔ فعال تعریف کنید.</div>
+            }
+            else if (ActiveUnits.Count == 0)
+            {
+                <div class="alert alert-warning m-3 mb-0">ابتدا در زبانهٔ واحدها، واحدهای موردنیاز را ثبت کنید. هیچ کد رسمی از پیش حدس زده نشده است.</div>
+            }
+            else if (!FilteredGoods.Any())
+            {
+                <div class="empty-state"><i class="bi bi-box-seam"></i><h5>کالا یا خدمتی ثبت نشده است</h5></div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle text-center mb-0">
+                        <thead><tr><th>خدمات‌دهنده</th><th>نام کالا/خدمت</th><th>شناسهٔ کالا/خدمت</th><th>واحد کالا و خدمت</th><th>درصد ارزش افزوده</th><th class="text-center">قیمت واحد (ریال)</th><th>وضعیت</th><th class="text-center">عملیات</th></tr></thead>
+                        <tbody>
+                            @foreach (var g in FilteredGoods)
+                            {
+                                <tr class="@(g.IsDeleted ? "text-muted" : "")">
+                                    <td>@g.ProviderName</td>
+                                    <td>@g.Name</td>
+                                    <td class="num" dir="ltr">@(g.UniqueIdentifier ?? "—")</td>
+                                    <td>@(g.UnitName ?? g.UnitOfMeasurement)</td>
+                                    <td class="num">@g.ValueAddedPercentage٪</td>
+                                    <td class="text-center num fw-600">@g.Price.Money()</td>
+                                    <td>@StateBadge(g.IsDeleted)</td>
+                                    <td class="text-center text-nowrap">
+                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEditGoods(g)"><i class="bi bi-pencil text-primary"></i></button>
+                                        @if (g.IsDeleted)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SetGoodsDeleted(g, false)"><i class="bi bi-arrow-counterclockwise"></i> بازیابی</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-light" title="غیرفعال‌کردن" @onclick="() => SetGoodsDeleted(g, true)"><i class="bi bi-trash text-danger"></i></button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div class="card">
+        <div class="card-header fw-bold d-flex align-items-center gap-2">
+            <span>واحدهای اندازه‌گیری</span>
+            <span class="badge bg-secondary">@units.Count</span>
+            <button class="btn btn-sm btn-primary ms-auto" @onclick="OpenNewUnit"><i class="bi bi-plus-lg"></i> واحد جدید</button>
+        </div>
+        <div class="card-body p-0">
+            @if (units.Count == 0)
+            {
+                <div class="empty-state"><i class="bi bi-rulers"></i><h5>واحدی ثبت نشده است</h5><div class="text-muted">کد رسمی از پیش وارد نشده است؛ کد و نام واحد را خودتان ثبت کنید.</div></div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle text-center mb-0">
+                        <thead><tr><th>کد واحد</th><th>نام واحد</th><th>وضعیت</th><th class="text-center">عملیات</th></tr></thead>
+                        <tbody>
+                            @foreach (var u in units)
+                            {
+                                <tr class="@(u.IsDeleted ? "text-muted" : "")">
+                                    <td class="num" dir="ltr">@u.Code</td>
+                                    <td>@u.Name</td>
+                                    <td>@StateBadge(u.IsDeleted)</td>
+                                    <td class="text-center text-nowrap">
+                                        <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEditUnit(u)"><i class="bi bi-pencil text-primary"></i></button>
+                                        @if (u.IsDeleted)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SetUnitDeleted(u, false)"><i class="bi bi-arrow-counterclockwise"></i> بازیابی</button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-light" title="غیرفعال‌کردن" @onclick="() => SetUnitDeleted(u, true)"><i class="bi bi-trash text-danger"></i></button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<Modal Visible="showProviderModal" Title="@(providerForm.Id == 0 ? "خدمات‌دهندهٔ جدید" : "ویرایش خدمات‌دهنده")" Size="modal-lg" OnClose="CloseProviderModal">
+    <ChildContent>
+        <div class="alert alert-light border py-2 small">این فرم فقط مشخصات شناسایی خدمات‌دهنده را نگه می‌دارد؛ اطلاعات اتصال در زبانهٔ جداگانهٔ «اتصال» ثبت می‌شود.</div>
+        <div class="row g-3">
+            <div class="col-md-4"><label class="form-label">نوع شخص</label><input class="form-control" maxlength="50" placeholder="حقوقی / حقیقی" @bind="providerForm.Type" /></div>
+            <div class="col-md-4"><label class="form-label">شناسهٔ ملی <span class="text-danger">*</span></label><input class="form-control" maxlength="50" dir="ltr" @bind="providerForm.NationalId" /></div>
+            <div class="col-md-4"><label class="form-label">شمارهٔ اقتصادی</label><input class="form-control" maxlength="50" dir="ltr" @bind="providerForm.EconomicNumber" /></div>
+            <div class="col-md-6"><label class="form-label">نام فارسی</label><input class="form-control" maxlength="50" @bind="providerForm.PersianName" /></div>
+            <div class="col-md-6"><label class="form-label">نام لاتین</label><input class="form-control" maxlength="50" dir="ltr" @bind="providerForm.EnglishName" /></div>
+            <div class="col-md-6"><label class="form-label">کدپستی</label><input class="form-control" maxlength="50" dir="ltr" @bind="providerForm.PostalCode" /></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="SaveProvider" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره خدمات‌دهنده")</button>
+        <button class="btn btn-light" @onclick="CloseProviderModal">انصراف</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showConnectionModal" Title="@(connectionForm.Id == 0 ? "اتصال جدید" : "ثبت نسخهٔ جدید اتصال")" Size="modal-xl" OnClose="CloseConnectionModal">
+    <ChildContent>
+        <div class="position-relative">
+            <div class="row g-3">
+                <div class="col-12">
+                    <div class="alert alert-warning py-2 small mb-0">
+                        با ثبت این فرم یک نسخهٔ جدید ساخته می‌شود و نسخهٔ فعال قبلی همین خدمات‌دهنده غیرفعال خواهد شد. نشانی وب‌سرویس فقط ذخیره می‌شود و در همین مرحله آزمون شبکه انجام نمی‌شود.
+                        برای هر نسخهٔ جدید، فایل کلید خصوصی .key با محتوای PKCS#8 PEM را بارگذاری کنید.
+                    </div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label">خدمات‌دهنده <span class="text-danger">*</span></label>
+                    <select class="form-select" @bind="connectionForm.ServiceProviderId" disabled="@(connectionBusy || connectionDraftCreated)">
+                        <option value="0">انتخاب کنید...</option>
+                        @foreach (var p in ConnectionProviderChoices)
+                        {
+                            <option value="@p.Id">@ProviderTitle(p)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label">نشانی وب‌سرویس خدمات‌دهنده <span class="text-danger">*</span></label>
+                    <input class="form-control" maxlength="2048" dir="ltr" placeholder="https://..." @bind="connectionForm.WebServiceAddress" disabled="@(connectionBusy || connectionDraftCreated)" />
+                    <div class="form-text">نشانی باید نشانی کامل و امن (HTTPS) باشد؛ این مرحله فقط آن را ذخیره می‌کند.</div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label class="form-label">شناسهٔ یکتای حافظهٔ مالیاتی <span class="text-danger">*</span></label>
+                    <input class="form-control" maxlength="50" dir="ltr" autocomplete="off" @bind="connectionForm.TaxMemoryId" disabled="@(connectionBusy || connectionDraftCreated)" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">فایل کلید خصوصی (پسوند .key) <span class="text-danger">*</span></label>
+                    @if (connectionForm.HasPrivateKey)
+                    {
+                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 border rounded p-2 mb-2">
+                            <span class="small"><i class="bi bi-shield-lock text-success me-1"></i>کلید نسخهٔ انتخاب‌شده وجود دارد؛ به نسخهٔ جدید منتقل نمی‌شود و محتوا/مسیر آن نمایش یا دانلود نمی‌شود.</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemovePrivateKey" disabled="@connectionBusy">حذف کلید از این نسخه</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="small text-muted mb-2">برای ثبت نسخهٔ جدید، انتخاب فایل کلید الزامی است.</div>
+                    }
+                    <InputFile id="moadian-private-key" class="form-control" accept=".key" OnChange="OnPrivateKeySelected" disabled="@connectionBusy" />
+                    @if (selectedPrivateKeyFile is not null)
+                    {
+                        <div class="small mt-2">فایل انتخاب‌شده برای بارگذاری/جایگزینی: <span dir="ltr">@selectedPrivateKeyFile.Name</span> (@(selectedPrivateKeyFile.Size / 1024) KB)</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(privateKeyUploadError))
+                    {
+                        <div class="text-danger small mt-2">@privateKeyUploadError</div>
+                    }
+                    <div class="form-text">یک فایل .key حداکثر ۶۴ کیلوبایت با محتوای PKCS#8 PEM انتخاب کنید. فایل روی سرور و خارج از web root در پوشهٔ هم‌نام همین خدمات‌دهنده نگهداری می‌شود؛ مسیر/محتوا در UI نمایش داده نمی‌شوند. در Windows به‌صورت پیش‌فرض زیر %ProgramData%\TotallCollection\MoadianPrivateKeys ذخیره می‌شود و ACL آن باید به حساب سرویس محدود باشد (تنظیم Files:MoadianPrivateKeyRoot اختیاری است).</div>
+                </div>
+            </div>
+            @if (connectionBusy)
+            {
+                <div class="position-absolute top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center rounded" style="background:rgba(255,255,255,.9);z-index:20;min-height:340px;">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="mt-2 fw-bold text-primary">@connectionBusyMessage</div>
+                </div>
+            }
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="btn btn-success" @onclick="SaveConnection" disabled="@connectionBusy"><i class="bi bi-save"></i> ثبت نسخهٔ جدید</button>
+        <button type="button" class="btn btn-light" @onclick="CloseConnectionModal" disabled="@connectionBusy">انصراف</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showCustomerModal" Title="@(customerForm.Id == 0 ? "مشتری جدید" : "ویرایش مشتری")" Size="modal-lg" OnClose="CloseCustomerModal">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label">خدمات‌دهنده <span class="text-danger">*</span></label>
+                <select class="form-select" @bind="customerForm.ServiceProviderId">
+                    <option value="0">انتخاب کنید...</option>
+                    @foreach (var p in ActiveProviders)
+                    {
+                        <option value="@p.Id">@ProviderTitle(p)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6"><label class="form-label">نام مشتری <span class="text-danger">*</span></label><input class="form-control" maxlength="50" @bind="customerForm.Name" /></div>
+            <div class="col-md-6"><label class="form-label">نوع شخص</label><input class="form-control" maxlength="50" placeholder="حقوقی / حقیقی" @bind="customerForm.Type" /></div>
+            <div class="col-md-6"><label class="form-label">شناسهٔ ملی</label><input class="form-control" maxlength="50" dir="ltr" @bind="customerForm.NationalId" /></div>
+            <div class="col-md-6"><label class="form-label">شمارهٔ اقتصادی</label><input class="form-control" maxlength="50" dir="ltr" @bind="customerForm.EconomicNumber" /></div>
+            <div class="col-md-6"><label class="form-label">تلفن</label><input class="form-control" maxlength="50" dir="ltr" @bind="customerForm.Phone" /></div>
+            <div class="col-md-6"><label class="form-label">کدپستی</label><input class="form-control" maxlength="50" dir="ltr" @bind="customerForm.PostalCode" /></div>
+            <div class="col-12"><label class="form-label">نشانی</label><textarea class="form-control" rows="3" @bind="customerForm.Address"></textarea></div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="SaveCustomer" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره مشتری")</button>
+        <button class="btn btn-light" @onclick="CloseCustomerModal">انصراف</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showGoodsModal" Title="@(goodsForm.Id == 0 ? "کالا و خدمت جدید" : "ویرایش کالا و خدمت")" Size="modal-lg" OnClose="CloseGoodsModal">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label">خدمات‌دهنده <span class="text-danger">*</span></label>
+                <select class="form-select" @bind="goodsForm.ServiceProviderId">
+                    <option value="0">انتخاب کنید...</option>
+                    @foreach (var p in ActiveProviders)
+                    {
+                        <option value="@p.Id">@ProviderTitle(p)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-6"><label class="form-label">نام کالا/خدمت <span class="text-danger">*</span></label><input class="form-control" maxlength="50" @bind="goodsForm.Name" /></div>
+            <div class="col-md-6"><label class="form-label">شناسهٔ کالا/خدمت</label><input class="form-control" maxlength="50" dir="ltr" @bind="goodsForm.UniqueIdentifier" /></div>
+            <div class="col-md-6">
+                <label class="form-label">واحد کالا و خدمت <span class="text-danger">*</span></label>
+                <select class="form-select" @bind="goodsForm.UnitOfMeasurement">
+                    <option value="">انتخاب کنید...</option>
+                    @foreach (var u in ActiveUnits)
+                    {
+                        <option value="@u.Code">@u.Name (@u.Code)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-3"><label class="form-label">درصد ارزش افزوده</label><input class="form-control text-center num" type="number" min="0" max="100" step="1" @bind="goodsForm.ValueAddedPercentage" /></div>
+            <div class="col-md-3">
+                <label class="form-label">قیمت واحد (ریال)</label>
+                <MoneyInput Value="goodsForm.Price" ValueChanged="v => goodsForm.Price = v" Placeholder="0" />
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="SaveGoods" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره کالا و خدمت")</button>
+        <button class="btn btn-light" @onclick="CloseGoodsModal">انصراف</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showUnitModal" Title="@(unitForm.Id == 0 ? "واحد اندازه‌گیری جدید" : "ویرایش واحد اندازه‌گیری")" OnClose="CloseUnitModal">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">کد واحد <span class="text-danger">*</span></label><input class="form-control text-center" maxlength="50" dir="ltr" @bind="unitForm.Code" /></div>
+            <div class="col-md-6"><label class="form-label">نام واحد <span class="text-danger">*</span></label><input class="form-control" maxlength="50" @bind="unitForm.Name" /></div>
+            <div class="col-12 small text-muted">کد رسمی از پیش بارگذاری نشده است؛ کد و نام را مطابق دادهٔ مورد تأیید خودتان وارد کنید.</div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="SaveUnit" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره واحد")</button>
+        <button class="btn btn-light" @onclick="CloseUnitModal">انصراف</button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showTestModal" Title="@($"تست اتصال — {testConnectionTitle}")" Size="modal-lg" OnClose="CloseTestModal">
+    <ChildContent>
+        @if (testBusy)
+        {
+            <div class="text-center py-4">
+                <span class="spinner-border text-primary"></span>
+                <div class="mt-2 fw-bold text-primary">در حال برقراری ارتباط با سامانه و بررسی احراز هویت...</div>
+                <div class="small text-muted mt-1">تست شامل برقراری ارتباط، دریافت توکن با کلید خصوصی همین نسخه و استعلام شناسهٔ حافظهٔ مالیاتی است.</div>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(testResultError))
+        {
+            <div class="alert alert-danger py-2 mb-0">@testResultError</div>
+        }
+        else if (testResult is not null)
+        {
+            <div class="alert @(testResult.Success ? "alert-success" : "alert-danger") py-2">
+                <div class="fw-bold">
+                    @if (testResult.Success)
+                    {
+                        <i class="bi bi-check-circle"></i> <span>ارتباط برقرار است و احراز هویت معتبر است.</span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-x-circle"></i> <span>تست ناموفق بود.</span>
+                    }
+                </div>
+                <div class="small mt-1">@testResult.Message</div>
+            </div>
+
+            <table class="table table-sm align-middle text-center">
+                <thead><tr><th>گام</th><th>وضعیت</th><th>توضیح</th><th>زمان (ms)</th></tr></thead>
+                <tbody>
+                    @foreach (var step in testResult.Steps)
+                    {
+                        <tr>
+                            <td class="small">@step.Title</td>
+                            <td class="text-nowrap">
+                                <span class="badge @(step.Ok ? "bg-success" : "bg-danger")">@(step.Ok ? "موفق" : "ناموفق")</span>
+                                @if (step.HttpStatus is not null) { <span class="badge bg-light text-dark num">HTTP @step.HttpStatus</span> }
+                            </td>
+                            <td class="small">@step.Detail</td>
+                            <td class="num small">@step.DurationMs</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            <div class="row g-2 small">
+                <div class="col-md-6"><span class="text-muted">آدرس پایهٔ تست‌شده: </span><span dir="ltr">@testResult.BaseUrl</span></div>
+                <div class="col-md-3"><span class="text-muted">نوع مؤدی: </span>@testResult.ClientType</div>
+                <div class="col-md-3"><span class="text-muted">نسخهٔ API: </span>@testResult.ApiVersion</div>
+                <div class="col-md-6"><span class="text-muted">شناسهٔ احراز هویت‌شده (@testResult.IdentityField): </span><span dir="ltr" class="num">@testResult.ClientIdUsed</span></div>
+                <div class="col-md-3"><span class="text-muted">شناسهٔ حافظهٔ مالیاتی: </span><span dir="ltr" class="num">@testResult.TaxMemoryId</span></div>
+                <div class="col-md-3"><span class="text-muted">زمان کل: </span><span class="num">@testResult.DurationMs ms</span></div>
+                @if (!string.IsNullOrWhiteSpace(testResult.TaxpayerName))
+                {
+                    <div class="col-md-6"><span class="text-muted">نام تجاری: </span>@testResult.TaxpayerName</div>
+                    <div class="col-md-3"><span class="text-muted">وضعیت مؤدی: </span>@testResult.FiscalStatus</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(testResult.PublicKeyId))
+                {
+                    <div class="col-md-12"><span class="text-muted">شناسهٔ کلید عمومی سازمان مالیاتی: </span><span dir="ltr" class="num">@testResult.PublicKeyId</span></div>
+                }
+            </div>
+
+            @if (testResult.Endpoints.Count > 0)
+            {
+                <details class="mt-2">
+                    <summary class="small text-muted">آدرس سرویس‌های فراخوانی‌شده</summary>
+                    <ul class="small mb-0" dir="ltr">
+                        @foreach (var endpoint in testResult.Endpoints) { <li>@endpoint</li> }
+                    </ul>
+                </details>
+            }
+
+            <div class="form-text mt-2">
+                این تست هیچ فاکتوری ارسال نمی‌کند و وضعیتی در سامانه تغییر نمی‌دهد. توکن و کلید خصوصی در این پنجره نمایش داده نمی‌شوند.
+            </div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-light" @onclick="CloseTestModal" disabled="@testBusy">بستن</button>
+        <button class="btn btn-primary" @onclick="RerunTest" disabled="@(testBusy || testConnectionId <= 0)">
+            @if (testBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-arrow-repeat"></i> تست مجدد
+        </button>
+    </Footer>
+</Modal>
+
+<Modal Visible="showGoodsImport" Title="ورود گروهی کالا و خدمت از اکسل" Size="modal-lg" OnClose="CloseGoodsImport">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-12">
+                <div class="alert alert-info fs-8 mb-0">
+                    <i class="bi bi-info-circle ms-1"></i>
+                    ابتدا
+                    <button type="button" class="btn btn-link p-0 fw-500 align-baseline" @onclick="DownloadGoodsTemplate" disabled="@downloadingTemplate">
+                        @if (downloadingTemplate) { <span class="spinner-border spinner-border-sm"></span> }
+                        else { <i class="bi bi-download"></i> }
+                        فایل اکسل نمونهٔ کالا و خدمت
+                    </button>
+                    را دانلود کنید. ستون‌های لازم در سطر عنوان همان فایل آمده است: خدمات‌دهنده، نام کالا/خدمت،
+                    شناسهٔ کالا/خدمت، واحد کالا و خدمت، درصد ارزش افزوده و قیمت واحد (ریال).
+                    کاربرگ‌های «راهنما»، «واحدهای موجود» و «خدمات‌دهنده‌ها» هم داخل همان فایل است.
+                </div>
+            </div>
+            <div class="col-12">
+                <label class="form-label">فایل اکسل کالا و خدمت (xlsx)</label>
+                <InputFile class="form-control" OnChange="OnGoodsFileSelected" accept=".xlsx" />
+                @if (goodsImportFile is not null)
+                {
+                    <div class="small mt-2">فایل انتخاب‌شده: <span dir="ltr">@goodsImportFile.Name</span></div>
+                }
+            </div>
+            @if (goodsImportResult is not null)
+            {
+                <div class="col-12">
+                    <div class="alert @(goodsImportResult.Failed == 0 ? "alert-success" : "alert-warning") fs-8 mb-0">
+                        <div class="fw-500 mb-1">
+                            <i class="bi bi-check-circle ms-1"></i>
+                            @goodsImportResult.Imported.Num() کالا/خدمت ثبت یا به‌روزرسانی شد
+                            @if (goodsImportResult.Failed > 0)
+                            {
+                                <span> — @goodsImportResult.Failed.Num() سطر رد شد:</span>
+                            }
+                        </div>
+                        @foreach (var err in goodsImportResult.Errors.Take(10))
+                        {
+                            <div>• @err</div>
+                        }
+                        @if (goodsImportResult.Errors.Count > 10)
+                        {
+                            <div>… و @((goodsImportResult.Errors.Count - 10).Num()) خطای دیگر</div>
+                        }
+                    </div>
+                </div>
+            }
+            <div class="col-12 small text-muted">
+                سطرهای تکراری (همان شناسهٔ کالا/خدمت یا همان نام برای همان خدمات‌دهنده) به‌جای درج دوباره، به‌روزرسانی می‌شوند.
+            </div>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn btn-primary" @onclick="DoGoodsImport" disabled="@(goodsImporting || goodsImportFile is null)">
+            @if (goodsImporting) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            بارگذاری و ثبت
+        </button>
+        <button class="btn btn-light" @onclick="CloseGoodsImport">بستن</button>
+    </Footer>
+</Modal>
+
+@code {
+    private int tab = 1;
+    private const long MaxPrivateKeyFileSize = 64L * 1024L;
+    private bool loading = true;
+    private bool saving;
+    private bool connectionBusy;
+    private string connectionBusyMessage = "";
+    private int providerFilter;
+    private IBrowserFile? selectedPrivateKeyFile;
+    private string? privateKeyUploadError;
+    private bool connectionDraftCreated;
+
+    private List<MoadianServiceProviderProfileDto> providers = new();
+    private List<MoadianProviderConnectionProfileDto> connections = new();
+    private List<MoadianCustomerProfileDto> customers = new();
+    private List<MoadianGoodsOrServiceProfileDto> goods = new();
+    private List<MoadianUnitOfMeasurementDto> units = new();
+
+    private MoadianServiceProviderProfileDto providerForm = new();
+    private MoadianProviderConnectionProfileDto connectionForm = new();
+    private MoadianCustomerProfileDto customerForm = new();
+    private MoadianGoodsOrServiceProfileDto goodsForm = new();
+    private MoadianUnitOfMeasurementDto unitForm = new();
+
+    private bool showProviderModal, showConnectionModal, showCustomerModal, showGoodsModal, showUnitModal;
+    private bool showGoodsImport, goodsImporting, downloadingTemplate;
+    private IBrowserFile? goodsImportFile;
+    private ExcelImportResult? goodsImportResult;
+    private bool showTestModal;
+    private bool testBusy;
+    private int testBusyConnectionId;
+    private int testConnectionId;
+    private string testConnectionTitle = "";
+    private MoadianConnectionTestResultDto? testResult;
+    private string? testResultError;
+
+    private List<MoadianServiceProviderProfileDto> ActiveProviders => providers.Where(x => !x.IsDeleted).ToList();
+    private List<MoadianUnitOfMeasurementDto> ActiveUnits => units.Where(x => !x.IsDeleted).ToList();
+    private IEnumerable<MoadianProviderConnectionProfileDto> FilteredConnections => providerFilter == 0 ? connections : connections.Where(x => x.ServiceProviderId == providerFilter);
+    private IEnumerable<MoadianCustomerProfileDto> FilteredCustomers => providerFilter == 0 ? customers : customers.Where(x => x.ServiceProviderId == providerFilter);
+    private IEnumerable<MoadianGoodsOrServiceProfileDto> FilteredGoods => providerFilter == 0 ? goods : goods.Where(x => x.ServiceProviderId == providerFilter);
+    private IEnumerable<MoadianServiceProviderProfileDto> ConnectionProviderChoices => ActiveProviders;
+
+    protected override async Task OnInitializedAsync() => await LoadAll();
+
+    private async Task LoadAll()
+    {
+        loading = true;
+        try
+        {
+            var providersTask = MoadianMasterDataSvc.GetProvidersAsync();
+            var connectionsTask = MoadianMasterDataSvc.GetConnectionsAsync();
+            var customersTask = MoadianMasterDataSvc.GetCustomersAsync();
+            var goodsTask = MoadianMasterDataSvc.GetGoodsOrServicesAsync();
+            var unitsTask = MoadianMasterDataSvc.GetUnitsAsync();
+            await Task.WhenAll(providersTask, connectionsTask, customersTask, goodsTask, unitsTask);
+            providers = await providersTask;
+            connections = await connectionsTask;
+            customers = await customersTask;
+            goods = await goodsTask;
+            units = await unitsTask;
+            if (providerFilter != 0 && !providers.Any(x => x.Id == providerFilter && !x.IsDeleted))
+                providerFilter = 0;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private static string ProviderTitle(MoadianServiceProviderProfileDto p)
+        => p.PersianName ?? p.EnglishName ?? p.NationalId;
+
+    private bool ProviderIsDeleted(int id) => providers.Any(x => x.Id == id && x.IsDeleted);
+
+    private static RenderFragment StateBadge(bool deleted) => builder =>
+    {
+        builder.OpenElement(0, "span");
+        builder.AddAttribute(1, "class", deleted ? "badge bg-secondary" : "badge bg-success");
+        builder.AddContent(2, deleted ? "غیرفعال" : "فعال");
+        builder.CloseElement();
+    };
+
+    // CPInfo form
+    private void OpenNewProvider() { providerForm = new(); showProviderModal = true; }
+    private void OpenEditProvider(MoadianServiceProviderProfileDto p)
+    {
+        providerForm = new MoadianServiceProviderProfileDto
+        {
+            Id = p.Id, Type = p.Type, EconomicNumber = p.EconomicNumber,
+            PersianName = p.PersianName, EnglishName = p.EnglishName, NationalId = p.NationalId,
+            PostalCode = p.PostalCode, IsDeleted = p.IsDeleted
+        };
+        showProviderModal = true;
+    }
+
+    private async Task SaveProvider()
+    {
+        if (string.IsNullOrWhiteSpace(providerForm.NationalId)) { Toast.Error("شناسهٔ ملی خدمات‌دهنده الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(providerForm.PersianName) && string.IsNullOrWhiteSpace(providerForm.EnglishName)) { Toast.Error("حداقل یکی از «نام فارسی» یا «نام لاتین» خدمات‌دهنده را وارد کنید."); return; }
+        saving = true;
+        try
+        {
+            if (providerForm.Id == 0) await MoadianMasterDataSvc.CreateProviderAsync(providerForm);
+            else await MoadianMasterDataSvc.UpdateProviderAsync(providerForm.Id, providerForm);
+            showProviderModal = false;
+            Toast.Success("CPInfo خدمات‌دهنده ذخیره شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+    private void CloseProviderModal() => showProviderModal = false;
+
+    // ConnectInfo form
+    private void OpenNewConnection()
+    {
+        var candidates = ActiveProviders;
+        var selected = candidates.FirstOrDefault(p => p.Id == providerFilter) ?? candidates.FirstOrDefault();
+        connectionForm = new MoadianProviderConnectionProfileDto { ServiceProviderId = selected?.Id ?? 0 };
+        selectedPrivateKeyFile = null;
+        privateKeyUploadError = null;
+        connectionDraftCreated = false;
+        showConnectionModal = true;
+    }
+
+    private void OpenEditConnection(MoadianProviderConnectionProfileDto c)
+    {
+        connectionForm = new MoadianProviderConnectionProfileDto
+        {
+            Id = c.Id, ServiceProviderId = c.ServiceProviderId, ProviderName = c.ProviderName,
+            WebServiceAddress = c.WebServiceAddress,
+            TaxMemoryId = c.TaxMemoryId,
+            HasPrivateKey = c.HasPrivateKey, IsDeleted = c.IsDeleted
+        };
+        selectedPrivateKeyFile = null;
+        privateKeyUploadError = null;
+        connectionDraftCreated = false;
+        showConnectionModal = true;
+    }
+
+    private bool ValidateConnectionForm()
+    {
+        if (connectionForm.ServiceProviderId <= 0) { Toast.Error("خدمات‌دهنده را در ConnectInfo انتخاب کنید."); return false; }
+        if (string.IsNullOrWhiteSpace(connectionForm.WebServiceAddress)
+            || !Uri.TryCreate(connectionForm.WebServiceAddress.Trim(), UriKind.Absolute, out var address)
+            || address.Scheme != Uri.UriSchemeHttps
+            || !string.IsNullOrEmpty(address.UserInfo)
+            || !string.IsNullOrEmpty(address.Query)
+            || !string.IsNullOrEmpty(address.Fragment))
+        { Toast.Error("آدرس وب‌سایت باید HTTPS معتبر و بدون credentials، query یا fragment باشد."); return false; }
+        if (string.IsNullOrWhiteSpace(connectionForm.TaxMemoryId)) { Toast.Error("شناسهٔ یکتای حافظهٔ مالیاتی الزامی است."); return false; }
+        if (!string.IsNullOrWhiteSpace(privateKeyUploadError)) { Toast.Error(privateKeyUploadError); return false; }
+        if (selectedPrivateKeyFile is null && !(connectionDraftCreated && connectionForm.HasPrivateKey))
+        { Toast.Error("فایل کلید خصوصی .key با محتوای PKCS#8 PEM الزامی است."); return false; }
+        return true;
+    }
+
+    private async Task SaveConnection()
+    {
+        if (!ValidateConnectionForm()) return;
+        connectionBusy = true;
+        connectionBusyMessage = "در حال ثبت نسخهٔ جدید ConnectInfo و فایل کلید...";
+        try
+        {
+            await SaveConnectionRecordAndUploadAsync();
+            CloseConnectionModal();
+            Toast.Success("ConnectInfo ذخیره شد.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+            if (connectionDraftCreated) await LoadAll();
+        }
+        finally { connectionBusy = false; }
+    }
+
+    private async Task SaveConnectionRecordAndUploadAsync()
+    {
+        if (!connectionDraftCreated)
+        {
+            connectionForm = await MoadianMasterDataSvc.CreateConnectionAsync(connectionForm);
+            connectionDraftCreated = true;
+        }
+
+        if (selectedPrivateKeyFile is not null)
+        {
+            var file = selectedPrivateKeyFile;
+            await using var stream = file.OpenReadStream(MaxPrivateKeyFileSize);
+            var status = await MoadianMasterDataSvc.UploadPrivateKeyAsync(
+                connectionForm.Id, stream, file.Name, "application/octet-stream");
+            connectionForm.HasPrivateKey = status.HasPrivateKey;
+            selectedPrivateKeyFile = null;
+            privateKeyUploadError = null;
+        }
+
+        if (!connectionForm.HasPrivateKey)
+            throw new InvalidOperationException("فایل کلید خصوصی بارگذاری نشده است؛ اتصال قبلی تغییری نکرد.");
+
+        await MoadianMasterDataSvc.RestoreConnectionAsync(connectionForm.Id);
+        connectionForm.IsDeleted = false;
+        connectionDraftCreated = false;
+        await LoadAll();
+    }
+
+    private Task OnPrivateKeySelected(InputFileChangeEventArgs args)
+    {
+        selectedPrivateKeyFile = null;
+        privateKeyUploadError = null;
+        try
+        {
+            var file = args.GetMultipleFiles(1).FirstOrDefault();
+            if (file is null) return Task.CompletedTask;
+            if (!string.Equals(Path.GetExtension(file.Name), ".key", StringComparison.OrdinalIgnoreCase))
+                privateKeyUploadError = "فقط فایل کلید خصوصی با پسوند .key انتخاب کنید؛ محتوای آن باید PKCS#8 PEM باشد.";
+            else if (file.Size is <= 0 or > MaxPrivateKeyFileSize)
+                privateKeyUploadError = "اندازهٔ فایل باید بین ۱ بایت و ۶۴ کیلوبایت باشد.";
+            else
+                selectedPrivateKeyFile = file;
+        }
+        catch (InvalidOperationException)
+        {
+            privateKeyUploadError = "فقط یک فایل PEM برای هر اتصال انتخاب کنید.";
+        }
+        return Task.CompletedTask;
+    }
+
+    private async Task RemovePrivateKey()
+    {
+        if (connectionForm.Id <= 0 || !connectionForm.HasPrivateKey) return;
+        if (!await Confirm("ارجاع کلید خصوصی از این اتصال حذف شود؟ فایل‌های همین ذخیره‌گاهِ مدیریت‌شده که از این فرم بارگذاری شده‌اند از سرور پاک می‌شوند؛ فایل‌های قدیمی یا خارج از مسیر مدیریت‌شده دست‌نخورده می‌مانند.")) return;
+        connectionBusy = true;
+        connectionBusyMessage = "در حال حذف کلید از ذخیره‌گاه خصوصی...";
+        try
+        {
+            var status = await MoadianMasterDataSvc.RemovePrivateKeyAsync(connectionForm.Id);
+            connectionForm.HasPrivateKey = status.HasPrivateKey;
+            selectedPrivateKeyFile = null;
+            privateKeyUploadError = null;
+            Toast.Success("کلید از اتصال حذف شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { connectionBusy = false; }
+    }
+
+    private void CloseConnectionModal()
+    {
+        showConnectionModal = false;
+        selectedPrivateKeyFile = null;
+        privateKeyUploadError = null;
+        connectionDraftCreated = false;
+    }
+
+    // Customer form
+    private void OpenNewCustomer() { customerForm = new() { ServiceProviderId = DefaultProviderId() }; showCustomerModal = true; }
+    private void OpenEditCustomer(MoadianCustomerProfileDto c)
+    {
+        customerForm = new MoadianCustomerProfileDto
+        {
+            Id = c.Id, ServiceProviderId = c.ServiceProviderId, ProviderName = c.ProviderName,
+            Type = c.Type, Name = c.Name, NationalId = c.NationalId, EconomicNumber = c.EconomicNumber,
+            Phone = c.Phone, PostalCode = c.PostalCode, Address = c.Address, IsDeleted = c.IsDeleted
+        };
+        showCustomerModal = true;
+    }
+    private async Task SaveCustomer()
+    {
+        if (customerForm.ServiceProviderId <= 0) { Toast.Error("خدمات‌دهنده را انتخاب کنید."); return; }
+        if (string.IsNullOrWhiteSpace(customerForm.Name)) { Toast.Error("نام مشتری الزامی است."); return; }
+        saving = true;
+        try
+        {
+            if (customerForm.Id == 0) await MoadianMasterDataSvc.CreateCustomerAsync(customerForm);
+            else await MoadianMasterDataSvc.UpdateCustomerAsync(customerForm.Id, customerForm);
+            showCustomerModal = false;
+            Toast.Success("Customer ذخیره شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+    private void CloseCustomerModal() => showCustomerModal = false;
+
+    // GoodsOrService form
+    private void OpenNewGoods() { goodsForm = new() { ServiceProviderId = DefaultProviderId(), UnitOfMeasurement = ActiveUnits.FirstOrDefault()?.Code ?? "" }; showGoodsModal = true; }
+    private void OpenEditGoods(MoadianGoodsOrServiceProfileDto g)
+    {
+        goodsForm = new MoadianGoodsOrServiceProfileDto
+        {
+            Id = g.Id, ServiceProviderId = g.ServiceProviderId, ProviderName = g.ProviderName,
+            Name = g.Name, UniqueIdentifier = g.UniqueIdentifier, UnitOfMeasurement = g.UnitOfMeasurement,
+            UnitName = g.UnitName, ValueAddedPercentage = g.ValueAddedPercentage, Price = g.Price, IsDeleted = g.IsDeleted
+        };
+        showGoodsModal = true;
+    }
+    private async Task SaveGoods()
+    {
+        if (goodsForm.ServiceProviderId <= 0) { Toast.Error("خدمات‌دهنده را انتخاب کنید."); return; }
+        if (string.IsNullOrWhiteSpace(goodsForm.Name)) { Toast.Error("نام کالا/خدمت الزامی است."); return; }
+        if (string.IsNullOrWhiteSpace(goodsForm.UnitOfMeasurement)) { Toast.Error("واحد اندازه‌گیری را انتخاب کنید."); return; }
+        saving = true;
+        try
+        {
+            if (goodsForm.Id == 0) await MoadianMasterDataSvc.CreateGoodsOrServiceAsync(goodsForm);
+            else await MoadianMasterDataSvc.UpdateGoodsOrServiceAsync(goodsForm.Id, goodsForm);
+            showGoodsModal = false;
+            Toast.Success("GoodsOrService ذخیره شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+    private void CloseGoodsModal() => showGoodsModal = false;
+
+    // UnitOfMeasurement form
+    private void OpenNewUnit() { unitForm = new(); showUnitModal = true; }
+    private void OpenEditUnit(MoadianUnitOfMeasurementDto u) { unitForm = new() { Id = u.Id, Code = u.Code, Name = u.Name, IsDeleted = u.IsDeleted }; showUnitModal = true; }
+    private async Task SaveUnit()
+    {
+        if (string.IsNullOrWhiteSpace(unitForm.Code) || string.IsNullOrWhiteSpace(unitForm.Name)) { Toast.Error("کد و نام واحد الزامی است."); return; }
+        saving = true;
+        try
+        {
+            if (unitForm.Id == 0) await MoadianMasterDataSvc.CreateUnitAsync(unitForm);
+            else await MoadianMasterDataSvc.UpdateUnitAsync(unitForm.Id, unitForm);
+            showUnitModal = false;
+            Toast.Success("UnitOfMeasurement ذخیره شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+    private void CloseUnitModal() => showUnitModal = false;
+
+    // Soft-delete / restore actions
+    private async Task SetProviderDeleted(MoadianServiceProviderProfileDto p, bool deleted)
+    {
+        if (deleted && !await Confirm($"«{ProviderTitle(p)}» غیرفعال شود؟ اتصال وابسته نیز غیرفعال می‌شود.")) return;
+        try
+        {
+            if (deleted) await MoadianMasterDataSvc.DeleteProviderAsync(p.Id);
+            else await MoadianMasterDataSvc.RestoreProviderAsync(p.Id);
+            Toast.Success(deleted ? "خدمات‌دهنده غیرفعال شد." : "خدمات‌دهنده بازیابی شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task SetConnectionDeleted(MoadianProviderConnectionProfileDto c, bool deleted)
+    {
+        if (deleted && !await Confirm($"اتصال «{c.ProviderName}» غیرفعال شود؟")) return;
+        try
+        {
+            if (deleted) await MoadianMasterDataSvc.DeleteConnectionAsync(c.Id);
+            else await MoadianMasterDataSvc.RestoreConnectionAsync(c.Id);
+            Toast.Success(deleted ? "اتصال غیرفعال شد." : "اتصال بازیابی شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>حذف قطعی اتصال همراه با فایل کلید خصوصی؛ قابل بازگردانی نیست.</summary>
+    private async Task DeleteConnectionPermanently(MoadianProviderConnectionProfileDto c)
+    {
+        var hasKey = c.HasPrivateKey;
+        var message = $"اتصال «{c.ProviderName}» (نسخه #{c.Id}) برای همیشه حذف شود؟"
+                      + (hasKey ? "\nفایل کلید خصوصی ذخیره‌شدهٔ این اتصال هم از سرور پاک می‌شود و بازگردانی ممکن نیست." : "")
+                      + (c.LastTestAt is not null ? "\nسابقهٔ آخرین تست اتصال نیز حذف می‌شود." : "");
+        if (!await JS.InvokeAsync<bool>("confirm", message)) return;
+
+        saving = true;
+        try
+        {
+            await MoadianMasterDataSvc.DeleteConnectionPermanentlyAsync(c.Id);
+            Toast.Success("اتصال و فایل کلید آن حذف شد.");
+            if (providerFilter != 0 && !connections.Any(x => x.Id != c.Id && x.ServiceProviderId == providerFilter))
+                providerFilter = 0;
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    // ورود گروهی کالا و خدمت از اکسل
+    private void OpenGoodsImport()
+    {
+        goodsImportFile = null;
+        goodsImportResult = null;
+        showGoodsImport = true;
+    }
+
+    private void CloseGoodsImport() => showGoodsImport = false;
+
+    private void OnGoodsFileSelected(InputFileChangeEventArgs e) => goodsImportFile = e.File;
+
+    private async Task DownloadGoodsTemplate()
+    {
+        if (downloadingTemplate) return;
+        downloadingTemplate = true;
+        try
+        {
+            var (data, fileName, contentType) = await MoadianMasterDataSvc.DownloadGoodsOrServicesTemplateAsync();
+            if (data is null || data.Length == 0) { Toast.Error("فایل نمونه خالی برگشت."); return; }
+            if (string.IsNullOrWhiteSpace(fileName) || !fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                fileName = "Moadian-GoodsOrServices-Template.xlsx";
+
+            var ok = await JS.InvokeAsync<bool>("downloadBlob", fileName, contentType, Convert.ToBase64String(data));
+            if (ok) Toast.Success("فایل نمونهٔ اکسل دانلود شد.");
+            else Toast.Error("دانلود فایل انجام نشد. مسدودکنندهٔ پاپ‌آپ را بررسی کنید.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { downloadingTemplate = false; }
+    }
+
+    private async Task DoGoodsImport()
+    {
+        if (goodsImportFile is null) return;
+        goodsImporting = true;
+        try
+        {
+            await using var stream = goodsImportFile.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            goodsImportResult = await MoadianMasterDataSvc.ImportGoodsOrServicesAsync(stream, goodsImportFile.Name);
+            if (goodsImportResult.Failed == 0)
+                Toast.Success($"{goodsImportResult.Imported} کالا/خدمت از اکسل ثبت شد.");
+            else
+                Toast.Info($"{goodsImportResult.Imported} سطر ثبت و {goodsImportResult.Failed} سطر رد شد؛ جزئیات خطاها در همان پنجره آمده است.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { goodsImporting = false; }
+    }
+    private async Task SetCustomerDeleted(MoadianCustomerProfileDto c, bool deleted)
+    {
+        if (deleted && !await Confirm($"مشتری «{c.Name}» غیرفعال شود؟")) return;
+        try
+        {
+            if (deleted) await MoadianMasterDataSvc.DeleteCustomerAsync(c.Id);
+            else await MoadianMasterDataSvc.RestoreCustomerAsync(c.Id);
+            Toast.Success(deleted ? "مشتری غیرفعال شد." : "مشتری بازیابی شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task SetGoodsDeleted(MoadianGoodsOrServiceProfileDto g, bool deleted)
+    {
+        if (deleted && !await Confirm($"«{g.Name}» غیرفعال شود؟")) return;
+        try
+        {
+            if (deleted) await MoadianMasterDataSvc.DeleteGoodsOrServiceAsync(g.Id);
+            else await MoadianMasterDataSvc.RestoreGoodsOrServiceAsync(g.Id);
+            Toast.Success(deleted ? "کالا/خدمت غیرفعال شد." : "کالا/خدمت بازیابی شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+    private async Task SetUnitDeleted(MoadianUnitOfMeasurementDto u, bool deleted)
+    {
+        if (deleted && !await Confirm($"واحد «{u.Name}» غیرفعال شود؟")) return;
+        try
+        {
+            if (deleted) await MoadianMasterDataSvc.DeleteUnitAsync(u.Id);
+            else await MoadianMasterDataSvc.RestoreUnitAsync(u.Id);
+            Toast.Success(deleted ? "واحد غیرفعال شد." : "واحد بازیابی شد.");
+            await LoadAll();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    // ================== تست اتصال و احراز هویت خدمات‌دهنده ==================
+    private async Task TestConnection(MoadianProviderConnectionProfileDto c)
+    {
+        if (testBusy) return;
+        testBusy = true;
+        testBusyConnectionId = c.Id;
+        testConnectionId = c.Id;
+        testConnectionTitle = $"{c.ProviderName} (نسخه #{c.Id})";
+        testResult = null;
+        testResultError = null;
+        showTestModal = true;
+        try
+        {
+            testResult = await MoadianMasterDataSvc.TestConnectionAsync(c.Id);
+        }
+        catch (Exception ex)
+        {
+            testResultError = ex.Message;
+            Toast.Error($"تست اتصال انجام نشد: {ex.Message}");
+        }
+        finally
+        {
+            testBusy = false;
+            testBusyConnectionId = 0;
+            await ReloadConnectionsAsync();
+        }
+    }
+
+    private async Task RerunTest()
+    {
+        var connection = connections.FirstOrDefault(x => x.Id == testConnectionId);
+        if (connection is null) return;
+        await TestConnection(connection);
+    }
+
+    private void CloseTestModal()
+    {
+        showTestModal = false;
+        testResult = null;
+        testResultError = null;
+        testBusy = false;
+    }
+
+    private async Task ReloadConnectionsAsync()
+    {
+        try { connections = await MoadianMasterDataSvc.GetConnectionsAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private static string Shorten(string value, int max)
+        => value.Length <= max ? value : value[..max] + "…";
+
+    private int DefaultProviderId()
+        => providerFilter != 0 && ActiveProviders.Any(p => p.Id == providerFilter)
+            ? providerFilter
+            : ActiveProviders.FirstOrDefault()?.Id ?? 0;
+
+    private Task<bool> Confirm(string message) => JS.InvokeAsync<bool>("confirm", message).AsTask();
+}

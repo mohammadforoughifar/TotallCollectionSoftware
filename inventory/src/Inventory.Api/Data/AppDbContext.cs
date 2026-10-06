@@ -375,6 +375,12 @@ public class AppDbContext : DbContext
     public DbSet<MoadianInvoiceLine> MoadianInvoiceLines => Set<MoadianInvoiceLine>();
     public DbSet<MoadianLog> MoadianLogs => Set<MoadianLog>();
     public DbSet<MoadianCpc> MoadianCpcList => Set<MoadianCpc>();
+    public DbSet<MoadianServiceProviderProfile> MoadianServiceProviderProfiles => Set<MoadianServiceProviderProfile>();
+    public DbSet<MoadianFiscalYear> MoadianFiscalYears => Set<MoadianFiscalYear>();
+    public DbSet<MoadianProviderConnectionProfile> MoadianProviderConnections => Set<MoadianProviderConnectionProfile>();
+    public DbSet<MoadianCustomerProfile> MoadianCustomerProfiles => Set<MoadianCustomerProfile>();
+    public DbSet<MoadianGoodsOrServiceProfile> MoadianGoodsOrServices => Set<MoadianGoodsOrServiceProfile>();
+    public DbSet<MoadianUnitOfMeasurement> MoadianUnitsOfMeasurement => Set<MoadianUnitOfMeasurement>();
     public DbSet<FiscalPrinterSetting> FiscalPrinterSettings => Set<FiscalPrinterSetting>();
 
     // ---------- ماژول فاکتور ----------
@@ -1009,6 +1015,43 @@ public class AppDbContext : DbContext
           .HasForeignKey(t => t.BudgetItemId)
           .OnDelete(DeleteBehavior.Restrict);
 
+        // ---------- اطلاعات پایهٔ مودیان و ConnectInfo (مستقل از sender) ----------
+        mb.Entity<MoadianServiceProviderProfile>().ToTable("MoadianServiceProviderProfiles");
+        mb.Entity<MoadianServiceProviderProfile>().Property(p => p.IsDeleted).HasDefaultValue(false);
+        mb.Entity<MoadianServiceProviderProfile>().HasIndex(p => p.NationalID);
+        mb.Entity<MoadianFiscalYear>().ToTable("MoadianFiscalYears");
+        mb.Entity<MoadianFiscalYear>().HasIndex(y => y.Year).IsUnique().HasDatabaseName("IX_MoadianFiscalYears_Year");
+        mb.Entity<MoadianProviderConnectionProfile>().ToTable("MoadianProviderConnections");
+        mb.Entity<MoadianProviderConnectionProfile>().Property(c => c.IsDeleted).HasDefaultValue(false);
+        mb.Entity<MoadianProviderConnectionProfile>().Property(c => c.LastConnectionTestMessage).HasMaxLength(500);
+        mb.Entity<MoadianProviderConnectionProfile>()
+            .HasOne(c => c.ServiceProvider).WithMany(p => p.Connections)
+            .HasForeignKey(c => c.ServiceProviderId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<MoadianProviderConnectionProfile>()
+            .HasIndex(c => c.ServiceProviderId)
+            .HasDatabaseName("IX_MoadianProviderConnections_ServiceProviderId_Active")
+            .IsUnique()
+            .HasFilter("[IsDeleted] = 0");
+        mb.Entity<MoadianCustomerProfile>().ToTable("MoadianCustomerProfiles");
+        mb.Entity<MoadianCustomerProfile>().Property(c => c.IsDeleted).HasDefaultValue(false);
+        mb.Entity<MoadianCustomerProfile>()
+            .HasOne(c => c.ServiceProvider).WithMany()
+            .HasForeignKey(c => c.ServiceProviderId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<MoadianCustomerProfile>().HasIndex(c => new { c.ServiceProviderId, c.IsDeleted });
+        mb.Entity<MoadianGoodsOrServiceProfile>().ToTable("MoadianGoodsOrServices");
+        mb.Entity<MoadianGoodsOrServiceProfile>().Property(g => g.IsDeleted).HasDefaultValue(false);
+        mb.Entity<MoadianGoodsOrServiceProfile>()
+            .HasOne(g => g.ServiceProvider).WithMany()
+            .HasForeignKey(g => g.ServiceProviderId)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<MoadianGoodsOrServiceProfile>().HasIndex(g => new { g.ServiceProviderId, g.IsDeleted });
+        mb.Entity<MoadianGoodsOrServiceProfile>().Property(g => g.Price).HasPrecision(18, 2);
+        mb.Entity<MoadianUnitOfMeasurement>().ToTable("MoadianUnitsOfMeasurement");
+        mb.Entity<MoadianUnitOfMeasurement>().Property(u => u.IsDeleted).HasDefaultValue(false);
+        mb.Entity<MoadianUnitOfMeasurement>().HasIndex(u => u.Code).IsUnique();
+
         // ---------- سامانه مودیان ----------
         mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalPeriodId, i.Number }).IsUnique();
         mb.Entity<MoadianInvoice>().HasIndex(i => i.Number);
@@ -1022,6 +1065,16 @@ public class AppDbContext : DbContext
         mb.Entity<MoadianInvoice>().HasIndex(i => i.FacInvoiceId);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.OperationsTransactionId).IsUnique()
           .HasFilter("[OperationsTransactionId] IS NOT NULL");
+        // سال مالی مودیان: هر فاکتور می‌تواند به یک سال مالی گره بخورد؛ شمارهٔ سند و سریال سال یکتا هستند.
+        mb.Entity<MoadianInvoice>()
+          .HasOne(i => i.FiscalYear).WithMany(y => y.Invoices)
+          .HasForeignKey(i => i.FiscalYearId)
+          .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<MoadianInvoice>().Property(i => i.DocumentNumber).HasMaxLength(30);
+        mb.Entity<MoadianInvoice>().HasIndex(i => i.DocumentNumber).IsUnique()
+          .HasFilter("[DocumentNumber] IS NOT NULL");
+        mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalYearId, i.YearSerial }).IsUnique()
+          .HasFilter("[FiscalYearId] IS NOT NULL AND [YearSerial] > 0");
         mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.Year, p.Month }).IsUnique();
         mb.Entity<MoadianCpc>().HasIndex(c => c.Code).IsUnique();
         mb.Entity<MoadianLog>().HasIndex(l => l.InvoiceId);

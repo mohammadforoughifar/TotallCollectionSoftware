@@ -90,6 +90,10 @@ public static class DbInitializer
                 await MoadianSchemaV3.EnsureAsync(db);
                 // Number index for serializable global numbering of new drafts; existing numbers are preserved.
                 await MoadianSchemaV4.EnsureAsync(db);
+                // Provider profiles and provider-scoped master data; no sender/queue schema changes.
+                await MoadianSchemaV5.EnsureAsync(db);
+                // سال مالی مودیان، شمارهٔ سند سالانه (سال/سریال) و نوع پرداخت صورتحساب.
+                await MoadianSchemaV6.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);

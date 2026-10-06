@@ -9,7 +9,7 @@
 <div class="page-head">
     <div>
         <h1>سامانه مودیان <span class="badge bg-warning text-dark">ارسال غیرفعال</span></h1>
-        <p class="lead">تنظیمات، ساخت و بازبینی دستی/خودکار پیش‌نویس‌های مودیان</p>
+        <p class="lead">ساخت و بازبینی دستی/خودکار صورتحساب‌های مودیان (همه پیش از ارسال می‌مانند)</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/settings")'>
@@ -35,7 +35,7 @@
     </div>
     <div class="col-6 col-lg-2">
         <div class="card stat-card"><div class="card-body">
-            <div class="stat-label">پیش‌نویس</div>
+            <div class="stat-label">ارسال‌نشده</div>
             <div class="stat-value num text-secondary">@dash.DraftCount.Num()</div>
         </div></div>
     </div>
@@ -82,7 +82,7 @@
     <div class="col-md-4">
         <div class="card stat-card"><div class="card-body">
             <div class="stat-label">وضعیت اتصال</div>
-            <div class="stat-value fs-6 pt-1 text-warning">غیرفعال — پیش‌نویس فقط</div>
+            <div class="stat-value fs-6 pt-1 text-warning">غیرفعال — فقط ثبت ارسال‌نشده</div>
         </div></div>
     </div>
 </div>
@@ -124,10 +124,10 @@
     <div class="card-header fw-bold">راهنمای سریع</div>
     <div class="card-body">
         <ol class="mb-0 fs-14">
-            <li>در «تنظیمات مودیان» اطلاعات فروشنده، حافظه مالیاتی و سیاست ساخت پیش‌نویس هر منبع را تنظیم کنید.</li>
-            <li>پیش‌نویس را دستی بسازید، یا از فاکتور قطعی فروش ERP/سند فروش «عملیات» بسازید؛ نوع رسمی (inty)، الگو (inp) و موضوع (ins) را جداگانه بازبینی کنید و آن‌ها را با جهت سند داخلی یکی نگیرید.</li>
+            <li>اطلاعات فروشنده، حافظهٔ مالیاتی و سیاست ساخت خودکار صورتحساب هر منبع از صفحهٔ «تنظیمات مودیان» تنظیم می‌شود (نشانی: moadian/settings).</li>
+            <li>صورتحساب ارسال‌نشده را دستی بسازید، یا از فاکتور قطعی فروش ERP/سند فروش «عملیات» بسازید؛ نوع رسمی (inty)، الگو (inp) و موضوع (ins) را جداگانه بازبینی کنید و آن‌ها را با جهت سند داخلی یکی نگیرید.</li>
             <li>برای هر ردیف، شناسه کالا/خدمت مالیاتی و واحد مالیاتی واقعی را تکمیل کنید؛ شناسهٔ ساختگی تولید نمی‌شود.</li>
-            <li>ارسال و وضعیت‌های سامانه در این نسخه غیرفعال‌اند؛ تنظیم ساخت خودکار فقط پس از ثبت فروش، پیش‌نویس ایجاد می‌کند.</li>
+            <li>ارسال و وضعیت‌های سامانه در این نسخه غیرفعال‌اند؛ تنظیم ساخت خودکار فقط پس از ثبت فروش، سند ارسال‌نشده ایجاد می‌کند.</li>
             <li>پیش از فعال‌سازی ارسال، باید سند رسمی جاری، قالب، امضا، گواهی و دسترسی آزمایشی/عملیاتی بررسی و آزموده شوند.</li>
         </ol>
     </div>
@@ -172,8 +172,8 @@
     {
         var (cls, text) = s switch
         {
-            MoadianInvoiceStatus.Draft => ("bg-secondary", "پیش‌نویس"),
-            MoadianInvoiceStatus.Queued => ("bg-warning text-dark", "در صف"),
+            MoadianInvoiceStatus.Draft => ("bg-warning text-dark", "ارسال نشده"),
+            MoadianInvoiceStatus.Queued => ("bg-info text-dark", "در صف ارسال"),
             MoadianInvoiceStatus.Sending => ("bg-info text-dark", "در حال ارسال"),
             MoadianInvoiceStatus.Sent => ("bg-success", "ارسال‌شده"),
             MoadianInvoiceStatus.Failed => ("bg-danger", "ناموفق"),

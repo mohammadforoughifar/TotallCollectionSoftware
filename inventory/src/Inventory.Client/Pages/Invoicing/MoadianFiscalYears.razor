@@ -1,0 +1,360 @@
+@page "/moadian/fiscal-years"
+@using Microsoft.AspNetCore.Components
+@inject IMoadianStandaloneClientService StandaloneSvc
+@inject IToastService Toast
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>سال مالی مودیان</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>سال مالی مودیان</h1>
+        <p class="lead">تعریف سال مالی شمسی، ساخت خودکار ۱۲ دورهٔ ماهانه و کنترل باز/بسته بودن هر دوره</p>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+        <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/invoice-new")'>
+            <i class="bi bi-receipt"></i> ثبت صورتحساب جدید
+        </button>
+        <button class="btn btn-light" @onclick="Load"><i class="bi bi-arrow-clockwise"></i></button>
+    </div>
+</div>
+
+<div class="alert alert-info py-2 small">
+    با ثبت هر سال مالی، ۱۲ دورهٔ ماهانهٔ شمسی آن به‌صورت خودکار ساخته می‌شود و صورتحساب‌ها بر اساس تاریخ فاکتور
+    به دورهٔ همان ماه و به سال مالی گره می‌خورند. سریال و شمارهٔ سند سالانهٔ هر صورتحساب هم از همین سال محاسبه می‌شود.
+</div>
+
+<!-- فرم تعریف/ویرایش سال مالی -->
+<div class="card mb-3">
+    <div class="card-header fw-bold">
+        @(yearForm.Id == 0 ? "تعریف سال مالی جدید" : $"ویرایش سال مالی {yearForm.Year}")
+    </div>
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small">سال شمسی <span class="text-danger">*</span></label>
+                <input class="form-control form-control-sm num" type="number" min="1300" max="1500" dir="ltr"
+                       @bind="yearForm.Year" placeholder="مثلاً 1405" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">بازهٔ سال (شمسی)</label>
+                <input class="form-control form-control-sm" disabled value="@YearRangePreview" dir="rtl" />
+                <div class="form-text">از ۰۱/۰۱ تا آخرین روز اسفند همان سال.</div>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small d-block">وضعیت</label>
+                <div class="form-check form-switch mt-1">
+                    <input class="form-check-input" type="checkbox" id="yearClosedSwitch" @bind="yearForm.IsClosed" />
+                    <label class="form-check-label small" for="yearClosedSwitch">سال بسته باشد</label>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="form-check form-switch mt-1">
+                    <input class="form-check-input" type="checkbox" id="yearPeriodsSwitch" @bind="yearForm.CreateMonthlyPeriods"
+                           disabled="@(yearForm.Id > 0)" />
+                    <label class="form-check-label small" for="yearPeriodsSwitch">ساخت ۱۲ دورهٔ ماهانه</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">یادداشت</label>
+                <input class="form-control form-control-sm" maxlength="500" @bind="yearForm.Notes" />
+            </div>
+        </div>
+        <div class="mt-2 d-flex gap-2">
+            <button class="btn btn-primary btn-sm" @onclick="SaveYear" disabled="@busy">
+                @if (busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                <i class="bi bi-save"></i> @(yearForm.Id == 0 ? "ثبت سال مالی" : "ذخیره تغییرات")
+            </button>
+            @if (yearForm.Id > 0)
+            {
+                <button class="btn btn-light btn-sm" @onclick="ResetForm">انصراف از ویرایش</button>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- فهرست سال‌ها -->
+<div class="card">
+    <div class="card-header fw-bold d-flex align-items-center gap-2">
+        <span>سال‌های مالی تعریف‌شده</span>
+        <span class="badge bg-secondary">@years.Count</span>
+    </div>
+    <div class="card-body p-0">
+        @if (loading)
+        {
+            <div class="text-center py-4"><span class="spinner-border text-primary"></span></div>
+        }
+        else if (years.Count == 0)
+        {
+            <div class="empty-state py-4 text-center text-muted">
+                <i class="bi bi-calendar3 d-block fs-2 mb-2"></i>
+                هنوز سال مالی تعریف نشده است؛ سال جاری را در فرم بالا ثبت کنید.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover align-middle text-center mb-0">
+                    <thead>
+                        <tr>
+                            <th>سال</th><th>بازه</th><th>دوره‌ها</th><th class="text-center">تعداد صورتحساب</th>
+                            <th class="text-center">جمع خالص (ریال)</th><th class="text-center">مالیات (ریال)</th>
+                            <th class="text-center">آخرین سریال</th><th>وضعیت</th><th class="text-center">عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var y in years)
+                        {
+                            <tr class="@(y.IsClosed ? "text-muted" : "")">
+                                <td class="fw-bold num">@y.Year</td>
+                                <td class="small num">@Fa(y.StartDate) — @Fa(y.EndDate)</td>
+                                <td class="small">
+                                    <span class="badge bg-light text-dark num">@y.PeriodCount ماه</span>
+                                    @if (y.ClosedPeriodCount > 0)
+                                    {
+                                        <span class="badge bg-warning text-dark num">@y.ClosedPeriodCount بسته</span>
+                                    }
+                                </td>
+                                <td class="text-center num">@y.InvoiceCount</td>
+                                <td class="text-center num">@y.NetTotal.Money()</td>
+                                <td class="text-center num">@y.VatTotal.Money()</td>
+                                <td class="text-center num">@(y.LastYearSerial == 0 ? "—" : $"{y.Year}/{y.LastYearSerial:000000}")</td>
+                                <td>
+                                    <span class="badge @(y.IsClosed ? "bg-danger" : "bg-success")">@y.StatusTitle</span>
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    <button class="btn btn-sm btn-light" title="نمایش دوره‌ها" @onclick="() => TogglePeriods(y.Id)">
+                                        <i class="bi @(expandedYearId == y.Id ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => EditYear(y)">
+                                        <i class="bi bi-pencil text-primary"></i>
+                                    </button>
+                                    @if (y.IsClosed)
+                                    {
+                                        <button class="btn btn-sm btn-outline-success" @onclick="() => SetClosed(y, false)" disabled="@busy">
+                                            <i class="bi bi-unlock"></i> باز کردن
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => SetClosed(y, true)" disabled="@busy">
+                                            <i class="bi bi-lock"></i> بستن سال
+                                        </button>
+                                    }
+                                    <button class="btn btn-sm btn-light" title="حذف" @onclick="() => DeleteYear(y)" disabled="@busy">
+                                        <i class="bi bi-trash text-danger"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            @if (expandedYearId == y.Id)
+                            {
+                                <tr>
+                                    <td colspan="9" class="bg-light">
+                                        @if (periodsLoading)
+                                        {
+                                            <div class="text-center py-3"><span class="spinner-border spinner-border-sm text-primary"></span></div>
+                                        }
+                                        else if (periods.Count == 0)
+                                        {
+                                            <div class="small text-muted py-2">دوره‌ای برای این سال ثبت نشده است.</div>
+                                        }
+                                        else
+                                        {
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-bordered align-middle text-center mb-0 bg-white">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>دوره</th><th>ماه</th><th>بازهٔ شمسی</th>
+                                                            <th class="text-center">تعداد</th><th class="text-center">جمع خالص (ریال)</th>
+                                                            <th class="text-center">مالیات (ریال)</th><th>وضعیت</th><th class="text-center"></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var p in periods)
+                                                        {
+                                                            <tr class="@(p.IsClosed ? "text-muted" : "")">
+                                                                <td class="num">@p.Title</td>
+                                                                <td class="small">@p.MonthName</td>
+                                                                <td class="small num">@p.RangeTitle</td>
+                                                                <td class="text-center num">@p.InvoiceCount</td>
+                                                                <td class="text-center num">@p.NetTotal.Money()</td>
+                                                                <td class="text-center num">@p.VatTotal.Money()</td>
+                                                                <td>
+                                                                    <span class="badge @(p.IsClosed ? "bg-danger" : "bg-success")">@(p.IsClosed ? "بسته" : "باز")</span>
+                                                                </td>
+                                                                <td class="text-center">
+                                                                    @if (p.IsClosed)
+                                                                    {
+                                                                        <button class="btn btn-sm btn-outline-success" @onclick="() => SetPeriodClosed(p, false)" disabled="@busy">باز کردن</button>
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <button class="btn btn-sm btn-outline-warning" @onclick="() => SetPeriodClosed(p, true)" disabled="@busy">بستن</button>
+                                                                    }
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool loading = true;
+    private bool busy;
+    private bool periodsLoading;
+    private int expandedYearId;
+    private List<MoadianFiscalYearDto> years = new();
+    private List<MoadianFiscalPeriodDto> periods = new();
+    private MoadianFiscalYearRequest yearForm = new() { Year = PersianDate.FromGregorian(DateTime.Now).Year };
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try
+        {
+            years = await StandaloneSvc.GetFiscalYearsAsync();
+            if (expandedYearId != 0 && years.All(y => y.Id != expandedYearId))
+            {
+                expandedYearId = 0;
+                periods = new();
+            }
+            else if (expandedYearId != 0)
+            {
+                await LoadPeriods(expandedYearId);
+            }
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task LoadPeriods(int yearId)
+    {
+        periodsLoading = true;
+        try
+        {
+            var detail = await StandaloneSvc.GetFiscalYearAsync(yearId);
+            periods = detail.Periods;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); periods = new(); }
+        finally { periodsLoading = false; }
+    }
+
+    private async Task TogglePeriods(int yearId)
+    {
+        if (expandedYearId == yearId)
+        {
+            expandedYearId = 0;
+            periods = new();
+            return;
+        }
+        expandedYearId = yearId;
+        await LoadPeriods(yearId);
+    }
+
+    private string YearRangePreview
+    {
+        get
+        {
+            if (yearForm.Year is < 1300 or > 1500) return "سال نامعتبر";
+            var start = PersianDate.ToGregorian(yearForm.Year, 1, 1);
+            var end = PersianDate.ToGregorian(yearForm.Year, 12, PersianDate.DaysInMonth(yearForm.Year, 12));
+            return $"{Fa(start)} تا {Fa(end)}";
+        }
+    }
+
+    private void EditYear(MoadianFiscalYearDto y)
+    {
+        yearForm = new MoadianFiscalYearRequest
+        {
+            Id = y.Id,
+            Year = y.Year,
+            IsClosed = y.IsClosed,
+            Notes = y.Notes,
+            CreateMonthlyPeriods = y.PeriodCount < 12
+        };
+    }
+
+    private void ResetForm()
+        => yearForm = new MoadianFiscalYearRequest { Year = PersianDate.FromGregorian(DateTime.Now).Year };
+
+    private async Task SaveYear()
+    {
+        if (yearForm.Year is < 1300 or > 1500) { Toast.Error("سال شمسی باید بین ۱۳۰۰ و ۱۵۰۰ باشد."); return; }
+        busy = true;
+        try
+        {
+            var detail = await StandaloneSvc.SaveFiscalYearAsync(yearForm);
+            Toast.Success($"سال مالی {detail.Year.Year} ذخیره شد ({detail.Periods.Count} دوره).");
+            expandedYearId = detail.Year.Id;
+            periods = detail.Periods;
+            ResetForm();
+            years = await StandaloneSvc.GetFiscalYearsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task SetClosed(MoadianFiscalYearDto y, bool closed)
+    {
+        if (closed && !await JS.InvokeAsync<bool>("confirm",
+                $"سال مالی {y.Year} بسته شود؟ پس از بستن، ثبت صورتحساب جدید در هیچ‌یک از دوره‌های آن مجاز نیست.")) return;
+        busy = true;
+        try
+        {
+            var detail = closed
+                ? await StandaloneSvc.CloseFiscalYearAsync(y.Id)
+                : await StandaloneSvc.ReopenFiscalYearAsync(y.Id);
+            Toast.Success(closed ? $"سال مالی {y.Year} بسته شد." : $"سال مالی {y.Year} باز شد.");
+            years = await StandaloneSvc.GetFiscalYearsAsync();
+            if (expandedYearId == y.Id) periods = detail.Periods;
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task SetPeriodClosed(MoadianFiscalPeriodDto p, bool closed)
+    {
+        busy = true;
+        try
+        {
+            if (closed) await StandaloneSvc.ClosePeriodAsync(p.Id);
+            else await StandaloneSvc.ReopenPeriodAsync(p.Id);
+            Toast.Success(closed ? $"دورهٔ {p.Title} بسته شد." : $"دورهٔ {p.Title} باز شد.");
+            await LoadPeriods(expandedYearId);
+            years = await StandaloneSvc.GetFiscalYearsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteYear(MoadianFiscalYearDto y)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"سال مالی {y.Year} حذف شود؟ این کار فقط برای سال‌های بدون صورتحساب ممکن است.")) return;
+        busy = true;
+        try
+        {
+            await StandaloneSvc.DeleteFiscalYearAsync(y.Id);
+            Toast.Success($"سال مالی {y.Year} حذف شد.");
+            if (expandedYearId == y.Id) { expandedYearId = 0; periods = new(); }
+            years = await StandaloneSvc.GetFiscalYearsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { busy = false; }
+    }
+
+    private static string Fa(DateTime dt) => PersianDate.ToShortFa(dt);
+}

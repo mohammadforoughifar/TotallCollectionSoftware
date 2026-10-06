@@ -467,6 +467,34 @@
     </div>
     }
 
+    @* ============ عملیات مودیان — گروه مستقل (مجوز مودیان) ============ *@
+    @if (ShowMoadianGroup)
+    {
+        <div class="nav-group group-moadian">
+            <button type="button" class="nav-section-title nav-toggle @(gMoadian ? "open" : "")" @onclick="() => gMoadian = !gMoadian">
+                <span><i class="bi bi-receipt-cutoff"></i>عملیات مودیان</span>
+                <i class="bi bi-chevron-down nav-chevron"></i>
+            </button>
+            @if (gMoadian)
+            {
+                <div class="nav-group-items">
+                    <NavLink class="nav-link" href="moadian/master-data" @onclick="NotifyClose">
+                        <i class="bi bi-database"></i><span>اطلاعات پایه مودیان</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/invoices" @onclick="NotifyClose">
+                        <i class="bi bi-list-ul"></i><span>فاکتورهای الکترونیکی</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/invoice-new" @onclick="NotifyClose">
+                        <i class="bi bi-plus-square"></i><span>ثبت صورتحساب جدید</span>
+                    </NavLink>
+                    <NavLink class="nav-link" href="moadian/fiscal-years" @onclick="NotifyClose">
+                        <i class="bi bi-calendar3"></i><span>سال مالی مودیان</span>
+                    </NavLink>
+                </div>
+            }
+        </div>
+    }
+
     <ErpWorkspaceNav OnNavigate="NotifyClose" />
 
     @* ============ مدیریت پروژه‌ها ============ *@
@@ -700,7 +728,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gOpsBase, gOpsReports;
+    private bool gOpsBase, gOpsReports, gMoadian;
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
@@ -723,8 +751,7 @@
             gMisc = path.StartsWith("misc");
             if (path.StartsWith("trs/vouchers")) gOps = true;
             if (path.StartsWith("operations/reports")) { gOps = true; gOpsReports = true; }
-            if (path.StartsWith("moadian")) gOps = true;
-            if (path.StartsWith("moadian/settings")) gOpsBase = true;
+            if (path.StartsWith("moadian")) gMoadian = true;
             StateHasChanged();
         });
 
@@ -742,12 +769,13 @@
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
     private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers");
+    private bool ShowMoadianGroup => Auth.CanSee("Moadian");
     private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
     private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
-    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «عملیات» رفتند.
+    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها زیرمنوی «اطلاعات پایه» داخل «عملیات»؛ مودیان گروه مستقل «عملیات مودیان» است.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");
     private bool ShowSysGroup => CanSeeSettings || Auth.CanSee("SystemUsers");
@@ -775,10 +803,11 @@
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
-                   p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("moadian/settings") ||
+                   p.StartsWith("warehouses") || p.StartsWith("parties") ||
                    (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
         gOpsReports = p.StartsWith("operations/reports");
-        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("moadian") || gOpsReports || gOpsBase;
+        gMoadian = p.StartsWith("moadian");
+        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || gOpsReports || gOpsBase;
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("settings/it-client-companies");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("referrer-wallets") ||

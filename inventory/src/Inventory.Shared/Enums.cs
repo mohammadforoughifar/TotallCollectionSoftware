@@ -380,6 +380,28 @@ public enum MoadianInvoiceStatus
     Voided = 6
 }
 
+/// <summary>
+/// نوع پرداخت صورتحساب (setm). مقادیر عددی با قرارداد سامانهٔ مودیان یکی است:
+/// نقدی=۰، نسیه=۱، الکترونیکی=۲، تسهیلات=۳، تهاتر=۴.
+/// </summary>
+public enum MoadianPayType
+{
+    /// <summary>نقدی</summary>
+    Cash = 0,
+
+    /// <summary>نسیه</summary>
+    Credit = 1,
+
+    /// <summary>الکترونیکی</summary>
+    Electronic = 2,
+
+    /// <summary>تسهیلات</summary>
+    Facility = 3,
+
+    /// <summary>تهاتر</summary>
+    Offset = 4
+}
+
 /// <summary>نوع رویداد/لاگ مودیان</summary>
 public enum MoadianLogAction
 {

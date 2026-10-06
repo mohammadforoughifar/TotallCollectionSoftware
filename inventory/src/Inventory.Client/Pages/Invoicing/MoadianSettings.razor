@@ -2,6 +2,8 @@
 @using Microsoft.AspNetCore.Components
 @inject IMoadianClientService MoadianSvc
 @inject IFiscalPrinterClientService PrinterSvc
+@inject IMoadianStandaloneClientService StandaloneSvc
+@inject NavigationManager Nav
 @inject IToastService Toast
 @inject IJSRuntime JS
 
@@ -10,7 +12,7 @@
 <div class="page-head">
     <div>
         <h1>تنظیمات مودیان و چاپگر مالی</h1>
-        <p class="lead">پیکربندی کلیدهای امنیتی، دوره‌های مالیاتی، شناسه کالا/خدمات و چاپگر مالی</p>
+        <p class="lead">پیکربندی کلیدهای امنیتی، سال مالی و دوره‌های مالیاتی، شناسه کالا/خدمات و چاپگر مالی</p>
     </div>
 </div>
 
@@ -20,6 +22,7 @@
     <li class="nav-item"><button class='nav-link @(tab == 3 ? "active" : "")' @onclick="() => tab = 3">فهرست داخلی شناسه‌ها</button></li>
     <li class="nav-item"><button class='nav-link @(tab == 4 ? "active" : "")' @onclick="() => tab = 4">چاپگر مالی</button></li>
     <li class="nav-item"><button class='nav-link @(tab == 5 ? "active" : "")' @onclick="() => tab = 5">لاگ ارسال</button></li>
+    <li class="nav-item"><button class='nav-link @(tab == 6 ? "active" : "")' @onclick="() => OpenFiscalYears()">سال مالی</button></li>
 </ul>
 
 @if (tab == 1)
@@ -77,7 +80,7 @@
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small">نرخ پیش‌فرض مالیات (٪)</label>
-                    <input class="form-control text-end num" @bind="setting.DefaultVatRate" />
+                    <input class="form-control text-center num" @bind="setting.DefaultVatRate" />
                 </div>
                 <div class="col-md-6">
                     <div class="form-check">
@@ -128,17 +131,17 @@
                 </div>
                 <div class="col-auto"><button class="btn btn-sm btn-primary" @onclick="SavePeriod">افزودن دوره</button></div>
             </div>
-            <table class="table table-sm table-hover align-middle">
-                <thead><tr><th>دوره</th><th>وضعیت</th><th class="text-end">تعداد فاکتور</th><th class="text-end">جمع خالص</th><th></th></tr></thead>
+            <table class="table table-sm table-hover align-middle text-center">
+                <thead><tr><th>دوره</th><th>وضعیت</th><th class="text-center">تعداد فاکتور</th><th class="text-center">جمع خالص</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var p in periods)
                     {
                         <tr>
                             <td class="num fw-bold">@p.Title</td>
                             <td>@ClosedBadge(p.IsClosed)</td>
-                            <td class="text-end num">@p.InvoiceCount</td>
-                            <td class="text-end num">@p.NetTotal.Money()</td>
-                            <td class="text-end">
+                            <td class="text-center num">@p.InvoiceCount</td>
+                            <td class="text-center num">@p.NetTotal.Money()</td>
+                            <td class="text-center">
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => DeletePeriod(p)"><i class="bi bi-trash"></i></button>
                             </td>
                         </tr>
@@ -163,7 +166,7 @@
             <div class="input-group mb-3">
                 <input class="form-control form-control-sm" placeholder="جستجوی کد یا شرح..." @bind="cpcSearch" @bind:event="oninput" @bind:after="LoadCpc" />
             </div>
-            <table class="table table-sm table-hover align-middle">
+            <table class="table table-sm table-hover align-middle text-center">
                 <thead><tr><th>کد</th><th>شرح</th><th>نام لاتین</th><th>واحد</th><th>فعال</th><th></th></tr></thead>
                 <tbody>
                     @foreach (var c in cpcList)
@@ -174,7 +177,7 @@
                             <td class="text-muted" dir="ltr">@c.EnTitle</td>
                             <td>@c.Unit</td>
                             <td><i class='bi @(c.IsActive ? "bi-check-circle text-success" : "bi-x-circle text-secondary")'></i></td>
-                            <td class="text-end">
+                            <td class="text-center">
                                 <button class="btn btn-sm btn-outline-secondary" @onclick="() => EditCpc(c)"><i class="bi bi-pencil"></i></button>
                                 <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteCpc(c)"><i class="bi bi-trash"></i></button>
                             </td>
@@ -212,7 +215,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label small">تعداد نسخه</label>
-                            <input class="form-control text-end num" @bind="printer.Copies" />
+                            <input class="form-control text-center num" @bind="printer.Copies" />
                         </div>
                         <div class="col-md-3 d-flex align-items-end">
                             <div class="form-check">
@@ -318,6 +321,57 @@
     </Footer>
 </Modal>
 
+@if (tab == 6)
+{
+    <div class="card">
+        <div class="card-header fw-bold d-flex align-items-center justify-content-between">
+            <span>سال مالی مودیان (شمسی) و شمارهٔ سند سالانه</span>
+            <div class="d-flex gap-2">
+                <input class="form-control form-control-sm num" style="width:110px" type="number" min="1300" max="1500"
+                       placeholder="مثلاً 1405" @bind="newYearValue" />
+                <button class="btn btn-sm btn-primary" @onclick="AddFiscalYear" disabled="@saving">
+                    <i class="bi bi-plus-lg"></i> تعریف سال مالی
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/fiscal-years")'>
+                    صفحهٔ کامل سال مالی
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="alert alert-info py-2 small">
+                با تعریف سال مالی، ۱۲ دورهٔ ماهانهٔ آن خودکار ساخته می‌شود؛ شمارهٔ سند هر صورتحساب به شکل
+                <span class="num" dir="ltr">سال/سریال</span> از همین سال تخصیص می‌یابد.
+            </div>
+            @if (fiscalYears.Count == 0)
+            {
+                <div class="text-muted small">سال مالی ثبت نشده است.</div>
+            }
+            else
+            {
+                <table class="table table-sm table-hover align-middle text-center mb-0">
+                    <thead><tr><th>سال</th><th>دوره‌ها</th><th class="text-center">تعداد صورتحساب</th><th>وضعیت</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var y in fiscalYears)
+                        {
+                            <tr>
+                                <td class="num fw-bold">@y.Year</td>
+                                <td class="num small">@y.PeriodCount ماه (@y.ClosedPeriodCount بسته)</td>
+                                <td class="text-center num">@y.InvoiceCount</td>
+                                <td>@ClosedBadge(y.IsClosed)</td>
+                                <td class="text-center">
+                                    <button class="btn btn-sm btn-light" @onclick="() => ToggleFiscalYear(y)" disabled="@saving">
+                                        @(y.IsClosed ? "باز کردن" : "بستن")
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+}
+
 @code {
     private int tab = 1;
     private bool saving;
@@ -336,6 +390,43 @@
     private MoadianCpc cpcEdit = new();
 
     private FiscalPrinterSetting printer = new();
+    private List<MoadianFiscalYearDto> fiscalYears = new();
+    private int newYearValue = PersianDate.FromGregorian(DateTime.Now).Year;
+
+    private async Task OpenFiscalYears()
+    {
+        tab = 6;
+        try { fiscalYears = await StandaloneSvc.GetFiscalYearsAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private async Task AddFiscalYear()
+    {
+        if (newYearValue is < 1300 or > 1500) { Toast.Error("سال شمسی باید بین ۱۳۰۰ و ۱۵۰۰ باشد."); return; }
+        saving = true;
+        try
+        {
+            await StandaloneSvc.SaveFiscalYearAsync(new MoadianFiscalYearRequest { Year = newYearValue, CreateMonthlyPeriods = true });
+            Toast.Success($"سال مالی {newYearValue} با ۱۲ دورهٔ ماهانه ثبت شد.");
+            fiscalYears = await StandaloneSvc.GetFiscalYearsAsync();
+            periods = await MoadianSvc.GetPeriodsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+
+    private async Task ToggleFiscalYear(MoadianFiscalYearDto y)
+    {
+        saving = true;
+        try
+        {
+            if (y.IsClosed) await StandaloneSvc.ReopenFiscalYearAsync(y.Id);
+            else await StandaloneSvc.CloseFiscalYearAsync(y.Id);
+            fiscalYears = await StandaloneSvc.GetFiscalYearsAsync();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
 
     protected override async Task OnInitializedAsync()
     {

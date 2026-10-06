@@ -22,6 +22,10 @@ Thumbs.db
 logs/
 uploads/
 
+# Local Moadian server settings and private PKCS#8 PEM uploads are runtime-only.
+**/App_Data/MoadianSettings.json
+**/App_Data/MoadianPrivateKeys/
+
 ## فایل‌های آپلودی runtime
 # فایل‌های پیوست/عکس ذخیره‌شده در wwwroot/uploads محیط‌های اجرایی نباید وارد گیت شوند
 **/wwwroot/uploads/

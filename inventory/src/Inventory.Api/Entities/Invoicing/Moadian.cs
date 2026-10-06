@@ -89,6 +89,33 @@ public class MoadianFiscalPeriod
     [MaxLength(500)] public string? Notes { get; set; }
 }
 
+/// <summary>
+/// سال مالی مودیان (شمسی). با ثبت سال، ۱۲ دورهٔ ماهانهٔ شمسی ساخته می‌شود؛
+/// صورتحساب‌ها به سال و به دورهٔ ماه خودشان گره می‌خورند.
+/// </summary>
+public class MoadianFiscalYear
+{
+    public int Id { get; set; }
+
+    /// <summary>سال شمسی، مثل 1405.</summary>
+    public int Year { get; set; }
+
+    /// <summary>اولین روز سال (میلادی؛ معادل 01/01 شمسی).</summary>
+    public DateTime StartDate { get; set; }
+
+    /// <summary>آخرین روز سال (میلادی؛ معادل 12/29 یا 12/30 شمسی).</summary>
+    public DateTime EndDate { get; set; }
+
+    /// <summary>سال بسته — ثبت صورتحساب جدید در هیچ‌یک از دوره‌های آن مجاز نیست.</summary>
+    public bool IsClosed { get; set; }
+
+    [MaxLength(500)] public string? Notes { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public List<MoadianInvoice> Invoices { get; set; } = new();
+}
+
 /// <summary>فاکتور الکترونیکی (مشخصه‌های استاندارد سامانه مودیان).</summary>
 public class MoadianInvoice
 {
@@ -118,6 +145,19 @@ public class MoadianInvoice
     /// <summary>دوره مالیاتی</summary>
     public int FiscalPeriodId { get; set; }
     public MoadianFiscalPeriod? FiscalPeriod { get; set; }
+
+    /// <summary>سال مالی مودیان (جدول MoadianFiscalYears). برای سوابق قدیمی خالی است.</summary>
+    public int? FiscalYearId { get; set; }
+    public MoadianFiscalYear? FiscalYear { get; set; }
+
+    /// <summary>سریال صورتحساب در داخل سال مالی (۱،۲،۳،...).</summary>
+    public int YearSerial { get; set; }
+
+    /// <summary>شمارهٔ سند سالانه (مثل 1405/000123) — نمایش کاربر و مرجع داخلی؛ فرمت رسمی inno نیست.</summary>
+    [MaxLength(30)] public string? DocumentNumber { get; set; }
+
+    /// <summary>نوع پرداخت صورتحساب (setm): نقدی/نسیه/الکترونیکی/تسهیلات/تهاتر.</summary>
+    public MoadianPayType? PayType { get; set; }
 
     /// <summary>فاکتور ERP مبدأ، در صورت وجود</summary>
     public int? FacInvoiceId { get; set; }

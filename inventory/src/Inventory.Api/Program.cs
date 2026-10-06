@@ -9,12 +9,18 @@ using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+var localMoadianSettingsPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "MoadianSettings.json");
+builder.Configuration.AddJsonFile(localMoadianSettingsPath, optional: true, reloadOnChange: false);
+// Re-add the standard higher-priority providers after the local, Git-ignored settings file.
+builder.Configuration.AddEnvironmentVariables();
+builder.Configuration.AddCommandLine(args);
 builder.Services.AddHttpContextAccessor();
 var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"]
     ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
@@ -87,6 +93,17 @@ builder.Services.AddScoped<Inventory.Api.Services.Accounting.IFixedAssetService,
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IBudgetService, Inventory.Api.Services.Accounting.BudgetService>(); // بودجه و کنترل بودجه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IInvoicingService, Inventory.Api.Services.Invoicing.InvoicingService>(); // ماژول فاکتور
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianService, Inventory.Api.Services.Invoicing.MoadianService>(); // سامانه مودیان (فاکتور الکترونیکی)
+builder.Services.AddSingleton(new Inventory.Api.Services.Invoicing.MoadianRuntimeSettings(
+    builder.Configuration["Moadian:BaseUrl"],
+    builder.Configuration["Moadian:ApiVersion"],
+    builder.Configuration["Files:MoadianPrivateKeyRoot"],
+    builder.Configuration["Moadian:ClientType"],
+    builder.Configuration["Moadian:SignatureKeyId"])); // snapshots global Moadian options and private-key root at startup
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianMasterDataService, Inventory.Api.Services.Invoicing.MoadianMasterDataService>(); // CRUD اطلاعات پایهٔ پروفایل‌های مودیان
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService, Inventory.Api.Services.Invoicing.MoadianProviderPrivateKeyService>(); // ذخیرهٔ امن PEM خارج از web root
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianConnectionTestService, Inventory.Api.Services.Invoicing.MoadianConnectionTestService>(); // تست اتصال و احراز هویت خدمات‌دهنده (GET_TOKEN)
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianFiscalYearService, Inventory.Api.Services.Invoicing.MoadianFiscalYearService>(); // سال مالی مودیان و دوره‌های ماهانه
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianStandaloneInvoiceService, Inventory.Api.Services.Invoicing.MoadianStandaloneInvoiceService>(); // ثبت صورتحساب مستقل از ERP با شمارهٔ سند سالانه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IFiscalPrinterService, Inventory.Api.Services.Invoicing.FiscalPrinterService>(); // چاپگر مالی
 // Moadian sending/auto-sender remains deliberately unregistered until official protocol verification.
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری

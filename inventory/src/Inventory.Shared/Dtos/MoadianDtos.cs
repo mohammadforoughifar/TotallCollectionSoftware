@@ -69,6 +69,17 @@ public class MoadianInvoice
     public DateTime Date { get; set; }
     public int FiscalPeriodId { get; set; }
     public string? FiscalPeriodTitle { get; set; }
+
+    /// <summary>سال مالی مودیان (شمسی) که این فاکتور به آن تعلق دارد.</summary>
+    public int? FiscalYearId { get; set; }
+    public int? FiscalYear { get; set; }
+    /// <summary>سریال فاکتور در داخل سال مالی (۱،۲،۳،...).</summary>
+    public int YearSerial { get; set; }
+    /// <summary>شمارهٔ سند سالانه به شکل 1405/000123 — همان شماره‌ای که به کاربر نمایش داده می‌شود.</summary>
+    public string? DocumentNumber { get; set; }
+    /// <summary>نوع پرداخت صورتحساب (setm)؛ برای سوابق قدیمی null است.</summary>
+    public MoadianPayType? PayType { get; set; }
+    public string? PayTypeTitle { get; set; }
     public int? FacInvoiceId { get; set; }
     public int? OperationsTransactionId { get; set; }
     public string? FacInvoiceRef { get; set; }
@@ -169,6 +180,8 @@ public class MoadianInvoiceRequest
     public string? BuyerPostalCode { get; set; }
     public string? BuyerPhone { get; set; }
     public string? Settlement { get; set; }
+    /// <summary>نوع پرداخت صورتحساب (setm).</summary>
+    public MoadianPayType? PayType { get; set; }
     public string? Description { get; set; }
     public List<MoadianInvoiceLine> Lines { get; set; } = new();
 }

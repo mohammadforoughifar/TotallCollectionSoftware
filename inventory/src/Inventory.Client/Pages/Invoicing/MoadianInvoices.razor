@@ -11,17 +11,17 @@
 <div class="page-head">
     <div>
         <h1>فاکتورهای الکترونیکی مودیان</h1>
-        <p class="lead">ساخت، اتصال به فروش‌های ERP و «عملیات»، و بازبینی پیش‌نویس‌های مودیان</p>
+        <p class="lead">ساخت، اتصال به فروش‌های ERP و «عملیات»، و بازبینی صورتحساب‌های مودیان (پیش از ارسال)</p>
     </div>
     <div class="ms-auto">
         <button class="btn btn-outline-secondary me-2" @onclick='() => Nav.NavigateTo("/moadian/settings")'>
             <i class="bi bi-gear"></i> تنظیمات
         </button>
         <button class="btn btn-outline-secondary me-2" @onclick="OpenFromFac">
-            <i class="bi bi-receipt-cutoff"></i> پیش‌نویس از ERP
+            <i class="bi bi-receipt-cutoff"></i> ساخت از فاکتور ERP
         </button>
         <button class="btn btn-outline-secondary me-2" @onclick="OpenFromOperations">
-            <i class="bi bi-cart-check"></i> پیش‌نویس از عملیات
+            <i class="bi bi-cart-check"></i> ساخت از فروش عملیات
         </button>
         <button class="btn btn-primary" @onclick="OpenNew">
             <i class="bi bi-plus-lg"></i> فاکتور جدید
@@ -30,7 +30,7 @@
 </div>
 
 <div class="alert alert-warning py-2 small">
-    ارسال مستقیم و استعلام رسمی در این نسخه عمداً غیرفعال‌اند؛ وضعیت/خطای واقعی از سامانه دریافت نمی‌شود. دکمه‌های ساخت/بازبینی فقط پیش‌نویس می‌سازند. جزئیات محلی و چاپ داخلی در دسترس‌اند، اما برگهٔ چاپی سند رسمی مودیان نیست.
+    ارسال مستقیم و استعلام رسمی در این نسخه عمداً غیرفعال‌اند؛ وضعیت/خطای واقعی از سامانه دریافت نمی‌شود. دکمه‌های ساخت/بازبینی فقط سند ارسال‌نشده می‌سازند و ارسالی انجام نمی‌دهند. جزئیات محلی و چاپ داخلی در دسترس‌اند، اما برگهٔ چاپی سند رسمی مودیان نیست.
 </div>
 
 <!-- فیلترها -->
@@ -71,27 +71,34 @@
 <div class="card">
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
+            <table class="table table-hover align-middle text-center mb-0">
                 <thead>
                     <tr>
-                        <th>شماره</th><th>نوع</th><th>تاریخ</th><th>دوره</th>
-                        <th>خریدار</th><th class="text-end">خالص</th><th class="text-end">مالیات</th>
+                        <th>شمارهٔ سند</th><th>سریال</th><th>نوع</th><th>تاریخ</th><th>دوره</th>
+                        <th>خریدار</th><th class="text-center">خالص</th><th class="text-center">مالیات</th>
                         <th>وضعیت</th><th>تلاش</th><th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @if (invoices.Count == 0)
                     {
-                        <tr><td colspan="10" class="text-center text-muted py-4">فاکتوری یافت نشد — برای شروع «فاکتور جدید» بزنید.</td></tr>
+                        <tr><td colspan="11" class="text-center text-muted py-4">فاکتوری یافت نشد — برای شروع «فاکتور جدید» بزنید.</td></tr>
                     }
                     @foreach (var inv in invoices)
                     {
                         <tr class='@(inv.Status == MoadianInvoiceStatus.Failed || inv.Status == MoadianInvoiceStatus.Returned ? "table-danger" : "")'>
-                            <td class="num fw-bold">
+                            <td class="num fw-bold" dir="ltr">
+                                @(string.IsNullOrWhiteSpace(inv.DocumentNumber) ? "—" : inv.DocumentNumber)
+                                @if (inv.YearSerial > 0)
+                                {
+                                    <div class="small text-muted">@inv.PayTypeTitle</div>
+                                }
+                            </td>
+                            <td class="num">
                                 @inv.Number
                                 @if (inv.HasDuplicateNumberAcrossPeriods == true)
                                 {
-                                    <span class="badge bg-danger ms-1" title="شماره در دورهٔ دیگری نیز تکرار شده و پیش از استفاده به‌عنوان inno نیازمند بازبینی است.">تکراری</span>
+                                    <span class="badge bg-danger ms-1" title="این شماره در دورهٔ دیگری هم استفاده شده است؛ پیش از ارسال به سامانه نیازمند بازبینی است.">تکراری</span>
                                 }
                             </td>
                             <td>
@@ -102,17 +109,17 @@
                             <td class="num">@FaDate(inv.Date)<div class="small text-muted">@Fa.Digits(inv.Date.ToString("HH:mm"))</div></td>
                             <td>@inv.FiscalPeriodTitle</td>
                             <td>@inv.BuyerName <span class="text-muted fs-8" dir="ltr">@(inv.FacInvoiceRef ?? "")</span></td>
-                            <td class="text-end num">@inv.TotalNet.Money()</td>
-                            <td class="text-end num">@inv.TotalVat.Money()</td>
+                            <td class="text-center num">@inv.TotalNet.Money()</td>
+                            <td class="text-center num">@inv.TotalVat.Money()</td>
                             <td>@StatusBadge(inv.Status)</td>
                             <td class="num">@inv.Attempts</td>
                             <td class="text-nowrap">
                                 @if (inv.Status == MoadianInvoiceStatus.Draft)
                                 {
-                                    <button class="btn btn-sm btn-outline-primary" title="بازبینی و ویرایش پیش‌نویس" @onclick="() => EditDraft(inv)">
+                                    <button class="btn btn-sm btn-outline-primary" title="بازبینی و ویرایش صورتحساب ارسال‌نشده" @onclick="() => EditDraft(inv)">
                                         <i class="bi bi-pencil-square"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger" title="حذف پیش‌نویس" @onclick="() => Delete(inv)">
+                                    <button class="btn btn-sm btn-outline-danger" title="حذف صورتحساب ارسال‌نشده" @onclick="() => Delete(inv)">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 }
@@ -136,7 +143,7 @@
                         @if (!string.IsNullOrWhiteSpace(inv.ErrorMessage))
                         {
                             <tr class="table-danger">
-                                <td colspan="10" class="small text-danger py-1">
+                                <td colspan="11" class="small text-danger py-1">
                                     <i class="bi bi-exclamation-triangle"></i>
                                     کد @(inv.ErrorCode ?? "—"): @inv.ErrorMessage
                                 </td>
@@ -161,7 +168,7 @@
             <div class="form-text">این مورد با موضوع رسمی یکی نیست.</div>
         </div>
         <div class="col-md-2">
-            <label class="form-label small">نوع رسمی (inty) <span class="text-danger">*</span></label>
+            <label class="form-label small">نوع صورتحساب <span class="text-danger">*</span></label>
             <select class="form-select form-select-sm" @bind="New.InvoiceType">
                 <option value="Unselected">— انتخاب —</option>
                 <option value="Type1">نوع ۱</option>
@@ -169,12 +176,12 @@
             </select>
         </div>
         <div class="col-md-2">
-            <label class="form-label small">الگو (inp) <span class="text-danger">*</span></label>
+            <label class="form-label small">الگوی صورتحساب <span class="text-danger">*</span></label>
             <select class="form-select form-select-sm" @bind="New.InvoicePattern">
                 <option value="Unselected">— ابتدا نوع را انتخاب کنید —</option>
                 @if (New.InvoicePattern != MoadianInvoicePattern.Unselected && !MoadianInvoiceRules.IsPatternAllowed(New.InvoiceType, New.InvoicePattern))
                 {
-                    <option value="@New.InvoicePattern">@((int)New.InvoicePattern) — @MoadianInvoiceRules.PatternTitle(New.InvoicePattern) (ناسازگار)</option>
+                    <option value="@New.InvoicePattern">@MoadianInvoiceRules.PatternTitle(New.InvoicePattern) (@((int)New.InvoicePattern)) — ناسازگار</option>
                 }
                 @foreach (var pattern in MoadianInvoiceRules.AvailablePatterns(New.InvoiceType))
                 {
@@ -183,12 +190,12 @@
             </select>
         </div>
         <div class="col-md-2">
-            <label class="form-label small">موضوع (ins) <span class="text-danger">*</span></label>
+            <label class="form-label small">موضوع صورتحساب <span class="text-danger">*</span></label>
             <select class="form-select form-select-sm" @bind="New.InvoiceSubject">
                 <option value="Unselected">— انتخاب —</option>
                 @if (New.InvoiceSubject != MoadianInvoiceSubject.Unselected && !MoadianInvoiceRules.IsSubjectAllowed(New.InvoicePattern, New.InvoiceSubject))
                 {
-                    <option value="@New.InvoiceSubject">@((int)New.InvoiceSubject) — @MoadianInvoiceRules.SubjectTitle(New.InvoiceSubject) (ناسازگار)</option>
+                    <option value="@New.InvoiceSubject">@MoadianInvoiceRules.SubjectTitle(New.InvoiceSubject) (@((int)New.InvoiceSubject)) — ناسازگار</option>
                 }
                 @foreach (var subject in MoadianInvoiceRules.AvailableSubjects(New.InvoicePattern))
                 {
@@ -273,7 +280,7 @@
     </div>
     <table class="table table-sm table-bordered align-middle">
         <thead>
-            <tr><th style="width:17%">شناسه کالا/خدمت مالیاتی</th><th>شرح</th><th style="width:11%">انتخاب کد</th><th style="width:8%">واحد مالیاتی</th><th style="width:7%">تعداد</th><th style="width:9%">فی</th><th style="width:8%">تخفیف</th><th style="width:6%">٪ مالیات</th><th style="width:9%">مالیات (ریال)</th><th class="text-end">جمع</th></tr>
+            <tr><th style="width:17%">شناسه کالا/خدمت مالیاتی</th><th>شرح</th><th style="width:11%">انتخاب کد</th><th style="width:8%">واحد مالیاتی</th><th style="width:7%">تعداد</th><th style="width:11%">فی کالا (ریال)</th><th style="width:10%">تخفیف (ریال)</th><th style="width:6%">٪ مالیات</th><th style="width:10%">مالیات ارزش افزوده (ریال)</th><th class="text-center">جمع</th></tr>
         </thead>
         <tbody>
             @foreach (var l in New.Lines)
@@ -291,31 +298,31 @@
                         </select>
                     </td>
                     <td><input class="form-control form-control-sm" dir="ltr" @bind="l.UnitCode" placeholder="مثلاً عدد" /></td>
-                    <td><input class="form-control form-control-sm text-end num" @bind="l.Quantity" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
-                    <td><input class="form-control form-control-sm text-end num" @bind="l.UnitPrice" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
-                    <td><input class="form-control form-control-sm text-end num" @bind="l.Discount" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
-                    <td><input class="form-control form-control-sm text-end num" @bind="l.VatRate" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
-                    <td class="text-end num">@l.VatAmount.Money()</td>
-                    <td class="text-end num">@l.Total.Money()</td>
+                    <td><input class="form-control form-control-sm num text-center" @bind="l.Quantity" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                    <td><MoneyInput Value="l.UnitPrice" ValueChanged="v => { l.UnitPrice = v; RecalcLine(l); }" Placeholder="0" /></td>
+                    <td><MoneyInput Value="l.Discount" ValueChanged="v => { l.Discount = v; RecalcLine(l); }" Placeholder="0" /></td>
+                    <td><input class="form-control form-control-sm num text-center" @bind="l.VatRate" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
+                    <td class="text-center num">@l.VatAmount.Money()</td>
+                    <td class="text-center num">@l.Total.Money()</td>
                 </tr>
             }
         </tbody>
         <tfoot>
             <tr class="fw-bold">
-                <td colspan="4" class="text-end">جمع کل اقلام</td>
-                <td class="text-end num">@New.Lines.Sum(x => x.Quantity).Num()</td>
-                <td class="text-end num">@New.Lines.Sum(x => x.UnitPrice).Money()</td>
-                <td class="text-end num">@New.Lines.Sum(x => x.Discount).Money()</td>
+                <td colspan="4" class="text-center">جمع کل اقلام</td>
+                <td class="text-center num">@New.Lines.Sum(x => x.Quantity).Num()</td>
+                <td class="text-center num">@New.Lines.Sum(x => x.UnitPrice).Money()</td>
+                <td class="text-center num">@New.Lines.Sum(x => x.Discount).Money()</td>
                 <td class="text-center text-muted">—</td>
-                <td class="text-end num">@New.Lines.Sum(x => x.VatAmount).Money()</td>
-                <td class="text-end num text-primary">@New.Lines.Sum(x => x.Taxable + x.VatAmount).Money()</td>
+                <td class="text-center num">@New.Lines.Sum(x => x.VatAmount).Money()</td>
+                <td class="text-center num text-primary">@New.Lines.Sum(x => x.Taxable + x.VatAmount).Money()</td>
             </tr>
         </tfoot>
     </table>
     <div class="text-muted small">مأخذ = (تعداد × فی) − تخفیف | مالیات = مأخذ × نرخ | جمع = مأخذ + مالیات</div>
     </ChildContent>
     <Footer>
-        <button class="btn btn-primary" @onclick="SaveNew" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره پیش‌نویس")</button>
+        <button class="btn btn-primary" @onclick="SaveNew" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره صورتحساب (ارسال‌نشده)")</button>
         <button type="button" class="btn btn-success" disabled title="ارسال تا تأیید قالب رسمی، گواهی و دسترسی سامانه مودیان غیرفعال است.">
             <i class="bi bi-send"></i> ارسال به سامانه مالیاتی
         </button>
@@ -336,12 +343,12 @@
 </Modal>
 
 <!-- ===================== مودال تبدیل فروش عملیات ===================== -->
-<Modal Visible="showFromOperations" Title="ساخت پیش‌نویس از فروش عملیات" OnClose="CloseFromOperations">
+<Modal Visible="showFromOperations" Title="ساخت صورتحساب از فروش عملیات" OnClose="CloseFromOperations">
     <ChildContent>
-        <p class="small text-muted">شناسهٔ سند فروش ثبت‌شده در منوی «عملیات» را وارد کنید. سامانه از روی سند، فقط پیش‌نویس می‌سازد.</p>
+        <p class="small text-muted">شناسهٔ سند فروش ثبت‌شده در منوی «عملیات» را وارد کنید. سامانه از روی سند، صورتحساب ارسال‌نشده می‌سازد و چیزی ارسال نمی‌شود.</p>
         <div class="input-group">
             <input class="form-control" type="number" placeholder="شناسه سند" @bind="operationsTransactionId" />
-            <button class="btn btn-primary" @onclick="ConvertFromOperations" disabled="@saving">@(saving ? "..." : "ساخت پیش‌نویس")</button>
+            <button class="btn btn-primary" @onclick="ConvertFromOperations" disabled="@saving">@(saving ? "..." : "ساخت صورتحساب")</button>
         </div>
     </ChildContent>
 </Modal>
@@ -429,7 +436,7 @@
 </Modal>
 
 <!-- ===================== مودال خلاصهٔ محلی ===================== -->
-<Modal Visible="showPayload" Title="خلاصهٔ محلی پیش‌نویس (غیرقابل‌ارسال)" Size="modal-xl" OnClose="ClosePayload">
+<Modal Visible="showPayload" Title="خلاصهٔ محلی صورتحساب (غیرقابل‌ارسال)" Size="modal-xl" OnClose="ClosePayload">
     <ChildContent>
 
     @if (payload is not null)
@@ -514,7 +521,7 @@
 
     private readonly Dictionary<MoadianInvoiceStatus, string> StatusOptions = new()
     {
-        [MoadianInvoiceStatus.Draft] = "پیش‌نویس",
+        [MoadianInvoiceStatus.Draft] = "ارسال نشده",
         [MoadianInvoiceStatus.Queued] = "در صف",
         [MoadianInvoiceStatus.Sending] = "در حال ارسال",
         [MoadianInvoiceStatus.Sent] = "ارسال‌شده",
@@ -744,7 +751,7 @@
         if (issueDateError is not null) { Toast.Error(issueDateError); return; }
         if (New.InvoiceType is not (MoadianTaxInvoiceType.Type1 or MoadianTaxInvoiceType.Type2))
         {
-            Toast.Error("نوع صورتحساب را برای همین پیش‌نویس انتخاب کنید.");
+            Toast.Error("نوع صورتحساب را برای همین صورتحساب انتخاب کنید.");
             return;
         }
         var selectionError = MoadianInvoiceRules.ValidateSelection(New.InvoiceType, New.InvoicePattern, New.InvoiceSubject, New.ReferenceTaxId);
@@ -757,7 +764,7 @@
             var inv = New.Id > 0
                 ? await MoadianSvc.UpdateDraftAsync(New.Id, New)
                 : await MoadianSvc.CreateManualAsync(New);
-            Toast.Success($"پیش‌نویس {inv.Number} ذخیره شد.");
+            Toast.Success($"صورتحساب {inv.Number} ذخیره شد (ارسال‌نشده).");
             showForm = false;
             await Load();
         }
@@ -776,7 +783,7 @@
         try
         {
             var inv = await MoadianSvc.CreateFromFacInvoiceAsync(facId);
-            Toast.Success($"پیش‌نویس مودیان {inv.Number} از فاکتور ERP آمادهٔ بازبینی است.");
+            Toast.Success($"صورتحساب مودیان {inv.Number} از فاکتور ERP ساخته شد و آمادهٔ بازبینی است (ارسال‌نشده).");
             showFromFac = false;
             await Load();
             EditDraft(inv);
@@ -795,7 +802,7 @@
         try
         {
             var inv = await MoadianSvc.CreateFromOperationsTransactionAsync(operationsTransactionId);
-            Toast.Success($"پیش‌نویس مودیان {inv.Number} از سند عملیات آمادهٔ بازبینی است.");
+            Toast.Success($"صورتحساب مودیان {inv.Number} از سند عملیات ساخته شد و آمادهٔ بازبینی است (ارسال‌نشده).");
             showFromOperations = false;
             await Load();
             EditDraft(inv);
@@ -895,13 +902,13 @@
 
     private static string LogActionFa(MoadianLogAction action) => action switch
     {
-        MoadianLogAction.Created => "ساخت پیش‌نویس",
+        MoadianLogAction.Created => "ساخت صورتحساب (ارسال‌نشده)",
         MoadianLogAction.Enqueued => "ورود به صف",
         MoadianLogAction.Sent => "ارسال",
         MoadianLogAction.Failed => "خطا در ارسال",
         MoadianLogAction.Returned => "برگشت/رد از سامانه",
         MoadianLogAction.Voided => "ابطال",
-        MoadianLogAction.Updated => "ویرایش پیش‌نویس",
+        MoadianLogAction.Updated => "ویرایش صورتحساب ارسال‌نشده",
         _ => action.ToString()
     };
 
@@ -915,7 +922,7 @@
 
     private static string StatusDescription(MoadianInvoiceStatus status) => status switch
     {
-        MoadianInvoiceStatus.Draft => "این فاکتور فقط به‌صورت پیش‌نویس محلی ذخیره شده است.",
+        MoadianInvoiceStatus.Draft => "این صورتحساب در نرم‌افزار ثبت شده و به سامانهٔ مودیان ارسال نشده است.",
         MoadianInvoiceStatus.Queued => "وضعیت صف محلی است و به‌تنهایی ارسال به سازمان را اثبات نمی‌کند.",
         MoadianInvoiceStatus.Sending => "وضعیت محلیِ درحال ارسال؛ پاسخ رسمی باید پس از اتصال استعلام شود.",
         MoadianInvoiceStatus.Sent => "وضعیت محلی ارسال‌شده است؛ بدون استعلام رسمی، پذیرش نهایی تأیید نمی‌شود.",
@@ -928,8 +935,8 @@
     {
         var (cls, text) = s switch
         {
-            MoadianInvoiceStatus.Draft => ("bg-secondary", "پیش‌نویس"),
-            MoadianInvoiceStatus.Queued => ("bg-warning text-dark", "در صف"),
+            MoadianInvoiceStatus.Draft => ("bg-warning text-dark", "ارسال نشده"),
+            MoadianInvoiceStatus.Queued => ("bg-info text-dark", "در صف ارسال"),
             MoadianInvoiceStatus.Sending => ("bg-info text-dark", "در حال ارسال"),
             MoadianInvoiceStatus.Sent => ("bg-success", "ارسال‌شده"),
             MoadianInvoiceStatus.Failed => ("bg-danger", "ناموفق"),
