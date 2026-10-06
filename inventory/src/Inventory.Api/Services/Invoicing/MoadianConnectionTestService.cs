@@ -200,7 +200,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
         }
         finally
         {
-            provider.Dispose();
+            DisposeProvider(provider);
         }
     }
 
@@ -228,7 +228,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
                 step.Ok = false;
                 step.Detail = "سامانه توکن برنگرداند؛ یعنی امضا/شناسهٔ ارسالی پذیرفته نشد.";
                 result.Steps.Add(step);
-                provider.Dispose();
+                DisposeProvider(provider);
                 return false;
             }
 
@@ -245,12 +245,12 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
             step.Detail = DescribeFailure(ex, cancellationToken);
             result.Steps.Add(step);
             _logger.LogWarning("Moadian connection test step {Step} failed with {ExceptionType}.", step.Key, ex.GetType().Name);
-            provider.Dispose();
+            DisposeProvider(provider);
             return false;
         }
 
         await RunFiscalInformationAsync(sdk, taxMemoryId, result, cancellationToken);
-        provider.Dispose();
+        DisposeProvider(provider);
         return true;
     }
 
@@ -292,6 +292,12 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
     /// <summary>
     /// ساخت کلاینت SDK مستقل (بدون TaxApiService.Instance سراسری) همراه با فرستندهٔ امن.
     /// </summary>
+    private static void DisposeProvider(IServiceProvider provider)
+    {
+        if (provider is IDisposable disposable)
+            disposable.Dispose();
+    }
+
     private static (ITaxApis TaxApis, IServiceProvider Provider) CreateTaxApis(
         string baseUrl,
         string privateKeyPath,
