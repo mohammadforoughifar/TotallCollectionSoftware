@@ -667,6 +667,9 @@ else
             ntfList.Clear();
             liveToasts.Clear();
             unreadCount = 0;
+            // OnInitialized may run before login and the first company request can be 401.
+            // Reload the authorized company context immediately after authentication.
+            await LoadCompanyContextAsync();
             await InitNotificationsAsync();
         }
         await InvokeAsync(StateHasChanged);
