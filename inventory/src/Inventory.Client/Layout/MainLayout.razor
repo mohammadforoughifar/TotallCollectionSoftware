@@ -586,10 +586,14 @@ else
     private int newSystemsCount;
     private int? activeCompanyId;
     private List<CompanyOption> companyOptions = new();
+    private bool companyContextLoaded;
+    private bool companyContextLoading;
     private sealed class CompanyOption { public int Id { get; set; } public string Name { get; set; } = ""; }
 
     private async Task LoadCompanyContextAsync()
     {
+        if (companyContextLoading) return;
+        companyContextLoading = true;
         try
         {
             var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "activeCompanyId");
@@ -605,8 +609,17 @@ else
                 Http.DefaultRequestHeaders.Add("X-Company-Id", activeCompanyId.Value.ToString());
                 await JS.InvokeVoidAsync("localStorage.setItem", "activeCompanyId", activeCompanyId.Value.ToString());
             }
+            companyContextLoaded = true;
         }
-        catch { companyOptions = new(); }
+        catch
+        {
+            companyOptions = new();
+            companyContextLoaded = false;
+        }
+        finally
+        {
+            companyContextLoading = false;
+        }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -660,6 +673,9 @@ else
             unreadCount = 0;
             chatUnreadCount = 0;
             ++chatSummaryVersion;
+            companyContextLoaded = false;
+            companyOptions.Clear();
+            activeCompanyId = null;
             try { await Chat.StopAsync(); await Rt.StopAsync(); } catch { }
         }
         else
@@ -1186,16 +1202,24 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        try
+        if (firstRender)
         {
-            // تشخیص اندازه صفحه هنگام ورود + رصد تغییر اندازه/چرخش صفحه
-            isMobile = await JS.InvokeAsync<bool>("appShell.isMobile");
-            selfRef = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("appShell.watch", selfRef);
-            if (isMobile) StateHasChanged();
+            try
+            {
+                // تشخیص اندازه صفحه هنگام ورود + رصد تغییر اندازه/چرخش صفحه
+                isMobile = await JS.InvokeAsync<bool>("appShell.isMobile");
+                selfRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("appShell.watch", selfRef);
+                if (isMobile) StateHasChanged();
+            }
+            catch { /* JS در دسترس نیست */ }
         }
-        catch { /* JS در دسترس نیست */ }
+
+        // OnInitialized ممکن است قبل از بازیابی نشست اجرا شود؛ در این حالت
+        // درخواست شرکت 401 می‌گیرد. بعد از اولین رندرِ احراز‌شده، بدون نیاز به
+        // کلیک روی پیام‌رسان، شرکت فعال را بارگذاری کن.
+        if (Auth.IsLoggedIn && !companyContextLoaded && !companyContextLoading)
+            await LoadCompanyContextAsync();
     }
 
     [JSInvokable]
