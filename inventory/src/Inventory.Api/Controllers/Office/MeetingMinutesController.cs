@@ -4,6 +4,7 @@ using Inventory.Api.Services.Office;
 using Inventory.Api.Services.Office.Email;
 using Inventory.Api.Services.Office.Outgoing;
 using Inventory.Shared.Dtos;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -53,10 +54,13 @@ public class MeetingMinutesController : RbacControllerBase
 
         if (accessible.Count == 0)
         {
-            var username = User.FindFirstValue(System.Security.Claims.ClaimTypes.Name) ?? "";
-            var legacy = await Db.SystemUsers.AsNoTracking()
-                .Where(x => x.Username == username && x.CompanyId != null && x.Company!.IsActive)
-                .Select(x => x.CompanyId!.Value)
+            var username = User.FindFirstValue(ClaimTypes.Name) ?? "";
+            // SystemUser فقط CompanyId دارد و ناوبری شرکت روی آن تعریف نشده است؛
+            // بنابراین شرکتِ فعال با اتصال (join) به جدول شرکت‌ها بررسی می‌شود.
+            var legacy = await (from user in Db.SystemUsers.AsNoTracking()
+                                join company in Db.SystemCompanies.AsNoTracking() on user.CompanyId equals company.Id
+                                where user.Username == username && company.IsActive
+                                select company.Id)
                 .Distinct()
                 .ToListAsync();
             if (legacy.Count == 1) return legacy[0];
