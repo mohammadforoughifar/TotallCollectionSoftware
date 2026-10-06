@@ -34,9 +34,35 @@ public class MeetingMinutesController : RbacControllerBase
 
     private async Task<int?> ActiveCompanyIdAsync()
     {
-        if (!int.TryParse(Request.Headers["X-Company-Id"].FirstOrDefault(), out var id) || id <= 0) return null;
-        return await Db.UserCompanyAccesses.AnyAsync(x => x.UserId == MyUserId && x.CompanyId == id)
-            ? id : null;
+        if (int.TryParse(Request.Headers["X-Company-Id"].FirstOrDefault(), out var requested) && requested > 0)
+        {
+            var allowed = await Db.UserCompanyAccesses.AnyAsync(
+                x => x.UserId == MyUserId && x.CompanyId == requested && x.Company.IsActive);
+            if (allowed) return requested;
+        }
+
+        // مقاومت در برابر درخواست‌های اولیهٔ بعد از Login یا کلاینت قدیمی که
+        // هدر شرکت فعال را هنوز ارسال نکرده است: فقط وقتی یک شرکت مجاز وجود دارد
+        // انتخاب خودکار بی‌خطر است؛ برای چند شرکت همچنان انتخاب صریح اجباری است.
+        var accessible = await Db.UserCompanyAccesses.AsNoTracking()
+            .Where(x => x.UserId == MyUserId && x.Company.IsActive)
+            .Select(x => x.CompanyId)
+            .Distinct()
+            .ToListAsync();
+        if (accessible.Count == 1) return accessible[0];
+
+        if (accessible.Count == 0)
+        {
+            var username = User.FindFirstValue(System.Security.Claims.ClaimTypes.Name) ?? "";
+            var legacy = await Db.SystemUsers.AsNoTracking()
+                .Where(x => x.Username == username && x.CompanyId != null && x.Company!.IsActive)
+                .Select(x => x.CompanyId!.Value)
+                .Distinct()
+                .ToListAsync();
+            if (legacy.Count == 1) return legacy[0];
+        }
+
+        return null;
     }
 
     public MeetingMinutesController(
