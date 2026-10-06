@@ -159,11 +159,14 @@ public class MeetingMinutesService : IMeetingMinutesService
     /// </summary>
     private IQueryable<MeetingMinutes> InCirculationQuery(int userId, int companyId) =>
         _db.MeetingMinutes.AsNoTracking().Where(m => !m.IsDeleted && m.CompanyId == companyId &&
+            // ایجادکننده برای مدیریت صورتجلسهٔ خودش آن را می‌بیند؛ اما سایر کاربران
+            // فقط در صورتی آن را می‌بینند که صراحتاً در حاضرین/غایبین باشند و ارسال شده باشد.
             (m.CreatedByUserId == userId ||
-             _db.MeetingMinutesParticipants.Any(p => p.MinutesId == m.Id && p.UserId == userId && p.Notified) ||
-             (_db.MeetingMinutesParticipants.Any(p => p.MinutesId == m.Id && p.Notified) &&
-              _db.MeetingMinutesItems.Any(i => i.MinutesId == m.Id &&
-                  (i.ResponsibleUserId == userId || i.FollowUpUserId == userId)))));
+             _db.MeetingMinutesParticipants.Any(p =>
+                 p.MinutesId == m.Id &&
+                 p.UserId == userId &&
+                 p.Notified &&
+                 (p.Kind == MinutesParticipantKind.Attendee || p.Kind == MinutesParticipantKind.Absent))));
 
     public Task<bool> CanAccessAsync(int minutesId, int userId, int companyId)
         => InCirculationQuery(userId, companyId).AnyAsync(m => m.Id == minutesId);
