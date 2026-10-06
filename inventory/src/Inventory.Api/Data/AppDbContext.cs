@@ -43,6 +43,7 @@ public class AppDbContext : DbContext
     public DbSet<InstallmentLine> Installments => Set<InstallmentLine>();
     public DbSet<Technician> Technicians => Set<Technician>();
     public DbSet<RepairOrder> RepairOrders => Set<RepairOrder>();
+    public DbSet<RepairDevice> RepairDevices => Set<RepairDevice>();
     public DbSet<RepairItem> RepairItems => Set<RepairItem>();
     public DbSet<SystemInfo> SystemInfos => Set<SystemInfo>();
 
@@ -499,6 +500,7 @@ public class AppDbContext : DbContext
         mb.Entity<Stock>().Property(s => s.AvgCost).HasPrecision(18, 4);
         mb.Entity<Transaction>().Property(t => t.Amount).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.Price).HasPrecision(18, 2);
+        mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
 
         // مقادیر (موجودی/مقدار) با 3 رقم اعشار
         mb.Entity<Product>().Property(p => p.ReorderPoint).HasPrecision(18, 3);
@@ -540,6 +542,13 @@ public class AppDbContext : DbContext
         mb.Entity<RepairOrder>().HasIndex(r => r.PartyId);
         mb.Entity<RepairOrder>().HasIndex(r => r.TechnicianId);
         mb.Entity<RepairOrder>().Property(r => r.QuotedPrice).HasPrecision(18, 2);
+        mb.Entity<RepairOrder>()
+            .HasMany(r => r.Devices)
+            .WithOne()
+            .HasForeignKey(d => d.RepairOrderId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<RepairDevice>().HasIndex(d => d.RepairOrderId);
+        mb.Entity<RepairDevice>().Property(d => d.QuotedPrice).HasPrecision(18, 2);
         mb.Entity<RepairOrder>()
             .HasMany(r => r.Items)
             .WithOne()

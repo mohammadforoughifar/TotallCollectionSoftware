@@ -52,6 +52,7 @@ public interface IProductService
 {
     Task<PagedResult<Product>> GetProductsAsync(string? search = null, bool belowOnly = false, int page = 1, int pageSize = 20, int? warehouseId = null);
     Task<List<LookupItem>> GetLookupsAsync();
+    Task<Product?> GetByIdAsync(int id);
     Task<Product> SaveAsync(Product product);
     Task DeleteAsync(int id);
 

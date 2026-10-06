@@ -11,7 +11,7 @@
     <link rel="icon" type="image/svg+xml" href="icon.svg" />
     <link rel="stylesheet" href="css/bootstrap.min.css" />
     <link rel="stylesheet" href="icons/bootstrap-icons.css" />
-    <link rel="stylesheet" href="css/app.css?v=7" />
+    <link rel="stylesheet" href="css/app.css?v=8" />
     <link rel="stylesheet" href="css/letters.css?v=4" />
     <link rel="stylesheet" href="Inventory.Client.styles.css" />
     <link href="manifest.webmanifest" rel="manifest" />
@@ -291,7 +291,7 @@
         };
 
         // ---------- کلیدهای میانبر سراسری و ناوبری بین فیلدها با اینتر ----------
-        // F2 = ثبت نهایی | F1 = افزودن ردیف (سند انبار) یا ثبت فرم | Esc = خروج | Enter = جابه‌جایی بین فیلدها
+        // F3 = افزودن دستگاه در پذیرش تعمیرات | F2 = میانبر فرم‌ها | F1 = افزودن ردیف/ثبت فرم | Esc = خروج | Enter = جابه‌جایی بین فیلدها
         document.addEventListener('keydown', function (e) {
             // کلید F1 برای افزودن ردیف در فرم ثبت سند انبار
             if (e.key === 'F1') {
@@ -304,7 +304,8 @@
             }
 
             var key = null;
-            if (e.key === 'F2') key = 'f2';
+            if (e.key === 'F3') key = 'f3';
+            else if (e.key === 'F2') key = 'f2';
             else if (e.key === 'F1') key = 'f1';
             else if (e.key === 'Escape') key = 'esc';
             if (key) {
@@ -338,6 +339,9 @@
 
                 // اگر منوی کمبوباکس باز است، اینتر باید صرفاً انتخاب را تایید کند
                 if (isSsMenuOpen) return;
+
+                // فرم پذیرش تعمیرات ناوبری Enter اختصاصی دارد؛ از اجرای هم‌زمان این مسیر عمومی جلوگیری کن.
+                if (target.closest('.repair-intake-form')) return;
 
                 var container = target.closest('.doc-grid') || target.closest('.modal-content') || target.closest('form') || target.closest('.card-body') || document.body;
                 var focusables = Array.from(container.querySelectorAll('input:not([disabled]):not([type="hidden"]), select:not([disabled])'));
@@ -512,7 +516,7 @@
         };
     </script>
     <script src="js/tabs.js?v=1"></script>
-    <script src="js/ui.js?v=7"></script>
+    <script src="js/ui.js?v=9"></script>
     <script src="js/signature-pad.js"></script>
     <script src="js/project-interop.js?v=3"></script>
     <script src="js/push-notifications.js?v=4"></script>

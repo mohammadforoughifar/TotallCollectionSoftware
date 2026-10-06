@@ -32,6 +32,7 @@ public class RepairOrderDto
     public string? TechnicianName { get; set; }
     public string? TechnicianPhone { get; set; }
 
+    /// <summary>فیلدهای سازگاریِ کارت اول؛ برای دریافت همه دستگاه‌ها از Devices استفاده کنید.</summary>
     public string DeviceType { get; set; } = "";
     public string? DeviceModel { get; set; }
     public string? SerialNumber { get; set; }
@@ -46,7 +47,7 @@ public class RepairOrderDto
     /// <summary>تاریخ خروج (تحویل)</summary>
     public DateTime? DeliveredAt { get; set; }
 
-    /// <summary>مبلغ برآوردی اعلام‌شده به مشتری</summary>
+    /// <summary>جمع برآورد دستگاه‌ها؛ مبلغ مستقل هر دستگاه در Devices.QuotedPrice است.</summary>
     public decimal QuotedPrice { get; set; }
 
     /// <summary>شناسه فاکتور فروش صادرشده</summary>
@@ -58,6 +59,10 @@ public class RepairOrderDto
     public string? Note { get; set; }
     public DateTime CreatedAt { get; set; }
 
+    /// <summary>دستگاه‌های این پذیرش؛ مبلغ برآوردی و مشخصات هر دستگاه مستقل است.</summary>
+    public List<RepairDeviceDto> Devices { get; set; } = new();
+
+    /// <summary>کارها و قطعات مصرفی مشترکِ کل پذیرش.</summary>
     public List<RepairItemDto> Items { get; set; } = new();
 
     // ---------- جمع‌های محاسباتی (پر شده توسط سرور) ----------
@@ -72,7 +77,19 @@ public class RepairOrderDto
     public decimal Profit { get; set; }
 }
 
-/// <summary>ردیف کار انجام‌شده / قطعه مصرفی.</summary>
+/// <summary>مشخصات و مبلغ برآوردی یک دستگاه در پذیرش.</summary>
+public class RepairDeviceDto
+{
+    public int Id { get; set; }
+    public string DeviceType { get; set; } = "";
+    public string? DeviceModel { get; set; }
+    public string? SerialNumber { get; set; }
+    public string? ProblemDescription { get; set; }
+    public string? Accessories { get; set; }
+    public decimal QuotedPrice { get; set; }
+}
+
+/// <summary>ردیف کار انجام‌شده / قطعه مصرفی؛ مشترکِ کل پذیرش.</summary>
 public class RepairItemDto
 {
     public int Id { get; set; }

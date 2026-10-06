@@ -891,7 +891,7 @@ public sealed class RsRowSource : IRsRowSource
     private async Task<List<RsRow>> RepairsAsync(int limit, CancellationToken ct)
     {
         var raw = await _db.RepairOrders
-            .OrderByDescending(x => x.ReceivedAt)
+            .OrderByDescending(x => x.ReceivedAt).ThenByDescending(x => x.Id)
             .Take(limit)
             .Select(x => new
             {
@@ -899,6 +899,19 @@ public sealed class RsRowSource : IRsRowSource
                 x.DeviceModel, x.Status, x.ReceivedAt, x.DeliveredAt, x.QuotedPrice
             })
             .ToListAsync(ct);
+
+        var deviceRows = await _db.RepairDevices.AsNoTracking()
+            .Where(d => _db.RepairOrders
+                .OrderByDescending(x => x.ReceivedAt).ThenByDescending(x => x.Id)
+                .Take(limit)
+                .Select(x => x.Id)
+                .Contains(d.RepairOrderId))
+            .OrderBy(d => d.Id)
+            .Select(d => new { d.RepairOrderId, d.DeviceType, d.DeviceModel, d.QuotedPrice })
+            .ToListAsync(ct);
+        var devicesByRepair = deviceRows
+            .GroupBy(d => d.RepairOrderId)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var partyIds = raw.Select(x => x.PartyId).Distinct().ToList();
         var techIds = raw.Where(x => x.TechnicianId != null)
@@ -917,14 +930,29 @@ public sealed class RsRowSource : IRsRowSource
             r.V["repair.id"] = x.Id;
             r.V["repair.number"] = x.Number;
             r.V["repair.party"] = parties.GetValueOrDefault(x.PartyId)?.Name ?? "";
-            r.V["repair.device_type"] = x.DeviceType;
-            r.V["repair.device_model"] = x.DeviceModel ?? "";
+            var devices = devicesByRepair.GetValueOrDefault(x.Id);
+            var deviceTypes = devices is { Count: > 0 }
+                ? string.Join("، ", devices.Select(d => d.DeviceType).Where(t => !string.IsNullOrWhiteSpace(t)).Distinct())
+                : x.DeviceType;
+            var deviceModels = devices is { Count: > 0 }
+                ? string.Join("، ", devices.Select(d => d.DeviceModel).Where(m => !string.IsNullOrWhiteSpace(m)))
+                : x.DeviceModel ?? "";
+            var deviceSummary = devices is { Count: > 0 }
+                ? string.Join(" | ", devices.Select(d => string.IsNullOrWhiteSpace(d.DeviceModel)
+                    ? d.DeviceType : $"{d.DeviceType} {d.DeviceModel}"))
+                : $"{x.DeviceType}{(string.IsNullOrWhiteSpace(x.DeviceModel) ? "" : " " + x.DeviceModel)}";
+
+            r.V["repair.device_type"] = deviceTypes;
+            r.V["repair.device_model"] = deviceModels;
+            r.V["repair.devices_summary"] = deviceSummary;
+            r.V["repair.device_count"] = devices is { Count: > 0 } ? devices.Count : 1;
             r.V["repair.technician"] = x.TechnicianId != null
                 ? techs.GetValueOrDefault(x.TechnicianId.Value)?.Name ?? "" : "";
             r.V["repair.status"] = RepairStatusFa(x.Status);
             r.V["repair.received_at"] = x.ReceivedAt;
             r.V["repair.delivered_at"] = x.DeliveredAt;
-            r.V["repair.quoted_price"] = x.QuotedPrice;
+            r.V["repair.quoted_price"] = devices is { Count: > 0 }
+                ? devices.Sum(d => d.QuotedPrice) : x.QuotedPrice;
             r.V["repair.count"] = 1;
             return r;
         }).ToList();

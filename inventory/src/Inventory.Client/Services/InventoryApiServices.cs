@@ -85,6 +85,9 @@ public class ProductService : IProductService
     public Task<List<LookupItem>> GetLookupsAsync()
         => _api.GetAsync<List<LookupItem>>("api/products/lookups");
 
+    public Task<Product?> GetByIdAsync(int id)
+        => _api.GetAsync<Product?>($"api/products/{id}");
+
     public Task<Product> SaveAsync(Product product)
         => _api.PostAsync<Product>("api/products", product);
 

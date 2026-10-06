@@ -50,11 +50,25 @@ public class OperationsDashboardDto
     /// <summary>درآمد و سود تعمیرات تحویل‌شده؛ برای جلوگیری از نمایش برآوردهای تعمیرات باز.</summary>
     public decimal RepairRevenue { get; set; }
     public decimal RepairCost { get; set; }
+    public decimal RepairPartsCost { get; set; }
+    public decimal RepairLaborCost { get; set; }
     public decimal RepairProfit { get; set; }
     public int RepairCount { get; set; }
     public int ActiveRepairCount { get; set; }
     public int DeliveredRepairCount { get; set; }
     public int CancelledRepairCount { get; set; }
+
+    /// <summary>وضعیت فعلی پذیرش‌های باز، مستقل از بازهٔ انتخاب‌شده.</summary>
+    public int OpenRepairCount { get; set; }
+    public int OpenReceivedCount { get; set; }
+    public int OpenInProgressCount { get; set; }
+    public int OpenReadyCount { get; set; }
+    public int OpenAge0To3DaysCount { get; set; }
+    public int OpenAge4To7DaysCount { get; set; }
+    public int OpenAgeOver7DaysCount { get; set; }
+
+    /// <summary>میانگین زمان واقعی پذیرش تا تحویل، بر حسب روز.</summary>
+    public decimal? AverageRepairTurnaroundDays { get; set; }
 
     /// <summary>رتبه‌بندی معرف‌ها بر اساس مبلغ اسناد فروش در بازهٔ انتخاب‌شده.</summary>
     public List<OperationsReferrerRankDto> TopReferrers { get; set; } = new();
@@ -72,7 +86,7 @@ public class OperationsReferrerRankDto
     public decimal SalesAmount { get; set; }
 }
 
-/// <summary>نقطهٔ نمودار خرید، فروش و درآمد تعمیرات.</summary>
+/// <summary>نقطهٔ نمودار خرید/فروش و روند درآمد، هزینه و سود تعمیرات.</summary>
 public class OperationsDashboardTrendPoint
 {
     public DateTime PeriodStart { get; set; }
@@ -80,4 +94,8 @@ public class OperationsDashboardTrendPoint
     public decimal Purchase { get; set; }
     public decimal Sale { get; set; }
     public decimal RepairRevenue { get; set; }
+    public decimal RepairCost { get; set; }
+    public decimal RepairProfit { get; set; }
+    public decimal RepairPartsCost { get; set; }
+    public decimal RepairLaborCost { get; set; }
 }

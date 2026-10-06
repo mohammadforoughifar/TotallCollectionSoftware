@@ -95,7 +95,11 @@ public class RepairService : IRepairService
 
     public async Task<PagedResult<RepairOrderDto>> GetRepairsAsync(string? search, RepairStatus? status, int? technicianId, int page, int pageSize)
     {
-        var q = _db.RepairOrders.AsNoTracking().Include(r => r.Items).AsQueryable();
+        var q = _db.RepairOrders.AsNoTracking()
+            .Include(r => r.Items)
+            .Include(r => r.Devices)
+            .AsSplitQuery()
+            .AsQueryable();
 
         if (status.HasValue) q = q.Where(r => r.Status == status.Value);
         if (technicianId is > 0) q = q.Where(r => r.TechnicianId == technicianId);
@@ -103,20 +107,26 @@ public class RepairService : IRepairService
         if (!string.IsNullOrWhiteSpace(search))
         {
             var s = search.Trim();
-            var partyIds = await _db.Parties.Where(p => p.Name.Contains(s)
-                    || (p.Mobile != null && p.Mobile.Contains(s))
-                    || (p.Phone != null && p.Phone.Contains(s)))
-                .Select(p => p.Id).ToListAsync();
             q = q.Where(r => r.Number.Contains(s) ||
                              r.DeviceType.Contains(s) ||
                              (r.DeviceModel != null && r.DeviceModel.Contains(s)) ||
                              (r.SerialNumber != null && r.SerialNumber.Contains(s)) ||
-                             partyIds.Contains(r.PartyId));
+                             _db.RepairDevices.Any(d => d.RepairOrderId == r.Id &&
+                                 (d.DeviceType.Contains(s) ||
+                                  (d.DeviceModel != null && d.DeviceModel.Contains(s)) ||
+                                  (d.SerialNumber != null && d.SerialNumber.Contains(s)))) ||
+                             _db.Parties.Any(p => p.Id == r.PartyId &&
+                                 (p.Name.Contains(s) ||
+                                  (p.Mobile != null && p.Mobile.Contains(s)) ||
+                                  (p.Phone != null && p.Phone.Contains(s)))));
         }
 
+        // شمارش، فیلتر و صفحه‌بندی همگی در SQL انجام می‌شوند؛ هیچ‌وقت کل پذیرش‌ها به حافظهٔ API/کلاینت نمی‌آیند.
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize <= 0 ? 15 : pageSize, 1, 100);
         var total = await q.CountAsync();
-        if (pageSize <= 0) pageSize = 15;
-        if (page <= 0) page = 1;
+        var pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+        if (page > pageCount) page = pageCount;
 
         var items = await q.OrderByDescending(r => r.ReceivedAt).ThenByDescending(r => r.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)
@@ -125,19 +135,44 @@ public class RepairService : IRepairService
         var dtos = new List<RepairOrderDto>();
         foreach (var r in items) dtos.Add(await ToDtoAsync(r));
 
-        return new PagedResult<RepairOrderDto> { Items = dtos, TotalCount = total };
+        return new PagedResult<RepairOrderDto>
+        {
+            Items = dtos,
+            TotalCount = total,
+            Page = page,
+            PageSize = pageSize
+        };
     }
 
     public async Task<RepairOrderDto?> GetRepairAsync(int id)
     {
-        var r = await _db.RepairOrders.AsNoTracking().Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id);
+        var r = await _db.RepairOrders.AsNoTracking()
+            .Include(x => x.Items)
+            .Include(x => x.Devices)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(x => x.Id == id);
         return r is null ? null : await ToDtoAsync(r);
     }
 
     public async Task<RepairOrderDto> SaveRepairAsync(RepairOrderDto dto)
     {
         if (dto.PartyId <= 0) throw new InvalidOperationException("مشتری (صاحب دستگاه) را انتخاب کنید.");
-        if (string.IsNullOrWhiteSpace(dto.DeviceType)) throw new InvalidOperationException("نوع دستگاه را وارد کنید.");
+
+        // APIهای قدیمی هنوز مشخصات تک‌دستگاهی را می‌فرستند؛ آن‌ها را به کارت اول تبدیل می‌کنیم.
+        var deviceInputs = dto.Devices is { Count: > 0 }
+            ? dto.Devices
+            : new List<RepairDeviceDto>
+            {
+                new()
+                {
+                    DeviceType = dto.DeviceType,
+                    DeviceModel = dto.DeviceModel,
+                    SerialNumber = dto.SerialNumber,
+                    ProblemDescription = dto.ProblemDescription,
+                    Accessories = dto.Accessories,
+                    QuotedPrice = dto.QuotedPrice
+                }
+            };
         if (dto.Items.Any(i => i.Quantity <= 0)) throw new InvalidOperationException("مقدار هر ردیف باید بزرگ‌تر از صفر باشد.");
         if (dto.Items.Any(i => string.IsNullOrWhiteSpace(i.Description) && i.ProductId is null or 0))
             throw new InvalidOperationException("برای هر ردیف، شرح کار یا کالای مصرفی را مشخص کنید.");
@@ -161,20 +196,61 @@ public class RepairService : IRepairService
         }
         else
         {
-            entity = await _db.RepairOrders.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == dto.Id)
+            entity = await _db.RepairOrders
+                .Include(r => r.Items)
+                .Include(r => r.Devices)
+                .AsSplitQuery()
+                .FirstOrDefaultAsync(r => r.Id == dto.Id)
                 ?? throw new InvalidOperationException("پذیرش یافت نشد.");
             if (entity.InvoiceTransactionId is > 0)
                 throw new InvalidOperationException("برای این پذیرش فاکتور صادر شده و قابل ویرایش نیست.");
+
+            // کلاینت قدیمی فهرست Devices را نمی‌فرستد؛ اگر پذیرش چند دستگاه دارد،
+            // هنگام ویرایش اطلاعات تختِ قدیمی نباید کارت‌های دیگر را حذف کند.
+            if (dto.Devices is not { Count: > 0 } && entity.Devices.Count > 1)
+            {
+                deviceInputs = entity.Devices.OrderBy(d => d.Id).Select(d => new RepairDeviceDto
+                {
+                    Id = d.Id,
+                    DeviceType = d.DeviceType,
+                    DeviceModel = d.DeviceModel,
+                    SerialNumber = d.SerialNumber,
+                    ProblemDescription = d.ProblemDescription,
+                    Accessories = d.Accessories,
+                    QuotedPrice = d.QuotedPrice
+                }).ToList();
+            }
         }
+
+        for (var i = 0; i < deviceInputs.Count; i++)
+            if (string.IsNullOrWhiteSpace(deviceInputs[i].DeviceType))
+                throw new InvalidOperationException($"نوع دستگاه کارت شمارهٔ {i + 1} را وارد کنید.");
 
         entity.PartyId = dto.PartyId;
         entity.TechnicianId = dto.TechnicianId is > 0 ? dto.TechnicianId : null;
-        entity.DeviceType = dto.DeviceType.Trim();
-        entity.DeviceModel = NullIfEmpty(dto.DeviceModel);
-        entity.SerialNumber = NullIfEmpty(dto.SerialNumber);
-        entity.ProblemDescription = NullIfEmpty(dto.ProblemDescription);
-        entity.Accessories = NullIfEmpty(dto.Accessories);
-        entity.QuotedPrice = dto.QuotedPrice;
+
+        // بازنویسی کارت‌های دستگاه؛ فیلدهای قدیمیِ سربرگ با کارت اول/جمع برآورد همگام می‌مانند.
+        entity.Devices.Clear();
+        foreach (var d in deviceInputs)
+        {
+            entity.Devices.Add(new Db.RepairDevice
+            {
+                DeviceType = d.DeviceType.Trim(),
+                DeviceModel = NullIfEmpty(d.DeviceModel),
+                SerialNumber = NullIfEmpty(d.SerialNumber),
+                ProblemDescription = NullIfEmpty(d.ProblemDescription),
+                Accessories = NullIfEmpty(d.Accessories),
+                QuotedPrice = d.QuotedPrice
+            });
+        }
+
+        var primaryDevice = deviceInputs[0];
+        entity.DeviceType = primaryDevice.DeviceType.Trim();
+        entity.DeviceModel = NullIfEmpty(primaryDevice.DeviceModel);
+        entity.SerialNumber = NullIfEmpty(primaryDevice.SerialNumber);
+        entity.ProblemDescription = NullIfEmpty(primaryDevice.ProblemDescription);
+        entity.Accessories = NullIfEmpty(primaryDevice.Accessories);
+        entity.QuotedPrice = deviceInputs.Sum(d => d.QuotedPrice);
         entity.Note = NullIfEmpty(dto.Note);
         entity.ReceivedAt = dto.ReceivedAt == default ? DateTime.Now : dto.ReceivedAt;
         if (dto.Id != 0) entity.Status = dto.Status;
@@ -234,7 +310,11 @@ public class RepairService : IRepairService
 
     public async Task<RepairOrderDto> InvoiceAsync(int id, RepairInvoiceRequest request)
     {
-        var r = await _db.RepairOrders.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == id)
+        var r = await _db.RepairOrders
+            .Include(x => x.Items)
+            .Include(x => x.Devices)
+            .AsSplitQuery()
+            .FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("پذیرش یافت نشد.");
 
         if (r.InvoiceTransactionId is > 0)
@@ -261,20 +341,32 @@ public class RepairService : IRepairService
             PartyId = r.PartyId,
             Type = TransactionType.Sale,
             Date = DateTime.Now,
-            Description = $"فاکتور تعمیرات — پذیرش {r.Number} ({r.DeviceType}{(string.IsNullOrWhiteSpace(r.DeviceModel) ? "" : " " + r.DeviceModel)})",
+            Description = $"فاکتور تعمیرات — پذیرش {r.Number} ({DeviceSummary(r.Devices, r.DeviceType, r.DeviceModel)})",
             Lines = new List<OrderLineInput>()
         };
 
-        foreach (var i in r.Items.Where(x => x.Price > 0))
+        foreach (var i in r.Items.OrderBy(x => x.Id).Where(x => x.Price > 0))
         {
             if (i.ProductId is > 0)
             {
-                cmd.Lines.Add(new OrderLineInput { ProductId = i.ProductId.Value, Quantity = i.Quantity, Price = i.Price });
+                cmd.Lines.Add(new OrderLineInput
+                {
+                    ProductId = i.ProductId.Value,
+                    Quantity = i.Quantity,
+                    Price = i.Price,
+                    UnitCostSnapshot = i.Cost
+                });
             }
             else
             {
-                // ردیف اجرت: قیمت واحد = کل مبلغ ردیف، مقدار = ۱
-                cmd.Lines.Add(new OrderLineInput { ProductId = laborProductId!.Value, Quantity = 1, Price = i.Price * i.Quantity });
+                // دستمزد هم هزینهٔ واحد دارد؛ آن را مثل بقیهٔ ردیف‌ها با مقدار/قیمت/هزینهٔ اصلی ثبت می‌کنیم.
+                cmd.Lines.Add(new OrderLineInput
+                {
+                    ProductId = laborProductId!.Value,
+                    Quantity = i.Quantity,
+                    Price = i.Price,
+                    UnitCostSnapshot = i.Cost
+                });
             }
         }
 
@@ -326,6 +418,34 @@ public class RepairService : IRepairService
         var totalPrice = items.Sum(i => i.Price * i.Quantity);
         var totalCost = items.Sum(i => i.Cost * i.Quantity);
 
+        var devices = (r.Devices ?? new List<Db.RepairDevice>())
+            .OrderBy(d => d.Id)
+            .Select(d => new RepairDeviceDto
+            {
+                Id = d.Id,
+                DeviceType = d.DeviceType,
+                DeviceModel = d.DeviceModel,
+                SerialNumber = d.SerialNumber,
+                ProblemDescription = d.ProblemDescription,
+                Accessories = d.Accessories,
+                QuotedPrice = d.QuotedPrice
+            })
+            .ToList();
+        if (devices.Count == 0)
+        {
+            // پشتیبان برای رکوردی که پیش از اجرای خودتعمیرِ schema خوانده شود.
+            devices.Add(new RepairDeviceDto
+            {
+                DeviceType = r.DeviceType,
+                DeviceModel = r.DeviceModel,
+                SerialNumber = r.SerialNumber,
+                ProblemDescription = r.ProblemDescription,
+                Accessories = r.Accessories,
+                QuotedPrice = r.QuotedPrice
+            });
+        }
+        var primaryDevice = devices[0];
+
         return new RepairOrderDto
         {
             Id = r.Id,
@@ -337,19 +457,21 @@ public class RepairService : IRepairService
             TechnicianId = r.TechnicianId,
             TechnicianName = tech?.Name,
             TechnicianPhone = tech?.Phone,
-            DeviceType = r.DeviceType,
-            DeviceModel = r.DeviceModel,
-            SerialNumber = r.SerialNumber,
-            ProblemDescription = r.ProblemDescription,
-            Accessories = r.Accessories,
+            // فیلدهای تخت برای سازگاری APIهای قبلی از کارت اول خوانده می‌شوند.
+            DeviceType = primaryDevice.DeviceType,
+            DeviceModel = primaryDevice.DeviceModel,
+            SerialNumber = primaryDevice.SerialNumber,
+            ProblemDescription = primaryDevice.ProblemDescription,
+            Accessories = primaryDevice.Accessories,
             Status = r.Status,
             ReceivedAt = r.ReceivedAt,
             DeliveredAt = r.DeliveredAt,
-            QuotedPrice = r.QuotedPrice,
+            QuotedPrice = devices.Sum(d => d.QuotedPrice),
             InvoiceTransactionId = r.InvoiceTransactionId,
             InvoiceNumber = invoiceNumber,
             Note = r.Note,
             CreatedAt = r.CreatedAt,
+            Devices = devices,
             Items = items,
             TotalPrice = totalPrice,
             TotalCost = totalCost,
@@ -384,6 +506,27 @@ public class RepairService : IRepairService
         _db.Products.Add(svc);
         await _db.SaveChangesAsync();
         return svc.Id;
+    }
+
+    private static string DeviceSummary(IEnumerable<Db.RepairDevice> devices, string fallbackType, string? fallbackModel)
+    {
+        var labels = devices.OrderBy(d => d.Id)
+            .Select(d => DeviceLabel(d.DeviceType, d.DeviceModel))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+        if (labels.Count == 0)
+            labels.Add(DeviceLabel(fallbackType, fallbackModel));
+        if (labels.Count == 0) return "دستگاه";
+        return labels.Count == 1
+            ? labels[0]
+            : $"{labels[0]} و {labels.Count - 1} دستگاه دیگر";
+    }
+
+    private static string DeviceLabel(string? deviceType, string? deviceModel)
+    {
+        var type = (deviceType ?? "").Trim();
+        var model = (deviceModel ?? "").Trim();
+        return string.IsNullOrWhiteSpace(model) ? type : $"{type} {model}".Trim();
     }
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

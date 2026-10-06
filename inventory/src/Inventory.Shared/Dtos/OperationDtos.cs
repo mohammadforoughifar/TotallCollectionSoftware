@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Inventory.Shared.Dtos;
 
 /// <summary>سطر سند (خرید/فروش)</summary>
@@ -14,10 +16,10 @@ public class OrderLine
     /// <summary>خدمات است؟</summary>
     public bool IsService { get; set; }
 
-    /// <summary>بهای تمام‌شده واحد (طبق روش قیمت‌گذاری) — فقط برای سطرهای فروش، پر شده توسط سرور</summary>
+    /// <summary>بهای تمام‌شدهٔ واحد؛ از snapshot ثبت‌شده یا روش قیمت‌گذاری انبار، پرشده توسط سرور.</summary>
     public decimal? UnitCost { get; set; }
 
-    /// <summary>سود سطر = (قیمت فروش − بهای تمام‌شده) × مقدار — فقط برای سطرهای فروش کالا</summary>
+    /// <summary>سود سطر فروش = (قیمت فروش − بهای تمام‌شده) × مقدار — برای کالا و خدمات دارای هزینهٔ ثبت‌شده.</summary>
     public decimal? Profit { get; set; }
 
     /// <summary>پورسانت معرف این سطر (پر شده توسط سرور — فقط فروش با معرف)</summary>
@@ -130,6 +132,10 @@ public class OrderLineInput
     public int ProductId { get; set; }
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
+
+    /// <summary>هزینهٔ واحدِ ارسالی فقط از سرویس داخلی تعمیرات؛ از درخواست‌های عمومی JSON پذیرفته نمی‌شود.</summary>
+    [JsonIgnore]
+    public decimal? UnitCostSnapshot { get; set; }
 }
 
 /// <summary>درخواست اصلاح موجودی</summary>

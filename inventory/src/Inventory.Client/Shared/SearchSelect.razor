@@ -53,7 +53,13 @@
                         {
                             <img class="user-avatar user-avatar-sm" src="@it.AvatarUrl" alt="" onerror="this.onerror=null;this.src='@Dflt';" />
                         }
-                        <span class="ss-item-name">@it.Name</span>
+                        <span class="ss-item-copy">
+                            <span class="ss-item-name">@it.Name</span>
+                            @if (!string.IsNullOrWhiteSpace(it.InfoText))
+                            {
+                                <small class="ss-item-info">@it.InfoText</small>
+                            }
+                        </span>
                     </div>
                 }
             }
@@ -70,6 +76,12 @@
 
     /// <summary>نمایش دکمه «پاک کردن» وقتی مقداری انتخاب شده است (پیش‌فرض: فعال)</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
+
+    /// <summary>اعلان متن جستجو برای بارگیری گزینه‌ها از سرور؛ انتخابگر همچنان با لیست محدود دریافتی کار می‌کند.</summary>
+    [Parameter] public EventCallback<string> SearchChanged { get; set; }
+
+    /// <summary>در حالت جستجوی راه‌دور، فیلتر گزینه‌ها را خود سرور انجام داده است.</summary>
+    [Parameter] public bool RemoteSearch { get; set; }
 
     private string query = "";
     private bool open;
@@ -99,7 +111,7 @@
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(query)) return Items;
+            if (RemoteSearch || string.IsNullOrWhiteSpace(query)) return Items;
             return Items.Where(i => i.Name.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
         }
     }
@@ -136,6 +148,9 @@
                 if (idx >= 0) highlightIndex = idx;
             }
         }
+
+        if (string.IsNullOrWhiteSpace(query) && SearchChanged.HasDelegate)
+            await SearchChanged.InvokeAsync(query);
     }
 
     private async Task OpenMenu()
@@ -156,6 +171,7 @@
         query = e.Value?.ToString() ?? "";
         highlightIndex = 0;
         if (!open) await OpenMenu();
+        if (SearchChanged.HasDelegate) await SearchChanged.InvokeAsync(query);
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)

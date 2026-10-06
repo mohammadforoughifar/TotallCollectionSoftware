@@ -1,6 +1,9 @@
 @namespace Inventory.Client.Pages
 @page "/repairs"
 @inject IRepairService RepairSvc
+@inject IOrderService OrderSvc
+@inject ISettingsService SettingsSvc
+@inject IDashboardService DashboardSvc
 @inject IPartyService PartySvc
 @inject IProductService ProductSvc
 @inject IWarehouseService WarehouseSvc
@@ -16,10 +19,256 @@
         <h1>پذیرش تعمیرات</h1>
         <p class="lead">ثبت ورود/خروج دستگاه، تعمیرکار، شرح کارها، هزینه و صدور فاکتور</p>
     </div>
-    <button class="btn btn-primary me-auto" @onclick="OpenNew">
-        <i class="bi bi-plus-lg"></i> پذیرش جدید
-    </button>
+    <div class="d-flex flex-wrap gap-2 me-auto">
+        <button class="btn btn-outline-primary" @onclick="ToggleRepairReports" disabled="@reportLoading">
+            <i class="bi bi-bar-chart-line"></i> گزارش و نمودارها
+        </button>
+        <button class="btn btn-primary" @onclick="OpenNew">
+            <i class="bi bi-plus-lg"></i> پذیرش جدید
+        </button>
+    </div>
 </div>
+
+@if (showRepairReports)
+{
+    <section class="card mb-3">
+        <div class="card-header d-flex align-items-center gap-2">
+            <i class="bi bi-clipboard-data text-primary"></i>
+            <span class="card-title">گزارش تعمیرات</span>
+            <span class="small text-muted me-2">آمار و نمودارها به‌صورت عمودی</span>
+            <button class="btn btn-sm btn-light me-auto" @onclick="ToggleRepairReports" title="بستن گزارش">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="row g-2 align-items-end mb-3">
+                <div class="col-6 col-lg-3">
+                    <label class="form-label">از تاریخ</label>
+                    <DatePicker @bind-Value="reportFrom" AllowClear="true" />
+                </div>
+                <div class="col-6 col-lg-3">
+                    <label class="form-label">تا تاریخ</label>
+                    <DatePicker @bind-Value="reportTo" AllowClear="true" />
+                </div>
+                <div class="col-12 col-lg-3">
+                    <button class="btn btn-primary w-100" @onclick="LoadRepairReport" disabled="@reportLoading">
+                        @if (reportLoading) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+                        <i class="bi bi-arrow-repeat"></i> بروزرسانی گزارش
+                    </button>
+                </div>
+                <div class="col-12 col-lg-3 small text-muted">
+                    <i class="bi bi-info-circle"></i> پذیرش و انصراف بر اساس تاریخ ورود؛ درآمد، سود و سرعت تحویل بر اساس تاریخ تحویل
+                </div>
+            </div>
+
+            @if (reportLoading && repairReport is null)
+            {
+                <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+            }
+            else if (repairReport is null)
+            {
+                <div class="empty-state py-3"><i class="bi bi-exclamation-circle"></i><h5>گزارش بارگذاری نشد</h5></div>
+            }
+            else
+            {
+                <div class="row g-3 mb-3">
+                    <div class="col-6 col-xl-3">
+                        <div class="stat-card">
+                            <div class="stat-icon bg-soft-info"><i class="bi bi-tools text-info"></i></div>
+                            <div><div class="stat-label">کل پذیرش‌های بازه</div><div class="stat-value num">@repairReport.RepairCount.Num()</div></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-xl-3">
+                        <div class="stat-card">
+                            <div class="stat-icon bg-soft-warning"><i class="bi bi-hourglass-split text-warning"></i></div>
+                            <div><div class="stat-label">کارهای باز فعلی</div><div class="stat-value num">@repairReport.OpenRepairCount.Num()</div></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-xl-3">
+                        <div class="stat-card">
+                            <div class="stat-icon bg-soft-success"><i class="bi bi-check2-circle text-success"></i></div>
+                            <div><div class="stat-label">تحویل‌شده در بازه</div><div class="stat-value num">@repairReport.DeliveredRepairCount.Num()</div></div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-xl-3">
+                        <div class="stat-card">
+                            <div class="stat-icon bg-soft-danger"><i class="bi bi-x-circle text-danger"></i></div>
+                            <div><div class="stat-label">انصرافی‌های بازه</div><div class="stat-value num">@repairReport.CancelledRepairCount.Num()</div></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex flex-column gap-3">
+                    <section class="card">
+                        <div class="card-header d-flex align-items-center gap-2">
+                            <i class="bi bi-wrench-adjustable text-warning"></i>
+                            <span class="card-title">وضعیت کارهای باز</span>
+                            <span class="badge bg-primary me-auto">@repairReport.OpenRepairCount.Num() باز</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3">
+                                <div class="col-6 col-lg-4">
+                                    <div class="stat-card">
+                                        <div class="stat-icon bg-soft-info"><i class="bi bi-inbox text-info"></i></div>
+                                        <div><div class="stat-label">پذیرش‌شده</div><div class="stat-value num">@repairReport.OpenReceivedCount.Num()</div></div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-lg-4">
+                                    <div class="stat-card">
+                                        <div class="stat-icon bg-soft-warning"><i class="bi bi-tools text-warning"></i></div>
+                                        <div><div class="stat-label">در حال تعمیر</div><div class="stat-value num">@repairReport.OpenInProgressCount.Num()</div></div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-lg-4">
+                                    <div class="stat-card">
+                                        <div class="stat-icon bg-soft-success"><i class="bi bi-box-seam text-success"></i></div>
+                                        <div><div class="stat-label">آمادهٔ تحویل</div><div class="stat-value num">@repairReport.OpenReadyCount.Num()</div></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <hr class="my-3" />
+                            <div class="small text-muted mb-2">سن پذیرش‌های باز فعلی</div>
+                            <div class="row g-3">
+                                <div class="col-6 col-lg-4">
+                                    <div class="stat-card">
+                                        <div class="stat-icon bg-soft-info"><i class="bi bi-clock text-info"></i></div>
+                                        <div><div class="stat-label">۰ تا ۳ روز</div><div class="stat-value num">@repairReport.OpenAge0To3DaysCount.Num()</div></div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-lg-4">
+                                    <div class="stat-card">
+                                        <div class="stat-icon bg-soft-warning"><i class="bi bi-clock-history text-warning"></i></div>
+                                        <div><div class="stat-label">۴ تا ۷ روز</div><div class="stat-value num">@repairReport.OpenAge4To7DaysCount.Num()</div></div>
+                                    </div>
+                                </div>
+                                <div class="col-6 col-lg-4">
+                                    <div class="stat-card">
+                                        <div class="stat-icon bg-soft-danger"><i class="bi bi-exclamation-triangle text-danger"></i></div>
+                                        <div><div class="stat-label">بیش از ۷ روز</div><div class="stat-value num text-danger">@repairReport.OpenAgeOver7DaysCount.Num()</div></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="small text-muted mt-3">
+                                پذیرش‌های باز مستقل از فیلتر تاریخ گزارش شده‌اند؛ «باز» یعنی هنوز تحویل یا لغو نشده است.
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-header">
+                            <i class="bi bi-speedometer2 text-info"></i>
+                            <span class="card-title">سرعت تحویل</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="row g-3 align-items-center">
+                                <div class="col-12 col-md-4">
+                                    <div class="stat-card">
+                                        <div class="stat-icon bg-soft-info"><i class="bi bi-calendar2-check text-info"></i></div>
+                                        <div>
+                                            <div class="stat-label">میانگین زمان از پذیرش تا تحویل</div>
+                                            @if (repairReport.AverageRepairTurnaroundDays is decimal averageDays)
+                                            {
+                                                <div class="stat-value num">@averageDays.Qty() روز</div>
+                                            }
+                                            else
+                                            {
+                                                <div class="stat-value">—</div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-8">
+                                    <div class="alert alert-light border mb-0">
+                                        <i class="bi bi-info-circle text-primary"></i>
+                                        میانگین بر اساس زمان واقعی بین ثبت پذیرش و تحویل محاسبه شده و فقط تعمیرهای تحویل‌شده در بازهٔ انتخابی را در بر می‌گیرد.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-header">
+                            <i class="bi bi-graph-up-arrow text-warning"></i>
+                            <span class="card-title">روند دوره‌ای درآمد، هزینه و سود تعمیرات</span>
+                        </div>
+                        <div class="card-body">
+                            @{ var repairTrend = repairReport.Trend.Where(p => p.RepairRevenue != 0 || p.RepairCost != 0).ToList(); }
+                            @if (repairTrend.Count == 0)
+                            {
+                                <div class="empty-state py-3"><i class="bi bi-bar-chart"></i><h5>در این بازه اطلاعات مالی تحویل ثبت نشده است</h5></div>
+                            }
+                            else
+                            {
+                                var maxRepairFinance = repairTrend.SelectMany(p => new[] { p.RepairRevenue, p.RepairCost, Math.Abs(p.RepairProfit) }).DefaultIfEmpty(0m).Max();
+                                <div class="d-flex flex-column gap-3">
+                                    @foreach (var point in repairTrend)
+                                    {
+                                        <div class="border rounded p-3">
+                                            <div class="d-flex justify-content-between gap-2 mb-2">
+                                                <strong>@point.Label</strong>
+                                                <span class="small @(point.RepairProfit >= 0 ? "text-success" : "text-danger")">سود: <b class="num">@point.RepairProfit.Money()</b></span>
+                                            </div>
+                                            <div class="d-flex flex-column gap-2">
+                                                <div>
+                                                    <div class="d-flex justify-content-between mb-1"><span class="small">درآمد</span><b class="small num">@point.RepairRevenue.Money()</b></div>
+                                                    <div class="progress" style="height:7px"><div class="progress-bar bg-primary" role="progressbar" style="@RepairReportBar(point.RepairRevenue, maxRepairFinance)"></div></div>
+                                                </div>
+                                                <div>
+                                                    <div class="d-flex justify-content-between mb-1"><span class="small">هزینهٔ کل</span><b class="small num">@point.RepairCost.Money()</b></div>
+                                                    <div class="progress" style="height:7px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(point.RepairCost, maxRepairFinance)"></div></div>
+                                                </div>
+                                                <div>
+                                                    <div class="d-flex justify-content-between mb-1"><span class="small">سود</span><b class="small num @(point.RepairProfit >= 0 ? "text-success" : "text-danger")">@point.RepairProfit.Money()</b></div>
+                                                    <div class="progress" style="height:7px"><div class="progress-bar @(point.RepairProfit >= 0 ? "bg-success" : "bg-danger")" role="progressbar" style="@RepairReportBar(Math.Abs(point.RepairProfit), maxRepairFinance)"></div></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </section>
+
+                    <section class="card">
+                        <div class="card-header">
+                            <i class="bi bi-cash-coin text-primary"></i>
+                            <span class="card-title">جزئیات درآمد، هزینه و سود تعمیرات تحویل‌شده</span>
+                        </div>
+                        <div class="card-body">
+                            @{ var financeMax = Math.Max(repairReport.RepairRevenue, repairReport.RepairCost); }
+                            <div class="d-flex flex-column gap-3">
+                                <div>
+                                    <div class="d-flex justify-content-between mb-1"><span>درآمد از مشتری</span><b class="num text-primary">@repairReport.RepairRevenue.Money()</b></div>
+                                    <div class="progress" style="height:9px"><div class="progress-bar bg-primary" role="progressbar" style="@RepairReportBar(repairReport.RepairRevenue, financeMax)"></div></div>
+                                </div>
+                                <div>
+                                    <div class="d-flex justify-content-between mb-1"><span>هزینهٔ قطعات</span><b class="num text-danger">@repairReport.RepairPartsCost.Money()</b></div>
+                                    <div class="progress" style="height:9px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(repairReport.RepairPartsCost, financeMax)"></div></div>
+                                </div>
+                                <div>
+                                    <div class="d-flex justify-content-between mb-1"><span>هزینهٔ دستمزد/خدمات</span><b class="num text-danger">@repairReport.RepairLaborCost.Money()</b></div>
+                                    <div class="progress" style="height:9px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(repairReport.RepairLaborCost, financeMax)"></div></div>
+                                </div>
+                                <div>
+                                    <div class="d-flex justify-content-between mb-1"><span>جمع هزینه‌ها</span><b class="num text-danger">@repairReport.RepairCost.Money()</b></div>
+                                    <div class="progress" style="height:9px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(repairReport.RepairCost, financeMax)"></div></div>
+                                </div>
+                                <div>
+                                    <div class="d-flex justify-content-between mb-1"><span>سود خالص تعمیر</span><b class="num @(repairReport.RepairProfit >= 0 ? "text-success" : "text-danger")">@repairReport.RepairProfit.Money()</b></div>
+                                    <div class="progress" style="height:9px"><div class="progress-bar @(repairReport.RepairProfit >= 0 ? "bg-success" : "bg-danger")" role="progressbar" style="@RepairReportBar(Math.Abs(repairReport.RepairProfit), financeMax)"></div></div>
+                                </div>
+                            </div>
+                            <div class="small text-muted mt-3">
+                                سود = درآمد منهای هزینهٔ ثبت‌شدهٔ قطعه و دستمزد/خدمات؛ هزینه‌ای که در ردیف تعمیر ثبت نشده باشد در این محاسبه نمی‌آید.
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            }
+        </div>
+    </section>
+}
 
 <div class="card mb-3">
     <div class="card-body py-2">
@@ -94,10 +343,10 @@
                             <tr>
                                 <td class="doc-number fw-700 text-primary">@r.Number</td>
                                 <td>
-                                    <div class="fw-500">@r.DeviceType</div>
-                                    @if (!string.IsNullOrWhiteSpace(r.DeviceModel))
+                                    <div class="fw-500">@DeviceSummary(r)</div>
+                                    @if (DeviceCount(r) > 1)
                                     {
-                                        <div class="fs-8 text-muted">@r.DeviceModel</div>
+                                        <div class="fs-8 text-muted">@DeviceCount(r) دستگاه در یک پذیرش</div>
                                     }
                                 </td>
                                 <td>
@@ -121,6 +370,10 @@
                                 <td>@StatusBadge(r)</td>
                                 <td class="text-end text-nowrap">
                                     <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i></button>
+                                    @if (r.InvoiceTransactionId is > 0)
+                                    {
+                                        <button class="btn btn-sm btn-light" title="چاپ فاکتور" @onclick="() => PrintInvoice(r)"><i class="bi bi-printer text-success"></i></button>
+                                    }
                                     @if (r.InvoiceTransactionId is null)
                                     {
                                         <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
@@ -140,13 +393,17 @@
                 {
                     <div class="m-card @StatusCss(r)">
                         <div class="m-card-head">
-                            <div class="m-card-icon"><i class="bi @DeviceIcon(r.DeviceType)"></i></div>
+                            <div class="m-card-icon"><i class="bi @DeviceIcon(PrimaryDeviceType(r))"></i></div>
                             <div class="flex-grow-1 min-w-0">
                                 <div class="d-flex align-items-center gap-2">
                                     <span class="doc-number fw-800 text-primary">@r.Number</span>
                                     @StatusBadge(r)
                                 </div>
-                                <div class="fw-700 text-truncate">@r.DeviceType @r.DeviceModel</div>
+                                <div class="fw-700 text-truncate">@DeviceSummary(r)</div>
+                                @if (DeviceCount(r) > 1)
+                                {
+                                    <div class="fs-8 text-muted">@DeviceCount(r) دستگاه در یک پذیرش</div>
+                                }
                                 <div class="fs-8 text-muted text-truncate"><i class="bi bi-person"></i> @r.PartyName
                                     @if (!string.IsNullOrWhiteSpace(PartyTel(r))) { <span class="num" dir="ltr"> — @PartyTel(r)</span> }
                                 </div>
@@ -186,6 +443,7 @@
                             }
                             else
                             {
+                                <button class="btn btn-light text-success" @onclick="() => PrintInvoice(r)"><i class="bi bi-printer"></i> چاپ فاکتور</button>
                                 <span class="fs-8 text-muted me-auto align-self-center"><i class="bi bi-receipt"></i> @r.InvoiceNumber</span>
                             }
                         </div>
@@ -193,6 +451,13 @@
                 }
             </div>
 
+            @if (total > 0)
+            {
+                <div class="d-flex justify-content-between align-items-center px-3 pt-3 fs-8 text-muted">
+                    <span>نمایش @(((page - 1) * PageSize + 1).Num()) تا @(Math.Min(page * PageSize, total).Num()) از @total.Num() پذیرش</span>
+                    <span>صفحه @(page.Num()) از @(pageCount.Num())</span>
+                </div>
+            }
             <Pager Page="page" PageCount="pageCount" OnPageChanged="GoToPage" />
         }
     </div>
@@ -201,87 +466,144 @@
 @* ---------------- فرم پذیرش ---------------- *@
 <Modal Visible="showForm" Title="@(form.Id == 0 ? "پذیرش جدید" : $"ویرایش پذیرش {form.Number}")" Size="modal-xl" OnClose="CloseForm">
     <ChildContent>
-        <div class="row g-3">
-            <div class="col-md-4">
-                <label class="form-label">مشتری (صاحب دستگاه) <span class="text-danger">*</span></label>
-                <div class="d-flex gap-2 align-items-stretch">
-                    <div class="flex-grow-1">
-                        <SearchSelect Items="customerLookup" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری…" />
+        <div class="repair-intake-form" @ref="repairFormRoot">
+            <section class="repair-common-card mb-3">
+                <div class="repair-section-heading">
+                    <div class="repair-section-icon"><i class="bi bi-clipboard2-check"></i></div>
+                    <div>
+                        <h6>اطلاعات مشترک پذیرش</h6>
+                        <small>مشتری، تعمیرکار و تاریخ برای همه دستگاه‌ها مشترک است. Enter: فیلد بعدی؛ Shift+Enter: خط جدید.</small>
                     </div>
-                    <button type="button" class="btn btn-new-party" title="تعریف مشتری جدید" @onclick="OpenNewCustomer">
-                        <i class="bi bi-person-plus-fill"></i>
-                        <span class="d-none d-sm-inline">جدید</span>
+                </div>
+                <div class="row g-3">
+                    <div class="col-md-4 repair-customer-focus">
+                        <label class="form-label">مشتری (صاحب همه دستگاه‌ها) <span class="text-danger">*</span></label>
+                        <div class="d-flex gap-2 align-items-stretch">
+                            <div class="flex-grow-1">
+                                <SearchSelect Items="customerLookup" @bind-Value="form.PartyId" Placeholder="انتخاب مشتری…" />
+                            </div>
+                            <button type="button" class="btn btn-new-party" title="تعریف مشتری جدید" @onclick="OpenNewCustomer">
+                                <i class="bi bi-person-plus-fill"></i>
+                                <span class="d-none d-sm-inline">جدید</span>
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(PartyTel(form)))
+                        {
+                            <div class="fs-8 text-muted mt-1 num" dir="ltr"><i class="bi bi-telephone"></i> @PartyTel(form)</div>
+                        }
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">تعمیرکار</label>
+                        <select class="form-select" @bind="techIdStr">
+                            <option value="0">— بعداً تعیین می‌شود —</option>
+                            @foreach (var t in technicians.Where(x => x.IsActive))
+                            {
+                                <option value="@t.Id">@t.Name@(string.IsNullOrWhiteSpace(t.Specialty) ? "" : $" ({t.Specialty})")</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">تاریخ ورود (پذیرش)</label>
+                        <DatePicker @bind-Value="receivedAt" />
+                    </div>
+                    @if (form.Id != 0)
+                    {
+                        <div class="col-md-4">
+                            <label class="form-label">وضعیت پذیرش</label>
+                            <select class="form-select" @bind="statusStr">
+                                <option value="0">پذیرش شده</option>
+                                <option value="1">در حال تعمیر</option>
+                                <option value="2">آماده تحویل</option>
+                                <option value="4">انصراف / مرجوع</option>
+                            </select>
+                        </div>
+                    }
+                    <div class="col-12">
+                        <label class="form-label">یادداشت پذیرش</label>
+                        <input class="form-control" @bind="form.Note" placeholder="یادداشت مشترک برای کل پذیرش…" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="repair-devices-section mb-3">
+                <div class="repair-section-heading repair-devices-heading">
+                    <div class="repair-section-icon repair-device-icon"><i class="bi bi-pc-display-horizontal"></i></div>
+                    <div>
+                        <h6>دستگاه‌های پذیرش‌شده <span class="badge badge-soft-primary">@form.Devices.Count</span></h6>
+                        <small>هر دستگاه کارت و مبلغ برآوردی جداگانه دارد.</small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f3"
+                            title="افزودن دستگاه (F3)" @onclick="AddDevice">
+                        <i class="bi bi-plus-lg"></i> افزودن دستگاه (F3)
                     </button>
                 </div>
-                @if (!string.IsNullOrWhiteSpace(PartyTel(form)))
-                {
-                    <div class="fs-8 text-muted mt-1 num" dir="ltr"><i class="bi bi-telephone"></i> @PartyTel(form)</div>
-                }
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">نوع دستگاه <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.DeviceType" list="deviceTypes" placeholder="لپ‌تاپ / کامپیوتر / مانیتور / دوربین…" />
-                <datalist id="deviceTypes">
-                    <option value="لپ‌تاپ" /><option value="کامپیوتر" /><option value="مانیتور" />
-                    <option value="دوربین" /><option value="پرینتر" /><option value="موبایل" /><option value="تبلت" />
-                </datalist>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">برند و مدل</label>
-                <input class="form-control" @bind="form.DeviceModel" placeholder="مثلاً Asus N56 / Canon EOS" />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">سریال دستگاه</label>
-                <input class="form-control" @bind="form.SerialNumber" dir="ltr" />
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">تعمیرکار</label>
-                <select class="form-select" @bind="techIdStr">
-                    <option value="0">— بعداً تعیین می‌شود —</option>
-                    @foreach (var t in technicians.Where(x => x.IsActive))
+
+                <div class="repair-devices-grid">
+                    @for (var idx = 0; idx < form.Devices.Count; idx++)
                     {
-                        <option value="@t.Id">@t.Name@(string.IsNullOrWhiteSpace(t.Specialty) ? "" : $" ({t.Specialty})")</option>
+                        var deviceIndex = idx;
+                        var device = form.Devices[deviceIndex];
+                        <article class="repair-device-card" @key="device">
+                            <div class="repair-device-card-head">
+                                <div class="repair-device-card-title">
+                                    <span class="repair-device-number">@(deviceIndex + 1)</span>
+                                    <div>
+                                        <strong>دستگاه @(deviceIndex + 1)</strong>
+                                        <div class="fs-8 text-muted">مشخصات و برآورد مستقل</div>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-light" title="حذف این دستگاه"
+                                        disabled="@(form.Devices.Count <= 1)" @onclick="() => RemoveDevice(deviceIndex)">
+                                    <i class="bi bi-trash text-danger"></i>
+                                </button>
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">نوع دستگاه <span class="text-danger">*</span></label>
+                                    <input class="form-control" @bind="device.DeviceType" list="@DeviceTypesId(deviceIndex)"
+                                           data-repair-device-type="@deviceIndex" />
+                                    <datalist id="@DeviceTypesId(deviceIndex)">
+                                        <option value="لپ‌تاپ" /><option value="کامپیوتر" /><option value="مانیتور" />
+                                        <option value="دوربین" /><option value="پرینتر" /><option value="موبایل" /><option value="تبلت" />
+                                    </datalist>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">برند و مدل</label>
+                                    <input class="form-control" @bind="device.DeviceModel" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">سریال دستگاه</label>
+                                    <input class="form-control num" @bind="device.SerialNumber" dir="ltr" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">لوازم همراه</label>
+                                    <input class="form-control" @bind="device.Accessories" placeholder="شارژر، کیف…" />
+                                </div>
+                                <div class="col-md-7">
+                                    <label class="form-label">ایراد اعلامی مشتری</label>
+                                    <textarea class="form-control" rows="2" @bind="device.ProblemDescription"
+                                              placeholder="مثلاً روشن نمی‌شود، صفحه شکسته…"></textarea>
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label">مبلغ برآوردی این دستگاه (ریال)</label>
+                                    <input type="text" class="form-control num" value="@deviceQuoteTexts.ElementAtOrDefault(deviceIndex)"
+                                           @oninput="@(e => UpdateDeviceQuote(deviceIndex, e.Value?.ToString()))"
+                                           inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" placeholder="۰" />
+                                </div>
+                            </div>
+                        </article>
                     }
-                </select>
-            </div>
-            <div class="col-md-4">
-                <label class="form-label">تاریخ ورود (پذیرش)</label>
-                <DatePicker @bind-Value="receivedAt" />
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">ایراد اعلامی مشتری</label>
-                <textarea class="form-control" rows="2" @bind="form.ProblemDescription" placeholder="مثلاً روشن نمی‌شود، صفحه شکسته…"></textarea>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">لوازم همراه</label>
-                <input class="form-control" @bind="form.Accessories" placeholder="شارژر، کیف…" />
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">مبلغ برآوردی (ریال)</label>
-                <input class="form-control num" value="@fQuoted" @oninput="@(e => fQuoted = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" />
-            </div>
-
-            @if (form.Id != 0)
-            {
-                <div class="col-md-4">
-                    <label class="form-label">وضعیت</label>
-                    <select class="form-select" @bind="statusStr">
-                        <option value="0">پذیرش شده</option>
-                        <option value="1">در حال تعمیر</option>
-                        <option value="2">آماده تحویل</option>
-                        <option value="4">انصراف / مرجوع</option>
-                    </select>
                 </div>
-            }
-            <div class="col-12">
-                <label class="form-label">یادداشت</label>
-                <input class="form-control" @bind="form.Note" />
-            </div>
+            </section>
 
-            <div class="col-12">
-                <div class="d-flex align-items-center mb-2">
-                    <h6 class="mb-0"><i class="bi bi-list-check text-primary"></i> کارها و قطعات مصرفی</h6>
-                    <button type="button" class="btn btn-sm btn-outline-primary ms-auto" @onclick="AddItem">
+            <section class="repair-common-card repair-items-section">
+                <div class="d-flex align-items-center mb-2 gap-2">
+                    <div class="repair-section-icon repair-items-icon"><i class="bi bi-list-check"></i></div>
+                    <div>
+                        <h6 class="mb-0">کارها و قطعات مصرفی <span class="text-muted fs-8">(مشترک برای کل پذیرش)</span></h6>
+                        <small class="text-muted">این جدول برای همه دستگاه‌های کارت‌های بالا یکسان است.</small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary me-auto" @onclick="AddItem">
                         <i class="bi bi-plus-lg"></i> ردیف جدید (F2)
                     </button>
                 </div>
@@ -293,7 +615,8 @@
                                 <th style="min-width:200px">قطعه از انبار (اختیاری)</th>
                                 <th style="width:90px">مقدار</th>
                                 <th style="min-width:130px">هزینه داخلی (ریال)</th>
-                                <th style="min-width:130px">دریافتی از مشتری (ریال)</th>
+                                <th style="min-width:150px">قیمت فروش / دریافتی از مشتری (ریال)</th>
+                                <th style="min-width:140px">سود واحد / ردیف (ریال)</th>
                                 <th style="width:50px"></th>
                             </tr>
                         </thead>
@@ -301,15 +624,30 @@
                             @for (var idx = 0; idx < form.Items.Count; idx++)
                             {
                                 var i = idx;
+                                var rowProfit = ItemProfit(i);
                                 <tr>
                                     <td><input class="form-control form-control-sm" @bind="form.Items[i].Description" placeholder="مثلاً تعویض ال‌سی‌دی / سرویس فن" /></td>
                                     <td>
                                         <SearchSelect Items="productLookup" Value="form.Items[i].ProductId ?? 0"
-                                                      ValueChanged="v => OnItemProduct(i, v)" Placeholder="— بدون قطعه —" CssClass="form-select-sm" />
+                                                      ValueChanged="v => OnItemProduct(i, v)"
+                                                      SearchChanged="OnProductSearchChanged" RemoteSearch="true"
+                                                      Placeholder="جستجوی قطعه از انبار…" CssClass="form-select-sm" />
+                                        @if (GetItemProduct(i) is { } selectedProduct)
+                                        {
+                                            <div class="fs-8 text-muted mt-1">
+                                                فروش فعلی: <b class="num">@selectedProduct.SalePrice.Money()</b>
+                                                <span class="mx-1">·</span>
+                                                بهای میانگین: <b class="num">@selectedProduct.AvgCost.Money()</b>
+                                            </div>
+                                        }
                                     </td>
                                     <td><input class="form-control form-control-sm num" value="@itemQty[i]" @oninput="@(e => itemQty[i] = e.Value?.ToString() ?? "1")" inputmode="decimal" dir="ltr" /></td>
-                                    <td><input class="form-control form-control-sm num" value="@itemCost[i]" @oninput="@(e => itemCost[i] = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" /></td>
-                                    <td><input class="form-control form-control-sm num" value="@itemPrice[i]" @oninput="@(e => itemPrice[i] = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" /></td>
+                                    <td><input type="text" class="form-control form-control-sm num" value="@itemCost[i]" @oninput="@(e => itemCost[i] = FormatRialTyping(e.Value?.ToString()))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" /></td>
+                                    <td><input type="text" class="form-control form-control-sm num" value="@itemPrice[i]" @oninput="@(e => itemPrice[i] = FormatRialTyping(e.Value?.ToString()))" inputmode="numeric" pattern="[0-9۰-۹٠-٩,]*" autocomplete="off" data-rial-input="" dir="ltr" /></td>
+                                    <td class="text-start num @(rowProfit >= 0 ? "text-success" : "text-danger")">
+                                        <div class="fw-700">@rowProfit.Money()</div>
+                                        <small class="d-block text-muted">هر واحد: @ItemUnitProfit(i).Money()</small>
+                                    </td>
                                     <td class="text-center">
                                         <button type="button" class="btn btn-sm btn-light" @onclick="() => RemoveItem(i)"><i class="bi bi-x-lg text-danger"></i></button>
                                     </td>
@@ -323,7 +661,7 @@
                     <div>جمع دریافتی: <b class="num text-primary">@SumPrice().Money()</b></div>
                     <div>سود: <b class="num @(SumPrice() - SumCost() >= 0 ? "text-success" : "text-danger")">@((SumPrice() - SumCost()).Money())</b></div>
                 </div>
-            </div>
+            </section>
         </div>
     </ChildContent>
     <Footer>
@@ -340,42 +678,82 @@
     <ChildContent>
         @if (viewing is not null)
         {
-            <div class="d-flex flex-wrap gap-3 mb-3">
-                <div class="flex-grow-1"><div class="fs-8 text-muted">دستگاه</div><div class="fw-500">@viewing.DeviceType @viewing.DeviceModel</div></div>
-                <div class="flex-grow-1"><div class="fs-8 text-muted">سریال</div><div class="fw-500 num">@(viewing.SerialNumber ?? "—")</div></div>
-                <div class="flex-grow-1"><div class="fs-8 text-muted">مشتری</div>
-                    <div class="fw-500">@viewing.PartyName</div>
+            var viewDevices = DevicesFor(viewing);
+            <div class="repair-view-shared mb-3">
+                <div class="repair-view-shared-item">
+                    <div class="fs-8 text-muted">مشتری</div>
+                    <div class="fw-700">@viewing.PartyName</div>
                     @if (!string.IsNullOrWhiteSpace(PartyTel(viewing)))
                     {
                         <div class="fs-8 text-muted num" dir="ltr"><i class="bi bi-telephone"></i> @PartyTel(viewing)</div>
                     }
                 </div>
-                <div class="flex-grow-1"><div class="fs-8 text-muted">تعمیرکار</div>
-                    <div class="fw-500">@(viewing.TechnicianName ?? "—")</div>
+                <div class="repair-view-shared-item">
+                    <div class="fs-8 text-muted">تعمیرکار</div>
+                    <div class="fw-700">@(viewing.TechnicianName ?? "—")</div>
                     @if (!string.IsNullOrWhiteSpace(viewing.TechnicianPhone))
                     {
                         <div class="fs-8 text-muted num" dir="ltr"><i class="bi bi-telephone"></i> @viewing.TechnicianPhone</div>
                     }
                 </div>
-            </div>
-            <div class="d-flex flex-wrap gap-3 mb-3">
-                <div class="flex-grow-1"><div class="fs-8 text-muted">ورود به مجموعه</div><div class="fw-500 num">@viewing.ReceivedAt.ToFaDateTime()</div></div>
-                <div class="flex-grow-1"><div class="fs-8 text-muted">خروج از مجموعه</div><div class="fw-500 num">@(viewing.DeliveredAt.HasValue ? viewing.DeliveredAt.Value.ToFaDateTime() : "هنوز در مجموعه است")</div></div>
-                <div class="flex-grow-1"><div class="fs-8 text-muted">وضعیت</div><div>@StatusBadge(viewing)</div></div>
+                <div class="repair-view-shared-item"><div class="fs-8 text-muted">ورود به مجموعه</div><div class="fw-500 num">@viewing.ReceivedAt.ToFaDateTime()</div></div>
+                <div class="repair-view-shared-item"><div class="fs-8 text-muted">خروج از مجموعه</div><div class="fw-500 num">@(viewing.DeliveredAt.HasValue ? viewing.DeliveredAt.Value.ToFaDateTime() : "هنوز در مجموعه است")</div></div>
+                <div class="repair-view-shared-item"><div class="fs-8 text-muted">وضعیت</div><div>@StatusBadge(viewing)</div></div>
                 @if (!string.IsNullOrWhiteSpace(viewing.InvoiceNumber))
                 {
-                    <div class="flex-grow-1"><div class="fs-8 text-muted">فاکتور فروش</div><div class="fw-700 text-primary doc-number">@viewing.InvoiceNumber</div></div>
+                    <div class="repair-view-shared-item"><div class="fs-8 text-muted">فاکتور فروش</div><div class="fw-700 text-primary doc-number">@viewing.InvoiceNumber</div></div>
                 }
             </div>
-            @if (!string.IsNullOrWhiteSpace(viewing.ProblemDescription))
+            @if (viewing.InvoiceTransactionId is > 0)
             {
-                <div class="mb-2 fs-8"><span class="text-muted">ایراد اعلامی:</span> @viewing.ProblemDescription</div>
-            }
-            @if (!string.IsNullOrWhiteSpace(viewing.Accessories))
-            {
-                <div class="mb-3 fs-8"><span class="text-muted">لوازم همراه:</span> @viewing.Accessories</div>
+                <div class="d-flex justify-content-end mb-3">
+                    <button class="btn btn-sm btn-outline-success" @onclick="() => PrintInvoice(viewing!)">
+                        <i class="bi bi-printer"></i> چاپ فاکتور
+                    </button>
+                </div>
             }
 
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <h6 class="mb-0">دستگاه‌های پذیرش‌شده</h6>
+                <span class="badge badge-soft-primary">@viewDevices.Count دستگاه</span>
+            </div>
+            <div class="repair-view-devices mb-3">
+                @for (var idx = 0; idx < viewDevices.Count; idx++)
+                {
+                    var deviceIndex = idx;
+                    var device = viewDevices[deviceIndex];
+                    <article class="repair-view-device-card" @key="device.Id">
+                        <div class="repair-view-device-head">
+                            <span class="repair-device-number">@(deviceIndex + 1)</span>
+                            <div class="flex-grow-1 min-w-0">
+                                <div class="fw-700">@DeviceLabel(device)</div>
+                                <div class="fs-8 text-muted">سریال: <span class="num">@(string.IsNullOrWhiteSpace(device.SerialNumber) ? "—" : device.SerialNumber)</span></div>
+                            </div>
+                            <div class="text-start">
+                                <div class="fs-8 text-muted">برآورد</div>
+                                <div class="num fw-800 text-primary">@device.QuotedPrice.Money()</div>
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(device.ProblemDescription))
+                        {
+                            <div class="repair-view-detail"><span>ایراد اعلامی</span><b>@device.ProblemDescription</b></div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(device.Accessories))
+                        {
+                            <div class="repair-view-detail"><span>لوازم همراه</span><b>@device.Accessories</b></div>
+                        }
+                    </article>
+                }
+            </div>
+            @if (!string.IsNullOrWhiteSpace(viewing.Note))
+            {
+                <div class="alert alert-light py-2 mb-3"><span class="text-muted">یادداشت پذیرش:</span> @viewing.Note</div>
+            }
+
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <h6 class="mb-0">کارها و قطعات مصرفی</h6>
+                <span class="fs-8 text-muted">مشترک برای کل پذیرش</span>
+            </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead>
@@ -425,6 +803,16 @@
                 <i class="bi bi-info-circle"></i>
                 با صدور فاکتور، سند فروش رسمی ساخته می‌شود؛ قطعات مصرفی از موجودی انبار کسر و سود در گزارش‌ها لحاظ می‌شود.
                 ردیف‌های کاری (بدون قطعه) به‌عنوان «اجرت تعمیرات» (خدمات) در فاکتور می‌آیند. وضعیت پذیرش «تحویل شده» و تاریخ خروج ثبت می‌شود.
+            </div>
+            <div class="border rounded p-2 mb-3 bg-light">
+                <div class="fs-8 text-muted mb-1">دستگاه‌های مشمول پذیرش (@DeviceCount(invoicing) دستگاه)</div>
+                @foreach (var device in DevicesFor(invoicing))
+                {
+                    <div class="d-flex justify-content-between gap-2 fs-8">
+                        <span>@DeviceLabel(device)</span>
+                        <span class="text-nowrap">برآورد: @device.QuotedPrice.Money() ریال</span>
+                    </div>
+                }
             </div>
             <div class="mb-3">
                 <label class="form-label">انبار برداشت قطعات</label>
@@ -531,9 +919,20 @@
     private List<Technician> technicians = new();
     private List<LookupItem> customerLookup = new();
     private List<LookupItem> productLookup = new();
+    private List<Product> productSearchResults = new();
+    private readonly Dictionary<int, Product> selectedProducts = new();
+    private List<Product?> itemProducts = new();
+    private bool hasProductSearchResults;
+    private string lastProductSearch = "";
+    private System.Threading.CancellationTokenSource? productSearchCts;
     private List<Warehouse> warehouses = new();
 
     private bool loading = true, saving, showForm, showTechs;
+    private bool showRepairReports, reportLoading;
+    private OperationsDashboardDto? repairReport;
+    private DateTime? reportFrom = DateTime.Today.AddDays(-30);
+    private DateTime? reportTo = DateTime.Today;
+    private string companyName = "فروغ آریا";
     private string search = "";
     private RepairStatus? statusFilter;
     private int techFilter;
@@ -545,8 +944,12 @@
     private RepairOrderDto? viewing, invoicing;
     private Technician techForm = new();
     private DateTime? receivedAt;
-    private string techIdStr = "0", statusStr = "0", fQuoted = "", invWarehouseStr = "1";
+    private string techIdStr = "0", statusStr = "0", invWarehouseStr = "1";
+    private List<string> deviceQuoteTexts = new();
     private List<string> itemQty = new(), itemCost = new(), itemPrice = new();
+    private ElementReference repairFormRoot;
+    private bool repairFormFocusPending;
+    private int? pendingDeviceFocusIndex;
 
     protected override async Task OnInitializedAsync()
     {
@@ -555,17 +958,198 @@
         await Load();
     }
 
+    private async Task ToggleRepairReports()
+    {
+        showRepairReports = !showRepairReports;
+        if (showRepairReports && repairReport is null)
+            await LoadRepairReport();
+    }
+
+    private async Task LoadRepairReport()
+    {
+        reportLoading = true;
+        repairReport = null;
+        try
+        {
+            repairReport = await DashboardSvc.GetOperationsDashboardAsync(reportFrom, reportTo);
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+        finally
+        {
+            reportLoading = false;
+        }
+    }
+
+    private string RepairReportBar(decimal value, decimal max)
+    {
+        var pct = max <= 0m ? 0d : Math.Clamp((double)(value / max) * 100d, 0d, 100d);
+        return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!showForm) return;
+
+        if (repairFormFocusPending)
+        {
+            repairFormFocusPending = false;
+            try
+            {
+                await JS.InvokeVoidAsync("repairFormKeyboard.attach", repairFormRoot, pendingDeviceFocusIndex is null);
+            }
+            catch (JSException) { /* مودال ممکن است هم‌زمان بسته شده باشد */ }
+        }
+
+        if (pendingDeviceFocusIndex is int deviceIndex)
+        {
+            pendingDeviceFocusIndex = null;
+            try { await JS.InvokeVoidAsync("repairFormKeyboard.focusDeviceType", repairFormRoot, deviceIndex); }
+            catch (JSException) { }
+        }
+    }
+
     private async Task LoadLookupsAsync()
     {
         try
         {
             technicians = await RepairSvc.GetTechniciansAsync();
             customerLookup = await PartySvc.GetLookupsAsync(PartyType.Customer, activeOnly: true);
-            productLookup = await ProductSvc.GetLookupsAsync();
             warehouses = await WarehouseSvc.GetAllAsync();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+
+        try
+        {
+            var settings = await SettingsSvc.GetAsync();
+            if (!string.IsNullOrWhiteSpace(settings?.ItCompanyName)) companyName = settings.ItCompanyName!;
+        }
+        catch { /* نام سربرگ اختیاری است */ }
     }
+
+    private async Task OnProductSearchChanged(string query)
+    {
+        var normalizedQuery = string.IsNullOrWhiteSpace(query) ? "" : query.Trim();
+        if (hasProductSearchResults && string.Equals(normalizedQuery, lastProductSearch, StringComparison.OrdinalIgnoreCase))
+            return;
+        productSearchCts?.Cancel();
+        productSearchResults.Clear();
+        hasProductSearchResults = false;
+        lastProductSearch = "";
+        RebuildProductLookup();
+        var cts = new System.Threading.CancellationTokenSource();
+        productSearchCts = cts;
+        await SearchProductsAsync(query, cts);
+    }
+
+    private async Task SearchProductsAsync(string query, System.Threading.CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(300, cts.Token);
+            // جستجو و صفحه‌بندی در API است؛ حداکثر ۲۰ کالا به انتخابگر می‌رسد.
+            var searchTerm = string.IsNullOrWhiteSpace(query) ? "" : query.Trim();
+            var result = await ProductSvc.GetProductsAsync(
+                string.IsNullOrEmpty(searchTerm) ? null : searchTerm,
+                page: 1,
+                pageSize: 20);
+            if (cts.IsCancellationRequested) return;
+
+            productSearchResults = result.Items;
+            lastProductSearch = searchTerm;
+            hasProductSearchResults = true;
+            RebuildProductLookup();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (!cts.IsCancellationRequested)
+            {
+                productSearchResults.Clear();
+                RebuildProductLookup();
+                await InvokeAsync(() => Toast.Error(ex.Message));
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(productSearchCts, cts)) productSearchCts = null;
+            cts.Dispose();
+        }
+    }
+
+    private void ResetProductOptions()
+    {
+        var pendingSearch = productSearchCts;
+        productSearchCts = null;
+        pendingSearch?.Cancel();
+        productSearchResults.Clear();
+        selectedProducts.Clear();
+        productLookup.Clear();
+        hasProductSearchResults = false;
+        lastProductSearch = "";
+        itemProducts.Clear();
+    }
+
+    private async Task LoadSelectedProductsAsync()
+    {
+        productSearchResults.Clear();
+        selectedProducts.Clear();
+        itemProducts = Enumerable.Repeat<Product?>(null, form.Items.Count).ToList();
+        var ids = form.Items.Where(i => i.ProductId is > 0).Select(i => i.ProductId!.Value).Distinct().ToList();
+        var tasks = ids.Select(async id =>
+        {
+            try { return await ProductSvc.GetByIdAsync(id); }
+            catch { return null; }
+        });
+        foreach (var product in await Task.WhenAll(tasks))
+            if (product is not null) selectedProducts[product.Id] = product;
+
+        for (var i = 0; i < form.Items.Count; i++)
+            if (form.Items[i].ProductId is > 0 && selectedProducts.TryGetValue(form.Items[i].ProductId!.Value, out var product))
+                itemProducts[i] = product;
+
+        RebuildProductLookup();
+    }
+
+    private void RebuildProductLookup()
+    {
+        var products = selectedProducts.Values.Concat(productSearchResults)
+            .GroupBy(p => p.Id)
+            .Select(g => g.Last())
+            .OrderBy(p => p.Name)
+            .ToList();
+        productLookup = products.Select(ToProductLookup).ToList();
+        var optionIds = productLookup.Select(x => x.Id).ToHashSet();
+
+        // اگر کالای قدیمی دیگر در کاتالوگ نباشد، نام ذخیره‌شده‌اش همچنان در فرم قابل مشاهده بماند.
+        foreach (var item in form.Items.Where(i => i.ProductId is > 0))
+        {
+            var id = item.ProductId!.Value;
+            if (optionIds.Add(id))
+                productLookup.Add(new LookupItem { Id = id, Name = item.ProductName ?? $"کالا {id}" });
+        }
+    }
+
+    private static LookupItem ToProductLookup(Product product)
+        => new()
+        {
+            Id = product.Id,
+            Name = string.IsNullOrWhiteSpace(product.Code) ? product.Name : $"{product.Code} — {product.Name}",
+            InfoText = $"فروش {product.SalePrice.Money()} ریال · بهای میانگین {product.AvgCost.Money()} ریال"
+        };
+
+    private void PruneSelectedProducts()
+    {
+        var selectedIds = form.Items.Where(i => i.ProductId is > 0).Select(i => i.ProductId!.Value).ToHashSet();
+        foreach (var id in selectedProducts.Keys.Where(id => !selectedIds.Contains(id)).ToList())
+            selectedProducts.Remove(id);
+    }
+
+    private Product? GetItemProduct(int index)
+        => index >= 0 && index < itemProducts.Count ? itemProducts[index] : null;
 
     private async Task Load()
     {
@@ -575,7 +1159,8 @@
             var res = await RepairSvc.GetRepairsAsync(search, statusFilter, techFilter, page, PageSize);
             items = res.Items;
             total = res.TotalCount;
-            pageCount = Math.Max(1, (int)Math.Ceiling(total / (double)PageSize));
+            page = Math.Max(1, res.Page);
+            pageCount = Math.Max(1, res.PageCount);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
@@ -621,6 +1206,41 @@
          : !string.IsNullOrWhiteSpace(r.PartyPhone) ? r.PartyPhone!
          : "";
 
+    private static List<RepairDeviceDto> DevicesFor(RepairOrderDto r)
+    {
+        if (r.Devices is { Count: > 0 }) return r.Devices;
+        return new List<RepairDeviceDto>
+        {
+            new()
+            {
+                DeviceType = r.DeviceType,
+                DeviceModel = r.DeviceModel,
+                SerialNumber = r.SerialNumber,
+                ProblemDescription = r.ProblemDescription,
+                Accessories = r.Accessories,
+                QuotedPrice = r.QuotedPrice
+            }
+        };
+    }
+
+    private static int DeviceCount(RepairOrderDto r) => DevicesFor(r).Count;
+    private static string DeviceTypesId(int index) => $"deviceTypes-{index}";
+    private static string PrimaryDeviceType(RepairOrderDto r) => DevicesFor(r)[0].DeviceType;
+
+    private static string DeviceLabel(RepairDeviceDto d)
+        => string.IsNullOrWhiteSpace(d.DeviceModel)
+            ? (string.IsNullOrWhiteSpace(d.DeviceType) ? "دستگاه" : d.DeviceType)
+            : $"{d.DeviceType} {d.DeviceModel}";
+
+    private static string DeviceSummary(RepairOrderDto r)
+    {
+        var devices = DevicesFor(r);
+        var labels = devices.Select(DeviceLabel).ToList();
+        return labels.Count <= 2
+            ? string.Join("، ", labels)
+            : $"{labels[0]} و {labels.Count - 1} دستگاه دیگر";
+    }
+
     private static string DeviceIcon(string deviceType) => deviceType switch
     {
         var d when d.Contains("لپ") => "bi-laptop",
@@ -646,11 +1266,19 @@
 
     private void OpenNew()
     {
-        form = new RepairOrderDto { ReceivedAt = DateTime.Now };
+        ResetProductOptions();
+        form = new RepairOrderDto
+        {
+            ReceivedAt = DateTime.Now,
+            Devices = new List<RepairDeviceDto> { new() }
+        };
         receivedAt = DateTime.Now;
-        techIdStr = "0"; statusStr = "0"; fQuoted = "";
+        techIdStr = "0"; statusStr = "0";
+        deviceQuoteTexts = new List<string> { "" };
         itemQty = new(); itemCost = new(); itemPrice = new();
         AddItem();
+        pendingDeviceFocusIndex = null;
+        repairFormFocusPending = true;
         showForm = true;
     }
 
@@ -658,38 +1286,153 @@
     {
         try
         {
+            ResetProductOptions();
             form = await RepairSvc.GetRepairAsync(r.Id);
+            EnsureFormDevices();
             receivedAt = form.ReceivedAt;
             techIdStr = (form.TechnicianId ?? 0).ToString();
             statusStr = ((int)form.Status).ToString();
-            fQuoted = form.QuotedPrice > 0 ? Fa.FormatTyping(form.QuotedPrice.ToString("0")) : "";
+            deviceQuoteTexts = form.Devices
+                .Select(d => d.QuotedPrice > 0 ? FormatRialTyping(d.QuotedPrice.ToString("0")) : "")
+                .ToList();
             itemQty = form.Items.Select(i => i.Quantity.ToString("0.###")).ToList();
-            itemCost = form.Items.Select(i => i.Cost > 0 ? Fa.FormatTyping(i.Cost.ToString("0")) : "").ToList();
-            itemPrice = form.Items.Select(i => i.Price > 0 ? Fa.FormatTyping(i.Price.ToString("0")) : "").ToList();
+            itemCost = form.Items.Select(i => i.Cost > 0 ? FormatRialTyping(i.Cost.ToString("0")) : "").ToList();
+            itemPrice = form.Items.Select(i => i.Price > 0 ? FormatRialTyping(i.Price.ToString("0")) : "").ToList();
+            await LoadSelectedProductsAsync();
+            pendingDeviceFocusIndex = null;
+            repairFormFocusPending = true;
             showForm = true;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private void CloseForm() => showForm = false;
+    private void EnsureFormDevices()
+    {
+        form.Devices ??= new List<RepairDeviceDto>();
+        if (form.Devices.Count == 0)
+        {
+            form.Devices.Add(new RepairDeviceDto
+            {
+                DeviceType = form.DeviceType,
+                DeviceModel = form.DeviceModel,
+                SerialNumber = form.SerialNumber,
+                ProblemDescription = form.ProblemDescription,
+                Accessories = form.Accessories,
+                QuotedPrice = form.QuotedPrice
+            });
+        }
+    }
+
+    private async Task CloseForm()
+    {
+        showForm = false;
+        repairFormFocusPending = false;
+        pendingDeviceFocusIndex = null;
+        var pendingSearch = productSearchCts;
+        productSearchCts = null;
+        pendingSearch?.Cancel();
+        try { await JS.InvokeVoidAsync("repairFormKeyboard.detach", repairFormRoot); }
+        catch (JSException) { }
+    }
+
+    private void AddDevice()
+    {
+        EnsureFormDevices();
+        form.Devices.Add(new RepairDeviceDto());
+        deviceQuoteTexts.Add("");
+        pendingDeviceFocusIndex = form.Devices.Count - 1;
+    }
+
+    private void RemoveDevice(int i)
+    {
+        if (form.Devices.Count <= 1 || i < 0 || i >= form.Devices.Count) return;
+        form.Devices.RemoveAt(i);
+        if (i < deviceQuoteTexts.Count) deviceQuoteTexts.RemoveAt(i);
+    }
+
+    private void UpdateDeviceQuote(int i, string? value)
+    {
+        if (i < 0 || i >= deviceQuoteTexts.Count) return;
+        deviceQuoteTexts[i] = FormatRialTyping(value);
+    }
+
+    private static string FormatRialTyping(string? value)
+    {
+        // مبالغ ریالی عدد صحیح هستند: ارقام فارسی/عربی پذیرفته می‌شوند و هر حرف/نشانه‌ای حذف می‌شود.
+        var digits = new string(Fa.ToEn(value).Where(char.IsDigit).ToArray());
+        return Fa.FormatTyping(digits);
+    }
 
     private void AddItem()
     {
         form.Items.Add(new RepairItemDto { Quantity = 1 });
         itemQty.Add("1"); itemCost.Add(""); itemPrice.Add("");
+        itemProducts.Add(null);
     }
 
     private void RemoveItem(int i)
     {
         form.Items.RemoveAt(i);
         itemQty.RemoveAt(i); itemCost.RemoveAt(i); itemPrice.RemoveAt(i);
+        if (i < itemProducts.Count) itemProducts.RemoveAt(i);
+        PruneSelectedProducts();
+        RebuildProductLookup();
     }
 
-    private void OnItemProduct(int i, int productId)
+    private async Task OnItemProduct(int i, int productId)
     {
-        form.Items[i].ProductId = productId > 0 ? productId : null;
-        if (productId > 0 && string.IsNullOrWhiteSpace(form.Items[i].Description))
-            form.Items[i].Description = productLookup.FirstOrDefault(p => p.Id == productId)?.Name ?? "";
+        if (i < 0 || i >= form.Items.Count) return;
+        if (productId <= 0)
+        {
+            form.Items[i].ProductId = null;
+            form.Items[i].ProductName = null;
+            if (i < itemProducts.Count) itemProducts[i] = null;
+            PruneSelectedProducts();
+            RebuildProductLookup();
+            return;
+        }
+
+        try
+        {
+            var product = productSearchResults.FirstOrDefault(p => p.Id == productId);
+            if (product is null && !selectedProducts.TryGetValue(productId, out product))
+                product = await ProductSvc.GetByIdAsync(productId);
+            if (product is null)
+            {
+                Toast.Error("اطلاعات کالای انتخاب‌شده دریافت نشد.");
+                return;
+            }
+
+            while (itemProducts.Count < form.Items.Count) itemProducts.Add(null);
+            var oldProductName = GetItemProduct(i)?.Name ?? form.Items[i].ProductName;
+            var repairItem = form.Items[i];
+            repairItem.ProductId = product.Id;
+            repairItem.ProductName = product.Name;
+            if (string.IsNullOrWhiteSpace(repairItem.Description) ||
+                (!string.IsNullOrWhiteSpace(oldProductName) && string.Equals(repairItem.Description, oldProductName, StringComparison.Ordinal)))
+                repairItem.Description = product.Name;
+
+            itemProducts[i] = product;
+            selectedProducts[product.Id] = product;
+            itemCost[i] = FormatRialTyping(product.AvgCost.ToString("0"));
+            itemPrice[i] = FormatRialTyping(product.SalePrice.ToString("0"));
+            PruneSelectedProducts();
+            RebuildProductLookup();
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private decimal ItemUnitProfit(int i)
+    {
+        var cost = Fa.ParseDecimal(itemCost.ElementAtOrDefault(i) ?? "");
+        var price = Fa.ParseDecimal(itemPrice.ElementAtOrDefault(i) ?? "");
+        return decimal.Round(price - cost, 2);
+    }
+
+    private decimal ItemProfit(int i)
+    {
+        var quantity = Fa.ParseDecimal(itemQty.ElementAtOrDefault(i) ?? "1");
+        return decimal.Round(ItemUnitProfit(i) * quantity, 2);
     }
 
     private decimal SumCost()
@@ -711,11 +1454,27 @@
     private async Task Save()
     {
         if (form.PartyId <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
-        if (string.IsNullOrWhiteSpace(form.DeviceType)) { Toast.Error("نوع دستگاه را وارد کنید."); return; }
+        EnsureFormDevices();
+        if (form.Devices.Count == 0) { Toast.Error("حداقل یک دستگاه اضافه کنید."); return; }
+        for (var i = 0; i < form.Devices.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(form.Devices[i].DeviceType))
+            {
+                Toast.Error($"نوع دستگاه کارت شمارهٔ {i + 1} را وارد کنید.");
+                return;
+            }
+            form.Devices[i].QuotedPrice = Fa.ParseDecimal(deviceQuoteTexts.ElementAtOrDefault(i) ?? "");
+        }
 
         form.TechnicianId = int.TryParse(techIdStr, out var tid) && tid > 0 ? tid : null;
         form.Status = (RepairStatus)int.Parse(statusStr);
-        form.QuotedPrice = Fa.ParseDecimal(fQuoted);
+        var primaryDevice = form.Devices[0];
+        form.DeviceType = primaryDevice.DeviceType;
+        form.DeviceModel = primaryDevice.DeviceModel;
+        form.SerialNumber = primaryDevice.SerialNumber;
+        form.ProblemDescription = primaryDevice.ProblemDescription;
+        form.Accessories = primaryDevice.Accessories;
+        form.QuotedPrice = form.Devices.Sum(d => d.QuotedPrice);
         form.ReceivedAt = receivedAt ?? DateTime.Now;
 
         for (var i = 0; i < form.Items.Count; i++)
@@ -731,7 +1490,7 @@
         {
             await RepairSvc.SaveRepairAsync(form);
             Toast.Success(form.Id == 0 ? "پذیرش ثبت شد." : "پذیرش ویرایش شد.");
-            showForm = false;
+            await CloseForm();
             await LoadLookupsAsync();
             await Load();
         }
@@ -783,6 +1542,30 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { saving = false; }
+    }
+
+    private async Task PrintInvoice(RepairOrderDto repairSummary)
+    {
+        try
+        {
+            var repair = await RepairSvc.GetRepairAsync(repairSummary.Id);
+            if (repair.InvoiceTransactionId is not int transactionId || transactionId <= 0)
+            {
+                Toast.Error("برای این پذیرش هنوز فاکتور فروش صادر نشده است.");
+                return;
+            }
+
+            var invoice = await OrderSvc.GetAsync(transactionId);
+            if (invoice is null)
+            {
+                Toast.Error("فاکتور فروش پیوندخورده پیدا نشد.");
+                return;
+            }
+
+            var opened = await JS.InvokeAsync<bool>("giPrint", RepairInvoicePrint.Build(repair, invoice, companyName));
+            if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
     // ---------------- تعریف سریع مشتری ----------------

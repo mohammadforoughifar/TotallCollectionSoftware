@@ -10,6 +10,9 @@ public class TransactionLine
     public decimal Quantity { get; set; }
     public decimal Price { get; set; }
 
+    /// <summary>بهای تمام‌شدهٔ قطعیِ واحد برای سطرهایی مثل فاکتور تعمیر؛ برای فروش عادی خالی می‌ماند.</summary>
+    public decimal? UnitCostSnapshot { get; set; }
+
     [MaxLength(300)]
     public string? Description { get; set; }
 }
