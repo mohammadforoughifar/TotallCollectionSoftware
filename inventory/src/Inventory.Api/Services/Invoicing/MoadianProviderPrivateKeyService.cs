@@ -19,7 +19,7 @@ public interface IMoadianProviderPrivateKeyService
 
 /// <summary>
 /// Stores a single PKCS#8 PEM-encoded private key with a .key extension per ConnectInfo outside web root.
-/// هر خدمات‌دهنده پوشهٔ خودش را دارد: {root}/{نام خدمات‌دهنده}/moadian-p{providerId}-c{connectionId}-{guid}.key
+/// کلید هر اتصال مستقیم در مسیر روتِ ذخیره‌گاه نگهداری می‌شود: {root}/moadian-c{connectionId}-{guid}.key
 /// SQL contains only the server path; PEM bytes are not returned by any API and never logged.
 /// </summary>
 public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKeyService
@@ -102,8 +102,6 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
             .SingleOrDefaultAsync(x => x.Id == connection.ServiceProviderId && !x.IsDeleted, cancellationToken)
             ?? throw new InvalidOperationException("برای بارگذاری کلید، خدمات‌دهنده باید فعال باشد.");
 
-        var providerTitle = provider.PersianName ?? provider.EnglishName ?? provider.NationalID;
-        var providerDirectory = ResolveProviderDirectory(provider.Id, providerTitle);
         var pemBytes = await ReadAndValidatePemAsync(file, cancellationToken);
         var oldPath = connection.PrivateKeyPath;
         var tempPath = "";
@@ -111,22 +109,20 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
 
         try
         {
+            // کلید خصوصی مستقیم در مسیر روتِ ذخیره‌گاه خصوصی نگهداری می‌شود (بدون پوشهٔ زیر برای خدمات‌دهنده).
             var privateDirectoryMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
             if (OperatingSystem.IsWindows())
             {
                 Directory.CreateDirectory(_root);
-                Directory.CreateDirectory(providerDirectory);
             }
             else
             {
                 Directory.CreateDirectory(_root, privateDirectoryMode);
-                Directory.CreateDirectory(providerDirectory, privateDirectoryMode);
             }
             RestrictUnixPermissions(_root, privateDirectoryMode);
-            RestrictUnixPermissions(providerDirectory, privateDirectoryMode);
 
-            var fileId = $"moadian-p{provider.Id}-c{connection.Id}-{Guid.NewGuid():N}.key";
-            newPath = Path.Combine(providerDirectory, fileId);
+            var fileId = $"moadian-c{connection.Id}-{Guid.NewGuid():N}.key";
+            newPath = Path.Combine(_root, fileId);
             if (newPath.Length > 2048)
                 throw new InvalidOperationException("مسیر ذخیره‌گاه PEM از حد مجاز پایگاه‌داده بلندتر است.");
             tempPath = newPath + ".tmp";
@@ -279,7 +275,11 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
             var fileName = Path.GetFileName(fullPath);
             var directory = Path.GetDirectoryName(fullPath);
 
-            // چیدمان جاری: <root>/<پوشهٔ خدمات‌دهنده>/moadian-p{providerId}-c{connectionId}-{guid}.key
+            // چیدمان جاری: <root>/moadian-c{connectionId}-{guid}.key (مستقیم در مسیر روت)
+            if (fileName.StartsWith($"moadian-c{connectionId}-", StringComparison.Ordinal))
+                return directory?.Equals(_root, PathComparison) == true;
+
+            // چیدمان قبلی: <root>/<پوشهٔ خدمات‌دهنده>/moadian-p{providerId}-c{connectionId}-{guid}.key
             const string providerFileMarker = "moadian-p";
             if (fileName.StartsWith(providerFileMarker, StringComparison.Ordinal))
             {
@@ -293,7 +293,7 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
                        && Path.GetDirectoryName(directory)?.Equals(_root, PathComparison) == true;
             }
 
-            // چیدمان قبلی: <root>/moadian-{connectionId}-{guid}.key (برای پاک‌سازی فایل‌های قدیمی)
+            // چیدمان قدیمی: <root>/moadian-{connectionId}-{guid}.key (برای پاک‌سازی فایل‌های قدیمی)
             return directory?.Equals(_root, PathComparison) == true
                    && fileName.StartsWith($"moadian-{connectionId}-", StringComparison.Ordinal);
         }
@@ -301,82 +301,6 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
         {
             return false;
         }
-    }
-
-    /// <summary>
-    /// پوشهٔ ذخیره‌سازی کلید هر خدمات‌دهنده با نام همان خدمات‌دهنده ساخته می‌شود و در صورت
-    /// تکراری بودن نام، شناسهٔ خدمات‌دهنده به نام پوشه افزوده می‌شود تا کلیدها قاطی نشوند.
-    /// </summary>
-    private string ResolveProviderDirectory(int providerId, string? providerTitle)
-    {
-        var folderName = ProviderFolderName(providerTitle);
-        if (folderName.Length == 0) return Path.Combine(_root, $"provider-{providerId}");
-
-        var candidate = Path.Combine(_root, folderName);
-        if (!Directory.Exists(candidate)) return candidate;
-
-        return DirectoryBelongsToProvider(candidate, providerId)
-            ? candidate
-            : Path.Combine(_root, $"{folderName}-{providerId}");
-    }
-
-    private static bool DirectoryBelongsToProvider(string directory, int providerId)
-    {
-        try
-        {
-            var files = Directory.EnumerateFiles(directory, "moadian-p*").ToList();
-            if (files.Count == 0) return true; // پوشهٔ تازه‌ساخته‌شده یا خالی
-
-            foreach (var file in files)
-            {
-                var name = Path.GetFileName(file);
-                var remaining = name.AsSpan("moadian-p".Length);
-                var separatorIndex = remaining.IndexOf('-');
-                if (separatorIndex <= 0) continue;
-                if (!IsAllDigits(remaining[..separatorIndex])) continue;
-                if (int.TryParse(remaining[..separatorIndex], out var ownerId) && ownerId == providerId)
-                    return true;
-            }
-
-            return false; // نام پوشه متعلق به خدمات‌دهندهٔ دیگری است
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// نام پوشه را از نام خدمات‌دهنده می‌سازد؛ حروف فارسی (و نیم‌فاصله) و ارقام حفظ می‌شوند و
-    /// فقط نویسه‌های غیرمجاز نام فایل حذف و فاصله‌های تکراری یکی می‌شوند.
-    /// </summary>
-    private static string ProviderFolderName(string? providerTitle)
-    {
-        if (string.IsNullOrWhiteSpace(providerTitle)) return "";
-
-        // نویسه‌های غیرمجاز ویندوز همیشه حذف می‌شوند تا پوشه در هر سیستم‌عاملی قابل انتقال باشد.
-        var invalid = new HashSet<char>(Path.GetInvalidFileNameChars());
-        foreach (var ch in "<>:\"/\\|?*") invalid.Add(ch);
-
-        var builder = new StringBuilder();
-        var lastWasSpace = false;
-        foreach (var ch in providerTitle.Trim())
-        {
-            if (char.IsControl(ch) || invalid.Contains(ch)) continue;
-            if (char.IsWhiteSpace(ch))
-            {
-                if (builder.Length == 0 || lastWasSpace) continue;
-                builder.Append(' ');
-                lastWasSpace = true;
-                continue;
-            }
-
-            builder.Append(ch);
-            lastWasSpace = false;
-        }
-
-        var name = builder.ToString().Trim(' ', '.');
-        return name.Length > 60 ? name[..60].Trim(' ', '.') : name;
     }
 
     private static bool IsAllDigits(ReadOnlySpan<char> value)

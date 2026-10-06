@@ -13,7 +13,7 @@ public class MoadianServiceProviderProfileDto
     public bool IsDeleted { get; set; }
 }
 
-/// <summary>ConnectInfo: one non-secret connection version for a service provider.</summary>
+/// <summary>ConnectInfo: the non-secret connection record of a service provider (one per provider).</summary>
 public class MoadianProviderConnectionProfileDto
 {
     public int Id { get; set; }

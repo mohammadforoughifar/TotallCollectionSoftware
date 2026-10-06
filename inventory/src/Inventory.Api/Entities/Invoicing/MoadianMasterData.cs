@@ -17,13 +17,16 @@ public class MoadianServiceProviderProfile
     [MaxLength(50)] public string? PostalCode { get; set; }
     public bool IsDeleted { get; set; }
 
+    /// <summary>
+    /// اتصال واحد این خدمات‌دهنده به سامانه مودیان (هر خدمات‌دهنده حداکثر یک رکورد اتصال دارد).
+    /// </summary>
     public ICollection<MoadianProviderConnectionProfile> Connections { get; set; } = new List<MoadianProviderConnectionProfile>();
 }
 
 /// <summary>
-/// Non-secret metadata for one ConnectInfo version. A provider may retain inactive
-/// history but has at most one active version. The database stores only a server-side
-/// path to a protected PKCS#8 PEM file; PEM bytes and certificate paths are never stored here.
+/// Non-secret metadata for a provider's single Moadian connection. The database stores
+/// only a server-side path to a protected PKCS#8 PEM file kept at the root of the private
+/// key store; PEM bytes and certificate paths are never stored here.
 /// </summary>
 public class MoadianProviderConnectionProfile
 {

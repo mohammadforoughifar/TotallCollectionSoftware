@@ -20,6 +20,7 @@ public interface IMoadianMasterDataService
 
     Task<List<MoadianProviderConnectionProfileDto>> GetConnectionsAsync(int? serviceProviderId = null);
     Task<MoadianProviderConnectionProfileDto> CreateConnectionAsync(MoadianProviderConnectionProfileDto dto);
+    Task<MoadianProviderConnectionProfileDto> UpdateConnectionAsync(int id, MoadianProviderConnectionProfileDto dto);
     Task SetConnectionDeletedAsync(int id, bool deleted);
 
     /// <summary>حذف قطعی اتصال (سطر پایگاه‌داده). فایل کلید خصوصی توسط کنترلر و سرویس کلید پاک می‌شود.</summary>
@@ -138,15 +139,29 @@ public sealed class MoadianMasterDataService : IMoadianMasterDataService
     {
         await ValidateConnectionAsync(dto);
 
-        // Create an inactive draft first. The client uploads the required private key,
-        // then activates this version; only activation deactivates the previous version.
+        // هر خدمات‌دهنده فقط یک اتصال می‌تواند داشته باشد (فعال یا غیرفعال).
+        if (await _db.MoadianProviderConnections.AnyAsync(x => x.ServiceProviderId == dto.ServiceProviderId))
+            throw new InvalidOperationException("برای این خدمات‌دهنده از قبل اتصال تعریف شده است؛ اتصال موجود را ویرایش کنید یا حذف کنید.");
+
         var connection = new MoadianProviderConnectionProfile
         {
             ServiceProviderId = dto.ServiceProviderId,
-            IsDeleted = true
+            IsDeleted = false
         };
         ApplyConnection(connection, dto);
         _db.MoadianProviderConnections.Add(connection);
+        await _db.SaveChangesAsync();
+        return await LoadConnectionDtoAsync(connection.Id);
+    }
+
+    public async Task<MoadianProviderConnectionProfileDto> UpdateConnectionAsync(int id, MoadianProviderConnectionProfileDto dto)
+    {
+        await ValidateConnectionAsync(dto);
+        var connection = await _db.MoadianProviderConnections.FindAsync(id)
+            ?? throw new InvalidOperationException("اتصال خدمات‌دهنده یافت نشد.");
+        if (connection.ServiceProviderId != dto.ServiceProviderId)
+            throw new InvalidOperationException("خدمات‌دهندهٔ اتصال قابل تغییر نیست.");
+        ApplyConnection(connection, dto);
         await _db.SaveChangesAsync();
         return await LoadConnectionDtoAsync(connection.Id);
     }
@@ -162,23 +177,6 @@ public sealed class MoadianMasterDataService : IMoadianMasterDataService
                 throw new InvalidOperationException("ابتدا خدمات‌دهنده را بازیابی کنید.");
             if (string.IsNullOrWhiteSpace(connection.PrivateKeyPath))
                 throw new InvalidOperationException("ابتدا فایل کلید خصوصی .key را بارگذاری کنید.");
-
-            var previousActiveConnections = await _db.MoadianProviderConnections
-                .Where(x => x.ServiceProviderId == connection.ServiceProviderId
-                    && x.Id != connection.Id && !x.IsDeleted)
-                .ToListAsync();
-            if (previousActiveConnections.Count > 0)
-            {
-                // Save deactivation first inside a transaction so the filtered unique
-                // active-provider index never sees two active rows, while preserving atomicity.
-                await using var transaction = await _db.Database.BeginTransactionAsync();
-                foreach (var previous in previousActiveConnections) previous.IsDeleted = true;
-                await _db.SaveChangesAsync();
-                connection.IsDeleted = false;
-                await _db.SaveChangesAsync();
-                await transaction.CommitAsync();
-                return;
-            }
         }
 
         connection.IsDeleted = deleted;

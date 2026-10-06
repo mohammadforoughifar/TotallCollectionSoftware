@@ -13,6 +13,7 @@ public interface IMoadianMasterDataClientService
 
     Task<List<MoadianProviderConnectionProfileDto>> GetConnectionsAsync(int? serviceProviderId = null);
     Task<MoadianProviderConnectionProfileDto> CreateConnectionAsync(MoadianProviderConnectionProfileDto dto);
+    Task<MoadianProviderConnectionProfileDto> UpdateConnectionAsync(int id, MoadianProviderConnectionProfileDto dto);
     Task DeleteConnectionAsync(int id);
     Task RestoreConnectionAsync(int id);
     /// <summary>حذف قطعی اتصال همراه با فایل کلید خصوصی آن.</summary>
@@ -63,6 +64,8 @@ public sealed class MoadianMasterDataClientService : IMoadianMasterDataClientSer
         => _api.GetAsync<List<MoadianProviderConnectionProfileDto>>(WithProvider("connections", serviceProviderId));
     public Task<MoadianProviderConnectionProfileDto> CreateConnectionAsync(MoadianProviderConnectionProfileDto dto)
         => _api.PostAsync<MoadianProviderConnectionProfileDto>("api/moadian/master-data/connections", dto);
+    public Task<MoadianProviderConnectionProfileDto> UpdateConnectionAsync(int id, MoadianProviderConnectionProfileDto dto)
+        => _api.PutAsync<MoadianProviderConnectionProfileDto>($"api/moadian/master-data/connections/{id}", dto);
     public Task DeleteConnectionAsync(int id) => _api.DeleteAsync($"api/moadian/master-data/connections/{id}");
     public Task DeleteConnectionPermanentlyAsync(int id)
         => _api.DeleteAsync($"api/moadian/master-data/connections/{id}/permanent");

@@ -13,6 +13,28 @@ public static class MoadianSchemaV5
     public static Task EnsureAsync(AppDbContext db) =>
         db.Database.IsSqlite() ? EnsureSqliteAsync(db) : EnsureSqlServerAsync(db);
 
+    /// <summary>
+    /// بعد از حذف نسخه‌های تکراری اتصال (MoadianConnectionConsolidationV1)، ایندکس یکتای
+    /// «هر خدمات‌دهنده حداکثر یک اتصال» (بدون شرط IsDeleted) جایگزین ایندکس قدیمیِ
+    /// فقط-نسخه‌های-فعال می‌شود.
+    /// </summary>
+    public static Task EnsureSingleConnectionIndexAsync(AppDbContext db) =>
+        db.Database.IsSqlite() ? EnsureSingleConnectionIndexSqliteAsync(db) : EnsureSingleConnectionIndexSqlServerAsync(db);
+
+    private static Task EnsureSingleConnectionIndexSqliteAsync(AppDbContext db) => db.Database.ExecuteSqlRawAsync(@"\
+DROP INDEX IF EXISTS [IX_MoadianProviderConnections_ServiceProviderId_Active];
+CREATE UNIQUE INDEX IF NOT EXISTS [IX_MoadianProviderConnections_ServiceProviderId_Single]
+    ON [MoadianProviderConnections] ([ServiceProviderId]);");
+
+    private static Task EnsureSingleConnectionIndexSqlServerAsync(AppDbContext db) => db.Database.ExecuteSqlRawAsync(@"\
+IF OBJECT_ID(N'dbo.MoadianProviderConnections', N'U') IS NOT NULL
+AND EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianProviderConnections_ServiceProviderId_Active' AND object_id = OBJECT_ID(N'dbo.MoadianProviderConnections'))
+    DROP INDEX IX_MoadianProviderConnections_ServiceProviderId_Active ON dbo.MoadianProviderConnections;
+IF OBJECT_ID(N'dbo.MoadianProviderConnections', N'U') IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianProviderConnections_ServiceProviderId_Single' AND object_id = OBJECT_ID(N'dbo.MoadianProviderConnections'))
+    CREATE UNIQUE INDEX IX_MoadianProviderConnections_ServiceProviderId_Single
+        ON dbo.MoadianProviderConnections(ServiceProviderId);");
+
     private static async Task EnsureSqliteAsync(AppDbContext db)
     {
         await db.Database.ExecuteSqlRawAsync(@"
@@ -71,9 +93,6 @@ CREATE TABLE IF NOT EXISTS [MoadianUnitsOfMeasurement] (
     [Name] TEXT NOT NULL,
     [IsDeleted] INTEGER NOT NULL DEFAULT 0
 );
-DROP INDEX IF EXISTS [IX_MoadianProviderConnections_ServiceProviderId];
-CREATE UNIQUE INDEX IF NOT EXISTS [IX_MoadianProviderConnections_ServiceProviderId_Active]
-    ON [MoadianProviderConnections] ([ServiceProviderId]) WHERE [IsDeleted] = 0;
 CREATE INDEX IF NOT EXISTS [IX_MoadianServiceProviderProfiles_NationalID]
     ON [MoadianServiceProviderProfiles] ([NationalID]);
 CREATE INDEX IF NOT EXISTS [IX_MoadianCustomerProfiles_ServiceProviderId_IsDeleted]
@@ -88,6 +107,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS [IX_MoadianUnitsOfMeasurement_Code]
         if (closeConnection) await connection.OpenAsync();
         try
         {
+            // ایندکس قدیمی «فقط نسخه‌های فعال» فقط زمانی ساخته می‌شود که ایندکس جدیدِ
+            // «یک اتصال به ازای هر خدمات‌دهنده» هنوز نساخته شده باشد؛ در غیر این صورت
+            // هر راه‌اندازی دوباره آن را می‌ساخت و مرحلهٔ بعدی حذفش می‌کرد.
+            bool singleIndexExists;
+            await using (var indexCheck = connection.CreateCommand())
+            {
+                indexCheck.CommandText =
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='IX_MoadianProviderConnections_ServiceProviderId_Single';";
+                singleIndexExists = Convert.ToInt32(await indexCheck.ExecuteScalarAsync()) > 0;
+            }
+            if (!singleIndexExists)
+            {
+                await db.Database.ExecuteSqlRawAsync(@"\
+DROP INDEX IF EXISTS [IX_MoadianProviderConnections_ServiceProviderId];
+CREATE UNIQUE INDEX IF NOT EXISTS [IX_MoadianProviderConnections_ServiceProviderId_Active]
+    ON [MoadianProviderConnections] ([ServiceProviderId]) WHERE [IsDeleted] = 0;");
+            }
+
             var obsoleteColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 "ApiVersion", "ClientType", "ClientId", "KeyId"
@@ -198,6 +235,7 @@ IF OBJECT_ID(N'dbo.MoadianProviderConnections', N'U') IS NOT NULL
 AND EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianProviderConnections_ServiceProviderId' AND object_id = OBJECT_ID(N'dbo.MoadianProviderConnections'))
     DROP INDEX IX_MoadianProviderConnections_ServiceProviderId ON dbo.MoadianProviderConnections;
 IF OBJECT_ID(N'dbo.MoadianProviderConnections', N'U') IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianProviderConnections_ServiceProviderId_Single' AND object_id = OBJECT_ID(N'dbo.MoadianProviderConnections'))
 AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianProviderConnections_ServiceProviderId_Active' AND object_id = OBJECT_ID(N'dbo.MoadianProviderConnections'))
     CREATE UNIQUE INDEX IX_MoadianProviderConnections_ServiceProviderId_Active
         ON dbo.MoadianProviderConnections(ServiceProviderId) WHERE IsDeleted = 0;

@@ -4,25 +4,15 @@
 @inject IFiscalPrinterClientService PrinterSvc
 @inject IToastService Toast
 @inject IJSRuntime JS
-@inject NavigationManager Nav
 
 <PageTitle>فاکتورهای الکترونیکی</PageTitle>
 
 <div class="page-head">
     <div>
         <h1>فاکتورهای الکترونیکی مودیان</h1>
-        <p class="lead">ساخت، اتصال به فروش‌های ERP و «عملیات»، و بازبینی صورتحساب‌های مودیان (پیش از ارسال)</p>
+        <p class="lead">ساخت و بازبینی صورتحساب‌های مودیان (پیش از ارسال)</p>
     </div>
     <div class="ms-auto">
-        <button class="btn btn-outline-secondary me-2" @onclick='() => Nav.NavigateTo("/moadian/settings")'>
-            <i class="bi bi-gear"></i> تنظیمات
-        </button>
-        <button class="btn btn-outline-secondary me-2" @onclick="OpenFromFac">
-            <i class="bi bi-receipt-cutoff"></i> ساخت از فاکتور ERP
-        </button>
-        <button class="btn btn-outline-secondary me-2" @onclick="OpenFromOperations">
-            <i class="bi bi-cart-check"></i> ساخت از فروش عملیات
-        </button>
         <button class="btn btn-primary" @onclick="OpenNew">
             <i class="bi bi-plus-lg"></i> فاکتور جدید
         </button>
@@ -38,7 +28,7 @@
     <div class="card-body py-2">
         <div class="row g-2 align-items-center">
             <div class="col-auto">
-                <select class="form-select form-select-sm" @bind="filterPeriod">
+                <select class="form-select form-select-sm" @bind="filterPeriod" @bind:after="OnFilterChanged">
                     <option value="">همه دوره‌ها</option>
                     @foreach (var p in periods)
                     {
@@ -47,19 +37,19 @@
                 </select>
             </div>
             <div class="col-auto">
-                <select class="form-select form-select-sm" @bind="filterStatus">
+                <select class="form-select form-select-sm" @bind="filterStatus" @bind:after="OnFilterChanged">
                     <option value="">همه وضعیت‌ها</option>
                     @foreach (var s in StatusOptions)
                     {
-                        <option value="@s.Key">@s.Value</option>
+                        <option value="@((int)s.Key)">@s.Value</option>
                     }
                 </select>
             </div>
-            <div class="col-auto">
-                <input class="form-control form-control-sm" placeholder="جستجو (شماره/خریدار)..." @bind="filterSearch" @bind:event="oninput" />
+            <div class="col-auto" style="min-width:220px">
+                <input class="form-control form-control-sm" placeholder="جستجو (شماره/خریدار)..." @bind="filterSearch" @bind:event="oninput" @bind:after="OnSearchChanged" />
             </div>
             <div class="col-auto">
-                <button class="btn btn-sm btn-light" @onclick="Load">
+                <button class="btn btn-sm btn-light" title="تازه‌سازی" @onclick="Load">
                     <i class="bi bi-arrow-clockwise"></i>
                 </button>
             </div>
@@ -123,9 +113,6 @@
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 }
-                                <button class="btn btn-sm btn-outline-secondary" title="نمایش خلاصهٔ محلی؛ payload قابل ارسال نیست" @onclick="() => ShowPayload(inv)">
-                                    <i class="bi bi-braces"></i>
-                                </button>
                                 <button class="btn btn-sm btn-outline-info" title="جزئیات وضعیت، خطا و سوابق تلاش‌ها" @onclick="() => OpenInvoiceHistory(inv)">
                                     <i class="bi bi-clock-history"></i>
                                 </button>
@@ -330,29 +317,6 @@
     </Footer>
 </Modal>
 
-<!-- ===================== مودال تبدیل از فاکتور داخلی ===================== -->
-<Modal Visible="showFromFac" Title="تبدیل فاکتور داخلی به فاکتور الکترونیکی" OnClose="CloseFromFac">
-    <ChildContent>
-
-    <p class="small text-muted">شماره (ID) فاکتور فروش/خرید «قطعی» را وارد کنید. از روی آن، فاکتور الکترونیکی با اقلام، مبالغ و کدهای مالیاتی ساخته می‌شود.</p>
-    <div class="input-group">
-        <input class="form-control" type="number" placeholder="مثلاً 12" @bind="facId" />
-        <button class="btn btn-primary" @onclick="ConvertFromFac" disabled="@saving">@(saving ? "..." : "تبدیل")</button>
-    </div>
-    </ChildContent>
-</Modal>
-
-<!-- ===================== مودال تبدیل فروش عملیات ===================== -->
-<Modal Visible="showFromOperations" Title="ساخت صورتحساب از فروش عملیات" OnClose="CloseFromOperations">
-    <ChildContent>
-        <p class="small text-muted">شناسهٔ سند فروش ثبت‌شده در منوی «عملیات» را وارد کنید. سامانه از روی سند، صورتحساب ارسال‌نشده می‌سازد و چیزی ارسال نمی‌شود.</p>
-        <div class="input-group">
-            <input class="form-control" type="number" placeholder="شناسه سند" @bind="operationsTransactionId" />
-            <button class="btn btn-primary" @onclick="ConvertFromOperations" disabled="@saving">@(saving ? "..." : "ساخت صورتحساب")</button>
-        </div>
-    </ChildContent>
-</Modal>
-
 <!-- ===================== مودال وضعیت، خطا و سابقه ===================== -->
 <Modal Visible="showHistory" Title="@HistoryTitle" Size="modal-lg" OnClose="CloseHistory">
     <ChildContent>
@@ -435,25 +399,6 @@
     </Footer>
 </Modal>
 
-<!-- ===================== مودال خلاصهٔ محلی ===================== -->
-<Modal Visible="showPayload" Title="خلاصهٔ محلی صورتحساب (غیرقابل‌ارسال)" Size="modal-xl" OnClose="ClosePayload">
-    <ChildContent>
-
-    @if (payload is not null)
-    {
-        @if (!string.IsNullOrWhiteSpace(payload.Warning))
-        {
-            <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle"></i> @payload.Warning</div>
-        }
-        <div class="d-flex align-items-center mb-2">
-            <span class="small text-muted">این JSON صرفاً خلاصهٔ داده‌های محلی است؛ قالب رسمی، امضا یا شناسهٔ ارسال نیست.</span>
-            <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="CopyPayload">کپی JSON</button>
-        </div>
-        <pre class="bg-dark text-light p-3 rounded small" style="max-height:420px;overflow:auto" dir="ltr">@payload.Json</pre>
-    }
-    </ChildContent>
-</Modal>
-
 <!-- ===================== مودال چاپ رسید ===================== -->
 <Modal Visible="showPrint" Title="پیش‌نمایش برگهٔ داخلی (غیررسمی)" Size="modal-lg" OnClose="ClosePrint">
     <ChildContent>
@@ -496,18 +441,16 @@
     private int? filterPeriod;
     private string filterStatus = "";
     private string filterSearch = "";
+    private CancellationTokenSource? searchDebounce;
 
-    private bool showForm, showFromFac, showFromOperations, showPayload, showPrint, showHistory, saving, printing, historyLoading;
+    private bool showForm, showPrint, showHistory, saving, printing, historyLoading;
     private MoadianInvoiceRequest New = new();
     private TimeOnly NewIssueTime => TimeOnly.FromDateTime(New.Date == default ? DateTime.Now : New.Date);
     private MoadianInvoice? historyInvoice;
     private List<MoadianLog> invoiceLogs = new();
     private string? historyLoadError;
-    private MoadianPayloadResult? payload;
     private FiscalPrintResult? printResult;
     private ElementReference printFrame;
-    private int facId;
-    private int operationsTransactionId;
     private int printInvoiceId;
 
     private readonly Dictionary<MoadianInvoiceKind, string> KindOptions = new()
@@ -594,10 +537,35 @@
         try
         {
             MoadianInvoiceStatus? st = null;
-            if (int.TryParse(filterStatus, out var sv)) st = (MoadianInvoiceStatus)sv;
+            if (!string.IsNullOrWhiteSpace(filterStatus))
+            {
+                if (int.TryParse(filterStatus, out var sv))
+                    st = (MoadianInvoiceStatus)sv;
+                else if (Enum.TryParse<MoadianInvoiceStatus>(filterStatus, out var stName))
+                    st = stName;
+            }
             invoices = await MoadianSvc.GetInvoicesAsync(filterPeriod, st, filterSearch);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    /// <summary>تغییر فیلتر دوره/وضعیت (شامل «همه وضعیت‌ها») — فهرست بلافاصله تازه می‌شود.</summary>
+    private void OnFilterChanged() => _ = Load();
+
+    /// <summary>جستجوی زنده: با هر بار تایپ، پس از یک مکث کوتاه فهرست بازنویسی می‌شود.</summary>
+    private void OnSearchChanged()
+    {
+        searchDebounce?.Cancel();
+        searchDebounce = new CancellationTokenSource();
+        _ = DebouncedLoadAsync(searchDebounce.Token);
+    }
+
+    private async Task DebouncedLoadAsync(CancellationToken token)
+    {
+        try { await Task.Delay(300, token); }
+        catch (TaskCanceledException) { return; }
+        if (token.IsCancellationRequested) return;
+        await Load();
     }
 
     private async Task Delete(MoadianInvoice inv)
@@ -770,65 +738,6 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { saving = false; }
-    }
-
-    // ---------- تبدیل از فاکتور داخلی ----------
-    private void OpenFromFac() { facId = 0; showFromFac = true; }
-    private void CloseFromFac() => showFromFac = false;
-
-    private async Task ConvertFromFac()
-    {
-        if (facId <= 0) { Toast.Error("شناسه فاکتور ERP را وارد کنید."); return; }
-        saving = true;
-        try
-        {
-            var inv = await MoadianSvc.CreateFromFacInvoiceAsync(facId);
-            Toast.Success($"صورتحساب مودیان {inv.Number} از فاکتور ERP ساخته شد و آمادهٔ بازبینی است (ارسال‌نشده).");
-            showFromFac = false;
-            await Load();
-            EditDraft(inv);
-        }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { saving = false; }
-    }
-
-    private void OpenFromOperations() { operationsTransactionId = 0; showFromOperations = true; }
-    private void CloseFromOperations() => showFromOperations = false;
-
-    private async Task ConvertFromOperations()
-    {
-        if (operationsTransactionId <= 0) { Toast.Error("شناسه سند فروش عملیات را وارد کنید."); return; }
-        saving = true;
-        try
-        {
-            var inv = await MoadianSvc.CreateFromOperationsTransactionAsync(operationsTransactionId);
-            Toast.Success($"صورتحساب مودیان {inv.Number} از سند عملیات ساخته شد و آمادهٔ بازبینی است (ارسال‌نشده).");
-            showFromOperations = false;
-            await Load();
-            EditDraft(inv);
-        }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-        finally { saving = false; }
-    }
-
-    // ---------- خلاصهٔ محلی ----------
-    private async Task ShowPayload(MoadianInvoice inv)
-    {
-        try
-        {
-            payload = await MoadianSvc.GetPayloadAsync(inv.Id);
-            showPayload = true;
-        }
-        catch (Exception ex) { Toast.Error(ex.Message); }
-    }
-
-    private void ClosePayload() => showPayload = false;
-
-    private async Task CopyPayload()
-    {
-        if (payload is null) return;
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", payload.Json);
-        Toast.Success("JSON کپی شد.");
     }
 
     // ---------- چاپ ----------

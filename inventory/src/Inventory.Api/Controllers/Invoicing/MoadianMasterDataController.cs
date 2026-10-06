@@ -63,8 +63,7 @@ public sealed class MoadianMasterDataController : RbacControllerBase
         return await WriteAsync(() => _service.SetProviderDeletedAsync(id, false));
     }
 
-    // ConnectInfo is versioned separately from CPInfo. Create makes an inactive draft;
-    // after the .key upload, restore atomically activates it and deactivates the prior version.
+    // هر خدمات‌دهنده فقط یک اتصال دارد؛ مدیریت اتصال (تعریف/ویرایش/حذف/غیرفعال‌سازی/کلید خصوصی) فقط برای Admin.
     [HttpGet("connections")]
     public async Task<ActionResult<List<MoadianProviderConnectionProfileDto>>> GetConnections([FromQuery] int? serviceProviderId)
     {
@@ -75,21 +74,28 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpPost("connections")]
     public async Task<ActionResult<MoadianProviderConnectionProfileDto>> CreateConnection([FromBody] MoadianProviderConnectionProfileDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessAdminAsync() is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.CreateConnectionAsync(dto));
+    }
+
+    [HttpPut("connections/{id:int}")]
+    public async Task<ActionResult<MoadianProviderConnectionProfileDto>> UpdateConnection(int id, [FromBody] MoadianProviderConnectionProfileDto dto)
+    {
+        if (await ForbiddenUnlessAdminAsync() is ObjectResult forbidden) return forbidden;
+        return await WriteAsync(() => _service.UpdateConnectionAsync(id, dto));
     }
 
     [HttpDelete("connections/{id:int}")]
     public async Task<IActionResult> DeleteConnection(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Delete") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessAdminAsync() is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetConnectionDeletedAsync(id, true));
     }
 
     [HttpPost("connections/{id:int}/restore")]
     public async Task<IActionResult> RestoreConnection(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessAdminAsync() is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetConnectionDeletedAsync(id, false));
     }
 
@@ -101,7 +107,7 @@ public sealed class MoadianMasterDataController : RbacControllerBase
         [FromForm] IFormFile? file,
         CancellationToken cancellationToken)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is { } forbidden) return forbidden;
+        if (await ForbiddenUnlessAdminAsync() is { } forbidden) return forbidden;
         Response.Headers.CacheControl = "no-store";
         var remoteAddress = HttpContext.Connection.RemoteIpAddress;
         if (!Request.IsHttps && (remoteAddress is null || !IPAddress.IsLoopback(remoteAddress)))
@@ -132,7 +138,7 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpDelete("connections/{id:int}/private-key")]
     public async Task<IActionResult> RemovePrivateKey(int id, CancellationToken cancellationToken)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is { } forbidden) return forbidden;
+        if (await ForbiddenUnlessAdminAsync() is { } forbidden) return forbidden;
         Response.Headers.CacheControl = "no-store";
         try
         {
@@ -149,7 +155,7 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpDelete("connections/{id:int}/permanent")]
     public async Task<IActionResult> DeleteConnectionPermanently(int id, CancellationToken cancellationToken)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Delete") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessAdminAsync() is ObjectResult forbidden) return forbidden;
 
         var connection = await Db.MoadianProviderConnections.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);

@@ -1037,11 +1037,11 @@ public class AppDbContext : DbContext
             .HasOne(c => c.ServiceProvider).WithMany(p => p.Connections)
             .HasForeignKey(c => c.ServiceProviderId)
             .OnDelete(DeleteBehavior.Restrict);
+        // هر خدمات‌دهنده حداکثر یک رکورد اتصال دارد (نسخه‌های قدیمی اتصال حذف می‌شوند).
         mb.Entity<MoadianProviderConnectionProfile>()
             .HasIndex(c => c.ServiceProviderId)
-            .HasDatabaseName("IX_MoadianProviderConnections_ServiceProviderId_Active")
-            .IsUnique()
-            .HasFilter("[IsDeleted] = 0");
+            .HasDatabaseName("IX_MoadianProviderConnections_ServiceProviderId_Single")
+            .IsUnique();
         mb.Entity<MoadianCustomerProfile>().ToTable("MoadianCustomerProfiles");
         mb.Entity<MoadianCustomerProfile>().Property(c => c.IsDeleted).HasDefaultValue(false);
         mb.Entity<MoadianCustomerProfile>()

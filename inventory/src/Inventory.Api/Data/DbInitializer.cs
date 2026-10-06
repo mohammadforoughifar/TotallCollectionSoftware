@@ -97,6 +97,26 @@ public static class DbInitializer
                 await MoadianSchemaV4.EnsureAsync(db);
                 // Provider profiles and provider-scoped master data; no sender/queue schema changes.
                 await MoadianSchemaV5.EnsureAsync(db);
+                // مدل «یک اتصال به ازای هر خدمات‌دهنده»: ابتدا نسخه‌های تکراری قدیمی (و فایل
+                // کلید خصوصی آن‌ها در صورت مدیریت‌شدن) حذف می‌شوند، سپس ایندکس یکتای
+                // فقط-نسخه-های-فعال با ایندکس یکتای کامل ServiceProviderId جایگزین می‌شود.
+                try
+                {
+                    var moadianPrivateKeys = scope.ServiceProvider.GetRequiredService<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService>();
+                    await MoadianConnectionConsolidationV1.EnsureAsync(db, moadianPrivateKeys);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DB] Moadian: یکپارچه‌سازی اتصال‌های تکراری انجام نشد: {ex.Message}");
+                }
+                try
+                {
+                    await MoadianSchemaV5.EnsureSingleConnectionIndexAsync(db);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[DB] Moadian: ایندکس یکتای «یک اتصال به ازای هر خدمات‌دهنده» ساخته نشد: {ex.Message}");
+                }
                 // سال مالی مودیان، شمارهٔ سند سالانه (سال/سریال) و نوع پرداخت صورتحساب.
                 await MoadianSchemaV6.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);

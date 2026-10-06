@@ -18,7 +18,7 @@ namespace Inventory.Api.Services.Invoicing;
 public interface IMoadianConnectionTestService
 {
     /// <summary>
-    /// تست اتصال و احراز هویت یک نسخهٔ ConnectInfo با کلید خصوصی همان نسخه.
+    /// تست اتصال و احراز هویت اتصال یک خدمات‌دهنده با کلید خصوصی همان اتصال.
     /// هیچ اطلاعات حساسی (کلید، مسیر کلید، توکن) در نتیجه یا لاگ ظاهر نمی‌شود.
     /// </summary>
     Task<MoadianConnectionTestResultDto> TestAsync(int connectionId, CancellationToken cancellationToken);
@@ -27,7 +27,7 @@ public interface IMoadianConnectionTestService
 /// <summary>
 /// تست اتصال خدمات‌دهنده به سامانهٔ مودیان در سه گام:
 /// ۱) برقراری ارتباط با سامانه (GET_SERVER_INFORMATION) — DNS/TLS/مسیر سرویس.
-/// ۲) احراز هویت (GET_TOKEN) — امضای درخواست با کلید خصوصی همان نسخه و شناسهٔ خدمات‌دهنده.
+/// ۲) احراز هویت (GET_TOKEN) — امضای درخواست با کلید خصوصی اتصال و شناسهٔ خدمات‌دهنده.
 /// ۳) استعلام شناسهٔ حافظهٔ مالیاتی (GET_FISCAL_INFORMATION) با توکن دریافت‌شده.
 /// تست هیچ فاکتوری ارسال نمی‌کند و هیچ وضعیتی را در سامانه تغییر نمی‌دهد.
 /// </summary>
@@ -60,7 +60,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
             .SingleOrDefaultAsync(x => x.Id == connectionId, cancellationToken)
             ?? throw new InvalidOperationException("اتصال خدمات‌دهنده یافت نشد.");
         if (connection.IsDeleted)
-            throw new InvalidOperationException("این نسخهٔ اتصال غیرفعال است؛ برای تست، نسخهٔ فعال را انتخاب کنید.");
+            throw new InvalidOperationException("این اتصال غیرفعال است؛ برای تست، ابتدا اتصال را فعال کنید.");
 
         var provider = await _db.MoadianServiceProviderProfiles.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == connection.ServiceProviderId && !x.IsDeleted, cancellationToken)
@@ -69,7 +69,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
         // ---------- پیش‌نیازها: کلید خصوصی، آدرس سرویس، نسخهٔ API ----------
         if (string.IsNullOrWhiteSpace(connection.PrivateKeyPath) || !File.Exists(connection.PrivateKeyPath))
         {
-            result.Message = "برای این نسخهٔ اتصال فایل کلید خصوصی ثبت نشده است (یا فایل در سرور موجود نیست)؛ ابتدا فایل .key را بارگذاری کنید.";
+            result.Message = "برای این اتصال فایل کلید خصوصی ثبت نشده است (یا فایل در سرور موجود نیست)؛ ابتدا فایل .key را بارگذاری کنید.";
             return await RecordResultAsync(connectionId, result, success: false, stopwatch, cancellationToken);
         }
 
@@ -109,7 +109,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
 
         // ---------- گام ۲ و ۳: احراز هویت با شناسهٔ خدمات‌دهنده ----------
         // شناسهٔ احراز هویت (username در GET_TOKEN) در قراردادهای مختلف یکی از این سه مقدار است؛
-        // اولویت با شناسهٔ خدمات‌دهنده و در نهایت شناسهٔ حافظهٔ مالیاتی همین نسخه است.
+        // اولویت با شناسهٔ خدمات‌دهنده و در نهایت شناسهٔ حافظهٔ مالیاتی همین اتصال است.
         var identities = BuildIdentityCandidates(provider.NationalID, provider.EconomicNumber, connection.TaxMemoryID);
         if (identities.Count == 0)
         {
@@ -168,7 +168,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
     {
         var step = new MoadianConnectionTestStepDto { Key = "server-info", Title = "برقراری ارتباط با سامانه (GET_SERVER_INFORMATION)" };
         var stopwatch = Stopwatch.StartNew();
-        var (sdk, sender) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, Guid.NewGuid().ToString("N"));
+        var (sdk, sender, provider) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, Guid.NewGuid().ToString("N"));
         try
         {
             var serverInformation = await sdk.GetServerInformationAsync().WaitAsync(cancellationToken);
@@ -201,6 +201,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
         finally
         {
             sender.Dispose();
+            provider.Dispose();
         }
     }
 
@@ -218,38 +219,50 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
     {
         var step = new MoadianConnectionTestStepDto { Key = "auth", Title = $"احراز هویت با {identityField}" };
         var stopwatch = Stopwatch.StartNew();
-        var (sdk, sender) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, identity);
+        var (sdk, sender, provider) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, identity);
+        var authenticationSucceeded = false;
         try
         {
-            var token = await sdk.RequestTokenAsync().WaitAsync(cancellationToken);
-            step.DurationMs = stopwatch.ElapsedMilliseconds;
-            if (token is null || string.IsNullOrWhiteSpace(token.Token))
+            try
             {
-                step.Ok = false;
-                step.Detail = "سامانه توکن برنگرداند؛ یعنی امضا/شناسهٔ ارسالی پذیرفته نشد.";
+                var token = await sdk.RequestTokenAsync().WaitAsync(cancellationToken);
+                step.DurationMs = stopwatch.ElapsedMilliseconds;
+                if (token is null || string.IsNullOrWhiteSpace(token.Token))
+                {
+                    step.Ok = false;
+                    step.Detail = "سامانه توکن برنگرداند؛ یعنی امضا/شناسهٔ ارسالی پذیرفته نشد.";
+                    result.Steps.Add(step);
+                    return false;
+                }
+
+                // توکن هرگز در نتیجه یا لاگ ثبت نمی‌شود؛ فقط دریافت آن گزارش می‌شود.
+                sdk.SetToken(token);
+                step.Ok = true;
+                step.Detail = $"توکن دسترسی با موفقیت دریافت شد (اعتبار: {token.ExpiresIn} ثانیه).";
                 result.Steps.Add(step);
+                authenticationSucceeded = true;
+            }
+            catch (Exception ex)
+            {
+                step.DurationMs = stopwatch.ElapsedMilliseconds;
+                step.Ok = false;
+                step.Detail = DescribeFailure(ex, cancellationToken);
+                result.Steps.Add(step);
+                _logger.LogWarning("Moadian connection test step {Step} failed with {ExceptionType}.", step.Key, ex.GetType().Name);
                 return false;
             }
 
-            // توکن هرگز در نتیجه یا لاگ ثبت نمی‌شود؛ فقط دریافت آن گزارش می‌شود.
-            sdk.SetToken(token);
-            step.Ok = true;
-            step.Detail = $"توکن دسترسی با موفقیت دریافت شد (اعتبار: {token.ExpiresIn} ثانیه).";
-            result.Steps.Add(step);
+            await RunFiscalInformationAsync(sdk, taxMemoryId, result, cancellationToken);
         }
-        catch (Exception ex)
+        finally
         {
-            step.DurationMs = stopwatch.ElapsedMilliseconds;
-            step.Ok = false;
-            step.Detail = DescribeFailure(ex, cancellationToken);
-            result.Steps.Add(step);
-            _logger.LogWarning("Moadian connection test step {Step} failed with {ExceptionType}.", step.Key, ex.GetType().Name);
-            return false;
+            sender.Dispose();
+            provider.Dispose();
         }
 
-        await RunFiscalInformationAsync(sdk, taxMemoryId, result, cancellationToken);
-        return true;
+        return authenticationSucceeded;
     }
+
 
     private static async Task RunFiscalInformationAsync(
         ITaxApis sdk,
@@ -266,7 +279,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
             if (fiscal is null)
             {
                 step.Ok = false;
-                step.Detail = "سامانه برای این شناسهٔ حافظهٔ مالیاتی اطلاعاتی برنگرداند؛ شناسهٔ حافظهٔ مالیاتی این نسخه را بررسی کنید.";
+                step.Detail = "سامانه برای این شناسهٔ حافظهٔ مالیاتی اطلاعاتی برنگرداند؛ شناسهٔ حافظهٔ مالیاتی اتصال را بررسی کنید.";
             }
             else
             {
@@ -288,8 +301,10 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
 
     /// <summary>
     /// ساخت کلاینت SDK مستقل (بدون TaxApiService.Instance سراسری) همراه با فرستندهٔ امن.
+    /// Provider هم برگردانده می‌شود تا پس از پایان استفاده، به‌همراه فرستنده Dispose شود
+    /// (نشت منبع در هر تست اتصال).
     /// </summary>
-    private static (ITaxApis TaxApis, MoadianSecureHttpRequestSender Sender) CreateTaxApis(
+    private static (ITaxApis TaxApis, MoadianSecureHttpRequestSender Sender, IServiceProvider Provider) CreateTaxApis(
         string baseUrl,
         string privateKeyPath,
         string keyId,
@@ -313,7 +328,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
         services.AddSingleton<IHttpRequestSender>(sender);
 
         var provider = services.BuildServiceProvider();
-        return (provider.GetRequiredService<ITaxApis>(), sender);
+        return (provider.GetRequiredService<ITaxApis>(), sender, provider);
     }
 
     private async Task<MoadianConnectionTestResultDto> RecordResultAsync(

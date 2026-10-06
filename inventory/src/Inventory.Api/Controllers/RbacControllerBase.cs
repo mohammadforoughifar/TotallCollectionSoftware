@@ -46,6 +46,12 @@ public abstract class RbacControllerBase : ApiControllerBase
         => await HasAsync(module, action) ? null
            : StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
 
+    /// <summary>فقط نقش Admin — برای عملیات حساسی مثل مدیریت اتصال/کلید خصوصی سامانه مودیان.</summary>
+    protected Task<IActionResult?> ForbiddenUnlessAdminAsync(string? message = null)
+        => User.FindFirstValue(ClaimTypes.Role) == "Admin"
+            ? Task.FromResult<IActionResult?>(null)
+            : Task.FromResult<IActionResult?>(StatusCode(403, new { message = message ?? "این عملیات فقط برای مدیر امکان‌پذیر است." }));
+
     /// <summary>آیا کاربر جاری حداقل یکی از این اکشن‌های ماژول را دارد؟ (دسترسی تفکیکی هر لینک منو)</summary>
     protected async Task<bool> HasAnyAsync(string module, params string[] actions)
     {

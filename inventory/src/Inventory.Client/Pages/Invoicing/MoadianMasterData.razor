@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Forms
 @inject IMoadianMasterDataClientService MoadianMasterDataSvc
+@inject IAuthState Auth
 @inject IToastService Toast
 @inject IJSRuntime JS
 
@@ -15,9 +16,9 @@
 </div>
 
 <div class="alert alert-info py-2 small">
-    «خدمات‌دهنده» و «اتصال» دو رکورد جدا هستند. با هر بار ذخیرهٔ اتصال، یک نسخهٔ جدید ثبت و نسخهٔ فعال قبلی همان خدمات‌دهنده غیرفعال می‌شود.
-    اطلاعات اتصال شامل نشانی وب‌سرویس، شناسهٔ یکتای حافظهٔ مالیاتی و فایل کلید خصوصی با پسوند .key است. فایل باید کلید خصوصی PKCS#8 PEM باشد و در ذخیره‌گاه خصوصی خارج از پوشهٔ وب نگهداری می‌شود؛ محتوا و مسیر ذخیره‌سازی هرگز در نرم‌افزار یا سرویس‌های وب نمایش داده نمی‌شوند.
-    دکمهٔ «تست اتصال» برای هر نسخه، ارتباط با سامانه و اعتبار احراز هویت همان خدمات‌دهنده را با کلید خصوصی همان نسخه بررسی می‌کند (بدون ارسال فاکتور). نتیجهٔ آخرین تست در همین جدول نگه داشته می‌شود.
+    هر خدمات‌دهنده فقط یک اتصال دارد؛ تعریف اتصال دوم برای خدمات‌دهنده‌ای که اتصالش ثبت شده مجاز نیست و اتصال موجود فقط قابل ویرایش، حذف یا غیرفعال‌شدن است (فقط مدیر).
+    اطلاعات اتصال شامل نشانی وب‌سرویس، شناسهٔ یکتای حافظهٔ مالیاتی و فایل کلید خصوصی با پسوند .key است. فایل باید کلید خصوصی PKCS#8 PEM باشد و مستقیم در مسیر روتِ ذخیره‌گاه خصوصی (خارج از پوشهٔ وب) نگهداری می‌شود؛ محتوا و مسیر ذخیره‌سازی هرگز در نرم‌افزار یا سرویس‌های وب نمایش داده نمی‌شوند.
+    دکمهٔ «تست اتصال»، ارتباط با سامانه و اعتبار احراز هویت همان خدمات‌دهنده را با کلید خصوصی اتصال بررسی می‌کند (بدون ارسال فاکتور). نتیجهٔ آخرین تست در همین جدول نگه داشته می‌شود.
     CRUD مشتری، کالا/خدمت و واحد نیز در همین صفحه مدیریت می‌شود. پیکربندی سراسری Moadian (BaseUrl/ApiVersion/ClientType) در App_Data/MoadianSettings.json و متغیرهای محیطی حفظ شده است؛ به‌جز دکمهٔ تست اتصال، فرم‌ها ذخیره‌محور هستند و فراخوانی شبکه انجام نمی‌دهند.
 </div>
 
@@ -93,7 +94,11 @@ else if (tab == 2)
                     <option value="@p.Id">@ProviderTitle(p)</option>
                 }
             </select>
-            <button class="btn btn-sm btn-primary" @onclick="OpenNewConnection" disabled="@(ActiveProviders.Count == 0)"><i class="bi bi-plus-lg"></i> اتصال جدید / نسخه جدید</button>
+            @if (Auth.IsAdmin)
+            {
+                <button class="btn btn-sm btn-primary" title="هر خدمات‌دهنده فقط یک اتصال می‌تواند داشته باشد"
+                        @onclick="OpenNewConnection" disabled="@(ActiveProviders.Count == 0 || ActiveProviders.All(p => HasConnection(p.Id)))"><i class="bi bi-plus-lg"></i> اتصال جدید</button>
+            }
         </div>
         <div class="card-body p-0">
             @if (ActiveProviders.Count == 0)
@@ -113,7 +118,7 @@ else if (tab == 2)
                             @foreach (var c in FilteredConnections)
                             {
                                 <tr class="@(c.IsDeleted ? "text-muted" : "")">
-                                    <td><div>@c.ProviderName</div><div class="small text-muted">نسخه #@c.Id</div></td>
+                                    <td><div>@c.ProviderName</div><div class="small text-muted">اتصال #@c.Id</div></td>
                                     <td class="num" dir="ltr">@c.TaxMemoryId</td>
                                     <td><span class="badge @(c.HasPrivateKey ? "bg-success" : "bg-warning text-dark")">@(c.HasPrivateKey ? "بارگذاری شده" : "بارگذاری نشده")</span></td>
                                     <td class="small" dir="ltr">@c.WebServiceAddress</td>
@@ -135,7 +140,7 @@ else if (tab == 2)
                                     </td>
                                     <td class="text-center text-nowrap">
                                         <button class="btn btn-sm @(c.LastTestSucceeded == true ? "btn-outline-success" : "btn-outline-primary")"
-                                                title="@(c.HasPrivateKey ? "تست اتصال به سامانه و بررسی اعتبار احراز هویت" : "ابتدا کلید خصوصی این نسخه را بارگذاری کنید")"
+                                                title="@(c.HasPrivateKey ? "تست اتصال به سامانه و بررسی اعتبار احراز هویت" : "ابتدا کلید خصوصی اتصال را بارگذاری کنید")"
                                                 @onclick="() => TestConnection(c)"
                                                 disabled="@(testBusy || c.IsDeleted || !c.HasPrivateKey || ProviderIsDeleted(c.ServiceProviderId))">
                                             @if (testBusyConnectionId == c.Id)
@@ -149,19 +154,26 @@ else if (tab == 2)
                                                 <span>تست اتصال</span>
                                             }
                                         </button>
-                                        <button class="btn btn-sm btn-light" title="ثبت نسخهٔ جدید" @onclick="() => OpenEditConnection(c)" disabled="@ProviderIsDeleted(c.ServiceProviderId)"><i class="bi bi-files text-primary"></i></button>
-                                        @if (c.IsDeleted)
+                                        @if (Auth.IsAdmin)
                                         {
-                                            <button class="btn btn-sm btn-outline-success" @onclick="() => SetConnectionDeleted(c, false)" disabled="@ProviderIsDeleted(c.ServiceProviderId)"><i class="bi bi-arrow-counterclockwise"></i> بازیابی</button>
+                                            <button class="btn btn-sm btn-light" title="ویرایش اتصال" @onclick="() => OpenEditConnection(c)" disabled="@ProviderIsDeleted(c.ServiceProviderId)"><i class="bi bi-pencil text-primary"></i></button>
+                                            @if (c.IsDeleted)
+                                            {
+                                                <button class="btn btn-sm btn-outline-success" title="فعال‌کردن اتصال" @onclick="() => SetConnectionDeleted(c, false)" disabled="@ProviderIsDeleted(c.ServiceProviderId)"><i class="bi bi-arrow-counterclockwise"></i> بازیابی</button>
+                                            }
+                                            else
+                                            {
+                                                <button class="btn btn-sm btn-light" title="غیرفعال‌کردن اتصال" @onclick="() => SetConnectionDeleted(c, true)"><i class="bi bi-pause-circle text-warning"></i></button>
+                                            }
+                                            <button class="btn btn-sm btn-outline-danger" title="حذف کامل اتصال و فایل کلید خصوصی آن"
+                                                    @onclick="() => DeleteConnectionPermanently(c)" disabled="@(saving || testBusy || connectionBusy)">
+                                                <i class="bi bi-trash"></i> حذف
+                                            </button>
                                         }
                                         else
                                         {
-                                            <button class="btn btn-sm btn-light" title="غیرفعال‌کردن" @onclick="() => SetConnectionDeleted(c, true)"><i class="bi bi-pause-circle text-warning"></i></button>
+                                            <span class="small text-muted" title="ویرایش، حذف و غیرفعال‌سازی اتصال فقط برای مدیر امکان‌پذیر است"><i class="bi bi-lock"></i></span>
                                         }
-                                        <button class="btn btn-sm btn-outline-danger" title="حذف کامل اتصال و فایل کلید خصوصی آن"
-                                                @onclick="() => DeleteConnectionPermanently(c)" disabled="@(saving || testBusy || connectionBusy)">
-                                            <i class="bi bi-trash"></i> حذف
-                                        </button>
                                     </td>
                                 </tr>
                             }
@@ -362,47 +374,54 @@ else
     </Footer>
 </Modal>
 
-<Modal Visible="showConnectionModal" Title="@(connectionForm.Id == 0 ? "اتصال جدید" : "ثبت نسخهٔ جدید اتصال")" Size="modal-xl" OnClose="CloseConnectionModal">
+<Modal Visible="showConnectionModal" Title="@(connectionForm.Id == 0 ? "اتصال جدید" : "ویرایش اتصال")" Size="modal-xl" OnClose="CloseConnectionModal">
     <ChildContent>
         <div class="position-relative">
             <div class="row g-3">
                 <div class="col-12">
                     <div class="alert alert-warning py-2 small mb-0">
-                        با ثبت این فرم یک نسخهٔ جدید ساخته می‌شود و نسخهٔ فعال قبلی همین خدمات‌دهنده غیرفعال خواهد شد. نشانی وب‌سرویس فقط ذخیره می‌شود و در همین مرحله آزمون شبکه انجام نمی‌شود.
-                        برای هر نسخهٔ جدید، فایل کلید خصوصی .key با محتوای PKCS#8 PEM را بارگذاری کنید.
+                        هر خدمات‌دهنده فقط یک اتصال دارد و مدیریت آن (ویرایش/حذف/غیرفعال‌سازی) فقط برای مدیر امکان‌پذیر است. نشانی وب‌سرویس فقط ذخیره می‌شود و در همین مرحله آزمون شبکه انجام نمی‌شود؛ برای بررسی ارتباط دکمهٔ «تست اتصال» را بزنید.
+                        @if (connectionForm.Id == 0)
+                        {
+                            <span>برای ثبت اتصال، فایل کلید خصوصی .key با محتوای PKCS#8 PEM الزامی است.</span>
+                        }
+                        else
+                        {
+                            <span>اگر فایل جدید انتخاب نشود، کلید خصوصی فعلی اتصال حفظ می‌شود.</span>
+                        }
                     </div>
                 </div>
                 <div class="col-12 col-md-6">
                     <label class="form-label">خدمات‌دهنده <span class="text-danger">*</span></label>
-                    <select class="form-select" @bind="connectionForm.ServiceProviderId" disabled="@(connectionBusy || connectionDraftCreated)">
+                    <select class="form-select" @bind="connectionForm.ServiceProviderId" disabled="@(connectionBusy || connectionForm.Id != 0)">
                         <option value="0">انتخاب کنید...</option>
                         @foreach (var p in ConnectionProviderChoices)
                         {
-                            <option value="@p.Id">@ProviderTitle(p)</option>
+                            <option value="@p.Id" disabled="@HasConnection(p.Id)">@ProviderTitle(p)@(HasConnection(p.Id) ? " (اتصال تعریف‌شده)" : "")</option>
                         }
                     </select>
                 </div>
                 <div class="col-12 col-md-6">
                     <label class="form-label">نشانی وب‌سرویس خدمات‌دهنده <span class="text-danger">*</span></label>
-                    <input class="form-control" maxlength="2048" dir="ltr" placeholder="https://..." @bind="connectionForm.WebServiceAddress" disabled="@(connectionBusy || connectionDraftCreated)" />
+                    <input class="form-control" maxlength="2048" dir="ltr" placeholder="https://..." @bind="connectionForm.WebServiceAddress" disabled="@connectionBusy" />
                     <div class="form-text">نشانی باید نشانی کامل و امن (HTTPS) باشد؛ این مرحله فقط آن را ذخیره می‌کند.</div>
                 </div>
                 <div class="col-12 col-md-6">
                     <label class="form-label">شناسهٔ یکتای حافظهٔ مالیاتی <span class="text-danger">*</span></label>
-                    <input class="form-control" maxlength="50" dir="ltr" autocomplete="off" @bind="connectionForm.TaxMemoryId" disabled="@(connectionBusy || connectionDraftCreated)" />
+                    <input class="form-control" maxlength="50" dir="ltr" autocomplete="off" @bind="connectionForm.TaxMemoryId" disabled="@connectionBusy" />
                 </div>
                 <div class="col-12">
-                    <label class="form-label">فایل کلید خصوصی (پسوند .key) <span class="text-danger">*</span></label>
+                    <label class="form-label">فایل کلید خصوصی (پسوند .key) @if (connectionForm.Id == 0) { <span class="text-danger">*</span> }</label>
                     @if (connectionForm.HasPrivateKey)
                     {
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 border rounded p-2 mb-2">
-                            <span class="small"><i class="bi bi-shield-lock text-success me-1"></i>کلید نسخهٔ انتخاب‌شده وجود دارد؛ به نسخهٔ جدید منتقل نمی‌شود و محتوا/مسیر آن نمایش یا دانلود نمی‌شود.</span>
-                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemovePrivateKey" disabled="@connectionBusy">حذف کلید از این نسخه</button>
+                            <span class="small"><i class="bi bi-shield-lock text-success me-1"></i>کلید خصوصی این اتصال در مسیر روتِ ذخیره‌گاه خصوصی موجود است؛ انتخاب فایل جدید، کلید فعلی را جایگزین می‌کند. محتوا/مسیر آن نمایش یا دانلود نمی‌شود.</span>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemovePrivateKey" disabled="@connectionBusy">حذف کلید از اتصال</button>
                         </div>
                     }
                     else
                     {
-                        <div class="small text-muted mb-2">برای ثبت نسخهٔ جدید، انتخاب فایل کلید الزامی است.</div>
+                        <div class="small text-muted mb-2">@(connectionForm.Id == 0 ? "برای ثبت اتصال، انتخاب فایل کلید الزامی است." : "کلید خصوصی بارگذاری نشده است؛ برای تست اتصال باید ابتدا بارگذاری شود.")</div>
                     }
                     <InputFile id="moadian-private-key" class="form-control" accept=".key" OnChange="OnPrivateKeySelected" disabled="@connectionBusy" />
                     @if (selectedPrivateKeyFile is not null)
@@ -413,7 +432,7 @@ else
                     {
                         <div class="text-danger small mt-2">@privateKeyUploadError</div>
                     }
-                    <div class="form-text">یک فایل .key حداکثر ۶۴ کیلوبایت با محتوای PKCS#8 PEM انتخاب کنید. فایل روی سرور و خارج از web root در پوشهٔ هم‌نام همین خدمات‌دهنده نگهداری می‌شود؛ مسیر/محتوا در UI نمایش داده نمی‌شوند. در Windows به‌صورت پیش‌فرض زیر %ProgramData%\TotallCollection\MoadianPrivateKeys ذخیره می‌شود و ACL آن باید به حساب سرویس محدود باشد (تنظیم Files:MoadianPrivateKeyRoot اختیاری است).</div>
+                    <div class="form-text">یک فایل .key حداکثر ۶۴ کیلوبایت با محتوای PKCS#8 PEM انتخاب کنید. فایل روی سرور مستقیم در مسیر روتِ ذخیره‌گاه خصوصی (خارج از web root) نگهداری می‌شود؛ مسیر/محتوا در UI نمایش داده نمی‌شوند. در Windows به‌صورت پیش‌فرض زیر %ProgramData%\TotallCollection\MoadianPrivateKeys ذخیره می‌شود و ACL آن باید به حساب سرویس محدود باشد (تنظیم Files:MoadianPrivateKeyRoot اختیاری است).</div>
                 </div>
             </div>
             @if (connectionBusy)
@@ -426,7 +445,7 @@ else
         </div>
     </ChildContent>
     <Footer>
-        <button type="button" class="btn btn-success" @onclick="SaveConnection" disabled="@connectionBusy"><i class="bi bi-save"></i> ثبت نسخهٔ جدید</button>
+        <button type="button" class="btn btn-success" @onclick="SaveConnection" disabled="@connectionBusy"><i class="bi bi-save"></i> @(connectionForm.Id == 0 ? "ذخیره اتصال" : "ذخیره تغییرات")</button>
         <button type="button" class="btn btn-light" @onclick="CloseConnectionModal" disabled="@connectionBusy">انصراف</button>
     </Footer>
 </Modal>
@@ -502,7 +521,6 @@ else
         <div class="row g-3">
             <div class="col-md-6"><label class="form-label">کد واحد <span class="text-danger">*</span></label><input class="form-control text-center" maxlength="50" dir="ltr" @bind="unitForm.Code" /></div>
             <div class="col-md-6"><label class="form-label">نام واحد <span class="text-danger">*</span></label><input class="form-control" maxlength="50" @bind="unitForm.Name" /></div>
-            <div class="col-12 small text-muted">کد رسمی از پیش بارگذاری نشده است؛ کد و نام را مطابق دادهٔ مورد تأیید خودتان وارد کنید.</div>
         </div>
     </ChildContent>
     <Footer>
@@ -518,7 +536,7 @@ else
             <div class="text-center py-4">
                 <span class="spinner-border text-primary"></span>
                 <div class="mt-2 fw-bold text-primary">در حال برقراری ارتباط با سامانه و بررسی احراز هویت...</div>
-                <div class="small text-muted mt-1">تست شامل برقراری ارتباط، دریافت توکن با کلید خصوصی همین نسخه و استعلام شناسهٔ حافظهٔ مالیاتی است.</div>
+                <div class="small text-muted mt-1">تست شامل برقراری ارتباط، دریافت توکن با کلید خصوصی این اتصال و استعلام شناسهٔ حافظه مالیاتی است.</div>
             </div>
         }
         else if (!string.IsNullOrWhiteSpace(testResultError))
@@ -673,7 +691,6 @@ else
     private int providerFilter;
     private IBrowserFile? selectedPrivateKeyFile;
     private string? privateKeyUploadError;
-    private bool connectionDraftCreated;
 
     private List<MoadianServiceProviderProfileDto> providers = new();
     private List<MoadianProviderConnectionProfileDto> connections = new();
@@ -775,20 +792,22 @@ else
     }
     private void CloseProviderModal() => showProviderModal = false;
 
-    // ConnectInfo form
+    // ConnectInfo form — هر خدمات‌دهنده فقط یک اتصال دارد
+    private bool HasConnection(int providerId) => connections.Any(c => c.ServiceProviderId == providerId);
+
     private void OpenNewConnection()
     {
-        var candidates = ActiveProviders;
+        var candidates = ActiveProviders.Where(p => !HasConnection(p.Id)).ToList();
         var selected = candidates.FirstOrDefault(p => p.Id == providerFilter) ?? candidates.FirstOrDefault();
         connectionForm = new MoadianProviderConnectionProfileDto { ServiceProviderId = selected?.Id ?? 0 };
         selectedPrivateKeyFile = null;
         privateKeyUploadError = null;
-        connectionDraftCreated = false;
         showConnectionModal = true;
     }
 
     private void OpenEditConnection(MoadianProviderConnectionProfileDto c)
     {
+        if (!Auth.IsAdmin) return;
         connectionForm = new MoadianProviderConnectionProfileDto
         {
             Id = c.Id, ServiceProviderId = c.ServiceProviderId, ProviderName = c.ProviderName,
@@ -798,13 +817,14 @@ else
         };
         selectedPrivateKeyFile = null;
         privateKeyUploadError = null;
-        connectionDraftCreated = false;
         showConnectionModal = true;
     }
 
     private bool ValidateConnectionForm()
     {
-        if (connectionForm.ServiceProviderId <= 0) { Toast.Error("خدمات‌دهنده را در ConnectInfo انتخاب کنید."); return false; }
+        if (connectionForm.ServiceProviderId <= 0) { Toast.Error("خدمات‌دهنده را انتخاب کنید."); return false; }
+        if (connectionForm.Id == 0 && HasConnection(connectionForm.ServiceProviderId))
+        { Toast.Error("برای این خدمات‌دهنده از قبل اتصال تعریف شده است؛ اتصال موجود را ویرایش کنید."); return false; }
         if (string.IsNullOrWhiteSpace(connectionForm.WebServiceAddress)
             || !Uri.TryCreate(connectionForm.WebServiceAddress.Trim(), UriKind.Absolute, out var address)
             || address.Scheme != Uri.UriSchemeHttps
@@ -814,7 +834,7 @@ else
         { Toast.Error("آدرس وب‌سایت باید HTTPS معتبر و بدون credentials، query یا fragment باشد."); return false; }
         if (string.IsNullOrWhiteSpace(connectionForm.TaxMemoryId)) { Toast.Error("شناسهٔ یکتای حافظهٔ مالیاتی الزامی است."); return false; }
         if (!string.IsNullOrWhiteSpace(privateKeyUploadError)) { Toast.Error(privateKeyUploadError); return false; }
-        if (selectedPrivateKeyFile is null && !(connectionDraftCreated && connectionForm.HasPrivateKey))
+        if (selectedPrivateKeyFile is null && !connectionForm.HasPrivateKey)
         { Toast.Error("فایل کلید خصوصی .key با محتوای PKCS#8 PEM الزامی است."); return false; }
         return true;
     }
@@ -823,47 +843,42 @@ else
     {
         if (!ValidateConnectionForm()) return;
         connectionBusy = true;
-        connectionBusyMessage = "در حال ثبت نسخهٔ جدید ConnectInfo و فایل کلید...";
+        connectionBusyMessage = "در حال ذخیرهٔ اتصال و فایل کلید...";
+        var isNew = connectionForm.Id == 0;
         try
         {
-            await SaveConnectionRecordAndUploadAsync();
+            connectionForm = isNew
+                ? await MoadianMasterDataSvc.CreateConnectionAsync(connectionForm)
+                : await MoadianMasterDataSvc.UpdateConnectionAsync(connectionForm.Id, connectionForm);
+
+            if (selectedPrivateKeyFile is not null)
+            {
+                var file = selectedPrivateKeyFile;
+                await using var stream = file.OpenReadStream(MaxPrivateKeyFileSize);
+                var status = await MoadianMasterDataSvc.UploadPrivateKeyAsync(
+                    connectionForm.Id, stream, file.Name, "application/octet-stream");
+                connectionForm.HasPrivateKey = status.HasPrivateKey;
+                selectedPrivateKeyFile = null;
+                privateKeyUploadError = null;
+            }
+
+            if (!connectionForm.HasPrivateKey)
+            {
+                // ساخت اتصال بدون کلید معنادار نیست؛ ردیف تازه‌ساخته حذف می‌شود.
+                if (isNew) await MoadianMasterDataSvc.DeleteConnectionPermanentlyAsync(connectionForm.Id);
+                throw new InvalidOperationException("فایل کلید خصوصی بارگذاری نشده است؛ اتصال ذخیره نشد.");
+            }
+
             CloseConnectionModal();
-            Toast.Success("ConnectInfo ذخیره شد.");
+            Toast.Success(isNew ? "اتصال خدمات‌دهنده ذخیره شد." : "تغییرات اتصال ذخیره شد.");
+            await LoadAll();
         }
         catch (Exception ex)
         {
             Toast.Error(ex.Message);
-            if (connectionDraftCreated) await LoadAll();
+            await LoadAll();
         }
         finally { connectionBusy = false; }
-    }
-
-    private async Task SaveConnectionRecordAndUploadAsync()
-    {
-        if (!connectionDraftCreated)
-        {
-            connectionForm = await MoadianMasterDataSvc.CreateConnectionAsync(connectionForm);
-            connectionDraftCreated = true;
-        }
-
-        if (selectedPrivateKeyFile is not null)
-        {
-            var file = selectedPrivateKeyFile;
-            await using var stream = file.OpenReadStream(MaxPrivateKeyFileSize);
-            var status = await MoadianMasterDataSvc.UploadPrivateKeyAsync(
-                connectionForm.Id, stream, file.Name, "application/octet-stream");
-            connectionForm.HasPrivateKey = status.HasPrivateKey;
-            selectedPrivateKeyFile = null;
-            privateKeyUploadError = null;
-        }
-
-        if (!connectionForm.HasPrivateKey)
-            throw new InvalidOperationException("فایل کلید خصوصی بارگذاری نشده است؛ اتصال قبلی تغییری نکرد.");
-
-        await MoadianMasterDataSvc.RestoreConnectionAsync(connectionForm.Id);
-        connectionForm.IsDeleted = false;
-        connectionDraftCreated = false;
-        await LoadAll();
     }
 
     private Task OnPrivateKeySelected(InputFileChangeEventArgs args)
@@ -912,7 +927,6 @@ else
         showConnectionModal = false;
         selectedPrivateKeyFile = null;
         privateKeyUploadError = null;
-        connectionDraftCreated = false;
     }
 
     // Customer form
@@ -1026,7 +1040,7 @@ else
     private async Task DeleteConnectionPermanently(MoadianProviderConnectionProfileDto c)
     {
         var hasKey = c.HasPrivateKey;
-        var message = $"اتصال «{c.ProviderName}» (نسخه #{c.Id}) برای همیشه حذف شود؟"
+        var message = $"اتصال «{c.ProviderName}» برای همیشه حذف شود؟"
                       + (hasKey ? "\nفایل کلید خصوصی ذخیره‌شدهٔ این اتصال هم از سرور پاک می‌شود و بازگردانی ممکن نیست." : "")
                       + (c.LastTestAt is not null ? "\nسابقهٔ آخرین تست اتصال نیز حذف می‌شود." : "");
         if (!await JS.InvokeAsync<bool>("confirm", message)) return;
@@ -1136,7 +1150,7 @@ else
         testBusy = true;
         testBusyConnectionId = c.Id;
         testConnectionId = c.Id;
-        testConnectionTitle = $"{c.ProviderName} (نسخه #{c.Id})";
+        testConnectionTitle = c.ProviderName;
         testResult = null;
         testResultError = null;
         showTestModal = true;
