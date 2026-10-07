@@ -105,7 +105,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             var invoiceDto = BuildInvoiceDto(invoice, tins, taxid, out _);
 
             var sent = false;
-            Exception? lastAuthError = null;
+            var authFailures = new List<string>();
             for (var i = 0; i < identities.Count; i++)
             {
                 var authed = false;
@@ -131,8 +131,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                     // خطای فاز احراز هویت — شناسهٔ بعدی را امتحان کن.
                     if (authed)
                         throw; // خطای فاز ارسال/ذخیره — بازآزمایش با شناسهٔ بعدی خطر ارسال تکراری دارد
-                    lastAuthError = ex;
-                    _logger.LogWarning("Moadian send authentication failed for {ExceptionType}.", ex.GetType().Name);
+                    authFailures.Add(DescribeAuthFailure(identities[i].FieldLabel, ex, client.Sender.LastCall));
+                    _logger.LogWarning("Moadian send authentication failed: {Failure}", authFailures[^1]);
                 }
                 finally
                 {
@@ -142,7 +142,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
 
             if (!sent)
                 throw new InvalidOperationException(
-                    $"ارتباط با سامانه برقرار شد، اما احراز هویت این خدمات‌دهنده ناموفق بود: {(lastAuthError is null ? "خطای نامشخص" : Sanitize(lastAuthError.Message))}");
+                    "احراز هویت این خدمات‌دهنده در سامانه مودیان ناموفق بود. جزئیات هر شناسهٔ امتحان‌شده: " +
+                    string.Join(" | ", authFailures.Count == 0 ? new[] { "خطای نامشخص" } : authFailures));
 
             return await FinishResultAsync(invoice);
         }
@@ -471,8 +472,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
 
         try
         {
-            Exception? lastAuthError = null;
-            foreach (var (_, identity) in identities)
+            var authFailures = new List<string>();
+            foreach (var (fieldLabel, identity) in identities)
             {
                 var client = CreateTaxApis(baseUrl, connection.PrivateKeyPath, keyId, clientType, apiVersion, identity);
                 try
@@ -560,8 +561,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // خطای احراز هویت — شناسهٔ بعدی را امتحان کن.
-                    lastAuthError = ex;
-                    _logger.LogWarning("Moadian inquiry authentication failed for {ExceptionType}.", ex.GetType().Name);
+                    authFailures.Add(DescribeAuthFailure(fieldLabel, ex, client.Sender.LastCall));
+                    _logger.LogWarning("Moadian inquiry authentication failed: {Failure}", authFailures[^1]);
                 }
                 finally
                 {
@@ -570,7 +571,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             }
 
             throw new InvalidOperationException(
-                $"ارتباط با سامانه برقرار شد، اما احراز هویت این خدمات‌دهنده ناموفق بود: {(lastAuthError is null ? "خطای نامشخص" : Sanitize(lastAuthError.Message))}");
+                "احراز هویت این خدمات‌دهنده در سامانه مودیان ناموفق بود. جزئیات هر شناسهٔ امتحان‌شده: " +
+                string.Join(" | ", authFailures.Count == 0 ? new[] { "خطای نامشخص" } : authFailures));
         }
         catch (OperationCanceledException) when (overallCts.IsCancellationRequested)
         {
@@ -833,10 +835,17 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         }
 
         var path = uri.AbsolutePath.TrimEnd('/');
-        var clientTypeSegment = clientType == ClientType.TSP ? "tsp" : "self-tsp";
-        var lastSegment = path.Length == 0 ? "" : path[(path.LastIndexOf('/') + 1)..];
-        if (lastSegment.Equals(clientTypeSegment, StringComparison.OrdinalIgnoreCase))
-            path = path[..^lastSegment.Length].TrimEnd('/');
+        // SDK خودش پارهٔ tsp/self-tsp را به آدرس اضافه می‌کند؛ اگر آدرس ذخیره‌شده
+        // (با هر دو مقدار) این پاره را داشته باشد حذف می‌شود تا از مسیر دوبل جلوگیری شود.
+        while (true)
+        {
+            var lastSegment = path.Length == 0 ? "" : path[(path.LastIndexOf('/') + 1)..];
+            if (string.Equals(lastSegment, "tsp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(lastSegment, "self-tsp", StringComparison.OrdinalIgnoreCase))
+                path = path[..^lastSegment.Length].TrimEnd('/');
+            else
+                break;
+        }
 
         var builder = new UriBuilder(uri) { Path = path + "/", Query = "", Fragment = "" };
         baseUrl = builder.Uri.AbsoluteUri;
@@ -858,6 +867,33 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             return "خطای نامشخص در تماس با سامانه.";
         return Sanitize(exception.Message);
     }
+
+    /// <summary>
+    /// شرح خطای احراز هویت با جزئیات واقعی سامانه:
+    /// SDK فقط Detail خطا را در TaxApiException می‌گذارد (که اغلب خالی است و کد خطا را دور می‌ریزد)؛
+    /// این متد کد/تفصیل خطا و وضعیت HTTP را از فرستنده (پاسخ خام سامانه) می‌خواند.
+    /// </summary>
+    private static string DescribeAuthFailure(string identityLabel, Exception exception, MoadianSecureHttpRequestSender.CallDiagnostics? diag)
+    {
+        var parts = new List<string> { identityLabel };
+        if (diag is not null)
+        {
+            parts.Add($"{diag.Operation} → HTTP {diag.StatusCode}");
+            if (!string.IsNullOrWhiteSpace(diag.ErrorCode))
+                parts.Add($"کد سامانه {diag.ErrorCode}");
+            if (!string.IsNullOrWhiteSpace(diag.ErrorDetail))
+                parts.Add(Sanitize(diag.ErrorDetail));
+        }
+        else if (!string.IsNullOrWhiteSpace(exception.Message) && !IsGenericExceptionMessage(exception))
+        {
+            parts.Add(Sanitize(exception.Message));
+        }
+        return string.Join("، ", parts);
+    }
+
+    /// <summary>پیام پیش‌فرض .NET برای خطای بی‌پیام ("Exception of type ... was thrown.") را بی‌ارزش می‌شمارد.</summary>
+    private static bool IsGenericExceptionMessage(Exception exception)
+        => exception.Message.StartsWith("Exception of type ", StringComparison.Ordinal);
 
     private static string Sanitize(string? message)
     {

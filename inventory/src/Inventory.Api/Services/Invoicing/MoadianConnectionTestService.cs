@@ -462,10 +462,17 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
         }
 
         var path = uri.AbsolutePath.TrimEnd('/');
-        var clientTypeSegment = clientType == ClientType.TSP ? "tsp" : "self-tsp";
-        var lastSegment = path.Length == 0 ? "" : path[(path.LastIndexOf('/') + 1)..];
-        if (lastSegment.Equals(clientTypeSegment, StringComparison.OrdinalIgnoreCase))
-            path = path[..^lastSegment.Length].TrimEnd('/');
+        // SDK خودش پارهٔ tsp/self-tsp را به آدرس اضافه می‌کند؛ اگر آدرس ذخیره‌شده
+        // (با هر دو مقدار) این پاره را داشته باشد حذف می‌شود تا از مسیر دوبل جلوگیری شود.
+        while (true)
+        {
+            var lastSegment = path.Length == 0 ? "" : path[(path.LastIndexOf('/') + 1)..];
+            if (string.Equals(lastSegment, "tsp", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(lastSegment, "self-tsp", StringComparison.OrdinalIgnoreCase))
+                path = path[..^lastSegment.Length].TrimEnd('/');
+            else
+                break;
+        }
 
         var builder = new UriBuilder(uri) { Path = path + "/", Query = "", Fragment = "" };
         baseUrl = builder.Uri.AbsoluteUri;

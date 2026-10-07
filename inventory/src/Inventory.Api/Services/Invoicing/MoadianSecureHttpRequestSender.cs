@@ -30,6 +30,16 @@ internal sealed class MoadianSecureHttpRequestSender : IHttpRequestSender, IDisp
     private readonly HttpClient _client;
     private readonly Uri _baseUri;
 
+    /// <summary>
+    /// تشخیصی آخرین فراخوانی: نام عملیات، وضعیت HTTP و خطای خود سامانه (code/detail).
+    /// فقط وقتی سامانه خطا برگردانده ثبت می‌شود؛ پاسخ‌های موفق (که شامل توکن هستند) هرگز ذخیره نمی‌شوند.
+    /// </summary>
+    public sealed record CallDiagnostics(string Operation, int StatusCode, string? ErrorCode, string? ErrorDetail);
+
+    private CallDiagnostics? _lastCall;
+
+    public CallDiagnostics? LastCall => _lastCall;
+
     public MoadianSecureHttpRequestSender(string baseUrl, TimeSpan timeout)
     {
         var normalized = baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/";
@@ -60,16 +70,61 @@ internal sealed class MoadianSecureHttpRequestSender : IHttpRequestSender, IDisp
             request.Headers.TryAddWithoutValidation(header.Key, header.Value);
 
         using var response = await _client.SendAsync(request, HttpCompletionOption.ResponseContentRead).ConfigureAwait(false);
+        var rawBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        CaptureDiagnostics(new Uri(target), (int)response.StatusCode, rawBody);
         try
         {
-            var body = await response.Content.ReadFromJsonAsync<T?>(JsonOptions).ConfigureAwait(false);
+            var body = rawBody.Length == 0 ? default(T?) : JsonSerializer.Deserialize<T>(rawBody, JsonOptions);
             return new HttpResponse<T?>(body, (int)response.StatusCode);
         }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException or HttpRequestException or IOException)
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or FormatException or OverflowException or ArgumentException)
         {
             // متن پاسخ هرگز لاگ/برگردانده نمی‌شود؛ فقط وضعیت قابل تفسیر نبودن.
             return new HttpResponse<T?>(UnparsableResponseStatus);
         }
+    }
+
+    /// <summary>فقط خطاهای سامانه را ثبت می‌کند (code/detail از errors[0]) — رازی (توکن) در آن نیست.</summary>
+    private void CaptureDiagnostics(Uri target, int status, string rawBody)
+    {
+        if (status is >= 200 and < 300)
+        {
+            _lastCall = null;
+            return;
+        }
+
+        string? code = null;
+        string? detail = null;
+        try
+        {
+            if (rawBody.Length > 0)
+            {
+                using var doc = JsonDocument.Parse(rawBody);
+                if (doc.RootElement.TryGetProperty("errors", out var errors)
+                    && errors.ValueKind == JsonValueKind.Array
+                    && errors.GetArrayLength() > 0
+                    && errors[0].ValueKind == JsonValueKind.Object)
+                {
+                    code = ReadStringProp(errors[0], "errorCode") ?? ReadStringProp(errors[0], "ErrorCode");
+                    detail = ReadStringProp(errors[0], "detail") ?? ReadStringProp(errors[0], "Detail");
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // پاسخ غیر-JSON؛ فقط وضعیت HTTP ثبت می‌شود.
+        }
+
+        _lastCall = new CallDiagnostics(PathOnly(target), status, code, detail);
+    }
+
+    private static string? ReadStringProp(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var prop) && prop.ValueKind == JsonValueKind.String ? prop.GetString() : null;
+
+    private static string PathOnly(Uri target)
+    {
+        var path = target.AbsolutePath.TrimStart('/');
+        return path.Length == 0 ? "(root)" : path;
     }
 
     private string ResolveTarget(string url)
