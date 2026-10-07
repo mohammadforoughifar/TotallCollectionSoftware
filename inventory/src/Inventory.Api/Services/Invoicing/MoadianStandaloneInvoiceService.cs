@@ -98,6 +98,9 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
             FiscalYearId = yearEntity.Id,
             Settlement = MoadianPayTypes.Title(request.PayType),
             PayType = request.PayType,
+            // صورتحساب به خدمات‌دهنده‌ای که مشتری از آن انتخاب شده گره می‌خورد
+            // (مبنای لیست تفکیکی و ارسال/استعلام رسمی به سامانه).
+            ServiceProviderId = customer?.ServiceProviderId,
             TaxId = seller.TaxId,
             SellerName = seller.SellerName,
             EconomicCode = seller.EconomicCode,

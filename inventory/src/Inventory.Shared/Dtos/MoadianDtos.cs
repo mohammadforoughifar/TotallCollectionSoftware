@@ -80,6 +80,18 @@ public class MoadianInvoice
     /// <summary>نوع پرداخت صورتحساب (setm)؛ برای سوابق قدیمی null است.</summary>
     public MoadianPayType? PayType { get; set; }
     public string? PayTypeTitle { get; set; }
+
+    /// <summary>خدمات‌دهنده‌ای که این صورتحساب به آن تعلق دارد (null = سوابق بدون گره‌خوردن).</summary>
+    public int? ServiceProviderId { get; set; }
+
+    /// <summary>شماره منحصر به فرد مالیاتی ۲۲ نویسه‌ای (taxid) ساخته‌شده هنگام ارسال.</summary>
+    public string? Taxid { get; set; }
+
+    /// <summary>زمان آخرین استعلام رسمی از سامانه.</summary>
+    public DateTime? LastInquiryAt { get; set; }
+
+    /// <summary>وضعیت خام سامانه در آخرین استعلام (PENDING/CONFIRM/SYSTEM_CONFIRM/REJECT).</summary>
+    public string? LastInquiryStatus { get; set; }
     public int? FacInvoiceId { get; set; }
     public int? OperationsTransactionId { get; set; }
     public string? FacInvoiceRef { get; set; }
@@ -205,6 +217,14 @@ public class MoadianDashboard
 
     /// <summary>آخرین خطاها/برگشت‌ها</summary>
     public List<MoadianInvoice> RecentIssues { get; set; } = new();
+}
+
+/// <summary>نتیجهٔ یک عملیات رسمی (ارسال/استعلام) صورتحساب با سامانه مودیان — تصویر تازهٔ صورتحساب + پیام فارسی.</summary>
+public class MoadianSubmissionResultDto
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = "";
+    public MoadianInvoice Invoice { get; set; } = new();
 }
 
 /// <summary>خروجی ساخت payload استاندارد مودیان (برای تست/دیباگ).</summary>

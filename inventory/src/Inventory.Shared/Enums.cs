@@ -377,7 +377,16 @@ public enum MoadianInvoiceStatus
     Returned = 5,
 
     /// <summary>ابطال شده</summary>
-    Voided = 6
+    Voided = 6,
+
+    /// <summary>ارسال شد و در انتظار تأیید خریدار (وضعیت PENDING سامانه)</summary>
+    AwaitingBuyerConfirmation = 7,
+
+    /// <summary>تأییدشده توسط خریدار یا سیستم‌مالیاتی (CONFIRM/SYSTEM_CONFIRM سامانه)</summary>
+    BuyerConfirmed = 8,
+
+    /// <summary>ردشده توسط خریدار (REJECT سامانه)</summary>
+    BuyerRejected = 9
 }
 
 /// <summary>
@@ -424,7 +433,10 @@ public enum MoadianLogAction
     Voided = 5,
 
     /// <summary>ویرایش پیش‌نویس</summary>
-    Updated = 6
+    Updated = 6,
+
+    /// <summary>استعلام وضعیت رسمی از سامانه مودیان</summary>
+    Inquiry = 7
 }
 
 // ===================== ماژول فاکتور =====================

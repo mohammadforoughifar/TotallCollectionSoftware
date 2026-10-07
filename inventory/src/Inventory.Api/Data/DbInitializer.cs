@@ -119,6 +119,8 @@ public static class DbInitializer
                 }
                 // سال مالی مودیان، شمارهٔ سند سالانه (سال/سریال) و نوع پرداخت صورتحساب.
                 await MoadianSchemaV6.EnsureAsync(db);
+                // گره‌خوردن صورتحساب به خدمات‌دهنده + ردیابی ارسال/استعلام رسمی (taxid و وضعیت).
+                await MoadianSchemaV7.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);

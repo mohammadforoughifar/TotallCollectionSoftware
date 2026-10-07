@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Inventory.Shared;
 
 namespace Inventory.Api.Data;
@@ -171,6 +172,13 @@ public class MoadianInvoice
     /// <summary>محل تحویل / نوع تسویه</summary>
     [MaxLength(60)] public string? Settlement { get; set; }
 
+    /// <summary>
+    /// خدمات‌دهندهٔ مودیان که این صورتحساب به آن تعلق دارد (از مشتری انتخابی در ثبت مستقل).
+    /// برای سوابق قدیمی (پیش از مدل خدمات‌دهنده) خالی است و در لیست‌های تفکیکی جدا نمایش داده می‌شود.
+    /// </summary>
+    public int? ServiceProviderId { get; set; }
+    public MoadianServiceProviderProfile? ServiceProvider { get; set; }
+
     // ---------- فروشنده (از تنظیمات) ----------
     [MaxLength(20)] public string TaxId { get; set; } = "";
     [MaxLength(200)] public string SellerName { get; set; } = "";
@@ -193,6 +201,16 @@ public class MoadianInvoice
     // ---------- چرخه سامانه ----------
     public MoadianInvoiceStatus Status { get; set; } = MoadianInvoiceStatus.Draft;
 
+    /// <summary>
+    /// شماره منحصر به فرد مالیاتی ۲۲ نویسه‌ای صورتحساب (taxid) — هنگام ارسال با
+    /// شناسهٔ حافظه مالیاتی و سریال صورتحساب ساخته می‌شود و برای ارجاع موضوع‌های
+    /// اصلاحی/ابطالی/برگشتی مرجع رسمی است.
+    /// نام ستون Taxid22 چون ستون TaxId (شناسهٔ فروشنده) وجود دارد و نام‌ها
+    /// بدون حساسیت به بزرگی/کوچکی حرف تداخل می‌کنند.
+    /// </summary>
+    [Column("Taxid22")]
+    [MaxLength(22)] public string? Taxid { get; set; }
+
     /// <summary>شناسه یکتای مالیاتی (UID) — مرجع سامانه پس از ارسال</summary>
     [MaxLength(64)] public string? ReferenceId { get; set; }
 
@@ -210,6 +228,12 @@ public class MoadianInvoice
     public DateTime? QueuedAt { get; set; }
     public DateTime? SendAt { get; set; }
     public DateTime? ReturnedAt { get; set; }
+
+    /// <summary>زمان آخرین استعلام رسمی وضعیت از سامانه مودیان.</summary>
+    public DateTime? LastInquiryAt { get; set; }
+
+    /// <summary>وضعیت خام سامانه در آخرین استعلام (PENDING/CONFIRM/SYSTEM_CONFIRM/REJECT).</summary>
+    [MaxLength(40)] public string? LastInquiryStatus { get; set; }
 
     [MaxLength(120)] public string? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;

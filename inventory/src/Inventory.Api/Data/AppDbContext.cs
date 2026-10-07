@@ -1071,6 +1071,7 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Restrict);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.Status);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.ReferenceId);
+        mb.Entity<MoadianInvoice>().HasIndex(i => i.ServiceProviderId).HasDatabaseName("IX_MoadianInvoices_ServiceProviderId");
         mb.Entity<MoadianInvoice>().HasIndex(i => i.FacInvoiceId);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.OperationsTransactionId).IsUnique()
           .HasFilter("[OperationsTransactionId] IS NOT NULL");

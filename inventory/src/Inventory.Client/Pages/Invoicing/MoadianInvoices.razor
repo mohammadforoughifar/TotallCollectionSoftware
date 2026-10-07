@@ -470,7 +470,10 @@
         [MoadianInvoiceStatus.Sent] = "ارسال‌شده",
         [MoadianInvoiceStatus.Returned] = "برگشتی",
         [MoadianInvoiceStatus.Failed] = "ناموفق",
-        [MoadianInvoiceStatus.Voided] = "ابطال‌شده"
+        [MoadianInvoiceStatus.Voided] = "ابطال‌شده",
+        [MoadianInvoiceStatus.AwaitingBuyerConfirmation] = "در انتظار تأیید خریدار",
+        [MoadianInvoiceStatus.BuyerConfirmed] = "تأییدشده توسط خریدار",
+        [MoadianInvoiceStatus.BuyerRejected] = "ردشده توسط خریدار"
     };
 
     private string HistoryTitle => historyInvoice is null
@@ -818,6 +821,7 @@
         MoadianLogAction.Returned => "برگشت/رد از سامانه",
         MoadianLogAction.Voided => "ابطال",
         MoadianLogAction.Updated => "ویرایش صورتحساب ارسال‌نشده",
+        MoadianLogAction.Inquiry => "استعلام",
         _ => action.ToString()
     };
 
@@ -837,6 +841,9 @@
         MoadianInvoiceStatus.Sent => "وضعیت محلی ارسال‌شده است؛ بدون استعلام رسمی، پذیرش نهایی تأیید نمی‌شود.",
         MoadianInvoiceStatus.Failed => "برای این فاکتور خطا ثبت شده؛ کد، پیام و رویدادها را بررسی کنید.",
         MoadianInvoiceStatus.Returned => "برای این فاکتور برگشت/رد ثبت شده؛ جزئیات و پیام پاسخ را بررسی کنید.",
+        MoadianInvoiceStatus.AwaitingBuyerConfirmation => "در سامانه ثبت شده و در انتظار تأیید یا رد خریدار است.",
+        MoadianInvoiceStatus.BuyerConfirmed => "خریدار این صورتحساب را در سامانه تأیید کرده است.",
+        MoadianInvoiceStatus.BuyerRejected => "خریدار این صورتحساب را در سامانه رد کرده است؛ با خریدار هماهنگ کنید.",
         _ => "وضعیت محلی فاکتور ابطال‌شده است."
     };
 
@@ -850,6 +857,9 @@
             MoadianInvoiceStatus.Sent => ("bg-success", "ارسال‌شده"),
             MoadianInvoiceStatus.Failed => ("bg-danger", "ناموفق"),
             MoadianInvoiceStatus.Returned => ("bg-danger", "برگشتی"),
+            MoadianInvoiceStatus.AwaitingBuyerConfirmation => ("bg-warning text-dark", "در انتظار تأیید"),
+            MoadianInvoiceStatus.BuyerConfirmed => ("bg-success", "تأییدشده"),
+            MoadianInvoiceStatus.BuyerRejected => ("bg-danger", "ردشده"),
             _ => ("bg-dark", "ابطال‌شده")
         };
         builder.OpenElement(0, "span");

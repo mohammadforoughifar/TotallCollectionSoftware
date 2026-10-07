@@ -104,8 +104,9 @@ builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderPriv
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianConnectionTestService, Inventory.Api.Services.Invoicing.MoadianConnectionTestService>(); // تست اتصال و احراز هویت خدمات‌دهنده (GET_TOKEN)
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianFiscalYearService, Inventory.Api.Services.Invoicing.MoadianFiscalYearService>(); // سال مالی مودیان و دوره‌های ماهانه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianStandaloneInvoiceService, Inventory.Api.Services.Invoicing.MoadianStandaloneInvoiceService>(); // ثبت صورتحساب مستقل از ERP با شمارهٔ سند سالانه
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderInvoiceService, Inventory.Api.Services.Invoicing.MoadianProviderInvoiceService>(); // فهرست صورتحساب‌ها به تفکیک خدمات‌دهنده
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianSubmissionService, Inventory.Api.Services.Invoicing.MoadianSubmissionService>(); // ارسال/استعلام رسمی به سامانه مودیان (SDK)
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IFiscalPrinterService, Inventory.Api.Services.Invoicing.FiscalPrinterService>(); // چاپگر مالی
-// Moadian sending/auto-sender remains deliberately unregistered until official protocol verification.
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel

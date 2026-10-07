@@ -83,6 +83,7 @@ builder.Services.AddScoped<IFacReportService, FacReportService>();
 builder.Services.AddScoped<IMoadianClientService, MoadianClientService>();
 builder.Services.AddScoped<IMoadianMasterDataClientService, MoadianMasterDataClientService>();
 builder.Services.AddScoped<IMoadianStandaloneClientService, MoadianStandaloneClientService>(); // سال مالی مودیان و ثبت صورتحساب مستقل از ERP
+builder.Services.AddScoped<IMoadianProviderInvoicesClientService, MoadianProviderInvoicesClientService>(); // فهرست صورتحساب‌ها به تفکیک خدمات‌دهنده + ارسال/استعلام رسمی
 builder.Services.AddScoped<IFiscalPrinterClientService, FiscalPrinterClientService>();
 
 // ماژول خزانه‌داری
