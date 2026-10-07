@@ -61,6 +61,7 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
         if (request.CustomerId is > 0)
         {
             customer = await _db.MoadianCustomerProfiles.AsNoTracking()
+                .Include(c => c.ServiceProvider)
                 .FirstOrDefaultAsync(c => c.Id == request.CustomerId!.Value && !c.IsDeleted)
                 ?? throw new InvalidOperationException("مشتری انتخاب‌شده یافت نشد یا غیرفعال است.");
         }
@@ -98,9 +99,11 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
             FiscalYearId = yearEntity.Id,
             Settlement = MoadianPayTypes.Title(request.PayType),
             PayType = request.PayType,
-            // صورتحساب به خدمات‌دهنده‌ای که مشتری از آن انتخاب شده گره می‌خورد
-            // (مبنای لیست تفکیکی و ارسال/استعلام رسمی به سامانه).
-            ServiceProviderId = customer?.ServiceProviderId,
+            // صورتحساب به خدمات‌دهندهٔ مشتری گره می‌خورد (مبنای لیست تفکیکی و
+            // ارسال/استعلام رسمی). مشتری‌های قدیمی ServiceProviderId صفر دارند یا
+            // خدمات‌دهندهٔشان حذف شده — در این صورت گره نمی‌خوریم (null)،
+            // وگرنه محدودیت referential integrity خطا می‌دهد.
+            ServiceProviderId = customer?.ServiceProvider is { IsDeleted: false } sp ? sp.Id : null,
             TaxId = seller.TaxId,
             SellerName = seller.SellerName,
             EconomicCode = seller.EconomicCode,
