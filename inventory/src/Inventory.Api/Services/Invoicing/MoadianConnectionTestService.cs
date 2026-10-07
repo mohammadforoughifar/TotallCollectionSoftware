@@ -168,7 +168,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
     {
         var step = new MoadianConnectionTestStepDto { Key = "server-info", Title = "برقراری ارتباط با سامانه (GET_SERVER_INFORMATION)" };
         var stopwatch = Stopwatch.StartNew();
-        var (sdk, provider) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, Guid.NewGuid().ToString("N"));
+        var (sdk, _, provider) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, Guid.NewGuid().ToString("N"));
         try
         {
             var serverInformation = await sdk.GetServerInformationAsync().WaitAsync(cancellationToken);
@@ -218,7 +218,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
     {
         var step = new MoadianConnectionTestStepDto { Key = "auth", Title = $"احراز هویت با {identityField}" };
         var stopwatch = Stopwatch.StartNew();
-        var (sdk, provider) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, identity);
+        var (sdk, sender, provider) = CreateTaxApis(baseUrl, privateKeyPath, keyId, clientType, apiVersion, identity);
         try
         {
             var token = await sdk.RequestTokenAsync().WaitAsync(cancellationToken);
@@ -242,9 +242,9 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
         {
             step.DurationMs = stopwatch.ElapsedMilliseconds;
             step.Ok = false;
-            step.Detail = DescribeFailure(ex, cancellationToken);
+            step.Detail = DescribeAuthFailure(ex, sender.LastCall, cancellationToken);
             result.Steps.Add(step);
-            _logger.LogWarning("Moadian connection test step {Step} failed with {ExceptionType}.", step.Key, ex.GetType().Name);
+            _logger.LogWarning("Moadian connection test step {Step} failed: {Detail}", step.Key, step.Detail);
             DisposeProvider(provider);
             return false;
         }
@@ -298,7 +298,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
             disposable.Dispose();
     }
 
-    private static (ITaxApis TaxApis, IServiceProvider Provider) CreateTaxApis(
+    private static (ITaxApis TaxApis, MoadianSecureHttpRequestSender Sender, IServiceProvider Provider) CreateTaxApis(
         string baseUrl,
         string privateKeyPath,
         string keyId,
@@ -322,7 +322,7 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
         services.AddSingleton<IHttpRequestSender>(sender);
 
         var provider = services.BuildServiceProvider();
-        return (provider.GetRequiredService<ITaxApis>(), provider);
+        return (provider.GetRequiredService<ITaxApis>(), sender, provider);
     }
 
     private async Task<MoadianConnectionTestResultDto> RecordResultAsync(
@@ -366,6 +366,32 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
     }
 
     /// <summary>پیام خطا را برای نمایش به کاربر خلاصه و پاک‌سازی می‌کند (بدون مسیر کلید/توکن/متن کامل پاسخ).</summary>
+    /// <summary>
+    /// شرح خطای احراز هویت با جزئیات واقعی سامانه: SDK فقط Detail خطا را در TaxApiException
+    /// می‌گذارد (که اغلب خالی است)؛ کد/تفصیل خطا و وضعیت HTTP از پاسخ خام سامانه (فرستنده) خوانده می‌شود.
+    /// </summary>
+    private static string DescribeAuthFailure(Exception exception, MoadianSecureHttpRequestSender.CallDiagnostics? diag, CancellationToken cancellationToken)
+    {
+        var baseMsg = DescribeFailure(exception, cancellationToken);
+        if (diag is null) return baseMsg;
+
+        var parts = new List<string> { $"{diag.Operation} → HTTP {diag.StatusCode}" };
+        if (!string.IsNullOrWhiteSpace(diag.ErrorCode)) parts.Add($"کد سامانه {diag.ErrorCode}");
+        if (!string.IsNullOrWhiteSpace(diag.ErrorDetail)) parts.Add(SanitizeForDisplay(diag.ErrorDetail));
+        var fromSystem = string.Join("، ", parts);
+        if (IsGenericExceptionMessage(exception)) return fromSystem;
+        return $"{fromSystem} | {baseMsg}";
+    }
+
+    private static bool IsGenericExceptionMessage(Exception exception)
+        => exception.Message.StartsWith("Exception of type ", StringComparison.Ordinal);
+
+    private static string SanitizeForDisplay(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        return string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     private static string DescribeFailure(Exception exception, CancellationToken cancellationToken)
     {
         if (exception is OperationCanceledException)
