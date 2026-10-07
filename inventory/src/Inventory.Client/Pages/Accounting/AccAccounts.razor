@@ -10,7 +10,6 @@
 <div class="page-head">
     <div>
         <h1>کدینگ حساب‌ها</h1>
-        <p class="lead">ساختار درختی حساب‌ها: گروه ← کل ← معین ← تفصیلی</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-primary" @onclick="ToggleBalances" title="نمایش گردش و مانده">
@@ -259,14 +258,11 @@
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">کد حساب <span class="text-danger">*</span></label>
-                <input class="form-control num" @bind="form.Code" placeholder="مثلاً: 1101" />
-                <div class="fs-8 text-muted mt-1">
-                    <i class="bi bi-info-circle"></i> کد زیرحساب باید با کد والد شروع شود.
-                </div>
+                <input class="form-control num" @bind="form.Code" />
             </div>
             <div class="col-md-8">
                 <label class="form-label">نام حساب <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.Name" placeholder="مثلاً: موجودی کالا — انبار" />
+                <input class="form-control" @bind="form.Name" />
             </div>
 
             <div class="col-md-8">
@@ -295,7 +291,6 @@
                 </select>
                 @if (parentIdStr != "0")
                 {
-                    <div class="fs-8 text-muted mt-1">نوع از حساب والد به ارث می‌رسد.</div>
                 }
             </div>
             <div class="col-md-4">

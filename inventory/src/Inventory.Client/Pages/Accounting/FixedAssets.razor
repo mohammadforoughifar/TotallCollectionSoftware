@@ -12,7 +12,6 @@
 <div class="page-head">
     <div>
         <h1>دارایی ثابت</h1>
-        <p class="lead">ثبت اموال، گروه‌بندی و استهلاک ماهانه</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-primary" @onclick="OpenNewAsset">
@@ -182,11 +181,11 @@
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">کد <span class="text-danger">*</span></label>
-                <input class="form-control num" @bind="catForm.Code" placeholder="مثلاً EQ" />
+                <input class="form-control num" @bind="catForm.Code" />
             </div>
             <div class="col-md-8">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="catForm.Name" placeholder="مثلاً تجهیزات اداری" />
+                <input class="form-control" @bind="catForm.Name" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">عمر مفید (ماه)</label>
@@ -221,11 +220,11 @@
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">کد <span class="text-danger">*</span></label>
-                <input class="form-control num" @bind="assetForm.Code" placeholder="مثلاً FA-001" />
+                <input class="form-control num" @bind="assetForm.Code" />
             </div>
             <div class="col-md-8">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="assetForm.Name" placeholder="مثلاً لپ‌تاپ HP" />
+                <input class="form-control" @bind="assetForm.Name" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">گروه <span class="text-danger">*</span></label>
@@ -239,7 +238,7 @@
             </div>
             <div class="col-md-8">
                 <label class="form-label">محل استقرار</label>
-                <input class="form-control" @bind="assetForm.Location" placeholder="مثلاً طبقه ۲ — اتاق ۲۰۱" />
+                <input class="form-control" @bind="assetForm.Location" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">شماره سریال / پلاک</label>

@@ -13,7 +13,6 @@
 <div class="page-head">
     <div>
         <h1>اتصال به واحد IT مرکزی</h1>
-        <p class="lead">ارسال درخواست خدمات IT از این شرکت به سرور مرکزی</p>
     </div>
     <button class="btn btn-secondary me-auto" @onclick="GoToRequests">
         <i class="bi bi-arrow-right"></i> بازگشت به درخواست‌ها
@@ -45,15 +44,6 @@
                         <div class="mb-3">
                             <label class="form-label">آدرس سرور مرکزی</label>
                             <input class="form-control num" dir="ltr" @bind="form.ServerUrl" placeholder="http://192.168.1.10:5000" />
-                            <div class="form-text">
-                                آدرسی که این نرم‌افزار با آن درخواست‌ها را می‌فرستد (بدون اسلش انتهایی).
-                                @if (conn?.IsSaved != true && !string.IsNullOrWhiteSpace(conn?.DefaultServerUrl))
-                                {
-                                    <span class="text-success">
-                                        — به‌صورت خودکار از تنظیمات سرور پر شده؛ فقط اگر خواستید تغییرش دهید ویرایش کنید.
-                                    </span>
-                                }
-                            </div>
                         </div>
                         <div class="row g-3">
                             <div class="col-12 col-md-6">
@@ -100,10 +90,6 @@
                 <div class="card mb-3">
                     <div class="card-header"><i class="bi bi-person-key"></i> کلید شخصی شما</div>
                     <div class="card-body">
-                        <p class="fs-8 text-muted">
-                            این کلید به شما تعلق دارد و در «درخواست‌های من» شناسایی‌تان می‌کند.
-                            آن را با کسی به اشتراک نگذارید.
-                        </p>
                         @if (string.IsNullOrWhiteSpace(myKey))
                         {
                             <div class="text-muted fs-8">در حال خواندن…</div>

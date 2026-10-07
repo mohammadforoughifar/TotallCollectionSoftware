@@ -20,7 +20,6 @@
                 <span class="num text-muted">شماره @doc.Number.Num()</span>
             }
         </h1>
-        <p class="lead">@Hint</p>
     </div>
     <div class="ms-auto d-flex gap-2 align-items-center">
         <span class="badge @StatusBadge fs-8">@doc.StatusTitle</span>
@@ -112,7 +111,7 @@ else
                 <div class="@(doc.Kind == TreasuryKind.Transfer ? "col-12" : "col-md-12")">
                     <label class="form-label">بابت / شرح سند</label>
                     <input class="form-control" @bind="doc.Description" disabled="@IsLocked"
-                           placeholder="مثلاً تسویه فاکتور فروش شماره ۱۲۰" />
+                           />
                 </div>
             </div>
         </div>
@@ -128,9 +127,6 @@ else
                 <span class="badge badge-soft-primary ms-2 num">@doc.InvoiceAllocations.Count.Num() فاکتور</span>
             </div>
             <div class="card-body">
-                <p class="fs-8 text-muted mb-3">
-                    یک سند می‌تواند چند فاکتورِ یک طرف حساب را پوشش دهد. برای پرداخت قسطی، هر پرداخت را در یک سند جدا ثبت کنید و مبلغ تخصیص‌یافته را کمتر از ماندهٔ فاکتور بگذارید.
-                </p>
                 @if (doc.Status == TreasuryStatus.Cancelled && doc.InvoiceAllocations.Count > 0)
                 {
                     <div class="alert alert-warning fs-8">این سند ابطال شده است؛ تخصیص‌های آن در ماندهٔ فعلی فاکتورها محاسبه نمی‌شوند.</div>
@@ -138,7 +134,6 @@ else
 
                 @if (doc.PartyId is not > 0)
                 {
-                    <div class="alert alert-light border mb-0">ابتدا طرف حساب را انتخاب کنید تا فاکتورهای باز او نمایش داده شوند.</div>
                 }
                 else if (!IsLocked)
                 {
@@ -253,9 +248,6 @@ else
                 }
                 else if (UnallocatedAmount > 0 && doc.InvoiceAllocations.Count > 0)
                 {
-                    <div class="alert alert-info mt-2 mb-0 fs-8">
-                        مبلغ باقی‌مانده به هیچ فاکتوری وصل نمی‌شود و به‌عنوان بستانکاری/پیش‌پرداخت همین طرف حساب باقی می‌ماند.
-                    </div>
                 }
             </div>
         </div>
@@ -330,7 +322,6 @@ else
                     <div class="empty-state">
                         <i class="bi bi-cash-coin"></i>
                         <h5>هنوز سطری اضافه نشده است</h5>
-                        <p class="text-muted">با دکمه‌های بالا ابزار دریافت/پرداخت را اضافه کنید.</p>
                     </div>
                 }
                 else
@@ -448,7 +439,7 @@ else
                                     <div class="col-md-9">
                                         <label class="form-label fs-8">بابت تخفیف / کسورات</label>
                                         <input class="form-control" @bind="line.Description" disabled="@IsLocked"
-                                               placeholder="مثلاً تخفیف نقدی توافقی" />
+                                               />
                                     </div>
                                 }
                             </div>

@@ -321,7 +321,7 @@
                                     {
                                         <label class="att att-add" title="افزودن پیوست جدید">
                                             <div class="ic"><i class="bi @(attUploading ? "bi-hourglass-split" : "bi-plus-lg")"></i></div>
-                                            <div>@(attUploading ? "در حال بارگذاری…" : "افزودن پیوست")<small>بدون محدودیت حجم</small></div>
+                                            <div>@(attUploading ? "در حال بارگذاری…" : "افزودن پیوست")</div>
                                             <InputFile OnChange="OnReaderFiles" multiple disabled="@attUploading" style="display:none" />
                                         </label>
                                     }
@@ -519,7 +519,7 @@
                 <div class="gm-b">
                     <div class="fcard" style="box-shadow:none">
                         <label>متن پاسخ</label>
-                        <textarea class="tin" placeholder="پاسخ خود را بنویسید…" @bind="replyText"></textarea>
+                        <textarea class="tin" @bind="replyText"></textarea>
                     </div>
                     <label style="display:flex;align-items:center;gap:7px;font-size:12px;cursor:pointer;margin-top:10px">
                         <input type="checkbox" @bind="replyPrivate" /> پاسخ خصوصی (فقط فرستنده ببیند)

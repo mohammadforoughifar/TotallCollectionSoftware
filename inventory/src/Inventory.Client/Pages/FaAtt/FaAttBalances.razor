@@ -29,7 +29,6 @@
             <div class="col-md-5"><label class="form-label small text-muted">نوع مرخصی</label><select class="form-select" @bind="initType"><option value="">همه انواع فعال</option>@foreach (var t in types){<option value="@t.Id">@t.Name</option>}</select></div>
             <div class="col-md-4 d-flex align-items-end"><button class="btn btn-primary" @onclick="InitYear">صدور برای همه پرسنل فعال</button></div>
         </div>
-        <div class="small text-muted mt-1">فقط برای نفراتی که مانده آن سال را ندارند رکورد ساخته می‌شود؛ رکوردهای موجود دست نمی‌خورند.</div>
     </div>
 </div>
 
@@ -106,7 +105,6 @@
         <div class="col-md-6"><label class="form-label">سال مبدأ</label><input type="number" class="form-control" @bind="carryForm.FromYear" /></div>
         <div class="col-md-6"><label class="form-label">سقف انتقال (روز)</label><input type="number" step="0.5" class="form-control" @bind="carryForm.MaxDays" /></div>
     </div>
-    <div class="small text-muted mt-1">طبق ماده ۶۶ قانون کار سقف انتقال ۹ روز است.</div>
     </ChildContent>
     <Footer>
     <div class="d-flex justify-content-end gap-2 mt-3">

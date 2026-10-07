@@ -15,6 +15,13 @@ public interface ISettingsService
     Task<AppSettings> SaveAsync(AppSettings settings);
 }
 
+/// <summary>پروفایل شرکت/فروشگاه (تعریف شرکت) + تنظیمات چاپ فاکتور.</summary>
+public interface ICompanyProfileService
+{
+    Task<CompanyProfileDto> GetAsync();
+    Task<CompanyProfileDto> SaveAsync(CompanyProfileDto profile);
+}
+
 /// <summary>سرویس معرف‌ها (بازاریاب‌ها) + کیف پول و پرداخت‌ها.</summary>
 public interface IReferrerService
 {

@@ -23,7 +23,6 @@
         <div>
             <p class="text-muted small mb-0">کارتابل مالی</p>
             <h2>ثبت مساعده پرداخت‌شده</h2>
-            <p class="text-muted">کاربر مالی فقط نام پرسنل، تاریخ پرداخت از تقویم و مبلغ مساعده را ثبت می‌کند.</p>
         </div>
         <span class="badge badge-soft-primary">@BonFa.N(_advances.Sum(a => a.Balance)) ریال مانده</span>
     </div>
@@ -50,7 +49,6 @@
         <div class="advance-debt-status wide-field" role="status">
             @if (string.IsNullOrEmpty(_advance.EmployeeCode))
             {
-                <span class="text-muted">با انتخاب پرسنل، مانده بدهی قبلی نمایش داده می‌شود.</span>
             }
             else if (SelectedOpenAdvances.Count == 0)
             {

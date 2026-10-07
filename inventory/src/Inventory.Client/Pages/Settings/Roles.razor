@@ -8,7 +8,6 @@
 <div class="page-head mb-4">
     <div>
         <h1 class="mb-1">نقش‌ها و دسترسی‌ها</h1>
-        <p class="lead text-muted">مدیریت نقش‌ها و تخصیص دسترسی‌های ماژولار</p>
     </div>
     <button class="btn btn-primary btn-lg shadow-sm" @onclick="OpenCreateModal">
         <i class="bi bi-plus-lg me-2"></i> ایجاد نقش جدید
@@ -149,7 +148,7 @@
                     <div class="row g-3 mb-4">
                         <div class="col-md-6">
                             <label class="form-label small fw-600">نام نقش <span class="text-danger">*</span></label>
-                            <input class="form-control form-control-lg" @bind="form.Name" placeholder="مثال: مدیر سیستم" />
+                            <input class="form-control form-control-lg" @bind="form.Name" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label small fw-600">توضیحات</label>

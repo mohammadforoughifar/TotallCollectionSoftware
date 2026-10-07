@@ -12,7 +12,6 @@
 <div class="page-head">
     <div>
         <h1>تنظیمات مودیان و چاپگر مالی</h1>
-        <p class="lead">پیکربندی کلیدهای امنیتی، سال مالی و دوره‌های مالیاتی، شناسه کالا/خدمات و چاپگر مالی</p>
     </div>
 </div>
 
@@ -66,17 +65,14 @@
                 <div class="col-md-6">
                     <label class="form-label small">نشانی پایهٔ API (تنظیم اتصال آینده)</label>
                     <input class="form-control" dir="ltr" placeholder="https://tp.tax.gov.ir/requestsmanager" @bind="setting.BaseUrl" />
-                    <div class="form-text">ثبت نشانی به‌تنهایی ارسال را فعال نمی‌کند.</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small">کلید خصوصی امضا (PEM)</label>
-                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" placeholder="کلید هنگام ذخیره به‌صورت محافظت‌شده نگهداری می‌شود." @bind="setting.PrivateKeyPem"></textarea>
-                    <div class="form-text">مقدار ماسک‌شده را برای حفظ کلید قبلی دست‌نخورده بگذارید؛ برای جایگزینی، کل مقدار را با PEM جدید عوض کنید.</div>
+                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" @bind="setting.PrivateKeyPem"></textarea>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label small">گواهی امضای مؤدی (PEM)</label>
-                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" placeholder="گواهی هنگام ذخیره به‌صورت محافظت‌شده نگهداری می‌شود." @bind="setting.SigningCertificatePem"></textarea>
-                    <div class="form-text">مقدار ماسک‌شده را برای حفظ گواهی قبلی دست‌نخورده بگذارید.</div>
+                    <textarea class="form-control font-monospace small" rows="5" dir="ltr" @bind="setting.SigningCertificatePem"></textarea>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small">نرخ پیش‌فرض مالیات (٪)</label>
@@ -114,7 +110,7 @@
         <div class="card-header fw-bold">دوره‌های مالیاتی (ماه‌های شمسی)</div>
         <div class="card-body">
             <div class="row g-2 mb-3">
-                <div class="col-auto"><input class="form-control form-control-sm" type="number" placeholder="سال (مثلاً 1405)" @bind="pYear" /></div>
+                <div class="col-auto"><input class="form-control form-control-sm" type="number" @bind="pYear" /></div>
                 <div class="col-auto">
                     <select class="form-select form-select-sm" @bind="pMonth">
                         @for (var i = 1; i <= 12; i++)
@@ -211,7 +207,6 @@
                         <div class="col-12">
                             <label class="form-label small">پورت دستگاه</label>
                             <input class="form-control" dir="ltr" placeholder="FILE:/tmp/pos.txt یا 192.168.1.50:9100 یا /dev/usb/lp0" @bind="printer.PortName" />
-                            <div class="form-text">خالی = حالت شبیه‌سازی (فقط پیش‌نمایش/ذخیره). برای تست خروجی ESC/POS: <code dir="ltr">FILE:/tmp/pos.txt</code></div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label small">تعداد نسخه</label>
@@ -328,7 +323,7 @@
             <span>سال مالی مودیان (شمسی) و شمارهٔ سند سالانه</span>
             <div class="d-flex gap-2">
                 <input class="form-control form-control-sm num" style="width:110px" type="number" min="1300" max="1500"
-                       placeholder="مثلاً 1405" @bind="newYearValue" />
+                       @bind="newYearValue" />
                 <button class="btn btn-sm btn-primary" @onclick="AddFiscalYear" disabled="@saving">
                     <i class="bi bi-plus-lg"></i> تعریف سال مالی
                 </button>
@@ -338,10 +333,6 @@
             </div>
         </div>
         <div class="card-body">
-            <div class="alert alert-info py-2 small">
-                با تعریف سال مالی، ۱۲ دورهٔ ماهانهٔ آن خودکار ساخته می‌شود؛ شمارهٔ سند هر صورتحساب به شکل
-                <span class="num" dir="ltr">سال/سریال</span> از همین سال تخصیص می‌یابد.
-            </div>
             @if (fiscalYears.Count == 0)
             {
                 <div class="text-muted small">سال مالی ثبت نشده است.</div>

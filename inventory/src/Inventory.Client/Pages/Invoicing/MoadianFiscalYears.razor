@@ -10,7 +10,6 @@
 <div class="page-head">
     <div>
         <h1>سال مالی مودیان</h1>
-        <p class="lead">تعریف سال مالی شمسی، ساخت خودکار ۱۲ دورهٔ ماهانه و کنترل باز/بسته بودن هر دوره</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/invoice-new")'>
@@ -20,10 +19,6 @@
     </div>
 </div>
 
-<div class="alert alert-info py-2 small">
-    با ثبت هر سال مالی، ۱۲ دورهٔ ماهانهٔ شمسی آن به‌صورت خودکار ساخته می‌شود و صورتحساب‌ها بر اساس تاریخ فاکتور
-    به دورهٔ همان ماه و به سال مالی گره می‌خورند. سریال و شمارهٔ سند سالانهٔ هر صورتحساب هم از همین سال محاسبه می‌شود.
-</div>
 
 <!-- فرم تعریف/ویرایش سال مالی -->
 <div class="card mb-3">
@@ -35,12 +30,11 @@
             <div class="col-md-2">
                 <label class="form-label small">سال شمسی <span class="text-danger">*</span></label>
                 <input class="form-control form-control-sm num" type="number" min="1300" max="1500" dir="ltr"
-                       @bind="yearForm.Year" placeholder="مثلاً 1405" />
+                       @bind="yearForm.Year" />
             </div>
             <div class="col-md-3">
                 <label class="form-label small">بازهٔ سال (شمسی)</label>
                 <input class="form-control form-control-sm" disabled value="@YearRangePreview" dir="rtl" />
-                <div class="form-text">از ۰۱/۰۱ تا آخرین روز اسفند همان سال.</div>
             </div>
             <div class="col-md-2">
                 <label class="form-label small d-block">وضعیت</label>

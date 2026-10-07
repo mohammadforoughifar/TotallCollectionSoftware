@@ -391,7 +391,7 @@
                 {
                     <div class="fcard" style="border-color:#a5b4fc;background:#eef2ff">
                         <label><i class="bi bi-upc-scan"></i> کد رهگیری مرسوله <span class="opt">اختیاری</span></label>
-                        <input class="tin" placeholder="مثلاً ۲۳۵۱۷۰۰۰۰۰۰۰۰۰" @bind="regTrackingCode" />
+                        <input class="tin" @bind="regTrackingCode" />
                     </div>
                 }
 
@@ -399,7 +399,7 @@
                 {
                     <div class="fcard @(errFax ? "err" : "")" style="border-color:#a5b4fc;background:#eef2ff">
                         <label><i class="bi bi-printer"></i> شماره فکس مقصد <span class="req">*</span></label>
-                        <input class="tin num" placeholder="مثلاً ۰۲۱-۸۸۰۰۰۰۰۰" @bind="regFax" />
+                        <input class="tin num" @bind="regFax" />
                         @if (errFax)
                         {
                             <div class="ferr"><i class="bi bi-exclamation-circle"></i> شماره فکس مقصد را وارد کنید.</div>
@@ -412,7 +412,7 @@
                         شماره ثبت مقصد
                         <span class="opt">@(spec.NeedsDestRegNumber ? "الزامی برای اتوماسیون (ECE)" : "شماره‌ای که دبیرخانه سازمان مقصد به نامه داده")</span>
                     </label>
-                    <input class="tin" placeholder="مثلاً 1404/د-321…" @bind="regDestNumber" />
+                    <input class="tin" @bind="regDestNumber" />
                     @if (errDestNumber)
                     {
                         <div class="ferr"><i class="bi bi-exclamation-circle"></i> شماره ثبت مقصد را وارد کنید.</div>
@@ -546,9 +546,6 @@
                             <i class="bi bi-files"></i>
                             <span>
                                 <b>با رونوشت</b>
-                                <small style="display:block;font-size:11.5px;opacity:.75">
-                                    رونوشت‌گیرندگان در انتهای نامه درج می‌شود — نسخهٔ بایگانی دبیرخانه
-                                </small>
                             </span>
                         </button>
                         <button class="lbtn @(!printWithCopy ? "pri" : "ghost")" style="text-align:start"
@@ -556,9 +553,6 @@
                             <i class="bi bi-file-earmark"></i>
                             <span>
                                 <b>بدون رونوشت</b>
-                                <small style="display:block;font-size:11.5px;opacity:.75">
-                                    رونوشت حذف می‌شود — نسخه‌ای که تحویل سازمان مقصد می‌شود
-                                </small>
                             </span>
                         </button>
                     </div>

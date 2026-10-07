@@ -617,7 +617,6 @@
                     <div class="ic"><i class="bi bi-box-arrow-in-right"></i></div>
                     <div class="flex-grow-1">
                         <b>ورود جدید</b>
-                        <small>پروژه برای اولین بار وارد مجموعه می‌شود — شماره پروژه خودکار صادر می‌شود</small>
                     </div>
                     @if (!isReturnMode) { <i class="bi bi-check-circle-fill" style="color:#6366f1;"></i> }
                 </div>
@@ -625,7 +624,6 @@
                     <div class="ic"><i class="bi bi-arrow-counterclockwise"></i></div>
                     <div class="flex-grow-1">
                         <b>پروژه برگشتی</b>
-                        <small>پروژه‌ای که قبلاً خارج شده دوباره برمی‌گردد — شماره‌اش «REn-کد پروژه مبدأ» می‌شود</small>
                     </div>
                     @if (isReturnMode) { <i class="bi bi-check-circle-fill" style="color:#d97706;"></i> }
                 </div>
@@ -638,12 +636,10 @@
                     <label class="form-label">پروژه برگشتی <span class="text-danger">*</span></label>
                     <SearchSelect Items="lookups.BaseProjects" Value="selectedReturnId"
                                   ValueChanged="OnReturnProjectChanged" Placeholder="جستجو بر اساس نام یا کد پروژه…" />
-                    <div class="fs-8 text-muted mt-1"><i class="bi bi-info-circle ms-1"></i>فقط پروژه‌های اصلی (RE‌ندارن) نمایش داده می‌شوند.</div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label"><i class="bi bi-123 text-muted ms-1"></i>عدد برگشتی <span class="text-danger">*</span></label>
                     <input class="form-control" type="number" min="1" max="9999" value="@reNum" readonly aria-readonly="true" />
-                    <div class="fs-8 text-muted mt-1">دستی وارد کنید (مثلاً 1 ← RE1)</div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label"><i class="bi bi-lock-fill text-muted ms-1"></i>کد پروژه (خودکار)</label>
@@ -651,7 +647,6 @@
                         <i class="bi bi-arrow-counterclockwise"></i>
                         <span>@(selectedReturnId > 0 && reNum >= 1 ? $"RE{reNum}-{parentCode}" : "RE…-…")</span>
                     </div>
-                    <div class="fs-8 text-muted mt-1">از «عدد برگشتی» + «کد پروژه مبدأ» ساخته می‌شود.</div>
                 </div>
                 @if (selectedReturnId > 0)
                 {
@@ -685,13 +680,11 @@
                 <label class="form-label"><i class="bi bi-lock-fill text-muted ms-1"></i>کد پروژه</label>
                 <div class="locked-field">
                     <span>@(string.IsNullOrWhiteSpace(nextSerialSuggestion) ? "…" : Fa.Digits(nextSerialSuggestion))</span>
-                    <span class="fs-8 text-muted fw-normal">(خودکار — آخرین کد + ۱)</span>
                 </div>
             </div>
             <div class="col-md-4">
                 <label class="form-label"><i class="bi bi-hash text-muted ms-1"></i>شماره سریال <span class="text-muted fs-8">(اختیاری)</span></label>
-                <input class="form-control" @bind="form.SerialNumber" placeholder="دستی وارد کنید — مثلاً 234589" />
-                <div class="fs-8 text-muted mt-1">مستقل از شماره پروژه است.</div>
+                <input class="form-control" @bind="form.SerialNumber" />
             </div>
         }
         @if (editing)
@@ -712,18 +705,13 @@
         {
             <div class="col-md-4">
                 <label class="form-label"><i class="bi bi-hash text-muted ms-1"></i>شماره سریال <span class="text-muted fs-8">(اختیاری)</span></label>
-                <input class="form-control" @bind="form.SerialNumber" placeholder="دستی وارد کنید — مثلاً 234589" />
-                <div class="fs-8 text-muted mt-1">سریال کاملاً مستقل از شماره پروژه (RE) است.</div>
+                <input class="form-control" @bind="form.SerialNumber" />
             </div>
         }
 
         @if (editing && !canApproveChanges)
         {
             <div class="col-12">
-                <div class="alert alert-warning py-2 px-3 mb-0 fs-8">
-                    <i class="bi bi-shield-exclamation ms-1"></i>
-                    تغییرات این فرم پس از ذخیره، به‌صورت «درخواست ویرایش» به کارتابل مدیر می‌رود و فقط پس از تایید مدیر روی پروژه اعمال می‌شود.
-                </div>
             </div>
         }
         <div class="col-md-4">
@@ -774,10 +762,6 @@
         @if (!editing)
         {
             <div class="col-12">
-                <div class="alert alert-light border py-2 mb-0 fs-8 d-flex align-items-center gap-2">
-                    <i class="bi bi-receipt text-success"></i>
-                    شماره فاکتور و نوع فاکتور را می‌توانید <b>بعداً</b> از منوی سطر (⋮) با گزینه «ثبت/ویرایش فاکتور» تکمیل کنید.
-                </div>
             </div>
         }
 
@@ -792,7 +776,6 @@
                             <i class="bi bi-images"></i> افزودن تصویر…
                             <InputFile OnChange="AddPendingImages" multiple accept="image/*" style="display:none" />
                         </label>
-                        <span class="fs-8 text-muted">فقط فایل تصویری — بدون محدودیت تعداد</span>
                     </div>
                     @if (pendingImages.Count > 0)
                     {
@@ -875,12 +858,11 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label"><i class="bi bi-123 text-muted ms-1"></i>شماره فاکتور</label>
-                    <input class="form-control" @bind="factorNumber" placeholder="مثلاً F-1024" />
+                    <input class="form-control" @bind="factorNumber" />
                 </div>
                 <div class="col-12">
                     <div class="alert alert-light border py-2 mb-0 fs-8">
                         <i class="bi bi-shield-lock ms-1"></i>
-                        این اطلاعات را می‌توانید هر زمان از منوی سطر بازگردید و ویرایش کنید.
                         رویت ستون‌های فاکتور در لیست، نیازمند مجوز «رویت ستون‌های فاکتور» است.
                     </div>
                 </div>
@@ -999,11 +981,6 @@
                 </div>
 
                 <div class="col-md-6 d-flex align-items-center">
-                    <div class="alert alert-light border py-2 mb-0 fs-8 w-100">
-                        <i class="bi bi-info-circle text-primary ms-1"></i>
-                        هر فیلد <b>اختیاری</b> است — می‌توانید حالا خالی بگذارید و بعداً از همین فرم تکمیل یا ویرایش کنید.
-                        تاریخ‌های خالی در لیست و جزئیات با «—» نمایش داده می‌شوند.
-                    </div>
                 </div>
             </div>
         }
@@ -1029,9 +1006,9 @@
                     <b>دلیل رد مدیر:</b> @resubmitProject.ManagerNote
                 </div>
             }
-            <label class="form-label">توضیح اصلاحات انجام‌شده <span class="fs-8 text-muted">(اختیاری — برای مدیر ارسال می‌شود)</span></label>
+            <label class="form-label">توضیح اصلاحات انجام‌شده </label>
             <textarea class="form-control" rows="3" @bind="resubmitNote"
-                      placeholder="مثلاً: مدارک فنی ناقص تکمیل و پیوست شد."></textarea>
+                     ></textarea>
             <div class="alert alert-light border py-2 mt-3 mb-0 fs-8">
                 <i class="bi bi-arrow-repeat text-warning ms-1"></i>
                 با ارسال مجدد، وضعیت پروژه به <b>«در انتظار تایید مدیر»</b> برمی‌گردد و تا زمان تایید،
@@ -1061,7 +1038,6 @@
                             <FlowChip Status="detail.FlowStatus" />
                             @if (detail.FlowStatus is 0 or 2)
                             {
-                                <span class="fs-8 text-muted ms-2">(ثبت گزارش کار غیرفعال است)</span>
                             }
                         </td>
                     </tr>

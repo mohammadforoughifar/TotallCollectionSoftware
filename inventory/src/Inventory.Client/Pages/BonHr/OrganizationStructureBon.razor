@@ -23,7 +23,6 @@
         <div>
             <p class="text-muted small mb-0">مدیریت واحدها و جایگاه‌ها</p>
             <h2>واحدهای سازمانی و ماتریس پرسنل</h2>
-            <p class="text-muted">واحدها، ایستگاه‌های کاری و جایگاه پرسنل در ماتریس قابل تعریف و مشاهده هستند.</p>
         </div>
         <button class="btn btn-light" type="button" @onclick="ExportMatrixAsync">خروجی ماتریس</button>
     </div>
@@ -40,7 +39,7 @@
             <Modal Size="modal-lg" Visible="_showDept" Title="واحد سازمانی جدید" OnClose="() => _showDept = false">
                 <ChildContent>
                     <label class="form-label">نام واحد</label>
-                    <input class="form-control" maxlength="80" required placeholder="مثلاً تعمیرات" @bind="_newDepartment" />
+                    <input class="form-control" maxlength="80" required @bind="_newDepartment" />
                 </ChildContent>
                 <Footer>
                     <button class="btn btn-light" type="button" @onclick="() => _showDept = false">انصراف</button>
@@ -63,7 +62,7 @@
                         </div>
                         <div class="col-12">
                             <label class="form-label">ایستگاه کاری</label>
-                            <input class="form-control" maxlength="100" required placeholder="مثلاً اپراتور میکسر" @bind="_newStation" />
+                            <input class="form-control" maxlength="100" required @bind="_newStation" />
                         </div>
                     </div>
                 </ChildContent>

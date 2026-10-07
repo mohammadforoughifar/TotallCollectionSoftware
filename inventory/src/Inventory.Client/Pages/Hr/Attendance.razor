@@ -388,15 +388,12 @@
         {
             <div class="col-12">
                 <label class="form-label small fw-800">مقصد <span class="text-danger">*</span></label>
-                <input class="form-control form-control-sm" @bind="leaveDestination" placeholder="مثلاً: تهران" />
+                <input class="form-control form-control-sm" @bind="leaveDestination" />
             </div>
         }
         <div class="col-12">
             <label class="form-label small fw-800">دلیل (اختیاری)</label>
-            <input class="form-control form-control-sm" @bind="leaveReason" placeholder="مثلاً: ویزیت پزشکی" />
-        </div>
-        <div class="col-12 small text-muted">
-            <i class="bi bi-info-circle"></i> درخواست برای تاریخ گذشته هم قابل ثبت است؛ بعد از تایید، کسری آن روز به‌صورت خودکار اصلاح می‌شود.
+            <input class="form-control form-control-sm" @bind="leaveReason" />
         </div>
     </div>
     </ChildContent>

@@ -590,8 +590,7 @@ else
 <Modal Visible="showCertModal" Title="صدور گواهی اشتغال به کار" OnClose="() => showCertModal = false">
     <ChildContent>
         <label class="form-label">مورد استفاده گواهی</label>
-        <input class="form-control" @bind="certPurpose" placeholder="مثلاً: ارائه به بانک، سفارت، دانشگاه…" />
-        <div class="form-text">در صورت خالی گذاشتن، عبارت «ارائه به هر مرجع ذی‌صلاح» درج می‌شود.</div>
+        <input class="form-control" @bind="certPurpose" />
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="() => showCertModal = false">انصراف</button>
@@ -690,7 +689,7 @@ else
             <div class="col-md-6"><label class="form-label">تاریخ صدور</label><DatePicker @bind-Value="docIssue" AllowClear="true" /></div>
             <div class="col-md-6"><label class="form-label">تاریخ انقضا</label><DatePicker @bind-Value="docExpiry" AllowClear="true" /></div>
             <div class="col-12"><label class="form-label">یادداشت</label><input class="form-control" @bind="docform.Notes" /></div>
-            <div class="col-12"><div class="alert alert-light border py-2 small mb-0"><i class="bi bi-info-circle"></i> فایل سند بعد از ذخیره، با دکمه آپلود در ردیف جدول اضافه می‌شود. اسناد نزدیک به انقضا (۳۰ روز) بالای پرونده هشدار داده می‌شوند.</div></div>
+            <div class="col-12"></div>
         </div>
     </ChildContent>
     <Footer>

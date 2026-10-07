@@ -11,16 +11,9 @@
 <div class="page-head">
     <div>
         <h1>اطلاعات پایه مودیان</h1>
-        <p class="lead">فرم‌ها بر اساس مدل‌های CPInfo، ConnectInfo، Customer، GoodsOrService و UnitOfMeasurement</p>
     </div>
 </div>
 
-<div class="alert alert-info py-2 small">
-    هر خدمات‌دهنده فقط یک اتصال دارد؛ تعریف اتصال دوم برای خدمات‌دهنده‌ای که اتصالش ثبت شده مجاز نیست و اتصال موجود فقط قابل ویرایش، حذف یا غیرفعال‌شدن است (فقط مدیر).
-    اطلاعات اتصال شامل نشانی وب‌سرویس، شناسهٔ یکتای حافظهٔ مالیاتی و فایل کلید خصوصی با پسوند .key است. فایل باید کلید خصوصی PKCS#8 PEM باشد و مستقیم در مسیر روتِ ذخیره‌گاه خصوصی (خارج از پوشهٔ وب) نگهداری می‌شود؛ محتوا و مسیر ذخیره‌سازی هرگز در نرم‌افزار یا سرویس‌های وب نمایش داده نمی‌شوند.
-    دکمهٔ «تست اتصال»، ارتباط با سامانه و اعتبار احراز هویت همان خدمات‌دهنده را با کلید خصوصی اتصال بررسی می‌کند (بدون ارسال فاکتور). نتیجهٔ آخرین تست در همین جدول نگه داشته می‌شود.
-    CRUD مشتری، کالا/خدمت و واحد نیز در همین صفحه مدیریت می‌شود. پیکربندی سراسری Moadian (BaseUrl/ApiVersion/ClientType) در App_Data/MoadianSettings.json و متغیرهای محیطی حفظ شده است؛ به‌جز دکمهٔ تست اتصال، فرم‌ها ذخیره‌محور هستند و فراخوانی شبکه انجام نمی‌دهند.
-</div>
 
 <ul class="nav nav-tabs mb-3 flex-wrap">
     <li class="nav-item"><button class='nav-link @(tab == 1 ? "active" : "")' @onclick="() => tab = 1">خدمات‌دهنده</button></li>
@@ -45,7 +38,7 @@ else if (tab == 1)
         <div class="card-body p-0">
             @if (providers.Count == 0)
             {
-                <div class="empty-state"><i class="bi bi-building-add"></i><h5>خدمات‌دهنده‌ای ثبت نشده است</h5><div class="text-muted">پس از ثبت خدمات‌دهنده، اتصال آن را در زبانهٔ «اتصال» اضافه کنید.</div></div>
+                <div class="empty-state"><i class="bi bi-building-add"></i><h5>خدمات‌دهنده‌ای ثبت نشده است</h5></div>
             }
             else
             {
@@ -107,7 +100,7 @@ else if (tab == 2)
             }
             else if (!FilteredConnections.Any())
             {
-                <div class="empty-state"><i class="bi bi-plug"></i><h5>اتصالی ثبت نشده است</h5><div class="text-muted">نشانی وب‌سرویس، شناسهٔ یکتای حافظهٔ مالیاتی و فایل کلید خصوصی (.key) در زبانهٔ «اتصال» ثبت می‌شوند.</div></div>
+                <div class="empty-state"><i class="bi bi-plug"></i><h5>اتصالی ثبت نشده است</h5></div>
             }
             else
             {
@@ -321,7 +314,7 @@ else
         <div class="card-body p-0">
             @if (units.Count == 0)
             {
-                <div class="empty-state"><i class="bi bi-rulers"></i><h5>واحدی ثبت نشده است</h5><div class="text-muted">کد رسمی از پیش وارد نشده است؛ کد و نام واحد را خودتان ثبت کنید.</div></div>
+                <div class="empty-state"><i class="bi bi-rulers"></i><h5>واحدی ثبت نشده است</h5></div>
             }
             else
             {
@@ -358,7 +351,6 @@ else
 
 <Modal Visible="showProviderModal" Title="@(providerForm.Id == 0 ? "خدمات‌دهندهٔ جدید" : "ویرایش خدمات‌دهنده")" Size="modal-lg" OnClose="CloseProviderModal">
     <ChildContent>
-        <div class="alert alert-light border py-2 small">این فرم فقط مشخصات شناسایی خدمات‌دهنده را نگه می‌دارد؛ اطلاعات اتصال در زبانهٔ جداگانهٔ «اتصال» ثبت می‌شود.</div>
         <div class="row g-3">
             <div class="col-md-4"><label class="form-label">نوع شخص</label><input class="form-control" maxlength="50" placeholder="حقوقی / حقیقی" @bind="providerForm.Type" /></div>
             <div class="col-md-4"><label class="form-label">شناسهٔ ملی <span class="text-danger">*</span></label><input class="form-control" maxlength="50" dir="ltr" @bind="providerForm.NationalId" /></div>
@@ -404,7 +396,6 @@ else
                 <div class="col-12 col-md-6">
                     <label class="form-label">نشانی وب‌سرویس خدمات‌دهنده <span class="text-danger">*</span></label>
                     <input class="form-control" maxlength="2048" dir="ltr" placeholder="https://..." @bind="connectionForm.WebServiceAddress" disabled="@connectionBusy" />
-                    <div class="form-text">نشانی باید نشانی کامل و امن (HTTPS) باشد؛ این مرحله فقط آن را ذخیره می‌کند.</div>
                 </div>
                 <div class="col-12 col-md-6">
                     <label class="form-label">شناسهٔ یکتای حافظهٔ مالیاتی <span class="text-danger">*</span></label>
@@ -415,7 +406,6 @@ else
                     @if (connectionForm.HasPrivateKey)
                     {
                         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 border rounded p-2 mb-2">
-                            <span class="small"><i class="bi bi-shield-lock text-success me-1"></i>کلید خصوصی این اتصال در مسیر روتِ ذخیره‌گاه خصوصی موجود است؛ انتخاب فایل جدید، کلید فعلی را جایگزین می‌کند. محتوا/مسیر آن نمایش یا دانلود نمی‌شود.</span>
                             <button type="button" class="btn btn-sm btn-outline-danger" @onclick="RemovePrivateKey" disabled="@connectionBusy">حذف کلید از اتصال</button>
                         </div>
                     }
@@ -432,7 +422,6 @@ else
                     {
                         <div class="text-danger small mt-2">@privateKeyUploadError</div>
                     }
-                    <div class="form-text">یک فایل .key حداکثر ۶۴ کیلوبایت با محتوای PKCS#8 PEM انتخاب کنید. فایل روی سرور مستقیم در مسیر روتِ ذخیره‌گاه خصوصی (خارج از web root) نگهداری می‌شود؛ مسیر/محتوا در UI نمایش داده نمی‌شوند. در Windows به‌صورت پیش‌فرض زیر %ProgramData%\TotallCollection\MoadianPrivateKeys ذخیره می‌شود و ACL آن باید به حساب سرویس محدود باشد (تنظیم Files:MoadianPrivateKeyRoot اختیاری است).</div>
                 </div>
             </div>
             @if (connectionBusy)
@@ -536,7 +525,6 @@ else
             <div class="text-center py-4">
                 <span class="spinner-border text-primary"></span>
                 <div class="mt-2 fw-bold text-primary">در حال برقراری ارتباط با سامانه و بررسی احراز هویت...</div>
-                <div class="small text-muted mt-1">تست شامل برقراری ارتباط، دریافت توکن با کلید خصوصی این اتصال و استعلام شناسهٔ حافظه مالیاتی است.</div>
             </div>
         }
         else if (!string.IsNullOrWhiteSpace(testResultError))
@@ -605,9 +593,6 @@ else
                 </details>
             }
 
-            <div class="form-text mt-2">
-                این تست هیچ فاکتوری ارسال نمی‌کند و وضعیتی در سامانه تغییر نمی‌دهد. توکن و کلید خصوصی در این پنجره نمایش داده نمی‌شوند.
-            </div>
         }
     </ChildContent>
     <Footer>
@@ -667,9 +652,6 @@ else
                     </div>
                 </div>
             }
-            <div class="col-12 small text-muted">
-                سطرهای تکراری (همان شناسهٔ کالا/خدمت یا همان نام برای همان خدمات‌دهنده) به‌جای درج دوباره، به‌روزرسانی می‌شوند.
-            </div>
         </div>
     </ChildContent>
     <Footer>

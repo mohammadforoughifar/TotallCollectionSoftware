@@ -11,7 +11,6 @@
 <div class="page-head">
     <div>
         <h1>ثبت صورتحساب جدید</h1>
-        <p class="lead">ثبت مستقل از ERP — مشتری و کالا/خدمت از «اطلاعات پایه مودیان» تکمیل می‌شود</p>
     </div>
     <div class="ms-auto d-flex gap-2 flex-wrap">
         <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/fiscal-years")'>
@@ -99,7 +98,6 @@ else
                     <div class="form-text">
                         سریال داخلی: <span class="num">@(nextNumber?.NextGlobalNumber ?? 0)</span>
                         · دوره: <span class="num">@(nextNumber?.FiscalPeriodTitle ?? "—")</span>
-                        <br />شمارهٔ نهایی هنگام ذخیره قطعی می‌شود.
                     </div>
                 </div>
                 <div class="col-md-2">
@@ -124,13 +122,11 @@ else
                             <option value="@s">@MoadianInvoiceRules.SubjectTitle(s) (@((int)s))</option>
                         }
                     </select>
-                    <div class="form-text">کد رسمی موضوع صورتحساب در پرانتز آمده است.</div>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label small">وضعیت</label>
                     <div class="form-control form-control-sm bg-light d-flex align-items-center gap-2">
                         @StatusBadge(MoadianInvoiceStatus.Draft)
-                        <span class="small text-muted">پس از ثبت، این صورتحساب «ارسال نشده» می‌ماند؛ ارسال به سامانه در این نسخه انجام نمی‌شود.</span>
                     </div>
                 </div>
 
@@ -170,7 +166,6 @@ else
                     <div class="col-md-4">
                         <label class="form-label small">شناسهٔ مالیاتی صورتحساب مرجع <span class="text-danger">*</span></label>
                         <input class="form-control form-control-sm" dir="ltr" maxlength="22" @bind="form.ReferenceTaxId" />
-                        <div class="form-text">برای موضوع‌های اصلاحی/ابطالی/برگشتی، ۲۲ نویسهٔ شناسهٔ صورتحساب مرجع لازم است.</div>
                     </div>
                 }
             </div>
@@ -187,7 +182,6 @@ else
                             <option value="@c.Id">@CustomerLabel(c)</option>
                         }
                     </select>
-                    <div class="form-text">با انتخاب مشتری، شناسه و نشانی خریدار خودکار تکمیل می‌شود.</div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small">شناسه ملی خریدار</label>
@@ -309,10 +303,6 @@ else
                 <div class="col-md-3"><span class="text-muted">جمع تخفیف: </span><span class="num">@TotalDiscount.Money()</span></div>
                 <div class="col-md-3"><span class="text-muted">جمع مالیات ارزش افزوده: </span><span class="num">@TotalVat.Money()</span></div>
                 <div class="col-md-3 fw-bold"><span class="text-muted">جمع کل صورتحساب: </span><span class="num text-primary fs-6">@TotalNet.Money()</span></div>
-            </div>
-            <div class="form-text mt-2">
-                مبلغ قبل تخفیف = تعداد × فی کالا | مبلغ بعد تخفیف = مبلغ قبل تخفیف − تخفیف |
-                مالیات ارزش افزوده = مبلغ بعد تخفیف × درصد مالیات | مبلغ کل = مبلغ بعد تخفیف + مالیات
             </div>
         </div>
     </div>

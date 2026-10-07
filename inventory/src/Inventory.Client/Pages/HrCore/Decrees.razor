@@ -139,7 +139,6 @@ else
                     <input class="form-check-input" type="checkbox" id="decreeAutoApply" @bind="form.AutoApply" />
                     <label class="form-check-label" for="decreeAutoApply">
                         اعمال خودکار روی پرونده پرسنل در صورت رسیده‌بودن تاریخ اجرا
-                        <span class="d-block small text-muted">حقوق پایه/پست/واحد پرونده به‌روز می‌شود تا دوره‌ی حقوقی بعدی خودکار مبلغ جدید را محاسبه کند. برای تاریخ‌های آینده، هر روز صبح به‌طور خودکار اجرا می‌شود.</span>
                     </label>
                 </div>
             </div>
@@ -190,7 +189,7 @@ else
             <div class="col-md-7">
                 <div class="fw-bold mb-2">۲) مشخصات حکم (یکسان برای همه انتخاب‌شده‌ها)</div>
                 <div class="row g-2">
-                    <div class="col-md-6"><label class="form-label">شماره حکم</label><input class="form-control num" @bind="bulkForm.DecreeNo" placeholder="خالی = بدون شماره" /></div>
+                    <div class="col-md-6"><label class="form-label">شماره حکم</label><input class="form-control num" @bind="bulkForm.DecreeNo" /></div>
                     <div class="col-md-6">
                         <label class="form-label">نوع حکم</label>
                         <select class="form-select" @bind="bulkForm.Type">

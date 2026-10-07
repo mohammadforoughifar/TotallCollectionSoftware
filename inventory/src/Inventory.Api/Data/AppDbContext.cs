@@ -19,6 +19,7 @@ public class AppDbContext : DbContext
     public DbSet<RsReportUserShare> RsReportUserShares => Set<RsReportUserShare>();
     public DbSet<RsReportRoleShare> RsReportRoleShares => Set<RsReportRoleShare>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
 
     // ==================== داشبورد شخصی کاربر ====================
     public DbSet<UserDashboard> UserDashboards => Set<UserDashboard>();

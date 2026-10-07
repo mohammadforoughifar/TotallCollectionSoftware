@@ -11,7 +11,6 @@
 <div class="page-head">
     <div>
         <h1>موجودی انبار</h1>
-        <p class="lead">وضعیت لحظه‌ای موجودی کالاها به تفکیک انبار</p>
     </div>
     <button class="btn btn-outline-primary me-auto" @onclick="OpenAdjust">
         <i class="bi bi-sliders"></i> اصلاح موجودی
@@ -176,7 +175,7 @@
             </div>
             <div class="col-12">
                 <label class="form-label">توضیحات</label>
-                <input class="form-control" @bind="adjDesc" placeholder="مثلاً: شمارش دوره‌ای" />
+                <input class="form-control" @bind="adjDesc" />
             </div>
         </div>
     </ChildContent>

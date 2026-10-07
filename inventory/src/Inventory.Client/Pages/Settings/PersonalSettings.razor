@@ -11,7 +11,6 @@
 <div class="page-head">
     <div>
         <h1><i class="bi bi-person-gear text-primary me-2"></i>پروفایل و تنظیمات شخصی</h1>
-        <p class="lead">اطلاعات تماس و تنظیمات حساب کاربری خود را مدیریت کنید.</p>
     </div>
 </div>
 
@@ -42,10 +41,6 @@
                     <div class="form-control bg-light" dir="ltr" aria-readonly="true">@profile.Username</div>
                 </div>
             </div>
-            <div class="alert alert-light border py-2 mb-4">
-                <i class="bi bi-info-circle text-primary ms-1"></i>
-                نام و نام خانوادگی فقط نمایش داده می‌شوند و از این صفحه قابل ویرایش نیستند؛ برای اصلاح آن‌ها با مدیر سامانه تماس بگیرید.
-            </div>
 
             <div class="row g-4">
                 <div class="col-12 col-lg-6">
@@ -66,7 +61,6 @@
                         @if (profile.MobileVerified)
                         {
                             <div class="form-control num text-start" dir="ltr" aria-readonly="true">@Display(profile.Mobile)</div>
-                            <div class="form-text">شمارهٔ تأییدشده برای حفظ امنیت حساب از اینجا قابل تغییر نیست.</div>
                         }
                         else
                         {
@@ -74,7 +68,6 @@
                             <input id="profile-mobile" class="form-control num text-start" dir="ltr" type="tel" inputmode="tel"
                                    autocomplete="tel" maxlength="20" placeholder="09123456789"
                                    @bind="mobileInput" @bind:event="oninput" disabled="@profileBusy" />
-                            <div class="form-text">شماره پس از واردکردن کد پیامک‌شده ثبت و تأیید می‌شود.</div>
 
                             @if (!profile.MobileVerificationAvailable)
                             {
@@ -144,7 +137,6 @@
                         <input id="profile-email" class="form-control text-start" dir="ltr" type="email" inputmode="email"
                                autocomplete="email" maxlength="254" placeholder="name@example.com"
                                @bind="emailInput" @bind:event="oninput" disabled="@profileBusy" />
-                        <div class="form-text">ایمیل اختیاری است؛ نشانی جدید فقط پس از تأیید کد ارسالی ذخیره می‌شود.</div>
 
                         @if (!profile.EmailVerificationAvailable)
                         {
@@ -217,7 +209,6 @@
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-header fw-bold"><i class="bi bi-people me-2"></i>گروه‌های گیرندگان نامه</div>
                 <div class="card-body d-flex flex-column">
-                    <p class="text-muted">گروه‌های شخصی خود را برای استفاده سریع در نامه‌ها مدیریت کنید.</p>
                     <button class="btn btn-outline-primary mt-auto align-self-start" @onclick='() => Nav.NavigateTo("/personal-settings/letter-groups")'>
                         مدیریت گروه‌های گیرندگان
                     </button>

@@ -118,7 +118,6 @@
                 <div class="text-center py-5 text-muted px-3">
                     <i class="bi bi-chat-square-dots fs-1 d-block mb-2 text-secondary opacity-50"></i>
                     <div class="fw-bold fs-8">گفتگویی یافت نشد</div>
-                    <div class="fs-9 mt-1">با همکاران خود در سازمان گفتگوی جدیدی آغاز کنید.</div>
                     <button class="btn btn-sm btn-primary mt-3" @onclick="OpenNewDirectModal">
                         <i class="bi bi-plus-lg me-1"></i>شروع گفتگوی جدید
                     </button>
@@ -654,7 +653,7 @@
 
                         @* کادر متنی پیام *@
                         <textarea class="form-control chat-textarea"
-                                  placeholder="پیام خود را بنویسید..."
+                                 
                                   rows="1"
                                   @ref="composerElement" disabled="@isSending"
                                   @bind="messageInput" @bind:event="oninput" @bind:after="OnMessageInputChanged"></textarea>
@@ -715,7 +714,6 @@
                                @bind="userSearchQuery" @bind:event="oninput" @bind:after="OnUserSearchChanged" />
                     </div>
 
-                    <div class="text-muted fs-9 mb-2">مخاطبان از حساب‌های ورود فعال انتخاب می‌شوند؛ آنلاین بودن لازم نیست.</div>
                     <div class="users-picker-list" data-testid="chat-user-picker" aria-live="polite">
                         @if (loadingUsers)
                         {
@@ -774,7 +772,7 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fs-8 fw-bold">نام گروه <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control form-control-sm" placeholder="مثال: کارگروه پروژه پالایشگاه" @bind="newGroupTitle" />
+                        <input type="text" class="form-control form-control-sm" @bind="newGroupTitle" />
                     </div>
                     <div class="mb-3">
                         <label class="form-label fs-8 fw-bold">توضیحات گروه (اختیاری)</label>

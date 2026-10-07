@@ -447,14 +447,6 @@
             </div>
         </div>
         <div class="card-body py-2">
-            <div class="alert alert-info py-2 small mb-3">
-                <i class="bi bi-info-circle"></i>
-                ماندنِ پرسنل <b>بعد از پایان شیفت</b> نه «کسری» حساب می‌شود و نه خودکار «اضافه‌کار».
-                به‌عنوان <b>مازادِ در انتظار تصمیم</b> اینجا می‌آید تا شما تعیین کنید:
-                <span class="badge bg-success ms-1">تأیید → اضافه‌کار</span>
-                <span class="badge bg-danger ms-1">رد → تردد غیرمجاز</span>
-                (می‌توانید بعداً به حالت «در انتظار» برگردانید.)
-            </div>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive">
@@ -531,7 +523,7 @@
                     {
                         <div class="mb-3">
                             <label class="form-label small text-muted">نام مکان (اختیاری)</label>
-                            <input class="form-control" @bind="areaName" placeholder="مثلاً: دفتر مرکزی — تهران" />
+                            <input class="form-control" @bind="areaName" />
                         </div>
                         <div class="row g-2 mb-3">
                             <div class="col-12 col-sm-6">
@@ -650,7 +642,7 @@
                     @if (!string.IsNullOrEmpty(shiftError)) { <div class="alert alert-danger py-2">@shiftError</div> }
                     <div class="mb-2">
                         <label class="form-label small fw-800">نام شیفت <span class="text-danger">*</span></label>
-                        <input class="form-control form-control-sm" @bind="shiftForm.Name" placeholder="مثلاً: شیفت صبح" />
+                        <input class="form-control form-control-sm" @bind="shiftForm.Name" />
                     </div>
                     <div class="mb-2">
                         <label class="form-label small fw-800">توضیحات</label>
@@ -674,7 +666,6 @@
                             <input type="time" class="form-control form-control-sm" value="@shiftForm.EndTime2" @onchange='e => shiftForm.EndTime2 = e.Value?.ToString() ?? ""' />
                         </div>
                         <div class="col-12">
-                            <div class="small text-muted"><i class="bi bi-info-circle"></i> <b>شیفت دوپاره:</b> اگر تیم شما دو بازه در روز کار می‌کند (مثلاً ۸ تا ۱۳ و ۱۷ تا ۲۱:۳۰)، پنجره‌ی دوم را هم پر کنید. حضور در فاصله‌ی بین دو پنجره نه کار حساب می‌شود نه تردد غیرمجاز.</div>
                         </div>
                         <div class="col-12 col-sm-6">
                             <label class="form-label small fw-800">تاخیر مجاز (دقیقه)</label>
@@ -697,12 +688,6 @@
                                 <input type="checkbox" class="form-check-input" @bind="shiftForm.RequireExtraApproval" />
                                 <span class="form-check-label">ماندنِ بعد از پایان شیفت «در انتظار تصمیم مدیر» ثبت شود</span>
                             </label>
-                            <div class="small text-muted mt-1">
-                                <i class="bi bi-info-circle"></i>
-                                با روشن بودن، ماندنِ اضافه بر ساعت شیفت <b>نه کسری</b> می‌شود و <b>نه خودکار اضافه‌کار</b>؛
-                                در تب <b>کارتابل مازاد</b> تصمیم می‌گیرید: تأیید (اضافه‌کار) یا رد (تردد غیرمجاز).
-                                خاموش = رفتار قدیمی (مازاد = اضافه‌کار خودکار).
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -733,7 +718,6 @@
                     </div>
                     <label class="form-label small fw-800">متن نامه</label>
                     <textarea class="form-control form-control-sm" rows="5" @bind="deficitLetterText"></textarea>
-                    <div class="small text-muted mt-2"><i class="bi bi-info-circle"></i> نامه در «اتوماسیون اداری ← کارتابل نامه داخلی» گیرنده قرار می‌گیرد.</div>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-light" @onclick="() => deficitTarget = null" disabled="@deficitSending">انصراف</button>

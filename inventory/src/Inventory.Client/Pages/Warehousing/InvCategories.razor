@@ -10,7 +10,6 @@
 <div class="page-head">
     <div>
         <h1>مدیریت گروه کالا</h1>
-        <p class="lead">ساختار درختی گروه‌ها به همراه روش قیمت‌گذاری هر گروه</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-primary" @onclick="ExpandAll" title="باز کردن همه">
@@ -182,7 +181,6 @@
                                     <span class="badge badge-soft-primary">@MethodTitle(selected.EffectiveValuation)</span>
                                     @if (selected.Valuation is null)
                                     {
-                                        <span class="fs-8 text-muted ms-1">(ارث‌بری از والد / تنظیمات)</span>
                                     }
                                 </td>
                             </tr>
@@ -264,7 +262,7 @@
         <div class="row g-3">
             <div class="col-md-8">
                 <label class="form-label">نام گروه <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.Name" placeholder="مثلاً: لوازم برقی" />
+                <input class="form-control" @bind="form.Name" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">
@@ -299,10 +297,6 @@
                     <option value="1">اولین صادره از اولین وارده (FIFO)</option>
                     <option value="2">اولین صادره از آخرین وارده (LIFO)</option>
                 </select>
-                <div class="fs-8 text-muted mt-1">
-                    <i class="bi bi-info-circle"></i>
-                    اولویت سیستم: ۱) تعریف کالا ← ۲) گروه کالا ← ۳) انبار ← ۴) تنظیمات کلی
-                </div>
             </div>
             <div class="col-md-6">
                 <label class="form-label d-block">وضعیت</label>

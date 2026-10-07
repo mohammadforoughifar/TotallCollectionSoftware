@@ -246,6 +246,9 @@ public static class DbInitializer
                 // ==================== RBAC Seed ====================
                 await RbacSeeder.SeedAsync(db);
 
+                // جدول پروفایل شرکت (تعریف شرکت + تنظیمات چاپ فاکتور) — خودتعمیر برای دیتابیس‌های قدیمی
+                await CompanyProfileSchemaV1.EnsureAsync(db);
+
                 // ==================== هوش مصنوعی فروغ آریا ====================
                 await AiSeeder.EnsureAiUserAsync(db);
                 await AiSeeder.EnsureKnowledgeAsync(db);

@@ -22,17 +22,6 @@
                 <span class="badge @StatusBadge(doc.Status)">@doc.StatusTitle</span>
             }
         </h1>
-        <p class="lead">
-            @if (SelectedType is not null)
-            {
-                <span class="badge @NatureBadge(SelectedType.Nature)">@SelectedType.NatureTitle</span>
-                <span class="ms-1">@SelectedType.Name</span>
-            }
-            else
-            {
-                <span>نوع سند را انتخاب کنید تا ماهیت اثر آن بر موجودی مشخص شود</span>
-            }
-        </p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <a class="btn btn-light" href="/inv/docs"><i class="bi bi-arrow-right"></i> بازگشت</a>
@@ -249,7 +238,7 @@ else
                                     <td>
                                         <input class="form-control text-start num" dir="ltr" inputmode="decimal" disabled="@ReadOnly"
                                                value="@(l.DiscountInput > 0 ? Fa.Money(l.DiscountInput) : (l.Discount > 0 ? Fa.Money(l.Discount) : ""))"
-                                               placeholder="تا ۱۰۰=٪ ، بیشتر=ریال"
+                                              
                                                @onchange="e => SetDiscount(l, e)" />
                                         @if (l.DiscountInput > 0 && l.DiscountInput <= 100)
                                         {

@@ -24,8 +24,7 @@ else
     <div class="page-head rs-head">
         <div>
             <h1><i class="bi bi-clipboard-data-fill"></i> گزارش‌ساز</h1>
-            <p class="lead mb-0">جدول‌ها را انتخاب کن، به هم جوین بزن و گزارش را با هر کس یا هر نقشی به اشتراک بگذار.</p>
-        </div>
+                    </div>
         <div class="rs-head-actions">
             <button class="btn btn-outline-secondary btn-sm" @onclick="NewReport">
                 <i class="bi bi-plus-lg"></i> گزارش جدید
@@ -102,7 +101,7 @@ else
                         <label class="rs-field">
                             <span>نام گزارش</span>
                             <input class="form-control form-control-sm" @bind="name" @bind:event="oninput"
-                                   @onchange="MarkDirty" placeholder="مثلاً: گردش نامه‌های معوق" />
+                                   @onchange="MarkDirty" />
                         </label>
                         <label class="rs-field">
                             <span>توضیح</span>

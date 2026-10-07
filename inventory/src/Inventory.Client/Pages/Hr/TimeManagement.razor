@@ -317,9 +317,8 @@
                         <div class="card-header"><strong>ایمپورت فایل دستگاه</strong></div>
                         <div class="card-body">
                             <label class="form-label small">کد دستگاه</label>
-                            <input class="form-control form-control-sm mb-2" @bind="deviceCode" placeholder="مثلاً GATE-1" />
+                            <input class="form-control form-control-sm mb-2" @bind="deviceCode" />
                             <InputFile OnChange="OnFile" accept=".xlsx,.csv,.txt" class="form-control form-control-sm mb-2" />
-                            <div class="small text-muted mb-2">ستون‌ها: کد پرسنلی، تاریخ‌وساعت، جهت (In/Out — اختیاری)</div>
                             <button class="btn btn-sm btn-primary w-100" @onclick="UploadFile" disabled="@(busy || upFile == null)">آپلود و ایمپورت</button>
                             @if (importMsg != null){<div class="alert alert-info mt-2 small">@importMsg</div>}
                         </div>

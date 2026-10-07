@@ -14,17 +14,6 @@
 <div class="page-head">
     <div>
         <h1>@(Id is null ? "سند حسابداری جدید" : $"سند حسابداری شماره {doc.Number.FaDigits()}")</h1>
-        <p class="lead">
-            @doc.FiscalYearTitle
-            @if (doc.Status != VoucherStatus.Draft)
-            {
-                <span class="badge @StatusBadge(doc.Status) ms-2">@doc.StatusTitle</span>
-            }
-            @if (doc.Source != VoucherSource.Manual)
-            {
-                <span class="badge badge-soft-info ms-1">@doc.SourceTitleFa</span>
-            }
-        </p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <a class="btn btn-light" href="/acc/vouchers"><i class="bi bi-arrow-right"></i> بازگشت</a>
@@ -76,7 +65,7 @@ else
                 <div class="col-12 col-md-6">
                     <label class="form-label">شرح سند</label>
                     <input class="form-control" @bind="doc.Description" disabled="@(!Editable)"
-                           placeholder="مثلاً: بابت خرید نقدی کالا طی فاکتور شماره ۱۲۳" />
+                           />
                 </div>
             </div>
         </div>

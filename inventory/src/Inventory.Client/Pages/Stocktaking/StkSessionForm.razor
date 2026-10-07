@@ -25,16 +25,6 @@ else
                 <span class="badge badge-soft-@StatusColor(doc.Status) ms-2">@doc.StatusTitle</span>
             }
         </h1>
-        <p class="lead">
-            @if (Id is null)
-            {
-                <text>انبار و دامنه شمارش را انتخاب کنید؛ با شروع شمارش موجودی سیستم قفل می‌شود.</text>
-            }
-            else
-            {
-                <text>شماره @doc.Number.ToString().FaDigits() • @doc.WarehouseName • @doc.Date.ToFaDate()</text>
-            }
-        </p>
     </div>
     <div class="ms-auto d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-secondary" href="/stk/sessions"><i class="bi bi-arrow-right"></i> بازگشت</a>
@@ -155,10 +145,6 @@ else
                            @bind="doc.TreatUncountedAsZero" disabled="@(!doc.IsEditable)" />
                     <label class="form-check-label" for="uncounted">
                         اقلام شمارش‌نشده هنگام اعمال، <strong>صفر</strong> در نظر گرفته شوند
-                        <span class="fs-8 text-muted d-block">
-                            اگر فعال باشد، هر کالایی که در لیست هست و شمارش نشده، به‌عنوان کسری کامل ثبت می‌شود.
-                            در انبارگردانی جزئی این گزینه را خاموش بگذارید.
-                        </span>
                     </label>
                 </div>
             </div>
@@ -335,13 +321,6 @@ else
 <!-- ============ مودال تایید اعمال ============ -->
 <Modal Visible="showApply" Title="اعمال انبارگردانی و اصلاح موجودی" Size="lg" OnClose="() => showApply = false">
     <ChildContent>
-    <div class="alert alert-warning d-flex gap-2">
-        <i class="bi bi-exclamation-triangle fs-5"></i>
-        <div>
-            با تایید این عملیات، دو سند انبار به‌صورت خودکار صادر و <strong>قطعی</strong> می‌شوند و
-            سند حسابداری آن‌ها نیز ثبت خواهد شد. برای بازگرداندن، باید «برگشت اعمال» بزنید.
-        </div>
-    </div>
 
     <table class="table table-sm align-middle">
         <tbody>

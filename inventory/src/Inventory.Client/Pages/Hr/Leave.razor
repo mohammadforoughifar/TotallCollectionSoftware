@@ -85,7 +85,6 @@
                     <div class="d-flex justify-content-between align-items-start mb-2">
                         <div>
                             <div class="fw-800 text-primary"><i class="bi bi-calendar3"></i> موجودی سالانه @Fa.Digits(balance.Year)</div>
-                            <div class="small text-muted">۲ روز در ماه × ۱۲ ماه = ۲۴ روز در سال</div>
                         </div>
                         <div class="text-end">
                             <div class="display-6 fw-900 @(balance.YearlyRemainingWithPending < 5 ? "text-danger" : "text-success")" style="font-size:2rem">@D0(balance.YearlyRemainingWithPending)</div>
@@ -100,10 +99,6 @@
                         <span><i class="bi bi-check-circle text-success"></i> مصرف‌شده: <b>@D0(balance.YearlyUsed)</b> روز</span>
                         <span><i class="bi bi-hourglass-split text-warning"></i> در انتظار: <b>@D0(balance.YearlyPending)</b></span>
                         <span><i class="bi bi-piggy-bank text-primary"></i> کل: <b>@Fa.Digits(24)</b></span>
-                    </div>
-                    <div class="small text-muted mt-2">
-                        <i class="bi bi-info-circle"></i>
-                        مانده مرخصی تا پایان سال جمع می‌شود و در سال جدید صفر می‌شود.
                     </div>
                 }
             </div>
@@ -168,7 +163,7 @@
                     {
                         <div class="col-12">
                             <label class="form-label small fw-800">مقصد <span class="text-danger">*</span></label>
-                            <input class="form-control form-control-sm" @bind="formDestination" placeholder="مثلاً: تهران" />
+                            <input class="form-control form-control-sm" @bind="formDestination" />
                         </div>
                     }
                     @if (formType == "Daily" || formType == "Mission")

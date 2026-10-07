@@ -10,7 +10,6 @@
                 <div class="visual-mark"><i class="bi bi-grid-1x2-fill"></i></div>
                 <span class="visual-kicker">نرم افزار یکپارچه فروغ آریا</span>
                 <h1>همه‌چیز در یک پنل</h1>
-                <p>مدیریت یکپارچه سازمان، منابع انسانی، اتوماسیون اداری، مالی و فروش.</p>
                 <div class="visual-pills"><span><i class="bi bi-shield-check"></i> امن</span><span><i class="bi bi-lightning-charge"></i> سریع</span><span><i class="bi bi-phone"></i> یکپارچه</span></div>
             </div>
         </div>
@@ -25,14 +24,14 @@
                 <label class="form-label">نام کاربری</label>
                 <div class="input-group login-input">
                     <span class="input-group-text"><i class="bi bi-person"></i></span>
-                    <input class="form-control" autocomplete="username" placeholder="نام کاربری را وارد کنید" @bind="username" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" autofocus />
+                    <input class="form-control" autocomplete="username" @bind="username" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" autofocus />
                 </div>
             </div>
             <div class="mb-4">
                 <label class="form-label">رمز عبور</label>
                 <div class="input-group login-input">
                     <span class="input-group-text"><i class="bi bi-key"></i></span>
-                    <input type="@(showPassword ? "text" : "password")" class="form-control" autocomplete="current-password" placeholder="رمز عبور را وارد کنید" @bind="password" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
+                    <input type="@(showPassword ? "text" : "password")" class="form-control" autocomplete="current-password" @bind="password" @bind:event="oninput" @onkeydown="OnKey" dir="ltr" />
                     <button type="button" class="btn btn-outline-secondary border-start-0" @onclick="() => showPassword = !showPassword" title="نمایش/پنهان کردن رمز"><i class="bi @(showPassword ? "bi-eye-slash" : "bi-eye")"></i></button>
                 </div>
             </div>

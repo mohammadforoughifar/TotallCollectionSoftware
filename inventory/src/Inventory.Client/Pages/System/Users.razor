@@ -19,8 +19,7 @@ else
     <div class="page-head">
         <div>
             <h1>مدیریت کاربران</h1>
-            <p class="lead">مدیریت حساب‌های کاربری، سطوح دسترسی و ارتباطات سازمانی</p>
-        </div>
+                    </div>
         <div class="d-flex gap-2 me-auto">
             <button class="btn btn-primary" @onclick="OpenNew">
                 <i class="bi bi-person-plus"></i> کاربر جدید
@@ -234,7 +233,6 @@ else
                 </div>
                 <div class="d-flex flex-column gap-1">
                     <InputFile OnChange="OnUserSignaturePicked" Accept="image/png,image/jpeg" class="btn btn-sm btn-outline-primary" style="max-width:220px" />
-                    <span class="text-muted fs-8">PNG یا JPG — بدون محدودیت حجم</span>
                     @if (luSignaturePreview != null) { <button type="button" class="btn btn-sm btn-link text-danger p-0" @onclick="ClearUserSignature">حذف انتخاب</button> }
                 </div>
             </div>
@@ -250,14 +248,14 @@ else
             </div>
             <div class="col-md-6">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.FirstName" placeholder="مثلاً: علی" />
+                <input class="form-control" @bind="form.FirstName" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">نام خانوادگی <span class="text-danger">*</span></label>
                 <input class="form-control" @bind="form.LastName" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">شماره موبایل <span class="fs-8 text-muted">(برای پیام بله/ایتا)</span></label>
+                <label class="form-label">شماره موبایل </label>
                 <input class="form-control num" dir="ltr" placeholder="09xxxxxxxxx" @bind="form.Mobile" data-digits="" inputmode="numeric" />
                 <div class="fs-8 text-muted mt-1">
                     @if (!string.IsNullOrWhiteSpace(form.BaleChatId))
@@ -275,7 +273,7 @@ else
                 </div>
             </div>
             <div class="col-md-6">
-                <label class="form-label">شناسه ایتا <span class="fs-8 text-muted">(عددی — خودکار با «کد اتصال» پر می‌شود)</span></label>
+                <label class="form-label">شناسه ایتا </label>
                 <div class="input-group">
                     <input class="form-control num" dir="ltr" @bind="form.EitaaChatId" />
                     @if (Auth.IsAdmin && editing)
@@ -290,12 +288,8 @@ else
                 {
                     <div class="alert alert-light border py-2 mt-2 mb-0 fs-8">
                         کد اتصال این کاربر: <b class="fs-5" dir="ltr" style="letter-spacing:.2em">@userEitaaCode</b>
-                        <div class="text-muted mt-1">
-                            این کد را به کاربر بدهید؛ او در ایتا برنامه‌ی سامانه را باز می‌کند و کد را وارد می‌کند (۱۵ دقیقه اعتبار).
-                        </div>
                     </div>
                 }
-                <div class="fs-8 text-muted mt-1">شناسه چت ایتا پس از اتصال کاربر، خودکار در همین کادر ثبت می‌شود.</div>
             </div>
             @if (Auth.IsAdmin)
             {
@@ -316,7 +310,7 @@ else
             @if (Auth.IsAdmin && editing)
             {
                 <div class="col-12">
-                    <label class="form-label d-block">افراد مجاز برای دستور کار <span class="fs-8 text-muted">(این کاربر به چه کسانی می‌تواند دستور کار بدهد)</span></label>
+                    <label class="form-label d-block">افراد مجاز برای دستور کار </label>
                     <div class="border rounded p-2">
                         <input class="form-control form-control-sm mb-2" placeholder="جستجو..." @bind="woSearch" @bind:event="oninput" />
                         <div style="max-height:150px;overflow-y:auto">
@@ -394,9 +388,6 @@ else
                                 </div>
                             </div>
                         }
-                    </div>
-                    <div class="fs-8 text-muted mt-1">
-                        سطح ورود کاربر (مدیر / اپراتور / معرف) به‌صورت خودکار از نقش‌های انتخابی تعیین می‌شود.
                     </div>
                 }
             </div>

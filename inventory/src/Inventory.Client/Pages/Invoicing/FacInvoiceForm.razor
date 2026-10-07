@@ -15,26 +15,6 @@
 <div class="page-head">
     <div>
         <h1>@doc.KindTitle @(doc.Id > 0 ? $"شماره {doc.Number.FaDigits()}" : "جدید")</h1>
-        <p class="lead">
-            <span class="badge @StatusBadge(doc.Status)">@doc.StatusTitle</span>
-            @if (doc.Status == InvoiceStatus.Confirmed && doc.Settlement == SettlementType.Credit)
-            {
-                <span class="badge badge-soft-success ms-1">تسویه‌شده: <span class="num">@doc.SettledAmount.Money()</span></span>
-                <span class="badge badge-soft-warning ms-1">مانده: <span class="num">@doc.RemainingAmount.Money()</span></span>
-            }
-            @if (doc.InvDocId is > 0)
-            {
-                <a class="badge badge-soft-info ms-1" href="@($"/inv/docs/edit/{doc.InvDocId}")">
-                    <i class="bi bi-box-seam"></i> سند انبار @doc.InvDocNumber
-                </a>
-            }
-            @if (doc.VoucherId is > 0)
-            {
-                <a class="badge badge-soft-primary ms-1" href="@($"/acc/vouchers/edit/{doc.VoucherId}")">
-                    <i class="bi bi-journal-text"></i> سند حسابداری @doc.VoucherNumber?.FaDigits()
-                </a>
-            }
-        </p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <a class="btn btn-light" href="/fac/invoices"><i class="bi bi-arrow-right"></i> بازگشت</a>
@@ -87,7 +67,6 @@ else
                 <div class="col-6 col-md-2">
                     <label class="form-label">شماره فاکتور</label>
                     <input type="number" class="form-control num" value="@(doc.Number > 0 ? doc.Number.ToString() : "خودکار")" disabled="true" />
-                    <div class="fs-8 text-muted mt-1"><i class="bi bi-info-circle"></i> شماره به‌صورت خودکار تولید می‌شود</div>
                 </div>
                 <div class="col-6 col-md-2">
                     <label class="form-label">تاریخ <span class="text-danger">*</span></label>
@@ -281,9 +260,6 @@ else
                             <label class="form-label">تخفیف کلی فاکتور (ریال)</label>
                             <input type="number" step="any" class="form-control num"
                                    value="@doc.InvoiceDiscount" @onchange="OnInvoiceDiscount" disabled="@(!Editable)" />
-                            <div class="fs-8 text-muted mt-1">
-                                <i class="bi bi-info-circle"></i> این تخفیف به‌نسبت روی اقلام سرشکن و مأخذ مالیات کاهش می‌یابد.
-                            </div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">هزینه حمل و سایر (ریال)</label>

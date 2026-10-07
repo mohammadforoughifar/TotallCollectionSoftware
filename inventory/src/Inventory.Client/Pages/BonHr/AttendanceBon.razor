@@ -55,7 +55,6 @@
         <Modal Size="modal-xl" Visible="_showCycle" Title="برنامه چرخه‌ای نگهبان" OnClose="() => _showCycle = false">
             <ChildContent>
         <form id="bon-cycle-form" @onsubmit="SaveGuardCycleAsync" @onsubmit:preventDefault="true">
-            <p class="text-muted">چرخه ثابت: ۲ شیفت صبح ۶–۱۸، ۲ شیفت شب ۱۸–۶ روز بعد، ۲ روز استراحت.</p>
             <label class="form-label">
                 نگهبان
                 <select class="form-select" @bind="_cycle.EmployeeCode">
@@ -118,7 +117,6 @@
     <Modal Size="modal-xl" Visible="_showPunch" Title="ثبت دستی ورود یا خروج" OnClose="() => _showPunch = false">
         <ChildContent>
     <form id="bon-punch-form" @onsubmit="SavePunchAsync" @onsubmit:preventDefault="true">
-        <p class="text-muted">این درخواست تا قبل از تأیید مدیر اداری در محاسبات اعمال نمی‌شود و رکورد دستگاه را حذف یا بازنویسی نمی‌کند.</p>
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label">پرسنل</label>
@@ -257,7 +255,6 @@
                 <div><p class="text-muted small mb-0">کنترل ثبت دستی</p><h3>مرخصی‌ها و مأموریت‌های ثبت‌شده</h3></div>
                 <span class="badge badge-soft-primary">@BonFa.N(_leaves.Count) رکورد</span>
             </div>
-            <p class="text-muted">هر ثبت بلافاصله اینجا نمایش داده می‌شود. در صورت اشتباه از دکمه حذف استفاده کنید.</p>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
                     <thead><tr><th>پرسنل</th><th>نوع</th><th>تاریخ</th><th>بازه زمانی</th><th>ثبت‌کننده</th><th>عملیات</th></tr></thead>
@@ -289,7 +286,6 @@
                 <div><p class="text-muted small mb-0">کنترل فایل دستگاه</p><h3>ورود و خروج‌های واردشده</h3></div>
                 <span class="badge badge-soft-primary">@BonFa.N(_days.Count) رکورد</span>
             </div>
-            <p class="text-muted">ورودی‌های تکراری نادیده گرفته می‌شوند و اطلاعات قبلی، مرخصی‌ها و مأموریت‌ها بازنویسی نخواهند شد.</p>
             <label class="device-person-filter">
                 نمایش پرسنل
                 <select class="form-select" @bind="_deviceFilter" @bind:after="LoadDaysAsync">

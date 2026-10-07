@@ -39,7 +39,7 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label small text-muted">جستجو (عنوان / کد / گرید)</label>
-                <input class="form-control" @bind="q" @bind:event="oninput" placeholder="تایپ کنید…" />
+                <input class="form-control" @bind="q" @bind:event="oninput" />
             </div>
         </div>
     </div>
@@ -159,12 +159,12 @@
                 </select>
             </div>
             <div class="col-md-4"><label class="form-label">کد پست</label><input class="form-control num" @bind="form.Code" /></div>
-            <div class="col-md-4"><label class="form-label">گرید / رتبه شغلی</label><input class="form-control" @bind="form.Grade" placeholder="مثلاً کارشناس ارشد" /></div>
+            <div class="col-md-4"><label class="form-label">گرید / رتبه شغلی</label><input class="form-control" @bind="form.Grade" /></div>
             <div class="col-md-2"><label class="form-label">تعداد مصوب</label><input class="form-control num" type="number" min="1" @bind="form.HeadCount" /></div>
             <div class="col-md-2 d-flex align-items-end">
                 <div class="form-check"><input class="form-check-input" type="checkbox" id="pact" @bind="form.IsActive" /><label class="form-check-label" for="pact">فعال</label></div>
             </div>
-            <div class="col-12"><label class="form-label">شرح وظایف (Job Description)</label><textarea class="form-control" rows="4" @bind="form.JobDescription" placeholder="وظایف و مسئولیت‌های این پست را بنویسید…"></textarea></div>
+            <div class="col-12"><label class="form-label">شرح وظایف (Job Description)</label><textarea class="form-control" rows="4" @bind="form.JobDescription"></textarea></div>
             <div class="col-12"><label class="form-label">شرایط احراز (تحصیلات، سابقه، مهارت‌ها)</label><textarea class="form-control" rows="3" @bind="form.Requirements"></textarea></div>
         </div>
     </ChildContent>

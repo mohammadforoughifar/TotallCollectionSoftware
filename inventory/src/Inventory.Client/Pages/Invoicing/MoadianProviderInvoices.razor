@@ -13,7 +13,6 @@
 <div class="page-head">
     <div>
         <h1>صورتحساب‌های مودیان — به تفکیک خدمات‌دهنده</h1>
-        <p class="lead">لیست، جزئیات، چاپ، ارسال رسمی به سامانه مودیان و استعلام وضعیت</p>
     </div>
     <div class="ms-auto">
         <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/invoice-new")'>
@@ -339,7 +338,6 @@ else if (providerId is > 0 && !loading)
             <select class="form-select form-select-sm" @bind="New.Kind">
                 @foreach (var k in KindOptions) { <option value="@k.Key">@k.Value</option> }
             </select>
-            <div class="form-text">این مورد با موضوع رسمی یکی نیست.</div>
         </div>
         <div class="col-md-2">
             <label class="form-label small">نوع صورتحساب <span class="text-danger">*</span></label>
@@ -410,16 +408,11 @@ else if (providerId is > 0 && !loading)
             {
                 <label class="form-label small">شناسه صورتحساب مرجع <span class="text-danger">@(MoadianInvoiceRules.RequiresReference(New.InvoiceSubject) ? "*" : "")</span></label>
                 <input class="form-control form-control-sm" dir="ltr" maxlength="22" @bind="New.ReferenceTaxId" placeholder="۲۲ نویسه" />
-                <div class="form-text">@(MoadianInvoiceRules.RequiresReference(New.InvoiceSubject) ? "برای موضوع انتخاب‌شده لازم است؛ مرجع از سامانه استعلام نمی‌شود." : "برای موضوع اصلی نباید شناسه مرجع ثبت شود؛ اگر موضوع اصلی را انتخاب می‌کنید، این مقدار را پاک کنید.")</div>
             }
             else
             {
-                <div class="form-text mt-4">مرجع فقط برای موضوع‌های ارجاعی لازم است.</div>
             }
         </div>
-    </div>
-    <div class="alert alert-info py-2 small mb-2">
-        inty (نوع ۱/۲)، inp (الگو) و ins (موضوع) جداگانه ذخیره می‌شوند؛ جهت سند داخلی با آن‌ها یکی نیست. پس از ذخیره، ارسال رسمی به سامانه از دکمهٔ سبز ردیف انجام می‌شود.
     </div>
     <hr class="my-2" />
     <div class="row g-2 mb-2">
@@ -471,7 +464,7 @@ else if (providerId is > 0 && !loading)
                             }
                         </select>
                     </td>
-                    <td><input class="form-control form-control-sm" dir="ltr" @bind="l.UnitCode" placeholder="مثلاً عدد" /></td>
+                    <td><input class="form-control form-control-sm" dir="ltr" @bind="l.UnitCode" /></td>
                     <td><input class="form-control form-control-sm num text-center" @bind="l.Quantity" @bind:event="oninput" @bind:after="() => RecalcLine(l)" /></td>
                     <td><MoneyInput Value="l.UnitPrice" ValueChanged="v => { l.UnitPrice = v; RecalcLine(l); }" Placeholder="0" /></td>
                     <td><MoneyInput Value="l.Discount" ValueChanged="v => { l.Discount = v; RecalcLine(l); }" Placeholder="0" /></td>
@@ -493,7 +486,6 @@ else if (providerId is > 0 && !loading)
             </tr>
         </tfoot>
     </table>
-    <div class="text-muted small">مأخذ = (تعداد × فی) − تخفیف | مالیات = مأخذ × نرخ | جمع = مأخذ + مالیات</div>
     </ChildContent>
     <Footer>
         <button class="btn btn-primary" @onclick="SaveEdited" disabled="@saving">@(saving ? "در حال ذخیره..." : "ذخیره تغییرات")</button>

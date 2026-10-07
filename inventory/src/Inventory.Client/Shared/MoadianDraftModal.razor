@@ -27,7 +27,6 @@
                         <div class="flex-grow-1">
                             <div class="small fw-semibold text-primary mb-1">بازبینی مرحله‌به‌مرحله</div>
                             <h5 class="mb-1">پیش‌نویس شماره @Draft.Number</h5>
-                            <div class="small text-muted">اطلاعات را کامل کنید، کنترل‌ها را ببینید و پیش‌نویس را ذخیره کنید.</div>
                         </div>
                         <div class="moadian-review-counts">
                             <span class="badge bg-success">تأیید محلی: @PassedCheckCount</span>
@@ -77,7 +76,6 @@
                         <span class="moadian-section-number">۱</span>
                         <div>
                             <h6 class="mb-0">مشخصات صورتحساب</h6>
-                            <div class="small text-muted">نوع رسمی، الگو و موضوع جدا هستند؛ جهت سند داخلی هم فیلد مستقلی است.</div>
                         </div>
                     </div>
                     <div class="row g-3 mt-1">
@@ -89,7 +87,6 @@
                                     <option value="@k.Key">@k.Value</option>
                                 }
                             </select>
-                            <div class="form-text">دسته‌بندی سند مبدأ است؛ جایگزین نوع، الگو یا موضوع رسمی نیست.</div>
                         </div>
                         <div class="col-lg-3 col-md-6">
                             <label class="form-label small">نوع صورتحساب (inty) <span class="text-danger">*</span></label>
@@ -112,7 +109,6 @@
                                     <option value="@pattern">الگوی @((int)pattern) — @MoadianInvoiceRules.PatternTitle(pattern)</option>
                                 }
                             </select>
-                            <div class="form-text">گزینه‌های مجاز بر اساس نوع صورتحساب محدود می‌شوند.</div>
                         </div>
                         <div class="col-lg-3 col-md-6">
                             <label class="form-label small">موضوع صورتحساب (ins) <span class="text-danger">*</span></label>
@@ -127,7 +123,6 @@
                                     <option value="@subject">موضوع @((int)subject) — @MoadianInvoiceRules.SubjectTitle(subject)</option>
                                 }
                             </select>
-                            <div class="form-text">اصلی، اصلاحی، ابطالی یا برگشت از فروش.</div>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label small">تاریخ صدور <span class="text-danger">*</span></label>
@@ -149,7 +144,7 @@
                         </div>
                         <div class="col-md-3">
                             <label class="form-label small">روش تسویه ثبت‌شده</label>
-                            <input class="form-control" @bind="New.Settlement" @bind:event="oninput" placeholder="مثلاً نقدی / نسیه" />
+                            <input class="form-control" @bind="New.Settlement" @bind:event="oninput" />
                         </div>
                         <div class="col-md-3">
                             <label class="form-label small">توضیحات</label>
@@ -160,16 +155,6 @@
                             {
                                 <label class="form-label small">شناسهٔ مالیاتی صورتحساب مرجع <span class="text-danger">@(MoadianInvoiceRules.RequiresReference(New.InvoiceSubject) ? "*" : "")</span></label>
                                 <input class="form-control" dir="ltr" maxlength="22" @bind="New.ReferenceTaxId" @bind:event="oninput" placeholder="شناسهٔ ۲۲ نویسه‌ای صورتحساب مرجع" />
-                                <div class="form-text">
-                                    @if (MoadianInvoiceRules.RequiresReference(New.InvoiceSubject))
-                                    {
-                                        <span>برای اصلاحی، ابطالی و برگشت از فروش لازم است؛ وجود و وضعیت مرجع از این فرم استعلام نمی‌شود.</span>
-                                    }
-                                    else
-                                    {
-                                        <span>برای موضوع اصلی نباید شناسه مرجع ثبت شود؛ اگر موضوع اصلی را انتخاب می‌کنید، این مقدار را پاک کنید.</span>
-                                    }
-                                </div>
                             }
                             else
                             {
@@ -190,7 +175,6 @@
                         <span class="moadian-section-number">۲</span>
                         <div>
                             <h6 class="mb-0">اطلاعات خریدار</h6>
-                            <div class="small text-muted">در نوع ۲ معمولاً اختیاری است؛ اگر وارد شود، قالب و اعتبار آن هم باید بررسی شود.</div>
                         </div>
                     </div>
                     <div class="row g-3 mt-1">
@@ -222,7 +206,6 @@
                         <span class="moadian-section-number">۳</span>
                         <div>
                             <h6 class="mb-0">اقلام، شناسه و مالیات</h6>
-                            <div class="small text-muted">مقادیر ردیف و جمع‌ها محلی دوباره محاسبه می‌شوند؛ نرخ/شناسه نهایی باید با مرجع رسمی همان الگو تطبیق داده شود.</div>
                         </div>
                         <div class="ms-auto d-flex gap-2">
                             <button class="btn btn-sm btn-outline-primary" @onclick="AddLine"><i class="bi bi-plus-lg"></i> افزودن قلم</button>
@@ -271,7 +254,6 @@
                             </tbody>
                         </table>
                     </div>
-                    <div class="small text-muted mb-3">مأخذ = (تعداد × فی) − تخفیف &nbsp; | &nbsp; مالیات = مأخذ × نرخ &nbsp; | &nbsp; جمع ردیف = مأخذ + مالیات</div>
                     <div class="row g-2">
                         <div class="col-6 col-lg-3">
                             <div class="moadian-total-tile"><span>تعداد کل</span><strong class="num">@New.Lines.Sum(x => x.Quantity).Num()</strong></div>

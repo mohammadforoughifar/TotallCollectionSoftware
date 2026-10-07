@@ -9,7 +9,6 @@
 <div class="page-head">
     <div>
         <h1>بارکد کالا</h1>
-        <p class="lead">مدیریت و تخصیص بارکدهای کالا و بسته‌بندی با ضرایب شمارش</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <a class="btn btn-outline-primary" href="/stk/labels"><i class="bi bi-printer"></i> چاپ برچسب</a>
@@ -47,7 +46,6 @@ else if (rows.Count == 0)
             <div class="empty-state">
                 <i class="bi bi-upc"></i>
                 <h5>بارکدی ثبت نشده است</h5>
-                <p>می‌توانید بارکد را دستی وارد کنید یا با «تولید خودکار» برای همه کالاها کد داخلی EAN-13 بسازید.</p>
                 <button class="btn btn-primary" @onclick="() => OpenForm(null)"><i class="bi bi-plus-lg"></i> افزودن بارکد</button>
             </div>
         </div>
@@ -156,7 +154,6 @@ else
                     <div class="card-body text-center py-3">
                         @if (string.IsNullOrWhiteSpace(edit.Code))
                         {
-                            <span class="text-muted fs-8">محتوای بارکد را وارد کنید تا پیش‌نمایش نمایش داده شود.</span>
                         }
                         else
                         {
@@ -174,7 +171,6 @@ else
             <div class="col-6 col-md-4">
                 <label class="form-label">ضریب بسته</label>
                 <input class="form-control num" @bind="packText" />
-                <div class="form-text">اسکن یک کارتن ۱۲تایی یعنی ۱۲ واحد.</div>
             </div>
 
             <div class="col-12 col-md-4 d-flex align-items-center gap-3 pt-4">

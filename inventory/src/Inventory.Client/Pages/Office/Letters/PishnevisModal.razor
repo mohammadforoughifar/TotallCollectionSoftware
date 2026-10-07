@@ -15,18 +15,17 @@
                 <div class="gm-h">
                     <div class="ttl">
                         <b><i class="bi bi-pencil-square" style="color:var(--p2)"></i> @(editId > 0 ? "ویرایش پیش‌نویس" : "افزودن پیش‌نویس")</b>
-                        <small>عنوان و متن نامه را بنویسید — بعداً می‌توانید آن را ارسال کنید</small>
                     </div>
                     <button class="x" @onclick="Close"><i class="bi bi-x-lg"></i></button>
                 </div>
                 <div class="gm-b">
                     <div class="fcard @(errTitle ? "err" : "")" style="box-shadow:none;margin-bottom:10px">
                         <label>عنوان نامه <span class="req">*</span></label>
-                        <input class="tin" placeholder="مثلاً: درخواست تجهیزات اداری…" @bind="title" @bind:event="oninput" />
+                        <input class="tin" @bind="title" @bind:event="oninput" />
                     </div>
                     <div class="fcard" style="box-shadow:none">
                         <label>متن نامه</label>
-                        <textarea class="tin pnv-txt" placeholder="متن نامه را بنویسید…" @bind="text"></textarea>
+                        <textarea class="tin pnv-txt" @bind="text"></textarea>
                     </div>
                 </div>
                 <div class="gm-f">

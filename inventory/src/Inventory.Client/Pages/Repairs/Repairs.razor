@@ -17,7 +17,6 @@
 <div class="page-head">
     <div>
         <h1>پذیرش تعمیرات</h1>
-        <p class="lead">ثبت ورود/خروج دستگاه، تعمیرکار، شرح کارها، هزینه و صدور فاکتور</p>
     </div>
     <div class="d-flex flex-wrap gap-2 me-auto">
         <button class="btn btn-outline-primary" @onclick="ToggleRepairReports" disabled="@reportLoading">
@@ -35,7 +34,6 @@
         <div class="card-header d-flex align-items-center gap-2">
             <i class="bi bi-clipboard-data text-primary"></i>
             <span class="card-title">گزارش تعمیرات</span>
-            <span class="small text-muted me-2">آمار و نمودارها به‌صورت عمودی</span>
             <button class="btn btn-sm btn-light me-auto" @onclick="ToggleRepairReports" title="بستن گزارش">
                 <i class="bi bi-x-lg"></i>
             </button>
@@ -55,9 +53,6 @@
                         @if (reportLoading) { <span class="spinner-border spinner-border-sm ms-1"></span> }
                         <i class="bi bi-arrow-repeat"></i> بروزرسانی گزارش
                     </button>
-                </div>
-                <div class="col-12 col-lg-3 small text-muted">
-                    <i class="bi bi-info-circle"></i> پذیرش و انصراف بر اساس تاریخ ورود؛ درآمد، سود و سرعت تحویل بر اساس تاریخ تحویل
                 </div>
             </div>
 
@@ -148,9 +143,6 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="small text-muted mt-3">
-                                پذیرش‌های باز مستقل از فیلتر تاریخ گزارش شده‌اند؛ «باز» یعنی هنوز تحویل یا لغو نشده است.
-                            </div>
                         </div>
                     </section>
 
@@ -178,10 +170,6 @@
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-8">
-                                    <div class="alert alert-light border mb-0">
-                                        <i class="bi bi-info-circle text-primary"></i>
-                                        میانگین بر اساس زمان واقعی بین ثبت پذیرش و تحویل محاسبه شده و فقط تعمیرهای تحویل‌شده در بازهٔ انتخابی را در بر می‌گیرد.
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -236,31 +224,42 @@
                             <span class="card-title">جزئیات درآمد، هزینه و سود تعمیرات تحویل‌شده</span>
                         </div>
                         <div class="card-body">
-                            @{ var financeMax = Math.Max(repairReport.RepairRevenue, repairReport.RepairCost); }
-                            <div class="d-flex flex-column gap-3">
-                                <div>
-                                    <div class="d-flex justify-content-between mb-1"><span>درآمد از مشتری</span><b class="num text-primary">@repairReport.RepairRevenue.Money()</b></div>
-                                    <div class="progress" style="height:9px"><div class="progress-bar bg-primary" role="progressbar" style="@RepairReportBar(repairReport.RepairRevenue, financeMax)"></div></div>
+                            @{
+                                var financeMax = new[]
+                                {
+                                    repairReport.RepairRevenue,
+                                    repairReport.RepairPartsCost,
+                                    repairReport.RepairLaborCost,
+                                    repairReport.RepairCost,
+                                    Math.Abs(repairReport.RepairProfit)
+                                }.Max();
+                            }
+                            <div class="repair-finance-chart" role="img" aria-label="نمودار عمودی درآمد، هزینه و سود تعمیرات تحویل‌شده">
+                                <div class="repair-finance-col">
+                                    <div class="repair-finance-value num text-primary">@repairReport.RepairRevenue.Money()</div>
+                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-primary" style="@RepairReportBarHeight(repairReport.RepairRevenue, financeMax)"></div></div>
+                                    <div class="repair-finance-label">درآمد از مشتری</div>
                                 </div>
-                                <div>
-                                    <div class="d-flex justify-content-between mb-1"><span>هزینهٔ قطعات</span><b class="num text-danger">@repairReport.RepairPartsCost.Money()</b></div>
-                                    <div class="progress" style="height:9px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(repairReport.RepairPartsCost, financeMax)"></div></div>
+                                <div class="repair-finance-col">
+                                    <div class="repair-finance-value num text-danger">@repairReport.RepairPartsCost.Money()</div>
+                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-danger" style="@RepairReportBarHeight(repairReport.RepairPartsCost, financeMax)"></div></div>
+                                    <div class="repair-finance-label">هزینهٔ قطعات</div>
                                 </div>
-                                <div>
-                                    <div class="d-flex justify-content-between mb-1"><span>هزینهٔ دستمزد/خدمات</span><b class="num text-danger">@repairReport.RepairLaborCost.Money()</b></div>
-                                    <div class="progress" style="height:9px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(repairReport.RepairLaborCost, financeMax)"></div></div>
+                                <div class="repair-finance-col">
+                                    <div class="repair-finance-value num text-danger">@repairReport.RepairLaborCost.Money()</div>
+                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-danger" style="@RepairReportBarHeight(repairReport.RepairLaborCost, financeMax)"></div></div>
+                                    <div class="repair-finance-label">هزینهٔ دستمزد/خدمات</div>
                                 </div>
-                                <div>
-                                    <div class="d-flex justify-content-between mb-1"><span>جمع هزینه‌ها</span><b class="num text-danger">@repairReport.RepairCost.Money()</b></div>
-                                    <div class="progress" style="height:9px"><div class="progress-bar bg-danger" role="progressbar" style="@RepairReportBar(repairReport.RepairCost, financeMax)"></div></div>
+                                <div class="repair-finance-col">
+                                    <div class="repair-finance-value num text-danger">@repairReport.RepairCost.Money()</div>
+                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar bg-danger" style="@RepairReportBarHeight(repairReport.RepairCost, financeMax)"></div></div>
+                                    <div class="repair-finance-label">جمع هزینه‌ها</div>
                                 </div>
-                                <div>
-                                    <div class="d-flex justify-content-between mb-1"><span>سود خالص تعمیر</span><b class="num @(repairReport.RepairProfit >= 0 ? "text-success" : "text-danger")">@repairReport.RepairProfit.Money()</b></div>
-                                    <div class="progress" style="height:9px"><div class="progress-bar @(repairReport.RepairProfit >= 0 ? "bg-success" : "bg-danger")" role="progressbar" style="@RepairReportBar(Math.Abs(repairReport.RepairProfit), financeMax)"></div></div>
+                                <div class="repair-finance-col">
+                                    <div class="repair-finance-value num @(repairReport.RepairProfit >= 0 ? "text-success" : "text-danger")">@repairReport.RepairProfit.Money()</div>
+                                    <div class="repair-finance-bar-wrap"><div class="repair-finance-bar @(repairReport.RepairProfit >= 0 ? "bg-success" : "bg-danger")" style="@RepairReportBarHeight(Math.Abs(repairReport.RepairProfit), financeMax)"></div></div>
+                                    <div class="repair-finance-label">سود خالص تعمیر</div>
                                 </div>
-                            </div>
-                            <div class="small text-muted mt-3">
-                                سود = درآمد منهای هزینهٔ ثبت‌شدهٔ قطعه و دستمزد/خدمات؛ هزینه‌ای که در ردیف تعمیر ثبت نشده باشد در این محاسبه نمی‌آید.
                             </div>
                         </div>
                     </section>
@@ -472,7 +471,6 @@
                     <div class="repair-section-icon"><i class="bi bi-clipboard2-check"></i></div>
                     <div>
                         <h6>اطلاعات مشترک پذیرش</h6>
-                        <small>مشتری، تعمیرکار و تاریخ برای همه دستگاه‌ها مشترک است. Enter: فیلد بعدی؛ Shift+Enter: خط جدید.</small>
                     </div>
                 </div>
                 <div class="row g-3">
@@ -520,7 +518,7 @@
                     }
                     <div class="col-12">
                         <label class="form-label">یادداشت پذیرش</label>
-                        <input class="form-control" @bind="form.Note" placeholder="یادداشت مشترک برای کل پذیرش…" />
+                        <input class="form-control" @bind="form.Note" />
                     </div>
                 </div>
             </section>
@@ -530,7 +528,6 @@
                     <div class="repair-section-icon repair-device-icon"><i class="bi bi-pc-display-horizontal"></i></div>
                     <div>
                         <h6>دستگاه‌های پذیرش‌شده <span class="badge badge-soft-primary">@form.Devices.Count</span></h6>
-                        <small>هر دستگاه کارت و مبلغ برآوردی جداگانه دارد.</small>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary me-auto" data-hotkey="f3"
                             title="افزودن دستگاه (F3)" @onclick="AddDevice">
@@ -549,7 +546,6 @@
                                     <span class="repair-device-number">@(deviceIndex + 1)</span>
                                     <div>
                                         <strong>دستگاه @(deviceIndex + 1)</strong>
-                                        <div class="fs-8 text-muted">مشخصات و برآورد مستقل</div>
                                     </div>
                                 </div>
                                 <button type="button" class="btn btn-sm btn-light" title="حذف این دستگاه"
@@ -582,7 +578,7 @@
                                 <div class="col-md-7">
                                     <label class="form-label">ایراد اعلامی مشتری</label>
                                     <textarea class="form-control" rows="2" @bind="device.ProblemDescription"
-                                              placeholder="مثلاً روشن نمی‌شود، صفحه شکسته…"></textarea>
+                                             ></textarea>
                                 </div>
                                 <div class="col-md-5">
                                     <label class="form-label">مبلغ برآوردی این دستگاه (ریال)</label>
@@ -600,8 +596,7 @@
                 <div class="d-flex align-items-center mb-2 gap-2">
                     <div class="repair-section-icon repair-items-icon"><i class="bi bi-list-check"></i></div>
                     <div>
-                        <h6 class="mb-0">کارها و قطعات مصرفی <span class="text-muted fs-8">(مشترک برای کل پذیرش)</span></h6>
-                        <small class="text-muted">این جدول برای همه دستگاه‌های کارت‌های بالا یکسان است.</small>
+                        <h6 class="mb-0">کارها و قطعات مصرفی </h6>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-primary me-auto" @onclick="AddItem">
                         <i class="bi bi-plus-lg"></i> ردیف جدید (F2)
@@ -626,7 +621,7 @@
                                 var i = idx;
                                 var rowProfit = ItemProfit(i);
                                 <tr>
-                                    <td><input class="form-control form-control-sm" @bind="form.Items[i].Description" placeholder="مثلاً تعویض ال‌سی‌دی / سرویس فن" /></td>
+                                    <td><input class="form-control form-control-sm" @bind="form.Items[i].Description" /></td>
                                     <td>
                                         <SearchSelect Items="productLookup" Value="form.Items[i].ProductId ?? 0"
                                                       ValueChanged="v => OnItemProduct(i, v)"
@@ -752,7 +747,6 @@
 
             <div class="d-flex align-items-center gap-2 mb-2">
                 <h6 class="mb-0">کارها و قطعات مصرفی</h6>
-                <span class="fs-8 text-muted">مشترک برای کل پذیرش</span>
             </div>
             <div class="table-responsive">
                 <table class="table table-hover align-middle">
@@ -799,11 +793,6 @@
     <ChildContent>
         @if (invoicing is not null)
         {
-            <div class="alert alert-info fs-8">
-                <i class="bi bi-info-circle"></i>
-                با صدور فاکتور، سند فروش رسمی ساخته می‌شود؛ قطعات مصرفی از موجودی انبار کسر و سود در گزارش‌ها لحاظ می‌شود.
-                ردیف‌های کاری (بدون قطعه) به‌عنوان «اجرت تعمیرات» (خدمات) در فاکتور می‌آیند. وضعیت پذیرش «تحویل شده» و تاریخ خروج ثبت می‌شود.
-            </div>
             <div class="border rounded p-2 mb-3 bg-light">
                 <div class="fs-8 text-muted mb-1">دستگاه‌های مشمول پذیرش (@DeviceCount(invoicing) دستگاه)</div>
                 @foreach (var device in DevicesFor(invoicing))
@@ -987,6 +976,13 @@
     {
         var pct = max <= 0m ? 0d : Math.Clamp((double)(value / max) * 100d, 0d, 100d);
         return $"width:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
+    }
+
+    /// <summary>ارتفاع ستون نمودار عمودی (درصد) — همان منطق RepairReportBar.</summary>
+    private string RepairReportBarHeight(decimal value, decimal max)
+    {
+        var pct = max <= 0m ? 0d : Math.Clamp((double)(value / max) * 100d, 0d, 100d);
+        return $"height:{pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)}%";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

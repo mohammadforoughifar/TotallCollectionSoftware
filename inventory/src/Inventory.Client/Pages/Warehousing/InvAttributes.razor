@@ -10,7 +10,6 @@
 <div class="page-head">
     <div>
         <h1>ویژگی‌های کالا</h1>
-        <p class="lead">تعریف مشخصه‌های فنی کالا مانند رنگ، سایز، ولتاژ و … برای استفاده در فرم تعریف کالا</p>
     </div>
     <button class="btn btn-primary ms-auto" @onclick="OpenNew">
         <i class="bi bi-plus-lg"></i> ویژگی جدید
@@ -62,7 +61,6 @@
             <div class="empty-state">
                 <i class="bi bi-sliders"></i>
                 <h5>ویژگی‌ای یافت نشد</h5>
-                <p class="text-muted">با دکمه «ویژگی جدید» اولین مشخصه کالا را تعریف کنید.</p>
             </div>
         }
         else
@@ -192,7 +190,7 @@
         <div class="row g-3">
             <div class="col-12 col-md-6">
                 <label class="form-label">نام ویژگی <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="editing.Name" @bind:event="oninput" placeholder="مثلاً: رنگ" />
+                <input class="form-control" @bind="editing.Name" @bind:event="oninput" />
             </div>
             <div class="col-6 col-md-3">
                 <label class="form-label">کد</label>

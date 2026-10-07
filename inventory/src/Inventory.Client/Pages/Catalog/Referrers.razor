@@ -10,7 +10,6 @@
 <div class="page-head">
     <div>
         <h1>معرف‌ها</h1>
-        <p class="lead">بازاریاب‌ها و درصد پورسانت فروش کالا و خدمات</p>
     </div>
     <button class="btn btn-primary ms-auto" @onclick="OpenNew">
         <i class="bi bi-plus-lg"></i> معرف جدید
@@ -163,7 +162,6 @@
                 <input class="form-control num" value="@fGoods" @oninput="@(e => fGoods = e.Value?.ToString() ?? "")" inputmode="decimal" dir="ltr" />
                 <span class="input-group-text">٪</span>
             </div>
-            <div class="fs-8 text-muted mt-1">بر مبنای <b>سود</b> سطرهای کالا</div>
         </div>
         <div class="col-md-4">
             <label class="form-label">درصد پورسانت خدمات</label>
@@ -171,13 +169,11 @@
                 <input class="form-control num" value="@fService" @oninput="@(e => fService = e.Value?.ToString() ?? "")" inputmode="decimal" dir="ltr" />
                 <span class="input-group-text">٪</span>
             </div>
-            <div class="fs-8 text-muted mt-1">بر مبنای <b>کل مبلغ</b> سطرهای خدمات</div>
         </div>
         <div class="col-md-6">
             <label class="form-label">شماره کارت</label>
             <input class="form-control num" @bind="form.CardNumber" dir="ltr" maxlength="16"
                    placeholder="6037xxxxxxxxxxxx" inputmode="numeric" />
-            <div class="fs-8 text-muted mt-1">۱۶ رقم — برای واریز پورسانت</div>
         </div>
         <div class="col-md-6">
             <label class="form-label">شماره شبا (IBAN)</label>
@@ -195,7 +191,6 @@
                     <i class="bi bi-eye text-primary"></i> اجازه مشاهده «کالاهای موجود» در پنل معرف
                 </label>
             </div>
-            <div class="fs-8 text-muted mt-1">در صورت فعال بودن، این معرف در پنل خودش فهرست کالاهای دارای موجودی (نام، کد، قیمت فروش) را می‌بیند — بدون قیمت خرید و مقدار موجودی.</div>
         </div>
         <div class="col-12">
             <label class="form-label d-block">وضعیت</label>

@@ -9,7 +9,6 @@
 <div class="page-head">
     <div>
         <h1>دفتر حساب (کل / معین / تفصیلی)</h1>
-        <p class="lead">گردش و مانده‌ی یک حساب در بازه‌ی دلخواه — فقط اسناد قطعی</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick="Print" disabled="@(result is null)">
@@ -59,7 +58,6 @@ else if (result is null)
             <div class="empty-state">
                 <i class="bi bi-journal-text"></i>
                 <h5>یک حساب را انتخاب کنید</h5>
-                <p class="text-muted">پس از انتخاب حساب و بازه‌ی زمانی، گردش آن نمایش داده می‌شود.</p>
             </div>
         </div>
     </div>

@@ -107,6 +107,7 @@ builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianStandaloneIn
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderInvoiceService, Inventory.Api.Services.Invoicing.MoadianProviderInvoiceService>(); // فهرست صورتحساب‌ها به تفکیک خدمات‌دهنده
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianSubmissionService, Inventory.Api.Services.Invoicing.MoadianSubmissionService>(); // ارسال/استعلام رسمی به سامانه مودیان (SDK)
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IFiscalPrinterService, Inventory.Api.Services.Invoicing.FiscalPrinterService>(); // چاپگر مالی
+builder.Services.AddScoped<Inventory.Api.Services.ICompanyProfileService, Inventory.Api.Services.CompanyProfileService>(); // تعریف شرکت/فروشگاه و تنظیمات چاپ فاکتور
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel

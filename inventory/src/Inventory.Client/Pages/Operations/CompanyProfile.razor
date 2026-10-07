@@ -1,0 +1,196 @@
+@page "/company-profile"
+@using Inventory.Client.Pages.Orders
+@inject IAuthState Auth
+@inject ICompanyProfileService ProfileSvc
+@inject IToastService Toast
+@inject LayoutState Layout
+@inject NavigationManager Nav
+
+<PageTitle>تعریف شرکت و تنظیمات چاپ</PageTitle>
+
+<div class="page-head">
+    <div>
+        <h1>تعریف شرکت و تنظیمات چاپ</h1>
+    </div>
+</div>
+
+@if (!Auth.CanSee("CompanyProfile"))
+{
+    <div class="alert alert-danger"><i class="bi bi-shield-x"></i> شما به این بخش دسترسی ندارید.</div>
+}
+else if (loading)
+{
+    <div class="text-center py-5"><div class="spinner-border text-primary" role="status"></div></div>
+}
+else
+{
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <button class='nav-link @(tab == 1 ? "active" : "")' @onclick="() => tab = 1"><i class="bi bi-building"></i> تعریف شرکت</button>
+        </li>
+        <li class="nav-item">
+            <button class='nav-link @(tab == 2 ? "active" : "")' @onclick="() => tab = 2"><i class="bi bi-printer"></i> تنظیمات چاپ</button>
+        </li>
+    </ul>
+
+    @if (tab == 1)
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">نام فروشگاه / شرکت <span class="text-danger">*</span></label>
+                        <input class="form-control" @bind="model.Name" disabled="@(!canEdit)" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">شماره تماس</label>
+                        <input class="form-control" dir="ltr" @bind="model.Phone" placeholder="021-12345678" disabled="@(!canEdit)" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">شماره حساب بانکی</label>
+                        <input class="form-control" dir="ltr" @bind="model.AccountNumber" disabled="@(!canEdit)" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">کد اقتصادی</label>
+                        <input class="form-control" dir="ltr" @bind="model.EconomicCode" disabled="@(!canEdit)" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">شناسه ملی / مالیاتی</label>
+                        <input class="form-control" dir="ltr" @bind="model.TaxId" disabled="@(!canEdit)" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">ایمیل</label>
+                        <input class="form-control" dir="ltr" @bind="model.Email" disabled="@(!canEdit)" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">وب‌سایت</label>
+                        <input class="form-control" dir="ltr" @bind="model.Website" placeholder="https://…" disabled="@(!canEdit)" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">آدرس</label>
+                        <input class="form-control" @bind="model.Address" disabled="@(!canEdit)" />
+                    </div>
+                </div>
+                <div class="mt-3 d-flex align-items-center gap-3">
+                    <button class="btn btn-primary" disabled="@(!canEdit || saving)" @onclick="Save">
+                        @if (saving) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check2"></i> }
+                        ذخیرهٔ اطلاعات شرکت
+                    </button>
+                    @if (model.UpdatedAt.HasValue)
+                    {
+                        <span class="text-muted fs-8">آخرین به‌روزرسانی: @model.UpdatedAt.Value.ToFaDateTime().FaDigits()</span>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (tab == 2)
+    {
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">متن بالای فاکتور</label>
+                        <textarea class="form-control" rows="3" @bind="model.PrintHeaderLines" disabled="@(!canEdit)"></textarea>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">متن پایین فاکتور</label>
+                        <textarea class="form-control" rows="3" @bind="model.PrintFooterLines" disabled="@(!canEdit)"></textarea>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">اندازهٔ کاغذ فاکتور</label>
+                        <select class="form-select" @bind="model.PrintPaperSize" disabled="@(!canEdit)">
+                            <option value="A4">A4 — عمودی (پیش‌فرض)</option>
+                            <option value="A5">A5 — عمودی</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8 d-flex align-items-end">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="showSignatures" @bind="model.PrintShowSignatures" disabled="@(!canEdit)" />
+                            <label class="form-check-label" for="showSignatures">نمایش کادر امضا در پایین فاکتور</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <button class="btn btn-primary" disabled="@(!canEdit || saving)" @onclick="Save">
+                        @if (saving) { <span class="spinner-border spinner-border-sm"></span> } else { <i class="bi bi-check2"></i> }
+                        ذخیرهٔ تنظیمات چاپ
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mt-3">
+            <div class="card-header"><i class="bi bi-eye"></i><span class="card-title">پیش‌نمایش فاکتور</span></div>
+            <div class="card-body">
+                <iframe class="invoice-preview" srcdoc="@PreviewHtml" title="پیش‌نمایش فاکتور"></iframe>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private int tab = 1;
+    private bool loading = true, saving;
+    private CompanyProfileDto model = new();
+
+    /// <summary>ویرایش پروفایل — CompanyProfile.Update از بخش نقش‌ها و دسترسی‌ها</summary>
+    private bool canEdit => Auth.Has("CompanyProfile.Update");
+
+    /// <summary>پیش‌نمایش زندهٔ فاکتور با داده‌های فعلی فرم — فونت‌ها از مسیر اصلی برنامه</summary>
+    private string PreviewHtml => SaleInvoicePrint
+        .Build(SampleOrder(), model)
+        .Replace("__FONT_BASE__", Nav.BaseUri);
+
+    /// <summary>سند نمونه برای پیش‌نمایش فاکتور</summary>
+    private static Order SampleOrder() => new()
+    {
+        Number = "F-1404-0001",
+        Date = DateTime.Today,
+        Type = TransactionType.Sale,
+        PartyName = "مشتری نمونه",
+        WarehouseName = "انبار مرکزی",
+        PaymentMethod = PaymentMethod.Cash,
+        TotalAmount = 1250000m,
+        Lines = new List<OrderLine>
+        {
+            new() { Id = 1, ProductName = "کالای نمونه", Unit = "عدد", Quantity = 1, Price = 1000000m },
+            new() { Id = 2, ProductName = "خدمات نصب", Unit = "ساعت", Quantity = 1, Price = 250000m, IsService = true },
+        }
+    };
+
+    protected override void OnInitialized()
+    {
+        Layout.SetTitle("تعریف شرکت و تنظیمات چاپ");
+    }
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    private async Task Load()
+    {
+        loading = true;
+        try { model = await ProfileSvc.GetAsync(); }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { loading = false; }
+    }
+
+    private async Task Save()
+    {
+        if (!canEdit) return;
+        if (string.IsNullOrWhiteSpace(model.Name))
+        {
+            tab = 1;
+            Toast.Error("نام فروشگاه / شرکت را وارد کنید.");
+            return;
+        }
+        saving = true;
+        try
+        {
+            model = await ProfileSvc.SaveAsync(model);
+            Toast.Success("اطلاعات ذخیره شد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { saving = false; }
+    }
+}

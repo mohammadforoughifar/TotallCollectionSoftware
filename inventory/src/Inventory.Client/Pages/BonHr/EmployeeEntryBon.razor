@@ -71,7 +71,7 @@
                         }
                     </select>
                 </label>
-                <label class="form-label">عنوان شغلی / سمت <input class="form-control" maxlength="80" placeholder="مثلاً اپراتور خط" @bind="_model.PositionTitle" /></label>
+                <label class="form-label">عنوان شغلی / سمت <input class="form-control" maxlength="80" @bind="_model.PositionTitle" /></label>
                 <label class="form-label">
                     وضعیت تأهل
                     <select class="form-select" value="@_model.Married" @onchange="OnMarriedChanged">
@@ -82,7 +82,6 @@
                 <label class="form-label">
                     تعداد فرزند واجد شرایط حق اولاد
                     <input class="form-control" type="number" min="0" max="20" value="@_model.Children" @onchange="OnChildrenChanged" required />
-                    <small>تعداد فرزندانی که شرایط قانونی دریافت حق اولاد را دارند.</small>
                 </label>
                 <label class="form-label">تعداد اعضای خانواده تحت پوشش بیمه تکمیلی <input class="form-control" type="number" min="0" max="30" @bind="_model.SupplementaryFamilyCount" /></label>
                 <label class="form-label">سهم ماهانه پرسنل از بیمه تکمیلی (ریال) <BonHrRial @bind-Value="_model.SupplementaryEmployeeShare" /></label>
@@ -107,7 +106,7 @@
                                 فایل قرارداد @BonFa.N(index + 1)
                                 <InputFile OnChange="e => OnContractSelected(index, e)" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" />
                             </label>
-                            <label class="form-label">ماه مربوط <input class="form-control" placeholder="مثلاً فروردین ۱۴۰۵" value="@_contracts[index].Month" @onchange="e => SetContractMonth(index, e)" /></label>
+                            <label class="form-label">ماه مربوط <input class="form-control" value="@_contracts[index].Month" @onchange="e => SetContractMonth(index, e)" /></label>
                             <small class="text-muted">@_contracts[index].Name</small>
                         </div>
                     }
@@ -119,42 +118,34 @@
                 <label class="statutory-field">
                     پایه سنوات روزانه قانونی
                     <input class="form-control" readonly value="@BonFa.Rial(_rules?.SeniorityDaily ?? 0)" />
-                    <small>فقط نمایشی؛ از الزامات سال فعال خوانده می‌شود.</small>
                 </label>
                 <label class="statutory-field">
                     حق مسکن ماهانه
                     <input class="form-control" readonly value="@BonFa.Rial(_rules?.HousingMonthly ?? 0)" />
-                    <small>مبلغ قانونی سال فعال</small>
                 </label>
                 <label class="statutory-field">
                     بن خواربار / اقلام مصرفی
                     <input class="form-control" readonly value="@BonFa.Rial(_rules?.FoodMonthly ?? 0)" />
-                    <small>مبلغ قانونی سال فعال</small>
                 </label>
                 <label class="statutory-field">
                     حق تأهل ماهانه
                     <input class="form-control" readonly value="@BonFa.Rial(MarriageAmount)" />
-                    <small>براساس وضعیت تأهل پرونده</small>
                 </label>
                 <label class="statutory-field">
                     حق اولاد هر فرزند واجد شرایط
                     <input class="form-control" readonly value="@BonFa.Rial(ChildPerChild)" />
-                    <small>سه برابر حداقل مزد روزانه در سال @BonFa.N(_rules?.Year ?? 0)</small>
                 </label>
                 <label class="statutory-field">
                     جمع حق اولاد این پرسنل
                     <input class="form-control" readonly value="@BonFa.Rial(ChildPerChild * _model.Children)" />
-                    <small>براساس تعداد فرزند واجد شرایط</small>
                 </label>
                 <label class="statutory-field">
                     نرخ بیمه سهم کارگر
                     <input class="form-control" readonly value="@BonFa.Percent(_rules?.WorkerInsuranceRate ?? 0)" />
-                    <small>درصد قانونی سال فعال</small>
                 </label>
                 <label class="statutory-field">
                     معافیت ماهانه مالیات حقوق
                     <input class="form-control" readonly value="@BonFa.Rial(_rules?.TaxMonthlyExemption ?? 0)" />
-                    <small>مبلغ قانونی سال فعال</small>
                 </label>
                 <label class="form-label">حق جذب <BonHrRial @bind-Value="_model.AttractionPay" /></label>
                 <label class="form-label">حق سرپرستی <BonHrRial @bind-Value="_model.SupervisorPay" /></label>
@@ -184,7 +175,6 @@
         <ChildContent>
         <article class="import-panel">
             <h3>ورود گروهی پرسنل</h3>
-            <p class="text-muted">فایل CSV با ستون‌های کد، نام، نام خانوادگی، کد ملی، واحد، حقوق پایه و تاریخ جذب.</p>
             <InputFile class="form-control" OnChange="OnImportSelected" accept=".csv" />
             <label style="margin-top:12px">
                 <input class="form-control" type="checkbox" @bind="_overwrite" /> بازنویسی پرونده‌های موجود

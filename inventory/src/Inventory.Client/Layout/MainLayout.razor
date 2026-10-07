@@ -222,22 +222,15 @@ else
                                                     </div>
                                                     @if (msgStatus?.baleLinked == true)
                                                     {
-                                                        <div class="fs-9 text-muted">اعلان‌های سامانه در بله برای شما ارسال می‌شود.</div>
                                                     }
                                                     else if (msgStatus?.baleConfigured != true)
                                                     {
-                                                        <div class="fs-9 text-muted">ربات بله هنوز روی سرور تنظیم نشده است؛ مدیر سامانه باید توکن ربات را در «تنظیمات ← پیام‌رسان‌ها» وارد کند.</div>
                                                     }
                                                     else if (msgStatus?.hasMobile != true)
                                                     {
-                                                        <div class="fs-9 text-muted">برای تطبیق خودکار، شماره موبایل در پرونده‌ی کاربری شما ثبت نشده است؛ از مدیر سامانه بخواهید شماره را ثبت کند.</div>
                                                     }
                                                     else
                                                     {
-                                                        <div class="fs-9 text-muted">
-                                                            برای اتصال: در بله ربات سامانه را باز کنید، دکمه‌ی «شروع/Start» را بزنید و شماره‌ی خود را ارسال کنید —
-                                                            اتصال به‌صورت خودکار انجام می‌شود (حتی می‌توانید شماره را از منوی پیوست ← «مخاطب» بفرستید).
-                                                        </div>
                                                     }
                                                     <div class="d-flex gap-2 mt-2">
                                                         <button type="button" class="btn btn-sm btn-outline-primary" @onclick="TestMessengerAsync" disabled="@msgBusy">
@@ -267,17 +260,12 @@ else
                                                     </div>
                                                     @if (msgStatus?.eitaaLinked == true)
                                                     {
-                                                        <div class="fs-9 text-muted">اعلان‌های سامانه در ایتا برای شما ارسال می‌شود.</div>
                                                     }
                                                     else if (msgStatus?.eitaaConfigured != true)
                                                     {
-                                                        <div class="fs-9 text-muted">برنامه‌ی ایتا هنوز روی سرور تنظیم نشده است؛ مدیر سامانه باید توکن برنامه (developer.eitaa.com) را در «تنظیمات ← پیام‌رسان‌ها» وارد کند.</div>
                                                     }
                                                     else
                                                     {
-                                                        <div class="fs-9 text-muted">
-                                                            برای اتصال: دکمه‌ی «دریافت کد اتصال» را بزنید، سپس در ایتا برنامه‌ی سامانه را باز کنید و همان کد را وارد کنید.
-                                                        </div>
                                                     }
 
                                                     @if (eitaaCode != null)
@@ -312,10 +300,6 @@ else
                                                     <div class="alert alert-light border py-2 mb-2 fs-8">@msgResultText</div>
                                                 }
 
-                                                <div class="fs-9 text-muted">
-                                                    پس از تنظیم توکن‌ها توسط مدیر، اعلان‌های سامانه‌ای که برای شما ثبت می‌شود، علاوه بر نرم‌افزار،
-                                                    به بله و ایتای شما هم ارسال می‌گردد. (در ایتا، اعتبار ارسال روزانه‌ی برنامه بر اساس تعامل کاربران تعیین می‌شود.)
-                                                </div>
 
                                                 <div class="d-flex justify-content-end gap-2 mt-2">
                                                     <button type="button" class="btn btn-sm btn-light" @onclick="LoadMsgStatusAsync" disabled="@msgBusy">بررسی وضعیت</button>

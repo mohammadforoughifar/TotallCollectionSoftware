@@ -92,10 +92,10 @@
                                 <tr>
                                     <td class="num" style="padding:4px 8px;border:1px solid #e2e8f0;text-align:center;color:#64748b">@((idx + 1).FaDigits())</td>
                                     <td style="padding:4px;border:1px solid #e2e8f0">
-                                        <input class="tin" style="width:100%" placeholder="مثلاً: واحد مالی" @bind="row.Name" />
+                                        <input class="tin" style="width:100%" @bind="row.Name" />
                                     </td>
                                     <td style="padding:4px;border:1px solid #e2e8f0">
-                                        <input class="tin" style="width:100%" placeholder="مثلاً: جهت اطلاع" @bind="row.Desc" />
+                                        <input class="tin" style="width:100%" @bind="row.Desc" />
                                     </td>
                                     <td style="padding:4px;border:1px solid #e2e8f0">
                                         <input class="tin num" style="width:100%" placeholder="اختیاری" @bind="row.RefNo" />
@@ -141,7 +141,6 @@
                 </div>
                 <div class="fcard" style="display:flex;align-items:center;gap:8px;padding:10px">
                     <i class="bi bi-info-circle" style="color:var(--p2)"></i>
-                    <small>انتخاب <b>حداقل یک امضا کننده الزامی است</b>. امضا کنندگان از بین کاربران دارای دسترسی <code>OutgoingLetters.Sign</code> انتخاب می‌شوند و وقتی همه امضا کردند، شماره صادره (SadereNumber) مقدار می‌گیرد و نامه وارد دبیرخانه می‌شود.</small>
                 </div>
             </div>
 
@@ -182,7 +181,7 @@
 
             <div class="fcard @(errTitle ? "err" : "")">
                 <label>عنوان نامه <span class="req">*</span></label>
-                <input class="tin" placeholder="عنوان نامه را وارد کنید…" @bind="title" @bind:event="oninput" />
+                <input class="tin" @bind="title" @bind:event="oninput" />
                 @if (errTitle)
                 {
                     <div class="ferr"><i class="bi bi-exclamation-circle"></i> عنوان نامه الزامی است</div>
@@ -212,7 +211,7 @@
                 <label>پیوست</label>
                 <div class="dz">
                     <div class="ic"><i class="bi bi-cloud-arrow-up"></i></div>
-                    <div><b>فایل را بکشید و رها کنید یا کلیک کنید</b><small>بدون محدودیت تعداد و حجم</small></div>
+                    <div><b>فایل را بکشید و رها کنید یا کلیک کنید</b></div>
                     <InputFile OnChange="OnFiles" multiple />
                 </div>
                 <div class="selpills">
@@ -275,7 +274,7 @@
         <div class="gov">
             <div class="gmodal" style="width:min(640px,96vw)" @onclick:stopPropagation="true">
                 <div class="gm-h">
-                    <div class="ttl"><b><i class="bi bi-link-45deg" style="color:var(--p2)"></i> ثبت نامه مرتبط</b><small>نوع رابطه و نامه‌ها را انتخاب کنید</small></div>
+                    <div class="ttl"><b><i class="bi bi-link-45deg" style="color:var(--p2)"></i> ثبت نامه مرتبط</b></div>
                     <button class="x" @onclick="() => relOpen = false"><i class="bi bi-x-lg"></i></button>
                 </div>
                 <div class="gm-seg">

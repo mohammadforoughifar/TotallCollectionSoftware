@@ -3,6 +3,7 @@
 @inject IOrderService OrderSvc
 @inject IWarehouseService WarehouseSvc
 @inject IPartyService PartySvc
+@inject ICompanyProfileService ProfileSvc
 @inject IMoadianClientService MoadianSvc
 @inject IToastService Toast
 @inject LayoutState Layout
@@ -13,7 +14,6 @@
 <div class="page-head">
     <div>
         <h1>@(isPurchase ? "اسناد خرید" : "اسناد فروش")</h1>
-        <p class="lead">@(isPurchase ? "ثبت و مدیریت رسیدهای خرید" : "ثبت و مدیریت فاکتورهای فروش")</p>
     </div>
     <button class="btn btn-primary me-auto" @onclick="OpenNew">
         <i class="bi bi-plus-lg"></i> @(isPurchase ? "خرید جدید" : "فروش جدید")
@@ -99,6 +99,7 @@
                                     </td>
                                 }
                                 <td class="text-end">
+                                    <button class="btn btn-sm btn-light" title="@(isPurchase ? "چاپ رسید خرید" : "چاپ فاکتور")" @onclick="() => PrintInvoice(o)"><i class="bi bi-printer text-secondary"></i></button>
                                     <button class="btn btn-sm btn-light" title="مشاهده" @onclick="() => View(o)"><i class="bi bi-eye text-primary"></i></button>
                                     @if (!isPurchase)
                                     {
@@ -145,6 +146,7 @@
                             </div>
                         </div>
                         <div class="m-card-actions">
+                            <button class="btn btn-light" @onclick="() => PrintInvoice(o)"><i class="bi bi-printer"></i> @(isPurchase ? "چاپ رسید" : "چاپ فاکتور")</button>
                             <button class="btn btn-light" @onclick="() => View(o)"><i class="bi bi-eye"></i> مشاهده</button>
                             @if (!isPurchase)
                             {
@@ -335,6 +337,7 @@
     private Order? viewing;
     private MoadianInvoice? moadianDraft;
     private bool showMoadianDraft;
+    private CompanyProfileDto? profile;
 
     protected override void OnInitialized()
     {
@@ -357,6 +360,13 @@
             partyLookup = await PartySvc.GetLookupsAsync(isPurchase ? PartyType.Supplier : PartyType.Customer);
         }
         catch { }
+
+        try
+        {
+            // پروفایل شرکت (نام فروشگاه، شماره حساب، شماره تماس، تنظیمات چاپ) — برای چاپ فاکتور
+            profile = await ProfileSvc.GetAsync();
+        }
+        catch { /* پروفایل شرکت اختیاری است */ }
     }
 
     private async Task Load()
@@ -418,6 +428,18 @@
     }
 
     private void View(Order o) => viewing = o;
+
+    private async Task PrintInvoice(Order o)
+    {
+        try
+        {
+            // دریافت سند کامل (همراه اقلام) از سرور
+            var full = await OrderSvc.GetAsync(o.Id) ?? o;
+            var opened = await JS.InvokeAsync<bool>("giPrint", SaleInvoicePrint.Build(full, profile));
+            if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
 
     private async Task CreateMoadianDraft(int transactionId)
     {

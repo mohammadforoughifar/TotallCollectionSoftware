@@ -12,7 +12,6 @@
 <BonHrShell Title="الزامات سالانه حقوق" Sub="مبالغ قانونی سال فعال" />
 
 
-    <p class="text-muted mb-3">مبالغ باید عیناً از مصوبه و بخشنامه رسمی همان سال وارد شود. هر تغییر در سوابق ثبت و برای مدیرعامل ارسال می‌شود.</p>
 
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3"><div class="kpi kpi-blue"><div class="kpi-num">@BonFa.N(_rules.Year)</div><div class="kpi-lbl">سال فعال</div></div></div>
@@ -122,7 +121,6 @@
             <label class="activate-rule">
                 <input class="form-control" type="checkbox" @bind="_activate" /> این سال بلافاصله مبنای محاسبات حقوق و دستمزد شود.
             </label>
-            <p class="text-muted">ثبت تغییر، گزارش قبل/بعد را غیرقابل حذف در سوابق این نسخه نگه می‌دارد و یک اعلان خوانده‌نشده برای مدیرعامل ایجاد می‌کند.</p>
             <p class="small mt-2" role="status">@_message</p>
             <button class="btn btn-primary" type="submit">ثبت الزامات و ارسال گزارش به مدیرعامل</button>
         </article>

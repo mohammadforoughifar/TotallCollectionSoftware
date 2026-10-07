@@ -14,7 +14,6 @@
     <div class="text-center py-5">
         <i class="bi bi-shield-lock fs-1 text-danger d-block mb-3"></i>
         <h4>دسترسی ندارید</h4>
-        <p class="text-muted">این پنل مخصوص مدیر منابع انسانی است. درخواست‌های خود را از کارتابل «مرخصی و ماموریت» پیگیری کنید.</p>
         <a class="btn btn-primary rounded-pill px-4" href="leave"><i class="bi bi-arrow-right me-1"></i> کارتابل من</a>
     </div>
     return;
@@ -213,7 +212,7 @@
 {
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <b><i class="bi bi-calendar-x text-primary"></i> تعطیلات شرکتی <span class="small text-muted fw-normal">(اعمال می‌شود برای کل پرسنل)</span></b>
+            <b><i class="bi bi-calendar-x text-primary"></i> تعطیلات شرکتی </b>
         </div>
         <div class="card-body">
             @if (canApprove)
@@ -225,7 +224,7 @@
                     </div>
                     <div class="col-6 col-md-4">
                         <label class="form-label small fw-800">عنوان / دلیل</label>
-                        <input class="form-control form-control-sm" @bind="holName" placeholder="مثلاً: ایام عزاداری / نشست سازمانی" />
+                        <input class="form-control form-control-sm" @bind="holName" />
                     </div>
                     <div class="col-12 col-sm-2">
                         <button class="btn btn-sm btn-primary w-100" @onclick="AddHoliday" disabled="@holBusy">
@@ -334,15 +333,12 @@
         {
             <div class="col-12">
                 <label class="form-label small fw-800">مقصد <span class="text-danger">*</span></label>
-                <input class="form-control form-control-sm" @bind="obDestination" placeholder="مثلاً: تهران" />
+                <input class="form-control form-control-sm" @bind="obDestination" />
             </div>
         }
         <div class="col-12">
             <label class="form-label small fw-800">توضیح (اختیاری)</label>
-            <input class="form-control form-control-sm" @bind="obReason" placeholder="مثلاً: هماهنگی با مدیریت" />
-        </div>
-        <div class="col-12 small text-muted">
-            <i class="bi bi-info-circle"></i> درخواست مستقیماً با وضعیت «تاییدشده» و علامت «توسط مدیر» ثبت می‌شود و کسریِ روزهای مربوطه بازحساب می‌شود.
+            <input class="form-control form-control-sm" @bind="obReason" />
         </div>
     </div>
     </ChildContent>
@@ -469,7 +465,7 @@
                 </div>
                 <div class="modal-body">
                     <label class="form-label small fw-800">دلیل رد (اختیاری)</label>
-                    <textarea class="form-control form-control-sm" rows="2" @bind="rejectNote" placeholder="مثلاً: بیش از موجودی مرخصی دارید…"></textarea>
+                    <textarea class="form-control form-control-sm" rows="2" @bind="rejectNote"></textarea>
                     @if (!string.IsNullOrEmpty(rejectError))
                     {
                         <div class="alert alert-danger py-2 mt-2">@rejectError</div>

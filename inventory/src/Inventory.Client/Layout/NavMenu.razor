@@ -458,6 +458,12 @@
                                         <i class="bi bi-person-badge"></i><span>معرف‌ها</span>
                                     </NavLink>
                                 }
+                                @if (Auth.CanSee("CompanyProfile"))
+                                {
+                                    <NavLink class="nav-link" href="company-profile" @onclick="NotifyClose">
+                                        <i class="bi bi-shop"></i><span>تعریف شرکت</span>
+                                    </NavLink>
+                                }
                             </div>
                         }
                     </div>
@@ -768,7 +774,7 @@
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
-    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers");
+    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers", "CompanyProfile");
     private bool ShowMoadianGroup => Auth.CanSee("Moadian");
     private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
     private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",

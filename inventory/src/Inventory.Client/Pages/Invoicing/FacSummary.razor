@@ -9,7 +9,6 @@
 <div class="page-head">
     <div>
         <h1>گزارش فروش و خرید</h1>
-        <p class="lead">تجمیع فاکتورهای قطعی بر اساس ماه، روز، طرف حساب یا کالا</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick="Print"><i class="bi bi-printer"></i> چاپ</button>
@@ -60,7 +59,6 @@ else if (result is null || result.Rows.Count == 0)
             <div class="empty-state">
                 <i class="bi bi-table"></i>
                 <h5>در این بازه فاکتور قطعی‌شده‌ای وجود ندارد</h5>
-                <p class="text-muted">فقط فاکتورهای «قطعی» در گزارش‌ها منظور می‌شوند.</p>
             </div>
         </div>
     </div>

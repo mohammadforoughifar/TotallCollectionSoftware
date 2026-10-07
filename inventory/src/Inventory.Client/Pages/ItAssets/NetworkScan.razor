@@ -34,8 +34,7 @@
                 {
                     <label class="form-label small fw-800 mb-1">رنج دلخواه</label>
                     <input type="text" class="form-control form-control-sm" @bind="manualRange"
-                           placeholder="مثال: 192.168.1 یا 192.168.1.0/24 یا 192.168.1.1-192.168.1.254" />
-                    <div class="form-text small">فرمت‌ها: پیشوند /24 — یا CIDR — یا بازه‌ی شروع-پایان</div>
+                           />
                 }
                 else
                 {
@@ -87,11 +86,6 @@
 
             @if (!scanStatus.Running && scanStatus.Hosts.Count == 0 && scanStatus.Error == null)
             {
-                <div class="alert alert-info py-2 small">
-                    چیزی پیدا نشد — بررسی کنید: API روی سیستمی که به شبکه وصل است اجرا شود؛
-                    «Client Isolation» روتر خاموش باشد؛ شبکه در ویندوز Private باشد.
-                    می‌توانید رنج را دستی وارد کنید و دوباره امتحان کنید.
-                </div>
             }
 
             @if (scanStatus.Hosts.Count > 0)
@@ -161,9 +155,6 @@
         </button>
     </div>
     <div class="card-body">
-        <div class="small text-muted mb-2">
-            تشخیص چندلایه: ONVIF WS-Discovery + پورت‌های RTSP/Hikvision/Dahua + پروب RTSP و HTTP + برند از MAC
-        </div>
         @if (cctvBusy)
         {
             <div class="text-center py-4">

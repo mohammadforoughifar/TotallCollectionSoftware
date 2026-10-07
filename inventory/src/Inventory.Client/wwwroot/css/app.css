@@ -764,6 +764,59 @@ a { text-decoration: none; }
 .btn-new-party:active { transform: translateY(0); }
 .btn-new-party i { font-size: 1.05rem; }
 
+/* ---------- پیش‌نمایش زندهٔ فاکتور (صفحهٔ تعریف شرکت) ---------- */
+.invoice-preview {
+    width: 100%;
+    height: 620px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+}
+
+/* ---------- نمودار عمودی جزئیات مالی تعمیرات (ستون‌های عمودی) ---------- */
+.repair-finance-chart {
+    display: flex;
+    align-items: stretch;
+    gap: .9rem;
+    height: 200px;
+    padding-top: .25rem;
+}
+.repair-finance-col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: .4rem;
+}
+.repair-finance-value { font-size: .78rem; font-weight: 800; white-space: nowrap; }
+.repair-finance-bar-wrap {
+    flex: 1 1 auto;
+    width: 100%;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    border-bottom: 2px solid #e2e8f0;
+}
+.repair-finance-bar {
+    width: min(64%, 54px);
+    min-height: 3px;
+    border-radius: 7px 7px 0 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+.repair-finance-label {
+    font-size: .72rem;
+    color: #64748b;
+    text-align: center;
+    line-height: 1.35;
+}
+@media (max-width: 575.98px) {
+    .repair-finance-chart { gap: .5rem; height: 160px; }
+    .repair-finance-value { font-size: .68rem; }
+    .repair-finance-label { font-size: .62rem; }
+}
+
 /* ---------- فرم چنددستگاهی تعمیرات ---------- */
 .repair-intake-form { display: flex; flex-direction: column; gap: .25rem; }
 .repair-common-card,

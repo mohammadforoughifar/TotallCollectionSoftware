@@ -114,7 +114,7 @@
                         <div class="alert alert-danger py-2">@formError</div>
                     }
                     <div class="photo-pick mb-3">
-                        <label class="form-label small fw-800 mb-1"><i class="bi bi-camera"></i> عکس کاربر <span class="text-muted fw-600">(اختیاری — بدون عکس، عکس پیش‌فرض نمایش داده می‌شود)</span></label>
+                        <label class="form-label small fw-800 mb-1"><i class="bi bi-camera"></i> عکس کاربر </label>
                         <div class="d-flex align-items-center gap-3">
                             <div class="pp-preview">
                                 @if (pendingPhotoPreview != null)
@@ -140,7 +140,7 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">نام <span class="text-danger">*</span></label>
-                            <input class="form-control" @bind="form.FirstName" placeholder="مثلاً: علی" />
+                            <input class="form-control" @bind="form.FirstName" />
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">نام خانوادگی</label>
@@ -192,9 +192,6 @@
                                 <option value="Referrer">معرف</option>
                                 <option value="Admin">مدیر کل</option>
                             </select>
-                            <div class="form-text fs-8">
-                                دسترسی‌های جزئی‌تر (مدیر منابع انسانی، کارشناس IT و ...) از صفحه «کاربران» ← تب «نقش‌ها و دسترسی‌ها» اختصاص داده می‌شوند.
-                            </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-check form-switch mt-4 pt-2">

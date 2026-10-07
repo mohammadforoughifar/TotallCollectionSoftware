@@ -12,7 +12,6 @@
 <div class="page-head">
     <div>
         <h1>بودجه و کنترل بودجه</h1>
-        <p class="lead">برنامه‌ریزی سالانه و پایش تعهد/مصرف به تفکیک مرکز هزینه</p>
     </div>
     <div class="ms-auto">
         <button class="btn btn-primary" @onclick="OpenNew">
@@ -198,7 +197,7 @@
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">نام بودجه <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.Name" placeholder="مثلاً بودجه عملیاتی ۱۴۰۵" />
+                <input class="form-control" @bind="form.Name" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">سال مالی <span class="text-danger">*</span></label>

@@ -13,7 +13,6 @@
 <div class="page-head">
     <div>
         <h1>کالاها</h1>
-        <p class="lead">تعریف کالا، قیمت و نقطه سفارش</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-primary" @onclick="OpenImport">
@@ -196,7 +195,6 @@
                        checked="@form.IsService" @onchange="@(() => form.IsService = true)" />
                 <label class="form-check-label" for="prodService">خدمات</label>
             </div>
-            <div class="fs-8 text-muted">خدمات موجودی انبار ندارد و فقط در فروش انتخاب می‌شود</div>
         </div>
         <div class="col-md-5">
             <label class="form-label">@(form.IsService ? "نام خدمت" : "نام کالا") <span class="text-danger">*</span></label>
@@ -268,7 +266,6 @@
         <div class="col-md-6">
             <label class="form-label">شناسه مالیاتی @(form.IsService ? "خدمت" : "کالا")</label>
             <input class="form-control font-monospace" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="شناسه رسمی کالا/خدمت" />
-            <div class="fs-8 text-muted mt-1">برای استفاده در پیش‌نویس‌های سامانه مودیان؛ شناسه را با مرجع مالیاتی معتبر تطبیق دهید.</div>
         </div>
         <div class="col-md-4">
             <label class="form-label d-block">وضعیت</label>
@@ -294,7 +291,6 @@
                         <option value="@w.Id">@w.Name</option>
                     }
                 </select>
-                <div class="fs-8 text-muted mt-1">در صورت انتخاب، این کالا فقط در همان انبار قابل خرید/فروش است</div>
             </div>
         }
         @if (editing)

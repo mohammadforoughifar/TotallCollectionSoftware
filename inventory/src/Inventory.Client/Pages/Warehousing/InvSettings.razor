@@ -8,7 +8,6 @@
 <div class="page-head">
     <div>
         <h1>تنظیمات انبارداری و ساختار کدینگ کالا</h1>
-        <p class="lead">پیکربندی ساختار کد هوشمند کالا و گروه‌ها، تعداد ارقام هر سطح، مالیات ارزش افزوده و قواعد انبارداری</p>
     </div>
 </div>
 
@@ -51,9 +50,6 @@ else
                                        @bind="settings.CategoryCodeLength" @bind:after="UpdatePreview" dir="ltr" />
                                 <span class="input-group-text bg-light text-muted">رقم</span>
                             </div>
-                            <div class="fs-8 text-muted mt-1">
-                                تعداد ارقام مجاز برای کد هر گروه و زیرگروه (پیش‌فرض: ۲ رقم، مثلاً ۰۱، ۰۲، …)
-                            </div>
                         </div>
 
                         <div class="col-md-6">
@@ -65,9 +61,6 @@ else
                                        @bind="settings.ProductCodeLength" @bind:after="UpdatePreview" dir="ltr" />
                                 <span class="input-group-text bg-light text-muted">کاراکتر</span>
                             </div>
-                            <div class="fs-8 text-muted mt-1">
-                                تعداد کاراکترهای بخش پایانی کالا (مثلاً اگر ۴ انتخاب شود، کاربر تا ۴ کاراکتر می‌تواند قرار دهد: ۰۰۰۱ تا ۹۹۹۹)
-                            </div>
                         </div>
 
                         <div class="col-md-6">
@@ -78,7 +71,6 @@ else
                                 <option value="/">اسلش (/ مانند ۰۱/۰۲/۰۰۰۱)</option>
                                 <option value=".">نقطه (. مانند ۰۱.۰۲.۰۰۰۱)</option>
                             </select>
-                            <div class="fs-8 text-muted mt-1">کاراکتر جداکننده اختیاری بین کدهای گروه‌ها و بخش کالا</div>
                         </div>
 
                         <div class="col-md-6 d-flex align-items-center">
@@ -88,7 +80,6 @@ else
                                 <label class="form-check-label fw-600" for="autoCodeSwitch">
                                     تولید خودکار کد کالا بر اساس سلسله‌مراتب گروه
                                 </label>
-                                <div class="fs-8 text-muted">ترکیب کدهای گروه‌های مافوق با بخش سریال کالا در فرم ثبت کالای جدید</div>
                             </div>
                         </div>
 
@@ -157,24 +148,16 @@ else
                         <div class="font-monospace fs-8 p-2 bg-white rounded border mb-2" dir="ltr">
                             مبلغ مشمول سطر = (تعداد × فی واحد) − تخفیف
                         </div>
-                        <div class="font-monospace fs-8 p-2 bg-white rounded border mb-2 text-primary" dir="ltr">
-                            ارزش افزوده = مبلغ مشمول سطر × (نرخ ارزش افزوده ٪)
-                        </div>
-                        <div class="font-monospace fs-8 p-2 bg-white rounded border text-success fw-bold" dir="ltr">
-                            مبلغ کل سطر = مبلغ مشمول سطر + مالیات بر ارزش افزوده
-                        </div>
                     </div>
 
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label fw-600">نرخ پیش‌فرض ارزش افزوده در سیستم (٪)</label>
                             <input type="number" step="any" class="form-control num" @bind="settings.DefaultVatRate" dir="ltr" />
-                            <div class="fs-8 text-muted mt-1">نرخ پایه اعمال شده روی کالاهای جدید (پیش‌فرض: ۱۰٪)</div>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-600">نرخ پیش‌فرض عوارض قانونی (٪)</label>
                             <input type="number" step="any" class="form-control num" @bind="settings.DefaultDutyRate" dir="ltr" />
-                            <div class="fs-8 text-muted mt-1">نرخ عوارض در صورت نیاز به تفکیک از مالیات</div>
                         </div>
                     </div>
                 </div>
@@ -199,7 +182,6 @@ else
                                 <option value="FIFO">اولین صادره از اولین وارده (FIFO)</option>
                                 <option value="LIFO">اولین صادره از آخرین وارده (LIFO)</option>
                             </select>
-                            <div class="fs-8 text-muted mt-1">روش پایه محاسبه بهای تمام شده خروج انبار</div>
                         </div>
                         <div class="col-md-6 d-flex align-items-center">
                             <div class="form-check form-switch mt-2">
@@ -207,7 +189,6 @@ else
                                 <label class="form-check-label fw-600" for="negStock">
                                     اجازه منفی شدن موجودی در اسناد
                                 </label>
-                                <div class="fs-8 text-muted">صدور حواله حتی در صورت کسری موجودی کالا در انبار</div>
                             </div>
                         </div>
                     </div>

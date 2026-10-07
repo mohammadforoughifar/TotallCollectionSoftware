@@ -166,7 +166,7 @@
                             <th><input class="col-filter-input" placeholder="🔍 اپراتور" @bind="fOperator" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th><input class="col-filter-input" placeholder="ساعت — مثلا 8" @bind="fStart" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
                             <th><input class="col-filter-input" placeholder="ساعت — مثلا 17" @bind="fEnd" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
-                            <th><input class="col-filter-input" placeholder="مثلا 1:00" @bind="fRest" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
+                            <th><input class="col-filter-input" @bind="fRest" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
                             <th><input class="col-filter-input" placeholder="مثلا 7" @bind="fSpent" @bind:event="oninput" @bind:after="OnFilterChanged" dir="ltr" /></th>
                             <th><input class="col-filter-input" placeholder="🔍 در شرح کار" @bind="fDesc" @bind:event="oninput" @bind:after="OnFilterChanged" /></th>
                             <th class="text-end">
@@ -305,21 +305,16 @@
             <label class="form-label">پروژه <span class="text-danger">*</span></label>
             @* فقط پروژه‌های تاییدشدهٔ مدیر — پروژه‌های در انتظار تایید یا ردشده گزارش‌پذیر نیستند *@
             <SearchSelect Items="FormProjects" @bind-Value="form.ProjectId" Placeholder="جستجو و انتخاب پروژه…" />
-            <div class="fs-8 text-muted mt-1">
-                <i class="bi bi-info-circle ms-1"></i>
-                فقط پروژه‌های <b>تاییدشدهٔ مدیر</b> در این فهرست هستند؛ پروژه‌های «در انتظار تایید» و «رد شده» گزارش‌پذیر نیستند.
-            </div>
         </div>
         <div class="col-md-6">
             <label class="form-label">ثبت‌کننده</label>
             <div class="form-control bg-light d-flex align-items-center gap-1" style="height:auto;min-height:38px;">
                 <i class="bi bi-person-check-fill text-success"></i>
                 <b>@(editing ? editUserName : Auth.DisplayName)</b>
-                <span class="fs-8 text-muted">(ثبت خودکار با کاربر جاری)</span>
             </div>
         </div>
         <div class="col-md-12">
-            <label class="form-label"><i class="bi bi-person-gear text-muted ms-1"></i>اپراتور <span class="fs-8 text-muted">(کسی که کار را انجام داده — از لیست کاربران)</span></label>
+            <label class="form-label"><i class="bi bi-person-gear text-muted ms-1"></i>اپراتور </label>
             <SearchSelect Items="lookups.Operators" Value="form.OperatorId ?? 0" ValueChanged="v => form.OperatorId = v > 0 ? v : null" Placeholder="انتخاب اپراتور… (اختیاری)" />
         </div>
         <div class="col-md-4">

@@ -10,7 +10,6 @@
 <div class="page-head">
     <div>
         <h1>مدیریت نوع رسید و حواله</h1>
-        <p class="lead">هر نوع سند یک «ماهیت» دارد که اثر آن بر موجودی انبار را تعیین می‌کند: افزایشی، کاهشی یا خنثی</p>
     </div>
     <button class="btn btn-primary ms-auto" @onclick="OpenNew">
         <i class="bi bi-plus-lg"></i> نوع سند جدید
@@ -74,7 +73,6 @@
             <div class="empty-state">
                 <i class="bi bi-journals"></i>
                 <h5>نوع سندی یافت نشد</h5>
-                <p class="text-muted">انواع پیش‌فرض (رسید خرید، حواله فروش، انتقال و …) هنگام راه‌اندازی ایجاد می‌شوند.</p>
             </div>
         }
         else
@@ -211,7 +209,7 @@
         <div class="row g-3">
             <div class="col-12 col-md-6">
                 <label class="form-label">عنوان نوع سند <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="editing.Name" @bind:event="oninput" placeholder="مثلاً: رسید خرید" />
+                <input class="form-control" @bind="editing.Name" @bind:event="oninput" />
             </div>
             <div class="col-6 col-md-3">
                 <label class="form-label">کد <span class="text-danger">*</span></label>

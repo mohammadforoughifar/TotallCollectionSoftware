@@ -272,7 +272,6 @@
 
 <Modal Visible="showConvert" Title="@($"تبدیل {detail?.FullName} به پرسنل")" OnClose="() => showConvert = false">
     <ChildContent>
-        <div class="alert alert-info small">با تأیید، پرونده پرسنلی با کد خودکار ساخته می‌شود و وضعیت متقاضی «استخدام‌شده» می‌گردد.</div>
         <div class="row g-3">
             <div class="col-md-6"><label class="form-label">کد ملی *</label><input class="form-control num" dir="ltr" maxlength="10" @bind="convNational" /></div>
             <div class="col-md-6"><label class="form-label">تاریخ استخدام</label><DatePicker @bind-Value="convHire" /></div>

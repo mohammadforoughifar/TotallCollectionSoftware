@@ -130,10 +130,6 @@
             </div>
             @if (Module == "DocVersion")
             {
-                <div class="fs-9 text-muted mt-1">
-                    <i class="bi bi-info-circle ms-1"></i>
-                    پس از بارگذاری، متن PDF/Word/Excel/تصویر به‌صورت خودکار استخراج می‌شود و در جستجوی آرشیو قابل‌یافتن است.
-                </div>
             }
         }
     </div>
@@ -157,7 +153,6 @@
             {
                 <div class="fs-8 text-danger mt-1"><i class="bi bi-exclamation-triangle"></i> @confirmError</div>
             }
-            <div class="fs-9 text-muted mt-2">پس از تایید، تا ۱۵ دقیقه نیازی به ورود مجدد رمز نیست.</div>
         </ChildContent>
         <Footer>
             <button type="button" class="btn btn-sm btn-light" @onclick="CloseConfirm" disabled="@confirmBusy">انصراف</button>

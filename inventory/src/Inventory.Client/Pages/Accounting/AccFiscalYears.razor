@@ -9,7 +9,6 @@
 <div class="page-head">
     <div>
         <h1>سال‌های مالی</h1>
-        <p class="lead">تعریف دوره‌های مالی؛ اسناد جدید در دوره‌ی «جاری» ثبت می‌شوند</p>
     </div>
     <div class="ms-auto">
         <button class="btn btn-primary" @onclick="OpenNew">
@@ -158,11 +157,11 @@
         <div class="row g-3">
             <div class="col-md-8">
                 <label class="form-label">عنوان دوره <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="form.Title" placeholder="مثلاً: سال مالی ۱۴۰۵" />
+                <input class="form-control" @bind="form.Title" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">کد دوره</label>
-                <input class="form-control num" @bind="form.Code" placeholder="مثلاً: 1405" />
+                <input class="form-control num" @bind="form.Code" />
             </div>
 
             <div class="col-md-6">

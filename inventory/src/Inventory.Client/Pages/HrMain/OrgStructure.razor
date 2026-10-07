@@ -42,7 +42,7 @@
 else if (tree.Count == 0)
 {
     <div class="card border-0 shadow-sm"><div class="card-body">
-        <div class="empty-state"><i class="bi bi-diagram-3"></i><h5>هنوز ساختاری تعریف نشده است</h5><p class="text-muted small mb-0">ابتدا گره ریشه (شرکت) را بسازید.</p></div>
+        <div class="empty-state"><i class="bi bi-diagram-3"></i><h5>هنوز ساختاری تعریف نشده است</h5></div>
     </div></div>
 }
 else if (tab == 0)
@@ -107,7 +107,7 @@ else
                     }
                 </select>
             </div>
-            <div class="col-md-6"><label class="form-label">عنوان مدیر گره</label><input class="form-control" @bind="form.ManagerTitle" placeholder="مثلاً مدیر مالی" /></div>
+            <div class="col-md-6"><label class="form-label">عنوان مدیر گره</label><input class="form-control" @bind="form.ManagerTitle" /></div>
             <div class="col-md-6"><label class="form-label">تلفن</label><input class="form-control num" dir="ltr" @bind="form.Phone" /></div>
             <div class="col-md-3"><label class="form-label">ترتیب نمایش</label><input class="form-control num" type="number" @bind="form.SortOrder" /></div>
             <div class="col-md-3 d-flex align-items-end">
@@ -115,7 +115,6 @@ else
             </div>
             <div class="col-12"><label class="form-label">توضیحات</label><textarea class="form-control" rows="2" @bind="form.Description"></textarea></div>
         </div>
-        <div class="alert alert-light border small mt-2 mb-0">قانون سلسله‌مراتب: ریشه فقط «شرکت» است و هر زیرمجموعه باید از سطح عمیق‌تر از والد باشد (شرکت ← واحد ← دپارتمان ← تیم).</div>
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="() => showEdit = false">انصراف</button>

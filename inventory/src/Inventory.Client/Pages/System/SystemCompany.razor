@@ -6,8 +6,7 @@
 
 <div class="page-head mb-4">
     <h1><i class="bi bi-building-fill"></i> مدیریت شرکت‌ها و شعب</h1>
-    <p class="lead">اطلاعات، مشخصات ثبتی و وضعیت شرکت‌های تابعه و طرف قرارداد</p>
-</div>
+    </div>
 
 <div class="card shadow mb-4" style="background:#fff;border:1px solid #e0e0f0;border-radius:16px;overflow:hidden;">
     <div class="card-header d-flex justify-content-between align-items-center px-3 py-3" style="background:linear-gradient(90deg,#4f8cff,#8e5cff);color:#fff;border-radius:16px 16px 0 0;">
@@ -95,8 +94,7 @@
                 </div>
                 <div class="col-12">
                     <label class="form-label">فایل سربرگ (PDF) — برای چاپ نامه صادره</label>
-                    <input class="form-control" @bind="newCompany.LetterheadFileName" placeholder="مثلاً: letterhead-forough.pdf" />
-                    <small class="text-muted">نام فایل PDF سربرگ که در <b>مسیر روت API</b> (کنار فایل اجرایی برنامه سرور) قرار داده‌اید. هنگام چاپ نامه صادره (A4/A5)، متن نامه روی همین سربرگ چاپ می‌شود.</small>
+                    <input class="form-control" @bind="newCompany.LetterheadFileName" />
                 </div>
                 <div class="col-12">
                     <div class="form-check form-switch mt-1">

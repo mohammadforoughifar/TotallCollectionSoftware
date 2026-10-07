@@ -17,7 +17,6 @@
 <div class="page-head">
     <div>
         <h1>تعریف کالا</h1>
-        <p class="lead">مشخصات کامل کالا: اطلاعات پایه، مالیات، انبار و ویژگی‌ها</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-primary" @onclick="() => OpenNew()">
@@ -286,7 +285,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">نام کالا <span class="text-danger">*</span></label>
-                    <input class="form-control" @bind="form.Name" placeholder="مثلاً: روغن موتور ۲۰-۵۰" />
+                    <input class="form-control" @bind="form.Name" />
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">نام لاتین</label>
@@ -385,30 +384,26 @@
                     <label class="form-label fw-600">بارکد کالا</label>
                     <div class="input-group">
                         <span class="input-group-text bg-light"><i class="bi bi-upc"></i></span>
-                        <input class="form-control num font-monospace" @bind="form.Barcode" dir="ltr" placeholder="مثلاً: 6260123456789" />
+                        <input class="form-control num font-monospace" @bind="form.Barcode" dir="ltr" />
                     </div>
-                    <div class="fs-8 text-muted mt-1">کد میله‌ای، شناسه اسکن یا بارکد بین‌المللی کالا</div>
                 </div>
 
                 <div class="col-md-6">
                     <label class="form-label fw-600">شماره فنی (Part Number)</label>
                     <div class="input-group">
                         <span class="input-group-text bg-light"><i class="bi bi-hash"></i></span>
-                        <input class="form-control font-monospace" @bind="form.PartNumber" dir="ltr" placeholder="مثلاً: PN-9842-X" />
+                        <input class="form-control font-monospace" @bind="form.PartNumber" dir="ltr" />
                     </div>
-                    <div class="fs-8 text-muted mt-1">شماره فنی یا پارت نامبر اختصاصی قطعه/کالا</div>
                 </div>
 
                 <div class="col-md-6">
-                    <label class="form-label fw-600">برند (Brand / شرکت سازنده)</label>
-                    <input class="form-control" @bind="form.Brand" placeholder="مثلاً: بوش، بهران، سامسونگ…" />
-                    <div class="fs-8 text-muted mt-1">برند تجاری یا کمپانی تولیدکننده کالا</div>
+                    <label class="form-label fw-600">برند</label>
+                    <input class="form-control" @bind="form.Brand" />
                 </div>
 
                 <div class="col-md-6">
                     <label class="form-label fw-600">مدل کالا (Model)</label>
-                    <input class="form-control" @bind="form.Model" placeholder="مثلاً: ۲۰۲۴ سوپر پلاس" />
-                    <div class="fs-8 text-muted mt-1">مدل، تیپ یا مشخصه تولید محصول</div>
+                    <input class="form-control" @bind="form.Model" />
                 </div>
 
                 <div class="col-12"><hr class="my-2" /></div>
@@ -416,25 +411,22 @@
                 @* بخش دوم: شناسه‌ها و استانداردهای کاربردی مودیان و گمرک *@
                 <div class="col-md-6">
                     <label class="form-label">
-                        شناسه کالای مالیاتی <span class="fs-8 text-muted">(سامانه مودیان — ۱۳ رقمی)</span>
+                        شناسه کالای مالیاتی 
                     </label>
                     <input class="form-control num font-monospace" @bind="form.TaxCode" dir="ltr" maxlength="20" placeholder="2710000000000" />
-                    <div class="fs-8 text-muted mt-1">شناسه یکتای اختصاص داده شده توسط سازمان امور مالیاتی</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد واحد سنجش مالیاتی</label>
                     <input class="form-control num font-monospace" @bind="form.TaxUnitCode" dir="ltr" placeholder="164" />
-                    <div class="fs-8 text-muted mt-1">کد واحد سنجش بر اساس جدول استانداردهای سامانه مودیان</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کد گمرکی / تعرفه (HS Code)</label>
-                    <input class="form-control num font-monospace" @bind="form.CustomsCode" dir="ltr" placeholder="مثلاً: 84713020" />
+                    <input class="form-control num font-monospace" @bind="form.CustomsCode" dir="ltr" />
                     <div class="fs-8 text-muted mt-1">شماره تعرفه ۸ رقمی گمرک</div>
                 </div>
                 <div class="col-md-6">
                     <label class="form-label">کشور سازنده</label>
-                    <input class="form-control" @bind="form.CountryOfOrigin" placeholder="مثلاً: ایران، آلمان، چین…" />
-                    <div class="fs-8 text-muted mt-1">کشور مبدا تولید برای امور گمرکی و بازرگانی</div>
+                    <input class="form-control" @bind="form.CountryOfOrigin" />
                 </div>
             </div>
         }
@@ -471,7 +463,7 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">محل قفسه / آدرس انبارش</label>
-                    <input class="form-control" @bind="form.ShelfCode" placeholder="مثلاً: A-12-3" />
+                    <input class="form-control" @bind="form.ShelfCode" />
                 </div>
 
                 <div class="col-md-3">
@@ -560,7 +552,6 @@
                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3 pb-2 border-bottom">
                     <div>
                         <span class="fw-700 fs-6"><i class="bi bi-sliders text-primary me-1"></i> ویژگی‌های کالا</span>
-                        <span class="text-muted fs-8 me-2">(انتخاب ویژگی، ثبت مقدار و تعیین الزام)</span>
                         @if (form.Attributes.Count > 0)
                         {
                             <span class="badge bg-soft-primary text-primary num ms-1">@form.Attributes.Count.FaDigits() سطر</span>
@@ -636,7 +627,6 @@
                                         <td>
                                             @if (a.AttributeId == 0)
                                             {
-                                                <span class="text-muted fs-8">ابتدا ویژگی را از ستون قبل انتخاب کنید</span>
                                             }
                                             else if (a.ValueType == AttrValueType.Text)
                                             {
@@ -740,24 +730,21 @@
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">واحد اصلی <span class="text-danger">*</span></label>
-                    <input class="form-control" list="unitList" @bind="form.Unit" placeholder="مثلاً: عدد، کیلوگرم، لیتر…" />
+                    <input class="form-control" list="unitList" @bind="form.Unit" />
                     <datalist id="unitList">
                         @foreach (var u in units)
                         {
                             <option value="@u.Name"></option>
                         }
                     </datalist>
-                    <div class="fs-8 text-muted mt-1">واحد پایه نگهداری موجودی در انبار</div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">واحد فرعی</label>
-                    <input class="form-control" @bind="form.SecondUnit" placeholder="مثلاً: کارتن، بسته، جعبه…" />
-                    <div class="fs-8 text-muted mt-1">واحد ثانویه برای فروش یا بسته‌بندی</div>
+                    <input class="form-control" @bind="form.SecondUnit" />
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">ضریب تبدیل</label>
-                    <input type="number" step="any" class="form-control num" @bind="form.UnitFactor" dir="ltr" placeholder="مثلاً: ۱۲" />
-                    <div class="fs-8 text-muted mt-1">تعداد واحد اصلی در هر یک واحد فرعی</div>
+                    <input type="number" step="any" class="form-control num" @bind="form.UnitFactor" dir="ltr" />
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(form.SecondUnit) && (form.UnitFactor ?? 0) > 0)
@@ -780,7 +767,7 @@
             <div class="row g-3">
                 <div class="col-12">
                     <label class="form-label">شرح کالا</label>
-                    <textarea class="form-control" rows="3" @bind="form.Description" placeholder="توضیحاتی که در فاکتور و گزارش‌ها دیده می‌شود…"></textarea>
+                    <textarea class="form-control" rows="3" @bind="form.Description"></textarea>
                 </div>
                 <div class="col-12">
                     <label class="form-label">یادداشت داخلی</label>
@@ -821,7 +808,6 @@
                                 <i class="bi bi-cloud-arrow-up text-primary" style="font-size: 2.5rem;"></i>
                             </div>
                             <div class="fw-600 mb-1">بارگذاری تصویر کالا</div>
-                            <div class="text-muted fs-8 mb-3">فرمت‌های مجاز: JPG، PNG، WEBP (حداکثر ۱۰ مگابایت)</div>
                             <label class="btn btn-primary btn-sm mb-0" style="cursor:pointer">
                                 <InputFile OnChange="OnImagePicked" accept="image/*" style="display:none" disabled="@uploadingImage" />
                                 <i class="bi bi-cloud-arrow-up me-1"></i> انتخاب تصویر از سیستم
@@ -878,7 +864,7 @@
                     <div class="row g-3">
                         <div class="col-12 col-md-6">
                             <label class="form-label">نام ویژگی <span class="text-danger">*</span></label>
-                            <input class="form-control" @bind="quickAttr.Name" placeholder="مثلاً: رنگ، سایز، جنس، ولتاژ، گارانتی…" />
+                            <input class="form-control" @bind="quickAttr.Name" />
                         </div>
                         <div class="col-6 col-md-3">
                             <label class="form-label">کد لاتین (اختیاری)</label>
@@ -931,7 +917,7 @@
                                 <div class="p-3 border rounded bg-light">
                                     <label class="form-label fw-600 mb-2">گزینه‌های مجاز فهرست</label>
                                     <div class="input-group mb-2">
-                                        <input class="form-control" @bind="newQuickOption" placeholder="عنوان گزینه (مثلاً: قرمز، آبی، مشکی…)"
+                                        <input class="form-control" @bind="newQuickOption"
                                                @onkeydown='e => { if (e.Key == "Enter") AddQuickOption(); }' />
                                         <button type="button" class="btn btn-outline-primary" @onclick="AddQuickOption">
                                             <i class="bi bi-plus-lg"></i> افزودن گزینه

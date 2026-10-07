@@ -116,7 +116,7 @@
                         <label class="form-label">وضعیت تأهل</label>
                         <select class="form-select" @bind="form.MaritalStatus"><option value="0">مجرد</option><option value="1">متاهل</option></select>
                     </div>
-                    <div class="col-md-3"><label class="form-label">آخرین مدرک تحصیلی</label><input class="form-control" @bind="form.Degree" placeholder="مثلاً کارشناسی" /></div>
+                    <div class="col-md-3"><label class="form-label">آخرین مدرک تحصیلی</label><input class="form-control" @bind="form.Degree" /></div>
                     <div class="col-md-3"><label class="form-label">رشته تحصیلی</label><input class="form-control" @bind="form.FieldOfStudy" /></div>
                 </div>
             }
@@ -139,7 +139,6 @@
                 <h5 class="fw-bold mb-3"><i class="bi bi-diagram-3-fill"></i> گام ۳ — جایگاه سازمانی</h5>
                 @if (!nodesReady || !positionsReady || !managersReady)
                 {
-                    <div class="alert alert-light border small">انتخاب‌های در دسترس نمایش داده می‌شوند؛ مقادیر قبلی فیلدهای غیرفعال حفظ می‌شوند.</div>
                 }
                 <div class="row g-3">
                     <div class="col-md-4">
@@ -225,7 +224,7 @@
                         <div class="col-md-4 d-flex align-items-end pb-2"><span class="text-muted small num">@form.BaseSalary.Num() ریال</span></div>
                     }
                     <div class="col-md-4"><label class="form-label">شبا (بدون فاصله)</label><input class="form-control num" dir="ltr" placeholder="IR..." @bind="form.Sheba" maxlength="29" /></div>
-                    <div class="col-md-4"><label class="form-label">نام بانک</label><input class="form-control" placeholder="مثلاً ملت" @bind="form.BankName" maxlength="60" /></div>
+                    <div class="col-md-4"><label class="form-label">نام بانک</label><input class="form-control" @bind="form.BankName" maxlength="60" /></div>
                     <div class="col-md-4"><label class="form-label">شماره بیمه تأمین اجتماعی</label><input class="form-control num" dir="ltr" inputmode="numeric" placeholder="۸ تا ۱۰ رقم" @bind="form.InsuranceNo" maxlength="12" /></div>
                     <div class="col-12">
                         <div class="form-check">
@@ -234,7 +233,6 @@
                         </div>
                     </div>
                     <div class="col-12">
-                        <div class="alert alert-light border small mb-0">قراردادهای دوره‌ای و احکام پرسنلی (استخدام، ارتقا، انتقال، تغییر حقوق و…) بعد از ثبت، از بخش کارگزینی قابل مدیریت است.</div>
                     </div>
                 </div>
             }

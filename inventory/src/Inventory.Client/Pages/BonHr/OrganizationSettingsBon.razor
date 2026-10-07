@@ -73,7 +73,7 @@
                 <label class="form-label">تاریخ</label>
                 <BonHrDate @bind-Value="_selectedDate" />
                 <label class="form-label mt-2">عنوان تعطیلی</label>
-                <input class="form-control" placeholder="مثلاً تعطیلی رسمی یا تعطیلی شرکت" @bind="_holidayTitle" />
+                <input class="form-control" @bind="_holidayTitle" />
                 <label class="form-label mt-2">نوع روز</label>
                 <select class="form-select" @bind="_holidayType">
                     <option value="friday">مشابه جمعه — ضریب اضافه‌کاری ۱٫۸</option>
@@ -131,13 +131,6 @@
                     <option value="leaveOnly">فقط کسر از مانده مرخصی</option>
                     <option value="review">ارسال برای بررسی مدیر اداری</option>
                 </select>
-            </div>
-            <div class="alert alert-light border small mb-3">
-                ساعت موظفی واحد «@_selectedUnit» از <b>@BonFa.N(_schedule.WorkStart)</b> تا <b>@BonFa.N(_schedule.WorkEnd)</b> است؛
-                ورود تا <b>@BonFa.N(_schedule.EntryGrace)</b> دقیقه دیرتر و خروج تا <b>@BonFa.N(_schedule.ExitGrace)</b> دقیقه زودتر بدون کسرکار پذیرفته می‌شود.
-                ورود زودتر تا <b>@BonFa.N(_schedule.EarlyEntryGrace)</b> دقیقه و خروج دیرتر تا <b>@BonFa.N(_schedule.LateExitGrace)</b> دقیقه اضافه‌کاری محاسبه نمی‌شود.
-                تأخیر بیش از <b>@BonFa.N(_schedule.MaxLateWithoutLeave)</b> دقیقه یا تعجیل بیش از
-                <b>@BonFa.N(_schedule.MaxEarlyWithoutLeave)</b> دقیقه بدون برگه مرخصی، مطابق سیاست «@StrategyLabel(_schedule.AbsenceStrategy)» اعمال می‌شود.
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-primary" type="submit">ذخیره تنظیمات واحد</button>

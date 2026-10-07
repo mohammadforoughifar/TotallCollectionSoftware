@@ -10,7 +10,6 @@
 <div class="page-head">
     <div>
         <h1>هزینه‌ها</h1>
-        <p class="lead">ثبت اسناد هزینه با نوع، مبلغ و نحوه پرداخت</p>
     </div>
     <button class="btn btn-light ms-auto" @onclick="OpenCats">
         <i class="bi bi-tags"></i> انواع هزینه
@@ -181,7 +180,7 @@
             </div>
             <div class="col-md-6">
                 <label class="form-label">دریافت‌کننده / طرف هزینه</label>
-                <input class="form-control" @bind="form.Payee" placeholder="مثلاً موجر، اداره برق…" />
+                <input class="form-control" @bind="form.Payee" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">توضیحات</label>

@@ -21,8 +21,7 @@ else
     <div class="page-head">
         <div>
             <h1>@(isPurchase ? "گزارش خرید" : "گزارش فروش")</h1>
-            <p class="lead">تحلیل اسناد عملیاتی بر اساس بازهٔ تاریخ، طرف حساب و انبار</p>
-        </div>
+                    </div>
         <div class="ms-auto d-flex gap-2">
             <button class="btn btn-outline-secondary" disabled="@(summary is null)" @onclick="Print">
                 <i class="bi bi-printer"></i> چاپ گزارش
@@ -64,7 +63,7 @@ else
     }
     else if (!loading && summary is null)
     {
-        <div class="card"><div class="empty-state"><i class="bi bi-exclamation-circle"></i><h5>گزارش بارگذاری نشد</h5><p class="text-muted">لطفاً فیلترها را دوباره اعمال کنید.</p></div></div>
+        <div class="card"><div class="empty-state"><i class="bi bi-exclamation-circle"></i><h5>گزارش بارگذاری نشد</h5></div></div>
     }
     else if (summary is not null)
     {

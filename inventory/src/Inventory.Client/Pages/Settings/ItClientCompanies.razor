@@ -13,21 +13,12 @@
 <div class="page-head">
     <div>
         <h1>شرکت‌های راه‌دور</h1>
-        <p class="lead">صدور و مدیریت کلید API شرکت‌هایی که نسخهٔ نرم‌افزار را روی سرور خودشان اجرا می‌کنند</p>
     </div>
     <button class="btn btn-primary me-auto" disabled="@busy" @onclick="NewCompany">
         <i class="bi bi-plus-lg"></i> شرکت جدید
     </button>
 </div>
 
-<div class="alert alert-light border d-flex gap-2 fs-8">
-    <i class="bi bi-shield-lock text-primary"></i>
-    <div>
-        کاربران شرکت‌های راه‌دور در این سرور <b>کاربر تعریف نمی‌شوند</b>؛ دسترسی آن‌ها با کلید API شرکت
-        (فقط <b>هش</b> آن ذخیره می‌شود) و هویت شخصی‌شان با کلید پایداری که نرم‌افزارِ خودشان می‌سازد کنترل می‌شود.
-        <b>کلید فقط یک‌بار</b> هنگام صدور یا تعویض نمایش داده می‌شود — همان موقع آن را به شرکت تحویل دهید.
-    </div>
-</div>
 
 @if (loading)
 {
@@ -38,7 +29,6 @@ else if (items.Count == 0)
     <div class="itr-empty" style="border:1px dashed #cbd5e1;border-radius:.75rem;padding:2.5rem;text-align:center;">
         <i class="bi bi-diagram-3" style="font-size:2rem;color:#94a3b8"></i>
         <h5 class="mt-2">هنوز شرکتی ثبت نشده است</h5>
-        <p class="text-muted fs-8">برای اینکه یک شرکت بتواند درخواست بفرستد، کد و کلید API آن را اینجا صادر کنید.</p>
         <button class="btn btn-primary" @onclick="NewCompany"><i class="bi bi-plus-lg"></i> افزودن اولین شرکت</button>
     </div>
 }
@@ -116,13 +106,12 @@ else
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label">نام شرکت <span class="text-danger">*</span></label>
-                        <input class="form-control" @bind="edit.Name" placeholder="مثلاً: شرکت پترو صنعت" />
+                        <input class="form-control" @bind="edit.Name" />
                     </div>
                     <div class="row g-3">
                         <div class="col-12 col-md-6">
                             <label class="form-label">کد شرکت <span class="text-danger">*</span></label>
                             <input class="form-control num" dir="ltr" @bind="edit.Code" placeholder="PETRO" />
-                            <div class="form-text">فقط حروف انگلیسی بزرگ، عدد، «-» و «_» — نرم‌افزار شرکت همین را در هدر می‌فرستد.</div>
                         </div>
                         <div class="col-12 col-md-6">
                             <label class="form-label">تلفن</label>
@@ -133,7 +122,6 @@ else
                         <div class="col-12 col-md-6">
                             <label class="form-label">سقف درخواست ساعتی</label>
                             <input class="form-control num" type="number" min="0" @bind="edit.HourlyLimit" />
-                            <div class="form-text">صفر یعنی بدون سقف.</div>
                         </div>
                         <div class="col-12 col-md-6 d-flex align-items-end">
                             <div class="form-check form-switch mb-2">

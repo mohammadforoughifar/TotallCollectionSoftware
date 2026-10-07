@@ -22,7 +22,6 @@ else if (accessDenied)
             <div class="card-body p-4 text-center">
                 <i class="bi bi-shield-lock" style="font-size:2.4rem;color:#f59e0b"></i>
                 <h6 class="fw-700 mt-2">به این مدرک دسترسی ندارید</h6>
-                <p class="fs-8 text-muted mb-3">اگر برای کار خود به این مدرک نیاز دارید، می‌توانید از مدیران آن (دارندگان دسترسی کامل) درخواست دسترسی کنید؛ نتیجه با نوتیفیکیشن به شما اطلاع داده می‌شود.</p>
 
                 <div class="text-start">
                     <label class="form-label fs-8 fw-700">سطح دسترسی درخواستی</label>
@@ -33,7 +32,7 @@ else if (accessDenied)
                     </select>
                     <label class="form-label fs-8 fw-700 mt-2">دلیل / توضیح</label>
                     <textarea class="form-control form-control-sm" rows="3" @bind="reqNote"
-                              placeholder="مثلاً: برای رسیدگی به پرونده این مشتری به مدرک نیاز دارم."></textarea>
+                             ></textarea>
                     <button class="btn btn-primary btn-sm w-100 mt-3 fw-700" @onclick="SendAccessRequest" disabled="@reqBusy">
                         @if (reqBusy) { <span class="spinner-border spinner-border-sm"></span> }
                         <i class="bi bi-send"></i> ارسال درخواست دسترسی
@@ -473,10 +472,6 @@ else
                         <button class="btn btn-sm btn-primary w-100 mt-1" @onclick="LinkMany" disabled="@(linkIds.Count == 0)">
                             <i class="bi bi-link"></i> لینک کن (@linkIds.Count.Num() مدرک)
                         </button>
-                        <div class="form-text fs-9">
-                            با ورژن خوردن این مدرک، در کارتابل صاحبان مدارک مرتبط، کار «بررسی/به‌روزرسانی» ایجاد می‌شود.
-                            فقط مدارک فعال قابل لینک هستند.
-                        </div>
                     </div>
                 }
             </div>
@@ -782,7 +777,6 @@ else
                     <div class="ver-drop-inner">
                         <i class="bi bi-cloud-arrow-up ver-drop-icon"></i>
                         <div class="fw-700 fs-8">فایل‌ها را اینجا رها کنید یا کلیک کنید</div>
-                        <div class="fs-9 text-muted">بدون محدودیت تعداد و حجم — پس از ثبت ورژن، خودکار آپلود می‌شوند</div>
                     </div>
                     <InputFile class="ver-file-overlay" OnChange="OnVersionFiles" multiple />
                 </div>
@@ -805,7 +799,6 @@ else
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="sndFlow" @bind="verForm.SendToFlow" />
                     <label class="form-check-label fw-700" for="sndFlow">ارسال به گردش تایید</label>
-                    <span class="fs-9 text-muted d-block">ورژن فریز شده و تا تایید کامل، فعال نمی‌شود.</span>
                 </div>
             </div>
             <div class="col-md-6">
@@ -832,9 +825,6 @@ else
         <textarea class="form-control" rows="3" @bind="approvalComment"></textarea>
         @if (!approveMode)
         {
-            <div class="alert alert-warning mt-2 fs-8 mb-0">
-                با رد کردن، ورژن از حالت فریز خارج شده و برای اصلاح به ثبت‌کننده برمی‌گردد.
-            </div>
         }
     </ChildContent>
     <Footer>
@@ -852,13 +842,9 @@ else
         <p class="mb-2">مدرک <b class="num">@doc.Code</b> — @doc.Title</p>
         @if (doc.IsActive)
         {
-            <div class="alert alert-warning fs-8">
-                با غیرفعال کردن، این مدرک <b>فقط‌خواندنی</b> می‌شود و به زیرمنوی «مدارک غیرفعال» منتقل می‌گردد.
-                کارهای باز آن در کارتابل‌ها بسته می‌شوند.
-            </div>
             <label class="form-label">دلیل غیرفعال‌سازی</label>
             <textarea class="form-control" rows="2" @bind="toggleReason"
-                      placeholder="مثلاً: منسوخ شده و با مدرک جدید جایگزین گردید"></textarea>
+                     ></textarea>
         }
         else
         {

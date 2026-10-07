@@ -15,7 +15,6 @@
             <div class="col-12 col-sm-5"><label class="form-label" for="grant-time">ساعت پایان</label><input id="grant-time" type="time" class="form-control" value="@untilTime" @onchange="TimeChanged" /></div>
             <div class="col-12"><label><input type="checkbox" @bind="canDownload" /> اجازه دانلود</label></div>
         </div>
-        <p class="small text-muted mt-3">فقط خواندن تا زمان تعیین‌شده؛ لغو این مجوز، دسترسی دائمی یا فایل قبلاً دریافت‌شده را حذف نمی‌کند.</p>
         <button class="btn btn-sm btn-light mb-2" @onclick="CopyLink">کپی پیوند مدرک</button>
         <div class="table-responsive"><table class="table table-sm"><thead><tr><th>کاربر</th><th>پایان</th><th>وضعیت</th><th></th></tr></thead><tbody>
             @foreach(var grant in grants)
@@ -33,7 +32,6 @@
         <label class="form-check mb-3"><input class="form-check-input" type="checkbox" @bind="policy.Enabled" /> فعال</label>
         <label class="form-label">مسئول تمدید</label><SearchSelect Items="Users" @bind-Value="policy.AssigneeUserId" />
         <label class="form-label mt-3" for="renewal-days">چند روز قبل از انقضا</label><input id="renewal-days" type="number" min="0" max="365" class="form-control" @bind="policy.LeadDays" />
-        <p class="small text-muted mt-3">برای هر تاریخ انقضا یک دستور کار ساخته می‌شود. خاموش‌کردن پیگیری، دستورهای قبلی را حذف نمی‌کند.</p>
         @foreach(var order in policy.Orders)
         {
             <div class="d-flex justify-content-between border-top py-2">

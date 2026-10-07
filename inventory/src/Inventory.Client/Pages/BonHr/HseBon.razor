@@ -173,7 +173,6 @@
                             </select>
                         </label>
                         <label class="form-label">توضیحات تکمیلی <textarea class="form-control" placeholder="شرح دقیق علت تحویل زودهنگام" @bind="_ppe.Notes"></textarea></label>
-                        <p class="small mt-2">پس از ثبت، نتیجه برای کارشناس HSE ارسال می‌شود.</p>
                     </div>
                 }
 
@@ -229,7 +228,7 @@
             <Modal Size="modal-lg" Visible="_showEquip" Title="افزودن تجهیز PPE" OnClose="() => _showEquip = false">
             <ChildContent>
             <form id="bon-eq-form" @onsubmit="AddPpeTypeAsync" @onsubmit:preventDefault="true">
-                <label class="wide">نام تجهیز <input class="form-control" maxlength="100" required placeholder="مثلاً شیلد محافظ صورت" @bind="_newPpeType" /></label>
+                <label class="wide">نام تجهیز <input class="form-control" maxlength="100" required @bind="_newPpeType" /></label>
                 <p class="form-message wide" role="status">@_definitionMessage</p>
             </form>
             </ChildContent>

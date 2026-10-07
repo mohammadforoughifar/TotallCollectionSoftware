@@ -24,7 +24,7 @@
             }
             else
             {
-                <label class="form-label fs-8 mb-1">افزودن گروه/نقش <span class="text-muted">(نام‌کاربران/سمت‌های RBAC)</span></label>
+                <label class="form-label fs-8 mb-1">افزودن گروه/نقش </label>
                 <SearchSelect Items="AvailableRoles" @bind-Value="pickRoleId" Placeholder="جستجوی نام نقش یا سمت…" />
             }
         </div>
@@ -50,10 +50,6 @@
         </div>
     </div>
 
-    <div class="fs-8 text-muted mb-2">
-        «خواندن» فقط برای مشاهده است؛ ویرایش و ورژن جدید نیازمند «نوشتن» است.
-        دانلود باید جداگانه انتخاب شود. مجوز اختصاصی فرد بر گروه و پوشهٔ والد اولویت دارد.
-    </div>
 
     @if (Items.Count == 0)
     {

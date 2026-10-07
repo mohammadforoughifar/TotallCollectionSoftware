@@ -57,7 +57,6 @@ else
                         <div>
                             <b>تقویم از سرور دریافت نشد.</b>
                             <div class="small">@calError</div>
-                            <div class="small text-muted mt-1">اگر بعد از انتشار (پابلیش) این خطا را می‌بینید، احتمالاً ساختار دیتابیس سرور به‌روز نیست؛ یک‌بار API را ری‌استارت کنید تا جدول‌های تقویم خودکار ساخته شوند، سپس صفحه را با Ctrl+Shift+R نوسازی کنید.</div>
                         </div>
                     </div>
                 }
@@ -72,10 +71,6 @@ else
 
                 @if (summary is not null && !summary.HasLunarCatalog)
                 {
-                    <div class="alert alert-light border small d-flex align-items-center gap-2 py-2">
-                        <i class="bi bi-info-circle text-warning"></i>
-                        <span>برای سال @Fa.Digits(vmYear) تعطیلات قمری در کاتالوگ موجود نیست (تقویم رسمی آن هنوز ابلاغ نشده)؛ فقط تعطیلات ثابت (نوروز و...) از تب «تعطیلات رسمی» وارد می‌شود و موارد قمری را می‌توانید دستی اضافه کنید.</span>
-                    </div>
                 }
 
                 @if (!canManage)
@@ -146,7 +141,6 @@ else
                                 {
                                     <div class="alert alert-danger py-1 px-2 small mb-2">
                                         <i class="bi bi-flag-fill me-1"></i> @(day.IsOfficial ? "تعطیل رسمی:" : "تعطیلی شرکتی:") @day.HolidayName
-                                        <div class="text-muted" style="font-size:.7rem">تعریف قانون سفارشی برای این روز، تعطیلی را برای ارزیابی حضور بازنویسی می‌کند.</div>
                                     </div>
                                 }
 
@@ -213,7 +207,7 @@ else
 
                                     <div class="mb-2">
                                         <span class="wc-flabel">یادداشت</span>
-                                        <input type="text" class="form-control form-control-sm" value="@day.Note" @onchange='e => { day.Note = e.Value?.ToString(); MarkDirty(); }' placeholder="مثلاً: ایام عزاداری، نوبت‌گیری..." />
+                                        <input type="text" class="form-control form-control-sm" value="@day.Note" @onchange='e => { day.Note = e.Value?.ToString(); MarkDirty(); }' />
                                     </div>
 
                                     @if (day.HasRule)
@@ -222,7 +216,6 @@ else
                                             <i class="bi bi-arrow-counterclockwise me-1"></i> حذف قانون سفارشی (بازگشت به پیش‌فرض/تعطیلی)
                                         </button>
                                     }
-                                    <div class="small text-muted mt-2">پس از تغییرات، دکمه‌ی «ذخیره‌ی تقویم سال» را بزنید.</div>
                                 }
                                 else
                                 {
@@ -344,11 +337,10 @@ else
                         {
                             <div class="wc-panel mt-3">
                                 <div class="fw-800 mb-2"><i class="bi bi-plus-circle text-primary"></i> افزودن تعطیل رسمی دستی</div>
-                                <div class="small text-muted mb-2">مثلاً تعطیلات قمریِ سال‌های بدون کاتالوگ یا تعطیلی محلی.</div>
                                 <label class="wc-flabel">تاریخ (شمسی)</label>
                                 <DatePicker Value="@newHolDate" ValueChanged="v => newHolDate = v" CssClass="mb-2" />
                                 <label class="wc-flabel">عنوان</label>
-                                <input type="text" class="form-control form-control-sm mb-2" @bind="newHolName" placeholder="مثلاً: عید سعید فطر" />
+                                <input type="text" class="form-control form-control-sm mb-2" @bind="newHolName" />
                                 <button class="btn btn-sm btn-outline-primary" @onclick="AddHoliday" disabled="@(!newHolDate.HasValue || string.IsNullOrWhiteSpace(newHolName))">
                                     <i class="bi bi-check2 me-1"></i> افزودن
                                 </button>
@@ -406,10 +398,6 @@ else
                                 </div>
                             }
                         </div>
-                        <div class="small text-muted mt-2">
-                            <i class="bi bi-info-circle"></i> تعطیلات رسمی به‌طور خودکار در ارزیابی حضور اعمال می‌شوند (روز تعطیل = بدون کسری) مگر در تنظیمات خاموش شوند.
-                            تعطیلی شرکتی هم از «پنل مدیریت مرخصی» قابل ثبت است.
-                        </div>
                     </div>
                 </div>
             }
@@ -430,7 +418,6 @@ else
                                     <input type="time" class="form-control form-control-sm" dir="ltr" value="@set.DefaultEnd" @onchange='e => set.DefaultEnd = e.Value?.ToString() ?? "16:30"' />
                                 </div>
                             </div>
-                            <div class="small text-muted mb-3">اگر پایان قبل از شروع باشد یعنی شیفت شب (عبور از نیمه‌شب). این ساعت مبنای روزهای کاریِ بدون قانون سفارشی است.</div>
                             <label class="wc-flabel">تاخیر مجاز (دقیقه)</label>
                             <input type="number" class="form-control form-control-sm" dir="ltr" min="0" max="240" value="@set.GraceMinutes" @onchange='e => { if (e.Value is string s && int.TryParse(s, out var v)) set.GraceMinutes = Math.Clamp(v, 0, 240); }' style="width:120px" />
                         </div>
@@ -445,13 +432,11 @@ else
                                     <button type="button" class="wc-wd-chip @(on ? "on" : "")" @onclick='() => ToggleRestDay(wd.Flags)'>@wd.Name</button>
                                 }
                             </div>
-                            <div class="small text-muted">این روزها به‌عنوان تعطیل (بدون کسری) ارزیابی می‌شوند — مثلاً «جمعه» یا «پنجشنبه و جمعه».</div>
                             <hr />
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="applyOfficial" @bind="set.ApplyOfficialHolidays" />
                                 <label class="form-check-label small" for="applyOfficial"><b>اعمال خودکار تعطیلات رسمی کشور</b></label>
                             </div>
-                            <div class="small text-muted mt-1">با خاموش‌کردن آن، تعطیلات رسمی در تقویم نمایش داده می‌شوند ولی روز کاری حساب می‌شوند (برای مجموعه‌هایی که تعطیلات رسمی ندارند).</div>
                         </div>
                     </div>
                     <div class="col-12">
@@ -463,22 +448,12 @@ else
                                     <b>مازاد «در انتظار تصمیم مدیر» ثبت شود</b> — نه کسری، نه اضافه‌کار خودکار
                                 </label>
                             </div>
-                            <div class="small text-muted mt-1">
-                                وقتی روشن باشد، ماندنِ پرسنل بعد از پایان شیفت (مثلاً شیفت ۸ تا ۱۳ و خروج ۱۳:۱۵) در
-                                «حضور و غیاب ← کارتابل مازاد» منتظر می‌ماند تا مدیر <b>تأیید</b> کند (اضافه‌کار) یا <b>رد</b> کند (تردد غیرمجاز).
-                                <b>کسری</b> فقط وقتی ثبت می‌شود که حضور از ساعت شیفت <b>کمتر</b> باشد.
-                                خاموش‌کردن = رفتار قدیمی (مازاد = اضافه‌کار خودکار). هر شیفت می‌تواند این رفتار را جداگانه بازنویسی کند.
-                            </div>
                             <hr />
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="shiftWins" @bind="set.ShiftOverridesCalendarTimes" />
                                 <label class="form-check-label small" for="shiftWins">
                                     <b>ساعت شیفتِ پرسنل بر ساعت تقویم کاری مقدم باشد</b>
                                 </label>
-                            </div>
-                            <div class="small text-muted mt-1">
-                                با روشن بودن (پیش‌فرض)، اگر برای کسی شیفت ۸ تا ۱۳ تعریف شده، همین ساعت ملاک است حتی اگر ساعتِ ثبت‌شده در تقویم ۸ تا ۱۶:۳۰ باشد
-                                (تقویم همچنان کاری/تعطیلی، اضافه‌کاری و یادداشت روز را تعیین می‌کند). خاموش‌کردن = اولویتِ کامل تقویم (رفتار قدیمی).
                             </div>
                         </div>
                     </div>

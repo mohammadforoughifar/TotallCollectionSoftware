@@ -16,7 +16,6 @@ else
 <div class="page-head">
     <div>
         <h1><i class="bi bi-upc-scan"></i> اسکنر شمارش</h1>
-        <p class="lead">@doc.Title • @doc.WarehouseName</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <a class="btn btn-outline-secondary" href="/stk/sessions/@doc.Id">
@@ -43,10 +42,9 @@ else
                         <i class="bi bi-upc"></i> بارکد یا کد کالا
                     </label>
                     <input @ref="scanInput" class="form-control form-control-lg num"
-                           placeholder="بارکد را اسکن کنید یا کد کالا را تایپ کنید…"
+                          
                            @bind="scanCode" @bind:event="oninput"
                            @onkeyup="OnScanKey" autocomplete="off" />
-                    <div class="form-text">پس از هر اسکن، مکان‌نما خودکار در همین کادر می‌ماند.</div>
                 </div>
 
                 <div class="col-6 col-md-2">
@@ -171,7 +169,6 @@ else
                 <div class="empty-state">
                     <i class="bi bi-upc-scan"></i>
                     <h5>هنوز چیزی اسکن نشده است</h5>
-                    <p>بارکد کالا را با اسکنر بخوانید یا کد آن را در کادر بالا وارد کنید.</p>
                 </div>
             </div>
         }

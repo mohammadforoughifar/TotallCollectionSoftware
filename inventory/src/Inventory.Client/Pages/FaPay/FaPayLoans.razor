@@ -131,7 +131,7 @@
                     }
                 </select>
             </div>
-            <div class="col-md-6"><label class="form-label">عنوان وام</label><input class="form-control" placeholder="مثلاً وام ضروری / مساعده" @bind="form.Title" /></div>
+            <div class="col-md-6"><label class="form-label">عنوان وام</label><input class="form-control" @bind="form.Title" /></div>
             <div class="col-md-4"><label class="form-label">مبلغ کل (ریال)</label><input class="form-control" type="number" min="0" step="any" @bind="form.TotalAmount" /></div>
             <div class="col-md-4"><label class="form-label">تعداد اقساط</label><input class="form-control" type="number" min="1" max="120" @bind="form.InstallmentCount" /></div>
             <div class="col-md-4 d-flex align-items-end pb-2">

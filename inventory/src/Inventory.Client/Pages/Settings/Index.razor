@@ -11,7 +11,6 @@
 <div class="page-head">
     <div>
         <h1>تنظیمات</h1>
-        <p class="lead">روش قیمت‌گذاری خروج انبار و کنترل موجودی</p>
     </div>
 </div>
 
@@ -35,7 +34,6 @@
                                @onchange="@(() => model.CostingMethod = "Average")" />
                         <label class="form-check-label" for="mAvg">
                             <span class="fw-500">میانگین موزون (Average)</span>
-                            <div class="fs-8 text-muted">بهای تمام‌شده = میانگین قیمت خریدهای قبلی — روش پیش‌فرض و متداول</div>
                         </label>
                     </div>
                     <div class="form-check mb-2">
@@ -44,7 +42,6 @@
                                @onchange="@(() => model.CostingMethod = "FIFO")" />
                         <label class="form-check-label" for="mFifo">
                             <span class="fw-500">اولین صادره از اولین وارده (FIFO)</span>
-                            <div class="fs-8 text-muted">فروش از قدیمی‌ترین خریدها قیمت می‌گیرد</div>
                         </label>
                     </div>
                     <div class="form-check">
@@ -53,7 +50,6 @@
                                @onchange="@(() => model.CostingMethod = "LIFO")" />
                         <label class="form-check-label" for="mLifo">
                             <span class="fw-500">اولین صادره از آخرین وارده (LIFO)</span>
-                            <div class="fs-8 text-muted">فروش از جدیدترین خریدها قیمت می‌گیرد</div>
                         </label>
                     </div>
                 </div>
@@ -76,7 +72,6 @@
                        @onchange="@(() => model.AllowNegativeStock = false)" />
                 <label class="form-check-label" for="negNo">
                     <span class="fw-500">موجودی منفی غیرمجاز (پیشنهادی)</span>
-                    <div class="fs-8 text-muted">فروش بیش از موجودی و حذف/ویرایش سند خریدی که موجودی را منفی کند، رد می‌شود</div>
                 </label>
             </div>
             <div class="form-check">
@@ -85,7 +80,6 @@
                        @onchange="@(() => model.AllowNegativeStock = true)" />
                 <label class="form-check-label" for="negYes">
                     <span class="fw-500">موجودی منفی مجاز</span>
-                    <div class="fs-8 text-muted">هیچ محدودیتی روی منفی شدن موجودی اعمال نمی‌شود</div>
                 </label>
             </div>
         }
@@ -100,9 +94,6 @@
     <div class="card-body">
         @if (!loading)
         {
-            <p class="fs-8 text-muted mb-3">
-                واحدهای پیش‌فرض برای وزن و ابعاد کالاها — در فرم تعریف کالا و اسناد انبار استفاده می‌شود.
-            </p>
             <div class="row g-3">
                 <div class="col-md-3">
                     <label class="form-label">واحد وزن</label>
@@ -145,10 +136,6 @@
     <div class="card-body">
         @if (!loading)
         {
-            <p class="fs-8 text-muted mb-3">
-                با تنظیم توکن‌ها، اعلان‌های هر کاربر علاوه بر نرم‌افزار، در <b>بله</b> و <b>ایتا</b> هم برای خودش ارسال می‌شود.
-                هر کاربر از پنجره‌ی «اعلان‌ها» (زنگ بالای صفحه) اتصال حساب خود را انجام می‌دهد و می‌تواند پیام آزمایشی بگیرد.
-            </p>
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">توکن ربات بله</label>
@@ -161,15 +148,10 @@
                 <div class="col-md-4">
                     <label class="form-label">توکن برنامه ایتا <span dir="ltr" class="fs-9">(developer.eitaa.com)</span></label>
                     <input class="form-control num" dir="ltr" placeholder="5768337691:AAG..." @bind="model.EitaaToken" />
-                    <div class="fs-9 text-muted mt-1">
-                        برنامه را در <span dir="ltr">eitaayar.ir ← برنامه‌ها</span> بسازید و «آدرس مقصد» آن را روی
-                        <span dir="ltr">https://آدرس-سرور/eitaa-app</span> قرار دهید. کاربران با «کد اتصال» حساب ایتای خود را وصل می‌کنند.
-                    </div>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">شماره معرف سامانه (در امضای پیام‌ها)</label>
                     <input class="form-control num" dir="ltr" @bind="model.MessengerSenderNumber" />
-                    <div class="fs-9 text-muted mt-1">این شماره در انتهای هر پیام ارسالی به بله/ایتا نمایش داده می‌شود.</div>
                 </div>
             </div>
         }
@@ -248,11 +230,6 @@
                                     <i class="bi bi-clipboard"></i> کپی نشانی امن
                                 </button>
                             </div>
-                            <div class="fs-9 text-muted">
-                                نصب گواهی: اندروید ← تنظیمات ← امنیت ← رمزگذاری و اعتبارنامه‌ها ← نصب گواهی ← «گواهی CA»؛
-                                ویندوز ← دوبار کلیک روی فایل ← «مراجع صدور گواهی ریشهٔ مورد اعتماد»؛
-                                iPhone ← نصب پروفایل + فعال‌سازی در Certificate Trust Settings.
-                            </div>
                         }
                         else
                         {
@@ -263,9 +240,6 @@
                                     @foreach (var m in https.messages) { <li>@m</li> }
                                 </ul>
                             }
-                            <div class="fs-9 text-muted">
-                                مدیر می‌تواند با <span dir="ltr">Https:Enabled=true</span> در appsettings (یا «بازسازی گواهی») آن را فعال کند.
-                            </div>
                         }
                     </div>
                 </div>
@@ -296,10 +270,6 @@
                                     <i class="bi bi-file-earmark-lock"></i> گواهی برای IIS
                                 </button>
                             </div>
-                            <div class="fs-9 text-muted mt-2">
-                                «بازسازی گواهی سرور» پس از تغییر آی‌پی سرور یا اضافه‌شدن کارت شبکه لازم است (نصب‌های قبلی معتبر می‌مانند)؛
-                                برای اعمال روی شنوندهٔ HTTPS، سرویس را یک‌بار ری‌استارت کنید.
-                            </div>
                         }
                     </div>
                 </div>
@@ -321,10 +291,6 @@
         }
         else
         {
-            <p class="fs-8 text-muted mb-3">
-                این تنظیم <b>سراسری</b> است: مقداری که اینجا انتخاب می‌کنید روی <b>همهٔ کاربران سامانه</b> و همهٔ دستگاه‌ها اعمال می‌شود.
-                گزینهٔ «تا بستن دستی» یعنی پیام تا وقتی کاربر خودش آن را نبندد باقی می‌ماند. برای اعمال، دکمهٔ <b>«ذخیره تنظیمات»</b> پایین صفحه را بزنید.
-            </p>
 
             <div class="mb-3">
                 <label class="form-label fw-700">اعلان زندهٔ بالای صفحه <span class="text-muted fw-normal">(اکنون: @NotificationTiming.Label(model.NotifyBannerMs))</span></label>
@@ -398,9 +364,6 @@
                                 }
                                 <button type="button" class="btn btn-sm btn-light" @onclick="InitPushStateAsync" disabled="@pushBusy">بررسی وضعیت</button>
                             </div>
-                            <div class="fs-9 text-muted mt-2">
-                                اعلان برای هر کاربر و هر دستگاه جداگانه است؛ اگر روی چند دستگاه کار می‌کنید، روی هرکدام یک‌بار فعال کنید.
-                            </div>
                         </div>
                     </div>
                     <div class="col-lg-6">
@@ -456,10 +419,6 @@
                                 </div>
                                 @if (overview?.configured == true)
                                 {
-                                    <div class="fs-9 text-muted mt-2">
-                                        با ساخت کلید جدید، اشتراک دستگاه‌های فعلی باطل می‌شود و هر کاربر باید یک‌بار اعلان را دوباره فعال کند
-                                        (کلیدها در <span dir="ltr">App_Data/push-vapid.json</span> سرور ذخیره می‌شوند و نیازی به ویرایش فایل تنظیمات یا ری‌استارت نیست).
-                                    </div>
                                 }
                             }
                         </div>
@@ -476,7 +435,6 @@
         <span class="card-title">ساختار شماره نامه (اتوماسیون اداری)</span>
     </div>
     <div class="card-body">
-        <p class="fs-8 text-muted mb-3">تعیین فرمت شماره اندیکاتور برای هر سه نوع نامه — داخلی، صادره و وارده — با اجزای «واحد | شماره | سال». جزء «واحد» از نام اختصاصی سازمان (Organization.NameUniq) خوانده می‌شود.</p>
         <div class="d-flex flex-wrap gap-2">
             <a href="/settings/letter-structure" class="btn btn-outline-primary">
                 <i class="bi bi-diagram-2"></i> مدیریت ساختار شماره نامه
@@ -491,7 +449,6 @@
         <span class="card-title">نقش‌ها و دسترسی‌ها</span>
     </div>
     <div class="card-body">
-        <p class="fs-8 text-muted mb-3">تعریف نقش‌ها و تعیین دسترسی‌ها (پرمیشن‌ها) — اختصاص نقش به هر کاربر از فرم «کاربران» (سیستم ← کاربران) انجام می‌شود.</p>
         <div class="d-flex flex-wrap gap-2">
             <a href="/settings/roles" class="btn btn-outline-primary">
                 <i class="bi bi-shield-lock"></i> مدیریت نقش‌ها و دسترسی‌ها
@@ -506,10 +463,6 @@
         <span class="card-title">درخواست خدمات IT بین شرکت‌ها (کانال راه‌دور)</span>
     </div>
     <div class="card-body">
-        <p class="fs-8 text-muted mb-3">
-            نسخهٔ نرم‌افزارِ نصب‌شده در شرکت‌های دیگر درخواست‌های کاربرانش را به سرور مرکزی می‌فرستد؛
-            آن کاربران در این سرور «کاربر» تعریف نمی‌شوند و با کلید API شرکت و کلید پایدار شخصی شناخته می‌شوند.
-        </p>
         <div class="d-flex flex-wrap gap-2">
             <a href="/settings/it-client-companies" class="btn btn-outline-primary">
                 <i class="bi bi-diagram-3"></i> مدیریت شرکت‌های راه‌دور و صدور کلید (سمت مرکز)

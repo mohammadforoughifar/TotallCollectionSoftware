@@ -16,7 +16,6 @@
 <div class="page-head">
     <div>
         <h1><i class="bi bi-people-fill text-primary me-2"></i>گروه‌های گیرندگان نامه</h1>
-        <p class="lead">گروه را یک‌بار تعریف کنید تا در نامه داخلی، ارجاع و هامش قابل انتخاب باشد.</p>
     </div>
 </div>
 
@@ -26,7 +25,7 @@
             <div class="card-header fw-bold">@(editing.GroupId == 0 ? "گروه جدید" : "ویرایش گروه")</div>
             <div class="card-body">
                 <label class="form-label">نام گروه</label>
-                <input class="form-control mb-3" @bind="editing.NameGroup" placeholder="مثلاً: مدیران واحد مالی" />
+                <input class="form-control mb-3" @bind="editing.NameGroup" />
                 <label class="form-label">اعضای گروه</label>
                 <MultiSearchSelect Items="people" Values="editing.MemberUserIds" ValuesChanged="v => editing.MemberUserIds = v" Placeholder="جستجو و انتخاب اعضا…" />
                 <div class="d-flex gap-2 mt-3">

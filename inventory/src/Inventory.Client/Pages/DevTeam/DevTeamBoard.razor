@@ -16,7 +16,6 @@
     <div class="page-head dt-head">
         <div>
             <h1><i class="bi bi-code-slash"></i> میز کار توسعه</h1>
-            <div class="text-muted fs-8">مدیریت تیم نرم‌افزار — تسک، ماژول، خطا، changelog و گیت</div>
         </div>
         <div class="d-flex flex-wrap gap-2">
             @if (access.CanCreate)
@@ -210,7 +209,6 @@
                     <div class="card-body text-center py-4">
                         <div class="dt-welcome-ico"><i class="bi bi-inbox"></i></div>
                         <h6 class="mb-1">برد خالی است</h6>
-                        <p class="text-muted mb-0">از قسمت بالا یک تسک تازه ثبت کنید. کافی فقط <b>عنوان</b> است.</p>
                     </div>
                 </div>
             }
@@ -873,7 +871,6 @@
                 <div class="card-body">
                     @if (integ is null && !integLoading)
                     {
-                        <div class="text-muted fs-8">برای دیدن URLها و وضعیت secret روی «تازه‌سازی وضعیت» بزنید.</div>
                     }
                     else if (integ is null)
                     {
@@ -902,11 +899,6 @@
                         }
                         @if (!integ.SecretConfigured)
                         {
-                            <div class="alert alert-warning py-2 fs-8 mb-3">
-                                Secret خالی است. روی سرور:
-                                <code style="direction:ltr">export DEVTEAM_GIT_WEBHOOK_SECRET='…'</code>
-                                یا <code>DevTeam:GitWebhookSecret</code> در appsettings.
-                            </div>
                         }
 
                         <h6 class="fs-8 text-muted text-uppercase">مراحل راه‌اندازی</h6>
@@ -1483,7 +1475,6 @@
                                                     <button class="btn btn-sm btn-success" disabled="@saving" @onclick="StartTimer">
                                                         <i class="bi bi-play-fill"></i> شروع تایمر
                                                     </button>
-                                                    <span class="text-muted fs-8">زمان به‌صورت خودکار هنگام توقف ثبت می‌شود</span>
                                                 }
                                             </div>
                                         }
@@ -1704,8 +1695,7 @@
                     <div class="col-4 form-check"><input class="form-check-input" type="checkbox" @bind="statusForm.IsBlocked" id="stBlk" /><label class="form-check-label" for="stBlk">مسدود</label></div>
                     <div class="col-md-6">
                         <label class="form-label">سقف WIP (خالی = نامحدود)</label>
-                        <input type="number" min="0" class="form-control" @bind="statusFormWip" placeholder="مثلاً 5" />
-                        <div class="form-text fs-8">حداکثر تسک ریشه در این ستون</div>
+                        <input type="number" min="0" class="form-control" @bind="statusFormWip" />
                     </div>
                 </div>
                 <div class="modal-footer">

@@ -11,7 +11,6 @@
 <div class="page-head">
     <div>
         <h1>طرف حساب‌ها</h1>
-        <p class="lead">مدیریت مشتریان و تأمین‌کنندگان</p>
     </div>
     <button class="btn btn-primary ms-auto" @onclick="OpenNew">
         <i class="bi bi-plus-lg"></i> طرف حساب جدید
@@ -183,7 +182,6 @@
                         <option value="@r.Id">@r.Name@(string.IsNullOrWhiteSpace(r.CompanyName) ? "" : $" ({r.CompanyName})")</option>
                     }
                 </select>
-                <div class="fs-8 text-muted mt-1">در فاکتور فروش این مشتری، معرف به‌صورت خودکار انتخاب می‌شود</div>
             </div>
         }
         <div class="col-12">

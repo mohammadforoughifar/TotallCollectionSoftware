@@ -9,18 +9,9 @@
 <div class="page-head">
     <div>
         <h1>تنظیمات خزانه‌داری</h1>
-        <p class="lead">قواعد و الگوهای صدور خودکار اسناد حسابداری دریافت، پرداخت و عملیات چک</p>
     </div>
 </div>
 
-<div class="alert alert-info d-flex align-items-start gap-2">
-    <i class="bi bi-info-circle-fill mt-1"></i>
-    <div>
-        سند حسابداری هر صندوق/بانک از روی <b>حساب متناظر همان صندوق</b> ساخته می‌شود
-        (در صفحه «صندوق و بانک» تعیین می‌شود). تنظیمات این صفحه فقط حساب‌های
-        <b>طرف حساب، چک، در جریان وصول، تخفیف و کارمزد</b> را مشخص می‌کند.
-    </div>
-</div>
 
 @if (loading)
 {
@@ -67,7 +58,6 @@ else
                                 <div class="col-md-6">
                                     <label class="form-label">
                                         اسناد در جریان وصول
-                                        <span class="fs-8 text-muted">— برای واگذاری چک به بانک</span>
                                     </label>
                                     <SearchSelect Items="accounts" Value="@(rule.CollectionAccountId ?? 0)"
                                                   ValueChanged="v => rule.CollectionAccountId = v > 0 ? v : null" Placeholder="انتخاب حساب…" />
@@ -85,7 +75,6 @@ else
                             <div class="col-md-6">
                                 <label class="form-label">
                                     کارمزد بانکی
-                                    <span class="fs-8 text-muted">— برای انتقال بین حساب‌ها</span>
                                 </label>
                                 <SearchSelect Items="accounts" Value="@(rule.FeeAccountId ?? 0)"
                                               ValueChanged="v => rule.FeeAccountId = v > 0 ? v : null" Placeholder="انتخاب حساب…" />

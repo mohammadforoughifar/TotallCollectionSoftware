@@ -98,7 +98,7 @@
         <div class="col-md-3"><label class="form-label">نمره قبولی</label><input type="number" class="form-control" @bind="form.PassScore" /></div>
         <div class="col-md-3"><label class="form-label">شروع</label><DatePicker @bind-Value="form.StartDate" /></div>
         <div class="col-md-3"><label class="form-label">پایان</label><DatePicker @bind-Value="form.EndDate" /></div>
-        <div class="col-md-3"><label class="form-label">مدرس (پرونده)</label>
+        <div class="col-md-3"><label class="form-label">مدرس</label>
             <select class="form-select" @bind="form.InstructorId" @bind:after="OnInstructorChanged">
                 <option value="">— بدون پرونده —</option>
                 @foreach (var i in instructors)

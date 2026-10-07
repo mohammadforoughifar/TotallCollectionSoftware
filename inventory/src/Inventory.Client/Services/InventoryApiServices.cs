@@ -8,6 +8,18 @@ namespace Inventory.Client.Services;
 // =====================================================================
 
 /// <summary>پیاده‌سازی سرویس تنظیمات.</summary>
+public class CompanyProfileService : ICompanyProfileService
+{
+    private readonly IApiClient _api;
+    public CompanyProfileService(IApiClient api) => _api = api;
+
+    public Task<CompanyProfileDto> GetAsync()
+        => _api.GetAsync<CompanyProfileDto>("api/company-profile");
+
+    public Task<CompanyProfileDto> SaveAsync(CompanyProfileDto profile)
+        => _api.PostAsync<CompanyProfileDto>("api/company-profile", profile);
+}
+
 public class SettingsService : ISettingsService
 {
     private readonly IApiClient _api;

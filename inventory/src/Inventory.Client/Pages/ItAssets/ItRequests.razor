@@ -15,7 +15,6 @@
 <div class="page-head">
     <div>
         <h1>درخواست خدمات IT</h1>
-        <p class="lead">ثبت درخواست پشتیبانی، تخصیص کارشناس و پیگیری وضعیت انجام</p>
     </div>
     @if (access.CanCreate)
     {
@@ -364,7 +363,7 @@ else
                         </div>
                         <div class="col-12">
                             <label class="form-label">موضوع درخواست <span class="text-danger">*</span></label>
-                            <input class="form-control" @bind="newForm.Title" placeholder="مثلاً: سیستم روشن نمی‌شود" />
+                            <input class="form-control" @bind="newForm.Title" />
                         </div>
                         <div class="col-12">
                             <label class="form-label">شرح درخواست</label>
