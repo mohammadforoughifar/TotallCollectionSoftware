@@ -759,13 +759,15 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     {
         var services = new ServiceCollection();
         services.AddLogging();
+        // دقیقاً مطابق روش کاری اثبات‌شده:
+        // Init(shenaseyekta, new Pkcs8SignatoryConfig(privatekey, null), new NormalProperties(ClientType.SELF_TSP), WebServiceAddress)
         services.AddTaxApi(
             baseUrl,
             clientId,
             new NormalProperties(clientType, apiVersion),
-            new Pkcs8SignatoryConfig(privateKeyPath, keyId),
+            new Pkcs8SignatoryConfig(privateKeyPath, string.IsNullOrEmpty(keyId) ? null : keyId),
             contentSignatoryConfig: null,
-            encryptionConfig: new EncryptionConfig("", ""));
+            encryptionConfig: null);
 
         // فرستندهٔ پیش‌فرض SDK اعتبارسنجی گواهی TLS را غیرفعال می‌کند؛ جایگزین امن زیر آن را کنار می‌گذارد.
         var sender = new MoadianSecureHttpRequestSender(baseUrl, RequestTimeout);

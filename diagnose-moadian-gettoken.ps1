@@ -13,8 +13,13 @@ diagnose-moadian-gettoken.ps1
 و پاسخ خام سامانه (کد خطای واقعی) را نمایش می‌دهد.
 
 استفاده:
+  # ۰) مقایسهٔ دو کلید بدون فاش‌شدن آن‌ها (اثر انگشت):
+  pwsh .\diagnose-moadian-gettoken.ps1 -Fingerprint -KeyFile .\Private.key
+  pwsh .\diagnose-moadian-gettoken.ps1 -Fingerprint -KeyFile .\کلید_آپلودشده.key
+  # یکسان = همان کلید | متفاوت = کلیدهای متفاوت
+
   # 1) با شناسه/کلید فعلیِ سیستم (همان‌ها که ERP می‌فرستد):
-  pwsh .\diagnose-moadian-gettoken.ps1 -FiscalId A2ZRHM -KeyFile "$env:ProgramData\TotallCollection\MoadianPrivateKeys\moadian-c3-xxxx.key"
+  pwsh .\diagnose-moadian-gettoken.ps1 -FiscalId A2ZRHM -KeyFile "مسیر\کلید.key"
 
   # 2) با MemoryId و کلید کاری (از جدول SAZMAN دیتابیس Taxation):
   -- SELECT MEMORYID, PRIVIATEKEY FROM dbo.SAZMAN
@@ -26,10 +31,11 @@ diagnose-moadian-gettoken.ps1
 ===============================================================================
 #>
 param(
-    [Parameter(Mandatory)][string]$FiscalId,
+    [string]$FiscalId = "",
     [Parameter(Mandatory)][string]$KeyFile,
     [string]$Base = "https://tp.tax.gov.ir/req/api/",
-    [string]$ClientTypeSegment = "self-tsp"
+    [string]$ClientTypeSegment = "self-tsp",
+    [switch]$Fingerprint
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,6 +64,23 @@ catch {
     }
 }
 Write-Host "✓ کلید بارگذاری شد: $(Split-Path $KeyFile -Leaf) (مدول: $($rsa.Key.KeySize) بیت)"
+
+# ---------- حالت اثر انگشت: مقایسهٔ دو کلید بدون فاش‌شدن آن‌ها ----------
+if ($Fingerprint) {
+    $spki = $rsa.ExportSubjectPublicKeyInfo()
+    $fp = [Convert]::ToBase64String([System.Security.Cryptography.SHA256]::Create().ComputeHash($spki))
+    Write-Host ""
+    Write-Host "اثر انگشت کلید (SHA-256 کلید عمومی): $fp"
+    Write-Host "فایل: $KeyFile"
+    Write-Host ""
+    Write-Host "این مقدار را برای هر دو فایل (کلید کاری و کلید آپلودشده در ERP) بگیرید و مقایسه کنید."
+    Write-Host "یکسان = همان کلید است | متفاوت = کلیدهای متفاوت‌اند."
+    return
+}
+
+if ([string]::IsNullOrWhiteSpace($FiscalId)) {
+    throw "برای ارسال GET_TOKEN، -FiscalId الزامی است (یا برای مقایسهٔ کلیدها -Fingerprint استفاده کنید)."
+}
 
 # ---------- ارسال یک GET_TOKEN ----------
 function Send-GetToken([string]$fid, [System.Security.Cryptography.RSA]$key) {
