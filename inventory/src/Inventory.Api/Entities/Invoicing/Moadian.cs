@@ -180,16 +180,16 @@ public class MoadianInvoice
     public MoadianServiceProviderProfile? ServiceProvider { get; set; }
 
     // ---------- فروشنده (از تنظیمات) ----------
-    [MaxLength(20)] public string TaxId { get; set; } = "";
+    [MaxLength(50)] public string TaxId { get; set; } = "";
     [MaxLength(200)] public string SellerName { get; set; } = "";
-    [MaxLength(20)] public string? EconomicCode { get; set; }
+    [MaxLength(50)] public string? EconomicCode { get; set; }
 
     // ---------- خریدار ----------
-    [MaxLength(20)] public string? BuyerTaxId { get; set; }
+    [MaxLength(50)] public string? BuyerTaxId { get; set; }
     [MaxLength(200)] public string? BuyerName { get; set; }
     [MaxLength(300)] public string? BuyerAddress { get; set; }
-    [MaxLength(20)] public string? BuyerPostalCode { get; set; }
-    [MaxLength(30)] public string? BuyerPhone { get; set; }
+    [MaxLength(50)] public string? BuyerPostalCode { get; set; }
+    [MaxLength(50)] public string? BuyerPhone { get; set; }
 
     // ---------- مبالغ ----------
     public decimal TotalGross { get; set; }
@@ -253,10 +253,10 @@ public class MoadianInvoiceLine
     public int RowNo { get; set; }
 
     /// <summary>شناسه کالا/خدمت مالیاتی؛ هنگام ارسال باید با شناسه معتبر سامانه جایگزین/تأیید شده باشد</summary>
-    [MaxLength(40)] public string SstId { get; set; } = "";
+    [MaxLength(50)] public string SstId { get; set; } = "";
 
     /// <summary>واحد اندازه‌گیری مالیاتی (کد واحد)</summary>
-    [MaxLength(20)] public string? UnitCode { get; set; }
+    [MaxLength(50)] public string? UnitCode { get; set; }
 
     /// <summary>شرح کالا/خدمت</summary>
     [MaxLength(400)] public string SstTitle { get; set; } = "";

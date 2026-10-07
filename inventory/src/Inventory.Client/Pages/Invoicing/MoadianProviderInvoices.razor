@@ -425,7 +425,7 @@ else if (providerId is > 0 && !loading)
     <div class="row g-2 mb-2">
         <div class="col-md-3">
             <label class="form-label small">شناسه ملی خریدار</label>
-            <input class="form-control form-control-sm" dir="ltr" @bind="New.BuyerTaxId" />
+            <input class="form-control form-control-sm" dir="ltr" maxlength="50" @bind="New.BuyerTaxId" />
         </div>
         <div class="col-md-3">
             <label class="form-label small">نام خریدار</label>
@@ -433,11 +433,11 @@ else if (providerId is > 0 && !loading)
         </div>
         <div class="col-md-2">
             <label class="form-label small">کد پستی</label>
-            <input class="form-control form-control-sm" dir="ltr" inputmode="numeric" @bind="New.BuyerPostalCode" />
+            <input class="form-control form-control-sm" dir="ltr" inputmode="numeric" maxlength="50" @bind="New.BuyerPostalCode" />
         </div>
         <div class="col-md-2">
             <label class="form-label small">تلفن</label>
-            <input class="form-control form-control-sm" @bind="New.BuyerPhone" />
+            <input class="form-control form-control-sm" maxlength="50" @bind="New.BuyerPhone" />
         </div>
         <div class="col-md-2">
             <label class="form-label small">آدرس</label>

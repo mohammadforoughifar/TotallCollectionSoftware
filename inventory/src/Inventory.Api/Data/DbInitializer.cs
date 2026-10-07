@@ -121,6 +121,8 @@ public static class DbInitializer
                 await MoadianSchemaV6.EnsureAsync(db);
                 // گره‌خوردن صورتحساب به خدمات‌دهنده + ردیابی ارسال/استعلام رسمی (taxid و وضعیت).
                 await MoadianSchemaV7.EnsureAsync(db);
+                // وسعت‌بخشی ستون‌های متنی صورتحساب/قلم (پیشگیری از خطای truncation هنگام ثبت).
+                await MoadianSchemaV8.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);

@@ -70,7 +70,7 @@ public sealed class MoadianStandaloneController : RbacControllerBase
             return NoContent();
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException) { return Conflict(new { message = "حذف سال مالی با خطای پایگاه‌داده مواجه شد." }); }
+        catch (DbUpdateException ex) { return Conflict(new { message = $"حذف سال مالی با خطای پایگاه‌داده مواجه شد. جزئیات: {DbError(ex)}" }); }
     }
 
     [HttpPost("fiscal-periods/{id:int}/close")]
@@ -113,7 +113,7 @@ public sealed class MoadianStandaloneController : RbacControllerBase
             return Ok(await operation());
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException) { return Conflict(new { message = "ثبت در پایگاه‌داده ناموفق بود؛ ورودی‌ها یا شماره‌ها را بررسی کنید." }); }
+        catch (DbUpdateException ex) { return Conflict(new { message = $"ثبت در پایگاه‌داده ناموفق بود؛ ورودی‌ها یا شماره‌ها را بررسی کنید. جزئیات خطای پایگاه‌داده: {DbError(ex)}" }); }
     }
 
     private async Task<ActionResult<T>> ReadAsync<T>(Func<Task<T>> operation)
@@ -123,5 +123,16 @@ public sealed class MoadianStandaloneController : RbacControllerBase
             return Ok(await operation());
         }
         catch (InvalidOperationException ex) { return NotFound(new { message = ex.Message }); }
+    }
+
+    /// <summary>
+    /// جزئیات خطای پایگاه‌داده (نام محدودیت یکتایی/FK، ستون نامعتبر، تراکشن داده و…)
+    /// برای عیب‌یابی سریع؛ در پاسخ‌های 409 همراه پیام اصلی ارسال می‌شود.
+    /// </summary>
+    private static string DbError(Exception ex)
+    {
+        var inner = ex.InnerException?.Message ?? ex.Message;
+        inner = inner.Replace("\r", " ").Replace("\n", " ").Trim();
+        return inner.Length <= 500 ? inner : inner[..500] + "…";
     }
 }

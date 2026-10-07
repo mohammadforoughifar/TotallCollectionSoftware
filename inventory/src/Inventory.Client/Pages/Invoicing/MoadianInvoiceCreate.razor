@@ -199,11 +199,11 @@ else
                 </div>
                 <div class="col-md-1">
                     <label class="form-label small">کدپستی</label>
-                    <input class="form-control form-control-sm" dir="ltr" maxlength="20" @bind="form.BuyerPostalCode" />
+                    <input class="form-control form-control-sm" dir="ltr" maxlength="50" @bind="form.BuyerPostalCode" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small">تلفن</label>
-                    <input class="form-control form-control-sm" dir="ltr" maxlength="30" @bind="form.BuyerPhone" />
+                    <input class="form-control form-control-sm" dir="ltr" maxlength="50" @bind="form.BuyerPhone" />
                 </div>
                 <div class="col-md-12">
                     <label class="form-label small">نشانی خریدار</label>
@@ -261,8 +261,8 @@ else
                                     </select>
                                     <input class="form-control form-control-sm" maxlength="400" @bind="line.Request.SstTitle"
                                            placeholder="نام کالا یا خدمت" />
-                                    <input class="form-control form-control-sm mt-1" dir="ltr" maxlength="40"
-                                           @bind="line.Request.SstId" placeholder="شناسهٔ کالا/خدمت (اختیاری)" />
+                                    <input class="form-control form-control-sm mt-1" dir="ltr"
+                                           @bind="line.Request.SstId" maxlength="50" placeholder="شناسهٔ کالا/خدمت (اختیاری)" />
                                 </td>
                                 <td>
                                     <select class="form-select form-select-sm" @bind="line.Request.UnitCode">

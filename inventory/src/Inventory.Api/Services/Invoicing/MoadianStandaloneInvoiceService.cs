@@ -85,6 +85,17 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
             request.InvoiceType, request.InvoicePattern, request.Subject, request.ReferenceTaxId);
         if (selectionError is not null) throw new InvalidOperationException(selectionError);
 
+        // اعتبارسنجی طول رشته‌ها: ستون‌های پایگاه‌داده محدودیت طول دارند و دادهٔ بلندتر
+        // منجر به خطای truncation (409 مبهم) می‌شد؛ اینجا با پیام مشخص رد می‌شود.
+        RequireLength("شناسهٔ مالیاتی/ملی خریدار", buyerTaxId, 50);
+        RequireLength("نام خریدار", buyerName, 200);
+        RequireLength("آدرس خریدار", buyerAddress, 300);
+        RequireLength("کد پستی خریدار", buyerPostalCode, 50);
+        RequireLength("تلفن خریدار", buyerPhone, 50);
+        RequireLength("توضیحات صورتحساب", request.Description, 600);
+        RequireLength("شناسهٔ مالیاتی فروشنده (از تنظیمات/اطلاعات پایه)", seller.TaxId, 50);
+        RequireLength("کد اقتصادی فروشنده", seller.EconomicCode, 50);
+
         var invoice = new Db.MoadianInvoice
         {
             Kind = request.Subject == MoadianInvoiceSubject.SaleReturn
@@ -194,6 +205,9 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
             var title = FirstNonEmpty(line.SstTitle, goods?.Name);
             if (string.IsNullOrWhiteSpace(title))
                 throw new InvalidOperationException($"قلم {row}: نام کالا/خدمت الزامی است.");
+            RequireLength($"قلم {row}: شناسهٔ کالا/خدمت", line.SstId, 50);
+            RequireLength($"قلم {row}: واحد", unitCode, 50);
+            RequireLength($"قلم {row}: نام کالا/خدمت", title, 400);
 
             var unitPrice = line.UnitPrice > 0 ? line.UnitPrice : goods?.Price ?? 0;
             if (unitPrice < 0) unitPrice = 0;
@@ -211,7 +225,7 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
             result.Add(new Db.MoadianInvoiceLine
             {
                 RowNo = row,
-                SstId = FirstNonEmpty(line.SstId, goods?.UniqueIdentifier) ?? "",
+                SstId = RequireLength("قلم " + row + ": شناسهٔ کالا/خدمت (از اطلاعات پایه)", FirstNonEmpty(line.SstId, goods?.UniqueIdentifier) ?? "", 50),
                 UnitCode = unitCode,
                 SstTitle = title!,
                 Quantity = line.Quantity,
@@ -273,6 +287,14 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
     }
 
     private static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
+
+    /// <summary>طول رشته را در حد مجاز ستون پایگاه‌داده نگه می‌دارد؛ در غیر این صورت پیام مشخص می‌دهد.</summary>
+    private static string? RequireLength(string what, string? value, int max)
+    {
+        if (value is not null && value.Length > max)
+            throw new InvalidOperationException($"{what} بیش از {max} نویسه است (طول فعلی: {value.Length})؛ مقدار کوتاه‌تری وارد کنید.");
+        return value;
+    }
 
     private static string? FirstNonEmpty(params string?[] values)
         => values.Select(v => v?.Trim()).FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));

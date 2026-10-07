@@ -55,7 +55,7 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
             return Ok(await _submission.SendAsync(id, MyUsername));
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException) { return Conflict(new { message = "به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود." }); }
+        catch (DbUpdateException ex) { return Conflict(new { message = $"به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود. جزئیات: {DbError(ex)}" }); }
     }
 
     [HttpPost("{id:int}/inquiry")]
@@ -67,6 +67,17 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
             return Ok(await _submission.InquiryAsync(id, MyUsername));
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException) { return Conflict(new { message = "به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود." }); }
+        catch (DbUpdateException ex) { return Conflict(new { message = $"به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود. جزئیات: {DbError(ex)}" }); }
+    }
+
+    /// <summary>
+    /// جزئیات خطای پایگاه‌داده (نام محدودیت یکتایی/FK، ستون نامعتبر، تراکشن داده و…)
+    /// برای عیب‌یابی سریع؛ در پاسخ‌های 409 همراه پیام اصلی ارسال می‌شود.
+    /// </summary>
+    private static string DbError(Exception ex)
+    {
+        var inner = ex.InnerException?.Message ?? ex.Message;
+        inner = inner.Replace("\r", " ").Replace("\n", " ").Trim();
+        return inner.Length <= 500 ? inner : inner[..500] + "…";
     }
 }
