@@ -70,7 +70,12 @@ public sealed class MoadianStandaloneController : RbacControllerBase
             return NoContent();
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException ex) { return Conflict(new { message = $"حذف سال مالی با خطای پایگاه‌داده مواجه شد. جزئیات: {DbError(ex)}" }); }
+        catch (DbUpdateException ex)
+        {
+            var detail = DbError(ex);
+            Console.WriteLine($"[Moadian] خطای پایگاه‌داده در حذف سال مالی: {detail}");
+            return Conflict(new { message = $"حذف سال مالی با خطای پایگاه‌داده مواجه شد. جزئیات: {detail}" });
+        }
     }
 
     [HttpPost("fiscal-periods/{id:int}/close")]
@@ -113,7 +118,12 @@ public sealed class MoadianStandaloneController : RbacControllerBase
             return Ok(await operation());
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException ex) { return Conflict(new { message = $"ثبت در پایگاه‌داده ناموفق بود؛ ورودی‌ها یا شماره‌ها را بررسی کنید. جزئیات خطای پایگاه‌داده: {DbError(ex)}" }); }
+        catch (DbUpdateException ex)
+        {
+            var detail = DbError(ex);
+            Console.WriteLine($"[Moadian] خطای پایگاه‌داده در ثبت/به‌روزرسانی: {detail}");
+            return Conflict(new { message = $"ثبت در پایگاه‌داده ناموفق بود؛ ورودی‌ها یا شماره‌ها را بررسی کنید. جزئیات خطای پایگاه‌داده: {detail}" });
+        }
     }
 
     private async Task<ActionResult<T>> ReadAsync<T>(Func<Task<T>> operation)

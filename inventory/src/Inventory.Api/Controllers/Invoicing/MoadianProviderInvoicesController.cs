@@ -55,7 +55,12 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
             return Ok(await _submission.SendAsync(id, MyUsername));
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException ex) { return Conflict(new { message = $"به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود. جزئیات: {DbError(ex)}" }); }
+        catch (DbUpdateException ex)
+        {
+            var detail = DbError(ex);
+            Console.WriteLine($"[Moadian] خطای پایگاه‌داده در ارسال/استعلام رسمی: {detail}");
+            return Conflict(new { message = $"به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود. جزئیات: {detail}" });
+        }
     }
 
     [HttpPost("{id:int}/inquiry")]
@@ -67,7 +72,12 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
             return Ok(await _submission.InquiryAsync(id, MyUsername));
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
-        catch (DbUpdateException ex) { return Conflict(new { message = $"به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود. جزئیات: {DbError(ex)}" }); }
+        catch (DbUpdateException ex)
+        {
+            var detail = DbError(ex);
+            Console.WriteLine($"[Moadian] خطای پایگاه‌داده در ارسال/استعلام رسمی: {detail}");
+            return Conflict(new { message = $"به‌روزرسانی وضعیت در پایگاه‌داده ناموفق بود. جزئیات: {detail}" });
+        }
     }
 
     /// <summary>
