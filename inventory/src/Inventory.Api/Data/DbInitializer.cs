@@ -123,6 +123,8 @@ public static class DbInitializer
                 await MoadianSchemaV7.EnsureAsync(db);
                 // وسعت‌بخشی ستون‌های متنی صورتحساب/قلم (پیشگیری از خطای truncation هنگام ثبت).
                 await MoadianSchemaV8.EnsureAsync(db);
+                // اتصال سوابق (بک‌فیل V6) به سال مالی — رفع تکرار DocumentNumber هنگام ثبت جدید.
+                await MoadianSchemaV9.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);

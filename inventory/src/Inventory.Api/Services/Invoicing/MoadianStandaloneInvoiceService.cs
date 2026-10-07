@@ -153,14 +153,30 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
             throw new InvalidOperationException("ظرفیت شمارهٔ داخلی صورتحساب تمام شده است.");
         invoice.Number = maximum + 1;
 
+        var year = await _db.MoadianFiscalYears.AsNoTracking()
+            .Where(y => y.Id == fiscalYearId).Select(y => y.Year).FirstAsync();
+
+        // بزرگ‌ترین سریال موجود این سال از دو منبع محاسبه می‌شود:
+        //  ۱) رکوردهای گره‌خورده به سال مالی (FiscalYearId)
+        //  ۲) شمارهٔ اسناد موجود با پیشوند «سال/» — سوابق قدیمی (بک‌فیل V6)
+        //     FiscalYearId خالی دارند و فقط از DocumentNumber قابل شناسایی‌اند؛
+        //     بی‌توجهی به آن‌ها باعث تکرار سریال ۱ و نقض یکتایی DocumentNumber می‌شد.
         var lastYearSerial = await _db.MoadianInvoices
             .Where(i => i.FiscalYearId == fiscalYearId)
             .Select(i => (int?)i.YearSerial)
             .MaxAsync() ?? 0;
-        invoice.YearSerial = lastYearSerial + 1;
 
-        var year = await _db.MoadianFiscalYears.AsNoTracking()
-            .Where(y => y.Id == fiscalYearId).Select(y => y.Year).FirstAsync();
+        var yearPrefix = $"{year}/";
+        var existingDocNumbers = await _db.MoadianInvoices.AsNoTracking()
+            .Where(i => i.DocumentNumber != null && i.DocumentNumber.StartsWith(yearPrefix))
+            .Select(i => i.DocumentNumber)
+            .ToListAsync();
+        var maxDocSerial = existingDocNumbers
+            .Select(d => int.TryParse(d.AsSpan(yearPrefix.Length), out var s) ? s : 0)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        invoice.YearSerial = Math.Max(lastYearSerial, maxDocSerial) + 1;
         invoice.DocumentNumber = $"{year}/{invoice.YearSerial:000000}";
 
         _db.MoadianInvoices.Add(invoice);
