@@ -33,6 +33,7 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
     [HttpGet]
     public async Task<ActionResult> GetInvoices(
         [FromQuery] int providerId,
+        [FromQuery] int? periodId,
         [FromQuery] string? search,
         [FromQuery] MoadianInvoiceStatus? status,
         [FromQuery] int skip = 0,
@@ -42,7 +43,7 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
         if (providerId <= 0)
             return BadRequest(new { message = "خدمات‌دهنده را انتخاب کنید." });
         Response.Headers.CacheControl = "no-store";
-        return Ok(await Paging.ResultAsync(p => _invoices.GetByProviderAsync(providerId, search, status, p), skip, take));
+        return Ok(await Paging.ResultAsync(p => _invoices.GetByProviderAsync(providerId, periodId, search, status, p), skip, take));
     }
 
     [HttpPost("{id:int}/send")]

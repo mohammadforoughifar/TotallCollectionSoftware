@@ -84,8 +84,12 @@ public class MoadianInvoice
     /// <summary>خدمات‌دهنده‌ای که این صورتحساب به آن تعلق دارد (null = سوابق بدون گره‌خوردن).</summary>
     public int? ServiceProviderId { get; set; }
 
-    /// <summary>شماره منحصر به فرد مالیاتی ۲۲ نویسه‌ای (taxid) ساخته‌شده هنگام ارسال.</summary>
-    public string? Taxid { get; set; }
+    /// <summary>
+    /// شماره منحصر به فرد مالیاتی ۲۲ نویسه‌ای (taxid) ساخته‌شده هنگام ارسال.
+    /// نام TaxId22 چون نام JSONِ TaxId فروشنده (taxId) با taxid فقط در بزرگی حرف تفاوت دارد
+    /// و System.Text.Json آن‌ها را تداخل می‌شمارد.
+    /// </summary>
+    public string? TaxId22 { get; set; }
 
     /// <summary>زمان آخرین استعلام رسمی از سامانه.</summary>
     public DateTime? LastInquiryAt { get; set; }

@@ -8,8 +8,8 @@ namespace Inventory.Api.Services.Invoicing;
 
 public interface IMoadianProviderInvoiceService
 {
-    /// <summary>فهرست صورتحساب‌های یک خدمات‌دهنده با فیلتر وضعیت و جستجوی زنده (شماره/خریدار).</summary>
-    Task<List<MoadianInvoice>> GetByProviderAsync(int providerId, string? search, MoadianInvoiceStatus? status, Paging.Request? pagination = null);
+    /// <summary>فهرست صورتحساب‌های یک خدمات‌دهنده با فیلتر دوره/وضعیت و جستجوی زنده (شماره/خریدار/taxid).</summary>
+    Task<List<MoadianInvoice>> GetByProviderAsync(int providerId, int? periodId, string? search, MoadianInvoiceStatus? status, Paging.Request? pagination = null);
 }
 
 /// <summary>
@@ -24,7 +24,7 @@ public sealed class MoadianProviderInvoiceService : IMoadianProviderInvoiceServi
     public MoadianProviderInvoiceService(Db.AppDbContext db) => _db = db;
 
     public async Task<List<MoadianInvoice>> GetByProviderAsync(
-        int providerId, string? search, MoadianInvoiceStatus? status, Paging.Request? pagination = null)
+        int providerId, int? periodId, string? search, MoadianInvoiceStatus? status, Paging.Request? pagination = null)
     {
         var term = search?.Trim();
         var query = _db.MoadianInvoices.AsNoTracking()
@@ -32,6 +32,8 @@ public sealed class MoadianProviderInvoiceService : IMoadianProviderInvoiceServi
             .Include(i => i.Lines)
             .Where(i => i.ServiceProviderId == providerId);
 
+        if (periodId is > 0)
+            query = query.Where(i => i.FiscalPeriodId == periodId);
         if (status is not null)
             query = query.Where(i => i.Status == status);
         if (!string.IsNullOrWhiteSpace(term))
@@ -67,7 +69,7 @@ public sealed class MoadianProviderInvoiceService : IMoadianProviderInvoiceServi
         PayType = i.PayType,
         PayTypeTitle = MoadianPayTypes.Title(i.PayType),
         ServiceProviderId = i.ServiceProviderId,
-        Taxid = i.Taxid,
+        TaxId22 = i.Taxid,
         LastInquiryAt = i.LastInquiryAt,
         LastInquiryStatus = i.LastInquiryStatus,
         FacInvoiceId = i.FacInvoiceId,

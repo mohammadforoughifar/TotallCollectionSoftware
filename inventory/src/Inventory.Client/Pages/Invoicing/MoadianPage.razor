@@ -8,21 +8,24 @@
 
 <div class="page-head">
     <div>
-        <h1>سامانه مودیان <span class="badge bg-warning text-dark">ارسال غیرفعال</span></h1>
-        <p class="lead">ساخت و بازبینی دستی/خودکار صورتحساب‌های مودیان (همه پیش از ارسال می‌مانند)</p>
+        <h1>سامانه مودیان <span class="badge bg-success">فعال</span></h1>
+        <p class="lead">مرکز عملیات صورتحساب‌های مودیان: ثبت، ویرایش، چاپ، ارسال رسمی و استعلام از سامانه</p>
     </div>
     <div class="ms-auto d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/settings")'>
             <i class="bi bi-gear"></i> تنظیمات
         </button>
-        <button class="btn btn-primary" @onclick='() => Nav.NavigateTo("/moadian/invoices")'>
-            <i class="bi bi-plus-lg"></i> فاکتور جدید
+        <button class="btn btn-primary" @onclick='() => Nav.NavigateTo("/moadian/provider-invoices")'>
+            <i class="bi bi-receipt"></i> صورتحساب‌های خدمات‌دهنده
+        </button>
+        <button class="btn btn-outline-primary" @onclick='() => Nav.NavigateTo("/moadian/invoice-new")'>
+            <i class="bi bi-plus-lg"></i> ثبت صورتحساب جدید
         </button>
     </div>
 </div>
 
-<div class="alert alert-warning py-2 small">
-    ارسال خودکار، ارسال دستی و استعلام وضعیت از سرویس رسمی عمداً قفل‌اند تا مستندات جاری و دسترسی/گواهی معتبر بررسی شوند؛ بنابراین وضعیت رسمی ارسال از این صفحه قابل دریافت نیست. چاپ فعلی فقط برگهٔ داخلی و غیررسمی است.
+<div class="alert alert-info py-2 small">
+    ثبت و ویرایش صورتحساب، چاپ، ارسال رسمی به سامانه و استعلام وضعیت — همه از صفحهٔ «صورتحساب‌های خدمات‌دهنده» انجام می‌شود.
 </div>
 
 <!-- کارت‌های آماری -->
@@ -81,8 +84,8 @@
     </div>
     <div class="col-md-4">
         <div class="card stat-card"><div class="card-body">
-            <div class="stat-label">وضعیت اتصال</div>
-            <div class="stat-value fs-6 pt-1 text-warning">غیرفعال — فقط ثبت ارسال‌نشده</div>
+            <div class="stat-label">وضعیت ارسال/استعلام</div>
+            <div class="stat-value fs-6 pt-1 text-success">فعال — با کلید خصوصی اتصال</div>
         </div></div>
     </div>
 </div>
@@ -125,10 +128,9 @@
     <div class="card-body">
         <ol class="mb-0 fs-14">
             <li>اطلاعات فروشنده، حافظهٔ مالیاتی و سیاست ساخت خودکار صورتحساب هر منبع از صفحهٔ «تنظیمات مودیان» تنظیم می‌شود (نشانی: moadian/settings).</li>
-            <li>صورتحساب ارسال‌نشده را دستی بسازید، یا از فاکتور قطعی فروش ERP/سند فروش «عملیات» بسازید؛ نوع رسمی (inty)، الگو (inp) و موضوع (ins) را جداگانه بازبینی کنید و آن‌ها را با جهت سند داخلی یکی نگیرید.</li>
+            <li>صورتحساب را از «ثبت صورتحساب جدید» بسازید، یا از فاکتور قطعی فروش ERP/سند فروش «عملیات» بسازید؛ نوع رسمی (inty)، الگو (inp) و موضوع (ins) را جداگانه بازبینی کنید و آن‌ها را با جهت سند داخلی یکی نگیرید.</li>
             <li>برای هر ردیف، شناسه کالا/خدمت مالیاتی و واحد مالیاتی واقعی را تکمیل کنید؛ شناسهٔ ساختگی تولید نمی‌شود.</li>
-            <li>ارسال و وضعیت‌های سامانه در این نسخه غیرفعال‌اند؛ تنظیم ساخت خودکار فقط پس از ثبت فروش، سند ارسال‌نشده ایجاد می‌کند.</li>
-            <li>پیش از فعال‌سازی ارسال، باید سند رسمی جاری، قالب، امضا، گواهی و دسترسی آزمایشی/عملیاتی بررسی و آزموده شوند.</li>
+            <li>ارسال رسمی و استعلام وضعیت از صفحهٔ «صورتحساب‌های خدمات‌دهنده» با کلید خصوصی اتصالِ همان خدمات‌دهنده انجام می‌شود؛ وضعیت‌های خریدار (در انتظار/تأیید/رد) پس از استعلام به‌روز می‌شوند.</li>
         </ol>
     </div>
 </div>
@@ -142,7 +144,7 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private void GoInvoice(int id) => Nav.NavigateTo($"/moadian/invoices?history={id}");
+    private void GoInvoice(int id) => Nav.NavigateTo($"/moadian/provider-invoices?invoice={id}");
 
     private static string InvoiceTypeFa(MoadianTaxInvoiceType type) => type switch
     {

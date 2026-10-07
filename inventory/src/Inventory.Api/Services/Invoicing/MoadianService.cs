@@ -873,7 +873,7 @@ public class MoadianService : IMoadianService
         FiscalPeriodTitle = i.FiscalPeriod != null ? $"{i.FiscalPeriod.Year}/{i.FiscalPeriod.Month:00}" : null,
         FiscalYearId = i.FiscalYearId, YearSerial = i.YearSerial, DocumentNumber = i.DocumentNumber,
         PayType = i.PayType, PayTypeTitle = MoadianPayTypes.Title(i.PayType),
-        ServiceProviderId = i.ServiceProviderId, Taxid = i.Taxid,
+        ServiceProviderId = i.ServiceProviderId, TaxId22 = i.Taxid,
         LastInquiryAt = i.LastInquiryAt, LastInquiryStatus = i.LastInquiryStatus,
         FacInvoiceId = i.FacInvoiceId, OperationsTransactionId = i.OperationsTransactionId,
         FacInvoiceRef = i.FacInvoiceRef, Settlement = i.Settlement,

@@ -62,7 +62,7 @@ public static class ErpNavigation
             E("stk/labels", "چاپ برچسب", "bi-tags", "StkBarcodes")]),
         new("moadian", "سامانه مودیان", "bi-cloud-check", [
             E("moadian", "داشبورد مودیان", "bi-cloud-arrow-up", "Moadian"),
-            E("moadian/invoices", "فاکتورهای الکترونیکی", "bi-receipt", "Moadian")])
+            E("moadian/provider-invoices", "صورتحساب‌های خدمات‌دهنده", "bi-receipt", "Moadian")])
     ];
     public static Section[] Visible(Func<string, bool> hasModule) => Sections
         .Select(s => s with { Items = s.Items.Where(i => i.Allowed(hasModule)).ToArray() }).Where(s => s.Items.Length > 0).ToArray();

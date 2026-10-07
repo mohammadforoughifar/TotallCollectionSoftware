@@ -894,7 +894,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         PayType = i.PayType,
         PayTypeTitle = MoadianPayTypes.Title(i.PayType),
         ServiceProviderId = i.ServiceProviderId,
-        Taxid = i.Taxid,
+        TaxId22 = i.Taxid,
         LastInquiryAt = i.LastInquiryAt,
         LastInquiryStatus = i.LastInquiryStatus,
         Settlement = i.Settlement,
