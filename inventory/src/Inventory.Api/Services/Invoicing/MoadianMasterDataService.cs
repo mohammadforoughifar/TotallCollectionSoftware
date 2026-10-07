@@ -51,8 +51,10 @@ public interface IMoadianMasterDataService
 public sealed class MoadianMasterDataService : IMoadianMasterDataService
 {
     private readonly AppDbContext _db;
+    private readonly IMoadianProviderPrivateKeyService _privateKeys;
 
-    public MoadianMasterDataService(AppDbContext db) => _db = db;
+    public MoadianMasterDataService(AppDbContext db, IMoadianProviderPrivateKeyService privateKeys)
+        => (_db, _privateKeys) = (db, privateKeys);
 
     // CPInfo / service-provider profile
     public async Task<List<MoadianServiceProviderProfileDto>> GetProvidersAsync()
@@ -77,6 +79,18 @@ public sealed class MoadianMasterDataService : IMoadianMasterDataService
         ApplyProvider(provider, dto);
         _db.MoadianServiceProviderProfiles.Add(provider);
         await _db.SaveChangesAsync();
+
+        // با تعریف هر خدمات‌دهنده، پوشهٔ کلید خصوصی آن در wwwroot/uploads/moadian/{نام خدمات‌دهنده} ساخته می‌شود.
+        try
+        {
+            await _privateKeys.EnsureProviderFolderAsync(provider.Id, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            // ناکامی ساخت پوشه جلوی ثبت خدمات‌دهنده را نمی‌گیرد؛ پوشه هنگام آپلود کلید دوباره ساخته می‌شود.
+            System.Diagnostics.Debug.WriteLine($"Moadian provider folder creation failed: {ex.Message}");
+        }
+
         return ToProviderDto(provider);
     }
 

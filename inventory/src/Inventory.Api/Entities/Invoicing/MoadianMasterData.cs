@@ -25,8 +25,8 @@ public class MoadianServiceProviderProfile
 
 /// <summary>
 /// Non-secret metadata for a provider's single Moadian connection. The database stores
-/// only a server-side path to a protected PKCS#8 PEM file kept at the root of the private
-/// key store; PEM bytes and certificate paths are never stored here.
+/// only a server-side path to a protected PKCS#8 PEM file kept per provider under
+/// wwwroot/uploads/moadian/{service-provider folder}; PEM bytes are never stored here.
 /// </summary>
 public class MoadianProviderConnectionProfile
 {

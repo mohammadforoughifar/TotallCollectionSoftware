@@ -100,7 +100,7 @@ builder.Services.AddSingleton(new Inventory.Api.Services.Invoicing.MoadianRuntim
     builder.Configuration["Moadian:ClientType"],
     builder.Configuration["Moadian:SignatureKeyId"])); // snapshots global Moadian options and private-key root at startup
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianMasterDataService, Inventory.Api.Services.Invoicing.MoadianMasterDataService>(); // CRUD اطلاعات پایهٔ پروفایل‌های مودیان
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService, Inventory.Api.Services.Invoicing.MoadianProviderPrivateKeyService>(); // ذخیرهٔ امن PEM خارج از web root
+builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService, Inventory.Api.Services.Invoicing.MoadianProviderPrivateKeyService>(); // کلید خصوصی هر خدمات‌دهنده: wwwroot/uploads/moadian/{خدمات‌دهنده}
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianConnectionTestService, Inventory.Api.Services.Invoicing.MoadianConnectionTestService>(); // تست اتصال و احراز هویت خدمات‌دهنده (GET_TOKEN)
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianFiscalYearService, Inventory.Api.Services.Invoicing.MoadianFiscalYearService>(); // سال مالی مودیان و دوره‌های ماهانه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianStandaloneInvoiceService, Inventory.Api.Services.Invoicing.MoadianStandaloneInvoiceService>(); // ثبت صورتحساب مستقل از ERP با شمارهٔ سند سالانه
@@ -521,6 +521,19 @@ if (!EF.IsDesignTime)
     using var orgScope = app.Services.CreateScope();
     var orgDb = orgScope.ServiceProvider.GetRequiredService<AppDbContext>();
     await app.Services.GetRequiredService<IProjectFileProtection>().OrganizeProjectFoldersAsync(orgDb);
+
+    // مهاجرت یک‌باره کلیدهای خصوصی مودیان از ذخیره‌گاه‌های قبلی به wwwroot/uploads/moadian/{نام خدمات‌دهنده}/
+    try
+    {
+        using var moadianKeyScope = app.Services.CreateScope();
+        await moadianKeyScope.ServiceProvider
+            .GetRequiredService<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService>()
+            .MigrateLegacyKeyFilesAsync(CancellationToken.None);
+    }
+    catch (Exception moadianKeyEx)
+    {
+        app.Logger.LogWarning(moadianKeyEx, "Moadian private-key folder migration failed; keys remain at their previous paths.");
+    }
 }
 
 // در همه‌ی محیط‌ها فعال است (حتی Production) تا روی هر سیستمی قابل تست باشد
@@ -615,7 +628,8 @@ foreach (var moduleFolder in new[]
     "cctv",
     "catalog",
     "chat",
-    "system/archive"
+    "system/archive",
+    "moadian"
 })
 {
     Directory.CreateDirectory(Path.Combine(uploadsRoot, moduleFolder));
@@ -643,7 +657,9 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
     app.Use(async (ctx, next) =>
     {
         if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase))
+            ctx.Request.Path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase) ||
+            // کلیدهای خصوصی مودیان هرگز به‌صورت استاتیک سرو نمی‌شوند
+            ctx.Request.Path.StartsWithSegments("/uploads/moadian", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;

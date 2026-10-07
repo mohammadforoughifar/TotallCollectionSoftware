@@ -15,23 +15,29 @@ public interface IMoadianProviderPrivateKeyService
     Task<MoadianPrivateKeyStatusDto> UploadAsync(int connectionId, IFormFile file, CancellationToken cancellationToken);
     Task<MoadianPrivateKeyStatusDto> RemoveAsync(int connectionId, CancellationToken cancellationToken);
     bool IsManagedFile(int connectionId, string? path);
+
+    /// <summary>پوشهٔ اختصاصی خدمات‌دهنده در <c>wwwroot/uploads/moadian/{نام خدمات‌دهنده}</c> را اطمینان/ایجاد می‌کند.</summary>
+    Task EnsureProviderFolderAsync(int providerId, CancellationToken cancellationToken);
+
+    /// <summary>یک‌بار: کلیدهای موجود از ذخیره‌گاه‌های قدیمی به <c>wwwroot/uploads/moadian/{نام خدمات‌دهنده}/</c> منتقل می‌شود.</summary>
+    Task MigrateLegacyKeyFilesAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// Stores a single PKCS#8 PEM-encoded private key with a .key extension per ConnectInfo outside web root.
-/// کلید هر اتصال مستقیم در مسیر روتِ ذخیره‌گاه نگهداری می‌شود: {root}/moadian-c{connectionId}-{guid}.key
-/// SQL contains only the server path; PEM bytes are not returned by any API and never logged.
+/// کلید خصوصی هر خدمات‌دهنده به‌صورت یک فایل PKCS#8 PEM با پسوند .key نگهداری می‌شود:
+/// <c>wwwroot/uploads/moadian/{نام خدمات‌دهنده}/moadian-c{connectionId}-{guid}.key</c>
+/// هر وقت خدمات‌دهنده‌ای جدید تعریف می‌شود، پوشه‌ای به نام آن ساخته می‌شود و کلید در همان پوشه قرار می‌گیرد.
+/// SQL فقط مسیر کامل فایل را نگه می‌دارد؛ بایت‌های PEM با هیچ API بازگشت داده نمی‌شوند و لاگ نمی‌شوند.
+/// مسیر /uploads/moadian از سرو استاتیک (StaticFiles) مستثنی است و هرگز از وب قابل دانلود نیست.
 /// </summary>
 public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKeyService
 {
     public const long MaxPemBytes = 64 * 1024;
+    public const string UploadsSubFolder = "moadian";
 
     private readonly AppDbContext _db;
     private readonly ILogger<MoadianProviderPrivateKeyService> _logger;
     private readonly string _root;
-    private readonly string _webRoot;
-    private readonly bool _hasExplicitRoot;
-    private readonly bool _rootIsOutsideContentRoot;
 
     public MoadianProviderPrivateKeyService(
         AppDbContext db,
@@ -41,45 +47,24 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
     {
         _db = db;
         _logger = logger;
-        _webRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot")));
 
         var contentRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(environment.ContentRootPath));
         var configuredRoot = string.IsNullOrWhiteSpace(settings.PrivateKeyRoot) ? null : settings.PrivateKeyRoot.Trim();
-        _hasExplicitRoot = configuredRoot is not null;
 
-        string rootCandidate;
-        if (configuredRoot is not null)
-        {
-            rootCandidate = Path.IsPathRooted(configuredRoot)
-                ? configuredRoot
-                : Path.Combine(contentRoot, configuredRoot);
-        }
-        else if (OperatingSystem.IsWindows())
-        {
-            // پیش‌فرض ویندوز: %ProgramData%\TotallCollection\MoadianPrivateKeys
-            // خارج از ContentRoot و wwwroot تا کلید خصوصی هرگز از سایت/وب‌روت سرو یا با انتشار نسخه بازنویسی نشود.
-            var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
-            rootCandidate = string.IsNullOrWhiteSpace(programData)
-                ? Path.Combine(contentRoot, "App_Data", "MoadianPrivateKeys")
-                : Path.Combine(programData, "TotallCollection", "MoadianPrivateKeys");
-        }
-        else
-        {
-            rootCandidate = Path.Combine(contentRoot, "App_Data", "MoadianPrivateKeys");
-        }
+        // پیش‌فرض: wwwroot/uploads/moadian — پوشهٔ moadian زیر آپلودها، با پوشهٔ جدا برای هر خدمات‌دهنده.
+        var rootCandidate = configuredRoot is not null
+            ? (Path.IsPathRooted(configuredRoot) ? configuredRoot : Path.Combine(contentRoot, configuredRoot))
+            : Path.Combine(contentRoot, "wwwroot", "uploads", UploadsSubFolder);
 
         _root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(rootCandidate));
+    }
 
-        if (IsSameOrChild(_webRoot, _root))
-            throw new InvalidOperationException("Files:MoadianPrivateKeyRoot must be outside wwwroot.");
-
-        _rootIsOutsideContentRoot = !IsSameOrChild(contentRoot, _root);
-        var defaultPrivateRoot = Path.TrimEndingDirectorySeparator(
-            Path.GetFullPath(Path.Combine(contentRoot, "App_Data", "MoadianPrivateKeys")));
-        if (_hasExplicitRoot
-            && IsSameOrChild(contentRoot, _root)
-            && !IsSameOrChild(defaultPrivateRoot, _root))
-            throw new InvalidOperationException("Custom Files:MoadianPrivateKeyRoot must be outside ContentRoot/Git; use the ignored App_Data/MoadianPrivateKeys path or a separate server directory.");
+    public async Task EnsureProviderFolderAsync(int providerId, CancellationToken cancellationToken)
+    {
+        if (providerId <= 0) return;
+        var directory = await GetProviderDirectoryAsync(providerId, cancellationToken);
+        if (!Directory.Exists(directory))
+            Directory.CreateDirectory(directory);
     }
 
     public async Task<MoadianPrivateKeyStatusDto> UploadAsync(
@@ -92,8 +77,6 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
             throw new InvalidOperationException("اندازهٔ فایل کلید باید بین ۱ بایت و ۶۴ کیلوبایت باشد.");
         if (!string.Equals(Path.GetExtension(file.FileName), ".key", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("فقط یک فایل کلید خصوصی با پسوند .key پذیرفته می‌شود؛ محتوای آن باید PKCS#8 PEM باشد.");
-        if (!IsRootUsable)
-            throw new InvalidOperationException("در Windows، Files:MoadianPrivateKeyRoot را به پوشه‌ای خارج از ContentRoot و web root با ACL محدود به حساب سرویس تنظیم کنید.");
 
         var connection = await _db.MoadianProviderConnections
             .SingleOrDefaultAsync(x => x.Id == connectionId, cancellationToken)
@@ -109,20 +92,21 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
 
         try
         {
-            // کلید خصوصی مستقیم در مسیر روتِ ذخیره‌گاه خصوصی نگهداری می‌شود (بدون پوشهٔ زیر برای خدمات‌دهنده).
+            // کلید در پوشهٔ اختصاصی خدمات‌دهنده: {root}/{نام خدمات‌دهنده}/moadian-c{connectionId}-{guid}.key
+            var providerDirectory = await GetProviderDirectoryAsync(provider.Id, cancellationToken);
             var privateDirectoryMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
             if (OperatingSystem.IsWindows())
             {
-                Directory.CreateDirectory(_root);
+                Directory.CreateDirectory(providerDirectory);
             }
             else
             {
-                Directory.CreateDirectory(_root, privateDirectoryMode);
+                Directory.CreateDirectory(providerDirectory, privateDirectoryMode);
             }
-            RestrictUnixPermissions(_root, privateDirectoryMode);
+            RestrictUnixPermissions(providerDirectory, privateDirectoryMode);
 
             var fileId = $"moadian-c{connection.Id}-{Guid.NewGuid():N}.key";
-            newPath = Path.Combine(_root, fileId);
+            newPath = Path.Combine(providerDirectory, fileId);
             if (newPath.Length > 2048)
                 throw new InvalidOperationException("مسیر ذخیره‌گاه PEM از حد مجاز پایگاه‌داده بلندتر است.");
             tempPath = newPath + ".tmp";
@@ -157,7 +141,7 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
         {
             TryDelete(tempPath);
             TryDelete(newPath);
-            throw new InvalidOperationException("ذخیرهٔ کلید در پوشهٔ خصوصی سرور ناموفق بود؛ مجوزها و Files:MoadianPrivateKeyRoot را بررسی کنید.");
+            throw new InvalidOperationException("ذخیرهٔ کلید در پوشهٔ moadian ناموفق بود؛ مجوزهای wwwroot/uploads/moadian را بررسی کنید.");
         }
         catch
         {
@@ -177,8 +161,7 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
     }
 
     public bool IsManagedFile(int connectionId, string? path)
-        => IsRootUsable
-           && IsManagedPath(path, connectionId)
+        => IsManagedPath(path, connectionId)
            && string.Equals(Path.GetExtension(path), ".key", StringComparison.OrdinalIgnoreCase)
            && File.Exists(path);
 
@@ -196,6 +179,134 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
             TryDelete(oldPath);
 
         return new MoadianPrivateKeyStatusDto { HasPrivateKey = false };
+    }
+
+    /// <summary>
+    /// مهاجرت یک‌باره کلیدها از ذخیره‌گاه‌های قبلی (مثل %ProgramData%\TotallCollection\MoadianPrivateKeys)
+    /// به چیدمان جدید {root}/{نام خدمات‌دهنده}/ — مسیر ذخیره‌شده در SQL به‌روز می‌شود.
+    /// </summary>
+    public async Task MigrateLegacyKeyFilesAsync(CancellationToken cancellationToken)
+    {
+        var connections = await _db.MoadianProviderConnections.AsNoTracking()
+            .Where(x => x.PrivateKeyPath != null && x.PrivateKeyPath != "")
+            .ToListAsync(cancellationToken);
+        if (connections.Count == 0) return;
+
+        var providers = await _db.MoadianServiceProviderProfiles.AsNoTracking()
+            .ToDictionaryAsync(x => x.Id, cancellationToken: cancellationToken);
+        var moved = 0;
+
+        foreach (var snapshot in connections)
+        {
+            try
+            {
+                var oldPath = snapshot.PrivateKeyPath;
+                if (string.IsNullOrWhiteSpace(oldPath) || !File.Exists(oldPath)) continue;
+
+                if (!providers.TryGetValue(snapshot.ServiceProviderId, out var provider)) continue;
+                var providerDirectory = await GetProviderDirectoryAsyncFor(provider, cancellationToken);
+                var target = Path.Combine(providerDirectory, Path.GetFileName(oldPath));
+
+                if (string.Equals(Path.GetFullPath(oldPath), Path.GetFullPath(target), PathComparison))
+                    continue; // already at the new location
+
+                if (File.Exists(target))
+                {
+                    // نسخهٔ جدید در چیدمان جدید وجود دارد؛ فایل قدیمی یتیم را حذف می‌کنیم.
+                    TryDelete(oldPath);
+                }
+                else
+                {
+                    Directory.CreateDirectory(providerDirectory);
+                    File.Move(oldPath, target);
+                    var tracked = await _db.MoadianProviderConnections.FindAsync(new object[] { snapshot.Id }, cancellationToken);
+                    if (tracked is null) continue;
+                    tracked.PrivateKeyPath = target;
+                    moved++;
+                    _logger.LogInformation(
+                        "Moadian private key migrated to the provider folder (connection {ConnectionId}).",
+                        snapshot.Id);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                _logger.LogWarning(ex, "Could not migrate a legacy Moadian private key file (connection {ConnectionId}).", snapshot.Id);
+            }
+        }
+
+        if (moved > 0)
+            await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<string> GetProviderDirectoryAsync(int providerId, CancellationToken cancellationToken)
+    {
+        var provider = await _db.MoadianServiceProviderProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == providerId, cancellationToken);
+        return await GetProviderDirectoryAsyncFor(provider, cancellationToken);
+    }
+
+    private async Task<string> GetProviderDirectoryAsyncFor(MoadianServiceProviderProfile? provider, CancellationToken cancellationToken)
+    {
+        var name = string.IsNullOrWhiteSpace(provider?.PersianName)
+            ? provider?.EnglishName
+            : provider!.PersianName;
+        var folderName = SanitizeFolderName(name ?? $"service-provider-{provider?.Id ?? 0}");
+        var directory = Path.Combine(_root, folderName);
+
+        if (Directory.Exists(directory) && provider is not null
+            && await FolderBelongsToDifferentProviderAsync(directory, provider.Id, cancellationToken))
+        {
+            // دو خدمات‌دهنده هم‌نام: پوشهٔ این خدمات‌دهنده با شناسه‌اش متمایز می‌شود.
+            directory = Path.Combine(_root, folderName + "-" + provider.Id);
+        }
+
+        return directory;
+    }
+
+    private async Task<bool> FolderBelongsToDifferentProviderAsync(string directory, int providerId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var files = Directory.EnumerateFiles(directory, "moadian-c*.key");
+            var connectionIds = new List<int>();
+            foreach (var file in files)
+            {
+                var fileName = Path.GetFileName(file);
+                var marker = "moadian-c";
+                var startIndex = marker.Length;
+                var dashIndex = fileName.IndexOf('-', startIndex);
+                if (dashIndex <= startIndex) continue;
+                if (int.TryParse(fileName.AsSpan(startIndex, dashIndex - startIndex), out var connectionId))
+                    connectionIds.Add(connectionId);
+            }
+            if (connectionIds.Count == 0) return false;
+
+            var otherProviders = await _db.MoadianProviderConnections.AsNoTracking()
+                .Where(x => connectionIds.Contains(x.Id) && x.ServiceProviderId != providerId)
+                .AnyAsync(cancellationToken);
+            return otherProviders;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Could not inspect an existing Moadian provider folder for name collision.");
+            return false;
+        }
+    }
+
+    private static string SanitizeFolderName(string name)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var sb = new StringBuilder(name.Length);
+        foreach (var ch in name)
+        {
+            if (invalid.Contains(ch) || ch is ' ' or '\t')
+                sb.Append('_');
+            else
+                sb.Append(ch);
+        }
+
+        var result = sb.ToString().Trim('_').TrimEnd('.');
+        return result.Length > 0 ? result : "provider";
     }
 
     private async Task<byte[]> ReadAndValidatePemAsync(IFormFile file, CancellationToken cancellationToken)
@@ -274,56 +385,26 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
 
             var fileName = Path.GetFileName(fullPath);
             var directory = Path.GetDirectoryName(fullPath);
+            if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(directory))
+                return false;
 
-            // چیدمان جاری: <root>/moadian-c{connectionId}-{guid}.key (مستقیم در مسیر روت)
+            // چیدمان جاری: {root}/{پوشهٔ خدمات‌دهنده}/moadian-c{connectionId}-{guid}.key
             if (fileName.StartsWith($"moadian-c{connectionId}-", StringComparison.Ordinal))
-                return directory?.Equals(_root, PathComparison) == true;
-
-            // چیدمان قبلی: <root>/<پوشهٔ خدمات‌دهنده>/moadian-p{providerId}-c{connectionId}-{guid}.key
-            const string providerFileMarker = "moadian-p";
-            if (fileName.StartsWith(providerFileMarker, StringComparison.Ordinal))
             {
-                var connectionMarker = $"-c{connectionId}-";
-                var markerIndex = fileName.IndexOf(connectionMarker, StringComparison.Ordinal);
-                if (markerIndex <= providerFileMarker.Length) return false;
-                if (!IsAllDigits(fileName.AsSpan(providerFileMarker.Length, markerIndex - providerFileMarker.Length)))
-                    return false;
-                // فایل باید دقیقاً یک سطح زیر ریشهٔ خصوصی و داخل پوشهٔ خدمات‌دهنده باشد.
-                return directory is not null
-                       && Path.GetDirectoryName(directory)?.Equals(_root, PathComparison) == true;
+                var parent = Path.GetDirectoryName(directory);
+                var directoryIsProviderFolder = directory.Equals(_root, PathComparison)
+                    || parent?.Equals(_root, PathComparison) == true;
+                return directoryIsProviderFolder;
             }
 
-            // چیدمان قدیمی: <root>/moadian-{connectionId}-{guid}.key (برای پاک‌سازی فایل‌های قدیمی)
-            return directory?.Equals(_root, PathComparison) == true
-                   && fileName.StartsWith($"moadian-{connectionId}-", StringComparison.Ordinal);
-        }
-        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
-        {
+            // چیدمان‌های قدیمی (برای پاک‌سازی فایل‌های باقیمانده): مستقیم زیر ریشه یا با پیشوند moadian-
+            if (directory.Equals(_root, PathComparison)
+                && fileName.StartsWith($"moadian-{connectionId}-", StringComparison.Ordinal))
+                return true;
+
             return false;
         }
-    }
-
-    private static bool IsAllDigits(ReadOnlySpan<char> value)
-    {
-        if (value.IsEmpty) return false;
-        foreach (var ch in value)
-            if (ch is < '0' or > '9')
-                return false;
-        return true;
-    }
-
-    private static bool IsSameOrChild(string parent, string candidate)
-    {
-        try
-        {
-            var relative = Path.GetRelativePath(parent, candidate);
-            return relative == "."
-                   || (!Path.IsPathRooted(relative)
-                       && !relative.Equals("..", PathComparison)
-                       && !relative.StartsWith(".." + Path.DirectorySeparatorChar, PathComparison)
-                       && !relative.StartsWith(".." + Path.AltDirectorySeparatorChar, PathComparison));
-        }
-        catch (ArgumentException)
+        catch (Exception ex) when (ex is ArgumentException or IOException or NotSupportedException)
         {
             return false;
         }
@@ -347,9 +428,6 @@ public sealed class MoadianProviderPrivateKeyService : IMoadianProviderPrivateKe
         if (!OperatingSystem.IsWindows())
             File.SetUnixFileMode(path, mode);
     }
-
-    private bool IsRootUsable
-        => !OperatingSystem.IsWindows() || _rootIsOutsideContentRoot;
 
     private static StringComparison PathComparison
         => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
