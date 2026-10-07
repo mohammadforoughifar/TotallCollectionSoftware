@@ -799,9 +799,11 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             if (candidates.Any(x => string.Equals(x.Item2, trimmed, StringComparison.Ordinal))) return;
             candidates.Add((label, trimmed));
         }
+        // همان ترتیب روش کاری اثبات‌شده: شناسهٔ حافظهٔ مالیاتی clientId اصلی است؛
+        // شناسهٔ ملی و شمارهٔ اقتصادی فقط به‌عنوان فک‌آپ در صورت خالی‌بودن/خطا امتحان می‌شوند.
+        Add("شناسه حافظهٔ مالیاتی", taxMemoryId);
         Add("شناسه ملی", nationalId);
         Add("شماره اقتصادی", economicNumber);
-        Add("شناسه حافظهٔ مالیاتی", taxMemoryId);
         return candidates;
     }
 

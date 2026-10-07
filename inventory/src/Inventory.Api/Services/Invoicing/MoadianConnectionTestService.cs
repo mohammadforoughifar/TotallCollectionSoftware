@@ -426,9 +426,10 @@ public sealed class MoadianConnectionTestService : IMoadianConnectionTestService
             candidates.Add((label, trimmed));
         }
 
+        // همان ترتیب روش کاری اثبات‌شده: شناسهٔ حافظهٔ مالیاتی clientId اصلی است.
+        Add("شناسه حافظهٔ مالیاتی", taxMemoryId);
         Add("شناسه ملی", nationalId);
         Add("شماره اقتصادی", economicNumber);
-        Add("شناسه حافظهٔ مالیاتی", taxMemoryId);
         return candidates;
     }
 
