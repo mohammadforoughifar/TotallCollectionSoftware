@@ -54,6 +54,7 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
         {
             return Ok(await _submission.SendAsync(id, MyUsername));
         }
+        catch (MoadianBuyerValidationException ex) { return StatusCode(422, new { field = ex.Field, message = ex.Message }); }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
         catch (DbUpdateException ex)
         {

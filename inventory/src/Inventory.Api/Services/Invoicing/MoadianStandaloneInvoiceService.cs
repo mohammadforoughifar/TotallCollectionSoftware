@@ -95,6 +95,12 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
 
 
         var buyerTaxId = FirstNonEmpty(request.BuyerTaxId, customer?.NationalID);
+
+        // اعتبارسنجی محلی شناسه خریدار پیش از ثبت (قبل از ورود به چرخه ارسال به سامانه):
+        // ۱۰ رقم = حقیقی (Bid)؛ ۱۱ رقم = حقوقی-شناسه ملی (Bid)؛ ۱۴ رقم = حقوقی-کد اقتصادی (Tinb).
+        // در صورت خطا MoadianBuyerValidationException → controller آن را 422 با نام فیلد می‌دهد.
+        MoadianBuyerValidator.EnsureValid(buyerTaxId);
+
         var buyerName = FirstNonEmpty(request.BuyerName, customer?.Name);
         var buyerAddress = FirstNonEmpty(request.BuyerAddress, customer?.Address);
         var buyerPostalCode = FirstNonEmpty(request.BuyerPostalCode, customer?.PostalCode);

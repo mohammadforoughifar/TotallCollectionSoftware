@@ -96,11 +96,11 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             ? invoice.BuyerPostalCode
             : (NormalizeDigits(invoice.BuyerPostalCode)?.Trim());
 
-        var buyerId = invoice.BuyerTaxId;
-        if (string.IsNullOrWhiteSpace(buyerId))
-            throw new InvalidOperationException("شناسهٔ خریدار ثبت نشده است؛ «شمارهٔ ملی ۱۰ رقمی» (حقیقی) یا «شناسهٔ ملی ۱۱ رقمی»/«کد اقتصادی ۱۴ رقمی» (حقوقی) را درج کنید.");
-        if (!buyerId.All(c => c >= '0' && c <= '9'))
-            throw new InvalidOperationException("شناسهٔ خریدار باید فقط عدد باشد: ۱۰ رقم برای اشخاص حقیقی (شمارهٔ ملی) یا ۱۱ رقم (شناسهٔ ملی) یا ۱۴ رقم (کد اقتصادی) برای اشخاص حقوقی.");
+        // اعتبارسنجی محلی فیلدهای خریدار — پیش از هر تعامل با SDK. در صورت خطا،
+        // MoadianBuyerValidationException پرتاب می‌شود (controller آن را 422 با نام فیلد می‌دهد)
+        // و هیچ رکوردی به سامانه نمی‌رود. قواعد: Tinb فقط ۱۴ رقم (کد اقتصادی)؛
+        // حقیقی: Bid ۱۰ رقم با رقم کنترل؛ حقوقی: Bid ۱۱ رقم با رقم کنترل و/یا Tinb ۱۴ رقم.
+        MoadianBuyerValidator.EnsureValid(invoice.BuyerTaxId);
 
         var tins = NormalizeDigits(FirstNonEmpty(invoice.EconomicCode, provider.EconomicNumber, provider.NationalID))?.Trim();
         if (string.IsNullOrWhiteSpace(tins))
@@ -503,27 +503,15 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     }
 
     /// <summary>
-    /// نگاشت شناسهٔ خریدار به فیلدهای رسمی سامانه:
-    ///   • Tob = نوع خریدار: ۱ = حقوقی، ۲ = حقیقی
-    ///   • Bid = «شماره/شناسه ملی/شناسه مشارکت مدنی/کد فراگیر خریدار» — مخصوص اشخاص حقیقی
-    ///     (شمارهٔ ملی ۱۰ رقمی)؛ برای حقوقی خالی می‌ماند (الگوی این فیلد برای ۱۱ رقم نیست و
-    ///     پُر‌کردن آن با ۱۱ رقم، خطای الگو می‌دهد).
-    ///   • Tinb = «شماره اقتصادی خریدار» — برای حقوقی، شناسهٔ ملی ۱۱ رقمی یا کد اقتصادی ۱۴ رقمی
-    ///     این‌جا می‌رود. طبق قواعد سامانه، برای حقوقی و مشارکت مدنی تنها فیلد Tinb الزامی است.
-    /// تشخیص از روی طول شناسه: ۱۰ رقم → حقیقی (Bid)؛ ۱۱ رقم یا ۱۴ رقم → حقوقی (فقط Tinb).
+    /// نگاشت شناسهٔ خریدار به فیلدهای رسمی سامانه — منظر واحد:
+    /// <see cref="Inventory.Shared.MoadianBuyerValidator.ResolveBuyer"/>
+    ///   • ۱۰ رقم → حقیقی (Tob=1): Bid = شماره ملی ۱۰ رقمی
+    ///   • ۱۱ رقم → حقوقی (Tob=2): Bid = شناسه ملی ۱۱ رقمی
+    ///   • ۱۴ رقم → حقوقی (Tob=2): Tinb = کد اقتصادی ۱۴ رقمی (Tinb فقط کد اقتصادی می‌پذیرد؛
+    ///     شناسه ملی ۱۱ رقمی در Tinb خطای 0101204 می‌دهد)
     /// </summary>
     internal static (int? Tob, string? Bid, string? Tinb) ResolveBuyer(Db.MoadianInvoice inv)
-    {
-        var id = NormalizeDigits(inv.BuyerTaxId)?.Trim();
-        if (string.IsNullOrWhiteSpace(id)) return (null, null, null);
-        if (!id.All(c => c >= '0' && c <= '9')) return (null, null, null);
-
-        if (id.Length == 10)
-            return (2, id, null);      // ۱۰ رقم → حقیقی: Bid = شماره ملی
-        if (id.Length is 11 or 14)
-            return (1, null, id);      // ۱۱ رقم (شناسه ملی) یا ۱۴ رقم (کد اقتصادی) → حقوقی: فقط Tinb
-        return (1, null, null);        // سایر طول‌ها: بدون شناسه (سامانه خود اعتبارسنجی می‌کند)
-    }
+        => Inventory.Shared.MoadianBuyerValidator.ResolveBuyer(inv.BuyerTaxId);
 
     private static (string Taxid, bool Fallback) ResolveTaxId(
         Db.MoadianInvoice invoice, string taxMemoryId, long serial, DateTime date, IServiceProvider services)

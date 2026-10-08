@@ -1,6 +1,7 @@
 using Inventory.Api.Controllers;
 using Db = Inventory.Api.Data;
 using Inventory.Api.Services.Invoicing;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -117,6 +118,11 @@ public sealed class MoadianStandaloneController : RbacControllerBase
         try
         {
             return Ok(await operation());
+        }
+        catch (MoadianBuyerValidationException ex)
+        {
+            // اعتبارسنجی محلی خریدار شکست خورد — ورودی‌ها نامعتبرند؛ به SDK/سامانه نرسیده است.
+            return StatusCode(422, new { field = ex.Field, message = ex.Message });
         }
         catch (InvalidOperationException ex) { return BadRequest(new { message = ex.Message }); }
         catch (DbUpdateException ex)
