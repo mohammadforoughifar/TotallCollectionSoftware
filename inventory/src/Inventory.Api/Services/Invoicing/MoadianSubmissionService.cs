@@ -588,7 +588,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                     invoice.LastInquiryStatus = result.Status;
                     // پاسخ خام سامانه برای نمایش کامل خطاها/پیام‌ها در جزئیات (بیش از ۴۰۰۰ نویسه نمی‌رود).
                     invoice.InquiryDataJson = Truncate(DataToJson(result.Data) ?? "", 4000);
-                    if (mapped is not null && invoice.Status != MoadianInvoiceStatus.Voided)
+                    if (mapped is not null
+                        && invoice.Status is not (MoadianInvoiceStatus.Voided or MoadianInvoiceStatus.BuyerConfirmed))
                         invoice.Status = mapped.Value;
                     if (!string.IsNullOrWhiteSpace(errCode))
                     {
@@ -722,10 +723,14 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         var value = raw?.Trim().ToUpperInvariant() ?? "";
         return value switch
         {
+            "SUCCESS" => (MoadianInvoiceStatus.AwaitingBuyerConfirmation, "موفق — در کارپوشه ثبت شده"),
             "PENDING" => (MoadianInvoiceStatus.AwaitingBuyerConfirmation, "در انتظار تأیید خریدار"),
             "CONFIRM" => (MoadianInvoiceStatus.BuyerConfirmed, "تأییدشده توسط خریدار"),
             "SYSTEM_CONFIRM" => (MoadianInvoiceStatus.BuyerConfirmed, "تأیید سیستمی (تأیید خودکار مالیاتی)"),
             "REJECT" => (MoadianInvoiceStatus.BuyerRejected, "ردشده توسط خریدار"),
+            "FAILED" => (MoadianInvoiceStatus.Returned, "ناموفق در سامانه — صورتحساب دارای خطاست؛ جزئیات در «خطاها و پیام‌های سامانه»"),
+            "TIMEOUT" => (null, "پردازش طولانی در سامانه (TIMEOUT) — هنوز در کارپوشه ثبت نشده"),
+            "NOT_FOUND" => (null, "نتیجه‌ای یافت نشد (NOT_FOUND) — کمی بعد دوباره استعلام بگیرید"),
             _ => (null, value.Length == 0 ? "نامشخص" : $"نامشخص ({raw!.Trim()})")
         };
     }
@@ -735,6 +740,10 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     /// تحلیل پاسخ استعلام سامانه: نتیجهٔ کلی + فهرست کامل خطاها/پیام‌ها (error[]).
     /// اولین خطا برای ستون‌های کلاسیک ErrorCode/ErrorMessage و بقیه برای نمایش در جزئیات.
     /// </summary>
+    private static string? FirstStringProp(JsonElement item, params string[] names)
+        => names.Select(n => item.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null)
+                .FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+
     internal static (bool? Success, string? Code, string? Msg, List<(string? Code, string? Msg)> Errors) ParseInquiryData(object? data)
     {
         if (data is null) return (null, null, null, new List<(string?, string?)>());
@@ -758,7 +767,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             {
                 if (item.ValueKind != JsonValueKind.Object) continue;
                 var code = item.TryGetProperty("code", out var cv) && cv.ValueKind == JsonValueKind.String ? cv.GetString() : null;
-                var msg = item.TryGetProperty("msg", out var mv) && mv.ValueKind == JsonValueKind.String ? mv.GetString() : null;
+                // پاسخ رسمی سامانه پیام خطا را در «message» می‌فرستد؛ «msg» و «detail» هم پشتیبانی می‌شوند.
+                var msg = FirstStringProp(item, "message", "msg", "detail");
                 if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(msg)) continue;
                 errors.Add((code, msg));
             }
