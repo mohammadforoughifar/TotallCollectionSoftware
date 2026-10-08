@@ -98,12 +98,9 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
 
         var buyerId = invoice.BuyerTaxId;
         if (string.IsNullOrWhiteSpace(buyerId))
-            throw new InvalidOperationException("شناسهٔ خریدار ثبت نشده است؛ «شمارهٔ ملی ۱۰ رقمی» (حقیقی) یا «شناسهٔ ملی ۱۱ رقمی» (حقوقی) را درج کنید.");
+            throw new InvalidOperationException("شناسهٔ خریدار ثبت نشده است؛ «شمارهٔ ملی ۱۰ رقمی» (حقیقی) یا «شناسهٔ ملی ۱۱ رقمی»/«کد اقتصادی ۱۴ رقمی» (حقوقی) را درج کنید.");
         if (!buyerId.All(c => c >= '0' && c <= '9'))
-            throw new InvalidOperationException("شناسهٔ خریدار باید فقط عدد باشد: ۱۰ رقم برای اشخاص حقیقی (شمارهٔ ملی) یا ۱۱ رقم برای اشخاص حقوقی (شناسهٔ ملی).");
-        if (buyerId.Length == 14)
-            throw new InvalidOperationException(
-                "کد اقتصادی ۱۴ رقمی دیگر پذیرفته نمی‌شود (خطای 0101204 سامانه): برای خریدار حقوقی، «شناسهٔ ملی ۱۱ رقمی» را در شناسهٔ خریدار ثبت و دوباره ارسال کنید. برای خریدار حقیقی، «شمارهٔ ملی ۱۰ رقمی» را درج کنید.");
+            throw new InvalidOperationException("شناسهٔ خریدار باید فقط عدد باشد: ۱۰ رقم برای اشخاص حقیقی (شمارهٔ ملی) یا ۱۱ رقم (شناسهٔ ملی) یا ۱۴ رقم (کد اقتصادی) برای اشخاص حقوقی.");
 
         var tins = NormalizeDigits(FirstNonEmpty(invoice.EconomicCode, provider.EconomicNumber, provider.NationalID))?.Trim();
         if (string.IsNullOrWhiteSpace(tins))
@@ -376,7 +373,16 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         _ => 1
     };
 
-    /// <summary>ساخت DTO رسمی (INVOICE.V01) از موجودیت داخلی — نگاشت مستقیم فیلدهای سامانه.</summary>
+    /// <summary>
+    /// ساخت DTO رسمی (INVOICE.V01) از موجودیت داخلی — نگاشت مستقیم فیلدهای سامانه.
+    ///
+    /// قواعد رسمی مبلغ‌های تسویه (بر اساس دستورالعمل فنی سامانه و نمونه‌های ارسالی معتبر):
+    ///   • cap  (مبلغ پرداختی نقدی) = tbill − todam − tvam − insp   ← «مأخذ» (بدون مالیات)
+    ///   • insp (مبلغ پرداختی نسیه)  = tbill − todam − tvam − cap
+    ///   • tvop (مجموع سهم مالیات بر ارزش افزوده از پرداخت) = tvam
+    /// در تسویه‌های نسیه/تسهیلات/تهاتر، cap = null و کل مأخذ به insp اختصاص می‌یابد
+    /// (نمونهٔ ارسالی معتبر نسیه: setm=2, cap=null, insp=tbill−tvam, tvop=tvam).
+    /// </summary>
     internal static InvoiceDto BuildInvoiceDto(Db.MoadianInvoice inv, string tins, string taxid, out string inno)
     {
         inno = MoadianTaxIdGenerator.ToInno(inv.Number);
@@ -384,6 +390,11 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         var (tob, bid, tinb) = ResolveBuyer(inv);
         var payType = inv.PayType ?? MoadianPayType.Cash;
         var payCode = SystemPayCode(payType);
+        var todam = 0m; // مجموع سایر مالیات، عوارض و وجوه قانونی — در مدل ما ثبت نمی‌شود.
+        var baseAmount = inv.TotalNet - inv.TotalVat - todam; // مأخذ کل (بدون مالیات)
+        var isCashLike = payType is MoadianPayType.Cash or MoadianPayType.Electronic; // تسویه نقدی/الکترونیکی = پرداخت‌شده
+        decimal? cap = isCashLike ? baseAmount : null;
+        var insp = isCashLike ? 0m : baseAmount;
 
         var header = new InvoiceHeaderDto
         {
@@ -404,12 +415,12 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             Tdis = inv.TotalDiscount,
             Tadis = inv.TotalTaxable,
             Tvam = inv.TotalVat,
-            Todam = 0m,
+            Todam = todam,
             Tbill = inv.TotalNet,
             Setm = payCode,
-            Cap = payType == MoadianPayType.Cash ? inv.TotalNet : 0m,
-            Insp = payType == MoadianPayType.Cash ? 0m : inv.TotalNet,
-            Tvop = 0m,
+            Cap = cap,
+            Insp = insp,
+            Tvop = inv.TotalVat,
             Tax17 = 0m
         };
 
@@ -427,19 +438,28 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                 Adis = l.Taxable,
                 Vra = l.VatRate,
                 Vam = l.VatAmount,
+                // سهم این قلم از پرداخت: در تسویه نقدی/الکترونیکی مأخذ+مالیات؛ در بقیه فقط سهم مالیات
+                // (نمونهٔ ارسالی معتبر نسیه: cop=null, vop=vam).
+                Cop = isCashLike ? l.Taxable : null,
+                Vop = l.VatAmount,
                 Tsstam = l.Total
             })
             .ToList();
 
-        var payments = new List<PaymentDto>
-        {
-            new()
+        // در نمونه‌های ارسالی معتبر، تسویه‌های نقدی/نسیه/... با فهرست پرداخت خالی ارسال می‌شوند
+        // (اطلاعات تسویه در cap/insp/tvop سرآمد و cop/vop قلم‌هاست). برای الکترونیکی (کارت)
+        // رکورد پرداخت با روش/مبلغ/زمان ارسال می‌شود.
+        var payments = payType == MoadianPayType.Electronic
+            ? new List<PaymentDto>
             {
-                Pmt = payCode,
-                Pv = (long)inv.TotalNet,
-                Pdt = issueMs
+                new()
+                {
+                    Pmt = payCode,
+                    Pv = (long)inv.TotalNet,
+                    Pdt = issueMs
+                }
             }
-        };
+            : new List<PaymentDto>();
 
         return new InvoiceDto
         {
@@ -452,12 +472,13 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
 
     /// <summary>
     /// نگاشت شناسهٔ خریدار به فیلدهای رسمی سامانه:
-    ///   • Bid = «شماره/شناسه ملی/شناسه مشارکت مدنی/کد فراگیر خریدار» — باید دقیقاً ۱۰ رقم باشد (الگو ^\d{10}$)
-    ///   • Tinb = «شماره اقتصادی/مالیاتی خریدار» — برای حقوقی، شناسهٔ ملی ۱۱ رقمی (الگو ^\d{11}$) این‌جا می‌رود
     ///   • Tob = نوع خریدار: ۱ = حقوقی، ۲ = حقیقی
-    /// تشخیص از روی طول شناسه: ۱۰ رقم → حقیقی (Bid=شماره ملی)؛ ۱۱ رقم → حقوقی (Tinb=شناسه ملی ۱۱ رقمی).
-    /// توجه: کد اقتصادی ۱۴ رقمی قدیمی دیگر توسط سامانه پذیرفته نمی‌شود (خطای 0101204) و در اعتبارسنجی
-    /// پیش از ارسال رد می‌شود.
+    ///   • Bid = «شماره/شناسه ملی/شناسه مشارکت مدنی/کد فراگیر خریدار» — مخصوص اشخاص حقیقی
+    ///     (شمارهٔ ملی ۱۰ رقمی)؛ برای حقوقی خالی می‌ماند (الگوی این فیلد برای ۱۱ رقم نیست و
+    ///     پُر‌کردن آن با ۱۱ رقم، خطای الگو می‌دهد).
+    ///   • Tinb = «شماره اقتصادی خریدار» — برای حقوقی، شناسهٔ ملی ۱۱ رقمی یا کد اقتصادی ۱۴ رقمی
+    ///     این‌جا می‌رود. طبق قواعد سامانه، برای حقوقی و مشارکت مدنی تنها فیلد Tinb الزامی است.
+    /// تشخیص از روی طول شناسه: ۱۰ رقم → حقیقی (Bid)؛ ۱۱ رقم یا ۱۴ رقم → حقوقی (فقط Tinb).
     /// </summary>
     internal static (int? Tob, string? Bid, string? Tinb) ResolveBuyer(Db.MoadianInvoice inv)
     {
@@ -466,10 +487,10 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         if (!id.All(c => c >= '0' && c <= '9')) return (null, null, null);
 
         if (id.Length == 10)
-            return (2, id, null);      // ۱۰ رقم → Bid (الگوی سامانه) — حقیقی
-        if (id.Length == 11)
-            return (1, id, id);        // ۱۱ رقم → Tinb + Bid (الگوی سامانه) — حقوقی، شناسه ملی
-        return (1, null, id);          // سایر (نظیر ۱۴ رقم قدیمی) → Tinb — حقوقی (احتمال رد توسط سامانه)
+            return (2, id, null);      // ۱۰ رقم → حقیقی: Bid = شماره ملی
+        if (id.Length is 11 or 14)
+            return (1, null, id);      // ۱۱ رقم (شناسه ملی) یا ۱۴ رقم (کد اقتصادی) → حقوقی: فقط Tinb
+        return (1, null, null);        // سایر طول‌ها: بدون شناسه (سامانه خود اعتبارسنجی می‌کند)
     }
 
     private static (string Taxid, bool Fallback) ResolveTaxId(
