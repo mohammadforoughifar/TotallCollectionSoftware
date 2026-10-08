@@ -534,10 +534,12 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                     }
 
                     var (mapped, statusFa) = MapSystemStatus(result.Status);
-                    var (_, errCode, errMsg) = ParseInquiryData(result.Data);
+                    var (_, errCode, errMsg, _allErrors) = ParseInquiryData(result.Data);
 
                     invoice.LastInquiryAt = DateTime.Now;
                     invoice.LastInquiryStatus = result.Status;
+                    // پاسخ خام سامانه برای نمایش کامل خطاها/پیام‌ها در جزئیات (بیش از ۴۰۰۰ نویسه نمی‌رود).
+                    invoice.InquiryDataJson = Truncate(DataToJson(result.Data) ?? "", 4000);
                     if (mapped is not null && invoice.Status != MoadianInvoiceStatus.Voided)
                         invoice.Status = mapped.Value;
                     if (!string.IsNullOrWhiteSpace(errCode))
@@ -681,9 +683,13 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     }
 
     /// <summary>خواندن success/error از دادهٔ استعلام (Data) به‌صورت مقاوم در برابر شکل serializer.</summary>
-    internal static (bool? Success, string? Code, string? Msg) ParseInquiryData(object? data)
+    /// <summary>
+    /// تحلیل پاسخ استعلام سامانه: نتیجهٔ کلی + فهرست کامل خطاها/پیام‌ها (error[]).
+    /// اولین خطا برای ستون‌های کلاسیک ErrorCode/ErrorMessage و بقیه برای نمایش در جزئیات.
+    /// </summary>
+    internal static (bool? Success, string? Code, string? Msg, List<(string? Code, string? Msg)> Errors) ParseInquiryData(object? data)
     {
-        if (data is null) return (null, null, null);
+        if (data is null) return (null, null, null, new List<(string?, string?)>());
 
         JsonElement? element = data switch
         {
@@ -691,20 +697,26 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             string s when s.TrimStart().StartsWith("{", StringComparison.Ordinal) => TryParseJson(s),
             _ => SerializeToElement(data)
         };
-        if (element is not { } e) return (null, null, null);
+        if (element is not { } e) return (null, null, null, new List<(string?, string?)>());
 
         bool? success = null;
         if (e.TryGetProperty("success", out var sv) && sv.ValueKind is JsonValueKind.True or JsonValueKind.False)
             success = sv.GetBoolean();
-        string? code = null;
-        string? msg = null;
-        if (e.TryGetProperty("error", out var ev) && ev.ValueKind == JsonValueKind.Array && ev.GetArrayLength() > 0)
+
+        var errors = new List<(string? Code, string? Msg)>();
+        if (e.TryGetProperty("error", out var ev) && ev.ValueKind == JsonValueKind.Array)
         {
-            var first = ev[0];
-            code = first.ValueKind == JsonValueKind.Object && first.TryGetProperty("code", out var cv) ? cv.GetString() : null;
-            msg = first.ValueKind == JsonValueKind.Object && first.TryGetProperty("msg", out var mv) ? mv.GetString() : null;
+            foreach (var item in ev.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                var code = item.TryGetProperty("code", out var cv) && cv.ValueKind == JsonValueKind.String ? cv.GetString() : null;
+                var msg = item.TryGetProperty("msg", out var mv) && mv.ValueKind == JsonValueKind.String ? mv.GetString() : null;
+                if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(msg)) continue;
+                errors.Add((code, msg));
+            }
         }
-        return (success, code, msg);
+
+        return (success, errors.Count > 0 ? errors[0].Code : null, errors.Count > 0 ? errors[0].Msg : null, errors);
     }
 
     private static JsonElement? TryParseJson(string json)

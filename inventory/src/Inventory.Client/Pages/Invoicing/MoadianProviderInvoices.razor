@@ -4,6 +4,7 @@
 @inject IMoadianMasterDataClientService MasterDataSvc
 @inject IMoadianClientService MoadianSvc
 @inject IFiscalPrinterClientService PrinterSvc
+@inject ICompanyProfileService CompanySvc
 @inject IToastService Toast
 @inject IJSRuntime JS
 @inject NavigationManager Nav
@@ -147,7 +148,10 @@ else if (providerId is > 0 && !loading)
                                     <button class="btn btn-sm btn-outline-info" title="جزئیات کامل صورتحساب" @onclick="() => OpenDetails(inv)">
                                         <i class="bi bi-file-earmark-text"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-dark" title="پیش‌نمایش/چاپ برگه" @onclick="() => ShowPrint(inv)">
+                                    <button class="btn btn-sm btn-outline-dark" title="پیش‌نمایش/چاپ برگه حرارتی (رسید)" @onclick="() => ShowPrint(inv)">
+                                        <i class="bi bi-receipt"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" title="چاپ صورتحساب الکترونیکی (A4)" @onclick="() => ShowPaperPrint(inv)">
                                         <i class="bi bi-printer"></i>
                                     </button>
                                     @if (inv.Status == MoadianInvoiceStatus.Draft)
@@ -224,7 +228,29 @@ else if (providerId is > 0 && !loading)
                 }
             </div>
 
-            @if (!string.IsNullOrWhiteSpace(d.ErrorMessage) || !string.IsNullOrWhiteSpace(d.ErrorCode))
+            @if (d.InquiryErrors.Count > 0)
+            {
+                <div class="alert @(d.InquirySuccess == true ? "alert-warning" : "alert-danger") py-2 small">
+                    <strong><i class="bi bi-exclamation-triangle-fill"></i> خطاها و پیام‌های سامانه در آخرین استعلام</strong>
+                    @if (d.LastInquiryAt is DateTime inqAt)
+                    {
+                        <span class="text-muted ms-2">@(FaDateTime(inqAt)) — وضعیت: @(d.LastInquiryStatus ?? "—")</span>
+                    }
+                    <ul class="mb-0 mt-1 ps-3">
+                        @foreach (var er in d.InquiryErrors)
+                        {
+                            <li>
+                                @if (!string.IsNullOrWhiteSpace(er.Code))
+                                {
+                                    <code class="num" dir="ltr">@er.Code</code>
+                                }
+                                @(string.IsNullOrWhiteSpace(er.Message) ? "— (پیامی از سامانه دریافت نشد)" : er.Message)
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(d.ErrorMessage) || !string.IsNullOrWhiteSpace(d.ErrorCode))
             {
                 <div class="alert alert-danger py-2 small">
                     <strong><i class="bi bi-exclamation-triangle-fill"></i> خطای ثبت‌شده — کد: @(d.ErrorCode ?? "—")</strong>
@@ -324,6 +350,9 @@ else if (providerId is > 0 && !loading)
                     <i class="bi bi-send"></i> ارسال به سامانه
                 </button>
             }
+            <button class="btn btn-primary" @onclick="() => ShowPaperPrint(di)">
+                <i class="bi bi-printer"></i> چاپ صورتحساب (A4)
+            </button>
         }
         <button class="btn btn-light" @onclick="CloseDetails">بستن</button>
     </Footer>
@@ -518,6 +547,27 @@ else if (providerId is > 0 && !loading)
     </ChildContent>
 </Modal>
 
+<!-- ===================== مودال چاپ صورتحساب (A4 مطابق نمونه) ===================== -->
+<Modal Visible="showPaperPrint" Title="چاپ صورتحساب الکترونیکی" Size="modal-lg" OnClose="ClosePaperPrint">
+    <ChildContent>
+        <div class="row g-3">
+            <div class="col-md-8">
+                <iframe @ref="paperPrintFrame" class="w-100 border rounded" style="height:480px;background:#fff"></iframe>
+            </div>
+            <div class="col-md-4">
+                <div class="mt-3">
+                    <button class="btn btn-primary w-100" @onclick="BrowserPrintPaper">
+                        <i class="bi bi-printer"></i> چاپ در مرورگر
+                    </button>
+                    <div class="small text-muted mt-3">
+                        پیش‌نمایش مطابق نمونهٔ صورتحساب الکترونیکی؛ اقلام بیش از ۱۸ ردیف در صفحات بعدی چاپ می‌شوند.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </ChildContent>
+</Modal>
+
 @code {
     [Parameter, SupplyParameterFromQuery(Name = "invoice")]
     public int? OpenInvoiceId { get; set; }
@@ -552,6 +602,10 @@ else if (providerId is > 0 && !loading)
     private FiscalPrintResult? printResult;
     private ElementReference printFrame;
     private int printInvoiceId;
+
+    private bool showPaperPrint;
+    private ElementReference paperPrintFrame;
+    private string? paperPrintHtml;
 
     private string detailsTitle => detailsInvoice is null
         ? "جزئیات صورتحساب"
@@ -939,6 +993,35 @@ else if (providerId is > 0 && !loading)
         await JS.InvokeVoidAsync("navigator.clipboard.writeText", printResult?.TicketText ?? "");
         Toast.Success("متن رسید کپی شد.");
     }
+
+    // ---------- چاپ صورتحساب الکترونیکی (A4 مطابق نمونه) ----------
+    private async Task ShowPaperPrint(MoadianInvoice inv)
+    {
+        try
+        {
+            var full = inv.Lines is { Count: > 0 } ? inv : await MoadianSvc.GetInvoiceAsync(inv.Id);
+            CompanyProfileDto? profile = null;
+            try { profile = await CompanySvc.GetAsync(); }
+            catch { /* بدون پروفایل شرکت نیز چاپ می‌شود (نام فروشنده از خود صورتحساب) */ }
+            paperPrintHtml = MoadianInvoicePrint.Build(full, profile, Nav.BaseUri);
+            showPaperPrint = true;
+            await Task.Delay(100);
+            if (paperPrintFrame.Id is not null)
+                await JS.InvokeVoidAsync("eval", $"document.getElementById('{paperPrintFrame.Id}').srcdoc = {System.Text.Json.JsonSerializer.Serialize(paperPrintHtml)};");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error(ex.Message);
+        }
+    }
+
+    private void ClosePaperPrint()
+    {
+        showPaperPrint = false;
+        paperPrintHtml = null;
+    }
+
+    private async Task BrowserPrintPaper() => await JS.InvokeVoidAsync("eval", $"window.open('', '_blank').document.write({System.Text.Json.JsonSerializer.Serialize(paperPrintHtml ?? "")}); setTimeout(() => window.close(), 100);");
 
     // ---------- کمکی ----------
 

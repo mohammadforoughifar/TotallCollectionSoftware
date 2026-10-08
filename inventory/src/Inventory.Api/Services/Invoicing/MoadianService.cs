@@ -864,8 +864,11 @@ public class MoadianService : IMoadianService
         Notes = s.Notes
     };
 
-    private static MoadianInvoice ToDto(Db.MoadianInvoice i, bool? hasDuplicateNumberAcrossPeriods = null) => new()
+    private static MoadianInvoice ToDto(Db.MoadianInvoice i, bool? hasDuplicateNumberAcrossPeriods = null)
     {
+        var (inqSuccess, inqErrors) = ParseInquiryJson(i.InquiryDataJson);
+        return new()
+        {
         Id = i.Id, Number = i.Number, HasDuplicateNumberAcrossPeriods = hasDuplicateNumberAcrossPeriods,
         Kind = i.Kind, InvoiceType = i.InvoiceType,
         InvoicePattern = i.InvoicePattern, InvoiceSubject = i.InvoiceSubject, ReferenceTaxId = i.ReferenceTaxId, Date = i.Date,
@@ -875,6 +878,7 @@ public class MoadianService : IMoadianService
         PayType = i.PayType, PayTypeTitle = MoadianPayTypes.Title(i.PayType),
         ServiceProviderId = i.ServiceProviderId, TaxId22 = i.Taxid,
         LastInquiryAt = i.LastInquiryAt, LastInquiryStatus = i.LastInquiryStatus,
+        InquiryErrors = inqErrors, InquirySuccess = inqSuccess,
         FacInvoiceId = i.FacInvoiceId, OperationsTransactionId = i.OperationsTransactionId,
         FacInvoiceRef = i.FacInvoiceRef, Settlement = i.Settlement,
         TaxId = i.TaxId, SellerName = i.SellerName, EconomicCode = i.EconomicCode,
@@ -893,4 +897,14 @@ public class MoadianService : IMoadianService
             VatRate = l.VatRate, VatAmount = l.VatAmount, Total = l.Total
         }).ToList()
     };
+    }
+
+    /// <summary>پاسخ خام استعلام (JSON) را به فهرست خطاها/پیام‌های نمایش‌داده‌شدنی تبدیل می‌کند.</summary>
+    private static (bool? Success, List<MoadianInquiryError> Errors) ParseInquiryJson(string? dataJson)
+    {
+        if (string.IsNullOrWhiteSpace(dataJson))
+            return (null, new List<MoadianInquiryError>());
+        var (success, _, _, errors) = MoadianSubmissionService.ParseInquiryData(dataJson);
+        return (success, errors.Select(x => new MoadianInquiryError { Code = x.Code, Message = x.Msg }).ToList());
+    }
 }

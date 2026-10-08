@@ -96,6 +96,12 @@ public class MoadianInvoice
 
     /// <summary>وضعیت خام سامانه در آخرین استعلام (PENDING/CONFIRM/SYSTEM_CONFIRM/REJECT).</summary>
     public string? LastInquiryStatus { get; set; }
+
+    /// <summary>خطاها/پیام‌های سامانه در آخرین استعلام (فهرست کامل از error[]).</summary>
+    public List<MoadianInquiryError> InquiryErrors { get; set; } = new();
+
+    /// <summary>نتیجهٔ کلی استعلام: true = پذیرفته/موفق، false = با خطا، null = نامشخص.</summary>
+    public bool? InquirySuccess { get; set; }
     public int? FacInvoiceId { get; set; }
     public int? OperationsTransactionId { get; set; }
     public string? FacInvoiceRef { get; set; }
@@ -148,6 +154,13 @@ public class MoadianInvoiceLine
     public decimal VatAmount { get; set; }
     public decimal Total { get; set; }
     public decimal Taxable => (Quantity * UnitPrice) - Discount;
+}
+
+/// <summary>یک خطا/پیام سامانه در پاسخ استعلام صورتحساب.</summary>
+public class MoadianInquiryError
+{
+    public string? Code { get; set; }
+    public string? Message { get; set; }
 }
 
 /// <summary>لاگ مودیان.</summary>

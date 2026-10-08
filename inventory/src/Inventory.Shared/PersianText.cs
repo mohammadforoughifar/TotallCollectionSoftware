@@ -82,6 +82,68 @@ public static class Fa
     /// <summary>مبلغ به‌صورت عدد و حروف فارسی (ساده).</summary>
     public static string MoneyWithWords(decimal amount) => $"{Money(amount)} ریال";
 
+    private static readonly string[] WordUnits =
+        { "", "یک", "دو", "سه", "چهار", "پنج", "شش", "هفت", "هشت", "نُه", "ده",
+          "یازده", "دوازده", "سیزده", "چهارده", "پانزده", "شانزده", "هفده", "هجده", "نوزده" };
+    private static readonly string[] WordTens =
+        { "", "", "بیست", "سی", "چهل", "پنجاه", "شصت", "هفتاد", "هشتاد", "نود" };
+    private static readonly string[] WordScales = { "", "هزار", "میلیون", "میلیارد", "تریلیون" };
+
+    /// <summary>مبلغ به حروف فارسی (مانند «مجموع به حروف» روی صورتحساب).</summary>
+    public static string Words(decimal amount)
+    {
+        var negative = amount < 0;
+        var abs = decimal.Abs(amount);
+        var n = decimal.ToInt64(decimal.Truncate(abs));
+        var frac = decimal.ToInt64(decimal.Round((abs - n) * 100));
+
+        if (n == 0 && frac == 0) return "صفر";
+
+        var groups = new List<long>();
+        while (n > 0)
+        {
+            groups.Insert(0, n % 1000);
+            n /= 1000;
+        }
+
+        var parts = new List<string>();
+        for (var i = 0; i < groups.Count; i++)
+        {
+            var g = groups[i];
+            if (g == 0) continue;
+            var scale = groups.Count - 1 - i;
+            var groupText = GroupToWords((int)g);
+            if (scale > 0 && scale < WordScales.Length)
+                groupText = scale == 2 && g == 1 ? "یک میلیون" : groupText + " " + WordScales[scale];
+            parts.Add(groupText);
+        }
+
+        var result = string.Join(" و ", parts);
+        if (frac > 0)
+            result += " و " + GroupToWords((int)frac) + " قرش";
+        return negative ? "منفی " + result : result;
+    }
+
+    private static string GroupToWords(int g)
+    {
+        if (g == 0) return "";
+        var parts = new List<string>();
+        var h = g / 100;
+        var rest = g % 100;
+        if (h > 0) parts.Add(h == 1 ? "صد" : WordUnits[h] + "صد");
+        if (rest > 0)
+        {
+            if (rest < 20) parts.Add(WordUnits[rest]);
+            else
+            {
+                var t = rest / 10;
+                var o = rest % 10;
+                parts.Add(o == 0 ? WordTens[t] : WordTens[t] + " و " + WordUnits[o]);
+            }
+        }
+        return string.Join(" و ", parts);
+    }
+
     /// <summary>قالب‌بندی زنده ورودی عددی حین تایپ با جداکننده سه‌رقمی (حفظ اعشار + ارقام فارسی).</summary>
     public static string FormatTyping(string? value)
     {

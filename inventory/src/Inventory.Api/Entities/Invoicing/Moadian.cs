@@ -235,6 +235,12 @@ public class MoadianInvoice
     /// <summary>وضعیت خام سامانه در آخرین استعلام (PENDING/CONFIRM/SYSTEM_CONFIRM/REJECT).</summary>
     [MaxLength(40)] public string? LastInquiryStatus { get; set; }
 
+    /// <summary>
+    /// پاسخ خام استعلام از سامانه (JSON) — شامل فهرست کامل خطاها/پیام‌ها؛
+    /// برای نمایش «خطاها و پیام‌های صورتحساب» در جزئیات استفاده می‌شود.
+    /// </summary>
+    [MaxLength(4000)] public string? InquiryDataJson { get; set; }
+
     [MaxLength(120)] public string? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     [MaxLength(600)] public string? Description { get; set; }
