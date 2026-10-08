@@ -86,16 +86,24 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         if (string.IsNullOrWhiteSpace(invoice.BuyerName))
             throw new InvalidOperationException("نام خریدار ثبت نشده است.");
 
-        var buyerId = invoice.BuyerTaxId?.Trim();
+        // تبدیل ارقام فارسی/عربی به ASCII — سامانه فقط ارقام انگلیسی می‌پذیرد (در غیر این صورت خطای الگو مثل 0101204)
+        invoice.BuyerTaxId = NormalizeDigits(invoice.BuyerTaxId);
+        if (!string.IsNullOrWhiteSpace(invoice.BuyerTaxId))
+            invoice.BuyerTaxId = invoice.BuyerTaxId.Trim();
+        invoice.BuyerPostalCode = string.IsNullOrWhiteSpace(invoice.BuyerPostalCode)
+            ? invoice.BuyerPostalCode
+            : (NormalizeDigits(invoice.BuyerPostalCode)?.Trim());
+
+        var buyerId = invoice.BuyerTaxId;
         if (string.IsNullOrWhiteSpace(buyerId))
             throw new InvalidOperationException("شناسهٔ خریدار ثبت نشده است؛ «شمارهٔ ملی ۱۰ رقمی» (حقیقی) یا «شناسهٔ ملی ۱۱ رقمی» (حقوقی) را درج کنید.");
-        if (!buyerId.All(char.IsDigit))
+        if (!buyerId.All(c => c >= '0' && c <= '9'))
             throw new InvalidOperationException("شناسهٔ خریدار باید فقط عدد باشد: ۱۰ رقم برای اشخاص حقیقی (شمارهٔ ملی) یا ۱۱ رقم برای اشخاص حقوقی (شناسهٔ ملی).");
         if (buyerId.Length == 14)
             throw new InvalidOperationException(
                 "کد اقتصادی ۱۴ رقمی دیگر پذیرفته نمی‌شود (خطای 0101204 سامانه): برای خریدار حقوقی، «شناسهٔ ملی ۱۱ رقمی» را در شناسهٔ خریدار ثبت و دوباره ارسال کنید. برای خریدار حقیقی، «شمارهٔ ملی ۱۰ رقمی» را درج کنید.");
 
-        var tins = FirstNonEmpty(invoice.EconomicCode, provider.EconomicNumber, provider.NationalID);
+        var tins = NormalizeDigits(FirstNonEmpty(invoice.EconomicCode, provider.EconomicNumber, provider.NationalID))?.Trim();
         if (string.IsNullOrWhiteSpace(tins))
             throw new InvalidOperationException("شماره اقتصادی فروشنده (Tins) مشخص نیست؛ در پروفایل خدمات‌دهنده ثبت کنید.");
 
@@ -389,7 +397,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             Tob = tob,
             Bid = bid,
             Tinb = tinb,
-            Bpc = NullIfEmpty(inv.BuyerPostalCode),
+            Bpc = NullIfEmpty(NormalizeDigits(inv.BuyerPostalCode)),
             Tprdis = inv.TotalGross,
             Tdis = inv.TotalDiscount,
             Tadis = inv.TotalTaxable,
@@ -407,7 +415,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             .OrderBy(l => l.RowNo)
             .Select(l => new InvoiceBodyDto
             {
-                Sstid = l.SstId,
+                Sstid = NullIfEmpty(NormalizeDigits(l.SstId)) ?? l.SstId,
                 Sstt = l.SstTitle,
                 Mu = NullIfEmpty(l.UnitCode),
                 Am = l.Quantity,
@@ -451,14 +459,14 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     /// </summary>
     internal static (int? Tob, string? Bid, string? Tinb) ResolveBuyer(Db.MoadianInvoice inv)
     {
-        var id = inv.BuyerTaxId?.Trim();
+        var id = NormalizeDigits(inv.BuyerTaxId)?.Trim();
         if (string.IsNullOrWhiteSpace(id)) return (null, null, null);
-        if (!id.All(char.IsDigit)) return (null, null, null);
+        if (!id.All(c => c >= '0' && c <= '9')) return (null, null, null);
 
         if (id.Length == 10)
             return (2, id, null);      // ۱۰ رقم → Bid (الگوی سامانه) — حقیقی
         if (id.Length == 11)
-            return (1, null, id);      // ۱۱ رقم → Tinb (الگوی سامانه) — حقوقی، شناسه ملی
+            return (1, id, id);        // ۱۱ رقم → Tinb + Bid (الگوی سامانه) — حقوقی، شناسه ملی
         return (1, null, id);          // سایر (نظیر ۱۴ رقم قدیمی) → Tinb — حقوقی (احتمال رد توسط سامانه)
     }
 
@@ -782,6 +790,24 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// تبدیل ارقام فارسی (۰-۹)، عربی (٠-٩) و پهن‌فرمت (０-９) به ASCII 0-9 —
+    /// سامانه مودیان در الگوهای خود فقط ارقام انگلیسی می‌پذیرد.
+    /// </summary>
+    internal static string? NormalizeDigits(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        var sb = new System.Text.StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            if (ch >= '\u06F0' && ch <= '\u06F9') sb.Append((char)(ch - '\u06F0' + '0'));
+            else if (ch >= '\u0660' && ch <= '\u0669') sb.Append((char)(ch - '\u0660' + '0'));
+            else if (ch >= '\uFF10' && ch <= '\uFF19') sb.Append((char)(ch - '\uFF10' + '0'));
+            else sb.Append(ch);
+        }
+        return sb.ToString();
     }
 
     private static string? DataToJson(object? data)
