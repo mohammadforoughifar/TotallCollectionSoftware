@@ -245,6 +245,10 @@ else if (providerId is > 0 && !loading)
                                     <code class="num" dir="ltr">@er.Code</code>
                                 }
                                 @(string.IsNullOrWhiteSpace(er.Message) ? "— (پیامی از سامانه دریافت نشد)" : er.Message)
+                                @if (SystemErrorHint(er.Code) is { } hint)
+                                {
+                                    <div class="text-success mt-1"><i class="bi bi-lightbulb"></i> راه‌حل: @hint</div>
+                                }
                             </li>
                         }
                     </ul>
@@ -1110,6 +1114,21 @@ else if (providerId is > 0 && !loading)
     }
 
     // ---------- کمکی ----------
+
+    /// <summary>راه‌حل عملیاتی برای کدهای خطای شناخته‌شدهٔ سامانهٔ مودیان (نمایش زیر همان خطا).</summary>
+    private static string? SystemErrorHint(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        return code.Trim() switch
+        {
+            "0101204" => "برای خریدار «حقوقی»، در «شناسهٔ ملی/اقتصادی خریدار» باید «شناسهٔ ملی ۱۱ رقمی» ثبت شود؛ کد اقتصادی ۱۴ رقمی قدیمی دیگر پذیرفته نمی‌شود. شناسه را اصلاح کنید و فاکتور را دوباره ثبت کنید.",
+            "0101104" => "برای خریدار «حقیقی»، باید «شمارهٔ ملی ۱۰ رقمی» ثبت شده باشد (بدون فاصله). شناسه را اصلاح کنید و فاکتور را دوباره ثبت کنید.",
+            "0107502" or "0102802" => "روش پرداخت/تسویه نامعتبر است؛ معمولاً یعنی نسخهٔ قدیمی نرم‌افزار در حال اجراست. git pull و build مجدد بگیرید و دوباره ثبت کنید.",
+            "0012" => "فیلد «شماره اقتصادی خریدار» خالی مانده است؛ شناسهٔ معتبر (۱۱ رقمی حقوقی یا ۱۴ رقمی حقیقی) را ثبت کنید.",
+            "0301201" => "شماره اقتصادی خریدار با اطلاعات سامانه منطبق نیست؛ صحت شناسه را از سامانهٔ مالیاتی استعلام بگیرید.",
+            _ => null
+        };
+    }
 
     private static string ProviderTitle(MoadianServiceProviderProfileDto p)
         => string.IsNullOrWhiteSpace(p.PersianName) ? (p.EnglishName ?? $"خدمات‌دهنده {p.NationalId}") : p.PersianName;
