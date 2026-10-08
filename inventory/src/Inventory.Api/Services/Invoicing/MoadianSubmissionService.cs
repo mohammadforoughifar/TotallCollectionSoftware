@@ -380,6 +380,11 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     /// <summary>
     /// ساخت DTO رسمی (INVOICE.V01) از موجودیت داخلی — نگاشت مستقیم فیلدهای سامانه.
     ///
+    /// مبالغ ریالی به‌صورت «ریل صحیح» ارسال می‌شوند (Math.Truncate) و مجموع‌های
+    /// سرآمد از همین قلم‌های roundشده ساخته می‌شوند تا همهٔ قواعد کنترل سامانه
+    /// با صفر خطا برقرار بماند:
+    ///   • هر قلم: adis = prdis − dis و tsstam = adis + vam
+    ///   • سرآمد: Σقلم‌ها = مجموع سرآمد و tbill = tadis + tvam + todam
     /// قواعد رسمی مبلغ‌های تسویه (بر اساس دستورالعمل فنی سامانه و نمونه‌های ارسالی معتبر):
     ///   • cap  (مبلغ پرداختی نقدی) = tbill − todam − tvam − insp   ← «مأخذ» (بدون مالیات)
     ///   • insp (مبلغ پرداختی نسیه)  = tbill − todam − tvam − cap
@@ -394,9 +399,54 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         var (tob, bid, tinb) = ResolveBuyer(inv);
         var payType = inv.PayType ?? MoadianPayType.Cash;
         var payCode = SystemPayCode(payType);
-        var todam = 0m; // مجموع سایر مالیات، عوارض و وجوه قانونی — در مدل ما ثبت نمی‌شود.
-        var baseAmount = inv.TotalNet - inv.TotalVat - todam; // مأخذ کل (بدون مالیات)
         var isCashLike = payType is MoadianPayType.Cash or MoadianPayType.Electronic; // تسویه نقدی/الکترونیکی = پرداخت‌شده
+
+        // ---------- قلم‌ها (مبالغ ریالی به ریل صحیح) ----------
+        var rows = inv.Lines
+            .OrderBy(l => l.RowNo)
+            .Select(l => new
+            {
+                L = l,
+                Fee = Math.Truncate(l.UnitPrice),
+                Prdis = Math.Truncate(l.Quantity * l.UnitPrice),
+                Dis = Math.Truncate(l.Discount)
+            })
+            .ToList();
+
+        var body = rows
+            .Select(r =>
+            {
+                var adis = r.Prdis - r.Dis;                 // دقیق: adis = prdis − dis
+                var vam = Math.Truncate(r.L.VatAmount);
+                return new InvoiceBodyDto
+                {
+                    Sstid = NullIfEmpty(NormalizeDigits(r.L.SstId)) ?? r.L.SstId,
+                    Sstt = r.L.SstTitle,
+                    Mu = NullIfEmpty(r.L.UnitCode),
+                    Am = r.L.Quantity,
+                    Fee = r.Fee,
+                    Prdis = r.Prdis,
+                    Dis = r.Dis,
+                    Adis = adis,
+                    Vra = r.L.VatRate,
+                    Vam = vam,
+                    // سهم این قلم از پرداخت: در تسویه نقدی/الکترونیکی مأخذ+مالیات؛ در بقیه فقط سهم مالیات
+                    // (نمونهٔ ارسالی معتبر نسیه: cop=null, vop=vam).
+                    Cop = isCashLike ? adis : null,
+                    Vop = vam,
+                    Tsstam = adis + vam                      // دقیق: tsstam = adis + vam
+                };
+            })
+            .ToList();
+
+        // ---------- مجموع‌های سرآمد از همان قلم‌های roundشده ----------
+        var tprdis = rows.Sum(r => r.Prdis);
+        var tdis = rows.Sum(r => r.Dis);
+        var tadis = rows.Sum(r => r.Prdis - r.Dis);
+        var tvam = body.Sum(b => b.Vam);
+        var todam = 0m; // مجموع سایر مالیات، عوارض و وجوه قانونی — در مدل ما ثبت نمی‌شود.
+        var tbill = tadis + tvam + todam;                    // دقیق: tbill = tadis + tvam + todam
+        var baseAmount = tbill - tvam - todam;               // مأخذ کل (بدون مالیات)
         decimal? cap = isCashLike ? baseAmount : null;
         var insp = isCashLike ? 0m : baseAmount;
 
@@ -415,40 +465,18 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             Bid = bid,
             Tinb = tinb,
             Bpc = NullIfEmpty(NormalizeDigits(inv.BuyerPostalCode)),
-            Tprdis = inv.TotalGross,
-            Tdis = inv.TotalDiscount,
-            Tadis = inv.TotalTaxable,
-            Tvam = inv.TotalVat,
+            Tprdis = tprdis,
+            Tdis = tdis,
+            Tadis = tadis,
+            Tvam = tvam,
             Todam = todam,
-            Tbill = inv.TotalNet,
+            Tbill = tbill,
             Setm = payCode,
             Cap = cap,
             Insp = insp,
-            Tvop = inv.TotalVat,
+            Tvop = tvam,
             Tax17 = 0m
         };
-
-        var body = inv.Lines
-            .OrderBy(l => l.RowNo)
-            .Select(l => new InvoiceBodyDto
-            {
-                Sstid = NullIfEmpty(NormalizeDigits(l.SstId)) ?? l.SstId,
-                Sstt = l.SstTitle,
-                Mu = NullIfEmpty(l.UnitCode),
-                Am = l.Quantity,
-                Fee = l.UnitPrice,
-                Prdis = l.Quantity * l.UnitPrice,
-                Dis = l.Discount,
-                Adis = l.Taxable,
-                Vra = l.VatRate,
-                Vam = l.VatAmount,
-                // سهم این قلم از پرداخت: در تسویه نقدی/الکترونیکی مأخذ+مالیات؛ در بقیه فقط سهم مالیات
-                // (نمونهٔ ارسالی معتبر نسیه: cop=null, vop=vam).
-                Cop = isCashLike ? l.Taxable : null,
-                Vop = l.VatAmount,
-                Tsstam = l.Total
-            })
-            .ToList();
 
         // در نمونه‌های ارسالی معتبر، تسویه‌های نقدی/نسیه/... با فهرست پرداخت خالی ارسال می‌شوند
         // (اطلاعات تسویه در cap/insp/tvop سرآمد و cop/vop قلم‌هاست). برای الکترونیکی (کارت)
@@ -459,7 +487,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                 new()
                 {
                     Pmt = payCode,
-                    Pv = (long)inv.TotalNet,
+                    Pv = (long)tbill,
                     Pdt = issueMs
                 }
             }
