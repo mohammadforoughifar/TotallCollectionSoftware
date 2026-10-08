@@ -61,8 +61,11 @@ public static class RbacSeeder
         ["FixedAssets"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
         // Budgets: بودجه و کنترل بودجه
         ["Budgets"] = CrudActions,
-        // Moadian: سامانه مودیان — Send: ارسال/ابطال/برگشت فاکتورها
-        ["Moadian"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Send" },
+        // Moadian: عملیات مودیان — Send: ارسال/ابطال/برگشت فاکتورها
+        // دسترسی تفکیکی هر فرم (زیرمنوی «عملیات مودیان» داخل ماژول عملیات):
+        //   MasterData: اطلاعات پایه مودیان | ProviderInvoices: صورتحساب‌های خدمات‌دهنده
+        //   InvoiceNew: ثبت صورتحساب جدید | FiscalYears: سال مالی مودیان
+        ["Moadian"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Send", "MasterData", "ProviderInvoices", "InvoiceNew", "FiscalYears" },
         // FiscalPrinter: چاپگر مالی — Print: چاپ رسید
         ["FiscalPrinter"] = new[] { "Create", "Read", "Update", "Delete", "Print" },
         // ================== ماژول فاکتور ==================
@@ -416,6 +419,35 @@ public static class RbacSeeder
                 {
                     await db.SaveChangesAsync();
                     Console.WriteLine($"[RBAC] {added} پرمیشن DevTeam به Admin اضافه شد.");
+                }
+            }
+        }
+
+        // ================== مودیان — دسترسی تفکیکی فرم‌ها (ارتقا از نسخه‌های قبلی) ==================
+        // فرم‌های مودیان حالا مجوز جدا دارند (MasterData/ProviderInvoices/InvoiceNew/FiscalYears).
+        // برای اینکه این فرم‌ها بعد از ارتقا از منوی نقش‌های فعلی حذف نشوند، هر چهار مجوز
+        // به نقشی داده می‌شود که «Read» ماژول مودیان را دارد؛ مدیر می‌تواند بعداً از
+        // «تنظیمات ← نقش‌ها و دسترسی‌ها» دسترسی هر فرم را جداگانه محدود کند.
+        {
+            var moadianRead = await db.Permissions.FirstOrDefaultAsync(p => p.Module == "Moadian" && p.Action == "Read");
+            if (moadianRead != null)
+            {
+                var formActions = new[] { "MasterData", "ProviderInvoices", "InvoiceNew", "FiscalYears" };
+                var formPerms = await db.Permissions
+                    .Where(p => p.Module == "Moadian" && formActions.Contains(p.Action)).ToListAsync();
+                if (formPerms.Count > 0)
+                {
+                    var readerRoleIds = await db.RolePermissions
+                        .Where(rp => rp.PermissionId == moadianRead.Id)
+                        .Select(rp => rp.RoleId).Distinct().ToListAsync();
+                    foreach (var roleId in readerRoleIds)
+                    {
+                        var has = await db.RolePermissions.Where(rp => rp.RoleId == roleId)
+                            .Select(rp => rp.PermissionId).ToListAsync();
+                        foreach (var perm in formPerms.Where(p => !has.Contains(p.Id)))
+                            db.RolePermissions.Add(new RolePermission { RoleId = roleId, PermissionId = perm.Id });
+                    }
+                    await db.SaveChangesAsync();
                 }
             }
         }

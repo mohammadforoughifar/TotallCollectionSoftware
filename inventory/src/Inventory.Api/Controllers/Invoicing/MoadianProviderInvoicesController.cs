@@ -39,7 +39,7 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
         [FromQuery] int skip = 0,
         [FromQuery] int? take = null)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         if (providerId <= 0)
             return BadRequest(new { message = "خدمات‌دهنده را انتخاب کنید." });
         Response.Headers.CacheControl = "no-store";
@@ -49,7 +49,7 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
     [HttpPost("{id:int}/send")]
     public async Task<ActionResult<MoadianSubmissionResultDto>> Send(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Send") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Send", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         try
         {
             return Ok(await _submission.SendAsync(id, MyUsername));
@@ -66,7 +66,7 @@ public sealed class MoadianProviderInvoicesController : RbacControllerBase
     [HttpPost("{id:int}/inquiry")]
     public async Task<ActionResult<MoadianSubmissionResultDto>> Inquiry(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         try
         {
             return Ok(await _submission.InquiryAsync(id, MyUsername));

@@ -28,42 +28,42 @@ public sealed class MoadianStandaloneController : RbacControllerBase
     [HttpGet("fiscal-years")]
     public async Task<ActionResult<List<MoadianFiscalYearDto>>> GetYears([FromQuery] int? providerId)
     {
-        if (await ForbiddenUnlessAnyAsync("Moadian", "Read", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", new[] { "Read", "Create" }, "FiscalYears", "InvoiceNew") is ObjectResult forbidden) return forbidden;
         return Ok(await _years.GetYearsAsync(providerId));
     }
 
     [HttpGet("fiscal-years/{id:int}")]
     public async Task<ActionResult<MoadianFiscalYearDetailDto>> GetYear(int id)
     {
-        if (await ForbiddenUnlessAnyAsync("Moadian", "Read", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", new[] { "Read", "Create" }, "FiscalYears", "InvoiceNew") is ObjectResult forbidden) return forbidden;
         return await ReadAsync(() => _years.GetYearAsync(id));
     }
 
     [HttpPost("fiscal-years")]
     public async Task<ActionResult<MoadianFiscalYearDetailDto>> SaveYear([FromBody] MoadianFiscalYearRequest request)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Create", "FiscalYears") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _years.SaveYearAsync(request));
     }
 
     [HttpPost("fiscal-years/{id:int}/close")]
     public async Task<ActionResult<MoadianFiscalYearDetailDto>> CloseYear(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "FiscalYears") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _years.SetYearClosedAsync(id, true));
     }
 
     [HttpPost("fiscal-years/{id:int}/reopen")]
     public async Task<ActionResult<MoadianFiscalYearDetailDto>> ReopenYear(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "FiscalYears") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _years.SetYearClosedAsync(id, false));
     }
 
     [HttpDelete("fiscal-years/{id:int}")]
     public async Task<IActionResult> DeleteYear(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Delete") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Delete", "FiscalYears") is ObjectResult forbidden) return forbidden;
         try
         {
             await _years.DeleteYearAsync(id);
@@ -81,14 +81,14 @@ public sealed class MoadianStandaloneController : RbacControllerBase
     [HttpPost("fiscal-periods/{id:int}/close")]
     public async Task<ActionResult<MoadianFiscalPeriodDto>> ClosePeriod(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "FiscalYears") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _years.SetPeriodClosedAsync(id, true));
     }
 
     [HttpPost("fiscal-periods/{id:int}/reopen")]
     public async Task<ActionResult<MoadianFiscalPeriodDto>> ReopenPeriod(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "FiscalYears") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _years.SetPeriodClosedAsync(id, false));
     }
 
@@ -100,7 +100,7 @@ public sealed class MoadianStandaloneController : RbacControllerBase
         [FromQuery] DateTime? date = null,
         [FromQuery] int? providerId = null)
     {
-        if (await ForbiddenUnlessAnyAsync("Moadian", "Read", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "InvoiceNew") is ObjectResult forbidden) return forbidden;
         Response.Headers.CacheControl = "no-store";
         return Ok(await _years.GetNextNumberAsync(fiscalYearId, date, periodId: null, providerId: providerId));
     }
@@ -108,7 +108,7 @@ public sealed class MoadianStandaloneController : RbacControllerBase
     [HttpPost("invoices")]
     public async Task<ActionResult<MoadianInvoice>> Create([FromBody] MoadianStandaloneInvoiceRequest request)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Create", "InvoiceNew") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _invoices.CreateAsync(request, MyUsername));
     }
 

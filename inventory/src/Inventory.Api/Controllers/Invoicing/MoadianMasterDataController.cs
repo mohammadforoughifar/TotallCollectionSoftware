@@ -31,35 +31,35 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpGet("providers")]
     public async Task<ActionResult<List<MoadianServiceProviderProfileDto>>> GetProviders()
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "MasterData", "InvoiceNew", "FiscalYears", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         return Ok(await _service.GetProvidersAsync());
     }
 
     [HttpPost("providers")]
     public async Task<ActionResult<MoadianServiceProviderProfileDto>> CreateProvider([FromBody] MoadianServiceProviderProfileDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Create", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.CreateProviderAsync(dto));
     }
 
     [HttpPut("providers/{id:int}")]
     public async Task<ActionResult<MoadianServiceProviderProfileDto>> UpdateProvider(int id, [FromBody] MoadianServiceProviderProfileDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.UpdateProviderAsync(id, dto));
     }
 
     [HttpDelete("providers/{id:int}")]
     public async Task<IActionResult> DeleteProvider(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Delete") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Delete", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetProviderDeletedAsync(id, true));
     }
 
     [HttpPost("providers/{id:int}/restore")]
     public async Task<IActionResult> RestoreProvider(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetProviderDeletedAsync(id, false));
     }
 
@@ -67,7 +67,7 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpGet("connections")]
     public async Task<ActionResult<List<MoadianProviderConnectionProfileDto>>> GetConnections([FromQuery] int? serviceProviderId)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "MasterData", "InvoiceNew", "FiscalYears", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         return Ok(await _service.GetConnectionsAsync(serviceProviderId));
     }
 
@@ -125,7 +125,7 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpPost("connections/{id:int}/test-connection")]
     public async Task<IActionResult> TestConnection(int id, CancellationToken cancellationToken)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is { } forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "MasterData", "InvoiceNew", "FiscalYears", "ProviderInvoices") is { } forbidden) return forbidden;
         Response.Headers.CacheControl = "no-store";
         try
         {
@@ -175,70 +175,70 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpGet("customers")]
     public async Task<ActionResult<List<MoadianCustomerProfileDto>>> GetCustomers([FromQuery] int? serviceProviderId)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "MasterData", "InvoiceNew", "FiscalYears", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         return Ok(await _service.GetCustomersAsync(serviceProviderId));
     }
 
     [HttpPost("customers")]
     public async Task<ActionResult<MoadianCustomerProfileDto>> CreateCustomer([FromBody] MoadianCustomerProfileDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Create", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.CreateCustomerAsync(dto));
     }
 
     [HttpPut("customers/{id:int}")]
     public async Task<ActionResult<MoadianCustomerProfileDto>> UpdateCustomer(int id, [FromBody] MoadianCustomerProfileDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.UpdateCustomerAsync(id, dto));
     }
 
     [HttpDelete("customers/{id:int}")]
     public async Task<IActionResult> DeleteCustomer(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Delete") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Delete", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetCustomerDeletedAsync(id, true));
     }
 
     [HttpPost("customers/{id:int}/restore")]
     public async Task<IActionResult> RestoreCustomer(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetCustomerDeletedAsync(id, false));
     }
 
     [HttpGet("goods-services")]
     public async Task<ActionResult<List<MoadianGoodsOrServiceProfileDto>>> GetGoodsOrServices([FromQuery] int? serviceProviderId)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "MasterData", "InvoiceNew", "FiscalYears", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         return Ok(await _service.GetGoodsOrServicesAsync(serviceProviderId));
     }
 
     [HttpPost("goods-services")]
     public async Task<ActionResult<MoadianGoodsOrServiceProfileDto>> CreateGoodsOrService([FromBody] MoadianGoodsOrServiceProfileDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Create", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.CreateGoodsOrServiceAsync(dto));
     }
 
     [HttpPut("goods-services/{id:int}")]
     public async Task<ActionResult<MoadianGoodsOrServiceProfileDto>> UpdateGoodsOrService(int id, [FromBody] MoadianGoodsOrServiceProfileDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.UpdateGoodsOrServiceAsync(id, dto));
     }
 
     [HttpDelete("goods-services/{id:int}")]
     public async Task<IActionResult> DeleteGoodsOrService(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Delete") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Delete", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetGoodsOrServiceDeletedAsync(id, true));
     }
 
     [HttpPost("goods-services/{id:int}/restore")]
     public async Task<IActionResult> RestoreGoodsOrService(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetGoodsOrServiceDeletedAsync(id, false));
     }
 
@@ -247,7 +247,7 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [DisableRequestSizeLimit]
     public async Task<ActionResult<ExcelImportResult>> ImportGoodsOrServices(IFormFile? file)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Create", "MasterData") is ObjectResult forbidden) return forbidden;
         if (file is null || file.Length == 0)
             return BadRequest(new { message = "فایل اکسل انتخاب نشده است." });
         if (!file.FileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
@@ -279,35 +279,35 @@ public sealed class MoadianMasterDataController : RbacControllerBase
     [HttpGet("units")]
     public async Task<ActionResult<List<MoadianUnitOfMeasurementDto>>> GetUnits()
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Read") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Read", "MasterData", "InvoiceNew", "FiscalYears", "ProviderInvoices") is ObjectResult forbidden) return forbidden;
         return Ok(await _service.GetUnitsAsync());
     }
 
     [HttpPost("units")]
     public async Task<ActionResult<MoadianUnitOfMeasurementDto>> CreateUnit([FromBody] MoadianUnitOfMeasurementDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Create") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Create", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.CreateUnitAsync(dto));
     }
 
     [HttpPut("units/{id:int}")]
     public async Task<ActionResult<MoadianUnitOfMeasurementDto>> UpdateUnit(int id, [FromBody] MoadianUnitOfMeasurementDto dto)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.UpdateUnitAsync(id, dto));
     }
 
     [HttpDelete("units/{id:int}")]
     public async Task<IActionResult> DeleteUnit(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Delete") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Delete", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetUnitDeletedAsync(id, true));
     }
 
     [HttpPost("units/{id:int}/restore")]
     public async Task<IActionResult> RestoreUnit(int id)
     {
-        if (await ForbiddenUnlessAsync("Moadian", "Update") is ObjectResult forbidden) return forbidden;
+        if (await ForbiddenUnlessFormAsync("Moadian", "Update", "MasterData") is ObjectResult forbidden) return forbidden;
         return await WriteAsync(() => _service.SetUnitDeletedAsync(id, false));
     }
 
