@@ -117,11 +117,10 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         {
             // کلاینت اولین شناسه ساخته می‌شود تا تولیدکنندهٔ رسمی taxid از DI SDK در دسترس باشد.
             var firstClient = CreateTaxApis(baseUrl, connection.PrivateKeyPath, keyId, clientType, apiVersion, identities[0].Value);
-            // لحظهٔ ارسال: تاریخ‌های داخل پنجرهٔ ۰۰:۰۰ تا ۰۳:۲۹ (وقت محلی/تهران) در UTC به
-            // «روز قبل» تعلق می‌گیرند و روزِ توکن‌دارِ taxid (که از روز UTC ساخته می‌شود) با
-            // تاریخ شمسی صورتحساب از نظر سامانه منطبق نمی‌شود. برای از بین بردن ابهام،
-            // این تاریخ‌ها به ظهرِ همان روز جابه‌جا می‌شوند تا روز UTC و روز محلی یکی باشند.
-            var issueDate = ToSafeIssueDate(invoice.Date);
+            // لحظهٔ ارسال: ساعت دقیق و واقعی سیستم در همان لحظهٔ ارسال (مثل sample رسمی SDK:
+            // Indatim = now و taxid از همان لحظه) — این‌طور taxid و indatim همیشه از یک
+            // لحظه ساخته می‌شوند و روز آن‌ها با هم منطبق است.
+            var issueDate = DateTime.Now;
             var (taxid, usedFallback) = ResolveTaxId(invoice, connection.TaxMemoryID, invoice.Number, issueDate, firstClient.Provider);
             var invoiceDto = BuildInvoiceDto(invoice, tins, taxid, issueDate, out _);
 
@@ -497,18 +496,6 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             return (1, null, id);      // ۱۱ رقم (شناسه ملی) یا ۱۴ رقم (کد اقتصادی) → حقوقی: فقط Tinb
         return (1, null, null);        // سایر طول‌ها: بدون شناسه (سامانه خود اعتبارسنجی می‌کند)
     }
-
-    /// <summary>
-    /// لحظهٔ ارسال بدون ابهام زمانی: اگر ساعت‌وزمان صورتحساب داخل پنجرهٔ ۰۰:۰۰ تا ۰۳:۲۹
-    /// (وقت محلی/تهران) باشد، آن لحظه در UTC هنوز متعلق به «روز قبل» است؛ در نتیجه روزی
-    /// که taxid از آن ساخته می‌شود (تعداد روزهای UTC از ۱۹۷۰) با تاریخ (شمسی/میلیادی محلی)
-    /// صورتحساب یکی نیست و سامانه می‌تواند آن را رد کند. این تاریخ‌ها به ظهرِ (۱۲:۰۰) همان
-    /// روز جابه‌جا می‌شوند — همان روز — تا تحت هر تفسیری (روز UTC یا روز محلی) روزها منطبق باشند.
-    /// </summary>
-    internal static DateTime ToSafeIssueDate(DateTime date)
-        => date.TimeOfDay < TimeSpan.FromHours(3).Add(TimeSpan.FromMinutes(30))
-            ? date.Date + TimeSpan.FromHours(12)
-            : date;
 
     private static (string Taxid, bool Fallback) ResolveTaxId(
         Db.MoadianInvoice invoice, string taxMemoryId, long serial, DateTime date, IServiceProvider services)
