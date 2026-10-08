@@ -36,17 +36,26 @@ CREATE TABLE IF NOT EXISTS [MoadianFiscalYears] (
     [IsClosed] INTEGER NOT NULL DEFAULT 0,
     [Notes] TEXT NULL,
     [CreatedAt] TEXT NOT NULL
-);
-CREATE UNIQUE INDEX IF NOT EXISTS [IX_MoadianFiscalYears_Year] ON [MoadianFiscalYears] ([Year]);");
+);");
+
+        // ایندکس یکتای قدیمی فقط روی (Year) تا زمانی اعتبار دارد که ایندکس به‌ازای هر خدمات‌دهندهٔ V13 نباشد.
+        if (!await SqliteIndexExistsAsync(db, "IX_MoadianFiscalYears_ProviderYear"))
+            await db.Database.ExecuteSqlRawAsync(
+                "CREATE UNIQUE INDEX IF NOT EXISTS [IX_MoadianFiscalYears_Year] ON [MoadianFiscalYears] ([Year]);");
 
         await AddSqliteColumnAsync(db, "MoadianInvoices", "FiscalYearId", "INTEGER NULL");
         await AddSqliteColumnAsync(db, "MoadianInvoices", "YearSerial", "INTEGER NOT NULL DEFAULT 0");
         await AddSqliteColumnAsync(db, "MoadianInvoices", "DocumentNumber", "TEXT NULL");
         await AddSqliteColumnAsync(db, "MoadianInvoices", "PayType", "INTEGER NULL");
 
-        await db.Database.ExecuteSqlRawAsync($@"
+        // ایندکس یکتای سراسری DocumentNumber تا زمانی اعتبار دارد که ایندکس به‌ازای هر خدمات‌دهندهٔ V12 نباشد.
+        if (!await SqliteIndexExistsAsync(db, "IX_MoadianInvoices_ProviderDocumentNumber"))
+        {
+            await db.Database.ExecuteSqlRawAsync($@"
 CREATE UNIQUE INDEX IF NOT EXISTS [{DocumentNumberIndex}]
-    ON [MoadianInvoices] ([DocumentNumber]) WHERE [DocumentNumber] IS NOT NULL;
+    ON [MoadianInvoices] ([DocumentNumber]) WHERE [DocumentNumber] IS NOT NULL;");
+        }
+        await db.Database.ExecuteSqlRawAsync($@"
 CREATE UNIQUE INDEX IF NOT EXISTS [{YearSerialIndex}]
     ON [MoadianInvoices] ([FiscalYearId], [YearSerial])
     WHERE [FiscalYearId] IS NOT NULL AND [YearSerial] > 0;");
@@ -67,6 +76,7 @@ BEGIN
 END;
 IF OBJECT_ID(N'dbo.MoadianFiscalYears', N'U') IS NOT NULL
 AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianFiscalYears_Year' AND object_id = OBJECT_ID(N'dbo.MoadianFiscalYears'))
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianFiscalYears_ProviderYear' AND object_id = OBJECT_ID(N'dbo.MoadianFiscalYears'))
     CREATE UNIQUE INDEX IX_MoadianFiscalYears_Year ON dbo.MoadianFiscalYears([Year]);
 IF OBJECT_ID(N'dbo.MoadianInvoices', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.MoadianInvoices', N'FiscalYearId') IS NULL
     ALTER TABLE dbo.MoadianInvoices ADD FiscalYearId int NULL;
@@ -79,6 +89,7 @@ IF OBJECT_ID(N'dbo.MoadianInvoices', N'U') IS NOT NULL AND COL_LENGTH(N'dbo.Moad
 IF OBJECT_ID(N'dbo.MoadianInvoices', N'U') IS NOT NULL
 AND COL_LENGTH(N'dbo.MoadianInvoices', N'DocumentNumber') IS NOT NULL
 AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'{DocumentNumberIndex}' AND object_id = OBJECT_ID(N'dbo.MoadianInvoices'))
+AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_MoadianInvoices_ProviderDocumentNumber' AND object_id = OBJECT_ID(N'dbo.MoadianInvoices'))
     EXEC(N'CREATE UNIQUE INDEX {DocumentNumberIndex} ON dbo.MoadianInvoices(DocumentNumber) WHERE DocumentNumber IS NOT NULL');
 IF OBJECT_ID(N'dbo.MoadianInvoices', N'U') IS NOT NULL
 AND COL_LENGTH(N'dbo.MoadianInvoices', N'FiscalYearId') IS NOT NULL
@@ -158,6 +169,23 @@ AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'{YearSerialIndex}' AND 
                 if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
                     return true;
             return false;
+        }
+        finally
+        {
+            if (openedHere) await connection.CloseAsync();
+        }
+    }
+
+    private static async Task<bool> SqliteIndexExistsAsync(AppDbContext db, string indexName)
+    {
+        var connection = db.Database.GetDbConnection();
+        var openedHere = connection.State != ConnectionState.Open;
+        if (openedHere) await connection.OpenAsync();
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = '" + indexName + "';";
+            return await command.ExecuteScalarAsync() is not null;
         }
         finally
         {
