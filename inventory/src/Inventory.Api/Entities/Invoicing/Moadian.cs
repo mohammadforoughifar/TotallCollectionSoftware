@@ -78,6 +78,9 @@ public class MoadianFiscalPeriod
 {
     public int Id { get; set; }
 
+    /// <summary>خدمات‌دهنده مالک این دوره (۰ = عمومی/سوابق قدیمی).</summary>
+    public int ServiceProviderId { get; set; }
+
     /// <summary>سال شمسی</summary>
     public int Year { get; set; }
 
@@ -97,6 +100,9 @@ public class MoadianFiscalPeriod
 public class MoadianFiscalYear
 {
     public int Id { get; set; }
+
+    /// <summary>خدمات‌دهنده مالک این سال مالی (۰ = عمومی/سوابق قدیمی).</summary>
+    public int ServiceProviderId { get; set; }
 
     /// <summary>سال شمسی، مثل 1405.</summary>
     public int Year { get; set; }

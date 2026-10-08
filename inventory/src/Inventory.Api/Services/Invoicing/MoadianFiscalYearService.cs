@@ -7,14 +7,14 @@ namespace Inventory.Api.Services.Invoicing;
 
 public interface IMoadianFiscalYearService
 {
-    Task<List<MoadianFiscalYearDto>> GetYearsAsync();
+    Task<List<MoadianFiscalYearDto>> GetYearsAsync(int? providerId = null);
     Task<MoadianFiscalYearDetailDto> GetYearAsync(int id);
     Task<MoadianFiscalYearDetailDto> SaveYearAsync(MoadianFiscalYearRequest request);
     Task<MoadianFiscalYearDetailDto> SetYearClosedAsync(int id, bool closed);
     Task DeleteYearAsync(int id);
     Task<MoadianFiscalPeriodDto> SetPeriodClosedAsync(int periodId, bool closed);
     /// <summary>پیش‌نمایش شمارهٔ صورتحساب بعدی (سریال سراسری + شمارهٔ سند سالانه).</summary>
-    Task<MoadianNextNumberDto> GetNextNumberAsync(int fiscalYearId, DateTime? date, int? periodId);
+    Task<MoadianNextNumberDto> GetNextNumberAsync(int fiscalYearId, DateTime? date, int? periodId, int? providerId = null);
 }
 
 /// <summary>
@@ -30,9 +30,11 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
 
     public MoadianFiscalYearService(Db.AppDbContext db) => _db = db;
 
-    public async Task<List<MoadianFiscalYearDto>> GetYearsAsync()
+    public async Task<List<MoadianFiscalYearDto>> GetYearsAsync(int? providerId = null)
     {
-        var years = await _db.MoadianFiscalYears.AsNoTracking().OrderByDescending(y => y.Year).ToListAsync();
+        var years = await _db.MoadianFiscalYears.AsNoTracking()
+            .Where(y => y.ServiceProviderId == (providerId ?? 0))
+            .OrderByDescending(y => y.Year).ToListAsync();
         if (years.Count == 0) return new List<MoadianFiscalYearDto>();
 
         var periodStats = await _db.MoadianFiscalPeriods.AsNoTracking()
@@ -66,6 +68,7 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
             return new MoadianFiscalYearDto
             {
                 Id = y.Id,
+                ServiceProviderId = y.ServiceProviderId,
                 Year = y.Year,
                 StartDate = y.StartDate,
                 EndDate = y.EndDate,
@@ -96,7 +99,7 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
                 Id = year.Id, Year = year.Year, StartDate = year.StartDate, EndDate = year.EndDate,
                 IsClosed = year.IsClosed, Notes = year.Notes, CreatedAt = year.CreatedAt
             },
-            Periods = await GetPeriodsAsync(year.Year)
+            Periods = await GetPeriodsAsync(year.Year, year.ServiceProviderId)
         };
     }
 
@@ -108,7 +111,7 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         var start = PersianDate.ToGregorian(request.Year, 1, 1);
         var end = PersianDate.ToGregorian(request.Year, 12, PersianDate.DaysInMonth(request.Year, 12));
 
-        var duplicate = await _db.MoadianFiscalYears.AnyAsync(y => y.Year == request.Year && y.Id != request.Id);
+        var duplicate = await _db.MoadianFiscalYears.AnyAsync(y => y.Year == request.Year && y.ServiceProviderId == (request.ServiceProviderId) && y.Id != request.Id);
         if (duplicate)
             throw new InvalidOperationException($"سال مالی {request.Year} قبلاً تعریف شده است.");
 
@@ -130,11 +133,12 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         }
         else
         {
-            entity = new Db.MoadianFiscalYear { Year = request.Year, CreatedAt = DateTime.Now };
+            entity = new Db.MoadianFiscalYear { Year = request.Year, ServiceProviderId = request.ServiceProviderId, CreatedAt = DateTime.Now };
             _db.MoadianFiscalYears.Add(entity);
         }
 
         entity.Year = request.Year;
+        entity.ServiceProviderId = request.ServiceProviderId;
         entity.StartDate = start;
         entity.EndDate = end;
         entity.Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim();
@@ -142,10 +146,10 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         await _db.SaveChangesAsync();
 
         if (request.CreateMonthlyPeriods)
-            await EnsureMonthlyPeriodsAsync(request.Year, closed: entity.IsClosed);
+            await EnsureMonthlyPeriodsAsync(request.Year, providerId: entity.ServiceProviderId, closed: entity.IsClosed);
 
         if (entity.IsClosed)
-            await SetPeriodsClosedAsync(request.Year, closed: true);
+            await SetPeriodsClosedAsync(request.Year, providerId: entity.ServiceProviderId, closed: true);
 
         return await GetYearAsync(entity.Id);
     }
@@ -165,7 +169,7 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
 
         year.IsClosed = closed;
         await _db.SaveChangesAsync();
-        await SetPeriodsClosedAsync(year.Year, closed);
+        await SetPeriodsClosedAsync(year.Year, providerId: year.ServiceProviderId, closed);
         return await GetYearAsync(year.Id);
     }
 
@@ -208,11 +212,14 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         return ToPeriodDto(period, 0, 0, 0);
     }
 
-    public async Task<MoadianNextNumberDto> GetNextNumberAsync(int fiscalYearId, DateTime? date, int? periodId)
+    public async Task<MoadianNextNumberDto> GetNextNumberAsync(int fiscalYearId, DateTime? date, int? periodId, int? providerId = null)
     {
+        IQueryable<int?> numberQuery = _db.MoadianInvoices.AsNoTracking().Select(i => (int?)i.Number);
+        if (providerId is > 0)
+            numberQuery = _db.MoadianInvoices.AsNoTracking().Where(i => i.ServiceProviderId == providerId.Value).Select(i => (int?)i.Number);
         var result = new MoadianNextNumberDto
         {
-            NextGlobalNumber = (await _db.MoadianInvoices.AsNoTracking().Select(i => (int?)i.Number).MaxAsync() ?? 0) + 1
+            NextGlobalNumber = (await numberQuery.MaxAsync() ?? 0) + 1
         };
 
         var invoiceDate = date ?? DateTime.Now;
@@ -241,7 +248,8 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         }
         else
         {
-            year = await _db.MoadianFiscalYears.AsNoTracking().FirstOrDefaultAsync(y => y.Year == fa.Year);
+            year = await _db.MoadianFiscalYears.AsNoTracking()
+                .FirstOrDefaultAsync(y => y.Year == fa.Year && y.ServiceProviderId == (providerId ?? 0));
             if (year is null)
             {
                 result.CanCreate = false;
@@ -257,16 +265,18 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         result.FiscalYearId = year?.Id;
         result.FiscalYear = year?.Year ?? fa.Year;
 
-        var serial = year is null
-            ? 0
-            : await _db.MoadianInvoices.AsNoTracking()
-                .Where(i => i.FiscalYearId == year.Id)
-                .Select(i => (int?)i.YearSerial)
-                .MaxAsync() ?? 0;
+        var serial = 0;
+        if (year is not null)
+        {
+            var serialQuery = _db.MoadianInvoices.AsNoTracking().Where(i => i.FiscalYearId == year.Id);
+            if (providerId is not null) serialQuery = serialQuery.Where(i => i.ServiceProviderId == providerId.Value);
+            serial = await serialQuery.Select(i => (int?)i.YearSerial).MaxAsync() ?? 0;
+        }
         result.NextYearSerial = serial + 1;
         result.DocumentNumber = $"{result.FiscalYear}/{result.NextYearSerial:000000}";
 
-        var periodQuery = _db.MoadianFiscalPeriods.AsNoTracking().Where(p => p.Year == fa.Year && p.Month == fa.Month);
+        var periodQuery = _db.MoadianFiscalPeriods.AsNoTracking()
+            .Where(p => p.Year == fa.Year && p.Month == fa.Month && p.ServiceProviderId == (providerId ?? 0));
         Db.MoadianFiscalPeriod? period;
         if (periodId is > 0)
         {
@@ -340,9 +350,9 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
     private bool NeedsClientSideMoneySum
         => _db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
 
-    private async Task EnsureMonthlyPeriodsAsync(int year, bool closed)
+    private async Task EnsureMonthlyPeriodsAsync(int year, int providerId, bool closed)
     {
-        var existing = await _db.MoadianFiscalPeriods.Where(p => p.Year == year).Select(p => p.Month).ToListAsync();
+        var existing = await _db.MoadianFiscalPeriods.Where(p => p.Year == year && p.ServiceProviderId == providerId).Select(p => p.Month).ToListAsync();
         var missing = Enumerable.Range(1, 12).Except(existing).ToList();
         if (missing.Count == 0) return;
 
@@ -351,6 +361,7 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
             _db.MoadianFiscalPeriods.Add(new Db.MoadianFiscalPeriod
             {
                 Year = year,
+                ServiceProviderId = providerId,
                 Month = month,
                 IsClosed = closed,
                 Notes = null
@@ -359,18 +370,19 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         await _db.SaveChangesAsync();
     }
 
-    private async Task SetPeriodsClosedAsync(int year, bool closed)
+    private async Task SetPeriodsClosedAsync(int year, int providerId, bool closed)
     {
-        var periods = await _db.MoadianFiscalPeriods.Where(p => p.Year == year).ToListAsync();
+        var periods = await _db.MoadianFiscalPeriods.Where(p => p.Year == year && p.ServiceProviderId == providerId).ToListAsync();
         if (periods.Count == 0) return;
         foreach (var period in periods) period.IsClosed = closed;
         await _db.SaveChangesAsync();
     }
 
-    private async Task<List<MoadianFiscalPeriodDto>> GetPeriodsAsync(int year)
+    private async Task<List<MoadianFiscalPeriodDto>> GetPeriodsAsync(int year, int? providerId = null)
     {
-        var periods = await _db.MoadianFiscalPeriods.AsNoTracking()
-            .Where(p => p.Year == year).OrderBy(p => p.Month).ToListAsync();
+        var periodQuery = _db.MoadianFiscalPeriods.AsNoTracking().Where(p => p.Year == year);
+        if (providerId is not null) periodQuery = periodQuery.Where(p => p.ServiceProviderId == providerId.Value);
+        var periods = await periodQuery.OrderBy(p => p.Month).ToListAsync();
 
         var stats = await _db.MoadianInvoices.AsNoTracking()
             .Where(i => i.FiscalPeriod != null && i.FiscalPeriod.Year == year)

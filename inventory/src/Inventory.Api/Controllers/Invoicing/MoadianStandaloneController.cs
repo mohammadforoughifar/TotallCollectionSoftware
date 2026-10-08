@@ -26,10 +26,10 @@ public sealed class MoadianStandaloneController : RbacControllerBase
     // ---------- سال مالی ----------
 
     [HttpGet("fiscal-years")]
-    public async Task<ActionResult<List<MoadianFiscalYearDto>>> GetYears()
+    public async Task<ActionResult<List<MoadianFiscalYearDto>>> GetYears([FromQuery] int? providerId)
     {
         if (await ForbiddenUnlessAnyAsync("Moadian", "Read", "Create") is ObjectResult forbidden) return forbidden;
-        return Ok(await _years.GetYearsAsync());
+        return Ok(await _years.GetYearsAsync(providerId));
     }
 
     [HttpGet("fiscal-years/{id:int}")]
@@ -97,11 +97,12 @@ public sealed class MoadianStandaloneController : RbacControllerBase
     [HttpGet("next-number")]
     public async Task<ActionResult<MoadianNextNumberDto>> GetNextNumber(
         [FromQuery] int fiscalYearId = 0,
-        [FromQuery] DateTime? date = null)
+        [FromQuery] DateTime? date = null,
+        [FromQuery] int? providerId = null)
     {
         if (await ForbiddenUnlessAnyAsync("Moadian", "Read", "Create") is ObjectResult forbidden) return forbidden;
         Response.Headers.CacheControl = "no-store";
-        return Ok(await _years.GetNextNumberAsync(fiscalYearId, date, periodId: null));
+        return Ok(await _years.GetNextNumberAsync(fiscalYearId, date, periodId: null, providerId: providerId));
     }
 
     [HttpPost("invoices")]

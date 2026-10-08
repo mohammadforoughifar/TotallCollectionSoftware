@@ -35,28 +35,8 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
         var issueDateError = MoadianInvoiceRules.ValidateIssueDate(request.Date);
         if (issueDateError is not null) throw new InvalidOperationException(issueDateError);
 
-        var fa = PersianDate.FromGregorian(request.Date);
-        var yearEntity = request.FiscalYearId > 0
-            ? await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Id == request.FiscalYearId)
-              ?? throw new InvalidOperationException("سال مالی انتخاب‌شده یافت نشد.")
-            : await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Year == fa.Year)
-              ?? throw new InvalidOperationException(
-                  $"برای سال {fa.Year} سال مالی تعریف نشده است؛ ابتدا در صفحهٔ «سال مالی مودیان» آن را تعریف کنید.");
-
-        if (yearEntity.IsClosed)
-            throw new InvalidOperationException($"سال مالی {yearEntity.Year} بسته است؛ ثبت صورتحساب جدید در آن مجاز نیست.");
-        if (yearEntity.Year != fa.Year)
-            throw new InvalidOperationException(
-                $"تاریخ انتخابی در سال مالی {yearEntity.Year} نیست (سال تاریخ: {fa.Year}).");
-
-        var period = await _db.MoadianFiscalPeriods
-            .FirstOrDefaultAsync(p => p.Year == fa.Year && p.Month == fa.Month)
-            ?? throw new InvalidOperationException(
-                $"دورهٔ {fa.Year}/{fa.Month:00} تعریف نشده است؛ سال مالی را دوباره ذخیره کنید تا ۱۲ دوره ساخته شود.");
-        if (period.IsClosed)
-            throw new InvalidOperationException($"دورهٔ {period.Year}/{period.Month:00} بسته است؛ برای این تاریخ نمی‌توان صورتحساب ثبت کرد.");
-
         // ---------- خریدار (از اطلاعات پایه، در صورت انتخاب) ----------
+        // خدمات‌دهنده‌ای مشتری مبنا تفکیک سال مالی و دوره‌ها است — پیش از انتخاب آن بررسی می‌شود
         Db.MoadianCustomerProfile? customer = null;
         if (request.CustomerId is > 0)
         {
@@ -65,6 +45,32 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
                 .FirstOrDefaultAsync(c => c.Id == request.CustomerId!.Value && !c.IsDeleted)
                 ?? throw new InvalidOperationException("مشتری انتخاب‌شده یافت نشد یا غیرفعال است.");
         }
+        var fiscalProviderId = customer?.ServiceProvider is { IsDeleted: false } ? customer.ServiceProvider!.Id : 0;
+
+        var fa = PersianDate.FromGregorian(request.Date);
+        var yearEntity = request.FiscalYearId > 0
+            ? await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Id == request.FiscalYearId)
+              ?? throw new InvalidOperationException("سال مالی انتخاب‌شده یافت نشد.")
+            : await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Year == fa.Year && y.ServiceProviderId == fiscalProviderId)
+              ?? throw new InvalidOperationException(
+                  $"برای سال {fa.Year} سال مالی تعریف نشده است؛ ابتدا در صفحه‌ت «سال مالی مودیان» آن را برای این خدمات‌دهنده تعریف کنید.");
+
+        if (request.FiscalYearId > 0 && yearEntity.ServiceProviderId != fiscalProviderId)
+            throw new InvalidOperationException("سال مالی انتخاب‌شده متعلق به خدمات‌دهنده‌ای این مشتری نیست؛ سال مالی درست را انتخاب کنید.");
+
+        if (yearEntity.IsClosed)
+            throw new InvalidOperationException($"سال مالی {yearEntity.Year} بسته است؛ ثبت صورتحساب جدید در آن مجاز نیست.");
+        if (yearEntity.Year != fa.Year)
+            throw new InvalidOperationException(
+                $"تاریخ انتخابی در سال مالی {yearEntity.Year} نیست (سال تاریخ: {fa.Year}).");
+
+        var period = await _db.MoadianFiscalPeriods
+            .FirstOrDefaultAsync(p => p.Year == fa.Year && p.Month == fa.Month && p.ServiceProviderId == fiscalProviderId)
+            ?? throw new InvalidOperationException(
+                $"دورهٔ {fa.Year}/{fa.Month:00} تعریف نشده است؛ سال مالی را دوباره ذخیره کنید تا ۱۲ دوره ساخته شود.");
+        if (period.IsClosed)
+            throw new InvalidOperationException($"دورهٔ {period.Year}/{period.Month:00} بسته است؛ برای این تاریخ نمی‌توان صورتحساب ثبت کرد.");
+
 
         var buyerTaxId = FirstNonEmpty(request.BuyerTaxId, customer?.NationalID);
         var buyerName = FirstNonEmpty(request.BuyerName, customer?.Name);
@@ -143,12 +149,16 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
         return ToDto(invoice);
     }
 
-    /// <summary>تخصیص هم‌زمان و امن سریال سراسری و سریال/شمارهٔ سند سال مالی.</summary>
+    /// <summary>تخصیص هم‌زمان و امن شماره‌ات داخلی و سریال/شماره‌ات سند سال مالی، هر دو به تفکیک خدمات‌دهنده.</summary>
     private async Task SaveWithNumbersAsync(Db.MoadianInvoice invoice, int fiscalYearId)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
 
-        var maximum = await _db.MoadianInvoices.Select(i => (int?)i.Number).MaxAsync() ?? 0;
+        // شماره‌گذاری داخلی به تفکیک خدمات‌دهنده (خدمات‌دهنده‌ای تاذه از ۱ شروع می‌شود)
+        IQueryable<int?> numberQuery = _db.MoadianInvoices.AsNoTracking().Select(i => (int?)i.Number);
+        if (invoice.ServiceProviderId is not null)
+            numberQuery = _db.MoadianInvoices.AsNoTracking().Where(i => i.ServiceProviderId == invoice.ServiceProviderId.Value).Select(i => (int?)i.Number);
+        var maximum = await numberQuery.MaxAsync() ?? 0;
         if (maximum == int.MaxValue)
             throw new InvalidOperationException("ظرفیت شمارهٔ داخلی صورتحساب تمام شده است.");
         invoice.Number = maximum + 1;
@@ -161,16 +171,17 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
         //  ۲) شمارهٔ اسناد موجود با پیشوند «سال/» — سوابق قدیمی (بک‌فیل V6)
         //     FiscalYearId خالی دارند و فقط از DocumentNumber قابل شناسایی‌اند؛
         //     بی‌توجهی به آن‌ها باعث تکرار سریال ۱ و نقض یکتایی DocumentNumber می‌شد.
-        var lastYearSerial = await _db.MoadianInvoices
-            .Where(i => i.FiscalYearId == fiscalYearId)
-            .Select(i => (int?)i.YearSerial)
-            .MaxAsync() ?? 0;
+        var lastSerialQuery = _db.MoadianInvoices.Where(i => i.FiscalYearId == fiscalYearId);
+        if (invoice.ServiceProviderId is not null)
+            lastSerialQuery = lastSerialQuery.Where(i => i.ServiceProviderId == invoice.ServiceProviderId.Value);
+        var lastYearSerial = await lastSerialQuery.Select(i => (int?)i.YearSerial).MaxAsync() ?? 0;
 
         var yearPrefix = $"{year}/";
-        var existingDocNumbers = await _db.MoadianInvoices.AsNoTracking()
-            .Where(i => i.DocumentNumber != null && i.DocumentNumber.StartsWith(yearPrefix))
-            .Select(i => i.DocumentNumber)
-            .ToListAsync();
+        var docQuery = _db.MoadianInvoices.AsNoTracking()
+            .Where(i => i.DocumentNumber != null && i.DocumentNumber.StartsWith(yearPrefix));
+        if (invoice.ServiceProviderId is not null)
+            docQuery = docQuery.Where(i => i.ServiceProviderId == invoice.ServiceProviderId.Value);
+        var existingDocNumbers = await docQuery.Select(i => i.DocumentNumber).ToListAsync();
         var maxDocSerial = existingDocNumbers
             .Select(d => int.TryParse(d.AsSpan(yearPrefix.Length), out var s) ? s : 0)
             .DefaultIfEmpty(0)

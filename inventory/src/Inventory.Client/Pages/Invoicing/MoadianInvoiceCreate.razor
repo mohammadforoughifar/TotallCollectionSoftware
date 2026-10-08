@@ -25,6 +25,20 @@
     </div>
 </div>
 
+@if (providerInfo is not null)
+{
+    <div class="card mb-3 border-primary">
+        <div class="card-body py-2">
+            <div class="row g-2 small">
+                <div class="col-md-4"><span class="text-muted">خدمات‌دهنده:</span> <b>@(providerInfo.PersianName ?? providerInfo.EnglishName)</b></div>
+                <div class="col-md-4 num" dir="ltr"><span class="text-muted">کد اقتصادی:</span> @(providerInfo.EconomicNumber ?? "—")</div>
+                <div class="col-md-4 num" dir="ltr"><span class="text-muted">شناسه ملی:</span> @(providerInfo.NationalId ?? "—")</div>
+            </div>
+            <div class="small text-muted mt-1">شماره‌گذاری صورت‌حساب‌ها برای این خدمات‌دهنده از ۱ شروع می‌شود و سال‌های مالی به تفکیک خدمات‌دهنده مدیریتی می‌شود.</div>
+        </div>
+    </div>
+}
+
 @if (savedInvoice is not null)
 {
     <div class="card border-success mb-3">
@@ -323,6 +337,9 @@ else
     private bool loadingRefs = true;
     private bool saving;
     private List<MoadianFiscalYearDto> years = new();
+    [Parameter, SupplyParameterFromQuery(Name = "provider")] public int? ProviderId { get; set; }
+    private MoadianServiceProviderProfileDto? providerInfo;
+
     private List<MoadianCustomerProfileDto> customers = new();
     private List<MoadianGoodsOrServiceProfileDto> goods = new();
     private List<MoadianUnitOfMeasurementDto> units = new();
@@ -370,16 +387,18 @@ else
         loadingRefs = true;
         try
         {
-            var yearsTask = StandaloneSvc.GetFiscalYearsAsync();
-            var customersTask = MasterDataSvc.GetCustomersAsync();
-            var goodsTask = MasterDataSvc.GetGoodsOrServicesAsync();
+            var yearsTask = StandaloneSvc.GetFiscalYearsAsync(ProviderId);
+            var customersTask = MasterDataSvc.GetCustomersAsync(ProviderId);
+            var goodsTask = MasterDataSvc.GetGoodsOrServicesAsync(ProviderId);
             var unitsTask = MasterDataSvc.GetUnitsAsync();
-            await Task.WhenAll(yearsTask, customersTask, goodsTask, unitsTask);
+            var providersTask = MasterDataSvc.GetProvidersAsync();
+            await Task.WhenAll(yearsTask, customersTask, goodsTask, unitsTask, providersTask);
 
             years = await yearsTask;
             customers = (await customersTask).Where(c => !c.IsDeleted).ToList();
             goods = (await goodsTask).Where(g => !g.IsDeleted).ToList();
             units = (await unitsTask).Where(u => !u.IsDeleted).ToList();
+            providerInfo = (await providersTask).FirstOrDefault(p => p.Id == ProviderId);
 
             var faYear = PersianDate.FromGregorian(form.Date).Year;
             selectedYearId = years.FirstOrDefault(y => y.Year == faYear && !y.IsClosed)?.Id
@@ -398,7 +417,7 @@ else
     {
         try
         {
-            nextNumber = await StandaloneSvc.GetNextNumberAsync(selectedYearId, form.Date);
+            nextNumber = await StandaloneSvc.GetNextNumberAsync(selectedYearId, form.Date, ProviderId);
             numberWarning = nextNumber.Warning;
         }
         catch (Exception ex)

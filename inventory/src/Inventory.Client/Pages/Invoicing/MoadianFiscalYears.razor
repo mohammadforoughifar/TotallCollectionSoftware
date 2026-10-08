@@ -1,6 +1,7 @@
 @page "/moadian/fiscal-years"
 @using Microsoft.AspNetCore.Components
 @inject IMoadianStandaloneClientService StandaloneSvc
+@inject IMoadianMasterDataClientService MasterDataSvc
 @inject IToastService Toast
 @inject IJSRuntime JS
 @inject NavigationManager Nav
@@ -11,7 +12,15 @@
     <div>
         <h1>سال مالی مودیان</h1>
     </div>
-    <div class="ms-auto d-flex gap-2">
+    <div class="ms-auto d-flex gap-2 align-items-center">
+        <select class="form-select form-select-sm d-inline-block" style="width:auto;min-width:230px"
+                @bind="selectedProviderId" @bind:after="OnProviderChanged">
+            <option value="0">عمومی (بدون خدمات‌دهنده)</option>
+            @foreach (var p in providers)
+            {
+                <option value="@p.Id">@(p.PersianName ?? p.EnglishName)</option>
+            }
+        </select>
         <button class="btn btn-outline-secondary" @onclick='() => Nav.NavigateTo("/moadian/invoice-new")'>
             <i class="bi bi-receipt"></i> ثبت صورتحساب جدید
         </button>
@@ -211,6 +220,8 @@
     private int expandedYearId;
     private List<MoadianFiscalYearDto> years = new();
     private List<MoadianFiscalPeriodDto> periods = new();
+    private List<MoadianServiceProviderProfileDto> providers = new();
+    private int selectedProviderId;
     private MoadianFiscalYearRequest yearForm = new() { Year = PersianDate.FromGregorian(DateTime.Now).Year };
 
     protected override async Task OnInitializedAsync() => await Load();
@@ -220,7 +231,9 @@
         loading = true;
         try
         {
-            years = await StandaloneSvc.GetFiscalYearsAsync();
+            if (providers.Count == 0)
+                providers = await MasterDataSvc.GetProvidersAsync();
+            years = await StandaloneSvc.GetFiscalYearsAsync(selectedProviderId is 0 ? null : selectedProviderId);
             if (expandedYearId != 0 && years.All(y => y.Id != expandedYearId))
             {
                 expandedYearId = 0;
@@ -233,6 +246,13 @@
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { loading = false; }
+    }
+
+    private async Task OnProviderChanged()
+    {
+        expandedYearId = 0;
+        periods = new();
+        await Load();
     }
 
     private async Task LoadPeriods(int yearId)
@@ -291,12 +311,13 @@
         busy = true;
         try
         {
+            yearForm.ServiceProviderId = selectedProviderId;
             var detail = await StandaloneSvc.SaveFiscalYearAsync(yearForm);
             Toast.Success($"سال مالی {detail.Year.Year} ذخیره شد ({detail.Periods.Count} دوره).");
             expandedYearId = detail.Year.Id;
             periods = detail.Periods;
             ResetForm();
-            years = await StandaloneSvc.GetFiscalYearsAsync();
+            years = await StandaloneSvc.GetFiscalYearsAsync(selectedProviderId is 0 ? null : selectedProviderId);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }
@@ -313,7 +334,7 @@
                 ? await StandaloneSvc.CloseFiscalYearAsync(y.Id)
                 : await StandaloneSvc.ReopenFiscalYearAsync(y.Id);
             Toast.Success(closed ? $"سال مالی {y.Year} بسته شد." : $"سال مالی {y.Year} باز شد.");
-            years = await StandaloneSvc.GetFiscalYearsAsync();
+            years = await StandaloneSvc.GetFiscalYearsAsync(selectedProviderId is 0 ? null : selectedProviderId);
             if (expandedYearId == y.Id) periods = detail.Periods;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -329,7 +350,7 @@
             else await StandaloneSvc.ReopenPeriodAsync(p.Id);
             Toast.Success(closed ? $"دورهٔ {p.Title} بسته شد." : $"دورهٔ {p.Title} باز شد.");
             await LoadPeriods(expandedYearId);
-            years = await StandaloneSvc.GetFiscalYearsAsync();
+            years = await StandaloneSvc.GetFiscalYearsAsync(selectedProviderId is 0 ? null : selectedProviderId);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }
@@ -344,7 +365,7 @@
             await StandaloneSvc.DeleteFiscalYearAsync(y.Id);
             Toast.Success($"سال مالی {y.Year} حذف شد.");
             if (expandedYearId == y.Id) { expandedYearId = 0; periods = new(); }
-            years = await StandaloneSvc.GetFiscalYearsAsync();
+            years = await StandaloneSvc.GetFiscalYearsAsync(selectedProviderId is 0 ? null : selectedProviderId);
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { busy = false; }

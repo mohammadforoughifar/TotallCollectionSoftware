@@ -8,6 +8,8 @@ namespace Inventory.Shared.Dtos;
 public class MoadianFiscalYearDto
 {
     public int Id { get; set; }
+    /// <summary>ServiceProvider (0 = legacy/global).</summary>
+    public int ServiceProviderId { get; set; }
     /// <summary>سال شمسی، مثل 1405.</summary>
     public int Year { get; set; }
     /// <summary>تاریخ شروع (میلادی؛ نمایش شمسی در UI).</summary>
@@ -36,6 +38,8 @@ public class MoadianFiscalYearDto
 public class MoadianFiscalYearRequest
 {
     public int Id { get; set; }
+    /// <summary>ServiceProvider (0 = legacy/global).</summary>
+    public int ServiceProviderId { get; set; }
     /// <summary>سال شمسی (۱۳۰۰ تا ۱۵۰۰).</summary>
     public int Year { get; set; }
     public bool IsClosed { get; set; }
