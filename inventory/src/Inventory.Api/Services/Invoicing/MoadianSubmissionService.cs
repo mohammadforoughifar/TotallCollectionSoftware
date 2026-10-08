@@ -117,8 +117,13 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         {
             // کلاینت اولین شناسه ساخته می‌شود تا تولیدکنندهٔ رسمی taxid از DI SDK در دسترس باشد.
             var firstClient = CreateTaxApis(baseUrl, connection.PrivateKeyPath, keyId, clientType, apiVersion, identities[0].Value);
-            var (taxid, usedFallback) = ResolveTaxId(invoice, connection.TaxMemoryID, invoice.Number, invoice.Date, firstClient.Provider);
-            var invoiceDto = BuildInvoiceDto(invoice, tins, taxid, out _);
+            // لحظهٔ ارسال: تاریخ‌های داخل پنجرهٔ ۰۰:۰۰ تا ۰۳:۲۹ (وقت محلی/تهران) در UTC به
+            // «روز قبل» تعلق می‌گیرند و روزِ توکن‌دارِ taxid (که از روز UTC ساخته می‌شود) با
+            // تاریخ شمسی صورتحساب از نظر سامانه منطبق نمی‌شود. برای از بین بردن ابهام،
+            // این تاریخ‌ها به ظهرِ همان روز جابه‌جا می‌شوند تا روز UTC و روز محلی یکی باشند.
+            var issueDate = ToSafeIssueDate(invoice.Date);
+            var (taxid, usedFallback) = ResolveTaxId(invoice, connection.TaxMemoryID, invoice.Number, issueDate, firstClient.Provider);
+            var invoiceDto = BuildInvoiceDto(invoice, tins, taxid, issueDate, out _);
 
             // ذخیرهٔ دقیق‌ترین payload ارسال‌شده به سامانه — برای بررسی مقادیر واقعی هنگام خطای سامانه
             invoice.LastSendPayload = Truncate(SerializePayload(invoiceDto), 8000);
@@ -383,10 +388,10 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     /// در تسویه‌های نسیه/تسهیلات/تهاتر، cap = null و کل مأخذ به insp اختصاص می‌یابد
     /// (نمونهٔ ارسالی معتبر نسیه: setm=2, cap=null, insp=tbill−tvam, tvop=tvam).
     /// </summary>
-    internal static InvoiceDto BuildInvoiceDto(Db.MoadianInvoice inv, string tins, string taxid, out string inno)
+    internal static InvoiceDto BuildInvoiceDto(Db.MoadianInvoice inv, string tins, string taxid, DateTime issueDate, out string inno)
     {
         inno = MoadianTaxIdGenerator.ToInno(inv.Number);
-        var issueMs = new DateTimeOffset(inv.Date).ToUnixTimeMilliseconds();
+        var issueMs = new DateTimeOffset(issueDate).ToUnixTimeMilliseconds();
         var (tob, bid, tinb) = ResolveBuyer(inv);
         var payType = inv.PayType ?? MoadianPayType.Cash;
         var payCode = SystemPayCode(payType);
@@ -493,11 +498,29 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         return (1, null, null);        // سایر طول‌ها: بدون شناسه (سامانه خود اعتبارسنجی می‌کند)
     }
 
+    /// <summary>
+    /// لحظهٔ ارسال بدون ابهام زمانی: اگر ساعت‌وزمان صورتحساب داخل پنجرهٔ ۰۰:۰۰ تا ۰۳:۲۹
+    /// (وقت محلی/تهران) باشد، آن لحظه در UTC هنوز متعلق به «روز قبل» است؛ در نتیجه روزی
+    /// که taxid از آن ساخته می‌شود (تعداد روزهای UTC از ۱۹۷۰) با تاریخ (شمسی/میلیادی محلی)
+    /// صورتحساب یکی نیست و سامانه می‌تواند آن را رد کند. این تاریخ‌ها به ظهرِ (۱۲:۰۰) همان
+    /// روز جابه‌جا می‌شوند — همان روز — تا تحت هر تفسیری (روز UTC یا روز محلی) روزها منطبق باشند.
+    /// </summary>
+    internal static DateTime ToSafeIssueDate(DateTime date)
+        => date.TimeOfDay < TimeSpan.FromHours(3).Add(TimeSpan.FromMinutes(30))
+            ? date.Date + TimeSpan.FromHours(12)
+            : date;
+
     private static (string Taxid, bool Fallback) ResolveTaxId(
         Db.MoadianInvoice invoice, string taxMemoryId, long serial, DateTime date, IServiceProvider services)
     {
         if (invoice.Taxid is { Length: 22 })
-            return (invoice.Taxid, false);
+        {
+            // اگر تاریخ صورتحساب بعد از بار اول تغییر کرده باشد، taxid ذخیره‌شده روزِ قدیمی را
+            // در خودش دارد و با indatim جدید منطبق نیست — با تاریخ جدید دوباره ساخته می‌شود.
+            // (ارسال قبلی چون FAILED بوده در کارپوشه ننشسته و taxid جدید تکراری نیست.)
+            if (TaxIdDayMatchesDate(invoice.Taxid, date))
+                return (invoice.Taxid, false);
+        }
 
         ITaxIdGenerator? generator = null;
         try
@@ -522,6 +545,25 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         }
 
         return (MoadianTaxIdGenerator.GenerateTaxId(taxMemoryId, serial, date), true);
+    }
+
+    /// <summary>
+    /// بخش تاریخ taxid (پنج هگز ۶ تا ۱۰) تعداد روزهای گذشته از ۱۹۷۰ به‌صورت UTC است و
+    /// باید با روزِ تاریخ صورتحساب یکی باشد؛ در غیر این صورت سامانه taxid و indatim را
+    /// ناسازگار می‌داند.
+    /// </summary>
+    internal static bool TaxIdDayMatchesDate(string taxid, DateTime date)
+    {
+        try
+        {
+            var storedDays = Convert.ToInt32(taxid.Substring(6, 5), 16);
+            var currentDays = (int)(new DateTimeOffset(date).ToUnixTimeSeconds() / (3600 * 24));
+            return storedDays == currentDays;
+        }
+        catch
+        {
+            return false; // قابل تفسیر نبود — taxid را دوباره بساز.
+        }
     }
 
     // =====================================================================
