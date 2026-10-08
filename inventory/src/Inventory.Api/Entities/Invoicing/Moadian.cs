@@ -241,6 +241,12 @@ public class MoadianInvoice
     /// </summary>
     [MaxLength(4000)] public string? InquiryDataJson { get; set; }
 
+    /// <summary>
+    /// دقیق‌ترین JSON payload آخرین تلاش ثبت به سامانه (InvoiceDto سرریزشده) —
+    /// برای بررسی مقادیر واقعی ارسالی (setm/pmt/tob/bid/tinb/...) هنگام خطاهای سامانه.
+    /// </summary>
+    [MaxLength(8000)] public string? LastSendPayload { get; set; }
+
     [MaxLength(120)] public string? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     [MaxLength(600)] public string? Description { get; set; }

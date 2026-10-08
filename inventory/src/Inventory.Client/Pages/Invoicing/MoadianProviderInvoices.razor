@@ -258,6 +258,15 @@ else if (providerId is > 0 && !loading)
                 </div>
             }
 
+            @if (!string.IsNullOrWhiteSpace(d.LastSendPayload))
+            {
+                <div class="mb-2">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="() => ShowPayload(d)">
+                        <i class="bi bi-file-code"></i> JSON ارسال‌شده به سامانه (مقادیر دقیق آخرین ثبت)
+                    </button>
+                </div>
+            }
+
             <div class="row g-2 mb-3 small">
                 <div class="col-md-3"><div class="border rounded p-2 h-100"><span class="text-muted d-block">موضوع (ins)</span>@SubjectFa(d.InvoiceSubject) <span class="num">@((int)d.InvoiceSubject)</span></div></div>
                 <div class="col-md-3"><div class="border rounded p-2 h-100"><span class="text-muted d-block">نوع (inty)</span>@InvoiceTypeFa(d.InvoiceType)</div></div>
@@ -560,7 +569,8 @@ else if (providerId is > 0 && !loading)
                         <i class="bi bi-printer"></i> چاپ (افزودن به چاپگر)
                     </button>
                     <div class="small text-muted mt-3">
-                        با زدن «چاپ»، دیالوگ چاپ مرورگر باز می‌شود و از آن‌جا چاپگر را انتخاب کنید.
+                        با زدن «چاپ»، دیالوگ چاپ مرورگر باز می‌شود و از آن‌جا چاپگر را انتخاب و تایپ کنید.
+                        همان‌طور که می‌بینید، دقیقاً همین برگهٔ A4 به چاپگر فرستاده می‌شود.
                         اقلام بیش از ۱۸ ردیف در صفحات بعدی چاپ می‌شوند.
                     </div>
                 </div>
@@ -568,6 +578,30 @@ else if (providerId is > 0 && !loading)
         </div>
     </ChildContent>
 </Modal>
+
+<!-- ===================== مودال JSON ارسال‌شده به سامانه ===================== -->
+<Modal Visible="showPayload" Title="JSON ارسال‌شده به سامانه — آخرین تلاش ثبت" Size="modal-lg" OnClose="() => showPayload = false">
+    <ChildContent>
+        <div class="small text-muted mb-2">
+            این همان دقیق‌ترین payload است که در آخرین تلاش ثبت به سامانهٔ مودیان فرستاده شد.
+            اگر سامانه خطای فیلدی می‌دهد (مثل setm / pmt / bid / tinb)، مقدار همان فیلد را از اینجا چک کنید.
+        </div>
+        <pre dir="ltr" style="max-height:55vh;overflow:auto;background:#f6f8fa;padding:.75rem;border-radius:.375rem;font-size:.72rem;line-height:1.35;white-space:pre-wrap;word-break:break-all">@payloadText</pre>
+        <div class="mt-2 text-end">
+            <button class="btn btn-sm btn-outline-primary" @onclick="CopyPayload"><i class="bi bi-clipboard"></i> کپی JSON</button>
+        </div>
+    </ChildContent>
+</Modal>
+
+<!-- ریشهٔ چاپ: هنگام window.print() فقط همین بخش چاپ می‌شود (مستقیم به چاپگر) -->
+<div id="moadian-print-root" @ref="paperPrintRoot" style="display:none"></div>
+<style>
+    @@media print {
+        body * { visibility: hidden !important; }
+        #moadian-print-root, #moadian-print-root * { visibility: visible !important; }
+        #moadian-print-root { display: block !important; position: absolute !important; left: 0; top: 0; width: 100%; }
+    }
+</style>
 
 @code {
     [Parameter, SupplyParameterFromQuery(Name = "invoice")]
@@ -606,7 +640,11 @@ else if (providerId is > 0 && !loading)
 
     private bool showPaperPrint;
     private ElementReference paperPrintFrame;
+    private ElementReference paperPrintRoot;
     private string? paperPrintHtml;
+
+    private bool showPayload;
+    private string? payloadText;
 
     private string detailsTitle => detailsInvoice is null
         ? "جزئیات صورتحساب"
@@ -1006,14 +1044,20 @@ else if (providerId is > 0 && !loading)
             catch { /* بدون پروفایل شرکت نیز چاپ می‌شود (نام فروشنده از خود صورتحساب) */ }
             paperPrintHtml = MoadianInvoicePrint.Build(full, profile, Nav.BaseUri);
             showPaperPrint = true;
-            await Task.Delay(100);
+            await Task.Delay(150);
             if (paperPrintFrame.Id is not null)
             {
                 await JS.InvokeVoidAsync("eval", $"document.getElementById('{paperPrintFrame.Id}').srcdoc = {System.Text.Json.JsonSerializer.Serialize(paperPrintHtml)};");
-                // بلافاصله بعد از بارگذاری پیش‌نمایش، مستقیم به چاپگر برود (دیالوگ چاپ مرورگر)
-                await Task.Delay(600);
-                await PrintPaper();
             }
+            // محتوای A4 را در ریشهٔ چاپ سند اصلی بگذار تا window.print() فقط همین‌را چاپ کند
+            if (paperPrintRoot.Id is not null)
+            {
+                var fragment = MoadianInvoicePrint.ToPrintableFragment(paperPrintHtml);
+                await JS.InvokeVoidAsync("eval", $"document.getElementById('{paperPrintRoot.Id}').innerHTML = {System.Text.Json.JsonSerializer.Serialize(fragment)};");
+            }
+            // مستقیم به چاپگر: دیالوگ چاپ مرورگر همین‌جا باز می‌شود
+            await Task.Delay(300);
+            await PrintPaper();
         }
         catch (Exception ex)
         {
@@ -1027,18 +1071,40 @@ else if (providerId is > 0 && !loading)
         paperPrintHtml = null;
     }
 
-    /// <summary>چاپ مستقیم از فریم پیش‌نمایش — دیالوگ چاپ مرورگر با همین سند (A4) باز می‌شود.</summary>
+    /// <summary>
+    /// چاپ سطح‌بالا (window.print) روی سند اصلی — با CSS @media print فقط ریشهٔ چاپ
+    /// (همان برگهٔ A4) دیده و چاپ می‌شود؛ یعنی خروجی دقیقاً روی چاپگر کاربر قرار می‌گیرد.
+    /// </summary>
     private async Task PrintPaper()
     {
-        if (paperPrintFrame.Id is null) return;
         try
         {
-            await JS.InvokeVoidAsync("eval",
-                $"var f=document.getElementById('{paperPrintFrame.Id}'); f.contentWindow.focus(); f.contentWindow.print();");
+            await JS.InvokeVoidAsync("window.print");
         }
         catch (Exception ex)
         {
             Toast.Error("چاپ از مرورگر انجام نشد: " + ex.Message);
+        }
+    }
+
+    // ---------- JSON ارسال‌شده به سامانه ----------
+    private void ShowPayload(MoadianInvoice inv)
+    {
+        payloadText = inv.LastSendPayload;
+        showPayload = true;
+    }
+
+    private async Task CopyPayload()
+    {
+        if (string.IsNullOrEmpty(payloadText)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", payloadText);
+            Toast.Success("JSON کپی شد.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("کپی نشد: " + ex.Message);
         }
     }
 

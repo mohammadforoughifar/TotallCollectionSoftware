@@ -17,6 +17,22 @@ public static class MoadianInvoicePrint
     /// <summary>حداکثر ردیف اقلام در هر صفحهٔ A4.</summary>
     public const int RowsPerPage = 18;
 
+    /// <summary>
+    /// استخراج «تکهٔ چاپ‌شونده» از سند کامل (CSS + محتوای body بدون پوستهٔ doctype/html/head/body)
+    /// تا در درجی از سند اصلی (window.print سطح بالا) فقط خود صورتحساب چاپ شود.
+    /// </summary>
+    public static string ToPrintableFragment(string fullHtml)
+    {
+        const string styleOpen = "<style>", styleClose = "</style>", bodyOpen = "<body>", bodyClose = "</body>";
+        var styleStart = fullHtml.IndexOf(styleOpen, StringComparison.Ordinal);
+        var styleEnd = fullHtml.IndexOf(styleClose, StringComparison.Ordinal);
+        var bodyStart = fullHtml.IndexOf(bodyOpen, StringComparison.Ordinal);
+        var bodyEnd = fullHtml.IndexOf(bodyClose, StringComparison.Ordinal);
+        if (styleStart < 0 || styleEnd < 0 || bodyStart < 0 || bodyEnd < 0) return fullHtml;
+        return fullHtml.AsSpan(styleStart, styleEnd + styleClose.Length - styleStart).ToString()
+             + fullHtml.AsSpan(bodyStart + bodyOpen.Length, bodyEnd - bodyStart - bodyOpen.Length).ToString();
+    }
+
     public static string Build(MoadianInvoice inv, CompanyProfileDto? profile, string fontBase = "/")
     {
         var company = string.IsNullOrWhiteSpace(profile?.Name)

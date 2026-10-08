@@ -879,6 +879,7 @@ public class MoadianService : IMoadianService
         ServiceProviderId = i.ServiceProviderId, TaxId22 = i.Taxid,
         LastInquiryAt = i.LastInquiryAt, LastInquiryStatus = i.LastInquiryStatus,
         InquiryErrors = inqErrors, InquirySuccess = inqSuccess,
+        LastSendPayload = i.LastSendPayload,
         FacInvoiceId = i.FacInvoiceId, OperationsTransactionId = i.OperationsTransactionId,
         FacInvoiceRef = i.FacInvoiceRef, Settlement = i.Settlement,
         TaxId = i.TaxId, SellerName = i.SellerName, EconomicCode = i.EconomicCode,

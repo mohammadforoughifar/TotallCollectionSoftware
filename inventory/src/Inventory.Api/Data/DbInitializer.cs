@@ -127,6 +127,7 @@ public static class DbInitializer
                 await MoadianSchemaV9.EnsureAsync(db);
                 // پاسخ خام استعلام سامانه (خطاها/پیام‌های کامل صورتحساب) روی MoadianInvoices.
                 await MoadianSchemaV10.EnsureAsync(db);
+                await MoadianSchemaV11.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);

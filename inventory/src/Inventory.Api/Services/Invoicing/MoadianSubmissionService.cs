@@ -110,6 +110,9 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             var (taxid, usedFallback) = ResolveTaxId(invoice, connection.TaxMemoryID, invoice.Number, invoice.Date, firstClient.Provider);
             var invoiceDto = BuildInvoiceDto(invoice, tins, taxid, out _);
 
+            // ذخیرهٔ دقیق‌ترین payload ارسال‌شده به سامانه — برای بررسی مقادیر واقعی هنگام خطای سامانه
+            invoice.LastSendPayload = Truncate(SerializePayload(invoiceDto), 8000);
+
             var sent = false;
             var authFailures = new List<string>();
             for (var i = 0; i < identities.Count; i++)
@@ -786,6 +789,19 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         catch (Exception)
         {
             return data.ToString();
+        }
+    }
+
+    /// <summary>سریالایز خوانا InvoiceDto برای ذخیرهٔ «payload ارسال‌شده به سامانه» (عیب‌یابی خطاهای سامانه).</summary>
+    private static string SerializePayload(InvoiceDto dto)
+    {
+        try
+        {
+            return JsonSerializer.Serialize(dto, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (Exception)
+        {
+            return "";
         }
     }
 

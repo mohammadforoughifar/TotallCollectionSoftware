@@ -102,6 +102,9 @@ public class MoadianInvoice
 
     /// <summary>نتیجهٔ کلی استعلام: true = پذیرفته/موفق، false = با خطا، null = نامشخص.</summary>
     public bool? InquirySuccess { get; set; }
+
+    /// <summary>JSON دقیق payload آخرین تلاش ثبت به سامانه (برای بررسی مقادیر ارسالی هنگام خطا).</summary>
+    public string? LastSendPayload { get; set; }
     public int? FacInvoiceId { get; set; }
     public int? OperationsTransactionId { get; set; }
     public string? FacInvoiceRef { get; set; }
