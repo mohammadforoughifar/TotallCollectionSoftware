@@ -21,7 +21,7 @@ public static class MoadianSchemaV11
         await db.Database.ExecuteSqlRawAsync(@"
 IF OBJECT_ID(N'dbo.MoadianInvoices', N'U') IS NOT NULL
 AND COL_LENGTH(N'dbo.MoadianInvoices', N'LastSendPayload') IS NULL
-    ALTER TABLE dbo.MoadianInvoices ADD LastSendPayload nvarchar(8000) NULL;");
+    ALTER TABLE dbo.MoadianInvoices ADD LastSendPayload nvarchar(max) NULL;");
     }
 
     private static async Task AddSqliteColumnAsync(AppDbContext db, string table, string column, string definition)
