@@ -64,7 +64,9 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     {
         var (invoice, provider, connection, baseUrl, keyId, apiVersion, clientType) = await ResolveSubmissionContextAsync(invoiceId);
 
-        if (invoice.Status is MoadianInvoiceStatus.Sent or MoadianInvoiceStatus.AwaitingBuyerConfirmation)
+        // اگر سامانه در آخرین استعلام وضعیت FAILED داده باشد، یعنی صورتحساب در کارپوشه ننشسته و ارسال مجدد مجاز است.
+        var systemRejected = string.Equals(invoice.LastInquiryStatus?.Trim(), "FAILED", StringComparison.OrdinalIgnoreCase);
+        if (!systemRejected && invoice.Status is MoadianInvoiceStatus.Sent or MoadianInvoiceStatus.AwaitingBuyerConfirmation)
             throw new InvalidOperationException("این صورتحساب قبلاً ارسال شده است؛ برای وضعیت فعلی «استعلام از سامانه» را استفاده کنید.");
         if (invoice.Status == MoadianInvoiceStatus.BuyerConfirmed)
             throw new InvalidOperationException("این صورتحساب توسط خریدار تأیید شده است؛ ارسال مجدد مجاز نیست.");

@@ -165,7 +165,7 @@ else if (providerId is > 0 && !loading)
                                     }
                                     @if (CanSend(inv))
                                     {
-                                        <button class="btn btn-sm btn-outline-success" title="ارسال رسمی به سامانه مودیان"
+                                        <button class="btn btn-sm btn-outline-success" title="@(inv.Attempts > 0 ? "ارسال مجدد به سامانه مودیان (این صورتحساب خطا داشته است)" : "ارسال رسمی به سامانه مودیان")"
                                                 disabled="@IsBusy(inv.Id)" @onclick="() => SendInvoice(inv)">
                                             <i class="bi @SendIcon(inv)"></i>
                                         </button>
@@ -360,7 +360,7 @@ else if (providerId is > 0 && !loading)
             @if (CanSend(di))
             {
                 <button class="btn btn-success" disabled="@IsBusy(di.Id)" @onclick="() => SendInvoice(di)">
-                    <i class="bi bi-send"></i> ارسال به سامانه
+                    <i class="bi bi-send"></i> @(di.Attempts > 0 ? "ارسال مجدد به سامانه" : "ارسال به سامانه")
                 </button>
             }
             <button class="btn btn-primary" @onclick="() => ShowPaperPrint(di)">
@@ -777,11 +777,25 @@ else if (providerId is > 0 && !loading)
     private string SendIcon(MoadianInvoice inv) => IsBusy(inv.Id) && busy!.Value.kind == "send" ? "bi-hourglass-split" : "bi-send";
     private string InquiryIcon(MoadianInvoice inv) => IsBusy(inv.Id) && busy!.Value.kind == "inquiry" ? "bi-hourglass-split" : "bi-arrow-repeat";
 
+    private static bool SystemRejected(MoadianInvoice inv)
+        => string.Equals(inv.LastInquiryStatus?.Trim(), "FAILED", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// ارسال/ارسال مجدد مجاز است برای: پیش‌نویس، ناموفق، برگشتی، در حال ارسال —
+    /// و همچنین هر فاکتوری که سامانه در آخرین استعلام وضعیت FAILED داده باشد
+    /// (یعنی هرچند وضعیت داخلی «ارسال‌شده» باشد، در کارپوشه ننشسته است).
+    /// </summary>
     private static bool CanSend(MoadianInvoice inv)
-        => inv.Status is MoadianInvoiceStatus.Draft
+    {
+        if (inv.Status is MoadianInvoiceStatus.Draft
             or MoadianInvoiceStatus.Failed
             or MoadianInvoiceStatus.Returned
-            or MoadianInvoiceStatus.Sending;
+            or MoadianInvoiceStatus.Sending)
+            return true;
+        // اگر سامانه در آخرین استعلام FAILED داده باشد، فاکتور در کارپوشه ننشسته است — ارسال مجدد مجاز است.
+        return SystemRejected(inv)
+            && inv.Status is (MoadianInvoiceStatus.Sent or MoadianInvoiceStatus.AwaitingBuyerConfirmation);
+    }
 
     private static string SendBlockedReason(MoadianInvoice inv) => inv.Status switch
     {
@@ -795,8 +809,11 @@ else if (providerId is > 0 && !loading)
 
     private async Task SendInvoice(MoadianInvoice inv)
     {
+        var resend = inv.Attempts > 0;
         var ok = await JS.InvokeAsync<bool>("confirm",
-            $"صورتحساب {inv.DocumentNumber ?? Fa.Digits(inv.Number)} به‌صورت رسمی به سامانه مودیان ارسال شود؟\nاین عمل با کلید خصوصی اتصالِ خدمات‌دهنده امضا و به سامانه ثبت می‌شود.");
+            resend
+                ? $"این صورتحساب قبلاً ارسال شده و خطا داشته است؛ {inv.DocumentNumber ?? Fa.Digits(inv.Number)} مجدداً به سامانه مودیان ارسال شود؟\nاگر خطا از محتوای صورتحساب باشد، ابتدا باید اصلاح شود؛ در غیر این صورت با همان شناسهٔ مالیاتی دوباره ارسال می‌شود."
+                : $"صورتحساب {inv.DocumentNumber ?? Fa.Digits(inv.Number)} به‌صورت رسمی به سامانه مودیان ارسال شود؟\nاین عمل با کلید خصوصی اتصالِ خدمات‌دهنده امضا و به سامانه ثبت می‌شود.");
         if (!ok) return;
         await RunOperationAsync(inv.Id, "send", () => ProviderInvoicesSvc.SendAsync(inv.Id));
     }
