@@ -556,11 +556,12 @@ else if (providerId is > 0 && !loading)
             </div>
             <div class="col-md-4">
                 <div class="mt-3">
-                    <button class="btn btn-primary w-100" @onclick="BrowserPrintPaper">
-                        <i class="bi bi-printer"></i> چاپ در مرورگر
+                    <button class="btn btn-primary w-100" @onclick="PrintPaper">
+                        <i class="bi bi-printer"></i> چاپ (افزودن به چاپگر)
                     </button>
                     <div class="small text-muted mt-3">
-                        پیش‌نمایش مطابق نمونهٔ صورتحساب الکترونیکی؛ اقلام بیش از ۱۸ ردیف در صفحات بعدی چاپ می‌شوند.
+                        با زدن «چاپ»، دیالوگ چاپ مرورگر باز می‌شود و از آن‌جا چاپگر را انتخاب کنید.
+                        اقلام بیش از ۱۸ ردیف در صفحات بعدی چاپ می‌شوند.
                     </div>
                 </div>
             </div>
@@ -1007,7 +1008,12 @@ else if (providerId is > 0 && !loading)
             showPaperPrint = true;
             await Task.Delay(100);
             if (paperPrintFrame.Id is not null)
+            {
                 await JS.InvokeVoidAsync("eval", $"document.getElementById('{paperPrintFrame.Id}').srcdoc = {System.Text.Json.JsonSerializer.Serialize(paperPrintHtml)};");
+                // بلافاصله بعد از بارگذاری پیش‌نمایش، مستقیم به چاپگر برود (دیالوگ چاپ مرورگر)
+                await Task.Delay(600);
+                await PrintPaper();
+            }
         }
         catch (Exception ex)
         {
@@ -1021,7 +1027,20 @@ else if (providerId is > 0 && !loading)
         paperPrintHtml = null;
     }
 
-    private async Task BrowserPrintPaper() => await JS.InvokeVoidAsync("eval", $"window.open('', '_blank').document.write({System.Text.Json.JsonSerializer.Serialize(paperPrintHtml ?? "")}); setTimeout(() => window.close(), 100);");
+    /// <summary>چاپ مستقیم از فریم پیش‌نمایش — دیالوگ چاپ مرورگر با همین سند (A4) باز می‌شود.</summary>
+    private async Task PrintPaper()
+    {
+        if (paperPrintFrame.Id is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                $"var f=document.getElementById('{paperPrintFrame.Id}'); f.contentWindow.focus(); f.contentWindow.print();");
+        }
+        catch (Exception ex)
+        {
+            Toast.Error("چاپ از مرورگر انجام نشد: " + ex.Message);
+        }
+    }
 
     // ---------- کمکی ----------
 

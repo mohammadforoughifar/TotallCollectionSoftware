@@ -86,6 +86,12 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         if (string.IsNullOrWhiteSpace(invoice.BuyerName))
             throw new InvalidOperationException("نام خریدار ثبت نشده است.");
 
+        var buyerId = invoice.BuyerTaxId?.Trim();
+        if (string.IsNullOrWhiteSpace(buyerId))
+            throw new InvalidOperationException("شناسهٔ خریدار ثبت نشده است؛ «شناسه ملی/مشارکت مدنی (۱۰ رقم)» یا «کد اقتصادی (۱۴ رقم)» را درج کنید.");
+        if (!buyerId.All(char.IsDigit))
+            throw new InvalidOperationException("شناسهٔ خریدار باید فقط عدد باشد (۱۰ رقم برای شماره ملی/مشارکت مدنی یا ۱۴ رقم برای کد اقتصادی).");
+
         var tins = FirstNonEmpty(invoice.EconomicCode, provider.EconomicNumber, provider.NationalID);
         if (string.IsNullOrWhiteSpace(tins))
             throw new InvalidOperationException("شماره اقتصادی فروشنده (Tins) مشخص نیست؛ در پروفایل خدمات‌دهنده ثبت کنید.");
@@ -340,6 +346,20 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         return true;
     }
 
+    /// <summary>
+    /// کد رسمی «روش پرداخت/تسویه» در سامانه مودیان (setm/pmt): ۱=نقدی، ۲=نسیه، ۳=الکترونیکی،
+    /// ۴=تسهیلات، ۵=تهاتر. (مقادیر enum داخلی از صفر شروع می‌شوند و قابل ارسال مستقیم نیستند.)
+    /// </summary>
+    internal static int SystemPayCode(MoadianPayType payType) => payType switch
+    {
+        MoadianPayType.Cash => 1,
+        MoadianPayType.Credit => 2,
+        MoadianPayType.Electronic => 3,
+        MoadianPayType.Facility => 4,
+        MoadianPayType.Offset => 5,
+        _ => 1
+    };
+
     /// <summary>ساخت DTO رسمی (INVOICE.V01) از موجودیت داخلی — نگاشت مستقیم فیلدهای سامانه.</summary>
     internal static InvoiceDto BuildInvoiceDto(Db.MoadianInvoice inv, string tins, string taxid, out string inno)
     {
@@ -347,6 +367,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         var issueMs = new DateTimeOffset(inv.Date).ToUnixTimeMilliseconds();
         var (tob, bid, tinb) = ResolveBuyer(inv);
         var payType = inv.PayType ?? MoadianPayType.Cash;
+        var payCode = SystemPayCode(payType);
 
         var header = new InvoiceHeaderDto
         {
@@ -369,7 +390,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             Tvam = inv.TotalVat,
             Todam = 0m,
             Tbill = inv.TotalNet,
-            Setm = (int)payType,
+            Setm = payCode,
             Cap = payType == MoadianPayType.Cash ? inv.TotalNet : 0m,
             Insp = payType == MoadianPayType.Cash ? 0m : inv.TotalNet,
             Tvop = 0m,
@@ -398,7 +419,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         {
             new()
             {
-                Pmt = (int)payType,
+                Pmt = payCode,
                 Pv = (long)inv.TotalNet,
                 Pdt = issueMs
             }
@@ -413,13 +434,22 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         };
     }
 
-    /// <summary>نوع خریدار: ۱۰ رقم = شماره اقتصادی (حقوقی=0)؛ ۱۱ رقم = شناسه ملی (حقیقی=1).</summary>
+    /// <summary>
+    /// نگاشت شناسهٔ خریدار به فیلدهای رسمی سامانه:
+    ///   • Bid = «شماره/شناسه ملی/شناسه مشارکت مدنی/کد فراگیر خریدار» — باید دقیقاً ۱۰ رقم باشد (الگو ^\d{10}$)
+    ///   • Tinb = «شماره مالیاتی/کد اقتصادی خریدار» — کدهای اقتصادی ۱۴ رقمی این‌جا می‌روند
+    ///   • Tob = نوع خریدار: ۱ = حقوقی، ۲ = حقیقی
+    /// تشخیص از روی طول شناسه: ۱۰ رقم → شماره ملی/مشارکت مدنی (Bid)؛ ۱۴ رقم → کد اقتصادی (Tinb).
+    /// </summary>
     internal static (int? Tob, string? Bid, string? Tinb) ResolveBuyer(Db.MoadianInvoice inv)
     {
         var id = inv.BuyerTaxId?.Trim();
         if (string.IsNullOrWhiteSpace(id)) return (null, null, null);
-        if (id.Length == 10 && id.All(char.IsDigit)) return (0, null, id);
-        return (1, id, null);
+        if (!id.All(char.IsDigit)) return (null, null, null);
+
+        if (id.Length == 10)
+            return (2, id, null);      // ۱۰ رقم → Bid (الگوی سامانه) — پیش‌فرض: حقیقی
+        return (1, null, id);          // ۱۴ رقم (کد اقتصادی) یا سایر → Tinb — پیش‌فرض: حقوقی
     }
 
     private static (string Taxid, bool Fallback) ResolveTaxId(
