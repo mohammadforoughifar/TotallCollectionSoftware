@@ -129,6 +129,8 @@ public static class DbInitializer
                 await MoadianSchemaV10.EnsureAsync(db);
                 await MoadianSchemaV11.EnsureAsync(db);
                 await MoadianSchemaV12.EnsureAsync(db);
+                // ایندکس‌های یکتای سال/دورهٔ مالی به‌ازای هر خدمات‌دهنده (رفع یکتایی سراسری).
+                await MoadianSchemaV13.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);

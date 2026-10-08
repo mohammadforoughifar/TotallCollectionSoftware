@@ -20,8 +20,13 @@ public interface IMoadianStandaloneInvoiceService
 public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceService
 {
     private readonly Db.AppDbContext _db;
+    private readonly IMoadianFiscalYearService _fiscalYears;
 
-    public MoadianStandaloneInvoiceService(Db.AppDbContext db) => _db = db;
+    public MoadianStandaloneInvoiceService(Db.AppDbContext db, IMoadianFiscalYearService fiscalYears)
+    {
+        _db = db;
+        _fiscalYears = fiscalYears;
+    }
 
     public async Task<MoadianInvoice> CreateAsync(MoadianStandaloneInvoiceRequest request, string? user)
     {
@@ -48,12 +53,17 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
         var fiscalProviderId = customer?.ServiceProvider is { IsDeleted: false } ? customer.ServiceProvider!.Id : 0;
 
         var fa = PersianDate.FromGregorian(request.Date);
-        var yearEntity = request.FiscalYearId > 0
-            ? await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Id == request.FiscalYearId)
-              ?? throw new InvalidOperationException("سال مالی انتخاب‌شده یافت نشد.")
-            : await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Year == fa.Year && y.ServiceProviderId == fiscalProviderId)
-              ?? throw new InvalidOperationException(
-                  $"برای سال {fa.Year} سال مالی تعریف نشده است؛ ابتدا در صفحه‌ت «سال مالی مودیان» آن را برای این خدمات‌دهنده تعریف کنید.");
+        Db.MoadianFiscalYear yearEntity;
+        if (request.FiscalYearId > 0)
+        {
+            yearEntity = await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Id == request.FiscalYearId)
+                ?? throw new InvalidOperationException("سال مالی انتخاب‌شده یافت نشد.");
+        }
+        else
+        {
+            // «خودکار از تاریخ»: اگر سال مالیِ سالِ تاریخ نباشد، خودکار (با ۱۲ دوره) ساخته می‌شود.
+            yearEntity = await _fiscalYears.EnsureYearAsync(fiscalProviderId, request.Date);
+        }
 
         if (request.FiscalYearId > 0 && yearEntity.ServiceProviderId != fiscalProviderId)
             throw new InvalidOperationException("سال مالی انتخاب‌شده متعلق به خدمات‌دهنده‌ای این مشتری نیست؛ سال مالی درست را انتخاب کنید.");
@@ -65,9 +75,21 @@ public sealed class MoadianStandaloneInvoiceService : IMoadianStandaloneInvoiceS
                 $"تاریخ انتخابی در سال مالی {yearEntity.Year} نیست (سال تاریخ: {fa.Year}).");
 
         var period = await _db.MoadianFiscalPeriods
-            .FirstOrDefaultAsync(p => p.Year == fa.Year && p.Month == fa.Month && p.ServiceProviderId == fiscalProviderId)
-            ?? throw new InvalidOperationException(
-                $"دورهٔ {fa.Year}/{fa.Month:00} تعریف نشده است؛ سال مالی را دوباره ذخیره کنید تا ۱۲ دوره ساخته شود.");
+            .FirstOrDefaultAsync(p => p.Year == fa.Year && p.Month == fa.Month && p.ServiceProviderId == fiscalProviderId);
+        if (period is null)
+        {
+            // «خودکار از تاریخ»: دورهٔ ماهِ تاریخ تعریف نشده؛ خودکار ساخته می‌شود.
+            period = new Db.MoadianFiscalPeriod
+            {
+                Year = fa.Year,
+                ServiceProviderId = fiscalProviderId,
+                Month = fa.Month,
+                IsClosed = false,
+                Notes = null
+            };
+            _db.MoadianFiscalPeriods.Add(period);
+            await _db.SaveChangesAsync();
+        }
         if (period.IsClosed)
             throw new InvalidOperationException($"دورهٔ {period.Year}/{period.Month:00} بسته است؛ برای این تاریخ نمی‌توان صورتحساب ثبت کرد.");
 

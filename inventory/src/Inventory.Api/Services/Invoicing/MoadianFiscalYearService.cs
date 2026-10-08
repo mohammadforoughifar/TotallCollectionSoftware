@@ -15,6 +15,8 @@ public interface IMoadianFiscalYearService
     Task<MoadianFiscalPeriodDto> SetPeriodClosedAsync(int periodId, bool closed);
     /// <summary>پیش‌نمایش شمارهٔ صورتحساب بعدی (سریال سراسری + شمارهٔ سند سالانه).</summary>
     Task<MoadianNextNumberDto> GetNextNumberAsync(int fiscalYearId, DateTime? date, int? periodId, int? providerId = null);
+    /// <summary>سال مالیِ سالِ شمسیِ تاریخ را برمی‌گرداند؛ اگر نباشد (با ۱۲ دورهٔ ماهانه) می‌سازد.</summary>
+    Task<Db.MoadianFiscalYear> EnsureYearAsync(int? providerId, DateTime date);
 }
 
 /// <summary>
@@ -252,8 +254,12 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
                 .FirstOrDefaultAsync(y => y.Year == fa.Year && y.ServiceProviderId == (providerId ?? 0));
             if (year is null)
             {
-                result.CanCreate = false;
-                result.Warning = $"برای سال {fa.Year} سال مالی تعریف نشده است؛ ابتدا در صفحهٔ «سال مالی مودیان» آن را تعریف کنید.";
+                // «خودکار از تاریخ»: سال مالیِ سالِ تاریخ وجود ندارد؛ خودکار (با ۱۲ دوره) ساخته می‌شود.
+                var created = await EnsureYearAsync(providerId, invoiceDate);
+                year = await _db.MoadianFiscalYears.AsNoTracking().FirstAsync(y => y.Id == created.Id);
+                result.Info = providerId is > 0
+                    ? $"سال مالی {fa.Year} برای این خدمات‌دهنده به‌صورت خودکار ایجاد شد."
+                    : $"سال مالی {fa.Year} به‌صورت خودکار ایجاد شد.";
             }
             else if (year.IsClosed)
             {
@@ -289,6 +295,13 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
         }
         else
         {
+            period = await periodQuery.FirstOrDefaultAsync();
+        }
+
+        if (period is null && result.CanCreate)
+        {
+            // «خودکار از تاریخ»: دورهٔ ماهِ تاریخ کم است؛ دوره‌های کم‌شده تکمیل و دوباره بررسی می‌شوند.
+            await EnsureYearAsync(providerId, invoiceDate);
             period = await periodQuery.FirstOrDefaultAsync();
         }
 
@@ -349,6 +362,30 @@ public sealed class MoadianFiscalYearService : IMoadianFiscalYearService
     /// <summary>SQLite عملگر Sum روی decimal را در سمت پایگاه‌داده پشتیبانی نمی‌کند.</summary>
     private bool NeedsClientSideMoneySum
         => _db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
+
+    public async Task<Db.MoadianFiscalYear> EnsureYearAsync(int? providerId, DateTime date)
+    {
+        var fa = PersianDate.FromGregorian(date);
+        var provider = providerId ?? 0;
+
+        var year = await _db.MoadianFiscalYears.FirstOrDefaultAsync(y => y.Year == fa.Year && y.ServiceProviderId == provider);
+        if (year is null)
+        {
+            year = new Db.MoadianFiscalYear
+            {
+                Year = fa.Year,
+                ServiceProviderId = provider,
+                StartDate = PersianDate.ToGregorian(fa.Year, 1, 1),
+                EndDate = PersianDate.ToGregorian(fa.Year, 12, PersianDate.DaysInMonth(fa.Year, 12)),
+                CreatedAt = DateTime.Now
+            };
+            _db.MoadianFiscalYears.Add(year);
+        }
+        // دوره‌های ماهانهٔ کم‌شده (در صورت وجود) تکمیل می‌شوند — ایمن برای تکرار.
+        await EnsureMonthlyPeriodsAsync(fa.Year, providerId: provider, closed: year.IsClosed);
+        await _db.SaveChangesAsync();
+        return year;
+    }
 
     private async Task EnsureMonthlyPeriodsAsync(int year, int providerId, bool closed)
     {

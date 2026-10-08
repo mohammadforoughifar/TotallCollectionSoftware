@@ -1030,7 +1030,7 @@ public class AppDbContext : DbContext
         mb.Entity<MoadianServiceProviderProfile>().Property(p => p.IsDeleted).HasDefaultValue(false);
         mb.Entity<MoadianServiceProviderProfile>().HasIndex(p => p.NationalID);
         mb.Entity<MoadianFiscalYear>().ToTable("MoadianFiscalYears");
-        mb.Entity<MoadianFiscalYear>().HasIndex(y => y.Year).IsUnique().HasDatabaseName("IX_MoadianFiscalYears_Year");
+        mb.Entity<MoadianFiscalYear>().HasIndex(y => new { y.ServiceProviderId, y.Year }).IsUnique().HasDatabaseName("IX_MoadianFiscalYears_ProviderYear");
         mb.Entity<MoadianProviderConnectionProfile>().ToTable("MoadianProviderConnections");
         mb.Entity<MoadianProviderConnectionProfile>().Property(c => c.IsDeleted).HasDefaultValue(false);
         mb.Entity<MoadianProviderConnectionProfile>().Property(c => c.LastConnectionTestMessage).HasMaxLength(500);
@@ -1086,7 +1086,7 @@ public class AppDbContext : DbContext
           .HasFilter("[DocumentNumber] IS NOT NULL");
         mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalYearId, i.YearSerial }).IsUnique()
           .HasFilter("[FiscalYearId] IS NOT NULL AND [YearSerial] > 0");
-        mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.Year, p.Month }).IsUnique();
+        mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.ServiceProviderId, p.Year, p.Month }).IsUnique().HasDatabaseName("IX_MoadianFiscalPeriods_ProviderYearMonth");
         mb.Entity<MoadianCpc>().HasIndex(c => c.Code).IsUnique();
         mb.Entity<MoadianLog>().HasIndex(l => l.InvoiceId);
         mb.Entity<MoadianInvoice>().Property(i => i.TotalGross).HasPrecision(18, 2);

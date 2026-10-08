@@ -90,6 +90,8 @@ public class MoadianNextNumberDto
     public string? FiscalPeriodTitle { get; set; }
     /// <summary>پیام هشدار/خطا در صورت نبود سال مالی یا بسته بودن دوره.</summary>
     public string? Warning { get; set; }
+    /// <summary>اطلاع‌رسانی (مثلاً ایجاد خودکار سال مالی از تاریخ).</summary>
+    public string? Info { get; set; }
     public bool CanCreate { get; set; } = true;
 }
 

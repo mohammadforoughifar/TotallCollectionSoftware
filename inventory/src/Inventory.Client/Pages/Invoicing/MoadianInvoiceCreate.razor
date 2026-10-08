@@ -89,6 +89,14 @@ else if (loadingRefs)
 }
 else
 {
+    @if (!string.IsNullOrWhiteSpace(numberInfo))
+    {
+        <div class="alert alert-info py-2 small d-flex gap-2 align-items-start">
+            <i class="bi bi-magic mt-1"></i>
+            <div>@numberInfo</div>
+        </div>
+    }
+
     @if (!string.IsNullOrWhiteSpace(numberWarning))
     {
         <div class="alert alert-warning py-2 small d-flex gap-2 align-items-start">
@@ -350,6 +358,7 @@ else
     private int selectedCustomerId;
     private MoadianNextNumberDto? nextNumber;
     private string? numberWarning;
+    private string? numberInfo;
     private MoadianInvoice? savedInvoice;
 
     private static readonly MoadianInvoiceSubject[] SubjectOptions =
@@ -419,6 +428,10 @@ else
         {
             nextNumber = await StandaloneSvc.GetNextNumberAsync(selectedYearId, form.Date, ProviderId);
             numberWarning = nextNumber.Warning;
+            numberInfo = nextNumber.Info;
+            // اگر سال مالی به‌صورت خودکار از تاریخ ایجاد شد، به فهرست دراپ‌داون اضافه می‌شود.
+            if (nextNumber.FiscalYearId is > 0 && years.All(y => y.Id != nextNumber.FiscalYearId))
+                years = await StandaloneSvc.GetFiscalYearsAsync(ProviderId);
         }
         catch (Exception ex)
         {
