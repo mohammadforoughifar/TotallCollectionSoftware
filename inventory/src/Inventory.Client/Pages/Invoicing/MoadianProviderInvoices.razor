@@ -455,8 +455,9 @@ else if (providerId is > 0 && !loading)
     <hr class="my-2" />
     <div class="row g-2 mb-2">
         <div class="col-md-3">
-            <label class="form-label small">شناسه ملی خریدار</label>
-            <input class="form-control form-control-sm" dir="ltr" maxlength="50" @bind="New.BuyerTaxId" />
+            <label class="form-label small">شناسهٔ ملی/اقتصادی خریدار</label>
+            <input class="form-control form-control-sm" dir="ltr" maxlength="50" @bind="New.BuyerTaxId" placeholder="حقیقی: ۱۰ رقم | حقوقی: ۱۱ رقم" />
+            <div class="small text-muted mt-1">حقیقی: شمارهٔ ملی ۱۰ رقمی — حقوقی: شناسهٔ ملی ۱۱ رقمی (کد اقتصادی ۱۴ رقمی دیگر پذیرفته نمی‌شود)</div>
         </div>
         <div class="col-md-3">
             <label class="form-label small">نام خریدار</label>

@@ -88,9 +88,12 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
 
         var buyerId = invoice.BuyerTaxId?.Trim();
         if (string.IsNullOrWhiteSpace(buyerId))
-            throw new InvalidOperationException("شناسهٔ خریدار ثبت نشده است؛ «شناسه ملی/مشارکت مدنی (۱۰ رقم)» یا «کد اقتصادی (۱۴ رقم)» را درج کنید.");
+            throw new InvalidOperationException("شناسهٔ خریدار ثبت نشده است؛ «شمارهٔ ملی ۱۰ رقمی» (حقیقی) یا «شناسهٔ ملی ۱۱ رقمی» (حقوقی) را درج کنید.");
         if (!buyerId.All(char.IsDigit))
-            throw new InvalidOperationException("شناسهٔ خریدار باید فقط عدد باشد (۱۰ رقم برای شماره ملی/مشارکت مدنی یا ۱۴ رقم برای کد اقتصادی).");
+            throw new InvalidOperationException("شناسهٔ خریدار باید فقط عدد باشد: ۱۰ رقم برای اشخاص حقیقی (شمارهٔ ملی) یا ۱۱ رقم برای اشخاص حقوقی (شناسهٔ ملی).");
+        if (buyerId.Length == 14)
+            throw new InvalidOperationException(
+                "کد اقتصادی ۱۴ رقمی دیگر پذیرفته نمی‌شود (خطای 0101204 سامانه): برای خریدار حقوقی، «شناسهٔ ملی ۱۱ رقمی» را در شناسهٔ خریدار ثبت و دوباره ارسال کنید. برای خریدار حقیقی، «شمارهٔ ملی ۱۰ رقمی» را درج کنید.");
 
         var tins = FirstNonEmpty(invoice.EconomicCode, provider.EconomicNumber, provider.NationalID);
         if (string.IsNullOrWhiteSpace(tins))
@@ -440,9 +443,11 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     /// <summary>
     /// نگاشت شناسهٔ خریدار به فیلدهای رسمی سامانه:
     ///   • Bid = «شماره/شناسه ملی/شناسه مشارکت مدنی/کد فراگیر خریدار» — باید دقیقاً ۱۰ رقم باشد (الگو ^\d{10}$)
-    ///   • Tinb = «شماره مالیاتی/کد اقتصادی خریدار» — کدهای اقتصادی ۱۴ رقمی این‌جا می‌روند
+    ///   • Tinb = «شماره اقتصادی/مالیاتی خریدار» — برای حقوقی، شناسهٔ ملی ۱۱ رقمی (الگو ^\d{11}$) این‌جا می‌رود
     ///   • Tob = نوع خریدار: ۱ = حقوقی، ۲ = حقیقی
-    /// تشخیص از روی طول شناسه: ۱۰ رقم → شماره ملی/مشارکت مدنی (Bid)؛ ۱۴ رقم → کد اقتصادی (Tinb).
+    /// تشخیص از روی طول شناسه: ۱۰ رقم → حقیقی (Bid=شماره ملی)؛ ۱۱ رقم → حقوقی (Tinb=شناسه ملی ۱۱ رقمی).
+    /// توجه: کد اقتصادی ۱۴ رقمی قدیمی دیگر توسط سامانه پذیرفته نمی‌شود (خطای 0101204) و در اعتبارسنجی
+    /// پیش از ارسال رد می‌شود.
     /// </summary>
     internal static (int? Tob, string? Bid, string? Tinb) ResolveBuyer(Db.MoadianInvoice inv)
     {
@@ -451,8 +456,10 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         if (!id.All(char.IsDigit)) return (null, null, null);
 
         if (id.Length == 10)
-            return (2, id, null);      // ۱۰ رقم → Bid (الگوی سامانه) — پیش‌فرض: حقیقی
-        return (1, null, id);          // ۱۴ رقم (کد اقتصادی) یا سایر → Tinb — پیش‌فرض: حقوقی
+            return (2, id, null);      // ۱۰ رقم → Bid (الگوی سامانه) — حقیقی
+        if (id.Length == 11)
+            return (1, null, id);      // ۱۱ رقم → Tinb (الگوی سامانه) — حقوقی، شناسه ملی
+        return (1, null, id);          // سایر (نظیر ۱۴ رقم قدیمی) → Tinb — حقوقی (احتمال رد توسط سامانه)
     }
 
     private static (string Taxid, bool Fallback) ResolveTaxId(
