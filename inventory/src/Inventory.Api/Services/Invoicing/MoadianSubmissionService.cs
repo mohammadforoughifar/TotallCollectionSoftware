@@ -525,7 +525,8 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             // اگر تاریخ صورتحساب بعد از بار اول تغییر کرده باشد، taxid ذخیره‌شده روزِ قدیمی را
             // در خودش دارد و با indatim جدید منطبق نیست — با تاریخ جدید دوباره ساخته می‌شود.
             // (ارسال قبلی چون FAILED بوده در کارپوشه ننشسته و taxid جدید تکراری نیست.)
-            if (TaxIdDayMatchesDate(invoice.Taxid, date))
+            // اگر شماره⹀ صورت‌حساب بعد از بار اول تغییر کرده باشد، taxid ذخیره‌شده سریال قدیمی را دارد و با inno جدید ناسازگار می‌شود — با شماره⹀ جدید دوباره ساخته می‌شود.
+            if (TaxIdDayMatchesDate(invoice.Taxid, date) && TaxIdSerialMatches(invoice.Taxid, serial))
                 return (invoice.Taxid, false);
         }
 
@@ -570,6 +571,22 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         catch
         {
             return false; // قابل تفسیر نبود — taxid را دوباره بساز.
+        }
+    }
+
+    /// <summary>
+    /// بخش سریال taxid (ده هگز ۱۲ تا ۲۱) باید با سریال صورت‌حساب یکی باشد؛
+    /// در غیر این صورت سامانه inno و taxid را ناسازگار می‌داند (خطا 0300101).
+    /// </summary>
+    internal static bool TaxIdSerialMatches(string taxid, long serial)
+    {
+        try
+        {
+            return Convert.ToInt64(taxid.Substring(11, 10), 16) == serial;
+        }
+        catch
+        {
+            return false;
         }
     }
 

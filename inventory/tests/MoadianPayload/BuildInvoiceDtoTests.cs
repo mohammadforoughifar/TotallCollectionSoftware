@@ -18,6 +18,31 @@ namespace MoadianPayload.Tests;
 ///   Buyer 10-digit (individual): Tob=1, Bid=id, Tinb=null
 ///   Buyer 14-digit (economic code): Tob=2, Bid=null, Tinb=id
 /// </summary>
+public class TaxIdConsistencyTests
+{
+    [Fact]
+    public void TaxIdSerialMatches_Current_Serial_And_Rejects_Other()
+    {
+        var taxid = MoadianTaxIdGenerator.GenerateTaxId("A2ZRHM000000", 20000, new DateTime(2026, 10, 10, 12, 0, 0));
+        Assert.Equal("0000004E20", MoadianTaxIdGenerator.ToInno(20000));
+        Assert.True(MoadianSubmissionService.TaxIdSerialMatches(taxid, 20000));
+        Assert.False(MoadianSubmissionService.TaxIdSerialMatches(taxid, 10));
+    }
+
+    [Fact]
+    public void TaxIdSerialMatches_Malformed_Taxid_Returns_False()
+        => Assert.False(MoadianSubmissionService.TaxIdSerialMatches("ABC", 10));
+
+    [Fact]
+    public void TaxIdDayMatchesDate_Same_Day_True_Other_Day_False()
+    {
+        var day = new DateTime(2026, 10, 10, 12, 0, 0);
+        var taxid = MoadianTaxIdGenerator.GenerateTaxId("A2ZRHM000000", 10, day);
+        Assert.True(MoadianSubmissionService.TaxIdDayMatchesDate(taxid, day));
+        Assert.False(MoadianSubmissionService.TaxIdDayMatchesDate(taxid, day.AddDays(1)));
+    }
+}
+
 public class NextSerialNumberTests
 {
     [Theory]
