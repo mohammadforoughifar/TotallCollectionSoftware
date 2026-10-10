@@ -54,12 +54,24 @@ public class MoadianService : IMoadianService
     private readonly ILogger<MoadianService> _log;
     private readonly IDataProtector _secrets;
 
-    public MoadianService(Db.AppDbContext db, ILogger<MoadianService> log, IDataProtectionProvider protectionProvider)
+    public MoadianService(Db.AppDbContext db, ILogger<MoadianService> log, IDataProtectionProvider protectionProvider,
+        MoadianRuntimeSettings settings)
     {
         _db = db;
         _log = log;
         _secrets = protectionProvider.CreateProtector("Inventory.Moadian.Settings.v1");
+        _settings = settings;
     }
+
+    private readonly MoadianRuntimeSettings _settings;
+
+    /// <summary>
+    /// Next internal serial: max(existing max + 1, SerialStartNumber). The inno series is
+    /// per-taxpayer in the system, so when the account has history from an older software the
+    /// numbering must continue after it (duplicate inno => system error 0300101).
+    /// </summary>
+    internal static int NextSerialNumber(int currentMax, int serialStart)
+        => Math.Max(currentMax + 1, Math.Max(0, serialStart));
 
     // =====================================================================
     // تنظیمات
@@ -823,7 +835,7 @@ public class MoadianService : IMoadianService
         if (maximum == int.MaxValue)
             throw new InvalidOperationException("ظرفیت شماره داخلی صورتحساب تمام شده است.");
 
-        invoice.Number = maximum + 1;
+        invoice.Number = NextSerialNumber(maximum, _settings.SerialStartNumber);
         _db.MoadianInvoices.Add(invoice);
         await _db.SaveChangesAsync();
         await transaction.CommitAsync();

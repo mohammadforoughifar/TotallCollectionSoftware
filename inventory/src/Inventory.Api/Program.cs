@@ -98,7 +98,8 @@ builder.Services.AddSingleton(new Inventory.Api.Services.Invoicing.MoadianRuntim
     builder.Configuration["Moadian:ApiVersion"],
     builder.Configuration["Files:MoadianPrivateKeyRoot"],
     builder.Configuration["Moadian:ClientType"],
-    builder.Configuration["Moadian:SignatureKeyId"])); // snapshots global Moadian options and private-key root at startup
+    builder.Configuration["Moadian:SignatureKeyId"],
+    int.TryParse(builder.Configuration["Moadian:SerialStartNumber"], out var moadianSerialStart) ? moadianSerialStart : 0)); // snapshots global Moadian options and private-key root at startup
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianMasterDataService, Inventory.Api.Services.Invoicing.MoadianMasterDataService>(); // CRUD اطلاعات پایهٔ پروفایل‌های مودیان
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService, Inventory.Api.Services.Invoicing.MoadianProviderPrivateKeyService>(); // کلید خصوصی هر خدمات‌دهنده: wwwroot/uploads/moadian/{خدمات‌دهنده}
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianConnectionTestService, Inventory.Api.Services.Invoicing.MoadianConnectionTestService>(); // تست اتصال و احراز هویت خدمات‌دهنده (GET_TOKEN)

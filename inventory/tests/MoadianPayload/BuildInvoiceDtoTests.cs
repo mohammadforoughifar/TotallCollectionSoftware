@@ -18,6 +18,17 @@ namespace MoadianPayload.Tests;
 ///   Buyer 10-digit (individual): Tob=1, Bid=id, Tinb=null
 ///   Buyer 14-digit (economic code): Tob=2, Bid=null, Tinb=id
 /// </summary>
+public class NextSerialNumberTests
+{
+    [Theory]
+    [InlineData(9, 0, 10)]      // no start configured: plain max + 1
+    [InlineData(9, 20000, 20000)] // start above max: begin at the start (migration from old software)
+    [InlineData(20005, 20000, 20006)] // history already past the start: keep incrementing
+    [InlineData(0, -5, 1)]     // negative start treated as 0
+    public void NextSerialNumber_Follows_Rules(int currentMax, int serialStart, int expected)
+        => Assert.Equal(expected, Inventory.Api.Services.Invoicing.MoadianService.NextSerialNumber(currentMax, serialStart));
+}
+
 public class BuildInvoiceDtoTests
 {
     private static MoadianInvoice CreateInvoice(string buyerTaxId, MoadianPayType? payType)
