@@ -52,6 +52,7 @@ builder.Services.AddScoped<IInvDocService, InvDocService>();
 builder.Services.AddScoped<IInvReportService, InvReportService>();
 builder.Services.AddScoped<IInvSettingsService, InvSettingsService>();
 builder.Services.AddScoped<IDocArchiveService, DocArchiveService>(); // ماژول آرشیو اسناد و مدارک
+builder.Services.AddScoped<IDocImportClient, DocImportClient>(); // آرشیو — ورود انبوه
 builder.Services.AddScoped<IHrCoreService, HrCoreService>(); // HrCore
 builder.Services.AddScoped<IHrTalentService, HrTalentService>(); // HrTalent
 builder.Services.AddScoped<IHrMainService, HrMainService>(); // HrMain — منابع انسانی اصلی

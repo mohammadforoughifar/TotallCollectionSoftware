@@ -218,6 +218,12 @@ public class AppDbContext : DbContext
     /// <summary>لاگ چاپ فایل‌های مدرک (DocArchive — جدول DocumentPrintLogs)</summary>
     public DbSet<DocumentPrintLog> DocumentPrintLogs => Set<DocumentPrintLog>();
 
+    /// <summary>نوبت‌های ورود انبوه آرشیو (DocArchive — جدول DocImportBatches)</summary>
+    public DbSet<DocImportBatch> DocImportBatches => Set<DocImportBatch>();
+
+    /// <summary>نتیجهٔ هر فایل در یک نوبت ورود (جدول DocImportResults)</summary>
+    public DbSet<DocImportResult> DocImportResults => Set<DocImportResult>();
+
     /// <summary>ماژول هسته پرسنلی (کارگزینی) — HrCore</summary>
     public DbSet<HrOrgUnit> HrOrgUnits => Set<HrOrgUnit>();
     public DbSet<HrEmployee> HrEmployees => Set<HrEmployee>();
@@ -462,6 +468,14 @@ public class AppDbContext : DbContext
         mb.Entity<DocumentLink>().HasIndex(l => new { l.DocumentId, l.LinkedDocumentId }).IsUnique();
         mb.Entity<DocCartableTask>().HasIndex(t => new { t.UserId, t.Status });
         mb.Entity<DocumentLog>().HasIndex(l => l.DocumentId);
+
+        // ==================== آرشیو اسناد — ورود انبوه ====================
+        // نام ایندکس‌ها با اسکیمای خودتعمیر (DocArchiveImportSchemaV1) یکی است تا
+        // در دیتابیس تازه‌ساختِ SQLite ایندکس تکراری ساخته نشود.
+        mb.Entity<DocImportResult>().HasIndex(r => new { r.BatchId, r.RelativePath }).IsUnique()
+            .HasDatabaseName("UX_DocImportResults_Batch_Path");
+        mb.Entity<DocImportResult>().HasIndex(r => new { r.BatchId, r.Status })
+            .HasDatabaseName("IX_DocImportResults_Batch_Status");
         mb.Entity<DocTag>().HasIndex(t => t.Name).IsUnique();
         mb.Entity<DocumentTag>().HasIndex(t => new { t.DocumentId, t.TagId }).IsUnique();
         mb.Entity<DocExtractedText>().HasIndex(e => new { e.DocumentId, e.AttachmentId });
