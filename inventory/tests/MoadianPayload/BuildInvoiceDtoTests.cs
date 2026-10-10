@@ -9,8 +9,8 @@ namespace MoadianPayload.Tests;
 /// Unit tests for BuildInvoiceDto - the INVOICE.V01 payload mapping.
 ///
 /// Reference samples (verified against the production system):
-///   Cash (setm=1): Cap=null, Insp=null, Indati2m=null, Tax17=null,
-///                  body Cop=null, body Vop=vam, Tvop=tvam
+///   Cash (setm=1): Cap=null, Insp=null, Indati2m=null, Tax17=null, Tvop=null,
+///                  body Cop=null, body Vop=vam
 ///                  (sending cap/insp/cop with values caused warnings 14029/14030/1205601)
 ///   Credit (setm=2): Cap=null, Insp=base(tbill-tvam-todam), Tvop=tvam,
 ///                    body Cop=null, body Vop=vam
@@ -74,7 +74,7 @@ public class BuildInvoiceDtoTests
         Assert.Null(dto.Header.Tax17);
         Assert.Equal(2072m, dto.Header.Tbill);
         Assert.Equal(171m, dto.Header.Tvam);
-        Assert.Equal(171m, dto.Header.Tvop);
+        Assert.Null(dto.Header.Tvop);          // cash: tvop empty in the working samples (even with Tvam>0)
 
         var body = dto.Body.Single();
         Assert.Null(body.Cop);
