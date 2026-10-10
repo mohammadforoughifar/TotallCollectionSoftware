@@ -1,45 +1,70 @@
 using System.Net;
 using System.Text;
 using Inventory.Client.Extensions;
+using Inventory.Shared;
 using Inventory.Shared.Dtos;
 
 namespace Inventory.Client.Pages;
 
-/// <summary>ساخت فاکتور چاپی مستقل و خودبسنده برای فاکتورهای صادرشده از پذیرش تعمیر.</summary>
+/// <summary>ساخت قبض چاپی پذیرش تعمیرات و فاکتور فروش مستقل و خودبسنده.</summary>
 public static class RepairInvoicePrint
 {
     public static string Build(RepairOrderDto repair, Order invoice, string? companyName)
+        => Build(repair, companyName, invoice);
+
+    public static string Build(RepairOrderDto repair, string? companyName, Order? invoice = null)
     {
         var company = string.IsNullOrWhiteSpace(companyName) ? "فروغ آریا" : companyName.Trim();
         var devices = DevicesFor(repair);
-        var repairItems = repair.Items.Where(i => i.Price > 0).OrderBy(i => i.Id).ToList();
-        var lines = invoice.Lines.OrderBy(i => i.Id).ToList();
         var phone = !string.IsNullOrWhiteSpace(repair.PartyMobile) ? repair.PartyMobile : repair.PartyPhone;
+        var hasInvoice = invoice is not null;
 
         var sb = new StringBuilder();
         sb.Append("<!doctype html><html lang=\"fa\" dir=\"rtl\"><head><meta charset=\"utf-8\">");
         sb.Append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-        sb.Append("<title>فاکتور تعمیرات ").Append(Esc(invoice.Number)).Append("</title>");
+        sb.Append("<title>").Append(hasInvoice ? "فاکتور خدمات و تعمیرات " + Esc(invoice!.Number) : "قبض پذیرش تعمیرات " + Esc(repair.Number)).Append("</title>");
         sb.Append("<style>").Append(Css).Append("</style></head><body><main class=\"sheet\">");
 
-        sb.Append("<header class=\"header\"><div class=\"brand\"><div class=\"mark\">ف</div><div><div class=\"company\">")
-            .Append(Esc(company)).Append("</div><div class=\"caption\">فاکتور خدمات و تعمیرات</div></div></div>");
-        sb.Append("<div class=\"invoice-stamp\"><span>فاکتور فروش</span><strong>").Append(Esc(invoice.Number)).Append("</strong></div></header>");
+        // Header
+        sb.Append("<header class=\"header\"><div class=\"brand\"><div class=\"mark\">ت</div><div><div class=\"company\">")
+            .Append(Esc(company)).Append("</div><div class=\"caption\">")
+            .Append(hasInvoice ? "فاکتور خدمات و تعمیرات" : "قبض پذیرش و خدمات تعمیرات")
+            .Append("</div></div></div>");
 
+        if (hasInvoice)
+        {
+            sb.Append("<div class=\"invoice-stamp\"><span>فاکتور فروش</span><strong>").Append(Esc(invoice!.Number)).Append("</strong></div>");
+        }
+        else
+        {
+            sb.Append("<div class=\"invoice-stamp\"><span>قبض پذیرش</span><strong>").Append(Esc(repair.Number)).Append("</strong></div>");
+        }
+        sb.Append("</header>");
+
+        // Meta
         sb.Append("<section class=\"meta\">");
         Meta(sb, "شماره پذیرش", repair.Number);
-        Meta(sb, "تاریخ صدور", invoice.Date.ToFa().FaDigits());
+        if (hasInvoice)
+        {
+            Meta(sb, "شماره فاکتور", invoice!.Number);
+            Meta(sb, "تاریخ فاکتور", invoice.Date.ToFa().FaDigits());
+        }
         Meta(sb, "تاریخ پذیرش", repair.ReceivedAt.ToFa().FaDigits());
         Meta(sb, "تعمیرکار", string.IsNullOrWhiteSpace(repair.TechnicianName) ? "—" : repair.TechnicianName!);
+        Meta(sb, "وضعیت", StatusTitle(repair.Status));
         sb.Append("</section>");
 
-        sb.Append("<section class=\"party\"><div class=\"party-icon\">م</div><div class=\"party-info\"><div class=\"eyebrow\">صورتحساب برای</div><strong>")
-            .Append(Esc(repair.PartyName ?? invoice.PartyName ?? "مشتری"))
+        // Party
+        sb.Append("<section class=\"party\"><div class=\"party-icon\">م</div><div class=\"party-info\"><div class=\"eyebrow\">")
+            .Append(hasInvoice ? "صورتحساب برای" : "پذیرش از / مشتری")
+            .Append("</div><strong>")
+            .Append(Esc(repair.PartyName ?? invoice?.PartyName ?? "مشتری"))
             .Append("</strong>");
         if (!string.IsNullOrWhiteSpace(phone))
             sb.Append("<span class=\"phone\" dir=\"ltr\">").Append(Esc(phone)).Append("</span>");
-        sb.Append("</div><div class=\"party-note\">لطفاً شمارهٔ پذیرش را هنگام پیگیری اعلام فرمایید.</div></section>");
+        sb.Append("</div><div class=\"party-note\">ارائهٔ این قبض هنگام پیگیری و تحویل دستگاه الزامی است.</div></section>");
 
+        // Section 1: Devices
         sb.Append("<section class=\"section\"><div class=\"section-head\"><span class=\"step\">۱</span><div><h2>دستگاه‌های پذیرش‌شده</h2><small>")
             .Append(devices.Count.Num()).Append(" دستگاه</small></div></div><div class=\"devices\">");
         for (var i = 0; i < devices.Count; i++)
@@ -60,44 +85,102 @@ public static class RepairInvoicePrint
         }
         sb.Append("</div></section>");
 
-        sb.Append("<section class=\"section\"><div class=\"section-head\"><span class=\"step\">۲</span><div><h2>شرح خدمات و قطعات</h2><small>اقلام مشترکِ این پذیرش</small></div></div>");
+        // Section 2: Items
+        sb.Append("<section class=\"section\"><div class=\"section-head\"><span class=\"step\">۲</span><div><h2>شرح خدمات و قطعات</h2><small>")
+            .Append(hasInvoice ? "اقلام نهایی فاکتور" : "اقلام ثبت‌شده در پذیرش")
+            .Append("</small></div></div>");
+
         sb.Append("<table><thead><tr><th class=\"num-col\">ردیف</th><th>شرح</th><th class=\"qty-col\">تعداد</th><th class=\"money-col\">فی (ریال)</th><th class=\"money-col\">مبلغ (ریال)</th></tr></thead><tbody>");
-        var unmatchedRepairItems = repairItems.ToList();
-        for (var i = 0; i < lines.Count; i++)
+
+        if (hasInvoice)
         {
-            var line = lines[i];
-            var repairItemIndex = unmatchedRepairItems.FindIndex(item => Matches(item, line));
-            RepairItemDto? repairItem = repairItemIndex >= 0 ? unmatchedRepairItems[repairItemIndex] : null;
-            if (repairItemIndex >= 0) unmatchedRepairItems.RemoveAt(repairItemIndex);
-            var description = !string.IsNullOrWhiteSpace(repairItem?.Description)
-                ? repairItem!.Description
-                : (line.ProductName ?? "خدمت تعمیراتی");
-            sb.Append("<tr><td class=\"num-cell\">").Append((i + 1).Num()).Append("</td><td><strong>")
-                .Append(Esc(description)).Append("</strong>");
-            if (!string.IsNullOrWhiteSpace(line.ProductName) &&
-                !string.Equals(description, line.ProductName, StringComparison.Ordinal) &&
-                !string.Equals(line.ProductName, "اجرت تعمیرات", StringComparison.Ordinal))
-                sb.Append("<small class=\"subline\">").Append(Esc(line.ProductName)).Append("</small>");
-            sb.Append("</td><td class=\"qty-cell\">").Append(line.Quantity.Qty())
-                .Append("</td><td class=\"money-cell\">").Append(line.Price.Money())
-                .Append("</td><td class=\"money-cell total-cell\">").Append(line.Total.Money()).Append("</td></tr>");
+            var repairItems = repair.Items.Where(i => i.Price > 0).OrderBy(i => i.Id).ToList();
+            var lines = invoice!.Lines.OrderBy(i => i.Id).ToList();
+            var unmatchedRepairItems = repairItems.ToList();
+            for (var i = 0; i < lines.Count; i++)
+            {
+                var line = lines[i];
+                var repairItemIndex = unmatchedRepairItems.FindIndex(item => Matches(item, line));
+                RepairItemDto? repairItem = repairItemIndex >= 0 ? unmatchedRepairItems[repairItemIndex] : null;
+                if (repairItemIndex >= 0) unmatchedRepairItems.RemoveAt(repairItemIndex);
+                var description = !string.IsNullOrWhiteSpace(repairItem?.Description)
+                    ? repairItem!.Description
+                    : (line.ProductName ?? "خدمت تعمیراتی");
+                sb.Append("<tr><td class=\"num-cell\">").Append((i + 1).Num()).Append("</td><td><strong>")
+                    .Append(Esc(description)).Append("</strong>");
+                if (!string.IsNullOrWhiteSpace(line.ProductName) &&
+                    !string.Equals(description, line.ProductName, StringComparison.Ordinal) &&
+                    !string.Equals(line.ProductName, "اجرت تعمیرات", StringComparison.Ordinal))
+                    sb.Append("<small class=\"subline\">").Append(Esc(line.ProductName)).Append("</small>");
+                sb.Append("</td><td class=\"qty-cell\">").Append(line.Quantity.Qty())
+                    .Append("</td><td class=\"money-cell\">").Append(line.Price.Money())
+                    .Append("</td><td class=\"money-cell total-cell\">").Append(line.Total.Money()).Append("</td></tr>");
+            }
+            if (lines.Count == 0)
+                sb.Append("<tr><td colspan=\"5\" class=\"empty\">برای این فاکتور ردیفی ثبت نشده است.</td></tr>");
         }
-        if (lines.Count == 0)
-            sb.Append("<tr><td colspan=\"5\" class=\"empty\">برای این فاکتور ردیفی ثبت نشده است.</td></tr>");
+        else
+        {
+            var items = repair.Items.OrderBy(i => i.Id).ToList();
+            for (var i = 0; i < items.Count; i++)
+            {
+                var it = items[i];
+                var desc = !string.IsNullOrWhiteSpace(it.Description) ? it.Description : (it.ProductName ?? "خدمت تعمیراتی");
+                var total = it.Quantity * it.Price;
+                sb.Append("<tr><td class=\"num-cell\">").Append((i + 1).Num()).Append("</td><td><strong>")
+                    .Append(Esc(desc)).Append("</strong>");
+                if (!string.IsNullOrWhiteSpace(it.ProductName) && !string.Equals(desc, it.ProductName, StringComparison.Ordinal))
+                    sb.Append("<small class=\"subline\">").Append(Esc(it.ProductName)).Append("</small>");
+                sb.Append("</td><td class=\"qty-cell\">").Append(it.Quantity.Qty())
+                    .Append("</td><td class=\"money-cell\">").Append(it.Price.Money())
+                    .Append("</td><td class=\"money-cell total-cell\">").Append(total.Money()).Append("</td></tr>");
+            }
+            if (items.Count == 0)
+            {
+                sb.Append("<tr><td colspan=\"5\" class=\"empty\">دستگاه در مرحلهٔ عیب‌یابی اولیه است؛ قطعات و خدمات پس از بررسی توسط تکنسین ثبت خواهند شد.</td></tr>");
+            }
+        }
         sb.Append("</tbody></table></section>");
 
-        sb.Append("<section class=\"grand-total\"><div><span>مبلغ قابل پرداخت</span><small>جمع نهایی فاکتور فروش</small></div><strong>")
-            .Append(invoice.TotalAmount.Money()).Append(" <small>ریال</small></strong></section>");
+        // Grand Total
+        decimal totalAmount = hasInvoice ? invoice!.TotalAmount : (repair.TotalPrice > 0 ? repair.TotalPrice : repair.QuotedPrice);
+        string totalLabel = hasInvoice ? "مبلغ قابل پرداخت" : (repair.TotalPrice > 0 ? "مجموع خدمات و قطعات" : "برآورد اولیه هزینه");
+        string totalSub = hasInvoice ? "جمع نهایی فاکتور فروش" : (repair.TotalPrice > 0 ? "مبلغ جاری پذیرش" : "برآورد تخمینی اعلام‌شده");
+
+        sb.Append("<section class=\"grand-total\"><div><span>").Append(totalLabel).Append("</span><small>")
+            .Append(totalSub).Append("</small></div><strong>")
+            .Append(totalAmount.Money()).Append(" <small>ریال</small></strong></section>");
+
+        if (!string.IsNullOrWhiteSpace(repair.Note))
+            sb.Append("<div class=\"delivered\">یادداشت پذیرش: <strong>").Append(Esc(repair.Note)).Append("</strong></div>");
 
         if (repair.DeliveredAt.HasValue)
             sb.Append("<div class=\"delivered\">تاریخ تحویل دستگاه: <strong>").Append(repair.DeliveredAt.Value.ToFa().FaDigits()).Append("</strong></div>");
 
-        sb.Append("<section class=\"signatures\"><div><span>امضای مشتری / تحویل‌گیرنده</span></div><div><span>مهر و امضای پذیرش</span></div></section>");
+        // Terms
+        sb.Append("<div class=\"terms\">")
+            .Append("<div><b>شرایط و مقررات پذیرش و تحویل:</b></div>")
+            .Append("<div>۱. ارائه اصل این قبض هنگام تحویل گرفتن دستگاه الزامی است.</div>")
+            .Append("<div>۲. مرکز هیچ‌گونه مسئولیتی در قبال حفظ داده‌ها، حساب‌های کاربری و اطلاعات شخصی روی دستگاه ندارد.</div>")
+            .Append("<div>۳. حداکثر مهلت مراجعه جهت تحویل گرفتن دستگاه ۳۰ روز کاری پس از اعلام آماده بودن است.</div>")
+            .Append("</div>");
+
+        sb.Append("<section class=\"signatures\"><div><span>امضای مشتری / تحویل‌دهنده</span></div><div><span>مهر و امضای واحد پذیرش و تعمیرات</span></div></section>");
         sb.Append("<footer>از اعتماد شما سپاسگزاریم <span>•</span> ").Append(Esc(company)).Append(" <span>•</span> چاپ‌شده در ")
             .Append(DateTime.Now.ToFaDateTime().FaDigits()).Append("</footer>");
         sb.Append("</main></body></html>");
         return sb.ToString();
     }
+
+    private static string StatusTitle(RepairStatus status) => status switch
+    {
+        RepairStatus.Received => "پذیرش شده",
+        RepairStatus.InProgress => "در حال تعمیر",
+        RepairStatus.Ready => "آماده تحویل",
+        RepairStatus.Delivered => "تحویل شده",
+        RepairStatus.Cancelled => "مرجوع / لغو شده",
+        _ => "نامشخص"
+    };
 
     private static void Meta(StringBuilder sb, string label, string value)
         => sb.Append("<div class=\"meta-item\"><span>").Append(Esc(label)).Append("</span><strong>").Append(Esc(value)).Append("</strong></div>");
@@ -194,7 +277,9 @@ tbody tr:nth-child(even) td { background:#f8fafc; }
 .grand-total strong { color:#1d4ed8; font-size:18px; font-weight:800; white-space:nowrap; }
 .grand-total strong small { font-size:9px; }
 .delivered { margin-top:8px; color:#475569; font-size:9.5px; }
-.signatures { display:flex; gap:35px; margin-top:29px; }
+.terms { margin-top:10px; padding:7px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; font-size:8.5px; color:#64748b; line-height:1.6; }
+.terms b { color:#334155; }
+.signatures { display:flex; gap:35px; margin-top:24px; }
 .signatures div { flex:1; height:36px; border-top:1px dashed #94a3b8; text-align:center; }
 .signatures span { position:relative; top:5px; color:#64748b; font-size:9px; }
 footer { margin-top:16px; padding-top:8px; border-top:1px solid #e2e8f0; color:#94a3b8; text-align:center; font-size:8px; }
@@ -217,7 +302,7 @@ footer span { padding:0 4px; color:#cbd5e1; }
  thead { display:table-header-group; }
  thead th,tbody td { text-align:center; }
  .money-col,.money-cell,.qty-cell,.num-cell { text-align:center; }
- tr,.device,.grand-total,.delivered,.signatures { break-inside:avoid; page-break-inside:avoid; }
+ tr,.device,.grand-total,.delivered,.terms,.signatures { break-inside:avoid; page-break-inside:avoid; }
  tbody td { padding:5px 6px; }
  .grand-total { flex-direction:column; justify-content:center; margin-top:8px; padding:9px 11px; text-align:center; }
  .delivered { text-align:center; }

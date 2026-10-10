@@ -369,10 +369,9 @@
                                 <td>@StatusBadge(r)</td>
                                 <td class="text-end text-nowrap">
                                     <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i></button>
-                                    @if (r.InvoiceTransactionId is > 0)
-                                    {
-                                        <button class="btn btn-sm btn-light" title="چاپ فاکتور" @onclick="() => PrintInvoice(r)"><i class="bi bi-printer text-success"></i></button>
-                                    }
+                                    <button class="btn btn-sm btn-light" title="@(r.InvoiceTransactionId is > 0 ? "چاپ فاکتور فروش" : "چاپ قبض پذیرش تعمیرات")" @onclick="() => PrintRepair(r)">
+                                        <i class="bi bi-printer @(r.InvoiceTransactionId is > 0 ? "text-success" : "text-primary")"></i>
+                                    </button>
                                     @if (r.InvoiceTransactionId is null)
                                     {
                                         <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
@@ -434,6 +433,9 @@
                         </div>
                         <div class="m-card-actions">
                             <button class="btn btn-light" @onclick="() => OpenView(r)"><i class="bi bi-eye"></i> جزئیات</button>
+                            <button class="btn btn-light @(r.InvoiceTransactionId is > 0 ? "text-success" : "text-primary")" @onclick="() => PrintRepair(r)">
+                                <i class="bi bi-printer"></i> @(r.InvoiceTransactionId is > 0 ? "چاپ فاکتور" : "چاپ قبض پذیرش")
+                            </button>
                             @if (r.InvoiceTransactionId is null)
                             {
                                 <button class="btn btn-light text-primary" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil"></i> ویرایش</button>
@@ -442,7 +444,6 @@
                             }
                             else
                             {
-                                <button class="btn btn-light text-success" @onclick="() => PrintInvoice(r)"><i class="bi bi-printer"></i> چاپ فاکتور</button>
                                 <span class="fs-8 text-muted me-auto align-self-center"><i class="bi bi-receipt"></i> @r.InvoiceNumber</span>
                             }
                         </div>
@@ -661,6 +662,9 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseForm">انصراف (Esc)</button>
+        <button class="btn btn-outline-primary" @onclick="SaveAndPrint" disabled="@saving">
+            <i class="bi bi-printer ms-1"></i> ذخیره و چاپ
+        </button>
         <button class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
             ذخیره (F1)
@@ -699,14 +703,17 @@
                     <div class="repair-view-shared-item"><div class="fs-8 text-muted">فاکتور فروش</div><div class="fw-700 text-primary doc-number">@viewing.InvoiceNumber</div></div>
                 }
             </div>
-            @if (viewing.InvoiceTransactionId is > 0)
-            {
-                <div class="d-flex justify-content-end mb-3">
-                    <button class="btn btn-sm btn-outline-success" @onclick="() => PrintInvoice(viewing!)">
-                        <i class="bi bi-printer"></i> چاپ فاکتور
+            <div class="d-flex justify-content-end gap-2 mb-3">
+                <button class="btn btn-sm @(viewing.InvoiceTransactionId is > 0 ? "btn-outline-success" : "btn-outline-primary")" @onclick="() => PrintRepair(viewing!)">
+                    <i class="bi bi-printer"></i> @(viewing.InvoiceTransactionId is > 0 ? "چاپ فاکتور فروش" : "چاپ قبض پذیرش تعمیرات")
+                </button>
+                @if (viewing.InvoiceTransactionId is null)
+                {
+                    <button class="btn btn-sm btn-success" @onclick="() => { var v = viewing; viewing = null; OpenInvoice(v!); }">
+                        <i class="bi bi-receipt"></i> صدور فاکتور فروش و تحویل
                     </button>
-                </div>
-            }
+                }
+            </div>
 
             <div class="d-flex align-items-center gap-2 mb-2">
                 <h6 class="mb-0">دستگاه‌های پذیرش‌شده</h6>
@@ -1447,7 +1454,10 @@
         return s;
     }
 
-    private async Task Save()
+    private async Task SaveAndPrint() => await SaveInternal(printAfterSave: true);
+    private async Task Save() => await SaveInternal(printAfterSave: false);
+
+    private async Task SaveInternal(bool printAfterSave)
     {
         if (form.PartyId <= 0) { Toast.Error("مشتری را انتخاب کنید."); return; }
         EnsureFormDevices();
@@ -1484,11 +1494,17 @@
         saving = true;
         try
         {
-            await RepairSvc.SaveRepairAsync(form);
-            Toast.Success(form.Id == 0 ? "پذیرش ثبت شد." : "پذیرش ویرایش شد.");
+            var isNew = form.Id == 0;
+            var saved = await RepairSvc.SaveRepairAsync(form);
+            Toast.Success(isNew ? "پذیرش ثبت شد." : "پذیرش ویرایش شد.");
             await CloseForm();
             await LoadLookupsAsync();
             await Load();
+
+            if (printAfterSave)
+            {
+                await PrintRepair(saved);
+            }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { saving = false; }
@@ -1540,29 +1556,32 @@
         finally { saving = false; }
     }
 
-    private async Task PrintInvoice(RepairOrderDto repairSummary)
+    private async Task PrintRepair(RepairOrderDto repairSummary)
     {
         try
         {
             var repair = await RepairSvc.GetRepairAsync(repairSummary.Id);
-            if (repair.InvoiceTransactionId is not int transactionId || transactionId <= 0)
+            Order? invoice = null;
+            if (repair.InvoiceTransactionId is int transactionId && transactionId > 0)
             {
-                Toast.Error("برای این پذیرش هنوز فاکتور فروش صادر نشده است.");
-                return;
+                try
+                {
+                    invoice = await OrderSvc.GetAsync(transactionId);
+                }
+                catch
+                {
+                    invoice = null;
+                }
             }
 
-            var invoice = await OrderSvc.GetAsync(transactionId);
-            if (invoice is null)
-            {
-                Toast.Error("فاکتور فروش پیوندخورده پیدا نشد.");
-                return;
-            }
-
-            var opened = await JS.InvokeAsync<bool>("giPrint", RepairInvoicePrint.Build(repair, invoice, companyName));
+            var html = RepairInvoicePrint.Build(repair, companyName, invoice);
+            var opened = await JS.InvokeAsync<bool>("giPrint", html);
             if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
+
+    private Task PrintInvoice(RepairOrderDto repairSummary) => PrintRepair(repairSummary);
 
     // ---------------- تعریف سریع مشتری ----------------
     private bool showNewCustomer;
