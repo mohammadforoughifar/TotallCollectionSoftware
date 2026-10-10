@@ -26,6 +26,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- دسترسی تست‌های واحد به روش‌های داخلی (مثل BuildInvoiceDto) -->
+    <InternalsVisibleTo Include="MoadianPayload.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- فونت‌های فارسی برای PDF شناسنامه سیستم -->
     <Content Include="Resources/fonts/**/*" CopyToOutputDirectory="PreserveNewest" />
     <!-- قالب‌های MRT و تصویر امضای آزمایشی برای رندر سروری گزارش. -->

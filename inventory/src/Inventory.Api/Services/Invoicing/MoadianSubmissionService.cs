@@ -385,12 +385,16 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     /// با صفر خطا برقرار بماند:
     ///   • هر قلم: adis = prdis − dis و tsstam = adis + vam
     ///   • سرآمد: Σقلم‌ها = مجموع سرآمد و tbill = tadis + tvam + todam
-    /// قواعد رسمی مبلغ‌های تسویه (بر اساس دستورالعمل فنی سامانه و نمونه‌های ارسالی معتبر):
-    ///   • cap  (مبلغ پرداختی نقدی) = tbill − todam − tvam − insp   ← «مأخذ» (بدون مالیات)
-    ///   • insp (مبلغ پرداختی نسیه)  = tbill − todam − tvam − cap
-    ///   • tvop (مجموع سهم مالیات بر ارزش افزوده از پرداخت) = tvam
-    /// در تسویه‌های نسیه/تسهیلات/تهاتر، cap = null و کل مأخذ به insp اختصاص می‌یابد
-    /// (نمونهٔ ارسالی معتبر نسیه: setm=2, cap=null, insp=tbill−tvam, tvop=tvam).
+    /// فیلدهای تسویه — مطابق نمونه‌های ارسالی که در سامانه تست و سالم ثبت شده‌اند:
+    ///   • نقدی (setm=1): cap=null, insp=null, tvop=tvam, cop(قلم)=null, vop(قلم)=vam
+    ///     (نمونهٔ کاربر: Cap/Insp/Tvop... خالی؛ ارسال cap/insp/cap با مقدار، هشدار 14029/14030/1205601 می‌داد)
+    ///   • نسیه (setm=2): cap=null, insp=مأخذ (tbill−tvam−todam), tvop=tvam, cop=null, vop=vam
+    ///   • Indati2m: همیشه خالی (نمونه خالی بود؛ رسمی: فقط موارد استثنایی)
+    ///   • Tax17: خالی (نمونه)
+    /// خریدار (طبق نمونهٔ تست‌شده در سامانه):
+    ///   • ۱۰ رقم → Tob=1 حقیقی,  Bid=شمارهٔ ملی ۱۰ رقمی, Tinb=null
+    ///   • ۱۱ رقم → Tob=2 حقوقی,  Bid=شناسهٔ ملی ۱۱ رقمی, Tinb=همان شناسهٔ ملی (رفع 00012)
+    ///   • ۱۴ رقم → Tob=2 حقوقی,  Bid=null, Tinb=کد اقتصادی
     /// </summary>
     internal static InvoiceDto BuildInvoiceDto(Db.MoadianInvoice inv, string tins, string taxid, DateTime issueDate, out string inno)
     {
@@ -399,7 +403,6 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         var (tob, bid, tinb) = ResolveBuyer(inv);
         var payType = inv.PayType ?? MoadianPayType.Cash;
         var payCode = SystemPayCode(payType);
-        var isCashLike = payType is MoadianPayType.Cash or MoadianPayType.Electronic; // تسویه نقدی/الکترونیکی = پرداخت‌شده
 
         // ---------- قلم‌ها (مبالغ ریالی به ریل صحیح) ----------
         var rows = inv.Lines
@@ -432,7 +435,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                     Vam = vam,
                     // سهم این قلم از پرداخت: در تسویه نقدی/الکترونیکی مأخذ+مالیات؛ در بقیه فقط سهم مالیات
                     // (نمونهٔ ارسالی معتبر نسیه: cop=null, vop=vam).
-                    Cop = isCashLike ? adis : null,
+                    Cop = null,                     // نمونه: سهم نقدی قلم ارسال نمیشود (1205601)
                     Vop = vam,
                     Tsstam = adis + vam                      // دقیق: tsstam = adis + vam
                 };
@@ -447,14 +450,15 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
         var todam = 0m; // مجموع سایر مالیات، عوارض و وجوه قانونی — در مدل ما ثبت نمی‌شود.
         var tbill = tadis + tvam + todam;                    // دقیق: tbill = tadis + tvam + todam
         var baseAmount = tbill - tvam - todam;               // مأخذ کل (بدون مالیات)
-        decimal? cap = isCashLike ? baseAmount : null;
-        var insp = isCashLike ? 0m : baseAmount;
+        // نمونه‌های تست‌شده در سامانه: نقدی (setm=1): cap و insp خالی; نسیه (setm=2): cap=null, insp=مأخذ. امروزا cap خالی می‌شود.
+        var cap = (decimal?)null;
+        var insp = payType == MoadianPayType.Cash ? (decimal?)null : baseAmount;
 
         var header = new InvoiceHeaderDto
         {
             Taxid = taxid,
             Indatim = issueMs,
-            Indati2m = issueMs,
+            Indati2m = null,                         // نمونه: خالی
             Inty = (int)inv.InvoiceType,
             Inno = inno,
             Irtaxid = string.IsNullOrWhiteSpace(inv.ReferenceTaxId) ? null : inv.ReferenceTaxId,
@@ -475,7 +479,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             Cap = cap,
             Insp = insp,
             Tvop = tvam,
-            Tax17 = 0m
+            Tax17 = null
         };
 
         // در نمونه‌های ارسالی معتبر، تسویه‌های نقدی/نسیه/... با فهرست پرداخت خالی ارسال می‌شوند
@@ -503,12 +507,11 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     }
 
     /// <summary>
-    /// نگاشت شناسهٔ خریدار به فیلدهای رسمی سامانه — منظر واحد:
+    /// نگاشت شناسه⹀ شخردار به فیلدهای رسمی سامانه — منظر واحد:
     /// <see cref="Inventory.Shared.MoadianBuyerValidator.ResolveBuyer"/>
-    ///   • ۱۰ رقم → حقیقی (Tob=1): Bid = شماره ملی ۱۰ رقمی
-    ///   • ۱۱ رقم → حقوقی (Tob=2): Bid = شناسه ملی ۱۱ رقمی
-    ///   • ۱۴ رقم → حقوقی (Tob=2): Tinb = کد اقتصادی ۱۴ رقمی (Tinb فقط کد اقتصادی می‌پذیرد؛
-    ///     شناسه ملی ۱۱ رقمی در Tinb خطای 0101204 می‌دهد)
+    ///   • ۱۰ رقم → حقیقی (Tob=1): Bid = شماره⹀ ملی ۱۰ رقمی
+    ///   • ۱۱ رقم → حقوقی (Tob=2): Bid = شناسه⹀ ملی ۱۱ رقمی و Tinb = همان شناسه ملی (نمونه تست‌شده در سامانه)
+    ///   • ۱۴ رقم → حقوقی (Tob=2): Tinb = کد اقتصادی ۱۴ رقمی
     /// </summary>
     internal static (int? Tob, string? Bid, string? Tinb) ResolveBuyer(Db.MoadianInvoice inv)
         => Inventory.Shared.MoadianBuyerValidator.ResolveBuyer(inv.BuyerTaxId);
@@ -797,6 +800,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
             "SYSTEM_CONFIRM" => (MoadianInvoiceStatus.BuyerConfirmed, "تأیید سیستمی (تأیید خودکار مالیاتی)"),
             "REJECT" => (MoadianInvoiceStatus.BuyerRejected, "ردشده توسط خریدار"),
             "FAILED" => (MoadianInvoiceStatus.Returned, "ناموفق در سامانه — صورتحساب دارای خطاست؛ جزئیات در «خطاها و پیام‌های سامانه»"),
+            "IN_PROGRESS" => (null, "در صف پردازش سامانه (IN_PROGRESS) — در کارپوشه ثبت نشده است؛ ارسال مجدد نکنید و بعدا دوباره استعلام بگیرید."),
             "TIMEOUT" => (null, "پردازش طولانی در سامانه (TIMEOUT) — هنوز در کارپوشه ثبت نشده"),
             "NOT_FOUND" => (null, "نتیجه‌ای یافت نشد (NOT_FOUND) — کمی بعد دوباره استعلام بگیرید"),
             _ => (null, value.Length == 0 ? "نامشخص" : $"نامشخص ({raw!.Trim()})")

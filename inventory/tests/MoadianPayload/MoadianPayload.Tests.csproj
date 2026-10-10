@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/Inventory.Shared/Inventory.Shared.csproj" />
+    <ProjectReference Include="../../src/Inventory.Api/Inventory.Api.csproj" />
   </ItemGroup>
 
 </Project>

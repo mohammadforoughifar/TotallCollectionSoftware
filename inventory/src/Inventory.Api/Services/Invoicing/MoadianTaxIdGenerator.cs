@@ -67,9 +67,16 @@ internal static class MoadianTaxIdGenerator
 
     private static string ToDecimal(string memoryId)
     {
+        // مهم: اعداد را «کاراکتر» و حروف را «کد ASCII» اضافه می‌کنیم — دقیقاً مثل SDK رسمی.
+        // (نسخهٔ شرطیِ تک‌خطی ch : (int)ch در C# هر دو را int می‌شمارد و رقم را هم ASCII می‌کند!)
         var sb = new StringBuilder();
         foreach (var ch in memoryId)
-            sb.Append(char.IsDigit(ch) ? ch : (int)ch);
+        {
+            if (char.IsDigit(ch))
+                sb.Append(ch);
+            else
+                sb.Append((int)ch);
+        }
         return sb.ToString();
     }
 

@@ -41,7 +41,7 @@ public sealed class MoadianBuyerValidationException : Exception
 ///   • Tob  : نوع خریدار — ۱ = حقیقی، ۲ = حقوقی (enum قابل تنظیم MoadianBuyerType)
 ///   • Bid  : «شماره/شناسه ملی خریدار» — حقیقی: ۱۰ رقم + رقم کنترل کد ملی معتبر؛
 ///            حقوقی: ۱۱ رقم + رقم کنترل شناسهٔ ملی معتبر
-///   • Tinb : «شماره اقتصادی خریدار» — فقط کد اقتصادی ۱۴ رقمی (الگوی سامانه: ^\d{14}$ — خطای 0101204)؛
+///   • Tinb : «شماره اقتصادی خریدار» — حقوقی: کد اقتصادی ۱۴ رقمی یا شناسه⹀ ملی ۱۱ رقمی (متحد از bid) — حقیقی: باید خالی باشد
 ///            برای حقیقی باید خالی باشد
 ///
 /// ورودی ERP فقط یک مقدار «شناسهٔ ملی/اقتصادی خریدار» بدون تفکیک نوع می‌فرستد؛
@@ -55,7 +55,7 @@ public static class MoadianBuyerValidator
     /// <summary>
     /// نگاشت یک شناسهٔ واحد ERP به فیلدهای رسمی سامانه:
     ///   ۱۰ رقم → (Tob=1 حقیقی,  Bid=شمارهٔ ملی ۱۰ رقمی,  Tinb=null)
-    ///   ۱۱ رقم → (Tob=2 حقوقی,  Bid=شناسهٔ ملی ۱۱ رقمی,   Tinb=null)
+    ///   ۱۱ رقم → (Tob=2 حقوقی,  Bid=شناسه⹀ ملی ۱۱ رقمی,   Tinb=همان شناسه)
     ///   ۱۴ رقم → (Tob=2 حقوقی,  Bid=null,                Tinb=کد اقتصادی ۱۴ رقمی)
     ///   سایر   → (null, null, null) → اعتبارسنج رد می‌کند
     /// </summary>
@@ -66,7 +66,7 @@ public static class MoadianBuyerValidator
         if (!id.All(c => c >= '0' && c <= '9')) return (null, null, null);
 
         if (id.Length == 10) return ((int)MoadianBuyerType.Individual, id, null);
-        if (id.Length == 11) return ((int)MoadianBuyerType.Legal, id, null);
+        if (id.Length == 11) return ((int)MoadianBuyerType.Legal, id, id); // ۱۱ رقم → Bid و Tinb همان شناسه ملی (نمونه تست‌شده در سامانه)
         if (id.Length == 14) return ((int)MoadianBuyerType.Legal, null, id);
         return (null, null, null);
     }
@@ -87,10 +87,14 @@ public static class MoadianBuyerValidator
             return issues; // بدون Tob معتبر، بقیه قابل ارزیابی نیست
         }
 
-        // ---------- Tinb: فقط ۱۴ رقم (کد اقتصادی) یا خالی ----------
-        if (tinb is not null && (tinb.Length != 14 || !tinb.All(c => c >= '0' && c <= '9')))
-            issues.Add(("tinb",
-                "«شماره اقتصادی خریدار» (tinb) باید خالی یا دقیقاً ۱۴ رقم عددی (کد اقتصادی) باشد — Tinb must be empty or exactly 14 digits (economic code)."));
+        // ---------- Tinb (legal entity): 14-digit economic code or 11-digit national ID (sample verified in the system) ----------
+        if (tob == (int)MoadianBuyerType.Legal && tinb is not null)
+        {
+            var tinbOk = (tinb.Length == 14 && tinb.All(c => c >= '0' && c <= '9')) || (tinb.Length == 11 && IsValidNationalId(tinb));
+            if (!tinbOk)
+                issues.Add(("tinb",
+                    "«شماره اقتصادی خریدار» (tinb) باید خالی باشد یا شناسه⹀ ملی ۱۱ رقمی با رقم کنترلی معتبر یا کد اقتصادی ۱۴ رقمی — Tinb must be empty, an 11-digit national ID with a valid control digit, or a 14-digit economic code."));
+        }
 
         // ---------- Bid ----------
         if (tob == (int)MoadianBuyerType.Individual)
@@ -119,7 +123,7 @@ public static class MoadianBuyerValidator
 
             // حقوقی: حداقل یکی از شناسهٔ ملی ۱۱ رقمی (bid) یا کد اقتصادی ۱۴ رقمی (tinb) الزامی است
             var hasBid = bid is not null && bid.Length == 11 && IsValidNationalId(bid);
-            var hasTinb = tinb is not null && tinb.Length == 14 && tinb.All(c => c >= '0' && c <= '9');
+            var hasTinb = tinb is not null && ((tinb.Length == 14 && tinb.All(c => c >= '0' && c <= '9')) || IsValidNationalId(tinb));
             if (!hasBid && !hasTinb)
                 issues.Add(("bid",
                     "برای خریدار «حقوقی»، «شناسهٔ ملی ۱۱ رقمی» (bid) یا «کد اقتصادی ۱۴ رقمی» (tinb) الزامی است — For legal buyers, an 11-digit national ID (bid) or 14-digit economic code (tinb) is required."));

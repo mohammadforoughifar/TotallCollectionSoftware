@@ -14,7 +14,8 @@ namespace MoadianPayload.Tests;
 ///
 /// ERP sends a single buyer id; the type is derived from its length:
 ///   10 digits -> Tob=1, Bid=id
-///   11 digits -> Tob=2, Bid=id
+///   11 digits -> Tob=2, Bid=id, Tinb=id  (sample verified in the system: legal buyer sends the
+///   11-digit national ID in BOTH Bid and Tinb - this fixed the 00012 "economic number empty" error)
 ///   14 digits -> Tob=2, Tinb=id
 ///
 /// Verified test data:
@@ -38,13 +39,13 @@ public class ResolveBuyerTests
     }
 
     [Fact]
-    public void Eleven_Digits_Maps_To_Legal_Bid()
+    public void Eleven_Digits_Maps_To_Legal_Bid_And_Tinb()
     {
         var (tob, bid, tinb) = MoadianBuyerValidator.ResolveBuyer("14014038299");
         Assert.Equal((int)MoadianBuyerType.Legal, tob); // Tob = 2
         Assert.Equal(2, tob);
         Assert.Equal("14014038299", bid);
-        Assert.Null(tinb);
+        Assert.Equal("14014038299", tinb); // same 11-digit national ID in Tinb (system-verified sample)
     }
 
     [Fact]
@@ -92,13 +93,13 @@ public class ResolveBuyerTests
 public class ValidateTests
 {
     /// <summary>
-    /// The exact 0101204 scenario: an 11-digit national ID placed in Tinb
-    /// (what the old buggy mapping produced) must be rejected with field "tinb".
+    /// An 11-digit Tinb with a wrong control digit must be rejected with field "tinb".
+    /// (A VALID 11-digit national ID in Tinb is now accepted - system-verified sample.)
     /// </summary>
     [Fact]
-    public void Eleven_Digit_National_Id_In_Tinb_Is_Rejected()
+    public void Eleven_Digit_Tinb_With_Wrong_Control_Digit_Is_Rejected()
     {
-        var issues = MoadianBuyerValidator.Validate((int)MoadianBuyerType.Legal, bid: null, tinb: "14014038299");
+        var issues = MoadianBuyerValidator.Validate((int)MoadianBuyerType.Legal, bid: null, tinb: "14014038290");
         Assert.Contains(issues, i => i.Field == "tinb");
     }
 
@@ -107,6 +108,33 @@ public class ValidateTests
     public void Tob2_Legal_Bid_14014038299_TinbNull_Is_Accepted()
     {
         Assert.Empty(MoadianBuyerValidator.Validate((int)MoadianBuyerType.Legal, bid: "14014038299", tinb: null));
+    }
+
+    /// <summary>The exact system-verified sample: Tob=2, Bid=Tinb=11-digit national ID must be accepted.</summary>
+    [Fact]
+    public void Tob2_Sample_BidAndTinb_Same_Eleven_Digit_Is_Accepted()
+    {
+        Assert.Empty(MoadianBuyerValidator.Validate((int)MoadianBuyerType.Legal, bid: "14014038299", tinb: "14014038299"));
+    }
+
+    [Fact]
+    public void Tob2_Tinb_Eleven_Digit_NationalId_Without_Bid_Is_Accepted()
+    {
+        Assert.Empty(MoadianBuyerValidator.Validate((int)MoadianBuyerType.Legal, bid: null, tinb: "14014038299"));
+    }
+
+    [Fact]
+    public void Tob2_Tinb_Eleven_Digit_With_Wrong_Control_Digit_Is_Rejected()
+    {
+        var issues = MoadianBuyerValidator.Validate((int)MoadianBuyerType.Legal, bid: "14014038299", tinb: "14014038290");
+        Assert.Contains(issues, i => i.Field == "tinb");
+    }
+
+    [Fact]
+    public void Tob2_Tinb_Ten_Digit_Is_Rejected()
+    {
+        var issues = MoadianBuyerValidator.Validate((int)MoadianBuyerType.Legal, bid: "14014038299", tinb: "1234567898");
+        Assert.Contains(issues, i => i.Field == "tinb");
     }
 
     [Fact]
@@ -211,7 +239,7 @@ public class EnsureValidTests
     [Fact]
     public void Eleven_Digit_Legal_Passes()
     {
-        MoadianBuyerValidator.EnsureValid("14014038299"); // resolves to Tob=2 legal, Bid -> must not throw
+        MoadianBuyerValidator.EnsureValid("14014038299"); // resolves to Tob=2 legal, Bid+Tinb = 11-digit ID -> must not throw
     }
 
     [Fact]
@@ -227,10 +255,11 @@ public class EnsureValidTests
     }
 
     [Fact]
-    public void Wrong_Control_Digit_Throws_With_Field_Bid()
+    public void Wrong_Control_Digit_Throws_For_Bid_And_Tinb()
     {
         var ex = Assert.Throws<MoadianBuyerValidationException>(() => MoadianBuyerValidator.EnsureValid("14014038290"));
-        Assert.Equal("bid", ex.Field);
+        Assert.Contains("bid", ex.Field);
+        Assert.Contains("tinb", ex.Field); // 11-digit ID now lands in BOTH bid and tinb
         Assert.Contains("bid", ex.Message);
     }
 
