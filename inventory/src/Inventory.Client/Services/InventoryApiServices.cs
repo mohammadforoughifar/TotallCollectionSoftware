@@ -343,8 +343,11 @@ public class RepairService : IRepairService
     public Task<RepairOrderDto> SetStatusAsync(int id, RepairStatus status)
         => _api.PostAsync<RepairOrderDto>($"api/repairs/{id}/status/{status}");
 
+    public Task<RepairOrderDto> InvoiceAsync(int id, RepairInvoiceRequest request)
+        => _api.PostAsync<RepairOrderDto>($"api/repairs/{id}/invoice", request);
+
     public Task<RepairOrderDto> InvoiceAsync(int id, int warehouseId)
-        => _api.PostAsync<RepairOrderDto>($"api/repairs/{id}/invoice", new RepairInvoiceRequest { WarehouseId = warehouseId });
+        => InvoiceAsync(id, new RepairInvoiceRequest { WarehouseId = warehouseId });
 }
 
 

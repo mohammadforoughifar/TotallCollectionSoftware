@@ -115,4 +115,19 @@ public class RepairInvoiceRequest
 {
     /// <summary>انبار برداشت قطعات (پیش‌فرض: انبار مرکزی)</summary>
     public int WarehouseId { get; set; } = 1;
+
+    /// <summary>روش تسویه: نقدی (Cash) یا نسیه (Credit)</summary>
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
+
+    /// <summary>نوع دریافت نقدی (کارت‌خوان، وجه نقد، کارت به کارت)</summary>
+    public CashType? CashType { get; set; } = Inventory.Shared.CashType.CardReader;
+
+    /// <summary>شناسه بانک / حساب خزانه انتخابی برای تسویه نقدی یا پیش‌دریافت</summary>
+    public int? TrsAccountId { get; set; }
+
+    /// <summary>تاریخ سررسید (در حالت نسیه)</summary>
+    public DateTime? DueDate { get; set; }
+
+    /// <summary>پیش‌دریافت نقدی در حالت نسیه</summary>
+    public decimal CashAmount { get; set; }
 }

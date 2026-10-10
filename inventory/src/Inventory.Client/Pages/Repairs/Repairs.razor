@@ -1,5 +1,6 @@
 @namespace Inventory.Client.Pages
 @page "/repairs"
+@using Inventory.Client.Pages.Orders
 @inject IRepairService RepairSvc
 @inject IOrderService OrderSvc
 @inject ISettingsService SettingsSvc
@@ -7,6 +8,8 @@
 @inject IPartyService PartySvc
 @inject IProductService ProductSvc
 @inject IWarehouseService WarehouseSvc
+@inject ITreasuryAccountService AccountSvc
+@inject ICompanyProfileService ProfileSvc
 @inject IToastService Toast
 @inject IAuthState Auth
 @inject LayoutState Layout
@@ -369,13 +372,19 @@
                                 <td>@StatusBadge(r)</td>
                                 <td class="text-end text-nowrap">
                                     <button class="btn btn-sm btn-light" title="جزئیات" @onclick="() => OpenView(r)"><i class="bi bi-eye text-secondary"></i></button>
-                                    <button class="btn btn-sm btn-light" title="@(r.InvoiceTransactionId is > 0 ? "چاپ فاکتور فروش" : "چاپ قبض پذیرش تعمیرات")" @onclick="() => PrintRepair(r)">
-                                        <i class="bi bi-printer @(r.InvoiceTransactionId is > 0 ? "text-success" : "text-primary")"></i>
+                                    <button class="btn btn-sm btn-light text-primary" title="چاپ فیش تحویل دستگاه" @onclick="() => PrintDeliveryReceipt(r)">
+                                        <i class="bi bi-card-checklist"></i>
                                     </button>
+                                    @if (r.InvoiceTransactionId is > 0)
+                                    {
+                                        <button class="btn btn-sm btn-light text-success" title="چاپ فاکتور فروش" @onclick="() => PrintInvoice(r)">
+                                            <i class="bi bi-receipt"></i>
+                                        </button>
+                                    }
                                     @if (r.InvoiceTransactionId is null)
                                     {
                                         <button class="btn btn-sm btn-light" title="ویرایش" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil text-primary"></i></button>
-                                        <button class="btn btn-sm btn-light" title="صدور فاکتور و تحویل" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt text-success"></i></button>
+                                        <button class="btn btn-sm btn-light" title="تبدیل به فروش و تحویل" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt text-success"></i></button>
                                         <button class="btn btn-sm btn-light" title="حذف" @onclick="() => Delete(r)"><i class="bi bi-trash text-danger"></i></button>
                                     }
                                 </td>
@@ -433,18 +442,21 @@
                         </div>
                         <div class="m-card-actions">
                             <button class="btn btn-light" @onclick="() => OpenView(r)"><i class="bi bi-eye"></i> جزئیات</button>
-                            <button class="btn btn-light @(r.InvoiceTransactionId is > 0 ? "text-success" : "text-primary")" @onclick="() => PrintRepair(r)">
-                                <i class="bi bi-printer"></i> @(r.InvoiceTransactionId is > 0 ? "چاپ فاکتور" : "چاپ قبض پذیرش")
+                            <button class="btn btn-light text-primary" @onclick="() => PrintDeliveryReceipt(r)">
+                                <i class="bi bi-card-checklist"></i> فیش تحویل
                             </button>
-                            @if (r.InvoiceTransactionId is null)
+                            @if (r.InvoiceTransactionId is > 0)
                             {
-                                <button class="btn btn-light text-primary" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil"></i> ویرایش</button>
-                                <button class="btn btn-light text-success" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt"></i> فاکتور</button>
-                                <button class="btn btn-light text-danger" @onclick="() => Delete(r)"><i class="bi bi-trash"></i></button>
+                                <button class="btn btn-light text-success" @onclick="() => PrintInvoice(r)">
+                                    <i class="bi bi-receipt"></i> فاکتور فروش
+                                </button>
+                                <span class="fs-8 text-muted me-auto align-self-center"><i class="bi bi-receipt"></i> @r.InvoiceNumber</span>
                             }
                             else
                             {
-                                <span class="fs-8 text-muted me-auto align-self-center"><i class="bi bi-receipt"></i> @r.InvoiceNumber</span>
+                                <button class="btn btn-light text-primary" @onclick="() => OpenEdit(r)"><i class="bi bi-pencil"></i> ویرایش</button>
+                                <button class="btn btn-light text-success" @onclick="() => OpenInvoice(r)"><i class="bi bi-receipt"></i> تبدیل به فروش</button>
+                                <button class="btn btn-light text-danger" @onclick="() => Delete(r)"><i class="bi bi-trash"></i></button>
                             }
                         </div>
                     </div>
@@ -662,8 +674,8 @@
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="CloseForm">انصراف (Esc)</button>
-        <button class="btn btn-outline-primary" @onclick="SaveAndPrint" disabled="@saving">
-            <i class="bi bi-printer ms-1"></i> ذخیره و چاپ
+        <button class="btn btn-outline-primary" @onclick="SaveAndPrintReceipt" disabled="@saving">
+            <i class="bi bi-card-checklist ms-1"></i> ذخیره و چاپ فیش تحویل
         </button>
         <button class="btn btn-primary me-auto" data-hotkey="f1" @onclick="Save" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
@@ -704,13 +716,19 @@
                 }
             </div>
             <div class="d-flex justify-content-end gap-2 mb-3">
-                <button class="btn btn-sm @(viewing.InvoiceTransactionId is > 0 ? "btn-outline-success" : "btn-outline-primary")" @onclick="() => PrintRepair(viewing!)">
-                    <i class="bi bi-printer"></i> @(viewing.InvoiceTransactionId is > 0 ? "چاپ فاکتور فروش" : "چاپ قبض پذیرش تعمیرات")
+                <button class="btn btn-sm btn-outline-primary" @onclick="() => PrintDeliveryReceipt(viewing!)">
+                    <i class="bi bi-card-checklist"></i> چاپ فیش تحویل دستگاه
                 </button>
-                @if (viewing.InvoiceTransactionId is null)
+                @if (viewing.InvoiceTransactionId is > 0)
+                {
+                    <button class="btn btn-sm btn-outline-success" @onclick="() => PrintInvoice(viewing!)">
+                        <i class="bi bi-receipt"></i> چاپ فاکتور فروش
+                    </button>
+                }
+                else
                 {
                     <button class="btn btn-sm btn-success" @onclick="() => { var v = viewing; viewing = null; OpenInvoice(v!); }">
-                        <i class="bi bi-receipt"></i> صدور فاکتور فروش و تحویل
+                        <i class="bi bi-cash-coin"></i> تبدیل به فروش و تحویل
                     </button>
                 }
             </div>
@@ -795,30 +813,134 @@
     </ChildContent>
 </Modal>
 
-@* ---------------- صدور فاکتور ---------------- *@
-<Modal Visible="invoicing is not null" Title="@($"صدور فاکتور — پذیرش {invoicing?.Number}")" OnClose="() => invoicing = null">
+@* ---------------- تبدیل سند تعمیر به فروش ---------------- *@
+<Modal Visible="invoicing is not null" Title="@($"تبدیل به فروش و تحویل — پذیرش {invoicing?.Number}")" Size="modal-lg" OnClose="() => invoicing = null">
     <ChildContent>
         @if (invoicing is not null)
         {
             <div class="border rounded p-2 mb-3 bg-light">
-                <div class="fs-8 text-muted mb-1">دستگاه‌های مشمول پذیرش (@DeviceCount(invoicing) دستگاه)</div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="fs-8 text-muted">دستگاه‌های مشمول پذیرش (@DeviceCount(invoicing) دستگاه)</span>
+                    <span class="fs-8">مشتری: <b>@invoicing.PartyName</b></span>
+                </div>
                 @foreach (var device in DevicesFor(invoicing))
                 {
-                    <div class="d-flex justify-content-between gap-2 fs-8">
+                    <div class="d-flex justify-content-between gap-2 fs-8 text-muted">
                         <span>@DeviceLabel(device)</span>
                         <span class="text-nowrap">برآورد: @device.QuotedPrice.Money() ریال</span>
                     </div>
                 }
             </div>
-            <div class="mb-3">
-                <label class="form-label">انبار برداشت قطعات</label>
-                <select class="form-select" @bind="invWarehouseStr">
-                    @foreach (var w in warehouses)
-                    {
-                        <option value="@w.Id">@w.Name</option>
-                    }
-                </select>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">انبار برداشت قطعات <span class="text-danger">*</span></label>
+                    <select class="form-select" @bind="invWarehouseStr">
+                        @foreach (var w in warehouses)
+                        {
+                            <option value="@w.Id">@w.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">روش تسویه فاکتور <span class="text-danger">*</span></label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="invPayMethod" id="payMethodCash" autocomplete="off"
+                               checked="@(invPaymentMethod == PaymentMethod.Cash)"
+                               @onchange="() => invPaymentMethod = PaymentMethod.Cash">
+                        <label class="btn btn-outline-success" for="payMethodCash">
+                            <i class="bi bi-cash-stack ms-1"></i> نقدی
+                        </label>
+
+                        <input type="radio" class="btn-check" name="invPayMethod" id="payMethodCredit" autocomplete="off"
+                               checked="@(invPaymentMethod == PaymentMethod.Credit)"
+                               @onchange="() => invPaymentMethod = PaymentMethod.Credit">
+                        <label class="btn btn-outline-warning" for="payMethodCredit">
+                            <i class="bi bi-clock-history ms-1"></i> نسیه
+                        </label>
+                    </div>
+                </div>
             </div>
+
+            @if (invPaymentMethod == PaymentMethod.Cash)
+            {
+                <div class="p-3 border rounded bg-light mb-3">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-5">
+                            <label class="form-label fs-8">نوع دریافت نقدی</label>
+                            <select class="form-select form-select-sm" @bind="invCashType">
+                                <option value="@CashType.CardReader">کارت‌خوان (POS)</option>
+                                <option value="@CashType.Cash">وجه نقد (صندوق)</option>
+                                <option value="@CashType.CardTransfer">کارت به کارت</option>
+                            </select>
+                        </div>
+                        <div class="col-md-7">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <label class="form-label fs-8 mb-0">حساب بانکی / کارت‌خوان / صندوق</label>
+                                <button type="button" class="btn btn-link p-0 fs-8 text-decoration-none" @onclick="() => showQuickBank = true">
+                                    <i class="bi bi-plus-circle"></i> تعریف حساب جدید
+                                </button>
+                            </div>
+                            <select class="form-select form-select-sm" @bind="invTrsAccountId">
+                                <option value="">— انتخاب حساب / صندوق —</option>
+                                @foreach (var b in AccountsForInvCashType(invCashType))
+                                {
+                                    <option value="@b.Id">@b.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="fs-8 text-success mt-2">
+                        <i class="bi bi-check-circle ms-1"></i> کل مبلغ <b class="num">@invoicing.TotalPrice.Money()</b> ریال به صورت نقدی تسویه می‌گردد.
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="p-3 border rounded bg-light mb-3">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">تاریخ سررسید نسیه <span class="text-danger">*</span></label>
+                            <DatePicker @bind-Value="invDueDate" />
+                            <div class="d-flex gap-1 mt-1">
+                                <button type="button" class="btn btn-xs btn-outline-secondary fs-9" @onclick="() => invDueDate = DateTime.Now.AddDays(15)">۱۵ روزه</button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary fs-9" @onclick="() => invDueDate = DateTime.Now.AddDays(30)">۳۰ روزه</button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary fs-9" @onclick="() => invDueDate = DateTime.Now.AddDays(45)">۴۵ روزه</button>
+                                <button type="button" class="btn btn-xs btn-outline-secondary fs-9" @onclick="() => invDueDate = DateTime.Now.AddDays(60)">۶۰ روزه</button>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fs-8">پیش‌دریافت نقدی (اختیاری)</label>
+                            <input class="form-control form-control-sm num" value="@invCashAmountText"
+                                   @oninput="OnInvCashAmountInput" placeholder="مبلغ پیش‌پرداخت (ریال)" />
+                            <span class="fs-9 text-muted">در صورت دریافت نقدی بخشی از مبلغ وارد کنید</span>
+                        </div>
+                        @if (invCashAmount > 0)
+                        {
+                            <div class="col-12 mt-2 pt-2 border-top">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <label class="form-label fs-8 mb-0">حساب بانکی / صندوق واریز پیش‌پرداخت</label>
+                                    <button type="button" class="btn btn-link p-0 fs-8 text-decoration-none" @onclick="() => showQuickBank = true">
+                                        <i class="bi bi-plus-circle"></i> تعریف حساب جدید
+                                    </button>
+                                </div>
+                                <select class="form-select form-select-sm" @bind="invTrsAccountId">
+                                    <option value="">— انتخاب حساب / صندوق —</option>
+                                    @foreach (var b in bankAccounts)
+                                    {
+                                        <option value="@b.Id">@b.DisplayName</option>
+                                    }
+                                </select>
+                            </div>
+                        }
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center fs-8 mt-3 p-2 bg-white rounded border">
+                        <div>پیش‌دریافت نقدی: <b class="num text-primary">@invCashAmount.Money()</b> ریال</div>
+                        <div>مانده نسیه (بدهکاری مشتری): <b class="num text-danger">@((Math.Max(0, invoicing.TotalPrice - invCashAmount)).Money())</b> ریال</div>
+                    </div>
+                </div>
+            }
+
             <div class="d-flex justify-content-between fs-8 border rounded p-2 bg-light">
                 <div>جمع دریافتی: <b class="num text-primary">@invoicing.TotalPrice.Money()</b> ریال</div>
                 <div>سود تعمیر: <b class="num text-success">@invoicing.Profit.Money()</b> ریال</div>
@@ -829,10 +951,14 @@
         <button class="btn btn-light" @onclick="() => invoicing = null">انصراف (Esc)</button>
         <button class="btn btn-success" data-hotkey="f1" @onclick="DoInvoice" disabled="@saving">
             @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
-            <i class="bi bi-receipt"></i> صدور فاکتور و تحویل (F1)
+            <i class="bi bi-receipt"></i> صدور فاکتور فروش (@(invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه"))
         </button>
     </Footer>
 </Modal>
+
+<QuickBankModal Visible="showQuickBank"
+                OnClose="() => showQuickBank = false"
+                OnCreated="OnQuickBankCreated" />
 
 @* ---------------- تعریف سریع مشتری ---------------- *@
 <Modal Visible="showNewCustomer" Title="مشتری جدید" OnClose="() => showNewCustomer = false">
@@ -922,6 +1048,40 @@
     private string lastProductSearch = "";
     private System.Threading.CancellationTokenSource? productSearchCts;
     private List<Warehouse> warehouses = new();
+    private List<TrsAccount> bankAccounts = new();
+    private CompanyProfileDto? companyProfile;
+    private bool showQuickBank;
+    private PaymentMethod invPaymentMethod = PaymentMethod.Cash;
+    private CashType invCashType = CashType.CardReader;
+    private int? invTrsAccountId;
+    private DateTime? invDueDate = DateTime.Now.AddDays(30);
+    private decimal invCashAmount = 0;
+    private string invCashAmountText = "";
+
+    private List<TrsAccount> AccountsForInvCashType(CashType ct) => ct switch
+    {
+        CashType.Cash => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Cash or TreasuryAccountKind.PettyCash).ToList(),
+        CashType.CardReader => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Pos or TreasuryAccountKind.Bank).ToList(),
+        CashType.CardTransfer => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos).ToList(),
+        _ => bankAccounts
+    };
+
+    private void OnInvCashAmountInput(ChangeEventArgs e)
+    {
+        invCashAmountText = e.Value?.ToString() ?? "";
+        invCashAmount = Fa.ParseDecimal(invCashAmountText);
+    }
+
+    private void OnQuickBankCreated(TrsAccount newAcc)
+    {
+        if (!bankAccounts.Any(a => a.Id == newAcc.Id))
+        {
+            bankAccounts.Add(newAcc);
+        }
+        invTrsAccountId = newAcc.Id;
+        showQuickBank = false;
+        Toast.Success($"حساب «{newAcc.DisplayName}» ایجاد و انتخاب شد.");
+    }
 
     private bool loading = true, saving, showForm, showTechs;
     private bool showRepairReports, reportLoading;
@@ -1026,8 +1186,23 @@
 
         try
         {
+            bankAccounts = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+        }
+        catch { bankAccounts = new(); }
+
+        try
+        {
+            companyProfile = await ProfileSvc.GetAsync();
+            if (!string.IsNullOrWhiteSpace(companyProfile?.Name))
+                companyName = companyProfile.Name;
+        }
+        catch { /* اختیاری */ }
+
+        try
+        {
             var settings = await SettingsSvc.GetAsync();
-            if (!string.IsNullOrWhiteSpace(settings?.ItCompanyName)) companyName = settings.ItCompanyName!;
+            if (string.IsNullOrWhiteSpace(companyProfile?.Name) && !string.IsNullOrWhiteSpace(settings?.ItCompanyName))
+                companyName = settings.ItCompanyName!;
         }
         catch { /* نام سربرگ اختیاری است */ }
     }
@@ -1454,7 +1629,8 @@
         return s;
     }
 
-    private async Task SaveAndPrint() => await SaveInternal(printAfterSave: true);
+    private async Task SaveAndPrintReceipt() => await SaveInternal(printAfterSave: true);
+    private async Task SaveAndPrint() => await SaveAndPrintReceipt();
     private async Task Save() => await SaveInternal(printAfterSave: false);
 
     private async Task SaveInternal(bool printAfterSave)
@@ -1503,7 +1679,7 @@
 
             if (printAfterSave)
             {
-                await PrintRepair(saved);
+                await PrintDeliveryReceipt(saved);
             }
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1529,7 +1705,7 @@
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    // ---------------- فاکتور ----------------
+    // ---------------- تبدیل به فروش و تحویل ----------------
 
     private async Task OpenInvoice(RepairOrderDto r)
     {
@@ -1537,6 +1713,13 @@
         {
             invoicing = await RepairSvc.GetRepairAsync(r.Id);
             invWarehouseStr = (warehouses.FirstOrDefault()?.Id ?? 1).ToString();
+            invPaymentMethod = PaymentMethod.Cash;
+            invCashType = CashType.CardReader;
+            invDueDate = DateTime.Now.AddDays(30);
+            invCashAmount = 0;
+            invCashAmountText = "";
+            var defAcc = bankAccounts.FirstOrDefault(a => a.IsDefault) ?? bankAccounts.FirstOrDefault(a => a.Kind is TreasuryAccountKind.Pos or TreasuryAccountKind.Bank);
+            invTrsAccountId = defAcc?.Id;
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
@@ -1544,11 +1727,36 @@
     private async Task DoInvoice()
     {
         if (invoicing is null) return;
+        if (invPaymentMethod == PaymentMethod.Credit)
+        {
+            if (!invDueDate.HasValue)
+            {
+                Toast.Error("برای فاکتور نسیه، تعیین تاریخ سررسید الزامی است.");
+                return;
+            }
+            if (invCashAmount >= invoicing.TotalPrice)
+            {
+                Toast.Error("پیش‌دریافت نقدی نمی‌تواند برابر یا بیشتر از مبلغ کل فاکتور باشد؛ در این حالت روش تسویه را «نقدی» انتخاب کنید.");
+                return;
+            }
+        }
+
         saving = true;
         try
         {
-            var res = await RepairSvc.InvoiceAsync(invoicing.Id, int.Parse(invWarehouseStr));
-            Toast.Success($"فاکتور {res.InvoiceNumber} صادر و دستگاه تحویل شد.");
+            var req = new RepairInvoiceRequest
+            {
+                WarehouseId = int.Parse(invWarehouseStr),
+                PaymentMethod = invPaymentMethod,
+                CashType = invPaymentMethod == PaymentMethod.Cash ? invCashType : (invCashAmount > 0 ? invCashType : null),
+                TrsAccountId = invTrsAccountId > 0 ? invTrsAccountId : null,
+                DueDate = invPaymentMethod == PaymentMethod.Credit ? invDueDate : null,
+                CashAmount = invPaymentMethod == PaymentMethod.Credit ? invCashAmount : 0
+            };
+
+            var res = await RepairSvc.InvoiceAsync(invoicing.Id, req);
+            var payLabel = invPaymentMethod == PaymentMethod.Cash ? "نقدی" : "نسیه";
+            Toast.Success($"فاکتور {res.InvoiceNumber} به صورت {payLabel} صادر و دستگاه تحویل شد.");
             invoicing = null;
             await Load();
         }
@@ -1556,32 +1764,44 @@
         finally { saving = false; }
     }
 
-    private async Task PrintRepair(RepairOrderDto repairSummary)
+    private async Task PrintDeliveryReceipt(RepairOrderDto repairSummary)
     {
         try
         {
             var repair = await RepairSvc.GetRepairAsync(repairSummary.Id);
-            Order? invoice = null;
-            if (repair.InvoiceTransactionId is int transactionId && transactionId > 0)
-            {
-                try
-                {
-                    invoice = await OrderSvc.GetAsync(transactionId);
-                }
-                catch
-                {
-                    invoice = null;
-                }
-            }
-
-            var html = RepairInvoicePrint.Build(repair, companyName, invoice);
+            var html = RepairDeliveryReceiptPrint.Build(repair, companyName, companyProfile);
             var opened = await JS.InvokeAsync<bool>("giPrint", html);
             if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
     }
 
-    private Task PrintInvoice(RepairOrderDto repairSummary) => PrintRepair(repairSummary);
+    private async Task PrintInvoice(RepairOrderDto repairSummary)
+    {
+        try
+        {
+            var repair = await RepairSvc.GetRepairAsync(repairSummary.Id);
+            if (repair.InvoiceTransactionId is not int transactionId || transactionId <= 0)
+            {
+                Toast.Error("برای این پذیرش هنوز فاکتور فروش صادر نشده است. ابتدا تبدیل به فاکتور فروش را انجام دهید.");
+                return;
+            }
+
+            var invoice = await OrderSvc.GetAsync(transactionId);
+            if (invoice is null)
+            {
+                Toast.Error("فاکتور فروش پیوندخورده پیدا نشد.");
+                return;
+            }
+
+            var html = SaleInvoicePrint.Build(invoice, companyProfile);
+            var opened = await JS.InvokeAsync<bool>("giPrint", html);
+            if (!opened) Toast.Error("پنجرهٔ چاپ باز نشد.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+    }
+
+    private Task PrintRepair(RepairOrderDto repairSummary) => PrintDeliveryReceipt(repairSummary);
 
     // ---------------- تعریف سریع مشتری ----------------
     private bool showNewCustomer;

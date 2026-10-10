@@ -158,6 +158,7 @@ public interface IRepairService
     Task<RepairOrderDto> SaveRepairAsync(RepairOrderDto repair);
     Task DeleteRepairAsync(int id);
     Task<RepairOrderDto> SetStatusAsync(int id, RepairStatus status);
+    Task<RepairOrderDto> InvoiceAsync(int id, RepairInvoiceRequest request);
     Task<RepairOrderDto> InvoiceAsync(int id, int warehouseId);
 }
 

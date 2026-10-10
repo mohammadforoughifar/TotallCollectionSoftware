@@ -334,6 +334,14 @@ public class RepairService : IRepairService
         if (laborLines.Count > 0)
             laborProductId = await GetOrCreateLaborServiceAsync();
 
+        // روش تسویه: نقدی یا نسیه
+        var payMethod = request.PaymentMethod;
+        DateTime? dueDate = null;
+        if (payMethod == PaymentMethod.Credit)
+        {
+            dueDate = request.DueDate ?? DateTime.Now.AddDays(30);
+        }
+
         // ساخت فاکتور فروش از طریق سرویس موجود انبار (موجودی/سود/پورسانت معرف خودکار)
         var cmd = new OrderCommand
         {
@@ -342,6 +350,11 @@ public class RepairService : IRepairService
             Type = TransactionType.Sale,
             Date = DateTime.Now,
             Description = $"فاکتور تعمیرات — پذیرش {r.Number} ({DeviceSummary(r.Devices, r.DeviceType, r.DeviceModel)})",
+            PaymentMethod = payMethod,
+            CashType = payMethod == PaymentMethod.Cash ? request.CashType ?? CashType.CardReader : (request.CashAmount > 0 ? (request.CashType ?? CashType.CardReader) : null),
+            TrsAccountId = request.TrsAccountId > 0 ? request.TrsAccountId : null,
+            DueDate = dueDate,
+            CashAmount = payMethod == PaymentMethod.Credit ? Math.Max(0, request.CashAmount) : 0,
             Lines = new List<OrderLineInput>()
         };
 
