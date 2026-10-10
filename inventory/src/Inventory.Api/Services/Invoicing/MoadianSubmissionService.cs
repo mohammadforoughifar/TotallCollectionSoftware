@@ -386,7 +386,7 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
     ///   • هر قلم: adis = prdis − dis و tsstam = adis + vam
     ///   • سرآمد: Σقلم‌ها = مجموع سرآمد و tbill = tadis + tvam + todam
     /// فیلدهای تسویه — مطابق نمونه‌های ارسالی که در سامانه تست و سالم ثبت شده‌اند:
-    ///   • نقدی (setm=1): cap=null, insp=null, tvop=null (نمونه خالی بود), cop(قلم)=null, vop(قلم)=vam
+    ///   • نقدی (setm=1): cap=null, insp=null, tvop=null (نمونه خالی بود), cop(قلم)=null, vop(قلم)=null
     ///     (نمونهٔ کاربر: Cap/Insp/Tvop... خالی؛ ارسال cap/insp/cap با مقدار، هشدار 14029/14030/1205601 می‌داد)
     ///   • نسیه (setm=2): cap=null, insp=مأخذ (tbill−tvam−todam), tvop=tvam, cop=null, vop=vam
     ///   • Indati2m: همیشه خالی (نمونه خالی بود؛ رسمی: فقط موارد استثنایی)
@@ -433,10 +433,10 @@ public sealed class MoadianSubmissionService : IMoadianSubmissionService
                     Adis = adis,
                     Vra = r.L.VatRate,
                     Vam = vam,
-                    // سهم این قلم از پرداخت: در تسویه نقدی/الکترونیکی مأخذ+مالیات؛ در بقیه فقط سهم مالیات
-                    // (نمونهٔ ارسالی معتبر نسیه: cop=null, vop=vam).
+                    // vop (VP) قلم: در نمونه‌های نقدی خالی بود — ارسال با مقدار، هشدار 1205701 می‌داد
+                    // نسیه: vop=vam (نمونه⹀ ارسالی معتبر)
                     Cop = null,                     // نمونه: سهم نقدی قلم ارسال نمیشود (1205601)
-                    Vop = vam,
+                    Vop = payType == MoadianPayType.Cash ? (decimal?)null : vam,
                     Tsstam = adis + vam                      // دقیق: tsstam = adis + vam
                 };
             })

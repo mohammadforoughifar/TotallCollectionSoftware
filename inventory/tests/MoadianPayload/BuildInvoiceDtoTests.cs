@@ -10,8 +10,8 @@ namespace MoadianPayload.Tests;
 ///
 /// Reference samples (verified against the production system):
 ///   Cash (setm=1): Cap=null, Insp=null, Indati2m=null, Tax17=null, Tvop=null,
-///                  body Cop=null, body Vop=vam
-///                  (sending cap/insp/cop with values caused warnings 14029/14030/1205601)
+///                  body Cop=null, body Vop=null
+///                  (cap/insp/cop/tvop/vop with values caused warnings 14029/14030/1205601/1205701)
 ///   Credit (setm=2): Cap=null, Insp=base(tbill-tvam-todam), Tvop=tvam,
 ///                    body Cop=null, body Vop=vam
 ///   Buyer 11-digit (legal): Tob=2, Bid=id, Tinb=id (same national ID)
@@ -78,7 +78,7 @@ public class BuildInvoiceDtoTests
 
         var body = dto.Body.Single();
         Assert.Null(body.Cop);
-        Assert.Equal(171m, body.Vop);
+        Assert.Null(body.Vop);                 // cash: body VP must be empty (system warning 1205701 otherwise)
         Assert.Equal(2001m, body.Prdis);
         Assert.Equal(100m, body.Dis);
         Assert.Equal(1901m, body.Adis);
