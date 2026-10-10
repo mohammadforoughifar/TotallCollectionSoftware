@@ -178,6 +178,10 @@ builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayExtraService, Inve
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocDownloadConfirmService, Inventory.Api.Services.DocArchive.DocDownloadConfirmService>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocFolderZipService, Inventory.Api.Services.DocArchive.DocFolderZipService>();
+// ورود انبوه آرشیو (بخش DocArchiveImport در appsettings). مسیر ریشه فقط از پیکربندی سرور خوانده می‌شود.
+builder.Services.Configure<Inventory.Api.Services.DocArchive.DocImportOptions>(
+    builder.Configuration.GetSection(Inventory.Api.Services.DocArchive.DocImportOptions.SectionName));
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocImportService, Inventory.Api.Services.DocArchive.DocImportService>();
 // سرویس OCR پایتون (اختیاری — بخش OcrService در appsettings). اگر BaseUrl خالی باشد موتور محلی استفاده می‌شود.
 var ocrOptions = builder.Configuration.GetSection("OcrService")
     .Get<Inventory.Api.Services.DocArchive.OcrServiceOptions>()
@@ -187,8 +191,11 @@ builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IOcrServiceClien
     Inventory.Api.Services.DocArchive.OcrServiceClient>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocTextExtractorService, Inventory.Api.Services.DocArchive.DocTextExtractorService>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocIndexService, Inventory.Api.Services.DocArchive.DocIndexService>();
-// سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
 builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocIndexWorker>();
+// متن‌گیری شبانهٔ فایل‌های ورود انبوه (خارج از ساعت کاری)
+builder.Services.Configure<Inventory.Api.Services.DocArchive.DocImportOcrOptions>(
+    builder.Configuration.GetSection(Inventory.Api.Services.DocArchive.DocImportOcrOptions.SectionName));
+builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocImportOcrWorker>();
 builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocRenewalWorker>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.DocRenewalService>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();

@@ -235,6 +235,230 @@
         return new Blob([bytes], { type: contentType || 'application/octet-stream' });
     }
 
+
+    /**
+     * ورود انبوه آرشیو — مرحلهٔ ۱: انتخاب پوشه و بررسی نام فایل‌ها.
+     * هیچ فایلی در این مرحله آپلود نمی‌شود؛ فقط فهرست مسیرها و حجم‌ها به سرور می‌رود.
+     */
+    window.importPickFolder = async function (dotNetRef, callbackName, apiBase, token) {
+        var report = function (obj) {
+            if (dotNetRef && callbackName) {
+                try { dotNetRef.invokeMethodAsync(callbackName, obj); } catch (e) { console.error(e); }
+            }
+        };
+        var fatal = function (message) {
+            report({ stage: 'done', fatal: message || 'خطای نامشخص.' });
+        };
+
+        var input;
+        try {
+            input = document.createElement('input');
+            input.type = 'file';
+            input.setAttribute('webkitdirectory', '');
+            input.setAttribute('directory', '');
+            input.multiple = true;
+            input.style.display = 'none';
+            document.body.appendChild(input);
+        } catch (e) {
+            fatal('ساخت پنجرهٔ انتخاب پوشه ممکن نشد: ' + e.message);
+            return;
+        }
+
+        var removeInput = function () {
+            try { if (input && input.parentNode) input.parentNode.removeChild(input); } catch (e) { }
+        };
+
+        input.addEventListener('change', async function () {
+            var files;
+            try { files = Array.prototype.slice.call(input.files || []); } catch (e) { files = []; }
+            removeInput();
+
+            if (!files || files.length === 0) {
+                fatal('فایلی در پوشهٔ انتخاب‌شده پیدا نشد. پوشه‌ای را انتخاب کنید که داخلش فایل باشد.');
+                return;
+            }
+
+            // مسیر نسبی هر فایل — ساختار پوشه‌ها از همین‌جا بازسازی می‌شود
+            var entries = files.map(function (f, i) {
+                return { file: f, rel: f.webkitRelativePath || f.name || ('file-' + i) };
+            });
+
+            try {
+                report({ stage: 'picked', total: entries.length });
+
+                var resp = await fetch(apiBase + '/batches', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ createMissingFolders: true })
+                });
+                if (!resp.ok) {
+                    var m = '';
+                    try { m = (await resp.json()).message || ''; } catch (e) { }
+                    fatal(m || ('ساخت نوبت ورود ناموفق بود (HTTP ' + resp.status + ')'));
+                    return;
+                }
+                var batch = await resp.json();
+                report({ stage: 'batch', batchId: batch.id, total: entries.length });
+
+                // بررسی نام‌ها دسته‌ای — هزار فایل در هر درخواست.
+                // سرور در هر پاسخ، شمارش کل نوبت را برمی‌گرداند، پس دستهٔ آخر خلاصهٔ نهایی است.
+                var CHUNK = 1000;
+                var summary = null;
+                for (var c = 0; c < entries.length; c += CHUNK) {
+                    var slice = entries.slice(c, c + CHUNK).map(function (e) {
+                        return { relativePath: e.rel, sizeBytes: e.file.size };
+                    });
+                    var pr = await fetch(apiBase + '/batches/' + batch.id + '/preview', {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ items: slice })
+                    });
+                    if (!pr.ok) {
+                        var pm = '';
+                        try { pm = (await pr.json()).message || ''; } catch (e) { }
+                        fatal(pm || ('بررسی نام فایل‌ها ناموفق بود (HTTP ' + pr.status + ')'));
+                        return;
+                    }
+                    summary = await pr.json();
+                    report({
+                        stage: 'preview',
+                        batchId: batch.id,
+                        index: Math.min(c + CHUNK, entries.length),
+                        total: entries.length
+                    });
+                }
+
+                // فهرست فایل‌های آماده برای مرحلهٔ ورود نگه داشته می‌شود.
+                // فایل‌های مشکل‌دار و تکراری اصلاً ارسال نمی‌شوند — دلیلشان همین‌جا
+                // در گزارش آمده و فرستادنشان فقط ترافیک اضافه و پیام خطای خام است.
+                var bad = {};
+                ((summary && summary.problems) || []).forEach(function (p) { bad[p.relativePath] = true; });
+                var readyEntries = entries.filter(function (e) { return !bad[e.rel]; });
+                window.__docImport = {
+                    batchId: batch.id, entries: readyEntries, all: entries.length, cancelled: false
+                };
+
+                report({
+                    stage: 'previewed',
+                    batchId: batch.id,
+                    total: summary ? summary.total : entries.length,
+                    ready: summary ? summary.ready : 0,
+                    failed: summary ? summary.failed : 0,
+                    skipped: summary ? summary.skipped : 0,
+                    duplicate: summary ? summary.duplicate : 0,
+                    problems: (summary && summary.problems ? summary.problems : []).slice(0, 200)
+                });
+            } catch (err) {
+                fatal((err && err.message) ? err.message : String(err));
+            }
+        });
+
+        input.addEventListener('cancel', function () {
+            removeInput();
+            report({ stage: 'done', cancelled: true });
+        });
+
+        try { input.click(); }
+        catch (e) { removeInput(); fatal('باز کردن پنجرهٔ انتخاب پوشه ممکن نشد: ' + e.message); }
+    };
+
+    /**
+     * ورود انبوه — مرحلهٔ ۲: فرستادن فایل‌های آماده، یکی‌یکی.
+     * هر فایل در همان درخواست وارد آرشیو می‌شود؛ اگر مرورگر بسته شود،
+     * با انتخاب دوبارهٔ همان پوشه، فایل‌های واردشده «تکراری» گزارش می‌شوند.
+     */
+    window.importRun = async function (dotNetRef, callbackName, apiBase, token) {
+        var report = function (obj) {
+            if (dotNetRef && callbackName) {
+                try { dotNetRef.invokeMethodAsync(callbackName, obj); } catch (e) { console.error(e); }
+            }
+        };
+
+        var session = window.__docImport;
+        if (!session || !session.entries || session.entries.length === 0) {
+            report({ stage: 'done', fatal: 'پوشه‌ای انتخاب نشده است. اول «انتخاب پوشه» را بزنید.' });
+            return;
+        }
+
+        session.cancelled = false;
+        var imported = 0, failed = 0, duplicate = 0, skipped = 0, failedNames = [];
+
+        for (var i = 0; i < session.entries.length; i++) {
+            if (session.cancelled) {
+                report({ stage: 'done', cancelled: true, imported: imported, failed: failed,
+                         duplicate: duplicate, skipped: skipped, total: session.entries.length, batchId: session.batchId });
+                return;
+            }
+
+            var e = session.entries[i];
+            var f = e.file;
+            var name = e.rel.split('/').pop();
+
+            if (!f || f.size === 0) {
+                skipped++;
+                report({ stage: 'progress', name: name, index: i + 1, total: session.entries.length,
+                         imported: imported, failed: failed, duplicate: duplicate, skipped: skipped,
+                         message: 'فایل خالی است' });
+                continue;
+            }
+
+            var fd = new FormData();
+            fd.append('file', f, name);
+            fd.append('relativePath', e.rel);
+
+            try {
+                var resp = await fetch(apiBase + '/batches/' + session.batchId + '/files', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: fd
+                });
+                var msg = '';
+                try { var j = await resp.json(); msg = j.messageFa || j.message || ''; } catch (ex) { }
+
+                if (resp.ok && j && j.status === 'Imported') {
+                    imported++;
+                    e.done = true;
+                } else if (resp.ok && j && j.duplicate) {
+                    duplicate++;
+                    e.done = true;
+                } else if (resp.ok) {
+                    failed++;
+                    if (failedNames.length < 20) failedNames.push(name + ': ' + (msg || 'وارد نشد'));
+                } else {
+                    failed++;
+                    if (failedNames.length < 20) failedNames.push(name + ': ' + (msg || ('HTTP ' + resp.status)));
+                }
+
+                report({ stage: 'progress', name: name, index: i + 1, total: session.entries.length,
+                         imported: imported, failed: failed, duplicate: duplicate, skipped: skipped,
+                         message: msg });
+            } catch (err) {
+                failed++;
+                var em = (err && err.message) ? err.message : String(err);
+                if (failedNames.length < 20) failedNames.push(name + ': ' + em);
+                report({ stage: 'progress', name: name, index: i + 1, total: session.entries.length,
+                         imported: imported, failed: failed, duplicate: duplicate, skipped: skipped,
+                         message: em });
+            }
+        }
+
+        try {
+            await fetch(apiBase + '/batches/' + session.batchId + '/finish', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+        } catch (e) { }
+
+        report({ stage: 'done', batchId: session.batchId, total: session.entries.length,
+                 imported: imported, failed: failed, duplicate: duplicate, skipped: skipped,
+                 failedNames: failedNames });
+    };
+
+    /** لغو آپلود بین دو فایل. فایل‌های واردشده برنمی‌گردند. */
+    window.importCancel = function () {
+        if (window.__docImport) window.__docImport.cancelled = true;
+    };
+
     /** دانلود فایل امن از داده Base64 — تعیین MIME تایپ دقیق اکسل و شلیک رویداد استاندارد کاربر */
     window.downloadBlob = function (fileName, contentType, base64) {
         try {
