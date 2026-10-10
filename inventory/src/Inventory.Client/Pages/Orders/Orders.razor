@@ -303,6 +303,27 @@
                     <span class="fs-8 text-muted">ریال</span>
                 </div>
             </div>
+
+            <div class="alert alert-light border d-flex flex-wrap gap-4 align-items-center py-2 px-3 mt-3 mb-0">
+                <div>
+                    <span class="fs-8 text-muted ms-1">روش تسویه:</span>
+                    <span class="fw-700">@PayBadge(viewing)</span>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(viewing.TrsAccountName))
+                {
+                    <div>
+                        <span class="fs-8 text-muted ms-1">حساب / بانک:</span>
+                        <span class="fw-700 text-primary"><i class="bi bi-bank ms-1"></i>@viewing.TrsAccountName</span>
+                    </div>
+                }
+                @if (viewing.Cheques.Count > 0)
+                {
+                    <div>
+                        <span class="fs-8 text-muted ms-1">چک‌ها:</span>
+                        <span class="fw-700">@viewing.Cheques.Count.Num() فقره (@string.Join("، ", viewing.Cheques.Where(c => !string.IsNullOrWhiteSpace(c.BankName)).Select(c => c.BankName).Distinct()))</span>
+                    </div>
+                }
+            </div>
         }
     </ChildContent>
 </Modal>
@@ -315,7 +336,7 @@
 
     private static RenderFragment PayBadge(Order o) => o.PaymentMethod switch
     {
-        PaymentMethod.Cash => @<span class="badge badge-pay-cash fs-8"><i class="bi bi-cash-coin"></i> نقدی</span>,
+        PaymentMethod.Cash => @<span class="badge badge-pay-cash fs-8" title="@o.TrsAccountName"><i class="bi bi-cash-coin"></i> نقدی @(!string.IsNullOrWhiteSpace(o.TrsAccountName) ? $"({o.TrsAccountName})" : "")</span>,
         PaymentMethod.Credit => @<span class="badge badge-pay-credit fs-8"><i class="bi bi-hourglass-split"></i> نسیه</span>,
         PaymentMethod.Cheque => @<span class="badge badge-pay-cheque fs-8"><i class="bi bi-bank"></i> چک</span>,
         _ => @<span class="badge badge-pay-inst fs-8"><i class="bi bi-journal-check"></i> اقساطی</span>

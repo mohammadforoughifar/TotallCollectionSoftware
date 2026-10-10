@@ -4,6 +4,7 @@
 @inject IPartyService PartySvc
 @inject IProductService ProductSvc
 @inject IReferrerService ReferrerSvc
+@inject ITrsAccountService AccountSvc
 @inject IToastService Toast
 
 <Modal Visible="true" Title="@FormTitle" Size="modal-xl" OnClose="Cancel">
@@ -74,14 +75,30 @@
                                         @if (CashPart > 0)
                                         {
                                             <div class="col-6 col-md-3">
-                                                <label class="form-label fs-8">نوع دریافت نقدی</label>
+                                                <label class="form-label fs-8">نوع @(Type == TransactionType.Sale ? "دریافت" : "پرداخت") نقدی</label>
                                                 <select class="form-select form-select-sm" @bind="mixedCashTypeStr">
                                                     <option value="0">وجه نقد</option>
                                                     <option value="1">کارت‌خوان (POS)</option>
                                                     <option value="2">کارت به کارت</option>
                                                 </select>
                                             </div>
-                                            <div class="col-12 col-md-6 fs-8 pb-1">
+                                            <div class="col-12 col-md-4">
+                                                <label class="form-label fs-8">بانک / صندوق @(Type == TransactionType.Sale ? "دریافت" : "پرداخت")</label>
+                                                <div class="input-group input-group-sm">
+                                                    <select class="form-select form-select-sm" value="@(trsAccountId ?? 0)" @onchange="OnCashAccountChanged">
+                                                        <option value="0">— انتخاب بانک/صندوق —</option>
+                                                        @foreach (var a in AccountsForCashType(MixedCashType))
+                                                        {
+                                                            <option value="@a.Id">@a.DisplayName</option>
+                                                        }
+                                                    </select>
+                                                    <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
+                                                            @onclick="() => OpenQuickBank(MixedCashType == CashType.Cash ? TreasuryAccountKind.Cash : (MixedCashType == CashType.CardReader ? TreasuryAccountKind.Pos : TreasuryAccountKind.Bank))">
+                                                        <i class="bi bi-plus-lg"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="col-12 col-md-2 fs-8 pb-1">
                                                 نقد: <b class="num text-success">@CashPart.Money()</b> —
                                                 باقیمانده (@PayLabel()): <b class="num text-primary">@Remaining.Money()</b> ریال
                                             </div>
@@ -93,22 +110,44 @@
                             @if (payMethod == PaymentMethod.Cash)
                             {
                                 <div class="mt-3">
-                                    <label class="form-label fs-8">نوع دریافت نقدی</label>
-                                    <div class="d-flex flex-wrap gap-3">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="cashType" id="ctCash"
-                                                   checked="@(cashType == CashType.Cash)" @onchange="@(() => cashType = CashType.Cash)" />
-                                            <label class="form-check-label" for="ctCash">وجه نقد</label>
+                                    <div class="row g-2 align-items-end">
+                                        <div class="col-md-5">
+                                            <label class="form-label fs-8 fw-bold">نوع @(Type == TransactionType.Sale ? "دریافت" : "پرداخت") نقدی</label>
+                                            <div class="d-flex flex-wrap gap-3 pt-1">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="cashType" id="ctCash"
+                                                           checked="@(cashType == CashType.Cash)" @onchange="@(() => OnCashTypeRadioChanged(CashType.Cash))" />
+                                                    <label class="form-check-label fs-8" for="ctCash">وجه نقد</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="cashType" id="ctPos"
+                                                           checked="@(cashType == CashType.CardReader)" @onchange="@(() => OnCashTypeRadioChanged(CashType.CardReader))" />
+                                                    <label class="form-check-label fs-8" for="ctPos">کارت‌خوان (POS)</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="cashType" id="ctC2C"
+                                                           checked="@(cashType == CashType.CardTransfer)" @onchange="@(() => OnCashTypeRadioChanged(CashType.CardTransfer))" />
+                                                    <label class="form-check-label fs-8" for="ctC2C">کارت به کارت / حواله</label>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="cashType" id="ctPos"
-                                                   checked="@(cashType == CashType.CardReader)" @onchange="@(() => cashType = CashType.CardReader)" />
-                                            <label class="form-check-label" for="ctPos">کارت‌خوان (POS)</label>
-                                        </div>
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="cashType" id="ctC2C"
-                                                   checked="@(cashType == CashType.CardTransfer)" @onchange="@(() => cashType = CashType.CardTransfer)" />
-                                            <label class="form-check-label" for="ctC2C">کارت به کارت</label>
+                                        <div class="col-md-7">
+                                            <label class="form-label fs-8 fw-bold">
+                                                @(cashType == CashType.Cash ? "صندوق / حساب نقدی" : (cashType == CashType.CardReader ? "دستگاه کارت‌خوان / بانک" : "حساب بانکی"))
+                                            </label>
+                                            <div class="input-group input-group-sm">
+                                                <select class="form-select form-select-sm" value="@(trsAccountId ?? 0)" @onchange="OnCashAccountChanged">
+                                                    <option value="0">— انتخاب @(cashType == CashType.Cash ? "صندوق" : "بانک") —</option>
+                                                    @foreach (var a in AccountsForCashType(cashType))
+                                                    {
+                                                        <option value="@a.Id">@a.DisplayName</option>
+                                                    }
+                                                </select>
+                                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
+                                                        @onclick="() => OpenQuickBank(cashType == CashType.Cash ? TreasuryAccountKind.Cash : (cashType == CashType.CardReader ? TreasuryAccountKind.Pos : TreasuryAccountKind.Bank))">
+                                                    <i class="bi bi-plus-lg ms-1"></i> تعریف بانک
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -126,7 +165,7 @@
                             {
                                 <div class="mt-3">
                                     <div class="d-flex align-items-center gap-2 mb-2">
-                                        <span class="fs-8 fw-700">چک‌های دریافتی</span>
+                                        <span class="fs-8 fw-700">@(Type == TransactionType.Purchase ? "چک‌های پرداختی به تأمین‌کننده" : "چک‌های دریافتی از مشتری")</span>
                                         <button type="button" class="btn btn-sm btn-calc ms-auto" @onclick="() => OpenCalc(true)">
                                             <i class="bi bi-calculator"></i> محاسبه اقساطِ چک
                                         </button>
@@ -142,12 +181,32 @@
                                                 <label class="form-label fs-8">شماره چک/صیاد *</label>
                                                 <input class="form-control form-control-sm" @bind="cheques[i].Number" dir="ltr" />
                                             </div>
-                                            <div class="col-6 col-md-2">
-                                                <label class="form-label fs-8">بانک</label>
-                                                <input class="form-control form-control-sm" @bind="cheques[i].BankName" />
+                                            <div class="col-6 col-md-3">
+                                                <label class="form-label fs-8">بانک @(Type == TransactionType.Purchase ? "(حساب ما) *" : "")</label>
+                                                <div class="input-group input-group-sm">
+                                                    @if (Type == TransactionType.Purchase)
+                                                    {
+                                                        <select class="form-select form-select-sm" value="@(cheques[i].TrsAccountId ?? 0)"
+                                                                @onchange="@(e => OnChequeAccountChanged(i, e))">
+                                                            <option value="0">— انتخاب حساب بانکی —</option>
+                                                            @foreach (var b in bankAccounts.Where(x => x.Kind == TreasuryAccountKind.Bank))
+                                                            {
+                                                                <option value="@b.Id">@b.DisplayName</option>
+                                                            }
+                                                        </select>
+                                                    }
+                                                    else
+                                                    {
+                                                        <input class="form-control form-control-sm" list="orderBankDataList" @bind="cheques[i].BankName" placeholder="نام بانک…" />
+                                                    }
+                                                    <button type="button" class="btn btn-outline-primary" title="تعریف بانک جدید"
+                                                            @onclick="() => OpenQuickBankForCheque(i, TreasuryAccountKind.Bank)">
+                                                        <i class="bi bi-plus-lg"></i>
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div class="col-6 col-md-2">
-                                                <label class="form-label fs-8">صاحب چک</label>
+                                                <label class="form-label fs-8">@(Type == TransactionType.Purchase ? "در وجه / گیرنده" : "صاحب چک")</label>
                                                 <input class="form-control form-control-sm" @bind="cheques[i].OwnerName" />
                                             </div>
                                             <div class="col-6 col-md-2">
@@ -155,7 +214,7 @@
                                                 <input class="form-control form-control-sm num" value="@chequeAmounts[i]"
                                                        @oninput="@(e => chequeAmounts[i] = Fa.FormatTyping(e.Value?.ToString()))" inputmode="numeric" dir="ltr" />
                                             </div>
-                                            <div class="col-6 col-md-3">
+                                            <div class="col-6 col-md-2">
                                                 <label class="form-label fs-8">سررسید چک *</label>
                                                 <DatePicker @bind-Value="chequeDates[i]" />
                                             </div>
@@ -527,6 +586,32 @@
     </Footer>
 </Modal>
 
+<datalist id="orderBankDataList">
+    @foreach (var b in bankAccounts.Where(x => !string.IsNullOrWhiteSpace(x.BankName)).Select(x => x.BankName!).Distinct())
+    {
+        <option value="@b" />
+    }
+    <option value="بانک ملت" />
+    <option value="بانک ملی" />
+    <option value="بانک صادرات" />
+    <option value="بانک تجارت" />
+    <option value="بانک سپه" />
+    <option value="بانک سامان" />
+    <option value="بانک پاسارگاد" />
+    <option value="بانک پارسیان" />
+    <option value="بانک رسالت" />
+    <option value="بانک مهر ایران" />
+    <option value="بانک کشاورزی" />
+    <option value="بانک مسکن" />
+    <option value="بانک رفاه" />
+    <option value="بانک آینده" />
+    <option value="بانک شهر" />
+</datalist>
+
+<QuickBankModal @bind-Visible="showQuickBank"
+                DefaultKind="quickBankDefaultKind"
+                OnAccountCreated="OnQuickBankCreated" />
+
 @code {
     /// <summary>دسترسی «مشاهده سود» — Orders.ViewProfit از بخش نقش‌ها و دسترسی‌ها</summary>
     private bool CanSeeProfit => Auth.Has("Orders.ViewProfit");
@@ -574,6 +659,88 @@
     private PaymentMethod payMethod = PaymentMethod.Cash;
     private CashType cashType = CashType.Cash;
     private DateTime? creditDue;
+
+    // حساب بانکی یا صندوق انتخابی
+    private List<TrsAccount> bankAccounts = new();
+    private int? trsAccountId;
+    private bool showQuickBank;
+    private TreasuryAccountKind quickBankDefaultKind = TreasuryAccountKind.Bank;
+    private int? quickBankChequeIndex;
+
+    private List<TrsAccount> AccountsForCashType(CashType ct) => ct switch
+    {
+        CashType.Cash => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Cash or TreasuryAccountKind.PettyCash).ToList(),
+        CashType.CardReader => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Pos or TreasuryAccountKind.Bank).ToList(),
+        CashType.CardTransfer => bankAccounts.Where(a => a.Kind is TreasuryAccountKind.Bank or TreasuryAccountKind.Pos).ToList(),
+        _ => bankAccounts
+    };
+
+    private CashType MixedCashType => int.TryParse(mixedCashTypeStr, out var v) ? (CashType)v : CashType.Cash;
+
+    private void OnCashTypeRadioChanged(CashType ct)
+    {
+        cashType = ct;
+        var validAccounts = AccountsForCashType(ct);
+        if (trsAccountId.HasValue && !validAccounts.Any(a => a.Id == trsAccountId.Value))
+        {
+            trsAccountId = validAccounts.FirstOrDefault(a => a.IsDefault)?.Id ?? validAccounts.FirstOrDefault()?.Id;
+        }
+    }
+
+    private void OnCashAccountChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+            trsAccountId = id;
+        else
+            trsAccountId = null;
+    }
+
+    private void OnChequeAccountChanged(int index, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var id) && id > 0)
+        {
+            cheques[index].TrsAccountId = id;
+            var acc = bankAccounts.FirstOrDefault(a => a.Id == id);
+            cheques[index].BankName = acc?.BankName ?? acc?.Name ?? "";
+        }
+        else
+        {
+            cheques[index].TrsAccountId = null;
+        }
+    }
+
+    private void OpenQuickBank(TreasuryAccountKind defaultKind = TreasuryAccountKind.Bank)
+    {
+        quickBankChequeIndex = null;
+        quickBankDefaultKind = defaultKind;
+        showQuickBank = true;
+    }
+
+    private void OpenQuickBankForCheque(int index, TreasuryAccountKind defaultKind = TreasuryAccountKind.Bank)
+    {
+        quickBankChequeIndex = index;
+        quickBankDefaultKind = defaultKind;
+        showQuickBank = true;
+    }
+
+    private void OnQuickBankCreated(TrsAccount newAcc)
+    {
+        if (!bankAccounts.Any(a => a.Id == newAcc.Id))
+        {
+            bankAccounts.Add(newAcc);
+        }
+
+        if (quickBankChequeIndex.HasValue && quickBankChequeIndex.Value < cheques.Count)
+        {
+            cheques[quickBankChequeIndex.Value].TrsAccountId = newAcc.Id;
+            cheques[quickBankChequeIndex.Value].BankName = newAcc.BankName ?? newAcc.Name;
+        }
+        else
+        {
+            trsAccountId = newAcc.Id;
+        }
+        StateHasChanged();
+    }
 
     // پرداخت ترکیبی: پیش‌دریافت نقدی برای نسیه/چک/اقساط
     private string cashAmountText = "";
@@ -789,6 +956,15 @@
             partyLookup = await partyTask;
             var prods = await prodTask;
 
+            try
+            {
+                bankAccounts = await AccountSvc.GetAllAsync(activeOnly: true, withBalances: false);
+            }
+            catch
+            {
+                bankAccounts = new();
+            }
+
             // در خرید، خدمات قابل انتخاب نیست؛ در فروش همه (کالا + خدمات) قابل انتخاب‌اند
             products = prods.Items
                 .Where(p => p.IsActive && (Type == TransactionType.Sale || !p.IsService))
@@ -821,15 +997,16 @@
                 date = o.Date;
                 description = o.Description;
 
-                // بارگذاری اطلاعات پرداخت (فقط فروش)
+                // بارگذاری اطلاعات پرداخت (خرید و فروش)
                 payMethod = o.PaymentMethod;
                 cashType = o.CashType ?? CashType.Cash;
+                trsAccountId = o.TrsAccountId;
                 creditDue = o.DueDate;
                 cashAmountText = o.CashAmount > 0 ? Fa.FormatTyping(o.CashAmount.ToString("0")) : "";
                 mixedCashTypeStr = ((int)(o.CashType ?? CashType.Cash)).ToString();
                 cheques = o.Cheques.Select(c => new ChequeDto
                 {
-                    Id = c.Id, Number = c.Number, BankName = c.BankName, AccountInfo = c.AccountInfo,
+                    Id = c.Id, Number = c.Number, TrsAccountId = c.TrsAccountId, BankName = c.BankName, AccountInfo = c.AccountInfo,
                     OwnerName = c.OwnerName, Amount = c.Amount, DueDate = c.DueDate, IsCleared = c.IsCleared,
                     ClearedAt = c.ClearedAt, Note = c.Note
                 }).ToList();
@@ -867,6 +1044,8 @@
             else
             {
                 date = DateTime.Now;
+                var def = bankAccounts.FirstOrDefault(a => a.IsDefault) ?? bankAccounts.FirstOrDefault();
+                if (def != null) trsAccountId = def.Id;
             }
         }
         catch (Exception ex)
@@ -1027,6 +1206,7 @@
         if (Type is TransactionType.Sale or TransactionType.Purchase)
         {
             cmd.PaymentMethod = payMethod;
+            cmd.TrsAccountId = trsAccountId > 0 ? trsAccountId : null;
 
             // پیش‌دریافت نقدی (پرداخت ترکیبی)
             if (payMethod != PaymentMethod.Cash && CashPart > 0)

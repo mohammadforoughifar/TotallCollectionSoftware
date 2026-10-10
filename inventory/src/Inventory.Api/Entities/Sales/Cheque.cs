@@ -16,6 +16,10 @@ public class Cheque
     [MaxLength(100)]
     public string? BankName { get; set; }
 
+    /// <summary>حساب بانکی متناظر در سامانه خزانه (برای چک‌های صادره یا واریزی)</summary>
+    public int? TrsAccountId { get; set; }
+    public TrsAccount? TrsAccount { get; set; }
+
     /// <summary>شماره حساب / شعبه</summary>
     [MaxLength(100)]
     public string? AccountInfo { get; set; }

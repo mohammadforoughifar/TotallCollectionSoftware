@@ -61,6 +61,10 @@ public class Order
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی</summary>
     public decimal CashAmount { get; set; }
 
+    /// <summary>شناسه بانک / حساب خزانه انتخابی برای تسویه</summary>
+    public int? TrsAccountId { get; set; }
+    public string? TrsAccountName { get; set; }
+
     public DateTime? DueDate { get; set; }
     public decimal SettledAmount { get; set; }
     public List<ChequeDto> Cheques { get; set; } = new();
@@ -93,6 +97,9 @@ public class OrderCommand
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی (نسیه/چک/اقساط)</summary>
     public decimal CashAmount { get; set; }
 
+    /// <summary>شناسه بانک / حساب خزانه انتخابی برای تسویه</summary>
+    public int? TrsAccountId { get; set; }
+
     public DateTime? DueDate { get; set; }
     public List<ChequeDto> Cheques { get; set; } = new();
     public List<InstallmentDto> Installments { get; set; } = new();
@@ -105,6 +112,7 @@ public class ChequeDto
 {
     public int Id { get; set; }
     public string Number { get; set; } = "";
+    public int? TrsAccountId { get; set; }
     public string? BankName { get; set; }
     public string? AccountInfo { get; set; }
     public string? OwnerName { get; set; }

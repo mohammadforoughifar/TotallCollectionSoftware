@@ -85,6 +85,8 @@ public static class DbInitializer
                 await RepairDeviceSchemaV1.EnsureAsync(db);
                 // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی.
                 await TransactionLineCostSchemaV1.EnsureAsync(db);
+                // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
+                await TransactionBankSchemaV1.EnsureAsync(db);
 
                 // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
                 await UserContactSchemaV1.EnsureAsync(db);

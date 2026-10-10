@@ -1417,6 +1417,10 @@ public class InventoryService : IInventoryService
             ? await _db.Referrers.Where(r => r.Id == t.ReferrerId.Value).Select(r => r.Name).FirstOrDefaultAsync()
             : null;
 
+        string? trsAccountName = null;
+        if (t.TrsAccountId.HasValue)
+            trsAccountName = await _db.TrsAccounts.Where(a => a.Id == t.TrsAccountId.Value).Select(a => a.Name).FirstOrDefaultAsync();
+
         var order = new Order
         {
             Id = t.Id,
@@ -1434,11 +1438,13 @@ public class InventoryService : IInventoryService
             PaymentMethod = t.PaymentMethod,
             CashType = t.CashType,
             CashAmount = t.CashAmount,
+            TrsAccountId = t.TrsAccountId,
+            TrsAccountName = trsAccountName,
             DueDate = t.DueDate,
             SettledAmount = t.SettledAmount,
             Cheques = t.Cheques.OrderBy(c => c.DueDate).Select(c => new ChequeDto
             {
-                Id = c.Id, Number = c.Number, BankName = c.BankName, AccountInfo = c.AccountInfo,
+                Id = c.Id, Number = c.Number, TrsAccountId = c.TrsAccountId, BankName = c.BankName, AccountInfo = c.AccountInfo,
                 OwnerName = c.OwnerName, Amount = c.Amount, DueDate = c.DueDate,
                 IsCleared = c.IsCleared, ClearedAt = c.ClearedAt, Note = c.Note
             }).ToList(),
@@ -1809,6 +1815,7 @@ public class InventoryService : IInventoryService
     {
         var total = cmd.Lines.Sum(l => l.Quantity * l.Price);
         txn.PaymentMethod = cmd.PaymentMethod;
+        txn.TrsAccountId = cmd.TrsAccountId > 0 ? cmd.TrsAccountId : null;
         txn.CashType = null;
         txn.CashAmount = 0;
         txn.DueDate = null;
@@ -1855,6 +1862,7 @@ public class InventoryService : IInventoryService
                     txn.Cheques.Add(new Db.Cheque
                     {
                         Number = c.Number.Trim(),
+                        TrsAccountId = c.TrsAccountId > 0 ? c.TrsAccountId : null,
                         BankName = string.IsNullOrWhiteSpace(c.BankName) ? null : c.BankName.Trim(),
                         AccountInfo = string.IsNullOrWhiteSpace(c.AccountInfo) ? null : c.AccountInfo.Trim(),
                         OwnerName = string.IsNullOrWhiteSpace(c.OwnerName) ? null : c.OwnerName.Trim(),

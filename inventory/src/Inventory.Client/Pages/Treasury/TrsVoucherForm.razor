@@ -22,6 +22,9 @@
         </h1>
     </div>
     <div class="ms-auto d-flex gap-2 align-items-center">
+        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="() => OpenQuickBankGeneral(TreasuryAccountKind.Bank)">
+            <i class="bi bi-bank ms-1"></i> تعریف بانک / صندوق
+        </button>
         <span class="badge @StatusBadge fs-8">@doc.StatusTitle</span>
         <a class="btn btn-outline-secondary" href="/trs/vouchers"><i class="bi bi-arrow-right"></i> بازگشت</a>
     </div>
@@ -54,23 +57,41 @@ else
                 {
                     <div class="col-md-3">
                         <label class="form-label">از حساب <span class="text-danger">*</span></label>
-                        <select class="form-select" value="@(doc.FromAccountId ?? 0)" @onchange="OnFromAccount" disabled="@IsLocked">
-                            <option value="0">— انتخاب کنید —</option>
-                            @foreach (var a in accounts)
+                        <div class="input-group">
+                            <select class="form-select" value="@(doc.FromAccountId ?? 0)" @onchange="OnFromAccount" disabled="@IsLocked">
+                                <option value="0">— انتخاب کنید —</option>
+                                @foreach (var a in accounts)
+                                {
+                                    <option value="@a.Id">@a.DisplayName — مانده @a.Balance.Money()</option>
+                                }
+                            </select>
+                            @if (!IsLocked)
                             {
-                                <option value="@a.Id">@a.DisplayName — مانده @a.Balance.Money()</option>
+                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
+                                        @onclick="() => OpenQuickBankForTransfer(true)">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
                             }
-                        </select>
+                        </div>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">به حساب <span class="text-danger">*</span></label>
-                        <select class="form-select" value="@(doc.ToAccountId ?? 0)" @onchange="OnToAccount" disabled="@IsLocked">
-                            <option value="0">— انتخاب کنید —</option>
-                            @foreach (var a in accounts)
+                        <div class="input-group">
+                            <select class="form-select" value="@(doc.ToAccountId ?? 0)" @onchange="OnToAccount" disabled="@IsLocked">
+                                <option value="0">— انتخاب کنید —</option>
+                                @foreach (var a in accounts)
+                                {
+                                    <option value="@a.Id">@a.DisplayName — مانده @a.Balance.Money()</option>
+                                }
+                            </select>
+                            @if (!IsLocked)
                             {
-                                <option value="@a.Id">@a.DisplayName — مانده @a.Balance.Money()</option>
+                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
+                                        @onclick="() => OpenQuickBankForTransfer(false)">
+                                    <i class="bi bi-plus-lg"></i>
+                                </button>
                             }
-                        </select>
+                        </div>
                     </div>
                     <div class="col-6 col-md-2">
                         <label class="form-label">شماره پیگیری</label>
@@ -360,14 +381,23 @@ else
                                 {
                                     <div class="col-6 col-md-3">
                                         <label class="form-label fs-8">صندوق/بانک <span class="text-danger">*</span></label>
-                                        <select class="form-select" value="@(line.TrsAccountId ?? 0)"
-                                                @onchange="e => OnLineAccount(line, e)" disabled="@IsLocked">
-                                            <option value="0">— انتخاب —</option>
-                                            @foreach (var a in AccountsFor(line.Method))
+                                        <div class="input-group input-group-sm">
+                                            <select class="form-select" value="@(line.TrsAccountId ?? 0)"
+                                                    @onchange="e => OnLineAccount(line, e)" disabled="@IsLocked">
+                                                <option value="0">— انتخاب —</option>
+                                                @foreach (var a in AccountsFor(line.Method))
+                                                {
+                                                    <option value="@a.Id">@a.DisplayName</option>
+                                                }
+                                            </select>
+                                            @if (!IsLocked)
                                             {
-                                                <option value="@a.Id">@a.DisplayName</option>
+                                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک/حساب جدید"
+                                                        @onclick="() => OpenQuickBankForLine(line)">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
                                             }
-                                        </select>
+                                        </div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <label class="form-label fs-8">شماره پیگیری</label>
@@ -397,8 +427,17 @@ else
                                         <DatePicker Value="line.IssueDate" ValueChanged="d => line.IssueDate = d" AllowClear="true" />
                                     </div>
                                     <div class="col-6 col-md-3">
-                                        <label class="form-label fs-8">بانک</label>
-                                        <input class="form-control" @bind="line.ChequeBankName" disabled="@IsChequeLocked(line)" />
+                                        <label class="form-label fs-8">بانک صادرکننده</label>
+                                        <div class="input-group input-group-sm">
+                                            <input class="form-control" list="trsBankDataList" @bind="line.ChequeBankName" disabled="@IsChequeLocked(line)" placeholder="نام بانک…" />
+                                            @if (!IsChequeLocked(line))
+                                            {
+                                                <button type="button" class="btn btn-outline-primary" title="تعریف بانک جدید"
+                                                        @onclick="() => OpenQuickBankForChequeReceipt(line)">
+                                                    <i class="bi bi-plus-lg"></i>
+                                                </button>
+                                            }
+                                        </div>
                                     </div>
                                     <div class="col-6 col-md-3">
                                         <label class="form-label fs-8">شعبه</label>
@@ -415,14 +454,23 @@ else
                                     {
                                         <div class="col-6 col-md-3">
                                             <label class="form-label fs-8">از حساب بانکی ما <span class="text-danger">*</span></label>
-                                            <select class="form-select" value="@(line.TrsAccountId ?? 0)"
-                                                    @onchange="e => OnLineAccount(line, e)" disabled="@IsChequeLocked(line)">
-                                                <option value="0">— انتخاب —</option>
-                                                @foreach (var a in accounts.Where(x => x.Kind == TreasuryAccountKind.Bank))
+                                            <div class="input-group input-group-sm">
+                                                <select class="form-select" value="@(line.TrsAccountId ?? 0)"
+                                                        @onchange="e => OnLineAccount(line, e)" disabled="@IsChequeLocked(line)">
+                                                    <option value="0">— انتخاب —</option>
+                                                    @foreach (var a in accounts.Where(x => x.Kind == TreasuryAccountKind.Bank))
+                                                    {
+                                                        <option value="@a.Id">@a.DisplayName</option>
+                                                    }
+                                                </select>
+                                                @if (!IsChequeLocked(line))
                                                 {
-                                                    <option value="@a.Id">@a.DisplayName</option>
+                                                    <button type="button" class="btn btn-outline-primary" title="تعریف حساب بانکی جدید"
+                                                            @onclick="() => OpenQuickBankForLine(line, TreasuryAccountKind.Bank)">
+                                                        <i class="bi bi-plus-lg"></i>
+                                                    </button>
                                                 }
-                                            </select>
+                                            </div>
                                         </div>
                                     }
                                     @if (line.ChequeId is > 0)
@@ -516,6 +564,33 @@ else
             }
         </div>
     </div>
+
+    <!-- دیتالیست بانک‌های سیستم جهت پیشنهاد سریع -->
+    <datalist id="trsBankDataList">
+        @foreach (var b in accounts.Where(x => !string.IsNullOrWhiteSpace(x.BankName)).Select(x => x.BankName!).Distinct())
+        {
+            <option value="@b" />
+        }
+        <option value="بانک ملت" />
+        <option value="بانک ملی" />
+        <option value="بانک صادرات" />
+        <option value="بانک تجارت" />
+        <option value="بانک سپه" />
+        <option value="بانک سامان" />
+        <option value="بانک پاسارگاد" />
+        <option value="بانک پارسیان" />
+        <option value="بانک رسالت" />
+        <option value="بانک مهر ایران" />
+        <option value="بانک کشاورزی" />
+        <option value="بانک مسکن" />
+        <option value="بانک رفاه" />
+        <option value="بانک آینده" />
+        <option value="بانک شهر" />
+    </datalist>
+
+    <QuickBankModal @bind-Visible="showQuickBank"
+                    DefaultKind="quickBankDefaultKind"
+                    OnAccountCreated="OnQuickBankCreated" />
 }
 
 @code {
@@ -532,6 +607,75 @@ else
     private string allocationAmountText = "";
     private string amountText = "", feeText = "";
     private bool loading = true, saving;
+
+    // تعریف سریع بانک/حساب
+    private bool showQuickBank;
+    private TreasuryAccountKind quickBankDefaultKind = TreasuryAccountKind.Bank;
+    private TrsVoucherLine? activeQuickBankLine;
+    private bool? activeQuickBankForFromAccount;
+
+    private void OpenQuickBankGeneral(TreasuryAccountKind kind = TreasuryAccountKind.Bank)
+    {
+        activeQuickBankLine = null;
+        activeQuickBankForFromAccount = null;
+        quickBankDefaultKind = kind;
+        showQuickBank = true;
+    }
+
+    private void OpenQuickBankForLine(TrsVoucherLine line, TreasuryAccountKind? kind = null)
+    {
+        activeQuickBankLine = line;
+        activeQuickBankForFromAccount = null;
+        quickBankDefaultKind = kind ?? (line.Method switch
+        {
+            PayMethod.Cash => TreasuryAccountKind.Cash,
+            PayMethod.Card => TreasuryAccountKind.Pos,
+            _ => TreasuryAccountKind.Bank
+        });
+        showQuickBank = true;
+    }
+
+    private void OpenQuickBankForChequeReceipt(TrsVoucherLine line)
+    {
+        activeQuickBankLine = line;
+        activeQuickBankForFromAccount = null;
+        quickBankDefaultKind = TreasuryAccountKind.Bank;
+        showQuickBank = true;
+    }
+
+    private void OpenQuickBankForTransfer(bool isFrom)
+    {
+        activeQuickBankLine = null;
+        activeQuickBankForFromAccount = isFrom;
+        quickBankDefaultKind = TreasuryAccountKind.Bank;
+        showQuickBank = true;
+    }
+
+    private async Task OnQuickBankCreated(TrsAccount newAcc)
+    {
+        accounts = await AccountSvc.GetAllAsync(true, true);
+
+        if (activeQuickBankForFromAccount == true)
+        {
+            doc.FromAccountId = newAcc.Id;
+            doc.FromAccountName = newAcc.Name;
+        }
+        else if (activeQuickBankForFromAccount == false)
+        {
+            doc.ToAccountId = newAcc.Id;
+            doc.ToAccountName = newAcc.Name;
+        }
+        else if (activeQuickBankLine != null)
+        {
+            activeQuickBankLine.TrsAccountId = newAcc.Id;
+            activeQuickBankLine.TrsAccountName = newAcc.DisplayName;
+            if (activeQuickBankLine.Method == PayMethod.Cheque)
+            {
+                activeQuickBankLine.ChequeBankName = newAcc.BankName ?? newAcc.Name;
+            }
+        }
+        StateHasChanged();
+    }
 
     private bool IsLocked => doc.Status != TreasuryStatus.Draft;
 
