@@ -447,15 +447,28 @@ public class InventoryService : IInventoryService
             if (!products.TryGetValue(pid, out var product)) continue;
             if (product.IsService)
             {
-                // خدمات: بهای تمام‌شده صفر → سود = کل مبلغ سطر
+                // خدمات عادی هزینهٔ صفر دارند؛ سطرِ فاکتور تعمیر می‌تواند بهای تمام‌شدهٔ ثبت‌شده داشته باشد.
                 foreach (var l in order.Lines.Where(x => x.ProductId == pid))
                 {
                     l.IsService = true;
-                    l.UnitCost = 0;
-                    l.Profit = l.Quantity * l.Price;
+                    var unitCost = l.UnitCost ?? 0m;
+                    l.UnitCost = decimal.Round(unitCost, 2);
+                    l.Profit = decimal.Round((l.Price - unitCost) * l.Quantity, 2);
                 }
                 continue;
             }
+
+            var productLines = order.Lines.Where(x => x.ProductId == pid).ToList();
+            foreach (var l in productLines.Where(x => x.UnitCost.HasValue))
+            {
+                // بهای ذخیره‌شده روی خود سطر (مثل بهای داخلیِ ردیف تعمیر) بر روش عمومی قیمت‌گذاری اولویت دارد.
+                var unitCost = l.UnitCost!.Value;
+                l.UnitCost = decimal.Round(unitCost, 2);
+                l.Profit = decimal.Round((l.Price - unitCost) * l.Quantity, 2);
+            }
+
+            var linesNeedingCost = productLines.Where(x => !x.UnitCost.HasValue).ToList();
+            if (linesNeedingCost.Count == 0) continue;
 
             var txns = await _db.Transactions.Include(t => t.Lines)
                 .Where(t => t.WarehouseId == order.WarehouseId && t.Lines.Any(l => l.ProductId == pid))
@@ -464,7 +477,7 @@ public class InventoryService : IInventoryService
 
             var costs = ComputeSaleCosts(txns, pid, settings.CostingMethod, product.PurchasePrice);
 
-            foreach (var l in order.Lines.Where(x => x.ProductId == pid))
+            foreach (var l in linesNeedingCost)
             {
                 var unitCost = costs.TryGetValue(l.Id, out var c) ? c : product.PurchasePrice;
                 l.UnitCost = decimal.Round(unitCost, 2);
@@ -884,7 +897,7 @@ public class InventoryService : IInventoryService
 
     public async Task<PagedResult<Product>> GetProductsAsync(string? search, bool belowReorderOnly, int page, int pageSize, int? warehouseId = null)
     {
-        var q = _db.Products.AsQueryable();
+        var q = _db.Products.AsNoTracking().AsQueryable();
 
         // فیلتر انبار: کالاهای همان انبار + کالاهای بدون انبار اختصاصی + خدمات
         if (warehouseId is > 0)
@@ -1318,7 +1331,8 @@ public class InventoryService : IInventoryService
             {
                 ProductId = l.ProductId,
                 Quantity = l.Quantity,
-                Price = l.Price
+                Price = l.Price,
+                UnitCostSnapshot = l.UnitCostSnapshot
             });
             txn.Amount += l.Quantity * l.Price;
         }
@@ -1388,6 +1402,10 @@ public class InventoryService : IInventoryService
             ? await _db.Referrers.Where(r => r.Id == t.ReferrerId.Value).Select(r => r.Name).FirstOrDefaultAsync()
             : null;
 
+        string? trsAccountName = null;
+        if (t.TrsAccountId.HasValue)
+            trsAccountName = await _db.TrsAccounts.Where(a => a.Id == t.TrsAccountId.Value).Select(a => a.Name).FirstOrDefaultAsync();
+
         var order = new Order
         {
             Id = t.Id,
@@ -1405,11 +1423,13 @@ public class InventoryService : IInventoryService
             PaymentMethod = t.PaymentMethod,
             CashType = t.CashType,
             CashAmount = t.CashAmount,
+            TrsAccountId = t.TrsAccountId,
+            TrsAccountName = trsAccountName,
             DueDate = t.DueDate,
             SettledAmount = t.SettledAmount,
             Cheques = t.Cheques.OrderBy(c => c.DueDate).Select(c => new ChequeDto
             {
-                Id = c.Id, Number = c.Number, BankName = c.BankName, AccountInfo = c.AccountInfo,
+                Id = c.Id, Number = c.Number, TrsAccountId = c.TrsAccountId, BankName = c.BankName, AccountInfo = c.AccountInfo,
                 OwnerName = c.OwnerName, Amount = c.Amount, DueDate = c.DueDate,
                 IsCleared = c.IsCleared, ClearedAt = c.ClearedAt, Note = c.Note
             }).ToList(),
@@ -1417,7 +1437,7 @@ public class InventoryService : IInventoryService
             {
                 Id = i.Id, No = i.No, Amount = i.Amount, DueDate = i.DueDate, IsPaid = i.IsPaid, PaidAt = i.PaidAt
             }).ToList(),
-            Lines = t.Lines.Select(l => new OrderLine
+            Lines = t.Lines.OrderBy(l => l.Id).Select(l => new OrderLine
             {
                 Id = l.Id,
                 ProductId = l.ProductId,
@@ -1425,7 +1445,8 @@ public class InventoryService : IInventoryService
                 Unit = products.TryGetValue(l.ProductId, out var p2) ? p2.Unit : "",
                 IsService = products.TryGetValue(l.ProductId, out var p3) && p3.IsService,
                 Quantity = l.Quantity,
-                Price = l.Price
+                Price = l.Price,
+                UnitCost = l.UnitCostSnapshot
             }).ToList()
         };
 
@@ -1451,6 +1472,7 @@ public class InventoryService : IInventoryService
             throw new InvalidOperationException("فقط اسناد خرید و فروش قابل ویرایش هستند.");
 
         var existingLineQuantities = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
+        var existingLineCosts = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.UnitCostSnapshot));
         if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)
                                && (!existingLineQuantities.TryGetValue(l.Id, out var original)
                                    || original.ProductId != l.ProductId || original.Quantity != l.Quantity)))
@@ -1499,7 +1521,16 @@ public class InventoryService : IInventoryService
         txn.Amount = 0;
         foreach (var l in cmd.Lines)
         {
-            txn.Lines.Add(new Db.TransactionLine { ProductId = l.ProductId, Quantity = l.Quantity, Price = l.Price });
+            var unitCostSnapshot = existingLineCosts.TryGetValue(l.Id, out var oldCost) && oldCost.ProductId == l.ProductId
+                ? oldCost.UnitCostSnapshot
+                : l.UnitCostSnapshot;
+            txn.Lines.Add(new Db.TransactionLine
+            {
+                ProductId = l.ProductId,
+                Quantity = l.Quantity,
+                Price = l.Price,
+                UnitCostSnapshot = unitCostSnapshot
+            });
             txn.Amount += l.Quantity * l.Price;
         }
         await _db.SaveChangesAsync();
@@ -1763,6 +1794,7 @@ public class InventoryService : IInventoryService
     {
         var total = cmd.Lines.Sum(l => l.Quantity * l.Price);
         txn.PaymentMethod = cmd.PaymentMethod;
+        txn.TrsAccountId = cmd.TrsAccountId > 0 ? cmd.TrsAccountId : null;
         txn.CashType = null;
         txn.CashAmount = 0;
         txn.DueDate = null;
@@ -1809,6 +1841,7 @@ public class InventoryService : IInventoryService
                     txn.Cheques.Add(new Db.Cheque
                     {
                         Number = c.Number.Trim(),
+                        TrsAccountId = c.TrsAccountId > 0 ? c.TrsAccountId : null,
                         BankName = string.IsNullOrWhiteSpace(c.BankName) ? null : c.BankName.Trim(),
                         AccountInfo = string.IsNullOrWhiteSpace(c.AccountInfo) ? null : c.AccountInfo.Trim(),
                         OwnerName = string.IsNullOrWhiteSpace(c.OwnerName) ? null : c.OwnerName.Trim(),

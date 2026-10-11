@@ -19,8 +19,7 @@ else
     <div class="page-head">
         <div>
             <h1>داشبورد جامع عملیات</h1>
-            <p class="lead">نمای یکپارچهٔ خرید، فروش، تعمیرات و عملکرد معرف‌ها</p>
-        </div>
+                    </div>
         <div class="ms-auto d-flex flex-wrap gap-2">
             @if (Auth.CanSee("Orders"))
             {
@@ -60,7 +59,7 @@ else
     }
     else if (!loading && data is null)
     {
-        <div class="card"><div class="empty-state"><i class="bi bi-exclamation-circle"></i><h5>داده‌های داشبورد بارگذاری نشد</h5><p class="text-muted">لطفاً فیلترهای تاریخ را دوباره بررسی کنید.</p></div></div>
+        <div class="card"><div class="empty-state"><i class="bi bi-exclamation-circle"></i><h5>داده‌های داشبورد بارگذاری نشد</h5></div></div>
     }
     else if (data is not null)
     {
@@ -224,7 +223,6 @@ else
                                         <i class="bi bi-award-fill"></i>
                                     </div>
                                     <div class="fw-700 fs-5">@data.BestReferrer.ReferrerName</div>
-                                    <div class="text-muted small">بر اساس مبلغ اسناد فروش در بازهٔ انتخاب‌شده</div>
                                     <div class="num fs-4 fw-800 text-success mt-2">@data.BestReferrer.SalesAmount.Money() <small class="fs-8">ریال</small></div>
                                     <div class="small text-muted num">@data.BestReferrer.SaleCount.Num() فاکتور فروش</div>
                                 </div>
@@ -263,7 +261,6 @@ else
                             <div class="d-flex justify-content-between border-bottom py-2"><span>در حال انجام</span><b class="num text-warning">@data.ActiveRepairCount.Num()</b></div>
                             <div class="d-flex justify-content-between border-bottom py-2"><span>تحویل‌شده</span><b class="num text-success">@data.DeliveredRepairCount.Num()</b></div>
                             <div class="d-flex justify-content-between py-2"><span>انصرافی</span><b class="num text-muted">@data.CancelledRepairCount.Num()</b></div>
-                            <div class="alert alert-info small mt-3 mb-0">پذیرش و تعمیر فعال بر اساس تاریخ ورود؛ تعداد تحویل و درآمد بر اساس تاریخ تحویل محاسبه شده است.</div>
                         </div>
                     </div>
                 </div>
@@ -272,10 +269,6 @@ else
 
         @if (Auth.CanSee("Orders") && Auth.CanSee("Repairs"))
         {
-            <div class="alert alert-light border small mt-3 mb-0">
-                <i class="bi bi-info-circle text-primary"></i>
-                تعداد پذیرش‌های تعمیر بر اساس تاریخ ورود و درآمد تعمیر بر اساس تاریخ تحویل محاسبه شده است. درآمد تعمیرات جدا از فروش فاکتوری نمایش داده می‌شود؛ در صورت صدور فاکتور از پذیرش، مبلغ آن نیز در فروش ثبت شده است.
-            </div>
         }
     }
 }

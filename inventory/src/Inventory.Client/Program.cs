@@ -31,6 +31,7 @@ builder.Services.AddScoped<BonHrApi>();
 builder.Services.AddScoped<IMoadianService, MoadianService>(); // سامانه مودیان (SDK 0.0.27)
 builder.Services.AddScoped<Inventory.Client.Pages.Moadian.MoadianCompanyContext>(); // شرکت انتخاب‌شدهٔ بخش مودیان
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<ICompanyProfileService, CompanyProfileService>(); // تعریف شرکت/فروشگاه و تنظیمات چاپ فاکتور
 builder.Services.AddScoped<IDashboardClient, DashboardClient>(); // داشبورد شخصی کاربر
 builder.Services.AddScoped<IReportStudioClient, ReportStudioClient>(); // گزارش‌ساز حرفه‌ای
 builder.Services.AddScoped<IReferrerService, ReferrerService>();

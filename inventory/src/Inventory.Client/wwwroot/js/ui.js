@@ -70,3 +70,71 @@ window.officeGuides = {
         }
     }
 };
+
+// میان‌بر Enter در فرم پذیرش تعمیرات: پس از انتخاب گزینهٔ کمبوباکس،
+// فوکوس به فیلد بعد می‌رود؛ Shift+Enter در textarea برای رفتن به خط بعد است.
+window.repairFormKeyboard = {
+    attach: function (root, focusCustomer) {
+        if (!root) return;
+        window.repairFormKeyboard.detach(root);
+        const handler = function (event) {
+            const target = event.target;
+            if (!(target instanceof HTMLElement) || !root.contains(target)) return;
+
+            // در مبلغ‌های ریالی، کلیدهای حرفی/نشانه‌ای پیش از ورود به فیلد متوقف می‌شوند؛ paste هم در oninput پاک‌سازی می‌شود.
+            if (target.matches('[data-rial-input]') && event.key.length === 1 &&
+                !event.ctrlKey && !event.metaKey && !event.altKey &&
+                !/^[0-9۰-۹٠-٩,]$/.test(event.key)) {
+                event.preventDefault();
+                return;
+            }
+
+            if (event.key !== 'Enter' || event.isComposing || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+            if (!target.matches('input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled])')) return;
+
+            // کنترل‌های خودِ تقویم و گزینهٔ برجستهٔ SearchSelect رفتار Enter مستقل دارند.
+            if (target.closest('.dp-popover')) return;
+            const searchSelect = target.closest('.ss');
+            if (searchSelect && searchSelect.querySelector('.ss-menu .ss-item')) return;
+
+            const selector = 'input:not([type="hidden"]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled])';
+            const fields = Array.from(root.querySelectorAll(selector)).filter(function (field) {
+                return field.tabIndex >= 0 && field.getClientRects().length > 0;
+            });
+            const currentIndex = fields.indexOf(target);
+            if (currentIndex < 0 || currentIndex >= fields.length - 1) return;
+
+            const nextField = fields[currentIndex + 1];
+            if (target instanceof HTMLSelectElement ||
+                (target instanceof HTMLInputElement && target.hasAttribute('list'))) {
+                // انتخاب پیش‌فرض مرورگر در select/datalist اجرا شود؛ سپس فوکوس به فیلد بعدی برود.
+                setTimeout(function () {
+                    if (root.contains(nextField)) nextField.focus({ preventScroll: false });
+                }, 0);
+                return;
+            }
+
+            event.preventDefault();
+            nextField.focus({ preventScroll: false });
+        };
+        root.__repairFormEnterHandler = handler;
+        root.addEventListener('keydown', handler);
+
+        if (focusCustomer !== false) {
+            const customerInput = root.querySelector('.repair-customer-focus .ss input');
+            if (customerInput) customerInput.focus({ preventScroll: true });
+        }
+    },
+    focusDeviceType: function (root, index) {
+        if (!root) return;
+        const input = root.querySelector('[data-repair-device-type="' + index + '"]');
+        if (!input) return;
+        input.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        input.focus({ preventScroll: true });
+    },
+    detach: function (root) {
+        if (!root || !root.__repairFormEnterHandler) return;
+        root.removeEventListener('keydown', root.__repairFormEnterHandler);
+        delete root.__repairFormEnterHandler;
+    }
+};

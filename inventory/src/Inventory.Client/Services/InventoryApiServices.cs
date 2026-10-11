@@ -7,6 +7,19 @@ namespace Inventory.Client.Services;
 // پیاده‌سازی سرویس‌های سمت کلاینت — تنها نقطه‌ای که مسیرهای API ساخته می‌شوند.
 // =====================================================================
 
+/// <summary>پیاده‌سازی سرویس پروفایل شرکت (تعریف شرکت) + تنظیمات چاپ فاکتور.</summary>
+public class CompanyProfileService : ICompanyProfileService
+{
+    private readonly IApiClient _api;
+    public CompanyProfileService(IApiClient api) => _api = api;
+
+    public Task<CompanyProfileDto> GetAsync()
+        => _api.GetAsync<CompanyProfileDto>("api/company-profile");
+
+    public Task<CompanyProfileDto> SaveAsync(CompanyProfileDto profile)
+        => _api.PostAsync<CompanyProfileDto>("api/company-profile", profile);
+}
+
 /// <summary>پیاده‌سازی سرویس تنظیمات.</summary>
 public class SettingsService : ISettingsService
 {
@@ -84,6 +97,9 @@ public class ProductService : IProductService
 
     public Task<List<LookupItem>> GetLookupsAsync()
         => _api.GetAsync<List<LookupItem>>("api/products/lookups");
+
+    public Task<Product?> GetByIdAsync(int id)
+        => _api.GetAsync<Product?>($"api/products/{id}");
 
     public Task<Product> SaveAsync(Product product)
         => _api.PostAsync<Product>("api/products", product);
@@ -328,8 +344,11 @@ public class RepairService : IRepairService
     public Task<RepairOrderDto> SetStatusAsync(int id, RepairStatus status)
         => _api.PostAsync<RepairOrderDto>($"api/repairs/{id}/status/{status}");
 
+    public Task<RepairOrderDto> InvoiceAsync(int id, RepairInvoiceRequest request)
+        => _api.PostAsync<RepairOrderDto>($"api/repairs/{id}/invoice", request);
+
     public Task<RepairOrderDto> InvoiceAsync(int id, int warehouseId)
-        => _api.PostAsync<RepairOrderDto>($"api/repairs/{id}/invoice", new RepairInvoiceRequest { WarehouseId = warehouseId });
+        => InvoiceAsync(id, new RepairInvoiceRequest { WarehouseId = warehouseId });
 }
 
 

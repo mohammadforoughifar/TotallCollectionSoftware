@@ -15,6 +15,13 @@ public interface ISettingsService
     Task<AppSettings> SaveAsync(AppSettings settings);
 }
 
+/// <summary>پروفایل شرکت/فروشگاه (تعریف شرکت) + تنظیمات چاپ فاکتور.</summary>
+public interface ICompanyProfileService
+{
+    Task<CompanyProfileDto> GetAsync();
+    Task<CompanyProfileDto> SaveAsync(CompanyProfileDto profile);
+}
+
 /// <summary>سرویس معرف‌ها (بازاریاب‌ها) + کیف پول و پرداخت‌ها.</summary>
 public interface IReferrerService
 {
@@ -52,6 +59,7 @@ public interface IProductService
 {
     Task<PagedResult<Product>> GetProductsAsync(string? search = null, bool belowOnly = false, int page = 1, int pageSize = 20, int? warehouseId = null);
     Task<List<LookupItem>> GetLookupsAsync();
+    Task<Product?> GetByIdAsync(int id);
     Task<Product> SaveAsync(Product product);
     Task DeleteAsync(int id);
 
@@ -150,6 +158,7 @@ public interface IRepairService
     Task<RepairOrderDto> SaveRepairAsync(RepairOrderDto repair);
     Task DeleteRepairAsync(int id);
     Task<RepairOrderDto> SetStatusAsync(int id, RepairStatus status);
+    Task<RepairOrderDto> InvoiceAsync(int id, RepairInvoiceRequest request);
     Task<RepairOrderDto> InvoiceAsync(int id, int warehouseId);
 }
 

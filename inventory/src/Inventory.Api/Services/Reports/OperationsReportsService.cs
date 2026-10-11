@@ -143,9 +143,40 @@ public class OperationsReportsService : IOperationsReportsService
             result.ActiveRepairCount = repairAdmissions.Count(r => r.Status != RepairStatus.Delivered && r.Status != RepairStatus.Cancelled);
             result.CancelledRepairCount = repairAdmissions.Count(r => r.Status == RepairStatus.Cancelled);
             result.DeliveredRepairCount = deliveredRepairs.Count;
-            result.RepairRevenue = deliveredRepairs.Sum(r => r.Items.Sum(i => i.Price * i.Quantity));
-            result.RepairCost = deliveredRepairs.Sum(r => r.Items.Sum(i => i.Cost * i.Quantity));
+
+            var deliveredItems = deliveredRepairs.SelectMany(r => r.Items).ToList();
+            result.RepairRevenue = deliveredItems.Sum(i => i.Price * i.Quantity);
+            result.RepairPartsCost = deliveredItems.Where(i => i.ProductId is > 0).Sum(i => i.Cost * i.Quantity);
+            result.RepairLaborCost = deliveredItems.Where(i => i.ProductId is null or 0).Sum(i => i.Cost * i.Quantity);
+            result.RepairCost = result.RepairPartsCost + result.RepairLaborCost;
             result.RepairProfit = result.RepairRevenue - result.RepairCost;
+
+            var turnaroundDays = deliveredRepairs
+                .Where(r => r.DeliveredAt.HasValue && r.DeliveredAt.Value >= r.ReceivedAt)
+                .Select(r => (decimal)(r.DeliveredAt!.Value - r.ReceivedAt).TotalHours / 24m)
+                .ToList();
+            result.AverageRepairTurnaroundDays = turnaroundDays.Count == 0
+                ? null
+                : decimal.Round(turnaroundDays.Average(), 1, MidpointRounding.AwayFromZero);
+
+            // کارهای باز فعلی مستقل از فیلتر تاریخ گزارش می‌شوند تا پذیرش‌های قدیمیِ معوق پنهان نشوند.
+            var openQuery = _db.RepairOrders.AsNoTracking()
+                .Where(r => r.Status != RepairStatus.Delivered && r.Status != RepairStatus.Cancelled);
+            var openStatusCounts = await openQuery.GroupBy(r => r.Status)
+                .Select(g => new { Status = g.Key, Count = g.Count() })
+                .ToListAsync();
+            result.OpenRepairCount = openStatusCounts.Sum(x => x.Count);
+            result.OpenReceivedCount = openStatusCounts.Where(x => x.Status == RepairStatus.Received).Select(x => x.Count).FirstOrDefault();
+            result.OpenInProgressCount = openStatusCounts.Where(x => x.Status == RepairStatus.InProgress).Select(x => x.Count).FirstOrDefault();
+            result.OpenReadyCount = openStatusCounts.Where(x => x.Status == RepairStatus.Ready).Select(x => x.Count).FirstOrDefault();
+
+            var today = DateTime.Today;
+            var threeDaysAgo = today.AddDays(-3);
+            var sevenDaysAgo = today.AddDays(-7);
+            var tomorrow = today.AddDays(1);
+            result.OpenAge0To3DaysCount = await openQuery.CountAsync(r => r.ReceivedAt >= threeDaysAgo && r.ReceivedAt < tomorrow);
+            result.OpenAge4To7DaysCount = await openQuery.CountAsync(r => r.ReceivedAt >= sevenDaysAgo && r.ReceivedAt < threeDaysAgo);
+            result.OpenAgeOver7DaysCount = await openQuery.CountAsync(r => r.ReceivedAt < sevenDaysAgo);
         }
 
         var dates = transactions.Select(t => t.Date)
@@ -176,9 +207,20 @@ public class OperationsReportsService : IOperationsReportsService
             else if (transaction.Type == TransactionType.Sale) point.Sale += transaction.Amount;
         }
 
-        // درآمد تعمیر در روند بر مبنای تاریخ تحویل ثبت می‌شود؛ برآورد تعمیرات باز درآمد قطعی نیست.
+        // درآمد و هزینهٔ تعمیر در روند بر مبنای تاریخ تحویل ثبت می‌شود؛ برآورد تعمیرات باز درآمد قطعی نیست.
         foreach (var repair in deliveredRepairs.Where(r => r.DeliveredAt.HasValue))
-            PointFor(repair.DeliveredAt!.Value).RepairRevenue += repair.Items.Sum(i => i.Price * i.Quantity);
+        {
+            var revenue = repair.Items.Sum(i => i.Price * i.Quantity);
+            var partsCost = repair.Items.Where(i => i.ProductId is > 0).Sum(i => i.Cost * i.Quantity);
+            var laborCost = repair.Items.Where(i => i.ProductId is null or 0).Sum(i => i.Cost * i.Quantity);
+            var cost = partsCost + laborCost;
+            var point = PointFor(repair.DeliveredAt!.Value);
+            point.RepairRevenue += revenue;
+            point.RepairPartsCost += partsCost;
+            point.RepairLaborCost += laborCost;
+            point.RepairCost += cost;
+            point.RepairProfit += revenue - cost;
+        }
 
         result.Trend = trend.Values.ToList();
         return result;

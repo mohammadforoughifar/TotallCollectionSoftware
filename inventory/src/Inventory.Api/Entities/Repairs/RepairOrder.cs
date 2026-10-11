@@ -17,23 +17,23 @@ public class RepairOrder
     /// <summary>تعمیرکار مسئول</summary>
     public int? TechnicianId { get; set; }
 
-    /// <summary>نوع دستگاه: لپ‌تاپ، کامپیوتر، مانیتور، دوربین، ...</summary>
+    /// <summary>فیلدهای سازگاریِ کارت اول؛ فهرست کامل دستگاه‌ها در Devices نگهداری می‌شود.</summary>
     [MaxLength(100)]
     public string DeviceType { get; set; } = "";
 
-    /// <summary>برند و مدل دستگاه</summary>
+    /// <summary>برند و مدل دستگاه کارت اول (برای سازگاری با گزارش‌ها و APIهای قدیمی).</summary>
     [MaxLength(200)]
     public string? DeviceModel { get; set; }
 
-    /// <summary>سریال / شناسه دستگاه</summary>
+    /// <summary>سریال / شناسه دستگاه کارت اول.</summary>
     [MaxLength(100)]
     public string? SerialNumber { get; set; }
 
-    /// <summary>شرح ایراد اعلامی مشتری</summary>
+    /// <summary>شرح ایراد اعلامی مشتری برای دستگاه کارت اول.</summary>
     [MaxLength(1000)]
     public string? ProblemDescription { get; set; }
 
-    /// <summary>لوازم همراه دستگاه (شارژر، کیف، ...)</summary>
+    /// <summary>لوازم همراه دستگاه کارت اول (برای سازگاری با نسخه‌های قدیمی).</summary>
     [MaxLength(500)]
     public string? Accessories { get; set; }
 
@@ -45,7 +45,7 @@ public class RepairOrder
     /// <summary>تاریخ خروج از مجموعه (تحویل)</summary>
     public DateTime? DeliveredAt { get; set; }
 
-    /// <summary>مبلغ توافقی/برآوردی اعلام‌شده به مشتری (اجرت + قطعات)</summary>
+    /// <summary>جمع مبالغ برآوردی کارت‌های دستگاه؛ برای سازگاری با گزارش‌ها و نسخه‌های قدیمی.</summary>
     public decimal QuotedPrice { get; set; }
 
     /// <summary>شناسه فاکتور فروش صادرشده (بعد از تحویل)</summary>
@@ -56,5 +56,9 @@ public class RepairOrder
 
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
+    /// <summary>دستگاه‌های این پذیرش (هر پذیرش می‌تواند چند دستگاه داشته باشد).</summary>
+    public List<RepairDevice> Devices { get; set; } = new();
+
+    /// <summary>کارها و قطعات مشترکِ کل پذیرش، نه مختص یک دستگاه.</summary>
     public List<RepairItem> Items { get; set; } = new();
 }

@@ -45,6 +45,12 @@ public static class DbInitializer
                     await DocArchiveImportSchemaV1.EnsureAsync(db);
                     // PWA آفلاین + همکاری آرشیو: جدول ستاره/نظر/منشن/ردیابی نشتی + ستون‌های امضا
                     await DocArchivePwaSchemaV1.EnsureAsync(db);
+                    // کارت‌های دستگاه تعمیرات + انتقال خودکار پذیرش‌های تک‌دستگاهی قدیمی
+                    await RepairDeviceSchemaV1.EnsureAsync(db);
+                    // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
+                    await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
+                    await TransactionBankSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -77,6 +83,12 @@ public static class DbInitializer
                     await DocArchiveImportSchemaV1.EnsureAsync(db);
                     // PWA آفلاین + همکاری آرشیو: جدول ستاره/نظر/منشن/ردیابی نشتی + ستون‌های امضا
                     await DocArchivePwaSchemaV1.EnsureAsync(db);
+                    // کارت‌های دستگاه تعمیرات + انتقال خودکار پذیرش‌های تک‌دستگاهی قدیمی
+                    await RepairDeviceSchemaV1.EnsureAsync(db);
+                    // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی
+                    await TransactionLineCostSchemaV1.EnsureAsync(db);
+                    // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
+                    await TransactionBankSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت

@@ -35,6 +35,10 @@ public class Transaction
     /// <summary>پیش‌دریافت نقدی در پرداخت ترکیبی (نسیه/چک/اقساط + مقداری نقد)</summary>
     public decimal CashAmount { get; set; }
 
+    /// <summary>حساب بانکی / صندوق انتخابی برای تسویه</summary>
+    public int? TrsAccountId { get; set; }
+    public TrsAccount? TrsAccount { get; set; }
+
     /// <summary>تاریخ سررسید — برای نسیه</summary>
     public DateTime? DueDate { get; set; }
 
