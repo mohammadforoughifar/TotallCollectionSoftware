@@ -148,6 +148,9 @@ public interface IDocArchiveService
     Task DeleteCommentAsync(int documentId, int commentId);
     Task<DocDuplicateResultDto> CheckDuplicateAsync(DocDuplicateCheckRequest req);
     Task<List<DocLeakTraceDto>> GetLeakTracesAsync(int documentId);
+
+    /// <summary>گفتگو با سند — پرسش آزاد از متن استخراج‌شدهٔ مدرک.</summary>
+    Task<DocChatResponse> ChatWithDocumentAsync(int id, DocChatRequest req);
 }
 
 public class DocArchiveService : IDocArchiveService
@@ -405,6 +408,8 @@ public class DocArchiveService : IDocArchiveService
     public Task DeleteCommentAsync(int documentId, int commentId) => _api.DeleteAsync($"{Root}/documents/{documentId}/comments/{commentId}");
     public Task<DocDuplicateResultDto> CheckDuplicateAsync(DocDuplicateCheckRequest req) => _api.PostAsync<DocDuplicateResultDto>($"{Root}/duplicate-check", req);
     public Task<List<DocLeakTraceDto>> GetLeakTracesAsync(int documentId) => _api.GetAsync<List<DocLeakTraceDto>>($"{Root}/documents/{documentId}/leak-traces");
+
+    public Task<DocChatResponse> ChatWithDocumentAsync(int id, DocChatRequest req) => _api.PostAsync<DocChatResponse>($"{Root}/documents/{id}/chat", req);
 
     private class IdResponse { public int Id { get; set; } }
 }

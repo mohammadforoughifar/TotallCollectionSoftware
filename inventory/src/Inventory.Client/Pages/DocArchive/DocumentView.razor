@@ -99,6 +99,10 @@ else
             <button class="btn btn-light btn-sm" @onclick="GoBack">
                 <i class="bi bi-arrow-right"></i> بازگشت
             </button>
+            <button class="btn btn-light btn-sm fw-700" style="color:#6d28d9" title="پرسش آزاد از متن استخراج‌شدهٔ این سند"
+                    @onclick="() => showChat = true">
+                <i class="bi bi-chat-left-text"></i> گفتگو با سند
+            </button>
             @if (doc.MyLevel >= DocAccessLevelDto.Write && doc.IsActive)
             {
                 <button class="btn btn-light btn-sm fw-700" style="color:#065f46" @onclick="() => showVersion = true">
@@ -967,6 +971,8 @@ else
                    CanManageAccess="doc.MyLevel >= DocAccessLevelDto.Full"
                    OnClose="() => showEdit = false" OnSaved="OnEdited" />
 
+<DocChatModal Visible="showChat" DocumentId="Id" DocumentTitle="@(doc?.Title ?? "")" OnClose="() => showChat = false" />
+
 <style>
     .doc-secondary-summary { cursor:pointer; list-style:none; user-select:none; }
     .doc-secondary-summary::-webkit-details-marker { display:none; }
@@ -997,7 +1003,7 @@ else
 
     private bool loading = true, loadingExtracted, saving, showTextModal;
 
-    private bool showVersion, showApproval, showEdit;
+    private bool showVersion, showApproval, showEdit, showChat;
     private DocSignaturePad? sigPad;
     private bool isOnline = true;
     private int offlineQueueCount;

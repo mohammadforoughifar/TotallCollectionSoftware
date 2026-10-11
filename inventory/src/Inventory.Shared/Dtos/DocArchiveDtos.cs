@@ -908,3 +908,35 @@ public class DocAutoSuggestResultDto
     public string? Note { get; set; }
 }
 
+
+// =====================================================================
+// گفتگو با سند — پرسش از متن استخراج‌شدهٔ مدرک (با هوش مصنوعی یا بازیابی متن)
+// =====================================================================
+
+/// <summary>یک نوبت از تاریخچهٔ گفتگو.</summary>
+public class DocChatTurn
+{
+    public string Role { get; set; } = "user"; // user | assistant
+    public string Text { get; set; } = "";
+}
+
+/// <summary>درخواست گفتگو با سند.</summary>
+public class DocChatRequest
+{
+    public string Question { get; set; } = "";
+    public List<DocChatTurn> History { get; set; } = new();
+}
+
+/// <summary>پاسخ گفتگو با سند.</summary>
+public class DocChatResponse
+{
+    public string Answer { get; set; } = "";
+
+    /// <summary>ai = پاسخ مدل زبانی | retrieval = بازیابی از متن سند | notext = متن استخراج نشده</summary>
+    public string Mode { get; set; } = "retrieval";
+
+    public bool HasText { get; set; }
+
+    /// <summary>نام فایل‌هایی که پاسخ از آن‌ها ساخته شده.</summary>
+    public List<string> Sources { get; set; } = new();
+}

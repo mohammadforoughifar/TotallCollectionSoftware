@@ -160,6 +160,7 @@ builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocFolderZipServic
 builder.Services.Configure<Inventory.Api.Services.DocArchive.DocImportOptions>(
     builder.Configuration.GetSection(Inventory.Api.Services.DocArchive.DocImportOptions.SectionName));
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocImportService, Inventory.Api.Services.DocArchive.DocImportService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocChatService, Inventory.Api.Services.DocArchive.DocChatService>(); // گفتگو با سند
 // سرویس OCR پایتون (اختیاری — بخش OcrService در appsettings). اگر BaseUrl خالی باشد موتور محلی استفاده می‌شود.
 var ocrOptions = builder.Configuration.GetSection("OcrService")
     .Get<Inventory.Api.Services.DocArchive.OcrServiceOptions>()
