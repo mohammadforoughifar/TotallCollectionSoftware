@@ -72,6 +72,18 @@ public class RepairOrderDto
     public decimal Profit { get; set; }
 }
 
+/// <summary>Device receipt card on invoice/delivery slip (legacy single-device fields).</summary>
+public class RepairDeviceDto
+{
+    public int Id { get; set; }
+    public string DeviceType { get; set; } = "";
+    public string? DeviceModel { get; set; }
+    public string? SerialNumber { get; set; }
+    public string? ProblemDescription { get; set; }
+    public string? Accessories { get; set; }
+    public decimal QuotedPrice { get; set; }
+}
+
 /// <summary>ردیف کار انجام‌شده / قطعه مصرفی.</summary>
 public class RepairItemDto
 {

@@ -194,7 +194,6 @@ public static class RepairDeliveryReceiptPrint
 
     private static List<RepairDeviceDto> DevicesFor(RepairOrderDto repair)
     {
-        if (repair.Devices is { Count: > 0 }) return repair.Devices;
         return new List<RepairDeviceDto>
         {
             new()
