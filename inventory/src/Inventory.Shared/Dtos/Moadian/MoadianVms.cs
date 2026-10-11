@@ -1,4 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 
 namespace Inventory.Shared.Dtos.Moadian;
 
@@ -98,6 +101,14 @@ public class PagedList<T>
     public int Page { get; set; }
     public int PageSize { get; set; }
     public int TotalPages { get; set; }
+
+    /// <summary>صفحه‌بندی سرورساید (معادل PagedList نمونهٔ پروژهٔ مبدأ).</summary>
+    public static async Task<PagedList<T>> CreateAsync(IQueryable<T> source, int pageNumber, int pageSize)
+    {
+        var totalCount = await source.CountAsync();
+        var items = await source.Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync();
+        return new PagedList<T>(items, totalCount, pageNumber, pageSize);
+    }
 }
 
 /// <summary>جزئیات فایل آپلودشده (کلید خصوصی).</summary>
@@ -133,6 +144,7 @@ public class VMGoodsOrService
     public string? Name { get; set; }
     public string? UniqueIdentifier { get; set; }
     public int UnitOfMeasurementId { get; set; }
+    public string? UnitOfMeasurement { get; set; }
     public double? ValueAddedPercentage { get; set; }
     public decimal Price { get; set; }
     public IEnumerable<Links>? Links { get; set; }

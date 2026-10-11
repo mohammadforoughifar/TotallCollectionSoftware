@@ -46,6 +46,7 @@ public class UnitOfMeasurement
     public int Id { get; set; }
     public string? Name { get; set; }
     public string? Code { get; set; }
+    public bool IsDelete { get; set; }
 }
 
 /// <summary>سال مالی صورتحساب مودیان.</summary>
@@ -62,7 +63,7 @@ public class Invoice
 {
     public int Id { get; set; }
     public int? CustomerId { get; set; }
-    public int CpInfo { get; set; }
+    public int? CpInfo { get; set; }
     public int? InvoiceNumber { get; set; }
     public int? FiscalYearId { get; set; }
     public FiscalYear? fiscalYear { get; set; }
@@ -79,6 +80,8 @@ public class Invoice
     public string? ReferenceId { get; set; }
     public string? Subject { get; set; }
     public string? Name { get; set; }
+    public bool IsDelete { get; set; }
+    public List<InvoiceItem> invoiceItem { get; set; } = new();
 }
 
 /// <summary>ردیف کالای صورتحساب مودیان.</summary>
@@ -89,10 +92,11 @@ public class InvoiceItem
     public int GoodsOrServicesId { get; set; }
     public string? UniqueIdentifier { get; set; }
     public decimal Count { get; set; }
-    public int PriceUnit { get; set; }
+    public decimal PriceUnit { get; set; }
     public int ValueAddedPercentage { get; set; }
     public decimal Discount { get; set; }
     public string? GoodsOrServicesDescripton { get; set; }
+    public bool IsDelete { get; set; }
 }
 
 /// <summary>اتصال به سامانه مودیان (کلید خصوصی + آدرس + شناسه یکتا).</summary>
