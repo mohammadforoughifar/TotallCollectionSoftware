@@ -30,6 +30,9 @@ public static class DocIndexQueue
                          join d in db.Documents on v.DocumentId equals d.Id
                          where a.Module == "DocVersion" && !d.IsDeleted && !db.DocIndexJobs.Any(j => j.AttachmentId == a.Id)
                             && !db.DocExtractedTexts.Any(e => e.AttachmentId == a.Id && e.Status == "Indexed")
+                            // پیوست‌های ورود انبوه وارد صف OCR نمی‌شوند (OCR فاز ۲ و شبانه است).
+                            // نشانهٔ آن‌ها یادداشت نسخه است: تنها مسیری که این متن را می‌نویسد، ورود انبوه است.
+                            && v.ChangeNote != "ورود انبوه از پوشهٔ آرشیو"
                          orderby a.Id
                          select a.Id).Take(100).ToListAsync();
         foreach (var id in ids) await EnqueueAsync(db, id);
