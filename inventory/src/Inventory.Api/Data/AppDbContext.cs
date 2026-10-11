@@ -384,6 +384,16 @@ public class AppDbContext : DbContext
     public DbSet<FacInvoiceLine> FacInvoiceLines => Set<FacInvoiceLine>();
     public DbSet<FacRule> FacRules => Set<FacRule>();
 
+    // ---------- سامانه مودیان (SDK 0.0.27) ----------
+    public DbSet<CpInfo> CPInfos => Set<CpInfo>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<GoodsOrService> GoodsOrServices => Set<GoodsOrService>();
+    public DbSet<UnitOfMeasurement> UnitOfMeasurements => Set<UnitOfMeasurement>();
+    public DbSet<FiscalYear> FiscalYears => Set<FiscalYear>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<InvoiceItem> InvoiceItems => Set<InvoiceItem>();
+    public DbSet<ConnectInfo> ConnectInfos => Set<ConnectInfo>();
+
     // ---------- ماژول خزانه‌داری ----------
     public DbSet<TrsAccount> TrsAccounts => Set<TrsAccount>();
     public DbSet<TrsVoucher> TrsVouchers => Set<TrsVoucher>();
