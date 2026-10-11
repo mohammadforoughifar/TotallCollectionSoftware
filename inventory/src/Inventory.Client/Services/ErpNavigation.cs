@@ -60,9 +60,6 @@ public static class ErpNavigation
             E("stk/reports/diff", "گزارش مغایرت", "bi-file-earmark-bar-graph", "StkSessions"),
             E("stk/barcodes", "بارکد کالا", "bi-upc", "StkBarcodes"),
             E("stk/labels", "چاپ برچسب", "bi-tags", "StkBarcodes")]),
-        new("moadian", "سامانه مودیان", "bi-cloud-check", [
-            E("moadian", "داشبورد مودیان", "bi-cloud-arrow-up", "Moadian"),
-            E("moadian/invoices", "فاکتورهای الکترونیکی", "bi-receipt", "Moadian")])
     ];
     public static Section[] Visible(Func<string, bool> hasModule) => Sections
         .Select(s => s with { Items = s.Items.Where(i => i.Allowed(hasModule)).ToArray() }).Where(s => s.Items.Length > 0).ToArray();
@@ -73,8 +70,8 @@ public static class ErpNavigation
     {
         path = Path(path);
         // دریافت/پرداخت و تسویهٔ فاکتورها و تنظیمات مودیان از منوی اصلی «عملیات» باز می‌شوند، نه فضای کاری ERP.
-        if (At(path, "trs/vouchers") || At(path, "moadian/settings")) return false;
-        return new[] { "inv", "acc", "fac", "trs", "stk", "moadian" }.Any(p => At(path, p));
+        if (At(path, "trs/vouchers")) return false;
+        return new[] { "inv", "acc", "fac", "trs", "stk" }.Any(p => At(path, p));
     }
     public static Entry? Find(string path)
     {

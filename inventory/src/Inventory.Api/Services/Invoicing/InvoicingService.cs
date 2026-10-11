@@ -22,16 +22,14 @@ public class InvoicingService : IInvoicingService
     private readonly Db.AppDbContext _db;
     private readonly IWarehousingService _wh;
     private readonly IAccountingService _acc;
-    private readonly IMoadianService _moadian;
     private readonly ILogger<InvoicingService> _log;
 
     public InvoicingService(Db.AppDbContext db, IWarehousingService wh, IAccountingService acc,
-        IMoadianService moadian, ILogger<InvoicingService> log)
+        ILogger<InvoicingService> log)
     {
         _db = db;
         _wh = wh;
         _acc = acc;
-        _moadian = moadian;
         _log = log;
     }
 
@@ -329,7 +327,6 @@ public class InvoicingService : IInvoicingService
 
             if (entity.Status != InvoiceStatus.Draft)
                 throw new InvalidOperationException("فقط فاکتور پیش‌نویس قابل ویرایش است.");
-            await EnsureNoLinkedMoadianInvoiceAsync(entity.Id);
         }
 
         var originalLineQuantities = entity.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
@@ -491,18 +488,6 @@ public class InvoicingService : IInvoicingService
         e.ConfirmedAt = DateTime.Now;
 
         await _db.SaveChangesAsync();
-        if (e.Kind is InvoiceKind.Sale or InvoiceKind.SaleReturn)
-        {
-            try
-            {
-                await _moadian.CreateFromFacInvoiceIfEnabledAsync(e.Id, user);
-            }
-            catch (Exception ex)
-            {
-                // Failure to prepare a tax draft must never undo or block the ordinary ERP sale.
-                _log.LogWarning(ex, "Could not create an optional Moadian draft for ERP invoice {InvoiceId}", e.Id);
-            }
-        }
         return (await GetInvoiceAsync(e.Id))!;
     }
 
@@ -513,7 +498,6 @@ public class InvoicingService : IInvoicingService
 
         if (e.Status != InvoiceStatus.Confirmed)
             throw new InvalidOperationException("فقط فاکتور قطعی به پیش‌نویس برمی‌گردد.");
-        await EnsureNoLinkedMoadianInvoiceAsync(e.Id);
 
         await EnsureNoActiveTreasurySettlementsAsync(e.Id);
         await ReverseDocumentsAsync(e, user);
@@ -534,7 +518,6 @@ public class InvoicingService : IInvoicingService
         if (e.Status == InvoiceStatus.Cancelled)
             throw new InvalidOperationException("این فاکتور قبلاً ابطال شده است.");
 
-        await EnsureNoLinkedMoadianInvoiceAsync(e.Id);
         await EnsureNoActiveTreasurySettlementsAsync(e.Id);
         await ReverseDocumentsAsync(e, user);
 
@@ -550,7 +533,6 @@ public class InvoicingService : IInvoicingService
 
         if (e.Status == InvoiceStatus.Confirmed)
             throw new InvalidOperationException("ابتدا فاکتور را از حالت قطعی خارج کنید.");
-        await EnsureNoLinkedMoadianInvoiceAsync(e.Id);
         if (await _db.TrsInvoiceAllocations.AnyAsync(a => a.InvoiceId == e.Id)
             || await _db.TrsVouchers.AnyAsync(v => v.InvoiceId == e.Id))
             throw new InvalidOperationException("این فاکتور در سوابق دریافت/پرداخت خزانه استفاده شده است؛ برای حفظ سابقه قابل حذف نیست.");
@@ -560,12 +542,6 @@ public class InvoicingService : IInvoicingService
         await _db.SaveChangesAsync();
     }
 
-    /// <summary>تا حذف پیش‌نویس پیوندخوردهٔ مودیان، تغییر منبع ERP مجاز نیست تا سند مالیاتی کهنه نماند.</summary>
-    private async Task EnsureNoLinkedMoadianInvoiceAsync(int invoiceId)
-    {
-        if (await _db.MoadianInvoices.AnyAsync(i => i.FacInvoiceId == invoiceId && i.Status != MoadianInvoiceStatus.Voided))
-            throw new InvalidOperationException("ابتدا پیش‌نویس پیوندخوردهٔ مودیان را حذف کنید؛ سپس فاکتور ERP را ویرایش، ابطال یا حذف کنید.");
-    }
 
     /// <summary>فاکتور دارای سند خزانهٔ فعال نباید از دفاتر حذف یا از قطعیت خارج شود.</summary>
     private async Task EnsureNoActiveTreasurySettlementsAsync(int invoiceId)

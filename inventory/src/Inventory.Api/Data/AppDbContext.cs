@@ -372,14 +372,6 @@ public class AppDbContext : DbContext
     public DbSet<Budget> Budgets => Set<Budget>();
     public DbSet<BudgetItem> BudgetItems => Set<BudgetItem>();
     public DbSet<BudgetTransaction> BudgetTransactions => Set<BudgetTransaction>();
-    // ==================== سامانه مودیان (فاکتور الکترونیکی) ====================
-    public DbSet<MoadianSetting> MoadianSettings => Set<MoadianSetting>();
-    public DbSet<MoadianFiscalPeriod> MoadianFiscalPeriods => Set<MoadianFiscalPeriod>();
-    public DbSet<MoadianInvoice> MoadianInvoices => Set<MoadianInvoice>();
-    public DbSet<MoadianInvoiceLine> MoadianInvoiceLines => Set<MoadianInvoiceLine>();
-    public DbSet<MoadianLog> MoadianLogs => Set<MoadianLog>();
-    public DbSet<MoadianCpc> MoadianCpcList => Set<MoadianCpc>();
-    public DbSet<FiscalPrinterSetting> FiscalPrinterSettings => Set<FiscalPrinterSetting>();
 
     // ---------- ماژول فاکتور ----------
     public DbSet<FacInvoice> FacInvoices => Set<FacInvoice>();
@@ -1017,34 +1009,6 @@ public class AppDbContext : DbContext
           .HasForeignKey(t => t.BudgetItemId)
           .OnDelete(DeleteBehavior.Restrict);
 
-        // ---------- سامانه مودیان ----------
-        mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalPeriodId, i.Number }).IsUnique();
-        mb.Entity<MoadianInvoice>().HasIndex(i => i.Number);
-        // حذف دوره نباید فاکتورهای آن را آبشار بزند
-        mb.Entity<MoadianInvoice>()
-          .HasOne(i => i.FiscalPeriod).WithMany()
-          .HasForeignKey(i => i.FiscalPeriodId)
-          .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<MoadianInvoice>().HasIndex(i => i.Status);
-        mb.Entity<MoadianInvoice>().HasIndex(i => i.ReferenceId);
-        mb.Entity<MoadianInvoice>().HasIndex(i => i.FacInvoiceId);
-        mb.Entity<MoadianInvoice>().HasIndex(i => i.OperationsTransactionId).IsUnique()
-          .HasFilter("[OperationsTransactionId] IS NOT NULL");
-        mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.Year, p.Month }).IsUnique();
-        mb.Entity<MoadianCpc>().HasIndex(c => c.Code).IsUnique();
-        mb.Entity<MoadianLog>().HasIndex(l => l.InvoiceId);
-        mb.Entity<MoadianInvoice>().Property(i => i.TotalGross).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoice>().Property(i => i.TotalDiscount).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoice>().Property(i => i.TotalTaxable).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoice>().Property(i => i.TotalVat).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoice>().Property(i => i.TotalNet).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoiceLine>().Property(l => l.Quantity).HasPrecision(18, 3);
-        mb.Entity<MoadianInvoiceLine>().Property(l => l.UnitPrice).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoiceLine>().Property(l => l.Discount).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoiceLine>().Property(l => l.VatRate).HasPrecision(5, 2);
-        mb.Entity<MoadianInvoiceLine>().Property(l => l.VatAmount).HasPrecision(18, 2);
-        mb.Entity<MoadianInvoiceLine>().Property(l => l.Total).HasPrecision(18, 2);
-        mb.Entity<MoadianSetting>().Property(s => s.DefaultVatRate).HasPrecision(5, 2);
         mb.Entity<AccVoucher>().HasIndex(v => v.Date);
         mb.Entity<AccVoucher>().HasIndex(v => v.Status);
         mb.Entity<AccVoucher>().HasIndex(v => new { v.Source, v.SourceId });

@@ -84,12 +84,6 @@ public static class DbInitializer
                 // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
                 await UserContactSchemaV1.EnsureAsync(db);
 
-                // Per-source Moadian draft linkage and secret/settings columns (SQLite and SQL Server).
-                await MoadianSchemaV2.EnsureAsync(db);
-                // Independent official type/pattern/subject selection and reference-tax-id fields.
-                await MoadianSchemaV3.EnsureAsync(db);
-                // Number index for serializable global numbering of new drafts; existing numbers are preserved.
-                await MoadianSchemaV4.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
@@ -233,35 +227,6 @@ public static class DbInitializer
                     Console.WriteLine("[DB] ابعاد تحلیلی پیش‌فرض (مرکز هزینه/شعبه) ساخته شد.");
                 }
 
-                // ==================== سامانه مودیان (فاکتور الکترونیکی) ====================
-                // تنظیمات پیش‌فرض بدون BaseUrl؛ ارسال واقعی و شبیه‌سازی ارسال در این نسخه غیرفعال‌اند.
-                if (!db.MoadianSettings.Any())
-                {
-                    db.MoadianSettings.Add(new MoadianSetting
-                    {
-                        TaxId = "14000000000",
-                        SellerName = "شرکت نمونه بازرگانی",
-                        DefaultVatRate = 9,
-                        SendIntervalMinutes = 5
-                    });
-                    db.SaveChanges();
-                    Console.WriteLine("[DB] تنظیمات پیش‌فرض مودیان ساخته شد؛ ارسال در این نسخه غیرفعال است.");
-                }
-
-                if (!db.MoadianCpcList.Any())
-                {
-                    db.MoadianCpcList.AddRange(SeedCpc());
-                    db.SaveChanges();
-                    Console.WriteLine("[DB] فهرست شناسه‌های کالا/خدمت (CPC) بارگذاری شد.");
-                }
-
-                if (!db.MoadianFiscalPeriods.Any())
-                {
-                    var (fy, fm, _) = PersianDate.FromGregorian(DateTime.Now);
-                    db.MoadianFiscalPeriods.Add(new MoadianFiscalPeriod { Year = fy, Month = fm });
-                    db.SaveChanges();
-                    Console.WriteLine("[DB] دوره مالیاتی جاری مودیان ساخته شد.");
-                }
 
                 // ==================== تگ‌های پیش‌فرض آرشیو اسناد ====================
                 if (!db.DocTags.Any())
@@ -1495,22 +1460,4 @@ END", "ساخت جدول AuditLogs");
         return added;
     }
 
-    /// <summary>
-    /// فهرست اولیه شناسه‌های کالا/خدمت (CPC) برای سامانه مودیان.
-    /// این کدها نمونه/آغازین هستند و از بخش «مودیان ← شناسه کالا/خدمت» قابل ویرایش‌اند؛
-    /// در عملیات واقعی، کدهای رسمی از فهرست CPC سامانه دریافت می‌شود.
-    /// </summary>
-    private static List<MoadianCpc> SeedCpc() => new()
-    {
-        new MoadianCpc { Code = "GENERAL-000", Title = "کالا/خدمت عمومی (پیش‌فرض)", Unit = "عدد", IsActive = true },
-        new MoadianCpc { Code = "620000000000", Title = "خدمات رایانه‌ای و نرم‌افزار", EnTitle = "IT & software services", Unit = "خدمت", IsActive = true },
-        new MoadianCpc { Code = "820000000000", Title = "خدمات اداری و پشتیبانی", EnTitle = "Administrative services", Unit = "خدمت", IsActive = true },
-        new MoadianCpc { Code = "650000000000", Title = "خدمات بیمه و مالی", EnTitle = "Insurance & financial services", Unit = "خدمت", IsActive = true },
-        new MoadianCpc { Code = "440000000000", Title = "تجهیزات اداری و رایانه‌ای", EnTitle = "Office equipment", Unit = "عدد", IsActive = true },
-        new MoadianCpc { Code = "460000000000", Title = "ملزومات اداری و مصرفی", EnTitle = "Office supplies", Unit = "عدد", IsActive = true },
-        new MoadianCpc { Code = "380000000000", Title = "مواد اولیه و قطعات", EnTitle = "Raw materials & parts", Unit = "عدد", IsActive = true },
-        new MoadianCpc { Code = "490000000000", Title = "خدمات حمل‌ونقل و لجستیک", EnTitle = "Transport & logistics", Unit = "خدمت", IsActive = true },
-        new MoadianCpc { Code = "700000000000", Title = "خدمات تعمیر و نگهداری", EnTitle = "Repair & maintenance", Unit = "خدمت", IsActive = true },
-        new MoadianCpc { Code = "810000000000", Title = "خدمات اجاره و لیزینگ", EnTitle = "Rental services", Unit = "خدمت", IsActive = true }
-    };
 }

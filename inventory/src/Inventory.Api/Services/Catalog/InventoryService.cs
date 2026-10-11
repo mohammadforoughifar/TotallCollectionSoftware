@@ -14,13 +14,11 @@ namespace Inventory.Api.Services;
 public class InventoryService : IInventoryService
 {
     private readonly Db.AppDbContext _db;
-    private readonly IMoadianService _moadian;
     private readonly ILogger<InventoryService> _log;
 
-    public InventoryService(Db.AppDbContext db, IMoadianService moadian, ILogger<InventoryService> log)
+    public InventoryService(Db.AppDbContext db, ILogger<InventoryService> log)
     {
         _db = db;
-        _moadian = moadian;
         _log = log;
     }
 
@@ -1347,19 +1345,6 @@ public class InventoryService : IInventoryService
 
         await trx.CommitAsync();
 
-        if (txn.Type == TransactionType.Sale)
-        {
-            try
-            {
-                await _moadian.CreateFromOperationsTransactionIfEnabledAsync(txn.Id, null);
-            }
-            catch (Exception ex)
-            {
-                // Tax draft creation is optional and must not roll back an already-committed sale.
-                _log.LogWarning(ex, "Could not create an optional Moadian draft for operations sale {TransactionId}", txn.Id);
-            }
-        }
-
         return await GetOrderAsync(txn.Id) ?? throw new InvalidOperationException();
     }
 
@@ -1464,9 +1449,6 @@ public class InventoryService : IInventoryService
             ?? throw new InvalidOperationException("سند یافت نشد.");
         if (txn.Type is not (TransactionType.Purchase or TransactionType.Sale))
             throw new InvalidOperationException("فقط اسناد خرید و فروش قابل ویرایش هستند.");
-        if (txn.Type == TransactionType.Sale && await _db.MoadianInvoices.AnyAsync(i =>
-                i.OperationsTransactionId == txn.Id && i.Status != MoadianInvoiceStatus.Voided))
-            throw new InvalidOperationException("برای جلوگیری از مغایرت، ابتدا پیش‌نویس پیوندخوردهٔ مودیان را حذف کنید؛ سپس سند فروش را ویرایش کنید.");
 
         var existingLineQuantities = txn.Lines.ToDictionary(l => l.Id, l => (l.ProductId, l.Quantity));
         if (cmd.Lines.Any(l => l.Quantity != decimal.Round(l.Quantity, 2)
@@ -1546,9 +1528,6 @@ public class InventoryService : IInventoryService
     {
         var t = await _db.Transactions.Include(x => x.Lines).FirstOrDefaultAsync(x => x.Id == id)
             ?? throw new InvalidOperationException("سند یافت نشد.");
-        if (t.Type == TransactionType.Sale && await _db.MoadianInvoices.AnyAsync(i =>
-                i.OperationsTransactionId == t.Id && i.Status != MoadianInvoiceStatus.Voided))
-            throw new InvalidOperationException("ابتدا پیش‌نویس پیوندخوردهٔ مودیان را حذف کنید؛ سپس سند فروش را حذف کنید.");
 
         var productIds = t.Lines.Select(l => l.ProductId).Distinct().ToList();
         var wh = t.WarehouseId;

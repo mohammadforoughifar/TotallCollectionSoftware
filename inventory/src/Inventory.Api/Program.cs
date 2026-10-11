@@ -86,9 +86,6 @@ builder.Services.AddScoped<Inventory.Api.Services.Accounting.IAnalyticalDimensio
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IFixedAssetService, Inventory.Api.Services.Accounting.FixedAssetService>(); // دارایی ثابت و استهلاک
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IBudgetService, Inventory.Api.Services.Accounting.BudgetService>(); // بودجه و کنترل بودجه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IInvoicingService, Inventory.Api.Services.Invoicing.InvoicingService>(); // ماژول فاکتور
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianService, Inventory.Api.Services.Invoicing.MoadianService>(); // سامانه مودیان (فاکتور الکترونیکی)
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IFiscalPrinterService, Inventory.Api.Services.Invoicing.FiscalPrinterService>(); // چاپگر مالی
-// Moadian sending/auto-sender remains deliberately unregistered until official protocol verification.
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
@@ -346,7 +343,6 @@ builder.Services.AddScoped<IMessengerService, MessengerService>();
 builder.Services.AddSingleton<IMessengerLinkCodes, MessengerLinkCodes>();
 builder.Services.AddHostedService<BaleBotWorker>(); // خواندن خودکار پیام‌های ربات بله (/start و اشتراک شماره)
 builder.Services.AddHttpClient("messenger", c => c.Timeout = TimeSpan.FromSeconds(10));
-builder.Services.AddHttpClient("moadian", c => c.Timeout = TimeSpan.FromSeconds(30)); // سرویس مودیان (فاکتور الکترونیکی)
 
 // ================== هوش مصنوعی فروغ آریا (مدل لوکال — Ollama) ==================
 // تایم‌اوت هر درخواست داخل خود کلاینت مدیریت می‌شود (AiOptions.TimeoutSeconds).

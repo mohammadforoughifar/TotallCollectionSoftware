@@ -79,9 +79,6 @@ builder.Services.AddScoped<IFacInvoiceService, FacInvoiceService>();
 builder.Services.AddScoped<IFacRuleService, FacRuleService>();
 builder.Services.AddScoped<IFacReportService, FacReportService>();
 
-// ---------- سامانه مودیان + چاپگر مالی ----------
-builder.Services.AddScoped<IMoadianClientService, MoadianClientService>();
-builder.Services.AddScoped<IFiscalPrinterClientService, FiscalPrinterClientService>();
 
 // ماژول خزانه‌داری
 builder.Services.AddScoped<ITrsAccountService, TrsAccountService>();

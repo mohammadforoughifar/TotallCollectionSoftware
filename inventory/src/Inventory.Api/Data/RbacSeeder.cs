@@ -59,10 +59,6 @@ public static class RbacSeeder
         ["FixedAssets"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm" },
         // Budgets: بودجه و کنترل بودجه
         ["Budgets"] = CrudActions,
-        // Moadian: سامانه مودیان — Send: ارسال/ابطال/برگشت فاکتورها
-        ["Moadian"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Send" },
-        // FiscalPrinter: چاپگر مالی — Print: چاپ رسید
-        ["FiscalPrinter"] = new[] { "Create", "Read", "Update", "Delete", "Print" },
         // ================== ماژول فاکتور ==================
         // FacInvoices: فاکتور خرید/فروش — Confirm: قطعی‌سازی | Cancel: ابطال
         ["FacInvoices"] = new[] { "Create", "Read", "Update", "Delete", "Export", "Confirm", "Cancel" },
