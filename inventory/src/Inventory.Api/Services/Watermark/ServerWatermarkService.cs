@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Hosting;
 using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
+using QRCoder;
+using System.Drawing;
 using SkiaSharp;
 using SkiaSharp.HarfBuzz;
 using SixLabors.ImageSharp.Formats.Png;
@@ -31,6 +33,9 @@ public interface IServerWatermarkService
     /// اگر فایل قابل حک باشد نسخهٔ واترمارک‌شده برمی‌گرداند در غیر این صورت null.
     /// </summary>
     WatermarkStampResult? Stamp(byte[] source, string contentType, string fileName, string viewerLine);
+
+    /// <summary>نسخه با QR اصالت — واترمارک + QR گوشه صفحه برای ردیابی چاپ.</summary>
+    WatermarkStampResult? StampWithQr(byte[] source, string contentType, string fileName, string viewerLine, string qrPayload);
 }
 
 public sealed class WatermarkStampResult
@@ -275,6 +280,164 @@ public class ServerWatermarkService : IServerWatermarkService
         {
             return (null, 0);
         }
+    }
+
+    // ================================================================
+    // QR + واترمارک — برای چاپ
+    // ================================================================
+    public WatermarkStampResult? StampWithQr(byte[] source, string contentType, string fileName, string viewerLine, string qrPayload)
+    {
+        if (string.IsNullOrWhiteSpace(qrPayload)) return Stamp(source, contentType, fileName, viewerLine);
+        try
+        {
+            var ext = Path.GetExtension(fileName).ToLowerInvariant();
+            if (ext == ".pdf" || (contentType ?? "").Contains("pdf", StringComparison.OrdinalIgnoreCase))
+                return StampPdfWithQr(source, fileName, viewerLine, qrPayload);
+            return StampRasterWithQr(source, ext, fileName, viewerLine, qrPayload);
+        }
+        catch { return Stamp(source, contentType, fileName, viewerLine); }
+    }
+
+    private WatermarkStampResult? StampRasterWithQr(byte[] source, string ext, string fileName, string viewerLine, string qrPayload)
+    {
+        byte[] decodedBytes = source;
+        if (ConvertFirstExts.Contains(ext))
+        {
+            var png = ToPngViaImageSharp(source);
+            if (png is null) return null;
+            decodedBytes = png;
+        }
+        using var original = SKBitmap.Decode(decodedBytes);
+        if (original is null || original.Width <= 0 || original.Height <= 0) return null;
+        int w = original.Width, h = original.Height;
+        using var canvasBmp = new SKBitmap(w, h);
+        using (var canvas = new SKCanvas(canvasBmp))
+        {
+            canvas.Clear(SKColors.White);
+            using var srcImage = SKImage.FromBitmap(original);
+            canvas.DrawImage(srcImage, new SKRect(0, 0, w, h));
+            DrawTiledWatermark(canvas, w, h, viewerLine, WatermarkColor);
+            DrawQrCorner(canvas, w, h, qrPayload, viewerLine);
+        }
+        bool asJpeg = JpegExts.Contains(ext);
+        string outExt; byte[]? outBytes;
+        if (asJpeg)
+        {
+            outExt = ".jpg"; outBytes = Encode(canvasBmp, SKEncodedImageFormat.Jpeg, 90);
+            if (outBytes is null) return null;
+            return new WatermarkStampResult { Bytes = outBytes, ContentType = "image/jpeg", FileName = Path.ChangeExtension(fileName, outExt) };
+        }
+        outExt = ".png"; outBytes = Encode(canvasBmp, SKEncodedImageFormat.Png, 95);
+        if (outBytes is null) return null;
+        return new WatermarkStampResult { Bytes = outBytes, ContentType = "image/png", FileName = Path.ChangeExtension(fileName, outExt) };
+    }
+
+    private WatermarkStampResult? StampPdfWithQr(byte[] source, string fileName, string viewerLine, string qrPayload)
+    {
+        using var inMs = new MemoryStream(source, 0, source.Length, true, true);
+        using var doc = PdfReader.Open(inMs, PdfDocumentOpenMode.Modify);
+        var spriteCache = new Dictionary<(int W, int H), byte[]>();
+        SKBitmap? qrBmp = null;
+        try { qrBmp = BuildQrBitmap(qrPayload, 260); } catch { }
+        foreach (var page in doc.Pages)
+        {
+            double pw = page.Width.Point, ph = page.Height.Point;
+            if (pw <= 1 || ph <= 1) continue;
+            int sw = Math.Max(64, (int)Math.Round(pw * 2.2));
+            int sh = Math.Max(64, (int)Math.Round(ph * 2.2));
+            if (!spriteCache.TryGetValue((sw, sh), out var spritePng))
+            {
+                using var sprite = BuildSprite(sw, sh, viewerLine);
+                // افزودن QR به اسپرایت PDF در گوشه پایین-چپ
+                if (qrBmp != null)
+                {
+                    using var c = new SKCanvas(sprite);
+                    DrawQrOnSprite(c, sw, sh, qrBmp, viewerLine);
+                }
+                spritePng = Encode(sprite, SKEncodedImageFormat.Png, 95) ?? Array.Empty<byte>();
+                spriteCache[(sw, sh)] = spritePng;
+            }
+            if (spritePng.Length == 0) continue;
+            using var imgMs = new MemoryStream(spritePng, 0, spritePng.Length, true, true);
+            using var ximg = XImage.FromStream(imgMs);
+            using (var gfx = XGraphics.FromPdfPage(page)) gfx.DrawImage(ximg, new XRect(0, 0, pw, ph));
+        }
+        qrBmp?.Dispose();
+        using var outMs = new MemoryStream(); doc.Save(outMs, false);
+        return new WatermarkStampResult { Bytes = outMs.ToArray(), ContentType = "application/pdf", FileName = fileName };
+    }
+
+    private void DrawQrCorner(SKCanvas canvas, int w, int h, string payload, string viewerLine)
+    {
+        try
+        {
+            using var qr = BuildQrBitmap(payload, Math.Clamp(Math.Min(w, h) / 6, 110, 220));
+            if (qr == null) return;
+            int margin = Math.Clamp(Math.Min(w, h) / 45, 8, 18);
+            int box = qr.Width + margin * 2 + 6; // حاشیه سفید + قاب
+            int x = w - box - margin;
+            int y = h - box - margin;
+            // پس‌زمینه سفید با گوشه گرد و سایه
+            using var bgPaint = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 230) };
+            canvas.DrawRoundRect(new SKRect(x, y, x + box, y + box), 10, 10, bgPaint);
+            using var borderPaint = new SKPaint { IsAntialias = true, Color = new SKColor(15, 23, 42, 18), Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
+            canvas.DrawRoundRect(new SKRect(x, y, x + box, y + box), 10, 10, borderPaint);
+            canvas.DrawBitmap(qr, new SKRect(x + margin, y + margin, x + margin + qr.Width, y + margin + qr.Height));
+            // متن کوچک زیر QR — کد مدرک
+            var tf = GetTypeface();
+            if (tf != null)
+            {
+                using var f = new SKFont(tf, Math.Clamp(qr.Width / 14f, 7, 10));
+                using var tp = new SKPaint { IsAntialias = true, Color = new SKColor(15, 23, 42, 190) };
+                var txt = viewerLine.Length > 42 ? viewerLine[..42] + "…" : viewerLine;
+                var blob = ShapeLine(tf, f, txt);
+                if (blob.Blob != null) { using (blob.Blob) canvas.DrawText(blob.Blob, x + box / 2f - blob.Width / 2f, y + box - 4, tp); }
+            }
+        }
+        catch { }
+    }
+
+    private void DrawQrOnSprite(SKCanvas canvas, int sw, int sh, SKBitmap qr, string viewerLine)
+    {
+        int margin = Math.Clamp(Math.Min(sw, sh) / 55, 10, 22);
+        int size = Math.Clamp(Math.Min(sw, sh) / 7, 120, 200);
+        using var scaled = ResizeBitmap(qr, size, size);
+        int x = margin + 6;
+        int y = sh - size - margin - 18;
+        using var bg = new SKPaint { IsAntialias = true, Color = new SKColor(255, 255, 255, 235) };
+        canvas.DrawRoundRect(new SKRect(x - 6, y - 6, x + size + 6, y + size + 16), 8, 8, bg);
+        canvas.DrawBitmap(scaled, new SKRect(x, y, x + size, y + size));
+    }
+
+    private SKBitmap? BuildQrBitmap(string payload, int size)
+    {
+        try
+        {
+            using var gen = new QRCodeGenerator();
+            var data = gen.CreateQrCode(payload, QRCodeGenerator.ECCLevel.Q);
+            using var qr = new PngByteQRCode(data);
+            var pngBytes = qr.GetGraphic(Math.Max(3, size / 33), System.Drawing.Color.FromArgb(15,23,42), System.Drawing.Color.White, true);
+            var bmp = SKBitmap.Decode(pngBytes);
+            if (bmp == null) return null;
+            if (bmp.Width != size || bmp.Height != size)
+            {
+                var resized = ResizeBitmap(bmp, size, size);
+                bmp.Dispose();
+                return resized;
+            }
+            return bmp;
+        }
+        catch { return null; }
+    }
+
+    private static SKBitmap ResizeBitmap(SKBitmap src, int w, int h)
+    {
+        var dst = new SKBitmap(w, h);
+        using var canvas = new SKCanvas(dst);
+        canvas.Clear(SKColors.Transparent);
+        var paint = new SKPaint { IsAntialias = true, FilterQuality = SKFilterQuality.Medium };
+        canvas.DrawBitmap(src, new SKRect(0, 0, src.Width, src.Height), new SKRect(0, 0, w, h), paint);
+        return dst;
     }
 
     // ================================================================

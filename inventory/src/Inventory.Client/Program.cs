@@ -29,7 +29,6 @@ builder.Services.AddScoped<IAuthApi, AuthApi>();
 builder.Services.AddScoped<IApiClient, ApiClient>();
 builder.Services.AddScoped<BonHrApi>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
-builder.Services.AddScoped<ICompanyProfileService, CompanyProfileService>(); // تعریف شرکت/فروشگاه و تنظیمات چاپ فاکتور
 builder.Services.AddScoped<IDashboardClient, DashboardClient>(); // داشبورد شخصی کاربر
 builder.Services.AddScoped<IReportStudioClient, ReportStudioClient>(); // گزارش‌ساز حرفه‌ای
 builder.Services.AddScoped<IReferrerService, ReferrerService>();
@@ -52,7 +51,6 @@ builder.Services.AddScoped<IInvDocService, InvDocService>();
 builder.Services.AddScoped<IInvReportService, InvReportService>();
 builder.Services.AddScoped<IInvSettingsService, InvSettingsService>();
 builder.Services.AddScoped<IDocArchiveService, DocArchiveService>(); // ماژول آرشیو اسناد و مدارک
-builder.Services.AddScoped<IDocImportClient, DocImportClient>(); // آرشیو — ورود انبوه
 builder.Services.AddScoped<IHrCoreService, HrCoreService>(); // HrCore
 builder.Services.AddScoped<IHrTalentService, HrTalentService>(); // HrTalent
 builder.Services.AddScoped<IHrMainService, HrMainService>(); // HrMain — منابع انسانی اصلی
@@ -83,9 +81,6 @@ builder.Services.AddScoped<IFacReportService, FacReportService>();
 
 // ---------- سامانه مودیان + چاپگر مالی ----------
 builder.Services.AddScoped<IMoadianClientService, MoadianClientService>();
-builder.Services.AddScoped<IMoadianMasterDataClientService, MoadianMasterDataClientService>();
-builder.Services.AddScoped<IMoadianStandaloneClientService, MoadianStandaloneClientService>(); // سال مالی مودیان و ثبت صورتحساب مستقل از ERP
-builder.Services.AddScoped<IMoadianProviderInvoicesClientService, MoadianProviderInvoicesClientService>(); // فهرست صورتحساب‌ها به تفکیک خدمات‌دهنده + ارسال/استعلام رسمی
 builder.Services.AddScoped<IFiscalPrinterClientService, FiscalPrinterClientService>();
 
 // ماژول خزانه‌داری

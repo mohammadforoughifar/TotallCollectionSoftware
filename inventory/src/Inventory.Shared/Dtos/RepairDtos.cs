@@ -32,7 +32,6 @@ public class RepairOrderDto
     public string? TechnicianName { get; set; }
     public string? TechnicianPhone { get; set; }
 
-    /// <summary>فیلدهای سازگاریِ کارت اول؛ برای دریافت همه دستگاه‌ها از Devices استفاده کنید.</summary>
     public string DeviceType { get; set; } = "";
     public string? DeviceModel { get; set; }
     public string? SerialNumber { get; set; }
@@ -47,7 +46,7 @@ public class RepairOrderDto
     /// <summary>تاریخ خروج (تحویل)</summary>
     public DateTime? DeliveredAt { get; set; }
 
-    /// <summary>جمع برآورد دستگاه‌ها؛ مبلغ مستقل هر دستگاه در Devices.QuotedPrice است.</summary>
+    /// <summary>مبلغ برآوردی اعلام‌شده به مشتری</summary>
     public decimal QuotedPrice { get; set; }
 
     /// <summary>شناسه فاکتور فروش صادرشده</summary>
@@ -59,10 +58,6 @@ public class RepairOrderDto
     public string? Note { get; set; }
     public DateTime CreatedAt { get; set; }
 
-    /// <summary>دستگاه‌های این پذیرش؛ مبلغ برآوردی و مشخصات هر دستگاه مستقل است.</summary>
-    public List<RepairDeviceDto> Devices { get; set; } = new();
-
-    /// <summary>کارها و قطعات مصرفی مشترکِ کل پذیرش.</summary>
     public List<RepairItemDto> Items { get; set; } = new();
 
     // ---------- جمع‌های محاسباتی (پر شده توسط سرور) ----------
@@ -77,19 +72,7 @@ public class RepairOrderDto
     public decimal Profit { get; set; }
 }
 
-/// <summary>مشخصات و مبلغ برآوردی یک دستگاه در پذیرش.</summary>
-public class RepairDeviceDto
-{
-    public int Id { get; set; }
-    public string DeviceType { get; set; } = "";
-    public string? DeviceModel { get; set; }
-    public string? SerialNumber { get; set; }
-    public string? ProblemDescription { get; set; }
-    public string? Accessories { get; set; }
-    public decimal QuotedPrice { get; set; }
-}
-
-/// <summary>ردیف کار انجام‌شده / قطعه مصرفی؛ مشترکِ کل پذیرش.</summary>
+/// <summary>ردیف کار انجام‌شده / قطعه مصرفی.</summary>
 public class RepairItemDto
 {
     public int Id { get; set; }
@@ -115,19 +98,4 @@ public class RepairInvoiceRequest
 {
     /// <summary>انبار برداشت قطعات (پیش‌فرض: انبار مرکزی)</summary>
     public int WarehouseId { get; set; } = 1;
-
-    /// <summary>روش تسویه: نقدی (Cash) یا نسیه (Credit)</summary>
-    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.Cash;
-
-    /// <summary>نوع دریافت نقدی (کارت‌خوان، وجه نقد، کارت به کارت)</summary>
-    public CashType? CashType { get; set; } = Inventory.Shared.CashType.CardReader;
-
-    /// <summary>شناسه بانک / حساب خزانه انتخابی برای تسویه نقدی یا پیش‌دریافت</summary>
-    public int? TrsAccountId { get; set; }
-
-    /// <summary>تاریخ سررسید (در حالت نسیه)</summary>
-    public DateTime? DueDate { get; set; }
-
-    /// <summary>پیش‌دریافت نقدی در حالت نسیه</summary>
-    public decimal CashAmount { get; set; }
 }

@@ -8,7 +8,22 @@
         <div class="row g-3">
             <div class="col-md-6">
                 <label class="form-label" for="da-doc-title">عنوان مدرک <span class="text-danger">*</span></label>
-                <input id="da-doc-title" class="form-control" @bind="form.Title" />
+                <div class="input-group">
+                  <input id="da-doc-title" class="form-control" @bind="form.Title" />
+                  <button type="button" class="btn btn-outline-warning" title="بررسی تکراری" disabled="@(string.IsNullOrWhiteSpace(form.Title) || dupLoading)" @onclick="CheckDuplicate">
+                    @if (dupLoading){<span class="spinner-border spinner-border-sm"></span>} else {<i class="bi bi-search"></i>}
+                  </button>
+                </div>
+                @if (dupResult != null && dupResult.Hits.Count>0)
+                {
+                  <div class="alert alert-warning py-1 px-2 mt-1 fs-8">
+                    <i class="bi bi-exclamation-triangle ms-1"></i> @dupResult.Hits.Count مورد مشابه یافت شد
+                    @foreach(var h in dupResult.Hits.Take(3)){
+                      <div><a href="@($"/doc-archive/documents/{h.DocumentId}")" target="_blank">@h.Code — @h.Title (@h.Reason @h.Score.ToString("0.00"))</a></div>
+                    }
+                    @if(dupResult.IsDuplicate){<b class="text-danger">احتمال تکراری بالا — لطفاً بررسی کنید!</b>}
+                  </div>
+                }
             </div>
             <div class="col-md-6">
                 <label class="form-label">پوشه <span class="text-danger">*</span></label>
@@ -37,6 +52,53 @@
             <div class="col-12">
                 <label class="form-label" for="da-doc-description">توضیحات</label>
                 <textarea id="da-doc-description" class="form-control" rows="2" @bind="form.Description"></textarea>
+            </div>
+            <div class="col-12">
+                <button type="button" class="btn btn-sm btn-outline-primary" disabled="@(suggestLoading || string.IsNullOrWhiteSpace(form.Title))" @onclick="SuggestNow">
+                    @if (suggestLoading) { <span class="spinner-border spinner-border-sm ms-1"></span> } else { <i class="bi bi-stars ms-1"></i> }
+                    پیشنهاد هوشمند برچسب و پوشه ✨
+                </button>
+                <span class="fs-9 text-muted ms-2">بر اساس عنوان و توضیحات، با هوش معنایی</span>
+                @if (suggestResult != null)
+                {
+                    <div class="card mt-2 border-primary">
+                        <div class="card-body py-2">
+                            @if (suggestResult.FolderSuggestion != null)
+                            {
+                                <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+                                    <span class="fw-700 fs-8"><i class="bi bi-folder2-open ms-1"></i> پوشه پیشنهادی:</span>
+                                    <button type="button" class="btn btn-sm @(suggestResult.FolderSuggestion.CanWrite ? "btn-primary" : "btn-outline-secondary")" @onclick="() => ApplyFolderSuggestion(suggestResult.FolderSuggestion)">
+                                        @suggestResult.FolderSuggestion.Path <span class="badge bg-light text-dark ms-1">@suggestResult.FolderSuggestion.Score.ToString("0.00")</span>
+                                        @if (!suggestResult.FolderSuggestion.CanWrite) { <span class="fs-9">(بدون دسترسی نوشتن)</span> }
+                                    </button>
+                                    <span class="fs-9 text-muted">@(suggestResult.Semantic ? "معنایی" : "کلیدواژه‌ای")</span>
+                                </div>
+                            }
+                            @if (suggestResult.TagSuggestions.Count > 0)
+                            {
+                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                    <span class="fw-700 fs-8"><i class="bi bi-tags ms-1"></i> برچسب پیشنهادی:</span>
+                                    @foreach (var ts in suggestResult.TagSuggestions)
+                                    {
+                                        var sel = selectedTagIds.Contains(ts.TagId);
+                                        <button type="button" class="btn btn-sm rounded-pill @(sel ? "btn-success" : "btn-outline-primary")" @onclick="() => ToggleTag(ts.TagId)">
+                                            @ts.Name <span class="badge bg-light text-dark ms-1">@ts.Score.ToString("0.00")</span>
+                                        </button>
+                                    }
+                                    <button type="button" class="btn btn-xs btn-link p-0 fs-8" @onclick="ApplyAllTags">افزودن همه</button>
+                                </div>
+                            }
+                            @if (suggestResult.TagSuggestions.Count == 0 && suggestResult.FolderSuggestion == null)
+                            {
+                                <div class="fs-8 text-muted">پیشنهادی یافت نشد — عنوان را کامل‌تر بنویس.</div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(suggestResult.Note))
+                            {
+                                <div class="fs-9 text-muted mt-1">@suggestResult.Note</div>
+                            }
+                        </div>
+                    </div>
+                }
             </div>
 
             <div class="col-12">
@@ -219,6 +281,10 @@
     private List<DocTagDto> availableTags = new();
     private List<DocPermissionDto> perms = new();
     private bool saving, codeError, codeExists, showTagsModal;
+    private DocAutoSuggestResultDto? suggestResult;
+    private bool suggestLoading;
+    private DocDuplicateResultDto? dupResult;
+    private bool dupLoading;
     private bool lastVisible;
 
     protected override async Task OnParametersSetAsync()
@@ -227,6 +293,8 @@
         {
             codeError = false;
             codeExists = false;
+            suggestResult = null;
+            dupResult = null;
             await LoadTags();
             if (EditId > 0)
             {
@@ -262,6 +330,54 @@
     {
         if (selectedTagIds.Contains(tagId)) selectedTagIds.Remove(tagId);
         else selectedTagIds.Add(tagId);
+    }
+
+    private async Task SuggestNow()
+    {
+        if (string.IsNullOrWhiteSpace(form.Title)) { Toast.Error("اول عنوان را بنویس."); return; }
+        suggestLoading = true; suggestResult = null;
+        try
+        {
+            var req = new DocAutoSuggestRequest
+            {
+                Title = form.Title.Trim(),
+                Description = form.Description?.Trim(),
+                CurrentFolderId = form.FolderId > 0 ? form.FolderId : null
+            };
+            suggestResult = await Svc.SuggestAsync(req);
+            if ((suggestResult.TagSuggestions.Count == 0) && suggestResult.FolderSuggestion == null)
+                Toast.Info("پیشنهاد معنایی یافت نشد — عنوان را کامل‌تر کن.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { suggestLoading = false; }
+    }
+
+    private void ApplyFolderSuggestion(DocFolderSuggestionDto f)
+    {
+        form.FolderId = f.FolderId;
+        Toast.Success($"پوشه «{f.Path}» انتخاب شد.");
+    }
+
+    private void ApplyAllTags()
+    {
+        if (suggestResult == null) return;
+        foreach (var t in suggestResult.TagSuggestions)
+            if (!selectedTagIds.Contains(t.TagId)) selectedTagIds.Add(t.TagId);
+        Toast.Success("همه برچسب‌های پیشنهادی اضافه شد.");
+    }
+    private async Task CheckDuplicate()
+    {
+        if (string.IsNullOrWhiteSpace(form.Title)) return;
+        dupLoading = true;
+        try
+        {
+            var req = new DocDuplicateCheckRequest { Title = form.Title.Trim(), FileName = form.Code, Snippet = form.Description };
+            dupResult = await Svc.CheckDuplicateAsync(req);
+            if (dupResult.Hits.Count==0) Toast.Info("مورد تکراری یافت نشد.");
+            else if (dupResult.IsDuplicate) Toast.Error("احتمال تکراری بالا — لیست را ببین.");
+        }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { dupLoading = false; }
     }
 
     /// <summary>هشدار زنده تکراری بودن کد (بدون جلوگیری از ذخیره — سرست هم کنترل می‌کند).</summary>

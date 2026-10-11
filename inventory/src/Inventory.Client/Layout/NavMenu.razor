@@ -246,8 +246,8 @@
                     <NavLink class="nav-link" href="doc-archive/cartable" @onclick="NotifyClose">
                         <i class="bi bi-inbox"></i><span>کارتابل آرشیو</span>
                     </NavLink>
-                    <NavLink class="nav-link" href="doc-archive/import" @onclick="NotifyClose">
-                        <i class="bi bi-box-arrow-in-down"></i><span>ورود انبوه</span>
+                    <NavLink class="nav-link" href="export-center" @onclick="NotifyClose">
+                        <i class="bi bi-file-earmark-arrow-down"></i><span>مرکز خروجی</span>
                     </NavLink>
                 </div>
             }
@@ -456,52 +456,6 @@
                                 {
                                     <NavLink class="nav-link" href="referrers" @onclick="NotifyClose">
                                         <i class="bi bi-person-badge"></i><span>معرف‌ها</span>
-                                    </NavLink>
-                                }
-                                @if (Auth.CanSee("CompanyProfile"))
-                                {
-                                    <NavLink class="nav-link" href="company-profile" @onclick="NotifyClose">
-                                        <i class="bi bi-shop"></i><span>تعریف شرکت</span>
-                                    </NavLink>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-
-                @* ---------- زیرمنوی عملیات مودیان (دسترسی تفکیکی هر فرم) ---------- *@
-                @if (ShowMoadianSub)
-                {
-                    <div class="nav-sub">
-                        <button type="button" class="nav-toggle nav-sub-toggle @(gMoadian ? "open" : "")" @onclick="() => gMoadian = !gMoadian">
-                            <span><i class="bi bi-receipt-cutoff"></i>عملیات مودیان</span>
-                            <i class="bi bi-chevron-down nav-chevron"></i>
-                        </button>
-                        @if (gMoadian)
-                        {
-                            <div class="nav-sub-items">
-                                @if (Auth.Has("Moadian.MasterData"))
-                                {
-                                    <NavLink class="nav-link" href="moadian/master-data" @onclick="NotifyClose">
-                                        <i class="bi bi-database"></i><span>اطلاعات پایه مودیان</span>
-                                    </NavLink>
-                                }
-                                @if (Auth.Has("Moadian.ProviderInvoices"))
-                                {
-                                    <NavLink class="nav-link" href="moadian/provider-invoices" @onclick="NotifyClose">
-                                        <i class="bi bi-receipt"></i><span>صورتحساب‌های خدمات‌دهنده</span>
-                                    </NavLink>
-                                }
-                                @if (Auth.Has("Moadian.InvoiceNew"))
-                                {
-                                    <NavLink class="nav-link" href="moadian/invoice-new" @onclick="NotifyClose">
-                                        <i class="bi bi-plus-square"></i><span>ثبت صورتحساب جدید</span>
-                                    </NavLink>
-                                }
-                                @if (Auth.Has("Moadian.FiscalYears"))
-                                {
-                                    <NavLink class="nav-link" href="moadian/fiscal-years" @onclick="NotifyClose">
-                                        <i class="bi bi-calendar3"></i><span>سال مالی مودیان</span>
                                     </NavLink>
                                 }
                             </div>
@@ -746,7 +700,7 @@
     [Parameter] public int LettersUnreadCount { get; set; }
     [Parameter] public EventCallback OnNavigate { get; set; }
 
-    private bool gOpsBase, gOpsReports, gMoadian;
+    private bool gOpsBase, gOpsReports;
     private bool gDash, gOps, gProjects, gAdmin, gReports, gBase, gSys, gWo, gDevTeam, gBonHr, gFaHr, gLetters, gDocs, gChat, gMisc, gPersonal;
 
     // ================== منابع انسانی فروغ آریا (برنامهٔ پیشین) ==================
@@ -769,7 +723,8 @@
             gMisc = path.StartsWith("misc");
             if (path.StartsWith("trs/vouchers")) gOps = true;
             if (path.StartsWith("operations/reports")) { gOps = true; gOpsReports = true; }
-            if (path.StartsWith("moadian")) { gOps = true; gMoadian = true; }
+            if (path.StartsWith("moadian")) gOps = true;
+            if (path.StartsWith("moadian/settings")) gOpsBase = true;
             StateHasChanged();
         });
 
@@ -786,14 +741,13 @@
 
     private bool ShowDashGroup => CanSeeCartable || CanSeeMyArchive || CanSeeMyDashboards
                                   || CanSeeReportStudio || CanSeeAnyDashboard;
-    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers", "CompanyProfile");
-    private bool ShowMoadianSub => Auth.CanSee("Moadian");
+    private bool ShowOpsBaseSub => ModuleAccess.CanSeeAny(Auth, "Products", "Warehouses", "Parties", "Referrers");
     private bool ShowOpsReportsSub => Auth.Has("ReportPages.Kardex") || Auth.CanSee("Orders") || Auth.CanSee("Repairs");
-    private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ShowMoadianSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
+    private bool ShowOpsGroup => ShowOpsReportsSub || ShowOpsBaseSub || ModuleAccess.CanSeeAny(Auth, "Orders", "GoodsIssues", "Stock", "Repairs", "Expenses",
                                                         "Products", "Warehouses", "Parties", "Referrers", "TrsVouchers");
     private bool ShowAdminGroup => ModuleAccess.CanSeeAny(Auth, "ItRequests", "SystemUsers", "CctvCameras", "CctvNvrs");
     private bool ShowReportsGroup => Auth.Has("ReportPages.Kardex") || Auth.Has("ReportPages.Reorder");
-    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها زیرمنوی «اطلاعات پایه» و عملیات مودیان زیرمنوی جدا داخل «عملیات» است (با دسترسی تفکیکی هر فرم).
+    // کالاها/گروه/واحد/انبار/طرف‌حساب/معرف‌ها به زیرمنوی «اطلاعات پایه» داخل «عملیات» رفتند.
     private bool ShowBaseGroup => ModuleAccess.CanSeeAny(Auth, "ReferrerWallets",
                                                          "SystemCompanies", "SystemDepartments");
     private bool ShowSysGroup => CanSeeSettings || Auth.CanSee("SystemUsers");
@@ -821,11 +775,10 @@
         gDocs = p.StartsWith("doc-archive");
         gProjects = p.StartsWith("projects") || p.StartsWith("project-cartable") || p.StartsWith("report-works") || p.StartsWith("karfarmas") || p.StartsWith("type-factors");
         gOpsBase = p.StartsWith("products") || p.StartsWith("categories") || p.StartsWith("units") ||
-                   p.StartsWith("warehouses") || p.StartsWith("parties") ||
+                   p.StartsWith("warehouses") || p.StartsWith("parties") || p.StartsWith("moadian/settings") ||
                    (p.StartsWith("referrer") && !p.StartsWith("referrer-wallets"));
         gOpsReports = p.StartsWith("operations/reports");
-        gMoadian = p.StartsWith("moadian");
-        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || gOpsReports || gOpsBase || gMoadian;
+        gOps = p.StartsWith("orders") || p.StartsWith("goods-issues") || p.StartsWith("stock") || p.StartsWith("repairs") || p.StartsWith("expenses") || p.StartsWith("trs/vouchers") || p.StartsWith("moadian") || gOpsReports || gOpsBase;
         gAdmin = p.StartsWith("system-") && !p.StartsWith("system-company") && !p.StartsWith("system-department") || p.StartsWith("network-scan") || p.StartsWith("cctv") || p.StartsWith("office-machines") || p.StartsWith("it-requests") || p.StartsWith("settings/it-client-companies");
         gReports = p.StartsWith("reports");
         gBase = p.StartsWith("referrer-wallets") ||

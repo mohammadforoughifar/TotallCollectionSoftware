@@ -69,42 +69,6 @@ public class MoadianInvoice
     public DateTime Date { get; set; }
     public int FiscalPeriodId { get; set; }
     public string? FiscalPeriodTitle { get; set; }
-
-    /// <summary>سال مالی مودیان (شمسی) که این فاکتور به آن تعلق دارد.</summary>
-    public int? FiscalYearId { get; set; }
-    public int? FiscalYear { get; set; }
-    /// <summary>سریال فاکتور در داخل سال مالی (۱،۲،۳،...).</summary>
-    public int YearSerial { get; set; }
-    /// <summary>شمارهٔ سند سالانه به شکل 1405/000123 — همان شماره‌ای که به کاربر نمایش داده می‌شود.</summary>
-    public string? DocumentNumber { get; set; }
-    /// <summary>نوع پرداخت صورتحساب (setm)؛ برای سوابق قدیمی null است.</summary>
-    public MoadianPayType? PayType { get; set; }
-    public string? PayTypeTitle { get; set; }
-
-    /// <summary>خدمات‌دهنده‌ای که این صورتحساب به آن تعلق دارد (null = سوابق بدون گره‌خوردن).</summary>
-    public int? ServiceProviderId { get; set; }
-
-    /// <summary>
-    /// شماره منحصر به فرد مالیاتی ۲۲ نویسه‌ای (taxid) ساخته‌شده هنگام ارسال.
-    /// نام TaxId22 چون نام JSONِ TaxId فروشنده (taxId) با taxid فقط در بزرگی حرف تفاوت دارد
-    /// و System.Text.Json آن‌ها را تداخل می‌شمارد.
-    /// </summary>
-    public string? TaxId22 { get; set; }
-
-    /// <summary>زمان آخرین استعلام رسمی از سامانه.</summary>
-    public DateTime? LastInquiryAt { get; set; }
-
-    /// <summary>وضعیت خام سامانه در آخرین استعلام (PENDING/CONFIRM/SYSTEM_CONFIRM/REJECT).</summary>
-    public string? LastInquiryStatus { get; set; }
-
-    /// <summary>خطاها/پیام‌های سامانه در آخرین استعلام (فهرست کامل از error[]).</summary>
-    public List<MoadianInquiryError> InquiryErrors { get; set; } = new();
-
-    /// <summary>نتیجهٔ کلی استعلام: true = پذیرفته/موفق، false = با خطا، null = نامشخص.</summary>
-    public bool? InquirySuccess { get; set; }
-
-    /// <summary>JSON دقیق payload آخرین تلاش ثبت به سامانه (برای بررسی مقادیر ارسالی هنگام خطا).</summary>
-    public string? LastSendPayload { get; set; }
     public int? FacInvoiceId { get; set; }
     public int? OperationsTransactionId { get; set; }
     public string? FacInvoiceRef { get; set; }
@@ -159,13 +123,6 @@ public class MoadianInvoiceLine
     public decimal Taxable => (Quantity * UnitPrice) - Discount;
 }
 
-/// <summary>یک خطا/پیام سامانه در پاسخ استعلام صورتحساب.</summary>
-public class MoadianInquiryError
-{
-    public string? Code { get; set; }
-    public string? Message { get; set; }
-}
-
 /// <summary>لاگ مودیان.</summary>
 public class MoadianLog
 {
@@ -212,8 +169,6 @@ public class MoadianInvoiceRequest
     public string? BuyerPostalCode { get; set; }
     public string? BuyerPhone { get; set; }
     public string? Settlement { get; set; }
-    /// <summary>نوع پرداخت صورتحساب (setm).</summary>
-    public MoadianPayType? PayType { get; set; }
     public string? Description { get; set; }
     public List<MoadianInvoiceLine> Lines { get; set; } = new();
 }
@@ -237,14 +192,6 @@ public class MoadianDashboard
 
     /// <summary>آخرین خطاها/برگشت‌ها</summary>
     public List<MoadianInvoice> RecentIssues { get; set; } = new();
-}
-
-/// <summary>نتیجهٔ یک عملیات رسمی (ارسال/استعلام) صورتحساب با سامانه مودیان — تصویر تازهٔ صورتحساب + پیام فارسی.</summary>
-public class MoadianSubmissionResultDto
-{
-    public bool Success { get; set; }
-    public string Message { get; set; } = "";
-    public MoadianInvoice Invoice { get; set; } = new();
 }
 
 /// <summary>خروجی ساخت payload استاندارد مودیان (برای تست/دیباگ).</summary>

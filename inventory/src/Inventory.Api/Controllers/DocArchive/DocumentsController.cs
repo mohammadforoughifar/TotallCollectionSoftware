@@ -308,6 +308,21 @@ public class DocumentsController : RbacControllerBase
             dto.Logs = dto.Logs.Where(l => !hiddenActions.Contains(l.Action)).ToList();
         }
 
+        // ثبت بازدید برای «اخیراً دیده‌شده» — بدون مسدود کردن پاسخ در صورت خطا
+        try
+        {
+            Db.DocumentLogs.Add(new DocumentLog
+            {
+                DocumentId = id,
+                Action = level == DocAccessLevel.View ? "View" : "Read",
+                Detail = "بازدید مدرک",
+                UserId = MyUserId,
+                UserName = MyUsername
+            });
+            await Db.SaveChangesAsync();
+        }
+        catch { /* لاگ بازدید نباید پاسخ را خراب کند */ }
+
         return Ok(dto);
     }
 

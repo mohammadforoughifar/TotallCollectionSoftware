@@ -287,12 +287,19 @@ public class DocVersionCreateDto
     public bool SendToFlow { get; set; } = true;
 }
 
-/// <summary>اقدام تایید/رد</summary>
+/// <summary>اقدام تایید/رد — با پشتیبانی امضای موبایل و آفلاین</summary>
 public class DocApprovalActionDto
 {
     public int VersionId { get; set; }
     public bool Approve { get; set; }
     public string? Comment { get; set; }
+    /// <summary>امضای ترسیمی base64 PNG (data:image/png;base64,...)</summary>
+    public string? SignatureDataUrl { get; set; }
+    /// <summary>آیا بیومتریک (WebAuthn) تایید شد؟</summary>
+    public bool BiometricVerified { get; set; }
+    /// <summary>اطلاعات دستگاه برای حسابرسی آفلاین</summary>
+    public string? DeviceInfo { get; set; }
+    public DateTime? ClientTimestamp { get; set; }
 }
 
 /// <summary>آیتم کارتابل آرشیو</summary>
@@ -710,5 +717,194 @@ public class DocFolderZipExportOptionsDto
     public bool IncludeSubfolders { get; set; } = true;
     public bool OnlyActiveVersions { get; set; } = true;
     public bool IncludeManifest { get; set; } = true;
+}
+
+// ==================== علاقه‌مندی و اخیراً دیده‌شده ====================
+public class DocFavoriteDto
+{
+    public int DocumentId { get; set; }
+    public string Code { get; set; } = "";
+    public string Title { get; set; } = "";
+    public int FolderId { get; set; }
+    public string FolderName { get; set; } = "";
+    public DateTime FavoritedAt { get; set; }
+    public bool IsFavorite { get; set; } = true;
+}
+
+public class DocRecentlyViewedDto
+{
+    public int DocumentId { get; set; }
+    public string Code { get; set; } = "";
+    public string Title { get; set; } = "";
+    public int FolderId { get; set; }
+    public string FolderName { get; set; } = "";
+    public DateTime ViewedAt { get; set; }
+    public string Action { get; set; } = "View";
+}
+
+// ==================== عملیات گروهی (Bulk) ====================
+public class DocBulkMoveDto
+{
+    public List<int> DocumentIds { get; set; } = new();
+    public int TargetFolderId { get; set; }
+}
+
+public class DocBulkTagsDto
+{
+    public List<int> DocumentIds { get; set; } = new();
+    public List<int> TagIds { get; set; } = new();
+    /// <summary>append = افزودن به موجود، replace = جایگزینی کامل</summary>
+    public string Mode { get; set; } = "append";
+}
+
+public class DocBulkExpireDto
+{
+    public List<int> DocumentIds { get; set; } = new();
+    public DateTime? ExpireDate { get; set; }
+}
+
+public class DocBulkResultDto
+{
+    public int Requested { get; set; }
+    public int Succeeded { get; set; }
+    public int Failed { get; set; }
+    public List<string> Errors { get; set; } = new();
+    public string Message { get; set; } = "";
+}
+
+// ==================== جستجوی معنایی (B1) ====================
+public class DocSemanticSearchRequest
+{
+    public string Query { get; set; } = "";
+    public int? FolderId { get; set; }
+    public bool IncludeSubfolders { get; set; } = true;
+    public List<int> TagIds { get; set; } = new();
+    /// <summary>active | inactive | all — پیش‌فرض active</summary>
+    public string Status { get; set; } = "active";
+    public int Take { get; set; } = 10;
+}
+
+public class DocSemanticHitDto
+{
+    public int DocumentId { get; set; }
+    public string Code { get; set; } = "";
+    public string Title { get; set; } = "";
+    public int FolderId { get; set; }
+    public string FolderName { get; set; } = "";
+    public string Snippet { get; set; } = "";
+    public double Score { get; set; }
+    public DocAccessLevelDto MyLevel { get; set; }
+    public bool MyCanDownload { get; set; }
+    public List<DocTagDto> Tags { get; set; } = new();
+    public DateTime? ExpireDate { get; set; }
+    public string Link { get; set; } = "";
+}
+
+public class DocSemanticSearchResultDto
+{
+    public List<DocSemanticHitDto> Hits { get; set; } = new();
+    /// <summary>true = بردار معنایی، false = کلیدواژه‌ای fallback</summary>
+    public bool Semantic { get; set; }
+    public string? Note { get; set; }
+    public int TotalCandidates { get; set; }
+}
+
+// ==================== نظرات و منشن + ردیاب نشت + تشخیص تکراری (2025-10-09) ====================
+public class DocCommentDto
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public int? VersionId { get; set; }
+    public int? ParentId { get; set; }
+    public int AuthorUserId { get; set; }
+    public string AuthorName { get; set; } = "";
+    public string Body { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public bool IsResolved { get; set; }
+    public List<DocCommentDto> Replies { get; set; } = new();
+    public List<int> MentionedUserIds { get; set; } = new();
+    public List<string> MentionedUserNames { get; set; } = new();
+}
+
+public class DocCommentCreateDto
+{
+    public int DocumentId { get; set; }
+    public int? VersionId { get; set; }
+    public int? ParentId { get; set; }
+    public string Body { get; set; } = "";
+    public List<int> MentionedUserIds { get; set; } = new();
+}
+
+public class DocLeakTraceDto
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public string UserName { get; set; } = "";
+    public string VisibleWatermark { get; set; } = "";
+    public string Action { get; set; } = "";
+    public DateTime CreatedAt { get; set; }
+    public string? FileHash { get; set; }
+}
+
+public class DocDuplicateCheckRequest
+{
+    public string? FileHash { get; set; }
+    public string? FileName { get; set; }
+    public string? Title { get; set; }
+    public string? Snippet { get; set; }
+    public long? FileSize { get; set; }
+}
+
+public class DocDuplicateHitDto
+{
+    public int DocumentId { get; set; }
+    public string Code { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string FolderName { get; set; } = "";
+    public double Score { get; set; }
+    public string Reason { get; set; } = ""; // hash-exact | semantic | name
+    public DateTime CreatedAt { get; set; }
+}
+
+public class DocDuplicateResultDto
+{
+    public List<DocDuplicateHitDto> Hits { get; set; } = new();
+    public bool IsDuplicate { get; set; }
+    public string? Note { get; set; }
+}
+
+// ==================== پیشنهاد خودکار برچسب و پوشه (B2) ====================
+public class DocAutoSuggestRequest
+{
+    public string Title { get; set; } = "";
+    public string? Description { get; set; }
+    public int? CurrentFolderId { get; set; }
+    public string? ContentSnippet { get; set; }
+}
+
+public class DocTagSuggestionDto
+{
+    public int TagId { get; set; }
+    public string Name { get; set; } = "";
+    public string Color { get; set; } = "#4f46e5";
+    public double Score { get; set; }
+    public string Reason { get; set; } = "";
+}
+
+public class DocFolderSuggestionDto
+{
+    public int FolderId { get; set; }
+    public string Name { get; set; } = "";
+    public string Path { get; set; } = "";
+    public double Score { get; set; }
+    public bool CanWrite { get; set; }
+}
+
+public class DocAutoSuggestResultDto
+{
+    public List<DocTagSuggestionDto> TagSuggestions { get; set; } = new();
+    public DocFolderSuggestionDto? FolderSuggestion { get; set; }
+    public bool Semantic { get; set; }
+    public string? Note { get; set; }
 }
 

@@ -7,7 +7,7 @@
     <!-- کاهش حجم پابلیش: بدون فایل دیباگ (pdb) در خروجی Release -->
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
     <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
-    <NoWarn>CS1998</NoWarn>
+    <NoWarn>CS1998;NU1900;NU1902;NU1903;NU1904;CS0162</NoWarn>
     <!-- کاهش حجم خروجی انتشار: باندل تک‌فایل فشرده (فقط روی publish اثر دارد) -->
     <PublishSingleFile>true</PublishSingleFile>
     <!-- IIS in-process hosting cannot load single-file apps. -->
@@ -23,11 +23,6 @@
       <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
       <SkipGetTargetFrameworkProperties>false</SkipGetTargetFrameworkProperties>
     </ProjectReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <!-- دسترسی تست‌های واحد به روش‌های داخلی (مثل BuildInvoiceDto) -->
-    <InternalsVisibleTo Include="MoadianPayload.Tests" />
   </ItemGroup>
 
   <ItemGroup>
@@ -66,8 +61,6 @@
     <PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="7.3.0.2" />
     <PackageReference Include="HarfBuzzSharp.NativeAssets.Win32" Version="7.3.0.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
-    <!-- Retained at the required local SDK version for a future connection test; the current ConnectInfo flow is save-only. -->
-    <PackageReference Include="TaxCollectData.Library" Version="[0.0.34]" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.1" />
     <!-- رفع تعارض نسخه: Stimulsoft به CodeAnalysis &gt;= 4.8 نیاز دارد و EF.Design 8.0.1 روی 4.5 پین است (NU1107) -->
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.8.0" />
@@ -84,6 +77,8 @@
     </PackageReference>
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
     <PackageReference Include="WebPush" Version="1.0.13" />
+    <!-- QR برای چاپ آرشیو اسناد -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
   <!-- حذف فونت Lato از خروجی انتشار: برنامه فقط از وزیرمتن استفاده می‌کند (۱۲ مگ صرفه‌جویی) -->

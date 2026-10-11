@@ -41,8 +41,6 @@ public static class DbInitializer
                     await DocArchiveSecuritySchemaV2.EnsureAsync(db);
                     // موج سوم: لاگ چاپ فایل‌های مدرک (چاپ‌کننده + تاریخ روی خروجی)
                     await DocPrintSchemaV1.EnsureAsync(db);
-                    // ورود انبوه آرشیو: جدول کارها و ردیف‌ها + ایندکس پیوست‌ها
-                    await DocArchiveImportSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -71,8 +69,6 @@ public static class DbInitializer
                     await DocArchiveSecuritySchemaV2.EnsureAsync(db);
                     // موج سوم: لاگ چاپ فایل‌های مدرک (چاپ‌کننده + تاریخ روی خروجی)
                     await DocPrintSchemaV1.EnsureAsync(db);
-                    // ورود انبوه آرشیو: جدول کارها و ردیف‌ها + ایندکس پیوست‌ها
-                    await DocArchiveImportSchemaV1.EnsureAsync(db);
                     // ستون‌های نشان صادره + جداول ایمیل سازمانی (Oto_*)
                     await OfficeEmailSchemaV1.EnsureAsync(db);
                     // دستور کار: ستون اولویت + جدول یادآور مهلت
@@ -85,13 +81,6 @@ public static class DbInitializer
                     await ItRemoteRequestSchemaV1.EnsureAsync(db);
                 }
 
-                // کارت‌های دستگاه تعمیرات + انتقال خودکار پذیرش‌های تک‌دستگاهی قدیمی.
-                await RepairDeviceSchemaV1.EnsureAsync(db);
-                // ذخیرهٔ هزینهٔ قطعی روی سطر فاکتور و اصلاح فاکتورهای تعمیراتیِ قبلی.
-                await TransactionLineCostSchemaV1.EnsureAsync(db);
-                // پشتیبانی از انتخاب بانک در اسناد خرید و فروش عملیات
-                await TransactionBankSchemaV1.EnsureAsync(db);
-
                 // پروفایل کاربر، وضعیت تأیید موبایل/ایمیل و جدول امن درخواست‌های OTP.
                 await UserContactSchemaV1.EnsureAsync(db);
 
@@ -101,42 +90,6 @@ public static class DbInitializer
                 await MoadianSchemaV3.EnsureAsync(db);
                 // Number index for serializable global numbering of new drafts; existing numbers are preserved.
                 await MoadianSchemaV4.EnsureAsync(db);
-                // Provider profiles and provider-scoped master data; no sender/queue schema changes.
-                await MoadianSchemaV5.EnsureAsync(db);
-                // مدل «یک اتصال به ازای هر خدمات‌دهنده»: ابتدا نسخه‌های تکراری قدیمی (و فایل
-                // کلید خصوصی آن‌ها در صورت مدیریت‌شدن) حذف می‌شوند، سپس ایندکس یکتای
-                // فقط-نسخه-های-فعال با ایندکس یکتای کامل ServiceProviderId جایگزین می‌شود.
-                try
-                {
-                    var moadianPrivateKeys = scope.ServiceProvider.GetRequiredService<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService>();
-                    await MoadianConnectionConsolidationV1.EnsureAsync(db, moadianPrivateKeys);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[DB] Moadian: یکپارچه‌سازی اتصال‌های تکراری انجام نشد: {ex.Message}");
-                }
-                try
-                {
-                    await MoadianSchemaV5.EnsureSingleConnectionIndexAsync(db);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[DB] Moadian: ایندکس یکتای «یک اتصال به ازای هر خدمات‌دهنده» ساخته نشد: {ex.Message}");
-                }
-                // سال مالی مودیان، شمارهٔ سند سالانه (سال/سریال) و نوع پرداخت صورتحساب.
-                await MoadianSchemaV6.EnsureAsync(db);
-                // گره‌خوردن صورتحساب به خدمات‌دهنده + ردیابی ارسال/استعلام رسمی (taxid و وضعیت).
-                await MoadianSchemaV7.EnsureAsync(db);
-                // وسعت‌بخشی ستون‌های متنی صورتحساب/قلم (پیشگیری از خطای truncation هنگام ثبت).
-                await MoadianSchemaV8.EnsureAsync(db);
-                // اتصال سوابق (بک‌فیل V6) به سال مالی — رفع تکرار DocumentNumber هنگام ثبت جدید.
-                await MoadianSchemaV9.EnsureAsync(db);
-                // پاسخ خام استعلام سامانه (خطاها/پیام‌های کامل صورتحساب) روی MoadianInvoices.
-                await MoadianSchemaV10.EnsureAsync(db);
-                await MoadianSchemaV11.EnsureAsync(db);
-                await MoadianSchemaV12.EnsureAsync(db);
-                // ایندکس‌های یکتای سال/دورهٔ مالی به‌ازای هر خدمات‌دهنده (رفع یکتایی سراسری).
-                await MoadianSchemaV13.EnsureAsync(db);
                 await WorkOrderSchemaV2.EnsureAsync(db);
                 await DocEvolutionSchemaV1.EnsureAsync(db);
                 await PushDeliverySchema.EnsureAsync(db);
@@ -257,9 +210,6 @@ public static class DbInitializer
 
                 // ==================== RBAC Seed ====================
                 await RbacSeeder.SeedAsync(db);
-
-                // جدول پروفایل شرکت (تعریف شرکت + تنظیمات چاپ فاکتور) — خودتعمیر برای دیتابیس‌های قدیمی
-                await CompanyProfileSchemaV1.EnsureAsync(db);
 
                 // ==================== هوش مصنوعی فروغ آریا ====================
                 await AiSeeder.EnsureAiUserAsync(db);

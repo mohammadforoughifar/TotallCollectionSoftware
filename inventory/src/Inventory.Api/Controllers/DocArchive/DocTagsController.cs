@@ -1,5 +1,6 @@
 using Inventory.Api.Services;
 using Inventory.Api.Data;
+using Inventory.Api.Services.DocArchive;
 using Inventory.Shared.Dtos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,8 +15,11 @@ namespace Inventory.Api.Controllers.DocArchive;
 public class DocTagsController : RbacControllerBase
 {
     private const string Mod = "DocArchive";
+    private readonly IDocAccessService _access;
 
-    public DocTagsController(AppDbContext db) : base(db) { }
+    public DocTagsController(AppDbContext db, IDocAccessService access) : base(db) { _access = access; }
+    // سازگاری با تست‌های قدیمی که فقط DbContext می‌دهند
+    public DocTagsController(AppDbContext db) : base(db) { _access = new Inventory.Api.Services.DocArchive.DocAccessService(db); }
 
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int skip = 0, [FromQuery] int? take = null)
@@ -125,6 +129,12 @@ public class DocTagsController : RbacControllerBase
 
         var doc = await Db.Documents.FindAsync(docId);
         if (doc == null) return NotFound(new { message = "مدرک یافت نشد." });
+
+        // اصلاح امنیتی M1: تغییر تگ نیازمند دسترسی نوشتن است (نه فقط خواندن)
+        var manager = await HasAsync(Mod, "Manage");
+        var (lvl, _) = await _access.DocumentAccessAsync(MyUserId, manager, docId);
+        if (lvl < DocAccessLevel.Write)
+            return StatusCode(403, new { message = "تغییر برچسب مدرک نیازمند دسترسی نوشتن است." });
 
         var old = await Db.DocumentTags.Where(t => t.DocumentId == docId).ToListAsync();
         Db.DocumentTags.RemoveRange(old);

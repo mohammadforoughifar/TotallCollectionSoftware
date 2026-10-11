@@ -377,38 +377,7 @@ public enum MoadianInvoiceStatus
     Returned = 5,
 
     /// <summary>ابطال شده</summary>
-    Voided = 6,
-
-    /// <summary>ارسال شد و در انتظار تأیید خریدار (وضعیت PENDING سامانه)</summary>
-    AwaitingBuyerConfirmation = 7,
-
-    /// <summary>تأییدشده توسط خریدار یا سیستم‌مالیاتی (CONFIRM/SYSTEM_CONFIRM سامانه)</summary>
-    BuyerConfirmed = 8,
-
-    /// <summary>ردشده توسط خریدار (REJECT سامانه)</summary>
-    BuyerRejected = 9
-}
-
-/// <summary>
-/// نوع پرداخت صورتحساب (setm). مقادیر عددی با قرارداد سامانهٔ مودیان یکی است:
-/// نقدی=۰، نسیه=۱، الکترونیکی=۲، تسهیلات=۳، تهاتر=۴.
-/// </summary>
-public enum MoadianPayType
-{
-    /// <summary>نقدی</summary>
-    Cash = 0,
-
-    /// <summary>نسیه</summary>
-    Credit = 1,
-
-    /// <summary>الکترونیکی</summary>
-    Electronic = 2,
-
-    /// <summary>تسهیلات</summary>
-    Facility = 3,
-
-    /// <summary>تهاتر</summary>
-    Offset = 4
+    Voided = 6
 }
 
 /// <summary>نوع رویداد/لاگ مودیان</summary>
@@ -433,10 +402,7 @@ public enum MoadianLogAction
     Voided = 5,
 
     /// <summary>ویرایش پیش‌نویس</summary>
-    Updated = 6,
-
-    /// <summary>استعلام وضعیت رسمی از سامانه مودیان</summary>
-    Inquiry = 7
+    Updated = 6
 }
 
 // ===================== ماژول فاکتور =====================

@@ -22,6 +22,7 @@ else if (accessDenied)
             <div class="card-body p-4 text-center">
                 <i class="bi bi-shield-lock" style="font-size:2.4rem;color:#f59e0b"></i>
                 <h6 class="fw-700 mt-2">به این مدرک دسترسی ندارید</h6>
+                <p class="fs-8 text-muted mb-3">اگر برای کار خود به این مدرک نیاز دارید، می‌توانید از مدیران آن (دارندگان دسترسی کامل) درخواست دسترسی کنید؛ نتیجه با نوتیفیکیشن به شما اطلاع داده می‌شود.</p>
 
                 <div class="text-start">
                     <label class="form-label fs-8 fw-700">سطح دسترسی درخواستی</label>
@@ -32,7 +33,7 @@ else if (accessDenied)
                     </select>
                     <label class="form-label fs-8 fw-700 mt-2">دلیل / توضیح</label>
                     <textarea class="form-control form-control-sm" rows="3" @bind="reqNote"
-                             ></textarea>
+                              placeholder="مثلاً: برای رسیدگی به پرونده این مشتری به مدرک نیاز دارم."></textarea>
                     <button class="btn btn-primary btn-sm w-100 mt-3 fw-700" @onclick="SendAccessRequest" disabled="@reqBusy">
                         @if (reqBusy) { <span class="spinner-border spinner-border-sm"></span> }
                         <i class="bi bi-send"></i> ارسال درخواست دسترسی
@@ -472,6 +473,10 @@ else
                         <button class="btn btn-sm btn-primary w-100 mt-1" @onclick="LinkMany" disabled="@(linkIds.Count == 0)">
                             <i class="bi bi-link"></i> لینک کن (@linkIds.Count.Num() مدرک)
                         </button>
+                        <div class="form-text fs-9">
+                            با ورژن خوردن این مدرک، در کارتابل صاحبان مدارک مرتبط، کار «بررسی/به‌روزرسانی» ایجاد می‌شود.
+                            فقط مدارک فعال قابل لینک هستند.
+                        </div>
                     </div>
                 }
             </div>
@@ -739,6 +744,31 @@ else
                 </div>
             </div>
             }
+            <div class="card mb-3">
+                <div class="card-body p-2">
+                    <DocCommentsThread DocumentId="Id" Users="lookups.Users" />
+                </div>
+            </div>
+            <div class="card mb-3 border-warning">
+                <div class="card-header fw-700 fs-8 d-flex justify-content-between align-items-center">
+                    <span><i class="bi bi-shield-lock ms-1" style="color:#d97706"></i> ردیاب نشت <span class="badge bg-warning text-dark">نامرئی</span></span>
+                    <button class="btn btn-sm btn-light py-0" @onclick="LoadLeakTraces" disabled="@leakLoading"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+                <div class="card-body p-1" style="max-height:240px;overflow-y:auto">
+                    @if (!leakLoaded && !leakLoading) { <div class="fs-8 text-muted p-2">برای دیدن رد چاپ/دانلود، به‌روزرسانی بزن.</div> }
+                    else if (leakLoading) { <div class="fs-8 text-muted p-2"><span class="spinner-border spinner-border-sm"></span></div> }
+                    else if (leakTraces.Count==0) { <div class="fs-8 text-muted p-2">هنوز رد نشتی ثبت نشده.</div> }
+                    else {
+                      <table class="table table-sm mb-0 fs-9">
+                        <thead class="table-light"><tr><th>کاربر</th><th>واترمارک مرئی</th><th>هش</th><th>زمان</th></tr></thead>
+                        <tbody>
+                        @foreach(var t in leakTraces){<tr><td>@t.UserName</td><td class="text-truncate" style="max-width:150px" title="@t.VisibleWatermark">@t.VisibleWatermark</td><td class="num">@t.FileHash</td><td>@t.CreatedAt.ToFa()</td></tr>}
+                        </tbody>
+                      </table>
+                      <div class="fs-9 text-muted p-1">هر فایل یک هش + payload نامرئی دارد — حتی اسکرین‌شات قابل ردیابی است.</div>
+                    }
+                </div>
+            </div>
     </div>
 </div>
 }
@@ -777,6 +807,7 @@ else
                     <div class="ver-drop-inner">
                         <i class="bi bi-cloud-arrow-up ver-drop-icon"></i>
                         <div class="fw-700 fs-8">فایل‌ها را اینجا رها کنید یا کلیک کنید</div>
+                        <div class="fs-9 text-muted">بدون محدودیت تعداد و حجم — پس از ثبت ورژن، خودکار آپلود می‌شوند</div>
                     </div>
                     <InputFile class="ver-file-overlay" OnChange="OnVersionFiles" multiple />
                 </div>
@@ -794,11 +825,33 @@ else
                         }
                     </div>
                 }
+                <div class="mt-2 d-flex gap-2">
+                  <button type="button" class="btn btn-sm @(showScanner ? "btn-primary" : "btn-outline-primary")" @onclick="() => showScanner = !showScanner"><i class="bi bi-camera ms-1"></i> اسکن هوشمند با دوربین 📸</button>
+                  @if (scannedImages.Count > 0) { <span class="badge bg-success align-self-center">@scannedImages.Count اسکن آماده</span> }
+                </div>
+                @if (showScanner)
+                {
+                  <div class="mt-2"><DocSmartScanner OnScanned="OnScanned" OnClose="() => showScanner=false" /></div>
+                }
+                @if (scannedImages.Count > 0)
+                {
+                  <div class="d-flex flex-wrap gap-2 mt-2">
+                    @foreach (var s in scannedImages)
+                    {
+                      <div class="border rounded p-1 bg-white position-relative" style="width:120px">
+                        <img src="@s.dataUrl" style="width:100%;height:90px;object-fit:cover;border-radius:6px" />
+                        <div class="fs-9 text-truncate mt-1">@s.fileName</div>
+                        <i class="bi bi-x-circle-fill text-danger position-absolute" style="top:4px;left:4px;cursor:pointer" @onclick="() => scannedImages.Remove(s)"></i>
+                      </div>
+                    }
+                  </div>
+                }
             </div>
             <div class="col-md-6">
                 <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" id="sndFlow" @bind="verForm.SendToFlow" />
                     <label class="form-check-label fw-700" for="sndFlow">ارسال به گردش تایید</label>
+                    <span class="fs-9 text-muted d-block">ورژن فریز شده و تا تایید کامل، فعال نمی‌شود.</span>
                 </div>
             </div>
             <div class="col-md-6">
@@ -819,19 +872,36 @@ else
 </Modal>
 
 @* ==================== مودال تایید / رد ==================== *@
-<Modal Visible="showApproval" Title="@(approveMode ? "تایید ورژن" : "رد ورژن")" OnClose="() => showApproval = false">
+<Modal Visible="showApproval" Title="@(approveMode ? "تایید ورژن" : "رد ورژن")" Size="modal-lg" OnClose="() => showApproval = false">
     <ChildContent>
         <label class="form-label">توضیح / نظر</label>
-        <textarea class="form-control" rows="3" @bind="approvalComment"></textarea>
+        <textarea class="form-control" rows="3" @bind="approvalComment" placeholder="نظر خود را بنویسید..."></textarea>
         @if (!approveMode)
         {
+            <div class="alert alert-warning mt-2 fs-8 mb-0">
+                با رد کردن، ورژن از حالت فریز خارج شده و برای اصلاح به ثبت‌کننده برمی‌گردد.
+            </div>
+        }
+        <hr class="my-3" />
+        <DocSignaturePad @ref="sigPad" />
+        <div class="mt-2 d-flex align-items-center gap-2">
+            <span class="badge @(isOnline ? "bg-success" : "bg-warning text-dark")"><i class="bi @(isOnline ? "bi-wifi" : "bi-wifi-off")"></i> @(isOnline ? "آنلاین" : "آفلاین — در صف ذخیره می‌شود")</span>
+            @if (offlineQueueCount>0)
+            {
+                <span class="badge bg-primary">@offlineQueueCount در صف آفلاین</span>
+            }
+        </div>
+        @if (!isOnline)
+        {
+            <div class="alert alert-info fs-8 mt-2 mb-0"><i class="bi bi-cloud-upload"></i> شما آفلاین هستید — تایید شما با امضا در دستگاه ذخیره و به محض آنلاین شدن خودکار همگام می‌شود.</div>
         }
     </ChildContent>
     <Footer>
         <button class="btn btn-light" @onclick="() => showApproval = false">انصراف</button>
         <button class="btn @(approveMode ? "btn-success" : "btn-danger")" @onclick="DoApproval" disabled="@saving">
-            <i class="bi @(approveMode ? "bi-check-lg" : "bi-x-lg") ms-1"></i>
-            @(approveMode ? "تایید" : "رد")
+            @if (saving) { <span class="spinner-border spinner-border-sm ms-1"></span> }
+            else { <i class="bi @(approveMode ? "bi-check-lg" : "bi-x-lg") ms-1"></i> }
+            @(approveMode ? "تایید" : "رد") @(isOnline ? "" : "(آفلاین)")
         </button>
     </Footer>
 </Modal>
@@ -842,9 +912,13 @@ else
         <p class="mb-2">مدرک <b class="num">@doc.Code</b> — @doc.Title</p>
         @if (doc.IsActive)
         {
+            <div class="alert alert-warning fs-8">
+                با غیرفعال کردن، این مدرک <b>فقط‌خواندنی</b> می‌شود و به زیرمنوی «مدارک غیرفعال» منتقل می‌گردد.
+                کارهای باز آن در کارتابل‌ها بسته می‌شوند.
+            </div>
             <label class="form-label">دلیل غیرفعال‌سازی</label>
             <textarea class="form-control" rows="2" @bind="toggleReason"
-                     ></textarea>
+                      placeholder="مثلاً: منسوخ شده و با مدرک جدید جایگزین گردید"></textarea>
         }
         else
         {
@@ -924,11 +998,16 @@ else
     private bool loading = true, loadingExtracted, saving, showTextModal;
 
     private bool showVersion, showApproval, showEdit;
+    private DocSignaturePad? sigPad;
+    private bool isOnline = true;
+    private int offlineQueueCount;
     private DocVersionCreateDto verForm = new();
     private List<int> verApprovers = new();
 
     // پیوست‌های فرم ورژن جدید (درگ اند دراپ + انتخاب)
     private List<IBrowserFile> verFiles = new();
+    private List<(string dataUrl, string fileName)> scannedImages = new();
+    private bool showScanner;
     private bool verDragOver;
     private int verDragDepth;
 
@@ -936,6 +1015,11 @@ else
     {
         verDragDepth = 0; verDragOver = false;
         verFiles = e.GetMultipleFiles(int.MaxValue).ToList();
+    }
+    private void OnScanned((string dataUrl, string fileName) e)
+    {
+        scannedImages.Add(e);
+        showScanner = false;
     }
     private void VerDragEnter() { verDragDepth++; verDragOver = true; }
     private void VerDragLeave() { if (--verDragDepth <= 0) { verDragDepth = 0; verDragOver = false; } }
@@ -1049,6 +1133,18 @@ else
     {
         Layout.SetTitle("مدرک");
         await Load();
+        PollOfflineStatus();
+    }
+    private async void PollOfflineStatus()
+    {
+        while (true)
+        {
+            await Task.Delay(3500);
+            try { isOnline = await JS.InvokeAsync<bool>("eval", "navigator.onLine"); } catch {}
+            try { offlineQueueCount = await JS.InvokeAsync<int>("docArchiveQueueCount"); } catch {}
+            try { await InvokeAsync(StateHasChanged); } catch { break; }
+            if (!isOnline) continue;
+        }
     }
 
     private void GoBack() => Nav.NavigateTo("doc-archive");
@@ -1187,12 +1283,36 @@ else
                 }
                 if (ok > 0) Toast.Success($"{ok.Num()} پیوست روی ورژن جدید بارگذاری شد.");
             }
+            // آپلود اسکن‌های هوشمند (dataUrl -> bytes)
+            if (scannedImages.Count > 0 && versionId > 0)
+            {
+                if (!string.IsNullOrWhiteSpace(Auth.Token))
+                    Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Auth.Token);
+                var ok2 = 0;
+                foreach (var s in scannedImages)
+                {
+                    try
+                    {
+                        var b64 = s.dataUrl.Contains(",") ? s.dataUrl.Split(',')[1] : s.dataUrl;
+                        var bytes = Convert.FromBase64String(b64);
+                        using var content = new MultipartFormDataContent();
+                        var sc = new ByteArrayContent(bytes);
+                        sc.Headers.ContentType = new MediaTypeHeaderValue("image/jpeg");
+                        content.Add(sc, "file", s.fileName);
+                        var resp = await Http.PostAsync($"/api/attachments/DocVersion/{versionId}", content);
+                        if (resp.IsSuccessStatusCode) ok2++;
+                    }
+                    catch (Exception ex) { Toast.Error($"اسکن {s.fileName}: {ex.Message}"); }
+                }
+                if (ok2 > 0) Toast.Success($"{ok2.Num()} اسکن هوشمند بارگذاری شد — OCR خودکار شروع می‌شود.");
+            }
 
             Toast.Success("ورژن جدید ثبت شد.");
             showVersion = false;
             verForm = new DocVersionCreateDto();
             verApprovers = new();
             verFiles = new();
+            scannedImages = new();
             await Load();
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
@@ -1218,20 +1338,68 @@ else
     {
         if (approvalTarget == null) return;
         saving = true;
+        string? sigData = null;
+        bool bioVerified = false;
+        try { sigData = sigPad != null ? await sigPad.GetDataUrlAsync() : null; } catch {}
+        try { bioVerified = sigPad?.IsBiometricVerified ?? false; } catch {}
+        var payload = new DocApprovalActionDto
+        {
+            VersionId = approvalTarget.Id,
+            Approve = approveMode,
+            Comment = approvalComment,
+            SignatureDataUrl = sigData,
+            BiometricVerified = bioVerified,
+            DeviceInfo = await GetDeviceInfoAsync(),
+            ClientTimestamp = DateTime.Now
+        };
+        // تشخیص آفلاین
+        bool offline = false;
+        try { offline = !(await JS.InvokeAsync<bool>("eval", "navigator.onLine")); } catch {}
+        if (offline)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("docArchiveOffline.queueApproval", payload);
+                offlineQueueCount = await JS.InvokeAsync<int>("docArchiveQueueCount");
+                Toast.Success("آفلاین — تایید در صف ذخیره شد و بعداً همگام می‌شود." + (sigData != null ? " (با امضا)" : ""));
+                showApproval = false;
+                // بستن کارتابل محلی برای UX
+                try { await JS.InvokeVoidAsync("docArchiveOffline.updateBadge"); } catch {}
+                return;
+            }
+            catch (Exception ex) { Toast.Error("ذخیره آفلاین ناموفق: " + ex.Message); }
+        }
         try
         {
-            await Svc.ApprovalAsync(new DocApprovalActionDto
-            {
-                VersionId = approvalTarget.Id,
-                Approve = approveMode,
-                Comment = approvalComment
-            });
-            Toast.Success(approveMode ? "ورژن تایید شد." : "ورژن رد شد.");
+            await Svc.ApprovalAsync(payload);
+            Toast.Success(approveMode ? "ورژن تایید شد." + (sigData != null ? " (امضا ثبت شد)" : "") : "ورژن رد شد.");
             showApproval = false;
             await Load();
         }
-        catch (Exception ex) { Toast.Error(ex.Message); }
+        catch (Exception ex)
+        {
+            // اگر خطا شبکه بود، در صف آفلاین بگذار
+            var msg = ex.Message ?? "";
+            bool isNetwork = msg.Contains("Network") || msg.Contains("Failed to fetch") || msg.Contains("TypeError") || msg.Contains("offline");
+            if (!offline && isNetwork)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("docArchiveOffline.queueApproval", payload);
+                    offlineQueueCount = await JS.InvokeAsync<int>("docArchiveQueueCount");
+                    Toast.Success("اتصال قطع شد — در صف آفلاین ذخیره شد.");
+                    showApproval = false;
+                    return;
+                }
+                catch {}
+            }
+            Toast.Error(msg);
+        }
         finally { saving = false; }
+    }
+    private async Task<string> GetDeviceInfoAsync()
+    {
+        try { return await JS.InvokeAsync<string>("eval", "navigator.userAgent.slice(0,120)") ?? ""; } catch { return ""; }
     }
 
     // ---------- لینک ----------
@@ -1325,6 +1493,17 @@ else
         }
         catch (Exception ex) { Toast.Error(ex.Message); }
         finally { printLogsLoading = false; }
+    }
+
+    // ---------- Leak trace ----------
+    private List<DocLeakTraceDto> leakTraces = new();
+    private bool leakLoaded, leakLoading;
+    private async Task LoadLeakTraces()
+    {
+        leakLoading = true;
+        try { leakTraces = await Svc.GetLeakTracesAsync(Id); leakLoaded = true; }
+        catch (Exception ex) { Toast.Error(ex.Message); }
+        finally { leakLoading = false; }
     }
 
     // ---------- درخواست دسترسی ----------

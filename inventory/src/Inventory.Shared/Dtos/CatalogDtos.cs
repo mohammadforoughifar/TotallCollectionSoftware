@@ -319,7 +319,4 @@ public class LookupItem
 
     /// <summary>آدرس آواتار (اختیاری) — نمایش تصویر دایره‌ای در جستجو/انتخاب</summary>
     public string? AvatarUrl { get; set; }
-
-    /// <summary>اطلاعات تکمیلی اختیاری برای نمایش زیر عنوان گزینه در انتخابگرها.</summary>
-    public string? InfoText { get; set; }
 }

@@ -9,18 +9,12 @@ using Inventory.Api.Services.Ai;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
-var localMoadianSettingsPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "MoadianSettings.json");
-builder.Configuration.AddJsonFile(localMoadianSettingsPath, optional: true, reloadOnChange: false);
-// Re-add the standard higher-priority providers after the local, Git-ignored settings file.
-builder.Configuration.AddEnvironmentVariables();
-builder.Configuration.AddCommandLine(args);
 builder.Services.AddHttpContextAccessor();
 var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"]
     ?? Path.Combine(builder.Environment.ContentRootPath, "App_Data", "DataProtectionKeys");
@@ -93,22 +87,8 @@ builder.Services.AddScoped<Inventory.Api.Services.Accounting.IFixedAssetService,
 builder.Services.AddScoped<Inventory.Api.Services.Accounting.IBudgetService, Inventory.Api.Services.Accounting.BudgetService>(); // بودجه و کنترل بودجه
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IInvoicingService, Inventory.Api.Services.Invoicing.InvoicingService>(); // ماژول فاکتور
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianService, Inventory.Api.Services.Invoicing.MoadianService>(); // سامانه مودیان (فاکتور الکترونیکی)
-builder.Services.AddSingleton(new Inventory.Api.Services.Invoicing.MoadianRuntimeSettings(
-    builder.Configuration["Moadian:BaseUrl"],
-    builder.Configuration["Moadian:ApiVersion"],
-    builder.Configuration["Files:MoadianPrivateKeyRoot"],
-    builder.Configuration["Moadian:ClientType"],
-    builder.Configuration["Moadian:SignatureKeyId"],
-    int.TryParse(builder.Configuration["Moadian:SerialStartNumber"], out var moadianSerialStart) ? moadianSerialStart : 0)); // snapshots global Moadian options and private-key root at startup
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianMasterDataService, Inventory.Api.Services.Invoicing.MoadianMasterDataService>(); // CRUD اطلاعات پایهٔ پروفایل‌های مودیان
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService, Inventory.Api.Services.Invoicing.MoadianProviderPrivateKeyService>(); // کلید خصوصی هر خدمات‌دهنده: wwwroot/uploads/moadian/{خدمات‌دهنده}
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianConnectionTestService, Inventory.Api.Services.Invoicing.MoadianConnectionTestService>(); // تست اتصال و احراز هویت خدمات‌دهنده (GET_TOKEN)
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianFiscalYearService, Inventory.Api.Services.Invoicing.MoadianFiscalYearService>(); // سال مالی مودیان و دوره‌های ماهانه
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianStandaloneInvoiceService, Inventory.Api.Services.Invoicing.MoadianStandaloneInvoiceService>(); // ثبت صورتحساب مستقل از ERP با شمارهٔ سند سالانه
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianProviderInvoiceService, Inventory.Api.Services.Invoicing.MoadianProviderInvoiceService>(); // فهرست صورتحساب‌ها به تفکیک خدمات‌دهنده
-builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IMoadianSubmissionService, Inventory.Api.Services.Invoicing.MoadianSubmissionService>(); // ارسال/استعلام رسمی به سامانه مودیان (SDK)
 builder.Services.AddScoped<Inventory.Api.Services.Invoicing.IFiscalPrinterService, Inventory.Api.Services.Invoicing.FiscalPrinterService>(); // چاپگر مالی
-builder.Services.AddScoped<Inventory.Api.Services.ICompanyProfileService, Inventory.Api.Services.CompanyProfileService>(); // تعریف شرکت/فروشگاه و تنظیمات چاپ فاکتور
+// Moadian sending/auto-sender remains deliberately unregistered until official protocol verification.
 builder.Services.AddScoped<Inventory.Api.Services.Treasury.ITreasuryService, Inventory.Api.Services.Treasury.TreasuryService>(); // ماژول خزانه‌داری
 builder.Services.AddScoped<Inventory.Api.Services.Stocktaking.IStocktakingService, Inventory.Api.Services.Stocktaking.StocktakingService>(); // ماژول انبارگردانی و بارکد
 builder.Services.AddScoped<Inventory.Api.Services.Export.IExportService, Inventory.Api.Services.Export.ExportService>(); // خروجی PDF و Excel
@@ -178,10 +158,6 @@ builder.Services.AddScoped<Inventory.Api.Services.FaPay.IFaPayExtraService, Inve
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocDownloadConfirmService, Inventory.Api.Services.DocArchive.DocDownloadConfirmService>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocFolderZipService, Inventory.Api.Services.DocArchive.DocFolderZipService>();
-// ورود انبوه آرشیو (بخش DocArchiveImport در appsettings). مسیر ریشه فقط از پیکربندی سرور خوانده می‌شود.
-builder.Services.Configure<Inventory.Api.Services.DocArchive.DocImportOptions>(
-    builder.Configuration.GetSection(Inventory.Api.Services.DocArchive.DocImportOptions.SectionName));
-builder.Services.AddScoped<Inventory.Api.Services.DocArchive.IDocImportService, Inventory.Api.Services.DocArchive.DocImportService>();
 // سرویس OCR پایتون (اختیاری — بخش OcrService در appsettings). اگر BaseUrl خالی باشد موتور محلی استفاده می‌شود.
 var ocrOptions = builder.Configuration.GetSection("OcrService")
     .Get<Inventory.Api.Services.DocArchive.OcrServiceOptions>()
@@ -191,11 +167,8 @@ builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IOcrServiceClien
     Inventory.Api.Services.DocArchive.OcrServiceClient>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocTextExtractorService, Inventory.Api.Services.DocArchive.DocTextExtractorService>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.IDocIndexService, Inventory.Api.Services.DocArchive.DocIndexService>();
+// سرویس پس‌زمینه هشدار انقضای مدارک (روزانه)
 builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocIndexWorker>();
-// متن‌گیری شبانهٔ فایل‌های ورود انبوه (خارج از ساعت کاری)
-builder.Services.Configure<Inventory.Api.Services.DocArchive.DocImportOcrOptions>(
-    builder.Configuration.GetSection(Inventory.Api.Services.DocArchive.DocImportOcrOptions.SectionName));
-builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocImportOcrWorker>();
 builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocRenewalWorker>();
 builder.Services.AddScoped<Inventory.Api.Services.DocArchive.DocRenewalService>();
 builder.Services.AddSingleton<Inventory.Api.Services.DocArchive.DocExpiryWatcher>();
@@ -393,6 +366,8 @@ builder.Services.AddScoped<AiDigestService>();
 builder.Services.AddScoped<AiReminderService>();
 builder.Services.AddScoped<AiScheduleService>();
 builder.Services.AddScoped<AiSearchService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.DocArchiveSemanticService>();
+builder.Services.AddScoped<Inventory.Api.Services.DocArchive.DocArchiveAutoSuggestService>();
 builder.Services.AddScoped<AiAlertRuleService>();
 builder.Services.AddScoped<AiFeedbackService>();
 builder.Services.AddScoped<AiAuditService>();
@@ -465,6 +440,7 @@ builder.Services.AddHostedService<AiDigestWorker>();
 builder.Services.AddHostedService<AiReminderWorker>();
 builder.Services.AddHostedService<AiScheduleWorker>();
 builder.Services.AddHostedService<AiSearchWorker>();
+builder.Services.AddHostedService<Inventory.Api.Services.DocArchive.DocArchiveSemanticWorker>();
 builder.Services.AddHostedService<AiAlertRuleWorker>();
 builder.Services.AddSingleton<HardwareMonitor>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HardwareMonitor>());
@@ -530,19 +506,6 @@ if (!EF.IsDesignTime)
     using var orgScope = app.Services.CreateScope();
     var orgDb = orgScope.ServiceProvider.GetRequiredService<AppDbContext>();
     await app.Services.GetRequiredService<IProjectFileProtection>().OrganizeProjectFoldersAsync(orgDb);
-
-    // مهاجرت یک‌باره کلیدهای خصوصی مودیان از ذخیره‌گاه‌های قبلی به wwwroot/uploads/moadian/{نام خدمات‌دهنده}/
-    try
-    {
-        using var moadianKeyScope = app.Services.CreateScope();
-        await moadianKeyScope.ServiceProvider
-            .GetRequiredService<Inventory.Api.Services.Invoicing.IMoadianProviderPrivateKeyService>()
-            .MigrateLegacyKeyFilesAsync(CancellationToken.None);
-    }
-    catch (Exception moadianKeyEx)
-    {
-        app.Logger.LogWarning(moadianKeyEx, "Moadian private-key folder migration failed; keys remain at their previous paths.");
-    }
 }
 
 // در همه‌ی محیط‌ها فعال است (حتی Production) تا روی هر سیستمی قابل تست باشد
@@ -637,8 +600,7 @@ foreach (var moduleFolder in new[]
     "cctv",
     "catalog",
     "chat",
-    "system/archive",
-    "moadian"
+    "system/archive"
 })
 {
     Directory.CreateDirectory(Path.Combine(uploadsRoot, moduleFolder));
@@ -666,9 +628,7 @@ if (Directory.Exists(clientRoot) && File.Exists(Path.Combine(clientRoot, "index.
     app.Use(async (ctx, next) =>
     {
         if (ctx.Request.Path.StartsWithSegments("/SecureFiles", StringComparison.OrdinalIgnoreCase) ||
-            ctx.Request.Path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase) ||
-            // کلیدهای خصوصی مودیان هرگز به‌صورت استاتیک سرو نمی‌شوند
-            ctx.Request.Path.StartsWithSegments("/uploads/moadian", StringComparison.OrdinalIgnoreCase))
+            ctx.Request.Path.StartsWithSegments("/uploads/projects", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
             return;

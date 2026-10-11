@@ -19,7 +19,6 @@ public class AppDbContext : DbContext
     public DbSet<RsReportUserShare> RsReportUserShares => Set<RsReportUserShare>();
     public DbSet<RsReportRoleShare> RsReportRoleShares => Set<RsReportRoleShare>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
-    public DbSet<CompanyProfile> CompanyProfiles => Set<CompanyProfile>();
 
     // ==================== داشبورد شخصی کاربر ====================
     public DbSet<UserDashboard> UserDashboards => Set<UserDashboard>();
@@ -44,7 +43,6 @@ public class AppDbContext : DbContext
     public DbSet<InstallmentLine> Installments => Set<InstallmentLine>();
     public DbSet<Technician> Technicians => Set<Technician>();
     public DbSet<RepairOrder> RepairOrders => Set<RepairOrder>();
-    public DbSet<RepairDevice> RepairDevices => Set<RepairDevice>();
     public DbSet<RepairItem> RepairItems => Set<RepairItem>();
     public DbSet<SystemInfo> SystemInfos => Set<SystemInfo>();
 
@@ -217,12 +215,10 @@ public class AppDbContext : DbContext
 
     /// <summary>لاگ چاپ فایل‌های مدرک (DocArchive — جدول DocumentPrintLogs)</summary>
     public DbSet<DocumentPrintLog> DocumentPrintLogs => Set<DocumentPrintLog>();
-
-    /// <summary>نوبت‌های ورود انبوه آرشیو (DocArchive — جدول DocImportBatches)</summary>
-    public DbSet<DocImportBatch> DocImportBatches => Set<DocImportBatch>();
-
-    /// <summary>نتیجهٔ هر فایل در یک نوبت ورود (جدول DocImportResults)</summary>
-    public DbSet<DocImportResult> DocImportResults => Set<DocImportResult>();
+    public DbSet<DocFavorite> DocFavorites => Set<DocFavorite>();
+    public DbSet<DocComment> DocComments => Set<DocComment>();
+    public DbSet<DocCommentMention> DocCommentMentions => Set<DocCommentMention>();
+    public DbSet<DocLeakTrace> DocLeakTraces => Set<DocLeakTrace>();
 
     /// <summary>ماژول هسته پرسنلی (کارگزینی) — HrCore</summary>
     public DbSet<HrOrgUnit> HrOrgUnits => Set<HrOrgUnit>();
@@ -383,12 +379,6 @@ public class AppDbContext : DbContext
     public DbSet<MoadianInvoiceLine> MoadianInvoiceLines => Set<MoadianInvoiceLine>();
     public DbSet<MoadianLog> MoadianLogs => Set<MoadianLog>();
     public DbSet<MoadianCpc> MoadianCpcList => Set<MoadianCpc>();
-    public DbSet<MoadianServiceProviderProfile> MoadianServiceProviderProfiles => Set<MoadianServiceProviderProfile>();
-    public DbSet<MoadianFiscalYear> MoadianFiscalYears => Set<MoadianFiscalYear>();
-    public DbSet<MoadianProviderConnectionProfile> MoadianProviderConnections => Set<MoadianProviderConnectionProfile>();
-    public DbSet<MoadianCustomerProfile> MoadianCustomerProfiles => Set<MoadianCustomerProfile>();
-    public DbSet<MoadianGoodsOrServiceProfile> MoadianGoodsOrServices => Set<MoadianGoodsOrServiceProfile>();
-    public DbSet<MoadianUnitOfMeasurement> MoadianUnitsOfMeasurement => Set<MoadianUnitOfMeasurement>();
     public DbSet<FiscalPrinterSetting> FiscalPrinterSettings => Set<FiscalPrinterSetting>();
 
     // ---------- ماژول فاکتور ----------
@@ -468,14 +458,6 @@ public class AppDbContext : DbContext
         mb.Entity<DocumentLink>().HasIndex(l => new { l.DocumentId, l.LinkedDocumentId }).IsUnique();
         mb.Entity<DocCartableTask>().HasIndex(t => new { t.UserId, t.Status });
         mb.Entity<DocumentLog>().HasIndex(l => l.DocumentId);
-
-        // ==================== آرشیو اسناد — ورود انبوه ====================
-        // نام ایندکس‌ها با اسکیمای خودتعمیر (DocArchiveImportSchemaV1) یکی است تا
-        // در دیتابیس تازه‌ساختِ SQLite ایندکس تکراری ساخته نشود.
-        mb.Entity<DocImportResult>().HasIndex(r => new { r.BatchId, r.RelativePath }).IsUnique()
-            .HasDatabaseName("UX_DocImportResults_Batch_Path");
-        mb.Entity<DocImportResult>().HasIndex(r => new { r.BatchId, r.Status })
-            .HasDatabaseName("IX_DocImportResults_Batch_Status");
         mb.Entity<DocTag>().HasIndex(t => t.Name).IsUnique();
         mb.Entity<DocumentTag>().HasIndex(t => new { t.DocumentId, t.TagId }).IsUnique();
         mb.Entity<DocExtractedText>().HasIndex(e => new { e.DocumentId, e.AttachmentId });
@@ -491,6 +473,10 @@ public class AppDbContext : DbContext
         // درخواست دسترسی به مدرک
         mb.Entity<DocAccessRequest>().HasIndex(r => new { r.DocumentId, r.Status });
         mb.Entity<DocAccessRequest>().HasIndex(r => new { r.RequesterUserId, r.Status });
+
+        // علاقه‌مندی‌ها
+        mb.Entity<DocFavorite>().HasIndex(f => new { f.UserId, f.DocumentId }).IsUnique();
+        mb.Entity<DocFavorite>().HasIndex(f => f.UserId);
 
         // ---------- ماژول پیام‌رسان سازمانی (Chat) ----------
         mb.Entity<Inventory.Api.Entities.Chat.ChatMember>().HasIndex(m => new { m.ConversationId, m.UserId }).IsUnique();
@@ -515,7 +501,6 @@ public class AppDbContext : DbContext
         mb.Entity<Stock>().Property(s => s.AvgCost).HasPrecision(18, 4);
         mb.Entity<Transaction>().Property(t => t.Amount).HasPrecision(18, 2);
         mb.Entity<TransactionLine>().Property(l => l.Price).HasPrecision(18, 2);
-        mb.Entity<TransactionLine>().Property(l => l.UnitCostSnapshot).HasPrecision(18, 2);
 
         // مقادیر (موجودی/مقدار) با 3 رقم اعشار
         mb.Entity<Product>().Property(p => p.ReorderPoint).HasPrecision(18, 3);
@@ -557,13 +542,6 @@ public class AppDbContext : DbContext
         mb.Entity<RepairOrder>().HasIndex(r => r.PartyId);
         mb.Entity<RepairOrder>().HasIndex(r => r.TechnicianId);
         mb.Entity<RepairOrder>().Property(r => r.QuotedPrice).HasPrecision(18, 2);
-        mb.Entity<RepairOrder>()
-            .HasMany(r => r.Devices)
-            .WithOne()
-            .HasForeignKey(d => d.RepairOrderId)
-            .OnDelete(DeleteBehavior.Cascade);
-        mb.Entity<RepairDevice>().HasIndex(d => d.RepairOrderId);
-        mb.Entity<RepairDevice>().Property(d => d.QuotedPrice).HasPrecision(18, 2);
         mb.Entity<RepairOrder>()
             .HasMany(r => r.Items)
             .WithOne()
@@ -1039,43 +1017,6 @@ public class AppDbContext : DbContext
           .HasForeignKey(t => t.BudgetItemId)
           .OnDelete(DeleteBehavior.Restrict);
 
-        // ---------- اطلاعات پایهٔ مودیان و ConnectInfo (مستقل از sender) ----------
-        mb.Entity<MoadianServiceProviderProfile>().ToTable("MoadianServiceProviderProfiles");
-        mb.Entity<MoadianServiceProviderProfile>().Property(p => p.IsDeleted).HasDefaultValue(false);
-        mb.Entity<MoadianServiceProviderProfile>().HasIndex(p => p.NationalID);
-        mb.Entity<MoadianFiscalYear>().ToTable("MoadianFiscalYears");
-        mb.Entity<MoadianFiscalYear>().HasIndex(y => new { y.ServiceProviderId, y.Year }).IsUnique().HasDatabaseName("IX_MoadianFiscalYears_ProviderYear");
-        mb.Entity<MoadianProviderConnectionProfile>().ToTable("MoadianProviderConnections");
-        mb.Entity<MoadianProviderConnectionProfile>().Property(c => c.IsDeleted).HasDefaultValue(false);
-        mb.Entity<MoadianProviderConnectionProfile>().Property(c => c.LastConnectionTestMessage).HasMaxLength(500);
-        mb.Entity<MoadianProviderConnectionProfile>()
-            .HasOne(c => c.ServiceProvider).WithMany(p => p.Connections)
-            .HasForeignKey(c => c.ServiceProviderId)
-            .OnDelete(DeleteBehavior.Restrict);
-        // هر خدمات‌دهنده حداکثر یک رکورد اتصال دارد (نسخه‌های قدیمی اتصال حذف می‌شوند).
-        mb.Entity<MoadianProviderConnectionProfile>()
-            .HasIndex(c => c.ServiceProviderId)
-            .HasDatabaseName("IX_MoadianProviderConnections_ServiceProviderId_Single")
-            .IsUnique();
-        mb.Entity<MoadianCustomerProfile>().ToTable("MoadianCustomerProfiles");
-        mb.Entity<MoadianCustomerProfile>().Property(c => c.IsDeleted).HasDefaultValue(false);
-        mb.Entity<MoadianCustomerProfile>()
-            .HasOne(c => c.ServiceProvider).WithMany()
-            .HasForeignKey(c => c.ServiceProviderId)
-            .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<MoadianCustomerProfile>().HasIndex(c => new { c.ServiceProviderId, c.IsDeleted });
-        mb.Entity<MoadianGoodsOrServiceProfile>().ToTable("MoadianGoodsOrServices");
-        mb.Entity<MoadianGoodsOrServiceProfile>().Property(g => g.IsDeleted).HasDefaultValue(false);
-        mb.Entity<MoadianGoodsOrServiceProfile>()
-            .HasOne(g => g.ServiceProvider).WithMany()
-            .HasForeignKey(g => g.ServiceProviderId)
-            .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<MoadianGoodsOrServiceProfile>().HasIndex(g => new { g.ServiceProviderId, g.IsDeleted });
-        mb.Entity<MoadianGoodsOrServiceProfile>().Property(g => g.Price).HasPrecision(18, 2);
-        mb.Entity<MoadianUnitOfMeasurement>().ToTable("MoadianUnitsOfMeasurement");
-        mb.Entity<MoadianUnitOfMeasurement>().Property(u => u.IsDeleted).HasDefaultValue(false);
-        mb.Entity<MoadianUnitOfMeasurement>().HasIndex(u => u.Code).IsUnique();
-
         // ---------- سامانه مودیان ----------
         mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalPeriodId, i.Number }).IsUnique();
         mb.Entity<MoadianInvoice>().HasIndex(i => i.Number);
@@ -1086,21 +1027,10 @@ public class AppDbContext : DbContext
           .OnDelete(DeleteBehavior.Restrict);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.Status);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.ReferenceId);
-        mb.Entity<MoadianInvoice>().HasIndex(i => i.ServiceProviderId).HasDatabaseName("IX_MoadianInvoices_ServiceProviderId");
         mb.Entity<MoadianInvoice>().HasIndex(i => i.FacInvoiceId);
         mb.Entity<MoadianInvoice>().HasIndex(i => i.OperationsTransactionId).IsUnique()
           .HasFilter("[OperationsTransactionId] IS NOT NULL");
-        // سال مالی مودیان: هر فاکتور می‌تواند به یک سال مالی گره بخورد؛ شمارهٔ سند و سریال سال یکتا هستند.
-        mb.Entity<MoadianInvoice>()
-          .HasOne(i => i.FiscalYear).WithMany(y => y.Invoices)
-          .HasForeignKey(i => i.FiscalYearId)
-          .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<MoadianInvoice>().Property(i => i.DocumentNumber).HasMaxLength(30);
-        mb.Entity<MoadianInvoice>().HasIndex(i => i.DocumentNumber).IsUnique()
-          .HasFilter("[DocumentNumber] IS NOT NULL");
-        mb.Entity<MoadianInvoice>().HasIndex(i => new { i.FiscalYearId, i.YearSerial }).IsUnique()
-          .HasFilter("[FiscalYearId] IS NOT NULL AND [YearSerial] > 0");
-        mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.ServiceProviderId, p.Year, p.Month }).IsUnique().HasDatabaseName("IX_MoadianFiscalPeriods_ProviderYearMonth");
+        mb.Entity<MoadianFiscalPeriod>().HasIndex(p => new { p.Year, p.Month }).IsUnique();
         mb.Entity<MoadianCpc>().HasIndex(c => c.Code).IsUnique();
         mb.Entity<MoadianLog>().HasIndex(l => l.InvoiceId);
         mb.Entity<MoadianInvoice>().Property(i => i.TotalGross).HasPrecision(18, 2);

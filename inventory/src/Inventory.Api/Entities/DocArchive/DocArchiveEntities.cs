@@ -213,6 +213,14 @@ public class DocumentApprover
 
     public DateTime? ActedAt { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    /// <summary>امضای ترسیمی (base64 کوچک) — برای حسابرسی PWA آفلاین</summary>
+    public string? SignatureDataUrl { get; set; }
+
+    public bool BiometricVerified { get; set; }
+
+    [MaxLength(300)]
+    public string? DeviceInfo { get; set; }
 }
 
 /// <summary>ورژن مدرک — محتوا/پیوست‌ها روی ورژن ثبت می‌شوند.</summary>
@@ -564,4 +572,61 @@ public class DocumentPrintLog
     /// <summary>منبع چاپ: نسخه وب / موبایل / …</summary>
     [MaxLength(30)]
     public string Source { get; set; } = "Web";
+}
+
+/// <summary>
+/// علاقه‌مندی (ستاره) — هر کاربر می‌تواند مدارک پرکاربرد را ستاره کند.
+/// فقط روی مدارکی که کاربر حداقل View دارد ذخیره می‌شود، ولی نمایش فقط روی مدارک قابل‌دسترس فیلتر می‌شود.
+/// </summary>
+public class DocFavorite
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public int DocumentId { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+}
+
+// ========== اسکنر + نظرات + ردیاب نشت (2025-10-09) ==========
+
+/// <summary>نظر/تاپیک روی مدرک یا نسخه — ترددار با منشن @</summary>
+public class DocComment
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public int? VersionId { get; set; }
+    public int? ParentId { get; set; }
+    public int AuthorUserId { get; set; }
+    [MaxLength(150)] public string AuthorName { get; set; } = "";
+    [MaxLength(2000)] public string Body { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public DateTime? EditedAt { get; set; }
+    public bool IsResolved { get; set; }
+    public int? ResolvedByUserId { get; set; }
+    public DateTime? ResolvedAt { get; set; }
+    public bool IsDeleted { get; set; }
+}
+
+/// <summary>منشن‌های هر کامنت — برای نوتیف و هایلایت @</summary>
+public class DocCommentMention
+{
+    public int Id { get; set; }
+    public int CommentId { get; set; }
+    public int MentionedUserId { get; set; }
+    [MaxLength(150)] public string MentionedUserName { get; set; } = "";
+}
+
+/// <summary>لاگ ردیاب نشت — هر دانلود/چاپ با واترمارک نامرئی + هش</summary>
+public class DocLeakTrace
+{
+    public int Id { get; set; }
+    public int DocumentId { get; set; }
+    public int? VersionId { get; set; }
+    public int UserId { get; set; }
+    [MaxLength(150)] public string UserName { get; set; } = "";
+    [MaxLength(60)] public string? IpAddress { get; set; }
+    [MaxLength(300)] public string VisibleWatermark { get; set; } = "";
+    [MaxLength(300)] public string InvisiblePayload { get; set; } = "";
+    [MaxLength(64)] public string FileHash { get; set; } = "";
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public string Action { get; set; } = "Download"; // Download | Print | Share
 }

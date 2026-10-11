@@ -58,8 +58,54 @@ async function onActivate(event) {
     await self.clients.claim();
 }
 
+const docArchiveApiCache='doc-archive-api-v1';
+const docArchiveCacheableGet = (url)=> url.pathname.startsWith('/api/doc-archive/') && (
+  url.pathname.includes('/folders') || url.pathname.includes('/documents') || url.pathname.includes('/cartable') ||
+  url.pathname.includes('/favorites') || url.pathname.includes('/recently-viewed') || url.pathname.includes('/search') ||
+  url.pathname.includes('/tags') || url.pathname.includes('/lookups') || url.pathname.includes('/stats') || url.pathname.includes('/expiry-summary')
+);
+
+// Background Sync برای صف آفلاین آرشیو
+self.addEventListener('sync', event=>{
+  if(event.tag==='doc-archive-sync'){
+    event.waitUntil((async()=>{
+      const clients=await self.clients.matchAll();
+      for(const c of clients) c.postMessage({type:'doc-archive-sync'});
+    })());
+  }
+});
+
+async function networkFirstWithCache(request){
+  const cache=await caches.open(docArchiveApiCache);
+  try{
+    const resp=await fetch(request);
+    if(resp.ok){
+      const clone=resp.clone();
+      // فقط GETهای کوچک را کش کن (نه فایل‌های حجیم)
+      const ct=resp.headers.get('content-type')||'';
+      if(ct.includes('json')){
+        cache.put(request, clone).catch(()=>{});
+        // محدود نگه داشتن کش (حداکثر 80 ورودی)
+        const keys=await cache.keys();
+        if(keys.length>80) await cache.delete(keys[0]);
+      }
+    }
+    return resp;
+  }catch(e){
+    const cached=await cache.match(request);
+    if(cached) return cached;
+    // پاسخ آفلاین ساختگی برای اینکه UI بتواند پیام مناسب نشان دهد
+    return new Response(JSON.stringify({message:'آفلاین - داده از کش', offline:true}), {status:503, headers:{'Content-Type':'application/json'}});
+  }
+}
+
 async function onFetch(event) {
     const requestUrl = new URL(event.request.url);
+
+    // آرشیو اسناد — GETهای قابل کش با استراتژی NetworkFirst + Cache Fallback (برای PWA آفلاین)
+    if(event.request.method==='GET' && docArchiveCacheableGet(requestUrl)){
+      return networkFirstWithCache(event.request);
+    }
 
     // ⚠️ مسیرهای داده/فایل (API، SignalR و هر URL دارای access_token) هرگز نباید
     // از کش سرو یا با index.html پاسخ داده شوند: درخواست دانلود/پیش‌نمایش پیوست چت

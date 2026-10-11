@@ -153,6 +153,39 @@ public class DocExpiryWatcher : BackgroundService
                 notifyQueue.Add((owners, title,
                     $"تاریخ انقضای مدرک «{d.Title}» ({d.Code}) {exp:yyyy/MM/dd} است — {label}.",
                     $"/doc-archive/documents/{d.Id}"));
+
+            // اسکالیشن: اگر ۷ روز یا کمتر مانده یا منقضی شده، به مدیران آرشیو هم هشدار بده (حتی اگر مالک مدرک نیستند)
+            if (threshold <= 7)
+            {
+                var managers = await db.UserRoles.AsNoTracking()
+                    .Where(ur => db.Roles.Any(r => r.Id == ur.RoleId && r.IsActive)
+                        && db.RolePermissions.Any(rp => rp.RoleId == ur.RoleId && db.Permissions.Any(p => p.Id == rp.PermissionId && p.Module == "DocArchive" && p.Action == "Manage")))
+                    .Select(ur => ur.UserId).Distinct().ToListAsync(ct);
+                // ادمین‌های قدیمی بدون نقش هم مدیرند
+                var legacyAdmins = await db.Users.AsNoTracking()
+                    .Where(u => u.Role == "Admin" && u.IsActive && !db.UserRoles.Any(ur => ur.UserId == u.Id))
+                    .Select(u => u.Id).ToListAsync(ct);
+                managers.AddRange(legacyAdmins);
+                managers = managers.Distinct().Where(id => !owners.Contains(id)).ToList();
+                if (managers.Count > 0)
+                {
+                    var escTitle = $"[اسکالیشن] {title}";
+                    var escBody = $"هشدار اسکالیشن: مدرک «{d.Title}» ({d.Code}) {label} و هنوز تمدید نشده — لطفاً پیگیری کنید. مالکان: {owners.Count} نفر.";
+                    notifyQueue.Add((managers, escTitle, escBody, $"/doc-archive/documents/{d.Id}"));
+                    // برای اسکالیشن هم کارتابل بساز
+                    foreach (var mid in managers)
+                    {
+                        db.DocCartableTasks.Add(new DocCartableTask
+                        {
+                            Kind = "ExpiryEscalation",
+                            UserId = mid,
+                            DocumentId = d.Id,
+                            Title = escTitle
+                        });
+                        totalTasks++;
+                    }
+                }
+            }
         }
 
         if (totalTasks > 0 || notifyQueue.Count > 0)

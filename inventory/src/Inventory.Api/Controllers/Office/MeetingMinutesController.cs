@@ -4,7 +4,6 @@ using Inventory.Api.Services.Office;
 using Inventory.Api.Services.Office.Email;
 using Inventory.Api.Services.Office.Outgoing;
 using Inventory.Shared.Dtos;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -35,38 +34,9 @@ public class MeetingMinutesController : RbacControllerBase
 
     private async Task<int?> ActiveCompanyIdAsync()
     {
-        if (int.TryParse(Request.Headers["X-Company-Id"].FirstOrDefault(), out var requested) && requested > 0)
-        {
-            var allowed = await Db.UserCompanyAccesses.AnyAsync(
-                x => x.UserId == MyUserId && x.CompanyId == requested && x.Company.IsActive);
-            if (allowed) return requested;
-        }
-
-        // مقاومت در برابر درخواست‌های اولیهٔ بعد از Login یا کلاینت قدیمی که
-        // هدر شرکت فعال را هنوز ارسال نکرده است: فقط وقتی یک شرکت مجاز وجود دارد
-        // انتخاب خودکار بی‌خطر است؛ برای چند شرکت همچنان انتخاب صریح اجباری است.
-        var accessible = await Db.UserCompanyAccesses.AsNoTracking()
-            .Where(x => x.UserId == MyUserId && x.Company.IsActive)
-            .Select(x => x.CompanyId)
-            .Distinct()
-            .ToListAsync();
-        if (accessible.Count == 1) return accessible[0];
-
-        if (accessible.Count == 0)
-        {
-            var username = User.FindFirstValue(ClaimTypes.Name) ?? "";
-            // SystemUser فقط CompanyId دارد و ناوبری شرکت روی آن تعریف نشده است؛
-            // بنابراین شرکتِ فعال با اتصال (join) به جدول شرکت‌ها بررسی می‌شود.
-            var legacy = await (from user in Db.SystemUsers.AsNoTracking()
-                                join company in Db.SystemCompanies.AsNoTracking() on user.CompanyId equals company.Id
-                                where user.Username == username && company.IsActive
-                                select company.Id)
-                .Distinct()
-                .ToListAsync();
-            if (legacy.Count == 1) return legacy[0];
-        }
-
-        return null;
+        if (!int.TryParse(Request.Headers["X-Company-Id"].FirstOrDefault(), out var id) || id <= 0) return null;
+        return await Db.UserCompanyAccesses.AnyAsync(x => x.UserId == MyUserId && x.CompanyId == id)
+            ? id : null;
     }
 
     public MeetingMinutesController(

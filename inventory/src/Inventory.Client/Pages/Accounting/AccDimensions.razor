@@ -9,6 +9,7 @@
 <div class="page-head">
     <div>
         <h1>ابعاد تحلیلی</h1>
+        <p class="lead">مراکز هزینه و شعبه‌ها — برای گزارش‌گیری تحلیلی از اسناد</p>
     </div>
     <div class="ms-auto">
         <button class="btn btn-primary" @onclick="OpenNewDim">
@@ -152,11 +153,11 @@
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">کد <span class="text-danger">*</span></label>
-                <input class="form-control num" @bind="dimForm.Code" />
+                <input class="form-control num" @bind="dimForm.Code" placeholder="مثلاً CC" />
             </div>
             <div class="col-md-8">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="dimForm.Name" />
+                <input class="form-control" @bind="dimForm.Name" placeholder="مثلاً مرکز هزینه" />
             </div>
             <div class="col-md-4">
                 <label class="form-label">ترتیب</label>
@@ -186,11 +187,11 @@
         <div class="row g-3">
             <div class="col-md-4">
                 <label class="form-label">کد <span class="text-danger">*</span></label>
-                <input class="form-control num" @bind="valForm.Code" />
+                <input class="form-control num" @bind="valForm.Code" placeholder="مثلاً 101" />
             </div>
             <div class="col-md-8">
                 <label class="form-label">نام <span class="text-danger">*</span></label>
-                <input class="form-control" @bind="valForm.Name" />
+                <input class="form-control" @bind="valForm.Name" placeholder="مثلاً هزینه اداری" />
             </div>
             <div class="col-md-6">
                 <label class="form-label">والد</label>

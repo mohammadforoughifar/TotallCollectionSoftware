@@ -509,6 +509,16 @@ public class DocumentService : IDocumentService
         mine.Status = dto.Approve ? 1 : 2;
         mine.Comment = dto.Comment?.Trim();
         mine.ActedAt = DateTime.Now;
+        // امضای PWA آفلاین + بیومتریک
+        if (!string.IsNullOrWhiteSpace(dto.SignatureDataUrl) && dto.SignatureDataUrl.Length < 500_000)
+            mine.SignatureDataUrl = dto.SignatureDataUrl;
+        mine.BiometricVerified = dto.BiometricVerified;
+        if (!string.IsNullOrWhiteSpace(dto.DeviceInfo)) mine.DeviceInfo = dto.DeviceInfo.Length > 300 ? dto.DeviceInfo[..300] : dto.DeviceInfo;
+        if (dto.ClientTimestamp.HasValue && (DateTime.Now - dto.ClientTimestamp.Value).Duration().TotalMinutes > 2)
+        {
+            // همگام‌سازی آفلاین — زمان کلاینت را در لاگ ثبت کن
+            await LogAsync(doc.Id, ver.Id, "OfflineSync", $"اقدام آفلاین در {dto.ClientTimestamp:yyyy/MM/dd HH:mm} همگام شد. {(dto.BiometricVerified ? "بیومتریک تایید" : "")} {dto.DeviceInfo}", userId, userName);
+        }
 
         // بستن کار کارتابل خودش
         var task = await _db.DocCartableTasks

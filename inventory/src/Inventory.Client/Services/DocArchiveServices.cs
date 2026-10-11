@@ -121,6 +121,33 @@ public interface IDocArchiveService
     string GetFolderZipExportUrl(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true);
     /// <summary>دانلود باینری بسته ZIP (با هدر احراز هویت) به‌همراه نام پیشنهادی سرور.</summary>
     Task<(byte[] Data, string FileName, string ContentType)> DownloadFolderZipAsync(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true);
+
+    // علاقه‌مندی و اخیراً دیده‌شده
+    Task<bool> ToggleFavoriteAsync(int documentId);
+    Task<List<DocFavoriteDto>> GetFavoritesAsync(int skip = 0, int? take = null);
+    Task<Dictionary<int, bool>> GetFavoriteStatusAsync(List<int> documentIds);
+    Task<List<DocRecentlyViewedDto>> GetRecentlyViewedAsync(int take = 10);
+
+    // عملیات گروهی
+    Task<DocBulkResultDto> BulkMoveAsync(DocBulkMoveDto dto);
+    Task<DocBulkResultDto> BulkTagsAsync(DocBulkTagsDto dto);
+    Task<DocBulkResultDto> BulkExpireAsync(DocBulkExpireDto dto);
+    Task<DocBulkResultDto> BulkDeleteAsync(List<int> documentIds);
+
+    // جستجوی معنایی B1
+    Task<DocSemanticSearchResultDto> SemanticSearchAsync(DocSemanticSearchRequest req);
+    Task<string> SemanticReindexAsync(int take = 30);
+
+    // پیشنهاد خودکار B2
+    Task<DocAutoSuggestResultDto> SuggestAsync(DocAutoSuggestRequest req);
+
+    // نظرات و ردیاب (2025-10-09)
+    Task<List<DocCommentDto>> GetCommentsAsync(int documentId);
+    Task<int> AddCommentAsync(DocCommentCreateDto dto);
+    Task ToggleCommentResolveAsync(int documentId, int commentId);
+    Task DeleteCommentAsync(int documentId, int commentId);
+    Task<DocDuplicateResultDto> CheckDuplicateAsync(DocDuplicateCheckRequest req);
+    Task<List<DocLeakTraceDto>> GetLeakTracesAsync(int documentId);
 }
 
 public class DocArchiveService : IDocArchiveService
@@ -334,6 +361,50 @@ public class DocArchiveService : IDocArchiveService
 
     public Task<(byte[] Data, string FileName, string ContentType)> DownloadFolderZipAsync(int? folderId = null, bool includeSubfolders = true, bool onlyActiveVersions = true, bool includeManifest = true)
         => _api.GetFileAsync(GetFolderZipExportUrl(folderId, includeSubfolders, onlyActiveVersions, includeManifest));
+
+    // علاقه‌مندی و اخیراً دیده‌شده
+    public async Task<bool> ToggleFavoriteAsync(int documentId)
+    {
+        var r = await _api.PostAsync<ToggleResult>($"{Root}/favorites/{documentId}/toggle", new { });
+        return r?.IsFavorite ?? false;
+    }
+    private class ToggleResult { public bool IsFavorite { get; set; } }
+    public Task<List<DocFavoriteDto>> GetFavoritesAsync(int skip = 0, int? take = null)
+        => _api.GetAsync<List<DocFavoriteDto>>($"{Root}/favorites?skip={skip}&take={take ?? 50}");
+    public Task<Dictionary<int, bool>> GetFavoriteStatusAsync(List<int> documentIds)
+        => _api.PostAsync<Dictionary<int, bool>>($"{Root}/favorites/status", documentIds);
+    public Task<List<DocRecentlyViewedDto>> GetRecentlyViewedAsync(int take = 10)
+        => _api.GetAsync<List<DocRecentlyViewedDto>>($"{Root}/recently-viewed?take={take}");
+
+    // عملیات گروهی
+    public Task<DocBulkResultDto> BulkMoveAsync(DocBulkMoveDto dto) => _api.PostAsync<DocBulkResultDto>($"{Root}/bulk/move", dto);
+    public Task<DocBulkResultDto> BulkTagsAsync(DocBulkTagsDto dto) => _api.PostAsync<DocBulkResultDto>($"{Root}/bulk/tags", dto);
+    public Task<DocBulkResultDto> BulkExpireAsync(DocBulkExpireDto dto) => _api.PostAsync<DocBulkResultDto>($"{Root}/bulk/expire", dto);
+    public Task<DocBulkResultDto> BulkDeleteAsync(List<int> documentIds) => _api.PostAsync<DocBulkResultDto>($"{Root}/bulk/delete", documentIds);
+
+    // جستجوی معنایی B1
+    public Task<DocSemanticSearchResultDto> SemanticSearchAsync(DocSemanticSearchRequest req) => _api.PostAsync<DocSemanticSearchResultDto>($"{Root}/semantic-search", req);
+    public async Task<string> SemanticReindexAsync(int take = 30)
+    {
+        var r = await _api.PostAsync<ReindexMsg>($"{Root}/semantic-reindex?take={take}", new { });
+        return r?.message ?? "ایندکس شد.";
+    }
+    private class ReindexMsg { public string message { get; set; } = ""; }
+
+    // پیشنهاد خودکار B2
+    public Task<DocAutoSuggestResultDto> SuggestAsync(DocAutoSuggestRequest req) => _api.PostAsync<DocAutoSuggestResultDto>($"{Root}/suggest", req);
+
+    // نظرات و ردیاب
+    public Task<List<DocCommentDto>> GetCommentsAsync(int documentId) => _api.GetAsync<List<DocCommentDto>>($"{Root}/documents/{documentId}/comments");
+    public async Task<int> AddCommentAsync(DocCommentCreateDto dto)
+    {
+        var r = await _api.PostAsync<IdResponse>($"{Root}/documents/{dto.DocumentId}/comments", dto);
+        return r.Id;
+    }
+    public Task ToggleCommentResolveAsync(int documentId, int commentId) => _api.PostAsync<object>($"{Root}/documents/{documentId}/comments/{commentId}/resolve", new { });
+    public Task DeleteCommentAsync(int documentId, int commentId) => _api.DeleteAsync($"{Root}/documents/{documentId}/comments/{commentId}");
+    public Task<DocDuplicateResultDto> CheckDuplicateAsync(DocDuplicateCheckRequest req) => _api.PostAsync<DocDuplicateResultDto>($"{Root}/duplicate-check", req);
+    public Task<List<DocLeakTraceDto>> GetLeakTracesAsync(int documentId) => _api.GetAsync<List<DocLeakTraceDto>>($"{Root}/documents/{documentId}/leak-traces");
 
     private class IdResponse { public int Id { get; set; } }
 }

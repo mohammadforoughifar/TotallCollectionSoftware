@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Inventory.Shared;
 
 namespace Inventory.Api.Data;
@@ -78,9 +77,6 @@ public class MoadianFiscalPeriod
 {
     public int Id { get; set; }
 
-    /// <summary>خدمات‌دهنده مالک این دوره (۰ = عمومی/سوابق قدیمی).</summary>
-    public int ServiceProviderId { get; set; }
-
     /// <summary>سال شمسی</summary>
     public int Year { get; set; }
 
@@ -91,36 +87,6 @@ public class MoadianFiscalPeriod
     public bool IsClosed { get; set; }
 
     [MaxLength(500)] public string? Notes { get; set; }
-}
-
-/// <summary>
-/// سال مالی مودیان (شمسی). با ثبت سال، ۱۲ دورهٔ ماهانهٔ شمسی ساخته می‌شود؛
-/// صورتحساب‌ها به سال و به دورهٔ ماه خودشان گره می‌خورند.
-/// </summary>
-public class MoadianFiscalYear
-{
-    public int Id { get; set; }
-
-    /// <summary>خدمات‌دهنده مالک این سال مالی (۰ = عمومی/سوابق قدیمی).</summary>
-    public int ServiceProviderId { get; set; }
-
-    /// <summary>سال شمسی، مثل 1405.</summary>
-    public int Year { get; set; }
-
-    /// <summary>اولین روز سال (میلادی؛ معادل 01/01 شمسی).</summary>
-    public DateTime StartDate { get; set; }
-
-    /// <summary>آخرین روز سال (میلادی؛ معادل 12/29 یا 12/30 شمسی).</summary>
-    public DateTime EndDate { get; set; }
-
-    /// <summary>سال بسته — ثبت صورتحساب جدید در هیچ‌یک از دوره‌های آن مجاز نیست.</summary>
-    public bool IsClosed { get; set; }
-
-    [MaxLength(500)] public string? Notes { get; set; }
-
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
-
-    public List<MoadianInvoice> Invoices { get; set; } = new();
 }
 
 /// <summary>فاکتور الکترونیکی (مشخصه‌های استاندارد سامانه مودیان).</summary>
@@ -153,19 +119,6 @@ public class MoadianInvoice
     public int FiscalPeriodId { get; set; }
     public MoadianFiscalPeriod? FiscalPeriod { get; set; }
 
-    /// <summary>سال مالی مودیان (جدول MoadianFiscalYears). برای سوابق قدیمی خالی است.</summary>
-    public int? FiscalYearId { get; set; }
-    public MoadianFiscalYear? FiscalYear { get; set; }
-
-    /// <summary>سریال صورتحساب در داخل سال مالی (۱،۲،۳،...).</summary>
-    public int YearSerial { get; set; }
-
-    /// <summary>شمارهٔ سند سالانه (مثل 1405/000123) — نمایش کاربر و مرجع داخلی؛ فرمت رسمی inno نیست.</summary>
-    [MaxLength(30)] public string? DocumentNumber { get; set; }
-
-    /// <summary>نوع پرداخت صورتحساب (setm): نقدی/نسیه/الکترونیکی/تسهیلات/تهاتر.</summary>
-    public MoadianPayType? PayType { get; set; }
-
     /// <summary>فاکتور ERP مبدأ، در صورت وجود</summary>
     public int? FacInvoiceId { get; set; }
 
@@ -178,24 +131,17 @@ public class MoadianInvoice
     /// <summary>محل تحویل / نوع تسویه</summary>
     [MaxLength(60)] public string? Settlement { get; set; }
 
-    /// <summary>
-    /// خدمات‌دهندهٔ مودیان که این صورتحساب به آن تعلق دارد (از مشتری انتخابی در ثبت مستقل).
-    /// برای سوابق قدیمی (پیش از مدل خدمات‌دهنده) خالی است و در لیست‌های تفکیکی جدا نمایش داده می‌شود.
-    /// </summary>
-    public int? ServiceProviderId { get; set; }
-    public MoadianServiceProviderProfile? ServiceProvider { get; set; }
-
     // ---------- فروشنده (از تنظیمات) ----------
-    [MaxLength(50)] public string TaxId { get; set; } = "";
+    [MaxLength(20)] public string TaxId { get; set; } = "";
     [MaxLength(200)] public string SellerName { get; set; } = "";
-    [MaxLength(50)] public string? EconomicCode { get; set; }
+    [MaxLength(20)] public string? EconomicCode { get; set; }
 
     // ---------- خریدار ----------
-    [MaxLength(50)] public string? BuyerTaxId { get; set; }
+    [MaxLength(20)] public string? BuyerTaxId { get; set; }
     [MaxLength(200)] public string? BuyerName { get; set; }
     [MaxLength(300)] public string? BuyerAddress { get; set; }
-    [MaxLength(50)] public string? BuyerPostalCode { get; set; }
-    [MaxLength(50)] public string? BuyerPhone { get; set; }
+    [MaxLength(20)] public string? BuyerPostalCode { get; set; }
+    [MaxLength(30)] public string? BuyerPhone { get; set; }
 
     // ---------- مبالغ ----------
     public decimal TotalGross { get; set; }
@@ -206,16 +152,6 @@ public class MoadianInvoice
 
     // ---------- چرخه سامانه ----------
     public MoadianInvoiceStatus Status { get; set; } = MoadianInvoiceStatus.Draft;
-
-    /// <summary>
-    /// شماره منحصر به فرد مالیاتی ۲۲ نویسه‌ای صورتحساب (taxid) — هنگام ارسال با
-    /// شناسهٔ حافظه مالیاتی و سریال صورتحساب ساخته می‌شود و برای ارجاع موضوع‌های
-    /// اصلاحی/ابطالی/برگشتی مرجع رسمی است.
-    /// نام ستون Taxid22 چون ستون TaxId (شناسهٔ فروشنده) وجود دارد و نام‌ها
-    /// بدون حساسیت به بزرگی/کوچکی حرف تداخل می‌کنند.
-    /// </summary>
-    [Column("Taxid22")]
-    [MaxLength(22)] public string? Taxid { get; set; }
 
     /// <summary>شناسه یکتای مالیاتی (UID) — مرجع سامانه پس از ارسال</summary>
     [MaxLength(64)] public string? ReferenceId { get; set; }
@@ -235,24 +171,6 @@ public class MoadianInvoice
     public DateTime? SendAt { get; set; }
     public DateTime? ReturnedAt { get; set; }
 
-    /// <summary>زمان آخرین استعلام رسمی وضعیت از سامانه مودیان.</summary>
-    public DateTime? LastInquiryAt { get; set; }
-
-    /// <summary>وضعیت خام سامانه در آخرین استعلام (PENDING/CONFIRM/SYSTEM_CONFIRM/REJECT).</summary>
-    [MaxLength(40)] public string? LastInquiryStatus { get; set; }
-
-    /// <summary>
-    /// پاسخ خام استعلام از سامانه (JSON) — شامل فهرست کامل خطاها/پیام‌ها؛
-    /// برای نمایش «خطاها و پیام‌های صورتحساب» در جزئیات استفاده می‌شود.
-    /// </summary>
-    [MaxLength(4000)] public string? InquiryDataJson { get; set; }
-
-    /// <summary>
-    /// دقیق‌ترین JSON payload آخرین تلاش ثبت به سامانه (InvoiceDto سرریزشده) —
-    /// برای بررسی مقادیر واقعی ارسالی (setm/pmt/tob/bid/tinb/...) هنگام خطاهای سامانه.
-    /// </summary>
-    [MaxLength(8000)] public string? LastSendPayload { get; set; }
-
     [MaxLength(120)] public string? CreatedBy { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
     [MaxLength(600)] public string? Description { get; set; }
@@ -271,10 +189,10 @@ public class MoadianInvoiceLine
     public int RowNo { get; set; }
 
     /// <summary>شناسه کالا/خدمت مالیاتی؛ هنگام ارسال باید با شناسه معتبر سامانه جایگزین/تأیید شده باشد</summary>
-    [MaxLength(50)] public string SstId { get; set; } = "";
+    [MaxLength(40)] public string SstId { get; set; } = "";
 
     /// <summary>واحد اندازه‌گیری مالیاتی (کد واحد)</summary>
-    [MaxLength(50)] public string? UnitCode { get; set; }
+    [MaxLength(20)] public string? UnitCode { get; set; }
 
     /// <summary>شرح کالا/خدمت</summary>
     [MaxLength(400)] public string SstTitle { get; set; } = "";

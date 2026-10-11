@@ -46,12 +46,6 @@ public abstract class RbacControllerBase : ApiControllerBase
         => await HasAsync(module, action) ? null
            : StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
 
-    /// <summary>فقط نقش Admin — برای عملیات حساسی مثل مدیریت اتصال/کلید خصوصی سامانه مودیان.</summary>
-    protected Task<IActionResult?> ForbiddenUnlessAdminAsync(string? message = null)
-        => User.FindFirstValue(ClaimTypes.Role) == "Admin"
-            ? Task.FromResult<IActionResult?>(null)
-            : Task.FromResult<IActionResult?>(StatusCode(403, new { message = message ?? "این عملیات فقط برای مدیر امکان‌پذیر است." }));
-
     /// <summary>آیا کاربر جاری حداقل یکی از این اکشن‌های ماژول را دارد؟ (دسترسی تفکیکی هر لینک منو)</summary>
     protected async Task<bool> HasAnyAsync(string module, params string[] actions)
     {
@@ -72,25 +66,6 @@ public abstract class RbacControllerBase : ApiControllerBase
     protected async Task<IActionResult?> ForbiddenUnlessAnyAsync(string module, params string[] actions)
         => await HasAnyAsync(module, actions) ? null
            : StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
-
-    /// <summary>
-    /// دروازهٔ فرمی: علاوه بر اکشن اصلی (Read/Create/...)، کاربر باید حداقل یکی از
-    /// مجوزهای فرمی را داشته باشد تا فرم مربوطه برایش قابل استفاده باشد
-    /// — مثل فرم‌های عملیات مودیان (MasterData / ProviderInvoices / InvoiceNew / FiscalYears).
-    /// </summary>
-    protected async Task<IActionResult?> ForbiddenUnlessFormAsync(string module, string mainAction, params string[] formActions)
-        => await ForbiddenUnlessFormAsync(module, new[] { mainAction }, formActions);
-
-    protected async Task<IActionResult?> ForbiddenUnlessFormAsync(string module, string[] mainActions, params string[] formActions)
-    {
-        var mainOk = false;
-        foreach (var a in mainActions)
-            if (await HasAsync(module, a)) { mainOk = true; break; }
-        if (!mainOk) return StatusCode(403, new { message = "شما به این بخش دسترسی ندارید." });
-        if (!await HasAnyAsync(module, formActions))
-            return StatusCode(403, new { message = "شما به این فرم دسترسی ندارید؛ دسترسی فرم را از «تنظیمات ← نقش‌ها و دسترسی‌ها» برای نقش خود بررسی کنید." });
-        return null;
-    }
 
     /// <summary>
     /// gate مخصوص «آرشیو اسناد و مدارک»: دسترسی این ماژول به‌ازای هر پوشه و هر مدرک

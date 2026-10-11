@@ -10,6 +10,7 @@
 <div class="page-head">
     <div>
         <h1>گروه‌های کالا</h1>
+        <p class="lead">تعریف و مدیریت دسته‌بندی کالاها</p>
     </div>
     <button class="btn btn-primary ms-auto" @onclick="OpenNew">
         <i class="bi bi-plus-lg"></i> گروه جدید
@@ -140,7 +141,7 @@
     <div class="row g-3">
         <div class="col-12">
             <label class="form-label">نام گروه <span class="text-danger">*</span></label>
-            <input class="form-control" @bind="form.Name" />
+            <input class="form-control" @bind="form.Name" placeholder="مثلاً: روغن، فیلتر، لاستیک…" />
         </div>
         <div class="col-12">
             <label class="form-label">گروه والد</label>

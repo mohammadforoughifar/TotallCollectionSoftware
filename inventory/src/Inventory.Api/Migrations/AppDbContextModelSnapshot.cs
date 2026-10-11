@@ -2546,11 +2546,48 @@ namespace Inventory.Api.Migrations
                     b.Property<int?>("VersionId")
                         .HasColumnType("int");
 
+                    b.Property<string>("SignatureDataUrl")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("BiometricVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("DeviceInfo")
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DocumentId", "VersionId");
 
                     b.ToTable("DocumentApprovers");
+                });
+
+            modelBuilder.Entity("Inventory.Api.Data.DocFavorite", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("DocumentId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "DocumentId")
+                        .IsUnique();
+
+                    b.ToTable("DocFavorites");
                 });
 
             modelBuilder.Entity("Inventory.Api.Data.DocumentLink", b =>
@@ -12211,49 +12248,6 @@ namespace Inventory.Api.Migrations
                     b.ToTable("RepairItems");
                 });
 
-            modelBuilder.Entity("Inventory.Api.Data.RepairDevice", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<string>("Accessories")
-                        .HasMaxLength(500)
-                        .HasColumnType("nvarchar(500)");
-
-                    b.Property<string>("DeviceModel")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<string>("DeviceType")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("ProblemDescription")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<decimal>("QuotedPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("RepairOrderId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("SerialNumber")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RepairOrderId");
-
-                    b.ToTable("RepairDevices");
-                });
-
             modelBuilder.Entity("Inventory.Api.Data.RepairOrder", b =>
                 {
                     b.Property<int>("Id")
@@ -13546,10 +13540,6 @@ namespace Inventory.Api.Migrations
                         .HasColumnType("nvarchar(300)");
 
                     b.Property<decimal>("Price")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<decimal?>("UnitCostSnapshot")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
@@ -15945,15 +15935,6 @@ namespace Inventory.Api.Migrations
                     b.Navigation("RelateLetter");
                 });
 
-            modelBuilder.Entity("Inventory.Api.Data.RepairDevice", b =>
-                {
-                    b.HasOne("Inventory.Api.Data.RepairOrder", null)
-                        .WithMany("Devices")
-                        .HasForeignKey("RepairOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Inventory.Api.Data.RepairItem", b =>
                 {
                     b.HasOne("Inventory.Api.Data.RepairOrder", null)
@@ -16396,8 +16377,6 @@ namespace Inventory.Api.Migrations
 
             modelBuilder.Entity("Inventory.Api.Data.RepairOrder", b =>
                 {
-                    b.Navigation("Devices");
-
                     b.Navigation("Items");
                 });
 

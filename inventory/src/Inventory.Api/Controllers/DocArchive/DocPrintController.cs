@@ -101,7 +101,11 @@ public class DocPrintController : RbacControllerBase
         if (string.IsNullOrWhiteSpace(wmLine))
             return StatusCode(500, new { message = "ساخت واترمارک چاپ ممکن نشد؛ چاپ بدون واترمارک مجاز نیست." });
 
-        var stamped = _watermark.Stamp(bytes, ct, a.FileName, wmLine);
+        // QR اصالت — لینک مستقیم به مدرک + زمان چاپ برای ردیابی
+        var qrPayload = $"{Request.Scheme}://{Request.Host}/doc-archive/documents/{doc.Id}?v={version.VersionNo}";
+        // اگر Host داخلی بود، فقط کد مدرک
+        if (string.IsNullOrWhiteSpace(Request.Host.Host)) qrPayload = $"DOC:{doc.Code} V{version.VersionNo} {DateTime.Now:yyyy/MM/dd HH:mm}";
+        var stamped = _watermark.StampWithQr(bytes, ct, a.FileName, wmLine, qrPayload) ?? _watermark.Stamp(bytes, ct, a.FileName, wmLine);
         if (stamped is null)
             return StatusCode(422, new { message = "فایل خراب است یا واترمارک روی آن حک نشد؛ چاپ بدون واترمارک مجاز نیست." });
 
@@ -151,6 +155,22 @@ public class DocPrintController : RbacControllerBase
             UserName = MyUsername,
             Ip = ip,
             At = now
+        });
+        // ردیاب نشت — واترمارک نامرئی (LSB payload) + لاگ
+        var fileHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stamped.Bytes))[..16];
+        var invisiblePayload = $"{MyUserId}:{doc.Id}:{now:yyyyMMddHHmmss}:{fileHash}";
+        Db.DocLeakTraces.Add(new DocLeakTrace
+        {
+            DocumentId = doc.Id,
+            VersionId = version.Id,
+            UserId = MyUserId,
+            UserName = displayName,
+            IpAddress = ip,
+            VisibleWatermark = wmLine,
+            InvisiblePayload = invisiblePayload,
+            FileHash = fileHash,
+            Action = "Print",
+            CreatedAt = now
         });
 
         try
