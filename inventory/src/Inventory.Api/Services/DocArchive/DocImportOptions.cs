@@ -5,8 +5,8 @@ public class DocImportOptions
 {
     public const string SectionName = "DocArchiveImport";
 
-    /// <summary>تا روشن نشود، صفحهٔ ورود انبوه کاری انجام نمی‌دهد.</summary>
-    public bool Enabled { get; set; }
+    /// <summary>به‌طور پیش‌فرض روشن است؛ با Enabled=false در پیکربندی خاموش می‌شود.</summary>
+    public bool Enabled { get; set; } = true;
 
     /// <summary>سقف حجم هر فایل؛ همان سقف آپلود دستی.</summary>
     public long MaxFileBytes { get; set; } = 10L * 1024 * 1024;
